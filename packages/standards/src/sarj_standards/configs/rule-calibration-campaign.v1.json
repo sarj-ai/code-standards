@@ -1853,6 +1853,14 @@
       "outcome": "Keep warning without autofix. In addition to unsupplied literal defaults, recognize defaulted options whose effective value is the same literal across at least two direct calls. Reject invalid bindings, dynamic values, mutable defaults, required options, escapes and reflection. Single explicitly supplied callers remain excluded. The additional live finding is a simplification prompt with a readability tradeoff; retain explicit setup when it communicates the contract, and suppress for external callers."
     },
     {
+      "task": "rule-audit/python/prefer-injected-dependency-over-monkeypatch",
+      "family": "python",
+      "ruleId": "prefer-injected-dependency-over-monkeypatch",
+      "state": "pending",
+      "evidence": "A ten-agent audit inspected all 88 Platform test files that use pytest monkeypatch: 530 direct operations comprised 453 attribute mutations and 77 intentionally allowed environment, working-directory, import-path, or mapping mutations. The staged rule reproduced exactly the 453 attribute-mutation sites across 1,353 Platform Python files with no duplicate locations or execution issues. All 278 pre-existing Code Standards findings were reviewed as deliberate tests of global lookup or interception and now carry exact reasoned suppressions; self-dogfood is clean. Focused rule, interaction, registry, documentation, suppression, malformed-input, and provenance cases pass. Candidate-only warm scans took 1.32, 1.46, and 1.76 seconds; broader fleet calibration remains pending.",
+      "outcome": "Introduce SARJ445 as a warning without autofix. Prefer explicit collaborators, settings, clocks, clients, and purpose-built fakes over pytest attribute mutation. Continue to allow scoped process-state operations. Require a local reasoned suppression when a runtime boundary is inherently global or interception of the lookup is the behavior under test; do not promote to an error until consumer migration and broader calibration demonstrate acceptable adoption cost."
+    },
+    {
       "task": "rule-audit/typescript/require-button-accessible-name",
       "family": "typescript",
       "ruleId": "require-button-accessible-name",

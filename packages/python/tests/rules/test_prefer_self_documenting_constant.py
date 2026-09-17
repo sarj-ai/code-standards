@@ -467,9 +467,13 @@ def test_module_without_candidate_constants_skips_expensive_scans(monkeypatch: p
     def fail_if_called(*_args: object):
         pytest.fail("source scans should be skipped without a numeric or status candidate")
 
-    monkeypatch.setattr(rule_module, "is_generated", fail_if_called)
-    monkeypatch.setattr(rule_module, "standalone_comments", fail_if_called)
-    monkeypatch.setattr(
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- interception proves candidate gating avoids source scans.
+        rule_module, "is_generated", fail_if_called
+    )
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- interception proves candidate gating avoids source scans.
+        rule_module, "standalone_comments", fail_if_called
+    )
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- interception proves candidate gating avoids import indexing.
         "sarj_python_lint.rules.prefer_self_documenting_constant.ImportIndex.from_tree",
         fail_if_called,
     )

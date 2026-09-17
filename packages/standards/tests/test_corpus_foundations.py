@@ -245,8 +245,8 @@ def test_git_corpus_root_must_match_repository_top_level(monkeypatch: pytest.Mon
             return subprocess.CompletedProcess(("git",), 0, "app.py\0")
         return completed
 
-    monkeypatch.setattr(shutil, "which", which)
-    monkeypatch.setattr(subprocess, "run", run)
+    monkeypatch.setattr(shutil, "which", which)  # sarj-noqa: SARJ445 -- intercepts Git process discovery
+    monkeypatch.setattr(subprocess, "run", run)  # sarj-noqa: SARJ445 -- intercepts Git process discovery
 
     with pytest.raises(ValueError, match="repository root does not match"):
         snapshot(source)
@@ -271,7 +271,7 @@ def test_git_corpus_ignores_ambient_repository_routing(monkeypatch: pytest.Monke
     def which(_name: str) -> str:
         return "/usr/bin/git"
 
-    monkeypatch.setattr(shutil, "which", which)
+    monkeypatch.setattr(shutil, "which", which)  # sarj-noqa: SARJ445 -- intercepts Git process discovery
 
     def run(*_args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
         environment = kwargs.get("env")
@@ -284,7 +284,7 @@ def test_git_corpus_ignores_ambient_repository_routing(monkeypatch: pytest.Monke
         stdout = "app.py\0" if isinstance(argv, tuple) and "ls-files" in argv else f"{corpus}\n{revision}\n"
         return subprocess.CompletedProcess(("git",), 0, stdout)
 
-    monkeypatch.setattr(subprocess, "run", run)
+    monkeypatch.setattr(subprocess, "run", run)  # sarj-noqa: SARJ445 -- intercepts Git process discovery
 
     assert snapshot(source).revision == revision
 

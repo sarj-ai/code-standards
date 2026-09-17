@@ -20,13 +20,13 @@ def test_update_to_bootstraps_the_exact_requested_version(
     observed: list[tuple[list[str], dict[str, object]]] = []
 
     monkeypatch.delenv("SARJ_STANDARDS_BOOTSTRAPPED", raising=False)
-    monkeypatch.setattr(shutil, "which", _find_uvx)
+    monkeypatch.setattr(shutil, "which", _find_uvx)  # sarj-noqa: SARJ445 -- intercepts updater process execution
 
     def run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
         observed.append((command, kwargs))
         return subprocess.CompletedProcess(command, 0, "/resolved/bin/python\n")
 
-    monkeypatch.setattr(subprocess, "run", run)
+    monkeypatch.setattr(subprocess, "run", run)  # sarj-noqa: SARJ445 -- intercepts updater process execution
 
     status = cli.main(["--root", str(tmp_path), "update", "--to", "5.7.1", "--check"])
 
@@ -61,8 +61,8 @@ def test_update_timeout_identifies_the_phase(
         raise subprocess.TimeoutExpired(command, timeout)
 
     monkeypatch.delenv("SARJ_STANDARDS_BOOTSTRAPPED", raising=False)
-    monkeypatch.setattr(shutil, "which", _find_uvx)
-    monkeypatch.setattr(subprocess, "run", run)
+    monkeypatch.setattr(shutil, "which", _find_uvx)  # sarj-noqa: SARJ445 -- intercepts updater process execution
+    monkeypatch.setattr(subprocess, "run", run)  # sarj-noqa: SARJ445 -- intercepts updater process execution
 
     assert cli.main(["--root", str(tmp_path), "update", "--to", "5.7.1"]) == 2
     error = capsys.readouterr().err
@@ -92,8 +92,8 @@ def test_update_allows_successful_execution_longer_than_resolution_budget(
         return subprocess.CompletedProcess(command, 0)
 
     monkeypatch.delenv("SARJ_STANDARDS_BOOTSTRAPPED", raising=False)
-    monkeypatch.setattr(shutil, "which", _find_uvx)
-    monkeypatch.setattr(subprocess, "run", run)
+    monkeypatch.setattr(shutil, "which", _find_uvx)  # sarj-noqa: SARJ445 -- intercepts updater process execution
+    monkeypatch.setattr(subprocess, "run", run)  # sarj-noqa: SARJ445 -- intercepts updater process execution
 
     assert cli.main(["--root", str(tmp_path), "update", "--to", "5.7.1"]) == 0
     assert len(calls) == 2
@@ -110,8 +110,8 @@ def test_update_does_not_execute_after_failed_resolution(
         return subprocess.CompletedProcess(command, exit_code, "")
 
     monkeypatch.delenv("SARJ_STANDARDS_BOOTSTRAPPED", raising=False)
-    monkeypatch.setattr(shutil, "which", _find_uvx)
-    monkeypatch.setattr(subprocess, "run", run)
+    monkeypatch.setattr(shutil, "which", _find_uvx)  # sarj-noqa: SARJ445 -- intercepts updater process execution
+    monkeypatch.setattr(subprocess, "run", run)  # sarj-noqa: SARJ445 -- intercepts updater process execution
 
     assert cli.main(["--root", str(tmp_path), "update", "--to", "5.7.1"]) == exit_code
     assert len(calls) == 1
@@ -128,8 +128,8 @@ def test_update_rejects_invalid_resolved_interpreter(
         return subprocess.CompletedProcess(command, 0, resolved_path)
 
     monkeypatch.delenv("SARJ_STANDARDS_BOOTSTRAPPED", raising=False)
-    monkeypatch.setattr(shutil, "which", _find_uvx)
-    monkeypatch.setattr(subprocess, "run", run)
+    monkeypatch.setattr(shutil, "which", _find_uvx)  # sarj-noqa: SARJ445 -- intercepts updater process execution
+    monkeypatch.setattr(subprocess, "run", run)  # sarj-noqa: SARJ445 -- intercepts updater process execution
 
     assert cli.main(["--root", str(tmp_path), "update", "--to", "5.7.1"]) == 2
     assert len(calls) == 1
@@ -149,8 +149,8 @@ def test_update_preserves_resolved_execution_failure(
         return subprocess.CompletedProcess(command, exit_code)
 
     monkeypatch.delenv("SARJ_STANDARDS_BOOTSTRAPPED", raising=False)
-    monkeypatch.setattr(shutil, "which", _find_uvx)
-    monkeypatch.setattr(subprocess, "run", run)
+    monkeypatch.setattr(shutil, "which", _find_uvx)  # sarj-noqa: SARJ445 -- intercepts updater process execution
+    monkeypatch.setattr(subprocess, "run", run)  # sarj-noqa: SARJ445 -- intercepts updater process execution
 
     assert cli.main(["--root", str(tmp_path), "update", "--to", "5.7.1"]) == exit_code
     assert len(calls) == 2
@@ -184,8 +184,8 @@ def test_no_cache_update_keeps_interpreter_until_execution_and_cleans_up(
     monkeypatch.delenv("SARJ_STANDARDS_BOOTSTRAPPED", raising=False)
     monkeypatch.setenv("UV_NO_CACHE", no_cache)
     monkeypatch.setenv("UV_CACHE_DIR", str(persistent_cache))
-    monkeypatch.setattr(shutil, "which", _find_uvx)
-    monkeypatch.setattr(subprocess, "run", run)
+    monkeypatch.setattr(shutil, "which", _find_uvx)  # sarj-noqa: SARJ445 -- intercepts updater process execution
+    monkeypatch.setattr(subprocess, "run", run)  # sarj-noqa: SARJ445 -- intercepts updater process execution
 
     assert cli.main(["--root", str(tmp_path), "update", "--to", "5.7.1"]) == execution_status
     assert len(calls) == 2
@@ -208,8 +208,8 @@ def test_update_preserves_disabled_or_invalid_no_cache_settings(
     monkeypatch.delenv("SARJ_STANDARDS_BOOTSTRAPPED", raising=False)
     monkeypatch.setenv("UV_NO_CACHE", no_cache)
     monkeypatch.setenv("UV_CACHE_DIR", str(tmp_path))
-    monkeypatch.setattr(shutil, "which", _find_uvx)
-    monkeypatch.setattr(subprocess, "run", run)
+    monkeypatch.setattr(shutil, "which", _find_uvx)  # sarj-noqa: SARJ445 -- intercepts updater process execution
+    monkeypatch.setattr(subprocess, "run", run)  # sarj-noqa: SARJ445 -- intercepts updater process execution
 
     assert cli.main(["--root", str(tmp_path), "update", "--to", "5.7.1"]) == 0
     assert len(calls) == 2

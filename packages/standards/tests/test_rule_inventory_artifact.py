@@ -100,7 +100,9 @@ def test_sync_is_idempotent(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> 
     def build_inventory(_root: Path) -> dict[str, object]:
         return inventory
 
-    monkeypatch.setattr(rule_inventory_artifact, "build", build_inventory)
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- artifact builder interception is the behavior under test.
+        rule_inventory_artifact, "build", build_inventory
+    )
 
     first = rule_inventory_artifact.sync(tmp_path, check=False)
     second = rule_inventory_artifact.sync(tmp_path, check=True)

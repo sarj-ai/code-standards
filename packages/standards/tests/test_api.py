@@ -102,9 +102,9 @@ def test_canonical_analysis_routes_the_repository_only_once(
         assert kwargs["grouped"] is routed[0]
         return ()
 
-    monkeypatch.setattr(api, "group_paths", route_once)
-    monkeypatch.setattr(api, "analyze_paths", native)
-    monkeypatch.setattr(api, "analyze_external", external)
+    monkeypatch.setattr(api, "group_paths", route_once)  # sarj-noqa: SARJ445 -- intercepts API orchestration
+    monkeypatch.setattr(api, "analyze_paths", native)  # sarj-noqa: SARJ445 -- intercepts API orchestration
+    monkeypatch.setattr(api, "analyze_external", external)  # sarj-noqa: SARJ445 -- intercepts API orchestration
 
     report = api.Standards(tmp_path).analyze(["service.py"], external=True)
 
@@ -124,8 +124,8 @@ def test_external_router_can_intentionally_ignore_managed_eslint_config(
     def external(_paths: Sequence[str], **_kwargs: object) -> tuple[api.ToolReport, ...]:
         return ()
 
-    monkeypatch.setattr(api, "analyze_paths", native)
-    monkeypatch.setattr(api, "analyze_external", external)
+    monkeypatch.setattr(api, "analyze_paths", native)  # sarj-noqa: SARJ445 -- intercepts API orchestration
+    monkeypatch.setattr(api, "analyze_external", external)  # sarj-noqa: SARJ445 -- intercepts API orchestration
 
     report = api.Standards(tmp_path).analyze(["eslint.strict.mjs"], external=True)
 
@@ -152,8 +152,8 @@ def test_explicit_typescript_ci_scope_still_includes_react_doctor(
         )
         return (api.ToolReport("eslint", api.Completion.COMPLETE),)
 
-    monkeypatch.setattr(api, "analyze_paths", native)
-    monkeypatch.setattr(api, "analyze_external", external)
+    monkeypatch.setattr(api, "analyze_paths", native)  # sarj-noqa: SARJ445 -- intercepts API orchestration
+    monkeypatch.setattr(api, "analyze_external", external)  # sarj-noqa: SARJ445 -- intercepts API orchestration
 
     _ = api.Standards(tmp_path).analyze(["component.tsx"], external=True)
 
@@ -172,8 +172,8 @@ def test_repository_wide_analysis_uses_full_react_doctor_scope(monkeypatch: pyte
         full_scan.append(kwargs["react_doctor_full_scan"] is True)
         return (api.ToolReport("eslint", api.Completion.COMPLETE),)
 
-    monkeypatch.setattr(api, "analyze_paths", native)
-    monkeypatch.setattr(api, "analyze_external", external)
+    monkeypatch.setattr(api, "analyze_paths", native)  # sarj-noqa: SARJ445 -- intercepts API orchestration
+    monkeypatch.setattr(api, "analyze_external", external)  # sarj-noqa: SARJ445 -- intercepts API orchestration
 
     _ = api.Standards(tmp_path).analyze(external=True)
 
@@ -203,8 +203,8 @@ def test_default_analysis_without_verification_paths_uses_full_react_doctor_scop
         full_scan.append(kwargs["react_doctor_full_scan"] is True)
         return (api.ToolReport("eslint", api.Completion.COMPLETE),)
 
-    monkeypatch.setattr(api, "analyze_paths", native)
-    monkeypatch.setattr(api, "analyze_external", external)
+    monkeypatch.setattr(api, "analyze_paths", native)  # sarj-noqa: SARJ445 -- intercepts API orchestration
+    monkeypatch.setattr(api, "analyze_external", external)  # sarj-noqa: SARJ445 -- intercepts API orchestration
 
     _ = api.Standards(tmp_path).analyze(external=True)
 
@@ -223,8 +223,8 @@ def test_explicit_repository_root_uses_full_react_doctor_scope(monkeypatch: pyte
         full_scan.append(kwargs["react_doctor_full_scan"] is True)
         return (api.ToolReport("eslint", api.Completion.COMPLETE),)
 
-    monkeypatch.setattr(api, "analyze_paths", native)
-    monkeypatch.setattr(api, "analyze_external", external)
+    monkeypatch.setattr(api, "analyze_paths", native)  # sarj-noqa: SARJ445 -- intercepts API orchestration
+    monkeypatch.setattr(api, "analyze_external", external)  # sarj-noqa: SARJ445 -- intercepts API orchestration
 
     _ = api.Standards(tmp_path).analyze(["."], external=True)
 
@@ -254,8 +254,8 @@ def test_default_analysis_respects_scoped_verification_paths(monkeypatch: pytest
         full_scan.append(kwargs["react_doctor_full_scan"] is True)
         return (api.ToolReport("eslint", api.Completion.COMPLETE),)
 
-    monkeypatch.setattr(api, "analyze_paths", native)
-    monkeypatch.setattr(api, "analyze_external", external)
+    monkeypatch.setattr(api, "analyze_paths", native)  # sarj-noqa: SARJ445 -- intercepts API orchestration
+    monkeypatch.setattr(api, "analyze_external", external)  # sarj-noqa: SARJ445 -- intercepts API orchestration
 
     _ = api.Standards(tmp_path).analyze(external=True)
 
@@ -323,7 +323,9 @@ def test_standards_facade_fix_uses_the_adopted_nested_typescript_destination(
         planned.extend(commands)
         return 0
 
-    monkeypatch.setattr("sarj_standards.libs.adoption.lifecycle.execute", capture)
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- intercepts API orchestration
+        "sarj_standards.libs.adoption.lifecycle.execute", capture
+    )
 
     result = api.Standards(tmp_path).fix()
 
@@ -372,7 +374,7 @@ def test_standards_facade_enforces_selected_application_dependency_policy(
     def clean_check(_paths: Sequence[str], **_kwargs: object) -> int:
         return 0
 
-    monkeypatch.setattr(api, "check", clean_check)
+    monkeypatch.setattr(api, "check", clean_check)  # sarj-noqa: SARJ445 -- intercepts API orchestration
 
     result = api.Standards(tmp_path).check(["package.json"])
 
@@ -397,9 +399,9 @@ def test_standards_facade_runs_eslint_for_selected_typescript(
     def execute(commands: Sequence[Command]) -> int:
         return 1 if list(commands) == [command] else 0
 
-    monkeypatch.setattr(api, "check", clean_check)
-    monkeypatch.setattr(api, "selected_eslint_commands", selected)
-    monkeypatch.setattr(api, "execute", execute)
+    monkeypatch.setattr(api, "check", clean_check)  # sarj-noqa: SARJ445 -- intercepts API orchestration
+    monkeypatch.setattr(api, "selected_eslint_commands", selected)  # sarj-noqa: SARJ445 -- intercepts API orchestration
+    monkeypatch.setattr(api, "execute", execute)  # sarj-noqa: SARJ445 -- intercepts API orchestration
 
     result = api.Standards(tmp_path).check(["component.ts"])
 
@@ -466,8 +468,8 @@ def test_standards_facade_update_targets_latest_by_default(tmp_path: Path, monke
     def which(_name: str) -> str:
         return "/usr/bin/uvx"
 
-    monkeypatch.setattr("sarj_standards.api.shutil.which", which)
-    monkeypatch.setattr("sarj_standards.api.subprocess.run", run)
+    monkeypatch.setattr("sarj_standards.api.shutil.which", which)  # sarj-noqa: SARJ445 -- intercepts API orchestration
+    monkeypatch.setattr("sarj_standards.api.subprocess.run", run)  # sarj-noqa: SARJ445 -- intercepts API orchestration
 
     result = api.Standards(tmp_path).update(install=False)
 
@@ -502,8 +504,8 @@ def test_standards_facade_update_exposes_exact_offline_target(tmp_path: Path, mo
     def which(_name: str) -> str:
         return "/usr/bin/uvx"
 
-    monkeypatch.setattr("sarj_standards.api.shutil.which", which)
-    monkeypatch.setattr("sarj_standards.api.subprocess.run", run)
+    monkeypatch.setattr("sarj_standards.api.shutil.which", which)  # sarj-noqa: SARJ445 -- intercepts API orchestration
+    monkeypatch.setattr("sarj_standards.api.subprocess.run", run)  # sarj-noqa: SARJ445 -- intercepts API orchestration
 
     result = api.Standards(tmp_path).update(version="5.14.1", offline=True, install=False)
 
@@ -519,7 +521,7 @@ def test_standards_facade_update_rejects_noncanonical_exact_target(
     def which(_name: str) -> str:
         return "/usr/bin/uvx"
 
-    monkeypatch.setattr("sarj_standards.api.shutil.which", which)
+    monkeypatch.setattr("sarj_standards.api.shutil.which", which)  # sarj-noqa: SARJ445 -- intercepts API orchestration
 
     result = api.Standards(tmp_path).update(version="latest")
 
@@ -551,8 +553,8 @@ def test_latest_update_exit_one_is_truthful_and_has_no_parent_timeout(
     def which(_name: str) -> str:
         return "/usr/bin/uvx"
 
-    monkeypatch.setattr("sarj_standards.api.shutil.which", which)
-    monkeypatch.setattr("sarj_standards.api.subprocess.run", run)
+    monkeypatch.setattr("sarj_standards.api.shutil.which", which)  # sarj-noqa: SARJ445 -- intercepts API orchestration
+    monkeypatch.setattr("sarj_standards.api.subprocess.run", run)  # sarj-noqa: SARJ445 -- intercepts API orchestration
 
     result = api.Standards(tmp_path).update(install=False, check_only=check_only)
 

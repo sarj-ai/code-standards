@@ -58,7 +58,9 @@ def test_build_process_isolates_posix_and_windows_config_homes(monkeypatch: pyte
         seen.update(environment)
         return ProcessResult(0)
 
-    monkeypatch.setattr("sarj_standards.libs.release.process.run_process_environment", run)
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- test intercepts the subprocess environment boundary
+        "sarj_standards.libs.release.process.run_process_environment", run
+    )
 
     assert run_build_process(("build",), cwd=Path()) == ProcessResult(0)
     assert seen["HOME"] == seen["USERPROFILE"] == seen["APPDATA"] == seen["LOCALAPPDATA"]

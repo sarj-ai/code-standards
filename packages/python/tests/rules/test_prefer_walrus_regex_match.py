@@ -313,7 +313,9 @@ def test_lexical_gate_avoids_parsing_unrelated_source(monkeypatch: pytest.Monkey
     def fail_parse(_path: Path, _source: str) -> None:
         pytest.fail("parse_or_none should not run")
 
-    monkeypatch.setattr(rule_module, "parse_or_none", fail_parse)
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- interception proves the lexical gate avoids parsing.
+        rule_module, "parse_or_none", fail_parse
+    )
     assert _check("def value() -> int:\n    return 1\n") == []
 
 

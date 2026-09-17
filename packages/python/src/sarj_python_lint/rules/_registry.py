@@ -93,6 +93,9 @@ from sarj_python_lint.rules.prefer_fstring_over_concat import PreferFstringOverC
 from sarj_python_lint.rules.prefer_immutable_module_constant import (
     PreferImmutableModuleConstant,
 )
+from sarj_python_lint.rules.prefer_injected_dependency_over_monkeypatch import (
+    PreferInjectedDependencyOverMonkeypatch,
+)
 from sarj_python_lint.rules.prefer_library_fake import PreferLibraryFake
 from sarj_python_lint.rules.prefer_match_assert_never import PreferMatchAssertNever
 from sarj_python_lint.rules.prefer_match_type_dispatch import PreferMatchTypeDispatch
@@ -200,6 +203,7 @@ REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
         RequirePydanticForExternalJson.id: RequirePydanticForExternalJson,
         PreferModuleLevelConstant.id: PreferModuleLevelConstant,
         PreferImmutableModuleConstant.id: PreferImmutableModuleConstant,
+        PreferInjectedDependencyOverMonkeypatch.id: PreferInjectedDependencyOverMonkeypatch,
         MockWithoutSpec.id: MockWithoutSpec,
         OpaqueParametrizeCaseNeedsId.id: OpaqueParametrizeCaseNeedsId,
         PytestFixtureReturnsBareTuple.id: PytestFixtureReturnsBareTuple,

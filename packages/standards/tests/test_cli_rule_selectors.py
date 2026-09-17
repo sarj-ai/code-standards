@@ -75,7 +75,7 @@ def test_stage_warning_prints_copy_pasteable_author_validation_steps(
     def stage_warning(_root: Path, selected: RuleSelector, *, check: bool) -> rule_lifecycle.StageResult:
         return rule_lifecycle.StageResult(0, not check, f"staged: {selected}")
 
-    monkeypatch.setattr(
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- intercepts lifecycle CLI dispatch
         rule_lifecycle,
         "stage_warning",
         stage_warning,

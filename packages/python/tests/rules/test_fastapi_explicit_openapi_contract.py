@@ -447,7 +447,9 @@ def test_imported_module_is_parsed_once_per_source_file(tmp_path: Path, monkeypa
             reads.append(path)
         return original_read_text(path, encoding=encoding, errors=errors)
 
-    monkeypatch.setattr(Path, "read_text", counted_read_text)
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- global Path reads are intercepted to verify cache behavior.
+        Path, "read_text", counted_read_text
+    )
     source = _source("""
 from .dependencies import CurrentUser
 

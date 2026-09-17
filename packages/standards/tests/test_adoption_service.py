@@ -168,7 +168,7 @@ def test_init_service_rolls_back_every_file_when_install_fails(
     def fail_install(_commands: Iterable[lifecycle.Command]) -> int:
         return 7
 
-    monkeypatch.setattr(lifecycle, "execute", fail_install)
+    monkeypatch.setattr(lifecycle, "execute", fail_install)  # sarj-noqa: SARJ445 -- intercepts setup failure dispatch
     result = apply_init(plan)
 
     assert result.status == 2

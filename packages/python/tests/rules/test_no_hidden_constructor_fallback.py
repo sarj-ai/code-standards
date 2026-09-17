@@ -513,7 +513,9 @@ class RareGenerator:
         parse_calls += 1
         return original_parse(source, filename=filename)
 
-    monkeypatch.setattr(ast, "parse", counting_parse)
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- the test counts process-global parser calls.
+        ast, "parse", counting_parse
+    )
     assert len(_check(service.read_text(), service)) == 1
     assert parse_calls < 10
 

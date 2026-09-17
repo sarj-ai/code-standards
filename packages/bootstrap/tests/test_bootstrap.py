@@ -93,7 +93,9 @@ def test_execs_exact_bundle_and_preserves_environment(tmp_path: Path, monkeypatc
     def fake_which(_name: str) -> str:
         return "/tools/uvx"
 
-    monkeypatch.setattr(shutil, "which", fake_which)
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- the test controls the process-global executable lookup.
+        shutil, "which", fake_which
+    )
     captured: dict[str, object] = {}
 
     def fake_execute(arguments: tuple[str, ...], environment: dict[str, str]) -> None:
@@ -101,7 +103,9 @@ def test_execs_exact_bundle_and_preserves_environment(tmp_path: Path, monkeypatc
         message = "exec sentinel"
         raise RuntimeError(message)
 
-    monkeypatch.setattr(bootstrap, "execute", fake_execute)
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- the real boundary replaces the current process.
+        bootstrap, "execute", fake_execute
+    )
 
     with pytest.raises(RuntimeError, match="exec sentinel"):
         bootstrap.run(("check", "src"), cwd=nested)
@@ -140,7 +144,9 @@ def test_windows_waits_for_standards_and_forwards_its_exit_code(monkeypatch: pyt
         captured.update(arguments=arguments, environment=env, check=check, shell=shell)
         return subprocess.CompletedProcess(arguments, 17)
 
-    monkeypatch.setattr(subprocess, "run", fake_run)
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- subprocess dispatch is the global boundary under test.
+        subprocess, "run", fake_run
+    )
 
     with pytest.raises(SystemExit) as raised:
         bootstrap.execute(("C:/tools/uvx.exe", "check"), {"UV_OFFLINE": "1"}, platform="nt")

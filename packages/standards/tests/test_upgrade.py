@@ -377,7 +377,9 @@ def test_upgrade_refreshes_the_python_lockfile_with_the_consumers_uv_version(
         lockfile.write_text("fresh lock\n", encoding="utf-8")
         return 0
 
-    monkeypatch.setattr(lifecycle, "execute", execute)
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- upgrade orchestration and failure interception is the behavior under test.
+        lifecycle, "execute", execute
+    )
 
     plan = upgrade.build_plan(tmp_path)
     assert lockfile in plan.lockfiles
@@ -665,7 +667,9 @@ def test_upgrade_refreshes_a_secondary_javascript_lock_after_rewriting_its_pin(
         lockfile.write_text('{"lockfileVersion":3,"fresh":true}\n', encoding="utf-8")
         return 0
 
-    monkeypatch.setattr(lifecycle, "execute", execute)
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- upgrade orchestration and failure interception is the behavior under test.
+        lifecycle, "execute", execute
+    )
 
     plan = upgrade.build_plan(tmp_path)
     assert plan.javascript_install_roots == (secondary,)
@@ -942,7 +946,9 @@ def test_upgrade_no_install_skips_dependency_install(monkeypatch: pytest.MonkeyP
         install_values.append(install)
         return 0
 
-    monkeypatch.setattr(upgrade, "apply", apply_without_side_effects)
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- upgrade orchestration and failure interception is the behavior under test.
+        upgrade, "apply", apply_without_side_effects
+    )
 
     assert _main(["upgrade", "--offline", "--no-install", "--dest", str(tmp_path)]) == 0
     assert install_values == [False]
@@ -1029,7 +1035,9 @@ def test_update_migrates_legacy_wiring_before_the_single_dependency_install(
         return 0
 
     monkeypatch.setenv("SARJ_STANDARDS_BOOTSTRAPPED", "1")
-    monkeypatch.setattr(lifecycle, "execute", execute_after_rewrites)
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- upgrade orchestration and failure interception is the behavior under test.
+        lifecycle, "execute", execute_after_rewrites
+    )
 
     status = _main(["update", str(tmp_path)])
 
@@ -1065,7 +1073,9 @@ def test_update_installs_once_after_a_no_drift_legacy_migration(
         return 0
 
     monkeypatch.setenv("SARJ_STANDARDS_BOOTSTRAPPED", "1")
-    monkeypatch.setattr(lifecycle, "execute", execute_after_migration)
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- upgrade orchestration and failure interception is the behavior under test.
+        lifecycle, "execute", execute_after_migration
+    )
 
     status = _main(["update", str(tmp_path)])
 
@@ -1228,7 +1238,9 @@ def test_offline_update_never_executes_install_commands(
     def forbidden(_commands: object) -> int:
         pytest.fail("offline update attempted to execute an installer")
 
-    monkeypatch.setattr(lifecycle, "execute", forbidden)
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- upgrade orchestration and failure interception is the behavior under test.
+        lifecycle, "execute", forbidden
+    )
 
     assert _main(["update", "--offline", str(tmp_path)]) == 0
     assert "npm install --ignore-scripts --no-audit --no-fund" in capsys.readouterr().out
@@ -1253,8 +1265,12 @@ def test_upgrade_with_install_still_rolls_back_dependency_drift(
     def diagnose(_root: Path) -> list[doctor.Finding]:
         return [finding]
 
-    monkeypatch.setattr(upgrade.lifecycle, "execute", execute)
-    monkeypatch.setattr(doctor, "diagnose", diagnose)
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- upgrade orchestration and failure interception is the behavior under test.
+        upgrade.lifecycle, "execute", execute
+    )
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- upgrade orchestration and failure interception is the behavior under test.
+        doctor, "diagnose", diagnose
+    )
 
     assert upgrade.apply(plan, install=True) == 1
     assert {path: path.read_bytes() for path in tmp_path.iterdir() if path.is_file()} == before
@@ -1279,7 +1295,9 @@ def test_upgrade_no_install_rolls_back_when_dependency_and_configuration_drift_r
     def diagnose(_root: Path) -> list[doctor.Finding]:
         return findings
 
-    monkeypatch.setattr(doctor, "diagnose", diagnose)
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- upgrade orchestration and failure interception is the behavior under test.
+        doctor, "diagnose", diagnose
+    )
 
     assert upgrade.apply(plan, install=False) == 1
     assert {path: path.read_bytes() for path in tmp_path.iterdir() if path.is_file()} == before
@@ -1305,7 +1323,9 @@ def test_current_bundle_repairs_do_not_roll_back_for_manual_debt(
     def diagnosed(_root: Path) -> list[doctor.Finding]:
         return [finding]
 
-    monkeypatch.setattr(doctor, "diagnose", diagnosed)
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- upgrade orchestration and failure interception is the behavior under test.
+        doctor, "diagnose", diagnosed
+    )
 
     assert upgrade.apply(plan, install=False) == 0
 
@@ -1324,7 +1344,9 @@ def test_current_bundle_blocks_unresolved_retired_rule_debt(monkeypatch: pytest.
     def diagnosed(_root: Path) -> list[doctor.Finding]:
         return [finding]
 
-    monkeypatch.setattr(doctor, "diagnose", diagnosed)
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- upgrade orchestration and failure interception is the behavior under test.
+        doctor, "diagnose", diagnosed
+    )
 
     assert upgrade.apply(plan, install=False) == 2
 
@@ -1374,7 +1396,9 @@ def test_ratchet_migration_preserves_source_and_budget_on_failure(
         budget.write_text(original_budget, encoding="utf-8")
         expected_status = 2
     else:
-        monkeypatch.setattr(doctor, "diagnose", drift)
+        monkeypatch.setattr(  # sarj-noqa: SARJ445 -- upgrade orchestration and failure interception is the behavior under test.
+            doctor, "diagnose", drift
+        )
         expected_status = 1
 
     assert upgrade.apply(plan, install=False) == expected_status
@@ -1462,7 +1486,9 @@ def test_upgrade_does_not_overwrite_a_concurrent_edit_after_writing_a_pin(
             raise _LaterWriteError
         original_write(root, path, contents)
 
-    monkeypatch.setattr(upgrade.transaction, "atomic_write_text", fail_after_concurrent_pin_edit)
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- upgrade orchestration and failure interception is the behavior under test.
+        upgrade.transaction, "atomic_write_text", fail_after_concurrent_pin_edit
+    )
 
     with pytest.raises(OSError, match="changed concurrently after the standards write"):
         upgrade.apply(plan, install=False)
@@ -1487,7 +1513,9 @@ def test_upgrade_check_explains_doctor_drift_when_bundle_is_current(
     def diagnosed(_root: Path) -> list[doctor.Finding]:
         return [finding]
 
-    monkeypatch.setattr(doctor, "diagnose", diagnosed)
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- upgrade orchestration and failure interception is the behavior under test.
+        doctor, "diagnose", diagnosed
+    )
 
     status = _main(["upgrade", "--offline", "--check", "--dest", str(tmp_path)])
 
@@ -1510,7 +1538,9 @@ def test_upgrade_rolls_back_every_touched_file_when_postflight_fails(
     def drift(_root: Path) -> list[doctor.Finding]:
         return [doctor.Finding(doctor.Level.DRIFT, "test", "forced postflight failure")]
 
-    monkeypatch.setattr(doctor, "diagnose", drift)
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- upgrade orchestration and failure interception is the behavior under test.
+        doctor, "diagnose", drift
+    )
     assert upgrade.apply(plan, install=False) == 1
     assert {path: path.read_bytes() for path in tmp_path.iterdir() if path.is_file()} == before
 
@@ -1577,7 +1607,9 @@ def test_upgrade_rolls_back_new_lockfile_and_interrupt(tmp_path: Path, monkeypat
         (tmp_path / "uv.lock").write_text("partial\n", encoding="utf-8")
         raise KeyboardInterrupt
 
-    monkeypatch.setattr(upgrade.lifecycle, "execute", interrupted)
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- upgrade orchestration and failure interception is the behavior under test.
+        upgrade.lifecycle, "execute", interrupted
+    )
 
     assert upgrade.apply(upgrade.build_plan(tmp_path)) == 130
     assert not (tmp_path / "uv.lock").exists()
@@ -1760,7 +1792,9 @@ def test_upgrade_rolls_back_a_migrated_workflow_pin_on_postflight_failure(
     def drift(_root: Path) -> list[doctor.Finding]:
         return [doctor.Finding(doctor.Level.DRIFT, "test", "forced postflight failure")]
 
-    monkeypatch.setattr(doctor, "diagnose", drift)
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- upgrade orchestration and failure interception is the behavior under test.
+        doctor, "diagnose", drift
+    )
 
     assert upgrade.apply(plan, install=False) == 1
     assert workflow.read_bytes() == before
@@ -1783,8 +1817,12 @@ def test_upgrade_surfaces_incomplete_rollback(monkeypatch: pytest.MonkeyPatch, t
     def incomplete(_transaction: transaction.FileTransaction) -> transaction.RollbackReport:
         return transaction.RollbackReport((transaction.RollbackIssue(conflict, "changed concurrently"),))
 
-    monkeypatch.setattr(upgrade, "_apply_and_validate", failed_apply)
-    monkeypatch.setattr(transaction.FileTransaction, "rollback", incomplete)
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- upgrade orchestration and failure interception is the behavior under test.
+        upgrade, "_apply_and_validate", failed_apply
+    )
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- upgrade orchestration and failure interception is the behavior under test.
+        transaction.FileTransaction, "rollback", incomplete
+    )
 
     with pytest.raises(OSError, match=r"upgrade recovery incomplete.*changed concurrently"):
         upgrade.apply(plan, install=False)

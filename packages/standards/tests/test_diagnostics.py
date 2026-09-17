@@ -432,7 +432,7 @@ def test_disabled_external_capabilities_are_not_executed(monkeypatch: pytest.Mon
         called.append("external")
         return external_module.ProcessOutput(0, "[]", "")
 
-    monkeypatch.setattr(external_module, "run_process", forbidden)
+    monkeypatch.setattr(external_module, "run_process", forbidden)  # sarj-noqa: SARJ445 -- intercepts analyzer dispatch
     report = api.Standards(tmp_path).analyze(["app.py"], external=True, trust=TrustMode.TRUSTED)
 
     assert report.exit_code == 0
@@ -450,7 +450,7 @@ def test_raw_scoped_eslint_analysis_does_not_run_unselected_external_tools(
         captured.append(kwargs.get("capabilities"))
         return ()
 
-    monkeypatch.setattr(api, "analyze_external", analyze_external)
+    monkeypatch.setattr(api, "analyze_external", analyze_external)  # sarj-noqa: SARJ445 -- intercepts analyzer dispatch
 
     api.Standards(tmp_path).analyze(
         [str(source)],
@@ -494,14 +494,20 @@ def test_standards_analysis_forwards_scoped_eslint_suppression_policy_to_the_pro
     def installed_eslint(_project: Path, _root: Path) -> None:
         return None
 
-    monkeypatch.setattr(external_module, "select_eslint_commands", select_commands)
-    monkeypatch.setattr(external_module, "_local_eslint_argv", local_argv)
-    monkeypatch.setattr(
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- intercepts analyzer dispatch
+        external_module, "select_eslint_commands", select_commands
+    )
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- intercepts analyzer dispatch
+        external_module, "_local_eslint_argv", local_argv
+    )
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- intercepts analyzer dispatch
         external_module,
         "_missing_eslint_issue",
         installed_eslint,
     )
-    monkeypatch.setattr(external_module, "_run_eslint_process", run_eslint)
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- intercepts analyzer dispatch
+        external_module, "_run_eslint_process", run_eslint
+    )
 
     report = api.Standards(tmp_path).analyze(
         [str(source)],

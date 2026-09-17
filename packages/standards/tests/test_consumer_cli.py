@@ -326,7 +326,9 @@ def test_empty_pull_request_scope_does_not_expand_to_the_repository(
     def no_changed_files(_root: Path, _base: str) -> list[str]:
         return []
 
-    monkeypatch.setattr(cli, "_changed_file_names", no_changed_files)
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- intercepts consumer path routing
+        cli, "_changed_file_names", no_changed_files
+    )
     seen: list[tuple[str, ...] | None] = []
     original = Standards.analyze
 
@@ -334,7 +336,7 @@ def test_empty_pull_request_scope_does_not_expand_to_the_repository(
         seen.append(paths)
         return original(self, paths, **kwargs)  # pyright: ignore[reportArgumentType]
 
-    monkeypatch.setattr(Standards, "analyze", capture_paths)
+    monkeypatch.setattr(Standards, "analyze", capture_paths)  # sarj-noqa: SARJ445 -- intercepts consumer path routing
 
     status = cli.main(["--root", str(tmp_path), "check", "--format", "json"])
 
@@ -377,7 +379,7 @@ def test_non_default_push_runs_adoption_gate_without_expanding_to_repository(
         seen.append(paths)
         return original(self, paths, **kwargs)  # pyright: ignore[reportArgumentType]
 
-    monkeypatch.setattr(Standards, "analyze", capture_paths)
+    monkeypatch.setattr(Standards, "analyze", capture_paths)  # sarj-noqa: SARJ445 -- intercepts consumer path routing
 
     status = cli.main(["--root", str(tmp_path), "check", "--format", "json"])
 
@@ -437,7 +439,7 @@ def test_non_default_push_honors_explicit_change_scope(
         seen.append(paths)
         return report_from_tools(self.root, ())
 
-    monkeypatch.setattr(Standards, "analyze", capture_paths)
+    monkeypatch.setattr(Standards, "analyze", capture_paths)  # sarj-noqa: SARJ445 -- intercepts consumer path routing
     status = cli.main(["--root", str(tmp_path), "check", "--format", "json"])
     document: object = json.loads(capsys.readouterr().out)  # pyright: ignore[reportAny]
     payload = as_table(document)
@@ -468,7 +470,9 @@ def test_pull_request_scope_ignores_changed_files_without_an_analyzer(
     def changed_metadata(_root: Path, _base: str) -> list[str]:
         return ["pyproject.toml", "packages/standards/uv.lock"]
 
-    monkeypatch.setattr(cli, "_changed_file_names", changed_metadata)
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- intercepts consumer path routing
+        cli, "_changed_file_names", changed_metadata
+    )
 
     status = cli.main(["--root", str(tmp_path), "check", "--format", "json"])
 
@@ -517,8 +521,12 @@ def test_explicit_repository_root_overrides_pull_request_change_scope(
         selected.append(paths)
         return 0
 
-    monkeypatch.setattr(cli, "_changed_file_names", changed_files_must_not_run)
-    monkeypatch.setattr(cli, "_run_canonical_check", capture_check)
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- intercepts consumer path routing
+        cli, "_changed_file_names", changed_files_must_not_run
+    )
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- intercepts consumer path routing
+        cli, "_run_canonical_check", capture_check
+    )
 
     assert cli.main(["--root", str(tmp_path), "check", "."]) == 0
     assert selected == [(".",)]
@@ -535,7 +543,9 @@ def test_check_rejects_output_outside_repository_before_analysis(
     def forbidden_analysis(*_args: object, **_kwargs: object) -> object:
         pytest.fail("analysis ran before report output validation")
 
-    monkeypatch.setattr(Standards, "analyze", forbidden_analysis)
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- intercepts consumer path routing
+        Standards, "analyze", forbidden_analysis
+    )
 
     status = cli.main(["--root", str(tmp_path), "check", "--format", "json", "--output", "../report.json", "source.py"])
 

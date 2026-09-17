@@ -107,7 +107,9 @@ def test_apply_rolls_back_if_a_later_atomic_write_fails(tmp_path: Path, monkeypa
             raise OSError(detail)
         original(root, path, contents)
 
-    monkeypatch.setattr(transaction, "atomic_write_text", fail_second_write)
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- transaction and artifact failure interception is the behavior under test.
+        transaction, "atomic_write_text", fail_second_write
+    )
 
     with pytest.raises(OSError, match="injected failure"):
         rule_authoring.apply(plan, tmp_path)
@@ -152,7 +154,9 @@ def test_verify_requires_registered_authored_files_without_todos(
     def fake_build(_root: Path) -> SimpleNamespace:
         return SimpleNamespace(rules=(documented,))
 
-    monkeypatch.setattr(rule_catalog_artifact, "build", fake_build)
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- transaction and artifact failure interception is the behavior under test.
+        rule_catalog_artifact, "build", fake_build
+    )
 
     result = rule_authoring.verify(tmp_path, RuleSelector.parse("python:new-rule"))
 

@@ -90,7 +90,7 @@ def test_staged_adoption_health_does_not_walk_unrelated_sources(
     def unexpected_walk(_root: Path) -> tuple[Path, ...]:
         raise AssertionError
 
-    monkeypatch.setattr(doctor, "_walk", unexpected_walk)
+    monkeypatch.setattr(doctor, "_walk", unexpected_walk)  # sarj-noqa: SARJ445 -- intercepts doctor environment probes
 
     findings = doctor.diagnose_adoption_health(tmp_path, (staged,))
 
@@ -148,8 +148,10 @@ def test_authored_files_git_walk_excludes_skills_but_keeps_agent_tools(
             stderr=b"",
         )
 
-    monkeypatch.setattr("sarj_standards.libs.adoption.doctor.shutil.which", which)
-    monkeypatch.setattr(
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- intercepts doctor environment probes
+        "sarj_standards.libs.adoption.doctor.shutil.which", which
+    )
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- intercepts doctor environment probes
         "sarj_standards.libs.adoption.doctor.subprocess.run",
         run,
     )
@@ -176,8 +178,12 @@ def test_git_discovery_timeouts_are_nonfatal(
     def which(_name: str) -> str:
         return "/usr/bin/git"
 
-    monkeypatch.setattr("sarj_standards.libs.adoption.doctor.shutil.which", which)
-    monkeypatch.setattr("sarj_standards.libs.adoption.doctor.subprocess.run", run)
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- intercepts doctor environment probes
+        "sarj_standards.libs.adoption.doctor.shutil.which", which
+    )
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- intercepts doctor environment probes
+        "sarj_standards.libs.adoption.doctor.subprocess.run", run
+    )
 
     assert doctor.diagnose_adoption_health(tmp_path)
 
@@ -436,7 +442,9 @@ def test_doctor_reports_excessively_nested_package_json_without_recursing(
     def too_deep(_text: str) -> str | None:
         raise RecursionError
 
-    monkeypatch.setattr(doctor, "_package_json_pin_text", too_deep)
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- intercepts doctor environment probes
+        doctor, "_package_json_pin_text", too_deep
+    )
 
     findings = doctor.diagnose(tmp_path)
 
@@ -469,7 +477,7 @@ def test_doctor_falls_back_to_bounded_filesystem_walk_when_git_times_out(
         command = "git"
         raise subprocess.TimeoutExpired(command, 5)
 
-    monkeypatch.setattr(doctor.subprocess, "run", timed_out)  # pyright: ignore[reportPrivateLocalImportUsage]
+    monkeypatch.setattr(doctor.subprocess, "run", timed_out)  # pyright: ignore[reportPrivateLocalImportUsage]  # sarj-noqa: SARJ445 -- intercepts doctor environment probes
 
     findings = doctor.diagnose(tmp_path)
 

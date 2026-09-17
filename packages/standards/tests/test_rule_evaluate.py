@@ -317,10 +317,14 @@ def test_warning_lifecycle_is_nonblocking_but_observable(
         encoding="utf-8",
     )
     lint_policy.warning_selectors.cache_clear()
-    monkeypatch.setattr(lint_policy, "CONFIGS_DIR", configs)
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- isolated warning-policy lookup is the behavior under test.
+        lint_policy, "CONFIGS_DIR", configs
+    )
     warning_selector = RuleSelector.parse(_SELECTOR)
     assert lint_policy.warning_selectors() == frozenset({warning_selector})
-    monkeypatch.setattr(standards_api, "_warning_rule_keys", lambda: frozenset({warning_selector}))
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- isolated warning-policy lookup is the behavior under test.
+        standards_api, "_warning_rule_keys", lambda: frozenset({warning_selector})
+    )
 
     corpus_status, corpus = _evaluate(tmp_path, "corpus", capsys)
     effective_status, effective = _evaluate(tmp_path, "effective", capsys)
