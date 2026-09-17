@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import json
+import subprocess
 from typing import TYPE_CHECKING, TypeGuard
 
 import pytest
 from typer.testing import CliRunner
 
 from sarj_standards.cli.main import build_app, main
+from sarj_standards.libs.adoption.manifest import as_table, list_field
 from sarj_standards.libs.repository import rule_lifecycle
 from sarj_standards.libs.rules import RuleEngine, RuleId, RuleSelector
 
@@ -32,6 +35,11 @@ def _parse(argv: Sequence[str]) -> dict[str, object]:
     return values
 
 
+def _report(output: str) -> dict[str, object]:
+    value: object = json.loads(output)  # pyright: ignore[reportAny] -- narrow untyped JSON at the boundary.
+    return as_table(value)
+
+
 def _is_object(value: object) -> TypeGuard[dict[str, object]]:
     return isinstance(value, dict)
 
@@ -39,10 +47,11 @@ def _is_object(value: object) -> TypeGuard[dict[str, object]]:
 @pytest.mark.parametrize(
     "argv",
     [
+        ("check", "--rule", "python:no-print", "app.py"),
         ("observe", "--rule", "python:no-print", "app.py"),
         ("maintain", "rules", "evaluate", "--rule", "python:no-print"),
     ],
-    ids=("observe", "evaluate"),
+    ids=("check", "observe", "evaluate"),
 )
 def test_selected_rule_arguments_are_typed_at_the_parser_boundary(argv: tuple[str, ...]) -> None:
     args = _parse(argv)
@@ -106,3 +115,85 @@ def test_evaluation_scope_is_typed_at_the_parser_boundary() -> None:
 def test_rule_selector_arguments_reject_noncanonical_values(selector: str) -> None:
     with pytest.raises(SystemExit, match="2"):
         _parse(("maintain", "rules", "evaluate", "--rule", selector))
+
+
+@pytest.mark.parametrize("paths", [[], ["sample.py"]], ids=["repository", "file"])
+@pytest.mark.parametrize("extra_rules", [[], ["--rule", "python:no-dunder-all"]], ids=["single", "multiple"])
+def test_check_rule_reports_only_selected_findings(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], paths: list[str], extra_rules: list[str]
+) -> None:
+    (tmp_path / "sample.py").write_text(
+        '__all__ = ["sample"]\n\ndef sample():\n' + "    if ready: work()\n" * 21, encoding="utf-8"
+    )
+
+    status = main(
+        [
+            "--root",
+            str(tmp_path),
+            "check",
+            "--rule",
+            "python:no-excessive-cognitive-complexity",
+            "--format",
+            "json",
+            *extra_rules,
+            *paths,
+        ]
+    )
+
+    report = _report(capsys.readouterr().out)
+    assert status == 1
+    expected = (
+        ["no-dunder-all", "no-excessive-cognitive-complexity"] if extra_rules else ["no-excessive-cognitive-complexity"]
+    )
+    assert [as_table(item)["ruleId"] for item in list_field(report, "diagnostics")] == expected
+
+
+def test_check_rule_passes_despite_unselected_violations(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    (tmp_path / "sample.py").write_text("def sample():\n    if ready: work()\n", encoding="utf-8")
+    status = main(
+        ["--root", str(tmp_path), "check", "--rule", "python:no-excessive-cognitive-complexity", "--format", "json"]
+    )
+    report = _report(capsys.readouterr().out)
+    assert status == 0
+    assert report["diagnostics"] == []
+
+
+def test_check_unknown_rule_fails_closed(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    status = main(["--root", str(tmp_path), "check", "--rule", "python:nonexistent-rule", "--format", "json"])
+    assert status == 2
+    assert "unknown" in capsys.readouterr().out.lower()
+
+
+@pytest.mark.parametrize(("stage", "partial", "expected"), [(False, False, 0), (True, False, 1), (True, True, 2)])
+def test_check_rule_respects_staged_content(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], *, stage: bool, partial: bool, expected: int
+) -> None:
+    subprocess.run(["git", "init", str(tmp_path)], check=True, capture_output=True)
+    (tmp_path / "sample.py").write_text("def sample():\n" + "    if ready: work()\n" * 21, encoding="utf-8")
+    if stage:
+        subprocess.run(["git", "-C", str(tmp_path), "add", "sample.py"], check=True, capture_output=True)
+    if partial:
+        (tmp_path / "sample.py").write_text("pass\n", encoding="utf-8")
+    status = main(
+        [
+            "--root",
+            str(tmp_path),
+            "check",
+            "--staged",
+            "--rule",
+            "python:no-excessive-cognitive-complexity",
+            "--format",
+            "json",
+        ]
+    )
+    report = _report(capsys.readouterr().out)
+    assert status == expected
+    match expected:
+        case 0:
+            assert report["diagnostics"] == []
+        case 1:
+            assert [as_table(item)["ruleId"] for item in list_field(report, "diagnostics")] == [
+                "no-excessive-cognitive-complexity"
+            ]
+        case _:
+            assert "unstaged content" in str(report)

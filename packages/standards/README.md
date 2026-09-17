@@ -13,9 +13,12 @@ Adopt the repository once with `code-standards setup`. It installs one canonical
 ```bash
 code-standards setup
 code-standards check
+code-standards check --rule python:no-excessive-cognitive-complexity src/
 code-standards fix
 code-standards doctor
 code-standards update
 ```
+
+Use repeatable `check --rule ENGINE:ID` selectors to check only selected Sarj custom rules. Exclusions, baselines, and severities still apply; upstream rules such as Ruff IDs are not supported. Native linters execute only selected rules; ESLint runs its configured rules and filters the findings.
 
 [Documentation](https://code-standards.sarj.ai/) · [Source](https://github.com/sarj-ai/code-standards)

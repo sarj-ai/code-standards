@@ -188,10 +188,14 @@ def _package_usage(name: str, engine: str | None) -> str:
             "```bash\n"
             "code-standards setup\n"
             "code-standards check\n"
+            "code-standards check --rule python:no-excessive-cognitive-complexity src/\n"
             "code-standards fix\n"
             "code-standards doctor\n"
             "code-standards update\n"
-            "```"
+            "```\n\n"
+            "Use repeatable `check --rule ENGINE:ID` selectors to check only selected Sarj custom rules. "
+            "Exclusions, baselines, and severities still apply; upstream rules such as Ruff IDs are not supported. "
+            "Native linters execute only selected rules; ESLint runs its configured rules and filters the findings."
         )
     if name == "sarj-standards":
         return (
