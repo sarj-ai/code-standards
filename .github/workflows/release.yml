@@ -213,7 +213,8 @@ jobs:
 
   publish-typescript:
     needs: build-typescript
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    # npm trusted publishing requires a GitHub-hosted runner.
+    runs-on: ubuntu-latest
     timeout-minutes: 45
     environment: npm-typescript-release
     permissions:
@@ -940,7 +941,8 @@ jobs:
 
   publish-tsconfig:
     needs: build-tsconfig
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    # npm trusted publishing requires a GitHub-hosted runner.
+    runs-on: ubuntu-latest
     timeout-minutes: 45
     environment: npm-tsconfig-release
     permissions:
