@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "c62ad3494c37039c9043faefed278be6170dddbe7a88b0285803ffd38475af8c",
-  "cliSha256": "fe7b67f282d87b9969689c60eec31b0b761bc5256ed3d57e8312824259ae1ee5",
+  "catalogSha256": "eced7a84f72fba18a7c5b04b1d573f83f89ca6c649d4283f3189e7174cc2cf62",
+  "cliSha256": "c92c909737931bb099e8ed8f7d968619c75762eca5070b68e80453757c88927a",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -7265,6 +7265,41 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Substantial static membership table rebuilt per call"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:prefer-monkeypatch-for-process-state-in-test": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "tests/test_plugin.py",
+              "source": "import sys\n\n\ndef test_plugin(fake_plugin):\n    sys.modules[\"optional_plugin\"] = fake_plugin\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_plugin.py",
+          "id": "direct-module-registry-mutation",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Test installs a module without guaranteed restoration"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "tests/test_plugin.py",
+              "source": "import sys\n\n\ndef test_plugin(monkeypatch, fake_plugin):\n    monkeypatch.setitem(sys.modules, \"optional_plugin\", fake_plugin)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_plugin.py",
+          "id": "scoped-module-registry-mutation",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Pytest restores the module registry after the test"
         }
       ],
       "optionsSchemaSource": null

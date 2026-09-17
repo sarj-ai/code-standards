@@ -217,5 +217,6 @@
   "SARJ442": "no-deleted-only-override-parameter",
   "SARJ443": "unused-test-factory-option",
   "SARJ444": "no-excessive-cognitive-complexity",
-  "SARJ445": "prefer-injected-dependency-over-monkeypatch"
+  "SARJ445": "prefer-injected-dependency-over-monkeypatch",
+  "SARJ446": "prefer-monkeypatch-for-process-state-in-test"
 }
