@@ -1057,7 +1057,7 @@ def cmd_check(args: _Args) -> int:
     from sarj_standards.libs.linting import runner  # ruff: ignore[import-outside-top-level]
 
     root = _resolve_dest(args.dest)
-    catalog_status = _check_conventional_slack_catalog(args, root)
+    catalog_status = 0 if args.selected_rules else _check_conventional_slack_catalog(args, root)
     if catalog_status:
         return catalog_status
     scope = _CheckScope(repository_wide=not args.files)
@@ -1067,6 +1067,8 @@ def cmd_check(args: _Args) -> int:
     if len(args.files) == 1 and Path(args.files[0]).resolve() == root:
         args.files = []
         scope.repository_wide = True
+    if args.selected_rules:
+        return _check_selected_rules(args, root, scope)
     if args.staged:
         health_status = _check_staged_adoption_health(root, args.files, args=args)
         if health_status:
@@ -1077,6 +1079,22 @@ def cmd_check(args: _Args) -> int:
     if args.output_format != "text":
         return _check_machine_output(args, root, scope)
     return _check_text_output(args, root, scope)
+
+
+def _check_selected_rules(args: _Args, root: Path, scope: _CheckScope) -> int:
+    from sarj_standards.api import Standards, TrustMode  # ruff: ignore[import-outside-top-level]
+
+    if _validate_analysis_output(args, root):
+        return 2
+    paths = args.files if args.files or args.staged or scope.pull_request_scoped else None
+    report = Standards(root).analyze(
+        paths,
+        rules=args.selected_rules,
+        external=any(selector.engine.value == "eslint" for selector in args.selected_rules),
+        trust=TrustMode.TRUSTED if args.trust_repository_code else TrustMode.SAFE,
+        staged=args.staged,
+    )
+    return _emit_analysis_report(args, root, report)
 
 
 def _check_text_output(args: _Args, root: Path, scope: _CheckScope) -> int:
@@ -2850,7 +2868,7 @@ def build_app(handler: Callable[[_Args], int] = _dispatch) -> typer.Typer:
             )
         )
 
-    @app.command("check", help="run the complete quality gate or check selected paths")
+    @app.command("check", help="run the complete quality gate or check selected paths or custom rules")
     def command_check(
         ctx: typer.Context,
         *,
@@ -2868,6 +2886,12 @@ def build_app(handler: Callable[[_Args], int] = _dispatch) -> typer.Typer:
                 help="run custom rules on hook-supplied paths, or discover staged files when none are supplied",
             ),
         ] = False,
+        selected_rules: Annotated[
+            list[RuleSelector] | None,
+            typer.Option(
+                "--rule", parser=_parse_rule_selector, help="check only this custom ENGINE:ID rule (repeatable)"
+            ),
+        ] = None,
         output_format: Annotated[_ChoiceCheckOutputFormat, typer.Option("--format")] = _ChoiceCheckOutputFormat.VALUE_0,
         output: Annotated[Path | None, typer.Option("--output", help="write JSON or SARIF atomically to PATH")] = None,
         max_annotations_per_level: Annotated[int, typer.Option("--max-annotations-per-level", min=0, max=10)] = 10,
@@ -2881,6 +2905,7 @@ def build_app(handler: Callable[[_Args], int] = _dispatch) -> typer.Typer:
                 cmd="check",
                 trust_repository_code=trust_repository_code,
                 staged=staged,
+                selected_rules=selected_rules if selected_rules is not None else [],
                 output_format=output_format.value,
                 output=output if output is not None else None,
                 max_annotations_per_level=max_annotations_per_level,
