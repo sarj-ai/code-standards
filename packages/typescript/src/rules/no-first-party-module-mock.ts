@@ -11,6 +11,7 @@ import { isGeneratedFile, isTestFile } from "./_paths.js";
 
 type MessageIds = "noFirstPartyModuleMock";
 type Options = readonly [{ additionalModulePrefixes?: readonly string[] }];
+type Framework = "jest" | "vitest";
 
 export const NO_FIRST_PARTY_MODULE_MOCK_DOCUMENTATION = {
   summary: "Prefer injected collaborators over mocking maintained first-party modules in tests.",
@@ -28,6 +29,29 @@ function isFirstParty(source: string, prefixes: readonly string[]): boolean {
   return source.startsWith("./") || source.startsWith("../") || prefixes.some((prefix) => source.startsWith(prefix));
 }
 
+function staticMemberName(member: TSESTree.MemberExpression): string | null {
+  if (!member.computed && member.property.type === AST_NODE_TYPES.Identifier) return member.property.name;
+  return member.computed && member.property.type === AST_NODE_TYPES.Literal && typeof member.property.value === "string"
+    ? member.property.value
+    : null;
+}
+
+function staticModule(node: TSESTree.Node | undefined): string | null {
+  if (node?.type === AST_NODE_TYPES.Literal && typeof node.value === "string") return node.value;
+  if (node?.type === AST_NODE_TYPES.TemplateLiteral && node.expressions.length === 0) return node.quasis[0]?.value.cooked ?? null;
+  return node?.type === AST_NODE_TYPES.ImportExpression ? staticModule(node.source) : null;
+}
+
+function importedFramework(source: string, imported: string): Framework | null {
+  if (source === "vitest" && imported === "vi") return "vitest";
+  return source === "@jest/globals" && imported === "jest" ? "jest" : null;
+}
+
+function supportsMockMethod(framework: Framework, method: string): boolean {
+  return method === "mock" || method === "doMock" ||
+    (framework === "jest" && (method === "setMock" || method === "unstable_mockModule"));
+}
+
 export default createRule<Options, MessageIds>({
   name: "no-first-party-module-mock",
   documentation: NO_FIRST_PARTY_MODULE_MOCK_DOCUMENTATION,
@@ -40,27 +64,52 @@ export default createRule<Options, MessageIds>({
   defaultOptions: [{ additionalModulePrefixes: [] }],
   create(context, [options]) {
     if (!isTestFile(context.filename) || isGeneratedFile(context.filename, context.sourceCode.text)) return {};
-    const namespaces = new Set<TSESLint.Scope.Variable>();
+    const namespaces = new Map<TSESLint.Scope.Variable, Framework>();
+    const moduleNamespaces = new Map<TSESLint.Scope.Variable, Framework>();
     const resolve = (identifier: TSESTree.Identifier): TSESLint.Scope.Variable | null => ASTUtils.findVariable(context.sourceCode.getScope(identifier), identifier.name);
+
+    function receiverFramework(receiver: TSESTree.Node): Framework | null {
+      if (receiver.type === AST_NODE_TYPES.Identifier) {
+        const binding = resolve(receiver);
+        return binding === null ? null : namespaces.get(binding) ?? null;
+      }
+      if (receiver.type !== AST_NODE_TYPES.MemberExpression || receiver.object.type !== AST_NODE_TYPES.Identifier) return null;
+      const binding = resolve(receiver.object);
+      if (binding === null) return null;
+      const framework = moduleNamespaces.get(binding);
+      if (framework === undefined) return null;
+      const expectedNamespace = framework === "vitest" ? "vi" : "jest";
+      return staticMemberName(receiver) === expectedNamespace ? framework : null;
+    }
+
     return {
       ImportDeclaration(node: TSESTree.ImportDeclaration): void {
         if (node.source.value !== "vitest" && node.source.value !== "@jest/globals") return;
+        const sourceFramework: Framework = node.source.value === "vitest" ? "vitest" : "jest";
         for (const specifier of node.specifiers) {
+          if (specifier.type === AST_NODE_TYPES.ImportNamespaceSpecifier) {
+            const binding = resolve(specifier.local);
+            if (binding !== null) moduleNamespaces.set(binding, sourceFramework);
+            continue;
+          }
           if (specifier.type !== AST_NODE_TYPES.ImportSpecifier) continue;
           const imported = specifier.imported.type === AST_NODE_TYPES.Identifier ? specifier.imported.name : specifier.imported.value;
-          if (imported !== "vi" && imported !== "jest") continue;
+          const framework = importedFramework(node.source.value, imported);
+          if (framework === null) continue;
           const binding = resolve(specifier.local);
-          if (binding !== null) namespaces.add(binding);
+          if (binding !== null) namespaces.set(binding, framework);
         }
       },
       CallExpression(node: TSESTree.CallExpression): void {
-        if (node.callee.type !== AST_NODE_TYPES.MemberExpression || node.callee.computed || node.callee.object.type !== AST_NODE_TYPES.Identifier || node.callee.property.type !== AST_NODE_TYPES.Identifier || !["mock", "doMock"].includes(node.callee.property.name)) return;
-        const binding = resolve(node.callee.object);
-        if (binding === null || !namespaces.has(binding)) return;
+        if (node.callee.type !== AST_NODE_TYPES.MemberExpression) return;
+        const framework = receiverFramework(node.callee.object);
+        const method = staticMemberName(node.callee);
+        if (framework === null || method === null || !supportsMockMethod(framework, method)) return;
         const argument = node.arguments[0];
-        if (argument?.type !== AST_NODE_TYPES.Literal || typeof argument.value !== "string") return;
-        if (!isFirstParty(argument.value, options.additionalModulePrefixes ?? [])) return;
-        context.report({ node: argument, messageId: "noFirstPartyModuleMock", data: { module: argument.value } });
+        if (argument === undefined) return;
+        const module = staticModule(argument);
+        if (module === null || !isFirstParty(module, options.additionalModulePrefixes ?? [])) return;
+        context.report({ node: argument, messageId: "noFirstPartyModuleMock", data: { module } });
       },
     };
   },
