@@ -1931,6 +1931,22 @@
       "state": "pending",
       "evidence": "Focused positive and negative cases cover built-in arrays, lexical scope, fresh seeds, generated source, and syntax-only parsing. Wider corpus calibration remains pending.",
       "outcome": "Introduce an advisory warning without autofix; require review of growth and ownership before changing behavior."
+    },
+    {
+      "task": "rule-audit/typescript/no-first-party-module-mock",
+      "family": "typescript",
+      "ruleId": "no-first-party-module-mock",
+      "state": "pending",
+      "evidence": "A ten-agent test-quality audit recommended discouraging first-party module replacement in favor of dependency injection and higher-fidelity boundaries. Focused provenance tests cover Vitest and Jest imports, aliases, relative first-party modules, configured package prefixes, third-party packages, dynamic paths, local shadowing, production files, and generated files. Wider consumer-corpus calibration remains pending.",
+      "outcome": "Introduce a test-file-only warning without autofix. Flag statically resolved first-party vi.mock and jest.mock calls while allowing third-party module mocks and configurable package ownership. Keep warning severity until consumer adoption establishes precision and migration cost."
+    },
+    {
+      "task": "rule-audit/typescript/no-unsafe-test-double-cast",
+      "family": "typescript",
+      "ruleId": "no-unsafe-test-double-cast",
+      "state": "pending",
+      "evidence": "A ten-agent test-quality audit identified double-cast mock construction as a high-signal proxy for incomplete test doubles that bypass contracts. Focused syntax tests cover object and array literals backed by vi.fn, jest.fn, mockDeep, and Mock names; both as and angle-bracket casts; ordinary payload casts; single casts; production files; and generated files. Wider consumer-corpus calibration remains pending.",
+      "outcome": "Introduce a test-file-only warning without autofix. Report mock-backed literals forced through unknown into an unrelated type and recommend typed builders, fakes, or narrower interfaces. Preserve ordinary fixture and boundary casts, and defer promotion until consumer calibration is complete."
     }
   ]
 }

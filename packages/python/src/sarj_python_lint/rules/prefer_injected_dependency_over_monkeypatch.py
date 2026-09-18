@@ -28,6 +28,7 @@ if TYPE_CHECKING:
 _ATTRIBUTE_MUTATIONS = frozenset({"delattr", "setattr"})
 _MONKEYPATCH = "monkeypatch"
 _PYTEST = frozenset({"pytest"})
+_UNITTEST_MOCK = frozenset({"unittest.mock"})
 _SCOPES = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)
 
 
@@ -35,7 +36,7 @@ class PreferInjectedDependencyOverMonkeypatch(Rule):
     id: str = "prefer-injected-dependency-over-monkeypatch"
     code: str = "SARJ445"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        summary="Tests should inject dependencies instead of replacing attributes through pytest monkeypatch.",
+        summary="Tests should inject dependencies instead of replacing attributes through ambient patching.",
         rationale=(
             "Attribute patching hides collaborators and configuration behind ambient module or object state, coupling "
             "tests to lookup locations instead of an explicit boundary. Pytest monkeypatch remains appropriate for "
@@ -51,7 +52,7 @@ class PreferInjectedDependencyOverMonkeypatch(Rule):
         autofix=AutofixPolicy.NONE,
         limitations=(
             "Only maintained test paths are analyzed; generated files and production helpers are excluded.",
-            "The rule recognizes pytest's conventional monkeypatch fixture name and parameters annotated as pytest.MonkeyPatch.",
+            "The rule recognizes pytest monkeypatch and statically resolved unittest.mock or pytest-mock patch APIs.",
             "Environment, mapping, import-path, and working-directory mutations are intentionally allowed.",
             "A nested function that captures a monkeypatch handle from an outer scope is not inferred.",
         ),
@@ -100,6 +101,12 @@ class PreferInjectedDependencyOverMonkeypatch(Rule):
         if tree is None:
             return []
         imports = ImportIndex.from_tree(tree, module_scope_only=True)
+        replacements = [
+            (call, f"monkeypatch.{_operation(call)}")
+            for function in _functions(tree)
+            for call in _attribute_mutations(function, imports)
+        ]
+        replacements.extend((call, label) for call, label in _patch_calls(tree, imports))
         diagnostics = [
             Diagnostic(
                 path=path,
@@ -107,15 +114,14 @@ class PreferInjectedDependencyOverMonkeypatch(Rule):
                 col=call.col_offset + 1,
                 code=self.code,
                 message=(
-                    f"`monkeypatch.{_operation(call)}` replaces an attribute through ambient state. Inject the "
+                    f"`{label}` replaces an attribute through ambient state. Inject the "
                     "dependency or configuration, use a framework override, or provide a purpose-built fake. "
                     "If global lookup or interception is the behavior under test, suppress SARJ445 locally and explain "
                     "why injection would invalidate the test."
                 ),
                 severity=Severity.WARNING,
             )
-            for function in _functions(tree)
-            for call in _attribute_mutations(function, imports)
+            for call, label in replacements
         ]
         diagnostics.sort(key=lambda diagnostic: (diagnostic.line, diagnostic.col))
         return diagnostics
@@ -127,6 +133,54 @@ def _operation(call: ast.Call) -> str:
         msg = "attribute mutation call must use an attribute function"
         raise TypeError(msg)
     return func.attr
+
+
+def _patch_calls(tree: ast.Module, imports: ImportIndex) -> list[tuple[ast.Call, str]]:
+    calls: list[tuple[ast.Call, str]] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        if _resolves_patch(node.func, imports):
+            calls.append((node, "patch"))
+            continue
+        if (
+            isinstance(node.func, ast.Attribute)
+            and node.func.attr == "object"
+            and _resolves_patch(node.func.value, imports)
+        ):
+            calls.append((node, "patch.object"))
+            continue
+        label = _pytest_mock_patch_label(node)
+        if label is not None:
+            calls.append((node, label))
+    return calls
+
+
+def _resolves_patch(node: ast.expr, imports: ImportIndex) -> bool:
+    if imports.resolves(node, sources=_UNITTEST_MOCK, symbol="patch"):
+        return True
+    return (
+        isinstance(node, ast.Attribute)
+        and node.attr == "patch"
+        and imports.resolved_symbol(node.value, sources=frozenset({"unittest"})) == "mock"
+    )
+
+
+def _pytest_mock_patch_label(call: ast.Call) -> str | None:
+    func = call.func
+    if not isinstance(func, ast.Attribute):
+        return None
+    if isinstance(func.value, ast.Name) and func.value.id == "mocker" and func.attr == "patch":
+        return "mocker.patch"
+    if (
+        func.attr == "object"
+        and isinstance(func.value, ast.Attribute)
+        and func.value.attr == "patch"
+        and isinstance(func.value.value, ast.Name)
+        and func.value.value.id == "mocker"
+    ):
+        return "mocker.patch.object"
+    return None
 
 
 def _functions(tree: ast.Module) -> Iterator[ast.FunctionDef | ast.AsyncFunctionDef]:
