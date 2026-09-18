@@ -60,6 +60,52 @@ def test_reports_each_call_in_source_order() -> None:
     assert [(diagnostic.line, diagnostic.col) for diagnostic in diagnostics] == [(3, 5), (4, 5)]
 
 
+@pytest.mark.parametrize(
+    ("imports", "call", "label"),
+    [
+        ("from unittest.mock import patch", "patch('app.service.client', fake)", "`patch`"),
+        ("from unittest.mock import patch as replace", "replace('app.service.client', fake)", "`patch`"),
+        ("import unittest.mock", "unittest.mock.patch('app.service.client', fake)", "`patch`"),
+        ("from unittest import mock", "mock.patch('app.service.client', fake)", "`patch`"),
+        ("from unittest.mock import patch", "patch.object(service, 'client', fake)", "`patch.object`"),
+        ("", "mocker.patch('app.service.client', fake)", "`mocker.patch`"),
+        ("", "mocker.patch.object(service, 'client', fake)", "`mocker.patch.object`"),
+    ],
+)
+def test_reports_patch_apis(imports: str, call: str, label: str) -> None:
+    diagnostics = _check(f"""
+        {imports}
+
+        def test_service(mocker):
+            {call}
+    """)
+    assert len(diagnostics) == 1
+    assert label in diagnostics[0].message
+
+
+def test_reports_patch_decorator() -> None:
+    diagnostics = _check("""
+        from unittest.mock import patch
+
+        @patch("app.service.client")
+        def test_service(client):
+            assert client is not None
+    """)
+    assert len(diagnostics) == 1
+
+
+def test_ignores_unrelated_patch_objects() -> None:
+    assert (
+        _check("""
+        patch = CustomPatcher()
+
+        def test_service():
+            patch("app.service.client", fake)
+    """)
+        == []
+    )
+
+
 def test_recognizes_aliased_pytest_annotation() -> None:
     diagnostics = _check("""
         import pytest as pt

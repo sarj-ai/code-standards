@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "58f5d60336e2ef60a65dd998eedd54b7d7eeae701c0707e395a8f3f8a5638e18",
+  "catalogSha256": "387a6b67498c75a76fa3973add8b5286472540453bedf8ffebb770f0cdec9da6",
   "cliSha256": "3f7e62cdcf49755016f5a2c1f44ead1af382f06c9273ce47743af17f5bf92821",
   "formatterVersions": {
     "prettier": "3.9.6",
@@ -770,6 +770,41 @@
         }
       ],
       "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": { \"max\": { \"minimum\": 1, \"type\": \"integer\" } },\n  \"type\": \"object\"\n}\n"
+    },
+    "eslint:no-first-party-module-mock": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "action.test.ts",
+              "source": "const result = await runAction({ service: recordingService });\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "action.test.ts",
+          "id": "injected-service",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Inject a narrow service port"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "action.test.ts",
+              "source": "import { vi } from \"vitest\";\nvi.mock(\"./service\", () => ({ run: vi.fn() }));\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "action.test.ts",
+          "id": "relative-module-mock",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Do not replace an owned module"
+        }
+      ],
+      "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"additionalModulePrefixes\": {\n      \"items\": { \"minLength\": 1, \"type\": \"string\" },\n      \"type\": \"array\",\n      \"uniqueItems\": true\n    }\n  },\n  \"type\": \"object\"\n}\n"
     },
     "eslint:no-generic-single-export-module": {
       "examples": [
@@ -2237,6 +2272,41 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Use the framework helper"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "eslint:no-unsafe-test-double-cast": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "service.test.ts",
+              "source": "import { vi } from \"vitest\";\nconst client = { read: vi.fn() } as unknown as Client;\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "service.test.ts",
+          "id": "mock-backed-double-cast",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Do not hide a partial mock behind unknown"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "service.test.ts",
+              "source": "const client = { read: async () => ({ id: \"1\" }) } satisfies Pick<Client, \"read\">;\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "service.test.ts",
+          "id": "typed-recording-fake",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Use a typed recording fake"
         }
       ],
       "optionsSchemaSource": null

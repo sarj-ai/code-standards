@@ -68,6 +68,8 @@ import noUnionInComment from "./rules/no-union-in-comment.js";
 import noTypeMemberCommentWall from "./rules/no-type-member-comment-wall.js";
 import noUnnecessaryUseClient from "./rules/no-unnecessary-use-client.js";
 import noUnsafeMockCasting from "./rules/no-unsafe-mock-casting.js";
+import noUnsafeTestDoubleCast from "./rules/no-unsafe-test-double-cast.js";
+import noFirstPartyModuleMock from "./rules/no-first-party-module-mock.js";
 import noZodNativeEnum from "./rules/no-zod-native-enum.js";
 import testLoopsOverLiteralCases from "./rules/test-loops-over-literal-cases.js";
 import testPhaseLabelComment from "./rules/test-phase-label-comment.js";
@@ -185,6 +187,8 @@ const RULES = {
   "no-type-member-comment-wall": noTypeMemberCommentWall,
   "no-unnecessary-use-client": noUnnecessaryUseClient,
   "no-unsafe-mock-casting": noUnsafeMockCasting,
+  "no-unsafe-test-double-cast": noUnsafeTestDoubleCast,
+  "no-first-party-module-mock": noFirstPartyModuleMock,
   "no-zod-native-enum": noZodNativeEnum,
   "require-use-form-default-values": requireUseFormDefaultValues,
   "require-use-server-in-actions-file": requireUseServerInActionsFile,
@@ -234,7 +238,7 @@ const RULES = {
 
 const meta = {
   name: "@sarj/eslint-plugin",
-  version: "15.24.0",
+  version: "15.25.0",
 } as const;
 
 /** @deprecated All repositories use one policy; retained for import compatibility. */
@@ -250,6 +254,7 @@ const ADVISORY_RULES = [
   "@sarj/excessive-commentary",
   "@sarj/no-bespoke-api-case-conversion",
   "@sarj/no-detached-global-fetch",
+  "@sarj/no-first-party-module-mock",
   "@sarj/no-in-operator-on-built-in-collections",
   "@sarj/no-json-stringify-object-equality",
   "@sarj/no-redundant-optional-array-default",
@@ -258,6 +263,7 @@ const ADVISORY_RULES = [
   "@sarj/no-unlocalized-jsx-attributes",
   "@sarj/no-unlocalized-jsx-text",
   "@sarj/no-unlocalized-toast",
+  "@sarj/no-unsafe-test-double-cast",
   "@sarj/prefer-logical-tailwind-utilities",
   "@sarj/prefer-millisecond-control-duration-schema",
   "@sarj/prefer-module-level-refined-schema",
@@ -342,6 +348,8 @@ const RECOMMENDED_RULES = {
   "@sarj/no-type-member-comment-wall": "error",
   "@sarj/no-unnecessary-use-client": "error",
   "@sarj/no-unsafe-mock-casting": "error",
+  "@sarj/no-unsafe-test-double-cast": "warn",
+  "@sarj/no-first-party-module-mock": "warn",
   "@sarj/no-zod-native-enum": "error",
   "@sarj/test-loops-over-literal-cases": "error",
   "@sarj/prefer-constant-time-secret-compare": "error",
@@ -457,6 +465,8 @@ const STRICT_RULES = {
   "@sarj/no-type-member-comment-wall": "error",
   "@sarj/no-unnecessary-use-client": "error",
   "@sarj/no-unsafe-mock-casting": "error",
+  "@sarj/no-unsafe-test-double-cast": "warn",
+  "@sarj/no-first-party-module-mock": "warn",
   "@sarj/no-zod-native-enum": "error",
   "@sarj/test-loops-over-literal-cases": "error",
   "@sarj/prefer-constant-time-secret-compare": "error",
