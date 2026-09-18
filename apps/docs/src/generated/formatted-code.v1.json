@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "2cdeaa4de4297650d23e652b2fddd4f213be674c6a568a8b51f4f08a9246e228",
-  "cliSha256": "d49dab0b78a48d71775aea984d7ae206f04e8822596e6a8689dfa86b7d115694",
+  "catalogSha256": "6039f008ee2ecbb51d8ccd1d2f2dcf8d8bb34c71e0d6e5f9edfff8f9a4d5661d",
+  "cliSha256": "544cbe878b0cc2a1e5509565527a9778780758079bd435d5aa9e336d7ec97ae4",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -5007,6 +5007,41 @@
       ],
       "optionsSchemaSource": null
     },
+    "python:fastapi-class-router-contract": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/routes.py",
+              "source": "from fastapi import APIRouter\n\n\nclass ItemRouter:\n    def __init__(self, service: Service) -> None:\n        self._service = service\n\n    def build(self) -> APIRouter:\n        router = APIRouter()\n        return router\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/routes.py",
+          "id": "class-router",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "A class builds and returns its router"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/routes.py",
+              "source": "from fastapi import APIRouter\n\nrouter = APIRouter()\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/routes.py",
+          "id": "module-router",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A module owns an unscoped router"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "python:fastapi-explicit-openapi-contract": {
       "examples": [
         {
@@ -5999,6 +6034,41 @@
       ],
       "optionsSchemaSource": null
     },
+    "python:no-invalid-argument-name-suppression": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/routes.py",
+              "source": "def route(businessFunction: str):  # ruff: ignore[invalid-argument-name]\n    ...\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/routes.py",
+          "id": "camel-case-parameter-suppression",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A wire parameter disables Python naming"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/routes.py",
+              "source": "from fastapi import Query\n\n\ndef route(business_function: str = Query(alias=\"businessFunction\")): ...\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/routes.py",
+          "id": "snake-case-wire-alias",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "A framework alias preserves external spelling"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "python:no-nested-pydantic-field-validator": {
       "examples": [
         {
@@ -6100,6 +6170,41 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "A returned record has a named row contract"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:no-positional-tuple-record": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/profile.py",
+              "source": "from typing import NamedTuple\n\n\nclass Profile(NamedTuple):\n    name: str\n    age: int\n    active: bool\n\n\ndef load_profile() -> Profile:\n    return Profile(name=\"Ada\", age=42, active=True)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/profile.py",
+          "id": "named-public-return",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Public function returns a tuple-compatible named record"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/profile.py",
+              "source": "def load_profile() -> tuple[str, int, bool]:\n    return \"Ada\", 42, True\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/profile.py",
+          "id": "positional-public-return",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Public function returns a positional record"
         }
       ],
       "optionsSchemaSource": null
@@ -6829,6 +6934,41 @@
       ],
       "optionsSchemaSource": null
     },
+    "python:no-vague-annotations": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/offers.py",
+              "source": "def details() -> OfferDetails: ...\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/offers.py",
+          "id": "named-model-annotation",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "A named model preserves the record schema"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/offers.py",
+              "source": "from typing import Any\n\n\ndef details() -> dict[str, Any]: ...\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/offers.py",
+          "id": "vague-mapping-annotation",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "An open mapping erases the record schema"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "python:no-vague-suppression-description": {
       "examples": [
         {
@@ -7505,41 +7645,6 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Pytest restores the module registry after the test"
-        }
-      ],
-      "optionsSchemaSource": null
-    },
-    "python:prefer-namedtuple-over-tuple-return": {
-      "examples": [
-        {
-          "expectedCount": 0,
-          "files": [
-            {
-              "path": "app/profile.py",
-              "source": "from typing import NamedTuple\n\n\nclass Profile(NamedTuple):\n    name: str\n    age: int\n    active: bool\n\n\ndef load_profile() -> Profile:\n    return Profile(name=\"Ada\", age=42, active=True)\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "app/profile.py",
-          "id": "named-public-return",
-          "outcome": "accept",
-          "scenarioId": "primary",
-          "title": "Public function returns a tuple-compatible named record"
-        },
-        {
-          "expectedCount": 1,
-          "files": [
-            {
-              "path": "app/profile.py",
-              "source": "def load_profile() -> tuple[str, int, bool]:\n    return \"Ada\", 42, True\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "app/profile.py",
-          "id": "positional-public-return",
-          "outcome": "reject",
-          "scenarioId": "primary",
-          "title": "Public function returns a positional record"
         }
       ],
       "optionsSchemaSource": null
@@ -8551,6 +8656,41 @@
       ],
       "optionsSchemaSource": null
     },
+    "python:require-pydantic-for-structured-payload": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/routes.py",
+              "source": "from fastapi import APIRouter\n\nrouter = APIRouter()\n\n\n@router.post(\"/actions\")\ndef action(body: RequestModel):\n    payload = CardPayload.model_validate(body.payload)\n    return payload.name_on_card\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/routes.py",
+          "id": "parsed-nested-route-payload",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "A route validates a nested request model"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/routes.py",
+              "source": "from fastapi import APIRouter\n\nrouter = APIRouter()\n\n\n@router.post(\"/actions\")\ndef action(body: RequestModel):\n    payload = body.payload\n    return payload.get(\"nameOnCard\")\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/routes.py",
+          "id": "raw-nested-route-payload",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A route reads a fixed key from a nested request mapping"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "python:require-pydantic-ordinal-lower-bound": {
       "examples": [
         {
@@ -8582,6 +8722,41 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "An unqualified ordinal origin lacks a lower bound"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:require-typed-http-test-response": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "tests/test_cards.py",
+              "source": "def test_interaction(client):\n    response = client.post(\"/actions\")\n    assert response.json()[\"interactionId\"]\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_cards.py",
+          "id": "raw-http-json-assertion",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A test indexes an unvalidated response body"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "tests/test_cards.py",
+              "source": "def test_interaction(client):\n    response = client.post(\"/actions\")\n    body = InteractionResponse.model_validate(response.json())\n    assert body.interaction_id\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_cards.py",
+          "id": "validated-http-json-assertion",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "A test validates its response model"
         }
       ],
       "optionsSchemaSource": null
@@ -10054,12 +10229,13 @@
       "maintain/docs/sync": "code-standards maintain docs sync [-h]\n",
       "maintain/hooks": "code-standards maintain hooks [-h] {install}\n",
       "maintain/hooks/install": "code-standards maintain hooks install [-h]\n",
-      "maintain/rules": "code-standards maintain rules [-h] {manifest,check,sync,new,stage-warning,prepare,verify,changes,evaluate}\n",
+      "maintain/rules": "code-standards maintain rules [-h] {manifest,check,sync,new,stage-warning,promote-error,prepare,verify,changes,evaluate}\n",
       "maintain/rules/manifest": "code-standards maintain rules manifest [-h]\n",
       "maintain/rules/check": "code-standards maintain rules check [-h]\n",
       "maintain/rules/sync": "code-standards maintain rules sync [-h]\n",
       "maintain/rules/new": "code-standards maintain rules new [-h] SELECTOR --category RULE_CATEGORY --summary RULE_SUMMARY [--apply]\n",
       "maintain/rules/stage-warning": "code-standards maintain rules stage-warning [-h] SELECTOR [--check]\n",
+      "maintain/rules/promote-error": "code-standards maintain rules promote-error [-h] SELECTOR [--check]\n",
       "maintain/rules/prepare": "code-standards maintain rules prepare [-h] SELECTOR [--check]\n",
       "maintain/rules/verify": "code-standards maintain rules verify [-h] SELECTOR\n",
       "maintain/rules/changes": "code-standards maintain rules changes [-h] --before BEFORE --after AFTER [--format OUTPUT_FORMAT] [--require-added-level REQUIRED_ADDED_LEVEL]\n",

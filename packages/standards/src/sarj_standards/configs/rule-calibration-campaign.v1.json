@@ -549,12 +549,52 @@
       "outcome": "Retained the compatible prefer-module-level-constant selector, rewrote the UI around behavior-preserving immutable module values, and staged SARJ039 as a warning because syntax cannot prove hotness. Collections now require eight deeply immutable elements, or three inside a loop, and only representation-insensitive reads qualify; set iteration, escaping or lazy consumers, equality, formatting, slicing, copying, serialization, and nested mutable state are excluded. Regex candidates require proven unmodified stdlib re bindings, reject symbolic or numeric DEBUG flags, and abstain after module attribute mutation. Test-support and case-insensitive test directories are excluded, and the public tuple example is executable and clean under SARJ096."
     },
     {
-      "task": "rule-audit/python/prefer-namedtuple-over-tuple-return",
+      "task": "rule-audit/python/no-positional-tuple-record",
       "family": "python",
-      "ruleId": "prefer-namedtuple-over-tuple-return",
+      "ruleId": "no-positional-tuple-record",
       "state": "complete",
-      "evidence": "Three independent reviews ran the original 121 focused cases and scanned up to 7,120 tracked Python files plus normalized popular corpora of 443 and 462 Pygments, packaging, and pytest files. The original matcher produced 392 first-party findings, including 51 test-like helpers in a smaller 84-finding scan, and crashed on a cyclic opaque-use probe. Post-change validation ran 63 focused cases; first-party scans produced zero findings or one manually confirmed record-like API candidate, and both popular scans produced zero findings. Ruff, BasedPyright, catalog checks, warning metadata tests, and the full 7,304-test Python suite passed.",
-      "outcome": "Retained the compatible prefer-namedtuple-over-tuple-return selector, rewrote the UI around public record-like returns, and staged SARJ026 as a warning. The matcher now requires an undecorated public top-level function with an explicit provenance-resolved builtin or typing tuple annotation containing at least three fixed heterogeneous fields. It excludes inferred and aliased returns, private or nested functions, methods, generated and non-production paths, decorated framework handlers, overload declarations, key callbacks, homogeneous builtin spellings, variadic and wrapped tuples, and ambiguous imports. The remedy recommends typing.NamedTuple only for tuple-compatible migrations and reserves dataclasses or models for deliberate caller changes."
+      "evidence": "Focused regressions cover public, private, nested, method, decorated, test, stringized, two-slot, homogeneous, variadic, and generated cases. Three existing application corpora produced 161 fixed-tuple return findings; representative samples were positional records rather than parser failures. The standards repository dogfoods the rule through a shrink-only baseline.",
+      "outcome": "Rename SARJ026 to no-positional-tuple-record, preserve the former selector as a migration alias, and promote it to error. Reject every explicit fixed tuple return with at least two slots in authored Python, while allowing variadic tuples and generated source."
+    },
+    {
+      "task": "rule-audit/python/fastapi-class-router-contract",
+      "family": "python",
+      "ruleId": "fastapi-class-router-contract",
+      "state": "complete",
+      "evidence": "Focused fixtures cover module routers, injected class builders, missing response models, collection responses, named envelopes, non-JSON responses, and generated source. Three existing application corpora produced 436 findings; sampled results consistently represented legacy module routers or implicit and collection-shaped response contracts.",
+      "outcome": "Ship SARJ451 at error level as explicitly requested. Authored FastAPI routers must be constructed inside an injected *Router.build() owner and JSON routes must declare matching named object request and response contracts."
+    },
+    {
+      "task": "rule-audit/python/no-invalid-argument-name-suppression",
+      "family": "python",
+      "ruleId": "no-invalid-argument-name-suppression",
+      "state": "complete",
+      "evidence": "Token-aware fixtures cover every supported Ruff and Flake8 suppression spelling, unrelated comments, string contents, multiline signatures, and framework aliases. Existing application scans found four true legacy suppressions and no sampled false positives.",
+      "outcome": "Ship SARJ448 at error level as explicitly requested. Python parameter names remain snake_case; external camelCase spelling is represented with framework aliases rather than disabling naming checks."
+    },
+    {
+      "task": "rule-audit/python/no-vague-annotations",
+      "family": "python",
+      "ruleId": "no-vague-annotations",
+      "state": "complete",
+      "evidence": "Focused fixtures cover object, nested object, dict and Mapping with Any, forward references, precise named schemas, generated files, and vendor files. Three existing application corpora produced 2,706 findings; cluster sampling confirmed widespread pre-existing schema-erasure debt, so adoption requires shrink-only baselines.",
+      "outcome": "Ship SARJ447 at error level as explicitly requested. Reject object and open string-keyed Any or object mappings in authored annotations and require a named precise domain or validation type."
+    },
+    {
+      "task": "rule-audit/python/require-pydantic-for-structured-payload",
+      "family": "python",
+      "ruleId": "require-pydantic-for-structured-payload",
+      "state": "complete",
+      "evidence": "Focused FastAPI fixtures cover nested payload extraction, literal-key subscripting and get/pop/setdefault access, direct typed fields, model_validate, TypeAdapter, unrelated dictionaries, and generated source. The sampled application corpora contained no unmatched pattern outside the motivating route shape.",
+      "outcome": "Ship SARJ450 at error level as explicitly requested. Structured nested route payloads must cross a Pydantic validation boundary before literal field consumption."
+    },
+    {
+      "task": "rule-audit/python/require-typed-http-test-response",
+      "family": "python",
+      "ruleId": "require-typed-http-test-response",
+      "state": "complete",
+      "evidence": "Focused fixtures cover direct response.json subscripts and mapping methods, model_validate and TypeAdapter parsing, non-test code, non-response JSON, assigned raw payloads, and generated source. Three existing application corpora produced 650 direct untyped response assertions; samples were genuine contract debt suitable for ratcheted adoption.",
+      "outcome": "Ship SARJ449 at error level as explicitly requested. HTTP tests validate response JSON into named models before inspecting fields."
     },
     {
       "task": "rule-audit/python/prefer-nominal-id-types",
@@ -562,7 +602,7 @@
       "ruleId": "prefer-nominal-id-types",
       "state": "complete",
       "evidence": "Three independent reviews ran the original 73 focused cases plus precedence coverage and scanned up to 7,120 tracked Python files plus a 443-file Pygments, packaging, and pytest corpus. The original matcher produced 373 fleet findings and reproduced false positives for unlike carriers, scalar versus collection roles, shadowed primitives, unrelated UUID and wrapper types, raw TypedDict and Pydantic wire models, decorated overrides, private boundaries, SQLAlchemy Mapped fields, and operational logging payloads. Post-change validation ran 78 focused cases and 87 with precedence; the broad fleet scan fell to 199 warning candidates, a focused three-repository scan fell from 120 to 21 manually reviewed credible domain boundaries, and the popular corpus remained at zero findings.",
-      "outcome": "Retained the accurate prefer-nominal-id-types selector, rewrote the UI around genuinely swappable same-carrier identifier roles, and staged SARJ093 as a warning. Primitive, UUID, wrapper, NewType, TypeAliasType, SQLAlchemy, Pydantic, and TypedDict decisions now require import provenance; unlike carrier shapes do not report. The matcher excludes generated and non-domain paths, private or decorated boundaries, operational audit and logger contexts, plural tracing IDs, raw schemas, SQLAlchemy Mapped fields, and direct or Annotated Pydantic wire aliases; it also prevents duplicate class and constructor diagnostics. The executable remedy distinguishes low-cost typing.NewType from runtime nominal value objects."
+      "outcome": "Promoted SARJ093 to error and expanded it to private, decorated, method, fake, override, and test boundaries after the motivating regressions escaped the former narrow scope. Primitive, UUID, wrapper, NewType, TypeAliasType, SQLAlchemy, Pydantic, and TypedDict decisions still require import provenance; unlike carrier shapes do not report. Generated, operational, raw-schema, SQLAlchemy Mapped, and direct Pydantic wire aliases remain excluded."
     },
     {
       "task": "rule-audit/python/prefer-non-nullable-collection",
@@ -610,7 +650,7 @@
       "ruleId": "prefer-str-enum",
       "state": "complete",
       "evidence": "Three independent reviews ran the original 278 focused cases and scanned up to 8,249 tracked local Python files plus a normalized 443-file Pygments, packaging, and pytest corpus. The original matcher produced 18 broad-fleet findings and 14 popular-corpus findings, including false positives for open plugin and platform vocabularies, already-Literal producers, pure inequality, non-exhaustive matches, shadowed builtins, and constructor forwarding. Post-change validation ran 242 rule cases, 248 combined rule and CLI-severity cases, the 7,316-test Python suite, strict BasedPyright, and dogfood across 93 rules and 456 source files. The final matcher retained three manually confirmed local rejecting dispatches, produced zero popular-corpus findings, and cut the popular-corpus runtime by more than half after a rejection-aware lexical gate and linear dominance scan.",
-      "outcome": "Retained the compatible prefer-str-enum selector, reclassified SARJ006 as a maintainability warning, and rewrote its UI around application-owned string domains with explicit closed-set evidence. Class fields require a provenance-safe builtin str annotation plus an associated sibling choice collection. Dispatch findings require a direct function-body rejecting membership guard, exhaustive if chain, or rejecting wildcard match; open, nested, caught, prior-return, test-only, external, wire-bound, generated, already-Literal, and suppressed cases abstain. Removed speculative constructor-copy inference, made import provenance lazy, added deterministic linear-scan coverage, synchronized catalog and formatted examples, and recommends either StrEnum or a named Literal without autofix."
+      "outcome": "Promoted SARJ006 to error and added uppercase constant membership guards as explicit closed-set evidence. Class fields still require a provenance-safe builtin str annotation plus an associated sibling choice collection; open, external, wire-bound, generated, already-Literal, and suppressed cases abstain. The remedy permits either StrEnum or a named Literal without autofix."
     },
     {
       "task": "rule-audit/python/prefer-struct-over-namedtuple",

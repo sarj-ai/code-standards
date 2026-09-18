@@ -19,7 +19,7 @@ from sarj_python_lint.rule_base import (
     parse_or_none,
 )
 from sarj_python_lint.rules._imports import ImportIndex
-from sarj_python_lint.rules._paths import is_generated, is_test_path, is_test_support_path
+from sarj_python_lint.rules._paths import is_generated
 
 
 if TYPE_CHECKING:
@@ -51,7 +51,6 @@ _OPERATIONAL_IDS = frozenset(
 _OPERATIONAL_PATH_PARTS = frozenset({"audit", "logger", "logging", "observability", "telemetry", "tracing"})
 _OPERATIONAL_NAME_PARTS = frozenset({"context", "log", "logger", "logging", "telemetry", "trace", "tracing"})
 _MIGRATION_PARTS = frozenset({"alembic", "migrations", "versions"})
-_NON_PRODUCTION_PARTS = frozenset({"fixtures", "scripts", "test_fakes", "testing"})
 _RAW_SCHEMA_SUFFIXES = ("Config", "Credentials", "Settings")
 _MIN_SWAPPABLE_ROLES = 2
 _SECOND_ARGUMENT = 1
@@ -98,7 +97,7 @@ class PreferNominalIdTypes(Rule):
     id: str = "prefer-nominal-id-types"
     code: str = "SARJ093"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        summary="Public domain boundaries should distinguish swappable identifier roles with nominal types.",
+        summary="Python boundaries should distinguish swappable identifier roles with nominal types.",
         rationale=(
             "Two identifiers with the same primitive or container carrier can be exchanged without a type-checking error. "
             "Nominal types make those role mistakes visible while leaving unlike carriers alone."
@@ -110,8 +109,8 @@ class PreferNominalIdTypes(Rule):
         category=RuleCategory.CORRECTNESS,
         autofix=AutofixPolicy.NONE,
         limitations=(
-            "The warning checks undecorated public module functions, public classes, their direct public methods, and constructors for at least two ID-shaped roles with the same proven carrier.",
-            "Tests, generated code, migrations, support code, external adapters, operational context, raw schemas, SQLAlchemy Mapped fields, ambiguous imports, private boundaries, and unlike carrier shapes are excluded.",
+            "The rule checks functions, methods, constructors, and classes for at least two ID-shaped roles with the same proven carrier.",
+            "Generated code, migrations, external adapters, operational context, raw schemas, SQLAlchemy Mapped fields, ambiguous imports, and unlike carrier shapes are excluded.",
         ),
         examples=(
             RuleExample(
@@ -193,7 +192,7 @@ class PreferNominalIdTypes(Rule):
                             f"{names} are swappable ID-shaped roles with the same carrier; introduce or reuse "
                             "`typing.NewType` or nominal value-object identifiers and propagate them through this boundary."
                         ),
-                        severity=Severity.WARNING,
+                        severity=Severity.ERROR,
                     )
                 )
 
@@ -205,10 +204,7 @@ def _is_excluded_path(path: Path) -> bool:
     lowered = {part.lower() for part in path.parts}
     path_tokens = {token for part in path.parts for token in part.lower().removesuffix(".py").split("_")}
     return (
-        is_test_path(path)
-        or is_test_support_path(path)
-        or bool(lowered & _MIGRATION_PARTS)
-        or bool(lowered & _NON_PRODUCTION_PARTS)
+        bool(lowered & _MIGRATION_PARTS)
         or bool((lowered | path_tokens) & _OPERATIONAL_PATH_PARTS)
         or _is_external_adapter_path(path)
     )
@@ -227,10 +223,10 @@ def _boundary_nodes(
     result: list[ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef] = []
     for statement in tree.body:
         if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            if _is_public_function(statement) and not _is_operational_function(statement):
+            if not _is_operational_function(statement):
                 result.append(statement)
             continue
-        if not isinstance(statement, ast.ClassDef) or statement.name.startswith("_"):
+        if not isinstance(statement, ast.ClassDef):
             continue
         if _name_parts(statement.name) & _OPERATIONAL_NAME_PARTS:
             continue
@@ -239,10 +235,6 @@ def _boundary_nodes(
         result.append(statement)
         result.extend(_boundary_methods(statement))
     return result
-
-
-def _is_public_function(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
-    return not node.name.startswith("_") and not node.decorator_list
 
 
 def _is_operational_function(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
@@ -279,8 +271,6 @@ def _boundary_roles(
     facts: _TypeFacts,
 ) -> list[_IdRole]:
     if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-        if node.decorator_list:
-            return []
         arguments = [*node.args.posonlyargs, *node.args.args, *node.args.kwonlyargs]
         if node.args.vararg is not None:
             arguments.append(node.args.vararg)
@@ -570,7 +560,5 @@ def _boundary_methods(statement: ast.ClassDef) -> list[ast.FunctionDef | ast.Asy
     return [
         member
         for member in statement.body
-        if isinstance(member, (ast.FunctionDef, ast.AsyncFunctionDef))
-        and (member.name == "__init__" or _is_public_function(member))
-        and not _is_operational_function(member)
+        if isinstance(member, (ast.FunctionDef, ast.AsyncFunctionDef)) and not _is_operational_function(member)
     ]

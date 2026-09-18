@@ -16,15 +16,13 @@ def test_warning_is_excluded_when_baseline_records_a_blocking_error(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     target = tmp_path / "example.py"
-    target.write_text(
-        'class Record:\n    status: str\n    status_choices = ("active", "disabled")\n\n# ----------------\nerror_value = 2\n'
-    )
+    target.write_text("VALUES = [1]\n\n# ----------------\nerror_value = 2\n")
     baseline = tmp_path / "baseline.json"
-    rules = ["check", "--rule", "prefer-str-enum", "--rule", "no-comment-cruft"]
+    rules = ["check", "--rule", "prefer-immutable-module-constant", "--rule", "no-comment-cruft"]
 
     assert main([*rules, str(target)]) == 1
     control = capsys.readouterr().out
-    assert "SARJ006 " in control
+    assert "SARJ096 " in control
     assert "SARJ016 " in control
 
     assert main([*rules, "--update-baseline", str(baseline), str(target)]) == 0
@@ -33,7 +31,7 @@ def test_warning_is_excluded_when_baseline_records_a_blocking_error(
     assert "1 blocking diagnostics over 1 files; 1 warnings excluded" in baseline_output
 
     assert main([*rules, "--baseline", str(baseline), str(target)]) == 0
-    assert "SARJ006 warning:" in capsys.readouterr().out
+    assert "SARJ096 warning:" in capsys.readouterr().out
 
 
 def test_warning_only_baseline_excludes_the_finding(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

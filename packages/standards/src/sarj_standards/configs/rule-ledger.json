@@ -30,6 +30,7 @@
       "docstring-returns-restate-signature",
       "excessive-commentary",
       "fakes-in-shared-location",
+      "fastapi-class-router-contract",
       "fastapi-explicit-openapi-contract",
       "iac-source-coupled-test",
       "invalid-pydantic-field-default",
@@ -52,9 +53,11 @@
       "no-frozen-after-validator-field-write",
       "no-generic-single-export-module",
       "no-hidden-constructor-fallback",
+      "no-invalid-argument-name-suppression",
       "no-nested-pydantic-field-validator",
       "no-offset-pagination",
       "no-positional-psycopg-row-escape",
+      "no-positional-tuple-record",
       "no-provably-dead-mock-configuration",
       "no-psycopg-execution-outside-injected-owner",
       "no-random-uuid-in-sql",
@@ -74,6 +77,7 @@
       "no-trailing-numeric-unit-assignment-comment",
       "no-unique-violation-message-match",
       "no-unnecessary-docstring",
+      "no-vague-annotations",
       "no-vague-suppression-description",
       "no-whole-request-response-payload-in-log",
       "opaque-parametrize-case-needs-id",
@@ -90,7 +94,6 @@
       "prefer-match-value-dispatch",
       "prefer-module-level-constant",
       "prefer-monkeypatch-for-process-state-in-test",
-      "prefer-namedtuple-over-tuple-return",
       "prefer-nominal-id-types",
       "prefer-non-nullable-collection",
       "prefer-or-pattern",
@@ -116,7 +119,9 @@
       "require-nodecode-for-splitting-settings-field",
       "require-port-for-service",
       "require-pydantic-for-external-json",
+      "require-pydantic-for-structured-payload",
       "require-pydantic-ordinal-lower-bound",
+      "require-typed-http-test-response",
       "restated-test-docstring",
       "stepdown",
       "store-get-delegates-to-bulk-read",
@@ -385,7 +390,12 @@
       "SARJ443",
       "SARJ444",
       "SARJ445",
-      "SARJ446"
+      "SARJ446",
+      "SARJ447",
+      "SARJ448",
+      "SARJ449",
+      "SARJ450",
+      "SARJ451"
     ],
     "sql": [
       "SARJ101",
@@ -1203,6 +1213,13 @@
       "status": "removed",
       "replacement": null,
       "note": "Remove this hook from pre-commit; generic match destructuring changes failure, evaluation, and binding semantics."
+    },
+    {
+      "id": "prefer-namedtuple-over-tuple-return",
+      "kind": "python",
+      "status": "renamed",
+      "replacement": "no-positional-tuple-record",
+      "note": "Replace sarj-prefer-namedtuple-over-tuple-return with sarj-no-positional-tuple-record before upgrading."
     },
     {
       "id": "prefer-one-for-required-row",

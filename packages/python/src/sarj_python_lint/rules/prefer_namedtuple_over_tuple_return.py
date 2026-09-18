@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import ast
-from pathlib import PurePosixPath
-from typing import TYPE_CHECKING, ClassVar, final, override
+from pathlib import Path, PurePosixPath
+from typing import ClassVar, final, override
 
 from sarj_python_lint.rule_base import (
     AutofixPolicy,
@@ -17,46 +17,39 @@ from sarj_python_lint.rule_base import (
     parse_or_none,
 )
 from sarj_python_lint.rules._imports import ImportIndex
-from sarj_python_lint.rules._paths import is_generated, is_test_path, is_test_support_path
+from sarj_python_lint.rules._paths import is_generated
 
 
-if TYPE_CHECKING:
-    from pathlib import Path
-
-
-_MIN_FIELDS = 3
+_MIN_FIELDS = 2
 _DOCUMENTATION_DIR_NAMES = frozenset({"docs", "docs_src"})
 _TUPLE_SOURCES = frozenset({"builtins"})
 _TYPING_SOURCES = frozenset({"typing"})
 
 _MSG = (
-    "public function returns three or more distinct fields as a positional tuple — prefer typing.NamedTuple "
-    "when tuple compatibility matters; a dataclass or validation model requires an intentional caller migration."
+    "function returns a fixed positional tuple record — return a dataclass or validation model; "
+    "use typing.NamedTuple only when tuple protocol compatibility is required."
 )
 
 
 @final
 class PreferNamedtupleOverTupleReturn(Rule):
-    id: str = "prefer-namedtuple-over-tuple-return"
+    id: str = "no-positional-tuple-record"
     code: str = "SARJ026"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        summary=(
-            "Public top-level functions should use named records for heterogeneous tuple returns with three or more fields."
-        ),
+        summary="Fixed tuple return records should use named fields instead of positional slots.",
         rationale=(
-            "A public tuple with several distinct field roles makes callers remember positions and lets adjacent values be "
-            "silently swapped. Small pairs, homogeneous coordinates, private helpers, and callback protocols are often "
-            "intentionally positional and remain outside this advisory."
+            "A fixed tuple return makes callers remember positions and lets adjacent values be silently swapped. "
+            "Named records preserve field meaning across public, private, decorated, method, and test boundaries."
         ),
         remediation=(
-            "Use `typing.NamedTuple` when existing unpacking, indexing, tuple equality, or sequence-shaped JSON compatibility "
-            "matters. Use a frozen dataclass or validation model only as a deliberate API migration with callers updated."
+            "Return a frozen dataclass or validation model. Use `typing.NamedTuple` only when an exact tuple protocol is required."
         ),
         category=RuleCategory.MAINTAINABILITY,
         autofix=AutofixPolicy.NONE,
+        aliases=("prefer-namedtuple-over-tuple-return",),
         limitations=(
-            "Tests, test-support code, generated files, documentation examples, private or nested functions, methods, decorated functions, and functions used as key callbacks are excluded.",
-            "Only explicit provenance-resolved builtin or typing tuple annotations with at least three fixed, heterogeneous slots are reported; inferred, variadic, homogeneous, aliased, wrapped, stringized, and collection-nested tuples are excluded.",
+            "Generated files and documentation examples are excluded.",
+            "Explicit provenance-resolved builtin or typing fixed tuple return annotations with at least two slots are reported; variadic tuples remain valid collections.",
         ),
         examples=(
             RuleExample(
@@ -99,30 +92,18 @@ class PreferNamedtupleOverTupleReturn(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if (
-            is_generated(path, source)
-            or is_test_path(path)
-            or is_test_support_path(path)
-            or _is_documentation_path(path)
-        ):
+        if is_generated(path, source) or _is_documentation_path(path):
             return []
         tree = parse_or_none(path, source)
         if tree is None or _has_wildcard_import(tree):
             return []
         imports = ImportIndex.from_tree(tree)
-        key_callbacks = _key_callback_names(tree)
-        reported_names: set[str] = set()
         diagnostics: list[Diagnostic] = []
-        for node in tree.body:
-            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                continue
-            if node.name.startswith("_") or node.name in key_callbacks or node.name in reported_names:
-                continue
-            if node.decorator_list or node.returns is None:
+        for node in ast.walk(tree):
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) or node.returns is None:
                 continue
             if not _is_public_record_tuple(node.returns, imports):
                 continue
-            reported_names.add(node.name)
             diagnostics.append(
                 Diagnostic(
                     path=path,
@@ -130,7 +111,7 @@ class PreferNamedtupleOverTupleReturn(Rule):
                     col=node.col_offset + 1,
                     code=self.code,
                     message=_MSG,
-                    severity=Severity.WARNING,
+                    severity=Severity.ERROR,
                 )
             )
         return diagnostics
@@ -146,17 +127,8 @@ def _has_wildcard_import(tree: ast.Module) -> bool:
     )
 
 
-def _key_callback_names(tree: ast.Module) -> frozenset[str]:
-    return frozenset(
-        keyword.value.id
-        for node in ast.walk(tree)
-        if isinstance(node, ast.Call)
-        for keyword in node.keywords
-        if keyword.arg == "key" and isinstance(keyword.value, ast.Name)
-    )
-
-
 def _is_public_record_tuple(annotation: ast.expr, imports: ImportIndex) -> bool:
+    annotation = _unwrap_return_annotation(annotation, imports)
     if not isinstance(annotation, ast.Subscript) or not isinstance(annotation.slice, ast.Tuple):
         return False
     target = annotation.value
@@ -168,9 +140,22 @@ def _is_public_record_tuple(annotation: ast.expr, imports: ImportIndex) -> bool:
     if not is_tuple:
         return False
     fields = annotation.slice.elts
-    if len(fields) < _MIN_FIELDS or any(_is_variadic_field(field) for field in fields):
-        return False
-    return len({_annotation_shape(field, imports) for field in fields}) > 1
+    return len(fields) >= _MIN_FIELDS and not any(_is_variadic_field(field) for field in fields)
+
+
+def _unwrap_return_annotation(annotation: ast.expr, imports: ImportIndex) -> ast.expr:
+    if isinstance(annotation, ast.Constant) and isinstance(annotation.value, str):
+        parsed = parse_or_none(Path("annotation.py"), f"value: {annotation.value}")
+        if parsed is not None and isinstance(parsed.body[0], ast.AnnAssign):
+            return parsed.body[0].annotation
+    if (
+        isinstance(annotation, ast.Subscript)
+        and imports.resolves(annotation.value, sources=_TYPING_SOURCES, symbol="Annotated")
+        and isinstance(annotation.slice, ast.Tuple)
+        and annotation.slice.elts
+    ):
+        return _unwrap_return_annotation(annotation.slice.elts[0], imports)
+    return annotation
 
 
 def _is_variadic_field(node: ast.expr) -> bool:
@@ -179,19 +164,6 @@ def _is_variadic_field(node: ast.expr) -> bool:
         or (isinstance(node, ast.Subscript) and _leaf_name(node.value) == "Unpack")
         or (isinstance(node, ast.Constant) and node.value is Ellipsis)
     )
-
-
-def _annotation_shape(node: ast.expr, imports: ImportIndex) -> str:
-    builtin_name = _builtin_annotation_name(node, imports)
-    if builtin_name is not None:
-        return f"builtin:{builtin_name}"
-    return ast.dump(node, include_attributes=False)
-
-
-def _builtin_annotation_name(node: ast.expr, imports: ImportIndex) -> str | None:
-    if isinstance(node, ast.Name) and imports.builtin_is_unshadowed(node.id):
-        return node.id
-    return imports.resolved_symbol(node, sources=_TUPLE_SOURCES)
 
 
 def _leaf_name(node: ast.expr) -> str | None:

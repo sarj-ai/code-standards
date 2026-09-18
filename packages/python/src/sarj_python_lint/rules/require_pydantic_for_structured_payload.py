@@ -1,0 +1,157 @@
+from __future__ import annotations
+
+import ast
+from pathlib import PurePosixPath
+from typing import TYPE_CHECKING, ClassVar, final, override
+
+from sarj_python_lint.rule_base import (
+    AutofixPolicy,
+    Diagnostic,
+    ExampleFile,
+    ExampleOutcome,
+    Rule,
+    RuleCategory,
+    RuleDocumentation,
+    RuleExample,
+    is_suppressed,
+    parse_or_none,
+)
+from sarj_python_lint.rules._fastapi import FastapiIndex
+from sarj_python_lint.rules._paths import is_generated, is_test_path
+
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+
+@final
+class RequirePydanticForStructuredPayload(Rule):
+    id = "require-pydantic-for-structured-payload"
+    code = "SARJ450"
+    documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
+        summary="Structured nested FastAPI payloads must be parsed into a named Pydantic model before field access.",
+        rationale=(
+            "A validated outer request does not validate the shape of an open nested mapping; fixed-key reads bypass the "
+            "route's declared contract."
+        ),
+        remediation=(
+            "Validate the nested value with `PayloadModel.model_validate(...)` or `TypeAdapter(PayloadModel).validate_python(...)`, "
+            "then use typed attributes."
+        ),
+        category=RuleCategory.CORRECTNESS,
+        autofix=AutofixPolicy.NONE,
+        limitations=("Tests, generated sources, dynamic-key access, and non-FastAPI functions are excluded.",),
+        examples=(
+            RuleExample(
+                example_id="raw-nested-route-payload",
+                title="A route reads a fixed key from a nested request mapping",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/routes.py",
+                        "from fastapi import APIRouter\nrouter = APIRouter()\n@router.post('/actions')\ndef action(body: RequestModel):\n    payload = body.payload\n    return payload.get('nameOnCard')\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/routes.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="parsed-nested-route-payload",
+                title="A route validates a nested request model",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/routes.py",
+                        "from fastapi import APIRouter\nrouter = APIRouter()\n@router.post('/actions')\ndef action(body: RequestModel):\n    payload = CardPayload.model_validate(body.payload)\n    return payload.name_on_card\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/routes.py"),
+                expected_count=0,
+                public=True,
+            ),
+        ),
+    )
+    description = documentation.summary
+
+    @override
+    def check(self, path: Path, source: str) -> list[Diagnostic]:
+        if is_test_path(path) or is_generated(path, source):
+            return []
+        tree = parse_or_none(path, source)
+        if tree is None:
+            return []
+        index = FastapiIndex(tree, path=path)
+        lines = source.splitlines()
+        findings: list[Diagnostic] = []
+        for function in (node for node in ast.walk(tree) if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))):
+            if not index.routes(function):
+                continue
+            parameters = {
+                argument.arg
+                for argument in (*function.args.posonlyargs, *function.args.args, *function.args.kwonlyargs)
+            }
+            raw_names = _nested_payload_bindings(function, parameters)
+            for access in _fixed_key_accesses(function, raw_names):
+                if is_suppressed(lines, access.lineno, self.code):
+                    continue
+                findings.append(
+                    Diagnostic(
+                        path,
+                        access.lineno,
+                        access.col_offset + 1,
+                        self.code,
+                        "parse the nested request payload into a named Pydantic model before fixed-key access",
+                    )
+                )
+        return sorted(findings, key=lambda finding: (finding.line, finding.col))
+
+
+def _nested_payload_bindings(function: ast.FunctionDef | ast.AsyncFunctionDef, parameters: set[str]) -> set[str]:
+    result: set[str] = set()
+    for node in ast.walk(function):
+        if not isinstance(node, (ast.Assign, ast.AnnAssign)):
+            continue
+        value = node.value
+        if (
+            not isinstance(value, ast.Attribute)
+            or not isinstance(value.value, ast.Name)
+            or value.value.id not in parameters
+        ):
+            continue
+        targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+        result.update(target.id for target in targets if isinstance(target, ast.Name))
+    return result
+
+
+def _fixed_key_accesses(function: ast.FunctionDef | ast.AsyncFunctionDef, raw_names: set[str]) -> list[ast.expr]:
+    return [
+        node
+        for node in ast.walk(function)
+        if isinstance(node, ast.expr)
+        and (_is_fixed_subscript(node, raw_names) or _is_fixed_mapping_call(node, raw_names))
+    ]
+
+
+def _is_fixed_subscript(node: ast.AST, raw_names: set[str]) -> bool:
+    return (
+        isinstance(node, ast.Subscript)
+        and isinstance(node.value, ast.Name)
+        and node.value.id in raw_names
+        and isinstance(node.slice, ast.Constant)
+        and isinstance(node.slice.value, str)
+    )
+
+
+def _is_fixed_mapping_call(node: ast.AST, raw_names: set[str]) -> bool:
+    if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute):
+        return False
+    owner = node.func.value
+    key = node.args[0] if node.args else None
+    return (
+        node.func.attr in {"get", "pop", "setdefault"}
+        and isinstance(owner, ast.Name)
+        and owner.id in raw_names
+        and isinstance(key, ast.Constant)
+        and isinstance(key.value, str)
+    )
