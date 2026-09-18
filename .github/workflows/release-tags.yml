@@ -13,7 +13,7 @@ jobs:
       github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.head_branch == 'main' &&
       github.event.workflow_run.head_repository.full_name == github.repository
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 10
     permissions:
       contents: read
@@ -89,7 +89,7 @@ jobs:
   release-safety:
     needs: preflight
     if: needs.preflight.outputs.recovery == 'true'
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 50
     permissions:
       actions: read
@@ -173,7 +173,7 @@ jobs:
       needs.preflight.result == 'success' &&
       needs.preflight.outputs.recovery == 'true' &&
       needs.release-safety.result == 'success'
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 10
     permissions:
       contents: write
@@ -230,7 +230,7 @@ jobs:
        (needs.preflight.outputs.recovery == 'true' &&
         needs.release-safety.result == 'success' &&
         needs.tag.result == 'success'))
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 5
     permissions:
       actions: write

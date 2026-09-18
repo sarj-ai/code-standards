@@ -18,7 +18,7 @@ concurrency:
 jobs:
   changes:
     name: Detect affected checks
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 5
     outputs:
       bootstrap: ${{ steps.scope.outputs.bootstrap }}
@@ -54,7 +54,7 @@ jobs:
     needs: changes
     if: always() && (needs.changes.result != 'success' || needs.changes.outputs.bootstrap != 'false')
     name: bootstrap package
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 20
     defaults:
       run:
@@ -93,7 +93,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, windows-latest]
+        os: [blacksmith-6vcpu-macos-15, blacksmith-4vcpu-windows-2025]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     defaults:
@@ -125,7 +125,7 @@ jobs:
     needs: changes
     if: always() && (needs.changes.result != 'success' || needs.changes.outputs.python != 'false')
     name: python package
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 30
     defaults:
       run:
@@ -164,7 +164,7 @@ jobs:
     needs: changes
     if: always() && (needs.changes.result != 'success' || needs.changes.outputs.sql != 'false')
     name: sql package
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 30
     defaults:
       run:
@@ -205,7 +205,7 @@ jobs:
     needs: changes
     if: always() && (needs.changes.result != 'success' || needs.changes.outputs.iac != 'false')
     name: iac package
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 30
     defaults:
       run:
@@ -247,7 +247,7 @@ jobs:
     # Expand both required check names even when their expensive steps are skipped.
     if: always() && github.event_name != 'schedule'
     name: typescript plugin (${{ matrix.node }})
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -304,7 +304,7 @@ jobs:
     needs: changes
     if: always() && (needs.changes.result != 'success' || needs.changes.outputs.tsconfig != 'false')
     name: tsconfig package
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 20
     defaults:
       run:
@@ -356,7 +356,7 @@ jobs:
     if: always() && (needs.changes.result != 'success' || needs.changes.outputs.standards != 'false')
     name: standards portability (ubuntu-latest)
     # Exact-SHA macOS and Windows portability runs gate publication in release.yml.
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 20
     defaults:
       run:
@@ -413,7 +413,7 @@ jobs:
     needs: changes
     if: always() && (needs.changes.result != 'success' || needs.changes.outputs.mobile != 'false')
     name: managed Kotlin mobile analyzers
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 40
     defaults:
       run:
@@ -460,7 +460,7 @@ jobs:
     needs: changes
     if: always() && (needs.changes.result != 'success' || needs.changes.outputs.mobile != 'false')
     name: managed Swift mobile analyzers
-    runs-on: macos-15
+    runs-on: blacksmith-6vcpu-macos-15
     timeout-minutes: 60
     defaults:
       run:
@@ -515,7 +515,7 @@ jobs:
     needs: changes
     if: always() && (needs.changes.result != 'success' || needs.changes.outputs.standards != 'false')
     name: standards static analysis
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 40
     defaults:
       run:
@@ -568,7 +568,7 @@ jobs:
     needs: changes
     if: always() && (needs.changes.result != 'success' || needs.changes.outputs.standards != 'false')
     name: standards wheel and integration
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 40
     defaults:
       run:
@@ -661,7 +661,7 @@ jobs:
     name: standards package
     needs: [changes, static-analysis, package-tests]
     if: always() && (needs.changes.result != 'success' || needs.changes.outputs.standards != 'false')
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 5
     steps:
       - name: Harden the runner
@@ -676,7 +676,7 @@ jobs:
     needs: changes
     if: always() && (needs.changes.result != 'success' || needs.changes.outputs.docs != 'false')
     name: documentation build
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 15
     defaults:
       run:
@@ -742,7 +742,7 @@ jobs:
   docs-deploy:
     if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     needs: docs-build
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 10
     environment:
       name: code-standards-production
@@ -786,7 +786,7 @@ jobs:
         run: npm run verify:deployment
 
   gitleaks:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 15
     steps:
       - name: Harden the runner
@@ -811,7 +811,7 @@ jobs:
 
   dependency-review:
     if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 10
     permissions:
       contents: read
@@ -829,7 +829,7 @@ jobs:
     name: npm-audit (apps/docs)
     needs: changes
     if: always() && (needs.changes.result != 'success' || needs.changes.outputs.docs-audit != 'false')
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 15
     defaults:
       run:
@@ -857,7 +857,7 @@ jobs:
   codeql:
     needs: changes
     if: always()
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 30
     permissions:
       contents: read
@@ -890,7 +890,7 @@ jobs:
 
   scorecard:
     if: github.event_name != 'pull_request'
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 15
     permissions:
       contents: read
@@ -919,7 +919,7 @@ jobs:
     name: CI complete
     needs: [changes, bootstrap, bootstrap-portability, python, sql, iac, typescript, tsconfig, portability-smoke, mobile-kotlin-smoke, mobile-swift-smoke, static-analysis, package-tests, standards, docs-build, docs-deploy, gitleaks, dependency-review, npm-audit, codeql, scorecard]
     if: always()
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 5
     steps:
       - name: Harden the runner

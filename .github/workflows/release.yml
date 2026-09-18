@@ -46,7 +46,7 @@ jobs:
       needs.detect.outputs.iac == 'true' ||
       needs.detect.outputs.standards == 'true' ||
       needs.detect.outputs.tsconfig == 'true'
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 50
     permissions:
       actions: read
@@ -127,7 +127,7 @@ jobs:
   # Existing `needs` edges publish siblings before the Standards bundle that
   # pins them.
   detect:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 10
     outputs:
       typescript: ${{ steps.c.outputs.typescript }}
@@ -158,7 +158,7 @@ jobs:
   build-typescript:
     needs: [detect, release-safety]
     if: needs.detect.outputs.typescript == 'true'
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 30
     permissions:
       contents: read
@@ -216,6 +216,7 @@ jobs:
 
   publish-typescript:
     needs: build-typescript
+    # npm trusted publishing requires a GitHub-hosted runner.
     runs-on: ubuntu-latest
     timeout-minutes: 45
     environment: npm-typescript-release
@@ -259,7 +260,7 @@ jobs:
   build-bootstrap:
     needs: [detect, release-safety]
     if: needs.detect.outputs.bootstrap == 'true'
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 20
     permissions:
       contents: read
@@ -328,7 +329,7 @@ jobs:
 
   publish-bootstrap:
     needs: build-bootstrap
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 10
     environment: pypi-bootstrap-release
     permissions:
@@ -374,7 +375,7 @@ jobs:
   build-python:
     needs: [detect, release-safety]
     if: needs.detect.outputs.python == 'true'
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 30
     permissions:
       contents: read
@@ -435,7 +436,7 @@ jobs:
 
   publish-python:
     needs: build-python
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 10
     environment: pypi-python-release
     permissions:
@@ -481,7 +482,7 @@ jobs:
   build-sql:
     needs: [detect, release-safety]
     if: needs.detect.outputs.sql == 'true'
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 30
     permissions:
       contents: read
@@ -542,7 +543,7 @@ jobs:
 
   publish-sql:
     needs: build-sql
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 10
     environment: pypi-sql-release
     permissions:
@@ -588,7 +589,7 @@ jobs:
   build-iac:
     needs: [detect, release-safety]
     if: needs.detect.outputs.iac == 'true'
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 30
     permissions:
       contents: read
@@ -649,7 +650,7 @@ jobs:
 
   publish-iac:
     needs: build-iac
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 10
     environment: pypi-iac-release
     permissions:
@@ -698,7 +699,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, windows-latest]
+        os: [blacksmith-6vcpu-macos-15, blacksmith-4vcpu-windows-2025]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     permissions:
@@ -770,7 +771,7 @@ jobs:
       (needs.publish-iac.result == 'success' || needs.publish-iac.result == 'skipped') &&
       needs.portability-standards.result == 'success' &&
       needs.detect.outputs.standards == 'true'
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 40
     permissions:
       contents: read
@@ -837,7 +838,7 @@ jobs:
   publish-standards:
     needs: build-standards
     if: always() && needs.build-standards.result == 'success'
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 10
     environment: pypi-standards-release
     permissions:
@@ -883,7 +884,7 @@ jobs:
   build-tsconfig:
     needs: [detect, release-safety]
     if: needs.detect.outputs.tsconfig == 'true'
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 15
     permissions:
       contents: read
@@ -943,6 +944,7 @@ jobs:
 
   publish-tsconfig:
     needs: build-tsconfig
+    # npm trusted publishing requires a GitHub-hosted runner.
     runs-on: ubuntu-latest
     timeout-minutes: 45
     environment: npm-tsconfig-release
