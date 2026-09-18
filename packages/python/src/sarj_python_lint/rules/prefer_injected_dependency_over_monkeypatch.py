@@ -27,6 +27,7 @@ if TYPE_CHECKING:
 
 _ATTRIBUTE_MUTATIONS = frozenset({"delattr", "setattr"})
 _MONKEYPATCH = "monkeypatch"
+_PATCH_ATTRIBUTE_FORMS = frozenset({"multiple", "object"})
 _PYTEST = frozenset({"pytest"})
 _UNITTEST_MOCK = frozenset({"unittest.mock"})
 _SCOPES = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)
@@ -145,10 +146,10 @@ def _patch_calls(tree: ast.Module, imports: ImportIndex) -> list[tuple[ast.Call,
             continue
         if (
             isinstance(node.func, ast.Attribute)
-            and node.func.attr == "object"
+            and node.func.attr in _PATCH_ATTRIBUTE_FORMS
             and _resolves_patch(node.func.value, imports)
         ):
-            calls.append((node, "patch.object"))
+            calls.append((node, f"patch.{node.func.attr}"))
             continue
         label = _pytest_mock_patch_label(node)
         if label is not None:
@@ -194,10 +195,8 @@ def _attribute_mutations(
     imports: ImportIndex,
 ) -> list[ast.Call]:
     parameters = _parameter_handles(function, imports)
-    if not parameters:
-        return []
     nodes = tuple(_lexical_body_nodes(function))
-    handles = set(parameters)
+    handles = parameters | _constructed_handles(nodes, imports)
     handles |= _direct_aliases(nodes, handles, parameters)
     return [
         node
@@ -205,10 +204,69 @@ def _attribute_mutations(
         if isinstance(node, ast.Call)
         and isinstance(node.func, ast.Attribute)
         and node.func.attr in _ATTRIBUTE_MUTATIONS
-        and isinstance(node.func.value, ast.Name)
-        and node.func.value.id in handles
-        and not _parameter_rebound_before(node, node.func.value.id, nodes, parameters)
+        and _is_monkeypatch_receiver(
+            node.func.value,
+            imports,
+            handles=handles,
+            parameters=parameters,
+            nodes=nodes,
+            use=node,
+        )
     ]
+
+
+def _is_monkeypatch_receiver(
+    receiver: ast.expr,
+    imports: ImportIndex,
+    *,
+    handles: set[str],
+    parameters: set[str],
+    nodes: tuple[ast.AST, ...],
+    use: ast.Call,
+) -> bool:
+    if isinstance(receiver, ast.Name):
+        return receiver.id in handles and not _parameter_rebound_before(use, receiver.id, nodes, parameters)
+    return isinstance(receiver, ast.Call) and _is_monkeypatch_constructor(receiver, imports)
+
+
+def _constructed_handles(nodes: tuple[ast.AST, ...], imports: ImportIndex) -> set[str]:
+    binding_counts: dict[str, int] = {}
+    for node in nodes:
+        for name in _bound_targets(node):
+            binding_counts[name] = binding_counts.get(name, 0) + 1
+    handles: set[str] = set()
+    for node in nodes:
+        candidate = _constructed_handle_binding(node, imports)
+        if candidate is not None and binding_counts.get(candidate) == 1:
+            handles.add(candidate)
+    return handles
+
+
+def _constructed_handle_binding(node: ast.AST, imports: ImportIndex) -> str | None:
+    if isinstance(node, (ast.Assign, ast.AnnAssign)):
+        value = node.value
+        targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+        if isinstance(value, ast.Call) and _is_monkeypatch_constructor(value, imports) and len(targets) == 1:
+            names = _target_names(targets[0])
+            return next(iter(names)) if len(names) == 1 else None
+    if isinstance(node, ast.withitem) and node.optional_vars is not None:
+        expression = node.context_expr
+        if isinstance(expression, ast.Call) and _is_monkeypatch_context(expression, imports):
+            names = _target_names(node.optional_vars)
+            return next(iter(names)) if len(names) == 1 else None
+    return None
+
+
+def _is_monkeypatch_constructor(call: ast.Call, imports: ImportIndex) -> bool:
+    return imports.resolves(call.func, sources=_PYTEST, symbol="MonkeyPatch")
+
+
+def _is_monkeypatch_context(call: ast.Call, imports: ImportIndex) -> bool:
+    return (
+        isinstance(call.func, ast.Attribute)
+        and call.func.attr == "context"
+        and imports.resolves(call.func.value, sources=_PYTEST, symbol="MonkeyPatch")
+    )
 
 
 def _parameter_handles(

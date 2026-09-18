@@ -68,6 +68,10 @@ def test_reports_each_call_in_source_order() -> None:
         ("import unittest.mock", "unittest.mock.patch('app.service.client', fake)", "`patch`"),
         ("from unittest import mock", "mock.patch('app.service.client', fake)", "`patch`"),
         ("from unittest.mock import patch", "patch.object(service, 'client', fake)", "`patch.object`"),
+        ("from unittest.mock import patch", "patch.multiple(service, client=fake)", "`patch.multiple`"),
+        ("from unittest.mock import patch as replace", "replace.multiple(service, client=fake)", "`patch.multiple`"),
+        ("import unittest.mock as um", "um.patch.multiple(service, client=fake)", "`patch.multiple`"),
+        ("from unittest import mock", "mock.patch.multiple(service, client=fake)", "`patch.multiple`"),
         ("", "mocker.patch('app.service.client', fake)", "`mocker.patch`"),
         ("", "mocker.patch.object(service, 'client', fake)", "`mocker.patch.object`"),
     ],
@@ -92,6 +96,43 @@ def test_reports_patch_decorator() -> None:
             assert client is not None
     """)
     assert len(diagnostics) == 1
+
+
+def test_reports_patch_multiple_decorator() -> None:
+    diagnostics = _check("""
+        from unittest.mock import patch
+
+        @patch.multiple("app.service", client=fake, clock=fake_clock)
+        def test_service():
+            assert run() == "ok"
+    """)
+    assert len(diagnostics) == 1
+    assert "`patch.multiple`" in diagnostics[0].message
+
+
+def test_allows_patch_dict_mapping_mutation() -> None:
+    assert (
+        _check("""
+        from unittest.mock import patch
+
+        def test_service():
+            with patch.dict(settings, {"REGION": "test"}):
+                assert run() == "ok"
+    """)
+        == []
+    )
+
+
+def test_ignores_unrelated_patch_multiple() -> None:
+    assert (
+        _check("""
+        patch = CustomPatcher()
+
+        def test_service():
+            patch.multiple(service, client=fake)
+    """)
+        == []
+    )
 
 
 def test_ignores_unrelated_patch_objects() -> None:
@@ -175,6 +216,82 @@ def test_recognizes_context_handle_alias() -> None:
                 scoped.setattr(service, "client", fake)
     """)
     assert len(diagnostics) == 1
+
+
+@pytest.mark.parametrize(
+    ("imports", "scope"),
+    [
+        ("import pytest", "pytest.MonkeyPatch.context()"),
+        ("import pytest as pt", "pt.MonkeyPatch.context()"),
+        ("from pytest import MonkeyPatch", "MonkeyPatch.context()"),
+        ("from pytest import MonkeyPatch as MP", "MP.context()"),
+    ],
+)
+def test_recognizes_constructed_context_handle(imports: str, scope: str) -> None:
+    diagnostics = _check(f"""
+        {imports}
+
+        def test_service():
+            with {scope} as scoped:
+                scoped.setattr(service, "client", fake)
+    """)
+    assert len(diagnostics) == 1
+
+
+@pytest.mark.parametrize(
+    ("imports", "constructor"),
+    [
+        ("import pytest", "pytest.MonkeyPatch"),
+        ("from pytest import MonkeyPatch as MP", "MP"),
+    ],
+)
+def test_recognizes_constructed_handle(imports: str, constructor: str) -> None:
+    diagnostics = _check(f"""
+        {imports}
+
+        def test_service():
+            scoped = {constructor}()
+            scoped.setattr(service, "client", fake)
+    """)
+    assert len(diagnostics) == 1
+
+
+def test_recognizes_direct_constructor_attribute_mutation() -> None:
+    diagnostics = _check("""
+        import pytest
+
+        def test_service():
+            pytest.MonkeyPatch().setattr(service, "client", fake)
+    """)
+    assert len(diagnostics) == 1
+
+
+def test_rebound_constructed_handle_is_ignored() -> None:
+    assert (
+        _check("""
+        import pytest
+
+        def test_service():
+            scoped = pytest.MonkeyPatch()
+            scoped = CustomPatcher()
+            scoped.setattr(service, "client", fake)
+    """)
+        == []
+    )
+
+
+def test_ignores_unrelated_monkeypatch_constructor() -> None:
+    assert (
+        _check("""
+        class MonkeyPatch:
+            def setattr(self, target, name, value):
+                target.install(name, value)
+
+        def test_service():
+            MonkeyPatch().setattr(service, "client", fake)
+    """)
+        == []
+    )
 
 
 @pytest.mark.parametrize(
