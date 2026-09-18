@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "592ca4e758799f1aed27d1e89fddc392aece1ca1cf83623c6cbd162f806e2eb8",
-  "cliSha256": "2d0024f164d54602fcb754b92c07d26e33f96928d29ca6b31e062b0cacf68fd6",
+  "catalogSha256": "d2fbcdedf3a1565e627aa05cdbb6557619c745a3f66e3e9f8bad21712e5b13fe",
+  "cliSha256": "01432430bd48d06c39952441dd81bcf694bedcbf054cbc743279044b96b716da",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -8674,6 +8674,21 @@
           "title": "Do not maintain a second singleton query path"
         },
         {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/task_store.py",
+              "source": "class TaskStore:\n    async def set_to_failed(self, task_id: str) -> Task:\n        return await self._update_status(task_id, TaskStatus.FAILED)\n\n    async def set_many_to_status(\n        self, task_ids: Collection[str], status: TaskStatus\n    ) -> list[Task]:\n        return await self._update_many(task_ids, status)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/task_store.py",
+          "id": "duplicate-singleton-write",
+          "outcome": "reject",
+          "scenarioId": "write",
+          "title": "Do not maintain a second singleton mutation path"
+        },
+        {
           "expectedCount": 0,
           "files": [
             {
@@ -8687,6 +8702,21 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Delegate the singleton read to the bulk implementation"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/task_store.py",
+              "source": "class TaskStore:\n    async def set_to_failed(self, task_id: str) -> Task:\n        rows = await self.set_many_to_status([task_id], TaskStatus.FAILED)\n        return rows[0]\n\n    async def set_many_to_status(\n        self, task_ids: Collection[str], status: TaskStatus\n    ) -> list[Task]:\n        return await self._update_many(task_ids, status)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/task_store.py",
+          "id": "singleton-write-delegates",
+          "outcome": "accept",
+          "scenarioId": "write",
+          "title": "Route singleton mutations through the bulk primitive"
         }
       ],
       "optionsSchemaSource": null
