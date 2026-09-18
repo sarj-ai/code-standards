@@ -1,0 +1,1375 @@
+{
+  "schemaVersion": 2,
+  "provenance": {
+    "bundleVersion": "7.27.0",
+    "consumerBaseSha": "e1d1e36346bf4edf72344482698191bc3ed0503d",
+    "catalogDigest": "b41446d0c47de6d3704524ef4af208443b1c0bf5c5e23333cc180c78004d0a39"
+  },
+  "diagnostics": [
+    {
+      "fingerprint": "e705db18639b8d7002d88701c8480226d7040889a3995b54e1ec5fc5feadf8e6",
+      "source": "sarj-python-lint",
+      "ruleId": "no-positional-tuple-record",
+      "path": "packages/iac/src/sarj_iac_lint/_hcl.py",
+      "count": 2
+    },
+    {
+      "fingerprint": "8e0e6c910511bcab476b4a4a1adab22878cc088c4ebc9b1bf8c707215dcc3120",
+      "source": "sarj-python-lint",
+      "ruleId": "no-positional-tuple-record",
+      "path": "packages/iac/src/sarj_iac_lint/rules/no_comment_cruft.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "59e0076c997f262ccd4de5cb80a64c3d280b9194552dea882d8b32265c6bbdae",
+      "source": "sarj-python-lint",
+      "ruleId": "no-positional-tuple-record",
+      "path": "packages/iac/src/sarj_iac_lint/rules/no_dead_environment_input.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "bef55e7c58998665eeb5f0a57eba37d058130a7d1402af03fdc0d9b724fa61b2",
+      "source": "sarj-python-lint",
+      "ruleId": "no-positional-tuple-record",
+      "path": "packages/python/src/sarj_python_lint/rules/fastapi_explicit_openapi_contract.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "377ad0ec8426091e7fcaec273464048b91810eba7d4b4ca123489adea37a9475",
+      "source": "sarj-python-lint",
+      "ruleId": "no-positional-tuple-record",
+      "path": "packages/python/src/sarj_python_lint/rules/no_deleted_only_override_parameter.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "c07f89791199e5a0486d6d21f5b1a162796d119be2474119e53464dcb010d97a",
+      "source": "sarj-python-lint",
+      "ruleId": "no-positional-tuple-record",
+      "path": "packages/python/src/sarj_python_lint/rules/no_positional_psycopg_row_escape.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "486274387c3b4e7ce02b2cd39bd2c25bd53280d5cc5ad4bc1db4967c0b4fbbc8",
+      "source": "sarj-python-lint",
+      "ruleId": "no-positional-tuple-record",
+      "path": "packages/python/src/sarj_python_lint/rules/no_random_uuid_in_sql.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "914badac358accd77dc364b0c3b57d7c6fcb9b5d0512502b408b06a80cd8e4ca",
+      "source": "sarj-python-lint",
+      "ruleId": "no-positional-tuple-record",
+      "path": "packages/python/src/sarj_python_lint/rules/prefer_injected_dependency_over_monkeypatch.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "7d0088441d42c1ebae92b1edb397fd43fb4f7c6ef8bca6b6938b90d1899baf27",
+      "source": "sarj-python-lint",
+      "ruleId": "no-positional-tuple-record",
+      "path": "packages/python/src/sarj_python_lint/rules/prefer_match_value_dispatch.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "2bcb0cd0032eb986cb0c8916506f3acdf8016ac6de0b4092f101d031aadd45f3",
+      "source": "sarj-python-lint",
+      "ruleId": "no-positional-tuple-record",
+      "path": "packages/python/src/sarj_python_lint/rules/prefer_monkeypatch_for_process_state_in_test.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "03bef9698cc309ab4f54fe2f7c61715a0484911e6881b357406a6de58a9b1b41",
+      "source": "sarj-python-lint",
+      "ruleId": "no-positional-tuple-record",
+      "path": "packages/python/src/sarj_python_lint/rules/prefer_nominal_id_types.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "6b4094b40015b69746c58ddb1ccf9edb25fc9d2ef4d41f7c324455b157bc56db",
+      "source": "sarj-python-lint",
+      "ruleId": "no-positional-tuple-record",
+      "path": "packages/python/src/sarj_python_lint/rules/prefer_self_type_annotation.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "f6d3858de61766d22d68d2611b867905c7bb5c11df27a83ed1e36732594403d1",
+      "source": "sarj-python-lint",
+      "ruleId": "no-positional-tuple-record",
+      "path": "packages/python/src/sarj_python_lint/rules/prefer_str_enum.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "6a8e1cb7f32894e7426f250c59ba955ffcc6e4d2d53b8c53b40fc186960321c2",
+      "source": "sarj-python-lint",
+      "ruleId": "no-positional-tuple-record",
+      "path": "packages/python/src/sarj_python_lint/rules/require_port_for_service.py",
+      "count": 2
+    },
+    {
+      "fingerprint": "9e5984663555e77c846f823350f2ce9ee95ede31c1bd1a1ddbf61300cfd5f789",
+      "source": "sarj-python-lint",
+      "ruleId": "no-positional-tuple-record",
+      "path": "packages/python/src/sarj_python_lint/rules/require_pydantic_ordinal_lower_bound.py",
+      "count": 4
+    },
+    {
+      "fingerprint": "cf376fdc596803d6219fb03d470a06ba55e9b12bb6d80691412e1464900175f5",
+      "source": "sarj-python-lint",
+      "ruleId": "no-positional-tuple-record",
+      "path": "packages/python/src/sarj_python_lint/rules/store_get_delegates_to_bulk_read.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "89c007520a79cb3af90f84161bd09f03287576fff8480736781521842ffefb80",
+      "source": "sarj-python-lint",
+      "ruleId": "no-positional-tuple-record",
+      "path": "packages/python/src/sarj_python_lint/rules/timestamp_order_requires_tiebreaker.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "c17cc2c5b64474478970cd62aebf54a38d7e4d2ae3fc75a4f7a7b57ab129f04e",
+      "source": "sarj-python-lint",
+      "ruleId": "no-positional-tuple-record",
+      "path": "packages/sql/src/sarj_sql_lint/rule_base.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "a5e75beeab3176b10788f233a0f330080885fc6451d55a36ea2d79e327302078",
+      "source": "sarj-python-lint",
+      "ruleId": "no-positional-tuple-record",
+      "path": "packages/sql/src/sarj_sql_lint/rules/_index_analysis.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "76c8055c23df0e61f915da3faa6a29e90c82ef50309df3ae9300a5a54275e341",
+      "source": "sarj-python-lint",
+      "ruleId": "no-positional-tuple-record",
+      "path": "packages/sql/src/sarj_sql_lint/rules/no_comment_cruft.py",
+      "count": 2
+    },
+    {
+      "fingerprint": "2861387786f62efdcf137d35d6d85ddccae1cb5136a5746ada70fe536a6aa32a",
+      "source": "sarj-python-lint",
+      "ruleId": "no-positional-tuple-record",
+      "path": "packages/sql/src/sarj_sql_lint/rules/no_duplicate_index.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "3bc08b159b7377cc23473abb8836cd549b46265a33f1f4743b7b0939b78a4f93",
+      "source": "sarj-python-lint",
+      "ruleId": "no-positional-tuple-record",
+      "path": "packages/standards/src/sarj_standards/cli/main.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "99a022e20608d88a41752b628afdf95e901bd25128d0906b552d49b92f9f411f",
+      "source": "sarj-python-lint",
+      "ruleId": "no-positional-tuple-record",
+      "path": "packages/standards/src/sarj_standards/libs/linting/textlint.py",
+      "count": 3
+    },
+    {
+      "fingerprint": "584f901f1858d7874e0f9c9f459cb79aedc82f09f68402bc6fad64d67914cd5d",
+      "source": "sarj-python-lint",
+      "ruleId": "no-positional-tuple-record",
+      "path": "packages/standards/src/sarj_standards/libs/repository/comment_corpus.py",
+      "count": 5
+    },
+    {
+      "fingerprint": "e5ef354f3551105f7eff46929823e4ccec1b7bf4903f5a74ba99f36a5e33c230",
+      "source": "sarj-python-lint",
+      "ruleId": "no-positional-tuple-record",
+      "path": "packages/standards/src/sarj_standards/libs/repository/rule_catalog_artifact.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "5f76befb0afdbb1dee71428500c732197e568dccd25e7a8ada1149ff89151448",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/iac/src/sarj_iac_lint/__main__.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "f8a4e73db20607271d703c2e193d3330132b296e46c1235d1398aca4db420624",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/iac/src/sarj_iac_lint/rules/no_dead_environment_input.py",
+      "count": 3
+    },
+    {
+      "fingerprint": "44076baf587a586a7332082d6d35cc815da9bee14ebd889424e04329adb19230",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/python/src/sarj_python_lint/__main__.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "3c6238e66b978b2b30b0e9d2bfdf9b793010e3dffa4ee73f5289a69d2a49aae2",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/python/src/sarj_python_lint/_python_target.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "75443bb50eb46ebe5ae2d36d525f3b163a3d9fed3d28a1ace51b988179448486",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/python/src/sarj_python_lint/_python_target.py",
+      "count": 3
+    },
+    {
+      "fingerprint": "b1d2d7e3d2513c90c8a0c062b4b62d83eec67312fb28b8c1898bc33d698f81ba",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/python/src/sarj_python_lint/_ratchet_cli.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "e5c6eda188c92062ad0f8cb2d381fbaf915690c4ccf20863c45c8f8202af91e1",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/python/src/sarj_python_lint/_ratchet_cli.py",
+      "count": 4
+    },
+    {
+      "fingerprint": "5fd049a526961fdd086f11528b15a4fcaf5f6e792446c5b55f626be10099b971",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/python/src/sarj_python_lint/ratchet.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "87c73fd56c6cee8ce2af68983a512c25fcc54538e955ecaf1dbfb32e59d719c6",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/python/src/sarj_python_lint/ratchet.py",
+      "count": 10
+    },
+    {
+      "fingerprint": "75277373af813dbab0c264300a39b17566628a11e9619233916cbd68f0c5b915",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/python/src/sarj_python_lint/rules/_ast_index.py",
+      "count": 3
+    },
+    {
+      "fingerprint": "08d0a72bb73375de755c622a37a13e53d9d054d84fd27a2a3030945bc5637b43",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/python/src/sarj_python_lint/rules/invalid_pydantic_field_default.py",
+      "count": 6
+    },
+    {
+      "fingerprint": "d72c43c112146dcc56a83e94b5db2eba39f6b131e28790e48d2ef0ccb357e503",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/python/src/sarj_python_lint/rules/invalid_pydantic_field_default.py",
+      "count": 2
+    },
+    {
+      "fingerprint": "7f1474d064be32c27811d55c18cfadbc07cbff2766a0e3bd0e4e1a0af3aa733e",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/python/src/sarj_python_lint/rules/no_analytical_aggregation_in_postgres_store.py",
+      "count": 2
+    },
+    {
+      "fingerprint": "b7ab1e44a62953578e77a9f0020112b3bd30881d3567be427206ef32f2e847f7",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/python/src/sarj_python_lint/rules/no_repeated_test_body.py",
+      "count": 11
+    },
+    {
+      "fingerprint": "c19b85096e2cce1de314555f69b05e4b775424d49cf84d04e7216f3d8263f528",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/python/src/sarj_python_lint/rules/repeated_static_call_cases.py",
+      "count": 3
+    },
+    {
+      "fingerprint": "3c24e65933b50bb8b8b5ce37b7e0d2cf1609e4839f3ddac77731dbcb521993a2",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/python/src/sarj_python_lint/rules/require_pydantic_for_external_json.py",
+      "count": 2
+    },
+    {
+      "fingerprint": "9d510504b68f0b5949c414ac3451d58315df58bc805bf36d4b31a553ea7af5fd",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/python/src/sarj_python_lint/rules/require_pydantic_for_external_json.py",
+      "count": 2
+    },
+    {
+      "fingerprint": "f75d0b5aa09d23bd76a8349caf0788917f8de0bd1a4c9519304dbd956bff3a64",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/python/src/sarj_python_lint/rules/require_pydantic_ordinal_lower_bound.py",
+      "count": 5
+    },
+    {
+      "fingerprint": "1efbeefe2167b5978f35b8a71d6162339024580cff72becf56d796b8147b50ad",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/python/src/sarj_python_lint/rules/trailing_value_narration.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "c29ad749c499b5e298b012a54c07dcfaaa68c27ff51a672136372261ff4657c5",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/python/tests/conftest.py",
+      "count": 2
+    },
+    {
+      "fingerprint": "6d59371e06009f7b5296bad767111296e769eeefbda00cd32ab8fbaaaac9577b",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/python/tests/illustrative_examples.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "ba4d8c0f08522609c8091d3eaf76ba8f93b176b7694c0e1e91e3721ec5511ee5",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/python/tests/rules/test_prefer_match_value_dispatch.py",
+      "count": 4
+    },
+    {
+      "fingerprint": "c3d854c7595a865d65fa13f3760fe7f8d29568487ee940159a2d2122d31c0d1b",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/python/tests/rules/test_prefer_module_level_constant.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "94b1ee49dfeca2ea325a71a25b181b7afdf882c116182660685cd2130380636a",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/python/tests/rules/test_prefer_or_pattern.py",
+      "count": 2
+    },
+    {
+      "fingerprint": "27f514b9037d8525b09613ffabe99e2f48d5ac9449287c724dce2c127f177180",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/python/tests/rules/test_prefer_self_documenting_constant.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "9e7f0667c03e9a644eb17cb5035a39b5138384c7eb0089c5e85ab5d88fdacbf6",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/python/tests/rules/test_prefer_str_enum.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "afbdb6a7f556f217e5777f0d39468626439abee141f9e031a3b94fff4bc01236",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/python/tests/test_ratchet.py",
+      "count": 2
+    },
+    {
+      "fingerprint": "cdc498db98279b093b809c5bfe37263270520ca203e171c13f7dd620af74aaa4",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/python/tests/test_rule_meta.py",
+      "count": 3
+    },
+    {
+      "fingerprint": "763fe2877d2a7cd49e5ea54ab100b1dcac3bcb61534f3802f6ad15aa4109b223",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/src/sarj_standards/api.py",
+      "count": 4
+    },
+    {
+      "fingerprint": "0e2b26285ca6512ede818db4ec76f4365350b2bf61cd167171c26c02698e711c",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/src/sarj_standards/cli/main.py",
+      "count": 11
+    },
+    {
+      "fingerprint": "689198b218c2dcd84a1bff8117594d26cf2fe00fe5a53914de9beeb23a2cfb25",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/src/sarj_standards/cli/main.py",
+      "count": 7
+    },
+    {
+      "fingerprint": "6f781b887aaeea3d8aff90195e65c8c66cdc65bf7ffa23a928dd8af8c3466b8e",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/src/sarj_standards/libs/adoption/doctor.py",
+      "count": 2
+    },
+    {
+      "fingerprint": "e48a15f8cc6a5459d17766d1a7c24a22a41ff4173b22645ba2679528ab38b636",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/src/sarj_standards/libs/adoption/doctor.py",
+      "count": 10
+    },
+    {
+      "fingerprint": "0997d04136147baa8370f5b4c2e48460ce3362f426e05c87b3a39a204a2d05d2",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/src/sarj_standards/libs/adoption/hooks.py",
+      "count": 3
+    },
+    {
+      "fingerprint": "4dfe8382f052c8372c50ef66a59fa2091ed5efbd80aeaff2aafee58ef89b20df",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/src/sarj_standards/libs/adoption/hooks.py",
+      "count": 3
+    },
+    {
+      "fingerprint": "991a5a0bb305d25a3e27f341a9409050674199e002d50d7363e8ab77f54c2a81",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/src/sarj_standards/libs/adoption/hooks.py",
+      "count": 20
+    },
+    {
+      "fingerprint": "ae8da82570165049ef32972c13d81c395e46dfa864d2b279f703d65104e99032",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/src/sarj_standards/libs/adoption/lifecycle.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "9ec9f7a9e4169f771bc9c79ea03025228b2f438f4f1c2824859a6c7ecc1cf052",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/src/sarj_standards/libs/adoption/manifest.py",
+      "count": 20
+    },
+    {
+      "fingerprint": "ecadade5757b367195dad0163b1442e49c207771d4dd223bcfe6007720e8b8d4",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/src/sarj_standards/libs/adoption/manifest.py",
+      "count": 7
+    },
+    {
+      "fingerprint": "0a32413390f8a8db2d2b67d53280dfaca6f6bcbf4b2ccc735e011f925e89e702",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/src/sarj_standards/libs/adoption/packagemanager.py",
+      "count": 3
+    },
+    {
+      "fingerprint": "a825f90dadaab31cdb57d9ac6885771ec91ac061e396a6b9340d11cccc63e49c",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/src/sarj_standards/libs/adoption/packagemanager.py",
+      "count": 5
+    },
+    {
+      "fingerprint": "029c883fbd1694c518ee4dd18b33c733add35a145c027be04871f9e77c3179d1",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/src/sarj_standards/libs/adoption/retired_suppressions.py",
+      "count": 6
+    },
+    {
+      "fingerprint": "49d55bcc7a483b98266ab447dfce2fe6b45ec8e1da5af87cd45a7d2fca9aa642",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/src/sarj_standards/libs/adoption/retired_suppressions.py",
+      "count": 3
+    },
+    {
+      "fingerprint": "4aced6a044da7f7749c18b79527739f2cc9d7be94ec4a63a02c5c9d2d8f8cf3a",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/src/sarj_standards/libs/adoption/scaffold.py",
+      "count": 26
+    },
+    {
+      "fingerprint": "da37dd80b67c409db54abc3c692c5445154461fb6091c55cfd6edea63e796ba0",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/src/sarj_standards/libs/adoption/scaffold.py",
+      "count": 8
+    },
+    {
+      "fingerprint": "d426249e60b6bdf3b172d457cc8700f1b99b7703e7ba9a5325be65a9d6d05f87",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/src/sarj_standards/libs/adoption/upgrade.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "6223206e001ea87ae57fb67d79335dac5694c195b9dd8c095c88260296eeafc0",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/src/sarj_standards/libs/adoption/uvtool.py",
+      "count": 2
+    },
+    {
+      "fingerprint": "b793c4d932fb242901275485ea18d6afb1137acb1b3f0f18ec9a59ed1aec45cc",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/src/sarj_standards/libs/adoption/uvtool.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "176211aaf6709f9a4253fff67c430c96992dd4a40e03d083986ccf033a1eec48",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/src/sarj_standards/libs/catalogs/slack_automations.py",
+      "count": 2
+    },
+    {
+      "fingerprint": "6e533a781f0a6a7f74919ec772485760c7cc21d8f36fe9651b4f9269e73528e7",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/src/sarj_standards/libs/catalogs/slack_automations.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "c9fef62a7820d7e9f757d1e7ffc9419e5f169163979f95f62a1ee40e88538697",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/src/sarj_standards/libs/corpus/manifest.py",
+      "count": 3
+    },
+    {
+      "fingerprint": "f5402aed365add1f73160fa6f35c7cb5f6dc65e4112823b8800ff2ea2239966f",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/src/sarj_standards/libs/corpus/manifest.py",
+      "count": 7
+    },
+    {
+      "fingerprint": "03f1c4f993ba35e210c201d7e1cfc555c6b5c1436b947a12395c57b57c856a0e",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/src/sarj_standards/libs/diagnostics/baseline.py",
+      "count": 9
+    },
+    {
+      "fingerprint": "cec506585cf86ecd23c4c9c3961b95ab5f32a42ef223969ae96e68bde066cded",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/src/sarj_standards/libs/diagnostics/baseline.py",
+      "count": 10
+    },
+    {
+      "fingerprint": "d9c444231872337e2b077cfd0e10cc32200f7d59b46d00e192b9d129daa05982",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/src/sarj_standards/libs/diagnostics/models.py",
+      "count": 7
+    },
+    {
+      "fingerprint": "da504981110f5db3c0b4cf22fe17a17ce76babb0bbae1764833f061a6b06e596",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/src/sarj_standards/libs/diagnostics/models.py",
+      "count": 14
+    },
+    {
+      "fingerprint": "83fc66c6b820b48727e08ac70ebf3ad1b4a3fd493677adf833e2558a085897e1",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/src/sarj_standards/libs/diagnostics/serialize.py",
+      "count": 8
+    },
+    {
+      "fingerprint": "9ea5174498fd96c9216a7125a8d03f28f462ed00ace70f0a33e39c2a17b016aa",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/src/sarj_standards/libs/diagnostics/serialize.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "8eecc9c25c73c908d700a05b4ad2008bc2c7bd025aa61ed7d4ab4d7e10e0f87d",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/src/sarj_standards/libs/linting/analysis.py",
+      "count": 3
+    },
+    {
+      "fingerprint": "2e23cb52661affe559ce6f533b9ec80202b8b0e1b529cf2c9d6132c9372a3148",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/src/sarj_standards/libs/linting/external.py",
+      "count": 14
+    },
+    {
+      "fingerprint": "c13fdcca3a64f4d380cdf089408179c91c6cc1683f5a4e90249a2cbfd12ab34c",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/src/sarj_standards/libs/linting/external.py",
+      "count": 11
+    },
+    {
+      "fingerprint": "4549d2d08f899737fc0438e722d2d9c80ea6809f704aec7c3125bc4ac02cfe48",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/src/sarj_standards/libs/linting/library_policy.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "8ec6450c7f7cf39b3e86e9d39abb8f0f84b0d7cf42755057dffad6a94f8112c0",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/src/sarj_standards/libs/linting/library_policy.py",
+      "count": 6
+    },
+    {
+      "fingerprint": "e2b02133ac09bf18c08958a25185b0ecbe516d1844680a0b33a13c3e3e928b4a",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/src/sarj_standards/libs/linting/repo_standards.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "3111f5b07ec60b9d80898ec594f068613a0e03ec66e5f2da407f73b66da3d48b",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/src/sarj_standards/libs/linting/textlint.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "c610bd01f198766855877b72fc0b96354f36b7b16ab6e5294c46dccaed2e8a76",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/src/sarj_standards/libs/linting/textlint.py",
+      "count": 8
+    },
+    {
+      "fingerprint": "1b7abfca981cdff7116de162521d6e02ba68f541a9a4a2ca8ace2a76e164d0de",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/src/sarj_standards/libs/release/_values.py",
+      "count": 2
+    },
+    {
+      "fingerprint": "9e5de71ef00aae9589055d40fd1a617f9fb77f690b24c0539fbc13ee70c675f1",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/src/sarj_standards/libs/release/_values.py",
+      "count": 5
+    },
+    {
+      "fingerprint": "3952b797a49d894a8a42a2c0c5c32db5cd436f6220892bc05aea9b0d9f02bc9f",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/src/sarj_standards/libs/release/artifacts.py",
+      "count": 4
+    },
+    {
+      "fingerprint": "033bd57ebe0967113e58166eed9a473da6e20805dd87285f7e7a64d4144d4377",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/src/sarj_standards/libs/release/registry.py",
+      "count": 3
+    },
+    {
+      "fingerprint": "c224125f6f1f833cfb5abc4c24401d01e776a9554fd5eb0376a1b6e4c480bf43",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/src/sarj_standards/libs/release/release_age.py",
+      "count": 5
+    },
+    {
+      "fingerprint": "efd2aabad4003d7655d51f9323c20328d99b8da02461859429f9a6c964aedacd",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/src/sarj_standards/libs/release/release_age.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "6d772870d1323c40a36cd11401bd62b7ae35ff7971d5cf0223c84662c5117aa7",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/src/sarj_standards/libs/release/rollout.py",
+      "count": 23
+    },
+    {
+      "fingerprint": "e757282695a3a8654d1b7c932eb027f9e6de3d54489dc2d830bd0a7578a37a15",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/src/sarj_standards/libs/release/rollout.py",
+      "count": 6
+    },
+    {
+      "fingerprint": "44a8e4c7b21fd613b55a1abdff657908a8a2af2cf30bddf0416c59e446eb1cc7",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/src/sarj_standards/libs/release/tags.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "47d22b2aacd95fd0fe9de01aa4231a02fb09b9d97804af3edc84acd778e97891",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/src/sarj_standards/libs/release/tags.py",
+      "count": 4
+    },
+    {
+      "fingerprint": "1bfd6dc922946c24b1506ef016a8104d73605275b6cba964b1cfdcd3d0ec22dd",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/src/sarj_standards/libs/release/typescript.py",
+      "count": 4
+    },
+    {
+      "fingerprint": "c524055f4dd26336d631feadc23fe1a7fbcb80d7db31dfdba96da4b4f722df33",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/src/sarj_standards/libs/release/typescript.py",
+      "count": 4
+    },
+    {
+      "fingerprint": "7a378cb2888830617775c0d6819a662c46d1b80327fe0a063526252d98a7867a",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/src/sarj_standards/libs/repository/cli_reference_artifact.py",
+      "count": 12
+    },
+    {
+      "fingerprint": "df5e8b046d620f218300ccefea85f4cfed1c37d95dccbc9fba49384c1663c89c",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/src/sarj_standards/libs/repository/cli_reference_artifact.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "b1c41917f50d69ffe654f58eaadb32db2ac16bba26c20c90d4d330cc6a658e80",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/src/sarj_standards/libs/repository/config_generation.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "74b0178ec2807d18f28259e9be95de80f18f98defe6b82dce4eb035ef38f0607",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/src/sarj_standards/libs/repository/docs.py",
+      "count": 4
+    },
+    {
+      "fingerprint": "f4fe40a9964c652c8421ec29d8122c4fdb48f12e802048d3a4eb9f8971d6536e",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/src/sarj_standards/libs/repository/docs.py",
+      "count": 7
+    },
+    {
+      "fingerprint": "585c17ad06ced6f94e8790146826c7ba9d0be935ee078caf544c9000bc8a19ed",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/src/sarj_standards/libs/repository/ledger.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "f05592dfc99f6da7fd0bed3403344d4e7f78f98b08d2526be85d5c77391dc338",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/src/sarj_standards/libs/repository/ledger.py",
+      "count": 2
+    },
+    {
+      "fingerprint": "35382ee8712f4e6bfde19c225b4b926f18fcdfc6310a7bc5e0e34723d018df14",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/src/sarj_standards/libs/repository/repository.py",
+      "count": 10
+    },
+    {
+      "fingerprint": "c4092e44741cbc43fde751e1d50024992ab45ec423b2648887047b685f157cd7",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/src/sarj_standards/libs/repository/repository.py",
+      "count": 13
+    },
+    {
+      "fingerprint": "31ecbdaa75b1363b1bddaf63685465cf04dfbbeb48f4105efc189b0bb2d6b512",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/src/sarj_standards/libs/repository/ruff_freshness.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "ca6673cfd237fcd830f4120f5a1f877cf7e9bf8b4e5b7cf97564daf046a9ca68",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/src/sarj_standards/libs/repository/ruff_freshness.py",
+      "count": 2
+    },
+    {
+      "fingerprint": "97fd6f953145158b6b43932d6d649a5c5ae53f39ea18eedba4a45dab283df440",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/src/sarj_standards/libs/repository/rule_catalog_artifact.py",
+      "count": 4
+    },
+    {
+      "fingerprint": "c4736567209617aa4a5c6e9b110bcfbf75785ca9bef7b437bbc2e7d31b343985",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/src/sarj_standards/libs/repository/rule_catalog_artifact.py",
+      "count": 10
+    },
+    {
+      "fingerprint": "116a562c616d341bf815d49b578b2a03b3247ba5bcc4d3d3c76e4a0729d504b9",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/src/sarj_standards/libs/repository/rule_changes.py",
+      "count": 4
+    },
+    {
+      "fingerprint": "a7419accabec2531ecbb1025284e65ea5b036aa82d4cc2d8bcf0f7c0500fc2db",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/src/sarj_standards/libs/repository/rule_changes.py",
+      "count": 11
+    },
+    {
+      "fingerprint": "9dc78cc06d67cec4d762cb8e1b2d9bf7da5d71ace79ce010d7529a876c8cd083",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/src/sarj_standards/libs/repository/rule_inventory_artifact.py",
+      "count": 6
+    },
+    {
+      "fingerprint": "a017aca5458b0e735cca643faa3027ff1c437b4e27b2c63a07fda2da4350f120",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/src/sarj_standards/libs/repository/rule_inventory_artifact.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "3f5b33b82ccffbdf7f3dd7518542361907d62c60f5435155800aff74a46494bc",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/src/sarj_standards/libs/repository/rule_maintenance.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "6f08ea62c3dd59db7d740775621ef2b4f6338a5908ab7ea9a911208a58c2b2e1",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/src/sarj_standards/libs/repository/rule_maintenance.py",
+      "count": 7
+    },
+    {
+      "fingerprint": "76bfd7a9b6653747d3ab21438fbab94c54c19449a859b4fb2a414af0f6569e34",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/src/sarj_standards/libs/repository/rule_maintenance.py",
+      "count": 8
+    },
+    {
+      "fingerprint": "03c3e39817745e25d942aa3c82af9257a1ec9f1af63c02dd45b555d42ad9f2e3",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/src/sarj_standards/libs/rules/catalog.py",
+      "count": 2
+    },
+    {
+      "fingerprint": "89f0cd551dc81d1b98e0a11192e178782610d9cdcc9fe0e2f9a3e5975aaabffb",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/src/sarj_standards/libs/rules/contracts.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "1a887b8ac1153d0de8fa9144101179feda8da2957829188a74c7b9b06f361e3c",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/src/sarj_standards/libs/rules/warning_levels.py",
+      "count": 5
+    },
+    {
+      "fingerprint": "ec14baeeeb0ca15521b4154ef352416ebcc83a236bc792f9aa1cdec1367e4c96",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/src/sarj_standards/libs/rules/warning_levels.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "d72f3f63c7afe505e0ad593588a8252f26c5157c14bead58abc3f15e287885cb",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/tests/release/test_causality.py",
+      "count": 2
+    },
+    {
+      "fingerprint": "7b4ef68e94deac9963bd235a7c5531aaa79556161a84b15db72a9340f573751d",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/tests/release/test_changes.py",
+      "count": 2
+    },
+    {
+      "fingerprint": "3fae4834311ce1169101edf74d1a747176ecaffcef2293912368265d2b9cedb3",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/tests/release/test_registry.py",
+      "count": 3
+    },
+    {
+      "fingerprint": "ab7c278ebdb4e0caedff90d86c4b46172356fc852369467fbfde6609ab1210e7",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/tests/release/test_registry_publication.py",
+      "count": 12
+    },
+    {
+      "fingerprint": "94a1225d211a62dfc4a5dd03f560643307771f78ae93b9ae017f27ae3f1f8606",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/tests/release/test_release_age.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "607af3d748100d46ad4f6f41442ab94d6a8bcbaf079be453938aa354f30e28d5",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/tests/release/test_rollout_script.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "b313bbf04b284e4cddacf382b8777b71fdf1346afb17638d9599ce9c72754636",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/tests/release/test_rollout_script.py",
+      "count": 7
+    },
+    {
+      "fingerprint": "2edca95bc6726f2f93597f98181c1d4c6bf90fdf6b05fe16525c940938e49f49",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/tests/release/test_rollout_workflow.py",
+      "count": 6
+    },
+    {
+      "fingerprint": "c001419621ef66318fec099ebc2e89728312ed5246a87b478d26a1d8ec23f562",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/tests/release/test_rollout_workflow.py",
+      "count": 2
+    },
+    {
+      "fingerprint": "5a896143f52b4f62e1ab6b61db13cdbe44ab10af45b1889630642af9f3b45741",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/tests/test_adoption.py",
+      "count": 18
+    },
+    {
+      "fingerprint": "6f06a435a305f134e148533c627067127081560a482515c2ff82218f3be8f876",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/tests/test_adoption.py",
+      "count": 2
+    },
+    {
+      "fingerprint": "3a9472e0becbf66a8793c203141c0156a5e9f8698c15cb0f0ccde930618e31fa",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/tests/test_api.py",
+      "count": 20
+    },
+    {
+      "fingerprint": "c2f33ec332e1ce4fce4072f32d5913b219331d0aaa622f980ce4be9c4ff35322",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/tests/test_api.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "5914419f9bddc5004a5b7cbb6ac608a7c3cd10e8ca948143c9bfb68fb50aa48a",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/tests/test_ci_scope.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "88bf42dd8dc342538ee1e8753c422140dd1e89da9c0d7a0d6f20c52555b38aca",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/tests/test_cli_reference_artifact.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "8dd0b87f2121cc6359114e11a52934f3dbd593eb0bf536e857fc5925b84d20cf",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/tests/test_cli_reference_artifact.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "97acf3c3432a72552db9e0b4fd1eb9dd281f832df3feadb7ad7dfb0b6e1b5b68",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/tests/test_cli_rule_selectors.py",
+      "count": 4
+    },
+    {
+      "fingerprint": "bcd128a3c2c14c44600f6544e62b530227b58a6bbb01bd92d6de54b659c8ea88",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/tests/test_cli_rule_selectors.py",
+      "count": 4
+    },
+    {
+      "fingerprint": "3502766c5dd9d18793dfe7cda4164be8502e1fab2921579f39ce8e4bde9058f8",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/tests/test_code_allocation.py",
+      "count": 6
+    },
+    {
+      "fingerprint": "0dce4202382f046566625b392f9bdd12dc4b5c4e2cf4c3af4e470d0ad99c96d1",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/tests/test_consumer_cli.py",
+      "count": 15
+    },
+    {
+      "fingerprint": "6f4922a40f7b9168b90cb601e429eb76ac038b6c66d89e2c7bf7398da23652cf",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/tests/test_corpus_foundations.py",
+      "count": 4
+    },
+    {
+      "fingerprint": "700c0c8338f0ad9f9f5dfe97c342615a3f507a4ee6235a65921a8a156d2666a9",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/tests/test_diagnostic_baseline.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "d3d65acd503f1f1f814d59bf2755a30f8886a9f6d601df8cf55e291bbfb61878",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/tests/test_diagnostic_baseline.py",
+      "count": 30
+    },
+    {
+      "fingerprint": "8f8feea552c00d3e407d5b763b1ea839cacb67a5f631c71b64326dd62597e947",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/tests/test_diagnostics.py",
+      "count": 14
+    },
+    {
+      "fingerprint": "1113f5a02390dfa9b1fd8347d5f5faae1820539faca273671c4addb39f90df9e",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/tests/test_docs.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "249a833576a28653252d86665049e8fe269bc11620481f16101009cfa19e5264",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/tests/test_docs.py",
+      "count": 4
+    },
+    {
+      "fingerprint": "7c5d49074b69f462418e1807379ececc9f3f63bbd0704f5c62f30176e8ee6097",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/tests/test_doctor.py",
+      "count": 5
+    },
+    {
+      "fingerprint": "1fa556684d126740414f82b184a47a3af1dec0eb253ca6b7db29aab46db1656c",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/tests/test_engine_invariants.py",
+      "count": 5
+    },
+    {
+      "fingerprint": "9ede5d7a4f150217cb7f22ed1c8246989182979ef3ef542bc20061afa8885a0a",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/tests/test_engine_invariants.py",
+      "count": 2
+    },
+    {
+      "fingerprint": "5f69b2c394622a0e826b3c214af9a7bdbbb4bb4b53ee90d8c8a54ce1afc29dc7",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/tests/test_exact_update.py",
+      "count": 8
+    },
+    {
+      "fingerprint": "bc875b774198675cac709d32a106102306e28ba92970a0714e1e46e4f18b6ecd",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/tests/test_exact_update.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "402c5e5315ad6e807e286c9349c8eb46cc99481cec760bca55eb8ea39c5dcd61",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/tests/test_external_diagnostics.py",
+      "count": 2
+    },
+    {
+      "fingerprint": "77a6a66acb60bdbd601adf9aeeb8268c044adeb5b76e7d76fdb0ec80c3e81d87",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/tests/test_external_diagnostics.py",
+      "count": 7
+    },
+    {
+      "fingerprint": "7899409227b1154a3323ff4c864e9a8b7e64434daf6d513ffa4a8a4e3c5a8ed7",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/tests/test_isolated_corpus_runner.py",
+      "count": 4
+    },
+    {
+      "fingerprint": "c7e95623e7f0c8ce077a90b5d363e5e750519a00ec191bc48dbfa155f7484312",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/tests/test_mobile_config_assets.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "cf5785154cad845611b786a1ad6f96639c26e9effda102a6676037ef40399bc3",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/tests/test_mobile_config_assets.py",
+      "count": 4
+    },
+    {
+      "fingerprint": "3437439438475269541663e518a5dd4ccba368489952c87df88046183547b69a",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/tests/test_mobile_tools.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "0b36fca5aaaaa947ac2c01accf1401c090ead0a8c569f56564e76b65ab2614b6",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/tests/test_package_managers.py",
+      "count": 3
+    },
+    {
+      "fingerprint": "13a0e5b1b9d7427ae4cac7197c21fcec78aac3663f872912dd83247b3be76404",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/tests/test_package_managers.py",
+      "count": 7
+    },
+    {
+      "fingerprint": "1b0f3a3c5889fe1614df4e145930cbc8b5a6b81cb49202a7e9790e941f4f1010",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/tests/test_repository.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "d04837fd8f2a7687381e8e8c1223085e2333f0434dad2f3426471e8fe22fd009",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/tests/test_repository.py",
+      "count": 8
+    },
+    {
+      "fingerprint": "7246843e6f0dfd339ce313183338cae3a32bc562b42b54ecd954bbf64d214676",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/tests/test_retired_suppressions.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "57bd77b0c66681bf69db1b7513f2e2012f580837ad65a9e87d507835d8e571e2",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/tests/test_rule_calibration_campaign.py",
+      "count": 4
+    },
+    {
+      "fingerprint": "9dde8577aa7a592ab709c79f7d1823aa64f46a3ffb8995ce82d1a60339af8a48",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/tests/test_rule_calibration_campaign.py",
+      "count": 2
+    },
+    {
+      "fingerprint": "0ef12c68c1969aa24d1955bdda0ff36ca312218a9adbe3be29ca106ce4bf4fe1",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/tests/test_rule_catalog_artifact.py",
+      "count": 3
+    },
+    {
+      "fingerprint": "4eb1873958d364a310f330d736c8e2e748cf7a4e265d3cf1d68d7b6b1a16f02c",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/tests/test_rule_catalog_artifact.py",
+      "count": 3
+    },
+    {
+      "fingerprint": "9faf85915763d796580ed7b0b22d77dbd6b10062944acf6c5c5c04c5b0c8dd49",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/tests/test_rule_changes.py",
+      "count": 5
+    },
+    {
+      "fingerprint": "5fb7162a0a11e05096750dd47c91b31a02cdf3742590fed445f4e53d148e651d",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/tests/test_rule_evaluate.py",
+      "count": 4
+    },
+    {
+      "fingerprint": "77a182b5dbcd39c30c8e29870c2a3cc197b681319ce8e1529463d4de1b3121e8",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/tests/test_rule_evaluate.py",
+      "count": 8
+    },
+    {
+      "fingerprint": "505fa70c6bb3edac8df75735933691e4b83f548ada9604b29845452d0f60ceca",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/tests/test_rule_foundations.py",
+      "count": 4
+    },
+    {
+      "fingerprint": "db02ee0caefef139f2dc319ee2e406e6fe13e2809fca5e306fc42ac370536476",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/tests/test_rule_foundations.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "d2dfced0c29936dd7dbd2cc4bbe61b99e0ad7791e8ced66b5a51fb2e1f49c782",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/tests/test_rule_inventory_artifact.py",
+      "count": 3
+    },
+    {
+      "fingerprint": "79081289e28219f099ab0e59f7b019e7d821cb822282657a1f82550e2415be10",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/tests/test_rule_ledger.py",
+      "count": 2
+    },
+    {
+      "fingerprint": "56e900be1ec4cfb0cc06e39baa409dab73c674ea4b5369943f52964e42697723",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/tests/test_rule_lifecycle.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "afd49336f193f536488d38aafccba035eefb880dd4f31529137040c96c911340",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/tests/test_rule_lifecycle.py",
+      "count": 3
+    },
+    {
+      "fingerprint": "2c36492f400df40ec38a7a406fd4ea4aba6598b02063f52eb84913b77cefb1e2",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/tests/test_rule_warning_levels.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "307312718bb9c65a376fc1fe23da82600a6b8b11578e07006365c3e2537253da",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/tests/test_runner.py",
+      "count": 5
+    },
+    {
+      "fingerprint": "a89ef0f30a478b9a3039d1fcd5d0a6da7af697ccdfd678daa3c9b514fe2294a9",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/tests/test_slack_automations_catalog.py",
+      "count": 9
+    },
+    {
+      "fingerprint": "d0b2e6201bf0dd4d326d403c58b91e12033ad63d017f4d255950da670826b05b",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/tests/test_slack_automations_catalog.py",
+      "count": 6
+    },
+    {
+      "fingerprint": "b5d7246196588b0009942b701778fe730d2006d000791e7a80dc69d7889ca215",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/tests/test_smoke.py",
+      "count": 2
+    },
+    {
+      "fingerprint": "a479da7e7dd1fb804d1a1adca71b59bb7a155f01955890ea597532ba4bde39e8",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/tests/test_test_concision_config.py",
+      "count": 3
+    },
+    {
+      "fingerprint": "9c3de9804970f34dbe732a092fee033f51e9d0202ab6bd622a6ee51b547c079a",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/tests/test_textlint.py",
+      "count": 2
+    },
+    {
+      "fingerprint": "24693ba59dd5616964f9e2252955a42cb25128e12472a775f58b20bda06f08d0",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/tests/test_third_party_catalog_artifact.py",
+      "count": 3
+    },
+    {
+      "fingerprint": "c46c91a2db9904635fdd361b6767ffcc1f621de619ce0dffb92c2dd6cd7f4749",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/tests/test_third_party_catalog_artifact.py",
+      "count": 5
+    },
+    {
+      "fingerprint": "41718e9bd908fe717117827a0c59d7f22be1f41cca95c02f5010e3a0fee3a8aa",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/tests/test_upgrade.py",
+      "count": 2
+    },
+    {
+      "fingerprint": "db6fa65ec9f6fcb658f2b7e6878e703a1d9428dc8d78c67ffac7e0c9885899b7",
+      "source": "sarj-python-lint",
+      "ruleId": "no-vague-annotations",
+      "path": "packages/standards/tests/test_upgrade.py",
+      "count": 8
+    },
+    {
+      "fingerprint": "092cb508bc88f5059b84379add9ecb13c8ac13b31211100014859399ed6f20d8",
+      "source": "sarj-python-lint",
+      "ruleId": "prefer-nominal-id-types",
+      "path": "packages/standards/src/sarj_standards/libs/catalogs/slack_automations.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "62e1ae503f508c2c70e28ec49902e3e9d58f006a5c61883a1f626de3ba3a21eb",
+      "source": "sarj-python-lint",
+      "ruleId": "prefer-nominal-id-types",
+      "path": "packages/standards/src/sarj_standards/libs/repository/third_party_catalog_artifact.py",
+      "count": 1
+    }
+  ]
+}

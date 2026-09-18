@@ -44,36 +44,33 @@ class StageResult:
 
 
 def stage_warning(root: Path, selector: RuleSelector, *, check: bool = False) -> StageResult:
+    return _set_warning(root, selector, warning=True, check=check)
+
+
+def promote_error(root: Path, selector: RuleSelector, *, check: bool = False) -> StageResult:
+    return _set_warning(root, selector, warning=False, check=check)
+
+
+def _set_warning(root: Path, selector: RuleSelector, *, warning: bool, check: bool) -> StageResult:
     repository = root.resolve()
-    inventory = rule_inventory_artifact.build(repository)
-    known = {
-        RuleSelector(_ENGINE_BY_FAMILY[entry["family"]], RuleId(entry["id"]))
-        for entry in inventory["rules"]
-        if entry["family"] in _ENGINE_BY_FAMILY
-    }
+    known = _known_selectors(repository)
     if selector not in known:
         raise ValueError(_unknown_selector_message(selector, known))
 
-    # Building before mutation proves source-owned metadata/examples are complete.
-    _ = rule_catalog_artifact.build(repository)
     warning_path = repository / _WARNING_PATH
     selected = set(warning_levels.load(warning_path))
-    already_staged = selector in selected
-    selected.add(selector)
+    already_staged = _update_warning_selection(selected, selector, warning=warning)
     rendered = warning_levels.render(selected)
     warning_current = warning_path.read_text(encoding="utf-8") == rendered
     derived_current = _derived_current(repository) if already_staged and warning_current else False
     if already_staged and warning_current and derived_current:
-        return StageResult(status=0, changed=False, message=f"ok: {selector} is already warning-stage")
+        level = "warning-stage" if warning else "error-level"
+        return StageResult(status=0, changed=False, message=f"ok: {selector} is already {level}")
     if check:
         return StageResult(
             status=1,
             changed=False,
-            message=(
-                f"drift: synchronize derived artifacts for warning-stage {selector}"
-                if already_staged
-                else f"drift: stage {selector} as warning before publication"
-            ),
+            message=_warning_drift_message(selector, warning=warning, already_staged=already_staged),
         )
 
     managed = (_WARNING_PATH, _INVENTORY_PATH, _CATALOG_PATH, _LEDGER_PATH, *_ESLINT_MANAGED_PATHS)
@@ -93,12 +90,55 @@ def stage_warning(root: Path, selector: RuleSelector, *, check: bool = False) ->
     return StageResult(
         status=0,
         changed=True,
-        message=(
-            f"synchronized: warning lifecycle and derived artifacts for {selector}"
-            if already_staged
-            else f"staged: {selector} will ship at warning level"
-        ),
+        message=_warning_success_message(selector, warning=warning, already_staged=already_staged),
     )
+
+
+def _update_warning_selection(selected: set[RuleSelector], selector: RuleSelector, *, warning: bool) -> bool:
+    if not warning:
+        selected.difference_update(_alias_selectors(selector))
+    already_staged = (selector in selected) is warning
+    if warning:
+        selected.add(selector)
+    else:
+        selected.discard(selector)
+    return already_staged
+
+
+def _warning_drift_message(selector: RuleSelector, *, warning: bool, already_staged: bool) -> str:
+    if already_staged:
+        return f"drift: synchronize derived artifacts for {selector}"
+    if warning:
+        return f"drift: stage {selector} as warning before publication"
+    return f"drift: promote {selector} to error"
+
+
+def _warning_success_message(selector: RuleSelector, *, warning: bool, already_staged: bool) -> str:
+    if already_staged:
+        return f"synchronized: warning lifecycle and derived artifacts for {selector}"
+    if warning:
+        return f"staged: {selector} will ship at warning level"
+    return f"promoted: {selector} will ship at error level"
+
+
+def _known_selectors(repository: Path) -> set[RuleSelector]:
+    inventory = rule_inventory_artifact.build(repository)
+    return {
+        RuleSelector(_ENGINE_BY_FAMILY[entry["family"]], RuleId(entry["id"]))
+        for entry in inventory["rules"]
+        if entry["family"] in _ENGINE_BY_FAMILY
+    }
+
+
+def _alias_selectors(selector: RuleSelector) -> set[RuleSelector]:
+    if selector.engine is not RuleEngine.PYTHON:
+        return set()
+    from sarj_python_lint.rules import REGISTRY  # ruff: ignore[import-outside-top-level]
+
+    rule = REGISTRY.get(str(selector.rule_id))
+    documentation = None if rule is None else rule.documentation
+    aliases = () if documentation is None else documentation.aliases
+    return {RuleSelector(selector.engine, RuleId(alias)) for alias in aliases}
 
 
 def _unknown_selector_message(selector: RuleSelector, known: set[RuleSelector]) -> str:

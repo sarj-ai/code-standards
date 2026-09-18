@@ -1,0 +1,404 @@
+{
+  "packages/bootstrap/src/sarj_standards_bootstrap/cli.py": {
+    "SARJ447": 4
+  },
+  "packages/bootstrap/tests/test_bootstrap.py": {
+    "SARJ447": 4
+  },
+  "packages/iac/src/sarj_iac_lint/__main__.py": {
+    "SARJ447": 1
+  },
+  "packages/iac/src/sarj_iac_lint/_hcl.py": {
+    "SARJ026": 2
+  },
+  "packages/iac/src/sarj_iac_lint/rules/no_comment_cruft.py": {
+    "SARJ026": 1
+  },
+  "packages/iac/src/sarj_iac_lint/rules/no_dead_environment_input.py": {
+    "SARJ026": 1,
+    "SARJ447": 3
+  },
+  "packages/python/src/sarj_python_lint/__main__.py": {
+    "SARJ447": 1
+  },
+  "packages/python/src/sarj_python_lint/_python_target.py": {
+    "SARJ447": 4
+  },
+  "packages/python/src/sarj_python_lint/_ratchet_cli.py": {
+    "SARJ447": 5
+  },
+  "packages/python/src/sarj_python_lint/ratchet.py": {
+    "SARJ447": 11
+  },
+  "packages/python/src/sarj_python_lint/rules/_ast_index.py": {
+    "SARJ447": 3
+  },
+  "packages/python/src/sarj_python_lint/rules/fastapi_explicit_openapi_contract.py": {
+    "SARJ026": 1
+  },
+  "packages/python/src/sarj_python_lint/rules/invalid_pydantic_field_default.py": {
+    "SARJ447": 8
+  },
+  "packages/python/src/sarj_python_lint/rules/no_analytical_aggregation_in_postgres_store.py": {
+    "SARJ447": 2
+  },
+  "packages/python/src/sarj_python_lint/rules/no_deleted_only_override_parameter.py": {
+    "SARJ026": 1
+  },
+  "packages/python/src/sarj_python_lint/rules/no_positional_psycopg_row_escape.py": {
+    "SARJ026": 1
+  },
+  "packages/python/src/sarj_python_lint/rules/no_random_uuid_in_sql.py": {
+    "SARJ026": 1
+  },
+  "packages/python/src/sarj_python_lint/rules/no_repeated_test_body.py": {
+    "SARJ447": 11
+  },
+  "packages/python/src/sarj_python_lint/rules/prefer_injected_dependency_over_monkeypatch.py": {
+    "SARJ026": 1
+  },
+  "packages/python/src/sarj_python_lint/rules/prefer_match_value_dispatch.py": {
+    "SARJ026": 1
+  },
+  "packages/python/src/sarj_python_lint/rules/prefer_monkeypatch_for_process_state_in_test.py": {
+    "SARJ026": 1
+  },
+  "packages/python/src/sarj_python_lint/rules/prefer_nominal_id_types.py": {
+    "SARJ026": 1
+  },
+  "packages/python/src/sarj_python_lint/rules/prefer_self_type_annotation.py": {
+    "SARJ026": 1
+  },
+  "packages/python/src/sarj_python_lint/rules/prefer_str_enum.py": {
+    "SARJ026": 1
+  },
+  "packages/python/src/sarj_python_lint/rules/repeated_static_call_cases.py": {
+    "SARJ447": 3
+  },
+  "packages/python/src/sarj_python_lint/rules/require_port_for_service.py": {
+    "SARJ026": 2
+  },
+  "packages/python/src/sarj_python_lint/rules/require_pydantic_for_external_json.py": {
+    "SARJ447": 4
+  },
+  "packages/python/src/sarj_python_lint/rules/require_pydantic_ordinal_lower_bound.py": {
+    "SARJ026": 4,
+    "SARJ447": 5
+  },
+  "packages/python/src/sarj_python_lint/rules/store_get_delegates_to_bulk_read.py": {
+    "SARJ026": 1
+  },
+  "packages/python/src/sarj_python_lint/rules/timestamp_order_requires_tiebreaker.py": {
+    "SARJ026": 1
+  },
+  "packages/python/src/sarj_python_lint/rules/trailing_value_narration.py": {
+    "SARJ447": 1
+  },
+  "packages/python/tests/conftest.py": {
+    "SARJ447": 2
+  },
+  "packages/python/tests/illustrative_examples.py": {
+    "SARJ447": 1
+  },
+  "packages/python/tests/rules/test_prefer_match_value_dispatch.py": {
+    "SARJ447": 4
+  },
+  "packages/python/tests/rules/test_prefer_module_level_constant.py": {
+    "SARJ447": 1
+  },
+  "packages/python/tests/rules/test_prefer_or_pattern.py": {
+    "SARJ447": 2
+  },
+  "packages/python/tests/rules/test_prefer_self_documenting_constant.py": {
+    "SARJ447": 1
+  },
+  "packages/python/tests/rules/test_prefer_str_enum.py": {
+    "SARJ447": 1
+  },
+  "packages/python/tests/test_ratchet.py": {
+    "SARJ447": 2
+  },
+  "packages/python/tests/test_rule_meta.py": {
+    "SARJ447": 3
+  },
+  "packages/sql/src/sarj_sql_lint/rule_base.py": {
+    "SARJ026": 1
+  },
+  "packages/sql/src/sarj_sql_lint/rules/_index_analysis.py": {
+    "SARJ026": 1
+  },
+  "packages/sql/src/sarj_sql_lint/rules/no_comment_cruft.py": {
+    "SARJ026": 2
+  },
+  "packages/sql/src/sarj_sql_lint/rules/no_duplicate_index.py": {
+    "SARJ026": 1
+  },
+  "packages/standards/src/sarj_standards/api.py": {
+    "SARJ447": 4
+  },
+  "packages/standards/src/sarj_standards/cli/main.py": {
+    "SARJ026": 1,
+    "SARJ447": 18
+  },
+  "packages/standards/src/sarj_standards/libs/adoption/doctor.py": {
+    "SARJ447": 12
+  },
+  "packages/standards/src/sarj_standards/libs/adoption/hooks.py": {
+    "SARJ447": 26
+  },
+  "packages/standards/src/sarj_standards/libs/adoption/lifecycle.py": {
+    "SARJ447": 1
+  },
+  "packages/standards/src/sarj_standards/libs/adoption/manifest.py": {
+    "SARJ447": 27
+  },
+  "packages/standards/src/sarj_standards/libs/adoption/packagemanager.py": {
+    "SARJ447": 8
+  },
+  "packages/standards/src/sarj_standards/libs/adoption/retired_suppressions.py": {
+    "SARJ447": 9
+  },
+  "packages/standards/src/sarj_standards/libs/adoption/scaffold.py": {
+    "SARJ447": 34
+  },
+  "packages/standards/src/sarj_standards/libs/adoption/upgrade.py": {
+    "SARJ447": 1
+  },
+  "packages/standards/src/sarj_standards/libs/adoption/uvtool.py": {
+    "SARJ447": 3
+  },
+  "packages/standards/src/sarj_standards/libs/catalogs/slack_automations.py": {
+    "SARJ093": 1,
+    "SARJ447": 3
+  },
+  "packages/standards/src/sarj_standards/libs/corpus/manifest.py": {
+    "SARJ447": 10
+  },
+  "packages/standards/src/sarj_standards/libs/diagnostics/baseline.py": {
+    "SARJ447": 19
+  },
+  "packages/standards/src/sarj_standards/libs/diagnostics/models.py": {
+    "SARJ447": 21
+  },
+  "packages/standards/src/sarj_standards/libs/diagnostics/serialize.py": {
+    "SARJ447": 9
+  },
+  "packages/standards/src/sarj_standards/libs/linting/analysis.py": {
+    "SARJ447": 3
+  },
+  "packages/standards/src/sarj_standards/libs/linting/external.py": {
+    "SARJ447": 25
+  },
+  "packages/standards/src/sarj_standards/libs/linting/library_policy.py": {
+    "SARJ447": 7
+  },
+  "packages/standards/src/sarj_standards/libs/linting/repo_standards.py": {
+    "SARJ447": 1
+  },
+  "packages/standards/src/sarj_standards/libs/linting/textlint.py": {
+    "SARJ026": 3,
+    "SARJ447": 9
+  },
+  "packages/standards/src/sarj_standards/libs/release/_values.py": {
+    "SARJ447": 7
+  },
+  "packages/standards/src/sarj_standards/libs/release/artifacts.py": {
+    "SARJ447": 4
+  },
+  "packages/standards/src/sarj_standards/libs/release/registry.py": {
+    "SARJ447": 3
+  },
+  "packages/standards/src/sarj_standards/libs/release/release_age.py": {
+    "SARJ447": 6
+  },
+  "packages/standards/src/sarj_standards/libs/release/rollout.py": {
+    "SARJ447": 29
+  },
+  "packages/standards/src/sarj_standards/libs/release/tags.py": {
+    "SARJ447": 5
+  },
+  "packages/standards/src/sarj_standards/libs/release/typescript.py": {
+    "SARJ447": 8
+  },
+  "packages/standards/src/sarj_standards/libs/repository/cli_reference_artifact.py": {
+    "SARJ447": 13
+  },
+  "packages/standards/src/sarj_standards/libs/repository/comment_corpus.py": {
+    "SARJ026": 5
+  },
+  "packages/standards/src/sarj_standards/libs/repository/config_generation.py": {
+    "SARJ447": 1
+  },
+  "packages/standards/src/sarj_standards/libs/repository/docs.py": {
+    "SARJ447": 11
+  },
+  "packages/standards/src/sarj_standards/libs/repository/ledger.py": {
+    "SARJ447": 3
+  },
+  "packages/standards/src/sarj_standards/libs/repository/repository.py": {
+    "SARJ447": 23
+  },
+  "packages/standards/src/sarj_standards/libs/repository/ruff_freshness.py": {
+    "SARJ447": 3
+  },
+  "packages/standards/src/sarj_standards/libs/repository/rule_catalog_artifact.py": {
+    "SARJ026": 1,
+    "SARJ447": 14
+  },
+  "packages/standards/src/sarj_standards/libs/repository/rule_changes.py": {
+    "SARJ447": 15
+  },
+  "packages/standards/src/sarj_standards/libs/repository/rule_inventory_artifact.py": {
+    "SARJ447": 7
+  },
+  "packages/standards/src/sarj_standards/libs/repository/rule_lifecycle.py": {
+    "SARJ444": 1
+  },
+  "packages/standards/src/sarj_standards/libs/repository/rule_maintenance.py": {
+    "SARJ447": 16
+  },
+  "packages/standards/src/sarj_standards/libs/repository/third_party_catalog_artifact.py": {
+    "SARJ093": 1
+  },
+  "packages/standards/src/sarj_standards/libs/rules/catalog.py": {
+    "SARJ447": 2
+  },
+  "packages/standards/src/sarj_standards/libs/rules/contracts.py": {
+    "SARJ447": 1
+  },
+  "packages/standards/src/sarj_standards/libs/rules/warning_levels.py": {
+    "SARJ447": 6
+  },
+  "packages/standards/tests/release/test_causality.py": {
+    "SARJ447": 2
+  },
+  "packages/standards/tests/release/test_changes.py": {
+    "SARJ447": 2
+  },
+  "packages/standards/tests/release/test_registry.py": {
+    "SARJ447": 3
+  },
+  "packages/standards/tests/release/test_registry_publication.py": {
+    "SARJ447": 12
+  },
+  "packages/standards/tests/release/test_release_age.py": {
+    "SARJ447": 1
+  },
+  "packages/standards/tests/release/test_rollout_script.py": {
+    "SARJ447": 8
+  },
+  "packages/standards/tests/release/test_rollout_workflow.py": {
+    "SARJ447": 8
+  },
+  "packages/standards/tests/test_adoption.py": {
+    "SARJ447": 20
+  },
+  "packages/standards/tests/test_api.py": {
+    "SARJ447": 21
+  },
+  "packages/standards/tests/test_ci_scope.py": {
+    "SARJ447": 1
+  },
+  "packages/standards/tests/test_cli_reference_artifact.py": {
+    "SARJ447": 2
+  },
+  "packages/standards/tests/test_cli_rule_selectors.py": {
+    "SARJ447": 8
+  },
+  "packages/standards/tests/test_code_allocation.py": {
+    "SARJ447": 6
+  },
+  "packages/standards/tests/test_consumer_cli.py": {
+    "SARJ447": 15
+  },
+  "packages/standards/tests/test_corpus_foundations.py": {
+    "SARJ447": 4
+  },
+  "packages/standards/tests/test_diagnostic_baseline.py": {
+    "SARJ447": 31
+  },
+  "packages/standards/tests/test_diagnostics.py": {
+    "SARJ447": 14
+  },
+  "packages/standards/tests/test_docs.py": {
+    "SARJ447": 5
+  },
+  "packages/standards/tests/test_doctor.py": {
+    "SARJ447": 5
+  },
+  "packages/standards/tests/test_engine_invariants.py": {
+    "SARJ447": 7
+  },
+  "packages/standards/tests/test_exact_update.py": {
+    "SARJ447": 9
+  },
+  "packages/standards/tests/test_external_diagnostics.py": {
+    "SARJ447": 9
+  },
+  "packages/standards/tests/test_isolated_corpus_runner.py": {
+    "SARJ447": 4
+  },
+  "packages/standards/tests/test_mobile_config_assets.py": {
+    "SARJ447": 5
+  },
+  "packages/standards/tests/test_mobile_tools.py": {
+    "SARJ447": 1
+  },
+  "packages/standards/tests/test_package_managers.py": {
+    "SARJ447": 10
+  },
+  "packages/standards/tests/test_repository.py": {
+    "SARJ447": 9
+  },
+  "packages/standards/tests/test_retired_suppressions.py": {
+    "SARJ447": 1
+  },
+  "packages/standards/tests/test_rule_calibration_campaign.py": {
+    "SARJ447": 6
+  },
+  "packages/standards/tests/test_rule_catalog_artifact.py": {
+    "SARJ447": 6
+  },
+  "packages/standards/tests/test_rule_changes.py": {
+    "SARJ447": 5
+  },
+  "packages/standards/tests/test_rule_evaluate.py": {
+    "SARJ447": 12
+  },
+  "packages/standards/tests/test_rule_foundations.py": {
+    "SARJ447": 5
+  },
+  "packages/standards/tests/test_rule_inventory_artifact.py": {
+    "SARJ447": 3
+  },
+  "packages/standards/tests/test_rule_ledger.py": {
+    "SARJ447": 2
+  },
+  "packages/standards/tests/test_rule_lifecycle.py": {
+    "SARJ447": 4
+  },
+  "packages/standards/tests/test_rule_warning_levels.py": {
+    "SARJ447": 1
+  },
+  "packages/standards/tests/test_runner.py": {
+    "SARJ447": 5
+  },
+  "packages/standards/tests/test_slack_automations_catalog.py": {
+    "SARJ447": 15
+  },
+  "packages/standards/tests/test_smoke.py": {
+    "SARJ447": 2
+  },
+  "packages/standards/tests/test_test_concision_config.py": {
+    "SARJ447": 3
+  },
+  "packages/standards/tests/test_textlint.py": {
+    "SARJ447": 2
+  },
+  "packages/standards/tests/test_third_party_catalog_artifact.py": {
+    "SARJ447": 8
+  },
+  "packages/standards/tests/test_upgrade.py": {
+    "SARJ447": 10
+  }
+}

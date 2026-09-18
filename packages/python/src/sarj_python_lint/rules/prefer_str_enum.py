@@ -474,7 +474,7 @@ class PreferStrEnum(Rule):
                             message=(
                                 f"`{key}` rejects unlisted string values — define a named `Literal` alias or `StrEnum`"
                             ),
-                            severity=Severity.WARNING,
+                            severity=Severity.ERROR,
                         )
                     )
 
@@ -514,7 +514,7 @@ class PreferStrEnum(Rule):
                         f"`{name}: str` is used as a closed choice set — "
                         "prefer `StrEnum`. (`Literal[...]` is also acceptable.)"
                     ),
-                    severity=Severity.WARNING,
+                    severity=Severity.ERROR,
                 )
             )
         return diags
@@ -1303,12 +1303,15 @@ def _closed_domain_node_ids(
     imports: ImportIndex | None,
 ) -> frozenset[int]:
     closed: set[int] = set()
+    guarded_keys: set[str] = set()
     # A rejecting branch proves a closed domain only when it governs the whole
     # function. Nested branches may be optional, repeated, or have their
     # rejection caught before an open-domain fallback executes.
     for node in function.body:
         if isinstance(node, ast.If):
-            _record_rejecting_membership_guard(node, imports, closed)
+            guarded_key = _record_rejecting_membership_guard(node, imports, closed)
+            if guarded_key is not None:
+                guarded_keys.add(guarded_key)
             _record_exhaustive_if_chain(node, imports, closed)
         elif isinstance(node, ast.Match) and _match_rejects_unlisted_values(
             node, _name_key(node.subject) or "", imports
@@ -1316,6 +1319,14 @@ def _closed_domain_node_ids(
             closed.add(id(node))
         if not _statement_always_falls_through(node):
             break
+    if guarded_keys:
+        closed.update(
+            id(node)
+            for node in ast.walk(function)
+            if isinstance(node, ast.Compare)
+            and (extracted := _extract_compare(node)) is not None
+            and extracted.key in guarded_keys
+        )
     return frozenset(closed)
 
 
@@ -1331,15 +1342,21 @@ def _statement_always_falls_through(statement: ast.stmt) -> bool:
     return True
 
 
-def _record_rejecting_membership_guard(node: ast.If, imports: ImportIndex | None, closed: set[int]) -> None:
-    if (
+def _record_rejecting_membership_guard(node: ast.If, imports: ImportIndex | None, closed: set[int]) -> str | None:
+    if not (
         isinstance(node.test, ast.Compare)
         and len(node.test.ops) == 1
         and isinstance(node.test.ops[0], ast.NotIn)
-        and (extracted := _extract_compare(node.test)) is not None
-        and _statements_definitely_reject(node.body, extracted.key, imports)
+        and len(node.test.comparators) == 1
     ):
-        closed.add(id(node.test))
+        return None
+    key = _name_key(node.test.left)
+    collection = node.test.comparators[0]
+    explicit = _extract_compare(node.test) is not None or (isinstance(collection, ast.Name) and collection.id.isupper())
+    if key is None or not explicit or not _statements_definitely_reject(node.body, key, imports):
+        return None
+    closed.add(id(node.test))
+    return key
 
 
 def _record_exhaustive_if_chain(node: ast.If, imports: ImportIndex | None, closed: set[int]) -> None:

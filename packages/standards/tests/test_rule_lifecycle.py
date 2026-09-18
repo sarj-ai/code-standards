@@ -118,6 +118,18 @@ def test_stage_warning_updates_all_artifacts_once(tmp_path: Path, monkeypatch: p
     assert warning.read_text(encoding="utf-8") == '{"rules":["python:new-rule"],"schemaVersion":1}\n'
 
 
+def test_promote_error_removes_warning_and_updates_artifacts(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    warning, *_ = _files(tmp_path)
+    _mock_builders(monkeypatch)
+    warning.write_text('{"rules":["python:new-rule"],"schemaVersion":1}\n', encoding="utf-8")
+
+    result = rule_lifecycle.promote_error(tmp_path, _SELECTOR)
+
+    assert result.status == 0
+    assert result.changed
+    assert warning.read_text(encoding="utf-8") == '{"rules":[],"schemaVersion":1}\n'
+
+
 def test_stage_warning_converges_valid_noncanonical_lifecycle_json(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

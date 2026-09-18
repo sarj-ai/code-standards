@@ -3711,6 +3711,26 @@ def build_app(handler: Callable[[_Args], int] = _dispatch) -> typer.Typer:
             )
         )
 
+    @group_maintain_rules.command("promote-error", help="promote one warning-staged rule to blocking error severity")
+    def command_maintain_rules_promote_error(
+        ctx: typer.Context,
+        *,
+        selector: Annotated[
+            RuleSelector, typer.Argument(parser=_parse_rule_selector, help="canonical ENGINE:ID selector")
+        ],
+        check: Annotated[bool, typer.Option("--check", help="report required promotion without writing")] = False,
+    ) -> int:
+        return handler(
+            _Args(
+                dest=_command_root(ctx),
+                cmd="maintain",
+                repo_cmd="rules",
+                rules_cmd="promote-error",
+                selector=selector,
+                check=check,
+            )
+        )
+
     @group_maintain_rules.command(
         "prepare", help="validate and prepare one registered rule for warning-first publication"
     )
@@ -4053,7 +4073,7 @@ def _run_repo_rules(args: _Args) -> int:
         return _run_repo_rules_new(args)
     if args.rules_cmd == "verify":
         return _run_repo_rules_verify(args)
-    if args.rules_cmd in {"stage-warning", "prepare"}:
+    if args.rules_cmd in {"stage-warning", "prepare", "promote-error"}:
         return _run_repo_rules_stage_warning(args)
     result = rule_inventory_artifact.sync(_resolve_dest(args.dest), check=args.rules_cmd == "check")
     print(result.message)
@@ -4276,12 +4296,13 @@ def _run_repo_rules_stage_warning(args: _Args) -> int:
             print(verified.message)
             return verified.status
     try:
-        result = rule_lifecycle.stage_warning(_resolve_dest(args.dest), args.selector, check=args.check)
+        operation = rule_lifecycle.promote_error if args.rules_cmd == "promote-error" else rule_lifecycle.stage_warning
+        result = operation(_resolve_dest(args.dest), args.selector, check=args.check)
     except (OSError, TypeError, ValueError, RuntimeError) as exc:
-        print(f"error: cannot stage warning rule: {exc}", file=sys.stderr)
+        print(f"error: cannot update rule lifecycle: {exc}", file=sys.stderr)
         return 2
     print(result.message)
-    if result.status == 0:
+    if result.status == 0 and args.rules_cmd != "promote-error":
         print(_rule_author_next_steps(args.selector))
     return result.status
 

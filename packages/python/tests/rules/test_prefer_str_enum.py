@@ -1620,7 +1620,7 @@ class McpConfig:
     assert _check(src) == []
 
 
-def test_if_chain_with_rejecting_else_reports_warning() -> None:
+def test_if_chain_with_rejecting_else_reports_error() -> None:
     src = """
 def render(kind: str) -> str:
     if kind == "text":
@@ -1632,7 +1632,7 @@ def render(kind: str) -> str:
         raise ValueError(kind)
 """
     [diagnostic] = _check(src)
-    assert diagnostic.severity is Severity.WARNING
+    assert diagnostic.severity is Severity.ERROR
     assert "named `Literal` alias or `StrEnum`" in diagnostic.message
 
 
@@ -1919,12 +1919,34 @@ class Order:
     assert _check(src) == []
 
 
-def test_cli_reports_nonblocking_warning(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_cli_reports_blocking_error(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     target = tmp_path / "order.py"
     target.write_text(
         'class Order:\n    statuses = ("pending", "shipped")\n    status: str = "pending"\n',
         encoding="utf-8",
     )
 
-    assert main(["check", "--rule", "prefer-str-enum", str(target)]) == 0
-    assert "SARJ006 warning:" in capsys.readouterr().out
+    assert main(["check", "--rule", "prefer-str-enum", str(target)]) == 1
+    assert "SARJ006 " in capsys.readouterr().out
+
+
+def test_fastapi_path_action_guarded_by_constant_set_requires_closed_type() -> None:
+    source = """
+from fastapi import APIRouter
+
+CARD_ACTIONS = {"agree-to-terms", "request-prepaid-card"}
+router = APIRouter()
+
+@router.post("/cards/{action}")
+def run_card_action(action: str) -> None:
+    if action not in CARD_ACTIONS:
+        raise ValueError(action)
+    if action == "agree-to-terms":
+        return
+    if action == "request-prepaid-card":
+        return
+"""
+    [diagnostic] = _check(source)
+
+    assert diagnostic.severity is Severity.ERROR
+    assert "action" in diagnostic.message

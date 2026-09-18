@@ -40,7 +40,10 @@
     "no-repeated-structured-string-literal"
   ],
   "SARJ025": "no-offset-pagination",
-  "SARJ026": "prefer-namedtuple-over-tuple-return",
+  "SARJ026": [
+    "prefer-namedtuple-over-tuple-return",
+    "no-positional-tuple-record"
+  ],
   "SARJ027": "len-as-truthiness",
   "SARJ028": "no-cors-wildcard-with-credentials",
   "SARJ029": "no-manual-log-prefix",
@@ -218,5 +221,10 @@
   "SARJ443": "unused-test-factory-option",
   "SARJ444": "no-excessive-cognitive-complexity",
   "SARJ445": "prefer-injected-dependency-over-monkeypatch",
-  "SARJ446": "prefer-monkeypatch-for-process-state-in-test"
+  "SARJ446": "prefer-monkeypatch-for-process-state-in-test",
+  "SARJ447": "no-vague-annotations",
+  "SARJ448": "no-invalid-argument-name-suppression",
+  "SARJ449": "require-typed-http-test-response",
+  "SARJ450": "require-pydantic-for-structured-payload",
+  "SARJ451": "fastapi-class-router-contract"
 }

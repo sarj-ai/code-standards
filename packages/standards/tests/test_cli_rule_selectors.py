@@ -65,6 +65,12 @@ def test_stage_warning_selector_is_typed_at_the_parser_boundary() -> None:
     assert args["selector"] == RuleSelector(RuleEngine.PYTHON, RuleId("no-print"))
 
 
+def test_promote_error_selector_is_typed_at_the_parser_boundary() -> None:
+    args = _parse(("maintain", "rules", "promote-error", "python:no-print"))
+
+    assert args["selector"] == RuleSelector(RuleEngine.PYTHON, RuleId("no-print"))
+
+
 @pytest.mark.parametrize("profile", ["standard", "application"])
 def test_legacy_profile_is_accepted_but_not_advertised(profile: str) -> None:
     args = _parse(("setup", "--profile", profile))

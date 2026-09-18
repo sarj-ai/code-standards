@@ -1,6 +1,9 @@
 schema = 4
-bundle = "7.26.3"
+bundle = "7.27.0"
 rule_profile = "all"
+
+[baseline]
+diagnostics = "diagnostic-baseline.json"
 
 
 [capabilities]

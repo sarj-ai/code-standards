@@ -15,6 +15,7 @@ from sarj_python_lint.rules.docstring_returns_restate_signature import (
 )
 from sarj_python_lint.rules.excessive_commentary import ExcessiveCommentary
 from sarj_python_lint.rules.fakes_in_shared_location import FakesInSharedLocation
+from sarj_python_lint.rules.fastapi_class_router_contract import FastapiClassRouterContract
 from sarj_python_lint.rules.fastapi_explicit_openapi_contract import FastapiExplicitOpenapiContract
 from sarj_python_lint.rules.iac_source_coupled_test import IacSourceCoupledTest
 from sarj_python_lint.rules.invalid_pydantic_field_default import (
@@ -51,6 +52,7 @@ from sarj_python_lint.rules.no_generic_single_export_module import NoGenericSing
 from sarj_python_lint.rules.no_hidden_constructor_fallback import (
     NoHiddenConstructorFallback,
 )
+from sarj_python_lint.rules.no_invalid_argument_name_suppression import NoInvalidArgumentNameSuppression
 from sarj_python_lint.rules.no_nested_pydantic_field_validator import NoNestedPydanticFieldValidator
 from sarj_python_lint.rules.no_offset_pagination import NoOffsetPagination
 from sarj_python_lint.rules.no_positional_psycopg_row_escape import NoPositionalPsycopgRowEscape
@@ -75,6 +77,7 @@ from sarj_python_lint.rules.no_unique_violation_message_match import (
     NoUniqueViolationMessageMatch,
 )
 from sarj_python_lint.rules.no_unnecessary_docstring import NoUnnecessaryDocstring
+from sarj_python_lint.rules.no_vague_annotations import NoVagueAnnotations
 from sarj_python_lint.rules.no_vague_suppression_description import (
     NoVagueSuppressionDescription,
 )
@@ -147,9 +150,11 @@ from sarj_python_lint.rules.require_port_for_service import RequirePortForServic
 from sarj_python_lint.rules.require_pydantic_for_external_json import (
     RequirePydanticForExternalJson,
 )
+from sarj_python_lint.rules.require_pydantic_for_structured_payload import RequirePydanticForStructuredPayload
 from sarj_python_lint.rules.require_pydantic_ordinal_lower_bound import (
     RequirePydanticOrdinalLowerBound,
 )
+from sarj_python_lint.rules.require_typed_http_test_response import RequireTypedHttpTestResponse
 from sarj_python_lint.rules.restated_test_docstring import RestatedTestDocstring
 from sarj_python_lint.rules.stepdown import Stepdown
 from sarj_python_lint.rules.store_get_delegates_to_bulk_read import StoreGetDelegatesToBulkRead
@@ -185,6 +190,7 @@ REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
         NoCorsWildcardWithCredentials.id: NoCorsWildcardWithCredentials,
         PydanticAtBoundaries.id: PydanticAtBoundaries,
         FastapiExplicitOpenapiContract.id: FastapiExplicitOpenapiContract,
+        FastapiClassRouterContract.id: FastapiClassRouterContract,
         FakesInSharedLocation.id: FakesInSharedLocation,
         PreferConstantTimeSecretCompare.id: PreferConstantTimeSecretCompare,
         NoSecretInLog.id: NoSecretInLog,
@@ -222,6 +228,7 @@ REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
         NoRedundantModuleAliasExports.id: NoRedundantModuleAliasExports,
         NoHiddenConstructorFallback.id: NoHiddenConstructorFallback,
         NoFileLevelEscapeHatchSuppression.id: NoFileLevelEscapeHatchSuppression,
+        NoInvalidArgumentNameSuppression.id: NoInvalidArgumentNameSuppression,
         NoFastapiOnEvent.id: NoFastapiOnEvent,
         NoTautologicalExpect.id: NoTautologicalExpect,
         PreferLibraryFake.id: PreferLibraryFake,
@@ -258,6 +265,7 @@ REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
         NoTypedDocSections.id: NoTypedDocSections,
         NoUnnecessaryDocstring.id: NoUnnecessaryDocstring,
         PreferNominalIdTypes.id: PreferNominalIdTypes,
+        NoVagueAnnotations.id: NoVagueAnnotations,
         NoUniqueViolationMessageMatch.id: NoUniqueViolationMessageMatch,
         NegativeOnlyHttpStatusAssertion.id: NegativeOnlyHttpStatusAssertion,
         ProductionDerivedTestCases.id: ProductionDerivedTestCases,
@@ -266,6 +274,8 @@ REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
         NoPositionalPsycopgRowEscape.id: NoPositionalPsycopgRowEscape,
         NoPsycopgExecutionOutsideInjectedOwner.id: NoPsycopgExecutionOutsideInjectedOwner,
         RequirePydanticOrdinalLowerBound.id: RequirePydanticOrdinalLowerBound,
+        RequirePydanticForStructuredPayload.id: RequirePydanticForStructuredPayload,
+        RequireTypedHttpTestResponse.id: RequireTypedHttpTestResponse,
         RequireNoDecodeForSplittingSettingsField.id: RequireNoDecodeForSplittingSettingsField,
         NoVagueSuppressionDescription.id: NoVagueSuppressionDescription,
         NoWholeRequestResponsePayloadInLog.id: NoWholeRequestResponsePayloadInLog,
