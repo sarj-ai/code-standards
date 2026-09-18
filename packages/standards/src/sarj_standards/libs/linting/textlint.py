@@ -495,7 +495,7 @@ REGISTRY: Final[Mapping[str, RuleMeta]] = MappingProxyType(
     {
         "config-comment-wall": RuleMeta(
             code="SARJ300",
-            blocking=False,
+            blocking=True,
             summary="four or more nearby configuration comments mostly repeat their entries",
             rationale=(
                 "Repeated comments that merely narrate adjacent configuration hide constraints and make the file harder "
@@ -542,7 +542,7 @@ REGISTRY: Final[Mapping[str, RuleMeta]] = MappingProxyType(
         ),
         "commented-out-config": RuleMeta(
             code="SARJ301",
-            blocking=False,
+            blocking=True,
             summary="unexplained disabled config blocks or adjacent alternatives",
             rationale="Disabled configuration becomes stale while version control already preserves its history.",
             remediation="Delete inactive settings, or explain the supported default, optional override, or constraint.",
@@ -815,7 +815,7 @@ REGISTRY: Final[Mapping[str, RuleMeta]] = MappingProxyType(
         ),
         "exact-config-comment-restatement": RuleMeta(
             code="SARJ306",
-            blocking=False,
+            blocking=True,
             summary="YAML or TOML comment exactly repeats the adjacent scalar assignment",
             rationale=(
                 "A comment that repeats the key and scalar value adds no information and can drift independently from "

@@ -2233,7 +2233,7 @@ def test_exact_config_restatement_preserves_scalar_punctuation(tmp_path: Path, c
     assert _codes(path, root=tmp_path) == []
 
 
-def test_comment_reduction_rules_preserve_global_warning_severity(
+def test_comment_reduction_rules_preserve_global_blocking_severity(
     capsys: pytest.CaptureFixture[str], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     markdown = tmp_path / "README.md"
@@ -2245,18 +2245,19 @@ def test_comment_reduction_rules_preserve_global_warning_severity(
     assert textlint.run([markdown.name, config.name]) == 1
     output = capsys.readouterr().out
     assert "SARJ305 " in output
-    assert "SARJ306 warning:" in output
+    assert "SARJ306 " in output
+    assert "SARJ306 warning:" not in output
 
 
-def test_exact_config_restatement_is_warning_only(
+def test_exact_config_restatement_is_blocking(
     capsys: pytest.CaptureFixture[str], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     path = tmp_path / "config.toml"
     path.write_text("# Retry count is 3\nretry_count = 3\n", encoding="utf-8")
     monkeypatch.chdir(tmp_path)
 
-    assert textlint.run([path.name]) == 0
-    assert "SARJ306 warning:" in capsys.readouterr().out
+    assert textlint.run([path.name]) == 1
+    assert "SARJ306 " in capsys.readouterr().out
 
 
 def test_exact_restatements_take_precedence_over_generic_comment_wall(tmp_path: Path) -> None:
@@ -2287,7 +2288,7 @@ def test_markdown_suppression_examples_do_not_suppress_real_findings(tmp_path: P
     assert _codes(path, root=tmp_path) == ["SARJ302"]
 
 
-def test_commented_out_config_is_warning_only(
+def test_commented_out_config_is_blocking(
     capsys: pytest.CaptureFixture[str], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     path = tmp_path / "config.toml"
@@ -2296,20 +2297,20 @@ def test_commented_out_config_is_warning_only(
 
     finding = next(item for item in textlint.check_paths([path.name]) if item.code == "SARJ301")
 
-    assert "SARJ301 warning:" in finding.render()
-    assert textlint.run([path.name]) == 0
-    assert "SARJ301 warning:" in capsys.readouterr().out
+    assert "SARJ301 warning:" not in finding.render()
+    assert textlint.run([path.name]) == 1
+    assert "SARJ301 " in capsys.readouterr().out
 
 
-def test_shared_runner_preserves_commented_out_config_warning_exit(
+def test_shared_runner_preserves_commented_out_config_blocking_exit(
     capsys: pytest.CaptureFixture[str], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     path = tmp_path / "config.toml"
     path.write_text("# timeout = 30\ntimeout = 10\n")
     monkeypatch.chdir(tmp_path)
 
-    assert linting_runner.run([path.name]) == 0
-    assert "SARJ301 warning:" in capsys.readouterr().out
+    assert linting_runner.run([path.name]) == 1
+    assert "SARJ301 " in capsys.readouterr().out
 
 
 def test_flags_change_diary_inside_readme(tmp_path: Path) -> None:

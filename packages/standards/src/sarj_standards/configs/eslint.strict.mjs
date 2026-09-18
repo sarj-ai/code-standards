@@ -955,13 +955,13 @@ export function createConfig(options = {}) {
       // schema changes. Requiring an identical shape keeps the diagnostic tied
       // to structural evidence instead of name correlation.
       "@sarj/prefer-zod-infer": "error",
-      // Parse-return contracts need type information and broader adoption
-      // evidence before this can become a blocking rule.
-      "@sarj/prefer-zod-parse-output-type": "warn",
+      // Parse-return contracts require exact type evidence before the local
+      // schema can own the blocking return contract.
+      "@sarj/prefer-zod-parse-output-type": "error",
       // Only the semantics-preserving array order is checked: an outer
       // default already handles undefined, while `.default().optional()` is
       // intentionally left alone because it can still return undefined.
-      "@sarj/no-redundant-optional-array-default": "warn",
+      "@sarj/no-redundant-optional-array-default": "error",
       "@sarj/interface-contract-members-private": "error",
       "@sarj/prefer-ecmascript-private-members": "error",
 
@@ -1199,7 +1199,7 @@ export function createConfig(options = {}) {
       "@sarj/prefer-named-complex-return-type": "warn",
       "@sarj/prefer-module-level-refined-schema": "warn",
       "@sarj/prefer-multi-value-zod-literal": ["warn", { zodMajorVersion: 4 }],
-      "@sarj/prefer-named-callback-domain": "warn",
+      "@sarj/prefer-named-callback-domain": "error",
       "@sarj/prefer-node-crypto-hash": "warn",
       "@sarj/prefer-node-fs-promises": "warn",
       "@sarj/prefer-shared-zod-enum": "warn",
@@ -1219,7 +1219,7 @@ export function createConfig(options = {}) {
       "@sarj/no-log-only-catch": "error",
       "@sarj/no-bare-return-from-test-catch": "error",
       "@sarj/no-bespoke-api-case-conversion": "warn",
-      "@sarj/no-detached-global-fetch": "warn",
+      "@sarj/no-detached-global-fetch": "error",
       "@sarj/no-json-stringify-object-equality": "warn",
       "@sarj/no-dangerously-allow-svg": "error",
       "@sarj/no-duplicate-lifecycle-refresh-listeners": "error",
@@ -1248,10 +1248,10 @@ export function createConfig(options = {}) {
       "@sarj/no-reduce-accumulator-copy": "error",
       "@sarj/require-button-accessible-name": "error",
       "@sarj/require-svg-accessible-name": "error",
-      "@sarj/prefer-logical-tailwind-utilities": ["warn", { enabled: false }],
-      "@sarj/no-unlocalized-jsx-text": ["warn", { enabled: false }],
-      "@sarj/no-unlocalized-jsx-attributes": ["warn", { enabled: false }],
-      "@sarj/no-unlocalized-toast": ["warn", { enabled: false }],
+      "@sarj/prefer-logical-tailwind-utilities": ["error", { enabled: false }],
+      "@sarj/no-unlocalized-jsx-text": ["error", { enabled: false }],
+      "@sarj/no-unlocalized-jsx-attributes": ["error", { enabled: false }],
+      "@sarj/no-unlocalized-toast": ["error", { enabled: false }],
       "@sarj/prefer-input-group-search": "error",
       "@sarj/prefer-millisecond-control-duration-schema": "warn",
       "@sarj/prefer-immutable-module-constant": "error",
@@ -1270,11 +1270,11 @@ export function createConfig(options = {}) {
       "@sarj/no-select-star": "error",
       "@sarj/no-zod-native-enum": "error",
       "@sarj/no-impossible-zod-literal-bounds": "error",
-      "@sarj/no-in-operator-on-built-in-collections": "warn",
+      "@sarj/no-in-operator-on-built-in-collections": "error",
       "@sarj/prefer-module-level-constant": "error",
       "@sarj/prefer-module-level-schema": "error",
       "@sarj/prefer-non-nullable-collection": "error",
-      "@sarj/prefer-nullish-filter-predicate": "warn",
+      "@sarj/prefer-nullish-filter-predicate": "error",
       "@sarj/prefer-await-in-async-return": "error",
       "@sarj/no-sleep-in-test-body": "error",
       "@sarj/iac-source-coupled-test": "error",
@@ -1294,8 +1294,8 @@ export function createConfig(options = {}) {
       "@sarj/no-typed-doc-sections": "error",
       "@sarj/require-port-for-service": "error",
       "@sarj/no-unsafe-mock-casting": "error",
-      "@sarj/no-unsafe-test-double-cast": "warn",
-      "@sarj/no-first-party-module-mock": "warn",
+      "@sarj/no-unsafe-test-double-cast": "error",
+      "@sarj/no-first-party-module-mock": "error",
       "@sarj/prefer-whole-object-assertion": "warn",
       "@sarj/duplicate-test-body": "error",
       "@sarj/test-loops-over-literal-cases": "error",
