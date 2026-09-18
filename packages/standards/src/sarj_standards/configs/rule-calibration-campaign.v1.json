@@ -554,7 +554,7 @@
       "ruleId": "no-positional-tuple-record",
       "state": "complete",
       "evidence": "Focused regressions cover public, private, nested, method, decorated, test, stringized, two-slot, homogeneous, variadic, and generated cases. Three existing application corpora produced 161 fixed-tuple return findings; representative samples were positional records rather than parser failures. The standards repository dogfoods the rule through a shrink-only baseline.",
-      "outcome": "Rename SARJ026 to no-positional-tuple-record, preserve the former selector as a migration alias, and promote it to error. Reject every explicit fixed tuple return with at least two slots in authored Python, while allowing variadic tuples and generated source."
+      "outcome": "Rename SARJ026 to no-positional-tuple-record, preserve the former selector as a migration alias, and ship the substantially broadened matcher warning-first. Reject every explicit fixed tuple return with at least two slots in authored Python, while allowing variadic tuples and generated source; promote after the adoption window is clean."
     },
     {
       "task": "rule-audit/python/fastapi-class-router-contract",
@@ -562,7 +562,7 @@
       "ruleId": "fastapi-class-router-contract",
       "state": "complete",
       "evidence": "Focused fixtures cover module routers, injected class builders, missing response models, collection responses, named envelopes, non-JSON responses, and generated source. Three existing application corpora produced 436 findings; sampled results consistently represented legacy module routers or implicit and collection-shaped response contracts.",
-      "outcome": "Ship SARJ451 at error level as explicitly requested. Authored FastAPI routers must be constructed inside an injected *Router.build() owner and JSON routes must declare matching named object request and response contracts."
+      "outcome": "Ship SARJ451 warning-first under the mandatory new-judgment-rule lifecycle. Authored FastAPI routers must be constructed inside an injected *Router.build() owner and JSON routes must declare matching named object request and response contracts."
     },
     {
       "task": "rule-audit/python/no-invalid-argument-name-suppression",
@@ -570,7 +570,7 @@
       "ruleId": "no-invalid-argument-name-suppression",
       "state": "complete",
       "evidence": "Token-aware fixtures cover every supported Ruff and Flake8 suppression spelling, unrelated comments, string contents, multiline signatures, and framework aliases. Existing application scans found four true legacy suppressions and no sampled false positives.",
-      "outcome": "Ship SARJ448 at error level as explicitly requested. Python parameter names remain snake_case; external camelCase spelling is represented with framework aliases rather than disabling naming checks."
+      "outcome": "Ship SARJ448 warning-first under the mandatory new-judgment-rule lifecycle. Python parameter names remain snake_case; external camelCase spelling is represented with framework aliases rather than disabling naming checks."
     },
     {
       "task": "rule-audit/python/no-vague-annotations",
@@ -578,7 +578,7 @@
       "ruleId": "no-vague-annotations",
       "state": "complete",
       "evidence": "Focused fixtures cover object, nested object, dict and Mapping with Any, forward references, precise named schemas, generated files, and vendor files. Three existing application corpora produced 2,706 findings; cluster sampling confirmed widespread pre-existing schema-erasure debt, so adoption requires shrink-only baselines.",
-      "outcome": "Ship SARJ447 at error level as explicitly requested. Reject object and open string-keyed Any or object mappings in authored annotations and require a named precise domain or validation type."
+      "outcome": "Ship SARJ447 warning-first under the mandatory new-judgment-rule lifecycle. Reject object and open string-keyed Any or object mappings in authored annotations and require a named precise domain or validation type."
     },
     {
       "task": "rule-audit/python/require-pydantic-for-structured-payload",
@@ -586,7 +586,7 @@
       "ruleId": "require-pydantic-for-structured-payload",
       "state": "complete",
       "evidence": "Focused FastAPI fixtures cover nested payload extraction, literal-key subscripting and get/pop/setdefault access, direct typed fields, model_validate, TypeAdapter, unrelated dictionaries, and generated source. The sampled application corpora contained no unmatched pattern outside the motivating route shape.",
-      "outcome": "Ship SARJ450 at error level as explicitly requested. Structured nested route payloads must cross a Pydantic validation boundary before literal field consumption."
+      "outcome": "Ship SARJ450 warning-first under the mandatory new-judgment-rule lifecycle. Structured nested route payloads must cross a Pydantic validation boundary before literal field consumption."
     },
     {
       "task": "rule-audit/python/require-typed-http-test-response",
@@ -594,7 +594,7 @@
       "ruleId": "require-typed-http-test-response",
       "state": "complete",
       "evidence": "Focused fixtures cover direct response.json subscripts and mapping methods, model_validate and TypeAdapter parsing, non-test code, non-response JSON, assigned raw payloads, and generated source. Three existing application corpora produced 650 direct untyped response assertions; samples were genuine contract debt suitable for ratcheted adoption.",
-      "outcome": "Ship SARJ449 at error level as explicitly requested. HTTP tests validate response JSON into named models before inspecting fields."
+      "outcome": "Ship SARJ449 warning-first under the mandatory new-judgment-rule lifecycle. HTTP tests validate response JSON into named models before inspecting fields."
     },
     {
       "task": "rule-audit/python/prefer-nominal-id-types",

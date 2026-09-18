@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "6039f008ee2ecbb51d8ccd1d2f2dcf8d8bb34c71e0d6e5f9edfff8f9a4d5661d",
+  "catalogSha256": "925bfb6f29bc4ef09a9a1802c376c788f49cacba66e645da84948cdff33ff5df",
   "cliSha256": "544cbe878b0cc2a1e5509565527a9778780758079bd435d5aa9e336d7ec97ae4",
   "formatterVersions": {
     "prettier": "3.9.6",
