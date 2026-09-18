@@ -44,6 +44,9 @@ _ERROR_FIRST_APPROVALS: Final = frozenset(
         "python:no-excessive-cognitive-complexity",
         "eslint:no-excessive-cognitive-complexity",
         "eslint:no-known-value-widening",
+        "eslint:no-broad-return-type",
+        "eslint:prefer-typed-reflection",
+        "eslint:no-conditional-empty-object-spread",
         "eslint:no-reduce-accumulator-copy",
     }
 )

@@ -217,7 +217,8 @@ def _rewrite_ratchet_suppressions(text: str, retired: dict[str, str | None]) -> 
         return text
     removed = {f"sarj-noqa:{code}" for code, replacement in retired.items() if replacement is None}
     obsolete = removed.intersection(budgets.values)
-    if not obsolete:
+    nested_changed = _remove_retired_file_selector_budgets(parsed, removed)
+    if not obsolete and not nested_changed:
         return text
     for key in obsolete:
         del budgets.values[key]
@@ -226,6 +227,26 @@ def _rewrite_ratchet_suppressions(text: str, retired: dict[str, str | None]) -> 
     rendered = json.dumps(parsed.values, default=_json_object_values, ensure_ascii=False, indent=2)
     rendered = rendered.replace("\n", line_ending)
     return f"{bom}{rendered}{trailing}"
+
+
+def _remove_retired_file_selector_budgets(document: _JsonObject, removed: set[str]) -> bool:
+    files = document.values.get("files")
+    if not isinstance(files, _JsonObject):
+        return False
+    selectors = files.values.get("selectors")
+    if not isinstance(selectors, _JsonObject):
+        return False
+    changed = False
+    for path, raw_budgets in tuple(selectors.values.items()):
+        if not isinstance(raw_budgets, _JsonObject):
+            continue
+        obsolete = removed.intersection(raw_budgets.values)
+        for selector in obsolete:
+            del raw_budgets.values[selector]
+            changed = True
+        if obsolete and not raw_budgets.values:
+            del selectors.values[path]
+    return changed
 
 
 def _json_object_values(value: object) -> dict[str, object]:

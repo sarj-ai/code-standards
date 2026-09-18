@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "aec4e86c176280dcc83b0f397fcaabbcc2479e8ccdd3a598807b305d1bb681af",
+  "catalogSha256": "387a6b67498c75a76fa3973add8b5286472540453bedf8ffebb770f0cdec9da6",
   "cliSha256": "3f7e62cdcf49755016f5a2c1f44ead1af382f06c9273ce47743af17f5bf92821",
   "formatterVersions": {
     "prettier": "3.9.6",
@@ -256,6 +256,41 @@
       ],
       "optionsSchemaSource": null
     },
+    "eslint:no-broad-return-type": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/example.ts",
+              "source": "type Invoice = { reference: string; total: number };\nfunction toRequest(invoice: Invoice): Invoice {\n  return invoice;\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/example.ts",
+          "id": "after",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Use the direct contract"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/example.ts",
+              "source": "type Invoice = { reference: string; total: number };\nfunction toRequest(invoice: Invoice): Record<string, unknown> {\n  return invoice;\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/example.ts",
+          "id": "before",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Preserve the explicit contract"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "eslint:no-client-side-data-fetching": {
       "examples": [
         {
@@ -322,6 +357,41 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "A comment repeats the statement below"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "eslint:no-conditional-empty-object-spread": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/example.ts",
+              "source": "declare const includePage: boolean;\nconst query: { limit: number; page?: number } = { limit: 20 };\nif (includePage) query.page = 1;\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/example.ts",
+          "id": "after",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Use the direct contract"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/example.ts",
+              "source": "declare const includePage: boolean;\nconst query = { limit: 20, ...(includePage ? { page: 1 } : {}) };\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/example.ts",
+          "id": "before",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Preserve the explicit contract"
         }
       ],
       "optionsSchemaSource": null
@@ -3182,6 +3252,41 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Make finite dispatch explicit"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "eslint:prefer-typed-reflection": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/example.ts",
+              "source": "declare const shipment: { status: string };\nconst status = shipment.status;\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/example.ts",
+          "id": "after",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Use the direct contract"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/example.ts",
+              "source": "declare const shipment: { status: string };\nconst status = Reflect.get(shipment, \"status\");\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/example.ts",
+          "id": "before",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Preserve the explicit contract"
         }
       ],
       "optionsSchemaSource": null
@@ -6901,6 +7006,36 @@
     },
     "python:prefer-collection-comprehension": {
       "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/intervals.py",
+              "source": "def clipped(items, bounds):\n    return [value for item in items if (value := item.clipped(bounds)) is not None]\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/intervals.py",
+          "id": "computed-filtered-list-comprehension",
+          "outcome": "accept",
+          "scenarioId": "computed-filter",
+          "title": "Keep a computed filtered list declarative"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/intervals.py",
+              "source": "def clipped(items, bounds):\n    result: list[Interval] = []\n    for item in items:\n        value = item.clipped(bounds)\n        if value is not None:\n            result.append(value)\n    return result\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/intervals.py",
+          "id": "computed-filtered-list-loop",
+          "outcome": "reject",
+          "scenarioId": "computed-filter",
+          "title": "Compute and filter a list candidate directly"
+        },
         {
           "expectedCount": 1,
           "files": [

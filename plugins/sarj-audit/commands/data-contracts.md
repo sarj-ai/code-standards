@@ -22,63 +22,10 @@ accumulators; show the lost information and affected consumer before reporting.
 The `no-known-value-widening` rule owns typed identifier-to-broad local bindings;
 report only additional flows here.
 
-## Keep broad types at parsing boundaries
+## Automated contract checks
 
-Trace `unknown`, `object`, unknown-valued dictionaries, and aliases of those
-contracts through domain inputs and outputs. Report a concrete lost invariant:
-which required fields or variants callers must rediscover, and where the
-canonical contract already exists. Prefer generated wire types or schema-derived
-domain types. Retain `unknown` in decoders, error causes, generic serializers,
-opaque pass-through payloads, and unvalidated ingress; a broad type alone is not
-a finding. Keep useful generic constraints and intentionally open metadata.
-
-Synthetic example: an invoice mapper has a known request contract. Exposing it
-lets type checking catch missing or misspelled fields:
-
-```ts
-// Before
-const toRequest = (invoice: Invoice): Record<string, unknown> => ({
-  reference: invoice.reference,
-  amount_cents: invoice.amountCents,
-  currency: invoice.currency,
-});
-
-// After: InvoiceRequest is the existing generated API contract.
-const toRequest = (invoice: Invoice): InvoiceRequest => ({
-  reference: invoice.reference,
-  amount_cents: invoice.amountCents,
-  currency: invoice.currency,
-});
-```
-
-A decoder such as `parseRequest(input: unknown): Request` is a valid boundary.
-A domain service returning `Promise<unknown>` after validation loses that
-boundary's result. Reuse its parsed output type instead of validating again in
-every caller. Do not invent another runtime schema for already-trusted values.
-
-## Typed access before reflection
-
-Inspect `Reflect.get` and `Reflect.apply` when a known property or callable
-contract is available. Report the specific lost check, such as a field typo or
-argument mismatch accepted through reflection. Use typed access or a named
-boundary contract; preserve the invocation receiver and property-access semantics.
-
-Synthetic example:
-
-```ts
-// Before: neither the property spelling nor the arguments use the owner contract.
-const status = Reflect.get(shipment, "status");
-const result = Reflect.apply(service.dispatch, service, [request]);
-
-// After
-const status = shipment.status;
-const result = service.dispatch(request);
-```
-
-Keep reflection in genuine proxy forwarding, metaprogramming, and dynamic plugin
-boundaries. `Reflect.get(target, key, receiver)` can bind a getter differently
-from `target[key]`; `Reflect.apply` can preserve a deliberate receiver. A proxy
-that forwards arbitrary properties is a counterexample, not evidence of an
-unsafe domain contract. Require a behavior-preserving replacement before
-reporting, and do not duplicate existing unsafe-argument or unsafe-access lint
-findings.
+`no-broad-return-type` owns implemented functions whose explicit broad return
+annotation erases a known value. `prefer-typed-reflection` owns reflection over
+proven property and callable contracts. Do not duplicate their diagnostics.
+Keep unparsed input, opaque boundaries, and generic abstractions when reviewing
+flows outside the deterministic rules.

@@ -136,7 +136,7 @@ function isTypeOnlyContractStatement(statement: TSESTree.Statement): boolean {
     statement.type === AST_NODE_TYPES.TSInterfaceDeclaration;
 }
 
-function normalizedLiteral(node: TSESTree.Literal): unknown {
+function normalizedLiteral(node: TSESTree.Literal): readonly string[] {
   if ("regex" in node) {
     return ["Literal", "regex", node.regex.pattern, node.regex.flags];
   }

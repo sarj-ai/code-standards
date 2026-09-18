@@ -489,8 +489,8 @@
       "family": "python",
       "ruleId": "prefer-collection-comprehension",
       "state": "complete",
-      "evidence": "Fleet calibration scanned 6,636 tracked Python files across 36 local projects. Both findings were inspected fresh adjacent dict builders whose comprehensions preserve observable behavior: two true positives and zero false positives. Focused behavior and performance gates remain clean.",
-      "outcome": "Added warning-stage SARJ430 only for derived dict projections, destructured list projections, and filtered set builders that Ruff PERF401, PERF403, and FURB142 miss. Fresh adjacent initialization, callable scope, liveness, simple projection, comment, control-flow, and 120-column gates keep the preference narrow. No autofix is offered because dict assignment and comprehension key/value evaluation order can differ."
+      "evidence": "Fleet calibration scanned 6,636 tracked Python files across 36 local projects. Both original findings were inspected fresh adjacent dict builders whose comprehensions preserve observable behavior: two true positives and zero false positives. The filtered-list expansion ran 57 focused cases and rescanned an immutable <private-corpus> containing 1,510 tracked Python files and 11,786,987 bytes. Baseline and candidate each emitted the same one pre-existing dict finding and no new live matches; seeded cases prove the two Ruff-negative shapes while the exact single-target walrus builder remains Ruff PERF401-owned. Five warm candidate runs had a 1.95-second median versus 2.03 seconds on unchanged main (0.96x); peak RSS was unavailable because the sandbox denied the time utility's sysctl probe.",
+      "outcome": "Kept warning-stage SARJ430 and expanded only its existing Ruff-gap ownership: filtered destructured list projections and one computed candidate guarded by truthiness or an explicit None check. Fresh adjacent initialization, callable scope, binding liveness, bounded projections, comment and control-flow exclusions, and a 120-column single-line or simple formatter-style multiline gate keep the preference narrow. Direct single-target builders remain Ruff PERF401/PERF402-owned, and validation, logging, exceptions, multiple guards, secondary mutation, async loops, and dense projections remain imperative. No autofix is offered because dict key/value evaluation order and assignment-to-walrus scope require review."
     },
     {
       "task": "rule-audit/python/prefer-constant-time-secret-compare",
@@ -1947,6 +1947,30 @@
       "state": "pending",
       "evidence": "A ten-agent test-quality audit identified double-cast mock construction as a high-signal proxy for incomplete test doubles that bypass contracts. Focused syntax tests cover object and array literals backed by vi.fn, jest.fn, mockDeep, and Mock names; both as and angle-bracket casts; ordinary payload casts; single casts; production files; and generated files. Wider consumer-corpus calibration remains pending.",
       "outcome": "Introduce a test-file-only warning without autofix. Report mock-backed literals forced through unknown into an unrelated type and recommend typed builders, fakes, or narrower interfaces. Preserve ordinary fixture and boundary casts, and defer promotion until consumer calibration is complete."
+    },
+    {
+      "task": "rule-audit/typescript/no-broad-return-type",
+      "family": "typescript",
+      "ruleId": "no-broad-return-type",
+      "state": "pending",
+      "evidence": "Synthetic positive and exclusion fixtures; source corpus calibration recorded in the PR.",
+      "outcome": "Explicitly requested error-first policy without automatic fixes. Broader consumer calibration remains pending."
+    },
+    {
+      "task": "rule-audit/typescript/prefer-typed-reflection",
+      "family": "typescript",
+      "ruleId": "prefer-typed-reflection",
+      "state": "pending",
+      "evidence": "Synthetic positive and exclusion fixtures; source corpus calibration recorded in the PR.",
+      "outcome": "Explicitly requested error-first policy without automatic fixes. Broader consumer calibration remains pending."
+    },
+    {
+      "task": "rule-audit/typescript/no-conditional-empty-object-spread",
+      "family": "typescript",
+      "ruleId": "no-conditional-empty-object-spread",
+      "state": "pending",
+      "evidence": "Synthetic positive and exclusion fixtures; source corpus calibration recorded in the PR.",
+      "outcome": "Explicitly requested error-first policy without automatic fixes. Broader consumer calibration remains pending."
     }
   ]
 }
