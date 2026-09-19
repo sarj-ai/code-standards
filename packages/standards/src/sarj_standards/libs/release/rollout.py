@@ -65,6 +65,7 @@ BASELINE_ENGINE_BY_SOURCE = MappingProxyType(
     }
 )
 MANAGED_WORKFLOW_PATHS = frozenset({".github/workflows/standards.yml", ".github/workflows/ci.yml"})
+COMMIT_POLICY_WORKFLOW_PATH = ".github/workflows/commit-policy.yml"
 MANAGED_ROLLOUT_NAMES = frozenset(
     {
         ".basedpyright-strict.json",
@@ -1164,8 +1165,8 @@ def apply_one(  # ruff: ignore[too-many-locals] - one transaction keeps verifica
             runner,
             unauthenticated_environment(),
         )
-        allowed_workflow_paths = _allowed_rollout_workflows(repo)
-        allowed_paths = managed_rollout_paths(repo, allowed_workflow_paths)
+        pin_workflow_paths = allowed_rollout_workflows(repo)
+        allowed_paths = managed_rollout_paths(repo, pin_workflow_paths)
         try:
             retired_rewrites = retirement.expected_rewrites(repo, allowed_paths, target_version=version)
         except ValueError as exc:
@@ -1193,6 +1194,7 @@ def apply_one(  # ruff: ignore[too-many-locals] - one transaction keeps verifica
             consumer, repo, runner, tool_prefix, bootstrap, environment=unauthenticated, failures=failures
         )
         worktree_paths = changed_paths(repo, runner)
+        allowed_workflow_paths = pin_workflow_paths | canonical_commit_policy_workflow_paths(repo, worktree_paths)
         retired_paths = _validate_rollout_retirements(repo, retired_rewrites)
         retired_baselines = frozenset(path for path in retired_paths if "baseline" in path.lower())
         reject_unsafe_diff(
@@ -1228,6 +1230,7 @@ def apply_one(  # ruff: ignore[too-many-locals] - one transaction keeps verifica
                 failures.append("consumer verification failed:\n" + verification_failure_detail)
         verification_failure = "\n\n".join(failures)[-4000:]
         branch_paths = committed_paths(repo, consumer.branch, runner)
+        allowed_workflow_paths = pin_workflow_paths | canonical_commit_policy_workflow_paths(repo, branch_paths)
         _validate_rollout_retirements(repo, retired_rewrites)
         reject_unsafe_diff(
             branch_paths,
@@ -1867,12 +1870,23 @@ def _validate_rollout_retirements(repo: Path, retired_rewrites: Mapping[str, byt
         raise RolloutError(str(exc)) from exc
 
 
-def _allowed_rollout_workflows(repo: Path) -> frozenset[str]:
+def allowed_rollout_workflows(repo: Path) -> frozenset[str]:
     return frozenset(
         relative
         for update in adoption_doctor.plan_version_pin_updates(repo)
         if (relative := update.path.relative_to(repo).as_posix()).startswith(".github/workflows/")
+        and relative != COMMIT_POLICY_WORKFLOW_PATH
     )
+
+
+def canonical_commit_policy_workflow_paths(repo: Path, paths: Sequence[str]) -> frozenset[str]:
+    if COMMIT_POLICY_WORKFLOW_PATH not in paths:
+        return frozenset()
+    workflow = repo / COMMIT_POLICY_WORKFLOW_PATH
+    if workflow.is_symlink() or not workflow.is_file():
+        return frozenset()
+    expected = adoption_scaffold.commit_policy_github_workflow().encode()
+    return frozenset({COMMIT_POLICY_WORKFLOW_PATH}) if workflow.read_bytes() == expected else frozenset()
 
 
 if __name__ == "__main__":
