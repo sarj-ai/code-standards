@@ -500,10 +500,27 @@ def test_upgrade_advances_an_existing_package_age_preapproval_for_the_tested_plu
     )
 
 
+def test_upgrade_retires_mature_typescript_eslint_age_exceptions_but_keeps_other_entries(tmp_path: Path) -> None:
+    policy = tmp_path / ".yarnrc.yml"
+    policy.write_text(
+        'npmPreapprovedPackages:\n  - "unrelated@1.2.3"\n'
+        '  - "@typescript-eslint/parser@8.68.0"\n'
+        '  - "@sarj/eslint-plugin@15.24.0"\n',
+        encoding="utf-8",
+    )
+
+    [update] = doctor.plan_version_pin_updates(tmp_path, {"@sarj/eslint-plugin": "15.24.0"})
+
+    assert '"unrelated@1.2.3"' in update.contents
+    assert '"@sarj/eslint-plugin@15.24.0"' in update.contents
+    assert "@typescript-eslint/parser" not in update.contents
+    assert doctor.rewrite_version_pins(update.contents, {"@sarj/eslint-plugin": "15.24.0"}).contents == update.contents
+
+
 def test_upgrade_converges_npm_age_gate_package_exclusions_without_weakening_the_gate(tmp_path: Path) -> None:
     policy = tmp_path / ".npmrc"
     policy.write_text(
-        "min-release-age=20160\nmin-release-age-exclude=unrelated,@sarj/eslint-plugin\n",
+        "min-release-age=20160\nmin-release-age-exclude=unrelated,@sarj/eslint-plugin,@typescript-eslint/parser\n",
         encoding="utf-8",
     )
 

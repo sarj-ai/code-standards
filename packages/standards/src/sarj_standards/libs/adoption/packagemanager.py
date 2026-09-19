@@ -156,13 +156,9 @@ def overrides_for(client: PackageManager) -> Overrides:
             # config can then load a second `typescript-eslint` plugin object,
             # which flat config rejects even though both declared ranges are
             # individually valid. Keep the complete tested family on one
-            # identity across every workspace; the age-gate catalog is the
-            # exact-version authority already used by adoption updates.
-            identity_pins = {
-                name: version
-                for name, version in manifest.eslint_age_gate_preapprovals().items()
-                if name == "typescript-eslint" or name.startswith("@typescript-eslint/")
-            }
+            # identity across every workspace. These resolution pins are not
+            # age-gate exceptions: they remain after the releases mature.
+            identity_pins = manifest.eslint_yarn_identity_pins()
             return Overrides(
                 ("resolutions",),
                 {**dict(_flatten(npm_entries, "/")), **identity_pins},

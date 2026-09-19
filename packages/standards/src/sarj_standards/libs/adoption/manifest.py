@@ -60,13 +60,21 @@ def adopted_version() -> str:
 
 
 def eslint_age_gate_preapprovals() -> dict[str, str]:
+    return _eslint_exact_versions("ageGatePreapprovals")
+
+
+def eslint_yarn_identity_pins() -> dict[str, str]:
+    return _eslint_exact_versions("yarnIdentityPins")
+
+
+def _eslint_exact_versions(key: str) -> dict[str, str]:
     raw: object = json.loads(PEERS_JSON.read_text(encoding="utf-8"))  # pyright: ignore[reportAny]
     table = as_table(raw)
-    approvals = as_table(table.get("ageGatePreapprovals"))
-    if not approvals or any(not isinstance(value, str) or not value for value in approvals.values()):
-        msg = "eslint.peers.json ageGatePreapprovals must map package names to exact versions"
+    versions = as_table(table.get(key))
+    if not versions or any(not isinstance(value, str) or not value for value in versions.values()):
+        msg = f"eslint.peers.json {key} must map package names to exact versions"
         raise ValueError(msg)
-    return {name: value for name, value in approvals.items() if isinstance(value, str)}
+    return {name: value for name, value in versions.items() if isinstance(value, str)}
 
 
 #: Config bundle selected for each detected ecosystem.
