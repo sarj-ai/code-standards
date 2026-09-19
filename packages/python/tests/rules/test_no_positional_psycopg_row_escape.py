@@ -70,7 +70,7 @@ def test_flags_proven_positional_record_escape(source: str) -> None:
     findings = _check(source)
     assert len(findings) == 1
     assert findings[0].code == "SARJ414"
-    assert findings[0].severity.value == "warning"
+    assert findings[0].severity.value == "error"
 
 
 @pytest.mark.parametrize(

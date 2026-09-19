@@ -155,7 +155,7 @@ class UnusedMockSetup(Rule):
                         line=position[0],
                         col=position[1],
                         code=self.code,
-                        severity=Severity.WARNING,
+                        severity=Severity.ERROR,
                         message=finding.message,
                     )
                 )

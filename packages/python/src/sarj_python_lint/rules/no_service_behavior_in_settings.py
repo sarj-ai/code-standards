@@ -141,7 +141,7 @@ class NoServiceBehaviorInSettings(Rule):
                     line=node.lineno,
                     col=node.col_offset + 1,
                     code=self.code,
-                    severity=Severity.WARNING,
+                    severity=Severity.ERROR,
                     message=(
                         f"`{node.name}` is named as passive data but {methods} calls an injected collaborator — "
                         "move orchestration to a service/coordinator and keep settings or configuration data-only."

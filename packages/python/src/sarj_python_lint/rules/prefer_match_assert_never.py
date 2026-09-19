@@ -128,7 +128,7 @@ class PreferMatchAssertNever(Rule):
                             line=wildcard.pattern.lineno,
                             col=wildcard.pattern.col_offset + 1,
                             code=self.code,
-                            severity=Severity.WARNING,
+                            severity=Severity.ERROR,
                             message=(
                                 f"typed `{enum_name}` match has a no-op catch-all — an unhandled member "
                                 "is silently ignored; bind it and call `assert_never`, or raise."
@@ -146,7 +146,7 @@ class PreferMatchAssertNever(Rule):
                             line=node.lineno,
                             col=node.col_offset + 1,
                             code=self.code,
-                            severity=Severity.WARNING,
+                            severity=Severity.ERROR,
                             message=(
                                 f"typed `{enum_name}` if/elif dispatch has a no-op `else` — an unhandled "
                                 "member is silently ignored; prefer match/case with `assert_never`, or raise."

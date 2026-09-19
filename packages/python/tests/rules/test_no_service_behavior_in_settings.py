@@ -43,7 +43,7 @@ def test_flags_settings_class_that_orchestrates_injected_stores() -> None:
 
     assert len(diagnostics) == 1
     assert diagnostics[0].code == "SARJ441"
-    assert diagnostics[0].severity is Severity.WARNING
+    assert diagnostics[0].severity is Severity.ERROR
     assert "`policy_for_new_batch`, `repoint`" in diagnostics[0].message
 
 

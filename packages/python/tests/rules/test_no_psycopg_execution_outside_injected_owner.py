@@ -69,7 +69,7 @@ def test_reports_import_proven_external_psycopg_execution(source: str) -> None:
     findings = _check(source)
     assert len(findings) == 1
     assert findings[0].code == "SARJ415"
-    assert findings[0].severity.value == "warning"
+    assert findings[0].severity.value == "error"
 
 
 @pytest.mark.parametrize(

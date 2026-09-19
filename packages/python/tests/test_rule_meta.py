@@ -8,7 +8,8 @@ import warnings
 
 import pytest
 
-from sarj_python_lint.rule_base import ExampleFile, ExampleOutcome, Rule, RuleExample
+from sarj_python_lint.__main__ import analyze
+from sarj_python_lint.rule_base import Diagnostic, ExampleFile, ExampleOutcome, Rule, RuleExample, Severity
 from sarj_python_lint.rules import REGISTRY
 
 
@@ -28,6 +29,8 @@ _LEDGER_PATH = Path(__file__).parent / "code_ledger.json"
 # The rules directory, relative to the repo root — the path git history is walked
 # over to recover deleted rule modules.
 _RULES_DIR = "packages/python/src/sarj_python_lint/rules"
+_WARNING_LEVELS_PATH = _REPO_ROOT / "packages/standards/src/sarj_standards/configs/rule-warning-levels.v1.json"
+type _JsonValue = bool | int | float | str | list[_JsonValue] | dict[str, _JsonValue] | None
 
 _RENAMED_RULES = {
     "defect-xfail-requires-explicit-strict": (
@@ -188,6 +191,50 @@ def test_every_rule_has_valid_source_owned_documentation() -> None:
         assert spec.code == REGISTRY[rule_id].code
         assert spec.summary == REGISTRY[rule_id].description
         assert {example.outcome for example in spec.public_examples} == {"match", "no-match"}
+
+
+def _warning_python_rule_ids() -> set[str]:
+    lifecycle: _JsonValue = json.loads(  # pyright: ignore[reportAny] -- narrowed before use.
+        _WARNING_LEVELS_PATH.read_text(encoding="utf-8")
+    )
+    assert isinstance(lifecycle, dict)
+    selectors = lifecycle["rules"]
+    assert isinstance(selectors, list)
+    assert all(isinstance(selector, str) for selector in selectors)
+    return {
+        selector.removeprefix("python:")
+        for selector in selectors
+        if isinstance(selector, str) and selector.startswith("python:")
+    }
+
+
+def _analyze_public_example(rule_id: str, example: RuleExample, root: Path) -> list[Diagnostic]:
+    paths: list[Path] = []
+    for item in example.files:
+        target = root / item.path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(item.source, encoding="utf-8")
+        if target.suffix == ".py":
+            paths.append(target)
+    focus = root / example.focus_path
+    code = REGISTRY[rule_id].code
+    return [
+        diagnostic
+        for diagnostic in analyze([rule_id], paths, root=root)
+        if diagnostic.path == focus and diagnostic.code == code
+    ]
+
+
+@pytest.mark.parametrize("rule_id", sorted(REGISTRY.keys() - _warning_python_rule_ids()))
+def test_error_level_python_rules_emit_blocking_public_examples(tmp_path: Path, rule_id: str) -> None:
+    examples = [example for example in REGISTRY[rule_id].public_examples() if example.outcome is ExampleOutcome.MATCH]
+    assert examples, f"{rule_id}: no published rejecting example to test severity"
+    for example in examples:
+        findings = _analyze_public_example(rule_id, example, tmp_path / example.example_id)
+        assert len(findings) == example.expected_count, f"{rule_id}:{example.example_id}"
+        assert all(diagnostic.severity is Severity.ERROR for diagnostic in findings), (
+            f"{rule_id}:{example.example_id} is cataloged as error but emits a warning"
+        )
 
 
 def test_rule_examples_are_private_by_default_path_aware_and_multi_file() -> None:

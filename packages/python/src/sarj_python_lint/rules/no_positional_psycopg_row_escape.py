@@ -157,7 +157,7 @@ class NoPositionalPsycopgRowEscape(Rule):
                 line=cursor.call.lineno,
                 col=cursor.call.col_offset + 1,
                 code=self.code,
-                severity=Severity.WARNING,
+                severity=Severity.ERROR,
                 message=(
                     "this positional Psycopg record escapes unchanged; return a named `class_row(Model)` "
                     "record, use `scalar_row` for a scalar, or transform the tuple locally"

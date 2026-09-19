@@ -526,7 +526,7 @@ def test_thing():
     assert correct()
 """
     [diagnostic] = _check(src)
-    assert diagnostic.severity is Severity.WARNING
+    assert diagnostic.severity is Severity.ERROR
 
 
 @pytest.mark.parametrize("strict_value", ["None", "0", "''"], ids=["none", "zero", "empty-string"])

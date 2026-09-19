@@ -234,7 +234,7 @@ class TrailingValueNarration(Rule):
                             f"Trailing numeric-unit label {body.strip()!r} can drift; encode or reconcile the "
                             "unit in the assigned name or value type, then remove the comment."
                         ),
-                        severity=Severity.WARNING,
+                        severity=Severity.ERROR,
                         column_encoding=ColumnEncoding.CODEPOINTS,
                     )
                 )

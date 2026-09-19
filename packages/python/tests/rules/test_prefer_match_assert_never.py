@@ -50,7 +50,7 @@ def handle(status: Status) -> None:
 
     assert len(diagnostics) == 1
     assert diagnostics[0].code == "SARJ032"
-    assert diagnostics[0].severity.value == "warning"
+    assert diagnostics[0].severity.value == "error"
     assert diagnostics[0].line == 15
     assert "typed `Status` match" in diagnostics[0].message
 

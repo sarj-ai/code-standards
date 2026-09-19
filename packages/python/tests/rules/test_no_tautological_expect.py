@@ -43,7 +43,7 @@ def test_flags_bare_assert_true():
     assert len(diags) == 1
     assert diags[0].code == "SARJ057"
     assert diags[0].line == 2
-    assert diags[0].severity is Severity.WARNING
+    assert diags[0].severity is Severity.ERROR
 
 
 def test_selector_names_the_python_construct_and_preserves_compatibility():
@@ -96,7 +96,7 @@ def test_flags_value_that_slid_into_the_message_slot():
     diags = _check(src)
     assert len(diags) == 1
     assert "message is never displayed" in diags[0].message
-    assert diags[0].severity is Severity.WARNING
+    assert diags[0].severity is Severity.ERROR
 
 
 @pytest.mark.parametrize("expr", ["1 == 1", '"a" == "a"', "None is None", "(1, 2) == (1, 2)", "-1 == -1"])

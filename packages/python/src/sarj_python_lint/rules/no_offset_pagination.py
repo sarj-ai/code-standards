@@ -128,7 +128,7 @@ class NoOffsetPagination(Rule):
                     line=node.lineno,
                     col=node.col_offset + 1,
                     code=self.code,
-                    severity=Severity.WARNING,
+                    severity=Severity.ERROR,
                     message=(
                         "Dynamic OFFSET pagination may scan skipped rows and drift under writes; use a stable unique "
                         "keyset cursor, or document why bounded/random page access requires OFFSET."

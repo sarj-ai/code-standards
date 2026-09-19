@@ -129,7 +129,7 @@ class DefectXfailRequiresExplicitStrict(Rule):
                     "fixed its XPASS may not fail the suite. Add literal `strict=True`; if only some "
                     "parameter cases fail, move the marker to those `pytest.param` cases first."
                 ),
-                severity=Severity.WARNING,
+                severity=Severity.ERROR,
             )
             for node in _rotting_bug_pins(tree, imports)
         ]
