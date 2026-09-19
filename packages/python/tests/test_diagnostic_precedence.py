@@ -41,8 +41,9 @@ def test_typed_section_precedence_uses_the_owning_docstring_across_lines(tmp_pat
 
     diagnostics = analyze(["docstring-args-restate-signature", "no-docstring-type-restatement"], [source])
 
-    assert [finding.code for finding in diagnostics] == ["SARJ092"]
-    assert diagnostics[0].line == 5
+    assert [finding.code for finding in diagnostics] == ["SARJ086"]
+    assert diagnostics[0].severity is Severity.ERROR
+    assert diagnostics[0].line == 2
 
 
 def test_typed_return_precedence_uses_the_owning_docstring_across_lines(tmp_path: Path) -> None:
@@ -59,8 +60,9 @@ def test_typed_return_precedence_uses_the_owning_docstring_across_lines(tmp_path
 
     diagnostics = analyze(["docstring-returns-restate-signature", "no-docstring-type-restatement"], [source])
 
-    assert [finding.code for finding in diagnostics] == ["SARJ092"]
-    assert diagnostics[0].line == 5
+    assert [finding.code for finding in diagnostics] == ["SARJ087"]
+    assert diagnostics[0].severity is Severity.ERROR
+    assert diagnostics[0].line == 2
 
 
 def test_owner_precedence_never_crosses_docstrings(tmp_path: Path) -> None:
@@ -83,7 +85,8 @@ def test_owner_precedence_never_crosses_docstrings(tmp_path: Path) -> None:
 
     diagnostics = analyze(["docstring-args-restate-signature", "no-docstring-type-restatement"], [source])
 
-    assert [finding.code for finding in diagnostics] == ["SARJ086", "SARJ092"]
+    assert [finding.code for finding in diagnostics] == ["SARJ086", "SARJ086"]
+    assert [finding.line for finding in diagnostics] == [2, 10]
 
 
 def test_nominal_id_boundary_suppresses_generic_swap_prone_signature(tmp_path: Path) -> None:

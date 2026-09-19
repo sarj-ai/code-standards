@@ -204,7 +204,7 @@ class NoRepeatedTestBody(Rule):
                 col=group[1].node.col_offset + 1,
                 code=self.code,
                 message=_message(group),
-                severity=Severity.WARNING,
+                severity=Severity.ERROR,
             )
             for group in groups
         ]

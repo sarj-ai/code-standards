@@ -43,7 +43,7 @@ def test_fetchone_then_model_validate_fires(async_prefix: str, await_prefix: str
     """
     [diagnostic] = _check(source)
     assert diagnostic.code == "SARJ013"
-    assert diagnostic.severity is Severity.WARNING
+    assert diagnostic.severity is Severity.ERROR
     assert "class_row(Task)" in diagnostic.message
 
 

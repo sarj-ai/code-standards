@@ -57,6 +57,30 @@ def test_warning_only_baseline_excludes_the_finding(tmp_path: Path, capsys: pyte
     assert "0 blocking diagnostics over 0 files; 1 warnings excluded" in capsys.readouterr().out
 
 
+def test_promoted_repeated_test_body_blocks_and_enters_baseline(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    target = tmp_path / "test_examples.py"
+    target.write_text(
+        "def test_first():\n"
+        "    value = build('first')\n"
+        "    result = run(value)\n"
+        "    assert result is True\n\n"
+        "def test_second():\n"
+        "    value = build('second')\n"
+        "    result = run(value)\n"
+        "    assert result is True\n"
+    )
+    command = ["check", "--rule", "no-repeated-test-body"]
+
+    assert main([*command, str(target)]) == 1
+    assert "SARJ066 " in capsys.readouterr().out
+
+    baseline = tmp_path / "baseline.json"
+    assert main([*command, "--update-baseline", str(baseline), str(target)]) == 0
+    assert json.loads(baseline.read_text()) == {str(target): {"SARJ066": 1}}
+
+
 def test_baseline_written_from_absolute_repo_path_is_portable(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     target = tmp_path / "src" / "example.py"
     target.parent.mkdir()

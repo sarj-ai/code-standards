@@ -64,10 +64,10 @@ def test_public_examples_execute() -> None:
     assert [len(_check(example.focus_file.source)) for example in examples] == [1, 0]
 
 
-def test_reports_as_warning_and_quotes_the_reason() -> None:
+def test_reports_as_error_and_quotes_the_reason() -> None:
     finding = _check("value = thing  # noqa: F401 -- needed\n")[0]
 
-    assert finding.severity.value == "warning"
+    assert finding.severity.value == "error"
     assert '"needed"' in finding.message
 
 

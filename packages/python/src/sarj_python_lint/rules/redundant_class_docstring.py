@@ -107,7 +107,7 @@ class RedundantClassDocstring(Rule):
                         col=expr.col_offset + 1,
                         code=self.code,
                         message=self.description,
-                        severity=Severity.WARNING,
+                        severity=Severity.ERROR,
                     )
                 )
         return sorted(diags, key=lambda d: d.line)

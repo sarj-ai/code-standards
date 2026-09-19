@@ -209,7 +209,7 @@ def _suppressed_diagnostics(
 
 
 def _suppressed_codes(codes: dict[str, set[Severity]]) -> set[tuple[str, Severity]]:
-    return {
+    suppressed = {
         (generic, generic_severity)
         for specific, generics in _DIAGNOSTIC_PRECEDENCE.items()
         if specific in codes
@@ -217,6 +217,13 @@ def _suppressed_codes(codes: dict[str, set[Severity]]) -> set[tuple[str, Severit
         for generic_severity in codes.get(generic, set())
         if generic_severity is Severity.WARNING or Severity.ERROR in codes[specific]
     }
+    # The promoted signature-restatement rules now block. Keep their errors and
+    # drop only the lower-severity typed-docstring twin at the same owner.
+    if Severity.WARNING in codes.get("SARJ092", set()) and any(
+        Severity.ERROR in codes.get(generic, set()) for generic in ("SARJ086", "SARJ087")
+    ):
+        suppressed.add(("SARJ092", Severity.WARNING))
+    return suppressed
 
 
 def _function_signature_owner_locations(source: str) -> dict[int, _OwnerLocation]:

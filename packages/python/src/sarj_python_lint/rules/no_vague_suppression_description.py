@@ -123,7 +123,7 @@ class NoVagueSuppressionDescription(Rule):
                     message=(
                         f'Suppression reason "{vague_reason}" is generic; name the concrete mismatch or safety invariant.'
                     ),
-                    severity=Severity.WARNING,
+                    severity=Severity.ERROR,
                     column_encoding=ColumnEncoding.CODEPOINTS,
                 )
             )

@@ -158,7 +158,7 @@ class NoCopiedInheritedDocstring(Rule):
                         f"Docstring has the same cleaned content as {parent.name}.{name}'s. Remove it only if no "
                         "consumer requires the override's direct `__doc__`; otherwise retain it with a narrow rationale."
                     ),
-                    severity=Severity.WARNING,
+                    severity=Severity.ERROR,
                 )
             )
 

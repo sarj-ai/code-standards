@@ -121,7 +121,7 @@ class PreferStructOverNamedtuple(Rule):
                 "static `collections.namedtuple` fields have no type declarations — prefer a class-based "
                 "`typing.NamedTuple`; change tuple semantics only after reviewing callers"
             ),
-            severity=Severity.WARNING,
+            severity=Severity.ERROR,
         )
 
 

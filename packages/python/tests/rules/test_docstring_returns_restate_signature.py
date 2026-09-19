@@ -477,7 +477,7 @@ def test_the_finding_points_at_the_docstring():
     assert len(diags) == 1
     assert diags[0].line == 3
     assert "`get_line_length` Returns section" in diags[0].message
-    assert diags[0].severity is Severity.WARNING
+    assert diags[0].severity is Severity.ERROR
 
 
 def test_input_relationships_remain_semantic_in_nested_functions():

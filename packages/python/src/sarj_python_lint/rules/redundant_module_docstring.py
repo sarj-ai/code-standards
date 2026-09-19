@@ -126,7 +126,7 @@ class RedundantModuleDocstring(Rule):
                 col=expression.col_offset + 1,
                 code=self.code,
                 message=self.description,
-                severity=Severity.WARNING,
+                severity=Severity.ERROR,
             )
         ]
 

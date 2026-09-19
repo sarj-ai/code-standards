@@ -74,7 +74,7 @@ def test_flags_the_copy_and_not_the_original():
     assert diag.line == 8
     assert diag.col == 1
     assert diag.code == "SARJ066"
-    assert diag.severity is Severity.WARNING
+    assert diag.severity is Severity.ERROR
 
 
 def test_message_is_checkout_root_independent():

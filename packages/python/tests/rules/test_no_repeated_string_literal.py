@@ -41,7 +41,7 @@ def upsert():
     diags = _check(src)
     assert len(diags) == 2
     assert diags[0].code == "SARJ024"
-    assert all(diagnostic.severity is Severity.WARNING for diagnostic in diags)
+    assert all(diagnostic.severity is Severity.ERROR for diagnostic in diags)
     assert "first use at line 3" in diags[0].message
 
 
