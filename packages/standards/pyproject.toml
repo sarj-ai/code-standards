@@ -19,7 +19,7 @@ dependencies = [
   "pathspec==1.1.1",
   "basedpyright==1.39.10",
   "deptry==0.25.1",
-  "lefthook==2.1.12",
+  "lefthook==2.1.14",
   "packaging==26.3",
   "pre-commit==4.6.2",
   "pydantic==2.13.5",
