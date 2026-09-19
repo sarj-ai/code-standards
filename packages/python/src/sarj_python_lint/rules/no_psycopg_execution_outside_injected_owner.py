@@ -148,7 +148,7 @@ class NoPsycopgExecutionOutsideInjectedOwner(Rule):
                 line=call.lineno,
                 col=call.col_offset + 1,
                 code=self.code,
-                severity=Severity.WARNING,
+                severity=Severity.ERROR,
                 message=(
                     "Psycopg execution is outside a constructor-injected persistence owner; route it through the "
                     "owning store, repository, or transaction API"

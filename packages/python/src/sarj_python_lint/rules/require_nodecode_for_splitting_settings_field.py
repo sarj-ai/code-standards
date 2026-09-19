@@ -181,7 +181,7 @@ def _settings_split_findings(
                 line=field.annotation.lineno,
                 col=field.annotation.col_offset + 1,
                 code=code,
-                severity=Severity.WARNING,
+                severity=Severity.ERROR,
                 message=(
                     f"Complex setting `{field_name}` is unconditionally split by `{function.name}` but "
                     "environment sources may JSON-decode it first; if the input contract is raw text, "

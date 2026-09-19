@@ -45,7 +45,7 @@ def test_flags_value_narration(line: str):
     diags = _check(f"{line}\n")
     assert len(diags) == 1
     assert diags[0].code == "SARJ051"
-    assert diags[0].severity is Severity.WARNING
+    assert diags[0].severity is Severity.ERROR
     assert "remove the comment" in diags[0].message
 
 

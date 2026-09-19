@@ -35,7 +35,7 @@ def test_flags_unseeded_prng_calls_repeated_in_a_test(imports: str, call: str) -
     [diag] = _check(source)
     assert diag.code == "SARJ410"
     assert diag.line == 6
-    assert diag.severity is Severity.WARNING
+    assert diag.severity is Severity.ERROR
 
 
 def test_flags_randomness_in_a_comprehension() -> None:

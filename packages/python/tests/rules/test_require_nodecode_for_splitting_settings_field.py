@@ -77,7 +77,7 @@ def test_reports_raw_splitter_without_nodecode(source: str) -> None:
     findings = _check(source)
     assert len(findings) == 1
     assert findings[0].code == "SARJ424"
-    assert findings[0].severity == "warning"
+    assert findings[0].severity == "error"
     assert "split_" in findings[0].message
 
 

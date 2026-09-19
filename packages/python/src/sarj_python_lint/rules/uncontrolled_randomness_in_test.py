@@ -479,7 +479,7 @@ def _test_randomness_findings(
                 line=call.lineno,
                 col=call.col_offset + 1,
                 code=code,
-                severity=Severity.WARNING,
+                severity=Severity.ERROR,
                 message=(
                     "a standard-library PRNG sample runs in a potentially repeated test region without a "
                     "dominating deterministic seed; use an isolated `random.Random(seed)`, inject a "

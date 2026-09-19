@@ -27,7 +27,7 @@ def test_flags_dynamic_offset_markers_in_full_select(marker: str) -> None:
     source = f'q = "SELECT id FROM call ORDER BY id LIMIT 50 OFFSET {marker}"\n'  # ruff:ignore[hardcoded-sql-expression] -- synthetic lint-rule fixture
     diagnostics = _check(source)
     assert len(diagnostics) == 1
-    assert diagnostics[0].severity is Severity.WARNING
+    assert diagnostics[0].severity is Severity.ERROR
 
 
 def test_flags_dynamic_fstring_offset() -> None:

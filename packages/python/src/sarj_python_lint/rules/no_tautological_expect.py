@@ -102,7 +102,7 @@ class NoTautologicalExpect(Rule):
                 col=node.col_offset + 1,
                 code=self.code,
                 message=_message(node, reason),
-                severity=Severity.WARNING,
+                severity=Severity.ERROR,
             )
             for node, reason in _tautologies(tree, exempt)
         ]
