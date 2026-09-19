@@ -1138,7 +1138,9 @@ def rewrite_version_pins(text: str, installed: Mapping[str, str]) -> VersionPinR
     preapprovals = manifest.eslint_age_gate_preapprovals()
     if current_plugin := installed.get(_ESLINT_PLUGIN):
         preapprovals[_ESLINT_PLUGIN] = current_plugin
-    pinned, age_gate_changed = _rewrite_age_gate_preapprovals(pinned, preapprovals)
+    pinned, age_gate_changed = _rewrite_age_gate_preapprovals(
+        pinned, preapprovals, retired=frozenset(manifest.eslint_yarn_identity_pins())
+    )
     changed.update(age_gate_changed)
     return VersionPinRewrite(pinned, tuple(sorted(changed)))
 
@@ -1146,8 +1148,10 @@ def rewrite_version_pins(text: str, installed: Mapping[str, str]) -> VersionPinR
 def _rewrite_age_gate_preapprovals(
     text: str,
     approvals: Mapping[str, str],
+    *,
+    retired: frozenset[str] = frozenset(),
 ) -> AgeGateRewrite:
-    managed = frozenset(approvals)
+    managed = frozenset(approvals) | retired
     lines = text.splitlines(keepends=True)
     for index, line in enumerate(lines):
         header = _AGE_GATE_YAML_HEADER.fullmatch(line.rstrip("\r\n"))
@@ -1185,23 +1189,23 @@ def _rewrite_age_gate_preapprovals(
 
         end = retain_existing_items(index, header, retained, trailing)
         item_indent = f"{header.group('indent')}  "
-        rendered = [f'{item_indent}- "{name}@{approvals[name]}"\n' for name in sorted(managed)]
+        rendered = [f'{item_indent}- "{name}@{approvals[name]}"\n' for name in sorted(approvals)]
         replacement = [line, *retained, *rendered, *trailing]
         original = lines[index:end]
         if replacement != original:
             lines[index:end] = replacement
-            return AgeGateRewrite("".join(lines), managed)
+            return AgeGateRewrite("".join(lines), frozenset(approvals))
         return AgeGateRewrite(text, frozenset())
 
     def npm_replacement(match: re.Match[str]) -> str:
         existing = [trimmed for item in match.group("value").split(",") if (trimmed := item.strip())]
         retained = [item for item in existing if item not in managed]
-        values = ",".join((*retained, *sorted(managed)))
+        values = ",".join((*retained, *sorted(approvals)))
         prefix, suffix = match.group("prefix", "suffix")
         return f"{prefix}{values}{suffix}"
 
     rewritten = _NPM_AGE_GATE_EXCLUDE.sub(npm_replacement, text, count=1)
-    return AgeGateRewrite(rewritten, managed if rewritten != text else frozenset())
+    return AgeGateRewrite(rewritten, frozenset(approvals) if rewritten != text else frozenset())
 
 
 def _managed_preapproval(value: str, managed: frozenset[str]) -> str | None:
