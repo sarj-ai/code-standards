@@ -71,7 +71,7 @@ def test_flags_a_bare_phase_label(label: str) -> None:
         """)
     assert len(diags) == 1
     assert diags[0].code == "SARJ089"
-    assert diags[0].severity is Severity.WARNING
+    assert diags[0].severity is Severity.ERROR
     assert label in diags[0].message
 
 

@@ -187,7 +187,7 @@ class NoRepeatedStringLiteral(Rule):
                             f"structured string literal {_preview(value)} duplicates module constant "
                             f"`{constant_name}` — reuse the canonical constant so the copies cannot drift."
                         ),
-                        severity=Severity.WARNING,
+                        severity=Severity.ERROR,
                     )
                     for node in function_nodes
                 )
@@ -209,7 +209,7 @@ class NoRepeatedStringLiteral(Rule):
                         f"callable scopes (first use at line {first.lineno}) — reuse a named binding "
                         "when they share ownership, or suppress with an independent-ownership rationale."
                     ),
-                    severity=Severity.WARNING,
+                    severity=Severity.ERROR,
                 )
                 for node in repeats
             )

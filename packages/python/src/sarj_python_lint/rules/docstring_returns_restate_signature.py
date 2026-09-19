@@ -252,7 +252,7 @@ class DocstringReturnsRestateSignature(Rule):
                     f"`{node.name}` {section.name} section only repeats its callable name or annotated result type; "
                     "remove that section or document result semantics not expressed by the signature."
                 ),
-                severity=Severity.WARNING,
+                severity=Severity.ERROR,
             )
         )
 

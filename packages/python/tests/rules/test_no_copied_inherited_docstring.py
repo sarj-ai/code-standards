@@ -389,7 +389,7 @@ def test_banner_less_generated_tree_is_skipped_by_path():
 def test_a_hand_written_path_still_reports():
     src = _pair("Get a value.", "Get a value.")
     [diagnostic] = _check(src, Path("src/app/stores.py"))
-    assert diagnostic.severity is Severity.WARNING
+    assert diagnostic.severity is Severity.ERROR
     assert "direct `__doc__`" in diagnostic.message
     assert "every editor" not in diagnostic.message
 

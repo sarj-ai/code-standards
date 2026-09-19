@@ -48,7 +48,7 @@ def test_diag_carries_code_and_message():
     assert len(diags) == 1
     assert diags[0].code == "SARJ015"
     assert "typing.NamedTuple" in diags[0].message
-    assert diags[0].severity.value == "warning"
+    assert diags[0].severity.value == "error"
 
 
 @pytest.mark.parametrize(
@@ -725,12 +725,12 @@ def test_generated_source_and_path_are_excluded() -> None:
     assert _check(plain, path="generated/models.py") == []
 
 
-def test_cli_reports_nonblocking_warning(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_cli_reports_blocking_error(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     target = tmp_path / "models.py"
     target.write_text(
         'from collections import namedtuple\nRow = namedtuple("Row", ["id", "name"])\n',
         encoding="utf-8",
     )
 
-    assert main(["check", "--rule", "prefer-struct-over-namedtuple", str(target)]) == 0
-    assert "SARJ015 warning:" in capsys.readouterr().out
+    assert main(["check", "--rule", "prefer-struct-over-namedtuple", str(target)]) == 1
+    assert "SARJ015 " in capsys.readouterr().out

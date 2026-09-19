@@ -112,7 +112,7 @@ class TestPhaseLabelComment(Rule):
                     f"Bare test phase comment {body.strip()!r} narrates structure; delete it or replace it "
                     "with non-obvious rationale."
                 ),
-                severity=Severity.WARNING,
+                severity=Severity.ERROR,
                 column_encoding=ColumnEncoding.CODEPOINTS,
             )
             for line, col, body in standalone

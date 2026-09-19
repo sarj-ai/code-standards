@@ -345,7 +345,7 @@ class PreferSelfDocumentingConstant(Rule):
                                 f"`{name}` contains bare HTTP status integers; use `http.HTTPStatus` members, "
                                 "or their `.value` at an exact-integer boundary. Keep non-obvious rationale."
                             ),
-                            Severity.WARNING,
+                            Severity.ERROR,
                         )
                     )
                     continue
@@ -371,7 +371,7 @@ class PreferSelfDocumentingConstant(Rule):
                             f"`{name}` relies on its comment to identify {unit.label}; encode the unit in "
                             f"the constant name{alternative}.{compatibility} Keep non-obvious rationale."
                         ),
-                        Severity.WARNING,
+                        Severity.ERROR,
                     )
                 )
 

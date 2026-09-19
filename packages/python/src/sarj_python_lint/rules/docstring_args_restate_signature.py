@@ -181,7 +181,7 @@ class DocstringArgsRestateSignature(Rule):
                     f"`{node.name}` has an Args section whose entries only repeat matching parameter names or types; "
                     "remove that section or document a constraint not evident from the signature."
                 ),
-                severity=Severity.WARNING,
+                severity=Severity.ERROR,
             )
         )
 

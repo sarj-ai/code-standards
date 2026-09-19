@@ -333,7 +333,7 @@ class RestatedTestDocstring(Rule):
                 col=expr.col_offset + 1,
                 code=self.code,
                 message=_MESSAGE,
-                severity=Severity.WARNING,
+                severity=Severity.ERROR,
             )
         )
 
@@ -369,7 +369,7 @@ class RestatedTestDocstring(Rule):
                 col=expr.col_offset + 1,
                 code=self.code,
                 message=_MESSAGE,
-                severity=Severity.WARNING,
+                severity=Severity.ERROR,
             )
         )
 

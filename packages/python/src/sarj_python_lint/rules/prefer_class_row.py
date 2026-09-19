@@ -123,7 +123,7 @@ class PreferClassRow(Rule):
                         line=cursor.factory.lineno,
                         col=cursor.factory.col_offset + 1,
                         code=self.code,
-                        severity=Severity.WARNING,
+                        severity=Severity.ERROR,
                         message=(
                             f"this dict row is immediately converted to `{model}`; use `class_row({model})` to "
                             "construct it during fetch"

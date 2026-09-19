@@ -423,7 +423,7 @@ def test_diagnostic_names_callable_and_is_advisory():
     ''')
 
     assert "`count_widgets`" in diagnostic.message
-    assert diagnostic.severity is Severity.WARNING
+    assert diagnostic.severity is Severity.ERROR
 
 
 def test_unparseable_source_returns_nothing():

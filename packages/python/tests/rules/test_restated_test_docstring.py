@@ -63,7 +63,7 @@ def test_the_test_ceremony_vocabulary_is_discounted() -> None:
             assert render(widget)
         ''')
     assert len(diags) == 1
-    assert diags[0].severity is Severity.WARNING
+    assert diags[0].severity is Severity.ERROR
 
 
 def test_default_pytest_test_prefix_without_underscore_is_checked() -> None:
