@@ -10,7 +10,11 @@ from typing import TYPE_CHECKING, final
 
 import pytest
 
-from sarj_standards.libs.adoption import doctor as adoption_doctor, manifest as adoption_manifest
+from sarj_standards.libs.adoption import (
+    doctor as adoption_doctor,
+    manifest as adoption_manifest,
+    scaffold as adoption_scaffold,
+)
 from sarj_standards.libs.release import retirement, rollout
 
 from .fakes import FakeRolloutRunner as FakeRunner
@@ -493,6 +497,45 @@ class TestSafety:
         assert source.read_text(encoding="utf-8") == (
             "/* eslint-disable no-console, eqeqeq -- legacy */\nconst x = 1;\n"
         )
+
+
+class TestCanonicalCommitPolicyWorkflow:
+    def test_only_exact_generated_workflow_is_allowed(self, tmp_path: Path) -> None:
+        relative = rollout.COMMIT_POLICY_WORKFLOW_PATH
+        workflow = tmp_path / relative
+        workflow.parent.mkdir(parents=True)
+        canonical = adoption_scaffold.commit_policy_github_workflow()
+        workflow.write_text(canonical, encoding="utf-8")
+
+        allowed = rollout.canonical_commit_policy_workflow_paths(tmp_path, (MANIFEST, relative))
+        assert allowed == frozenset({relative})
+        rollout.reject_unsafe_diff((MANIFEST, relative), allowed_workflow_paths=allowed)
+        assert rollout.canonical_commit_policy_workflow_paths(tmp_path, (MANIFEST,)) == frozenset()
+
+        workflow.write_text(canonical.replace("contents: read", "contents: write"), encoding="utf-8")
+        assert rollout.canonical_commit_policy_workflow_paths(tmp_path, (MANIFEST, relative)) == frozenset()
+        with pytest.raises(rollout.RolloutError, match="protected paths"):
+            rollout.reject_unsafe_diff(
+                (MANIFEST, relative),
+                allowed_workflow_paths=rollout.canonical_commit_policy_workflow_paths(tmp_path, (MANIFEST, relative)),
+            )
+
+    def test_noncanonical_pin_is_not_prevalidated(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        relative = rollout.COMMIT_POLICY_WORKFLOW_PATH
+        workflow = tmp_path / relative
+        workflow.parent.mkdir(parents=True)
+        workflow.write_text("custom: true\n", encoding="utf-8")
+
+        def planned_pin_updates(_repo: Path) -> tuple[adoption_doctor.VersionPinUpdate, ...]:
+            return (adoption_doctor.VersionPinUpdate(workflow, "new", ()),)
+
+        monkeypatch.setattr(  # sarj-noqa: SARJ445 -- test isolates prevalidated workflow pin discovery
+            adoption_doctor,
+            "plan_version_pin_updates",
+            planned_pin_updates,
+        )
+
+        assert rollout.allowed_rollout_workflows(tmp_path) == frozenset()
 
 
 MANIFEST = ".sarj-standards.toml"
