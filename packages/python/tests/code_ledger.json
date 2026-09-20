@@ -217,7 +217,10 @@
   "SARJ439": "prefer-match-value-dispatch",
   "SARJ440": "no-redundant-module-alias-exports",
   "SARJ441": "no-service-behavior-in-settings",
-  "SARJ442": "no-deleted-only-override-parameter",
+  "SARJ442": [
+    "no-deleted-only-override-parameter",
+    "no-delete-statement"
+  ],
   "SARJ443": "unused-test-factory-option",
   "SARJ444": "no-excessive-cognitive-complexity",
   "SARJ445": "prefer-injected-dependency-over-monkeypatch",
@@ -226,5 +229,6 @@
   "SARJ448": "no-invalid-argument-name-suppression",
   "SARJ449": "require-typed-http-test-response",
   "SARJ450": "require-pydantic-for-structured-payload",
-  "SARJ451": "fastapi-class-router-contract"
+  "SARJ451": "fastapi-class-router-contract",
+  "SARJ452": "no-unused-value-marker"
 }

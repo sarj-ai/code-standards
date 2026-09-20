@@ -42,7 +42,7 @@
       "no-conftest-test-module-import",
       "no-copied-inherited-docstring",
       "no-cors-wildcard-with-credentials",
-      "no-deleted-only-override-parameter",
+      "no-delete-statement",
       "no-docstring-type-restatement",
       "no-dunder-all",
       "no-duplicate-dunder-all-entry",
@@ -77,6 +77,7 @@
       "no-trailing-numeric-unit-assignment-comment",
       "no-unique-violation-message-match",
       "no-unnecessary-docstring",
+      "no-unused-value-marker",
       "no-vague-annotations",
       "no-vague-suppression-description",
       "no-whole-request-response-payload-in-log",
@@ -395,7 +396,8 @@
       "SARJ448",
       "SARJ449",
       "SARJ450",
-      "SARJ451"
+      "SARJ451",
+      "SARJ452"
     ],
     "sql": [
       "SARJ101",
@@ -1024,6 +1026,13 @@
       "status": "renamed",
       "replacement": "no-database-triggers",
       "note": "Replace sarj-no-create-trigger with sarj-no-database-triggers before upgrading."
+    },
+    {
+      "id": "no-deleted-only-override-parameter",
+      "kind": "python",
+      "status": "renamed",
+      "replacement": "no-delete-statement",
+      "note": "Replace sarj-no-deleted-only-override-parameter with sarj-no-delete-statement before upgrading."
     },
     {
       "id": "no-environment-derived-access-grant",

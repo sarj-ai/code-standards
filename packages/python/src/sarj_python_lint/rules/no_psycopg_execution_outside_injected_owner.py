@@ -404,7 +404,7 @@ def _function_scopes(tree: ast.Module) -> list[_FunctionScope]:
 
         @override
         def visit_Lambda(self, node: ast.Lambda) -> None:
-            del node
+            return
 
     Collector().visit(tree)
     return scopes
@@ -623,19 +623,19 @@ class _FunctionAnalyzer:
 
             @override
             def visit_Lambda(self, node: ast.Lambda) -> None:
-                del node
+                return
 
             @override
             def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
-                del node
+                return
 
             @override
             def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
-                del node
+                return
 
             @override
             def visit_ClassDef(self, node: ast.ClassDef) -> None:
-                del node
+                return
 
         Visitor().visit(node)
 

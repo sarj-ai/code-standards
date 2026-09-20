@@ -24,7 +24,7 @@ def _cli(*args: str) -> subprocess.CompletedProcess[str]:
     if "--dest" in command:
         index = command.index("--dest")
         root = command[index + 1]
-        del command[index : index + 2]
+        command = [*command[:index], *command[index + 2 :]]
         command[0:0] = ["--root", root]
     return subprocess.run(
         [sys.executable, "-m", "sarj_standards", *command],

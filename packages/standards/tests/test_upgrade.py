@@ -31,7 +31,7 @@ def _main(arguments: list[str]) -> int:
     if "--dest" in command:
         index = command.index("--dest")
         root = command[index + 1]
-        del command[index : index + 2]
+        command = [*command[:index], *command[index + 2 :]]
         command[0:0] = ["--root", root]
     elif command and Path(command[-1]).is_dir():
         root = command.pop()

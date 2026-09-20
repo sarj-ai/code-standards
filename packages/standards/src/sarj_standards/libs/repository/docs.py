@@ -98,10 +98,9 @@ def _render_readmes(root: Path) -> dict[Path, str]:
 
 
 def _root_readme(
-    root: Path,
+    _root: Path,
     packages: list[tuple[Path, str, str | None, dict[str, object]]],
 ) -> str:
-    del root
     standards = packages[0][3]
     title = _title(_string(standards, "name"))
     sections = [
@@ -160,13 +159,12 @@ def _root_readme(
 
 
 def _package_readme(
-    root: Path,
-    manifest_path: Path,
+    _root: Path,
+    _manifest_path: Path,
     registry: str,
     engine: str | None,
     metadata: dict[str, object],
 ) -> str:
-    del root, manifest_path
     name = _string(metadata, "name")
     sections = [
         _GENERATED_SENTINEL,

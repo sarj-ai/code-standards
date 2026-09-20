@@ -118,9 +118,9 @@ dogfood-python:
 	output="$$(uv run --quiet --project packages/python --frozen sarj-python-lint check "$${rule_args[@]}" --baseline packages/python/dogfood-baseline.json -- "$${python_files[@]}" 2>&1)"; \
 	status=$$?; \
 	set -e; \
-	if (( status > 1 )); then printf '%s\n' "$$output"; exit $$status; fi; \
-	if [[ -n "$$output" ]]; then printf '%s\n' "$$output"; exit 1; fi; \
-	printf 'dogfood: %d Python rules, %d source files, 0 diagnostics\n' "$${#python_rules[@]}" "$${#python_files[@]}"
+	if (( status != 0 )); then printf '%s\n' "$$output"; exit $$status; fi; \
+	if [[ -n "$$output" ]]; then printf '%s\n' "$$output"; fi; \
+	printf 'dogfood: %d Python rules, %d source files, 0 blocking diagnostics\n' "$${#python_rules[@]}" "$${#python_files[@]}"
 
 dogfood-typescript:
 	cd packages/typescript && npm run dogfood
