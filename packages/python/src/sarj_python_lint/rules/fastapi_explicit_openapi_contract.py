@@ -425,16 +425,39 @@ def _schema_erasing(node: ast.expr, index: FastapiIndex) -> bool:
         return _schema_erasing(parts[0], index)
     if isinstance(resolved, ast.BinOp) and isinstance(resolved.op, ast.BitOr):
         return _schema_erasing(resolved.left, index) or _schema_erasing(resolved.right, index)
-    name = flat_name(resolved.value) if isinstance(resolved, ast.Subscript) else flat_name(resolved)
-    if name in {"Any", "object"}:
+    target = resolved.value if isinstance(resolved, ast.Subscript) else resolved
+    if _is_typing_type(target, index, "Any") or _is_builtin_type(target, index, "object"):
         return True
-    if name in _RAW_MAPPINGS or name in _CONTAINERS:
+    if index.imports.resolves(target, sources=frozenset({"pydantic"}), symbol="JsonValue"):
+        return True
+    if _is_container_type(target, index, _RAW_MAPPINGS | _CONTAINERS):
         if not isinstance(resolved, ast.Subscript):
             return True
         return any(_schema_erasing(item, index) for item in _slice_items(resolved.slice))
-    if isinstance(resolved, ast.Subscript) and name in {"Optional", "Union"}:
+    if isinstance(resolved, ast.Subscript) and any(
+        _is_typing_type(target, index, wrapper) for wrapper in ("Optional", "Union")
+    ):
         return any(_schema_erasing(item, index) for item in _slice_items(resolved.slice))
     return False
+
+
+def _is_builtin_type(node: ast.expr, index: FastapiIndex, name: str) -> bool:
+    return (
+        isinstance(node, ast.Name) and node.id == name and index.imports.builtin_is_unshadowed(name)
+    ) or index.imports.resolves(node, sources=frozenset({"builtins"}), symbol=name)
+
+
+def _is_typing_type(node: ast.expr, index: FastapiIndex, name: str) -> bool:
+    return index.imports.resolves(node, sources=frozenset({"typing", "typing_extensions"}), symbol=name)
+
+
+def _is_container_type(node: ast.expr, index: FastapiIndex, names: frozenset[str]) -> bool:
+    builtin_names = {"dict", "list", "set", "tuple"}
+    return any(
+        (name in builtin_names and _is_builtin_type(node, index, name))
+        or index.imports.resolves(node, sources=frozenset({"collections.abc", "typing"}), symbol=name)
+        for name in names
+    )
 
 
 def _slice_items(node: ast.expr) -> tuple[ast.expr, ...]:

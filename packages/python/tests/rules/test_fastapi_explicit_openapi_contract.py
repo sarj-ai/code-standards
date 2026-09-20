@@ -7,7 +7,7 @@ import pytest
 
 from sarj_python_lint.rule_base import Severity
 from sarj_python_lint.rules.fastapi_explicit_openapi_contract import FastapiExplicitOpenapiContract
-from sarj_python_lint.rules.pydantic_at_boundaries import PydanticAtBoundaries
+from sarj_python_lint.rules.named_record_at_boundaries import NamedRecordAtBoundaries
 
 
 if TYPE_CHECKING:
@@ -164,6 +164,38 @@ async def me(user: Annotated[User, Depends(current_user)]) -> UserResponse:
     return UserResponse.model_validate(user)
 """)
     assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    "declaration",
+    [
+        "from vendor import Any as Payload",
+        "from vendor import object as Payload",
+        "class Payload: ...",
+    ],
+)
+def test_foreign_or_named_types_are_not_mistaken_for_schema_erasing_builtins(declaration: str) -> None:
+    source = f"""
+from fastapi import APIRouter
+{declaration}
+router = APIRouter()
+@router.get('/items', summary='Read items', description='Returns items.', status_code=200)
+def items() -> Payload:
+    return Payload()
+"""
+    assert _check(source) == []
+
+
+def test_pydantic_json_value_is_explicitly_schema_erasing_for_openapi() -> None:
+    source = """
+from fastapi import APIRouter
+from pydantic import JsonValue
+router = APIRouter()
+@router.get('/items', summary='Read items', description='Returns items.', status_code=200)
+def items() -> JsonValue:
+    return None
+"""
+    assert any("erases its OpenAPI schema" in finding.message for finding in _check(source))
 
 
 def test_same_file_dependency_alias_is_resolved():
@@ -1120,7 +1152,7 @@ async def health() -> dict[str, Any]:
     return {"status": "ok"}
 """
     )
-    assert PydanticAtBoundaries().check(Path("api.py"), source) == []
+    assert NamedRecordAtBoundaries().check(Path("api.py"), source) == []
     assert FastapiExplicitOpenapiContract().check(Path("api.py"), source)
 
 
@@ -1136,14 +1168,14 @@ async def health() -> dict[str, Any]:
     return {"status": "ok"}
 """
     assert FastapiExplicitOpenapiContract().check(Path("api.py"), hidden) == []
-    assert len(PydanticAtBoundaries().check(Path("api.py"), hidden)) == 1
+    assert len(NamedRecordAtBoundaries().check(Path("api.py"), hidden)) == 1
 
     unannotated = _source(f"""
 @router.get("/health", status_code=200{response_model})
 async def health():
     return {{"status": "ok"}}
 """)
-    assert PydanticAtBoundaries().check(Path("api.py"), unannotated) == []
+    assert NamedRecordAtBoundaries().check(Path("api.py"), unannotated) == []
     diagnostics = _check(unannotated)
     assert any("fixed-shape dictionary" in diagnostic.message for diagnostic in diagnostics)
 
@@ -1164,7 +1196,7 @@ async def health() -> dict[str, Any]:
     return {"status": "ok"}
 """)
     assert _check(source) == []
-    assert PydanticAtBoundaries().check(Path("api.py"), source) == []
+    assert NamedRecordAtBoundaries().check(Path("api.py"), source) == []
 
 
 def test_error_only_response_does_not_document_default_success_body():
@@ -1185,7 +1217,7 @@ async def health() -> dict[str, Any]:
     return {"status": "ok"}
 """)
     assert _check(source) == []
-    assert PydanticAtBoundaries().check(Path("api.py"), source) == []
+    assert NamedRecordAtBoundaries().check(Path("api.py"), source) == []
 
 
 def test_concretely_typed_mapping_preserves_schema_but_erased_members_do_not():

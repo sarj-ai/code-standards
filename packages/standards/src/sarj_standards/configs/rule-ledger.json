@@ -78,7 +78,7 @@
       "no-unique-violation-message-match",
       "no-unnecessary-docstring",
       "no-unused-value-marker",
-      "no-vague-annotations",
+      "no-any-mapping-types",
       "no-vague-suppression-description",
       "no-whole-request-response-payload-in-log",
       "opaque-parametrize-case-needs-id",
@@ -109,7 +109,7 @@
       "prefer-walrus-regex-match",
       "prefer-walrus-stream-loop",
       "production-derived-test-cases",
-      "pydantic-at-boundaries",
+      "named-record-at-boundaries",
       "pytest-fixture-returns-bare-tuple",
       "redundant-class-docstring",
       "redundant-docstring",
@@ -998,8 +998,8 @@
       "id": "named-fixed-record-return",
       "kind": "python",
       "status": "renamed",
-      "replacement": "pydantic-at-boundaries",
-      "note": "Replace sarj-named-fixed-record-return with sarj-pydantic-at-boundaries before upgrading."
+      "replacement": "named-record-at-boundaries",
+      "note": "Replace sarj-named-fixed-record-return with sarj-named-record-at-boundaries before upgrading."
     },
     {
       "id": "no-aggregation-in-store-query",
@@ -1212,6 +1212,13 @@
       "note": "Remove this hook from pre-commit; strict BasedPyright `reportUnreachable` owns semantic unreachable-code detection."
     },
     {
+      "id": "no-vague-annotations",
+      "kind": "python",
+      "status": "renamed",
+      "replacement": "no-any-mapping-types",
+      "note": "Replace sarj-no-vague-annotations with sarj-no-any-mapping-types before upgrading."
+    },
+    {
       "id": "parametrize-case-needs-id",
       "kind": "python",
       "status": "renamed",
@@ -1273,6 +1280,13 @@
       "status": "removed",
       "replacement": null,
       "note": "Remove this hook from pre-commit. Converting an enum to str is commonly required at rendering, logging, JSON, header, and exception boundaries; the rule never proved a receiving enum contract and produced no findings across 5,323 tracked files. There is no replacement."
+    },
+    {
+      "id": "pydantic-at-boundaries",
+      "kind": "python",
+      "status": "renamed",
+      "replacement": "named-record-at-boundaries",
+      "note": "Replace sarj-pydantic-at-boundaries with sarj-named-record-at-boundaries before upgrading."
     },
     {
       "id": "repeated-static-call-assertions",

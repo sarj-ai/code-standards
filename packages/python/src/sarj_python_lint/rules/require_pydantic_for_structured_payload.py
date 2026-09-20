@@ -17,6 +17,7 @@ from sarj_python_lint.rule_base import (
     parse_or_none,
 )
 from sarj_python_lint.rules._fastapi import FastapiIndex
+from sarj_python_lint.rules._imports import ImportIndex
 from sarj_python_lint.rules._paths import is_generated, is_test_path
 
 
@@ -82,16 +83,18 @@ class RequirePydanticForStructuredPayload(Rule):
         if tree is None:
             return []
         index = FastapiIndex(tree, path=path)
+        imports = ImportIndex.from_tree(tree, module_scope_only=True)
+        structured_fields = _structured_record_fields(tree, imports)
         lines = source.splitlines()
         findings: list[Diagnostic] = []
         for function in (node for node in ast.walk(tree) if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))):
             if not index.routes(function):
                 continue
             parameters = {
-                argument.arg
+                argument.arg: _annotation_name(argument.annotation)
                 for argument in (*function.args.posonlyargs, *function.args.args, *function.args.kwonlyargs)
             }
-            raw_names = _nested_payload_bindings(function, parameters)
+            raw_names = _nested_payload_bindings(function, parameters, structured_fields)
             for access in _fixed_key_accesses(function, raw_names):
                 if is_suppressed(lines, access.lineno, self.code):
                     continue
@@ -107,7 +110,11 @@ class RequirePydanticForStructuredPayload(Rule):
         return sorted(findings, key=lambda finding: (finding.line, finding.col))
 
 
-def _nested_payload_bindings(function: ast.FunctionDef | ast.AsyncFunctionDef, parameters: set[str]) -> set[str]:
+def _nested_payload_bindings(
+    function: ast.FunctionDef | ast.AsyncFunctionDef,
+    parameters: dict[str, str | None],
+    structured_fields: frozenset[tuple[str, str]],
+) -> set[str]:
     result: set[str] = set()
     for node in ast.walk(function):
         if not isinstance(node, (ast.Assign, ast.AnnAssign)):
@@ -119,9 +126,64 @@ def _nested_payload_bindings(function: ast.FunctionDef | ast.AsyncFunctionDef, p
             or value.value.id not in parameters
         ):
             continue
+        owner = parameters[value.value.id]
+        if owner is not None and (owner, value.attr) in structured_fields:
+            continue
         targets = node.targets if isinstance(node, ast.Assign) else [node.target]
         result.update(target.id for target in targets if isinstance(target, ast.Name))
     return result
+
+
+def _structured_record_fields(tree: ast.Module, imports: ImportIndex) -> frozenset[tuple[str, str]]:
+    classes = [statement for statement in tree.body if isinstance(statement, ast.ClassDef)]
+    named_records = _direct_named_records(classes, imports)
+    for _round in range(len(classes)):
+        inherited = _inherited_named_records(classes, named_records)
+        if inherited <= named_records:
+            break
+        named_records.update(inherited)
+    fields: set[tuple[str, str]] = set()
+    for node in classes:
+        if node.name in named_records:
+            fields.update(_named_record_fields(node, named_records))
+    return frozenset(fields)
+
+
+def _direct_named_records(classes: list[ast.ClassDef], imports: ImportIndex) -> set[str]:
+    return {node.name for node in classes if any(_is_named_record_base(base, imports) for base in node.bases)}
+
+
+def _is_named_record_base(base: ast.expr, imports: ImportIndex) -> bool:
+    return imports.resolves(base, sources=frozenset({"pydantic"}), symbol="BaseModel") or imports.resolves(
+        base, sources=frozenset({"typing", "typing_extensions"}), symbol="TypedDict"
+    )
+
+
+def _inherited_named_records(classes: list[ast.ClassDef], named_records: set[str]) -> set[str]:
+    return {
+        node.name
+        for node in classes
+        if any(isinstance(base, ast.Name) and base.id in named_records for base in node.bases)
+    }
+
+
+def _named_record_fields(node: ast.ClassDef, named_records: set[str]) -> set[tuple[str, str]]:
+    return {
+        (node.name, statement.target.id)
+        for statement in node.body
+        if isinstance(statement, ast.AnnAssign)
+        and isinstance(statement.target, ast.Name)
+        and _annotation_name(statement.annotation) in named_records
+    }
+
+
+def _annotation_name(node: ast.expr | None) -> str | None:
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        try:
+            node = ast.parse(node.value, mode="eval").body
+        except SyntaxError:
+            return None
+    return node.id if isinstance(node, ast.Name) else None
 
 
 def _fixed_key_accesses(function: ast.FunctionDef | ast.AsyncFunctionDef, raw_names: set[str]) -> list[ast.expr]:

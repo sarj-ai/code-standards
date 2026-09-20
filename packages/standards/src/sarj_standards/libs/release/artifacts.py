@@ -12,8 +12,9 @@ from sarj_standards.libs.release._values import is_object_dict, is_object_list, 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
 
+    from pydantic import JsonValue
 
-type JsonValue = str | int | float | bool | list[JsonValue] | dict[str, JsonValue] | None
+
 _INSTALL_LIFECYCLE_SCRIPTS = frozenset({"preinstall", "install", "postinstall", "prepare"})
 
 

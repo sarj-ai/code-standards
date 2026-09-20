@@ -101,6 +101,20 @@ def test_nominal_id_boundary_suppresses_generic_swap_prone_signature(tmp_path: P
     assert [finding.code for finding in diagnostics] == ["SARJ093"]
 
 
+def test_any_mapping_owns_fixed_record_overlap(tmp_path: Path) -> None:
+    source = tmp_path / "service.py"
+    source.write_text(
+        "from typing import Any\ndef payload() -> dict[str, Any]:\n    return {'id': 1}\n",
+        encoding="utf-8",
+    )
+
+    diagnostics = analyze(["named-record-at-boundaries", "no-any-mapping-types"], [source])
+
+    assert [finding.code for finding in diagnostics] == ["SARJ447"]
+    assert diagnostics[0].severity is Severity.ERROR
+    assert "TypedDict" in diagnostics[0].message
+
+
 def test_comment_only_unit_warning_remains_when_selected_alone(tmp_path: Path) -> None:
     source = tmp_path / "service.py"
     source.write_text("# Timeout in seconds.\nTIMEOUT = 5\n", encoding="utf-8")

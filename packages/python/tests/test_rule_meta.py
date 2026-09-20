@@ -30,7 +30,6 @@ _LEDGER_PATH = Path(__file__).parent / "code_ledger.json"
 # over to recover deleted rule modules.
 _RULES_DIR = "packages/python/src/sarj_python_lint/rules"
 _WARNING_LEVELS_PATH = _REPO_ROOT / "packages/standards/src/sarj_standards/configs/rule-warning-levels.v1.json"
-type _JsonValue = bool | int | float | str | list[_JsonValue] | dict[str, _JsonValue] | None
 
 _RENAMED_RULES = {
     "defect-xfail-requires-explicit-strict": (
@@ -39,6 +38,11 @@ _RENAMED_RULES = {
     ),
     "fastapi-explicit-openapi-contract": ("SARJ094", ("fastapi-openapi-contract",)),
     "no-generic-single-export-module": ("SARJ022", ("single-public-export",)),
+    "named-record-at-boundaries": (
+        "SARJ008",
+        ("named-fixed-record-return", "pydantic-at-boundaries"),
+    ),
+    "no-any-mapping-types": ("SARJ447", ("no-vague-annotations",)),
     "no-analytical-aggregation-in-postgres-store": ("SARJ020", ("no-aggregation-in-store-query",)),
     "no-copied-inherited-docstring": ("SARJ084", ("duplicated-override-docstring",)),
     "no-delete-statement": ("SARJ442", ("no-deleted-only-override-parameter",)),
@@ -195,18 +199,18 @@ def test_every_rule_has_valid_source_owned_documentation() -> None:
 
 
 def _warning_python_rule_ids() -> set[str]:
-    lifecycle: _JsonValue = json.loads(  # pyright: ignore[reportAny] -- narrowed before use.
+    raw: object = json.loads(  # pyright: ignore[reportAny] -- narrowed structurally below.
         _WARNING_LEVELS_PATH.read_text(encoding="utf-8")
     )
-    assert isinstance(lifecycle, dict)
-    selectors = lifecycle["rules"]
+    assert isinstance(raw, dict)
+    entries: list[tuple[object, object]] = list(raw.items())  # pyright: ignore[reportUnknownArgumentType]
+    selectors = next((value for key, value in entries if key == "rules"), None)
     assert isinstance(selectors, list)
-    assert all(isinstance(selector, str) for selector in selectors)
-    return {
-        selector.removeprefix("python:")
-        for selector in selectors
-        if isinstance(selector, str) and selector.startswith("python:")
-    }
+    typed_selectors: list[str] = []
+    for selector in selectors:  # pyright: ignore[reportUnknownVariableType]
+        assert isinstance(selector, str)
+        typed_selectors.append(selector)
+    return {selector.removeprefix("python:") for selector in typed_selectors if selector.startswith("python:")}
 
 
 def _analyze_public_example(rule_id: str, example: RuleExample, root: Path) -> list[Diagnostic]:
