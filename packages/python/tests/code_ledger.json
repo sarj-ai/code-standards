@@ -10,7 +10,11 @@
   "SARJ005": null,
   "SARJ006": "prefer-str-enum",
   "SARJ007": null,
-  "SARJ008": "pydantic-at-boundaries",
+  "SARJ008": [
+    "named-fixed-record-return",
+    "pydantic-at-boundaries",
+    "named-record-at-boundaries"
+  ],
   "SARJ009": "no-sentinel-return-on-except",
   "SARJ010": "no-unreachable-after-terminal",
   "SARJ011": "prefer-constant-time-secret-compare",
@@ -225,7 +229,10 @@
   "SARJ444": "no-excessive-cognitive-complexity",
   "SARJ445": "prefer-injected-dependency-over-monkeypatch",
   "SARJ446": "prefer-monkeypatch-for-process-state-in-test",
-  "SARJ447": "no-vague-annotations",
+  "SARJ447": [
+    "no-vague-annotations",
+    "no-any-mapping-types"
+  ],
   "SARJ448": "no-invalid-argument-name-suppression",
   "SARJ449": "require-typed-http-test-response",
   "SARJ450": "require-pydantic-for-structured-payload",

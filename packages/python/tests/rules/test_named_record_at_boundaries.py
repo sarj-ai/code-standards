@@ -5,21 +5,21 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from sarj_python_lint.rules.pydantic_at_boundaries import PydanticAtBoundaries
+from sarj_python_lint.rules.named_record_at_boundaries import NamedRecordAtBoundaries
 
 
 if TYPE_CHECKING:
     from sarj_python_lint.rule_base import Diagnostic, RuleExample
 
 
-_PUBLIC_EXAMPLES = PydanticAtBoundaries.public_examples()
+_PUBLIC_EXAMPLES = NamedRecordAtBoundaries.public_examples()
 
 
 def _check(source: str, path: str = "svc.py") -> list[Diagnostic]:
     typed_source = (
         f"{source}\nfrom typing import Annotated, Any, Dict, List, Optional, Union, overload\nimport typing\n"
     )
-    return PydanticAtBoundaries().check(Path(path), typed_source)
+    return NamedRecordAtBoundaries().check(Path(path), typed_source)
 
 
 @pytest.mark.parametrize(
@@ -30,7 +30,7 @@ def _check(source: str, path: str = "svc.py") -> list[Diagnostic]:
 def test_public_documentation_examples_are_executable(example: RuleExample) -> None:
     focus = example.focus_file
 
-    findings = PydanticAtBoundaries().check(Path(focus.path), focus.source)
+    findings = NamedRecordAtBoundaries().check(Path(focus.path), focus.source)
 
     assert len(findings) == example.expected_count
 
@@ -51,6 +51,12 @@ def build_payload(call) -> dict[str, Any]:
 
 def test_flags_dict_str_object_return():
     src = "def f() -> dict[str, object]:\n    return {'id': 1}\n"
+    assert len(_check(src)) == 1
+
+
+@pytest.mark.parametrize("value_type", ["int", "JsonValue", "list[str]"])
+def test_flags_fixed_record_for_precise_or_json_value_types(value_type: str):
+    src = f"def f() -> dict[str, {value_type}]:\n    return {{'id': 1}}\n"
     assert len(_check(src)) == 1
 
 
@@ -125,7 +131,7 @@ class M:
     assert _check(src) == []
 
 
-def test_allows_concrete_dict_value_types():
+def test_flags_fixed_records_even_when_value_types_are_concrete():
     src = """
 def f() -> dict[str, str]:
     return {'id': 1}
@@ -136,7 +142,7 @@ def g() -> dict[str, int]:
 def h() -> dict[str, list[int]]:
     return {'id': 1}
 """
-    assert _check(src) == []
+    assert len(_check(src)) == 3
 
 
 def test_allows_typed_returns():
@@ -328,10 +334,6 @@ _ALLOWED_ANNOTATIONS = [
     "CallPayload",
     "Any",  # bare `Any` in return position is not a dict
     "object",
-    "dict[str, str]",
-    "dict[str, int]",
-    "dict[str, CallId]",
-    "dict[str, list[int]]",
     "dict[CallId, Call]",
     # Non-str keys make a MAPPING (a data structure), not an unnamed record —
     # minimized from pydantic's `get_standard_typevars_map` / `deep_update`.
@@ -339,15 +341,12 @@ _ALLOWED_ANNOTATIONS = [
     "dict[TypeVar, Any]",
     "dict[KeyType, Any]",
     "dict[type, object]",
-    "dict[str, dict[str, Any]]",  # inner Any-dict as VALUE is not detected
-    "dict[str, Any | None]",  # union value is not `Any`/`object`
     "dict[str]",  # single subscript arg — not `dict[K, V]`
     "dict[str, Any, Any]",  # three args — not `dict[K, V]`
     "Mapping[str, Any]",  # not `dict`/`Dict`
     "MutableMapping[str, Any]",
     "list[str]",
     "list[CallPayload]",
-    "list[dict[str, str]]",  # list of concrete dict is fine
     "set[dict[str, Any]]",  # only `list[...]` is unwrapped
     "frozenset[dict[str, Any]]",
     "tuple[bool, str | None]",
@@ -671,8 +670,8 @@ def test_flags_implicitly_concatenated_string_annotation():
     assert len(_check('def f() -> "dict[str, " "Any]":\n    return {"id": 1}\n')) == 1
 
 
-def test_allows_dict_with_bare_dict_value():
-    assert _check("def f() -> dict[str, dict]:\n    return {'id': 1}\n") == []
+def test_flags_fixed_record_with_bare_dict_value():
+    assert len(_check("def f() -> dict[str, dict]:\n    return {'id': 1}\n")) == 1
 
 
 def test_allows_sequence_of_untyped_dict():
@@ -948,10 +947,10 @@ def test_pydantic_serializer_protocol_is_exempt(decorator: str) -> None:
     assert not _check(source)
 
 
-def test_foreign_any_annotation_is_not_treated_as_typing_any() -> None:
+def test_fixed_record_does_not_depend_on_value_type_provenance() -> None:
     source = "from vendor import Any\ndef payload() -> dict[str, Any]:\n    return {'id': 1}\n"
 
-    assert not _check(source)
+    assert len(_check(source)) == 1
 
 
 def test_shadowed_dict_annotation_is_not_treated_as_builtin_dict() -> None:
@@ -999,7 +998,7 @@ def test_mixed_record_and_unknown_list_is_not_fixed() -> None:
 def test_unimported_typing_spellings_do_not_claim_provenance() -> None:
     source = "def payload() -> Dict[str, Any]:\n    return {'id': 1}\n"
 
-    assert PydanticAtBoundaries().check(Path("service.py"), source) == []
+    assert NamedRecordAtBoundaries().check(Path("service.py"), source) == []
 
 
 def test_nested_bindings_do_not_shadow_module_annotation_names() -> None:
@@ -1014,7 +1013,7 @@ def payload() -> dict[str, Any]:
     return {"id": 1}
 """
 
-    assert len(PydanticAtBoundaries().check(Path("service.py"), source)) == 1
+    assert len(NamedRecordAtBoundaries().check(Path("service.py"), source)) == 1
 
 
 def test_foreign_overload_decorator_does_not_exempt_record_return() -> None:
@@ -1027,7 +1026,7 @@ def payload() -> dict[str, Any]:
     return {"id": 1}
 """
 
-    assert len(PydanticAtBoundaries().check(Path("service.py"), source)) == 1
+    assert len(NamedRecordAtBoundaries().check(Path("service.py"), source)) == 1
 
 
 def test_module_comprehension_targets_do_not_shadow_annotations() -> None:
@@ -1040,7 +1039,7 @@ def payload() -> dict[str, Any]:
     return {"id": 1}
 """
 
-    assert len(PydanticAtBoundaries().check(Path("service.py"), source)) == 1
+    assert len(NamedRecordAtBoundaries().check(Path("service.py"), source)) == 1
 
 
 @pytest.mark.parametrize("name", ["Any", "dict"])
@@ -1053,7 +1052,8 @@ def payload() -> dict[str, Any]:
     return {"id": 1}
 """.replace("TARGET", name)
 
-    assert PydanticAtBoundaries().check(Path("service.py"), source) == []
+    findings = NamedRecordAtBoundaries().check(Path("service.py"), source)
+    assert len(findings) == (0 if name == "dict" else 1)
 
 
 def test_type_checking_imports_have_annotation_provenance() -> None:
@@ -1068,7 +1068,7 @@ def payload() -> dict[str, Any]:
     return {"id": 1}
 """
 
-    assert len(PydanticAtBoundaries().check(Path("service.py"), source)) == 1
+    assert len(NamedRecordAtBoundaries().check(Path("service.py"), source)) == 1
 
 
 def test_annotated_harmless_alias_preserves_fixed_record_evidence() -> None:

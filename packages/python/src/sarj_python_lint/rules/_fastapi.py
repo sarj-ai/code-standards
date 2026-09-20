@@ -5,6 +5,8 @@ from collections import Counter
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal, NamedTuple
 
+from sarj_python_lint.rules._imports import ImportIndex
+
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -107,6 +109,7 @@ class FastapiIndex:
     def __init__(self, tree: ast.Module, *, path: Path | None = None) -> None:
         self.tree: ast.Module = tree
         self.path: Path | None = path
+        self.imports: ImportIndex = ImportIndex.from_tree(tree, module_scope_only=True)
         self._imported_dependency_cache: dict[_ImportedReference, bool] = {}
         self._imported_module_cache: dict[Path, ast.Module | None] = {}
         self.modules: set[str] = set()

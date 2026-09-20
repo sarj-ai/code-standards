@@ -43,3 +43,40 @@ def helper(body: RequestModel, key: str):
     return payload[key]
 """
     assert RequirePydanticForStructuredPayload().check(Path("app/service.py"), source) == []
+
+
+@pytest.mark.parametrize("record_base", ["TypedDict", "BaseModel"])
+def test_named_validated_nested_record_is_not_treated_as_open_mapping(record_base: str) -> None:
+    record_import = "from typing import TypedDict" if record_base == "TypedDict" else ""
+    source = f"""
+from fastapi import APIRouter
+from pydantic import BaseModel
+{record_import}
+router = APIRouter()
+class CardPayload({record_base}):
+    name_on_card: str
+class RequestModel(BaseModel):
+    payload: CardPayload
+@router.post('/actions')
+def action(body: RequestModel):
+    payload = body.payload
+    return payload['name_on_card']
+"""
+    assert RequirePydanticForStructuredPayload().check(Path("app/routes.py"), source) == []
+
+
+def test_named_field_on_unvalidated_outer_class_remains_reportable() -> None:
+    source = """
+from fastapi import APIRouter
+from typing import TypedDict
+router = APIRouter()
+class CardPayload(TypedDict):
+    name_on_card: str
+class RequestModel:
+    payload: CardPayload
+@router.post('/actions')
+def action(body: RequestModel):
+    payload = body.payload
+    return payload['name_on_card']
+"""
+    assert len(RequirePydanticForStructuredPayload().check(Path("app/routes.py"), source)) == 1

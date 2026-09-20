@@ -36,15 +36,15 @@ _DICT_ARG_COUNT = 2
 _DOCUMENTATION_DIR_NAMES = frozenset({"docs", "docs_src"})
 
 
-class PydanticAtBoundaries(Rule):
-    id: str = "pydantic-at-boundaries"
+class NamedRecordAtBoundaries(Rule):
+    id: str = "named-record-at-boundaries"
     code: str = "SARJ008"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
         summary="Public Python API returns an unnamed fixed-shape record.",
         rationale="A named record makes field types and required keys explicit to callers and static tooling.",
         remediation="Define and return a `TypedDict`, Pydantic model, or frozen dataclass for the fixed record shape.",
         category=RuleCategory.ARCHITECTURE,
-        aliases=("named-fixed-record-return",),
+        aliases=("pydantic-at-boundaries", "named-fixed-record-return"),
         limitations=(
             "Visible FastAPI routes are owned by SARJ094. Private functions and classes, closures, tests, generated files, documentation examples, recognized framework hooks, and dictionary conversion methods are excluded.",
             "Only returned record literals and locally built fixed-shape dictionaries are recognized.",
@@ -57,7 +57,7 @@ class PydanticAtBoundaries(Rule):
                 files=(
                     ExampleFile.python(
                         "service.py",
-                        "from typing import Any\n\ndef build_payload(call) -> dict[str, Any]:\n    return {'id': call.id}\n",
+                        "def build_payload(call) -> dict[str, object]:\n    return {'id': call.id}\n",
                     ),
                 ),
                 focus_path=PurePosixPath("service.py"),
@@ -250,24 +250,23 @@ def _classify_return(node: ast.expr, imports: ImportIndex) -> str | None:
     if _is_typing_type(node.value, imports, "Union"):
         return _classify_union_return(node, imports)
     if _is_type(node.value, imports, builtin="list", typing_symbol="List"):
-        # Only list-of-untyped-dict is flagged (e.g. `list[dict[str, Any]]`).
+        # Fixed lists of unnamed records need one named element contract.
         inner = _classify_return(node.slice, imports)
         return "dict" if inner == "dict" else None
     if _is_type(node.value, imports, builtin="dict", typing_symbol="Dict"):
-        return "dict" if _is_untyped_dict_args(node.slice, imports) else None
+        return "dict" if _is_named_record_dict_args(node.slice, imports) else None
     # Heterogeneous tuple returns are NOT flagged — multiple return values are
     # idiomatic Python, not a missing data contract.
     return None
 
 
-def _is_untyped_dict_args(slice_node: ast.expr, imports: ImportIndex) -> bool:
+def _is_named_record_dict_args(slice_node: ast.expr, imports: ImportIndex) -> bool:
     if not isinstance(slice_node, ast.Tuple) or len(slice_node.elts) != _DICT_ARG_COUNT:
         return False
     key = _resolve_annotation(slice_node.elts[0])
     if key is None or not _is_builtin(key, imports, "str"):
         return False
-    value = _resolve_annotation(slice_node.elts[1])
-    return value is not None and (_is_builtin(value, imports, "object") or _is_typing_type(value, imports, "Any"))
+    return _resolve_annotation(slice_node.elts[1]) is not None
 
 
 def _is_type(node: ast.expr, imports: ImportIndex, *, builtin: str, typing_symbol: str) -> bool:

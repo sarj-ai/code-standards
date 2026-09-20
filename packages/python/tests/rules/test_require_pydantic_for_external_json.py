@@ -708,8 +708,39 @@ def test_function_local_marshmallow_shadow_does_not_hide_access() -> None:
     ],
     ids=["module", "function", "module-alias", "annotated-module"],
 )
-def test_bound_type_adapter_validates_result(source: str) -> None:
+def test_open_mapping_type_adapter_does_not_prove_required_fields(source: str) -> None:
+    assert len(_check(source)) == 1
+
+
+@pytest.mark.parametrize("schema", ["Report", "Report | None"])
+def test_named_typed_dict_adapter_validates_required_fields(schema: str) -> None:
+    source = f"""
+        import httpx
+        from pydantic import TypeAdapter
+        from typing import TypedDict
+        class Report(TypedDict):
+            id: str
+        ADAPTER = TypeAdapter({schema})
+        def parse():
+            raw = httpx.get("https://example.test").json()
+            report = ADAPTER.validate_python(raw)
+            return report["id"]
+    """
     assert _check(source) == []
+
+
+@pytest.mark.parametrize("schema", ["object", "JsonValue", "dict[str, object]"])
+def test_broad_type_adapter_does_not_hide_fixed_key_access(schema: str) -> None:
+    diagnostics = _check(f"""
+        import httpx
+        from pydantic import JsonValue, TypeAdapter
+        ADAPTER = TypeAdapter({schema})
+        def parse():
+            raw = httpx.get("https://example.test").json()
+            report = ADAPTER.validate_python(raw)
+            return report["id"]
+    """)
+    assert len(diagnostics) == 1
 
 
 def test_model_validate_result_is_not_treated_as_raw_json() -> None:

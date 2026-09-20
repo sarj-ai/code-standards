@@ -143,6 +143,10 @@ _DIAGNOSTIC_PRECEDENCE = MappingProxyType(
         "SARJ092": frozenset({"SARJ086", "SARJ087", "SARJ420"}),
         "SARJ093": frozenset({"SARJ034"}),
         "SARJ099": frozenset({"SARJ420"}),
+        # Any-valued mappings are the stronger correctness failure. SARJ008
+        # still owns every fixed dictionary return when selected alone, while
+        # an all-rules run emits one actionable diagnostic for this overlap.
+        "SARJ447": frozenset({"SARJ008"}),
     }
 )
 
@@ -162,13 +166,13 @@ def deduplicate_diagnostics(diags: list[Diagnostic], *, source: str | None = Non
         "SARJ420" in codes and not codes.isdisjoint(_DOCSTRING_PRECEDENCE_CODES)
     )
     docstring_owners = _docstring_owner_locations(source) if source is not None and needs_docstring_owners else {}
-    needs_signature_owners = "SARJ093" in codes and "SARJ034" in codes
+    needs_signature_owners = ("SARJ093" in codes and "SARJ034" in codes) or ("SARJ447" in codes and "SARJ008" in codes)
     signature_owners = (
         _function_signature_owner_locations(source) if source is not None and needs_signature_owners else {}
     )
 
     def owner_location(diagnostic: Diagnostic) -> _OwnerLocation:
-        if diagnostic.code in {"SARJ034", "SARJ093"}:
+        if diagnostic.code in {"SARJ008", "SARJ034", "SARJ093", "SARJ447"}:
             line, column = signature_owners.get(diagnostic.line, (diagnostic.line, diagnostic.col))
         else:
             line, column = docstring_owners.get(diagnostic.line, (diagnostic.line, diagnostic.col))

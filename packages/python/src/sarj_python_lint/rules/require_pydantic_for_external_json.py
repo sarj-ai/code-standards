@@ -40,6 +40,11 @@ _SCHEMA_VALIDATOR_MODULES = frozenset({"jsonschema"})
 _SUBPROCESS_MODULES = frozenset({"subprocess"})
 _PYDANTIC_MODULES = frozenset({"pydantic"})
 _MARSHMALLOW_MODULES = frozenset({"marshmallow", "marshmallow.schema"})
+_TYPING_MODULES = frozenset({"typing", "typing_extensions"})
+_COLLECTION_MODULES = frozenset({"collections.abc", "typing"})
+_OPEN_CONTAINER_NAMES = frozenset(
+    {"dict", "Dict", "Mapping", "MutableMapping", "list", "List", "Sequence", "set", "Set", "tuple", "Tuple"}
+)
 
 
 class _OwnedName(NamedTuple):
@@ -278,9 +283,7 @@ def _pydantic_adapter_names(tree: ast.Module, imports: ImportIndex, binding_coun
     names = {
         name
         for name, value in _suite_unique_bindings(tree.body).items()
-        if binding_counts[name] == 1
-        and isinstance(value, ast.Call)
-        and imports.resolves(value.func, sources=_PYDANTIC_MODULES, symbol="TypeAdapter")
+        if binding_counts[name] == 1 and isinstance(value, ast.Call) and _is_field_schema_adapter(value, imports)
     }
     return _expand_unique_aliases(names, _suite_unique_bindings(tree.body), binding_counts)
 
@@ -741,10 +744,7 @@ class _OriginResolver:
             return False
         value = self._resolved_binding(receiver)
         if call.func.attr in _ADAPTER_VALIDATORS:
-            return (
-                isinstance(value, ast.Call)
-                and self.imports.resolves(value.func, sources=_PYDANTIC_MODULES, symbol="TypeAdapter")
-            ) or (
+            return (isinstance(value, ast.Call) and _is_field_schema_adapter(value, self.imports)) or (
                 isinstance(value, ast.Name)
                 and value.id not in self.local_bound_names
                 and value.id in self.summaries.pydantic_adapter_names
@@ -979,7 +979,7 @@ def _is_validation_call(
         isinstance(call.func, ast.Attribute)
         and call.func.attr in _ADAPTER_VALIDATORS
         and isinstance(call.func.value, ast.Call)
-        and imports.resolves(call.func.value.func, sources=_PYDANTIC_MODULES, symbol="TypeAdapter")
+        and _is_field_schema_adapter(call.func.value, imports)
     ):
         return True
     if (
@@ -1000,6 +1000,57 @@ def _is_validation_call(
         return True
     return imports.resolves(call.func, sources=_PYDANTIC_MODULES, symbol="parse_obj_as") or imports.resolves(
         call.func, sources=_SCHEMA_VALIDATOR_MODULES, symbol="validate"
+    )
+
+
+def _is_field_schema_adapter(call: ast.Call, imports: ImportIndex) -> bool:
+    return (
+        imports.resolves(call.func, sources=_PYDANTIC_MODULES, symbol="TypeAdapter")
+        and bool(call.args)
+        and not _type_erases_record_fields(call.args[0], imports)
+    )
+
+
+def _type_erases_record_fields(node: ast.expr, imports: ImportIndex) -> bool:
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        try:
+            return _type_erases_record_fields(ast.parse(node.value, mode="eval").body, imports)
+        except SyntaxError:
+            return True
+    if _is_erasing_leaf_type(node, imports):
+        return True
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitOr):
+        return _type_erases_record_fields(node.left, imports) or _type_erases_record_fields(node.right, imports)
+    return isinstance(node, ast.Subscript) and _subscript_erases_record_fields(node, imports)
+
+
+def _is_erasing_leaf_type(node: ast.expr, imports: ImportIndex) -> bool:
+    if (
+        isinstance(node, ast.Name) and node.id == "object" and imports.builtin_is_unshadowed("object")
+    ) or imports.resolves(node, sources=frozenset({"builtins"}), symbol="object"):
+        return True
+    return imports.resolves(node, sources=_TYPING_MODULES, symbol="Any") or imports.resolves(
+        node, sources=_PYDANTIC_MODULES, symbol="JsonValue"
+    )
+
+
+def _subscript_erases_record_fields(node: ast.Subscript, imports: ImportIndex) -> bool:
+    if _is_open_container_type(node.value, imports):
+        return True
+    if imports.resolves(node.value, sources=_TYPING_MODULES, symbol="Annotated"):
+        first = node.slice.elts[0] if isinstance(node.slice, ast.Tuple) else node.slice
+        return _type_erases_record_fields(first, imports)
+    if not any(imports.resolves(node.value, sources=_TYPING_MODULES, symbol=name) for name in ("Optional", "Union")):
+        return False
+    values = node.slice.elts if isinstance(node.slice, ast.Tuple) else [node.slice]
+    return any(_type_erases_record_fields(value, imports) for value in values)
+
+
+def _is_open_container_type(node: ast.expr, imports: ImportIndex) -> bool:
+    return any(imports.resolves(node, sources=_COLLECTION_MODULES, symbol=name) for name in _OPEN_CONTAINER_NAMES) or (
+        isinstance(node, ast.Name)
+        and node.id in {"dict", "list", "set", "tuple"}
+        and imports.builtin_is_unshadowed(node.id)
     )
 
 

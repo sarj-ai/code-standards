@@ -22,12 +22,14 @@ from sarj_python_lint.rules.invalid_pydantic_field_default import (
     InvalidPydanticFieldDefault,
 )
 from sarj_python_lint.rules.mock_without_spec import MockWithoutSpec
+from sarj_python_lint.rules.named_record_at_boundaries import NamedRecordAtBoundaries
 from sarj_python_lint.rules.negative_only_http_status_assertion import (
     NegativeOnlyHttpStatusAssertion,
 )
 from sarj_python_lint.rules.no_analytical_aggregation_in_postgres_store import (
     NoAnalyticalAggregationInPostgresStore,
 )
+from sarj_python_lint.rules.no_any_mapping_types import NoAnyMappingTypes
 from sarj_python_lint.rules.no_comment_cruft import NoCommentCruft
 from sarj_python_lint.rules.no_conftest_test_module_import import NoConftestTestModuleImport
 from sarj_python_lint.rules.no_copied_inherited_docstring import NoCopiedInheritedDocstring
@@ -78,7 +80,6 @@ from sarj_python_lint.rules.no_unique_violation_message_match import (
 )
 from sarj_python_lint.rules.no_unnecessary_docstring import NoUnnecessaryDocstring
 from sarj_python_lint.rules.no_unused_value_marker import NoUnusedValueMarker
-from sarj_python_lint.rules.no_vague_annotations import NoVagueAnnotations
 from sarj_python_lint.rules.no_vague_suppression_description import (
     NoVagueSuppressionDescription,
 )
@@ -135,7 +136,6 @@ from sarj_python_lint.rules.prefer_walrus_comprehension_filter import (
 from sarj_python_lint.rules.prefer_walrus_regex_match import PreferWalrusRegexMatch
 from sarj_python_lint.rules.prefer_walrus_stream_loop import PreferWalrusStreamLoop
 from sarj_python_lint.rules.production_derived_test_cases import ProductionDerivedTestCases
-from sarj_python_lint.rules.pydantic_at_boundaries import PydanticAtBoundaries
 from sarj_python_lint.rules.pytest_fixture_returns_bare_tuple import PytestFixtureReturnsBareTuple
 from sarj_python_lint.rules.redundant_class_docstring import RedundantClassDocstring
 from sarj_python_lint.rules.redundant_docstring import RedundantDocstring
@@ -190,7 +190,7 @@ REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
         NoExcessiveCognitiveComplexity.id: NoExcessiveCognitiveComplexity,
         PreferNamedtupleOverTupleReturn.id: PreferNamedtupleOverTupleReturn,
         NoCorsWildcardWithCredentials.id: NoCorsWildcardWithCredentials,
-        PydanticAtBoundaries.id: PydanticAtBoundaries,
+        NamedRecordAtBoundaries.id: NamedRecordAtBoundaries,
         FastapiExplicitOpenapiContract.id: FastapiExplicitOpenapiContract,
         FastapiClassRouterContract.id: FastapiClassRouterContract,
         FakesInSharedLocation.id: FakesInSharedLocation,
@@ -269,7 +269,7 @@ REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
         NoUnnecessaryDocstring.id: NoUnnecessaryDocstring,
         NoUnusedValueMarker.id: NoUnusedValueMarker,
         PreferNominalIdTypes.id: PreferNominalIdTypes,
-        NoVagueAnnotations.id: NoVagueAnnotations,
+        NoAnyMappingTypes.id: NoAnyMappingTypes,
         NoUniqueViolationMessageMatch.id: NoUniqueViolationMessageMatch,
         NegativeOnlyHttpStatusAssertion.id: NegativeOnlyHttpStatusAssertion,
         ProductionDerivedTestCases.id: ProductionDerivedTestCases,
