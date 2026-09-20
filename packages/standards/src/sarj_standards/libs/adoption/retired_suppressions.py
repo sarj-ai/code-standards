@@ -221,7 +221,7 @@ def _rewrite_ratchet_suppressions(text: str, retired: dict[str, str | None]) -> 
     if not obsolete and not nested_changed:
         return text
     for key in obsolete:
-        del budgets.values[key]
+        del budgets.values[key]  # sarj-noqa: SARJ442 — migration intentionally removes retired JSON keys in place
     line_ending = "\r\n" if "\r\n" in payload else "\n"
     trailing = line_ending if payload.endswith(("\n", "\r")) else ""
     rendered = json.dumps(parsed.values, default=_json_object_values, ensure_ascii=False, indent=2)
@@ -242,10 +242,10 @@ def _remove_retired_file_selector_budgets(document: _JsonObject, removed: set[st
             continue
         obsolete = removed.intersection(raw_budgets.values)
         for selector in obsolete:
-            del raw_budgets.values[selector]
+            del raw_budgets.values[selector]  # sarj-noqa: SARJ442 — migration removes retired JSON keys in place
             changed = True
         if obsolete and not raw_budgets.values:
-            del selectors.values[path]
+            del selectors.values[path]  # sarj-noqa: SARJ442 — migration removes empty JSON entries in place
     return changed
 
 

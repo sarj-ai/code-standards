@@ -442,7 +442,6 @@ class _RuntimeConfigResolver:
             and binding.symbol is not None
             and self._is_settings_symbol(binding.module, binding.symbol, seen | {key})
         )
-        del module_path
         self._settings_cache[key] = result
         return result
 

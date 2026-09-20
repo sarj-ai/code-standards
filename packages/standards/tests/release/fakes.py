@@ -55,9 +55,8 @@ class FakeTypescriptReleaseRunner:
         argv: tuple[str, ...],
         *,
         cwd: Path,
-        capture_output: bool = False,
+        capture_output: bool = False,  # ruff: ignore[unused-method-argument] -- ProcessRunner fixes this keyword.
     ) -> ProcessResult:
-        del capture_output
         assert cwd == self.package_root
         self.calls.append(argv)
         if argv[:2] != ("npm", "pack"):

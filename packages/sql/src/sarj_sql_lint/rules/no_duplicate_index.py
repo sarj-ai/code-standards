@@ -183,8 +183,8 @@ def _active_indexes(path: Path, source: str) -> list[IndexDefinition]:
     active: dict[str, IndexDefinition] = {}
     for operation in authored_index_operations(path, source):
         if isinstance(operation, IndexDrop):
-            for key in drop_namespace_keys(operation, set(active)):
-                del active[key]
+            dropped = drop_namespace_keys(operation, set(active))
+            active = {key: index for key, index in active.items() if key not in dropped}
             continue
         index = operation
         key = index_namespace_key(index) or f"<unnamed>@{index.start}"

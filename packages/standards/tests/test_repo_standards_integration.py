@@ -157,8 +157,11 @@ def test_repository_adapter_failures_become_execution_issues(
 ) -> None:
     _adopt(tmp_path)
 
-    def fail(_root: Path, *, staged: bool) -> None:
-        del staged
+    def fail(
+        _root: Path,
+        *,
+        staged: bool,  # ruff: ignore[unused-function-argument] -- adapter callback fixes this keyword.
+    ) -> None:
         message = "incompatible dependency contract"
         raise TypeError(message)
 

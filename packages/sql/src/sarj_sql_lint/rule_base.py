@@ -653,16 +653,6 @@ def _validate_rule_examples(examples: tuple[RuleExample, ...]) -> None:
             raise ValueError(msg)
 
 
-def _close_dollar_tags(open_tags: list[str], open_tag_depths: dict[str, list[int]], depth: int) -> None:
-    for removed_depth in range(len(open_tags) - 1, depth - 1, -1):
-        removed = open_tags[removed_depth]
-        depths = open_tag_depths[removed]
-        depths.pop()
-        if not depths:
-            del open_tag_depths[removed]
-    del open_tags[depth:]
-
-
 def _scan_source_comment(source: str, start: int, pair: str) -> tuple[int, SourceComment]:
     if pair == "--":
         end = source.find("\n", start)
@@ -718,7 +708,12 @@ class _DollarBodies:
         if depth is None:
             return None
         end = offset + len(self.tags[depth])
-        _close_dollar_tags(self.tags, self.depths, depth)
+        self.tags = self.tags[:depth]
+        self.depths = {
+            tag: [tag_depth for tag_depth in depths if tag_depth < depth]
+            for tag, depths in self.depths.items()
+            if any(tag_depth < depth for tag_depth in depths)
+        }
         if not self.tags:
             self.spans.append((self.start, end))
         return end

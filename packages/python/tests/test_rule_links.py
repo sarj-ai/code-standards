@@ -19,8 +19,11 @@ class _Fake(Rule):
     code: str = "SARJ999"
     description: str = "Fake rule used to test derived example links."
 
-    def check(self, path: Path, source: str) -> list[Diagnostic]:
-        del path, source
+    def check(
+        self,
+        path: Path,  # ruff: ignore[unused-method-argument] -- Rule.check fixes the fake's callback signature.
+        source: str,  # ruff: ignore[unused-method-argument] -- Rule.check fixes the fake's callback signature.
+    ) -> list[Diagnostic]:
         return []
 
 

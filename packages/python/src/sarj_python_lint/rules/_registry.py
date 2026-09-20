@@ -34,7 +34,7 @@ from sarj_python_lint.rules.no_copied_inherited_docstring import NoCopiedInherit
 from sarj_python_lint.rules.no_cors_wildcard_with_credentials import (
     NoCorsWildcardWithCredentials,
 )
-from sarj_python_lint.rules.no_deleted_only_override_parameter import NoDeletedOnlyOverrideParameter
+from sarj_python_lint.rules.no_delete_statement import NoDeleteStatement
 from sarj_python_lint.rules.no_dunder_all import NoDunderAll
 from sarj_python_lint.rules.no_duplicate_dunder_all_entry import NoDuplicateDunderAllEntry
 from sarj_python_lint.rules.no_excessive_cognitive_complexity import NoExcessiveCognitiveComplexity
@@ -77,6 +77,7 @@ from sarj_python_lint.rules.no_unique_violation_message_match import (
     NoUniqueViolationMessageMatch,
 )
 from sarj_python_lint.rules.no_unnecessary_docstring import NoUnnecessaryDocstring
+from sarj_python_lint.rules.no_unused_value_marker import NoUnusedValueMarker
 from sarj_python_lint.rules.no_vague_annotations import NoVagueAnnotations
 from sarj_python_lint.rules.no_vague_suppression_description import (
     NoVagueSuppressionDescription,
@@ -252,7 +253,7 @@ REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
         PreferSelfDocumentingConstant.id: PreferSelfDocumentingConstant,
         NoDuplicateDunderAllEntry.id: NoDuplicateDunderAllEntry,
         NoDunderAll.id: NoDunderAll,
-        NoDeletedOnlyOverrideParameter.id: NoDeletedOnlyOverrideParameter,
+        NoDeleteStatement.id: NoDeleteStatement,
         NoCopiedInheritedDocstring.id: NoCopiedInheritedDocstring,
         RedundantClassDocstring.id: RedundantClassDocstring,
         RedundantModuleDocstring.id: RedundantModuleDocstring,
@@ -264,6 +265,7 @@ REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
         NoRedundantLiteralDescription.id: NoRedundantLiteralDescription,
         NoTypedDocSections.id: NoTypedDocSections,
         NoUnnecessaryDocstring.id: NoUnnecessaryDocstring,
+        NoUnusedValueMarker.id: NoUnusedValueMarker,
         PreferNominalIdTypes.id: PreferNominalIdTypes,
         NoVagueAnnotations.id: NoVagueAnnotations,
         NoUniqueViolationMessageMatch.id: NoUniqueViolationMessageMatch,

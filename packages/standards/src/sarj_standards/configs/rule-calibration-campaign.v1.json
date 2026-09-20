@@ -265,12 +265,12 @@
       "outcome": "Kept the exact rule name and extended the static contract through literal __all__.append, extend, and insert operations, reporting the later duplicate at its mutation argument and preserving the original declaration line in the diagnostic."
     },
     {
-      "task": "rule-audit/python/no-deleted-only-override-parameter",
+      "task": "rule-audit/python/no-delete-statement",
       "family": "python",
-      "ruleId": "no-deleted-only-override-parameter",
+      "ruleId": "no-delete-statement",
       "state": "complete",
-      "evidence": "No corpus findings; tests provide positive evidence.",
-      "outcome": "Retain warning."
+      "evidence": "The 504-file local Python corpus produced 20 inspected findings: 17 were replaced with immutable rebuilding or non-mutating bindings, while three JSON-migration deletions received exact reasoned suppressions. A second scan produced zero unsuppressed findings; focused AST cases cover every target form, nested statements, generated code, malformed input, and exact-code suppression.",
+      "outcome": "Broadened and renamed SARJ442 while retaining warning severity. Every authored del statement is reported once; generated code is excluded, no unsafe autofix is offered, and exceptional deletion semantics require a local audited suppression."
     },
     {
       "task": "rule-audit/python/no-dunder-all",
@@ -1195,6 +1195,14 @@
       "state": "complete",
       "evidence": "No corpus findings; tests provide positive evidence.",
       "outcome": "Retain warning."
+    },
+    {
+      "task": "rule-audit/python/no-unused-value-marker",
+      "family": "python",
+      "ruleId": "no-unused-value-marker",
+      "state": "complete",
+      "evidence": "The 506-file local Python corpus produced 472 syntactic matches after deliberately expanding the rule from name-only markers to every standalone `_` assignment, including call results. Ruff's nearest configurable control produced 651 collateral findings across loop placeholders and underscore-prefixed callback parameters, so configuration cannot express the requested boundary safely. Focused AST cases cover names, calls, attributes, subscripts, constants, chained and annotated assignments, nested markers, unpacking, generated code, malformed input, and exact-code suppression.",
+      "outcome": "Added SARJ452 warning-first with no autofix. The rule reports every plain or annotated assignment with standalone target `_`; direct calls replace `_ = call()`. Conventional unpacking and loop placeholders remain valid. Existing findings are visible warning debt for a separate cleanup and promotion."
     },
     {
       "task": "rule-audit/eslint/no-insecure-random-id",

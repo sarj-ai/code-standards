@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "8696bdee40865383a6bd28543b6134eee117293c1ae201f13c916d80ea29bfc6",
-  "cliSha256": "078f862e28475f578148be39420bdafd8de1c18f9c341267e47d3f015472c2b6",
+  "catalogSha256": "43902c04005ec67a09307d99b0e1e0a169cfcc3215c267d032a066b6a4fa332e",
+  "cliSha256": "f45b1216f2c771259caf62b5fe442c32ee298c569d2c6a1fce87358c02505d35",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -5547,37 +5547,37 @@
       ],
       "optionsSchemaSource": null
     },
-    "python:no-deleted-only-override-parameter": {
+    "python:no-delete-statement": {
       "examples": [
         {
           "expectedCount": 1,
           "files": [
             {
-              "path": "app/handler.py",
-              "source": "from typing import override\n\n\nclass Handler(BaseHandler):\n    @override\n    def handle(self, request: Request) -> None:\n        del request\n        emit_ready()\n"
+              "path": "app/request.py",
+              "source": "payload = dict(raw_payload)\ndel payload[\"secret\"]\n"
             }
           ],
           "fixedFiles": [],
-          "focusPath": "app/handler.py",
-          "id": "override-parameter-delete-marker",
+          "focusPath": "app/request.py",
+          "id": "delete-mapping-entry",
           "outcome": "reject",
           "scenarioId": "primary",
-          "title": "Remove a deletion used only as an override parameter marker"
+          "title": "Build a mapping without the removed entry"
         },
         {
           "expectedCount": 0,
           "files": [
             {
-              "path": "app/handler.py",
-              "source": "from typing import override\n\n\nclass Handler(BaseHandler):\n    @override\n    def handle(self, request: Request) -> None:\n        dispatch(request)\n"
+              "path": "app/request.py",
+              "source": "payload = {key: value for key, value in raw_payload.items() if key != \"secret\"}\n"
             }
           ],
           "fixedFiles": [],
-          "focusPath": "app/handler.py",
-          "id": "override-uses-parameter",
+          "focusPath": "app/request.py",
+          "id": "immutable-mapping-filter",
           "outcome": "accept",
           "scenarioId": "primary",
-          "title": "Keep an override parameter that contributes to behavior"
+          "title": "Construct the desired mapping directly"
         }
       ],
       "optionsSchemaSource": null
@@ -6930,6 +6930,71 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Human-only module, class, and function prose"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:no-unused-value-marker": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/adapter.py",
+              "source": "refresh_cache()\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/adapter.py",
+          "id": "direct-call",
+          "outcome": "accept",
+          "scenarioId": "call-result",
+          "title": "Run the call without creating a discard binding"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/adapter.py",
+              "source": "_ = refresh_cache()\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/adapter.py",
+          "id": "discarded-call-result",
+          "outcome": "reject",
+          "scenarioId": "call-result",
+          "title": "Invoke a call directly when its result is intentionally unused"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/adapter.py",
+              "source": "name, _ = load_pair()\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/adapter.py",
+          "id": "unpacking-placeholder",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Keep a conventional placeholder inside unpacking"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/adapter.py",
+              "source": "def render(root: Path, manifest: Path) -> str:\n    _ = root, manifest\n    return \"ready\"\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/adapter.py",
+          "id": "unused-parameter-marker",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Do not manufacture a use for interface parameters"
         }
       ],
       "optionsSchemaSource": null

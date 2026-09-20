@@ -41,6 +41,7 @@ _RENAMED_RULES = {
     "no-generic-single-export-module": ("SARJ022", ("single-public-export",)),
     "no-analytical-aggregation-in-postgres-store": ("SARJ020", ("no-aggregation-in-store-query",)),
     "no-copied-inherited-docstring": ("SARJ084", ("duplicated-override-docstring",)),
+    "no-delete-statement": ("SARJ442", ("no-deleted-only-override-parameter",)),
     "no-positional-tuple-record": ("SARJ026", ("prefer-namedtuple-over-tuple-return",)),
     "no-positional-psycopg-row-escape": ("SARJ414", ("require-validated-row-factory",)),
     "no-psycopg-execution-outside-injected-owner": ("SARJ415", ("sql-requires-injected-pool-owner",)),

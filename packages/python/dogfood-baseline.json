@@ -42,9 +42,6 @@
   "packages/python/src/sarj_python_lint/rules/no_analytical_aggregation_in_postgres_store.py": {
     "SARJ447": 2
   },
-  "packages/python/src/sarj_python_lint/rules/no_deleted_only_override_parameter.py": {
-    "SARJ026": 1
-  },
   "packages/python/src/sarj_python_lint/rules/no_positional_psycopg_row_escape.py": {
     "SARJ026": 1
   },

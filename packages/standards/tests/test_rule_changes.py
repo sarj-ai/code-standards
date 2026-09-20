@@ -220,7 +220,7 @@ def test_changes_rejects_inventory_entries_outside_exact_schema(repository: Path
     if mutation == "extra":
         first["owner"] = "standards"
     else:
-        del first["test"]
+        first = {key: value for key, value in first.items() if key != "test"}
     inventory: dict[str, object] = {"schemaVersion": 1, "rules": [first]}
     inventory_path.write_text(json.dumps(inventory, sort_keys=True) + "\n", encoding="utf-8")
     _git(repository, "add", ".")
