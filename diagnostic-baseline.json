@@ -2,8 +2,8 @@
   "schemaVersion": 2,
   "provenance": {
     "bundleVersion": "7.28.0",
-    "consumerBaseSha": "4da04488887ed1ec5ce3ff53b7e2ac61f738a553",
-    "catalogDigest": "730b27649a3ae4e3de1a8ee0f5c126e33e258ab10f39a86203e645b0a2c1dc77"
+    "consumerBaseSha": "d1e33fd1aa1e6531b6e3198be6ee0f11b30f382f",
+    "catalogDigest": "8ac791f23b0cecbd8b0e2bc800e8e8df0e3c5bd6b44bd92d0496128399760e58"
   },
   "diagnostics": [
     {
@@ -35,13 +35,6 @@
       "count": 1
     },
     {
-      "fingerprint": "377ad0ec8426091e7fcaec273464048b91810eba7d4b4ca123489adea37a9475",
-      "source": "sarj-python-lint",
-      "ruleId": "no-positional-tuple-record",
-      "path": "packages/python/src/sarj_python_lint/rules/no_deleted_only_override_parameter.py",
-      "count": 1
-    },
-    {
       "fingerprint": "c07f89791199e5a0486d6d21f5b1a162796d119be2474119e53464dcb010d97a",
       "source": "sarj-python-lint",
       "ruleId": "no-positional-tuple-record",
@@ -60,6 +53,13 @@
       "source": "sarj-python-lint",
       "ruleId": "no-positional-tuple-record",
       "path": "packages/python/src/sarj_python_lint/rules/prefer_injected_dependency_over_monkeypatch.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "16fbb7b38a2436bf18865880ea9a798cfd9c486c5563d12c23c334f7dd99fb1f",
+      "source": "sarj-python-lint",
+      "ruleId": "no-positional-tuple-record",
+      "path": "packages/python/src/sarj_python_lint/rules/prefer_match_exception_dispatch.py",
       "count": 1
     },
     {
@@ -179,6 +179,118 @@
       "source": "sarj-python-lint",
       "ruleId": "no-positional-tuple-record",
       "path": "packages/standards/src/sarj_standards/libs/repository/rule_catalog_artifact.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "a50db971c360d35d2d463ad89ed9a8c07a7357650b2a57025ecca2cb7e4068fc",
+      "source": "sarj-python-lint",
+      "ruleId": "no-unused-value-marker",
+      "path": "packages/iac/tests/rules/test_no_dead_environment_input.py",
+      "count": 44
+    },
+    {
+      "fingerprint": "dd5ba2435be1472d27be24acf99097c1b1dbe120093db5a49c75d0fd4c74b070",
+      "source": "sarj-python-lint",
+      "ruleId": "no-unused-value-marker",
+      "path": "packages/iac/tests/rules/test_no_redundant_variable_validation.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "da21ef4f4fe0599242017accb02ae01dd006746a51208a07238c884c686fc0eb",
+      "source": "sarj-python-lint",
+      "ruleId": "no-unused-value-marker",
+      "path": "packages/iac/tests/test_noqa.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "6940fb1311ae2019288a72755e536c0f51b4fc596688321417378d61b12782d4",
+      "source": "sarj-python-lint",
+      "ruleId": "no-unused-value-marker",
+      "path": "packages/iac/tests/test_perf.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "332bac1a7d107b6b3e2e9339e36796d0682c19f3dd91998e293d37feb1dd9c84",
+      "source": "sarj-python-lint",
+      "ruleId": "no-unused-value-marker",
+      "path": "packages/python/src/sarj_python_lint/rules/prefer_walrus_awaited_none_guard.py",
+      "count": 2
+    },
+    {
+      "fingerprint": "309012b5c363e1397cb0168f624d265c680936a63e6cab3a82e0fc2a8249ab57",
+      "source": "sarj-python-lint",
+      "ruleId": "no-unused-value-marker",
+      "path": "packages/python/tests/rules/test_comments.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "512e8545bcca7ab9d2bed02d74a402582c4443d6e5c6d2b75ad828fccacd782c",
+      "source": "sarj-python-lint",
+      "ruleId": "no-unused-value-marker",
+      "path": "packages/python/tests/rules/test_first_party.py",
+      "count": 17
+    },
+    {
+      "fingerprint": "37115b9c7349c9d470512eac3c1cf6a76e66c8d0174eb2873281d38b17d8f984",
+      "source": "sarj-python-lint",
+      "ruleId": "no-unused-value-marker",
+      "path": "packages/python/tests/rules/test_prefer_match_value_dispatch.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "d0f48ecbbec79d912d9c7a1a53e1ca303d3f948e963fada19a757e2499635c2f",
+      "source": "sarj-python-lint",
+      "ruleId": "no-unused-value-marker",
+      "path": "packages/python/tests/rules/test_stepdown.py",
+      "count": 2
+    },
+    {
+      "fingerprint": "bca2ed081fdc77dd21cb05b4ce94f59658e7ae244b12ac30750ab3f47c70ec61",
+      "source": "sarj-python-lint",
+      "ruleId": "no-unused-value-marker",
+      "path": "packages/python/tests/rules/test_suppression_comments.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "2b3f8b899c7775782894b6c38b2c69a3218afd114edbd244abf2a5cda4756e72",
+      "source": "sarj-python-lint",
+      "ruleId": "no-unused-value-marker",
+      "path": "packages/python/tests/test_match_value_dispatch_cli.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "19e296fb410b98a07b01cf46df80cb26bab27ac92e0603eed93d4956d3a7df0d",
+      "source": "sarj-python-lint",
+      "ruleId": "no-unused-value-marker",
+      "path": "packages/python/tests/test_perf.py",
+      "count": 2
+    },
+    {
+      "fingerprint": "2f8a849cc09cc20454212270f7d8e2066733921bca7fe9337c4259c425fab651",
+      "source": "sarj-python-lint",
+      "ruleId": "no-unused-value-marker",
+      "path": "packages/python/tests/test_ratchet.py",
+      "count": 6
+    },
+    {
+      "fingerprint": "c906547b267943cb8ab864814d3cc7f133c0492b3497a7bbe3399d29ea3c0388",
+      "source": "sarj-python-lint",
+      "ruleId": "no-unused-value-marker",
+      "path": "packages/sql/tests/test_mask_sql.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "5d3f156a7ed107df7a6b88641658474b11776fe10b3085541b232dc38b13d5ac",
+      "source": "sarj-python-lint",
+      "ruleId": "no-unused-value-marker",
+      "path": "packages/sql/tests/test_noqa.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "4939278a264a26a8ba6fb93518f3d36dcb0e0fdca60885aa0003e601f78cd359",
+      "source": "sarj-python-lint",
+      "ruleId": "no-unused-value-marker",
+      "path": "packages/sql/tests/test_perf.py",
       "count": 1
     },
     {
