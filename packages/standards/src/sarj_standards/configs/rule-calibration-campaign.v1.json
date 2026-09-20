@@ -35,6 +35,14 @@
       "outcome": "Retain SARJ439 as a warning without autofix and preserve the original two-arm equality ladder. Expand to three-or-more distinct action arms over a bare name: bounded groups of literal strings, terminating sibling branches with an immediate return/raise fallback, and a selector-first guard only on the final arm. Exclude unrelated predicates, duplicate values or bodies, ambiguous constants, and non-terminating sibling branches. Preserve constant, membership/equality, guard-order, and subject-evaluation caveats. Query shared declared Python compatibility only after finding a syntactic candidate; proven pre-3.10 support suppresses both SARJ439 and SARJ080, while unknown metadata retains advisory behavior. Five additional maintained-source/test dispatches were manually converted with preserved fallbacks; no suppressions were added."
     },
     {
+      "task": "rule-audit/python/prefer-match-exception-dispatch",
+      "family": "python",
+      "ruleId": "prefer-match-exception-dispatch",
+      "state": "pending",
+      "evidence": "Ten adversarial review passes covered rule ownership, historical match-dispatch false positives, import resolution, fallthrough, lifecycle staging, AST boundaries, test design, and implementation safety. The focused exception/type/value dispatch and CLI suites pass 224 cases, including the motivating provider classifier, exact suppression, static tuple and union operands, aliases, maximal-run suffixes, duplicate types, shadowing, runtime groups, context-manager fallthrough, generated source, and Python before 3.10. A 502-file maintained-source evaluation produced zero incidental findings in 1.51 seconds. Broader pinned consumer-corpus calibration and controlled cold/warm overhead comparison remain pending.",
+      "outcome": "Introduce SARJ453 as a warning without autofix. Restrict it to parameters annotated Exception or BaseException, at least three adjacent proven builtin or imported exception-shaped type checks, an immediate terminal fallback, and at least one run of subject-rooted terminating comparisons. Preserve subclass order, guards, and fallthrough in any manual rewrite. Keep ordinary imported type dispatch, runtime type groups, mixed predicates, local imports, incomplete runs, and unresolved names excluded; promote only after broader consumer calibration finds no false positives."
+    },
+    {
       "task": "rule-audit/iac/no-comment-cruft",
       "family": "iac",
       "ruleId": "no-comment-cruft",

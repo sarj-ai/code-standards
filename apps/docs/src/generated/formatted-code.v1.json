@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "43902c04005ec67a09307d99b0e1e0a169cfcc3215c267d032a066b6a4fa332e",
-  "cliSha256": "f45b1216f2c771259caf62b5fe442c32ee298c569d2c6a1fce87358c02505d35",
+  "catalogSha256": "06776eb344d0e8c79047278b1c7edb59cd3c2357e52d0a1c68104feaa6682da8",
+  "cliSha256": "7d166de42f892715abb31be526cee5d229fc1aa42d400b4713b7fd804fb6d11b",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -7510,6 +7510,41 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Closed-set match silently ignores a variant"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:prefer-match-exception-dispatch": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/errors.py",
+              "source": "from providers import APIConnectionError, APIStatusError, APITimeoutError\n\n\ndef category(error: BaseException) -> str:\n    match error:\n        case TimeoutError() | APITimeoutError():\n            return \"timeout\"\n        case APIStatusError() if error.status_code == 429:\n            return \"rate_limit\"\n        case APIStatusError() if error.status_code >= 500:\n            return \"provider_5xx\"\n        case APIConnectionError():\n            return \"connection\"\n        case _:\n            return \"unknown\"\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/errors.py",
+          "id": "guarded-provider-error-cases",
+          "outcome": "accept",
+          "scenarioId": "refined-exception-dispatch",
+          "title": "Guarded class cases retain refinement fallthrough"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/errors.py",
+              "source": "from providers import APIConnectionError, APIStatusError, APITimeoutError\n\n\ndef category(error: BaseException) -> str:\n    if isinstance(error, TimeoutError | APITimeoutError):\n        return \"timeout\"\n    if isinstance(error, APIStatusError):\n        if error.status_code == 429:\n            return \"rate_limit\"\n        if error.status_code >= 500:\n            return \"provider_5xx\"\n    if isinstance(error, APIConnectionError):\n        return \"connection\"\n    return \"unknown\"\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/errors.py",
+          "id": "refined-provider-error-classifier",
+          "outcome": "reject",
+          "scenarioId": "refined-exception-dispatch",
+          "title": "Repeated type checks hide an ordered provider error classifier"
         }
       ],
       "optionsSchemaSource": null
