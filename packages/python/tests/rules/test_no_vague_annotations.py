@@ -53,6 +53,36 @@ def test_allows_named_precise_or_unproven_types(source: str) -> None:
     assert _check(source) == []
 
 
+@pytest.mark.parametrize(
+    "source",
+    [
+        "Value = object\ntype Values = dict[str, Value]\n",
+        "from typing import TypeAlias\nValue: TypeAlias = object\ndef use(value: Value) -> None: ...\n",
+        "Value = object\nAlias = Value\ndef use(value: Alias) -> None: ...\n",
+        "from typing import Any\nValue = dict[str, Any]\ndef use(value: Value) -> None: ...\n",
+    ],
+)
+def test_flags_transparent_aliases_to_vague_types(source: str) -> None:
+    assert len(_check(source)) == 1
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "Value = object\n",
+        "Value = object\nValue = str\ndef use(value: Value) -> None: ...\n",
+        "Value = object\nif enabled:\n    Value = str\ndef use(value: Value) -> None: ...\n",
+        "class object: ...\nValue = object\ndef use(value: Value) -> None: ...\n",
+        "Value = object\nclass Value: ...\ndef use(value: Value) -> None: ...\n",
+        "Value = Payload\ndef use(value: Value) -> None: ...\n",
+        "Left = Right\nRight = Left\ndef use(value: Left) -> None: ...\n",
+        "Value = object\ndef use() -> None:\n    Value = str\n    nested: Value\n",
+    ],
+)
+def test_allows_unused_ambiguous_or_precise_aliases(source: str) -> None:
+    assert _check(source) == []
+
+
 def test_exact_suppression_is_honored() -> None:
     assert _check("from typing import Any\nvalue: dict[str, Any]  # sarj-noqa: SARJ447 — raw boundary\n") == []
 

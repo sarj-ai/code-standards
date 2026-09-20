@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+from collections import Counter
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, ClassVar, final, override
 
@@ -45,15 +46,19 @@ class NoVagueAnnotations(Rule):
         ),
         category=RuleCategory.CORRECTNESS,
         autofix=AutofixPolicy.NONE,
-        limitations=("Generated and vendored sources are excluded; exact local suppressions remain auditable.",),
+        limitations=(
+            "Generated and vendored sources are excluded; exact local suppressions remain auditable.",
+            "Transparent alias resolution is limited to unambiguous single module-level assignments.",
+        ),
         examples=(
             RuleExample(
                 example_id="vague-mapping-annotation",
-                title="An open mapping erases the record schema",
+                title="A transparent alias cannot make an open value precise",
                 outcome=ExampleOutcome.MATCH,
                 files=(
                     ExampleFile.python(
-                        "app/offers.py", "from typing import Any\ndef details() -> dict[str, Any]: ...\n"
+                        "app/offers.py",
+                        "OfferValue = object\ntype OfferDetails = dict[str, OfferValue]\n",
                     ),
                 ),
                 focus_path=PurePosixPath("app/offers.py"),
@@ -81,10 +86,12 @@ class NoVagueAnnotations(Rule):
         if tree is None:
             return []
         imports = ImportIndex.from_tree(tree)
+        aliases = _module_aliases(tree)
+        alias_annotations = {id(annotation) for annotation in _module_scope_annotations(tree)}
         lines = source.splitlines()
         findings: list[Diagnostic] = []
         for annotation in _annotations(tree):
-            problem = _vague_problem(annotation, imports)
+            problem = _vague_problem(annotation, imports, aliases if id(annotation) in alias_annotations else {})
             if problem is None or is_suppressed(lines, annotation.lineno, self.code):
                 continue
             findings.append(
@@ -118,14 +125,87 @@ def _node_annotation(node: ast.AST) -> ast.expr | None:
             return None
 
 
-def _vague_problem(annotation: ast.expr, imports: ImportIndex) -> str | None:
+def _module_scope_annotations(tree: ast.Module) -> list[ast.expr]:
+    annotations: list[ast.expr] = []
+    for statement in tree.body:
+        match statement:
+            case ast.AnnAssign(annotation=annotation) | ast.TypeAlias(value=annotation):
+                annotations.append(annotation)
+            case ast.FunctionDef() | ast.AsyncFunctionDef():
+                annotations.extend(_function_annotations(statement))
+            case _:
+                continue
+    return annotations
+
+
+def _function_annotations(node: ast.FunctionDef | ast.AsyncFunctionDef) -> list[ast.expr]:
+    arguments = [*node.args.posonlyargs, *node.args.args, *node.args.kwonlyargs]
+    if node.args.vararg is not None:
+        arguments.append(node.args.vararg)
+    if node.args.kwarg is not None:
+        arguments.append(node.args.kwarg)
+    annotations = [argument.annotation for argument in arguments if argument.annotation is not None]
+    if node.returns is not None:
+        annotations.append(node.returns)
+    return annotations
+
+
+def _vague_problem(annotation: ast.expr, imports: ImportIndex, aliases: dict[str, ast.expr]) -> str | None:
     annotation = _parse_string_annotation(annotation)
     for node in ast.walk(annotation):
         if _is_object(node, imports):
             return "object"
+        if alias_problem := _resolved_alias_problem(node, imports, aliases, seen=frozenset()):
+            return alias_problem
         if _is_open_mapping(node, imports):
             return ast.unparse(node)
     return None
+
+
+def _module_aliases(tree: ast.Module) -> dict[str, ast.expr]:
+    candidates: dict[str, list[ast.expr]] = {}
+    rebound: set[str] = set()
+    for statement in tree.body:
+        match statement:
+            case (
+                ast.Assign(targets=[ast.Name(id=name)], value=value)
+                | ast.AnnAssign(target=ast.Name(id=name), value=ast.expr() as value)
+                | ast.TypeAlias(name=ast.Name(id=name), value=value)
+            ):
+                candidates.setdefault(name, []).append(value)
+            case ast.FunctionDef(name=name) | ast.AsyncFunctionDef(name=name) | ast.ClassDef(name=name):
+                rebound.add(name)
+            case ast.Import(names=names) | ast.ImportFrom(names=names):
+                rebound.update(alias.asname or alias.name.partition(".")[0] for alias in names)
+            case _:
+                continue
+    stores = Counter(
+        node.id for node in ast.walk(tree) if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store)
+    )
+    return {
+        name: values[0]
+        for name, values in candidates.items()
+        if len(values) == 1 and stores[name] == 1 and name not in rebound
+    }
+
+
+def _resolved_alias_problem(
+    node: ast.AST,
+    imports: ImportIndex,
+    aliases: dict[str, ast.expr],
+    *,
+    seen: frozenset[str],
+) -> str | None:
+    if not isinstance(node, ast.Name) or node.id in seen:
+        return None
+    value = aliases.get(node.id)
+    if value is None:
+        return None
+    if _is_object(value, imports):
+        return "object"
+    if _is_open_mapping(value, imports):
+        return ast.unparse(value)
+    return _resolved_alias_problem(value, imports, aliases, seen=seen | {node.id})
 
 
 def _parse_string_annotation(annotation: ast.expr) -> ast.expr:

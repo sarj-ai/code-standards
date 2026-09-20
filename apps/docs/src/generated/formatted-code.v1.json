@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "06776eb344d0e8c79047278b1c7edb59cd3c2357e52d0a1c68104feaa6682da8",
-  "cliSha256": "7d166de42f892715abb31be526cee5d229fc1aa42d400b4713b7fd804fb6d11b",
+  "catalogSha256": "51a8d3919a63b565e1dc5ee7808ce81ea70bf28b04d1e77391afa0d69b5073d7",
+  "cliSha256": "d2c023780deb79bb3669a3477bdc167e15b01aaae662a58533ed78dc9b6ea967",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -7021,7 +7021,7 @@
           "files": [
             {
               "path": "app/offers.py",
-              "source": "from typing import Any\n\n\ndef details() -> dict[str, Any]: ...\n"
+              "source": "OfferValue = object\ntype OfferDetails = dict[str, OfferValue]\n"
             }
           ],
           "fixedFiles": [],
@@ -7029,7 +7029,7 @@
           "id": "vague-mapping-annotation",
           "outcome": "reject",
           "scenarioId": "primary",
-          "title": "An open mapping erases the record schema"
+          "title": "A transparent alias cannot make an open value precise"
         }
       ],
       "optionsSchemaSource": null

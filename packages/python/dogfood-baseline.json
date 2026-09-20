@@ -54,6 +54,9 @@
   "packages/python/src/sarj_python_lint/rules/prefer_injected_dependency_over_monkeypatch.py": {
     "SARJ026": 1
   },
+  "packages/python/src/sarj_python_lint/rules/prefer_match_exception_dispatch.py": {
+    "SARJ026": 1
+  },
   "packages/python/src/sarj_python_lint/rules/prefer_match_value_dispatch.py": {
     "SARJ026": 1
   },
@@ -247,9 +250,6 @@
   },
   "packages/standards/src/sarj_standards/libs/repository/rule_inventory_artifact.py": {
     "SARJ447": 7
-  },
-  "packages/standards/src/sarj_standards/libs/repository/rule_lifecycle.py": {
-    "SARJ444": 1
   },
   "packages/standards/src/sarj_standards/libs/repository/rule_maintenance.py": {
     "SARJ447": 16
