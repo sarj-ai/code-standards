@@ -230,5 +230,6 @@
   "SARJ449": "require-typed-http-test-response",
   "SARJ450": "require-pydantic-for-structured-payload",
   "SARJ451": "fastapi-class-router-contract",
-  "SARJ452": "no-unused-value-marker"
+  "SARJ452": "no-unused-value-marker",
+  "SARJ453": "prefer-match-exception-dispatch"
 }

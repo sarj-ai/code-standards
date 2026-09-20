@@ -91,6 +91,7 @@
       "prefer-injected-dependency-over-monkeypatch",
       "prefer-library-fake",
       "prefer-match-assert-never",
+      "prefer-match-exception-dispatch",
       "prefer-match-type-dispatch",
       "prefer-match-value-dispatch",
       "prefer-module-level-constant",
@@ -397,7 +398,8 @@
       "SARJ449",
       "SARJ450",
       "SARJ451",
-      "SARJ452"
+      "SARJ452",
+      "SARJ453"
     ],
     "sql": [
       "SARJ101",

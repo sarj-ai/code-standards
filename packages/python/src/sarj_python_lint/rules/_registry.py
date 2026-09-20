@@ -102,6 +102,7 @@ from sarj_python_lint.rules.prefer_injected_dependency_over_monkeypatch import (
 )
 from sarj_python_lint.rules.prefer_library_fake import PreferLibraryFake
 from sarj_python_lint.rules.prefer_match_assert_never import PreferMatchAssertNever
+from sarj_python_lint.rules.prefer_match_exception_dispatch import PreferMatchExceptionDispatch
 from sarj_python_lint.rules.prefer_match_type_dispatch import PreferMatchTypeDispatch
 from sarj_python_lint.rules.prefer_match_value_dispatch import PreferMatchValueDispatch
 from sarj_python_lint.rules.prefer_module_level_constant import (
@@ -243,6 +244,7 @@ REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
         PreferOrPattern.id: PreferOrPattern,
         RequirePortForService.id: RequirePortForService,
         PreferNonNullableCollection.id: PreferNonNullableCollection,
+        PreferMatchExceptionDispatch.id: PreferMatchExceptionDispatch,
         PreferMatchTypeDispatch.id: PreferMatchTypeDispatch,
         PreferMatchValueDispatch.id: PreferMatchValueDispatch,
         PreferWalrusRegexMatch.id: PreferWalrusRegexMatch,

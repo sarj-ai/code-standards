@@ -44,6 +44,12 @@ class ImportIndex:
             return None
         return resolved.symbol
 
+    def resolved_qualified_name(self, node: ast.expr) -> str | None:
+        resolved = self._resolve(node)
+        if resolved is None or resolved.symbol is None:
+            return None
+        return f"{resolved.module}.{resolved.symbol}"
+
     def builtin_is_unshadowed(self, name: str) -> bool:
         return name not in self.shadowed_names and name not in self.bindings
 
