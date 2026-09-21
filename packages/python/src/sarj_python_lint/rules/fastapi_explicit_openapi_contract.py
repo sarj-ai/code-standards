@@ -88,6 +88,10 @@ class FastapiExplicitOpenapiContract(Rule):
             "Hidden routes, WebSocket handlers, tests, generated files, documentation-source examples, and unrelated decorators are excluded.",
             "Dynamic response mappings are accepted when their contents cannot be resolved statically.",
             "Explicit status and parameter-location findings are organizational policy even when FastAPI inference would generate valid OpenAPI.",
+            (
+                "Fixed-record return inference is local and conservative: dynamic keys, opaque escapes, and ambiguous "
+                "control flow are accepted when a closed response shape cannot be proven."
+            ),
             "Imported dependency aliases are followed only through unique, nonsymlinked relative or same-package modules inside the detected checkout; traversal is bounded and ambiguity remains diagnostic.",
         ),
         examples=(
@@ -498,7 +502,7 @@ def _check_return(
 def _check_inferred_return(
     function: ast.FunctionDef | ast.AsyncFunctionDef, routes: tuple[Route, ...], index: FastapiIndex
 ) -> list[_Finding]:
-    if not builds_fixed_record(function):
+    if not builds_fixed_record(function, imports=index.imports):
         return []
     for route in _operations(routes):
         if route.has_unpack:

@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "dfec34fe50352e601d23adb9399399567c44d5a5e52739c50b8e25d444d1e6ce",
-  "cliSha256": "ef07c629f767390eeae3264babd034351ce0f14416cc9248abab8ac7e5ee9a08",
+  "catalogSha256": "05099dc23d6064176edaab370da361931c2c5c7d1b100c1535ac309044312a8d",
+  "cliSha256": "d2a2d1255dbceb9782a69be8612e054a2526fa3597ce19e91deaf5f44f44789c",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -7885,6 +7885,45 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "One or-pattern owns the shared body"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:prefer-pydantic-json-value": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/app/types.py",
+              "source": "from pydantic import JsonValue\n\nvalue: JsonValue\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/app/types.py",
+          "id": "canonical-pydantic-json-value",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "The Pydantic alias is already canonical"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "pyproject.toml",
+              "source": "[project]\nname = \"app\"\nversion = \"0.1.0\"\ndependencies = [\"pydantic>=2\"]\n"
+            },
+            {
+              "path": "src/app/types.py",
+              "source": "type JsonValue = (\n    str | int | float | bool | None | list[JsonValue] | dict[str, JsonValue]\n)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/app/types.py",
+          "id": "home-grown-json-value",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Use Pydantic's canonical recursive JSON value"
         }
       ],
       "optionsSchemaSource": null

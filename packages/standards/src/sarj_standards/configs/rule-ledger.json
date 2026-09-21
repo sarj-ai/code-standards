@@ -100,6 +100,7 @@
       "prefer-nominal-id-types",
       "prefer-non-nullable-collection",
       "prefer-or-pattern",
+      "prefer-pydantic-json-value",
       "prefer-self-documenting-constant",
       "prefer-self-type-annotation",
       "prefer-set-isdisjoint",
@@ -399,7 +400,8 @@
       "SARJ450",
       "SARJ451",
       "SARJ452",
-      "SARJ453"
+      "SARJ453",
+      "SARJ454"
     ],
     "sql": [
       "SARJ101",

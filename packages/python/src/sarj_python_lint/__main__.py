@@ -142,6 +142,10 @@ _DIAGNOSTIC_PRECEDENCE = MappingProxyType(
         "SARJ088": frozenset({"SARJ050", "SARJ085", "SARJ420"}),
         "SARJ092": frozenset({"SARJ086", "SARJ087", "SARJ420"}),
         "SARJ093": frozenset({"SARJ034"}),
+        # Visible FastAPI operations have a route-aware contract diagnostic.
+        # Keep the annotation diagnostics when SARJ094 is absent, including
+        # when a concrete response_model makes the route contract complete.
+        "SARJ094": frozenset({"SARJ008", "SARJ447"}),
         "SARJ099": frozenset({"SARJ420"}),
         # Any-valued mappings are the stronger correctness failure. SARJ008
         # still owns every fixed dictionary return when selected alone, while
@@ -166,13 +170,17 @@ def deduplicate_diagnostics(diags: list[Diagnostic], *, source: str | None = Non
         "SARJ420" in codes and not codes.isdisjoint(_DOCSTRING_PRECEDENCE_CODES)
     )
     docstring_owners = _docstring_owner_locations(source) if source is not None and needs_docstring_owners else {}
-    needs_signature_owners = ("SARJ093" in codes and "SARJ034" in codes) or ("SARJ447" in codes and "SARJ008" in codes)
+    needs_signature_owners = (
+        ("SARJ093" in codes and "SARJ034" in codes)
+        or ("SARJ447" in codes and "SARJ008" in codes)
+        or ("SARJ094" in codes and not codes.isdisjoint(_DIAGNOSTIC_PRECEDENCE["SARJ094"]))
+    )
     signature_owners = (
         _function_signature_owner_locations(source) if source is not None and needs_signature_owners else {}
     )
 
     def owner_location(diagnostic: Diagnostic) -> _OwnerLocation:
-        if diagnostic.code in {"SARJ008", "SARJ034", "SARJ093", "SARJ447"}:
+        if diagnostic.code in {"SARJ008", "SARJ034", "SARJ093", "SARJ094", "SARJ447"}:
             line, column = signature_owners.get(diagnostic.line, (diagnostic.line, diagnostic.col))
         else:
             line, column = docstring_owners.get(diagnostic.line, (diagnostic.line, diagnostic.col))
@@ -180,6 +188,8 @@ def deduplicate_diagnostics(diags: list[Diagnostic], *, source: str | None = Non
 
     present: dict[tuple[Path, int, int], dict[str, set[Severity]]] = {}
     for diagnostic in diags:
+        if diagnostic.code == "SARJ094" and not diagnostic.message.startswith("[return]"):
+            continue
         location = owner_location(diagnostic)
         by_code = present.setdefault((diagnostic.path, location.line, location.column), {})
         by_code.setdefault(diagnostic.code, set()).add(diagnostic.severity)
@@ -213,21 +223,43 @@ def _suppressed_diagnostics(
 
 
 def _suppressed_codes(codes: dict[str, set[Severity]]) -> set[tuple[str, Severity]]:
-    suppressed = {
-        (generic, generic_severity)
-        for specific, generics in _DIAGNOSTIC_PRECEDENCE.items()
-        if specific in codes
-        for generic in generics
-        for generic_severity in codes.get(generic, set())
-        if generic_severity is Severity.WARNING or Severity.ERROR in codes[specific]
-    }
+    suppressed = _precedence_suppressions(codes)
+    # SARJ094 is deliberately staged as a warning while teams calibrate the
+    # FastAPI contract policy. Its route-aware return finding still owns the
+    # overlapping annotation failure: emitting the blocking SARJ447 twin would
+    # defeat warning staging and give two remediations for one return contract.
+    if "SARJ094" in codes:
+        suppressed.update(_route_contract_suppressions(codes))
     # The promoted signature-restatement rules now block. Keep their errors and
     # drop only the lower-severity typed-docstring twin at the same owner.
-    if Severity.WARNING in codes.get("SARJ092", set()) and any(
-        Severity.ERROR in codes.get(generic, set()) for generic in ("SARJ086", "SARJ087")
-    ):
+    if _typed_docstring_warning_is_superseded(codes):
         suppressed.add(("SARJ092", Severity.WARNING))
     return suppressed
+
+
+def _precedence_suppressions(codes: dict[str, set[Severity]]) -> set[tuple[str, Severity]]:
+    suppressed: set[tuple[str, Severity]] = set()
+    for specific, generics in _DIAGNOSTIC_PRECEDENCE.items():
+        if specific not in codes:
+            continue
+        specific_severities = codes[specific]
+        for generic in generics:
+            for generic_severity in codes.get(generic, set()):
+                if generic_severity is Severity.WARNING or Severity.ERROR in specific_severities:
+                    suppressed.add((generic, generic_severity))
+    return suppressed
+
+
+def _route_contract_suppressions(codes: dict[str, set[Severity]]) -> set[tuple[str, Severity]]:
+    return {
+        (generic, severity) for generic in _DIAGNOSTIC_PRECEDENCE["SARJ094"] for severity in codes.get(generic, set())
+    }
+
+
+def _typed_docstring_warning_is_superseded(codes: dict[str, set[Severity]]) -> bool:
+    if Severity.WARNING not in codes.get("SARJ092", set()):
+        return False
+    return any(Severity.ERROR in codes.get(generic, set()) for generic in ("SARJ086", "SARJ087"))
 
 
 def _function_signature_owner_locations(source: str) -> dict[int, _OwnerLocation]:

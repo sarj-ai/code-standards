@@ -16,15 +16,17 @@ from sarj_python_lint.rule_base import (
     is_suppressed,
     parse_or_none,
 )
+from sarj_python_lint.rules._annotation_semantics import AnnotationSemantics, scope_bound_names
 from sarj_python_lint.rules._ast_index import children, nodes
 from sarj_python_lint.rules._fastapi import FastapiIndex
 from sarj_python_lint.rules._fixed_record import builds_fixed_record
-from sarj_python_lint.rules._imports import ImportIndex
 from sarj_python_lint.rules._paths import is_generated, is_test_path, is_test_support_path
 
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+    from sarj_python_lint.rules._imports import ImportIndex
 
 
 # Dict-conversion protocol methods: returning a raw dict is the declared
@@ -47,7 +49,11 @@ class NamedRecordAtBoundaries(Rule):
         aliases=("pydantic-at-boundaries", "named-fixed-record-return"),
         limitations=(
             "Visible FastAPI routes are owned by SARJ094. Private functions and classes, closures, tests, generated files, documentation examples, recognized framework hooks, and dictionary conversion methods are excluded.",
-            "Only returned record literals and locally built fixed-shape dictionaries are recognized.",
+            (
+                "Record evidence is flow-sensitive but local: literals, proven built-in dict keyword construction, "
+                "static string-key writes, and unique unconditional local type aliases are recognized. Dynamic keys, "
+                "opaque escapes, ambiguous control flow, generic aliases, and cross-module aliases make the rule abstain."
+            ),
         ),
         examples=(
             RuleExample(
@@ -98,8 +104,10 @@ class NamedRecordAtBoundaries(Rule):
         source_lines = source.splitlines()
         local = _local_function_ids(tree)
         private_class_methods = _private_class_function_ids(tree)
-        imports = ImportIndex.from_tree(tree, module_scope_only=True)
+        semantics = AnnotationSemantics.from_tree(tree)
+        imports = semantics.imports
         fastapi = FastapiIndex(tree, path=path)
+        class_shadowed_annotations = _class_shadowed_annotation_ids(tree, semantics)
 
         def collect_boundary(node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
             if _is_overload(node, imports):
@@ -110,6 +118,8 @@ class NamedRecordAtBoundaries(Rule):
                 return
             # A closure cannot be imported, so it is not a boundary either.
             if id(node) in local or id(node) in private_class_methods:
+                return
+            if id(node) in class_shadowed_annotations:
                 return
             # `model_dump`/`asdict`/`to_dict`-style converters declare "this
             # returns a dict" as their contract — that is not a missing model.
@@ -124,14 +134,18 @@ class NamedRecordAtBoundaries(Rule):
             # APIs here unless FastAPI already has a concrete named model.
             routes = fastapi.routes(node)
             if any(not route.is_hidden for route in routes) or any(
-                _has_named_response_model(route.keywords.get("response_model"), imports) for route in routes
+                _has_named_response_model(route.keywords.get("response_model"), semantics) for route in routes
             ):
                 return
-            returns = _resolve_annotation(node.returns)
+            returns = semantics.parse(node.returns)
             if returns is None:
                 return
-            kind = _classify_return(returns, imports)
-            if kind is None or not builds_fixed_record(node) or is_suppressed(source_lines, node.lineno, self.code):
+            kind = _classify_return(returns, semantics)
+            if (
+                kind is None
+                or not builds_fixed_record(node, imports=imports)
+                or is_suppressed(source_lines, node.lineno, self.code)
+            ):
                 return
             ann_text = ast.unparse(returns)
             diags.append(
@@ -167,6 +181,21 @@ def _local_function_ids(tree: ast.Module) -> set[int]:
 
 def _is_documentation_path(path: Path) -> bool:
     return any(part.lower() in _DOCUMENTATION_DIR_NAMES for part in path.parts)
+
+
+def _class_shadowed_annotation_ids(tree: ast.Module, semantics: AnnotationSemantics) -> set[int]:
+    shadowed: set[int] = set()
+    for class_node in nodes(tree, ast.ClassDef):
+        bindings = scope_bound_names(class_node.body)
+        for statement in class_node.body:
+            if not isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            annotation = semantics.parse(statement.returns)
+            if annotation is not None and any(
+                isinstance(child, ast.Name) and child.id in bindings for child in ast.walk(annotation)
+            ):
+                shadowed.add(id(statement))
+    return shadowed
 
 
 def _is_dict_conversion_name(name: str) -> bool:
@@ -229,10 +258,21 @@ def _resolve_annotation(node: ast.expr | None) -> ast.expr | None:
     return node
 
 
-def _classify_return(node: ast.expr, imports: ImportIndex) -> str | None:
+def _classify_return(
+    node: ast.expr,
+    semantics: AnnotationSemantics,
+    *,
+    seen: frozenset[str] = frozenset(),
+) -> str | None:
+    imports = semantics.imports
+    node = semantics.parse(node) or node
+    if isinstance(node, ast.Name) and node.id in semantics.aliases:
+        if node.id in seen:
+            return None
+        return _classify_return(semantics.aliases[node.id], semantics, seen=seen | {node.id})
     # Look through `X | None` / Optional[X] / Union[...] members.
     if isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitOr):
-        return _classify_return(node.left, imports) or _classify_return(node.right, imports)
+        return _classify_return(node.left, semantics, seen=seen) or _classify_return(node.right, semantics, seen=seen)
 
     if _is_type(node, imports, builtin="dict", typing_symbol="Dict"):
         return "dict"  # bare `dict` / `Dict`
@@ -240,24 +280,39 @@ def _classify_return(node: ast.expr, imports: ImportIndex) -> str | None:
     if not isinstance(node, ast.Subscript):
         return None
 
+    return _classify_subscript_return(node, semantics, seen=seen)
+
+
+def _classify_subscript_return(
+    node: ast.Subscript,
+    semantics: AnnotationSemantics,
+    *,
+    seen: frozenset[str],
+) -> str | None:
+    imports = semantics.imports
+
     if _is_typing_type(node.value, imports, "Annotated"):
         # Annotated carries its runtime value type in the first argument.
-        if isinstance(node.slice, ast.Tuple) and node.slice.elts:
-            return _classify_return(node.slice.elts[0], imports)
-        return _classify_return(node.slice, imports)
+        return _classify_return(_first_type_argument(node.slice), semantics, seen=seen)
     if _is_typing_type(node.value, imports, "Optional"):
-        return _classify_return(node.slice, imports)
+        return _classify_return(node.slice, semantics, seen=seen)
     if _is_typing_type(node.value, imports, "Union"):
-        return _classify_union_return(node, imports)
+        return _classify_union_return(node, semantics, seen=seen)
     if _is_type(node.value, imports, builtin="list", typing_symbol="List"):
         # Fixed lists of unnamed records need one named element contract.
-        inner = _classify_return(node.slice, imports)
+        inner = _classify_return(node.slice, semantics, seen=seen)
         return "dict" if inner == "dict" else None
     if _is_type(node.value, imports, builtin="dict", typing_symbol="Dict"):
         return "dict" if _is_named_record_dict_args(node.slice, imports) else None
     # Heterogeneous tuple returns are NOT flagged — multiple return values are
     # idiomatic Python, not a missing data contract.
     return None
+
+
+def _first_type_argument(node: ast.expr) -> ast.expr:
+    if isinstance(node, ast.Tuple) and node.elts:
+        return node.elts[0]
+    return node
 
 
 def _is_named_record_dict_args(slice_node: ast.expr, imports: ImportIndex) -> bool:
@@ -287,20 +342,26 @@ def _is_typing_type(node: ast.expr, imports: ImportIndex, symbol: str) -> bool:
     )
 
 
-def _has_named_response_model(node: ast.expr | None, imports: ImportIndex) -> bool:
+def _has_named_response_model(node: ast.expr | None, semantics: AnnotationSemantics) -> bool:
+    imports = semantics.imports
     resolved = _resolve_annotation(node)
     if resolved is None or (isinstance(resolved, ast.Constant) and resolved.value is None):
         return False
-    if _classify_return(resolved, imports) is not None:
+    if _classify_return(resolved, semantics) is not None:
         return False
     return not (_is_builtin(resolved, imports, "object") or _is_typing_type(resolved, imports, "Any"))
 
 
-def _classify_union_return(node: ast.Subscript, imports: ImportIndex) -> str | None:
+def _classify_union_return(
+    node: ast.Subscript,
+    semantics: AnnotationSemantics,
+    *,
+    seen: frozenset[str],
+) -> str | None:
     if isinstance(node.slice, ast.Tuple):
         for elt in node.slice.elts:
-            kind = _classify_return(elt, imports)
+            kind = _classify_return(elt, semantics, seen=seen)
             if kind is not None:
                 return kind
         return None
-    return _classify_return(node.slice, imports)
+    return _classify_return(node.slice, semantics, seen=seen)
