@@ -120,6 +120,7 @@ from sarj_python_lint.rules.prefer_non_nullable_collection import (
     PreferNonNullableCollection,
 )
 from sarj_python_lint.rules.prefer_or_pattern import PreferOrPattern
+from sarj_python_lint.rules.prefer_pydantic_json_value import PreferPydanticJsonValue
 from sarj_python_lint.rules.prefer_self_documenting_constant import (
     PreferSelfDocumentingConstant,
 )
@@ -242,6 +243,7 @@ REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
         UnusedTestFactoryOption.id: UnusedTestFactoryOption,
         PreferFstringOverConcat.id: PreferFstringOverConcat,
         PreferOrPattern.id: PreferOrPattern,
+        PreferPydanticJsonValue.id: PreferPydanticJsonValue,
         RequirePortForService.id: RequirePortForService,
         PreferNonNullableCollection.id: PreferNonNullableCollection,
         PreferMatchExceptionDispatch.id: PreferMatchExceptionDispatch,

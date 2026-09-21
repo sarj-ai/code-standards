@@ -3,6 +3,14 @@
   "precisionGate": "Review every finding up to 200; above 200, review every major cluster and a deterministic stratified sample of at least 50. Treat ambiguous findings as false positives for error-level rules.",
   "tasks": [
     {
+      "task": "rule-audit/python/prefer-pydantic-json-value",
+      "family": "python",
+      "ruleId": "prefer-pydantic-json-value",
+      "state": "complete",
+      "evidence": "The combined SARJ008, SARJ094, SARJ447, SARJ454, and diagnostic-precedence suite passes 457 focused cases. Fixtures cover exact PEP 695 and explicit TypeAlias recursive JSON domains, alias ambiguity, dependency version proof, environment markers, suppressions, generated and vendored sources, and narrower or extended JSON types. Scans of 2,068 tracked Python files across Code Standards and Platform produced no SARJ454 findings, matching the prior corpus observation that neither repository currently redefines the exact canonical alias.",
+      "outcome": "Introduce SARJ454 as a warning without autofix only for an exact locally authored recursive JSON alias inside a distribution with an unconditional Pydantic v2 dependency. Recommend pydantic.JsonValue; abstain for generic, imported, conditional, rebound, mutually recursive, narrower, extended, malformed, or dependency-ambiguous aliases."
+    },
+    {
       "task": "rule-audit/python/no-excessive-cognitive-complexity",
       "family": "python",
       "ruleId": "no-excessive-cognitive-complexity",
@@ -175,8 +183,8 @@
       "family": "python",
       "ruleId": "fastapi-explicit-openapi-contract",
       "state": "complete",
-      "evidence": "Three independent reviews ran 91 focused tests and classified a local fleet scan of 1,459 findings across 149 files: 625 parameter, 526 metadata, 263 alternate-response, 43 return, one routing, and one status finding. Roughly 80 percent were stricter organizational explicitness rather than broken generated OpenAPI. Reviewers reproduced false positives for concrete typed mappings, self-documenting non-JSON response classes, caught HTTPException calls, responses[*].model, and statically inherited APIRouter defaults and response maps.",
-      "outcome": "Kept the compatible SARJ094 selector and alias but staged the composite rule as warning. Reworded its UI to distinguish FastAPI's valid inference from local explicitness policy, added a second public schema-integrity scenario, accepted concretely typed mappings and supported response models, inherited statically resolvable router response metadata, ignored caught exceptions and unverifiable custom response classes, and retained conservative direct-only analysis. Routing and other independently error-safe families remain candidates for future split rules after separate calibration."
+      "evidence": "Three independent reviews ran 91 focused tests and classified a local fleet scan of 1,459 findings across 149 files: 625 parameter, 526 metadata, 263 alternate-response, 43 return, one routing, and one status finding. Roughly 80 percent were stricter organizational explicitness rather than broken generated OpenAPI. Reviewers reproduced false positives for concrete typed mappings, self-documenting non-JSON response classes, caught HTTPException calls, responses[*].model, and statically inherited APIRouter defaults and response maps. A follow-up flow-sensitive fixed-record implementation passed the 457-case combined suite and left all 407 Platform diagnostics byte-for-byte unchanged.",
+      "outcome": "Kept the compatible SARJ094 selector and alias but staged the composite rule as warning. Reworded its UI to distinguish FastAPI's valid inference from local explicitness policy, added a second public schema-integrity scenario, accepted concretely typed mappings and supported response models, inherited statically resolvable router response metadata, ignored caught exceptions and unverifiable custom response classes, and use conservative local flow analysis for fixed-record returns. Routing and other independently error-safe families remain candidates for future split rules after separate calibration."
     },
     {
       "task": "rule-audit/python/pytest-fixture-returns-bare-tuple",
@@ -585,7 +593,7 @@
       "family": "python",
       "ruleId": "no-any-mapping-types",
       "state": "complete",
-      "evidence": "Focused fixtures cover object, nested object, dict and Mapping with Any, forward references, precise named schemas, generated files, and vendor files. Three existing application corpora produced 2,706 findings; cluster sampling confirmed widespread pre-existing schema-erasure debt, so adoption requires shrink-only baselines.",
+      "evidence": "Focused fixtures cover object, nested object, dict and Mapping with Any, forward references, precise named schemas, generated files, vendor files, local shadowing, and cycle-safe explicit alias chains. Three existing application corpora produced 2,706 findings; cluster sampling confirmed widespread pre-existing schema-erasure debt, so adoption requires shrink-only baselines. Follow-up alias resolution passed the 457-case combined suite and produced an identical 214-diagnostic, 86-file Platform baseline.",
       "outcome": "Promoted after calibration. Reject proven string-keyed mappings whose values recursively contain typing.Any across annotations, explicit aliases, casts, TypeAdapter targets, and type comments. Preserve object and dict[str, object] as safe opaque boundary types requiring narrowing; recommend TypedDict first for fixed records, Pydantic models for untrusted runtime input, and pydantic.JsonValue for arbitrary JSON trees."
     },
     {
@@ -713,8 +721,8 @@
       "family": "python",
       "ruleId": "named-record-at-boundaries",
       "state": "complete",
-      "evidence": "Three independent reviews ran 368 focused cases and scanned 9,410 tracked Python files. The original matcher produced 113 raw findings and failed 12 of 24 adversarial provenance and protocol cases; reviewed findings mixed useful unnamed-record boundaries with framework serializers, overrides, private classes, shadowed annotations, generated code, and guessed FastAPI routes. The repaired warning produced 91 candidates across the broad fleet, 55 after clone normalization, and no findings in a 1,277-file focused application corpus. The full Python suite passed 7,079 tests with three expected xfails.",
-      "outcome": "Renamed to named-record-at-boundaries with migration aliases for pydantic-at-boundaries and named-fixed-record-return. Keep SARJ008 warning-level because naming an ordinary Python API record remains architectural judgment, but cover every proven fixed string-keyed dictionary return regardless of value type. Promote TypedDict first, with Pydantic models or frozen dataclasses when runtime validation or nominal behavior is required."
+      "evidence": "Three independent reviews ran 368 focused cases and scanned 9,410 tracked Python files. The original matcher produced 113 raw findings and failed 12 of 24 adversarial provenance and protocol cases; reviewed findings mixed useful unnamed-record boundaries with framework serializers, overrides, private classes, shadowed annotations, generated code, and guessed FastAPI routes. The repaired warning produced 91 candidates across the broad fleet, 55 after clone normalization, and no findings in a 1,277-file focused application corpus. The full Python suite passed 7,079 tests with three expected xfails. A follow-up path-sensitive construction and alias analysis passed the 457-case combined suite; a 1,554-file Platform scan retained exactly the same six findings as the prior implementation.",
+      "outcome": "Renamed to named-record-at-boundaries with migration aliases for pydantic-at-boundaries and named-fixed-record-return. Keep SARJ008 warning-level because naming an ordinary Python API record remains architectural judgment, but cover proven fixed string-keyed dictionary returns across conservative local construction paths and unique explicit alias chains. Promote TypedDict first, with Pydantic models or frozen dataclasses when runtime validation or nominal behavior is required."
     },
     {
       "task": "rule-audit/python/redundant-class-docstring",

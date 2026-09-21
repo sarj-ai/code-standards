@@ -115,6 +115,84 @@ def test_any_mapping_owns_fixed_record_overlap(tmp_path: Path) -> None:
     assert "TypedDict" in diagnostics[0].message
 
 
+def test_fastapi_contract_owns_visible_any_mapping_overlap(tmp_path: Path) -> None:
+    source = tmp_path / "api.py"
+    source.write_text(
+        "from typing import Any\n"
+        "from fastapi import APIRouter\n\n"
+        "router = APIRouter()\n\n"
+        "@router.get('/health')\n"
+        "async def health() -> dict[str, Any]:\n"
+        "    return {'status': 'ok'}\n",
+        encoding="utf-8",
+    )
+
+    diagnostics = analyze(
+        ["fastapi-explicit-openapi-contract", "named-record-at-boundaries", "no-any-mapping-types"], [source]
+    )
+
+    assert [finding.code for finding in diagnostics] == ["SARJ094", "SARJ094"]
+
+
+def test_fastapi_precedence_preserves_any_mapping_when_route_contract_is_complete(tmp_path: Path) -> None:
+    source = tmp_path / "api.py"
+    source.write_text(
+        "from typing import Any\n"
+        "from fastapi import APIRouter\n"
+        "from pydantic import BaseModel\n\n"
+        "router = APIRouter()\n\n"
+        "class HealthResponse(BaseModel):\n"
+        "    status: str\n\n"
+        "@router.get('/health', status_code=200, response_model=HealthResponse)\n"
+        "async def health() -> dict[str, Any]:\n"
+        "    return {'status': 'ok'}\n",
+        encoding="utf-8",
+    )
+
+    diagnostics = analyze(["fastapi-explicit-openapi-contract", "no-any-mapping-types"], [source])
+
+    assert [finding.code for finding in diagnostics] == ["SARJ447"]
+
+
+def test_fastapi_metadata_does_not_hide_independent_any_mapping(tmp_path: Path) -> None:
+    source = tmp_path / "api.py"
+    source.write_text(
+        "from typing import Any\n"
+        "from fastapi import APIRouter\n"
+        "from pydantic import BaseModel\n\n"
+        "router = APIRouter()\n\n"
+        "class HealthResponse(BaseModel):\n"
+        "    status: str\n\n"
+        "@router.get('/health', response_model=HealthResponse)\n"
+        "async def health() -> dict[str, Any]:\n"
+        "    return {'status': 'ok'}\n",
+        encoding="utf-8",
+    )
+
+    diagnostics = analyze(["fastapi-explicit-openapi-contract", "no-any-mapping-types"], [source])
+
+    assert [finding.code for finding in diagnostics] == ["SARJ094", "SARJ447"]
+
+
+def test_fastapi_precedence_never_crosses_function_owners(tmp_path: Path) -> None:
+    source = tmp_path / "api.py"
+    source.write_text(
+        "from typing import Any\n"
+        "from fastapi import APIRouter\n\n"
+        "router = APIRouter()\n\n"
+        "@router.get('/health')\n"
+        "async def health() -> dict[str, Any]:\n"
+        "    return {'status': 'ok'}\n\n"
+        "def serialize() -> dict[str, Any]:\n"
+        "    return {'status': 'ok'}\n",
+        encoding="utf-8",
+    )
+
+    diagnostics = analyze(["fastapi-explicit-openapi-contract", "no-any-mapping-types"], [source])
+
+    assert [finding.code for finding in diagnostics] == ["SARJ094", "SARJ094", "SARJ447"]
+
+
 def test_comment_only_unit_warning_remains_when_selected_alone(tmp_path: Path) -> None:
     source = tmp_path / "service.py"
     source.write_text("# Timeout in seconds.\nTIMEOUT = 5\n", encoding="utf-8")

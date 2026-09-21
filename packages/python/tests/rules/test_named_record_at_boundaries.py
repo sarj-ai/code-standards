@@ -683,9 +683,9 @@ def test_allows_kwargs_any_without_return_annotation():
     assert _check("def f(**kwargs: Any):\n    return {'id': 1}\n") == []
 
 
-def test_allows_type_alias_return_pure_annotation_limitation():
+def test_flags_type_alias_return():
     src = "type Payload = dict[str, Any]\ndef f() -> Payload:\n    return {'id': 1}\n"
-    assert _check(src) == []
+    assert len(_check(src)) == 1
 
 
 def test_annotated_dict_return_should_be_flagged():
@@ -746,8 +746,6 @@ _RECORD_BODIES = [
     # `list[dict[str, Any]]` shapes.
     "return [{'id': 1}]",
     "return [{'id': row.id} for row in rows]",
-    # One opaque branch does not excuse the record branch.
-    "if x:\n        return other.copy()\n    return {'id': 1}",
 ]
 
 
@@ -759,7 +757,6 @@ def test_in_place_records_are_flagged(body: str):
 @pytest.mark.parametrize(
     "body",
     [
-        "entry = {'id': ident}\n    entry['service'] = service\n    return entry",
         "entry = {'id': ident}\n    entry.update(extra)\n    return entry",
         "entry = {'id': ident}\n    entry |= extra\n    return entry",
         "entry = {'id': ident}\n    entry = enrich(entry)\n    return entry",
@@ -767,6 +764,116 @@ def test_in_place_records_are_flagged(body: str):
 )
 def test_mutated_or_rebound_record_names_are_not_fixed_shapes(body: str) -> None:
     assert _check(f"def f() -> dict[str, Any]:\n    {body}\n") == []
+
+
+def test_static_key_mutation_preserves_fixed_shape() -> None:
+    source = "def f() -> dict[str, object]:\n    entry = {}\n    entry['id'] = ident\n    return entry\n"
+
+    assert len(_check(source)) == 1
+
+
+def test_builtin_dict_keywords_are_fixed_shape() -> None:
+    source = "def f() -> dict[str, object]:\n    return dict(id=ident, active=True)\n"
+
+    assert len(_check(source)) == 1
+
+
+def test_opaque_return_path_abstains() -> None:
+    source = "def f() -> dict[str, object]:\n    if cached:\n        return cache.load()\n    return {'id': ident}\n"
+
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "record = {'id': 1}\n    if mutate(record):\n        pass\n    return record",
+        "record = {'id': 1}\n    with mutate(record):\n        pass\n    return record",
+        "record = {'id': 1}\n    callback = lambda: mutate(record)\n    callback()\n    return record",
+        "record = {'id': 1}\n    def callback():\n        mutate(record)\n    callback()\n    return record",
+        "record = {'id': 1}\n    try:\n        return record\n    finally:\n        mutate(record)",
+    ],
+)
+def test_record_that_can_escape_or_change_is_not_claimed_fixed(body: str) -> None:
+    assert _check(f"def payload() -> dict[str, object]:\n    {body}\n") == []
+
+
+def test_non_exhaustive_match_preserves_the_unmatched_path() -> None:
+    source = (
+        "def payload() -> dict[str, object]:\n"
+        "    record = {}\n"
+        "    match kind:\n"
+        "        case 'user':\n"
+        "            record['id'] = 1\n"
+        "    return record\n"
+    )
+
+    assert _check(source) == []
+
+
+def test_exhaustive_match_with_fixed_records_is_flagged() -> None:
+    source = (
+        "def payload() -> dict[str, object]:\n"
+        "    record = {}\n"
+        "    match kind:\n"
+        "        case 'user':\n"
+        "            record['id'] = 1\n"
+        "        case _:\n"
+        "            record['name'] = 'unknown'\n"
+        "    return record\n"
+    )
+
+    assert len(_check(source)) == 1
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "left = right = {'id': 1}\n    left[dynamic] = value\n    return right",
+        "record = {'id': 1}\n    record.update(extra=mutate(record))\n    return record",
+        "record = {'id': 1}\n    record.setdefault('name', mutate(record))\n    return record",
+        "record = {'id': 1}\n    holder.value = record\n    mutate(holder)\n    return record",
+        "record = {'id': 1}\n    holder['value'] = record\n    mutate(holder)\n    return record",
+        "record = {'id': 1}\n    if (record := opaque()):\n        pass\n    return record",
+        "record = {'id': 1}\n    import value as record\n    return record",
+        "global record\n    record = {'id': 1}\n    mutate_elsewhere()\n    return record",
+        "record = {'id': 1}\n    try:\n        mutate(record)\n        raise ValueError\n    except ValueError:\n        return record",
+    ],
+)
+def test_ambiguous_record_dataflow_abstains(body: str) -> None:
+    assert _check(f"def payload() -> dict[str, object]:\n    {body}\n") == []
+
+
+def test_pattern_capture_rebinds_record_name() -> None:
+    source = (
+        "def payload() -> dict[str, object]:\n"
+        "    record = {'id': 1}\n"
+        "    match external:\n"
+        "        case record:\n"
+        "            return record\n"
+    )
+
+    assert _check(source) == []
+
+
+def test_shadowed_local_dict_constructor_is_not_proven_builtin() -> None:
+    source = "def payload(dict) -> dict[str, object]:\n    return dict(id=1)\n"
+
+    assert _check(source) == []
+
+
+def test_shadowed_builtins_module_is_not_proven() -> None:
+    source = "import builtins\ndef payload(builtins) -> dict[str, object]:\n    return builtins.dict(id=1)\n"
+
+    assert _check(source) == []
+
+
+def test_class_scope_shadowed_annotation_is_not_proven_builtin() -> None:
+    source = (
+        "class Service:\n    dict = CustomMap\n    def payload(self) -> dict[str, object]:\n        return {'id': 1}\n"
+    )
+
+    assert _check(source) == []
 
 
 def test_untouched_record_name_is_still_flagged() -> None:
@@ -971,7 +1078,7 @@ def test_inline_suppression_is_honored() -> None:
     assert not _check(source)
 
 
-def test_mutation_through_alias_makes_shape_open() -> None:
+def test_static_mutation_through_alias_preserves_fixed_shape() -> None:
     source = (
         "def payload() -> dict[str, Any]:\n"
         "    record = {'id': 1}\n"
@@ -980,7 +1087,7 @@ def test_mutation_through_alias_makes_shape_open() -> None:
         "    return record\n"
     )
 
-    assert not _check(source)
+    assert len(_check(source)) == 1
 
 
 def test_harmless_alias_preserves_fixed_record_evidence() -> None:
@@ -1082,7 +1189,7 @@ def test_annotated_harmless_alias_preserves_fixed_record_evidence() -> None:
     assert len(_check(source)) == 1
 
 
-def test_mutation_through_annotated_alias_makes_shape_open() -> None:
+def test_static_mutation_through_annotated_alias_preserves_fixed_shape() -> None:
     source = (
         "def payload() -> dict[str, Any]:\n"
         "    record = {'id': 1}\n"
@@ -1091,4 +1198,30 @@ def test_mutation_through_annotated_alias_makes_shape_open() -> None:
         "    return record\n"
     )
 
-    assert not _check(source)
+    assert len(_check(source)) == 1
+
+
+def test_unreachable_dynamic_mutation_does_not_erase_return_evidence() -> None:
+    source = (
+        "def payload() -> dict[str, object]:\n    record = {'id': 1}\n    return record\n    record[dynamic] = value\n"
+    )
+
+    assert len(_check(source)) == 1
+
+
+def test_alias_chain_return_is_transparent() -> None:
+    source = (
+        "from typing import TypeAlias\n"
+        "Record: TypeAlias = dict[str, object]\n"
+        "type OptionalRecord = Record | None\n"
+        "def payload() -> OptionalRecord:\n"
+        "    return {'id': 1}\n"
+    )
+
+    assert len(_check(source)) == 1
+
+
+def test_generic_alias_is_not_guessed() -> None:
+    source = "type Record[T] = dict[str, T]\ndef payload() -> Record[object]:\n    return {'id': 1}\n"
+
+    assert _check(source) == []

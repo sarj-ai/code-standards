@@ -1189,6 +1189,30 @@ async def health():
     assert _check(source) == []
 
 
+def test_unannotated_route_detects_statically_built_record() -> None:
+    source = _source("""
+@router.get("/health", status_code=200)
+async def health():
+    result = {}
+    result["status"] = "ok"
+    return result
+""")
+
+    assert any("fixed-shape dictionary" in diagnostic.message for diagnostic in _check(source))
+
+
+def test_unannotated_route_abstains_for_mixed_opaque_return_path() -> None:
+    source = _source("""
+@router.get("/health", status_code=200)
+async def health():
+    if cached:
+        return cache.load()
+    return {"status": "ok"}
+""")
+
+    assert _check(source) == []
+
+
 def test_concrete_response_model_overrides_erased_return_annotation():
     source = _source("""
 @router.get("/health", status_code=200, response_model=HealthResponse)

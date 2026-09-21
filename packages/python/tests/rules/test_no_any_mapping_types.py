@@ -96,3 +96,14 @@ a: Mapping[str, Any]
 b: dict[str, Any]
 """
     assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "from typing import Any\ndef use():\n    dict = CustomMap\n    value: dict[str, Any]\n",
+        ("from typing import Any, cast\ndef use():\n    cast = custom_cast\n    return cast(dict[str, Any], value)\n"),
+    ],
+)
+def test_local_shadowing_makes_type_provenance_ambiguous(source: str) -> None:
+    assert _check(source) == []
