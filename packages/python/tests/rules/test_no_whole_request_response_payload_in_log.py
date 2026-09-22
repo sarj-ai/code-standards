@@ -82,3 +82,54 @@ def test_non_logger_receiver_and_malformed_source_are_ignored() -> None:
 
 def test_secret_named_payload_is_owned_by_secret_rule() -> None:
     assert _check("logger.info(f'{secret_response_body}')") == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "body = response.text\nlogger.error('provider failed', content=body)",
+        "body = response.json()\nalias = body\nlogger.error('provider failed', alias)",
+        "fields = {'response_body': response.text}\nlogger.error('provider failed', extra=fields)",
+        "fields = {'request_body': request.body}\nlogger.error('provider failed', **fields)",
+        "event = {'response_body': response.text}\nlogger.error(event)",
+    ],
+    ids=["keyword-alias", "alias-chain", "extra-map", "expanded-map", "whole-event-map"],
+)
+def test_warns_on_stable_local_payload_aliases(source: str) -> None:
+    [diagnostic] = _check(source)
+    assert diagnostic.code == "SARJ436"
+    assert diagnostic.severity is Severity.WARNING
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "body = response.text\nbody = 'safe'\nlogger.info('provider', content=body)",
+        "fields = {'response_body': response.text}\nfields.clear()\nlogger.info('provider', extra=fields)",
+        "fields = {'response_body': response.text}\nfields['response_body'] = 'safe'\nlogger.info('provider', **fields)",
+        "if enabled:\n    body = response.text\nlogger.info('provider', content=body)",
+        "body = response.text\nif enabled:\n    logger.info('provider', content=body)",
+        "body = sanitize(response.text)\nlogger.info('provider', content=body)",
+        "logger.info('provider', extra=dynamic_fields)",
+        "fields = {'secret_response_body': secret}\nlogger.info(fields)",
+    ],
+    ids=[
+        "rebound",
+        "method-mutation",
+        "item-mutation",
+        "conditional-definition",
+        "nested-consumer",
+        "sanitized-alias",
+        "dynamic-map",
+        "secret-precedence",
+    ],
+)
+def test_alias_analysis_abstains_when_provenance_is_not_stable(source: str) -> None:
+    assert _check(source) == []
+
+
+def test_reports_one_diagnostic_when_a_payload_alias_is_repeated_in_one_sink() -> None:
+    diagnostics = _check(
+        "body = response.text\nlogger.error('provider failed', response_body=body, extra={'body': body})"
+    )
+    assert len(diagnostics) == 1

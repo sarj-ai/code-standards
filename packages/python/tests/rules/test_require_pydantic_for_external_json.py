@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from textwrap import dedent
+from textwrap import dedent, indent
 from typing import TYPE_CHECKING
 
 import pytest
@@ -909,3 +909,86 @@ def test_rule_metadata_preserves_the_stable_selector() -> None:
     assert rule.code == "SARJ411"
     assert rule.documentation is not None
     assert rule.documentation.aliases == ()
+
+
+@pytest.mark.parametrize(
+    "unrelated",
+    [
+        "try:\n    audit()\nexcept ValueError:\n    pass",
+        "labels = [item.name for item in items]",
+        "for item in items:\n    audit(item)",
+        "with tracer.span('request'):\n    audit()",
+    ],
+    ids=["try", "comprehension", "loop", "context-manager"],
+)
+def test_unrelated_complex_binders_do_not_hide_external_json(unrelated: str) -> None:
+    source = (
+        'import httpx\ndef parse(items, tracer):\n    raw = httpx.get("https://example.test").json()\n'
+        f"{indent(unrelated, '    ')}\n"
+        '    return raw["id"]\n'
+    )
+    diagnostics = _check(source)
+    assert len(diagnostics) == 1
+
+
+@pytest.mark.parametrize(
+    "binder",
+    [
+        "for raw in records:\n    pass",
+        "values = [raw['id'] for raw in records]",
+        "with source() as raw:\n    pass",
+        "try:\n    audit()\nexcept ValueError as raw:\n    pass",
+        "match value:\n    case {'raw': raw}:\n        pass",
+        "raw, other = pair",
+    ],
+    ids=["loop", "comprehension", "context-manager", "exception", "match", "destructuring"],
+)
+def test_ambiguous_complex_binder_kills_only_that_name(binder: str) -> None:
+    source = (
+        "import httpx\ndef parse(records, source, value, pair):\n"
+        '    raw = httpx.get("https://example.test").json()\n'
+        f"{indent(binder, '    ')}\n"
+        '    return raw["id"]\n'
+    )
+    assert _check(source) == []
+
+
+def test_flags_aiohttp_context_manager_response() -> None:
+    diagnostics = _check("""
+        import aiohttp
+        class Client:
+            def _session(self) -> aiohttp.ClientSession: ...
+            async def parse(self):
+                async with self._session().post("https://example.test") as response:
+                    raw = await response.json()
+                    return raw.get("id")
+    """)
+    assert len(diagnostics) == 1
+
+
+def test_flags_aiohttp_typed_client_response() -> None:
+    diagnostics = _check("""
+        import aiohttp
+        async def parse(session: aiohttp.ClientSession):
+            async with session.get("https://example.test") as response:
+                raw = await response.json()
+                return raw["id"]
+    """)
+    assert len(diagnostics) == 1
+
+
+def test_accepts_validated_aiohttp_response() -> None:
+    assert (
+        _check("""
+        import aiohttp
+        from pydantic import BaseModel
+        class Report(BaseModel):
+            id: str
+        async def parse(session: aiohttp.ClientSession):
+            async with session.get("https://example.test") as response:
+                raw = await response.json()
+                report = Report.model_validate(raw)
+                return report.id
+        """)
+        == []
+    )

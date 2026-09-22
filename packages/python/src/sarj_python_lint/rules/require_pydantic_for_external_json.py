@@ -29,9 +29,10 @@ if TYPE_CHECKING:
 
 
 _JSON_MODULES = frozenset({"json", "orjson", "rapidjson", "ujson"})
-_HTTP_MODULES = frozenset({"httpx", "requests"})
+_HTTP_MODULES = frozenset({"aiohttp", "httpx", "requests"})
 _HTTP_METHODS = frozenset({"delete", "get", "head", "options", "patch", "post", "put", "request"})
-_HTTP_CLIENT_TYPES = frozenset({"AsyncClient", "Client", "Session"})
+_HTTP_CLIENT_TYPES = frozenset({"AsyncClient", "Client", "ClientSession", "Session"})
+_HTTP_RESPONSE_TYPES = frozenset({"ClientResponse", "Response"})
 _ADAPTER_VALIDATORS = frozenset({"validate_python"})
 _RECORD_METHODS = frozenset({"get"})
 _LOCAL_READ_METHODS = frozenset({"read_bytes", "read_text"})
@@ -64,6 +65,7 @@ class _ModuleSummaries:
     local_parameters: dict[str, frozenset[int]]
     response_functions: frozenset[str]
     response_methods: frozenset[tuple[int, str]]
+    client_methods: frozenset[tuple[int, str]]
     function_owners: dict[int, int]
     http_client_attributes: frozenset[_OwnedName]
     marshmallow_schema_names: frozenset[str]
@@ -86,6 +88,7 @@ class _NamedBinding(NamedTuple):
 class _ResponseCallables(NamedTuple):
     functions: frozenset[str]
     methods: frozenset[tuple[int, str]]
+    client_methods: frozenset[tuple[int, str]]
     function_owners: dict[int, int]
 
 
@@ -107,10 +110,10 @@ class RequirePydanticForExternalJson(Rule):
         category=RuleCategory.CORRECTNESS,
         autofix=AutofixPolicy.NONE,
         limitations=(
-            "The rule follows import-proven JSON decoders, HTTP responses and clients, environment or subprocess results, and simple module-local helpers through single-assignment names.",
+            "The rule follows import-proven JSON decoders, requests/httpx/aiohttp responses and clients, environment or subprocess results, and simple module-local helpers through single-assignment names.",
             "It diagnoses literal-key subscription and get calls; iteration and other dynamic JSON use remain out of scope.",
             "Unannotated parameters and unknown expressions are not assumed to be external; interprocedural and framework-specific boundaries can remain unreported.",
-            "Functions with complex local binders are skipped rather than guessing which value a name denotes.",
+            "Names bound by loops, comprehensions, context managers, exception handlers, pattern matching, imports, or destructuring are excluded when their provenance is ambiguous; unrelated binders do not suppress the rest of a function.",
             "Repository-local JSON, json.load file handles, tests, generated files, and documentation examples are excluded.",
         ),
         examples=(
@@ -211,6 +214,7 @@ def _module_summaries(tree: ast.Module, imports: ImportIndex, source_lines: list
         _locally_sourced_parameters(functions),
         response_callables.functions,
         response_callables.methods,
+        response_callables.client_methods,
         response_callables.function_owners,
         _http_client_attribute_names(tree, imports),
         schema_names,
@@ -234,10 +238,16 @@ def _response_callables(tree: ast.Module, imports: ImportIndex) -> _ResponseCall
     )
 
     response_methods: set[tuple[int, str]] = set()
+    client_methods: set[tuple[int, str]] = set()
     function_owners: dict[int, int] = {}
     for class_node in nodes(tree, ast.ClassDef):
-        _record_class_response_methods(class_node, imports, response_methods, function_owners)
-    return _ResponseCallables(response_functions, frozenset(response_methods), function_owners)
+        _record_class_response_methods(class_node, imports, response_methods, client_methods, function_owners)
+    return _ResponseCallables(
+        response_functions,
+        frozenset(response_methods),
+        frozenset(client_methods),
+        function_owners,
+    )
 
 
 def _module_rebound_names(tree: ast.Module) -> frozenset[str]:
@@ -448,7 +458,10 @@ def _type_parameter_names(parameters: list[ast.type_param]) -> tuple[str, ...]:
 
 
 def _returns_http_response(function: ast.FunctionDef | ast.AsyncFunctionDef, imports: ImportIndex) -> bool:
-    return function.returns is not None and imports.resolves(function.returns, sources=_HTTP_MODULES, symbol="Response")
+    return function.returns is not None and any(
+        imports.resolves(function.returns, sources=_HTTP_MODULES, symbol=response_type)
+        for response_type in _HTTP_RESPONSE_TYPES
+    )
 
 
 def _http_client_attribute_names(tree: ast.Module, imports: ImportIndex) -> frozenset[_OwnedName]:
@@ -497,11 +510,9 @@ def _function_findings(
     summaries: _ModuleSummaries,
 ) -> list[_ExternalRecordFinding]:
     scope = _own_scope(function)
-    if _has_complex_binders(scope):
-        return []
     parameters: frozenset[str] = frozenset()
     outbound_requests = _outbound_request_parameters(function, imports)
-    bindings = _unique_bindings(scope)
+    bindings = _unique_bindings(scope, excluded_names=_ambiguous_binding_names(scope))
     local_bound_names = _function_local_bound_names(function, scope)
     response_names = _http_response_names(scope, imports, summaries, function, shadowed_names=local_bound_names)
     resolver = _OriginResolver(
@@ -524,25 +535,53 @@ def _function_findings(
     return findings
 
 
-def _has_complex_binders(scope: tuple[ast.AST, ...]) -> bool:
-    return any(
-        isinstance(
-            node,
-            (
-                ast.NamedExpr,
-                ast.For,
-                ast.AsyncFor,
-                ast.comprehension,
-                ast.With,
-                ast.AsyncWith,
-                ast.ExceptHandler,
-                ast.Match,
-                ast.Import,
-                ast.ImportFrom,
-            ),
+def _ambiguous_binding_names(scope: tuple[ast.AST, ...]) -> frozenset[str]:
+    names: set[str] = set()
+    for node in scope:
+        match node:
+            case (
+                ast.NamedExpr(target=target)
+                | ast.For(target=target)
+                | ast.AsyncFor(target=target)
+                | ast.comprehension(target=target)
+            ):
+                names.update(_stored_names(target))
+            case ast.With(items=items) | ast.AsyncWith(items=items):
+                for item in items:
+                    if item.optional_vars is not None:
+                        names.update(_stored_names(item.optional_vars))
+            case ast.ExceptHandler(name=str(name)):
+                names.add(name)
+            case ast.Match(cases=cases):
+                for case in cases:
+                    names.update(_pattern_names(case.pattern))
+            case ast.Import(names=aliases) | ast.ImportFrom(names=aliases):
+                names.update(alias.asname or alias.name.partition(".")[0] for alias in aliases)
+            case ast.Tuple(ctx=ast.Store()) | ast.List(ctx=ast.Store()):
+                names.update(_stored_names(node))
+            case _:
+                pass
+    return frozenset(names)
+
+
+def _stored_names(node: ast.expr) -> frozenset[str]:
+    return frozenset(
+        child.id for child in ast.walk(node) if isinstance(child, ast.Name) and isinstance(child.ctx, ast.Store)
+    )
+
+
+def _pattern_names(pattern: ast.pattern) -> frozenset[str]:
+    return frozenset(
+        name
+        for child in ast.walk(pattern)
+        for name in (
+            child.name
+            if isinstance(child, (ast.MatchAs, ast.MatchStar))
+            else child.rest
+            if isinstance(child, ast.MatchMapping)
+            else None,
         )
-        or (isinstance(node, ast.Tuple | ast.List) and isinstance(node.ctx, ast.Store))
-        for node in scope
+        if name is not None
     )
 
 
@@ -837,7 +876,9 @@ def _fixed_record_call_receiver(node: ast.Call) -> ast.expr | None:
     return node.func.value
 
 
-def _unique_bindings(scope: tuple[ast.AST, ...]) -> dict[str, ast.expr]:
+def _unique_bindings(
+    scope: tuple[ast.AST, ...], *, excluded_names: frozenset[str] = frozenset()
+) -> dict[str, ast.expr]:
     candidates: dict[str, list[ast.expr]] = {}
     for node in scope:
         if isinstance(node, ast.Assign):
@@ -846,7 +887,7 @@ def _unique_bindings(scope: tuple[ast.AST, ...]) -> dict[str, ast.expr]:
                     candidates.setdefault(target.id, []).append(node.value)
         elif (binding := _single_named_binding(node)) is not None:
             candidates.setdefault(binding.name, []).append(binding.value)
-    return {name: values[0] for name, values in candidates.items() if len(values) == 1}
+    return {name: values[0] for name, values in candidates.items() if len(values) == 1 and name not in excluded_names}
 
 
 def _single_named_binding(node: ast.AST) -> _NamedBinding | None:
@@ -865,33 +906,100 @@ def _http_response_names(
     *,
     shadowed_names: frozenset[str],
 ) -> frozenset[str]:
-    bindings = _unique_bindings(scope)
+    bindings = _unique_bindings(scope, excluded_names=_ambiguous_binding_names(scope))
     assigned_names = _assigned_names(scope)
     names = {
         argument.arg
         for argument in (*function.args.posonlyargs, *function.args.args, *function.args.kwonlyargs)
         if argument.annotation is not None
         and argument.arg not in assigned_names
-        and imports.resolves(argument.annotation, sources=_HTTP_MODULES, symbol="Response")
+        and any(
+            imports.resolves(argument.annotation, sources=_HTTP_MODULES, symbol=response_type)
+            for response_type in _HTTP_RESPONSE_TYPES
+        )
     }
     typed_clients = _typed_http_clients(function, imports, assigned_names)
-    for name, value in bindings.items():
-        call = _unwrap_await(value)
-        if not isinstance(call, ast.Call) or not _is_http_response_call(
+    names.update(
+        _bound_http_response_names(
+            bindings,
+            imports,
+            summaries,
+            typed_clients,
+            function,
+            shadowed_names=shadowed_names,
+        )
+    )
+    names.update(
+        _context_http_response_names(
+            scope,
+            imports,
+            summaries,
+            typed_clients,
+            function,
+            assigned_names=assigned_names,
+            shadowed_names=shadowed_names,
+        )
+    )
+    for _round in range(len(scope)):
+        aliases = {name for name, value in bindings.items() if isinstance(value, ast.Name) and value.id in names}
+        if aliases <= names:
+            break
+        names.update(aliases)
+    return frozenset(names)
+
+
+def _bound_http_response_names(
+    bindings: dict[str, ast.expr],
+    imports: ImportIndex,
+    summaries: _ModuleSummaries,
+    typed_clients: set[str],
+    function: ast.FunctionDef | ast.AsyncFunctionDef,
+    *,
+    shadowed_names: frozenset[str],
+) -> frozenset[str]:
+    return frozenset(
+        name
+        for name, value in bindings.items()
+        if isinstance(call := _unwrap_await(value), ast.Call)
+        and _is_http_response_call(
             call,
             imports,
             summaries,
             typed_clients,
             function,
             shadowed_names=shadowed_names,
-        ):
+        )
+    )
+
+
+def _context_http_response_names(
+    scope: tuple[ast.AST, ...],
+    imports: ImportIndex,
+    summaries: _ModuleSummaries,
+    typed_clients: set[str],
+    function: ast.FunctionDef | ast.AsyncFunctionDef,
+    *,
+    assigned_names: set[str],
+    shadowed_names: frozenset[str],
+) -> frozenset[str]:
+    names: set[str] = set()
+    for node in scope:
+        if not isinstance(node, ast.With | ast.AsyncWith):
             continue
-        names.add(name)
-    for _round in range(len(scope)):
-        aliases = {name for name, value in bindings.items() if isinstance(value, ast.Name) and value.id in names}
-        if aliases <= names:
-            break
-        names.update(aliases)
+        for item in node.items:
+            target = item.optional_vars
+            call = _unwrap_await(item.context_expr)
+            if not isinstance(target, ast.Name) or target.id in assigned_names or not isinstance(call, ast.Call):
+                continue
+            if _is_http_response_call(
+                call,
+                imports,
+                summaries,
+                typed_clients,
+                function,
+                shadowed_names=shadowed_names,
+            ):
+                names.add(target.id)
     return frozenset(names)
 
 
@@ -923,12 +1031,25 @@ def _is_http_response_call(
     receiver = call.func.value
     if isinstance(receiver, ast.Name):
         return receiver.id in typed_clients
+    if _is_owned_client_factory(receiver, owner, summaries):
+        return True
     return (
         isinstance(receiver, ast.Attribute)
         and isinstance(receiver.value, ast.Name)
         and receiver.value.id == "self"
         and owner is not None
         and (owner, receiver.attr) in summaries.http_client_attributes
+    )
+
+
+def _is_owned_client_factory(receiver: ast.expr, owner: int | None, summaries: _ModuleSummaries) -> bool:
+    if owner is None or not isinstance(receiver, ast.Call) or not isinstance(receiver.func, ast.Attribute):
+        return False
+    factory_owner = receiver.func.value
+    return (
+        isinstance(factory_owner, ast.Name)
+        and factory_owner.id == "self"
+        and (owner, receiver.func.attr) in summaries.client_methods
     )
 
 
@@ -1187,6 +1308,7 @@ def _record_class_response_methods(
     class_node: ast.ClassDef,
     imports: ImportIndex,
     response_methods: set[tuple[int, str]],
+    client_methods: set[tuple[int, str]],
     function_owners: dict[int, int],
 ) -> None:
     owner = id(class_node)
@@ -1200,6 +1322,18 @@ def _record_class_response_methods(
         (owner, name)
         for name, functions in declarations.items()
         if name not in rebound_method_names and all(_returns_http_response(function, imports) for function in functions)
+    )
+    client_methods.update(
+        (owner, name)
+        for name, functions in declarations.items()
+        if name not in rebound_method_names and all(_returns_http_client(function, imports) for function in functions)
+    )
+
+
+def _returns_http_client(function: ast.FunctionDef | ast.AsyncFunctionDef, imports: ImportIndex) -> bool:
+    return function.returns is not None and any(
+        imports.resolves(function.returns, sources=_HTTP_MODULES, symbol=client_type)
+        for client_type in _HTTP_CLIENT_TYPES
     )
 
 
