@@ -77,6 +77,7 @@ const STRICT_CONFIG_FACTORY = createStrictConfig as unknown as ConfigFactory;
 const UNICORN_CONCISION_ADVISORY_RULES = [
   "unicorn/iteration-fallback-style",
   "unicorn/logical-assignment-operators",
+  "unicorn/prefer-combined-guards",
   "unicorn/prefer-single-object-destructuring",
   "unicorn/single-line-block-comment-style",
 ] as const;
@@ -502,6 +503,37 @@ describe("the shipped eslint.strict.mjs actually loads", () => {
     expect(await eslint.isPathIgnored("lib/catalog.ts")).toBe(false);
   });
 
+  it("rejects JSDoc on implementations while preserving bodyless contracts", async () => {
+    const focusedConfig: Linter.Config[] = STRICT_CONFIG_FACTORY({ projectService: false }).map((entry) => ({
+      ...entry,
+      rules: Object.fromEntries(
+        Object.entries(entry.rules ?? {}).filter(([ruleId]) =>
+          ruleId === "jsdoc/no-restricted-syntax"
+        ),
+      ),
+    }));
+    const eslint = new ESLint({ overrideConfigFile: true, overrideConfig: focusedConfig });
+    const implementation = [
+      "/**",
+      " * A URL value as a Date, or undefined when absent or unparsable.",
+      " */",
+      "export function parseDateParam() {}",
+    ].join("\n");
+
+    const [implementationResult] = await eslint.lintText(implementation, { filePath: "src/date.ts" });
+    expect(implementationResult?.messages.map((message) => message.ruleId)).toEqual([
+      "jsdoc/no-restricted-syntax",
+    ]);
+
+    for (const contract of [
+      "/** Date parser contract. */ export interface DateParser { parse(): Date }",
+      "/** Date parser overload. */ export declare function parseDateParam(): Date;",
+    ]) {
+      const [contractResult] = await eslint.lintText(contract, { filePath: "src/date.ts" });
+      expect(contractResult?.messages).toEqual([]);
+    }
+  });
+
   it.each(PROBE_PATHS)(
     "resolves without error for %s",
     async (filePath) => {
@@ -613,7 +645,13 @@ describe("the shipped eslint.strict.mjs actually loads", () => {
       ...ADVISORY_RULES,
       "arrow-body-style",
       "better-tailwindcss/enforce-consistent-variable-syntax",
+      "@typescript-eslint/strict-void-return",
       ...recommendedCoreWarnings,
+      "shadcn/no-arbitrary-values",
+      "shadcn/no-inline-styles",
+      "shadcn/no-restyle",
+      "shadcn/no-unknown-classes",
+      "shadcn/require-static-classes",
       ...UNICORN_CONCISION_ADVISORY_RULES,
       ...UNICORN_SEMANTIC_ADVISORY_RULES,
     ].toSorted());
@@ -637,6 +675,11 @@ describe("the shipped eslint.strict.mjs actually loads", () => {
       | undefined;
     expect(tsxFilenameCase?.[1].cases.kebabCase).toBe(true);
     expect(tsxFilenameCase?.[1].cases.pascalCase).toBeUndefined();
+    expect(tsxConfig.rules?.["shadcn/no-restyle"]?.[0]).toBe(1);
+    const shadcnDesignSystemConfig = await configFor("src/components/ui/button.tsx");
+    expect(shadcnDesignSystemConfig.rules?.["shadcn/no-restyle"]?.[0]).toBe(0);
+    expect(shadcnDesignSystemConfig.rules?.["shadcn/no-arbitrary-values"]?.[0]).toBe(0);
+    expect(shadcnDesignSystemConfig.rules?.["shadcn/no-inline-styles"]?.[0]).toBe(1);
     const baseFilenameCase = plainConfig.rules?.["unicorn/filename-case"] as
       | [number, { cases: Record<string, boolean> }]
       | undefined;

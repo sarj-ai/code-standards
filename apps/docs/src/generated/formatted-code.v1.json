@@ -1,12 +1,12 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "05099dc23d6064176edaab370da361931c2c5c7d1b100c1535ac309044312a8d",
-  "cliSha256": "d2a2d1255dbceb9782a69be8612e054a2526fa3597ce19e91deaf5f44f44789c",
+  "catalogSha256": "702519ff0d6f27965774ad22c542c6da071cb175c675dc4f2c2569fc89d1e8e9",
+  "cliSha256": "b13435f88cef3c49b9fab921a8937335932c110210f3732ac8360bdb3c924556",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
     "prettierPluginToml": "2.0.6",
-    "ruff": "0.16.7",
+    "ruff": "0.16.8",
     "sqlFormatter": "15.8.2",
     "terraform": "1.15.8"
   },
@@ -3504,6 +3504,41 @@
         }
       ],
       "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"components\": {\n      \"items\": {\n        \"additionalProperties\": false,\n        \"properties\": {\n          \"export\": { \"minLength\": 1, \"type\": \"string\" },\n          \"module\": { \"minLength\": 1, \"type\": \"string\" }\n        },\n        \"required\": [\"module\", \"export\"],\n        \"type\": \"object\"\n      },\n      \"type\": \"array\"\n    },\n    \"iconModules\": {\n      \"items\": { \"minLength\": 1, \"type\": \"string\" },\n      \"type\": \"array\",\n      \"uniqueItems\": true\n    }\n  },\n  \"type\": \"object\"\n}\n"
+    },
+    "eslint:require-camelcase-properties": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/calls-date-range.ts",
+              "source": "export function range(): { dateFrom: string; dateTo: string } {\n  return { dateFrom: \"\", dateTo: \"\" };\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/calls-date-range.ts",
+          "id": "camelcase-application-shape",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Use camelCase for an application-facing return shape"
+        },
+        {
+          "expectedCount": 2,
+          "files": [
+            {
+              "path": "src/calls-date-range.ts",
+              "source": "export function range(): { date_from: string; date_to: string } {\n  return { dateFrom: \"\", dateTo: \"\" };\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/calls-date-range.ts",
+          "id": "snake-case-application-shape",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Do not use unquoted wire casing as application property syntax"
+        }
+      ],
+      "optionsSchemaSource": null
     },
     "eslint:require-fetch-timeout": {
       "examples": [

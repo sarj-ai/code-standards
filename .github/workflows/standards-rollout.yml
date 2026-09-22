@@ -37,7 +37,7 @@ jobs:
           persist-credentials: false
       - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
-          version: '0.12.5'
+          version: '0.12.13'
       - name: Install the pinned mise bootstrap
         env:
           MISE_VERSION: '2026.8.8'

@@ -151,7 +151,7 @@ def _assert_react_doctor_inventory(providers: list[dict[str, object]], rules: li
         "label": "React Doctor",
         "package": "react-doctor",
         "projectionScope": "complete",
-        "version": "0.9.12",
+        "version": "0.9.14",
     }
     react_doctor_rules = [value for value in rules if value["provider"] == "react-doctor"]
     assert react_doctor_rules

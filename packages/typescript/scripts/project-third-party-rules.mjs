@@ -33,6 +33,8 @@ const PROVIDERS = {
   promise: ["Promise", "eslint-plugin-promise", "https://github.com/eslint-community/eslint-plugin-promise"],
   "simple-import-sort": ["Simple Import Sort", "eslint-plugin-simple-import-sort", "https://github.com/lydell/eslint-plugin-simple-import-sort"],
   "better-tailwindcss": ["Better Tailwind CSS", "eslint-plugin-better-tailwindcss", "https://github.com/schoero/eslint-plugin-better-tailwindcss"],
+  jsdoc: ["JSDoc", "eslint-plugin-jsdoc", "https://github.com/gajus/eslint-plugin-jsdoc"],
+  shadcn: ["shadcn", "@shadcn/lint", "https://github.com/shadcn-ui/lint"],
   vitest: ["Vitest", "@vitest/eslint-plugin", "https://github.com/vitest-dev/eslint-plugin-vitest"],
   "node-test": ["Node Test", "eslint-node-test", "https://github.com/sindresorhus/eslint-node-test"],
   jest: ["Jest / Bun Test", "eslint-plugin-jest", "https://github.com/jest-community/eslint-plugin-jest"],

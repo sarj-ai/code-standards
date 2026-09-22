@@ -35,7 +35,7 @@ EXPECTED_PEERS = {
     "@vitest/eslint-plugin": "1.6.27",
     "eslint-node-test": "0.4.0",
     "eslint-plugin-jest": "29.16.6",
-    "eslint-plugin-playwright": "2.11.0",
+    "eslint-plugin-playwright": "2.12.0",
     "eslint-plugin-testing-library": "7.16.2",
 }
 

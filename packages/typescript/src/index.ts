@@ -8,6 +8,7 @@ import noKnownValueWidening from "./rules/no-known-value-widening.js";
  */
 
 import requireButtonAccessibleName from "./rules/require-button-accessible-name.js";
+import requireCamelcaseProperties from "./rules/require-camelcase-properties.js";
 import requireSvgAccessibleName from "./rules/require-svg-accessible-name.js";
 import preferLogicalTailwindUtilities from "./rules/prefer-logical-tailwind-utilities.js";
 import noUnlocalizedToast from "./rules/no-unlocalized-toast.js";
@@ -126,6 +127,7 @@ const RULES = {
   "no-reduce-accumulator-copy": noReduceAccumulatorCopy,
   "no-known-value-widening": noKnownValueWidening,
   "require-button-accessible-name": requireButtonAccessibleName,
+  "require-camelcase-properties": requireCamelcaseProperties,
   "require-svg-accessible-name": requireSvgAccessibleName,
   "prefer-logical-tailwind-utilities": preferLogicalTailwindUtilities,
   "no-unlocalized-toast": noUnlocalizedToast,
@@ -238,7 +240,7 @@ const RULES = {
 
 const meta = {
   name: "@sarj/eslint-plugin",
-  version: "15.25.1",
+  version: "15.26.0",
 } as const;
 
 /** @deprecated All repositories use one policy; retained for import compatibility. */
@@ -265,6 +267,7 @@ const ADVISORY_RULES = [
   "@sarj/prefer-shared-zod-enum",
   "@sarj/prefer-switch-for-repeated-equality",
   "@sarj/prefer-whole-object-assertion",
+  "@sarj/require-camelcase-properties",
   "@sarj/require-interface-for-exported-class",
   "@sarj/require-sql-access-class",
   "@sarj/sole-export-matches-filename",
@@ -277,6 +280,7 @@ const RECOMMENDED_RULES = {
   "@sarj/no-reduce-accumulator-copy": "error",
   "@sarj/no-known-value-widening": "error",
   "@sarj/require-button-accessible-name": "error",
+  "@sarj/require-camelcase-properties": "warn",
   "@sarj/require-svg-accessible-name": "error",
   "@sarj/prefer-logical-tailwind-utilities": ["error", { enabled: false }],
   "@sarj/no-unlocalized-toast": ["error", { enabled: false }],
@@ -390,6 +394,7 @@ const STRICT_RULES = {
   "@sarj/no-reduce-accumulator-copy": "error",
   "@sarj/no-known-value-widening": "error",
   "@sarj/require-button-accessible-name": "error",
+  "@sarj/require-camelcase-properties": "warn",
   "@sarj/require-svg-accessible-name": "error",
   "@sarj/prefer-logical-tailwind-utilities": ["error", { enabled: false }],
   "@sarj/no-unlocalized-toast": ["error", { enabled: false }],

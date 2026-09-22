@@ -2035,6 +2035,14 @@
       "state": "pending",
       "evidence": "Synthetic positive and exclusion fixtures; source corpus calibration recorded in the PR.",
       "outcome": "Explicitly requested error-first policy without automatic fixes. Broader consumer calibration remains pending."
+    },
+    {
+      "task": "rule-audit/typescript/require-camelcase-properties",
+      "family": "typescript",
+      "ruleId": "require-camelcase-properties",
+      "state": "pending",
+      "evidence": "Focused fixtures cover object properties, class fields, methods, TypeScript signatures, member access, quoted wire keys, computed keys, generated files, and the cited date_from/date_to return shape. Standards dogfood reports zero diagnostics. The Platform corpus runner is currently blocked by an existing project-service coverage error for iac/dev-plan/filter-state.mjs, so broader consumer calibration remains pending.",
+      "outcome": "Stage lower snake_case authored property names as a warning without autofix. Preserve quoted and bracketed external-contract keys, computed names, constants, and generated code; defer promotion until a clean consumer corpus run establishes migration cost."
     }
   ]
 }

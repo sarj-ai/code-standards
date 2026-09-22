@@ -262,6 +262,7 @@
       "repeated-static-call-cases",
       "require-assert-never",
       "require-button-accessible-name",
+      "require-camelcase-properties",
       "require-fetch-timeout",
       "require-interface-for-exported-class",
       "require-pascal-case-zod-schema-name",

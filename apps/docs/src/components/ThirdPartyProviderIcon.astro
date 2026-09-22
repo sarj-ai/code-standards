@@ -23,6 +23,8 @@ const { providerId } = Astro.props;
   {providerId === 'better-tailwindcss' && (
     <svg viewBox="0 0 65 65"><path d="M7.535 26.905c3.57-4.304 8.696-6.456 15.379-6.456 10 0 14.578 4.817 18.534 8.983 2.427 2.555 4.622 4.865 7.692 5.66 4.44 1.151 8.422-.072 11.945-3.67L47.5 8h-29zm50.928 12.194c-3.57 4.301-8.695 6.452-15.376 6.452-10 0-14.579-4.818-18.535-8.982-2.427-2.556-4.622-4.866-7.691-5.661-4.44-1.15-8.421.074-11.945 3.672L18.5 58h29z" /></svg>
   )}
+  {providerId === 'jsdoc' && <span class="provider-icon__letters">JS</span>}
+  {providerId === 'shadcn' && <span class="provider-icon__letters">SC</span>}
   {providerId === 'zod' && <span class="provider-icon__letters">EZ</span>}
   {providerId === 'eslint-comments' && <span class="provider-icon__letters">EC</span>}
   {providerId === 'perfectionist' && <span class="provider-icon__letters">P</span>}

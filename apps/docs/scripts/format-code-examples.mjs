@@ -44,8 +44,8 @@ assert.match(
     ["--version"],
     { encoding: "utf8" },
   ),
-  /^ruff 0\.16\.7\b/u,
-  "formatted code requires repository-pinned Ruff 0.16.7",
+  /^ruff 0\.16\.8\b/u,
+  "formatted code requires repository-pinned Ruff 0.16.8",
 );
 assert.match(
   execFileSync("terraform", ["version"], { encoding: "utf8" }),
@@ -358,7 +358,7 @@ const docsProjection = {
     prettier: "3.9.6",
     prettierPluginSh: "0.19.0",
     prettierPluginToml: "2.0.6",
-    ruff: "0.16.7",
+    ruff: "0.16.8",
     sqlFormatter: "15.8.2",
     terraform: "1.15.8",
   },
