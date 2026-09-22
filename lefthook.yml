@@ -1,5 +1,5 @@
 ---
-min_version: 2.1.12
+min_version: 2.1.14
 assert_lefthook_installed: true
 
 pre-commit:

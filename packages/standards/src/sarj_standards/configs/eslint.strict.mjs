@@ -14,6 +14,8 @@ import perfectionist from "eslint-plugin-perfectionist";
 import promise from "eslint-plugin-promise";
 import simpleImportSort from "eslint-plugin-simple-import-sort";
 import betterTailwindcss from "eslint-plugin-better-tailwindcss";
+import { plugin as shadcn } from "@shadcn/lint";
+import jsdoc from "eslint-plugin-jsdoc";
 import jest from "eslint-plugin-jest";
 import nodeTest from "eslint-node-test";
 import playwright from "eslint-plugin-playwright";
@@ -186,8 +188,8 @@ const ESLINT_CONCISION_ADVISORY_RULES = {
 // Rules are declared as two objects rather than inline so the version guard
 // below can check them, and so the two intents stay separable.
 //
-// REQUIRES eslint-plugin-unicorn >= 72 (and therefore eslint >= 10.4). 121 of
-// these rules do not exist in unicorn 64 and 96 do not exist in 65; on an older
+// REQUIRES eslint-plugin-unicorn >= 76 (and therefore eslint >= 10.4). Many of
+// these rules do not exist in older releases; on an incompatible
 // plugin ESLint would emit "Definition for rule ... was not found" once per rule
 // per file. The guard below turns that into one actionable line.
 
@@ -299,7 +301,8 @@ const UNICORN_CORRECTNESS_RULES = {
   "unicorn/no-unsafe-property-key": "error",
   "unicorn/no-unsafe-sqlite-interpolation": "error",
   "unicorn/no-unsafe-string-replacement": "error",
-  "unicorn/no-unused-array-method-return": "error",
+  "unicorn/no-unused-builtin-method-return": "error",
+  "unicorn/no-unused-iterator-helper": "error",
   "unicorn/no-useless-boolean-cast": "error",
   "unicorn/no-useless-coercion": "error",
   "unicorn/no-useless-collection-argument": "error",
@@ -318,6 +321,8 @@ const UNICORN_CORRECTNESS_RULES = {
   "unicorn/no-useless-re-export": "error",
   "unicorn/no-useless-recursion": "error",
   "unicorn/no-useless-spread": "error",
+  "unicorn/no-useless-set-construction": "error",
+  "unicorn/no-async-iterator-callback": "error",
   // Explicit union cases are required by switch-exhaustiveness-check even when
   // they share the default branch behavior.
   "unicorn/no-useless-switch-case": "off",
@@ -442,6 +447,7 @@ const UNICORN_CONCISION_ADVISORY_RULES = {
   ],
   "unicorn/prefer-single-object-destructuring": "warn",
   "unicorn/iteration-fallback-style": ["warn", "guard"],
+  "unicorn/prefer-combined-guards": "warn",
 };
 
 // Semantic advisories require local intent to resolve. Dynamic property reads
@@ -471,7 +477,7 @@ if (missingUnicornRules.length > 0) {
   throw new Error(
     `code-standards: ${String(missingUnicornRules.length)} rule(s) this config enables do not exist ` +
       `in the installed eslint-plugin-unicorn (${missingUnicornRules.slice(0, 5).join(", ")}). ` +
-      `Either the plugin is older than the required >= 72 (which also needs eslint >= 10.4), ` +
+      `Either the plugin is older than the required >= 76 (which also needs eslint >= 10.4), ` +
       `or a rule name in this config is a typo or was renamed upstream.`,
   );
 }
@@ -614,6 +620,8 @@ export function createConfig(options = {}) {
       perfectionist,
       promise,
       "simple-import-sort": simpleImportSort,
+      jsdoc,
+      shadcn,
       "@sarj": sarj,
       vitest,
       "node-test": nodeTest,
@@ -650,6 +658,7 @@ export function createConfig(options = {}) {
       "@typescript-eslint/prefer-promise-reject-errors": "error",
       "@typescript-eslint/no-meaningless-void-operator": "error",
       "@typescript-eslint/no-mixed-enums": "error",
+      "@typescript-eslint/strict-void-return": "warn",
       "@typescript-eslint/prefer-find": "error",
       "@typescript-eslint/prefer-readonly": "error",
       "@typescript-eslint/no-unsafe-assignment": "error",
@@ -943,6 +952,29 @@ export function createConfig(options = {}) {
       "unicorn/relative-url-style": ["error", "never"],
       "unicorn/throw-new-error": "error",
 
+      // Implementation behavior belongs in the code and tests. Preserve JSDoc
+      // for contracts that have no body: types, ambient declarations, and
+      // overload signatures.
+      "jsdoc/no-restricted-syntax": [
+        "error",
+        {
+          contexts: [
+            { context: "ArrowFunctionExpression", message: "Do not attach JSDoc to an implementation; keep only behavior that the code or tests cannot express." },
+            { context: "FunctionDeclaration[body.type='BlockStatement']", message: "Do not attach JSDoc to an implementation; keep only behavior that the code or tests cannot express." },
+            { context: "FunctionExpression[body.type='BlockStatement']", message: "Do not attach JSDoc to an implementation; keep only behavior that the code or tests cannot express." },
+          ],
+        },
+      ],
+
+      // Design-system guidance starts non-blocking while contracts and theme
+      // discovery are calibrated in consumers. Raw colors remain owned by
+      // @sarj/prefer-semantic-colors to avoid duplicate diagnostics.
+      "shadcn/no-restyle": "warn",
+      "shadcn/no-arbitrary-values": "warn",
+      "shadcn/no-inline-styles": "warn",
+      "shadcn/no-unknown-classes": "warn",
+      "shadcn/require-static-classes": "warn",
+
       // The unicorn 72 expansion, declared and explained above the config.
       ...UNICORN_CORRECTNESS_RULES,
       ...UNICORN_MODERNISATION_RULES,
@@ -972,6 +1004,11 @@ export function createConfig(options = {}) {
       // same inputs while requiring explicit narrowing.
       "zod/prefer-nullish": "error",
       "zod/no-any-schema": "error",
+      "zod/no-conflicting-checks": "error",
+      "zod/no-duplicate-schema-methods": "error",
+      "zod/no-coerce-boolean": "error",
+      "zod/no-throw-in-refine": "error",
+      "zod/no-transform-in-record-key": "error",
 
       // Deterministic ordering (incorporated from a first-party config).
       // simple-import-sort owns import/export ordering
@@ -1247,6 +1284,7 @@ export function createConfig(options = {}) {
       "@sarj/no-conditional-empty-object-spread": "error",
       "@sarj/no-reduce-accumulator-copy": "error",
       "@sarj/require-button-accessible-name": "error",
+      "@sarj/require-camelcase-properties": "warn",
       "@sarj/require-svg-accessible-name": "error",
       "@sarj/prefer-logical-tailwind-utilities": ["error", { enabled: false }],
       "@sarj/no-unlocalized-jsx-text": ["error", { enabled: false }],
@@ -1384,6 +1422,9 @@ export function createConfig(options = {}) {
     files: ["**/components/ui/**", "**/components/design-system/**"],
     rules: {
       "react/forbid-elements": "off",
+      "shadcn/no-restyle": "off",
+      "shadcn/no-arbitrary-values": "off",
+      "shadcn/require-static-classes": "off",
       // Prevent design-system primitives from becoming implicit submit buttons.
       "react/button-has-type": "error",
     },

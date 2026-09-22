@@ -17,7 +17,7 @@ from typing import Final
 from sarj_standards.libs.adoption import transaction
 
 
-_VERSION: Final = "2.1.12"
+_VERSION: Final = "2.1.14"
 _ARCHITECTURES: Final = MappingProxyType({"aarch64": "arm64", "amd64": "x86_64"})
 _EXPORT_ASSIGNMENT_PARTS: Final = 2
 _UVX_PATH_MARKER: Final = "# sarj-standards: uvx-path"

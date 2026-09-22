@@ -2339,7 +2339,7 @@ def _append_javascript_ci(lines: list[str], root: Path, ecosystems: Ecosystems, 
 def _setup_uv_version(root: Path, python_root: Path | None) -> str:
     source = uvtool.version_file(python_root)
     if source is None:
-        return "          version: '0.12.5'"
+        return "          version: '0.12.13'"
     return f"          version-file: {json.dumps(source.relative_to(root).as_posix())}"
 
 

@@ -2370,7 +2370,7 @@ def parse_mobsfscan(  # ruff: ignore[too-many-locals] -- protocol normalization 
     errors = _array(report.get("errors", []), "mobsfscan errors")
     if expected_paths is not None:
         _validate_mobsfscan_coverage(report, root, expected_paths)
-    # Semgrep 1.175.0 does not yet parse Swift's `#Preview` macro. It reports a
+    # Semgrep 1.177.0 does not yet parse Swift's `#Preview` macro. It reports a
     # warning-only PartialParsing record while still scanning the complete file.
     # Permit only that exact, known parser limitation and only when the caller
     # requested and proved exact selected-file coverage above. Every other
