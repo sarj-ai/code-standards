@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import ast
+from collections import Counter
+from dataclasses import dataclass
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, final, override
 
@@ -32,6 +34,31 @@ _SAFE_METADATA = frozenset(
 )
 _SERIALIZERS = frozenset({"dict", "json", "model_dump"})
 _SANITIZERS = frozenset({"redact", "sanitize", "summarize"})
+_MUTATING_METHODS = frozenset(
+    {"append", "clear", "extend", "insert", "pop", "popitem", "remove", "reverse", "setdefault", "sort", "update"}
+)
+
+
+_Position = tuple[int, int]
+
+
+@dataclass(frozen=True, slots=True)
+class _Binding:
+    value: ast.expr
+    position: _Position
+
+
+@dataclass(frozen=True, slots=True)
+class _SuiteFacts:
+    bindings: dict[str, _Binding]
+    statement_positions: dict[int, int]
+
+
+@dataclass(frozen=True, slots=True)
+class _AnalysisFacts:
+    suites: dict[int, _SuiteFacts]
+    statement_suites: dict[int, int]
+    parents: dict[int, ast.AST]
 
 
 def _reference_tokens(value: ast.expr) -> tuple[str, ...]:
@@ -50,17 +77,6 @@ def _reference_tokens(value: ast.expr) -> tuple[str, ...]:
             return (*_reference_tokens(receiver), *identifier_tokens(method))
         case _:
             return ()
-
-
-def _is_payload_reference(value: ast.expr, *, label: str | None = None) -> bool:
-    if _is_safe_transform(value) or _is_secret_reference(value):
-        return False
-    tokens = (*identifier_tokens(label or ""), *_reference_tokens(value))
-    if not tokens:
-        return False
-    if "not" not in tokens and any(token in _SAFE_METADATA for token in tokens):
-        return False
-    return bool(_REQUEST_RESPONSE.intersection(tokens) and _PAYLOAD_TERMINALS.intersection(tokens))
 
 
 def _is_safe_transform(value: ast.expr) -> bool:
@@ -83,29 +99,14 @@ def _is_secret_reference(value: ast.expr) -> bool:
     return any(is_secret_name(token) for token in _reference_tokens(value))
 
 
-def _logging_payloads(node: ast.Call) -> list[ast.expr]:
-    return [
-        *(payload for argument in node.args for payload in _interpolated_payloads(argument)),
-        *(argument for argument in node.args if _is_payload_reference(argument)),
-        *(value for keyword in node.keywords for value in _keyword_payloads(keyword)),
-    ]
-
-
-def _interpolated_payloads(value: ast.expr) -> tuple[ast.expr, ...]:
-    match value:
-        case ast.JoinedStr(values=parts):
-            candidates = tuple(part.value for part in parts if isinstance(part, ast.FormattedValue))
-        case ast.BinOp(op=ast.Mod(), right=right):
-            candidates = tuple(right.elts) if isinstance(right, (ast.Tuple, ast.List)) else (right,)
-        case ast.BinOp(op=ast.Add(), left=left, right=right):
-            direct_left = (left,) if _is_payload_reference(left) else ()
-            direct_right = (right,) if _is_payload_reference(right) else ()
-            return (*_interpolated_payloads(left), *_interpolated_payloads(right), *direct_left, *direct_right)
-        case ast.Call(func=ast.Attribute(value=ast.Constant(value=str()), attr="format"), args=args, keywords=keywords):
-            candidates = (*args, *(keyword.value for keyword in keywords))
-        case _:
-            return ()
-    return tuple(candidate for candidate in candidates if _is_payload_reference(candidate))
+def _logging_payloads(node: ast.Call, facts: _SuiteFacts | None, *, statement_index: int) -> list[ast.expr]:
+    sink_position = statement_index, node.col_offset
+    values: list[ast.expr] = []
+    for argument in node.args:
+        values.extend(_resolved_payloads(argument, facts, sink_position=sink_position))
+    for keyword in node.keywords:
+        values.extend(_resolved_keyword_payloads(keyword, facts, sink_position=sink_position))
+    return list({(value.lineno, value.col_offset): value for value in values}.values())
 
 
 @final
@@ -125,8 +126,8 @@ class NoWholeRequestResponsePayloadInLog(Rule):
         category=RuleCategory.SECURITY,
         autofix=AutofixPolicy.NONE,
         limitations=(
-            "Detection is a lexical warning for direct request/response body, content, data, JSON, and payload references, including no-argument whole-object serializers and structured field names on recognized logger receivers.",
-            "Generic request or response objects, unrelated body/payload values, explicitly sanitized summaries, aliases, dynamic containers, and interprocedural flows are excluded.",
+            "Detection follows direct request/response body, content, data, JSON, payload, and text references through stable same-block aliases, interpolation, and immutable literal logging mappings.",
+            "Generic request or response objects, unrelated body/payload values, explicitly sanitized summaries, mutated or branch-dependent aliases, dynamic containers, and interprocedural flows are excluded.",
         ),
         examples=(
             RuleExample(
@@ -166,11 +167,16 @@ class NoWholeRequestResponsePayloadInLog(Rule):
         tree = parse_or_none(path, source)
         if tree is None:
             return []
+        facts = _analysis_facts(tree)
         diagnostics: list[Diagnostic] = []
         for node in nodes(tree, ast.Call):
             if not _is_logging_call(node):
                 continue
-            values = _logging_payloads(node)
+            statement = _containing_statement(node, facts.parents)
+            suite_id = facts.statement_suites.get(id(statement)) if statement is not None else None
+            suite = facts.suites.get(suite_id) if suite_id is not None else None
+            statement_index = suite.statement_positions.get(id(statement), -1) if suite is not None else -1
+            values = _logging_payloads(node, suite, statement_index=statement_index)
             diagnostics.extend(_diagnostic(path, value) for value in values)
         return diagnostics
 
@@ -179,17 +185,207 @@ def _is_logging_call(node: ast.Call) -> bool:
     return isinstance(node.func, ast.Attribute) and node.func.attr in LOG_METHODS and is_logger_expr(node.func.value)
 
 
-def _keyword_payloads(keyword: ast.keyword) -> tuple[ast.expr, ...]:
-    if keyword.arg is None:
+def _resolved_keyword_payloads(
+    keyword: ast.keyword,
+    facts: _SuiteFacts | None,
+    *,
+    sink_position: _Position,
+) -> tuple[ast.expr, ...]:
+    if keyword.arg is None or keyword.arg == "extra":
+        return _resolved_payloads(keyword.value, facts, sink_position=sink_position, mapping_only=True)
+    return _resolved_payloads(keyword.value, facts, sink_position=sink_position, label=keyword.arg)
+
+
+def _resolved_payloads(
+    value: ast.expr,
+    facts: _SuiteFacts | None,
+    *,
+    sink_position: _Position,
+    label: str | None = None,
+    mapping_only: bool = False,
+    resolving: frozenset[str] = frozenset(),
+) -> tuple[ast.expr, ...]:
+    if _is_safe_transform(value) or _is_secret_reference(value):
         return ()
-    if keyword.arg == "extra" and isinstance(keyword.value, ast.Dict):
-        values: list[ast.expr] = []
-        for key, value in zip(keyword.value.keys, keyword.value.values, strict=True):
-            label = key.value if isinstance(key, ast.Constant) and isinstance(key.value, str) else None
-            if _is_payload_reference(value, label=label):
-                values.append(value)
-        return tuple(values)
-    return (keyword.value,) if _is_payload_reference(keyword.value, label=keyword.arg) else ()
+    alias = _resolved_alias(value, facts, sink_position=sink_position, resolving=resolving)
+    if alias is not None:
+        alias_name, alias_value = alias
+        return _resolved_payloads(
+            alias_value,
+            facts,
+            sink_position=sink_position,
+            label=label,
+            mapping_only=mapping_only,
+            resolving=resolving | {alias_name},
+        )
+    if not mapping_only and _is_payload_reference(value, label=label):
+        return (value,)
+    if isinstance(value, ast.Dict):
+        return _mapping_payloads(value, facts, sink_position=sink_position, resolving=resolving)
+    if mapping_only:
+        return ()
+    return tuple(
+        payload
+        for candidate in _interpolation_values(value)
+        for payload in _resolved_payloads(candidate, facts, sink_position=sink_position, resolving=resolving)
+    )
+
+
+def _resolved_alias(
+    value: ast.expr,
+    facts: _SuiteFacts | None,
+    *,
+    sink_position: _Position,
+    resolving: frozenset[str],
+) -> tuple[str, ast.expr] | None:
+    if not isinstance(value, ast.Name) or facts is None or value.id in resolving:
+        return None
+    binding = facts.bindings.get(value.id)
+    if binding is None or binding.position >= sink_position:
+        return None
+    return value.id, binding.value
+
+
+def _mapping_payloads(
+    value: ast.Dict,
+    facts: _SuiteFacts | None,
+    *,
+    sink_position: _Position,
+    resolving: frozenset[str],
+) -> tuple[ast.expr, ...]:
+    payloads: list[ast.expr] = []
+    for key, item in zip(value.keys, value.values, strict=True):
+        item_label = key.value if isinstance(key, ast.Constant) and isinstance(key.value, str) else None
+        payloads.extend(
+            _resolved_payloads(
+                item,
+                facts,
+                sink_position=sink_position,
+                label=item_label,
+                resolving=resolving,
+            )
+        )
+    return tuple(payloads)
+
+
+def _interpolation_values(value: ast.expr) -> tuple[ast.expr, ...]:
+    match value:
+        case ast.JoinedStr(values=parts):
+            return tuple(part.value for part in parts if isinstance(part, ast.FormattedValue))
+        case ast.BinOp(op=ast.Mod(), right=right):
+            return tuple(right.elts) if isinstance(right, (ast.Tuple, ast.List)) else (right,)
+        case ast.BinOp(op=ast.Add(), left=left, right=right):
+            return left, right
+        case ast.Call(func=ast.Attribute(value=ast.Constant(value=str()), attr="format"), args=args, keywords=words):
+            return *args, *(keyword.value for keyword in words)
+        case _:
+            return ()
+
+
+def _is_payload_reference(value: ast.expr, *, label: str | None = None) -> bool:
+    if _is_safe_transform(value) or _is_secret_reference(value):
+        return False
+    tokens = (*identifier_tokens(label or ""), *_reference_tokens(value))
+    if not tokens or ("not" not in tokens and any(token in _SAFE_METADATA for token in tokens)):
+        return False
+    return bool(_REQUEST_RESPONSE.intersection(tokens) and _PAYLOAD_TERMINALS.intersection(tokens))
+
+
+def _analysis_facts(tree: ast.Module) -> _AnalysisFacts:
+    suites: dict[int, _SuiteFacts] = {}
+    statement_suites: dict[int, int] = {}
+    parents = {id(child): parent for parent in ast.walk(tree) for child in ast.iter_child_nodes(parent)}
+    for owner in ast.walk(tree):
+        for field_name in owner._fields:
+            statements = _statement_list(getattr(owner, field_name, None))
+            if statements is None:
+                continue
+            suite_id = len(suites)
+            suites[suite_id] = _facts_for_statements(statements)
+            statement_suites.update((id(statement), suite_id) for statement in statements)
+    return _AnalysisFacts(suites, statement_suites, parents)
+
+
+def _statement_list(value: object) -> list[ast.stmt] | None:
+    if not isinstance(value, list):
+        return None
+    ast_items: list[ast.AST] = [item for item in value if isinstance(item, ast.AST)]  # pyright: ignore[reportUnknownVariableType] — narrowed by isinstance
+    if not ast_items or not all(isinstance(item, ast.stmt) for item in ast_items):
+        return None
+    return [item for item in ast_items if isinstance(item, ast.stmt)]
+
+
+def _facts_for_statements(statements: list[ast.stmt]) -> _SuiteFacts:
+    counts: Counter[str] = Counter()
+    candidates: dict[str, _Binding] = {}
+    mutated: set[str] = set()
+    positions = {id(statement): index for index, statement in enumerate(statements)}
+    for index, statement in enumerate(statements):
+        bound_names = _bound_names(statement)
+        counts.update(bound_names)
+        binding = _direct_binding(statement)
+        if binding is not None:
+            candidates[binding[0]] = _Binding(binding[1], (index, 0))
+        mutated.update(_mutated_names(statement))
+    return _SuiteFacts(
+        {name: binding for name, binding in candidates.items() if counts[name] == 1 and name not in mutated},
+        positions,
+    )
+
+
+def _direct_binding(statement: ast.stmt) -> tuple[str, ast.expr] | None:
+    if isinstance(statement, ast.Assign) and len(statement.targets) == 1 and isinstance(statement.targets[0], ast.Name):
+        return statement.targets[0].id, statement.value
+    if isinstance(statement, ast.AnnAssign) and isinstance(statement.target, ast.Name) and statement.value is not None:
+        return statement.target.id, statement.value
+    return None
+
+
+def _bound_names(statement: ast.stmt) -> tuple[str, ...]:
+    names: list[str] = []
+    stack: list[ast.AST] = [statement]
+    while stack:
+        node = stack.pop()
+        if node is not statement and isinstance(
+            node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)
+        ):
+            continue
+        if isinstance(node, ast.Name) and isinstance(node.ctx, (ast.Store, ast.Del)):
+            names.append(node.id)
+        elif isinstance(node, ast.ExceptHandler) and node.name is not None:
+            names.append(node.name)
+        stack.extend(ast.iter_child_nodes(node))
+    return tuple(names)
+
+
+def _mutated_names(statement: ast.stmt) -> frozenset[str]:
+    names: set[str] = set()
+    for node in ast.walk(statement):
+        if isinstance(node, (ast.Subscript, ast.Attribute)) and isinstance(node.ctx, (ast.Store, ast.Del)):
+            root = _root_name(node)
+            if root is not None:
+                names.add(root)
+        elif (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr in _MUTATING_METHODS
+            and (root := _root_name(node.func.value)) is not None
+        ):
+            names.add(root)
+    return frozenset(names)
+
+
+def _root_name(node: ast.expr) -> str | None:
+    while isinstance(node, (ast.Attribute, ast.Subscript)):
+        node = node.value
+    return node.id if isinstance(node, ast.Name) else None
+
+
+def _containing_statement(node: ast.AST, parents: dict[int, ast.AST]) -> ast.stmt | None:
+    current: ast.AST | None = node
+    while current is not None and not isinstance(current, ast.stmt):
+        current = parents.get(id(current))
+    return current
 
 
 def _diagnostic(path: Path, value: ast.expr) -> Diagnostic:
