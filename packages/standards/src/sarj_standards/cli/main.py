@@ -2575,136 +2575,89 @@ def _dispatch(args: _Args) -> int:
             return 2
 
 
-class _ChoiceDoctorOutputFormat(StrEnum):
-    VALUE_0 = "text"
-    VALUE_1 = "json"
+class _TextJsonFormat(StrEnum):
+    TEXT = "text"
+    JSON = "json"
 
 
-class _ChoiceSetupHooks(StrEnum):
-    VALUE_0 = "pre-commit"
-    VALUE_1 = "lefthook"
-    VALUE_2 = "none"
+class _JsonTextFormat(StrEnum):
+    JSON = "json"
+    TEXT = "text"
 
 
-class _ChoiceSetupProfile(StrEnum):
-    VALUE_0 = "standard"
-    VALUE_1 = "application"
+class _HookChoice(StrEnum):
+    PRE_COMMIT = "pre-commit"
+    LEFTHOOK = "lefthook"
+    NONE = "none"
 
 
-class _ChoiceSetupOnly(StrEnum):
-    VALUE_0 = "detekt"
-    VALUE_1 = "eslint"
-    VALUE_2 = "ktlint"
-    VALUE_3 = "markdownlint"
-    VALUE_4 = "mobile-security"
-    VALUE_5 = "pyright"
-    VALUE_6 = "ruff"
-    VALUE_7 = "shellcheck"
-    VALUE_8 = "swiftformat"
-    VALUE_9 = "swiftlint"
-    VALUE_10 = "taplo"
-    VALUE_11 = "yamllint"
+class _ProfileChoice(StrEnum):
+    STANDARD = "standard"
+    APPLICATION = "application"
 
 
-class _ChoiceCheckOutputFormat(StrEnum):
-    VALUE_0 = "text"
-    VALUE_1 = "json"
-    VALUE_2 = "sarif"
-    VALUE_3 = "github"
+class _ConfigChoice(StrEnum):
+    DETEKT = "detekt"
+    ESLINT = "eslint"
+    KTLINT = "ktlint"
+    MARKDOWNLINT = "markdownlint"
+    MOBILE_SECURITY = "mobile-security"
+    PYRIGHT = "pyright"
+    RUFF = "ruff"
+    SHELLCHECK = "shellcheck"
+    SWIFTFORMAT = "swiftformat"
+    SWIFTLINT = "swiftlint"
+    TAPLO = "taplo"
+    YAMLLINT = "yamllint"
 
 
-class _ChoiceObserveOutputFormat(StrEnum):
-    VALUE_0 = "text"
-    VALUE_1 = "json"
-    VALUE_2 = "sarif"
-    VALUE_3 = "github"
+class _DiagnosticFormat(StrEnum):
+    TEXT = "text"
+    JSON = "json"
+    SARIF = "sarif"
+    GITHUB = "github"
 
 
-class _ChoiceExcludeAddExcludeKind(StrEnum):
-    VALUE_0 = "path"
-    VALUE_1 = "rule"
+class _ExcludeKind(StrEnum):
+    PATH = "path"
+    RULE = "rule"
 
 
-class _ChoiceExcludeRemoveExcludeKind(StrEnum):
-    VALUE_0 = "path"
-    VALUE_1 = "rule"
+class _ReleaseTargetChoice(StrEnum):
+    TYPESCRIPT = "typescript"
+    BOOTSTRAP = "bootstrap"
+    PYTHON = "python"
+    SQL = "sql"
+    IAC = "iac"
+    STANDARDS = "standards"
+    TSCONFIG = "tsconfig"
 
 
-class _ChoiceShowConfigName(StrEnum):
-    VALUE_0 = "detekt"
-    VALUE_1 = "eslint"
-    VALUE_2 = "ktlint"
-    VALUE_3 = "markdownlint"
-    VALUE_4 = "mobile-security"
-    VALUE_5 = "pyright"
-    VALUE_6 = "ruff"
-    VALUE_7 = "shellcheck"
-    VALUE_8 = "swiftformat"
-    VALUE_9 = "swiftlint"
-    VALUE_10 = "taplo"
-    VALUE_11 = "yamllint"
+class _TypescriptReleaseMode(StrEnum):
+    CHECK = "check"
+    PACK = "pack"
+    PUBLISH = "publish"
 
 
-class _ChoiceShowConfigProfile(StrEnum):
-    VALUE_0 = "standard"
-    VALUE_1 = "application"
+class _RepositoryCheck(StrEnum):
+    CI_HISTORY = "ci-history"
+    FILE_CONVENTIONS = "file-conventions"
+    PRIVATE_REFS = "private-refs"
+    VERSIONS = "versions"
 
 
-class _ChoiceMaintainReleaseCreateTagsReleaseTargets(StrEnum):
-    VALUE_0 = "typescript"
-    VALUE_1 = "bootstrap"
-    VALUE_2 = "python"
-    VALUE_3 = "sql"
-    VALUE_4 = "iac"
-    VALUE_5 = "standards"
-    VALUE_6 = "tsconfig"
+class _RuleCategoryChoice(StrEnum):
+    ARCHITECTURE = "architecture"
+    CORRECTNESS = "correctness"
+    MAINTAINABILITY = "maintainability"
+    PERFORMANCE = "performance"
+    SECURITY = "security"
+    STYLE = "style"
+    TESTING = "testing"
 
 
-class _ChoiceMaintainReleaseTypescriptReleaseMode(StrEnum):
-    VALUE_0 = "check"
-    VALUE_1 = "pack"
-    VALUE_2 = "publish"
-
-
-class _ChoiceMaintainReleasePublishReleaseTarget(StrEnum):
-    VALUE_0 = "typescript"
-    VALUE_1 = "bootstrap"
-    VALUE_2 = "python"
-    VALUE_3 = "sql"
-    VALUE_4 = "iac"
-    VALUE_5 = "standards"
-    VALUE_6 = "tsconfig"
-
-
-class _ChoiceMaintainCheckRepoOnly(StrEnum):
-    VALUE_0 = "ci-history"
-    VALUE_1 = "file-conventions"
-    VALUE_2 = "private-refs"
-    VALUE_3 = "versions"
-
-
-class _ChoiceMaintainRulesNewRuleCategory(StrEnum):
-    VALUE_0 = "architecture"
-    VALUE_1 = "correctness"
-    VALUE_2 = "maintainability"
-    VALUE_3 = "performance"
-    VALUE_4 = "security"
-    VALUE_5 = "style"
-    VALUE_6 = "testing"
-
-
-class _ChoiceMaintainRulesChangesOutputFormat(StrEnum):
-    VALUE_0 = "json"
-    VALUE_1 = "text"
-
-
-class _ChoiceMaintainRulesChangesRequiredAddedLevel(StrEnum):
-    VALUE_0 = "warning"
-
-
-class _ChoiceMaintainRulesEvaluateOutputFormat(StrEnum):
-    VALUE_0 = "json"
-    VALUE_1 = "text"
+class _RequiredAddedLevel(StrEnum):
+    WARNING = "warning"
 
 
 def _version_option(*, value: bool) -> None:
@@ -2782,8 +2735,8 @@ def build_app(handler: Callable[[_Args], int] = _dispatch) -> typer.Typer:
         ctx: typer.Context,
         *,
         output_format: Annotated[
-            _ChoiceDoctorOutputFormat, typer.Option("--format", help="output format (default: text)")
-        ] = _ChoiceDoctorOutputFormat.VALUE_0,
+            _TextJsonFormat, typer.Option("--format", help="output format (default: text)")
+        ] = _TextJsonFormat.TEXT,
         repair: Annotated[
             bool,
             typer.Option(
@@ -2814,7 +2767,7 @@ def build_app(handler: Callable[[_Args], int] = _dispatch) -> typer.Typer:
         ctx: typer.Context,
         *,
         hooks: Annotated[
-            _ChoiceSetupHooks | None,
+            _HookChoice | None,
             typer.Option("--hooks", help="hook manager (default: detect Lefthook, otherwise pre-commit)"),
         ] = None,
         python_dest: Annotated[
@@ -2842,7 +2795,7 @@ def build_app(handler: Callable[[_Args], int] = _dispatch) -> typer.Typer:
             bool,
             typer.Option("--force", help="replace conflicting generated lint configuration after review"),
         ] = False,
-        profile: Annotated[_ChoiceSetupProfile | None, typer.Option("--profile", hidden=True)] = None,
+        profile: Annotated[_ProfileChoice | None, typer.Option("--profile", hidden=True)] = None,
         no_install: Annotated[
             bool,
             typer.Option("--no-install", help="write wiring without installing dependencies or hooks"),
@@ -2855,7 +2808,7 @@ def build_app(handler: Callable[[_Args], int] = _dispatch) -> typer.Typer:
             ),
         ] = False,
         only: Annotated[
-            list[_ChoiceSetupOnly] | None, typer.Option("--config", help="select one config explicitly (repeatable)")
+            list[_ConfigChoice] | None, typer.Option("--config", help="select one config explicitly (repeatable)")
         ] = None,
     ) -> int:
         return handler(
@@ -2900,7 +2853,7 @@ def build_app(handler: Callable[[_Args], int] = _dispatch) -> typer.Typer:
                 "--rule", parser=_parse_rule_selector, help="check only this custom ENGINE:ID rule (repeatable)"
             ),
         ] = None,
-        output_format: Annotated[_ChoiceCheckOutputFormat, typer.Option("--format")] = _ChoiceCheckOutputFormat.VALUE_0,
+        output_format: Annotated[_DiagnosticFormat, typer.Option("--format")] = _DiagnosticFormat.TEXT,
         output: Annotated[Path | None, typer.Option("--output", help="write JSON or SARIF atomically to PATH")] = None,
         max_annotations_per_level: Annotated[int, typer.Option("--max-annotations-per-level", min=0, max=10)] = 10,
         files: Annotated[
@@ -2943,9 +2896,7 @@ def build_app(handler: Callable[[_Args], int] = _dispatch) -> typer.Typer:
             list[RuleSelector],
             typer.Option("--rule", parser=_parse_rule_selector, help="canonical ENGINE:ID selector (repeatable)"),
         ],
-        output_format: Annotated[
-            _ChoiceObserveOutputFormat, typer.Option("--format")
-        ] = _ChoiceObserveOutputFormat.VALUE_0,
+        output_format: Annotated[_DiagnosticFormat, typer.Option("--format")] = _DiagnosticFormat.TEXT,
         output: Annotated[Path | None, typer.Option("--output")] = None,
         trust_repository_code: Annotated[
             bool,
@@ -3204,7 +3155,7 @@ def build_app(handler: Callable[[_Args], int] = _dispatch) -> typer.Typer:
     def command_exclude_add(
         ctx: typer.Context,
         *,
-        exclude_kind: Annotated[_ChoiceExcludeAddExcludeKind, typer.Argument(metavar="{path,rule}")],
+        exclude_kind: Annotated[_ExcludeKind, typer.Argument(metavar="{path,rule}")],
         value: Annotated[str, typer.Argument(help="repository-relative glob or canonical engine:rule selector")],
     ) -> int:
         return handler(
@@ -3221,7 +3172,7 @@ def build_app(handler: Callable[[_Args], int] = _dispatch) -> typer.Typer:
     def command_exclude_remove(
         ctx: typer.Context,
         *,
-        exclude_kind: Annotated[_ChoiceExcludeRemoveExcludeKind, typer.Argument(metavar="{path,rule}")],
+        exclude_kind: Annotated[_ExcludeKind, typer.Argument(metavar="{path,rule}")],
         value: Annotated[str, typer.Argument(help="repository-relative glob or canonical engine:rule selector")],
     ) -> int:
         return handler(
@@ -3262,10 +3213,8 @@ def build_app(handler: Callable[[_Args], int] = _dispatch) -> typer.Typer:
     def command_show_config(
         ctx: typer.Context,
         *,
-        name: Annotated[_ChoiceShowConfigName, typer.Argument()],
-        profile: Annotated[
-            _ChoiceShowConfigProfile, typer.Option("--profile", hidden=True)
-        ] = _ChoiceShowConfigProfile.VALUE_0,
+        name: Annotated[_ConfigChoice, typer.Argument()],
+        profile: Annotated[_ProfileChoice, typer.Option("--profile", hidden=True)] = _ProfileChoice.STANDARD,
     ) -> int:
         return handler(
             _Args(
@@ -3377,7 +3326,7 @@ def build_app(handler: Callable[[_Args], int] = _dispatch) -> typer.Typer:
     def command_maintain_release_create_tags(
         ctx: typer.Context,
         *,
-        release_targets: Annotated[list[_ChoiceMaintainReleaseCreateTagsReleaseTargets], typer.Argument()],
+        release_targets: Annotated[list[_ReleaseTargetChoice], typer.Argument()],
         release_commit: Annotated[str, typer.Option("--commit", help="exact commit that was published")],
         attempts: Annotated[int, typer.Option("--attempts")] = 6,
         delay_seconds: Annotated[float, typer.Option("--delay-seconds")] = 10.0,
@@ -3462,7 +3411,7 @@ def build_app(handler: Callable[[_Args], int] = _dispatch) -> typer.Typer:
     def command_maintain_release_typescript(
         ctx: typer.Context,
         *,
-        release_mode: Annotated[_ChoiceMaintainReleaseTypescriptReleaseMode, typer.Argument()],
+        release_mode: Annotated[_TypescriptReleaseMode, typer.Argument()],
         output: Annotated[Path | None, typer.Option("--output", help="artifact directory (required for pack)")] = None,
     ) -> int:
         return handler(
@@ -3516,7 +3465,7 @@ def build_app(handler: Callable[[_Args], int] = _dispatch) -> typer.Typer:
     def command_maintain_release_publish(
         ctx: typer.Context,
         *,
-        release_target: Annotated[_ChoiceMaintainReleasePublishReleaseTarget, typer.Argument()],
+        release_target: Annotated[_ReleaseTargetChoice, typer.Argument()],
     ) -> int:
         return handler(
             _Args(
@@ -3532,7 +3481,7 @@ def build_app(handler: Callable[[_Args], int] = _dispatch) -> typer.Typer:
     def command_maintain_check(
         ctx: typer.Context,
         *,
-        repo_only: Annotated[list[_ChoiceMaintainCheckRepoOnly] | None, typer.Option("--only")] = None,
+        repo_only: Annotated[list[_RepositoryCheck] | None, typer.Option("--only")] = None,
         commits: Annotated[
             str | None, typer.Option("--commits", help="also inspect commit messages in this revision range")
         ] = None,
@@ -3682,7 +3631,7 @@ def build_app(handler: Callable[[_Args], int] = _dispatch) -> typer.Typer:
         selector: Annotated[
             RuleSelector, typer.Argument(parser=_parse_rule_selector, help="canonical ENGINE:ID selector")
         ],
-        rule_category: Annotated[_ChoiceMaintainRulesNewRuleCategory, typer.Option("--category")],
+        rule_category: Annotated[_RuleCategoryChoice, typer.Option("--category")],
         rule_summary: Annotated[str, typer.Option("--summary")],
         apply_rule: Annotated[bool, typer.Option("--apply", help="create the planned files")] = False,
     ) -> int:
@@ -3785,11 +3734,9 @@ def build_app(handler: Callable[[_Args], int] = _dispatch) -> typer.Typer:
         *,
         before: Annotated[str, typer.Option("--before")],
         after: Annotated[str, typer.Option("--after")],
-        output_format: Annotated[
-            _ChoiceMaintainRulesChangesOutputFormat, typer.Option("--format")
-        ] = _ChoiceMaintainRulesChangesOutputFormat.VALUE_1,
+        output_format: Annotated[_JsonTextFormat, typer.Option("--format")] = _JsonTextFormat.JSON,
         required_added_level: Annotated[
-            _ChoiceMaintainRulesChangesRequiredAddedLevel | None,
+            _RequiredAddedLevel | None,
             typer.Option("--require-added-level", help="fail when an added rule does not start at this level"),
         ] = None,
     ) -> int:
@@ -3834,9 +3781,7 @@ def build_app(handler: Callable[[_Args], int] = _dispatch) -> typer.Typer:
                 "--scope", help="corpus ignores baselines/rule exclusions; effective applies adopted repository policy"
             ),
         ] = _EvaluationScope.CORPUS,
-        output_format: Annotated[
-            _ChoiceMaintainRulesEvaluateOutputFormat, typer.Option("--format")
-        ] = _ChoiceMaintainRulesEvaluateOutputFormat.VALUE_0,
+        output_format: Annotated[_JsonTextFormat, typer.Option("--format")] = _JsonTextFormat.JSON,
         output: Annotated[Path | None, typer.Option("--output")] = None,
         trust_repository_code: Annotated[
             bool,
