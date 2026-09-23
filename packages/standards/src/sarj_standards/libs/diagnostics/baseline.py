@@ -157,8 +157,8 @@ def _baseline_fingerprints(entries: list[object]) -> dict[str, int]:
         if not isinstance(fingerprint, str) or _FINGERPRINT.fullmatch(fingerprint) is None:
             msg = f"diagnostic baseline entry {index} has an invalid fingerprint"
             raise ValueError(msg)
-        _ = _required_text(entry, "source", index)
-        _ = _required_text(entry, "ruleId", index)
+        _required_text(entry, "source", index)
+        _required_text(entry, "ruleId", index)
         relative = _required_text(entry, "path", index)
         count = entry.get("count")
         if type(count) is not int or count < 1:
@@ -223,7 +223,7 @@ def merge_scoped(
     if not selected:
         msg = "a scoped baseline merge requires at least one promoted selector"
         raise ValueError(msg)
-    _ = load(path)
+    load(path)
     parsed: object = json.loads(path.read_text(encoding="utf-8"))  # pyright: ignore[reportAny]
     root = _string_object_dict(parsed, label="diagnostic baseline")
     current = root.get("diagnostics")
@@ -262,7 +262,7 @@ def remove_rules(
     if not selected:
         msg = "a baseline rule removal requires at least one selector"
         raise ValueError(msg)
-    _ = load(path)
+    load(path)
     parsed: object = json.loads(path.read_text(encoding="utf-8"))  # pyright: ignore[reportAny]
     root = _string_object_dict(parsed, label="diagnostic baseline")
     current = root.get("diagnostics")
@@ -334,7 +334,7 @@ def _validate_provenance(value: object) -> dict[str, str]:
     if set(provenance) != {"bundleVersion", "consumerBaseSha", "catalogDigest"}:
         msg = "diagnostic baseline provenance has invalid fields"
         raise ValueError(msg)
-    _ = _required_text(provenance, "bundleVersion", 0)
+    _required_text(provenance, "bundleVersion", 0)
     base = _required_text(provenance, "consumerBaseSha", 0)
     digest = _required_text(provenance, "catalogDigest", 0)
     if _GIT_SHA.fullmatch(base) is None or _FINGERPRINT.fullmatch(digest) is None:

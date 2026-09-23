@@ -38,7 +38,7 @@ def required_version(path: Path) -> str | None:
     if not isinstance(value, str) or not value:
         return None
     try:
-        _ = SpecifierSet(value)
+        SpecifierSet(value)
     except InvalidSpecifier:
         return None
     return value

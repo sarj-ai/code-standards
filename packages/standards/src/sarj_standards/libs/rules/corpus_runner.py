@@ -276,7 +276,7 @@ def _run_process(
         returncode = _wait_for_process(process, exceeded, deadline, argv, timeout)
     except subprocess.TimeoutExpired:
         _terminate_process_group(process)
-        _ = process.wait()
+        process.wait()
         for thread in threads:
             thread.join()
         raise
@@ -308,7 +308,7 @@ def _wait_for_process(
         if remaining <= 0:
             raise subprocess.TimeoutExpired(argv, timeout.total_seconds())
         try:
-            _ = process.wait(timeout=min(0.05, remaining))
+            process.wait(timeout=min(0.05, remaining))
         except subprocess.TimeoutExpired:
             continue
     if exceeded.is_set() and process.poll() is None:

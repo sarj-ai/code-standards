@@ -119,7 +119,7 @@ def remove_file(root: Path, path: Path) -> None:
 def _write_temporary(descriptor: int, contents: bytes, mode: int) -> None:
     with os.fdopen(descriptor, "wb") as handle:
         os.fchmod(handle.fileno(), mode)
-        _ = handle.write(contents)
+        handle.write(contents)
         handle.flush()
         os.fsync(handle.fileno())
 

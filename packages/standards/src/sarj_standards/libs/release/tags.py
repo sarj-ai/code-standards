@@ -381,7 +381,7 @@ def _wait_for_publications(
         except OSError, ValueError:
             if attempt + 1 == attempts:
                 raise
-            _ = sleeper(delay_seconds)
+            sleeper(delay_seconds)
 
 
 def _require_remote_tag_commit(

@@ -57,7 +57,7 @@ def pending_release_targets(
     checker: PublicationChecker = publication_exists,
     tag_verifier: ReleaseTagVerifier = verify_remote_release_tags,
 ) -> Mapping[str, bool]:
-    _ = changed_release_targets(root, before=before, after=after, runner=runner)
+    changed_release_targets(root, before=before, after=after, runner=runner)
     missing_tags = set(tag_verifier(root, commit=after, runner=runner))
     return {
         name: current_release_tag(ReleaseTargetId(name), root) in missing_tags

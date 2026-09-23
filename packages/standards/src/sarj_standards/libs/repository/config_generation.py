@@ -199,7 +199,7 @@ def sync_warning_levels(repository: Path, *, check: bool) -> bool:
     if check:
         return all(path.is_file() and path.read_text(encoding="utf-8") == text for path, text in expected.items())
     for path, text in expected.items():
-        _ = path.write_text(text, encoding="utf-8")
+        path.write_text(text, encoding="utf-8")
     return True
 
 
@@ -241,5 +241,5 @@ def sync(*, check: bool) -> bool:
             path.is_file() and path.read_text(encoding="utf-8") == contents for path, contents in expected.items()
         )
     for path, contents in expected.items():
-        _ = path.write_text(contents, encoding="utf-8")
+        path.write_text(contents, encoding="utf-8")
     return True
