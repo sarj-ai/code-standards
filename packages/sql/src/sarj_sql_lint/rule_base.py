@@ -36,6 +36,12 @@ class SourceComment(NamedTuple):
     block: bool
 
 
+@dataclass(frozen=True, slots=True)
+class _CommentScan:
+    end: int
+    comment: SourceComment
+
+
 class RuleCategory(StrEnum):
     ARCHITECTURE = "architecture"
     CORRECTNESS = "correctness"
@@ -483,8 +489,9 @@ def _scan(source: str, *, preserve_quoted_identifiers: bool = False) -> _ScanRes
             continue
         pair = source[i : i + 2]
         if pair in {"--", "/*"}:
-            end, comment = _scan_source_comment(source, i, pair)
-            comments.append(comment)
+            scanned = _scan_source_comment(source, i, pair)
+            end = scanned.end
+            comments.append(scanned.comment)
         elif ch == '"' and preserve_quoted_identifiers:
             i = _scan_quoted(source, i, ch)
             continue
@@ -653,7 +660,7 @@ def _validate_rule_examples(examples: tuple[RuleExample, ...]) -> None:
             raise ValueError(msg)
 
 
-def _scan_source_comment(source: str, start: int, pair: str) -> tuple[int, SourceComment]:
+def _scan_source_comment(source: str, start: int, pair: str) -> _CommentScan:
     if pair == "--":
         end = source.find("\n", start)
         end = len(source) if end == -1 else end
@@ -661,11 +668,14 @@ def _scan_source_comment(source: str, start: int, pair: str) -> tuple[int, Sourc
     else:
         end = _scan_block_comment(source, start)
         body_end = end - 2 if end < len(source) or source.endswith("*/") else end
-    return end, SourceComment(
-        line=source.count("\n", 0, start) + 1,
-        column=start - source.rfind("\n", 0, start),
-        body=source[start + 2 : body_end].strip(),
-        block=pair == "/*",
+    return _CommentScan(
+        end=end,
+        comment=SourceComment(
+            line=source.count("\n", 0, start) + 1,
+            column=start - source.rfind("\n", 0, start),
+            body=source[start + 2 : body_end].strip(),
+            block=pair == "/*",
+        ),
     )
 
 

@@ -408,7 +408,9 @@ def _split_elements(value: str) -> tuple[str, ...]:
     while position < len(value):
         char = value[position]
         if quote is not None:
-            position, quote = _advance_quoted_text(value, position, quote)
+            advanced = _advance_quoted_text(value, position, quote)
+            position = advanced.position
+            quote = advanced.quote
             continue
         if char == "$" and (dollar_end := _dollar_quoted_literal_end(value, position)) is not None:
             position = dollar_end
@@ -437,9 +439,10 @@ def _normalize_sql(value: str) -> str:
     while position < len(value):
         char = value[position]
         if quote is not None:
-            end, quote = _advance_quoted_text(value, position, quote)
-            output.append(value[position:end])
-            position = end
+            advanced = _advance_quoted_text(value, position, quote)
+            output.append(value[position : advanced.position])
+            position = advanced.position
+            quote = advanced.quote
             continue
         if char == "$" and (dollar_end := _dollar_quoted_literal_end(value, position)) is not None:
             _append_normalizing_space(output, pending_space=pending_space)
@@ -504,12 +507,18 @@ def _has_local_justification(source: str, start: int, *, unique: bool) -> bool:
     )
 
 
-def _advance_quoted_text(value: str, position: int, quote: str) -> tuple[int, str | None]:
+@dataclass(frozen=True, slots=True)
+class _QuoteAdvance:
+    position: int
+    quote: str | None
+
+
+def _advance_quoted_text(value: str, position: int, quote: str) -> _QuoteAdvance:
     if value[position] != quote:
-        return position + 1, quote
+        return _QuoteAdvance(position=position + 1, quote=quote)
     if position + 1 < len(value) and value[position + 1] == quote:
-        return position + 2, quote
-    return position + 1, None
+        return _QuoteAdvance(position=position + 2, quote=quote)
+    return _QuoteAdvance(position=position + 1, quote=None)
 
 
 class _IndexSuffixParser:

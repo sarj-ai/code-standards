@@ -41,18 +41,6 @@
   "packages/python/src/sarj_python_lint/rules/timestamp_order_requires_tiebreaker.py": {
     "SARJ026": 1
   },
-  "packages/sql/src/sarj_sql_lint/rule_base.py": {
-    "SARJ026": 1
-  },
-  "packages/sql/src/sarj_sql_lint/rules/_index_analysis.py": {
-    "SARJ026": 1
-  },
-  "packages/sql/src/sarj_sql_lint/rules/no_comment_cruft.py": {
-    "SARJ026": 2
-  },
-  "packages/sql/src/sarj_sql_lint/rules/no_duplicate_index.py": {
-    "SARJ026": 1
-  },
   "packages/standards/src/sarj_standards/cli/main.py": {
     "SARJ026": 1
   },
