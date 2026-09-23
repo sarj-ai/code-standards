@@ -46,7 +46,7 @@ def _best_time_s(rule_id: str, path: Path, source: str, repeats: int = 5) -> flo
     best = float("inf")
     for _ in range(repeats):
         start = time.perf_counter()
-        _ = rule.check(path, source)
+        rule.check(path, source)
         best = min(best, time.perf_counter() - start)
     return best
 
@@ -59,7 +59,7 @@ def _parse_baseline_s(repeats: int = 7) -> float:
     best = float("inf")
     for _ in range(repeats):
         start = time.perf_counter()
-        _ = ast.parse(_SYNTHETIC_PY)
+        ast.parse(_SYNTHETIC_PY)
         best = min(best, time.perf_counter() - start)
     return best
 

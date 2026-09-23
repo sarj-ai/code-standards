@@ -49,7 +49,7 @@ def test_match_value_dispatch_cli_is_advisory(
     tmp_path: Path, capsys: CaptureFixture[str], source: str, expected_count: int
 ) -> None:
     path = tmp_path / "dispatch.py"
-    _ = path.write_text(source)
+    path.write_text(source)
 
     result = main(["check", "--rule", "prefer-match-value-dispatch", str(path)])
 

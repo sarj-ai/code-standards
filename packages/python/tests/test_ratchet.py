@@ -129,7 +129,7 @@ def test_ruff_catalog_is_decoded_as_utf8_on_every_platform(
     )
     package = tmp_path / "service"
     package.mkdir()
-    _ = (package / "app.py").write_text(
+    (package / "app.py").write_text(
         "value = 1  # noqa: TID251\nother = 2  # ruff: ignore[pytest-fixture-autouse]\n",
         encoding="utf-8",
     )
@@ -187,7 +187,7 @@ def _tree(root: Path, files: dict[str, str]) -> None:
     for relative, text in files.items():
         path = root / relative
         path.parent.mkdir(parents=True, exist_ok=True)
-        _ = path.write_text(text, encoding="utf-8")
+        path.write_text(text, encoding="utf-8")
 
 
 def test_measure_buckets_by_code_package_and_file(tmp_path: Path):
@@ -437,7 +437,7 @@ def test_seed_preserves_the_per_file_ceiling():
 
 def test_load_baseline_reads_all_ceiling_dimensions(tmp_path: Path):
     path = tmp_path / "b.json"
-    _ = path.write_text(
+    path.write_text(
         json.dumps(
             {
                 "codes": {"noqa:E501": 3},
@@ -469,7 +469,7 @@ def test_dumped_baseline_declares_its_schema_version(tmp_path: Path):
 
 def test_load_baseline_rejects_an_unknown_schema_version(tmp_path: Path):
     path = tmp_path / "b.json"
-    _ = path.write_text('{"schema_version": 999}', encoding="utf-8")
+    path.write_text('{"schema_version": 999}', encoding="utf-8")
     with pytest.raises(ValueError, match="unsupported suppression baseline schema_version"):
         load_baseline(path)
 
@@ -487,7 +487,7 @@ def test_load_baseline_rejects_an_unknown_schema_version(tmp_path: Path):
 )
 def test_a_malformed_baseline_degrades_to_no_allowance(tmp_path: Path, payload: str):
     path = tmp_path / "b.json"
-    _ = path.write_text(payload, encoding="utf-8")
+    path.write_text(payload, encoding="utf-8")
     baseline = load_baseline(path)
     assert baseline.codes == {}
     assert baseline.per_file_ceiling == 10
@@ -495,7 +495,7 @@ def test_a_malformed_baseline_degrades_to_no_allowance(tmp_path: Path, payload: 
 
 def test_a_comment_key_is_not_read_as_a_ceiling(tmp_path: Path):
     path = tmp_path / "b.json"
-    _ = path.write_text(json.dumps({"_comment": "prose", "codes": {"noqa:A1": 1}}), encoding="utf-8")
+    path.write_text(json.dumps({"_comment": "prose", "codes": {"noqa:A1": 1}}), encoding="utf-8")
     assert load_baseline(path).codes == {"noqa:A1": 1}
 
 

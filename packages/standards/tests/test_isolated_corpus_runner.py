@@ -271,5 +271,5 @@ def test_timeout_terminates_descendant_processes(tmp_path: Path, parent_tail: st
             (sys.executable, "-c", script),
             timeout=timedelta(milliseconds=100),
         )
-    _ = threading.Event().wait(0.7)
+    threading.Event().wait(0.7)
     assert not marker.exists()

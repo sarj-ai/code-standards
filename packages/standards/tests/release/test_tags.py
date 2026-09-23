@@ -26,7 +26,7 @@ def test_release_target_ids_are_the_authoritative_manifest_keys() -> None:
 
 def test_release_target_id_rejects_unknown_packages() -> None:
     with pytest.raises(ValueError, match="is not a valid ReleaseTargetId"):
-        _ = ReleaseTargetId("unknown")
+        ReleaseTargetId("unknown")
 
 
 def test_validate_release_tag_reads_json(tmp_path: Path) -> None:

@@ -32,11 +32,11 @@ _TFVARS_NAME = "terraform.tfvars"
 def _write_root(tmp_path: Path, variables: str, envs: dict[str, str]) -> Path:
     root = tmp_path / "stack"
     root.mkdir()
-    _ = (root / "variables.tf").write_text(variables, encoding="utf-8")
+    (root / "variables.tf").write_text(variables, encoding="utf-8")
     for env, tfvars in envs.items():
         env_dir = root / "env" / env
         env_dir.mkdir(parents=True)
-        _ = (env_dir / _TFVARS_NAME).write_text(tfvars, encoding="utf-8")
+        (env_dir / _TFVARS_NAME).write_text(tfvars, encoding="utf-8")
     return root
 
 
@@ -57,7 +57,7 @@ def test_documentation_examples_are_executable(example: RuleExample, tmp_path: P
     for file in example.files:
         target = tmp_path / file.path
         target.parent.mkdir(parents=True, exist_ok=True)
-        _ = target.write_text(file.source, encoding="utf-8")
+        target.write_text(file.source, encoding="utf-8")
     focus = tmp_path / example.focus_path
 
     findings = NoDeadEnvironmentInput().check(focus, example.focus_file.source)
@@ -271,9 +271,9 @@ def test_a_single_environment_root_still_gets_equals_default_and_orphans(tmp_pat
 def test_root_level_tfvars_layout_is_supported(tmp_path: Path) -> None:
     root = tmp_path / "stack"
     root.mkdir()
-    _ = (root / "variables.tf").write_text(_DECLARED_BOOL, encoding="utf-8")
-    _ = (root / "dev.tfvars").write_text('pagerduty_enabled = "false"\n', encoding="utf-8")
-    _ = (root / "prod.tfvars").write_text('pagerduty_enabled = "false"\n', encoding="utf-8")
+    (root / "variables.tf").write_text(_DECLARED_BOOL, encoding="utf-8")
+    (root / "dev.tfvars").write_text('pagerduty_enabled = "false"\n', encoding="utf-8")
+    (root / "prod.tfvars").write_text('pagerduty_enabled = "false"\n', encoding="utf-8")
     diags = _check_file(root / "dev.tfvars")
     assert len(diags) == 1
     assert "constant-everywhere" in diags[0].message
@@ -283,13 +283,13 @@ def test_a_tfvars_without_a_variable_declaring_root_produces_nothing(tmp_path: P
     orphan_dir = tmp_path / "fixtures"
     orphan_dir.mkdir()
     tfvars = orphan_dir / "dev.tfvars"
-    _ = tfvars.write_text("anything = true\n", encoding="utf-8")
+    tfvars.write_text("anything = true\n", encoding="utf-8")
     assert _check_file(tfvars) == []
 
 
 def test_non_tfvars_files_are_ignored(tmp_path: Path) -> None:
     tf = tmp_path / "main.tf"
-    _ = tf.write_text('variable "x" {\n  default = 1\n}\n', encoding="utf-8")
+    tf.write_text('variable "x" {\n  default = 1\n}\n', encoding="utf-8")
     assert NoDeadEnvironmentInput().check(tf, tf.read_text(encoding="utf-8")) == []
 
 
@@ -304,7 +304,7 @@ def test_an_envs_manifest_secret_environment_suppresses_value_judgments(tmp_path
         "preview": {"tfvars_secret": "deployment-tfvars"},
         "prod": {"tfvars_secret": "production-tfvars"},
     }
-    _ = (root / "envs.json").write_text(json.dumps(manifest), encoding="utf-8")
+    (root / "envs.json").write_text(json.dumps(manifest), encoding="utf-8")
     assert _check_env(root, "dev") == []
 
 
@@ -314,7 +314,7 @@ def test_an_incomplete_environment_set_emits_no_speculative_diagnostic(tmp_path:
         _DECLARED_BOOL,
         {"dev": 'pagerduty_enabled = "false"\n', "preview": 'pagerduty_enabled = "false"\n'},
     )
-    _ = (root / "envs.json").write_text('{"prod": {"tfvars_secret": "production-tfvars"}}', encoding="utf-8")
+    (root / "envs.json").write_text('{"prod": {"tfvars_secret": "production-tfvars"}}', encoding="utf-8")
     assert _check_env(root, "dev") == []
     assert _check_env(root, "preview") == []
 
@@ -337,7 +337,7 @@ def test_a_json_tfvars_environment_is_skipped_not_half_read(tmp_path: Path) -> N
     )
     staging = root / "env" / "staging"
     staging.mkdir()
-    _ = (staging / "terraform.tfvars.json").write_text('{"pagerduty_enabled": "false"}', encoding="utf-8")
+    (staging / "terraform.tfvars.json").write_text('{"pagerduty_enabled": "false"}', encoding="utf-8")
     assert _check_env(root, "dev") == []
 
 
@@ -347,7 +347,7 @@ def test_blind_roots_keep_only_the_declaration_based_finding(tmp_path: Path) -> 
         'variable "tier" {\n  type    = string\n  default = "BASIC"\n}\n',
         {"dev": 'tier = "BASIC"\nghost = 1\n', "preview": 'tier = "BASIC"\n'},
     )
-    _ = (root / "envs.json").write_text('{"prod": {"tfvars_secret": "production-tfvars"}}', encoding="utf-8")
+    (root / "envs.json").write_text('{"prod": {"tfvars_secret": "production-tfvars"}}', encoding="utf-8")
     dev_messages = [diag.message for diag in _check_env(root, "dev")]
     assert len(dev_messages) == 1
     assert dev_messages[0].startswith("orphaned-key:")
@@ -360,7 +360,7 @@ def test_an_unparseable_envs_manifest_causes_conservative_abstention(tmp_path: P
         _DECLARED_BOOL,
         {"dev": 'pagerduty_enabled = "false"\n', "prod": 'pagerduty_enabled = "false"\n'},
     )
-    _ = (root / "envs.json").write_text("{not json", encoding="utf-8")
+    (root / "envs.json").write_text("{not json", encoding="utf-8")
     assert _check_env(root, "dev") == []
 
 
@@ -408,7 +408,7 @@ def test_cli_run_over_an_incomplete_root_does_not_report_tool_uncertainty(
         _DECLARED_BOOL,
         {"dev": 'pagerduty_enabled = "false"\n', "preview": 'pagerduty_enabled = "false"\n'},
     )
-    _ = (root / "envs.json").write_text('{"prod": {"tfvars_secret": "production-tfvars"}}', encoding="utf-8")
+    (root / "envs.json").write_text('{"prod": {"tfvars_secret": "production-tfvars"}}', encoding="utf-8")
 
     rc = main(["check", "--rule", "no-dead-environment-input", str(root)])
 
@@ -433,9 +433,9 @@ def test_cli_noqa_suppresses_end_to_end(tmp_path: Path, capsys: pytest.CaptureFi
 def test_vendored_terraform_directories_are_never_roots(tmp_path: Path) -> None:
     vendored = tmp_path / ".terraform" / "modules" / "x"
     vendored.mkdir(parents=True)
-    _ = (vendored / "variables.tf").write_text(_DECLARED_TIER, encoding="utf-8")
+    (vendored / "variables.tf").write_text(_DECLARED_TIER, encoding="utf-8")
     tfvars = vendored / "dev.tfvars"
-    _ = tfvars.write_text("ghost = 1\n", encoding="utf-8")
+    tfvars.write_text("ghost = 1\n", encoding="utf-8")
     assert _check_file(tfvars) == []
 
 
@@ -510,11 +510,11 @@ def test_a_list_value_is_not_compared_without_full_type_normalization(tmp_path: 
 def test_a_backup_tfvars_is_neither_linted_nor_an_environment(tmp_path: Path) -> None:
     root = tmp_path / "stack"
     root.mkdir()
-    _ = (root / "variables.tf").write_text(_DECLARED_REGION, encoding="utf-8")
+    (root / "variables.tf").write_text(_DECLARED_REGION, encoding="utf-8")
     live = root / "production.tfvars"
-    _ = live.write_text(_REGION_ASSIGNMENT, encoding="utf-8")
+    live.write_text(_REGION_ASSIGNMENT, encoding="utf-8")
     backup = root / "backup.tfvars"
-    _ = backup.write_text(_REGION_ASSIGNMENT, encoding="utf-8")
+    backup.write_text(_REGION_ASSIGNMENT, encoding="utf-8")
 
     assert _check_file(backup) == []
     assert _check_file(live) == []
@@ -524,11 +524,11 @@ def test_a_backup_tfvars_is_neither_linted_nor_an_environment(tmp_path: Path) ->
 def test_copy_and_specimen_labels_are_not_environments(label: str, tmp_path: Path) -> None:
     root = tmp_path / "stack"
     root.mkdir()
-    _ = (root / "variables.tf").write_text(_DECLARED_REGION, encoding="utf-8")
+    (root / "variables.tf").write_text(_DECLARED_REGION, encoding="utf-8")
     live = root / "prod.tfvars"
-    _ = live.write_text(_REGION_ASSIGNMENT, encoding="utf-8")
+    live.write_text(_REGION_ASSIGNMENT, encoding="utf-8")
     specimen = root / f"{label}.tfvars"
-    _ = specimen.write_text(_REGION_ASSIGNMENT, encoding="utf-8")
+    specimen.write_text(_REGION_ASSIGNMENT, encoding="utf-8")
 
     assert _check_file(specimen) == []
     assert _check_file(live) == []
@@ -547,10 +547,10 @@ def test_an_untyped_variable_is_left_alone(tmp_path: Path) -> None:
 def test_auto_loaded_files_are_one_environment_not_several(tmp_path: Path) -> None:
     root = tmp_path / "stack"
     root.mkdir()
-    _ = (root / "variables.tf").write_text(_DECLARED_REGION, encoding="utf-8")
+    (root / "variables.tf").write_text(_DECLARED_REGION, encoding="utf-8")
     first = root / "a.auto.tfvars"
-    _ = first.write_text(_REGION_ASSIGNMENT, encoding="utf-8")
-    _ = (root / "b.auto.tfvars").write_text('region = "me-central2"\n', encoding="utf-8")
+    first.write_text(_REGION_ASSIGNMENT, encoding="utf-8")
+    (root / "b.auto.tfvars").write_text('region = "me-central2"\n', encoding="utf-8")
 
     assert not [d for d in _check_file(first) if d.message.startswith("required-but-constant:")]
 
@@ -558,10 +558,10 @@ def test_auto_loaded_files_are_one_environment_not_several(tmp_path: Path) -> No
 def test_a_specimen_word_inside_a_longer_name_is_still_an_environment(tmp_path: Path) -> None:
     root = tmp_path / "stack"
     root.mkdir()
-    _ = (root / "variables.tf").write_text(_DECLARED_REGION, encoding="utf-8")
+    (root / "variables.tf").write_text(_DECLARED_REGION, encoding="utf-8")
     west = root / "old-west.tfvars"
-    _ = west.write_text(_REGION_ASSIGNMENT, encoding="utf-8")
-    _ = (root / "prod.tfvars").write_text(_REGION_ASSIGNMENT, encoding="utf-8")
+    west.write_text(_REGION_ASSIGNMENT, encoding="utf-8")
+    (root / "prod.tfvars").write_text(_REGION_ASSIGNMENT, encoding="utf-8")
 
     assert [d for d in _check_file(west) if "old-west, prod" in d.message]
 
@@ -569,9 +569,9 @@ def test_a_specimen_word_inside_a_longer_name_is_still_an_environment(tmp_path: 
 def test_a_json_only_root_is_skipped_until_json_is_supported(tmp_path: Path) -> None:
     root = tmp_path / "stack"
     root.mkdir()
-    _ = (root / "variables.tf").write_text(_DECLARED_REGION, encoding="utf-8")
+    (root / "variables.tf").write_text(_DECLARED_REGION, encoding="utf-8")
     json_tfvars = root / "dev.tfvars.json"
-    _ = json_tfvars.write_text('{"region": "me-central2"}', encoding="utf-8")
+    json_tfvars.write_text('{"region": "me-central2"}', encoding="utf-8")
 
     assert _check_file(json_tfvars) == []
 
@@ -596,10 +596,10 @@ def test_a_symlinked_input_is_linted_in_the_root_it_is_linked_into(tmp_path: Pat
     external = tmp_path / "external"
     external.mkdir()
     source = external / _TFVARS_NAME
-    _ = source.write_text(_REGION_ASSIGNMENT, encoding="utf-8")
+    source.write_text(_REGION_ASSIGNMENT, encoding="utf-8")
     root = tmp_path / "stack"
     root.mkdir()
-    _ = (root / "variables.tf").write_text(_DECLARED_REGION, encoding="utf-8")
+    (root / "variables.tf").write_text(_DECLARED_REGION, encoding="utf-8")
     env_dir = root / "env" / "dev"
     env_dir.mkdir(parents=True)
     linked = env_dir / _TFVARS_NAME
@@ -612,9 +612,9 @@ def test_a_symlinked_input_is_linted_in_the_root_it_is_linked_into(tmp_path: Pat
 def test_a_symlinked_alias_is_not_a_second_environment(tmp_path: Path) -> None:
     root = tmp_path / "stack"
     root.mkdir()
-    _ = (root / "variables.tf").write_text(_DECLARED_REGION, encoding="utf-8")
+    (root / "variables.tf").write_text(_DECLARED_REGION, encoding="utf-8")
     live = root / "prod.tfvars"
-    _ = live.write_text(_REGION_ASSIGNMENT, encoding="utf-8")
+    live.write_text(_REGION_ASSIGNMENT, encoding="utf-8")
     (root / "current.tfvars").symlink_to(live)
 
     assert _check_file(live) == []
@@ -623,14 +623,14 @@ def test_a_symlinked_alias_is_not_a_second_environment(tmp_path: Path) -> None:
 def test_env_directory_of_named_files_is_one_environment_each(tmp_path: Path) -> None:
     root = tmp_path / "stack"
     root.mkdir()
-    _ = (root / "variables.tf").write_text(
+    (root / "variables.tf").write_text(
         'variable "gke_enabled" {\n  type    = bool\n  default = false\n}\n', encoding="utf-8"
     )
     env = root / "env"
     env.mkdir()
     dev = env / "dev.tfvars"
-    _ = dev.write_text("gke_enabled = true\n", encoding="utf-8")
-    _ = (env / "prod.tfvars").write_text("gke_enabled = true\n", encoding="utf-8")
+    dev.write_text("gke_enabled = true\n", encoding="utf-8")
+    (env / "prod.tfvars").write_text("gke_enabled = true\n", encoding="utf-8")
 
     messages = [d.message for d in _check_file(dev)]
 
@@ -643,7 +643,7 @@ def test_an_auto_loaded_var_file_beside_named_environments_goes_blind(tmp_path: 
         'variable "gke_enabled" {\n  type    = bool\n  default = false\n}\n',
         {"dev": "gke_enabled = true\n", "prod": "gke_enabled = true\n"},
     )
-    _ = (root / "terraform.tfvars").write_text("gke_enabled = true\n", encoding="utf-8")
+    (root / "terraform.tfvars").write_text("gke_enabled = true\n", encoding="utf-8")
 
     messages = [d.message for d in _check_env(root, "dev")]
 
@@ -717,7 +717,7 @@ def test_two_files_disagreeing_about_one_environment_cause_abstention(tmp_path: 
         {"prod": "gke_enabled = true\n", "dev": "gke_enabled = true\n"},
     )
     conflicting = root / "prod.tfvars"
-    _ = conflicting.write_text("gke_enabled = false\n", encoding="utf-8")
+    conflicting.write_text("gke_enabled = false\n", encoding="utf-8")
 
     across_root = [d.message for d in (*_check_env(root, "dev"), *_check_file(conflicting))]
 
@@ -731,7 +731,7 @@ def test_two_files_agreeing_about_one_environment_stay_analyzable(tmp_path: Path
         'variable "gke_enabled" {\n  type    = bool\n  default = false\n}\n',
         {"prod": "gke_enabled = true\n", "dev": "gke_enabled = true\n"},
     )
-    _ = (root / "prod.tfvars").write_text("gke_enabled = true\n", encoding="utf-8")
+    (root / "prod.tfvars").write_text("gke_enabled = true\n", encoding="utf-8")
 
     messages = [d.message for d in _check_env(root, "dev")]
 
@@ -793,7 +793,7 @@ def test_number_conversion_compares_a_quoted_number_safely(tmp_path: Path) -> No
 
 def test_tf_json_declarations_make_orphan_analysis_incomplete(tmp_path: Path) -> None:
     root = _write_root(tmp_path, _DECLARED_REGION, {"dev": "json_declared = true\n"})
-    _ = (root / "extra.tf.json").write_text(
+    (root / "extra.tf.json").write_text(
         '{"variable":{"json_declared":{"type":"bool"}}}',
         encoding="utf-8",
     )
@@ -805,9 +805,9 @@ def test_tf_json_declarations_make_orphan_analysis_incomplete(tmp_path: Path) ->
 def test_backend_configuration_is_not_assumed_to_be_variable_input(name: str, tmp_path: Path) -> None:
     root = tmp_path / "stack"
     root.mkdir()
-    _ = (root / "variables.tf").write_text(_DECLARED_REGION, encoding="utf-8")
+    (root / "variables.tf").write_text(_DECLARED_REGION, encoding="utf-8")
     backend = root / name
-    _ = backend.write_text('bucket = "terraform-state"\n', encoding="utf-8")
+    backend.write_text('bucket = "terraform-state"\n', encoding="utf-8")
 
     assert _check_file(backend) == []
 
@@ -833,6 +833,6 @@ def test_repeated_checks_observe_sibling_file_changes(tmp_path: Path) -> None:
     )
     assert len(_check_env(root, "dev")) == 1
 
-    _ = (root / "env" / "prod" / _TFVARS_NAME).write_text("enabled = false\n", encoding="utf-8")
+    (root / "env" / "prod" / _TFVARS_NAME).write_text("enabled = false\n", encoding="utf-8")
 
     assert _check_env(root, "dev") == []

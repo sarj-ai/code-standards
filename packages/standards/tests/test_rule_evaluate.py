@@ -298,7 +298,7 @@ def test_selected_rule_help_explains_exit_semantics(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     with pytest.raises(SystemExit, match="0"):
-        _ = main(list(argv))
+        main(list(argv))
 
     assert expected in capsys.readouterr().out
 

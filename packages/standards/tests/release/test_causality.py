@@ -17,7 +17,7 @@ def _write_manifest(tmp_path: Path, relative: str, version: str, *, json: bool =
     path = tmp_path / relative
     path.parent.mkdir(parents=True, exist_ok=True)
     contents = f'{{"version":"{version}"}}\n' if json else f'[project]\nversion = "{version}"\n'
-    _ = path.write_text(contents, encoding="utf-8")
+    path.write_text(contents, encoding="utf-8")
 
 
 def test_publishable_source_change_without_version_bump_fails(tmp_path: Path) -> None:

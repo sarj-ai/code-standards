@@ -187,7 +187,7 @@ def test_doctor_ignores_retired_selector_fixtures_in_baseline_test_module(tmp_pa
 
 
 def test_doctor_names_a_removed_eslint_rule_in_a_config(tmp_path: Path) -> None:
-    _ = (tmp_path / "eslint.config.mjs").write_text(
+    (tmp_path / "eslint.config.mjs").write_text(
         'export default [{ rules: { "@sarj/prefer-setup-file-mocks": "error" } }];\n',
         encoding="utf-8",
     )
@@ -199,14 +199,14 @@ def test_doctor_names_a_removed_eslint_rule_in_a_config(tmp_path: Path) -> None:
 
 def test_doctor_removes_loose_type_guard_references_without_replacement(tmp_path: Path) -> None:
     rule = "@sarj/ban-loose-type-guards-in-tests"
-    _ = (tmp_path / "eslint.config.mjs").write_text(
+    (tmp_path / "eslint.config.mjs").write_text(
         f'export default [{{ rules: {{ "{rule}": "error" }} }}];\n', encoding="utf-8"
     )
-    _ = (tmp_path / "widget.test.ts").write_text(
+    (tmp_path / "widget.test.ts").write_text(
         f"// eslint-disable-next-line {rule}\nexpect(typeof value).toBe('string');\n",
         encoding="utf-8",
     )
-    _ = (tmp_path / "eslint-suppressions.json").write_text(
+    (tmp_path / "eslint-suppressions.json").write_text(
         f'{{"widget.test.ts": {{"{rule}": {{"count": 1}}}}}}\n', encoding="utf-8"
     )
 
@@ -230,7 +230,7 @@ _ALIASES_DELETED_IN_9_0_0 = {
 
 @pytest.mark.parametrize(("old", "new"), sorted(_ALIASES_DELETED_IN_9_0_0.items()))
 def test_doctor_points_a_deleted_alias_at_its_replacement(tmp_path: Path, old: str, new: str) -> None:
-    _ = (tmp_path / "eslint.config.mjs").write_text(
+    (tmp_path / "eslint.config.mjs").write_text(
         f'export default [{{ rules: {{ "{old}": "error" }} }}];\n', encoding="utf-8"
     )
     findings = list(check_retired_rules(tmp_path))
@@ -246,11 +246,11 @@ def test_doctor_points_a_deleted_alias_at_its_replacement(tmp_path: Path, old: s
 def test_doctor_finds_a_deleted_alias_in_source_and_suppressions(tmp_path: Path) -> None:
     old = "@sarj/jsdoc-restates-signature"
     new = "@sarj/no-restated-jsdoc"
-    _ = (tmp_path / "widget.ts").write_text(
+    (tmp_path / "widget.ts").write_text(
         f"// eslint-disable-next-line {old}\nexport const widget = 1;\n",
         encoding="utf-8",
     )
-    _ = (tmp_path / "eslint-suppressions.json").write_text(
+    (tmp_path / "eslint-suppressions.json").write_text(
         f'{{"widget.ts": {{"{old}": {{"count": 1}}}}}}\n',
         encoding="utf-8",
     )
@@ -264,7 +264,7 @@ def test_doctor_finds_a_deleted_alias_in_source_and_suppressions(tmp_path: Path)
 
 
 def test_doctor_migrates_the_renamed_python_rule_without_confusing_its_eslint_twin(tmp_path: Path) -> None:
-    _ = (tmp_path / ".pre-commit-config.yaml").write_text(
+    (tmp_path / ".pre-commit-config.yaml").write_text(
         "repos:\n  - hooks:\n      - id: sarj-trailing-value-narration\n", encoding="utf-8"
     )
     findings = list(check_retired_rules(tmp_path))
@@ -275,7 +275,7 @@ def test_doctor_migrates_the_renamed_python_rule_without_confusing_its_eslint_tw
 
 
 def test_doctor_names_a_stale_disable_directive(tmp_path: Path) -> None:
-    _ = (tmp_path / "widget.tsx").write_text(
+    (tmp_path / "widget.tsx").write_text(
         "// eslint-disable-next-line @sarj/no-implicit-attribute-access\nexport const a = 1;\n",
         encoding="utf-8",
     )
@@ -287,7 +287,7 @@ def test_doctor_names_a_stale_disable_directive(tmp_path: Path) -> None:
 
 
 def test_doctor_names_a_stale_python_directive_in_a_stub(tmp_path: Path) -> None:
-    _ = (tmp_path / "service.pyi").write_text(
+    (tmp_path / "service.pyi").write_text(
         "value: int  # sarj-noqa: SARJ061 -- legacy stub\n",
         encoding="utf-8",
     )
@@ -299,12 +299,12 @@ def test_doctor_names_a_stale_python_directive_in_a_stub(tmp_path: Path) -> None
 
 
 def test_doctor_names_every_sarj061_consumer_reference(tmp_path: Path) -> None:
-    _ = (tmp_path / ".pre-commit-config.yaml").write_text(
+    (tmp_path / ".pre-commit-config.yaml").write_text(
         "repos:\n  - repo: local\n    hooks:\n      - id: sarj-no-patching-system-under-test\n",
         encoding="utf-8",
     )
-    _ = (tmp_path / "service.py").write_text("value = load()  # sarj-noqa: SARJ061\n", encoding="utf-8")
-    _ = (tmp_path / ".sarj-python-baseline.json").write_text('{"service.py": {"SARJ061": 2}}\n', encoding="utf-8")
+    (tmp_path / "service.py").write_text("value = load()  # sarj-noqa: SARJ061\n", encoding="utf-8")
+    (tmp_path / ".sarj-python-baseline.json").write_text('{"service.py": {"SARJ061": 2}}\n', encoding="utf-8")
 
     findings = sorted(check_retired_rules(tmp_path), key=lambda finding: finding.where)
     assert [finding.where for finding in findings] == [
@@ -319,7 +319,7 @@ def test_doctor_names_every_sarj061_consumer_reference(tmp_path: Path) -> None:
 def test_doctor_tells_a_chained_retirement_to_delete_rather_than_renumber(
     tmp_path: Path,
 ) -> None:
-    _ = (tmp_path / "service.py").write_text("value = data['k']  # sarj-noqa: SARJ055\n", encoding="utf-8")
+    (tmp_path / "service.py").write_text("value = data['k']  # sarj-noqa: SARJ055\n", encoding="utf-8")
     findings = list(check_retired_rules(tmp_path))
     assert len(findings) == 1
     assert "no longer exists" in findings[0].detail
@@ -327,11 +327,11 @@ def test_doctor_tells_a_chained_retirement_to_delete_rather_than_renumber(
 
 
 def test_doctor_names_a_removed_python_hook_and_its_code(tmp_path: Path) -> None:
-    _ = (tmp_path / ".pre-commit-config.yaml").write_text(
+    (tmp_path / ".pre-commit-config.yaml").write_text(
         "repos:\n  - hooks:\n      - id: sarj-no-implicit-attribute-access\n", encoding="utf-8"
     )
-    _ = (tmp_path / "service.py").write_text("value = payload['id']  # sarj-noqa: SARJ083\n", encoding="utf-8")
-    _ = (tmp_path / ".sarj-python-baseline.json").write_text('{"src/api.py": {"SARJ083": 4}}\n', encoding="utf-8")
+    (tmp_path / "service.py").write_text("value = payload['id']  # sarj-noqa: SARJ083\n", encoding="utf-8")
+    (tmp_path / ".sarj-python-baseline.json").write_text('{"src/api.py": {"SARJ083": 4}}\n', encoding="utf-8")
     findings = sorted(check_retired_rules(tmp_path), key=lambda finding: finding.where)
     assert [finding.where for finding in findings] == [
         ".pre-commit-config.yaml: no-implicit-attribute-access x1",
@@ -343,12 +343,12 @@ def test_doctor_names_a_removed_python_hook_and_its_code(tmp_path: Path) -> None
 
 
 def test_doctor_explains_why_match_destructuring_was_retired(tmp_path: Path) -> None:
-    _ = (tmp_path / ".pre-commit-config.yaml").write_text(
+    (tmp_path / ".pre-commit-config.yaml").write_text(
         "repos:\n  - hooks:\n      - id: sarj-prefer-match-pattern-destructuring\n",
         encoding="utf-8",
     )
-    _ = (tmp_path / "service.py").write_text("use(value)  # sarj-noqa: SARJ069\n", encoding="utf-8")
-    _ = (tmp_path / ".sarj-python-baseline.json").write_text('{"service.py": {"SARJ069": 1}}\n', encoding="utf-8")
+    (tmp_path / "service.py").write_text("use(value)  # sarj-noqa: SARJ069\n", encoding="utf-8")
+    (tmp_path / ".sarj-python-baseline.json").write_text('{"service.py": {"SARJ069": 1}}\n', encoding="utf-8")
 
     findings = sorted(check_retired_rules(tmp_path), key=lambda finding: finding.where)
     assert [finding.where for finding in findings] == [
@@ -361,7 +361,7 @@ def test_doctor_explains_why_match_destructuring_was_retired(tmp_path: Path) -> 
 
 
 def test_doctor_does_not_flag_prose_that_merely_contains_a_rule_name(tmp_path: Path) -> None:
-    _ = (tmp_path / "notes.py").write_text(
+    (tmp_path / "notes.py").write_text(
         "# we used to rely on no-patching-system-under-test for sarj checks\n", encoding="utf-8"
     )
     assert not list(check_retired_rules(tmp_path))
@@ -370,13 +370,13 @@ def test_doctor_does_not_flag_prose_that_merely_contains_a_rule_name(tmp_path: P
 def test_doctor_prunes_generated_playwright_mcp_artifacts(tmp_path: Path) -> None:
     generated = tmp_path / ".playwright-mcp" / "page-2026-08-04.yml"
     generated.parent.mkdir()
-    _ = generated.write_text('entry: "@sarj/no-implicit-attribute-access"\n', encoding="utf-8")
+    generated.write_text('entry: "@sarj/no-implicit-attribute-access"\n', encoding="utf-8")
 
     assert not list(check_retired_rules(tmp_path))
 
 
 def test_doctor_counts_repeats_in_one_file(tmp_path: Path) -> None:
-    _ = (tmp_path / "eslint-suppressions.json").write_text(
+    (tmp_path / "eslint-suppressions.json").write_text(
         '{"a": {"@sarj/prefer-setup-file-mocks": 1}, "b": {"@sarj/prefer-setup-file-mocks": 2}}\n',
         encoding="utf-8",
     )

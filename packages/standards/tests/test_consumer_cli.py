@@ -168,9 +168,9 @@ def test_yarn_workspace_setup_doctor_and_check_share_an_executable_eslint_enviro
         )
         == 0
     )
-    _ = capsys.readouterr()
+    capsys.readouterr()
     assert cli.main(["--root", str(tmp_path), "doctor"]) == 0
-    _ = capsys.readouterr()
+    capsys.readouterr()
     assert cli.main(["--root", str(tmp_path), "check", "--trust-repository-code"]) == 0
 
     root_package: object = json.loads((tmp_path / "package.json").read_text(encoding="utf-8"))  # pyright: ignore[reportAny]
@@ -243,12 +243,12 @@ def test_staged_adoption_drift_uses_the_requested_machine_format(
         encoding="utf-8",
     )
     git_environment = _git_environment()
-    _ = subprocess.run(("git", "init"), cwd=tmp_path, check=True, capture_output=True, env=git_environment)
+    subprocess.run(("git", "init"), cwd=tmp_path, check=True, capture_output=True, env=git_environment)
     assert cli.main(["--root", str(tmp_path), "setup", "--no-install"]) == 0
-    _ = capsys.readouterr()
+    capsys.readouterr()
     config = tmp_path / ".ruff-strict.toml"
     config.write_text("# stale\n", encoding="utf-8")
-    _ = subprocess.run(
+    subprocess.run(
         ("git", "add", ".ruff-strict.toml"),
         cwd=tmp_path,
         check=True,
@@ -294,7 +294,7 @@ def test_full_machine_check_runs_doctor_and_config_sync_gates(
         encoding="utf-8",
     )
     assert cli.main(["--root", str(tmp_path), "setup", "--no-install"]) == 0
-    _ = capsys.readouterr()
+    capsys.readouterr()
     (tmp_path / ".ruff-strict.toml").write_text("# stale\n", encoding="utf-8")
 
     status = cli.main(["--root", str(tmp_path), "check", "--format", "json"])
@@ -318,9 +318,9 @@ def test_empty_pull_request_scope_does_not_expand_to_the_repository(
         encoding="utf-8",
     )
     git_environment = _git_environment()
-    _ = subprocess.run(("git", "init"), cwd=tmp_path, check=True, capture_output=True, env=git_environment)
+    subprocess.run(("git", "init"), cwd=tmp_path, check=True, capture_output=True, env=git_environment)
     assert cli.main(["--root", str(tmp_path), "setup", "--no-install"]) == 0
-    _ = capsys.readouterr()
+    capsys.readouterr()
     monkeypatch.setenv("SARJ_REACT_DOCTOR_BASE", "f" * 40)
 
     def no_changed_files(_root: Path, _base: str) -> list[str]:
@@ -362,9 +362,9 @@ def test_non_default_push_runs_adoption_gate_without_expanding_to_repository(
         encoding="utf-8",
     )
     git_environment = _git_environment()
-    _ = subprocess.run(("git", "init"), cwd=tmp_path, check=True, capture_output=True, env=git_environment)
+    subprocess.run(("git", "init"), cwd=tmp_path, check=True, capture_output=True, env=git_environment)
     assert cli.main(["--root", str(tmp_path), "setup", "--no-install"]) == 0
-    _ = capsys.readouterr()
+    capsys.readouterr()
     event = tmp_path / "push.json"
     event.write_text(
         json.dumps({"ref": "refs/heads/standards-rollout/current", "repository": {"default_branch": "main"}}),
@@ -413,18 +413,18 @@ def test_non_default_push_honors_explicit_change_scope(
             env=git_environment,
         ).stdout.strip()
 
-    _ = git("init")
+    git("init")
     assert cli.main(["--root", str(tmp_path), "setup", "--no-install"]) == 0
-    _ = capsys.readouterr()
+    capsys.readouterr()
     source = tmp_path / "source.py"
     source.write_text("value = 1\n", encoding="utf-8")
     (tmp_path / "unchanged.py").write_text("value = 2\n", encoding="utf-8")
-    _ = git("add", ".")
-    _ = git("commit", "--no-verify", "-m", "Initial fixture")
+    git("add", ".")
+    git("commit", "--no-verify", "-m", "Initial fixture")
     base = git("rev-parse", "HEAD")
     source.write_text("value = 3\n", encoding="utf-8")
-    _ = git("add", "source.py")
-    _ = git("commit", "--no-verify", "-m", "Change source")
+    git("add", "source.py")
+    git("commit", "--no-verify", "-m", "Change source")
     event = tmp_path / "push.json"
     event.write_text(
         json.dumps({"ref": f"refs/heads/{branch}", "repository": {"default_branch": "dev"}}),
@@ -462,9 +462,9 @@ def test_pull_request_scope_ignores_changed_files_without_an_analyzer(
         encoding="utf-8",
     )
     git_environment = _git_environment()
-    _ = subprocess.run(("git", "init"), cwd=tmp_path, check=True, capture_output=True, env=git_environment)
+    subprocess.run(("git", "init"), cwd=tmp_path, check=True, capture_output=True, env=git_environment)
     assert cli.main(["--root", str(tmp_path), "setup", "--no-install"]) == 0
-    _ = capsys.readouterr()
+    capsys.readouterr()
     monkeypatch.setenv("SARJ_REACT_DOCTOR_BASE", "f" * 40)
 
     def changed_metadata(_root: Path, _base: str) -> list[str]:
@@ -490,7 +490,7 @@ def test_explicit_repository_root_keeps_the_machine_adoption_gate(
         encoding="utf-8",
     )
     assert cli.main(["--root", str(tmp_path), "setup", "--no-install"]) == 0
-    _ = capsys.readouterr()
+    capsys.readouterr()
     (tmp_path / ".ruff-strict.toml").write_text("# stale\n", encoding="utf-8")
 
     status = cli.main(["--root", str(tmp_path), "check", "--format", "json", str(tmp_path)])
@@ -509,7 +509,7 @@ def test_explicit_repository_root_overrides_pull_request_change_scope(
         encoding="utf-8",
     )
     assert cli.main(["--root", str(tmp_path), "setup", "--no-install"]) == 0
-    _ = capsys.readouterr()
+    capsys.readouterr()
     monkeypatch.setenv("SARJ_STANDARDS_BASE", "f" * 40)
 
     def changed_files_must_not_run(_root: Path, _base: str) -> list[str]:

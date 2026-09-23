@@ -31,7 +31,7 @@ def test_documentation_examples_are_executable(example: RuleExample, tmp_path: P
     for file in example.files:
         path = tmp_path / file.path
         path.parent.mkdir(parents=True, exist_ok=True)
-        _ = path.write_text(file.source, encoding="utf-8")
+        path.write_text(file.source, encoding="utf-8")
         if file.path == example.focus_path:
             finding_count = len(NoRedundantVariableValidation().check(path, file.source))
 

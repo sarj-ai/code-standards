@@ -42,14 +42,14 @@ def test_warning_levels_load_mixed_engines_and_render_canonically(tmp_path: Path
 )
 def test_warning_levels_reject_malformed_documents(payload: object, message: str) -> None:
     with pytest.raises(ValueError, match=message):
-        _ = warning_levels.validate(payload)
+        warning_levels.validate(payload)
 
 
 def test_warning_levels_render_rejects_duplicates() -> None:
     selector = RuleSelector(RuleEngine.TEXT, RuleId("first"))
 
     with pytest.raises(ValueError, match="duplicate selectors"):
-        _ = warning_levels.render((selector, selector))
+        warning_levels.render((selector, selector))
 
 
 def test_no_dunder_all_and_delete_statement_are_blocking() -> None:

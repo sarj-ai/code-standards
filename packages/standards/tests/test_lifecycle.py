@@ -45,7 +45,7 @@ def test_verification_uses_isolated_tool_binaries_in_each_python_project(tmp_pat
 def test_scoped_root_pyright_config_keeps_the_root_project(tmp_path: Path) -> None:
     (tmp_path / "pyproject.toml").write_text("[project]\nname='root'\nversion='0.0.0'\n", encoding="utf-8")
     (tmp_path / "pyrightconfig.json").write_text(json.dumps({"include": ["src"]}), encoding="utf-8")
-    _ = _project(tmp_path, "packages/child")
+    _project(tmp_path, "packages/child")
     ecosystems = scaffold.Ecosystems(True, False, python_root=tmp_path)
 
     commands = lifecycle.verification_commands(ecosystems)

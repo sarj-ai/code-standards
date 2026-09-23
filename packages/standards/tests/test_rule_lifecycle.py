@@ -163,7 +163,7 @@ def test_stage_warning_rolls_back_every_artifact_on_failure(
     _mock_builders(monkeypatch, fail_catalog_sync=True)
 
     with pytest.raises(RuntimeError, match="catalog generation failed"):
-        _ = rule_lifecycle.stage_warning(tmp_path, _SELECTOR)
+        rule_lifecycle.stage_warning(tmp_path, _SELECTOR)
 
     assert tuple(path.read_bytes() for path in paths) == before
 
@@ -181,7 +181,7 @@ def test_stage_warning_check_and_unknown_rule_never_write(
     assert not result.changed
     assert tuple(path.read_bytes() for path in paths) == before
     with pytest.raises(ValueError, match="unknown live rule selector"):
-        _ = rule_lifecycle.stage_warning(
+        rule_lifecycle.stage_warning(
             tmp_path,
             RuleSelector(RuleEngine.PYTHON, RuleId("missing")),
         )
@@ -192,11 +192,11 @@ def test_stage_warning_suggests_the_closest_live_selector(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _ = _files(tmp_path)
+    _files(tmp_path)
     _mock_builders(monkeypatch)
 
     with pytest.raises(ValueError, match=r"did you mean python:new-rule\?"):
-        _ = rule_lifecycle.stage_warning(
+        rule_lifecycle.stage_warning(
             tmp_path,
             RuleSelector(RuleEngine.PYTHON, RuleId("new-rul")),
         )
@@ -206,11 +206,11 @@ def test_stage_warning_points_to_rule_discovery_when_no_selector_is_close(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _ = _files(tmp_path)
+    _files(tmp_path)
     _mock_builders(monkeypatch)
 
     with pytest.raises(ValueError, match=r"maintain rules manifest"):
-        _ = rule_lifecycle.stage_warning(
+        rule_lifecycle.stage_warning(
             tmp_path,
             RuleSelector(RuleEngine.ESLINT, RuleId("unrelated-name")),
         )
@@ -228,4 +228,4 @@ def test_stage_warning_rejects_noncanonical_stored_selectors(
     )
 
     with pytest.raises(ValueError, match="lowercase kebab-case"):
-        _ = rule_lifecycle.stage_warning(tmp_path, _SELECTOR)
+        rule_lifecycle.stage_warning(tmp_path, _SELECTOR)

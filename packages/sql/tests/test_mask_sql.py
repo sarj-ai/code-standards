@@ -252,7 +252,7 @@ def test_noqa_inside_a_dollar_body_still_suppresses(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     f = tmp_path / "m.sql"
-    _ = f.write_text(
+    f.write_text(
         "DO $$\nBEGIN\n  x TIMESTAMP;\n  y TIMESTAMP; -- sarj-noqa: SARJ101\nEND $$;\n",
         encoding="utf-8",
     )

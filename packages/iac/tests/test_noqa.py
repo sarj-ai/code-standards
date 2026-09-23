@@ -39,7 +39,7 @@ def test_absent_noqa_reports(tmp_path: Path, capsys: pytest.CaptureFixture[str])
 
 def _write(tmp_path: Path, content: str) -> str:
     f = tmp_path / "main.tf"
-    _ = f.write_text(content, encoding="utf-8")
+    f.write_text(content, encoding="utf-8")
     return str(f)
 
 
