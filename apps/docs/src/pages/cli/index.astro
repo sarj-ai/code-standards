@@ -111,6 +111,20 @@ const workflow = [
     </div>
   </section>
 
+  <section class="command-block" aria-labelledby="scoped-ruff-baseline">
+    <div>
+      <h2 id="scoped-ruff-baseline">Scoped Ruff baseline updates</h2>
+      <p>
+        Use <code>baseline update --rule ruff:S607 path/to/file.py</code> to refresh one upstream Ruff
+        rule in explicit, included Python files. Repeat <code>--rule</code> for more rules or pass more
+        <code>.py</code> files. Directories and omitted paths are rejected; explicit files are checked
+        even when Ruff's <code>force-exclude</code> setting would normally omit them. The update fails
+        if Ruff does not completely analyze every selected file. Baseline records outside the selected rules
+        and files remain unchanged.
+      </p>
+    </div>
+  </section>
+
   <nav class="command-index" aria-label="CLI commands">
     {commandGroups.map((command) => <a href={`#${commandAnchor(command)}`}><code>{command.name}</code></a>)}
   </nav>

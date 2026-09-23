@@ -236,6 +236,31 @@ def test_scoped_merge_preserves_existing_tab_indentation(tmp_path: Path) -> None
     assert json.loads(merged)["diagnostics"][0]["fingerprint"] == "b" * 64
 
 
+def test_scoped_merge_with_paths_preserves_same_rule_outside_selected_file(tmp_path: Path) -> None:
+    old_selected = Diagnostic(
+        "S607", "old", Severity.ERROR, "ruff", Location("audio.py"), rule_id="S607", fingerprint="a" * 64
+    )
+    old_other = replace(old_selected, location=Location("other.py"), fingerprint="b" * 64)
+    replacement = replace(old_selected, message="new", fingerprint="c" * 64)
+    path = tmp_path / "baseline.json"
+    path.write_text(baseline.render((old_selected, old_other)), encoding="utf-8")
+
+    merged = baseline.merge_scoped(
+        path,
+        (replacement, old_other),
+        selectors=("ruff:S607",),
+        paths=frozenset({"audio.py"}),
+        bundle_version="9.0.0",
+        consumer_base_sha="d" * 40,
+        catalog_digest="e" * 64,
+    )
+
+    assert merged.count('"fingerprint":') == 2
+    assert f'"fingerprint": "{"a" * 64}"' not in merged
+    assert f'"fingerprint": "{"b" * 64}"' in merged
+    assert f'"fingerprint": "{"c" * 64}"' in merged
+
+
 def test_staged_changed_lines_cannot_consume_baseline_allowance(tmp_path: Path) -> None:
     subprocess.run(("git", "init", "-q"), cwd=tmp_path, check=True)
     subprocess.run(("git", "config", "user.name", "Standards Test"), cwd=tmp_path, check=True)
@@ -1034,6 +1059,206 @@ def test_scoped_baseline_update_runs_only_eslint_for_upstream_selector(
     )
     assert captured == []
     assert external_calls == [([str(tmp_path)], frozenset({"eslint"}), False, True, False)]
+
+
+@pytest.mark.parametrize("selector", ["ruff:S404", "ruff:S603", "ruff:S607"])
+def test_scoped_baseline_update_runs_only_ruff_and_preserves_other_paths(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    selector: str,
+) -> None:
+    rule_id = selector.partition(":")[2]
+    selected = tmp_path / "audio.py"
+    selected.write_text("print('test')\n", encoding="utf-8")
+    baseline_path = tmp_path / "diagnostic-baseline.json"
+    old_selected = Diagnostic(
+        rule_id, "old", Severity.ERROR, "ruff", Location("audio.py"), rule_id=rule_id, fingerprint="a" * 64
+    )
+    old_other = replace(old_selected, location=Location("other.py"), fingerprint="b" * 64)
+    unrelated = replace(old_selected, code="F401", rule_id="F401", fingerprint="d" * 64)
+    baseline_path.write_text(_policy_baseline((old_selected, old_other, unrelated)), encoding="utf-8")
+    (tmp_path / MANIFEST_NAME).write_text(_manifest(baseline_path.name).render(), encoding="utf-8")
+    replacement = replace(old_selected, message="current", fingerprint="c" * 64)
+
+    def unexpected_native(_self: api.Standards, _paths: object = None, **_kwargs: object) -> AnalysisReport:
+        pytest.fail("upstream Ruff selector must not run all analyzers")
+
+    monkeypatch.setattr(api.Standards, "analyze", unexpected_native)  # sarj-noqa: SARJ445 -- verifies upstream routing
+    captured: list[object] = []
+
+    def analyze_ruff(files: object, **kwargs: object) -> tuple[ToolReport, ...]:
+        captured.append((files, kwargs.get("capabilities"), kwargs.get("force_explicit_ruff_files")))
+        return (ToolReport("ruff", Completion.COMPLETE, (replacement,), file_count=1),)
+
+    monkeypatch.setattr(external, "analyze_external", analyze_ruff)  # sarj-noqa: SARJ445 -- intercepts analyzer routing
+
+    assert (
+        cli_main(
+            [
+                "--root",
+                str(tmp_path),
+                "baseline",
+                "update",
+                "--output",
+                str(baseline_path),
+                "--rule",
+                selector,
+                "audio.py",
+            ]
+        )
+        == 0
+    )
+    assert captured == [([str(selected)], frozenset({"ruff"}), True)]
+    assert baseline.load(baseline_path) == {"b" * 64: 1, "c" * 64: 1, "d" * 64: 1}
+
+
+def test_upstream_ruff_baseline_update_requires_explicit_paths(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    baseline_path = tmp_path / "diagnostic-baseline.json"
+    original = _policy_baseline(())
+    baseline_path.write_text(original, encoding="utf-8")
+
+    def unexpected_external(_files: object, **_kwargs: object) -> tuple[ToolReport, ...]:
+        pytest.fail("upstream Ruff must not run before scope validation")
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- validates fail-closed scope
+        external, "analyze_external", unexpected_external
+    )
+    assert (
+        cli_main(["--root", str(tmp_path), "baseline", "update", "--output", str(baseline_path), "--rule", "ruff:S607"])
+        == 2
+    )
+    assert "require explicit Python files" in capsys.readouterr().err
+    assert baseline_path.read_text(encoding="utf-8") == original
+
+
+@pytest.mark.parametrize("selected_path", ["excluded.py", "unrouted.txt", "."])
+def test_upstream_ruff_baseline_rejects_excluded_or_unroutable_paths(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    selected_path: str,
+) -> None:
+    baseline_path = tmp_path / "diagnostic-baseline.json"
+    original = _policy_baseline(
+        (
+            Diagnostic(
+                "S607", "old", Severity.ERROR, "ruff", Location("excluded.py"), rule_id="S607", fingerprint="a" * 64
+            ),
+        )
+    )
+    baseline_path.write_text(original, encoding="utf-8")
+    (tmp_path / "excluded.py").write_text("print('excluded')\n", encoding="utf-8")
+    (tmp_path / "unrouted.txt").write_text("not Python\n", encoding="utf-8")
+    adopted = replace(_manifest(baseline_path.name), excluded_paths=("excluded.py",))
+    (tmp_path / MANIFEST_NAME).write_text(adopted.render(), encoding="utf-8")
+
+    def unexpected_external(_files: object, **_kwargs: object) -> tuple[ToolReport, ...]:
+        pytest.fail("invalid Ruff path must be rejected before analysis")
+
+    monkeypatch.setattr(external, "analyze_external", unexpected_external)  # sarj-noqa: SARJ445 -- validates scope
+    assert (
+        cli_main(
+            [
+                "--root",
+                str(tmp_path),
+                "baseline",
+                "update",
+                "--output",
+                str(baseline_path),
+                "--rule",
+                "ruff:S607",
+                selected_path,
+            ]
+        )
+        == 2
+    )
+    assert baseline_path.read_text(encoding="utf-8") == original
+
+
+@pytest.mark.parametrize(
+    "tools",
+    [
+        pytest.param((), id="no-report"),
+        pytest.param((ToolReport("ruff", Completion.COMPLETE, file_count=0),), id="zero-files"),
+    ],
+)
+def test_upstream_ruff_baseline_rejects_incomplete_tool_coverage(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    tools: tuple[ToolReport, ...],
+) -> None:
+    baseline_path = tmp_path / "diagnostic-baseline.json"
+    original = _policy_baseline(
+        (Diagnostic("S607", "old", Severity.ERROR, "ruff", Location("audio.py"), rule_id="S607", fingerprint="a" * 64),)
+    )
+    baseline_path.write_text(original, encoding="utf-8")
+    (tmp_path / "audio.py").write_text("print('audio')\n", encoding="utf-8")
+
+    def analyze_incompletely(_files: object, **_kwargs: object) -> tuple[ToolReport, ...]:
+        return tools
+
+    monkeypatch.setattr(external, "analyze_external", analyze_incompletely)  # sarj-noqa: SARJ445 -- tests coverage
+    assert (
+        cli_main(
+            [
+                "--root",
+                str(tmp_path),
+                "baseline",
+                "update",
+                "--output",
+                str(baseline_path),
+                "--rule",
+                "ruff:S607",
+                "audio.py",
+            ]
+        )
+        == 2
+    )
+    assert "coverage-missing" in capsys.readouterr().err
+    assert baseline_path.read_text(encoding="utf-8") == original
+
+
+def test_upstream_ruff_baseline_checks_explicit_file_even_with_force_exclude(tmp_path: Path) -> None:
+    (tmp_path / "pyproject.toml").write_text(
+        '[tool.ruff]\nforce-exclude = true\nextend-exclude = ["audio.py"]\n[tool.ruff.lint]\npreview = true\nselect = ["S"]\n',
+        encoding="utf-8",
+    )
+    (tmp_path / "audio.py").write_text("import subprocess\n", encoding="utf-8")
+    baseline_path = tmp_path / "diagnostic-baseline.json"
+    baseline_path.write_text(
+        _policy_baseline(
+            (
+                Diagnostic(
+                    "S404", "old", Severity.ERROR, "ruff", Location("audio.py"), rule_id="S404", fingerprint="a" * 64
+                ),
+            )
+        ),
+        encoding="utf-8",
+    )
+    (tmp_path / MANIFEST_NAME).write_text(_manifest(baseline_path.name).render(), encoding="utf-8")
+
+    excluded = subprocess.run(
+        ("ruff", "check", "--output-format", "json", "--config", str(tmp_path / "pyproject.toml"), "--", "audio.py"),
+        cwd=tmp_path,
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+    assert excluded.returncode == 0
+    assert json.loads(excluded.stdout) == []
+
+    assert cli_main(["--root", str(tmp_path), "baseline", "update", "--rule", "ruff:S404", "audio.py"]) == 0
+    recorded = baseline.load(baseline_path)
+    assert len(recorded) == 1
+    assert "a" * 64 not in recorded
+    rendered = baseline_path.read_text(encoding="utf-8")
+    assert '"source": "ruff"' in rendered
+    assert '"ruleId": "S404"' in rendered
+    assert '"path": "audio.py"' in rendered
 
 
 def test_baseline_rejects_a_path_outside_the_repository(tmp_path: Path) -> None:

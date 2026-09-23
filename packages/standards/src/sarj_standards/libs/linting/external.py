@@ -301,6 +301,7 @@ def analyze_external(
     force_react_doctor: bool = False,
     react_doctor_full_scan: bool = False,
     pass_on_unpruned_eslint_suppressions: bool = False,
+    force_explicit_ruff_files: bool = False,
 ) -> tuple[ToolReport, ...]:
     execute = run_process if runner is None else runner
     try:
@@ -334,6 +335,7 @@ def analyze_external(
                         routed.python,
                         root=root,
                         runner=execute,
+                        force_explicit_files=force_explicit_ruff_files,
                     )
                 )
             if capabilities is not None and "deptry" in capabilities:
@@ -1598,6 +1600,7 @@ def _invoke_ruff_projects(
     *,
     root: Path,
     runner: ProcessRunner,
+    force_explicit_files: bool = False,
 ) -> tuple[ToolReport, ...]:
     reports: list[ToolReport] = []
     for project, config, scoped_files in _group_ruff_projects(files, root):
@@ -1605,7 +1608,7 @@ def _invoke_ruff_projects(
         reports.append(
             _invoke(
                 "ruff",
-                _ruff_argv(scoped_files, config=config),
+                _ruff_argv(scoped_files, config=config, force_explicit_files=force_explicit_files),
                 cwd=project,
                 root=root,
                 runner=runner,
@@ -2680,9 +2683,12 @@ def _react_doctor_location(
     return Location(relative_path, position=start)
 
 
-def _ruff_argv(files: Sequence[str], *, config: Path | None = None) -> tuple[str, ...]:
+def _ruff_argv(
+    files: Sequence[str], *, config: Path | None = None, force_explicit_files: bool = False
+) -> tuple[str, ...]:
     config_args = () if config is None else ("--config", str(config))
-    return ("ruff", "check", "--output-format", "json", *config_args, "--", *files)
+    explicit_args = ("--no-force-exclude",) if force_explicit_files else ()
+    return ("ruff", "check", "--output-format", "json", *config_args, *explicit_args, "--", *files)
 
 
 def _deptry_argv(project: Path, scoped_files: Sequence[str]) -> tuple[str, ...]:

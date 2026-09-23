@@ -215,6 +215,7 @@ def merge_scoped(
     diagnostics: Iterable[Diagnostic],
     *,
     selectors: Iterable[str],
+    paths: frozenset[str] | None = None,
     bundle_version: str,
     consumer_base_sha: str,
     catalog_digest: str,
@@ -233,9 +234,16 @@ def merge_scoped(
     preserved = [
         entry
         for value in current
-        if not _entry_selected(entry := _string_object_dict(value, label="diagnostic baseline entry"), selected)
+        if not (
+            _entry_selected(entry := _string_object_dict(value, label="diagnostic baseline entry"), selected)
+            and _entry_in_paths(entry, paths)
+        )
     ]
-    replacement = [entry for entry in _diagnostic_entries(diagnostics) if _entry_selected(entry, selected)]
+    replacement = [
+        entry
+        for entry in _diagnostic_entries(diagnostics)
+        if _entry_selected(entry, selected) and _entry_in_paths(entry, paths)
+    ]
     combined = sorted((*preserved, *replacement), key=itemgetter("source", "ruleId", "path", "fingerprint"))
     payload: dict[str, object] = {
         "schemaVersion": SCHEMA_VERSION,
@@ -327,6 +335,13 @@ def _entry_selected(entry: dict[str, object], selectors: frozenset[str]) -> bool
         and isinstance(rule_id, str)
         and (rule_id in selectors or f"{source}:*" in selectors or f"{source}:{rule_id}" in selectors)
     )
+
+
+def _entry_in_paths(entry: dict[str, object], paths: frozenset[str] | None) -> bool:
+    if paths is None or "." in paths:
+        return True
+    path = entry.get("path")
+    return isinstance(path, str) and any(path == selected or path.startswith(f"{selected}/") for selected in paths)
 
 
 def _validate_provenance(value: object) -> dict[str, str]:

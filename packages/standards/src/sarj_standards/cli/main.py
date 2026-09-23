@@ -2205,6 +2205,7 @@ def cmd_baseline(args: _Args) -> int:
             root,
             args.files,
             scoped=args.baseline_cmd == "update" and bool(args.baseline_rules),
+            selectors=args.baseline_rules,
         )
     except ValueError as exc:
         print(f"error: {exc}", file=sys.stderr)
@@ -2229,6 +2230,7 @@ def cmd_baseline(args: _Args) -> int:
             output,
             eligible,
             selectors=_baseline_merge_selectors(args.baseline_rules),
+            paths=_baseline_explicit_paths(root, selected, args.files),
             **provenance,
         )
     else:
@@ -2291,6 +2293,8 @@ def _baseline_analysis_reports(args: _Args, root: Path, selected: list[str] | No
             ),
         )
         reports.append(external)
+    if _upstream_ruff_rules_for_baseline(args.baseline_rules):
+        reports.append(_upstream_ruff_baseline_report(root, selected, trust))
     if _react_doctor_rules_for_baseline(args.baseline_rules):
         reports.append(_react_doctor_baseline_report(root, selected, trust, _baseline_corpus_policy(root)))
     if _shellcheck_rules_for_baseline(args.baseline_rules):
@@ -2317,14 +2321,68 @@ def _baseline_analysis_reports(args: _Args, root: Path, selected: list[str] | No
     return reports
 
 
-def _baseline_selected_paths(root: Path, files: Sequence[str], *, scoped: bool) -> list[str] | None:
+def _upstream_ruff_baseline_report(root: Path, selected: list[str] | None, trust: str) -> AnalysisReport:
+    from sarj_standards.libs.diagnostics import (  # ruff: ignore[import-outside-top-level]
+        Completion,
+        ExecutionIssue,
+        ToolReport,
+    )
+    from sarj_standards.libs.linting.analysis import (  # ruff: ignore[import-outside-top-level]
+        report_from_tools,
+    )
+    from sarj_standards.libs.linting.external import (  # ruff: ignore[import-outside-top-level]
+        analyze_external,
+    )
+
+    files = selected or []
+    tools = analyze_external(
+        files,
+        root=root,
+        trust=trust,
+        policy=_baseline_corpus_policy(root),
+        capabilities=frozenset({"ruff"}),
+        force_explicit_ruff_files=True,
+    )
+    if (
+        not tools
+        or any(tool.name != "ruff" or tool.completion is not Completion.COMPLETE for tool in tools)
+        or sum(tool.file_count or 0 for tool in tools) != len(files)
+    ):
+        issue = ExecutionIssue("ruff", "coverage-missing", "Ruff did not completely analyze every selected Python file")
+        return report_from_tools(root, (ToolReport("ruff", Completion.FAILED, issues=(issue,)),))
+    return report_from_tools(root, tools)
+
+
+def _baseline_selected_paths(
+    root: Path, files: Sequence[str], *, scoped: bool, selectors: Sequence[str]
+) -> list[str] | None:
     from sarj_standards.libs.diagnostics import baseline  # ruff: ignore[import-outside-top-level]
 
+    if scoped and _upstream_ruff_rules_for_baseline(selectors) and not files:
+        msg = "upstream Ruff baseline updates require explicit Python files"
+        raise ValueError(msg)
     selected = _selected_paths(root, files) if files else None
+    if scoped and _upstream_ruff_rules_for_baseline(selectors):
+        _validate_upstream_ruff_paths(root, selected or [])
     if selected is not None or not scoped or (adopted := manifest.load(root)) is None:
         return selected
     verified = (str(root / path) for path in adopted.verify_paths)
     return list(dict.fromkeys((*verified, *baseline.tracked_terraform_test_paths(root))))
+
+
+def _validate_upstream_ruff_paths(root: Path, selected: list[str]) -> None:
+    policy = _baseline_corpus_policy(root)
+    for path in selected:
+        candidate = Path(path)
+        if candidate.suffix != ".py" or not candidate.is_file() or not policy.allows_path(candidate):
+            msg = f"upstream Ruff baseline path must be an included Python file: {candidate.relative_to(root)}"
+            raise ValueError(msg)
+
+
+def _baseline_explicit_paths(root: Path, selected: list[str] | None, files: Sequence[str]) -> frozenset[str] | None:
+    if not files:
+        return None
+    return frozenset(Path(path).relative_to(root).as_posix() for path in selected or ())
 
 
 def _baseline_corpus_policy(root: Path) -> Policy:
@@ -2379,6 +2437,8 @@ def _analysis_rules_for_baseline(selectors: Sequence[str]) -> list[str] | None:
     normalized: list[str] = []
     for selector in selectors:
         source, separator, rule_id = selector.partition(":")
+        if _is_upstream_ruff_selector(selector):
+            continue
         if _is_react_doctor_selector(source=source, rule_id=rule_id, separator=bool(separator)):
             continue
         if selector == "shellcheck:*" or re.fullmatch(r"shellcheck:SC[0-9]{4}", selector) is not None:
@@ -2404,6 +2464,14 @@ def _upstream_eslint_rules_for_baseline(selectors: Sequence[str]) -> frozenset[s
         and selector not in _baseline_catalog_selectors()
         and not _is_react_doctor_rule_id(selector.removeprefix("eslint:"))
     )
+
+
+def _upstream_ruff_rules_for_baseline(selectors: Sequence[str]) -> frozenset[str]:
+    return frozenset(selector for selector in selectors if _is_upstream_ruff_selector(selector))
+
+
+def _is_upstream_ruff_selector(selector: str) -> bool:
+    return selector.startswith("ruff:") and re.fullmatch(r"[A-Z]+[0-9]+", selector[5:]) is not None
 
 
 def _react_doctor_rules_for_baseline(selectors: Sequence[str]) -> frozenset[str]:
