@@ -220,8 +220,8 @@ def test_proven_concrete_service_substitution_needs_port(
         "    async def update_record(self) -> None: ...\n"
         "    async def attach_call_to_record(self) -> None: ...\n"
     )
-    consumer.write_text("from dataclasses import dataclass\nfrom app.crm import ZohoCRMService\n" + consumer_body)
-    substitute.write_text("from app.crm import ZohoCRMService\n" + substitute_body)
+    consumer.write_text(f"from dataclasses import dataclass\nfrom app.crm import ZohoCRMService\n{consumer_body}")
+    substitute.write_text(f"from app.crm import ZohoCRMService\n{substitute_body}")
     loaded = {path: path.read_text() for path in (definition, consumer, substitute)}
     rule = RequirePortForService()
     rule.prepare(ProjectIndexSet.build(list(loaded), loaded))

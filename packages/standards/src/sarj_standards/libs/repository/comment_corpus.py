@@ -501,10 +501,9 @@ def _markdown_comments(source: str) -> list[_CommentUnit]:  # ruff: ignore[too-m
         if stripped.startswith("[//]:"):
             found.append(_CommentUnit(line_number, "comment", stripped.removeprefix("[//]:").strip()))
             continue
-        before, opener, rest = raw.partition("<!--")
+        _before, opener, rest = raw.partition("<!--")
         if not opener:
             continue
-        _ = before
         body, closer, _after = rest.partition("-->")
         if closer:
             found.append(_CommentUnit(line_number, "comment", body.strip()))

@@ -2524,7 +2524,10 @@ def test_a_typescript_only_precommit_hook_does_not_invoke_uv_run(tmp_path: Path)
 
 @pytest.mark.parametrize("ecosystem", ["python", "typescript"])
 def test_show_ci_renders_a_complete_versioned_workflow(tmp_path: Path, ecosystem: str) -> None:
-    _ = _python_repo(tmp_path) if ecosystem == "python" else _typescript_repo(tmp_path)
+    if ecosystem == "python":
+        _python_repo(tmp_path)
+    else:
+        _typescript_repo(tmp_path)
     assert _cli("--root", str(tmp_path), "setup", "--no-install").returncode == 0
 
     rendered = _cli("--root", str(tmp_path), "show", "ci")

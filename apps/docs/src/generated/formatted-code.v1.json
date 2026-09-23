@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "2e67ded30d812e4fc533c78fb376ba0d18ca378974809fd3cc55d3f0ca4dda26",
-  "cliSha256": "27a1529bf24265d4ac4fc5746350ca23c28cbe6ab4af8c939f63f07701f26b53",
+  "catalogSha256": "8aab6b69edb297aec5897036525b119a5fb19a0091b8fe4b2ff236f8711b8e28",
+  "cliSha256": "98d5a9e09a3cd204f2cbf64a134ff332c205c5ed7d55eac0a29f1f6529bd3c48",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -7072,6 +7072,21 @@
           "title": "Invoke a call directly when its result is intentionally unused"
         },
         {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/adapter.py",
+              "source": "value = 1\n_ = value\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/adapter.py",
+          "id": "discarded-nonparameter-value",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A standalone discard binding is unnecessary"
+        },
+        {
           "expectedCount": 0,
           "files": [
             {
@@ -7085,21 +7100,6 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Keep a conventional placeholder inside unpacking"
-        },
-        {
-          "expectedCount": 1,
-          "files": [
-            {
-              "path": "app/adapter.py",
-              "source": "def render(root: Path, manifest: Path) -> str:\n    _ = root, manifest\n    return \"ready\"\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "app/adapter.py",
-          "id": "unused-parameter-marker",
-          "outcome": "reject",
-          "scenarioId": "primary",
-          "title": "Do not manufacture a use for interface parameters"
         }
       ],
       "optionsSchemaSource": null

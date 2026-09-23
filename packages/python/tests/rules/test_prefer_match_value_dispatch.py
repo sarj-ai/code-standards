@@ -268,7 +268,7 @@ def test_membership_and_pattern_matching_are_not_safe_automatic_rewrites() -> No
 
     value = make_value()
     with pytest.raises(TypeError):
-        _ = value in {".yaml", ".yml"}
+        assert value in {".yaml", ".yml"}
     match value:
         case ".yaml" | ".yml":
             matched = True
