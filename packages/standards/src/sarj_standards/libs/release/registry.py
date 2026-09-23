@@ -227,7 +227,7 @@ def wait_for_lint_config_dependencies(
         if not missing:
             return requirements
         if attempt + 1 < attempts:
-            _ = sleeper(delay_seconds)
+            sleeper(delay_seconds)
     rendered = ", ".join(
         f"{requirement.name}@{requirement.version}"
         + (f" ({last_errors[requirement]})" if requirement in last_errors else "")
@@ -264,7 +264,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 def _validate_delay_seconds(value: float) -> float:
     try:
-        _ = timedelta(seconds=value)
+        timedelta(seconds=value)
     except (OverflowError, ValueError) as exc:
         msg = "must be a finite, representable duration"
         raise typer.BadParameter(msg) from exc

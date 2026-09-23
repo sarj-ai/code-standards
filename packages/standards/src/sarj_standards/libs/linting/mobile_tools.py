@@ -246,7 +246,7 @@ def _download(artifact: _Artifact, destination: Path) -> None:
                     msg = f"{artifact.name} artifact exceeds {_MAX_ARTIFACT_BYTES} bytes"
                     raise OSError(msg)  # ruff: ignore[raise-within-try] -- cleanup is required before propagation.
                 digest.update(chunk)
-                _ = stream.write(chunk)
+                stream.write(chunk)
             stream.flush()
             os.fsync(stream.fileno())
         except BaseException:
@@ -263,7 +263,7 @@ def _atomic_write(destination: Path, payload: bytes) -> None:
     with tempfile.NamedTemporaryFile(dir=destination.parent, prefix=f".{destination.name}-", delete=False) as stream:
         temporary = Path(stream.name)
         try:
-            _ = stream.write(payload)
+            stream.write(payload)
             stream.flush()
             os.fsync(stream.fileno())
         except BaseException:

@@ -168,7 +168,7 @@ def write_records(roots: Sequence[Path], destination: Path) -> int:
     records_owned = False
     try:
         _require_safe_output_parent(os.fstat(parent_descriptor))
-        _ = os.mkdir(staging, 0o700, dir_fd=parent_descriptor)
+        os.mkdir(staging, 0o700, dir_fd=parent_descriptor)
         staging_status = os.stat(staging, dir_fd=parent_descriptor, follow_symlinks=False)
         staging_descriptor = os.open(staging, _DIRECTORY_FLAGS, dir_fd=parent_descriptor)
         if not _same_inode(staging_status, os.fstat(staging_descriptor)):

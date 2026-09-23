@@ -1,9 +1,9 @@
 {
   "schemaVersion": 2,
   "provenance": {
-    "bundleVersion": "7.31.1",
-    "consumerBaseSha": "cfba4079e0a4f0cebe278d81abb658ae07700cdf",
-    "catalogDigest": "c8f8294433480c3968888c085a9c15bfe49e6574543cc50782a54b36addebae1"
+    "bundleVersion": "7.31.2",
+    "consumerBaseSha": "ab834d34e42b161c171fd312c1b9beeae997f267",
+    "catalogDigest": "1ae4d847629e1e198652c2c2d904b92abaacd48c7ff74add9f869d58bbec19bf"
   },
   "diagnostics": [
     {
@@ -196,20 +196,6 @@
       "count": 1
     },
     {
-      "fingerprint": "ccc9569eefa6c4118a8f5c66a4fb4ca462274070d3f3a3d3c498dc63f9243a77",
-      "source": "sarj-python-lint",
-      "ruleId": "no-unused-value-marker",
-      "path": "packages/standards/src/sarj_standards/cli/main.py",
-      "count": 4
-    },
-    {
-      "fingerprint": "ad902950d54203ae02a8b59f0c433bc026f0d6dc5adc07e5ff10826b7d08e1cc",
-      "source": "sarj-python-lint",
-      "ruleId": "no-unused-value-marker",
-      "path": "packages/standards/src/sarj_standards/libs/adoption/exclusions.py",
-      "count": 1
-    },
-    {
       "fingerprint": "e5f2fa85d25eead9538af36f64ff6926921a380b1e83294324cd30173ad60593",
       "source": "sarj-python-lint",
       "ruleId": "no-unused-value-marker",
@@ -221,20 +207,6 @@
       "source": "sarj-python-lint",
       "ruleId": "no-unused-value-marker",
       "path": "packages/standards/src/sarj_standards/libs/adoption/manifest.py",
-      "count": 2
-    },
-    {
-      "fingerprint": "fa0d14d55c6ea89b3d64acf82aba99c6ca24d686eb720afd497589b580e8365a",
-      "source": "sarj-python-lint",
-      "ruleId": "no-unused-value-marker",
-      "path": "packages/standards/src/sarj_standards/libs/adoption/transaction.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "ee6445cc46f1b3b264f59e57801778a899ee63000b17654da3ef8d658faff708",
-      "source": "sarj-python-lint",
-      "ruleId": "no-unused-value-marker",
-      "path": "packages/standards/src/sarj_standards/libs/adoption/uvtool.py",
       "count": 1
     },
     {
@@ -242,55 +214,6 @@
       "source": "sarj-python-lint",
       "ruleId": "no-unused-value-marker",
       "path": "packages/standards/src/sarj_standards/libs/diagnostics/baseline.py",
-      "count": 6
-    },
-    {
-      "fingerprint": "c2f1ba5779af115f8b92efd0a06283eaaf44b122d64011a75906a0ebd708d2ab",
-      "source": "sarj-python-lint",
-      "ruleId": "no-unused-value-marker",
-      "path": "packages/standards/src/sarj_standards/libs/linting/external.py",
-      "count": 2
-    },
-    {
-      "fingerprint": "0c2ee6d75838708009b41c2b58f558acb3e3520a54e8142c6df027646689069c",
-      "source": "sarj-python-lint",
-      "ruleId": "no-unused-value-marker",
-      "path": "packages/standards/src/sarj_standards/libs/linting/mobile_tools.py",
-      "count": 2
-    },
-    {
-      "fingerprint": "b81597bfe6496ec11d1fbec720e799c369185dab8c92eed66579a5547b3b4a5c",
-      "source": "sarj-python-lint",
-      "ruleId": "no-unused-value-marker",
-      "path": "packages/standards/src/sarj_standards/libs/linting/textlint.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "e58a32155856276cb26eaf67f7cb02b1e630599c7e336d1888ee81be41f46130",
-      "source": "sarj-python-lint",
-      "ruleId": "no-unused-value-marker",
-      "path": "packages/standards/src/sarj_standards/libs/release/changes.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "0250df206741d44009405b9f0522140d9c3f6df0de862eec76663431eba4e0e6",
-      "source": "sarj-python-lint",
-      "ruleId": "no-unused-value-marker",
-      "path": "packages/standards/src/sarj_standards/libs/release/publish.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "8564f7459d1dab99e63285a181d0db31d11a4267c13c43684451325c491b17e2",
-      "source": "sarj-python-lint",
-      "ruleId": "no-unused-value-marker",
-      "path": "packages/standards/src/sarj_standards/libs/release/registry.py",
-      "count": 2
-    },
-    {
-      "fingerprint": "9b1404701c046c3b39344281aec6054a667ce7549a3f29a22d69ade0f38e3f70",
-      "source": "sarj-python-lint",
-      "ruleId": "no-unused-value-marker",
-      "path": "packages/standards/src/sarj_standards/libs/release/tags.py",
       "count": 1
     },
     {
@@ -298,28 +221,7 @@
       "source": "sarj-python-lint",
       "ruleId": "no-unused-value-marker",
       "path": "packages/standards/src/sarj_standards/libs/repository/comment_corpus.py",
-      "count": 2
-    },
-    {
-      "fingerprint": "b286a14703243c86a8215b7b770fecfd8db56482366faf087dbcfe28e137fa41",
-      "source": "sarj-python-lint",
-      "ruleId": "no-unused-value-marker",
-      "path": "packages/standards/src/sarj_standards/libs/repository/config_generation.py",
-      "count": 2
-    },
-    {
-      "fingerprint": "9ff0c78479b1a9b7bff5105b05a488a1a5f285ec76670a1df9f40874ff86faf6",
-      "source": "sarj-python-lint",
-      "ruleId": "no-unused-value-marker",
-      "path": "packages/standards/src/sarj_standards/libs/repository/rule_authoring.py",
       "count": 1
-    },
-    {
-      "fingerprint": "9caede2c087b30064553860a06e4d9fa29c7fbd79b635a28f5999bd498f14fd1",
-      "source": "sarj-python-lint",
-      "ruleId": "no-unused-value-marker",
-      "path": "packages/standards/src/sarj_standards/libs/rules/corpus_runner.py",
-      "count": 2
     },
     {
       "fingerprint": "70e1af2c8805fcee954e790e95d3e8171e7bc4a825cbc4799bc430146fc6c514",

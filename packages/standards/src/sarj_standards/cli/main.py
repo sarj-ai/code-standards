@@ -602,7 +602,7 @@ def _prepare_update_manifest(root: Path, *, check: bool) -> bool | None:
 
     migrated_legacy = False
     try:
-        _ = manifest.load(root)
+        manifest.load(root)
     except (OSError, TypeError, ValueError) as exc:
         migration_error: OSError | TypeError | ValueError | None = None
         try:
@@ -625,7 +625,7 @@ def _prepare_update_manifest(root: Path, *, check: bool) -> bool | None:
             # legacy-manifest repair must only establish the current manifest
             # and wiring first, otherwise its installer runs before the
             # upgrade plan can refresh package-manager age-gate exemptions.
-            _ = _repair_legacy_manifest(root, install=False)
+            _repair_legacy_manifest(root, install=False)
             migrated_legacy = True
         except (OSError, TypeError, ValueError) as migration_error:
             print(f"error: cannot migrate legacy adoption before update: {migration_error}", file=sys.stderr)
@@ -1832,7 +1832,7 @@ def _write_report(root: Path, output: Path, payload: str, *, output_format: str)
     temporary = Path(temporary_name)
     try:
         with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
-            _ = handle.write(payload)
+            handle.write(payload)
             handle.flush()
             os.fsync(handle.fileno())
         temporary.replace(destination)
@@ -4135,7 +4135,7 @@ def _run_repo_release_changes(args: _Args, root: Path, github_output: Path) -> i
     changed = release.pending_release_targets(root, before=args.before, after=args.after)
     with github_output.open("a", encoding="utf-8") as output:
         for target, value in changed.items():
-            _ = output.write(f"{target}={'true' if value else 'false'}\n")
+            output.write(f"{target}={'true' if value else 'false'}\n")
     return 0
 
 

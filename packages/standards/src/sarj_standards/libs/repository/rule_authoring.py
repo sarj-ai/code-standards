@@ -116,7 +116,7 @@ def apply(plan: AuthoringPlan, root: Path) -> None:
             transaction.atomic_write_text(root, path, contents)
             mutation.mark_written(path)
     except BaseException:
-        _ = mutation.rollback()
+        mutation.rollback()
         raise
 
 

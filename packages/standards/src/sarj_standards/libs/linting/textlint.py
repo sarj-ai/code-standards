@@ -1770,7 +1770,7 @@ def _matches_prefix(arguments: Sequence[str], patterns: frozenset[tuple[str, ...
 def run(paths: Sequence[str]) -> int:
     findings = check_paths(paths)
     for finding in findings:
-        _ = sys.stdout.write(f"{finding.render()}\n")
+        sys.stdout.write(f"{finding.render()}\n")
     return 1 if any(_META_BY_CODE[finding.code].blocking for finding in findings) else 0
 
 

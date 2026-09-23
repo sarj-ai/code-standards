@@ -1987,7 +1987,7 @@ def _run_process(
         if process.poll() is None:
             _terminate_process(process)
         try:
-            _ = process.wait(timeout=5)
+            process.wait(timeout=5)
         except OSError, subprocess.SubprocessError:
             process.kill()
         for thread in threads:
@@ -2038,7 +2038,7 @@ def _wait_for_process(
     while process.poll() is None and not exceeded.is_set():
         if time.monotonic() >= deadline:
             _terminate_process(process)
-            _ = process.wait(timeout=5)
+            process.wait(timeout=5)
             _join_capture_threads(threads)
             raise subprocess.TimeoutExpired(argv, timeout_seconds)
         time.sleep(0.01)

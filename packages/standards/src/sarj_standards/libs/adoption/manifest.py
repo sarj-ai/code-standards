@@ -422,7 +422,7 @@ def _load_schema_less_manifest(  # ruff: ignore[too-many-locals] -- validate the
         return None
     gradual_table = table_field(data, "gradual")
     if "python_baseline" in gradual_table:
-        _ = _relative_file(root, gradual_table, "python_baseline")
+        _relative_file(root, gradual_table, "python_baseline")
         msg = (
             "cannot losslessly migrate legacy [gradual].python_baseline to the fingerprint-based "
             "[baseline].diagnostics format; preserve the legacy manifest and replace or retire its baseline "

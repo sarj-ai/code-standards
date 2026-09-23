@@ -32,7 +32,7 @@ def publish_target(root: Path, target: PublishTarget, *, runner: ProcessRunner =
     resolved = root.resolve()
     build_runner = run_build_process if runner is run_process else runner
     if target == "typescript":
-        _ = run_typescript_release("publish", resolved / "packages" / "typescript", runner=runner)
+        run_typescript_release("publish", resolved / "packages" / "typescript", runner=runner)
         return
     if target == "tsconfig":
         cwd = resolved / "packages" / target
