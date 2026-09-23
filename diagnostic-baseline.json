@@ -180,20 +180,6 @@
       "ruleId": "no-positional-tuple-record",
       "path": "packages/standards/src/sarj_standards/libs/repository/rule_catalog_artifact.py",
       "count": 1
-    },
-    {
-      "fingerprint": "092cb508bc88f5059b84379add9ecb13c8ac13b31211100014859399ed6f20d8",
-      "source": "sarj-python-lint",
-      "ruleId": "prefer-nominal-id-types",
-      "path": "packages/standards/src/sarj_standards/libs/catalogs/slack_automations.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "62e1ae503f508c2c70e28ec49902e3e9d58f006a5c61883a1f626de3ba3a21eb",
-      "source": "sarj-python-lint",
-      "ruleId": "prefer-nominal-id-types",
-      "path": "packages/standards/src/sarj_standards/libs/repository/third_party_catalog_artifact.py",
-      "count": 1
     }
   ]
 }

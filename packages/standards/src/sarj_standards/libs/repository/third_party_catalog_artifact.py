@@ -56,6 +56,7 @@ type ProviderEngine = Literal[
 type ProjectionScope = Literal["complete", "config-explicit", "provider-only"]
 RuleId = NewType("RuleId", str)
 DisplayRuleId = NewType("DisplayRuleId", str)
+ContextId = NewType("ContextId", str)
 
 
 class _FrozenModel(BaseModel):
@@ -68,7 +69,7 @@ class _FrozenModel(BaseModel):
 
 
 class _Context(_FrozenModel):
-    id: str
+    id: ContextId
     label: str
     level: Literal["error", "warning"]
 
@@ -308,7 +309,9 @@ def _deptry_projection(root: Path, executable: str) -> _RuffProjection:
         "DEP003": "Imported module is available only through a transitive dependency.",
     }
     contexts = tuple(
-        _Context(id=id_, label=label, level="warning") for id_, label, _path in _RUFF_CONTEXTS if id_ != "test-python"
+        _Context(id=ContextId(id_), label=label, level="warning")
+        for id_, label, _path in _RUFF_CONTEXTS
+        if id_ != "test-python"
     )
     profiles = tuple(_Profile(name=name, contexts=contexts) for name in ("application", "standard"))
     rules = tuple(
@@ -385,22 +388,37 @@ def _mobile_projections(root: Path) -> _MobileProjection:
     detekt_ids = _enabled_detekt_rules(config_root / "detekt.strict.yml")
     rules = (
         *(
-            _mobile_rule(provider="swiftlint", rule_id=rule_id, context_label="Swift source", context_id="swift-source")
+            _mobile_rule(
+                provider="swiftlint",
+                rule_id=RuleId(rule_id),
+                context_label="Swift source",
+                context_id=ContextId("swift-source"),
+            )
             for rule_id in swiftlint_ids
         ),
         *(
-            _mobile_rule(provider="ktlint", rule_id=rule_id, context_label="Kotlin source", context_id="kotlin-source")
+            _mobile_rule(
+                provider="ktlint",
+                rule_id=RuleId(rule_id),
+                context_label="Kotlin source",
+                context_id=ContextId("kotlin-source"),
+            )
             for rule_id in ktlint_ids
         ),
         *(
-            _mobile_rule(provider="detekt", rule_id=rule_id, context_label="Kotlin source", context_id="kotlin-source")
+            _mobile_rule(
+                provider="detekt",
+                rule_id=RuleId(rule_id),
+                context_label="Kotlin source",
+                context_id=ContextId("kotlin-source"),
+            )
             for rule_id in detekt_ids
         ),
     )
     return _MobileProjection(providers, tuple(rules))
 
 
-def _mobile_rule(*, provider: str, rule_id: str, context_label: str, context_id: str) -> _Rule:
+def _mobile_rule(*, provider: str, rule_id: RuleId, context_label: str, context_id: ContextId) -> _Rule:
     match provider:
         case "detekt":
             family, name = rule_id.split(":", maxsplit=1)
@@ -413,7 +431,7 @@ def _mobile_rule(*, provider: str, rule_id: str, context_label: str, context_id:
     return _Rule(
         key=f"{provider}:{rule_id}",
         provider=provider,
-        id=RuleId(rule_id),
+        id=rule_id,
         display_id=DisplayRuleId(rule_id),
         summary="Explicitly enabled by the canonical strict mobile configuration.",
         docs_url=docs_url,
@@ -545,7 +563,7 @@ def _resolved_ruff_contexts(root: Path, ruff: str) -> dict[str, dict[str, list[_
                 )
                 for code in parse_enabled_ruff_rules(settings):
                     contexts_by_rule.setdefault(code, {}).setdefault(profile, []).append(
-                        _Context(id=context_id, label=context_label, level="error")
+                        _Context(id=ContextId(context_id), label=context_label, level="error")
                     )
     return contexts_by_rule
 

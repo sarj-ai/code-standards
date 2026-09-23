@@ -65,9 +65,6 @@
   "packages/standards/src/sarj_standards/cli/main.py": {
     "SARJ026": 1
   },
-  "packages/standards/src/sarj_standards/libs/catalogs/slack_automations.py": {
-    "SARJ093": 1
-  },
   "packages/standards/src/sarj_standards/libs/linting/textlint.py": {
     "SARJ026": 3
   },
@@ -76,8 +73,5 @@
   },
   "packages/standards/src/sarj_standards/libs/repository/rule_catalog_artifact.py": {
     "SARJ026": 1
-  },
-  "packages/standards/src/sarj_standards/libs/repository/third_party_catalog_artifact.py": {
-    "SARJ093": 1
   }
 }
