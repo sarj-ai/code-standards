@@ -191,7 +191,7 @@ jobs:
           version: '0.12.13'
       - run: npm install --global npm@12.0.2 --ignore-scripts
       - name: Enforce lockfile release-age quarantine
-        run: uv run --project ../standards --frozen code-standards --root ../.. maintain release lock-age packages/typescript/package-lock.json --minimum-days 0 --exclude-file .github/release-age-exclusions.txt
+        run: uv run --project ../standards --frozen code-standards --root ../.. maintain release lock-age packages/typescript/package-lock.json --minimum-days 0
       # Dependency lifecycle scripts are an unnecessary code-execution surface.
       # esbuild's platform binary is installed as an optional dependency, so the
       # release build does not need package install hooks.
