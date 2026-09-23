@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, NamedTuple, final, override
 
@@ -175,8 +176,23 @@ def _strict_prefix_pair(shorter: IndexDefinition, longer: IndexDefinition) -> bo
     return all(column in available for column in shorter.include)
 
 
-def _prefix_context(index: IndexDefinition) -> tuple[str, bool, str, tuple[str, ...], str]:
-    return index.table, index.only, index.predicate, index.storage_parameters, index.tablespace
+@dataclass(frozen=True, slots=True)
+class _IndexContext:
+    table: str
+    only: bool
+    predicate: str
+    storage_parameters: tuple[str, ...]
+    tablespace: str
+
+
+def _prefix_context(index: IndexDefinition) -> _IndexContext:
+    return _IndexContext(
+        table=index.table,
+        only=index.only,
+        predicate=index.predicate,
+        storage_parameters=index.storage_parameters,
+        tablespace=index.tablespace,
+    )
 
 
 def _active_indexes(path: Path, source: str) -> list[IndexDefinition]:

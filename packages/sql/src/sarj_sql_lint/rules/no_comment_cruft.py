@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import PurePosixPath
 import re
 from typing import TYPE_CHECKING, NamedTuple, final, override
@@ -267,10 +268,14 @@ def _split_commented_statements(text: str) -> list[str]:
     while cursor < len(text):
         char = text[cursor]
         if dollar_quote is not None:
-            cursor, dollar_quote = _advance_dollar_comment(text, cursor, dollar_quote)
+            advanced = _advance_dollar_comment(text, cursor, dollar_quote)
+            cursor = advanced.cursor
+            dollar_quote = advanced.quote
             continue
         if quote is not None:
-            cursor, quote = _advance_comment_quote(text, cursor, quote)
+            advanced = _advance_comment_quote(text, cursor, quote)
+            cursor = advanced.cursor
+            quote = advanced.quote
             continue
         if char in {"'", '"'}:
             quote = char
@@ -441,18 +446,24 @@ def _is_banner(line: str) -> bool:
     return _BANNER_ONLY_RE.fullmatch(line) is not None or _BANNER_HEADING_RE.fullmatch(line) is not None
 
 
-def _advance_comment_quote(text: str, cursor: int, quote: str) -> tuple[int, str | None]:
+@dataclass(frozen=True, slots=True)
+class _CommentAdvance:
+    cursor: int
+    quote: str | None
+
+
+def _advance_comment_quote(text: str, cursor: int, quote: str) -> _CommentAdvance:
     if text[cursor] != quote:
-        return cursor + 1, quote
+        return _CommentAdvance(cursor=cursor + 1, quote=quote)
     if cursor + 1 < len(text) and text[cursor + 1] == quote:
-        return cursor + 2, quote
-    return cursor + 1, None
+        return _CommentAdvance(cursor=cursor + 2, quote=quote)
+    return _CommentAdvance(cursor=cursor + 1, quote=None)
 
 
-def _advance_dollar_comment(text: str, cursor: int, delimiter: str) -> tuple[int, str | None]:
+def _advance_dollar_comment(text: str, cursor: int, delimiter: str) -> _CommentAdvance:
     if text.startswith(delimiter, cursor):
-        return cursor + len(delimiter), None
-    return cursor + 1, delimiter
+        return _CommentAdvance(cursor=cursor + len(delimiter), quote=None)
+    return _CommentAdvance(cursor=cursor + 1, quote=delimiter)
 
 
 def _append_commented_statement(text: str, statements: list[str]) -> bool:
