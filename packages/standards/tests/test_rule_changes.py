@@ -9,6 +9,7 @@ import pytest
 
 from sarj_standards.cli.main import main
 from sarj_standards.libs.repository import rule_changes
+from sarj_standards.libs.rules import DefaultLevel
 
 
 _INVENTORY = Path("packages/standards/src/sarj_standards/configs/rule-inventory.v1.json")
@@ -119,6 +120,25 @@ def test_added_level_gate_reports_only_rules_outside_required_stage(repository: 
     result = rule_changes.compare(repository, before=before, after=after)
 
     assert rule_changes.added_rules_at_other_levels(result, required="warning") == ["python:error-first"]
+
+
+def test_changes_rejects_unknown_catalog_level(repository: Path) -> None:
+    before = _write_revision(repository, [_rule("existing")], "base")
+    after = _write_revision(repository, [_rule("existing"), _rule("new", level="fatal")], "candidate")
+
+    with pytest.raises(ValueError, match="rule catalog python:new has invalid defaultLevel 'fatal'"):
+        rule_changes.compare(repository, before=before, after=after)
+
+
+def test_changes_accepts_off_catalog_level(repository: Path) -> None:
+    before = _write_revision(repository, [], "base")
+    after = _write_revision(repository, [_rule("disabled", level="off")], "candidate")
+
+    result = rule_changes.compare(repository, before=before, after=after)
+
+    added = result["changes"][0]["after"]
+    assert added is not None
+    assert added["defaultLevel"] is DefaultLevel.OFF
 
 
 def test_changes_routes_removals_without_consumer_side_descriptor_branching(repository: Path) -> None:
