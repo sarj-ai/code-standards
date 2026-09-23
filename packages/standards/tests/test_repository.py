@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import json
 import os
 from pathlib import Path
 import re
@@ -672,7 +673,15 @@ def test_comment_corpus_writes_text_to_a_private_new_file(tmp_path: Path) -> Non
     destination = tmp_path / "corpus.jsonl"
 
     assert comment_corpus.write_records([tmp_path], destination) == 0
-    assert '"text": "Sensitive explanation."' in destination.read_text(encoding="utf-8")
+    assert json.loads(destination.read_text(encoding="utf-8")) == {
+        "repository": tmp_path.name,
+        "path": "example.py",
+        "line": 1,
+        "language": "python",
+        "kind": "comment",
+        "sentences": 1,
+        "text": "Sensitive explanation.",
+    }
     assert destination.stat().st_mode & 0o777 == 0o600
 
     with pytest.raises(FileExistsError):

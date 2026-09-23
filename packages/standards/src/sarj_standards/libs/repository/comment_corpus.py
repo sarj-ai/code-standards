@@ -4,6 +4,7 @@ import ast
 from collections import Counter
 from contextlib import suppress
 from dataclasses import dataclass
+from enum import StrEnum
 import errno
 import io
 import json
@@ -14,7 +15,7 @@ import secrets
 import stat
 import tokenize
 from types import MappingProxyType
-from typing import TYPE_CHECKING, NamedTuple, TypedDict
+from typing import TYPE_CHECKING, NamedTuple, TypedDict, assert_never
 
 
 if TYPE_CHECKING:
@@ -22,22 +23,37 @@ if TYPE_CHECKING:
     from typing import TextIO
 
 
+class CommentLanguage(StrEnum):
+    CONFIG = "config"
+    IAC = "iac"
+    MARKDOWN = "markdown"
+    PYTHON = "python"
+    SQL = "sql"
+    TYPESCRIPT = "typescript"
+
+
+class CommentKind(StrEnum):
+    COMMENT = "comment"
+    DOCSTRING = "docstring"
+    JSDOC = "jsdoc"
+
+
 _SUFFIXES = MappingProxyType(
     {
-        ".hcl": "iac",
-        ".js": "typescript",
-        ".jsx": "typescript",
-        ".md": "markdown",
-        ".mdx": "markdown",
-        ".py": "python",
-        ".sql": "sql",
-        ".tf": "iac",
-        ".tfvars": "iac",
-        ".toml": "config",
-        ".ts": "typescript",
-        ".tsx": "typescript",
-        ".yaml": "config",
-        ".yml": "config",
+        ".hcl": CommentLanguage.IAC,
+        ".js": CommentLanguage.TYPESCRIPT,
+        ".jsx": CommentLanguage.TYPESCRIPT,
+        ".md": CommentLanguage.MARKDOWN,
+        ".mdx": CommentLanguage.MARKDOWN,
+        ".py": CommentLanguage.PYTHON,
+        ".sql": CommentLanguage.SQL,
+        ".tf": CommentLanguage.IAC,
+        ".tfvars": CommentLanguage.IAC,
+        ".toml": CommentLanguage.CONFIG,
+        ".ts": CommentLanguage.TYPESCRIPT,
+        ".tsx": CommentLanguage.TYPESCRIPT,
+        ".yaml": CommentLanguage.CONFIG,
+        ".yml": CommentLanguage.CONFIG,
     }
 )
 _SKIP_PARTS = frozenset(
@@ -56,15 +72,15 @@ class Record(TypedDict):
     repository: str
     path: str
     line: int
-    language: str
-    kind: str
+    language: CommentLanguage
+    kind: CommentKind
     sentences: int
     text: str
 
 
 class _CommentUnit(NamedTuple):
     line: int
-    kind: str
+    kind: CommentKind
     text: str
 
 
@@ -148,15 +164,22 @@ def _read_regular_file(directory_descriptor: int, filename: str) -> str | None:
             os.close(descriptor)
 
 
-def _comments(language: str, source: str) -> list[_CommentUnit]:
-    return {
-        "config": _hash_comments,
-        "iac": _hcl_comments,
-        "markdown": _markdown_comments,
-        "python": _python_comments,
-        "sql": _sql_comments,
-        "typescript": _javascript_comments,
-    }[language](source)
+def _comments(language: CommentLanguage, source: str) -> list[_CommentUnit]:
+    match language:
+        case CommentLanguage.CONFIG:
+            return _hash_comments(source)
+        case CommentLanguage.IAC:
+            return _hcl_comments(source)
+        case CommentLanguage.MARKDOWN:
+            return _markdown_comments(source)
+        case CommentLanguage.PYTHON:
+            return _python_comments(source)
+        case CommentLanguage.SQL:
+            return _sql_comments(source)
+        case CommentLanguage.TYPESCRIPT:
+            return _javascript_comments(source)
+        case _:
+            assert_never(language)
 
 
 def emit_summary(roots: Sequence[Path], output: TextIO) -> int:
@@ -333,10 +356,10 @@ def _python_comments(source: str) -> list[_CommentUnit]:
                 and isinstance(first.value, ast.Constant)
                 and isinstance(first.value.value, str)
             ):
-                found.append(_CommentUnit(first.lineno, "docstring", first.value.value))
+                found.append(_CommentUnit(first.lineno, CommentKind.DOCSTRING, first.value.value))
     with suppress(tokenize.TokenError, IndentationError):
         found.extend(
-            _CommentUnit(token.start[0], "comment", token.string.removeprefix("#").strip())
+            _CommentUnit(token.start[0], CommentKind.COMMENT, token.string.removeprefix("#").strip())
             for token in tokenize.generate_tokens(io.StringIO(source).readline)
             if token.type == tokenize.COMMENT
         )
@@ -383,7 +406,7 @@ def _javascript_comments(source: str) -> list[_CommentUnit]:
         if char == "/" and following == "/":
             end = source.find("\n", index)
             end = len(source) if end < 0 else end
-            found.append(_CommentUnit(line, "comment", source[index + 2 : end].strip()))
+            found.append(_CommentUnit(line, CommentKind.COMMENT, source[index + 2 : end].strip()))
             index = end
             continue
         if char == "/" and following == "*":
@@ -430,7 +453,7 @@ def _sql_comments(source: str) -> list[_CommentUnit]:
         if pair == "--":
             end = source.find("\n", index)
             end = len(source) if end < 0 else end
-            found.append(_CommentUnit(line, "comment", source[index + 2 : end].strip()))
+            found.append(_CommentUnit(line, CommentKind.COMMENT, source[index + 2 : end].strip()))
             index = end
             continue
         if pair == "/*":
@@ -456,7 +479,7 @@ def _hash_comments(source: str) -> list[_CommentUnit]:
             block_indent = indent
         marker = _hash_comment_index(raw)
         if marker is not None:
-            found.append(_CommentUnit(line_number, "comment", raw[marker + 1 :].strip()))
+            found.append(_CommentUnit(line_number, CommentKind.COMMENT, raw[marker + 1 :].strip()))
     return found
 
 
@@ -526,25 +549,25 @@ def _markdown_comments(source: str) -> list[_CommentUnit]:  # ruff: ignore[too-m
             before, separator, _after = raw.partition("-->")
             html_parts.append(before)
             if separator:
-                found.append(_CommentUnit(html_start, "comment", "\n".join(html_parts).strip()))
+                found.append(_CommentUnit(html_start, CommentKind.COMMENT, "\n".join(html_parts).strip()))
                 in_html = False
                 html_parts = []
             continue
         if stripped.startswith("[//]:"):
-            found.append(_CommentUnit(line_number, "comment", stripped.removeprefix("[//]:").strip()))
+            found.append(_CommentUnit(line_number, CommentKind.COMMENT, stripped.removeprefix("[//]:").strip()))
             continue
         _before, opener, rest = raw.partition("<!--")
         if not opener:
             continue
         body, closer, _after = rest.partition("-->")
         if closer:
-            found.append(_CommentUnit(line_number, "comment", body.strip()))
+            found.append(_CommentUnit(line_number, CommentKind.COMMENT, body.strip()))
         else:
             in_html = True
             html_start = line_number
             html_parts = [rest]
     if in_html:
-        found.append(_CommentUnit(html_start, "comment", "\n".join(html_parts).strip()))
+        found.append(_CommentUnit(html_start, CommentKind.COMMENT, "\n".join(html_parts).strip()))
     return found
 
 
@@ -552,7 +575,9 @@ def _javascript_block_comment(source: str, index: int, line: int, found: list[_C
     end = source.find("*/", index + 2)
     end = len(source) - 2 if end < 0 else end
     value = source[index + 2 : end]
-    found.append(_CommentUnit(line, "jsdoc" if value.startswith("*") else "comment", value.strip("* \n")))
+    found.append(
+        _CommentUnit(line, CommentKind.JSDOC if value.startswith("*") else CommentKind.COMMENT, value.strip("* \n"))
+    )
     line += value.count("\n")
     index = end + 2
     return _ScanPosition(index=index, line=line)
@@ -562,7 +587,7 @@ def _sql_block_comment(source: str, index: int, line: int, found: list[_CommentU
     end = source.find("*/", index + 2)
     end = len(source) if end < 0 else end
     value = source[index + 2 : end]
-    found.append(_CommentUnit(line, "comment", value.strip("* \n")))
+    found.append(_CommentUnit(line, CommentKind.COMMENT, value.strip("* \n")))
     line += value.count("\n")
     index = min(len(source), end + 2)
     return _ScanPosition(index=index, line=line)
