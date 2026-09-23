@@ -93,7 +93,7 @@ class NoDeleteStatement(Rule):
                 line=node.lineno,
                 col=node.col_offset + 1,
                 code=self.code,
-                severity=Severity.WARNING,
+                severity=Severity.ERROR,
                 message=(
                     "`del` introduces mutation or hidden lifetime behavior — construct the desired value "
                     "immutably, or add an exact SARJ442 suppression explaining why deletion is required."

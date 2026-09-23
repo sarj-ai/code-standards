@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from sarj_standards._meta import CONFIGS_DIR
 from sarj_standards.libs.rules import RuleEngine, RuleId, RuleSelector, warning_levels
 
 
@@ -49,3 +50,10 @@ def test_warning_levels_render_rejects_duplicates() -> None:
 
     with pytest.raises(ValueError, match="duplicate selectors"):
         _ = warning_levels.render((selector, selector))
+
+
+def test_no_dunder_all_and_delete_statement_are_blocking() -> None:
+    selectors = warning_levels.load(CONFIGS_DIR / "rule-warning-levels.v1.json")
+
+    assert RuleSelector(RuleEngine.PYTHON, RuleId("no-dunder-all")) not in selectors
+    assert RuleSelector(RuleEngine.PYTHON, RuleId("no-delete-statement")) not in selectors
