@@ -674,12 +674,12 @@ def _check_direct_responses(
     routes: tuple[Route, ...],
     index: FastapiIndex,
 ) -> list[_Finding]:
-    statuses, invalid = _direct_response_statuses(function, index)
+    direct = _direct_response_statuses(function, index)
     findings = [
         _Finding(node, f"[status] {status} is outside the HTTP status range 100..599.")
-        for status, node in invalid.items()
+        for status, node in direct.invalid.items()
     ]
-    if not statuses:
+    if not direct.statuses:
         return findings
     for route in _operations(routes):
         responses = _route_response_nodes(route)
@@ -689,7 +689,7 @@ def _check_direct_responses(
             status for node in responses if isinstance(node, ast.Dict) for status in _response_codes(node, index)
         }
         primary = _status_code(route.keywords.get("status_code"), index)
-        missing = sorted(statuses - documented - ({primary} if primary is not None else set()))
+        missing = sorted(direct.statuses - documented - ({primary} if primary is not None else set()))
         if missing:
             findings.append(
                 _Finding(
@@ -700,9 +700,15 @@ def _check_direct_responses(
     return findings
 
 
+@dataclass(frozen=True, slots=True)
+class _DirectResponseStatuses:
+    statuses: set[int]
+    invalid: dict[int, ast.Call]
+
+
 def _direct_response_statuses(
     function: ast.FunctionDef | ast.AsyncFunctionDef, index: FastapiIndex
-) -> tuple[set[int], dict[int, ast.Call]]:
+) -> _DirectResponseStatuses:
     statuses: set[int] = set()
     invalid: dict[int, ast.Call] = {}
     stack: list[tuple[ast.AST, bool]] = [(node, False) for node in function.body]
@@ -721,7 +727,7 @@ def _direct_response_statuses(
             else:
                 invalid.setdefault(status, call)
         stack.extend((child, catches_http_exception) for child in children(current))
-    return statuses, invalid
+    return _DirectResponseStatuses(statuses=statuses, invalid=invalid)
 
 
 def _extend_response_try(

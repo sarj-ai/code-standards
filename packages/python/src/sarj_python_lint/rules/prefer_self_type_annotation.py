@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, ClassVar, override
@@ -237,8 +238,8 @@ class PreferSelfTypeAnnotation(Rule):
                 if method_kind is None or method_kind is _MethodKind.STATIC:
                     return
                 receiver = _first_positional_parameter(node)
-                bindings, is_generator = _method_scope_facts(node)
-                if receiver is None or receiver in bindings or is_generator:
+                scope = _method_scope_facts(node)
+                if receiver is None or receiver in scope.bindings or scope.is_generator:
                     return
                 returns = node.returns
                 if returns is None:
@@ -337,7 +338,13 @@ def _matched_enclosing_class_annotation(node: ast.expr, class_name: str) -> str 
     return None
 
 
-def _method_scope_facts(node: ast.FunctionDef | ast.AsyncFunctionDef) -> tuple[frozenset[str], bool]:
+@dataclass(frozen=True, slots=True)
+class _MethodScopeFacts:
+    bindings: frozenset[str]
+    is_generator: bool
+
+
+def _method_scope_facts(node: ast.FunctionDef | ast.AsyncFunctionDef) -> _MethodScopeFacts:
     bindings: set[str] = set()
     has_yield = False
 
@@ -409,7 +416,7 @@ def _method_scope_facts(node: ast.FunctionDef | ast.AsyncFunctionDef) -> tuple[f
     visitor = Visitor()
     for statement in node.body:
         visitor.visit(statement)
-    return frozenset(bindings), has_yield
+    return _MethodScopeFacts(bindings=frozenset(bindings), is_generator=has_yield)
 
 
 def _is_final_class(node: ast.ClassDef, imports: ImportIndex) -> bool:

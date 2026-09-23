@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+from dataclasses import dataclass
 from pathlib import PurePosixPath
 import re
 from typing import TYPE_CHECKING, ClassVar, final, override
@@ -25,6 +26,13 @@ if TYPE_CHECKING:
 
 
 _RANDOM_UUID_RE = re.compile(r"\b(?:gen_random_uuid|uuid_generate_v4)\s*\(", re.IGNORECASE)
+
+
+@dataclass(frozen=True, slots=True)
+class _IdentifierEnd:
+    end: int
+    after_whitespace: int
+
 
 # Require SQL structure so prose that merely names the function stays valid.
 _SQL_SHAPE_RE = re.compile(
@@ -132,12 +140,12 @@ def _inside_uuidv7_builder(sql: str, position: int) -> bool:
     index = 0
     while index < position:
         if sql[index].isalpha() or sql[index] == "_":
-            end, after = _identifier_end(sql, index, position)
-            if after < position and sql[after] == "(":
-                calls.append(sql[index:end].lower())
-                index = after + 1
+            identifier = _identifier_end(sql, index, position)
+            if identifier.after_whitespace < position and sql[identifier.after_whitespace] == "(":
+                calls.append(sql[index : identifier.end].lower())
+                index = identifier.after_whitespace + 1
                 continue
-            index = end
+            index = identifier.end
             continue
         if sql[index] == "(":
             calls.append(None)
@@ -147,11 +155,11 @@ def _inside_uuidv7_builder(sql: str, position: int) -> bool:
     return any(call in _UUIDV7_BUILDERS for call in calls)
 
 
-def _identifier_end(sql: str, index: int, position: int) -> tuple[int, int]:
+def _identifier_end(sql: str, index: int, position: int) -> _IdentifierEnd:
     end = index + 1
     while end < position and (sql[end].isalnum() or sql[end] == "_"):
         end += 1
     after = end
     while after < position and sql[after].isspace():
         after += 1
-    return end, after
+    return _IdentifierEnd(end=end, after_whitespace=after)

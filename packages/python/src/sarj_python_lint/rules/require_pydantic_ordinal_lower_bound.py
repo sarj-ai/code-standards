@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ast
 from collections import Counter
+from dataclasses import dataclass
 from pathlib import PurePosixPath
 import re
 from typing import TYPE_CHECKING, ClassVar, final, override
@@ -61,6 +62,32 @@ _PYDANTIC_VALIDATOR_SOURCES = frozenset(
 _ANNOTATED_TYPES_SOURCES = frozenset({"annotated_types"})
 _TYPING_SOURCES = frozenset({"typing", "typing_extensions"})
 _ORDINAL_NAME_TOKENS = frozenset({"attempt", "dial", "index", "number", "ordinal", "position", "rank", "sequence"})
+
+
+@dataclass(frozen=True, slots=True)
+class _OrderedBoundStatus:
+    has_constraints: bool
+    status: bool | None
+
+
+@dataclass(frozen=True, slots=True)
+class _ConstraintCalls:
+    base: ast.expr
+    calls: tuple[ast.Call, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class _BoundSpec:
+    ge_specified: bool
+    ge_value: float | None
+    gt_specified: bool
+    gt_value: float | None
+
+
+@dataclass(frozen=True, slots=True)
+class _ValidatedFields:
+    names: frozenset[str]
+    validates_all: bool
 
 
 @final
@@ -199,25 +226,29 @@ def _ordered_bound_status(
     minimum: int,
     imports: ImportIndex,
     aliases: dict[str, ast.expr],
-) -> tuple[bool, bool | None]:
-    base, annotation_calls = _top_level_constraint_calls(annotation, imports, aliases)
-    ge_specified, ge_value, gt_specified, gt_value = _named_bound_seed(base, imports)
+) -> _OrderedBoundStatus:
+    constraints = _top_level_constraint_calls(annotation, imports, aliases)
+    base = constraints.base
+    seed = _named_bound_seed(base, imports)
+    ge_specified = seed.ge_specified
+    ge_value = seed.ge_value
+    gt_specified = seed.gt_specified
+    gt_value = seed.gt_value
     base_has_overridable_bound = (
         ge_specified
         or gt_specified
         or (isinstance(base, ast.Call) and imports.resolves(base.func, sources=_PYDANTIC_SOURCES, symbol="conint"))
     )
     unknown_metadata = False
-    for call in (*annotation_calls, *(call for call in field_calls if call not in annotation_calls)):
+    for call in (*constraints.calls, *(call for call in field_calls if call not in constraints.calls)):
         updates = _bound_updates(call, imports)
         if updates is None:
             unknown_metadata = True
             continue
-        call_ge_specified, call_ge, call_gt_specified, call_gt = updates
-        if call_ge_specified:
-            ge_specified, ge_value = True, call_ge
-        if call_gt_specified:
-            gt_specified, gt_value = True, call_gt
+        if updates.ge_specified:
+            ge_specified, ge_value = True, updates.ge_value
+        if updates.gt_specified:
+            gt_specified, gt_value = True, updates.gt_value
     resolved = _resolved_ordered_bound_status(
         ge_specified=ge_specified,
         ge_value=ge_value,
@@ -230,36 +261,36 @@ def _ordered_bound_status(
         return resolved
     base_status = _annotation_bound_status(base, minimum, imports, aliases, frozenset())
     if base_status is True and not base_has_overridable_bound:
-        return True, True
-    return True, False
+        return _OrderedBoundStatus(has_constraints=True, status=True)
+    return _OrderedBoundStatus(has_constraints=True, status=False)
 
 
 def _top_level_constraint_calls(
     annotation: ast.expr, imports: ImportIndex, aliases: dict[str, ast.expr]
-) -> tuple[ast.expr, tuple[ast.Call, ...]]:
+) -> _ConstraintCalls:
     annotation = _resolve_alias(annotation, aliases, frozenset())
     if isinstance(annotation, ast.Call) and imports.resolves(
         annotation.func, sources=_PYDANTIC_SOURCES, symbol="conint"
     ):
-        return annotation, (annotation,)
+        return _ConstraintCalls(base=annotation, calls=(annotation,))
     if isinstance(annotation, ast.Subscript) and imports.resolves(
         annotation.value, sources=_TYPING_SOURCES, symbol="Annotated"
     ):
         arguments = _subscript_arguments(annotation)
         if not arguments:
-            return annotation, ()
-        base, base_calls = _top_level_constraint_calls(arguments[0], imports, aliases)
+            return _ConstraintCalls(base=annotation, calls=())
+        nested = _top_level_constraint_calls(arguments[0], imports, aliases)
         metadata_calls = tuple(item for item in arguments[1:] if isinstance(item, ast.Call))
-        return base, (*base_calls, *metadata_calls)
-    return annotation, ()
+        return _ConstraintCalls(base=nested.base, calls=(*nested.calls, *metadata_calls))
+    return _ConstraintCalls(base=annotation, calls=())
 
 
-def _named_bound_seed(annotation: ast.expr, imports: ImportIndex) -> tuple[bool, float | None, bool, float | None]:
+def _named_bound_seed(annotation: ast.expr, imports: ImportIndex) -> _BoundSpec:
     if imports.resolves(annotation, sources=_PYDANTIC_SOURCES, symbol="PositiveInt"):
-        return False, None, True, 0.0
+        return _BoundSpec(ge_specified=False, ge_value=None, gt_specified=True, gt_value=0.0)
     if imports.resolves(annotation, sources=_PYDANTIC_SOURCES, symbol="NonNegativeInt"):
-        return True, 0.0, False, None
-    return False, None, False, None
+        return _BoundSpec(ge_specified=True, ge_value=0.0, gt_specified=False, gt_value=None)
+    return _BoundSpec(ge_specified=False, ge_value=None, gt_specified=False, gt_value=None)
 
 
 def _annotation_bound_status(
@@ -326,9 +357,9 @@ def _effective_annotation_status(
     aliases: dict[str, ast.expr],
     resolving: frozenset[str],
 ) -> bool | None:
-    has_ordered_constraints, status = _ordered_bound_status(annotation, (), minimum, imports, aliases)
-    if has_ordered_constraints:
-        return status
+    ordered = _ordered_bound_status(annotation, (), minimum, imports, aliases)
+    if ordered.has_constraints:
+        return ordered.status
     return _annotation_bound_status(annotation, minimum, imports, aliases, resolving)
 
 
@@ -336,15 +367,16 @@ def _call_bound_status(call: ast.Call, minimum: int, imports: ImportIndex) -> bo
     updates = _bound_updates(call, imports)
     if updates is None:
         return None
-    ge_specified, ge_value, gt_specified, gt_value = updates
-    if not ge_specified and not gt_specified:
+    if not updates.ge_specified and not updates.gt_specified:
         return False
-    if (ge_specified and ge_value is None) or (gt_specified and gt_value is None):
+    if (updates.ge_specified and updates.ge_value is None) or (updates.gt_specified and updates.gt_value is None):
         return None
-    return (ge_value is not None and ge_value >= minimum) or (gt_value is not None and gt_value >= minimum - 1)
+    return (updates.ge_value is not None and updates.ge_value >= minimum) or (
+        updates.gt_value is not None and updates.gt_value >= minimum - 1
+    )
 
 
-def _bound_updates(call: ast.Call, imports: ImportIndex) -> tuple[bool, float | None, bool, float | None] | None:
+def _bound_updates(call: ast.Call, imports: ImportIndex) -> _BoundSpec | None:
     is_keyword_constraint = any(
         imports.resolves(call.func, sources=sources, symbol=symbol)
         for sources, symbol in (
@@ -354,7 +386,7 @@ def _bound_updates(call: ast.Call, imports: ImportIndex) -> tuple[bool, float | 
         )
     )
     if any(keyword.arg is None for keyword in call.keywords):
-        return True, None, True, None
+        return _BoundSpec(ge_specified=True, ge_value=None, gt_specified=True, gt_value=None)
     ge_keyword = next((keyword for keyword in call.keywords if keyword.arg == "ge"), None)
     gt_keyword = next((keyword for keyword in call.keywords if keyword.arg == "gt"), None)
     ge = _literal_value(ge_keyword.value) if ge_keyword is not None else None
@@ -369,7 +401,12 @@ def _bound_updates(call: ast.Call, imports: ImportIndex) -> tuple[bool, float | 
         return None
     ge_value = _numeric_value(ge)
     gt_value = _numeric_value(gt)
-    return ge_keyword is not None, ge_value, gt_keyword is not None, gt_value
+    return _BoundSpec(
+        ge_specified=ge_keyword is not None,
+        ge_value=ge_value,
+        gt_specified=gt_keyword is not None,
+        gt_value=gt_value,
+    )
 
 
 def _resolve_alias(annotation: ast.expr, aliases: dict[str, ast.expr], resolving: frozenset[str]) -> ast.expr:
@@ -406,8 +443,8 @@ def _ordinal_class_findings(
     code: str,
 ) -> list[Diagnostic]:
     diagnostics: list[Diagnostic] = []
-    validators, validates_all = _validated_fields(cls, imports)
-    if validates_all:
+    validated = _validated_fields(cls, imports)
+    if validated.validates_all:
         return []
     class_bindings = _class_bindings(cls)
     for field in cls.body:
@@ -415,7 +452,7 @@ def _ordinal_class_findings(
             continue
         if (
             field.target.id.startswith("_")
-            or field.target.id in validators
+            or field.target.id in validated.names
             or not _is_ordinal_field_name(field.target.id)
             or _is_class_var(field.annotation, imports, aliases)
         ):
@@ -448,7 +485,7 @@ def _ordinal_class_findings(
     return diagnostics
 
 
-def _validated_fields(cls: ast.ClassDef, imports: ImportIndex) -> tuple[frozenset[str], bool]:
+def _validated_fields(cls: ast.ClassDef, imports: ImportIndex) -> _ValidatedFields:
     fields: set[str] = set()
     validates_all = False
     for function in cls.body:
@@ -458,7 +495,7 @@ def _validated_fields(cls: ast.ClassDef, imports: ImportIndex) -> tuple[frozense
             if not isinstance(decorator, ast.Call):
                 continue
             validates_all = _record_validated_fields(decorator, imports, fields) or validates_all
-    return frozenset(fields), validates_all
+    return _ValidatedFields(names=frozenset(fields), validates_all=validates_all)
 
 
 def _is_class_var(annotation: ast.expr, imports: ImportIndex, aliases: dict[str, ast.expr]) -> bool:
@@ -496,9 +533,9 @@ def _lower_bound_status(
     imports: ImportIndex,
     aliases: dict[str, ast.expr],
 ) -> bool | None:
-    has_ordered_constraints, ordered_status = _ordered_bound_status(annotation, field_calls, minimum, imports, aliases)
-    if has_ordered_constraints:
-        return ordered_status
+    ordered = _ordered_bound_status(annotation, field_calls, minimum, imports, aliases)
+    if ordered.has_constraints:
+        return ordered.status
     return _annotation_bound_status(annotation, minimum, imports, aliases, frozenset())
 
 
@@ -653,16 +690,16 @@ def _resolved_ordered_bound_status(
     gt_value: float | None,
     minimum: int,
     unknown_metadata: bool,
-) -> tuple[bool, bool | None] | None:
+) -> _OrderedBoundStatus | None:
     if not ge_specified and not gt_specified:
-        return False, None
+        return _OrderedBoundStatus(has_constraints=False, status=None)
     sufficient = (ge_value is not None and ge_value >= minimum) or (gt_value is not None and gt_value >= minimum - 1)
     if sufficient:
-        return True, None if unknown_metadata else True
+        return _OrderedBoundStatus(has_constraints=True, status=None if unknown_metadata else True)
     if unknown_metadata:
-        return True, None
+        return _OrderedBoundStatus(has_constraints=True, status=None)
     if (ge_specified and ge_value is None) or (gt_specified and gt_value is None):
-        return True, None
+        return _OrderedBoundStatus(has_constraints=True, status=None)
     return None
 
 

@@ -703,29 +703,35 @@ def _annotation_allows_none(annotation: ast.expr | None) -> bool:
     return isinstance(annotation, ast.Subscript) and _subscript_allows_none(annotation)
 
 
-def _statements_invoke_field(statements: list[ast.stmt], fields: frozenset[str]) -> tuple[bool, bool]:
+@dataclass(frozen=True, slots=True)
+class _InvocationFlow:
+    found: bool
+    falls_through: bool
+
+
+def _statements_invoke_field(statements: list[ast.stmt], fields: frozenset[str]) -> _InvocationFlow:
     for statement in statements:
         if isinstance(statement, ast.If):
-            found, falls_through = _conditional_invokes_field(statement, fields)
-            if found or not falls_through:
-                return found, falls_through
+            flow = _conditional_invokes_field(statement, fields)
+            if flow.found or not flow.falls_through:
+                return flow
             continue
         if (
             isinstance(statement, ast.While)
             and isinstance(statement.test, ast.Constant)
             and not bool(statement.test.value)
         ):
-            found, falls_through = _statements_invoke_field(statement.orelse, fields)
-            if found or not falls_through:
-                return found, falls_through
+            flow = _statements_invoke_field(statement.orelse, fields)
+            if flow.found or not flow.falls_through:
+                return flow
             continue
         if isinstance(statement, (ast.While, *_UNSUPPORTED_COMPOUND_STATEMENTS)):
             continue
         if _node_invokes_field(statement, fields):
-            return True, True
+            return _InvocationFlow(found=True, falls_through=True)
         if isinstance(statement, ast.Return | ast.Raise):
-            return False, False
-    return False, True
+            return _InvocationFlow(found=False, falls_through=False)
+    return _InvocationFlow(found=False, falls_through=True)
 
 
 def _node_invokes_field(node: ast.AST, fields: frozenset[str]) -> bool:
@@ -881,8 +887,7 @@ def _method_invokes_field(
 ) -> bool:
     if _has_unsupported_control_flow(method.body):
         return False
-    found, _falls_through = _statements_invoke_field(method.body, fields)
-    return found
+    return _statements_invoke_field(method.body, fields).found
 
 
 def _has_unsupported_control_flow(statements: list[ast.stmt]) -> bool:
@@ -945,17 +950,18 @@ def _constant_annotation_allows_none(annotation: ast.Constant) -> bool:
     return False
 
 
-def _conditional_invokes_field(statement: ast.If, fields: frozenset[str]) -> tuple[bool, bool]:
+def _conditional_invokes_field(statement: ast.If, fields: frozenset[str]) -> _InvocationFlow:
     if _node_invokes_field(statement.test, fields):
-        return True, True
+        return _InvocationFlow(found=True, falls_through=True)
     if isinstance(statement.test, ast.Constant):
         branch = statement.body if bool(statement.test.value) else statement.orelse
-        found, falls_through = _statements_invoke_field(branch, fields)
-    else:
-        body_found, body_falls = _statements_invoke_field(statement.body, fields)
-        else_found, else_falls = _statements_invoke_field(statement.orelse, fields)
-        found, falls_through = body_found or else_found, body_falls or else_falls
-    return found, falls_through
+        return _statements_invoke_field(branch, fields)
+    body = _statements_invoke_field(statement.body, fields)
+    otherwise = _statements_invoke_field(statement.orelse, fields)
+    return _InvocationFlow(
+        found=body.found or otherwise.found,
+        falls_through=body.falls_through or otherwise.falls_through,
+    )
 
 
 def _boolean_invokes_field(node: ast.BoolOp, fields: frozenset[str]) -> bool:

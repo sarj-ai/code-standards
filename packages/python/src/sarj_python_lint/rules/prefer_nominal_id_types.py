@@ -377,9 +377,11 @@ def _collect_type_aliases(
     aliases: dict[str, ast.expr],
 ) -> None:
     for statement in tree.body:
-        target, value = _alias_assignment(statement)
-        if target is None or value is None:
+        assignment = _alias_assignment(statement)
+        if assignment is None:
             continue
+        target = assignment.target
+        value = assignment.value
         if _is_new_type_call(value, imports):
             if len(value.args) >= _MIN_SWAPPABLE_ROLES:
                 carrier = _carrier(value.args[_SECOND_ARGUMENT], imports, _TypeFacts(raw_aliases, nominal_aliases))
@@ -389,14 +391,20 @@ def _collect_type_aliases(
         aliases[target] = _type_alias_type_value(value, imports) or value
 
 
-def _alias_assignment(statement: ast.stmt) -> tuple[str | None, ast.expr | None]:
+@dataclass(frozen=True, slots=True)
+class _AliasAssignment:
+    target: str
+    value: ast.expr
+
+
+def _alias_assignment(statement: ast.stmt) -> _AliasAssignment | None:
     if isinstance(statement, ast.TypeAlias):
-        return statement.name.id, statement.value
+        return _AliasAssignment(target=statement.name.id, value=statement.value)
     if isinstance(statement, ast.Assign) and len(statement.targets) == 1 and isinstance(statement.targets[0], ast.Name):
-        return statement.targets[0].id, statement.value
-    if isinstance(statement, ast.AnnAssign) and isinstance(statement.target, ast.Name):
-        return statement.target.id, statement.value
-    return None, None
+        return _AliasAssignment(target=statement.targets[0].id, value=statement.value)
+    if isinstance(statement, ast.AnnAssign) and isinstance(statement.target, ast.Name) and statement.value is not None:
+        return _AliasAssignment(target=statement.target.id, value=statement.value)
+    return None
 
 
 def _is_new_type_call(value: ast.expr, imports: ImportIndex) -> TypeGuard[ast.Call]:
