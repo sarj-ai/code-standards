@@ -7,6 +7,7 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING, Final, Literal, TypedDict
 
 from sarj_standards.libs.release.process import ProcessRunner, run_process
+from sarj_standards.libs.rules import DefaultLevel
 
 
 if TYPE_CHECKING:
@@ -58,7 +59,7 @@ class RuleDescriptorV1(TypedDict):
     family: str
     id: str
     code: str | None
-    defaultLevel: str
+    defaultLevel: DefaultLevel
     releaseTarget: str
     source: str
     test: str
@@ -252,7 +253,7 @@ def _load_revision(  # ruff: ignore[too-many-locals] -- validates and joins two 
             "family": family,
             "id": _string(inventory_entry, "id"),
             "code": catalog_code,
-            "defaultLevel": _string(catalog_entry, "defaultLevel"),
+            "defaultLevel": _default_level(catalog_entry, key=key),
             "releaseTarget": _RELEASE_TARGET_BY_ENGINE[engine],
             "source": _string(inventory_entry, "source"),
             "test": _string(inventory_entry, "test"),
@@ -340,6 +341,15 @@ def _string(value: dict[str, object], key: str) -> str:
         msg = f"rule field {key} must be a non-empty string"
         raise TypeError(msg)
     return item
+
+
+def _default_level(value: dict[str, object], *, key: str) -> DefaultLevel:
+    raw = _string(value, "defaultLevel")
+    try:
+        return DefaultLevel(raw)
+    except ValueError as exc:
+        msg = f"rule catalog {key} has invalid defaultLevel {raw!r}"
+        raise ValueError(msg) from exc
 
 
 def render_text(result: RuleChangeSetV1) -> str:
