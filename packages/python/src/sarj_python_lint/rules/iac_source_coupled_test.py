@@ -32,6 +32,7 @@ class IacSourceCoupledTest(Rule):
     id = "iac-source-coupled-test"
     code = "SARJ412"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
+        default_level=Severity.WARNING,
         summary="Test uses raw Terraform/HCL text as an infrastructure-behavior oracle.",
         rationale=(
             "Substring and regex checks can pass on comments, formatting, or unreachable Terraform configuration "

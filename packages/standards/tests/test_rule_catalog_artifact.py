@@ -21,6 +21,7 @@ def _typescript_rule() -> dict[str, object]:
         "rationale": "The problem makes maintenance harder.",
         "remediation": "Use the supported construct.",
         "category": "maintainability",
+        "defaultLevel": "warning",
         "languages": ["typescript"],
         "autofix": "none",
         "aliases": [],
@@ -70,6 +71,7 @@ def test_typescript_projection_accepts_the_closed_public_shape() -> None:
     (spec,) = rule_catalog_artifact.parse_typescript_projection([_typescript_rule()])
 
     assert spec.key == "eslint:sample-rule"
+    assert spec.default_level.value == "warning"
     assert tuple(example.example_id for example in spec.examples) == (
         "rejected",
         "accepted",

@@ -45,6 +45,7 @@ class PytestFixtureReturnsBareTuple(Rule):
     id: str = "pytest-fixture-returns-bare-tuple"
     code: str = "SARJ044"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
+        default_level=Severity.WARNING,
         summary="Pytest fixture exposes a fixed positional record as an unnamed tuple.",
         rationale=(
             "Tuple-shaped fixture APIs encode each value's role in its position, so call sites are opaque and "

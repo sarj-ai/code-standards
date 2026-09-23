@@ -13,6 +13,7 @@ from sarj_python_lint.rule_base import (
     RuleCategory,
     RuleDocumentation,
     RuleExample,
+    Severity,
     is_suppressed,
     parse_or_none,
 )
@@ -42,6 +43,7 @@ class NamedRecordAtBoundaries(Rule):
     id: str = "named-record-at-boundaries"
     code: str = "SARJ008"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
+        default_level=Severity.WARNING,
         summary="Public Python API returns an unnamed fixed-shape record.",
         rationale="A named record makes field types and required keys explicit to callers and static tooling.",
         remediation="Define and return a `TypedDict`, Pydantic model, or frozen dataclass for the fixed record shape.",

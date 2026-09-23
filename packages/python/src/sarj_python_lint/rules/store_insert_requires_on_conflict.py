@@ -65,6 +65,7 @@ class StoreInsertRequiresOnConflict(Rule):
     id: str = "replay-contract-insert-requires-duplicate-policy"
     code: str = "SARJ018"
     documentation = RuleDocumentation(
+        default_level=Severity.WARNING,
         summary="A literal INSERT in a replay-named store callable must declare duplicate behavior.",
         rationale=(
             "A store callable named ensure, enqueue, record_once, get_or_create, create_if_absent, or "

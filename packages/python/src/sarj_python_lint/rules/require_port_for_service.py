@@ -194,6 +194,7 @@ class RequirePortForService(ProjectRule):
     id: str = "require-port-for-service"
     code: str = "SARJ071"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
+        default_level=Severity.WARNING,
         summary="Consider a consumer-owned port when visible service structure suggests a substitution boundary.",
         rationale="A small port can decouple consumers when they genuinely need to substitute a concrete service boundary.",
         remediation=(

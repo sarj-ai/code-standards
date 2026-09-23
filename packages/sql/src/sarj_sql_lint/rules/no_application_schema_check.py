@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, final, override
 
 from sarj_sql_lint.rule_base import (
     AutofixPolicy,
+    DefaultLevel,
     Diagnostic,
     ExampleFile,
     ExampleOutcome,
@@ -59,6 +60,7 @@ class NoApplicationSchemaCheck(Rule):
     id = "no-application-schema-check"
     code = "SARJ118"
     documentation = RuleDocumentation(
+        default_level=DefaultLevel.WARNING,
         summary="Keep JSON shape and closed application value sets out of database CHECK constraints.",
         rationale=(
             "A database CHECK that repeats an application-owned JSON schema or enum-like value set creates two "

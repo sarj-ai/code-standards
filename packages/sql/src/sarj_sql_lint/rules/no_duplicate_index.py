@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, NamedTuple, final, override
 
 from sarj_sql_lint.rule_base import (
     AutofixPolicy,
+    DefaultLevel,
     Diagnostic,
     ExampleFile,
     ExampleOutcome,
@@ -33,6 +34,7 @@ class NoDuplicateIndex(Rule):
     id = "no-duplicate-index"
     code = "SARJ117"
     documentation = RuleDocumentation(
+        default_level=DefaultLevel.WARNING,
         summary="Report duplicate and conservatively covered indexes that remain active in one authored migration.",
         rationale=(
             "Duplicate definitions, non-unique copies of unique access paths, and strict B-tree prefixes can add "

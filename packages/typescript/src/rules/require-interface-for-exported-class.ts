@@ -19,6 +19,7 @@ interface ClassBinding {
 }
 
 export const REQUIRE_INTERFACE_FOR_EXPORTED_CLASS_DOCUMENTATION = {
+  defaultLevel: "warning",
   summary: "Require exported concrete classes with public behavior to declare a contract.",
   rationale:
     "An explicit contract names the intended public capability separately from implementation details. TypeScript already supports structural compatibility; this is an architecture policy, not a prerequisite for substitution.",

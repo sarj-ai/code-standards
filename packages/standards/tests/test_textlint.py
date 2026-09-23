@@ -2,10 +2,9 @@ from pathlib import Path, PurePosixPath
 
 import pytest
 
-from sarj_standards._meta import CONFIGS_DIR
 from sarj_standards.libs.linting import runner as linting_runner, textlint
-from sarj_standards.libs.rules import warning_levels
 from sarj_standards.libs.rules.contracts import (
+    DefaultLevel,
     EvaluationCase,
     ExampleFile,
     ExpectedOutcome,
@@ -1267,11 +1266,9 @@ def test_registry_exposes_complete_neutral_rule_metadata() -> None:
         assert {example.outcome for example in meta.public_examples} == {"match", "no-match"}
 
 
-def test_text_rule_blocking_flags_match_shipped_warning_lifecycle() -> None:
-    warning_selectors = {str(selector) for selector in warning_levels.load(CONFIGS_DIR / "rule-warning-levels.v1.json")}
-
+def test_text_rule_blocking_flags_match_source_severity() -> None:
     for rule_id, meta in textlint.REGISTRY.items():
-        assert meta.blocking is (f"text:{rule_id}" not in warning_selectors), rule_id
+        assert meta.blocking is (meta.native_spec(rule_id).default_level is DefaultLevel.ERROR), rule_id
 
 
 def test_mutable_github_action_is_no_longer_a_textlint_finding(tmp_path: Path) -> None:

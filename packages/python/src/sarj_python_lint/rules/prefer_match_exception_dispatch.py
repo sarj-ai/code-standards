@@ -86,6 +86,7 @@ class PreferMatchExceptionDispatch(Rule):
     id: str = "prefer-match-exception-dispatch"
     code: str = "SARJ453"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
+        default_level=Severity.WARNING,
         summary="Prefer guarded match/case for refined exception type dispatch.",
         rationale=(
             "A long exception classifier that repeats isinstance checks and then refines one exception type hides "

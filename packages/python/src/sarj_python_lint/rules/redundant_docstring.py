@@ -46,6 +46,7 @@ class RedundantDocstring(Rule):
     id: str = "redundant-docstring"
     code: str = "SARJ050"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
+        default_level=Severity.WARNING,
         summary="Function or plain-method docstring only repeats its declaration.",
         rationale="Restating a clear name and signature creates maintenance work without helping callers.",
         remediation=(

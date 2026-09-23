@@ -56,6 +56,7 @@ class OpaqueParametrizeCaseNeedsId(Rule):
     id: str = "opaque-parametrize-case-needs-id"
     code: str = "SARJ042"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
+        default_level=Severity.WARNING,
         summary="Opaque static pytest parameter cases rely on argument-name-and-index fallback IDs.",
         rationale="Fallback IDs such as `payload0` are hard to diagnose and silently change when the table is reordered.",
         remediation=(

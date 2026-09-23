@@ -72,6 +72,7 @@ const MODEL_EXECUTION_METHODS: ReadonlySet<string> = new Set([
 const DATABASE_NAMES = /^(?:db|database|connection|pool|prisma|query|transaction|tx)$/iu;
 
 export const REQUIRE_SQL_ACCESS_CLASS_DOCUMENTATION = {
+  defaultLevel: "warning",
   summary: "Keep SQL reads and writes inside a class that receives its database dependency.",
   rationale:
     "An injected repository class is the preferred ownership boundary for database access under this architectural policy; free functions can also express explicit dependencies.",

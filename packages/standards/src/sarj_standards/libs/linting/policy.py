@@ -11,13 +11,14 @@ from pathspec.pattern import Pattern
 
 from sarj_standards._meta import CONFIGS_DIR
 from sarj_standards.libs.adoption.manifest import MANIFEST_NAME, ExclusionOverride, Manifest
-from sarj_standards.libs.rules import RuleSelector, warning_levels
+from sarj_standards.libs.repository import rule_catalog_artifact
 
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping
 
     from sarj_standards.libs.diagnostics import Diagnostic
+    from sarj_standards.libs.rules import RuleSelector
 
 
 _SOURCE_ENGINES: Final[Mapping[str, str]] = MappingProxyType(
@@ -122,4 +123,4 @@ def _compile_override(value: ExclusionOverride) -> _Override:
 
 @lru_cache(maxsize=1)
 def warning_selectors() -> frozenset[RuleSelector]:
-    return frozenset(warning_levels.load(CONFIGS_DIR / "rule-warning-levels.v1.json"))
+    return rule_catalog_artifact.warning_selectors(CONFIGS_DIR.parent / "schemas/rule-catalog.v1.json")

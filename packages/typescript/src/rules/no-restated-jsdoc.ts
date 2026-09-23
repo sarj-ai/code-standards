@@ -15,6 +15,7 @@ type MessageIds = "restatesSignature" | "deleteBlock";
 type Options = readonly [];
 
 export const NO_RESTATED_JSDOC_DOCUMENTATION = {
+  defaultLevel: "warning",
   summary: "Flag JSDoc prose that appears to repeat declaration names without adding behavioral information.",
   rationale: "Signature-only JSDoc duplicates type information and drifts without helping callers.",
   remediation: "Delete the block or document behavior, constraints, failures, or context the signature cannot express.",

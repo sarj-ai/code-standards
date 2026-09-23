@@ -142,7 +142,7 @@ def _root_readme(
             "```\n\n"
             "Fleet calibration and downstream PR creation run automatically after review and release.\n\n"
             "### Rule artifact provenance\n\n"
-            "- `rule-warning-levels.v1.json` is authored lifecycle policy. Severity is a reviewed decision, "
+            "- Each rule's source-owned `default_level` is lifecycle policy. Severity is a reviewed decision, "
             "not something inferred from current findings.\n"
             "- `rule-inventory.v1.json` and `rule-catalog.v1.json` are committed package/runtime projections "
             "of live registries and source-owned documentation. Check or regenerate them with "

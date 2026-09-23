@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, NamedTuple, final, override
 
 from sarj_sql_lint.rule_base import (
     AutofixPolicy,
+    DefaultLevel,
     Diagnostic,
     ExampleFile,
     ExampleOutcome,
@@ -45,6 +46,7 @@ class AddConstraintRequiresNotValid(Rule):
     id = "existing-table-check-or-foreign-key-requires-not-valid"
     code = "SARJ111"
     documentation = RuleDocumentation(
+        default_level=DefaultLevel.WARNING,
         summary="CHECK and foreign-key constraints added to existing PostgreSQL tables should defer validation.",
         rationale=(
             "Validating a CHECK or foreign key while adding it scans existing rows while PostgreSQL holds locks "

@@ -19,6 +19,7 @@ type MessageIds = "preferMilliseconds";
 type Options = readonly [];
 
 export const PREFER_MILLISECOND_CONTROL_DURATION_SCHEMA_DOCUMENTATION = {
+  defaultLevel: "warning",
   summary: "Require application-owned Zod control-duration fields to use millisecond granularity.",
   rationale:
     "Second-granularity timeout and scheduling controls lose precision and invite implicit unit conversion at API boundaries. Encoding milliseconds in the schema keeps the unit explicit and composes with platform timing APIs.",

@@ -204,6 +204,7 @@ class NegativeOnlyHttpStatusAssertion(Rule):
     id = "negative-only-http-status-assertion"
     code = "SARJ408"
     documentation = RuleDocumentation(
+        default_level=Severity.WARNING,
         summary="HTTP test assertion only excludes a server error instead of identifying the intended response.",
         rationale=(
             "Authentication, routing, validation, and domain failures can all replace the intended response while "

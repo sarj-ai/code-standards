@@ -91,6 +91,7 @@ def _documented_spec(
     summary: str = "Reject placeholder pass statements.",
     rationale: str = "A placeholder can silently ship an incomplete branch.",
     remediation: str = "Implement the branch or make the abstract contract explicit.",
+    default_level: DefaultLevel = DefaultLevel.ERROR,
     examples: tuple[RuleExample, ...] | None = None,
 ) -> RuleSpec:
     documented_examples = examples or (
@@ -130,6 +131,7 @@ def _documented_spec(
         remediation=remediation,
         category=RuleCategory.CORRECTNESS,
         languages=frozenset({Language.PYTHON}),
+        default_level=default_level,
         aliases=aliases,
         examples=documented_examples,
     )
@@ -148,8 +150,7 @@ def _object_list(value: object) -> list[object]:
 
 def test_documented_catalog_is_deterministic_and_excludes_private_examples() -> None:
     rule = DocumentedRule(
-        _documented_spec(aliases=("placeholder-pass",)),
-        DefaultLevel.WARNING,
+        _documented_spec(aliases=("placeholder-pass",), default_level=DefaultLevel.WARNING),
         PurePosixPath("packages/python/src/rules/no_placeholder_pass.py"),
         PurePosixPath("packages/python/tests/rules/test_no_placeholder_pass.py"),
     )
@@ -233,7 +234,6 @@ def test_example_files_reject_platform_ambiguous_paths(path: str) -> None:
 def test_catalog_alias_cannot_shadow_a_live_rule() -> None:
     first = DocumentedRule(
         _documented_spec(aliases=("replacement",)),
-        DefaultLevel.ERROR,
         PurePosixPath("first.py"),
         PurePosixPath("test_first.py"),
     )
@@ -246,7 +246,6 @@ def test_catalog_alias_cannot_shadow_a_live_rule() -> None:
     )
     second = DocumentedRule(
         second_spec,
-        DefaultLevel.ERROR,
         PurePosixPath("second.py"),
         PurePosixPath("test_second.py"),
     )
@@ -264,7 +263,6 @@ def test_shipped_catalog_schema_covers_every_serialized_rule_field() -> None:
     required = _object_list(rule_schema["required"])
     documented = DocumentedRule(
         _documented_spec(),
-        DefaultLevel.ERROR,
         PurePosixPath("source.py"),
         PurePosixPath("test_source.py"),
     )

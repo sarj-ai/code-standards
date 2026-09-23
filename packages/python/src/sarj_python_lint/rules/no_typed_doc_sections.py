@@ -28,6 +28,7 @@ class NoTypedDocSections(Rule):
     id = "no-docstring-type-restatement"
     code = "SARJ092"
     documentation = RuleDocumentation(
+        default_level=Severity.WARNING,
         summary="A docstring type label repeats an annotation from the fully typed signature.",
         rationale=(
             "A repeated type spelling can drift from the annotation and obscures the behavioral contract that only prose "

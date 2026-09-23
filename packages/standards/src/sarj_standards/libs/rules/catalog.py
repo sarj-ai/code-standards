@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING, Self
 
 from .contracts import (
     CatalogRule,
-    DefaultLevel,
     ExpectedOutcome,
     Language,
     RuleOrigin,
@@ -55,7 +54,6 @@ class RuleCatalog:
 @dataclass(frozen=True, slots=True)
 class DocumentedRule:
     spec: RuleSpec
-    default_level: DefaultLevel
     source: PurePosixPath
     test: PurePosixPath
     status: RuleStatus = RuleStatus.ACTIVE
@@ -111,7 +109,7 @@ class RuleCatalogDocument:
             "remediation": spec.remediation,
             "category": spec.category.value,
             "languages": sorted(language.value for language in spec.languages),
-            "defaultLevel": rule.default_level.value,
+            "defaultLevel": spec.default_level.value,
             "autofix": spec.autofix.value,
             "status": rule.status.value,
             "aliases": sorted(spec.aliases),

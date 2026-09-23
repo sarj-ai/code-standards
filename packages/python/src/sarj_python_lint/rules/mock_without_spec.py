@@ -121,6 +121,7 @@ class MockWithoutSpec(Rule):
     id: str = "mock-without-spec"
     code: str = "SARJ040"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
+        default_level=Severity.WARNING,
         summary="Unrestricted mock permits attributes outside the collaborator contract.",
         rationale=(
             "A mock without a spec permits removed or misspelled attributes; a callable mock without autospec may "

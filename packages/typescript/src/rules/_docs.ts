@@ -24,6 +24,7 @@ export type RuleCategory =
   | "testing";
 
 export type AutofixPolicy = "none" | "safe" | "suggestion";
+export type DefaultLevel = "error" | "warning";
 export type ExampleOutcome = "match" | "no-match";
 
 export interface ExampleFile {
@@ -50,6 +51,7 @@ export interface RuleDocumentation {
   readonly rationale: string;
   readonly remediation: string;
   readonly category: RuleCategory;
+  readonly defaultLevel?: DefaultLevel;
   readonly languages?: readonly "typescript"[];
   readonly autofix?: AutofixPolicy;
   readonly aliases?: readonly string[];
@@ -81,6 +83,7 @@ export interface PublicRuleSpec {
   readonly rationale: string;
   readonly remediation: string;
   readonly category: RuleCategory;
+  readonly defaultLevel: DefaultLevel;
   readonly languages: readonly "typescript"[];
   readonly autofix: AutofixPolicy;
   readonly aliases: readonly string[];
@@ -168,6 +171,7 @@ export function publicDocumentation(
         rationale: spec.rationale,
         remediation: spec.remediation,
         category: spec.category,
+        defaultLevel: spec.defaultLevel,
         languages: spec.languages,
         autofix: spec.autofix,
         aliases: spec.aliases,
@@ -256,6 +260,7 @@ function nativeSpec<Options extends readonly unknown[], MessageIds extends strin
     rationale: documentation.rationale,
     remediation: documentation.remediation,
     category: documentation.category,
+    defaultLevel: documentation.defaultLevel ?? "error",
     languages: [...(documentation.languages ?? ["typescript"])],
     autofix: documentation.autofix ?? "none",
     aliases,

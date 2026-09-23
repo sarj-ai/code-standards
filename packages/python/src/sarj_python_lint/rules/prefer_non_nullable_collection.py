@@ -40,6 +40,7 @@ class PreferNonNullableCollection(Rule):
     id: str = "prefer-non-nullable-collection"
     code: str = "SARJ082"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
+        default_level=Severity.WARNING,
         summary="Avoid nullable list parameters that are immediately collapsed to an empty list.",
         rationale=(
             "When an implementation immediately replaces both `None` and an empty list with the same fresh empty list, "

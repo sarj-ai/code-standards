@@ -50,6 +50,7 @@ class FakesInSharedLocation(Rule):
     id = "fakes-in-shared-location"
     code = "SARJ428"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
+        default_level=Severity.WARNING,
         summary="Review named top-level test doubles for shared-support ownership unless they are intentionally scenario-local.",
         rationale=(
             "Reusable doubles hidden in an individual test module are difficult to discover and are often recreated. "

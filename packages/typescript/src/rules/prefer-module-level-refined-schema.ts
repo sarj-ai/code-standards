@@ -59,6 +59,7 @@ const FUNCTION_TYPES: ReadonlySet<AST_NODE_TYPES> = new Set([
 ]);
 
 export const PREFER_MODULE_LEVEL_REFINED_SCHEMA_DOCUMENTATION = {
+  defaultLevel: "warning",
   summary:
     "Declare closed Zod scalar, format, and wrapper schemas at module scope.",
   rationale:

@@ -39,6 +39,7 @@ class PreferOrPattern(Rule):
     id: str = "prefer-or-pattern"
     code: str = "SARJ070"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
+        default_level=Severity.WARNING,
         summary="Merge adjacent `case` arms with identical bodies into one or-pattern.",
         rationale="An or-pattern expresses shared handling once and prevents identical arms from drifting apart.",
         remediation="Join the equivalent patterns with `|` and keep their shared body under the merged arm.",

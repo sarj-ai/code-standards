@@ -12,7 +12,7 @@ from sarj_standards.libs.repository import config_generation
 
 
 class _RepositoryFiles(NamedTuple):
-    warning: Path
+    catalog: Path
     preset: Path
     strict: Path
     application: Path
@@ -23,11 +23,12 @@ def _repository(root: Path) -> _RepositoryFiles:
     preset = root / "packages/typescript/src/index.ts"
     configs.mkdir(parents=True)
     preset.parent.mkdir(parents=True)
-    warning = configs / "rule-warning-levels.v1.json"
+    catalog = root / "packages/standards/src/sarj_standards/schemas/rule-catalog.v1.json"
+    catalog.parent.mkdir(parents=True)
     strict = configs / "eslint.strict.mjs"
     application = configs / "eslint.application.mjs"
-    warning.write_text(
-        json.dumps({"schemaVersion": 1, "rules": ["eslint:first-rule"]}),
+    catalog.write_text(
+        json.dumps({"schemaVersion": 1, "rules": [{"key": "eslint:first-rule", "defaultLevel": "warning"}]}),
         encoding="utf-8",
     )
     preset.write_text(
@@ -46,11 +47,11 @@ def _repository(root: Path) -> _RepositoryFiles:
         encoding="utf-8",
     )
     application.write_text("stale\n", encoding="utf-8")
-    return _RepositoryFiles(warning, preset, strict, application)
+    return _RepositoryFiles(catalog, preset, strict, application)
 
 
-def test_warning_manifest_drives_plugin_presets_and_generated_configs(tmp_path: Path) -> None:
-    _warning, preset, strict, application = _repository(tmp_path)
+def test_source_catalog_drives_plugin_presets_and_generated_configs(tmp_path: Path) -> None:
+    _catalog, preset, strict, application = _repository(tmp_path)
 
     assert not config_generation.sync_warning_levels(tmp_path, check=True)
     assert config_generation.sync_warning_levels(tmp_path, check=False)
@@ -68,13 +69,13 @@ def test_warning_manifest_drives_plugin_presets_and_generated_configs(tmp_path: 
 
 
 def test_warning_parity_check_detects_drift_in_either_direction(tmp_path: Path) -> None:
-    warning, _preset, strict, _application = _repository(tmp_path)
+    catalog, _preset, strict, _application = _repository(tmp_path)
     config_generation.sync_warning_levels(tmp_path, check=False)
     strict.write_text(strict.read_text(encoding="utf-8").replace('"warn"', '"error"', 1), encoding="utf-8")
     assert not config_generation.sync_warning_levels(tmp_path, check=True)
 
-    warning.write_text(
-        json.dumps({"schemaVersion": 1, "rules": ["eslint:second-rule"]}),
+    catalog.write_text(
+        json.dumps({"schemaVersion": 1, "rules": [{"key": "eslint:second-rule", "defaultLevel": "warning"}]}),
         encoding="utf-8",
     )
     assert not config_generation.sync_warning_levels(tmp_path, check=True)

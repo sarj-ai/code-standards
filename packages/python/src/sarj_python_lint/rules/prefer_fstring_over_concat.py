@@ -120,6 +120,7 @@ class PreferFstringOverConcat(Rule):
     id: str = "prefer-fstring-over-concat"
     code: str = "SARJ068"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
+        default_level=Severity.WARNING,
         summary="Prefer f-strings for short human-readable interpolation when they make the result clearer.",
         rationale="For prose-like strings, f-strings keep interpolated values and surrounding text visible together.",
         remediation=(

@@ -35,6 +35,7 @@ class UnusedTestFactoryOption(Rule):
     id = "unused-test-factory-option"
     code = "SARJ443"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
+        default_level=Severity.WARNING,
         summary="A private test factory exposes a literal option that visible callers never vary.",
         rationale="Unused customization obscures the values that actually distinguish test scenarios.",
         remediation="Keep the value in the factory's construction instead of exposing an unused option; retain it if external callers need it.",

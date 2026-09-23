@@ -7,7 +7,8 @@ from typing import TYPE_CHECKING, Final
 
 from sarj_standards._meta import CONFIGS_DIR
 from sarj_standards.libs.linting import library_policy
-from sarj_standards.libs.rules import RuleEngine, warning_levels
+from sarj_standards.libs.repository import rule_catalog_artifact
+from sarj_standards.libs.rules import RuleEngine
 
 
 if TYPE_CHECKING:
@@ -22,7 +23,7 @@ _RUFF_MARKER: Final = "[lint.per-file-ignores]"
 _ESLINT_MARKER: Final = "          paths: [\n"
 _ESLINT_PATTERNS_MARKER: Final = '          patterns: ["*/index", "*/index.ts"],\n'
 _ESLINT_CONFIG_END: Final = "\n  ];\n}\n\nconst config = createConfig();\nexport default config;\n"
-_WARNING_LEVELS: Final = Path("packages/standards/src/sarj_standards/configs/rule-warning-levels.v1.json")
+_RULE_CATALOG: Final = Path("packages/standards/src/sarj_standards/schemas/rule-catalog.v1.json")
 _ESLINT_STRICT: Final = Path("packages/standards/src/sarj_standards/configs/eslint.strict.mjs")
 _ESLINT_APPLICATION_REPO: Final = Path("packages/standards/src/sarj_standards/configs/eslint.application.mjs")
 _TYPESCRIPT_PRESET: Final = Path("packages/typescript/src/index.ts")
@@ -176,9 +177,10 @@ def generated_configs() -> Mapping[Path, str]:
 
 
 def warning_level_artifacts(repository: Path) -> Mapping[Path, str]:
-    warning_path = repository / _WARNING_LEVELS
     warnings = frozenset(
-        str(selector.rule_id) for selector in warning_levels.load(warning_path) if selector.engine is RuleEngine.ESLINT
+        str(selector.rule_id)
+        for selector in rule_catalog_artifact.warning_selectors(repository / _RULE_CATALOG)
+        if selector.engine is RuleEngine.ESLINT
     )
 
     preset_path = repository / _TYPESCRIPT_PRESET
@@ -230,9 +232,7 @@ def _render_rule_levels(source: str, warnings: frozenset[str], *, label: str) ->
 
 def sync(*, check: bool) -> bool:
     repository = CONFIGS_DIR.parents[4]
-    warning_levels_are_managed = (repository / _WARNING_LEVELS).is_file() and (
-        repository / _TYPESCRIPT_PRESET
-    ).is_file()
+    warning_levels_are_managed = (repository / _RULE_CATALOG).is_file() and (repository / _TYPESCRIPT_PRESET).is_file()
     if warning_levels_are_managed and not sync_warning_levels(repository, check=check):
         return False
     expected = generated_configs()

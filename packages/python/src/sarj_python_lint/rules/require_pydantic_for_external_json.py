@@ -97,6 +97,7 @@ class RequirePydanticForExternalJson(Rule):
     id = "require-pydantic-for-external-json"
     code = "SARJ411"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
+        default_level=Severity.WARNING,
         summary="Proven external JSON record fields are consumed before runtime schema validation.",
         rationale=(
             "Annotations, casts, and partial key checks do not validate a wire protocol; a maintained runtime "

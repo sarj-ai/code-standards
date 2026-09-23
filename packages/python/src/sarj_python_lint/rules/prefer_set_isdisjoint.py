@@ -13,6 +13,7 @@ from sarj_python_lint.rule_base import (
     RuleCategory,
     RuleDocumentation,
     RuleExample,
+    Severity,
     is_suppressed,
     parse_or_none,
 )
@@ -46,6 +47,7 @@ class PreferSetIsdisjoint(Rule):
     id = "prefer-set-isdisjoint"
     code = "SARJ431"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
+        default_level=Severity.WARNING,
         summary="Prefer `set.isdisjoint` when a built-in set intersection is used only as a boolean predicate.",
         rationale="`isdisjoint` names the overlap predicate directly and avoids allocating an intersection that is immediately discarded.",
         remediation="Use `left.isdisjoint(right)` and negate it when the condition requires overlap.",

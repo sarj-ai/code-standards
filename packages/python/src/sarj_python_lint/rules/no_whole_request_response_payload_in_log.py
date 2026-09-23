@@ -114,6 +114,7 @@ class NoWholeRequestResponsePayloadInLog(Rule):
     id: str = "no-whole-request-response-payload-in-log"
     code: str = "SARJ436"
     documentation = RuleDocumentation(
+        default_level=Severity.WARNING,
         summary="Whole request or response payloads passed to logging calls require review.",
         rationale=(
             "Request and response bodies often contain personal, financial, or echoed authentication data, while "

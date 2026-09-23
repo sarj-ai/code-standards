@@ -14,6 +14,7 @@ type MessageIds = "shareEnumDomain";
 type Options = [];
 
 export const PREFER_SHARED_ZOD_ENUM_DOCUMENTATION = {
+  defaultLevel: "warning",
   summary: "Give repeated literal Zod enum domains one reusable module-level schema.",
   rationale: "Repeated literal domains hide a shared contract and allow equivalent fields to drift independently.",
   remediation: "Declare a module-level named Zod enum schema and reuse it at each field or contract site.",

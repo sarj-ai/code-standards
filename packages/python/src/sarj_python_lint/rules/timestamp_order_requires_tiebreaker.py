@@ -56,6 +56,7 @@ class TimestampOrderRequiresTiebreaker(Rule):
     id = "timestamp-order-requires-tiebreaker"
     code = "SARJ407"
     documentation = RuleDocumentation(
+        default_level=Severity.WARNING,
         summary=(
             "Bounded store SQL whose final result-order key looks like a `*_at` timestamp should include a "
             "deterministic secondary key."

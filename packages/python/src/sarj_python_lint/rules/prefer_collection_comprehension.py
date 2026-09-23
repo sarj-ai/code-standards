@@ -18,6 +18,7 @@ from sarj_python_lint.rule_base import (
     RuleCategory,
     RuleDocumentation,
     RuleExample,
+    Severity,
     is_suppressed,
     parse_or_none,
 )
@@ -77,6 +78,7 @@ class PreferCollectionComprehension(Rule):
     id = "prefer-collection-comprehension"
     code = "SARJ430"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
+        default_level=Severity.WARNING,
         summary="Single-purpose fresh collection builder loop — prefer a direct comprehension.",
         rationale=(
             "An empty collection followed by a loop whose only behavior is one projection or filtered insertion "

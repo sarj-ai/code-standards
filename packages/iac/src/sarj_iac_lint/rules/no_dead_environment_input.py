@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, NamedTuple, final, override
 from sarj_iac_lint._hcl import Block, document
 from sarj_iac_lint.rule_base import (
     AutofixPolicy,
+    DefaultLevel,
     Diagnostic,
     ExampleFile,
     ExampleOutcome,
@@ -112,6 +113,7 @@ class NoDeadEnvironmentInput(Rule):
     id = "no-dead-environment-input"
     code = "SARJ205"
     documentation = RuleDocumentation(
+        default_level=DefaultLevel.WARNING,
         summary=(
             "Find undeclared tfvars assignments and potentially redundant scalar values across discovered Terraform "
             "environments."

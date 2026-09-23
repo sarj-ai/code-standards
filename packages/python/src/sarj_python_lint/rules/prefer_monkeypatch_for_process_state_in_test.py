@@ -44,6 +44,7 @@ class PreferMonkeypatchForProcessStateInTest(Rule):
     id = "prefer-monkeypatch-for-process-state-in-test"
     code = "SARJ446"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
+        default_level=Severity.WARNING,
         summary="Test mutates process-wide state without a restoring test scope.",
         rationale=(
             "The working directory and Python import registries are shared by every test in the process. A direct "

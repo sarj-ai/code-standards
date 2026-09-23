@@ -12,6 +12,7 @@ type MessageIds = "preferNodeCryptoHash";
 type Options = readonly [];
 
 export const PREFER_NODE_CRYPTO_HASH_DOCUMENTATION = {
+  defaultLevel: "warning",
   summary: "Prefer the modern one-shot node:crypto hash API when streaming state is unnecessary.",
   rationale: "A createHash-update-digest chain allocates mutable streaming state for a single in-memory value; Node's built-in hash function expresses the one-shot operation directly and can use its optimized fast path.",
   remediation: "On a supported Node runtime, consider hash(algorithm, value, encoding). Preserve the output encoding explicitly: digest() returns a Buffer, while hash defaults to hex. Keep createHash for streams or multiple updates.",

@@ -13,6 +13,7 @@ type MessageIds = "nameComplexReturnType";
 type Options = [];
 
 export const PREFER_NAMED_COMPLEX_RETURN_TYPE_DOCUMENTATION = {
+  defaultLevel: "warning",
   summary: "Prefer a named contract for structurally complex function return types.",
   rationale: "A large inline return annotation hides a reusable domain concept and makes signatures difficult to scan.",
   remediation: "Name the complex nested shape while preserving its generic wrappers and type parameters; reference the named contract from the return annotation.",

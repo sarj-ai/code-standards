@@ -13,6 +13,7 @@ type MessageIds = "matchSoleExport";
 type Options = [];
 
 export const SOLE_EXPORT_MATCHES_FILENAME_DOCUMENTATION = {
+  defaultLevel: "warning",
   summary: "Make a module filename reflect its sole named public runtime export.",
   rationale: "When a module owns one runtime responsibility, matching names make that responsibility directly discoverable.",
   remediation: "Name the module for the exported responsibility, using either the full export name or a clear leading or trailing domain phrase; otherwise colocate genuinely related exports.",
