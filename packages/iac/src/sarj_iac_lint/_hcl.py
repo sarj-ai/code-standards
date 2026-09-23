@@ -80,7 +80,9 @@ def mask_block_comments(source: str) -> str:
             index += 1
             continue
         if in_string:
-            index, in_string = _advance_hcl_string(chars, index)
+            advanced = _advance_hcl_string(chars, index)
+            index = advanced.index
+            in_string = advanced.in_string
             continue
         if char == '"':
             in_string = True
@@ -103,9 +105,10 @@ def masked_hcl_lines(source: str) -> list[str]:
             if raw_line.strip() == heredoc_term:
                 heredoc_term = None
             continue
-        line, in_block_comment = _mask_hcl_line_blocks(raw_line, in_block_comment=in_block_comment)
-        output.append(line)
-        if (marker := _HEREDOC_RE.search(mask_line(line))) is not None:
+        masked = _mask_hcl_line_blocks(raw_line, in_block_comment=in_block_comment)
+        in_block_comment = masked.in_block_comment
+        output.append(masked.line)
+        if (marker := _HEREDOC_RE.search(mask_line(masked.line))) is not None:
             heredoc_term = marker.group(1)
     return output
 
@@ -185,6 +188,18 @@ class _BodyParseResult(NamedTuple):
 class _ValueParseResult(NamedTuple):
     value: str
     next_index: int
+
+
+@dataclass(frozen=True, slots=True)
+class _MaskedLine:
+    line: str
+    in_block_comment: bool
+
+
+@dataclass(frozen=True, slots=True)
+class _StringAdvance:
+    index: int
+    in_string: bool
 
 
 @lru_cache(maxsize=32)
@@ -279,7 +294,7 @@ def _rejoin(toks: list[_Tok], start: int, end: int, lines: list[str]) -> str:
     return " ".join(parts)
 
 
-def _mask_hcl_line_blocks(raw_line: str, *, in_block_comment: bool) -> tuple[str, bool]:
+def _mask_hcl_line_blocks(raw_line: str, *, in_block_comment: bool) -> _MaskedLine:
     chars = list(raw_line)
     in_string = False
     index = 0
@@ -308,10 +323,10 @@ def _mask_hcl_line_blocks(raw_line: str, *, in_block_comment: bool) -> tuple[str
             continue
         index += 1
     line = "".join(chars)
-    return line, in_block_comment
+    return _MaskedLine(line=line, in_block_comment=in_block_comment)
 
 
-def _advance_hcl_string(chars: list[str], index: int) -> tuple[int, bool]:
+def _advance_hcl_string(chars: list[str], index: int) -> _StringAdvance:
     if chars[index] == "\\":
-        return index + 2, True
-    return index + 1, chars[index] != '"'
+        return _StringAdvance(index=index + 2, in_string=True)
+    return _StringAdvance(index=index + 1, in_string=chars[index] != '"')

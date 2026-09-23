@@ -1,32 +1,11 @@
 {
   "schemaVersion": 2,
   "provenance": {
-    "bundleVersion": "7.31.5",
-    "consumerBaseSha": "ae0719a4cb90ff5e8ac47f569932b9f2abf50cd7",
-    "catalogDigest": "2dd1634fca502c18d7a2f543d98f777dcb8d063cc9fa2d32f4146041227c97ce"
+    "bundleVersion": "7.31.6",
+    "consumerBaseSha": "6dedc2820a8f1d8e3d8682b854fbd0a2615318ed",
+    "catalogDigest": "6035eadc13177810daca8a41fcd1f24aedfd158377080b29ec4c5402f93b3d69"
   },
   "diagnostics": [
-    {
-      "fingerprint": "e705db18639b8d7002d88701c8480226d7040889a3995b54e1ec5fc5feadf8e6",
-      "source": "sarj-python-lint",
-      "ruleId": "no-positional-tuple-record",
-      "path": "packages/iac/src/sarj_iac_lint/_hcl.py",
-      "count": 2
-    },
-    {
-      "fingerprint": "8e0e6c910511bcab476b4a4a1adab22878cc088c4ebc9b1bf8c707215dcc3120",
-      "source": "sarj-python-lint",
-      "ruleId": "no-positional-tuple-record",
-      "path": "packages/iac/src/sarj_iac_lint/rules/no_comment_cruft.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "59e0076c997f262ccd4de5cb80a64c3d280b9194552dea882d8b32265c6bbdae",
-      "source": "sarj-python-lint",
-      "ruleId": "no-positional-tuple-record",
-      "path": "packages/iac/src/sarj_iac_lint/rules/no_dead_environment_input.py",
-      "count": 1
-    },
     {
       "fingerprint": "bef55e7c58998665eeb5f0a57eba37d058130a7d1402af03fdc0d9b724fa61b2",
       "source": "sarj-python-lint",

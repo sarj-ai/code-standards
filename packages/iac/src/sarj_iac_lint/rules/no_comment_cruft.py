@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import PurePosixPath
 import re
 from typing import TYPE_CHECKING, NamedTuple, final, override
@@ -34,6 +35,13 @@ _DIRECTIVE_RE = re.compile(
 class _CommentLine(NamedTuple):
     line: int
     body: str
+
+
+@dataclass(frozen=True, slots=True)
+class _BlockComment:
+    lines: tuple[_CommentLine, ...]
+    cursor: int
+    balanced: bool
 
 
 _BANNER_FULL_RE = re.compile(r"^[-=#*~_+.\s]{4,}$")
@@ -277,11 +285,11 @@ def _block_comment_diagnostics(
             continue
 
         indent = match.group(1)
-        comment_lines, cursor, balanced = _block_comment_lines(lines, data_lines, index, match.group(2))
+        block_comment = _block_comment_lines(lines, data_lines, index, match.group(2))
 
-        if balanced:
-            diagnostics.extend(_commented_block_findings(comment_lines, path, indent, code))
-            index = cursor + 1
+        if block_comment.balanced:
+            diagnostics.extend(_commented_block_findings(block_comment.lines, path, indent, code))
+            index = block_comment.cursor + 1
         else:
             index += 1
     return diagnostics
@@ -297,9 +305,7 @@ def _code_run_leader(run: list[_CommentLine]) -> int | None:
     return None
 
 
-def _block_comment_lines(
-    lines: list[str], data_lines: Sequence[bool], index: int, fragment: str
-) -> tuple[list[_CommentLine], int, bool]:
+def _block_comment_lines(lines: list[str], data_lines: Sequence[bool], index: int, fragment: str) -> _BlockComment:
     comment_lines: list[_CommentLine] = []
     cursor = index
     balanced = False
@@ -314,11 +320,11 @@ def _block_comment_lines(
         if cursor < len(lines):
             fragment = lines[cursor]
 
-    return comment_lines, cursor, balanced
+    return _BlockComment(lines=tuple(comment_lines), cursor=cursor, balanced=balanced)
 
 
 def _commented_block_findings(
-    comment_lines: list[_CommentLine], path: Path, indent: str, code: str
+    comment_lines: Sequence[_CommentLine], path: Path, indent: str, code: str
 ) -> list[Diagnostic]:
     diagnostics: list[Diagnostic] = []
     voting = [(lineno, body) for lineno, body in comment_lines if body and not _is_directive(body)]
