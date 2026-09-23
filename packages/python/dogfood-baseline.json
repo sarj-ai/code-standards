@@ -1,13 +1,4 @@
 {
-  "packages/iac/src/sarj_iac_lint/_hcl.py": {
-    "SARJ026": 2
-  },
-  "packages/iac/src/sarj_iac_lint/rules/no_comment_cruft.py": {
-    "SARJ026": 1
-  },
-  "packages/iac/src/sarj_iac_lint/rules/no_dead_environment_input.py": {
-    "SARJ026": 1
-  },
   "packages/python/src/sarj_python_lint/rules/fastapi_explicit_openapi_contract.py": {
     "SARJ026": 1
   },

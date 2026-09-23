@@ -307,6 +307,14 @@ class _Declaration:
 
 
 @dataclass(frozen=True, slots=True)
+class _VariableContract:
+    name: str
+    default: str | None
+    scalar_type: _ScalarType | None
+    sensitive: bool
+
+
+@dataclass(frozen=True, slots=True)
 class _AssignmentValue:
     text: str
     canon: _Canon | None
@@ -431,7 +439,7 @@ def _declares_variables(directory: Path) -> bool:
     return next(_variable_blocks(directory), None) is not None
 
 
-def _variable_blocks(directory: Path) -> Iterator[tuple[str, str | None, _ScalarType | None, bool]]:
+def _variable_blocks(directory: Path) -> Iterator[_VariableContract]:
     for tf in sorted(directory.glob("*.tf")):
         text = _read_text(tf)
         if text is None:
@@ -451,13 +459,15 @@ def _read_text(path: Path) -> str | None:
 def _analyze_root(root: Path) -> _RootAnalysis:
     files = _environment_files(root)
     declarations = {
-        name: _Declaration(
-            default is not None,
-            None if default is None or scalar_type is None else _canonical_for_type(default, scalar_type),
-            scalar_type,
-            sensitive,
+        contract.name: _Declaration(
+            contract.default is not None,
+            None
+            if contract.default is None or contract.scalar_type is None
+            else _canonical_for_type(contract.default, contract.scalar_type),
+            contract.scalar_type,
+            contract.sensitive,
         )
-        for name, default, scalar_type, sensitive in _variable_blocks(root)
+        for contract in _variable_blocks(root)
     }
     values: dict[str, dict[str, _AssignmentValue]] = {}
     blind = list(_structural_blind(root, files))
@@ -731,7 +741,7 @@ def _parse_map_key(text: str, index: int) -> _MapKeyParseResult:
     return _MapKeyParseResult(None, index)
 
 
-def _variable_contract(block: Block) -> tuple[str, str | None, _ScalarType | None, bool]:
+def _variable_contract(block: Block) -> _VariableContract:
     default = block.attribute("default")
     declared = block.attribute("type")
     declared_type = None if declared is None else declared.value.strip()
@@ -741,7 +751,12 @@ def _variable_contract(block: Block) -> tuple[str, str | None, _ScalarType | Non
         scalar_type = None
     sensitive_attr = block.attribute("sensitive")
     sensitive = sensitive_attr is not None and _canonical(sensitive_attr.value) != _BOOL_SCALARS["false"]
-    return block.labels[0], None if default is None else default.value, scalar_type, sensitive
+    return _VariableContract(
+        name=block.labels[0],
+        default=None if default is None else default.value,
+        scalar_type=scalar_type,
+        sensitive=sensitive,
+    )
 
 
 def _collect_environment_values(
