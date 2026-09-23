@@ -9,7 +9,7 @@ name: release
 #   Trusted Publishing (OIDC) works — reusable workflows are unsupported by PyPI.
 # - If an invalid publishable change reaches main and makes that revision's
 #   release-ready check fail, first repair the missing version bump, then merge a
-#   clean non-publishable change. That push is the recovery barrier: its exact
+#   separately reviewed non-publishable change. That push is the recovery barrier: its exact
 #   revision checks can succeed and reconciliation publishes the current versions
 #   without weakening provenance or rewriting an immutable tag. This applies
 #   when concurrent merges reused a version and its tag correctly belongs to
