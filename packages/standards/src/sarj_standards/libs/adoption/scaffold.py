@@ -12,10 +12,7 @@ from typing import TYPE_CHECKING, Final, Literal, NamedTuple
 
 from packaging.specifiers import InvalidSpecifier, SpecifierSet
 from packaging.version import InvalidVersion, Version
-from repo_standards.core.parser import (
-    create_commit_message_policy_manifest,
-    enable_commit_message_policy_bytes,
-)
+from repo_standards.core.parser import parse_manifest_bytes
 import yaml
 
 from sarj_standards.libs.filesystem import is_link_like
@@ -782,20 +779,20 @@ def _plan_repo_commit_message_policy(root: Path, plan: Plan) -> None:
     path = root / ".repo-standards" / "repository.toml"
     if path.is_file():
         try:
-            original = path.read_bytes()
-            migrated = enable_commit_message_policy_bytes(original)
+            existing = parse_manifest_bytes(path.read_bytes())
         except (OSError, TypeError, ValueError) as exc:
-            plan.errors.append(f"cannot enable Repo Standards commit-message policy: {exc}")
+            plan.errors.append(f"invalid Repo Standards manifest: {exc}")
             return
-        if migrated == original:
-            plan.skips.append((path, "commit-message policy is already enabled"))
-        else:
-            plan.writes.append((path, migrated.decode("utf-8")))
+        if existing.commit_message is None:
+            plan.errors.append("Repo Standards manifest predates commit-message enforcement; migrate it first")
+            return
+        plan.skips.append((path, "repository policy is already configured"))
         return
     repository_id = re.sub(r"[^a-z0-9]+", "-", root.name.casefold()).strip("-")
     if not repository_id or not repository_id[0].isalpha():
         repository_id = f"repository-{repository_id}" if repository_id else "local-repository"
-    contents = create_commit_message_policy_manifest(repository_id).decode("utf-8")
+    contents = f'repository_id = "{repository_id}"\ncomponents = []\n'
+    parse_manifest_bytes(contents.encode("utf-8"))
     plan.writes.append((path, contents))
 
 
@@ -2490,7 +2487,7 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: sarj-ai/repo-standards/pull-request-commits@c8a4a2c1c89050bcb1d778e8ccd6f17e50d4c352 # v5.16.4
+      - uses: sarj-ai/repo-standards/pull-request-commits@bb2fe3d3a8b1362427fa412b6411d3013bede2c4 # v5.17.0
 """
 
 
