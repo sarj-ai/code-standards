@@ -129,7 +129,6 @@ def _repository(root: Path) -> None:
     (root / "README.md").write_text("# stale\n", encoding="utf-8")
     for relative in (
         "AGENTS.md",
-        "CLAUDE.md",
         "packages/standards/README.md",
         "packages/python/README.md",
         "packages/sql/README.md",
@@ -237,7 +236,7 @@ def test_arbitrary_authored_document_is_rejected(tmp_path: Path, filename: str) 
 
 def test_broken_local_link_fails_loudly(tmp_path: Path) -> None:
     _repository(tmp_path)
-    (tmp_path / "CLAUDE.md").write_text("[missing](does-not-exist.md)\n", encoding="utf-8")
+    (tmp_path / "AGENTS.md").write_text("[missing](does-not-exist.md)\n", encoding="utf-8")
 
     with pytest.raises(ValueError, match="missing local target"):
         docs.check(tmp_path)
@@ -245,7 +244,7 @@ def test_broken_local_link_fails_loudly(tmp_path: Path) -> None:
 
 def test_broken_local_heading_link_fails_loudly(tmp_path: Path) -> None:
     _repository(tmp_path)
-    (tmp_path / "CLAUDE.md").write_text("[missing](README.md#absent-heading)\n", encoding="utf-8")
+    (tmp_path / "AGENTS.md").write_text("[missing](README.md#absent-heading)\n", encoding="utf-8")
 
     with pytest.raises(ValueError, match="missing Markdown heading"):
         docs.check(tmp_path)
@@ -253,7 +252,7 @@ def test_broken_local_heading_link_fails_loudly(tmp_path: Path) -> None:
 
 def test_stale_command_example_fails_loudly(tmp_path: Path) -> None:
     _repository(tmp_path)
-    (tmp_path / "CLAUDE.md").write_text("```bash\ncode-standards init\n```\n", encoding="utf-8")
+    (tmp_path / "AGENTS.md").write_text("```bash\ncode-standards init\n```\n", encoding="utf-8")
 
     with pytest.raises(ValueError, match="invalid command example"):
         docs.check(tmp_path)

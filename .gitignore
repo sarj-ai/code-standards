@@ -32,9 +32,7 @@ Thumbs.db
 .zed/
 *.swp
 
-# Claude Code local state (shared settings.json is tracked)
-.claude/*
-!.claude/settings.json
+.claude/
 .worktrees/
 .sarj-private-refs.toml
 .sarj-standards-rollout.toml
