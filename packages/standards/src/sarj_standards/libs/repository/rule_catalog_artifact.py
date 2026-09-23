@@ -85,6 +85,13 @@ class SelectorIndex:
         return (canonical, *self.aliases_by_canonical.get(canonical, ()))
 
 
+@dataclass(frozen=True, slots=True)
+class _SelectorMetadata:
+    key: str
+    engine: str
+    aliases: tuple[str, ...]
+
+
 def load(path: Path = RULE_CATALOG) -> dict[str, object]:
     try:
         payload: object = json.loads(path.read_text(encoding="utf-8"))  # pyright: ignore[reportAny]
@@ -106,7 +113,10 @@ def selector_index(path: Path = RULE_CATALOG) -> SelectorIndex:
     canonical_by_selector: dict[str, str] = {}
     aliases_by_canonical: dict[str, tuple[str, ...]] = {}
     for value in rules:
-        key, engine, raw_aliases = _selector_metadata(value)
+        metadata = _selector_metadata(value)
+        key = metadata.key
+        engine = metadata.engine
+        raw_aliases = metadata.aliases
         historical = _historical_selectors(key, engine, raw_aliases)
         if key in aliases_by_canonical:
             msg = f"shipped rule catalog repeats canonical selector {key!r}"
@@ -143,7 +153,7 @@ def _historical_selectors(key: str, engine: str, raw_aliases: tuple[str, ...]) -
     return historical
 
 
-def _selector_metadata(value: object) -> tuple[str, str, tuple[str, ...]]:
+def _selector_metadata(value: object) -> _SelectorMetadata:
     if not _is_object(value):
         msg = "shipped rule catalog rule must be an object"
         raise ValueError(msg)
@@ -163,7 +173,7 @@ def _selector_metadata(value: object) -> tuple[str, str, tuple[str, ...]]:
     if len(raw_aliases) != len(set(raw_aliases)):
         msg = f"shipped rule catalog rule {key!r} repeats an alias"
         raise ValueError(msg)
-    return key, engine, raw_aliases
+    return _SelectorMetadata(key=key, engine=engine, aliases=raw_aliases)
 
 
 class _StringEnum(Protocol):

@@ -1694,7 +1694,9 @@ def _machine_adoption_gate(root: Path) -> object | None:
     except (OSError, TypeError, ValueError) as exc:
         issues = (*issues, ExecutionIssue("sarj-standards-config", "config-sync-invalid", str(exc), exit_code=2))
     else:
-        diagnostics, issues = _merge_sync_findings(root, sync, diagnostics, issues)
+        findings = _merge_sync_findings(root, sync, diagnostics, issues)
+        diagnostics = findings.diagnostics
+        issues = findings.issues
     if not diagnostics and not issues:
         return None
     completion = Completion.FAILED if issues else Completion.COMPLETE
@@ -1702,12 +1704,18 @@ def _machine_adoption_gate(root: Path) -> object | None:
     return report_from_tools(root, (tool,))
 
 
+@dataclass(frozen=True, slots=True)
+class _SyncFindings:
+    diagnostics: tuple["Diagnostic", ...]
+    issues: tuple["ExecutionIssue", ...]
+
+
 def _merge_sync_findings(
     root: Path,
     sync: service.SyncResult,
     diagnostics: tuple[Diagnostic, ...],
     issues: tuple[ExecutionIssue, ...],
-) -> tuple[tuple[Diagnostic, ...], tuple[ExecutionIssue, ...]]:
+) -> _SyncFindings:
     from sarj_standards.libs.adoption import service  # ruff: ignore[import-outside-top-level]
     from sarj_standards.libs.diagnostics import Diagnostic, ExecutionIssue, Location, Severity  # ruff: ignore[import-outside-top-level]
 
@@ -1740,7 +1748,7 @@ def _merge_sync_findings(
                 exit_code=2,
             ),
         )
-    return diagnostics, issues
+    return _SyncFindings(diagnostics=diagnostics, issues=issues)
 
 
 def _machine_input_error(root: Path, message: str) -> object:

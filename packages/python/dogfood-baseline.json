@@ -40,17 +40,5 @@
   },
   "packages/python/src/sarj_python_lint/rules/timestamp_order_requires_tiebreaker.py": {
     "SARJ026": 1
-  },
-  "packages/standards/src/sarj_standards/cli/main.py": {
-    "SARJ026": 1
-  },
-  "packages/standards/src/sarj_standards/libs/linting/textlint.py": {
-    "SARJ026": 3
-  },
-  "packages/standards/src/sarj_standards/libs/repository/comment_corpus.py": {
-    "SARJ026": 5
-  },
-  "packages/standards/src/sarj_standards/libs/repository/rule_catalog_artifact.py": {
-    "SARJ026": 1
   }
 }

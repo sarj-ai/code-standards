@@ -3,6 +3,7 @@ from __future__ import annotations
 import ast
 from collections import Counter
 from contextlib import suppress
+from dataclasses import dataclass
 import errno
 import io
 import json
@@ -65,6 +66,25 @@ class _CommentUnit(NamedTuple):
     line: int
     kind: str
     text: str
+
+
+@dataclass(frozen=True, slots=True)
+class _ScanPosition:
+    index: int
+    line: int
+
+
+@dataclass(frozen=True, slots=True)
+class _QuotedPosition:
+    index: int
+    line: int
+    quote: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class _FenceState:
+    in_fence: bool
+    fence: str
 
 
 def _require_supported_platform() -> None:
@@ -351,7 +371,10 @@ def _javascript_comments(source: str) -> list[_CommentUnit]:
         char = source[index]
         following = source[index + 1] if index + 1 < len(source) else ""
         if quote is not None:
-            index, line, quote = _javascript_quoted_character(source, index, line, quote)
+            position = _javascript_quoted_character(source, index, line, quote)
+            index = position.index
+            line = position.line
+            quote = position.quote
             continue
         if char in {'"', "'", "`"}:
             quote = char
@@ -364,7 +387,9 @@ def _javascript_comments(source: str) -> list[_CommentUnit]:
             index = end
             continue
         if char == "/" and following == "*":
-            index, line = _javascript_block_comment(source, index, line, found)
+            position = _javascript_block_comment(source, index, line, found)
+            index = position.index
+            line = position.line
             continue
         line += char == "\n"
         index += 1
@@ -389,7 +414,10 @@ def _sql_comments(source: str) -> list[_CommentUnit]:
             index += 1
             continue
         if quote is not None:
-            index, line, quote = _sql_quoted_character(source, index, line, quote)
+            position = _sql_quoted_character(source, index, line, quote)
+            index = position.index
+            line = position.line
+            quote = position.quote
             continue
         if char in {"'", '"'}:
             quote = char
@@ -406,7 +434,9 @@ def _sql_comments(source: str) -> list[_CommentUnit]:
             index = end
             continue
         if pair == "/*":
-            index, line = _sql_block_comment(source, index, line, found)
+            position = _sql_block_comment(source, index, line, found)
+            index = position.index
+            line = position.line
             continue
         line += char == "\n"
         index += 1
@@ -486,7 +516,9 @@ def _markdown_comments(source: str) -> list[_CommentUnit]:  # ruff: ignore[too-m
         stripped = raw.lstrip()
         if not in_html and (match := re.match(r"(`{3,}|~{3,})", stripped)):
             marker = match.group(1)
-            in_fence, fence = _markdown_fence_state(marker, in_fence=in_fence, fence=fence)
+            state = _markdown_fence_state(marker, in_fence=in_fence, fence=fence)
+            in_fence = state.in_fence
+            fence = state.fence
             continue
         if in_fence:
             continue
@@ -516,53 +548,53 @@ def _markdown_comments(source: str) -> list[_CommentUnit]:  # ruff: ignore[too-m
     return found
 
 
-def _javascript_block_comment(source: str, index: int, line: int, found: list[_CommentUnit]) -> tuple[int, int]:
+def _javascript_block_comment(source: str, index: int, line: int, found: list[_CommentUnit]) -> _ScanPosition:
     end = source.find("*/", index + 2)
     end = len(source) - 2 if end < 0 else end
     value = source[index + 2 : end]
     found.append(_CommentUnit(line, "jsdoc" if value.startswith("*") else "comment", value.strip("* \n")))
     line += value.count("\n")
     index = end + 2
-    return index, line
+    return _ScanPosition(index=index, line=line)
 
 
-def _sql_block_comment(source: str, index: int, line: int, found: list[_CommentUnit]) -> tuple[int, int]:
+def _sql_block_comment(source: str, index: int, line: int, found: list[_CommentUnit]) -> _ScanPosition:
     end = source.find("*/", index + 2)
     end = len(source) if end < 0 else end
     value = source[index + 2 : end]
     found.append(_CommentUnit(line, "comment", value.strip("* \n")))
     line += value.count("\n")
     index = min(len(source), end + 2)
-    return index, line
+    return _ScanPosition(index=index, line=line)
 
 
-def _sql_quoted_character(source: str, index: int, line: int, quote: str | None) -> tuple[int, int, str | None]:
+def _sql_quoted_character(source: str, index: int, line: int, quote: str | None) -> _QuotedPosition:
     char = source[index]
     if char == quote and source[index + 1 : index + 2] == quote:
         index += 2
-        return index, line, quote
+        return _QuotedPosition(index=index, line=line, quote=quote)
     if char == quote:
         quote = None
     line += char == "\n"
     index += 1
-    return index, line, quote
+    return _QuotedPosition(index=index, line=line, quote=quote)
 
 
-def _markdown_fence_state(marker: str, *, in_fence: bool, fence: str) -> tuple[bool, str]:
+def _markdown_fence_state(marker: str, *, in_fence: bool, fence: str) -> _FenceState:
     if not in_fence:
         in_fence, fence = True, marker[0]
     elif marker[0] == fence:
         in_fence, fence = False, ""
-    return in_fence, fence
+    return _FenceState(in_fence=in_fence, fence=fence)
 
 
-def _javascript_quoted_character(source: str, index: int, line: int, quote: str | None) -> tuple[int, int, str | None]:
+def _javascript_quoted_character(source: str, index: int, line: int, quote: str | None) -> _QuotedPosition:
     char = source[index]
     if char == "\\":
         index += 2
-        return index, line, quote
+        return _QuotedPosition(index=index, line=line, quote=quote)
     if char == quote:
         quote = None
     line += char == "\n"
     index += 1
-    return index, line, quote
+    return _QuotedPosition(index=index, line=line, quote=quote)
