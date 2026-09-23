@@ -27,7 +27,17 @@ def test_rollout_cli_preserves_command_options(command: str, tmp_path: Path, mon
         rollout, "execute", execute
     )
     path = tmp_path / "fleet.toml"
-    argv = ["--registry", str(path), command, "--version", "7.10.2", "--channel", "canary"]
+    argv = [
+        "--registry",
+        str(path),
+        "--require-repository",
+        "sarj-ai/platform",
+        command,
+        "--version",
+        "7.10.2",
+        "--channel",
+        "canary",
+    ]
     if command in {"apply", "reconcile"}:
         argv.append("--dry-run")
 
@@ -35,12 +45,26 @@ def test_rollout_cli_preserves_command_options(command: str, tmp_path: Path, mon
     assert calls == [
         rollout.RolloutArgs(
             registry=path,
+            required_repositories=("sarj-ai/platform",),
             command=command,
             version="7.10.2",
             channel="canary",
             dry_run=command in {"apply", "reconcile"},
         )
     ]
+
+
+def test_rollout_rejects_a_missing_required_consumer_before_network(tmp_path: Path) -> None:
+    registry = tmp_path / "fleet.toml"
+    registry.write_text(
+        'schema = 1\n[[consumer]]\nname = "Other"\nrepository = "sarj-ai/other"\n'
+        'branch = "main"\nverify = ["make", "check"]\n',
+        encoding="utf-8",
+    )
+    args = rollout.RolloutArgs(registry=registry, required_repositories=("sarj-ai/platform",), command="plan")
+
+    with pytest.raises(rollout.RolloutError, match="registry omits required consumer repositories: sarj-ai/platform"):
+        rollout.execute(args, FakeRolloutRunner())
 
 
 @pytest.mark.parametrize(

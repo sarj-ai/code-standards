@@ -1,9 +1,9 @@
 {
   "schemaVersion": 2,
   "provenance": {
-    "bundleVersion": "7.31.0",
-    "consumerBaseSha": "09334ed7486d8c788d8fdaf6b269752aa66c4276",
-    "catalogDigest": "c4a15fb82b0e514464afec36bd0458471c3170929f39d662edc97eba95130bf7"
+    "bundleVersion": "7.31.1",
+    "consumerBaseSha": "e765c4731456897e19d4cbd249bd55bf0d25d60b",
+    "catalogDigest": "c8f8294433480c3968888c085a9c15bfe49e6574543cc50782a54b36addebae1"
   },
   "diagnostics": [
     {
@@ -593,6 +593,13 @@
       "ruleId": "no-unused-value-marker",
       "path": "packages/standards/tests/test_upgrade.py",
       "count": 4
+    },
+    {
+      "fingerprint": "5093cffe33fedd0b393295631ebf6dc920fb78f143d74949371c46ab3d76cd34",
+      "source": "sarj-python-lint",
+      "ruleId": "prefer-fstring-over-concat",
+      "path": "packages/python/tests/rules/test_require_port_for_service.py",
+      "count": 2
     },
     {
       "fingerprint": "092cb508bc88f5059b84379add9ecb13c8ac13b31211100014859399ed6f20d8",

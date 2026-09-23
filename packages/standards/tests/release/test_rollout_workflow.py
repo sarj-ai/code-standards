@@ -84,11 +84,12 @@ def test_rollout_uses_one_deterministic_interface_for_every_entrypoint() -> None
     workflow = _rendered_workflow()
 
     module = "python -m sarj_standards.libs.release.rollout"
-    assert f'{module} --registry "$registry" plan --version "$VERSION"' in workflow
-    assert f'{module} --registry "$registry" apply --version "$VERSION"' in workflow
-    assert f'{module} --registry "$registry" reconcile --version "$VERSION"' in workflow
+    required = '--require-repository "$GITHUB_REPOSITORY_OWNER/platform"'
+    assert f'{module} --registry "$registry" {required} plan --version "$VERSION"' in workflow
+    assert f'{module} --registry "$registry" {required} apply --version "$VERSION"' in workflow
+    assert f'{module} --registry "$registry" {required} reconcile --version "$VERSION"' in workflow
     assert "--refresh-package code-standards --from code-standards" in workflow
-    assert f'{module} --registry "$registry" status --version "$VERSION"' in workflow
+    assert f'{module} --registry "$registry" {required} status --version "$VERSION"' in workflow
     assert "github.sha" in workflow
     assert "an exact published Standards version is required" in workflow
     assert "gh auth setup-git" in workflow

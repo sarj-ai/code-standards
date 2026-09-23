@@ -166,6 +166,7 @@ def optional_bool(table: Mapping[str, object], key: str) -> bool:
 @dataclass
 class RolloutArgs:
     registry: Path = DEFAULT_REGISTRY
+    required_repositories: tuple[str, ...] = ()
     command: str = ""
     version: str | None = None
     dry_run: bool = False
@@ -1341,6 +1342,11 @@ def execute(args: RolloutArgs, runner: CommandRunner) -> int:
     if not consumers:
         msg = f"rollout channel {args.channel!r} selects no consumers"
         raise RolloutError(msg)
+    registered = {consumer.repository for consumer in consumers}
+    missing = sorted(set(args.required_repositories) - registered)
+    if missing:
+        msg = f"rollout registry omits required consumer repositories: {', '.join(missing)}"
+        raise RolloutError(msg)
     version = validate_version(args.version) if args.version else latest_version(runner)
     match args.command:
         case "plan":
@@ -1369,8 +1375,12 @@ def main(argv: Sequence[str] | None = None, *, runner: CommandRunner | None = No
     exit_code = 0
 
     @app.callback()
-    def configure(registry: Annotated[Path, typer.Option("--registry")] = DEFAULT_REGISTRY) -> None:
+    def configure(
+        registry: Annotated[Path, typer.Option("--registry")] = DEFAULT_REGISTRY,
+        require_repository: Annotated[list[str] | None, typer.Option("--require-repository")] = None,
+    ) -> None:
         args.registry = registry
+        args.required_repositories = tuple(require_repository or ())
 
     def run(command: str, version: str | None, channel: _Channel, *, dry_run: bool = False) -> None:
         nonlocal exit_code

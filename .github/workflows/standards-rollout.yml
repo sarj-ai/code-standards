@@ -115,17 +115,17 @@ jobs:
             git config --global user.name "sarj-standards-rollout[bot]"
             git config --global user.email "sarj-standards-rollout[bot]@users.noreply.github.com"
             if [[ "$EVENT_NAME" == schedule ]]; then
-              run_and_log uv run --project packages/standards --frozen python -m sarj_standards.libs.release.rollout --registry "$registry" reconcile --version "$VERSION" || operation_status=$?
+              run_and_log uv run --project packages/standards --frozen python -m sarj_standards.libs.release.rollout --registry "$registry" --require-repository "$GITHUB_REPOSITORY_OWNER/platform" reconcile --version "$VERSION" || operation_status=$?
             else
-              run_and_log uv run --project packages/standards --frozen python -m sarj_standards.libs.release.rollout --registry "$registry" plan --version "$VERSION" || operation_status=$?
+              run_and_log uv run --project packages/standards --frozen python -m sarj_standards.libs.release.rollout --registry "$registry" --require-repository "$GITHUB_REPOSITORY_OWNER/platform" plan --version "$VERSION" || operation_status=$?
               if (( operation_status == 0 )); then
-                run_and_log uv run --project packages/standards --frozen python -m sarj_standards.libs.release.rollout --registry "$registry" apply --version "$VERSION" || operation_status=$?
+                run_and_log uv run --project packages/standards --frozen python -m sarj_standards.libs.release.rollout --registry "$registry" --require-repository "$GITHUB_REPOSITORY_OWNER/platform" apply --version "$VERSION" || operation_status=$?
               fi
             fi
           fi
 
           status_status=0
-          run_and_log uv run --project packages/standards --frozen python -m sarj_standards.libs.release.rollout --registry "$registry" status --version "$VERSION" || status_status=$?
+          run_and_log uv run --project packages/standards --frozen python -m sarj_standards.libs.release.rollout --registry "$registry" --require-repository "$GITHUB_REPOSITORY_OWNER/platform" status --version "$VERSION" || status_status=$?
           if (( operation_status != 0 || status_status != 0 )); then
             result=failure
           else
