@@ -16,3 +16,9 @@ Terraform expression that derives access from `var.environment` belongs here.
 
 For rule work, follow `plugins/sarj-audit/skills/lint-rule-generator/SKILL.md`. Run
 `make verify` before review.
+
+For release recovery, never retarget an immutable package tag. If publishable
+files changed after a tagged version, bump the affected package and exact
+sibling pins, then require a separate non-publishable merge with normal
+exact-revision CI before reconciliation publishes. Use the rollout controller
+only after the version is published, and leave consumer approvals intact.
