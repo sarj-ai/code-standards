@@ -39,7 +39,7 @@ def test_flags_every_delete_statement_once(statement: str) -> None:
     diagnostics = _check(statement)
 
     assert [(item.line, item.col, item.code, item.severity) for item in diagnostics] == [
-        (1, 1, "SARJ442", Severity.WARNING)
+        (1, 1, "SARJ442", Severity.ERROR)
     ]
 
 
