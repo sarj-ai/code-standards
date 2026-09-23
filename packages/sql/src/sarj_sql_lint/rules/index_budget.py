@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, final, override
 
 from sarj_sql_lint.rule_base import (
     AutofixPolicy,
+    DefaultLevel,
     Diagnostic,
     ExampleFile,
     ExampleOutcome,
@@ -30,6 +31,7 @@ class IndexBudget(Rule):
     id = "excess-migration-index-requires-justification"
     code = "SARJ116"
     documentation = RuleDocumentation(
+        default_level=DefaultLevel.WARNING,
         summary="Require a structured local justification for excess explicit indexes in an authored migration.",
         rationale=(
             "Every explicit index adds write amplification, storage, vacuum work, and planner surface; bursts of indexes "

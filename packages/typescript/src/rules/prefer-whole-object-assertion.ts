@@ -31,6 +31,7 @@ const NUMERIC_SIGNS: ReadonlySet<string> = new Set(["-", "+"]);
 const MIN_RUN_LENGTH = 2;
 
 export const PREFER_WHOLE_OBJECT_ASSERTION_DOCUMENTATION = {
+  defaultLevel: "warning",
   summary: "Collapse consecutive assertions on one object into a whole-object assertion so related mismatches are reported together.",
   rationale: "One whole-object assertion presents related expectations together and produces a complete structural diff.",
   remediation: "Consider one `toMatchObject` assertion for ordinary data objects. Preserve missing-property checks, identity, and getter or proxy behavior when deciding whether to combine assertions.",

@@ -46,6 +46,7 @@ const WALL_CLUSTER_MAX_LINE_GAP = 8;
 const WALL_CLUSTER_MIN_COMMENTS = 3;
 
 export const NO_RESTATED_COMMENT_DOCUMENTATION = {
+  defaultLevel: "warning",
   summary: "Flag short standalone comments that repeat the adjacent statement's identifiers.",
   rationale: "A comment that only repeats code adds no context and can become stale independently.",
   remediation: "Remove a genuine restatement; retain conditions, constraints, rationale, and information absent from the statement.",

@@ -73,6 +73,7 @@ class FastapiExplicitOpenapiContract(Rule):
     id: str = "fastapi-explicit-openapi-contract"
     code: str = "SARJ094"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
+        default_level=Severity.WARNING,
         summary="Visible FastAPI operations pin locally reviewable metadata and avoid statically provable OpenAPI gaps.",
         rationale=(
             "FastAPI can infer valid schemas and default statuses. This stricter organizational policy pins locally "

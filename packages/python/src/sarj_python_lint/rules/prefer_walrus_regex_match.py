@@ -14,6 +14,7 @@ from sarj_python_lint.rule_base import (
     RuleCategory,
     RuleDocumentation,
     RuleExample,
+    Severity,
     is_suppressed,
     parse_or_none,
 )
@@ -58,6 +59,7 @@ class PreferWalrusRegexMatch(Rule):
     id: str = "prefer-walrus-regex-match"
     code: str = "SARJ081"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
+        default_level=Severity.WARNING,
         summary="A proven regex Match-or-None result is assigned only for the following condition.",
         rationale="A named expression can keep a short regex operation with its only condition while preserving access to the result.",
         remediation=(

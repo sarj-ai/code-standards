@@ -44,6 +44,7 @@ class NoRedundantLiteralDescription(Rule):
     id = "no-restated-closed-domain-description"
     code = "SARJ423"
     documentation = RuleDocumentation(
+        default_level=Severity.WARNING,
         summary="Do not restate a string Literal or local string Enum domain in its Pydantic description.",
         rationale=(
             "Pydantic already publishes literal and enum domains in JSON Schema; duplicate must-be prose can "

@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, NamedTuple, final, override
 from sarj_iac_lint._hcl import heredoc_body_mask
 from sarj_iac_lint.rule_base import (
     AutofixPolicy,
+    DefaultLevel,
     Diagnostic,
     ExampleFile,
     ExampleOutcome,
@@ -88,6 +89,7 @@ class NoRestatedComment(Rule):
     id = "no-restated-comment"
     code = "SARJ207"
     documentation = RuleDocumentation(
+        default_level=DefaultLevel.WARNING,
         summary=(
             "Flag a short comment attached to an HCL declaration when it only repeats that declaration's kind, "
             "label, or attribute name."

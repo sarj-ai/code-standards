@@ -32,6 +32,7 @@ class TypedErrorReasons(Rule):
     id = "typed-error-reasons"
     code = "SARJ435"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
+        default_level=Severity.WARNING,
         summary="Review joined exception strings for fixed reason identities versus dynamic context.",
         rationale=(
             "Fixed reason identities benefit from stable codes for API clients, UI formatting, telemetry, and "

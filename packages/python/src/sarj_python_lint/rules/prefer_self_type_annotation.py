@@ -114,6 +114,7 @@ class PreferSelfTypeAnnotation(Rule):
     id: str = "prefer-self-type-annotation"
     code: str = "SARJ078"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
+        default_level=Severity.WARNING,
         summary="Prefer `Self` for self-returning methods and alternate constructors.",
         rationale="`Self` preserves the concrete subclass type when an inherited method returns its receiver or constructs through its class receiver.",
         remediation="Import `Self` from `typing` (or `typing_extensions` on Python before 3.11) and use it as the return annotation.",

@@ -13,6 +13,7 @@ type MessageIds = "preferAsyncFs";
 type Options = [];
 
 export const PREFER_NODE_FS_PROMISES_DOCUMENTATION = {
+  defaultLevel: "warning",
   summary: "Prefer promise-based Node.js filesystem APIs over synchronous calls in production modules.",
   rationale: "Synchronous filesystem work blocks the event loop and can stall unrelated daemon, server, and worker tasks.",
   remediation: "Import the promise API from node:fs/promises and await it; use FileHandle.sync only where a documented durability boundary requires it.",

@@ -19,6 +19,7 @@ from sarj_python_lint.rule_base import (
     RuleCategory,
     RuleDocumentation,
     RuleExample,
+    Severity,
     is_suppressed,
     parse_or_none,
 )
@@ -52,6 +53,7 @@ class PreferPydanticJsonValue(Rule):
     id = "prefer-pydantic-json-value"
     code = "SARJ454"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
+        default_level=Severity.WARNING,
         summary="Recursive JSON value alias duplicates `pydantic.JsonValue`.",
         rationale=(
             "Pydantic's canonical JSON value alias keeps the static contract aligned with runtime validation and "

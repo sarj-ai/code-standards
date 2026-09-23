@@ -14,6 +14,7 @@ from sarj_python_lint.rule_base import (
     RuleCategory,
     RuleDocumentation,
     RuleExample,
+    Severity,
     is_suppressed,
     parse_or_none,
 )
@@ -30,6 +31,7 @@ class PreferWalrusStreamLoop(Rule):
     id: str = "prefer-walrus-stream-loop"
     code: str = "SARJ077"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
+        default_level=Severity.WARNING,
         summary="Collapse a compact producer assignment and immediate sentinel break into a named-expression loop.",
         rationale="A named-expression loop can state a repeated producer call and its termination condition together.",
         remediation=(

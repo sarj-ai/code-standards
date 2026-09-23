@@ -42,6 +42,7 @@ class PreferWalrusAwaitedNoneGuard(Rule):
     id = "prefer-walrus-awaited-none-guard"
     code = "SARJ432"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
+        default_level=Severity.WARNING,
         summary="Bind a compact awaited lookup in its immediately following terminal None guard.",
         rationale=(
             "When an awaited lookup and its terminal None guard are adjacent, binding in the condition keeps "

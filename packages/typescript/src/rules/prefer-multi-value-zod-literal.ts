@@ -18,6 +18,7 @@ type MessageIds = "useMultiValueLiteral";
 type Options = readonly [{ zodMajorVersion?: 4 }];
 
 export const PREFER_MULTI_VALUE_ZOD_LITERAL_DOCUMENTATION = {
+  defaultLevel: "warning",
   summary:
     "Use the Zod 4 multi-value literal API instead of a union of literal schemas.",
   rationale:

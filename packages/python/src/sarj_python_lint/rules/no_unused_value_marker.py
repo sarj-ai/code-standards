@@ -29,6 +29,7 @@ class NoUnusedValueMarker(Rule):
     id = "no-unused-value-marker"
     code = "SARJ452"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
+        default_level=Severity.WARNING,
         summary="Do not use standalone assignments to `_` to discard values.",
         rationale=(
             "A standalone `_ = value` assignment adds a binding without clarifying intent. A side-effecting call can "

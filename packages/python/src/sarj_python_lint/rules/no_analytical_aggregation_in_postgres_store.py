@@ -152,6 +152,7 @@ class NoAnalyticalAggregationInPostgresStore(Rule):
     id: str = "no-analytical-aggregation-in-postgres-store"
     code: str = "SARJ020"
     documentation = RuleDocumentation(
+        default_level=Severity.WARNING,
         summary="Potentially analytical PostgreSQL store queries require review.",
         rationale=(
             "Unbounded reporting and statistical scans can compete with transactional reads. "

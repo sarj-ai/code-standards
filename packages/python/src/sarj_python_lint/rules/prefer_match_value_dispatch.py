@@ -38,6 +38,7 @@ class PreferMatchValueDispatch(Rule):
     id: str = "prefer-match-value-dispatch"
     code: str = "SARJ439"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
+        default_level=Severity.WARNING,
         summary="Prefer match/case for repeated dispatch on one value with a fallback.",
         rationale="A single dispatch subject makes distinct value cases and their fallback easier to review.",
         remediation=(

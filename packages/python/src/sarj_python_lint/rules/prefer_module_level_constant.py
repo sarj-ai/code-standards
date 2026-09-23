@@ -96,6 +96,7 @@ class PreferModuleLevelConstant(Rule):
     id: str = "prefer-module-level-constant"
     code: str = "SARJ039"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
+        default_level=Severity.WARNING,
         summary="Hoist repeatedly read static values when an immutable module representation preserves behavior.",
         rationale=(
             "Rebuilding a substantial static collection repeats allocation, while calling `re.compile` with a "

@@ -24,6 +24,7 @@ from yaml.tokens import ScalarToken
 from sarj_standards.libs.adoption.manifest import as_table, list_field, table_field
 from sarj_standards.libs.rules.contracts import (
     AutofixPolicy,
+    DefaultLevel,
     ExampleFile,
     ExpectedOutcome,
     Language,
@@ -453,7 +454,11 @@ class RuleMeta:
     message_ids: tuple[str, ...] = ()
     references: tuple[str, ...] = ()
     since: str | None = None
-    blocking: bool = True
+    default_level: DefaultLevel = DefaultLevel.ERROR
+
+    @property
+    def blocking(self) -> bool:
+        return self.default_level is DefaultLevel.ERROR
 
     @property
     def description(self) -> str:
@@ -474,6 +479,7 @@ class RuleMeta:
             rationale=self.rationale,
             remediation=self.remediation,
             category=self.category,
+            default_level=self.default_level,
             languages=self.languages,
             autofix=self.autofix,
             aliases=self.aliases,
@@ -513,7 +519,7 @@ REGISTRY: Final[Mapping[str, RuleMeta]] = MappingProxyType(
     {
         "config-comment-wall": RuleMeta(
             code="SARJ300",
-            blocking=True,
+            default_level=DefaultLevel.ERROR,
             summary="four or more nearby configuration comments mostly repeat their entries",
             rationale=(
                 "Repeated comments that merely narrate adjacent configuration hide constraints and make the file harder "
@@ -560,7 +566,7 @@ REGISTRY: Final[Mapping[str, RuleMeta]] = MappingProxyType(
         ),
         "commented-out-config": RuleMeta(
             code="SARJ301",
-            blocking=True,
+            default_level=DefaultLevel.ERROR,
             summary="unexplained disabled config blocks or adjacent alternatives",
             rationale="Disabled configuration becomes stale while version control already preserves its history.",
             remediation="Delete inactive settings, or explain the supported default, optional override, or constraint.",
@@ -663,7 +669,7 @@ REGISTRY: Final[Mapping[str, RuleMeta]] = MappingProxyType(
         ),
         "declarative-deployment-boundary": RuleMeta(
             code="SARJ309",
-            blocking=False,
+            default_level=DefaultLevel.WARNING,
             summary="recognized control-plane commands mutate infrastructure outside Terraform",
             rationale=(
                 "Imperative control-plane commands and plan-address allowlists split deployment ownership between "
@@ -796,7 +802,7 @@ REGISTRY: Final[Mapping[str, RuleMeta]] = MappingProxyType(
                 "Workflow topology, ownership, and redundancy require repository review and are not inferred by this semantic rule.",
                 "A run scalar containing a recognized SARJ309 infrastructure mutation is left to the more specific deployment-boundary diagnostic.",
             ),
-            blocking=False,
+            default_level=DefaultLevel.WARNING,
         ),
         "hidden-markdown-heading": RuleMeta(
             code="SARJ305",
@@ -833,7 +839,7 @@ REGISTRY: Final[Mapping[str, RuleMeta]] = MappingProxyType(
         ),
         "exact-config-comment-restatement": RuleMeta(
             code="SARJ306",
-            blocking=True,
+            default_level=DefaultLevel.ERROR,
             summary="YAML or TOML comment exactly repeats the adjacent scalar assignment",
             rationale=(
                 "A comment that repeats the key and scalar value adds no information and can drift independently from "
@@ -982,7 +988,7 @@ REGISTRY: Final[Mapping[str, RuleMeta]] = MappingProxyType(
                 "The count uses physical lines, not program complexity; continuations and multiline quoted data can count. Migration is a manual architecture decision, not an equivalent automatic translation.",
                 "Embedded shell in YAML, Makefiles, and Dockerfiles is intentionally outside this advisory.",
             ),
-            blocking=False,
+            default_level=DefaultLevel.WARNING,
         ),
     }
 )

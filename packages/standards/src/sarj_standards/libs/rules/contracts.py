@@ -206,6 +206,7 @@ class RuleSpec:
     remediation: str
     category: RuleCategory
     languages: frozenset[Language]
+    default_level: DefaultLevel = DefaultLevel.ERROR
     autofix: AutofixPolicy = AutofixPolicy.NONE
     aliases: tuple[str, ...] = ()
     examples: tuple[RuleExample, ...] = ()

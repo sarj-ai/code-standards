@@ -341,6 +341,7 @@ class PreferLibraryFake(Rule):
     id: str = "prefer-library-fake"
     code: str = "SARJ059"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
+        default_level=Severity.WARNING,
         summary="Prefer a maintained fake, emulator, recorder, or test service for substantial third-party protocols.",
         rationale=(
             "A substantial hand-written protocol model can drift from supported request, state, and error behavior."

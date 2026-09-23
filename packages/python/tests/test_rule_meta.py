@@ -29,7 +29,6 @@ _LEDGER_PATH = Path(__file__).parent / "code_ledger.json"
 # The rules directory, relative to the repo root — the path git history is walked
 # over to recover deleted rule modules.
 _RULES_DIR = "packages/python/src/sarj_python_lint/rules"
-_WARNING_LEVELS_PATH = _REPO_ROOT / "packages/standards/src/sarj_standards/configs/rule-warning-levels.v1.json"
 
 _RENAMED_RULES = {
     "defect-xfail-requires-explicit-strict": (
@@ -199,18 +198,11 @@ def test_every_rule_has_valid_source_owned_documentation() -> None:
 
 
 def _warning_python_rule_ids() -> set[str]:
-    raw: object = json.loads(  # pyright: ignore[reportAny] -- narrowed structurally below.
-        _WARNING_LEVELS_PATH.read_text(encoding="utf-8")
-    )
-    assert isinstance(raw, dict)
-    entries: list[tuple[object, object]] = list(raw.items())  # pyright: ignore[reportUnknownArgumentType]
-    selectors = next((value for key, value in entries if key == "rules"), None)
-    assert isinstance(selectors, list)
-    typed_selectors: list[str] = []
-    for selector in selectors:  # pyright: ignore[reportUnknownVariableType]
-        assert isinstance(selector, str)
-        typed_selectors.append(selector)
-    return {selector.removeprefix("python:") for selector in typed_selectors if selector.startswith("python:")}
+    return {
+        rule_id
+        for rule_id, rule in REGISTRY.items()
+        if rule.documentation is not None and rule.documentation.default_level is Severity.WARNING
+    }
 
 
 def _analyze_public_example(rule_id: str, example: RuleExample, root: Path) -> list[Diagnostic]:

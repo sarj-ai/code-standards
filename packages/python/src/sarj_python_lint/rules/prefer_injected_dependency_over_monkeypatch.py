@@ -37,6 +37,7 @@ class PreferInjectedDependencyOverMonkeypatch(Rule):
     id: str = "prefer-injected-dependency-over-monkeypatch"
     code: str = "SARJ445"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
+        default_level=Severity.WARNING,
         summary="Tests should inject dependencies instead of replacing attributes through ambient patching.",
         rationale=(
             "Attribute patching hides collaborators and configuration behind ambient module or object state, coupling "

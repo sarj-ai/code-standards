@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, NamedTuple, final, override
 from sarj_iac_lint._hcl import blocks
 from sarj_iac_lint.rule_base import (
     AutofixPolicy,
+    DefaultLevel,
     Diagnostic,
     ExampleFile,
     ExampleOutcome,
@@ -75,6 +76,7 @@ class RequirePreventDestroyOnIrreplaceable(Rule):
     id = "require-prevent-destroy-on-irreplaceable"
     code = "SARJ203"
     documentation = RuleDocumentation(
+        default_level=DefaultLevel.WARNING,
         summary=(
             "Warn when a curated durable-data container lacks a literal provider-side deletion guard or Terraform "
             "lifecycle destroy guard."

@@ -95,6 +95,7 @@ class RequirePydanticOrdinalLowerBound(Rule):
     id = "require-pydantic-ordinal-lower-bound"
     code = "SARJ418"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
+        default_level=Severity.WARNING,
         summary="A Pydantic ordinal field maps its first position to N but accepts smaller integers.",
         rationale=(
             "An unqualified `N for the first ...` mapping defines the origin of an ordinal field; matching schema "

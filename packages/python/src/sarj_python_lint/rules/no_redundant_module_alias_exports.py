@@ -14,6 +14,7 @@ from sarj_python_lint.rule_base import (
     RuleCategory,
     RuleDocumentation,
     RuleExample,
+    Severity,
     parse_or_none,
 )
 from sarj_python_lint.rules._imports import ImportIndex
@@ -33,6 +34,7 @@ class NoRedundantModuleAliasExports(Rule):
     id: str = "no-redundant-module-alias-exports"
     code: str = "SARJ440"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
+        default_level=Severity.WARNING,
         summary="Do not manufacture public APIs from private names or replace the current module.",
         rationale=(
             "Binding a public name to a private implementation creates two names for one API and disguises the "

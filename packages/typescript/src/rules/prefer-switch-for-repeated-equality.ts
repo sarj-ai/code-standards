@@ -12,6 +12,7 @@ type MessageIds = "preferSwitch";
 type Options = [];
 
 export const PREFER_SWITCH_FOR_REPEATED_EQUALITY_DOCUMENTATION = {
+  defaultLevel: "warning",
   summary: "Prefer switch over long if/else-if chains that compare one value for strict equality.",
   rationale: "A switch makes finite dispatch cases visually uniform and easier to extend without duplicating the discriminant.",
   remediation: "Replace three or more strict-equality branches over the same discriminant with a switch; keep if statements for ranges, guards, and heterogeneous predicates.",

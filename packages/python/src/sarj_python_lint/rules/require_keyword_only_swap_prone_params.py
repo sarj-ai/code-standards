@@ -118,6 +118,7 @@ class RequireKeywordOnlySwapProneParams(Rule):
     id: str = "require-keyword-only-swap-prone-params"
     code: str = "SARJ034"
     documentation = RuleDocumentation(
+        default_level=Severity.WARNING,
         summary="Risky-name positional parameters sharing a primitive annotation may be confused.",
         rationale="A caller can exchange semantically distinct positional values without a type-checking failure.",
         remediation=(

@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, final, override
 from sarj_iac_lint._hcl import blocks
 from sarj_iac_lint.rule_base import (
     AutofixPolicy,
+    DefaultLevel,
     Diagnostic,
     ExampleFile,
     ExampleOutcome,
@@ -129,6 +130,7 @@ class RequireDeletionProtection(Rule):
     id = "require-deletion-protection"
     code = "SARJ201"
     documentation = RuleDocumentation(
+        default_level=DefaultLevel.WARNING,
         summary=(
             "Warn when a curated stateful Terraform resource lacks a proven provider-native deletion guard or literal "
             "lifecycle destroy guard."

@@ -24,14 +24,13 @@ from sarj_standards.libs.rules import (
     RuleEngine,
     RuleExample,
     RuleId,
+    RuleSelector,
     RuleSpec,
-    warning_levels,
 )
 from sarj_standards.schemas import RULE_CATALOG
 
 
 _CATALOG_PATH: Final = Path("packages/standards/src/sarj_standards/schemas/rule-catalog.v1.json")
-_WARNING_LEVELS_PATH: Final = Path("packages/standards/src/sarj_standards/configs/rule-warning-levels.v1.json")
 _TYPESCRIPT_PACKAGE: Final = Path("packages/typescript")
 _NODE_PROJECTION: Final = (
     "import {publicDocumentation,rules} from './dist/index.js';"
@@ -43,6 +42,7 @@ _TYPESCRIPT_FIELDS: Final = frozenset(
         "autofix",
         "category",
         "code",
+        "defaultLevel",
         "engine",
         "examples",
         "filePatterns",
@@ -102,6 +102,18 @@ def load(path: Path = RULE_CATALOG) -> dict[str, object]:
         msg = "shipped rule catalog must contain schemaVersion 1 and a rules array"
         raise ValueError(msg)
     return payload
+
+
+def warning_selectors(path: Path = RULE_CATALOG) -> frozenset[RuleSelector]:
+    rules = load(path)["rules"]
+    if not _is_array(rules):
+        msg = "shipped rule catalog must contain a rules array"
+        raise ValueError(msg)
+    return frozenset(
+        RuleSelector.parse(_value_from_dict(value, "key"))
+        for value in rules
+        if _is_object(value) and value.get("defaultLevel") == DefaultLevel.WARNING.value
+    )
 
 
 def selector_index(path: Path = RULE_CATALOG) -> SelectorIndex:
@@ -238,6 +250,9 @@ class _NativeSpec(Protocol):
     def category(self) -> _StringEnum: ...
 
     @property
+    def default_level(self) -> _StringEnum: ...
+
+    @property
     def autofix(self) -> _StringEnum: ...
 
     @property
@@ -270,6 +285,7 @@ def _native_spec(native: _NativeSpec, *, engine: RuleEngine, languages: frozense
         rationale=native.rationale,
         remediation=native.remediation,
         category=RuleCategory(native.category.value),
+        default_level=DefaultLevel(native.default_level.value),
         languages=languages,
         autofix=AutofixPolicy(native.autofix.value),
         aliases=native.aliases,
@@ -333,6 +349,7 @@ def _typescript_spec(value: object) -> RuleSpec:
         rationale=_value_from_dict(value, "rationale"),
         remediation=_value_from_dict(value, "remediation"),
         category=RuleCategory(_value_from_dict(value, "category")),
+        default_level=DefaultLevel(_value_from_dict(value, "defaultLevel")),
         languages=frozenset(Language(item) for item in _string_list(value, "languages")),
         autofix=AutofixPolicy(_value_from_dict(value, "autofix")),
         aliases=tuple(_string_list(value, "aliases")),
@@ -405,13 +422,12 @@ def _typescript_file(value: object) -> ExampleFile:
     )
 
 
-def build(  # ruff: ignore[too-many-locals] -- joins five engine registries with lifecycle metadata.
+def build(
     root: Path,
 ) -> RuleCatalogDocument:
     from sarj_standards.libs.linting import textlint  # ruff: ignore[import-outside-top-level]
 
     resolved = root.resolve()
-    warning_rules = _warning_rules(resolved)
     inventory = rule_inventory_artifact.build(resolved)
     raw_rules = inventory["rules"]
     if not _is_array(raw_rules):
@@ -454,7 +470,6 @@ def build(  # ruff: ignore[too-many-locals] -- joins five engine registries with
         documented.append(
             DocumentedRule(
                 spec=spec,
-                default_level=(DefaultLevel.WARNING if spec.key in warning_rules else DefaultLevel.ERROR),
                 source=source,
                 test=test,
             )
@@ -463,16 +478,7 @@ def build(  # ruff: ignore[too-many-locals] -- joins five engine registries with
         missing = ", ".join(f"{family}:{rule_id}" for family, rule_id in sorted(locations))
         msg = f"live rules missing source-owned documentation: {missing}"
         raise ValueError(msg)
-    live_keys = {rule.spec.key for rule in documented}
-    unknown_warning_rules = warning_rules - live_keys
-    if unknown_warning_rules:
-        msg = f"warning lifecycle names unknown rules: {', '.join(sorted(unknown_warning_rules))}"
-        raise ValueError(msg)
     return RuleCatalogDocument(tuple(documented))
-
-
-def _warning_rules(root: Path) -> frozenset[str]:
-    return frozenset(str(selector) for selector in warning_levels.load(root / _WARNING_LEVELS_PATH))
 
 
 def _python_specs() -> tuple[RuleSpec, ...]:

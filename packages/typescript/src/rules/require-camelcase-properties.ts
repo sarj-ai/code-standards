@@ -13,6 +13,7 @@ type MessageIds = "requireCamelcaseProperty";
 type Options = readonly [];
 
 export const REQUIRE_CAMELCASE_PROPERTIES_DOCUMENTATION = {
+  defaultLevel: "warning",
   summary: "Require unquoted lower snake_case TypeScript properties and dot access to use camelCase.",
   rationale: "Unquoted snake_case property syntax makes external wire naming indistinguishable from application-domain naming and lets inconsistent contracts spread through typed code.",
   remediation: "Rename application properties to camelCase. At an external wire boundary, make the exception explicit with a quoted key and bracket access.",

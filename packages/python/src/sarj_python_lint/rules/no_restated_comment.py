@@ -253,6 +253,7 @@ class NoRestatedComment(Rule):
     id: str = "no-restated-comment"
     code: str = "SARJ049"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
+        default_level=Severity.WARNING,
         summary="Short standalone comment lexically restates the immediately following simple action.",
         rationale=(
             "When a comment adds no rationale, scope, ordering, or constraint, it duplicates code and can become stale. "

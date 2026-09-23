@@ -73,6 +73,7 @@ class PreferImmutableModuleConstant(Rule):
     id: str = "prefer-immutable-module-constant"
     code: str = "SARJ096"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
+        default_level=Severity.WARNING,
         summary=("Nonempty uppercase module collections allow top-level membership or keys to change at runtime."),
         rationale=(
             "A constant-looking collection can expose process-wide top-level mutation even when callers intend it as a "

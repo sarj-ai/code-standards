@@ -179,6 +179,7 @@ class OverMockedTest(Rule):
     id: str = "over-mocked-test"
     code: str = "SARJ062"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
+        default_level=Severity.WARNING,
         summary="Tests should not use more than five independently rooted test doubles or collaborator substitutions.",
         rationale="Broad double setup obscures the behavior under test and often couples tests to implementation wiring.",
         remediation=(

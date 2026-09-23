@@ -28,6 +28,11 @@ class RuleCategory(StrEnum):
     TESTING = "testing"
 
 
+class DefaultLevel(StrEnum):
+    ERROR = "error"
+    WARNING = "warning"
+
+
 class AutofixPolicy(StrEnum):
     NONE = "none"
     SUGGESTION = "suggestion"
@@ -118,6 +123,7 @@ class RuleDocumentation:
     rationale: str
     remediation: str
     category: RuleCategory
+    default_level: DefaultLevel = DefaultLevel.ERROR
     autofix: AutofixPolicy = AutofixPolicy.NONE
     aliases: tuple[str, ...] = ()
     limitations: tuple[str, ...] = ()
@@ -155,6 +161,7 @@ class NativeRuleSpec:
     rationale: str
     remediation: str
     category: RuleCategory
+    default_level: DefaultLevel
     autofix: AutofixPolicy
     aliases: tuple[str, ...]
     limitations: tuple[str, ...]
@@ -228,6 +235,7 @@ class Rule(ABC):
             rationale=authored.rationale,
             remediation=authored.remediation,
             category=authored.category,
+            default_level=authored.default_level,
             autofix=authored.autofix,
             aliases=authored.aliases,
             limitations=authored.limitations,

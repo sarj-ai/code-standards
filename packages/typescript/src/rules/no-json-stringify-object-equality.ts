@@ -21,6 +21,7 @@ type MessageIds = "serializedObjectEquality";
 type Options = readonly [];
 
 export const NO_JSON_STRINGIFY_OBJECT_EQUALITY_DOCUMENTATION = {
+  defaultLevel: "warning",
   summary: "Do not use JSON serialization as structural object equality.",
   rationale: "JSON text equality depends on property insertion order and serialization behavior, so semantically equal objects can compare unequal and distinct values can collapse together.",
   remediation: "Compare an explicit domain projection structurally, or use a reviewed canonical serializer when JSON semantics are required.",

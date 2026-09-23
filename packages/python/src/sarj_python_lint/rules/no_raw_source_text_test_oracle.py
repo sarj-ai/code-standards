@@ -112,6 +112,7 @@ class NoRawSourceTextTestOracle(Rule):
     id = "no-raw-source-text-test-oracle"
     code = "SARJ402"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
+        default_level=Severity.WARNING,
         summary="Test uses raw text from a source-like project path as its oracle.",
         rationale="Substring and regex checks can pass on comments or unreachable configuration and fail after behavior-preserving formatting changes.",
         remediation=(

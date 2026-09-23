@@ -13,6 +13,7 @@ type MessageIds = "noBespokeApiCaseConversion";
 type Options = readonly [];
 
 export const NO_BESPOKE_API_CASE_CONVERSION_DOCUMENTATION = {
+  defaultLevel: "warning",
   summary:
     "Review direct snake_case/camelCase mirror mappings on explicitly API-typed adapter values.",
   rationale:

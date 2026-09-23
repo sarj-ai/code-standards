@@ -21,6 +21,7 @@ const CHANGE_HISTORY_RE = /\b(?:used to|previously|histor(?:y|ical)|keep moving|
 const IMPLEMENTATION_MAP_RE = /\b(?:everything (?:above|below)|nothing else|only thing|write half|maps? between|seam between)\b/iu;
 
 export const EXCESSIVE_COMMENTARY_DOCUMENTATION = {
+  defaultLevel: "warning",
   summary: "Flag long standalone implementation commentary that should be expressed by code.",
   rationale: "Narrative implementation paragraphs compete with the code and can drift independently from behavior.",
   remediation: "Delete narration and clarify names, types, or structure; retain only durable constraints and external contracts.",

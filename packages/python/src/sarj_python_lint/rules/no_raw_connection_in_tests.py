@@ -13,6 +13,7 @@ from sarj_python_lint.rule_base import (
     RuleCategory,
     RuleDocumentation,
     RuleExample,
+    Severity,
     parse_or_none,
 )
 from sarj_python_lint.rules._paths import is_generated, is_test_path, is_test_support_path
@@ -30,6 +31,7 @@ class NoRawConnectionInTests(Rule):
     id = "no-raw-connection-in-tests"
     code = "SARJ429"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
+        default_level=Severity.WARNING,
         summary="Do not acquire raw database connections in tests.",
         rationale=(
             "Tests that reach through a pool couple assertions and setup to persistence internals, bypass the "

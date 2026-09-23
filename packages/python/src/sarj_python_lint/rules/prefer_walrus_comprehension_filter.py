@@ -13,6 +13,7 @@ from sarj_python_lint.rule_base import (
     RuleCategory,
     RuleDocumentation,
     RuleExample,
+    Severity,
     is_suppressed,
     parse_or_none,
 )
@@ -199,6 +200,7 @@ class PreferWalrusComprehensionFilter(Rule):
     id: str = "prefer-walrus-comprehension-filter"
     code: str = "SARJ076"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
+        default_level=Severity.WARNING,
         summary="The same call runs in a comprehension filter and its result.",
         rationale="When both evaluations are intended to produce one stable value, repeating the call wastes work and obscures that relationship.",
         remediation=(

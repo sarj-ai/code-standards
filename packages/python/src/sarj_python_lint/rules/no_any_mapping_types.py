@@ -13,6 +13,7 @@ from sarj_python_lint.rule_base import (
     RuleCategory,
     RuleDocumentation,
     RuleExample,
+    Severity,
     is_suppressed,
 )
 from sarj_python_lint.rules._annotation_semantics import AnnotationSemantics, scope_bound_names
@@ -37,6 +38,7 @@ class NoAnyMappingTypes(Rule):
     id = "no-any-mapping-types"
     code = "SARJ447"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
+        default_level=Severity.WARNING,
         summary="String-keyed mapping types must not erase their values with `Any`.",
         rationale=(
             "An `Any`-valued mapping disables checking transitively and conceals whether the value is a fixed record, "

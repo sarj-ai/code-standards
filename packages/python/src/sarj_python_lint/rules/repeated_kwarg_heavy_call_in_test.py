@@ -61,6 +61,7 @@ class RepeatedKwargHeavyCallInTest(Rule):
     id: str = "repeated-kwarg-heavy-call-in-test"
     code: str = "SARJ045"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
+        default_level=Severity.WARNING,
         summary="Tests repeat at least seven explicit keyword names across calls to the same callee.",
         rationale=(
             "Large repeated argument lists duplicate incidental setup, bury scenario differences, and make signature "

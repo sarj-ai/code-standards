@@ -80,6 +80,7 @@ class RepeatedStaticCallCases(Rule):
     id = "repeated-static-call-cases"
     code = "SARJ413"
     documentation = RuleDocumentation(
+        default_level=Severity.WARNING,
         summary="Three same-shape literal call assertions may be independent parameter cases.",
         rationale=(
             "When the calls are independent, named parameters isolate failures and identify the input that failed. "

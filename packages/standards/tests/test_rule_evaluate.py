@@ -312,8 +312,9 @@ def test_warning_lifecycle_is_nonblocking_but_observable(
     (tmp_path / MANIFEST_NAME).write_text(_manifest().render(), encoding="utf-8")
     configs = tmp_path / "configs"
     configs.mkdir()
-    (configs / "rule-warning-levels.v1.json").write_text(
-        json.dumps({"schemaVersion": 1, "rules": [_SELECTOR]}),
+    (tmp_path / "schemas").mkdir()
+    (tmp_path / "schemas/rule-catalog.v1.json").write_text(
+        json.dumps({"schemaVersion": 1, "rules": [{"key": _SELECTOR, "defaultLevel": "warning"}]}),
         encoding="utf-8",
     )
     lint_policy.warning_selectors.cache_clear()

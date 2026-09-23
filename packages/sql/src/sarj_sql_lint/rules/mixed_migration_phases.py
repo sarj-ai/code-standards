@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, final, override
 
 from sarj_sql_lint.rule_base import (
     AutofixPolicy,
+    DefaultLevel,
     Diagnostic,
     ExampleFile,
     ExampleOutcome,
@@ -55,6 +56,7 @@ class MixedMigrationPhases(Rule):
     id = "mixed-migration-phases"
     code = "SARJ119"
     documentation = RuleDocumentation(
+        default_level=DefaultLevel.WARNING,
         summary="Review existing-table migrations that combine backfill, enforcement, and contract phases.",
         rationale=(
             "Combining data movement with destructive or enforcing schema changes removes deployment checkpoints and "

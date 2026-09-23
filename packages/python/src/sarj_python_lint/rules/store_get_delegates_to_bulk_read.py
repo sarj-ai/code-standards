@@ -95,6 +95,7 @@ class StoreGetDelegatesToBulkRead(Rule):
     id = "store-get-delegates-to-bulk-read"
     code = "SARJ421"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
+        default_level=Severity.WARNING,
         summary="A store singleton operation should reuse its equivalent bulk implementation.",
         rationale=(
             "Independent singleton and bulk queries can drift in filtering, mutation semantics, row conversion, "

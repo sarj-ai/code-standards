@@ -264,6 +264,7 @@ class ComplexPostgresQueryRequiresArchitectureReview(Rule):
     id: str = "complex-postgres-query-requires-architecture-review"
     code: str = "SARJ437"
     documentation = RuleDocumentation(
+        default_level=Severity.WARNING,
         summary="Complex executable PostgreSQL query shapes require architecture review.",
         rationale=(
             "Join-heavy, deeply staged, or wide joined reads can obscure cardinality, bounds, ordering, and locking "

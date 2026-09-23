@@ -94,6 +94,7 @@ class PreferConstantTimeSecretCompare(Rule):
     id: str = "prefer-constant-time-secret-compare"
     code: str = "SARJ011"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
+        default_level=Severity.WARNING,
         summary="Externally supplied authenticators are compared with timing-sensitive equality.",
         rationale=(
             "Ordinary equality may short-circuit based on matching content when attacker-controlled credentials are "
