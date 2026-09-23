@@ -173,7 +173,7 @@ def test_lint_config_preflight_fails_after_its_bounded_attempts(tmp_path: Path) 
     delays: list[float] = []
 
     with pytest.raises(ValueError, match=r"after 2 attempt\(s\).*sarj-python-lint@1\.2\.3"):
-        _ = wait_for_lint_config_dependencies(
+        wait_for_lint_config_dependencies(
             tmp_path,
             attempts=2,
             delay=timedelta(milliseconds=500),

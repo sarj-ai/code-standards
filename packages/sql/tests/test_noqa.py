@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 
 def _write(tmp_path: Path, text: str) -> Path:
     f = tmp_path / "migration.sql"
-    _ = f.write_text(text, encoding="utf-8")
+    f.write_text(text, encoding="utf-8")
     return f
 
 

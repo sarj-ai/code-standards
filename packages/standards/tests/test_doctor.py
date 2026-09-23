@@ -45,7 +45,7 @@ def test_doctor_has_no_legacy_profile_library_policy_exclusions(tmp_path: Path, 
     ],
 )
 def test_doctor_reports_deprecated_api_protection_that_is_not_an_error(tmp_path: Path, name: str, setting: str) -> None:
-    _ = (tmp_path / name).write_text(f"{setting}\n", encoding="utf-8")
+    (tmp_path / name).write_text(f"{setting}\n", encoding="utf-8")
 
     findings = list(check_pyright_deprecated(tmp_path))
 
@@ -63,7 +63,7 @@ def test_doctor_reports_deprecated_api_protection_that_is_not_an_error(tmp_path:
     ],
 )
 def test_doctor_accepts_deprecated_api_protection_at_error(tmp_path: Path, name: str, setting: str) -> None:
-    _ = (tmp_path / name).write_text(f"{setting}\n", encoding="utf-8")
+    (tmp_path / name).write_text(f"{setting}\n", encoding="utf-8")
 
     assert not list(check_pyright_deprecated(tmp_path))
 
@@ -320,7 +320,7 @@ def test_doctor_accepts_one_standalone_ruff_config(tmp_path: Path) -> None:
 
 
 def test_doctor_honors_gitignore_when_scanning_rule_references(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    _ = subprocess.run(("git", "init", "-q", str(tmp_path)), check=True, env={})
+    subprocess.run(("git", "init", "-q", str(tmp_path)), check=True, env={})
     (tmp_path / ".gitignore").write_text("generated/\n", encoding="utf-8")
     generated = tmp_path / "generated"
     generated.mkdir()

@@ -1153,11 +1153,11 @@ def test_a_codegen_root_makes_the_subtree_generated(tmp_path: Path):
     (root / ".git").mkdir(parents=True)
     sdk = root / "sdk"
     sdk.mkdir()
-    _ = (sdk / ".openapi-generator-ignore").write_text("")
+    (sdk / ".openapi-generator-ignore").write_text("")
     package = sdk / "client"
     package.mkdir()
     target = package / "api.py"
-    _ = target.write_text(_ABOVE_ITS_ONLY_CALLER)
+    target.write_text(_ABOVE_ITS_ONLY_CALLER)
     assert Stepdown().check(target, _ABOVE_ITS_ONLY_CALLER) == []
 
 

@@ -131,4 +131,4 @@ def test_a_file_the_tokenizer_rejects_raises_rather_than_reading_as_comment_free
     # Every caller catches this and returns no diagnostics; swallowing it here
     # would instead report a broken file as having no comments at all.
     with pytest.raises((tokenize.TokenError, SyntaxError)):
-        _ = standalone_comments("def f(:\n")
+        standalone_comments("def f(:\n")

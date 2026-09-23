@@ -56,7 +56,7 @@ def test_an_unlexable_file_propagates_rather_than_reading_as_comment_free() -> N
     # Callers treat the raised error as "no diagnostics"; swallowing it here
     # would instead claim the file carries no suppression directives.
     with pytest.raises((tokenize.TokenError, SyntaxError)):
-        _ = scan_comments("x = (\n")
+        scan_comments("x = (\n")
 
 
 @pytest.mark.parametrize(

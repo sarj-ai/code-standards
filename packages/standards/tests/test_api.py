@@ -155,7 +155,7 @@ def test_explicit_typescript_ci_scope_still_includes_react_doctor(
     monkeypatch.setattr(api, "analyze_paths", native)  # sarj-noqa: SARJ445 -- intercepts API orchestration
     monkeypatch.setattr(api, "analyze_external", external)  # sarj-noqa: SARJ445 -- intercepts API orchestration
 
-    _ = api.Standards(tmp_path).analyze(["component.tsx"], external=True)
+    api.Standards(tmp_path).analyze(["component.tsx"], external=True)
 
     assert included == [(True, True)]
 
@@ -175,7 +175,7 @@ def test_repository_wide_analysis_uses_full_react_doctor_scope(monkeypatch: pyte
     monkeypatch.setattr(api, "analyze_paths", native)  # sarj-noqa: SARJ445 -- intercepts API orchestration
     monkeypatch.setattr(api, "analyze_external", external)  # sarj-noqa: SARJ445 -- intercepts API orchestration
 
-    _ = api.Standards(tmp_path).analyze(external=True)
+    api.Standards(tmp_path).analyze(external=True)
 
     assert full_scan == [True]
 
@@ -206,7 +206,7 @@ def test_default_analysis_without_verification_paths_uses_full_react_doctor_scop
     monkeypatch.setattr(api, "analyze_paths", native)  # sarj-noqa: SARJ445 -- intercepts API orchestration
     monkeypatch.setattr(api, "analyze_external", external)  # sarj-noqa: SARJ445 -- intercepts API orchestration
 
-    _ = api.Standards(tmp_path).analyze(external=True)
+    api.Standards(tmp_path).analyze(external=True)
 
     assert full_scan == [True]
 
@@ -226,7 +226,7 @@ def test_explicit_repository_root_uses_full_react_doctor_scope(monkeypatch: pyte
     monkeypatch.setattr(api, "analyze_paths", native)  # sarj-noqa: SARJ445 -- intercepts API orchestration
     monkeypatch.setattr(api, "analyze_external", external)  # sarj-noqa: SARJ445 -- intercepts API orchestration
 
-    _ = api.Standards(tmp_path).analyze(["."], external=True)
+    api.Standards(tmp_path).analyze(["."], external=True)
 
     assert full_scan == [True]
 
@@ -257,7 +257,7 @@ def test_default_analysis_respects_scoped_verification_paths(monkeypatch: pytest
     monkeypatch.setattr(api, "analyze_paths", native)  # sarj-noqa: SARJ445 -- intercepts API orchestration
     monkeypatch.setattr(api, "analyze_external", external)  # sarj-noqa: SARJ445 -- intercepts API orchestration
 
-    _ = api.Standards(tmp_path).analyze(external=True)
+    api.Standards(tmp_path).analyze(external=True)
 
     assert full_scan == [False]
 

@@ -35,10 +35,8 @@ def _cli(*args: str) -> subprocess.CompletedProcess[str]:
 
 
 def _project(root: Path, lockfile: str, package_json: dict[str, object] | None = None) -> Path:
-    _ = (root / "package.json").write_text(
-        json.dumps(package_json or {"name": "web"}, indent=2) + "\n", encoding="utf-8"
-    )
-    _ = (root / lockfile).write_text("", encoding="utf-8")
+    (root / "package.json").write_text(json.dumps(package_json or {"name": "web"}, indent=2) + "\n", encoding="utf-8")
+    (root / lockfile).write_text("", encoding="utf-8")
     return root
 
 
@@ -57,7 +55,7 @@ def test_the_lockfile_names_the_client(tmp_path: Path, lockfile: str, expected: 
 
 
 def test_a_repo_with_no_lockfile_is_assumed_to_be_npm(tmp_path: Path) -> None:
-    _ = (tmp_path / "package.json").write_text('{"name": "web"}\n', encoding="utf-8")
+    (tmp_path / "package.json").write_text('{"name": "web"}\n', encoding="utf-8")
     assert packagemanager.detect(tmp_path) == PackageManager.NPM
 
 
@@ -184,7 +182,7 @@ def test_yarn_dialect_follows_the_declared_package_manager(
 
 def test_a_yarnrc_yml_marks_a_berry_checkout_without_a_declaration(tmp_path: Path) -> None:
     root = _project(tmp_path, "yarn.lock")
-    _ = (root / ".yarnrc.yml").write_text("nodeLinker: node-modules\n", encoding="utf-8")
+    (root / ".yarnrc.yml").write_text("nodeLinker: node-modules\n", encoding="utf-8")
 
     assert packagemanager.yarn_variant(root) is YarnVariant.BERRY
 
@@ -213,10 +211,10 @@ def test_only_the_berry_note_mentions_berry_only_configuration() -> None:
 
 
 def test_ci_workflow_speaks_the_detected_yarn_dialect(tmp_path: Path) -> None:
-    _ = _project(tmp_path, "yarn.lock")
+    _project(tmp_path, "yarn.lock")
 
     classic = scaffold.github_ci_workflow(tmp_path)
-    _ = (tmp_path / "package.json").write_text(
+    (tmp_path / "package.json").write_text(
         json.dumps({"name": "web", "packageManager": "yarn@4.15.0"}) + "\n", encoding="utf-8"
     )
     berry = scaffold.github_ci_workflow(tmp_path)
@@ -229,8 +227,8 @@ def test_ci_workflow_speaks_the_detected_yarn_dialect(tmp_path: Path) -> None:
 def test_ci_installs_nested_javascript_project_from_its_install_root(tmp_path: Path) -> None:
     web = tmp_path / "services" / "web"
     web.mkdir(parents=True)
-    _ = (web / "package.json").write_text('{"name":"web"}\n', encoding="utf-8")
-    _ = (web / "package-lock.json").write_text('{"lockfileVersion":3}\n', encoding="utf-8")
+    (web / "package.json").write_text('{"name":"web"}\n', encoding="utf-8")
+    (web / "package-lock.json").write_text('{"lockfileVersion":3}\n', encoding="utf-8")
 
     workflow = scaffold.github_ci_workflow(tmp_path)
 
@@ -242,8 +240,8 @@ def test_ci_installs_nested_javascript_project_from_its_install_root(tmp_path: P
 def test_ci_yaml_quotes_a_nested_install_root_with_shell_metacharacters(tmp_path: Path) -> None:
     web = tmp_path / "services" / "web # production"
     web.mkdir(parents=True)
-    _ = (web / "package.json").write_text('{"name":"web"}\n', encoding="utf-8")
-    _ = (web / "package-lock.json").write_text('{"lockfileVersion":3}\n', encoding="utf-8")
+    (web / "package.json").write_text('{"name":"web"}\n', encoding="utf-8")
+    (web / "package-lock.json").write_text('{"lockfileVersion":3}\n', encoding="utf-8")
 
     workflow = scaffold.github_ci_workflow(tmp_path)
 
@@ -258,7 +256,7 @@ def test_ci_yaml_quotes_a_nested_install_root_with_shell_metacharacters(tmp_path
     ],
 )
 def test_ci_activates_the_exact_declared_npm_version(tmp_path: Path, declaration: str) -> None:
-    _ = _project(tmp_path, "package-lock.json", {"name": "web", "packageManager": declaration})
+    _project(tmp_path, "package-lock.json", {"name": "web", "packageManager": declaration})
 
     workflow = scaffold.github_ci_workflow(tmp_path)
 
@@ -268,14 +266,14 @@ def test_ci_activates_the_exact_declared_npm_version(tmp_path: Path, declaration
 
 
 def test_ci_rejects_a_non_exact_declared_npm_version(tmp_path: Path) -> None:
-    _ = _project(tmp_path, "package-lock.json", {"name": "web", "packageManager": "npm@latest"})
+    _project(tmp_path, "package-lock.json", {"name": "web", "packageManager": "npm@latest"})
 
     with pytest.raises(ValueError, match="must pin an exact semantic version"):
         scaffold.github_ci_workflow(tmp_path)
 
 
 def test_ci_bootstraps_bun_without_unneeded_node_or_corepack(tmp_path: Path) -> None:
-    _ = _project(tmp_path, "bun.lock")
+    _project(tmp_path, "bun.lock")
 
     workflow = scaffold.github_ci_workflow(tmp_path)
 
@@ -286,10 +284,10 @@ def test_ci_bootstraps_bun_without_unneeded_node_or_corepack(tmp_path: Path) -> 
 
 
 def test_ci_only_runs_locked_uv_sync_for_a_uv_project(tmp_path: Path) -> None:
-    _ = (tmp_path / "pyproject.toml").write_text('[project]\nname="demo"\nversion="0.1.0"\n', encoding="utf-8")
+    (tmp_path / "pyproject.toml").write_text('[project]\nname="demo"\nversion="0.1.0"\n', encoding="utf-8")
 
     unlocked = scaffold.github_ci_workflow(tmp_path)
-    _ = (tmp_path / "uv.lock").write_text("version = 1\n", encoding="utf-8")
+    (tmp_path / "uv.lock").write_text("version = 1\n", encoding="utf-8")
     locked = scaffold.github_ci_workflow(tmp_path)
 
     assert "uv sync" not in unlocked
@@ -303,7 +301,7 @@ def test_ci_emits_first_class_github_annotations(tmp_path: Path) -> None:
 
 
 def test_init_speaks_classic_yarn_when_only_the_lockfile_names_it(tmp_path: Path) -> None:
-    _ = _project(tmp_path, "yarn.lock")
+    _project(tmp_path, "yarn.lock")
 
     proc = _cli("init", "--dest", str(tmp_path))
 
@@ -335,14 +333,14 @@ def test_pnpm_workspace_install_targets_the_workspace_root() -> None:
 
 def test_conflicting_lockfiles_fail_instead_of_selecting_by_accident(tmp_path: Path) -> None:
     _project(tmp_path, "pnpm-lock.yaml")
-    _ = (tmp_path / "yarn.lock").write_text("", encoding="utf-8")
+    (tmp_path / "yarn.lock").write_text("", encoding="utf-8")
 
     with pytest.raises(ValueError, match="conflicting package-manager lockfiles"):
         packagemanager.detect(tmp_path)
 
 
 def test_init_writes_pnpm_overrides_into_workspace_yaml_for_a_standalone_repo(tmp_path: Path) -> None:
-    _ = _project(tmp_path, "pnpm-lock.yaml")
+    _project(tmp_path, "pnpm-lock.yaml")
     proc = _cli("init", "--dest", str(tmp_path))
     assert proc.returncode == 0, proc.stderr
 
@@ -391,7 +389,7 @@ def test_pnpm_workspace_flow_overrides_fail_without_duplicate_keys(tmp_path: Pat
 
 
 def test_init_writes_resolutions_into_a_yarn_repo(tmp_path: Path) -> None:
-    _ = _project(tmp_path, "yarn.lock", {"name": "web", "packageManager": "yarn@4.15.0"})
+    _project(tmp_path, "yarn.lock", {"name": "web", "packageManager": "yarn@4.15.0"})
     proc = _cli("init", "--dest", str(tmp_path))
     assert proc.returncode == 0, proc.stderr
 
@@ -412,7 +410,7 @@ def test_init_writes_resolutions_into_a_yarn_repo(tmp_path: Path) -> None:
 def test_init_pins_nested_yarn_eslint_configs_to_the_canonical_plugin_identity(tmp_path: Path) -> None:
     child = tmp_path / "packages" / "client"
     child.mkdir(parents=True)
-    _ = _project(
+    _project(
         tmp_path,
         "yarn.lock",
         {
@@ -448,7 +446,7 @@ def test_init_pins_nested_yarn_eslint_configs_to_the_canonical_plugin_identity(t
 
 
 def test_init_writes_bun_override_without_npm_nested_syntax(tmp_path: Path) -> None:
-    _ = _project(tmp_path, "bun.lock", {"name": "web", "packageManager": "bun@1.2.0"})
+    _project(tmp_path, "bun.lock", {"name": "web", "packageManager": "bun@1.2.0"})
     proc = _cli("init", "--dest", str(tmp_path))
     assert proc.returncode == 0, proc.stderr
 
@@ -460,7 +458,7 @@ def test_init_writes_bun_override_without_npm_nested_syntax(tmp_path: Path) -> N
 
 
 def test_npm_repairs_a_scalar_direct_peer_override_and_preserves_child_overrides(tmp_path: Path) -> None:
-    _ = _project(
+    _project(
         tmp_path,
         "package-lock.json",
         {"name": "web", "overrides": {"eslint-plugin-react": "7.37.4"}},
@@ -477,7 +475,7 @@ def test_npm_repairs_a_scalar_direct_peer_override_and_preserves_child_overrides
 
 
 def test_npm_direct_peer_override_tracks_the_exact_pin_without_escaping_unicode(tmp_path: Path) -> None:
-    _ = _project(
+    _project(
         tmp_path,
         "package-lock.json",
         {
@@ -502,7 +500,7 @@ def test_npm_direct_peer_override_tracks_the_exact_pin_without_escaping_unicode(
 
 
 def test_pnpm_workspace_policy_keeps_unrelated_package_json_pnpm_settings(tmp_path: Path) -> None:
-    _ = _project(
+    _project(
         tmp_path,
         "pnpm-lock.yaml",
         {"name": "web", "pnpm": {"onlyBuiltDependencies": ["esbuild"]}},
@@ -517,7 +515,7 @@ def test_pnpm_workspace_policy_keeps_unrelated_package_json_pnpm_settings(tmp_pa
 
 
 def test_a_second_init_on_a_pnpm_repo_changes_nothing(tmp_path: Path) -> None:
-    _ = _project(tmp_path, "pnpm-lock.yaml")
+    _project(tmp_path, "pnpm-lock.yaml")
     assert _cli("init", "--dest", str(tmp_path)).returncode == 0
     before_package = (tmp_path / "package.json").read_text(encoding="utf-8")
     before_workspace = (tmp_path / "pnpm-workspace.yaml").read_text(encoding="utf-8")
@@ -530,7 +528,7 @@ def test_a_second_init_on_a_pnpm_repo_changes_nothing(tmp_path: Path) -> None:
 
 
 def test_doctor_rejects_obsolete_package_json_pnpm_overrides(tmp_path: Path) -> None:
-    _ = _project(tmp_path, "pnpm-lock.yaml")
+    _project(tmp_path, "pnpm-lock.yaml")
     assert _cli("init", "--dest", str(tmp_path)).returncode == 0
     (tmp_path / "pnpm-workspace.yaml").unlink()
 
@@ -544,9 +542,9 @@ def test_doctor_rejects_obsolete_package_json_pnpm_overrides(tmp_path: Path) -> 
 def test_the_project_root_is_the_lockfiles_directory_not_the_topmost_package_json(
     tmp_path: Path,
 ) -> None:
-    _ = (tmp_path / "package.json").write_text('{"packageManager": "yarn@4.15.0"}\n')
+    (tmp_path / "package.json").write_text('{"packageManager": "yarn@4.15.0"}\n')
     (tmp_path / "typescript").mkdir()
-    _ = _project(tmp_path / "typescript", "yarn.lock")
+    _project(tmp_path / "typescript", "yarn.lock")
 
     found = scaffold.detect(tmp_path)
     assert found.typescript_root == tmp_path / "typescript"
@@ -567,9 +565,9 @@ def test_ecosystem_detection_ignores_package_metadata_inside_tool_caches(tmp_pat
 
 def test_an_explicit_dest_overrides_detection(tmp_path: Path) -> None:
     (tmp_path / "frontend").mkdir()
-    _ = _project(tmp_path / "frontend", "package-lock.json")
+    _project(tmp_path / "frontend", "package-lock.json")
     (tmp_path / "other").mkdir()
-    _ = _project(tmp_path / "other", "pnpm-lock.yaml")
+    _project(tmp_path / "other", "pnpm-lock.yaml")
 
     found = scaffold.detect(tmp_path, typescript_dest="other")
     assert found.typescript_root == tmp_path / "other"
@@ -577,7 +575,7 @@ def test_an_explicit_dest_overrides_detection(tmp_path: Path) -> None:
 
 
 def test_nested_lockfile_beats_an_unrelated_root_package_json(tmp_path: Path) -> None:
-    _ = (tmp_path / "package.json").write_text('{"name": "tooling"}\n', encoding="utf-8")
+    (tmp_path / "package.json").write_text('{"name": "tooling"}\n', encoding="utf-8")
     project = tmp_path / "typescript"
     project.mkdir()
     _project(project, "yarn.lock")
@@ -590,7 +588,7 @@ def test_nested_lockfile_beats_an_unrelated_root_package_json(tmp_path: Path) ->
 
 
 def test_nested_pnpm_preview_matches_the_applied_install_guidance(tmp_path: Path) -> None:
-    _ = (tmp_path / "package.json").write_text('{"name": "tooling"}\n', encoding="utf-8")
+    (tmp_path / "package.json").write_text('{"name": "tooling"}\n', encoding="utf-8")
     project = tmp_path / "typescript"
     project.mkdir()
     _project(project, "pnpm-lock.yaml", {"name": "web", "packageManager": "pnpm@10.0.0"})

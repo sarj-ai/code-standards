@@ -1200,7 +1200,7 @@ def test_current_no_install_update_does_not_recommend_unneeded_install_work(
 ) -> None:
     _outdated_python_repo(tmp_path)
     assert upgrade.apply(upgrade.build_plan(tmp_path), install=False) == 0
-    _ = capsys.readouterr()
+    capsys.readouterr()
 
     status = _main(["update", "--offline", "--no-install", str(tmp_path)])
 
@@ -1233,7 +1233,7 @@ def test_update_no_install_prints_a_clean_typescript_lock_command(
 ) -> None:
     (tmp_path / "package.json").write_text('{"name":"web"}\n', encoding="utf-8")
     assert _main(["init", "--dest", str(tmp_path), "--no-install"]) == 0
-    _ = capsys.readouterr()
+    capsys.readouterr()
 
     status = _main(["update", "--offline", "--no-install", str(tmp_path)])
 
@@ -1250,7 +1250,7 @@ def test_offline_update_never_executes_install_commands(
 ) -> None:
     (tmp_path / "package.json").write_text('{"name":"web"}\n', encoding="utf-8")
     assert _main(["setup", "--dest", str(tmp_path), "--no-install"]) == 0
-    _ = capsys.readouterr()
+    capsys.readouterr()
 
     def forbidden(_commands: object) -> int:
         pytest.fail("offline update attempted to execute an installer")

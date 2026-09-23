@@ -2,7 +2,7 @@
   "schemaVersion": 2,
   "provenance": {
     "bundleVersion": "7.31.1",
-    "consumerBaseSha": "09334ed7486d8c788d8fdaf6b269752aa66c4276",
+    "consumerBaseSha": "cfba4079e0a4f0cebe278d81abb658ae07700cdf",
     "catalogDigest": "c8f8294433480c3968888c085a9c15bfe49e6574543cc50782a54b36addebae1"
   },
   "diagnostics": [
@@ -182,34 +182,6 @@
       "count": 1
     },
     {
-      "fingerprint": "a50db971c360d35d2d463ad89ed9a8c07a7357650b2a57025ecca2cb7e4068fc",
-      "source": "sarj-python-lint",
-      "ruleId": "no-unused-value-marker",
-      "path": "packages/iac/tests/rules/test_no_dead_environment_input.py",
-      "count": 44
-    },
-    {
-      "fingerprint": "dd5ba2435be1472d27be24acf99097c1b1dbe120093db5a49c75d0fd4c74b070",
-      "source": "sarj-python-lint",
-      "ruleId": "no-unused-value-marker",
-      "path": "packages/iac/tests/rules/test_no_redundant_variable_validation.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "da21ef4f4fe0599242017accb02ae01dd006746a51208a07238c884c686fc0eb",
-      "source": "sarj-python-lint",
-      "ruleId": "no-unused-value-marker",
-      "path": "packages/iac/tests/test_noqa.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "6940fb1311ae2019288a72755e536c0f51b4fc596688321417378d61b12782d4",
-      "source": "sarj-python-lint",
-      "ruleId": "no-unused-value-marker",
-      "path": "packages/iac/tests/test_perf.py",
-      "count": 1
-    },
-    {
       "fingerprint": "332bac1a7d107b6b3e2e9339e36796d0682c19f3dd91998e293d37feb1dd9c84",
       "source": "sarj-python-lint",
       "ruleId": "no-unused-value-marker",
@@ -217,80 +189,10 @@
       "count": 2
     },
     {
-      "fingerprint": "309012b5c363e1397cb0168f624d265c680936a63e6cab3a82e0fc2a8249ab57",
-      "source": "sarj-python-lint",
-      "ruleId": "no-unused-value-marker",
-      "path": "packages/python/tests/rules/test_comments.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "512e8545bcca7ab9d2bed02d74a402582c4443d6e5c6d2b75ad828fccacd782c",
-      "source": "sarj-python-lint",
-      "ruleId": "no-unused-value-marker",
-      "path": "packages/python/tests/rules/test_first_party.py",
-      "count": 17
-    },
-    {
       "fingerprint": "37115b9c7349c9d470512eac3c1cf6a76e66c8d0174eb2873281d38b17d8f984",
       "source": "sarj-python-lint",
       "ruleId": "no-unused-value-marker",
       "path": "packages/python/tests/rules/test_prefer_match_value_dispatch.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "d0f48ecbbec79d912d9c7a1a53e1ca303d3f948e963fada19a757e2499635c2f",
-      "source": "sarj-python-lint",
-      "ruleId": "no-unused-value-marker",
-      "path": "packages/python/tests/rules/test_stepdown.py",
-      "count": 2
-    },
-    {
-      "fingerprint": "bca2ed081fdc77dd21cb05b4ce94f59658e7ae244b12ac30750ab3f47c70ec61",
-      "source": "sarj-python-lint",
-      "ruleId": "no-unused-value-marker",
-      "path": "packages/python/tests/rules/test_suppression_comments.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "2b3f8b899c7775782894b6c38b2c69a3218afd114edbd244abf2a5cda4756e72",
-      "source": "sarj-python-lint",
-      "ruleId": "no-unused-value-marker",
-      "path": "packages/python/tests/test_match_value_dispatch_cli.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "19e296fb410b98a07b01cf46df80cb26bab27ac92e0603eed93d4956d3a7df0d",
-      "source": "sarj-python-lint",
-      "ruleId": "no-unused-value-marker",
-      "path": "packages/python/tests/test_perf.py",
-      "count": 2
-    },
-    {
-      "fingerprint": "2f8a849cc09cc20454212270f7d8e2066733921bca7fe9337c4259c425fab651",
-      "source": "sarj-python-lint",
-      "ruleId": "no-unused-value-marker",
-      "path": "packages/python/tests/test_ratchet.py",
-      "count": 6
-    },
-    {
-      "fingerprint": "c906547b267943cb8ab864814d3cc7f133c0492b3497a7bbe3399d29ea3c0388",
-      "source": "sarj-python-lint",
-      "ruleId": "no-unused-value-marker",
-      "path": "packages/sql/tests/test_mask_sql.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "5d3f156a7ed107df7a6b88641658474b11776fe10b3085541b232dc38b13d5ac",
-      "source": "sarj-python-lint",
-      "ruleId": "no-unused-value-marker",
-      "path": "packages/sql/tests/test_noqa.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "4939278a264a26a8ba6fb93518f3d36dcb0e0fdca60885aa0003e601f78cd359",
-      "source": "sarj-python-lint",
-      "ruleId": "no-unused-value-marker",
-      "path": "packages/sql/tests/test_perf.py",
       "count": 1
     },
     {
@@ -424,14 +326,14 @@
       "source": "sarj-python-lint",
       "ruleId": "no-unused-value-marker",
       "path": "packages/standards/tests/release/test_causality.py",
-      "count": 12
+      "count": 11
     },
     {
       "fingerprint": "619b531b436f51f12aca9c593a82e120559344211b64961988f43680f0aee2ed",
       "source": "sarj-python-lint",
       "ruleId": "no-unused-value-marker",
       "path": "packages/standards/tests/release/test_changes.py",
-      "count": 10
+      "count": 7
     },
     {
       "fingerprint": "e21f39d453be766381e9b427f930675e9e68511eaf468473eb24bc1561dd2054",
@@ -452,7 +354,7 @@
       "source": "sarj-python-lint",
       "ruleId": "no-unused-value-marker",
       "path": "packages/standards/tests/release/test_registry.py",
-      "count": 4
+      "count": 3
     },
     {
       "fingerprint": "268fb0ed8e1158b0db1aa4d0b22ce684860bd7f2a6d79f9f45824af3c5673397",
@@ -466,28 +368,14 @@
       "source": "sarj-python-lint",
       "ruleId": "no-unused-value-marker",
       "path": "packages/standards/tests/release/test_tags.py",
-      "count": 14
+      "count": 13
     },
     {
       "fingerprint": "f1f1c2f74a405209439f4db195c1766f28a8089018b09c9d89ab6f0d53d03a30",
       "source": "sarj-python-lint",
       "ruleId": "no-unused-value-marker",
       "path": "packages/standards/tests/test_adoption.py",
-      "count": 172
-    },
-    {
-      "fingerprint": "02deb2a6d38761f9c57b4c8b6165cd9daba0557ccf6fdbd5de4241c41dcc4afb",
-      "source": "sarj-python-lint",
-      "ruleId": "no-unused-value-marker",
-      "path": "packages/standards/tests/test_api.py",
-      "count": 5
-    },
-    {
-      "fingerprint": "8418f08fca20dbff5817c687e46c16194cb9d31ac2c5971cd05190de7b65bdaf",
-      "source": "sarj-python-lint",
-      "ruleId": "no-unused-value-marker",
-      "path": "packages/standards/tests/test_consumer_cli.py",
-      "count": 20
+      "count": 2
     },
     {
       "fingerprint": "f0b5efb83fab765b45ec50b4ae0474f694b64fa42cf17ed23fcbd8ceef529174",
@@ -504,13 +392,6 @@
       "count": 1
     },
     {
-      "fingerprint": "1f98b5842477aa108659e127eeeab2971cd8c21be316552c00de254e7aa49dd2",
-      "source": "sarj-python-lint",
-      "ruleId": "no-unused-value-marker",
-      "path": "packages/standards/tests/test_doctor.py",
-      "count": 3
-    },
-    {
       "fingerprint": "7d56e1c9afec5a0287391f410e53e43eaca3ffd61972c8e8492ea9c70dbb6999",
       "source": "sarj-python-lint",
       "ruleId": "no-unused-value-marker",
@@ -522,56 +403,14 @@
       "source": "sarj-python-lint",
       "ruleId": "no-unused-value-marker",
       "path": "packages/standards/tests/test_isolated_corpus_runner.py",
-      "count": 2
-    },
-    {
-      "fingerprint": "4bd386feab707f60de0ee116ede0459ab311ad0b6e49054e73d0a9d8473cacba",
-      "source": "sarj-python-lint",
-      "ruleId": "no-unused-value-marker",
-      "path": "packages/standards/tests/test_lifecycle.py",
       "count": 1
-    },
-    {
-      "fingerprint": "f01f9271678e8c2240ca9390bc32b73b93eede84a7a6226f627bf2dae8c565dc",
-      "source": "sarj-python-lint",
-      "ruleId": "no-unused-value-marker",
-      "path": "packages/standards/tests/test_package_managers.py",
-      "count": 32
-    },
-    {
-      "fingerprint": "331a810329fa56d88de71c95b614d8e9b3ceed88ea5b57c7060cb348c4534a96",
-      "source": "sarj-python-lint",
-      "ruleId": "no-unused-value-marker",
-      "path": "packages/standards/tests/test_rule_changes.py",
-      "count": 2
-    },
-    {
-      "fingerprint": "c50f07fcc64b0e879a01809b3b746cf513d646f8f44853cd98ed3f0ad2557fd3",
-      "source": "sarj-python-lint",
-      "ruleId": "no-unused-value-marker",
-      "path": "packages/standards/tests/test_rule_evaluate.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "f1e663bf4286b01bd6ab5f5575e065eab07e012524f62907f4f69f8ec05bb553",
-      "source": "sarj-python-lint",
-      "ruleId": "no-unused-value-marker",
-      "path": "packages/standards/tests/test_rule_ledger.py",
-      "count": 23
     },
     {
       "fingerprint": "6b504df1104454a41ed7b732bef42c9ea6356ee575a13a8373f1ab41b0c99793",
       "source": "sarj-python-lint",
       "ruleId": "no-unused-value-marker",
       "path": "packages/standards/tests/test_rule_lifecycle.py",
-      "count": 8
-    },
-    {
-      "fingerprint": "be9433e74f6b24e536d7de24301aa209cbeff98969d29e3fbfd17bfeab54156d",
-      "source": "sarj-python-lint",
-      "ruleId": "no-unused-value-marker",
-      "path": "packages/standards/tests/test_rule_warning_levels.py",
-      "count": 2
+      "count": 1
     },
     {
       "fingerprint": "be165f62bf8ea14fd2e56a3e8207b6fa8c0e48a8a7a253af32261c4742656826",
@@ -581,18 +420,11 @@
       "count": 2
     },
     {
-      "fingerprint": "f91e10ecc636d4cf5874414e6c54d4a4cb220db0fa30156a8a823d95bf3db03a",
-      "source": "sarj-python-lint",
-      "ruleId": "no-unused-value-marker",
-      "path": "packages/standards/tests/test_smoke.py",
-      "count": 2
-    },
-    {
       "fingerprint": "69c122fe4432996de1c293b721c591a14df83706ffa8e5842e46a4b09b96803c",
       "source": "sarj-python-lint",
       "ruleId": "no-unused-value-marker",
       "path": "packages/standards/tests/test_upgrade.py",
-      "count": 4
+      "count": 1
     },
     {
       "fingerprint": "092cb508bc88f5059b84379add9ecb13c8ac13b31211100014859399ed6f20d8",

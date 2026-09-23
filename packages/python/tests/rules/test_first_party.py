@@ -21,7 +21,7 @@ def _repo(root: Path) -> Path:
 def _package(parent: Path, name: str) -> Path:
     package = parent / name
     package.mkdir(parents=True, exist_ok=True)
-    _ = (package / "__init__.py").write_text("")
+    (package / "__init__.py").write_text("")
     return package
 
 
@@ -35,7 +35,7 @@ def _chain(root: Path, depth: int) -> Path:
 
 def test_a_package_directory_makes_its_top_level_name_first_party(tmp_path: Path) -> None:
     root = _repo(tmp_path)
-    _ = _package(root, "app")
+    _package(root, "app")
     assert is_first_party_module("app.stores.widgets", root / "svc.py")
 
 
@@ -51,7 +51,7 @@ def test_a_new_analysis_observes_a_package_created_in_the_same_project(tmp_path:
 
     assert not is_first_party_module("app", caller)
 
-    _ = _package(root, "app")
+    _package(root, "app")
 
     assert is_first_party_module("app", caller)
 
@@ -66,7 +66,7 @@ def test_a_file_outside_any_project_resolves_to_nothing(tmp_path: Path) -> None:
 
 def test_a_stdlib_top_level_name_is_never_first_party(tmp_path: Path) -> None:
     root = _repo(tmp_path)
-    _ = _package(root, "json")
+    _package(root, "json")
     assert not is_first_party_module("json", root / "svc.py")
     assert not is_first_party_module("json.decoder", root / "svc.py")
 
@@ -75,13 +75,13 @@ def test_a_name_that_merely_looks_stdlib_ish_is_still_ours(tmp_path: Path) -> No
     # The control for the guard above: it must key on the real stdlib listing,
     # not on a hand-maintained set that would drift.
     root = _repo(tmp_path)
-    _ = _package(root, "jsonschema_local")
+    _package(root, "jsonschema_local")
     assert is_first_party_module("jsonschema_local", root / "svc.py")
 
 
 def test_a_package_at_the_deepest_scanned_level_is_found(tmp_path: Path) -> None:
     root = _repo(tmp_path)
-    _ = _package(_chain(root, 4), "pkg")
+    _package(_chain(root, 4), "pkg")
     assert is_first_party_module("pkg", root / "svc.py")
 
 
@@ -89,13 +89,13 @@ def test_a_package_one_level_past_the_scan_depth_is_not_found(tmp_path: Path) ->
     # Breaks if `_MAX_SCAN_DEPTH` is raised: the bound is what keeps the scan a
     # few hundred `iterdir()` calls instead of a whole-monorepo walk.
     root = _repo(tmp_path)
-    _ = _package(_chain(root, 5), "pkg")
+    _package(_chain(root, 5), "pkg")
     assert not is_first_party_module("pkg", root / "svc.py")
 
 
 def _budget_probe(root: Path, siblings: int) -> bool:
-    _ = _repo(root)
-    _ = _package(root / "a_deep", "pkg")
+    _repo(root)
+    _package(root / "a_deep", "pkg")
     for index in range(siblings):
         (root / f"d{index:04d}").mkdir()
     return is_first_party_module("pkg", root / "svc.py")
@@ -117,7 +117,7 @@ def test_the_project_root_is_found_at_the_deepest_walked_ancestor(tmp_path: Path
     # Breaks if `_MAX_ANCESTORS` is lowered: a file deep in a monorepo would
     # resolve to no project at all, and nothing in it would ever be first-party.
     root = _repo(tmp_path)
-    _ = _package(root, "app")
+    _package(root, "app")
     deep = _chain(root, 23)
     assert is_first_party_module("app", deep / "svc.py")
 
@@ -125,7 +125,7 @@ def test_the_project_root_is_found_at_the_deepest_walked_ancestor(tmp_path: Path
 def test_the_ancestor_walk_gives_up_one_level_further(tmp_path: Path) -> None:
     # Breaks if `_MAX_ANCESTORS` is raised.
     root = _repo(tmp_path)
-    _ = _package(root, "app")
+    _package(root, "app")
     deep = _chain(root, 24)
     assert not is_first_party_module("app", deep / "svc.py")
 
@@ -142,7 +142,7 @@ def test_distribution_root_is_the_nearest_packaging_manifest(tmp_path: Path) -> 
     root = _repo(tmp_path)
     dist = root / "packages" / "svc"
     dist.mkdir(parents=True)
-    _ = (dist / "pyproject.toml").write_text('[project]\nname = "svc"\n')
+    (dist / "pyproject.toml").write_text('[project]\nname = "svc"\n')
     package = _package(dist, "svc")
     assert distribution_root(package / "api.py") == dist
 
@@ -151,8 +151,8 @@ def test_a_distributions_own_test_tree_is_inside_it(tmp_path: Path) -> None:
     root = _repo(tmp_path)
     dist = root / "packages" / "svc"
     dist.mkdir(parents=True)
-    _ = (dist / "pyproject.toml").write_text('[project]\nname = "svc"\n')
-    _ = _package(dist, "svc")
+    (dist / "pyproject.toml").write_text('[project]\nname = "svc"\n')
+    _package(dist, "svc")
     tests = dist / "tests"
     tests.mkdir()
     assert same_distribution("svc", tests / "test_api.py")
@@ -165,8 +165,8 @@ def test_a_sibling_distribution_is_first_party_but_not_the_same_distribution(
     for name in ("one", "two"):
         dist = root / "packages" / name
         dist.mkdir(parents=True)
-        _ = (dist / "pyproject.toml").write_text(f'[project]\nname = "{name}"\n')
-        _ = _package(dist, name)
+        (dist / "pyproject.toml").write_text(f'[project]\nname = "{name}"\n')
+        _package(dist, name)
     caller = root / "packages" / "one" / "one" / "api.py"
     assert is_first_party_module("two", caller)
     assert not same_distribution("two", caller)
@@ -175,6 +175,6 @@ def test_a_sibling_distribution_is_first_party_but_not_the_same_distribution(
 def test_a_module_with_no_source_on_disk_is_not_editable(tmp_path: Path) -> None:
     root = _repo(tmp_path)
     package = _package(root, "app")
-    _ = (package / "stores.py").write_text("")
+    (package / "stores.py").write_text("")
     assert has_first_party_source("app.stores", root / "svc.py")
     assert not has_first_party_source("app._compiled", root / "svc.py")

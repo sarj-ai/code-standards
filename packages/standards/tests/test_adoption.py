@@ -49,19 +49,19 @@ def _cli(*args: str, cwd: Path | None = None) -> subprocess.CompletedProcess[str
 
 def _python_repo(root: Path) -> Path:
     (root / "src").mkdir(parents=True, exist_ok=True)
-    _ = (root / "pyproject.toml").write_text('[project]\nname = "app"\nversion = "0.1.0"\nrequires-python = ">=3.14"\n')
+    (root / "pyproject.toml").write_text('[project]\nname = "app"\nversion = "0.1.0"\nrequires-python = ">=3.14"\n')
     return root
 
 
 def _typescript_repo(root: Path) -> Path:
-    _ = (root / "package.json").write_text('{"name": "web", "private": true}\n')
+    (root / "package.json").write_text('{"name": "web", "private": true}\n')
     return root
 
 
 def _add_python_bundle_pins(root: Path) -> None:
     bundle = ", ".join(f'"{name}=={pin}"' for name, pin in manifest.installed_versions().items())
     with (root / "pyproject.toml").open("a", encoding="utf-8") as handle:
-        _ = handle.write(f"\n[dependency-groups]\ndev = [{bundle}]\n")
+        handle.write(f"\n[dependency-groups]\ndev = [{bundle}]\n")
 
 
 def test_doctor_leaves_maintainer_repository_policy_to_maintain_check(
@@ -265,20 +265,20 @@ def test_manifest_round_trips(tmp_path: Path) -> None:
         typescript_dest="web",
         ci_bootstrap=("yarn generate",),
     )
-    _ = (tmp_path / manifest.MANIFEST_NAME).write_text(written.render())
+    (tmp_path / manifest.MANIFEST_NAME).write_text(written.render())
     assert manifest.load(tmp_path) == written
 
 
 @pytest.mark.parametrize("declared", ["not a version", "1.2.3 nope", "v"])
 def test_manifest_rejects_non_pep440_versions(tmp_path: Path, declared: str) -> None:
-    _ = (tmp_path / manifest.MANIFEST_NAME).write_text(f'schema = 4\nbundle = "{declared}"\n')
+    (tmp_path / manifest.MANIFEST_NAME).write_text(f'schema = 4\nbundle = "{declared}"\n')
 
     with pytest.raises(ValueError, match="valid PEP 440 version"):
-        _ = manifest.load(tmp_path)
+        manifest.load(tmp_path)
 
 
 def test_manifest_defaults_to_standard_profile(tmp_path: Path) -> None:
-    _ = (tmp_path / manifest.MANIFEST_NAME).write_text('schema = 4\nbundle = "1.2.3"\n')
+    (tmp_path / manifest.MANIFEST_NAME).write_text('schema = 4\nbundle = "1.2.3"\n')
     adopted = manifest.load(tmp_path)
     assert adopted is not None
     assert adopted.profile == "standard"
@@ -298,17 +298,17 @@ def test_legacy_profile_is_readable_but_not_written(tmp_path: Path, legacy_profi
 
 @pytest.mark.parametrize("section", ["capabilities", "dest", "hooks", "exclude", "ci"])
 def test_manifest_rejects_wrong_typed_optional_tables(tmp_path: Path, section: str) -> None:
-    _ = (tmp_path / manifest.MANIFEST_NAME).write_text(
+    (tmp_path / manifest.MANIFEST_NAME).write_text(
         f'schema = 4\nbundle = "1.2.3"\n{section} = "not-a-table"\n',
         encoding="utf-8",
     )
 
     with pytest.raises(TypeError, match=rf"manifest \[{section}\] must be a table"):
-        _ = manifest.load(tmp_path)
+        manifest.load(tmp_path)
 
 
 def test_manifest_loads_contained_custom_verification_paths(tmp_path: Path) -> None:
-    _ = (tmp_path / manifest.MANIFEST_NAME).write_text(
+    (tmp_path / manifest.MANIFEST_NAME).write_text(
         'schema = 4\nbundle = "1.2.3"\n[verify]\npaths = ["src", "README.md"]\n'
     )
 
@@ -321,35 +321,33 @@ def test_manifest_loads_contained_custom_verification_paths(tmp_path: Path) -> N
 @pytest.mark.parametrize("command", [" yarn generate", "yarn generate ", "yarn generate\nnext"])
 def test_manifest_rejects_unsafe_ci_bootstrap_shape(tmp_path: Path, command: str) -> None:
     rendered = json.dumps(command)
-    _ = (tmp_path / manifest.MANIFEST_NAME).write_text(
+    (tmp_path / manifest.MANIFEST_NAME).write_text(
         f'schema = 4\nbundle = "1.2.3"\n[ci]\nbootstrap = [{rendered}]\n',
         encoding="utf-8",
     )
 
     with pytest.raises(ValueError, match="trimmed single-line"):
-        _ = manifest.load(tmp_path)
+        manifest.load(tmp_path)
 
 
 def test_manifest_rejects_custom_verification_path_escape(tmp_path: Path) -> None:
-    _ = (tmp_path / manifest.MANIFEST_NAME).write_text(
-        'schema = 4\nbundle = "1.2.3"\n[verify]\npaths = ["../outside"]\n'
-    )
+    (tmp_path / manifest.MANIFEST_NAME).write_text('schema = 4\nbundle = "1.2.3"\n[verify]\npaths = ["../outside"]\n')
 
     with pytest.raises(ValueError, match="escapes repository root"):
-        _ = manifest.load(tmp_path)
+        manifest.load(tmp_path)
 
 
 @pytest.mark.parametrize("escape", ["parent", "absolute"])
 @pytest.mark.parametrize("kind", ["swift", "kotlin"])
 def test_manifest_rejects_mobile_destination_escape(tmp_path: Path, kind: str, escape: str) -> None:
     destination = "../outside" if escape == "parent" else str(tmp_path.parent)
-    _ = (tmp_path / manifest.MANIFEST_NAME).write_text(
+    (tmp_path / manifest.MANIFEST_NAME).write_text(
         f'schema = 4\nbundle = "1.2.3"\n[dest]\n{kind} = {json.dumps(destination)}\n',
         encoding="utf-8",
     )
 
     with pytest.raises(ValueError, match=rf"\[dest\]\.{kind}.*repository root"):
-        _ = manifest.load(tmp_path)
+        manifest.load(tmp_path)
 
 
 @pytest.mark.parametrize("kind", ["swift", "kotlin"])
@@ -357,19 +355,19 @@ def test_manifest_rejects_mobile_destination_symlink_escape(tmp_path: Path, kind
     outside = tmp_path.parent / f"{tmp_path.name}-outside"
     outside.mkdir()
     (tmp_path / "mobile").symlink_to(outside, target_is_directory=True)
-    _ = (tmp_path / manifest.MANIFEST_NAME).write_text(
+    (tmp_path / manifest.MANIFEST_NAME).write_text(
         f'schema = 4\nbundle = "1.2.3"\n[dest]\n{kind} = "mobile"\n',
         encoding="utf-8",
     )
 
     with pytest.raises(ValueError, match=rf"\[dest\]\.{kind} escapes the repository root"):
-        _ = manifest.load(tmp_path)
+        manifest.load(tmp_path)
 
 
 def test_manifest_rejects_unknown_profile(tmp_path: Path) -> None:
-    _ = (tmp_path / manifest.MANIFEST_NAME).write_text('schema = 4\nbundle = "1.2.3"\nprofile = "library"\n')
+    (tmp_path / manifest.MANIFEST_NAME).write_text('schema = 4\nbundle = "1.2.3"\nprofile = "library"\n')
     with pytest.raises(ValueError, match=r"profile.*standard, application"):
-        _ = manifest.load(tmp_path)
+        manifest.load(tmp_path)
 
 
 def test_manifest_renders_as_valid_toml() -> None:
@@ -399,9 +397,9 @@ def test_missing_manifest_is_not_an_error(tmp_path: Path) -> None:
 
 
 def test_malformed_manifest_is_reported_not_ignored(tmp_path: Path) -> None:
-    _ = (tmp_path / manifest.MANIFEST_NAME).write_text("configs = 3\n")
+    (tmp_path / manifest.MANIFEST_NAME).write_text("configs = 3\n")
     with pytest.raises(ValueError, match=r"schema.*equal 4"):
-        _ = manifest.load(tmp_path)
+        manifest.load(tmp_path)
 
 
 @pytest.mark.parametrize(
@@ -414,15 +412,15 @@ def test_malformed_manifest_is_reported_not_ignored(tmp_path: Path) -> None:
     ],
 )
 def test_manifest_rejects_every_obsolete_schema(tmp_path: Path, text: str) -> None:
-    _ = (tmp_path / manifest.MANIFEST_NAME).write_text(text)
+    (tmp_path / manifest.MANIFEST_NAME).write_text(text)
 
     with pytest.raises(ValueError, match=r"schema.*equal 4"):
-        _ = manifest.load(tmp_path)
+        manifest.load(tmp_path)
 
 
 def test_setup_one_way_migrates_the_final_schema_less_manifest(tmp_path: Path) -> None:
-    _ = _python_repo(tmp_path)
-    _ = (tmp_path / manifest.MANIFEST_NAME).write_text(
+    _python_repo(tmp_path)
+    (tmp_path / manifest.MANIFEST_NAME).write_text(
         'version = "0.42.0"\nconfigs = ["ruff"]\n\n[dest]\npython = "."\ntypescript = "."\n',
         encoding="utf-8",
     )
@@ -438,7 +436,7 @@ def test_setup_one_way_migrates_the_final_schema_less_manifest(tmp_path: Path) -
 
 
 def test_schema_three_manifest_is_available_to_setup_without_enabling_mobile_tools(tmp_path: Path) -> None:
-    _ = (tmp_path / manifest.MANIFEST_NAME).write_text(
+    (tmp_path / manifest.MANIFEST_NAME).write_text(
         'schema = 3\nbundle = "1.2.3"\nprofile = "application"\n'
         '[capabilities]\ndisable = ["ruff"]\n'
         '[dest]\npython = "backend"\ntypescript = "web"\n',
@@ -563,7 +561,7 @@ def test_swift_defaults_are_language_wide_while_other_mobile_tools_require_mobil
 
 
 def test_setup_preserves_compatible_policy_from_the_schema_less_manifest(tmp_path: Path) -> None:
-    _ = _python_repo(tmp_path)
+    _python_repo(tmp_path)
     manifest_path = tmp_path / manifest.MANIFEST_NAME
     manifest_path.write_text(
         'version = "0.42.0"\nconfigs = [\n  "ruff",\n]\nprofile = "application"\n\n'
@@ -597,7 +595,7 @@ def test_setup_preserves_compatible_policy_from_the_schema_less_manifest(tmp_pat
 
 
 def test_setup_refuses_to_discard_a_schema_less_python_baseline(tmp_path: Path) -> None:
-    _ = _python_repo(tmp_path)
+    _python_repo(tmp_path)
     baseline = tmp_path / "python-baseline.json"
     baseline.write_text('{"src/app.py":{"SARJ012":1}}\n', encoding="utf-8")
     manifest_path = tmp_path / manifest.MANIFEST_NAME
@@ -618,8 +616,8 @@ def test_setup_refuses_to_discard_a_schema_less_python_baseline(tmp_path: Path) 
 
 
 def test_doctor_repair_uses_the_same_one_way_manifest_migration(tmp_path: Path) -> None:
-    _ = _typescript_repo(tmp_path)
-    _ = (tmp_path / manifest.MANIFEST_NAME).write_text(
+    _typescript_repo(tmp_path)
+    (tmp_path / manifest.MANIFEST_NAME).write_text(
         'version = "0.42.0"\nconfigs = ["eslint"]\n\n[dest]\npython = "."\ntypescript = "."\n',
         encoding="utf-8",
     )
@@ -633,7 +631,7 @@ def test_doctor_repair_uses_the_same_one_way_manifest_migration(tmp_path: Path) 
 
 
 def test_fix_rejects_an_unadopted_repository_with_setup_guidance(tmp_path: Path) -> None:
-    _ = _python_repo(tmp_path)
+    _python_repo(tmp_path)
 
     proc = _cli("--root", str(tmp_path), "fix")
 
@@ -643,7 +641,7 @@ def test_fix_rejects_an_unadopted_repository_with_setup_guidance(tmp_path: Path)
 
 
 def test_check_preserves_invalid_configuration_exit_status(tmp_path: Path) -> None:
-    _ = (tmp_path / manifest.MANIFEST_NAME).write_text("schema = [", encoding="utf-8")
+    (tmp_path / manifest.MANIFEST_NAME).write_text("schema = [", encoding="utf-8")
 
     proc = _cli("--root", str(tmp_path), "check")
 
@@ -652,7 +650,7 @@ def test_check_preserves_invalid_configuration_exit_status(tmp_path: Path) -> No
 
 
 def test_doctor_repair_does_not_repeat_the_same_manifest_parse_error(tmp_path: Path) -> None:
-    _ = (tmp_path / manifest.MANIFEST_NAME).write_text("schema = [", encoding="utf-8")
+    (tmp_path / manifest.MANIFEST_NAME).write_text("schema = [", encoding="utf-8")
 
     proc = _cli("--root", str(tmp_path), "doctor", "--repair", "--no-install")
 
@@ -661,9 +659,9 @@ def test_doctor_repair_does_not_repeat_the_same_manifest_parse_error(tmp_path: P
 
 
 def test_setup_does_not_reinterpret_a_versioned_obsolete_schema(tmp_path: Path) -> None:
-    _ = _python_repo(tmp_path)
+    _python_repo(tmp_path)
     original = 'schema = 1\nversion = "0.42.0"\nconfigs = ["ruff"]\n'
-    _ = (tmp_path / manifest.MANIFEST_NAME).write_text(original, encoding="utf-8")
+    (tmp_path / manifest.MANIFEST_NAME).write_text(original, encoding="utf-8")
 
     proc = _cli("--root", str(tmp_path), "setup", "--no-install")
 
@@ -674,10 +672,10 @@ def test_setup_does_not_reinterpret_a_versioned_obsolete_schema(tmp_path: Path) 
 @pytest.mark.parametrize("field", ["version", "configs", "gradual"])
 def test_schema_three_rejects_removed_fields(tmp_path: Path, field: str) -> None:
     suffix = '[gradual]\npython_baseline = "baseline.json"\n' if field == "gradual" else f'{field} = "removed"\n'
-    _ = (tmp_path / manifest.MANIFEST_NAME).write_text(f'schema = 3\nbundle = "1.2.3"\n{suffix}')
+    (tmp_path / manifest.MANIFEST_NAME).write_text(f'schema = 3\nbundle = "1.2.3"\n{suffix}')
 
     with pytest.raises(ValueError, match=f"removed manifest fields: {field}"):
-        _ = manifest.load_for_setup(tmp_path)
+        manifest.load_for_setup(tmp_path)
 
 
 @pytest.mark.parametrize(
@@ -695,7 +693,7 @@ def test_config_set_follows_the_detected_ecosystems(
 
 
 def test_doctor_respects_the_manifests_config_set(tmp_path: Path) -> None:
-    _ = _python_repo(tmp_path)
+    _python_repo(tmp_path)
     assert _cli("--root", str(tmp_path), "setup", "--no-install").returncode == 0
     assert not (tmp_path / "eslint.strict.mjs").exists()
 
@@ -705,10 +703,10 @@ def test_doctor_respects_the_manifests_config_set(tmp_path: Path) -> None:
 
 
 def test_doctor_fails_when_a_synced_config_is_edited(tmp_path: Path) -> None:
-    _ = _python_repo(tmp_path)
+    _python_repo(tmp_path)
     assert _cli("--root", str(tmp_path), "setup", "--no-install").returncode == 0
     with (tmp_path / ".ruff-strict.toml").open("a") as handle:
-        _ = handle.write("\n# local edit\n")
+        handle.write("\n# local edit\n")
 
     proc = _cli("--root", str(tmp_path), "doctor")
     assert proc.returncode == 1
@@ -716,10 +714,10 @@ def test_doctor_fails_when_a_synced_config_is_edited(tmp_path: Path) -> None:
 
 
 def test_doctor_fails_when_the_basedpyright_companion_is_edited(tmp_path: Path) -> None:
-    _ = _python_repo(tmp_path)
+    _python_repo(tmp_path)
     assert _cli("--root", str(tmp_path), "setup", "--no-install").returncode == 0
     with (tmp_path / ".basedpyright-strict.json").open("a") as handle:
-        _ = handle.write("\n// local edit\n")
+        handle.write("\n// local edit\n")
 
     proc = _cli("--root", str(tmp_path), "doctor")
     assert proc.returncode == 1
@@ -728,7 +726,7 @@ def test_doctor_fails_when_the_basedpyright_companion_is_edited(tmp_path: Path) 
 
 
 def test_setup_accepts_several_configs(tmp_path: Path) -> None:
-    _ = _python_repo(tmp_path)
+    _python_repo(tmp_path)
     assert (
         _cli("--root", str(tmp_path), "setup", "--config", "ruff", "--config", "pyright", "--no-install").returncode
         == 0
@@ -740,7 +738,7 @@ def test_setup_accepts_several_configs(tmp_path: Path) -> None:
 
 
 def test_init_writes_the_whole_python_wiring(tmp_path: Path) -> None:
-    _ = _python_repo(tmp_path)
+    _python_repo(tmp_path)
     proc = _cli("--root", str(tmp_path), "setup", "--no-install")
     assert proc.returncode == 0, proc.stderr
 
@@ -756,8 +754,8 @@ def test_init_writes_the_whole_python_wiring(tmp_path: Path) -> None:
 
 
 def test_init_wires_an_empty_pyright_config(tmp_path: Path) -> None:
-    _ = _python_repo(tmp_path)
-    _ = (tmp_path / "pyrightconfig.json").write_text("{}\n", encoding="utf-8")
+    _python_repo(tmp_path)
+    (tmp_path / "pyrightconfig.json").write_text("{}\n", encoding="utf-8")
 
     proc = _cli("--root", str(tmp_path), "setup", "--no-install")
 
@@ -770,7 +768,7 @@ def test_init_wires_an_empty_pyright_config(tmp_path: Path) -> None:
 
 @pytest.mark.parametrize("table", ["pyright", "basedpyright"])
 def test_init_refuses_a_pyproject_pyright_authority_that_cannot_extend_json(tmp_path: Path, table: str) -> None:
-    _ = _python_repo(tmp_path)
+    _python_repo(tmp_path)
     pyproject = tmp_path / "pyproject.toml"
     pyproject.write_text(
         f'{pyproject.read_text(encoding="utf-8")}\n[tool.{table}]\nextends = ".pyright-strict.json"\n',
@@ -785,7 +783,7 @@ def test_init_refuses_a_pyproject_pyright_authority_that_cannot_extend_json(tmp_
 
 
 def test_init_refuses_to_replace_an_existing_pyright_parent(tmp_path: Path) -> None:
-    _ = _python_repo(tmp_path)
+    _python_repo(tmp_path)
     config = tmp_path / "pyrightconfig.json"
     original = '{"extends": "./company-pyright.json"}\n'
     config.write_text(original, encoding="utf-8")
@@ -799,7 +797,7 @@ def test_init_refuses_to_replace_an_existing_pyright_parent(tmp_path: Path) -> N
 
 
 def test_init_refuses_to_create_a_competing_config_beside_pyright_jsonc(tmp_path: Path) -> None:
-    _ = _python_repo(tmp_path)
+    _python_repo(tmp_path)
     config = tmp_path / "pyrightconfig.jsonc"
     original = '{ /* keep this comment */ "typeCheckingMode": "strict" }\n'
     config.write_text(original, encoding="utf-8")
@@ -835,7 +833,7 @@ def test_init_rejects_a_consumer_outside_the_python314_policy_floor(tmp_path: Pa
 
 
 def test_init_rejects_a_python_project_without_requires_python(tmp_path: Path) -> None:
-    _ = _python_repo(tmp_path)
+    _python_repo(tmp_path)
     pyproject = tmp_path / "pyproject.toml"
     pyproject.write_text(
         pyproject.read_text(encoding="utf-8").replace('requires-python = ">=3.14"\n', ""),
@@ -849,7 +847,7 @@ def test_init_rejects_a_python_project_without_requires_python(tmp_path: Path) -
 
 
 def test_init_migrates_the_legacy_pyright_parent_idempotently(tmp_path: Path) -> None:
-    _ = _python_repo(tmp_path)
+    _python_repo(tmp_path)
     config = tmp_path / "pyrightconfig.json"
     config.write_text('{"extends": ".pyright-strict.json", "include": ["src"]}\n', encoding="utf-8")
 
@@ -866,7 +864,7 @@ def test_init_migrates_the_legacy_pyright_parent_idempotently(tmp_path: Path) ->
 
 
 def test_legacy_setup_profile_selects_canonical_artifacts(tmp_path: Path) -> None:
-    _ = _python_repo(tmp_path)
+    _python_repo(tmp_path)
     proc = _cli("--root", str(tmp_path), "setup", "--profile", "application", "--no-install")
     assert proc.returncode == 0, proc.stderr
 
@@ -880,7 +878,7 @@ def test_legacy_setup_profile_selects_canonical_artifacts(tmp_path: Path) -> Non
 
 
 def test_setup_explicit_configs_update_manifest_without_losing_exclusions(tmp_path: Path) -> None:
-    _ = _typescript_repo(tmp_path)
+    _typescript_repo(tmp_path)
     first = _cli("--root", str(tmp_path), "setup", "--config", "markdownlint", "--no-install")
     assert first.returncode == 0, first.stderr
     assert _cli("--root", str(tmp_path), "exclude", "add", "path", "generated/**").returncode == 0
@@ -896,7 +894,7 @@ def test_setup_explicit_configs_update_manifest_without_losing_exclusions(tmp_pa
 
 
 def test_setup_preserves_every_supported_manifest_policy_section(tmp_path: Path) -> None:
-    _ = _typescript_repo(tmp_path)
+    _typescript_repo(tmp_path)
     first = _cli("--root", str(tmp_path), "setup", "--config", "markdownlint", "--no-install")
     assert first.returncode == 0, first.stderr
     path = tmp_path / manifest.MANIFEST_NAME
@@ -925,7 +923,7 @@ def test_setup_preserves_every_supported_manifest_policy_section(tmp_path: Path)
 
 
 def test_sync_uses_canonical_config_with_legacy_profile(tmp_path: Path) -> None:
-    _ = _typescript_repo(tmp_path)
+    _typescript_repo(tmp_path)
     assert _cli("--root", str(tmp_path), "setup", "--profile", "application", "--no-install").returncode == 0
     expected = CONFIGS_DIR / "eslint.strict.mjs"
     assert (
@@ -937,10 +935,10 @@ def test_sync_uses_canonical_config_with_legacy_profile(tmp_path: Path) -> None:
 @pytest.mark.parametrize("profile", ["standard", "application"])
 def test_all_adopted_ruff_configs_reject_preferred_stack_import(tmp_path: Path, profile: str) -> None:
     pytest.importorskip("ruff", reason="ruff not installed in this env")
-    _ = _python_repo(tmp_path)
+    _python_repo(tmp_path)
     assert _cli("--root", str(tmp_path), "setup", "--profile", profile, "--no-install").returncode == 0
     probe = tmp_path / "probe.py"
-    _ = probe.write_text("import argparse\n")
+    probe.write_text("import argparse\n")
 
     proc = subprocess.run(
         [sys.executable, "-m", "ruff", "check", "--no-cache", str(probe)],
@@ -961,7 +959,7 @@ def test_adopted_ruff_uses_the_python314_target_for_str_enum_modernization(
     profile: str,
 ) -> None:
     pytest.importorskip("ruff", reason="ruff not installed in this env")
-    _ = _python_repo(tmp_path)
+    _python_repo(tmp_path)
     assert _cli("--root", str(tmp_path), "setup", "--profile", profile, "--no-install").returncode == 0
     package = tmp_path / "src" / "app"
     package.mkdir()
@@ -983,7 +981,7 @@ def test_adopted_ruff_uses_the_python314_target_for_str_enum_modernization(
 
 
 def test_init_keeps_standards_out_of_the_consumer_environment(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    _ = _python_repo(tmp_path)
+    _python_repo(tmp_path)
     commands: list[lifecycle.Command] = []
 
     def execute(planned: Iterable[lifecycle.Command]) -> int:
@@ -998,7 +996,7 @@ def test_init_keeps_standards_out_of_the_consumer_environment(monkeypatch: pytes
 
 
 def test_init_no_install_prints_every_skipped_setup_command(tmp_path: Path) -> None:
-    _ = _python_repo(tmp_path)
+    _python_repo(tmp_path)
     (tmp_path / ".git").mkdir()
 
     proc = _cli("--root", str(tmp_path), "setup", "--no-install")
@@ -1012,7 +1010,7 @@ def test_init_no_install_prints_every_skipped_setup_command(tmp_path: Path) -> N
 
 
 def test_inspect_reports_detected_adoption(tmp_path: Path) -> None:
-    _ = _python_repo(tmp_path)
+    _python_repo(tmp_path)
     assert _cli("--root", str(tmp_path), "setup", "--no-install").returncode == 0
 
     parsed: object = json.loads(lifecycle.inspection_json(tmp_path))  # pyright: ignore[reportAny] -- untyped stdlib boundary
@@ -1024,7 +1022,7 @@ def test_inspect_reports_detected_adoption(tmp_path: Path) -> None:
 
 
 def test_init_writes_a_typescript_entrypoint_with_an_override_seam(tmp_path: Path) -> None:
-    _ = _typescript_repo(tmp_path)
+    _typescript_repo(tmp_path)
     proc = _cli("--root", str(tmp_path), "setup", "--no-install")
     assert proc.returncode == 0, proc.stderr
 
@@ -1049,7 +1047,7 @@ def test_init_writes_a_typescript_entrypoint_with_an_override_seam(tmp_path: Pat
     ],
 )
 def test_init_gives_a_typescript_repo_everything_npm_needs(tmp_path: Path, expected: str) -> None:
-    _ = _typescript_repo(tmp_path)
+    _typescript_repo(tmp_path)
     proc = _cli("--root", str(tmp_path), "setup", "--no-install")
     assert expected in proc.stdout
     parsed: object = json.loads(  # pyright: ignore[reportAny] -- untyped stdlib boundary
@@ -1060,7 +1058,7 @@ def test_init_gives_a_typescript_repo_everything_npm_needs(tmp_path: Path, expec
 
 
 def test_setup_converges_peers_duplicated_across_dependency_sections(tmp_path: Path) -> None:
-    _ = _typescript_repo(tmp_path)
+    _typescript_repo(tmp_path)
     peers = manifest.eslint_peers()
     package_path = tmp_path / "package.json"
     package_path.write_text(
@@ -1095,7 +1093,7 @@ def test_setup_converges_peers_duplicated_across_dependency_sections(tmp_path: P
 
 
 def test_setup_refuses_to_major_bump_lint_tooling_in_runtime_dependencies(tmp_path: Path) -> None:
-    _ = _typescript_repo(tmp_path)
+    _typescript_repo(tmp_path)
     package_path = tmp_path / "package.json"
     original = json.dumps(
         {
@@ -1116,7 +1114,7 @@ def test_setup_refuses_to_major_bump_lint_tooling_in_runtime_dependencies(tmp_pa
 def test_setup_conservatively_excludes_detected_generated_python_clients(tmp_path: Path) -> None:
     python = tmp_path / "python"
     python.mkdir()
-    _ = _python_repo(python)
+    _python_repo(python)
 
     platform = python / "platform_client"
     package = platform / "platform_client"
@@ -1159,7 +1157,7 @@ def test_setup_conservatively_excludes_detected_generated_python_clients(tmp_pat
 
 
 def test_init_prints_a_ci_snippet_with_the_unified_gate(tmp_path: Path) -> None:
-    _ = _python_repo(tmp_path)
+    _python_repo(tmp_path)
     proc = _cli("--root", str(tmp_path), "setup", "--no-install")
     assert ".github/workflows/standards.yml" in proc.stdout
     assert "add this CI step" not in proc.stdout
@@ -1168,7 +1166,7 @@ def test_init_prints_a_ci_snippet_with_the_unified_gate(tmp_path: Path) -> None:
 def test_ci_snippet_for_a_typescript_repo_does_not_require_a_python_project(
     tmp_path: Path,
 ) -> None:
-    _ = _typescript_repo(tmp_path)
+    _typescript_repo(tmp_path)
     proc = _cli("--root", str(tmp_path), "setup", "--no-install")
     workflow = (tmp_path / ".github" / "workflows" / "standards.yml").read_text(encoding="utf-8")
     assert "uv run --frozen" not in proc.stdout
@@ -1214,7 +1212,7 @@ def test_nested_python_project_uses_the_same_isolated_launcher(tmp_path: Path) -
 
 
 def test_init_is_idempotent(tmp_path: Path) -> None:
-    _ = _python_repo(tmp_path)
+    _python_repo(tmp_path)
     assert _cli("--root", str(tmp_path), "setup", "--no-install").returncode == 0
     before = (tmp_path / "pyproject.toml").read_text()
 
@@ -1225,7 +1223,7 @@ def test_init_is_idempotent(tmp_path: Path) -> None:
 
 
 def test_init_dry_run_writes_nothing(tmp_path: Path) -> None:
-    _ = _python_repo(tmp_path)
+    _python_repo(tmp_path)
     proc = _cli("--root", str(tmp_path), "setup", "--dry-run", "--no-install")
     assert proc.returncode == 0
     assert "would write" in proc.stdout
@@ -1362,7 +1360,7 @@ def test_init_rejects_ecosystem_config_without_its_project(tmp_path: Path, confi
 
 
 def test_init_rejects_mobile_config_in_an_unrelated_python_project(tmp_path: Path) -> None:
-    _ = _python_repo(tmp_path)
+    _python_repo(tmp_path)
 
     proc = _cli("--root", str(tmp_path), "setup", "--config", "swiftlint", "--no-install")
 
@@ -1372,7 +1370,7 @@ def test_init_rejects_mobile_config_in_an_unrelated_python_project(tmp_path: Pat
 
 
 def test_generated_precommit_block_carries_no_rev(tmp_path: Path) -> None:
-    _ = _python_repo(tmp_path)
+    _python_repo(tmp_path)
     assert _cli("--root", str(tmp_path), "setup", "--no-install").returncode == 0
     generated = (tmp_path / ".pre-commit-config.yaml").read_text()
     assert "rev:" not in generated
@@ -1389,7 +1387,7 @@ def test_generated_precommit_block_carries_no_rev(tmp_path: Path) -> None:
 
 
 def test_doctor_reports_a_duplicate_direct_repo_standards_hook(tmp_path: Path) -> None:
-    _ = _python_repo(tmp_path)
+    _python_repo(tmp_path)
     assert _cli("--root", str(tmp_path), "setup", "--no-install").returncode == 0
     config = tmp_path / ".pre-commit-config.yaml"
     config.write_text(
@@ -1409,7 +1407,7 @@ def test_doctor_reports_a_duplicate_direct_repo_standards_hook(tmp_path: Path) -
 
 
 def test_doctor_requires_the_managed_repository_manifest(tmp_path: Path) -> None:
-    _ = _python_repo(tmp_path)
+    _python_repo(tmp_path)
     assert _cli("--root", str(tmp_path), "setup", "--no-install").returncode == 0
     (tmp_path / ".repo-standards" / "repository.toml").unlink()
 
@@ -1437,7 +1435,7 @@ def test_duplicate_repository_check_detection_uses_command_semantics(tmp_path: P
 
 
 def test_setup_replaces_the_canonical_direct_repo_standards_hook(tmp_path: Path) -> None:
-    _ = _python_repo(tmp_path)
+    _python_repo(tmp_path)
     config = tmp_path / ".pre-commit-config.yaml"
     config.write_text(
         "repos:\n"
@@ -1459,7 +1457,7 @@ def test_setup_replaces_the_canonical_direct_repo_standards_hook(tmp_path: Path)
 
 @pytest.mark.parametrize("heading", ["repos: []\n", "repos: [] # keep this comment\n"])
 def test_init_opens_an_inline_empty_precommit_repo_list(tmp_path: Path, heading: str) -> None:
-    _ = _python_repo(tmp_path)
+    _python_repo(tmp_path)
     config = tmp_path / ".pre-commit-config.yaml"
     config.write_text(heading, encoding="utf-8")
 
@@ -1474,7 +1472,7 @@ def test_init_opens_an_inline_empty_precommit_repo_list(tmp_path: Path, heading:
 
 
 def test_init_preserves_an_existing_lefthook_manager(tmp_path: Path) -> None:
-    _ = _python_repo(tmp_path)
+    _python_repo(tmp_path)
     (tmp_path / "lefthook.yml").write_text(
         "pre-commit:\n  commands:\n    standards:\n      run: sarj-standards check --staged\n", encoding="utf-8"
     )
@@ -1491,7 +1489,7 @@ def test_init_preserves_an_existing_lefthook_manager(tmp_path: Path) -> None:
 
 @pytest.mark.parametrize("layout", ["commands", "jobs"])
 def test_init_preserves_existing_lefthook_commit_message_commands(tmp_path: Path, layout: str) -> None:
-    _ = _python_repo(tmp_path)
+    _python_repo(tmp_path)
     existing = (
         "  commands:\n    consumer:\n      run: consumer-lint {1}\n"
         if layout == "commands"
@@ -1512,7 +1510,7 @@ def test_init_preserves_existing_lefthook_commit_message_commands(tmp_path: Path
 
 
 def test_switching_to_lefthook_retires_only_the_generated_precommit_hook(tmp_path: Path) -> None:
-    _ = _python_repo(tmp_path)
+    _python_repo(tmp_path)
     assert _cli("--root", str(tmp_path), "setup", "--no-install").returncode == 0
     config = tmp_path / ".pre-commit-config.yaml"
     original = config.read_text(encoding="utf-8")
@@ -1549,7 +1547,7 @@ def test_switching_to_lefthook_retires_only_the_generated_precommit_hook(tmp_pat
 
 
 def test_switching_to_lefthook_refuses_a_customized_generated_precommit_hook(tmp_path: Path) -> None:
-    _ = _python_repo(tmp_path)
+    _python_repo(tmp_path)
     assert _cli("--root", str(tmp_path), "setup", "--no-install").returncode == 0
     config = tmp_path / ".pre-commit-config.yaml"
     config.write_text(
@@ -1572,7 +1570,7 @@ def test_switching_to_lefthook_refuses_a_customized_generated_precommit_hook(tmp
 
 
 def test_init_accepts_a_runner_wrapped_lefthook_command(tmp_path: Path) -> None:
-    _ = _python_repo(tmp_path)
+    _python_repo(tmp_path)
     (tmp_path / "lefthook.yml").write_text(
         "pre-commit:\n  commands:\n    standards:\n"
         "      run: uv run --frozen sarj-standards check --staged -- {staged_files}\n",
@@ -1593,7 +1591,7 @@ def test_init_accepts_a_runner_wrapped_lefthook_command(tmp_path: Path) -> None:
     ],
 )
 def test_init_repairs_inert_or_compound_lefthook_commands(tmp_path: Path, run: str) -> None:
-    _ = _python_repo(tmp_path)
+    _python_repo(tmp_path)
     (tmp_path / "lefthook.yml").write_text(
         f"pre-commit:\n  commands:\n    standards:\n      run: {run}\n",
         encoding="utf-8",
@@ -1607,7 +1605,7 @@ def test_init_repairs_inert_or_compound_lefthook_commands(tmp_path: Path, run: s
 
 
 def test_init_repairs_a_commented_out_lefthook_command(tmp_path: Path) -> None:
-    _ = _python_repo(tmp_path)
+    _python_repo(tmp_path)
     (tmp_path / "lefthook.yml").write_text(
         "pre-commit:\n  commands: {}\n# sarj-standards check --staged\n",
         encoding="utf-8",
@@ -1622,7 +1620,7 @@ def test_init_repairs_a_commented_out_lefthook_command(tmp_path: Path) -> None:
 
 
 def test_init_rejects_malformed_lefthook_yaml(tmp_path: Path) -> None:
-    _ = _python_repo(tmp_path)
+    _python_repo(tmp_path)
     (tmp_path / "lefthook.yml").write_text(
         "pre-commit:\n  commands: [\n    # sarj-standards check --staged\n",
         encoding="utf-8",
@@ -1635,7 +1633,7 @@ def test_init_rejects_malformed_lefthook_yaml(tmp_path: Path) -> None:
 
 
 def test_init_can_explicitly_disable_hook_management(tmp_path: Path) -> None:
-    _ = _python_repo(tmp_path)
+    _python_repo(tmp_path)
 
     proc = _cli("--root", str(tmp_path), "setup", "--hooks", "none", "--no-install")
 
@@ -1647,7 +1645,7 @@ def test_init_can_explicitly_disable_hook_management(tmp_path: Path) -> None:
 
 
 def test_init_repairs_unwired_but_rejects_missing_lefthook_management(tmp_path: Path) -> None:
-    _ = _python_repo(tmp_path)
+    _python_repo(tmp_path)
     missing = _cli("--root", str(tmp_path), "setup", "--hooks", "lefthook", "--no-install")
     assert missing.returncode == 2
     assert "requires lefthook" in missing.stderr
@@ -1661,7 +1659,7 @@ def test_init_repairs_unwired_but_rejects_missing_lefthook_management(tmp_path: 
 
 
 def test_init_repairs_final_lefthook_commands_key_without_a_newline(tmp_path: Path) -> None:
-    _ = _python_repo(tmp_path)
+    _python_repo(tmp_path)
     config = tmp_path / "lefthook.yml"
     config.write_text("pre-commit:\n  commands:", encoding="utf-8")
 
@@ -1672,7 +1670,7 @@ def test_init_repairs_final_lefthook_commands_key_without_a_newline(tmp_path: Pa
 
 
 def test_init_preserves_and_extends_lefthook_v2_jobs(tmp_path: Path) -> None:
-    _ = _python_repo(tmp_path)
+    _python_repo(tmp_path)
     config = tmp_path / "lefthook.yml"
     original_job = "    - name: existing\n      run: make lint\n"
     config.write_text(f"pre-commit:\n  jobs:\n{original_job}\npre-push:\n  commands: {{}}\n", encoding="utf-8")
@@ -1689,7 +1687,7 @@ def test_init_preserves_and_extends_lefthook_v2_jobs(tmp_path: Path) -> None:
 
 
 def test_nested_lefthook_v2_job_can_already_run_staged_check(tmp_path: Path) -> None:
-    _ = _python_repo(tmp_path)
+    _python_repo(tmp_path)
     config = tmp_path / "lefthook.yml"
     original = (
         "pre-commit:\n  jobs:\n    - name: checks\n      group:\n        jobs:\n"
@@ -1716,7 +1714,7 @@ def test_lefthook_cycle_fails_closed_without_recursing(tmp_path: Path) -> None:
 
 @pytest.mark.parametrize("suffix", ["js", "jsx", "mjs", "cjs", "ts", "tsx", "mts", "cts", "kt", "kts", "swift"])
 def test_generated_precommit_block_routes_every_supported_staged_suffix(tmp_path: Path, suffix: str) -> None:
-    _ = _typescript_repo(tmp_path)
+    _typescript_repo(tmp_path)
     assert _cli("--root", str(tmp_path), "setup", "--no-install").returncode == 0
 
     generated = (tmp_path / ".pre-commit-config.yaml").read_text()
@@ -1726,7 +1724,7 @@ def test_generated_precommit_block_routes_every_supported_staged_suffix(tmp_path
 
 
 def test_init_writes_the_npm_overrides_into_package_json(tmp_path: Path) -> None:
-    _ = _typescript_repo(tmp_path)
+    _typescript_repo(tmp_path)
     proc = _cli("--root", str(tmp_path), "setup", "--no-install")
     assert proc.returncode == 0, proc.stderr
 
@@ -1783,7 +1781,7 @@ def test_pull_request_change_scope_selects_only_files_changed_from_the_exact_bas
 
 
 def test_init_does_not_clobber_a_consumers_existing_overrides(tmp_path: Path) -> None:
-    _ = (tmp_path / "package.json").write_text(
+    (tmp_path / "package.json").write_text(
         json.dumps({"name": "web", "overrides": {"left-pad": "1.3.0"}}, indent=2) + "\n"
     )
     assert _cli("--root", str(tmp_path), "setup", "--no-install").returncode == 0
@@ -1797,7 +1795,7 @@ def test_init_does_not_clobber_a_consumers_existing_overrides(tmp_path: Path) ->
 def test_init_leaves_a_package_json_that_already_has_the_overrides_alone(
     tmp_path: Path,
 ) -> None:
-    _ = _typescript_repo(tmp_path)
+    _typescript_repo(tmp_path)
     assert _cli("--root", str(tmp_path), "setup", "--no-install").returncode == 0
     before = (tmp_path / "package.json").read_text(encoding="utf-8")
 
@@ -1809,8 +1807,8 @@ def test_init_leaves_a_package_json_that_already_has_the_overrides_alone(
 
 def test_init_wires_the_subproject_that_actually_installs_eslint(tmp_path: Path) -> None:
     (tmp_path / "web").mkdir()
-    _ = (tmp_path / "web" / "package.json").write_text('{"name": "web"}\n')
-    _ = (tmp_path / "web" / "package-lock.json").write_text("{}\n")
+    (tmp_path / "web" / "package.json").write_text('{"name": "web"}\n')
+    (tmp_path / "web" / "package-lock.json").write_text("{}\n")
     proc = _cli("--root", str(tmp_path), "setup", "--no-install")
     assert proc.returncode == 0, proc.stderr
 
@@ -1826,8 +1824,8 @@ def test_doctor_reads_the_subproject_destinations_back_out_of_the_manifest(
     tmp_path: Path,
 ) -> None:
     (tmp_path / "web").mkdir()
-    _ = (tmp_path / "web" / "package.json").write_text('{"name": "web"}\n')
-    _ = (tmp_path / "web" / "pnpm-lock.yaml").write_text("lockfileVersion: '9.0'\n")
+    (tmp_path / "web" / "package.json").write_text('{"name": "web"}\n')
+    (tmp_path / "web" / "pnpm-lock.yaml").write_text("lockfileVersion: '9.0'\n")
     assert _cli("--root", str(tmp_path), "setup", "--no-install").returncode == 0
 
     proc = _cli("--root", str(tmp_path), "doctor")
@@ -1840,9 +1838,7 @@ def test_doctor_keeps_shared_configs_at_repo_root_after_subproject_adoption(
 ) -> None:
     project = tmp_path / "python" / "api"
     project.mkdir(parents=True)
-    _ = (project / "pyproject.toml").write_text(
-        '[project]\nname = "api"\nversion = "0.1.0"\nrequires-python = ">=3.14"\n'
-    )
+    (project / "pyproject.toml").write_text('[project]\nname = "api"\nversion = "0.1.0"\nrequires-python = ">=3.14"\n')
     assert _cli("--root", str(tmp_path), "setup", "--no-install").returncode == 0
 
     second = _cli("--root", str(tmp_path), "doctor")
@@ -1871,8 +1867,8 @@ def _precommit_entries(config: str) -> list[_PrecommitEntry]:
 
 
 def test_the_generated_precommit_hook_actually_runs(tmp_path: Path) -> None:
-    _ = _python_repo(tmp_path)
-    _ = (tmp_path / "src" / "app.py").write_text("VALUE: int = 1\n")
+    _python_repo(tmp_path)
+    (tmp_path / "src" / "app.py").write_text("VALUE: int = 1\n")
     assert _cli("--root", str(tmp_path), "setup", "--no-install").returncode == 0
     environment = {
         name: value
@@ -1882,7 +1878,7 @@ def test_the_generated_precommit_hook_actually_runs(tmp_path: Path) -> None:
     subprocess.run(("git", "init", "-q"), cwd=tmp_path, check=True, env=environment)
     subprocess.run(("git", "add", "."), cwd=tmp_path, check=True, env=environment)
     message = tmp_path / "COMMIT_EDITMSG"
-    _ = message.write_text("feat: add typed value\n", encoding="utf-8")
+    message.write_text("feat: add typed value\n", encoding="utf-8")
 
     entries = _precommit_entries((tmp_path / ".pre-commit-config.yaml").read_text())
     assert len(entries) == 2, "one hook per Git stage avoids duplicate work within either stage"
@@ -1900,7 +1896,7 @@ def test_the_generated_precommit_hook_actually_runs(tmp_path: Path) -> None:
 
 
 def test_generated_check_hook_uses_normal_precommit_output_behavior(tmp_path: Path) -> None:
-    _ = _python_repo(tmp_path)
+    _python_repo(tmp_path)
 
     assert _cli("--root", str(tmp_path), "setup", "--no-install").returncode == 0
 
@@ -1910,7 +1906,7 @@ def test_generated_check_hook_uses_normal_precommit_output_behavior(tmp_path: Pa
 
 
 def test_doctor_detects_a_disabled_generated_precommit_hook(tmp_path: Path) -> None:
-    _ = _python_repo(tmp_path)
+    _python_repo(tmp_path)
     assert _cli("--root", str(tmp_path), "setup", "--no-install").returncode == 0
     config = tmp_path / ".pre-commit-config.yaml"
     config.write_text(
@@ -1924,7 +1920,7 @@ def test_doctor_detects_a_disabled_generated_precommit_hook(tmp_path: Path) -> N
 
 
 def test_doctor_detects_competing_canonical_hook_managers(tmp_path: Path) -> None:
-    _ = _python_repo(tmp_path)
+    _python_repo(tmp_path)
     assert _cli("--root", str(tmp_path), "setup", "--no-install").returncode == 0
     (tmp_path / "lefthook.yml").write_text(
         "pre-commit:\n  jobs:\n    - name: standards\n"
@@ -1975,7 +1971,7 @@ def test_doctor_detects_a_precommit_migration_chain_with_legacy_lefthook(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _ = _python_repo(tmp_path)
+    _python_repo(tmp_path)
     assert _cli("--root", str(tmp_path), "setup", "--no-install").returncode == 0
     subprocess.run(("git", "init", "-q"), cwd=tmp_path, check=True, env={})
     hook = tmp_path / ".git" / "hooks" / "pre-commit"
@@ -2005,7 +2001,7 @@ def test_doctor_detects_a_precommit_migration_chain_with_legacy_lefthook(
 
 
 def test_doctor_warns_when_selected_lefthook_is_not_installed(tmp_path: Path) -> None:
-    _ = _python_repo(tmp_path)
+    _python_repo(tmp_path)
     subprocess.run(("git", "init", "-q"), cwd=tmp_path, check=True, env={})
     (tmp_path / "lefthook.yml").write_text(
         "pre-commit:\n  jobs:\n    - name: consumer\n      run: true\n",
@@ -2021,7 +2017,7 @@ def test_doctor_warns_when_selected_lefthook_is_not_installed(tmp_path: Path) ->
 
 
 def test_doctor_rejects_a_nondurable_lefthook_launcher(tmp_path: Path) -> None:
-    _ = _python_repo(tmp_path)
+    _python_repo(tmp_path)
     subprocess.run(("git", "init", "-q"), cwd=tmp_path, check=True, env={})
     (tmp_path / "lefthook.yml").write_text(
         "pre-commit:\n  jobs:\n    - name: consumer\n      run: true\n",
@@ -2047,7 +2043,7 @@ def test_doctor_rejects_a_nondurable_lefthook_launcher(tmp_path: Path) -> None:
     ],
 )
 def test_doctor_rejects_inert_or_semantically_changed_precommit_hook(tmp_path: Path, old: str, new: str) -> None:
-    _ = _python_repo(tmp_path)
+    _python_repo(tmp_path)
     assert _cli("--root", str(tmp_path), "setup", "--no-install").returncode == 0
     config = tmp_path / ".pre-commit-config.yaml"
     contents = config.read_text(encoding="utf-8")
@@ -2210,7 +2206,7 @@ def test_lefthook_setup_update_and_doctor_converge_installed_hooks(
 
 
 def test_doctor_repair_converges_configuration_without_installing(tmp_path: Path) -> None:
-    _ = _python_repo(tmp_path)
+    _python_repo(tmp_path)
     assert _cli("--root", str(tmp_path), "setup", "--no-install").returncode == 0
     config = tmp_path / ".pre-commit-config.yaml"
     config.write_text(
@@ -2225,7 +2221,7 @@ def test_doctor_repair_converges_configuration_without_installing(tmp_path: Path
 
 
 def test_doctor_repair_restores_owned_config_while_reporting_manual_retired_rule_debt(tmp_path: Path) -> None:
-    _ = _python_repo(tmp_path)
+    _python_repo(tmp_path)
     assert _cli("--root", str(tmp_path), "setup", "--no-install").returncode == 0
     config = tmp_path / ".ruff-strict.toml"
     config.unlink()
@@ -2241,7 +2237,7 @@ def test_doctor_repair_restores_owned_config_while_reporting_manual_retired_rule
 
 @pytest.mark.parametrize("path", ["requirements.txt", "requirements-dev.in", "requirements/prod.txt"])
 def test_generated_check_hook_includes_application_requirement_manifests(tmp_path: Path, path: str) -> None:
-    _ = _python_repo(tmp_path)
+    _python_repo(tmp_path)
     assert _cli("--root", str(tmp_path), "setup", "--no-install").returncode == 0
 
     config = (tmp_path / ".pre-commit-config.yaml").read_text(encoding="utf-8")
@@ -2515,7 +2511,7 @@ def test_init_deduplicates_redundant_select_all_before_extending_ruff(tmp_path: 
 
 
 def test_a_typescript_only_precommit_hook_does_not_invoke_uv_run(tmp_path: Path) -> None:
-    _ = _typescript_repo(tmp_path)
+    _typescript_repo(tmp_path)
     assert _cli("--root", str(tmp_path), "setup", "--no-install").returncode == 0
 
     generated = (tmp_path / ".pre-commit-config.yaml").read_text()
@@ -2596,7 +2592,7 @@ def test_show_ci_preserves_github_expressions_in_bootstrap_shell_commands(tmp_pa
 
 
 def test_generated_ci_is_recognized_as_an_executable_standards_gate(tmp_path: Path) -> None:
-    _ = _python_repo(tmp_path)
+    _python_repo(tmp_path)
     assert _cli("--root", str(tmp_path), "setup", "--no-install").returncode == 0
 
     assert scaffold.standards_check_workflows(tmp_path) == (tmp_path / ".github" / "workflows" / "standards.yml",)
@@ -2616,7 +2612,7 @@ def test_generated_ci_is_recognized_as_an_executable_standards_gate(tmp_path: Pa
 def test_ci_detection_rejects_inert_standards_text(tmp_path: Path, command: str) -> None:
     workflows = tmp_path / ".github" / "workflows"
     workflows.mkdir(parents=True)
-    _ = (workflows / "inert.yml").write_text(
+    (workflows / "inert.yml").write_text(
         f"jobs:\n  lint:\n    steps:\n      - run: |\n          {command}\n",
         encoding="utf-8",
     )
@@ -2625,9 +2621,9 @@ def test_ci_detection_rejects_inert_standards_text(tmp_path: Path, command: str)
 
 
 def test_detection_finds_a_package_json_in_a_subproject(tmp_path: Path) -> None:
-    _ = _python_repo(tmp_path)
+    _python_repo(tmp_path)
     (tmp_path / "services" / "web").mkdir(parents=True)
-    _ = (tmp_path / "services" / "web" / "package.json").write_text("{}\n")
+    (tmp_path / "services" / "web" / "package.json").write_text("{}\n")
     found = scaffold.detect(tmp_path)
     assert (found.python, found.typescript) == (True, True)
     assert found.python_root == tmp_path
@@ -3081,7 +3077,7 @@ def test_explicit_project_root_resolves_independent_root_ambiguity(tmp_path: Pat
 
 def test_detection_ignores_node_modules(tmp_path: Path) -> None:
     (tmp_path / "node_modules" / "left-pad").mkdir(parents=True)
-    _ = (tmp_path / "node_modules" / "left-pad" / "package.json").write_text("{}\n")
+    (tmp_path / "node_modules" / "left-pad" / "package.json").write_text("{}\n")
     assert scaffold.detect(tmp_path).typescript is False
 
 
@@ -3098,7 +3094,7 @@ def test_detection_ignores_xcode_source_package_checkouts(tmp_path: Path) -> Non
 
 
 def test_doctor_accepts_isolated_python_adoption_without_consumer_bundle(tmp_path: Path) -> None:
-    _ = _python_repo(tmp_path)
+    _python_repo(tmp_path)
     assert _cli("--root", str(tmp_path), "setup", "--no-install").returncode == 0
     proc = _cli("--root", str(tmp_path), "doctor")
     assert proc.returncode == 0, proc.stdout
@@ -3122,7 +3118,7 @@ def test_doctor_explains_source_controlled_config_drift(tmp_path: Path) -> None:
 
 
 def test_doctor_migrates_the_exact_in_project_bundle(tmp_path: Path) -> None:
-    _ = _python_repo(tmp_path)
+    _python_repo(tmp_path)
     assert _cli("--root", str(tmp_path), "setup", "--no-install").returncode == 0
     _add_python_bundle_pins(tmp_path)
 
@@ -3170,12 +3166,12 @@ def test_doctor_rejects_an_invalid_adopted_typescript_package_json(tmp_path: Pat
 
 
 def test_doctor_rejects_non_exact_python_bundle_range(tmp_path: Path) -> None:
-    _ = _python_repo(tmp_path)
+    _python_repo(tmp_path)
     assert _cli("--root", str(tmp_path), "setup", "--no-install").returncode == 0
     versions = manifest.installed_versions()
     bundle = ", ".join(f'"{name}{">=" if name == "code-standards" else "=="}{pin}"' for name, pin in versions.items())
     with (tmp_path / "pyproject.toml").open("a", encoding="utf-8") as handle:
-        _ = handle.write(f"\n[dependency-groups]\ndev = [{bundle}]\n")
+        handle.write(f"\n[dependency-groups]\ndev = [{bundle}]\n")
 
     proc = _cli("--root", str(tmp_path), "doctor")
 
@@ -3185,18 +3181,18 @@ def test_doctor_rejects_non_exact_python_bundle_range(tmp_path: Path) -> None:
 
 
 def test_doctor_catches_a_stale_pyproject_pin(tmp_path: Path) -> None:
-    _ = _python_repo(tmp_path)
-    _ = (tmp_path / "requirements.txt").write_text("sarj-python-lint==0.25.0\n")
+    _python_repo(tmp_path)
+    (tmp_path / "requirements.txt").write_text("sarj-python-lint==0.25.0\n")
     proc = _cli("--root", str(tmp_path), "doctor")
     assert proc.returncode == 1
     assert "sarj-python-lint==0.25.0" in proc.stdout
 
 
 def test_doctor_catches_a_ci_pin_that_differs_from_the_pyproject_pin(tmp_path: Path) -> None:
-    _ = _python_repo(tmp_path)
+    _python_repo(tmp_path)
     workflows = tmp_path / ".github" / "workflows"
     workflows.mkdir(parents=True)
-    _ = (workflows / "ci.yml").write_text(
+    (workflows / "ci.yml").write_text(
         "jobs:\n  lint:\n    steps:\n      - run: uvx --from sarj-python-lint==0.12.2 sarj-python-lint check .\n"
     )
     proc = _cli("--root", str(tmp_path), "doctor")
@@ -3206,8 +3202,8 @@ def test_doctor_catches_a_ci_pin_that_differs_from_the_pyproject_pin(tmp_path: P
 
 
 def test_doctor_catches_a_stale_package_script_pin(tmp_path: Path) -> None:
-    _ = _typescript_repo(tmp_path)
-    _ = (tmp_path / "package.json").write_text(
+    _typescript_repo(tmp_path)
+    (tmp_path / "package.json").write_text(
         '{"scripts":{"lint:sarj":"uvx --from sarj-standards==0.1.0 sarj-standards check ."}}\n'
     )
 
@@ -3225,8 +3221,8 @@ def test_doctor_catches_a_stale_package_script_pin(tmp_path: Path) -> None:
     ],
 )
 def test_doctor_does_not_claim_lookalike_precommit_repositories(tmp_path: Path, repository: str) -> None:
-    _ = _python_repo(tmp_path)
-    _ = (tmp_path / ".pre-commit-config.yaml").write_text(
+    _python_repo(tmp_path)
+    (tmp_path / ".pre-commit-config.yaml").write_text(
         f"repos:\n  - repo: {repository}\n    rev: stale\n    hooks:\n      - id: sarj-standards\n",
         encoding="utf-8",
     )
@@ -3237,7 +3233,7 @@ def test_doctor_does_not_claim_lookalike_precommit_repositories(tmp_path: Path, 
 
 
 def test_init_does_not_rewrite_a_remote_hook_with_a_generated_id(tmp_path: Path) -> None:
-    _ = _python_repo(tmp_path)
+    _python_repo(tmp_path)
     config = tmp_path / ".pre-commit-config.yaml"
     remote = (
         "  - repo: https://github.com/example/custom-hooks\n"
@@ -3257,7 +3253,7 @@ def test_init_does_not_rewrite_a_remote_hook_with_a_generated_id(tmp_path: Path)
 
 
 def test_init_recognizes_a_quoted_commented_local_generated_hook(tmp_path: Path) -> None:
-    _ = _python_repo(tmp_path)
+    _python_repo(tmp_path)
     config = tmp_path / ".pre-commit-config.yaml"
     config.write_text(
         "repos:\n"
@@ -3277,8 +3273,8 @@ def test_init_recognizes_a_quoted_commented_local_generated_hook(tmp_path: Path)
 
 
 def test_doctor_catches_a_stale_eslint_plugin_pin(tmp_path: Path) -> None:
-    _ = _typescript_repo(tmp_path)
-    _ = (tmp_path / "package.json").write_text(
+    _typescript_repo(tmp_path)
+    (tmp_path / "package.json").write_text(
         json.dumps({"name": "web", "devDependencies": {"@sarj/eslint-plugin": "2.16.0"}})
     )
     proc = _cli("--root", str(tmp_path), "doctor")
@@ -3293,8 +3289,8 @@ def test_doctor_catches_a_stale_eslint_plugin_pin(tmp_path: Path) -> None:
 )
 def test_doctor_accepts_only_exact_spellings_of_the_tested_floor(tmp_path: Path, operator: str) -> None:
     floor = manifest.eslint_peers()["@sarj/eslint-plugin"]
-    _ = _typescript_repo(tmp_path)
-    _ = (tmp_path / "package.json").write_text(
+    _typescript_repo(tmp_path)
+    (tmp_path / "package.json").write_text(
         json.dumps({"name": "web", "devDependencies": {"@sarj/eslint-plugin": f"{operator}{floor}"}})
     )
     proc = _cli("--root", str(tmp_path), "doctor")
@@ -3305,8 +3301,8 @@ def test_doctor_accepts_only_exact_spellings_of_the_tested_floor(tmp_path: Path,
 @pytest.mark.parametrize("operator", ["^", "~", ">=", ">", "<", "~=", "v"])
 def test_doctor_rejects_ranges_even_when_they_name_the_tested_floor(tmp_path: Path, operator: str) -> None:
     floor = manifest.eslint_peers()["@sarj/eslint-plugin"]
-    _ = _typescript_repo(tmp_path)
-    _ = (tmp_path / "package.json").write_text(
+    _typescript_repo(tmp_path)
+    (tmp_path / "package.json").write_text(
         json.dumps({"name": "web", "devDependencies": {"@sarj/eslint-plugin": f"{operator}{floor}"}})
     )
 
@@ -3318,8 +3314,8 @@ def test_doctor_rejects_ranges_even_when_they_name_the_tested_floor(tmp_path: Pa
 
 def test_doctor_still_reports_a_range_that_is_not_the_floor(tmp_path: Path) -> None:
     floor = manifest.eslint_peers()["@sarj/eslint-plugin"]
-    _ = _typescript_repo(tmp_path)
-    _ = (tmp_path / "package.json").write_text(
+    _typescript_repo(tmp_path)
+    (tmp_path / "package.json").write_text(
         json.dumps({"name": "web", "devDependencies": {"@sarj/eslint-plugin": f"^~{floor}"}})
     )
     proc = _cli("--root", str(tmp_path), "doctor")
@@ -3329,7 +3325,7 @@ def test_doctor_still_reports_a_range_that_is_not_the_floor(tmp_path: Path) -> N
 
 @pytest.mark.parametrize("specifier", ["file:../plugin", "link:../plugin", "workspace:*"])
 def test_doctor_warns_that_a_local_eslint_plugin_checkout_is_unverified(tmp_path: Path, specifier: str) -> None:
-    _ = (tmp_path / "package.json").write_text(
+    (tmp_path / "package.json").write_text(
         json.dumps({"name": "web", "devDependencies": {"@sarj/eslint-plugin": specifier}})
     )
     proc = _cli("--root", str(tmp_path), "doctor")
@@ -3341,13 +3337,13 @@ def test_doctor_verifies_an_in_repository_file_plugin_at_the_tested_version(tmp_
     floor = manifest.eslint_peers()["@sarj/eslint-plugin"]
     plugin = tmp_path / "packages" / "typescript"
     plugin.mkdir(parents=True)
-    _ = (plugin / "package.json").write_text(
+    (plugin / "package.json").write_text(
         json.dumps({"name": "@sarj/eslint-plugin", "version": floor}),
         encoding="utf-8",
     )
     app = tmp_path / "apps" / "docs"
     app.mkdir(parents=True)
-    _ = (app / "package.json").write_text(
+    (app / "package.json").write_text(
         json.dumps(
             {
                 "name": "docs",
@@ -3390,10 +3386,10 @@ def test_adopted_workspace_checks_the_install_root_not_nested_plugin_ranges(tmp_
 
 
 def test_doctor_skips_vendored_trees(tmp_path: Path) -> None:
-    _ = _python_repo(tmp_path)
+    _python_repo(tmp_path)
     buried = tmp_path / "node_modules" / "junk"
     buried.mkdir(parents=True)
-    _ = (buried / "pyproject.toml").write_text('deps = ["sarj-python-lint==0.1.0"]\n')
+    (buried / "pyproject.toml").write_text('deps = ["sarj-python-lint==0.1.0"]\n')
     proc = _cli("--root", str(tmp_path), "doctor")
     assert "0.1.0" not in proc.stdout
 
@@ -3406,9 +3402,9 @@ def test_doctor_git_walk_isolates_hook_environment_and_prunes_generated_paths(
     generated = tmp_path / ".playwright-mcp" / "page.yml"
     skipped.parent.mkdir(parents=True)
     generated.parent.mkdir()
-    _ = kept.write_text('[project]\nname = "app"\nversion = "0.1.0"\n', encoding="utf-8")
-    _ = skipped.write_text('deps = ["sarj-python-lint==0.1.0"]\n', encoding="utf-8")
-    _ = generated.write_text('entry: "@sarj/no-implicit-attribute-access"\n', encoding="utf-8")
+    kept.write_text('[project]\nname = "app"\nversion = "0.1.0"\n', encoding="utf-8")
+    skipped.write_text('deps = ["sarj-python-lint==0.1.0"]\n', encoding="utf-8")
+    generated.write_text('entry: "@sarj/no-implicit-attribute-access"\n', encoding="utf-8")
     monkeypatch.setenv("GIT_DIR", "/wrong/repository/.git")
     monkeypatch.setenv("GIT_WORK_TREE", "/wrong/repository")
     monkeypatch.setenv("GIT_PREFIX", "nested/")
@@ -3441,7 +3437,7 @@ def test_doctor_git_walk_isolates_hook_environment_and_prunes_generated_paths(
 
 
 def test_doctor_warns_when_no_manifest_exists(tmp_path: Path) -> None:
-    _ = _python_repo(tmp_path)
+    _python_repo(tmp_path)
     proc = _cli("--root", str(tmp_path), "doctor")
     assert proc.returncode == 1, "an unadopted repo requires an actionable init"
     assert "run `code-standards setup`" in proc.stdout
@@ -3450,8 +3446,8 @@ def test_doctor_warns_when_no_manifest_exists(tmp_path: Path) -> None:
 
 
 def test_doctor_reports_manifest_version_drift(tmp_path: Path) -> None:
-    _ = _python_repo(tmp_path)
-    _ = (tmp_path / manifest.MANIFEST_NAME).write_text(
+    _python_repo(tmp_path)
+    (tmp_path / manifest.MANIFEST_NAME).write_text(
         manifest.Manifest(version="0.0.1", configs=("ruff",), python_dest=".", typescript_dest=".").render()
     )
     proc = _cli("--root", str(tmp_path), "doctor")
@@ -3460,7 +3456,7 @@ def test_doctor_reports_manifest_version_drift(tmp_path: Path) -> None:
 
 
 def test_doctor_json_has_a_stable_schema_and_actionable_ids(tmp_path: Path) -> None:
-    _ = _python_repo(tmp_path)
+    _python_repo(tmp_path)
 
     proc = _cli("--root", str(tmp_path), "doctor", "--format", "json")
 
@@ -3480,7 +3476,7 @@ def test_doctor_json_has_a_stable_schema_and_actionable_ids(tmp_path: Path) -> N
 
 
 def test_doctor_reports_a_malformed_manifest_without_a_traceback(tmp_path: Path) -> None:
-    _ = (tmp_path / manifest.MANIFEST_NAME).write_text("configs = 3\n", encoding="utf-8")
+    (tmp_path / manifest.MANIFEST_NAME).write_text("configs = 3\n", encoding="utf-8")
 
     proc = _cli("--root", str(tmp_path), "doctor")
 
@@ -3496,7 +3492,7 @@ def test_doctor_rejects_manifest_destinations_that_escape_the_repo(tmp_path: Pat
         python_dest="..",
         typescript_dest=".",
     )
-    _ = (tmp_path / manifest.MANIFEST_NAME).write_text(adopted.render(), encoding="utf-8")
+    (tmp_path / manifest.MANIFEST_NAME).write_text(adopted.render(), encoding="utf-8")
 
     proc = _cli("--root", str(tmp_path), "doctor")
 
@@ -3597,7 +3593,7 @@ def test_doctor_treats_a_repository_that_was_never_setup_as_drift(tmp_path: Path
 
 
 def test_doctor_rejects_zero_warning_budget_for_an_adopted_eslint_consumer(tmp_path: Path) -> None:
-    _ = _typescript_repo(tmp_path)
+    _typescript_repo(tmp_path)
     assert _cli("--root", str(tmp_path), "setup", "--config", "eslint", "--no-install").returncode == 0
     package = tmp_path / "package.json"
     parsed = manifest.as_table(json.loads(package.read_text(encoding="utf-8")))  # pyright: ignore[reportAny]
@@ -3610,7 +3606,7 @@ def test_doctor_rejects_zero_warning_budget_for_an_adopted_eslint_consumer(tmp_p
 
 
 def test_doctor_allows_eslint_warnings_to_remain_nonblocking(tmp_path: Path) -> None:
-    _ = _typescript_repo(tmp_path)
+    _typescript_repo(tmp_path)
     assert _cli("--root", str(tmp_path), "setup", "--config", "eslint", "--no-install").returncode == 0
     package = tmp_path / "package.json"
     parsed = manifest.as_table(json.loads(package.read_text(encoding="utf-8")))  # pyright: ignore[reportAny]
@@ -3626,7 +3622,7 @@ def test_doctor_allows_eslint_warnings_to_remain_nonblocking(tmp_path: Path) -> 
 
 
 def test_doctor_reports_drift_after_a_synced_config_is_deleted(tmp_path: Path) -> None:
-    _ = _python_repo(tmp_path)
+    _python_repo(tmp_path)
     assert _cli("--root", str(tmp_path), "setup", "--no-install").returncode == 0
     (tmp_path / ".ruff-strict.toml").unlink()
 
@@ -3688,15 +3684,15 @@ _SCAFFOLDED_FILES = {
 
 
 def _repo_with_hand_edited_files(root: Path) -> Path:
-    _ = _python_repo(root)
-    _ = _typescript_repo(root)
+    _python_repo(root)
+    _typescript_repo(root)
     for name, body in _SCAFFOLDED_FILES.items():
-        _ = (root / name).write_text(body)
+        (root / name).write_text(body)
     return root
 
 
 def test_init_preserves_an_existing_manifest_without_force(tmp_path: Path) -> None:
-    _ = _repo_with_hand_edited_files(tmp_path)
+    _repo_with_hand_edited_files(tmp_path)
     proc = _cli("--root", str(tmp_path), "setup", "--no-install")
     assert proc.returncode == 0, proc.stderr
     path = tmp_path / manifest.MANIFEST_NAME
@@ -3705,7 +3701,7 @@ def test_init_preserves_an_existing_manifest_without_force(tmp_path: Path) -> No
 
 
 def test_init_safely_wires_existing_python_and_typescript_configs(tmp_path: Path) -> None:
-    _ = _repo_with_hand_edited_files(tmp_path)
+    _repo_with_hand_edited_files(tmp_path)
 
     proc = _cli("--root", str(tmp_path), "setup", "--no-install")
 
@@ -3879,7 +3875,7 @@ def test_init_rejects_ambiguous_eslint_entrypoints_without_changes(tmp_path: Pat
 
 
 def test_an_existing_precommit_config_is_extended_without_losing_hooks(tmp_path: Path) -> None:
-    _ = _python_repo(tmp_path)
+    _python_repo(tmp_path)
     existing = (
         "repos:\n"
         "  - repo: https://github.com/astral-sh/ruff-pre-commit\n"
@@ -3888,7 +3884,7 @@ def test_an_existing_precommit_config_is_extended_without_losing_hooks(tmp_path:
         "      - id: ruff\n"
     )
     config = tmp_path / ".pre-commit-config.yaml"
-    _ = config.write_text(existing)
+    config.write_text(existing)
 
     proc = _cli("--root", str(tmp_path), "setup", "--no-install")
     assert proc.returncode == 0, proc.stderr
@@ -3899,7 +3895,7 @@ def test_an_existing_precommit_config_is_extended_without_losing_hooks(tmp_path:
 
 
 def test_init_extends_the_existing_precommit_yml_spelling(tmp_path: Path) -> None:
-    _ = _python_repo(tmp_path)
+    _python_repo(tmp_path)
     config = tmp_path / ".pre-commit-config.yml"
     config.write_text("repos:\n", encoding="utf-8")
 
@@ -3911,7 +3907,7 @@ def test_init_extends_the_existing_precommit_yml_spelling(tmp_path: Path) -> Non
 
 
 def test_init_rejects_ambiguous_precommit_config_spellings_without_changes(tmp_path: Path) -> None:
-    _ = _python_repo(tmp_path)
+    _python_repo(tmp_path)
     first = tmp_path / ".pre-commit-config.yaml"
     second = tmp_path / ".pre-commit-config.yml"
     first.write_text("repos:\n", encoding="utf-8")
@@ -3947,9 +3943,9 @@ def test_init_preserves_an_existing_baselined_sarj_hook_without_adding_a_bypass(
 
 
 def test_a_repo_with_its_own_ruff_table_is_wired_without_losing_settings(tmp_path: Path) -> None:
-    _ = _python_repo(tmp_path)
+    _python_repo(tmp_path)
     pyproject = tmp_path / "pyproject.toml"
-    _ = pyproject.write_text(
+    pyproject.write_text(
         '[project]\nname = "app"\nversion = "0.1.0"\nrequires-python = ">=3.14"\n\n[tool.ruff]\nline-length = 100\n'
     )
 
@@ -3962,7 +3958,7 @@ def test_a_repo_with_its_own_ruff_table_is_wired_without_losing_settings(tmp_pat
 
 
 def test_init_fails_closed_when_ruff_already_extends_another_config(tmp_path: Path) -> None:
-    _ = _python_repo(tmp_path)
+    _python_repo(tmp_path)
     pyproject = tmp_path / "pyproject.toml"
     original = (
         '[project]\nname = "app"\nversion = "0.1.0"\nrequires-python = ">=3.14"\n\n[tool.ruff]\nextend = "team.toml"\n'
@@ -3977,7 +3973,7 @@ def test_init_fails_closed_when_ruff_already_extends_another_config(tmp_path: Pa
 
 
 def test_init_makes_existing_ruff_policy_additive_and_immediately_doctor_clean(tmp_path: Path) -> None:
-    _ = _python_repo(tmp_path)
+    _python_repo(tmp_path)
     pyproject = tmp_path / "pyproject.toml"
     pyproject.write_text(
         '[project]\nname = "app"\nversion = "0.1.0"\nrequires-python = ">=3.14"\n\n'

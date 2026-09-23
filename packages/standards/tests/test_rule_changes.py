@@ -201,7 +201,7 @@ def test_changes_fails_when_inventory_and_catalog_disagree(repository: Path) -> 
     broken = _git(repository, "rev-parse", "HEAD")
 
     with pytest.raises(ValueError, match="inventory/catalog disagreement"):
-        _ = rule_changes.compare(repository, before=before, after=broken)
+        rule_changes.compare(repository, before=before, after=broken)
 
     assert after != broken
 
@@ -228,7 +228,7 @@ def test_changes_rejects_inventory_entries_outside_exact_schema(repository: Path
     broken = _git(repository, "rev-parse", "HEAD")
 
     with pytest.raises(ValueError, match="inventory entry 1 has unexpected or missing fields"):
-        _ = rule_changes.compare(repository, before=before, after=broken)
+        rule_changes.compare(repository, before=before, after=broken)
 
 
 def test_cli_emits_versioned_json(repository: Path, capsys: pytest.CaptureFixture[str]) -> None:

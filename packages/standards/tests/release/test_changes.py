@@ -58,7 +58,7 @@ def test_changed_release_targets_fails_closed_when_git_diff_fails(tmp_path: Path
         raise ProcessFailureError(argv, 128)
 
     with pytest.raises(ProcessFailureError) as raised:
-        _ = changed_release_targets(tmp_path, before="missing", after="after", runner=runner)
+        changed_release_targets(tmp_path, before="missing", after="after", runner=runner)
 
     assert raised.value.returncode == 128
 
@@ -143,7 +143,7 @@ def test_pending_release_targets_fails_closed_when_registry_lookup_fails(tmp_pat
         raise OSError(message)
 
     with pytest.raises(OSError, match="registry unavailable"):
-        _ = pending_release_targets(
+        pending_release_targets(
             tmp_path,
             before="before",
             after="after",
@@ -192,7 +192,7 @@ def test_wrong_commit_verification_tag_fails_closed(tmp_path: Path) -> None:
         raise ValueError(message)
 
     with pytest.raises(ValueError, match="points to wrong-commit"):
-        _ = pending_release_targets(
+        pending_release_targets(
             tmp_path,
             before="before",
             after="after",

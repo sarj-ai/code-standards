@@ -80,11 +80,11 @@ def test_an_uninstalled_source_tree_reports_a_dev_version() -> None:
 
     importlib.metadata.version = _absent
     try:
-        _ = importlib.reload(_meta)
+        importlib.reload(_meta)
     finally:
         importlib.metadata.version = real
     assert _meta.__version__ == _SOURCE_TREE_VERSION
-    _ = importlib.reload(_meta)
+    importlib.reload(_meta)
     assert _meta.__version__ == __version__
 
 
