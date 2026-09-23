@@ -34,7 +34,6 @@ exclude = [
 # gate: every maintained Python implementation and test package is in scope.
 paths = [
   "README.md",
-  "CLAUDE.md",
   "packages/python/src",
   "packages/python/tests",
   "packages/sql/src",

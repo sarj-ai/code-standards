@@ -118,7 +118,7 @@ else
         select_scopes docs ;;
       apps/docs/*)
         select_scopes docs standards ;;
-      README.md|CLAUDE.md|AGENTS.md|LICENSE|plugins/*)
+      README.md|AGENTS.md|LICENSE|plugins/*)
         select_scopes docs standards ;;
       *)
         # New directories and repository-wide configuration fail open to work,
