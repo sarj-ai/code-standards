@@ -76,14 +76,21 @@ class TestRegistry:
 
     def test_rollout_channels_are_cumulative(self) -> None:
         consumers = (
-            rollout.Consumer("canary", "r/c", "main", ("true",), channel="canary"),
-            rollout.Consumer("early", "r/e", "main", ("true",), channel="early"),
-            rollout.Consumer("stable", "r/s", "main", ("true",), channel="stable"),
+            rollout.Consumer("canary", "r/c", "main", ("true",), channel=rollout.RolloutChannel.CANARY),
+            rollout.Consumer("early", "r/e", "main", ("true",), channel=rollout.RolloutChannel.EARLY),
+            rollout.Consumer("stable", "r/s", "main", ("true",), channel=rollout.RolloutChannel.STABLE),
         )
 
-        assert [item.name for item in rollout.select_channel(consumers, "canary")] == ["canary"]
-        assert [item.name for item in rollout.select_channel(consumers, "early")] == ["canary", "early"]
-        assert [item.name for item in rollout.select_channel(consumers, "stable")] == ["canary", "early", "stable"]
+        assert [item.name for item in rollout.select_channel(consumers, rollout.RolloutChannel.CANARY)] == ["canary"]
+        assert [item.name for item in rollout.select_channel(consumers, rollout.RolloutChannel.EARLY)] == [
+            "canary",
+            "early",
+        ]
+        assert [item.name for item in rollout.select_channel(consumers, rollout.RolloutChannel.STABLE)] == [
+            "canary",
+            "early",
+            "stable",
+        ]
 
     def test_registry_carries_explicit_promoted_baseline_rules(self, tmp_path: Path) -> None:
         path = tmp_path / "registry.toml"
@@ -282,8 +289,8 @@ class TestRegistry:
 
 
 def test_later_wave_is_blocked_until_prior_wave_merges(monkeypatch: pytest.MonkeyPatch) -> None:
-    canary = rollout.Consumer("canary", "r/c", "main", ("true",), channel="canary")
-    early = rollout.Consumer("early", "r/e", "main", ("true",), channel="early")
+    canary = rollout.Consumer("canary", "r/c", "main", ("true",), channel=rollout.RolloutChannel.CANARY)
+    early = rollout.Consumer("early", "r/e", "main", ("true",), channel=rollout.RolloutChannel.EARLY)
 
     def fake_verify_release(_version: str, _runner: rollout.CommandRunner) -> str:
         return "a" * 64
@@ -293,7 +300,7 @@ def test_later_wave_is_blocked_until_prior_wave_merges(monkeypatch: pytest.Monke
         _consumers: Sequence[rollout.Consumer],
         _runner: rollout.CommandRunner,
     ) -> tuple[rollout.Outcome, ...]:
-        return (rollout.Outcome(canary, "pr-open"),)
+        return (rollout.Outcome(canary, rollout.OutcomeState.PR_OPEN),)
 
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- test records release verification without querying registries
         rollout, "verify_release", fake_verify_release
@@ -950,7 +957,7 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
                 return None
 
         def missing_status(*_args: object) -> rollout.Outcome:
-            return rollout.Outcome(consumer(), "missing")
+            return rollout.Outcome(consumer(), rollout.OutcomeState.MISSING)
 
         def fresh_branch(*_args: object) -> rollout.BranchPreparation:
             return rollout.BranchPreparation("standards-rollout/current", None)
@@ -1153,7 +1160,7 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
             _version: str,
             _runner: rollout.CommandRunner,
         ) -> rollout.Outcome:
-            return rollout.Outcome(selected_consumer, "missing")
+            return rollout.Outcome(selected_consumer, rollout.OutcomeState.MISSING)
 
         def fresh_branch(
             _repo: Path,
@@ -1715,7 +1722,9 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
         assert runner.commands == [("npm", "ci", "--ignore-scripts", "--no-audit", "--no-fund")]
 
     def test_existing_verification_block_does_not_stop_later_consumers(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        blocked = rollout.Outcome(consumer(), "blocked", "https://pr/1", "consumer verification failed; fix it")
+        blocked = rollout.Outcome(
+            consumer(), rollout.OutcomeState.BLOCKED, "https://pr/1", "consumer verification failed; fix it"
+        )
 
         def blocked_status(
             _consumer: rollout.Consumer, _version: str, _runner: rollout.CommandRunner
