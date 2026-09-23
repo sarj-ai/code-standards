@@ -1285,6 +1285,9 @@ export function createConfig(options = {}) {
       "@sarj/no-reduce-accumulator-copy": "error",
       "@sarj/require-button-accessible-name": "error",
       "@sarj/require-camelcase-properties": "warn",
+      // Wire keys need bracket access so they remain visibly external. The
+      // TypeScript dot-notation rule must not undo that spelling.
+      "@typescript-eslint/dot-notation": ["error", { allowPattern: "^[A-Za-z_$][\\w$]*_[\\w$]*$" }],
       "@sarj/require-svg-accessible-name": "error",
       "@sarj/prefer-logical-tailwind-utilities": ["error", { enabled: false }],
       "@sarj/no-unlocalized-jsx-text": ["error", { enabled: false }],

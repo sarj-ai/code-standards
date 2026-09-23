@@ -9,7 +9,7 @@ import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { sqlSingleQuotedRanges, stripSqlNoise } from "./_sql.js";
 
-type MessageIds = "dynamicSql";
+type MessageIds = "dynamicSql" | "dynamicFragment";
 
 export interface RuleOptions {
   readonly methods?: readonly string[];
@@ -18,13 +18,13 @@ export interface RuleOptions {
 type Options = readonly [RuleOptions?];
 
 export const NO_DYNAMIC_SQL_DOCUMENTATION = {
-  summary: "Disallow runtime values embedded inside quoted SQL values passed to statement-execution methods.",
+  summary: "Disallow runtime values and fragments interpolated into SQL passed to statement-execution methods.",
   rationale:
-    "Embedding runtime values in SQL bypasses driver parameterization and can introduce injection defects or unstable query plans.",
-  remediation: "Use SQL placeholders and pass runtime values through the driver's binding API.",
+    "Embedding runtime values or fragments in SQL bypasses driver parameterization or an explicit allowlist and can introduce injection defects or unstable query plans.",
+  remediation: "Bind data values through SQL placeholders. Select non-bindable identifiers or clauses from fixed, reviewed fragments instead of interpolating runtime text.",
   category: "security",
   limitations: [
-    "Only single-quoted SQL values are inspected. Double-quoted identifiers, comments, dollar strings, and unquoted fragments are excluded; this is not a general SQL injection detector.",
+    "Template and concatenation fragments are inspected at recognized execution calls. Double-quoted identifiers, comments, and dollar strings are excluded; this is not a general SQL injection detector.",
     "Literal fragments, legacy uppercase fragment names, and parameterizing tagged templates are exempt; uppercase spelling does not prove a value is static.",
     "The bounded lexer recognizes doubled quotes, comments, and PostgreSQL dollar strings; dialect-specific escape modes and SQL generated through other APIs require separate security review.",
   ],
@@ -43,6 +43,26 @@ export const NO_DYNAMIC_SQL_DOCUMENTATION = {
       title: "A runtime value is interpolated into SQL",
       outcome: "match",
       files: [{ path: "src/users.ts", source: "db.prepare(`select * from users where id = '${userId}'`);" }],
+      focusPath: "src/users.ts",
+      expectedCount: 1,
+      public: true,
+    },
+    {
+      id: "bound-unquoted-value",
+      scenarioId: "unquoted",
+      title: "An unquoted runtime value is bound separately",
+      outcome: "no-match",
+      files: [{ path: "src/users.ts", source: "db.prepare('select id from users where id = ?').bind(userId);" }],
+      focusPath: "src/users.ts",
+      expectedCount: 0,
+      public: true,
+    },
+    {
+      id: "unquoted-runtime-fragment",
+      scenarioId: "unquoted",
+      title: "A runtime fragment is interpolated into SQL",
+      outcome: "match",
+      files: [{ path: "src/users.ts", source: "db.prepare(`select id from users where id = ${userId}`);" }],
       focusPath: "src/users.ts",
       expectedCount: 1,
       public: true,
@@ -80,20 +100,31 @@ function isStaticFragment(expression: TSESTree.Expression): boolean {
   return false;
 }
 
-/** Runtime expressions visibly embedded inside a quoted SQL value. */
+interface SqlInterpolation {
+  readonly expression: TSESTree.Expression;
+  readonly messageId: MessageIds;
+}
+
+/** Runtime expressions embedded in a quoted value or an unquoted SQL fragment. */
 function runtimeInterpolations(
   template: TSESTree.TemplateLiteral,
-): TSESTree.Expression[] {
+): SqlInterpolation[] {
   const parts = template.quasis.map((quasi) => quasi.value.cooked ?? quasi.value.raw);
-  const ranges = sqlSingleQuotedRanges(parts.join(RUNTIME_MARKER));
+  const statement = parts.join(RUNTIME_MARKER);
+  const ranges = sqlSingleQuotedRanges(statement);
+  const visible = stripSqlNoise(statement);
   let offset = 0;
-  return template.expressions.filter(
+  return template.expressions.flatMap<SqlInterpolation>(
     (expression, index) => {
       offset += (parts[index]?.length ?? 0);
       const inValue = ranges.some(([start, end]) => start < offset && offset < end);
+      const unquoted = visible.slice(offset, offset + RUNTIME_MARKER.length) === RUNTIME_MARKER;
       offset += RUNTIME_MARKER.length;
-      return inValue && !isStaticFragment(expression) &&
-        endsWithSqlQuote(parts[index] ?? "") && startsWithSqlQuote(parts[index + 1] ?? "");
+      if (isStaticFragment(expression)) return [];
+      if (inValue && endsWithSqlQuote(parts[index] ?? "") && startsWithSqlQuote(parts[index + 1] ?? "")) {
+        return [{ expression, messageId: "dynamicSql" as const }];
+      }
+      return unquoted ? [{ expression, messageId: "dynamicFragment" as const }] : [];
     },
   );
 }
@@ -119,7 +150,7 @@ function staticLiteralText(node: TSESTree.Expression): string | undefined {
   return undefined;
 }
 
-function runtimeConcatOperands(node: TSESTree.Node): TSESTree.Expression[] {
+function runtimeConcatOperands(node: TSESTree.Node): SqlInterpolation[] {
   if (node.type !== AST_NODE_TYPES.BinaryExpression || node.operator !== "+") {
     return [];
   }
@@ -135,21 +166,25 @@ function runtimeConcatOperands(node: TSESTree.Node): TSESTree.Expression[] {
     return [];
   }
   const parts = operands.map((operand) => staticLiteralText(operand) ?? RUNTIME_MARKER);
-  const ranges = sqlSingleQuotedRanges(parts.join(""));
+  const statement = parts.join("");
+  const ranges = sqlSingleQuotedRanges(statement);
+  const visible = stripSqlNoise(statement);
   let offset = 0;
-  return operands.filter((operand, index) => {
+  return operands.flatMap<SqlInterpolation>((operand, index) => {
     const inValue = ranges.some(([start, end]) => start < offset && offset < end);
+    const unquoted = visible.slice(offset, offset + RUNTIME_MARKER.length) === RUNTIME_MARKER;
     offset += parts[index]?.length ?? 0;
-    if (!inValue) return false;
-    if (isStaticFragment(operand)) return false;
+    if (isStaticFragment(operand)) return [];
     const before = operands[index - 1];
     const after = operands[index + 1];
-    return (
-      before !== undefined &&
+    if (inValue && before !== undefined &&
       after !== undefined &&
       endsWithSqlQuote(staticLiteralText(before) ?? "") &&
       startsWithSqlQuote(staticLiteralText(after) ?? "")
-    );
+    ) {
+      return [{ expression: operand, messageId: "dynamicSql" as const }];
+    }
+    return unquoted ? [{ expression: operand, messageId: "dynamicFragment" as const }] : [];
   });
 }
 
@@ -226,6 +261,8 @@ export default createRule<Options, MessageIds>({
     messages: {
       dynamicSql:
         "Runtime value embedded inside a quoted SQL value passed to `{{method}}()`. Replace the quoted interpolation with a placeholder and bind the value separately.",
+      dynamicFragment:
+        "Runtime fragment interpolated into SQL passed to `{{method}}()`. Bind data values; select non-bindable SQL fragments from fixed, reviewed alternatives.",
     },
   },
   defaultOptions: [{}],
@@ -251,8 +288,8 @@ export default createRule<Options, MessageIds>({
 
         for (const offender of offenders) {
           context.report({
-            node: offender,
-            messageId: "dynamicSql",
+            node: offender.expression,
+            messageId: offender.messageId,
             data: { method },
           });
         }

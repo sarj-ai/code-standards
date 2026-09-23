@@ -21,6 +21,7 @@ from sarj_sql_lint.rule_base import (
     is_migration_source,
     mask_sql_literals_and_comments,
     split_statements,
+    sql_comments,
 )
 
 
@@ -42,6 +43,13 @@ _ALTER_TABLE = re.compile(
 )
 _NORMALIZE_SPACE = re.compile(r"\s+")
 _PHASE_REVIEW_LIMIT = 3
+_ATOMICITY_DIRECTIVE = re.compile(r"^\s*sarj-migration-atomicity:\s*(?P<fields>.+)$", re.IGNORECASE)
+_ATOMICITY_FIELD_START = re.compile(r"(?:^|;\s*)(lock|runtime|rollback|postcondition)=", re.IGNORECASE)
+_FIELD_ASSIGNMENT_START = re.compile(r"(?:^|;\s*)([a-z][a-z_-]*)=", re.IGNORECASE)
+_ATOMICITY_FIELDS = frozenset({"lock", "runtime", "rollback", "postcondition"})
+_EVIDENCE_PLACEHOLDER = re.compile(r"\b(?:todo|tbd|pending|unknown|none|n/?a|later)\b|\.{3}", re.IGNORECASE)
+_MIN_EVIDENCE_CHARS = 12
+_MIN_EVIDENCE_WORDS = 2
 
 
 class _Phase(StrEnum):
@@ -73,6 +81,7 @@ class MixedMigrationPhases(Rule):
             "Fresh-table seed data, indexes, and constraints are folded into the table's expand phase.",
             "Dollar-quoted procedure and anonymous-block bodies and dynamically executed SQL are intentionally ignored.",
             "The rule reports BACKFILL plus CONTRACT or three distinct phases; two-phase expand/backfill and backfill/enforce migrations remain reviewable without a finding.",
+            "A single header `sarj-migration-atomicity` comment may record complete lock, runtime, rollback, and postcondition evidence. This is an auditable human-reviewed declaration, not proof that the evidence is accurate.",
         ),
         examples=(
             RuleExample(
@@ -122,34 +131,84 @@ class MixedMigrationPhases(Rule):
         ):
             return []
         forward = _forward_section(source)
+        if _has_complete_header_atomicity_evidence(forward):
+            return []
         masked = _mask_dollar_bodies(forward, mask_sql_literals_and_comments(forward))
-        phases: set[_Phase] = set()
-        first_lines: dict[_Phase, int] = {}
-        fresh_tables: set[str] = set()
-        for statement in split_statements(masked):
-            text = "\n".join(fragment.text for fragment in statement).strip()
-            if not text:
-                continue
-            phase = _classify(text, fresh_tables)
-            if phase is None:
-                continue
-            line = next((fragment.line for fragment in statement if fragment.text.strip()), statement[0].line)
-            phases.add(phase)
-            first_lines.setdefault(phase, line)
-            if _requires_phase_review(phases):
-                ordered = sorted(phases, key=lambda item: first_lines[item])
-                detail = ", ".join(f"{item.value} at line {first_lines[item]}" for item in ordered)
-                return [
-                    Diagnostic(
-                        path,
-                        line,
-                        max(1, len(statement[0].text) - len(statement[0].text.lstrip()) + 1),
-                        self.code,
-                        f"Forward migration mixes deployment phases ({detail}). Split independently deployable "
-                        "phases, or document atomicity with lock, runtime, rollback, and postcondition evidence.",
-                    )
-                ]
-        return []
+        return _find_mixed_phase_diagnostic(path, masked, self.code)
+
+
+def _find_mixed_phase_diagnostic(path: Path, masked: str, code: str) -> list[Diagnostic]:
+    phases: set[_Phase] = set()
+    first_lines: dict[_Phase, int] = {}
+    fresh_tables: set[str] = set()
+    for statement in split_statements(masked):
+        text = "\n".join(fragment.text for fragment in statement).strip()
+        if not text:
+            continue
+        phase = _classify(text, fresh_tables)
+        if phase is None:
+            continue
+        line = next((fragment.line for fragment in statement if fragment.text.strip()), statement[0].line)
+        phases.add(phase)
+        first_lines.setdefault(phase, line)
+        if _requires_phase_review(phases):
+            ordered = sorted(phases, key=lambda item: first_lines[item])
+            detail = ", ".join(f"{item.value} at line {first_lines[item]}" for item in ordered)
+            return [
+                Diagnostic(
+                    path,
+                    line,
+                    max(1, len(statement[0].text) - len(statement[0].text.lstrip()) + 1),
+                    code,
+                    f"Forward migration mixes deployment phases ({detail}). Split independently deployable "
+                    "phases, or document atomicity with lock, runtime, rollback, and postcondition evidence.",
+                )
+            ]
+    return []
+
+
+def _has_complete_header_atomicity_evidence(forward: str) -> bool:
+    masked = mask_sql_literals_and_comments(forward)
+    first_code = next((index for index, char in enumerate(masked) if not char.isspace()), len(forward))
+    first_code_line = forward.count("\n", 0, first_code) + 1
+    directives = [
+        comment
+        for comment in sql_comments(forward)
+        if not comment.block and _ATOMICITY_DIRECTIVE.match(comment.body) is not None
+    ]
+    if len(directives) != 1 or directives[0].line >= first_code_line:
+        return False
+    match = _ATOMICITY_DIRECTIVE.match(directives[0].body)
+    if match is None:
+        return False
+    payload = match.group("fields").strip()
+    starts = list(_ATOMICITY_FIELD_START.finditer(payload))
+    if (
+        len(starts) != len(_ATOMICITY_FIELDS)
+        or len(list(_FIELD_ASSIGNMENT_START.finditer(payload))) != len(starts)
+        or starts[0].start() != 0
+    ):
+        return False
+    fields = {
+        field.group(1).casefold(): payload[field.end() : starts[index + 1].start() if index + 1 < len(starts) else None]
+        .strip()
+        .removesuffix(";")
+        .strip()
+        for index, field in enumerate(starts)
+    }
+    return (
+        len(fields) == len(starts)
+        and fields.keys() == _ATOMICITY_FIELDS
+        and all(_substantive_evidence(value) for value in fields.values())
+    )
+
+
+def _substantive_evidence(value: str) -> bool:
+    return (
+        len(value) >= _MIN_EVIDENCE_CHARS
+        and len(value.split()) >= _MIN_EVIDENCE_WORDS
+        and _EVIDENCE_PLACEHOLDER.search(value) is None
+    )
 
 
 def _forward_section(source: str) -> str:
