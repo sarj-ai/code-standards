@@ -69,6 +69,26 @@ function severity(setting: unknown): unknown {
 const ESLINT_MAJOR = Number.parseInt(ESLint.version.split(".")[0] ?? "0", 10);
 
 describe("the shipped eslint.strict.mjs can actually lint", () => {
+  it("keeps quoted snake_case wire access compatible with camelCase policy", async () => {
+    const eslint = new ESLint({
+      cwd: FIXTURE_DIR,
+      overrideConfigFile: true,
+      overrideConfig: strictConfig as Linter.Config[],
+    });
+    const [result] = await eslint.lintText(
+      "const record = { 'snake_case': 1, camelCase: 2 }; record['snake_case']; record['camelCase']; record.snake_case;",
+      { filePath: resolve(FIXTURE_DIR, "example.ts") },
+    );
+    const relevant = (result?.messages ?? []).filter((message) =>
+      message.ruleId === "@typescript-eslint/dot-notation" ||
+      message.ruleId === "@sarj/require-camelcase-properties"
+    );
+    expect(relevant.map((message) => message.ruleId)).toEqual([
+      "@typescript-eslint/dot-notation",
+      "@sarj/require-camelcase-properties",
+    ]);
+  });
+
   it("does not contain comment prose that ESLint misreads as a directive", async () => {
     const eslint = new ESLint({
       cwd: FIXTURE_DIR,

@@ -56,12 +56,20 @@ RULE_TESTER.run("no-dynamic-sql", rule, {
       code: 'db.prepare("select " + COLS + " from users");',
     },
     {
-      name: "allows unquoted runtime fragments without claiming they are bindable values",
-      code: "db.prepare(`select * from ${tableName} limit ${limit}`);",
+      name: "ignores runtime interpolation inside a SQL line comment",
+      code: "db.prepare(`select id from users -- ${note}`);",
     },
     {
-      name: "allows runtime concatenation outside a quoted value",
-      code: "db.prepare(`select id from users where id = ` + userId);",
+      name: "ignores runtime interpolation inside a SQL block comment",
+      code: "db.prepare(`select id from users /* ${note} */`);",
+    },
+    {
+      name: "ignores runtime interpolation inside a dollar string",
+      code: "db.prepare(`select $$ ${note} $$ from users`);",
+    },
+    {
+      name: "does not claim a double-quoted SQL identifier is bindable",
+      code: "db.prepare(`select \"${column}\" from users`);",
     },
     {
       name: "accepts a parameterizing tagged template",
@@ -115,6 +123,42 @@ RULE_TESTER.run("no-dynamic-sql", rule, {
     },
   ],
   invalid: [
+    {
+      name: "rejects an unquoted runtime value in prepare",
+      code: "db.prepare(`select id from users where id = ${id}`);",
+      errors: [{ messageId: "dynamicFragment" }],
+    },
+    {
+      name: "rejects an unquoted runtime identifier in prepare",
+      code: "db.prepare(`select * from ${tableName}`);",
+      errors: [{ messageId: "dynamicFragment" }],
+    },
+    {
+      name: "reports multiple runtime fragments without reporting a constant fragment",
+      code: "db.prepare(`select ${COLS} from ${tableName} limit ${limit}`);",
+      errors: [{ messageId: "dynamicFragment" }, { messageId: "dynamicFragment" }],
+    },
+    {
+      name: "rejects a runtime member expression",
+      code: "db.prepare(`select id from users where id = ${input.id}`);",
+      errors: [{ messageId: "dynamicFragment" }],
+    },
+    {
+      name: "rejects a runtime call result",
+      code: "db.prepare(`select id from users where id = ${getId()}`);",
+      errors: [{ messageId: "dynamicFragment" }],
+    },
+    {
+      name: "rejects an unquoted runtime concatenation",
+      code: "db.prepare('select id from users where id = ' + userId);",
+      errors: [{ messageId: "dynamicFragment" }],
+    },
+    {
+      name: "rejects an unquoted runtime fragment in a configured driver method",
+      code: "db.raw(`select * from ${tableName}`);",
+      options: [{ methods: ["raw"] }],
+      errors: [{ messageId: "dynamicFragment" }],
+    },
     { name: "recognizes a value after a quoted identifier and dollar string", code: 'db.query(`SELECT "id", $$ literal $$ FROM users WHERE name = \'${name}\'`);', errors: [{ messageId: "dynamicSql" }] },
     {
       name: "reports a runtime concatenation inside a quoted value",

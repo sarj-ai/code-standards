@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "8aab6b69edb297aec5897036525b119a5fb19a0091b8fe4b2ff236f8711b8e28",
-  "cliSha256": "ea6a9eb8bbcf192219ba25eda170052b359b400afab1d0b9563ab8d6379fdb6c",
+  "catalogSha256": "13719330174736347b57ff0cb6be1487c507dc212a477f7510358cbf9b28ed09",
+  "cliSha256": "d66cb881be5072321bec044695a2e364aedad2bb4e199d7f17b0c2374e31d951",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -589,6 +589,21 @@
           "title": "A runtime value is bound separately"
         },
         {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/users.ts",
+              "source": "db.prepare(\"select id from users where id = ?\").bind(userId);\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/users.ts",
+          "id": "bound-unquoted-value",
+          "outcome": "accept",
+          "scenarioId": "unquoted",
+          "title": "An unquoted runtime value is bound separately"
+        },
+        {
           "expectedCount": 1,
           "files": [
             {
@@ -602,6 +617,21 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "A runtime value is interpolated into SQL"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/users.ts",
+              "source": "db.prepare(`select id from users where id = ${userId}`);\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/users.ts",
+          "id": "unquoted-runtime-fragment",
+          "outcome": "reject",
+          "scenarioId": "unquoted",
+          "title": "A runtime fragment is interpolated into SQL"
         }
       ],
       "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"methods\": {\n      \"description\": \"Statement-taking method names to inspect. Replaces the defaults.\",\n      \"items\": { \"type\": \"string\" },\n      \"type\": \"array\"\n    }\n  },\n  \"type\": \"object\"\n}\n"
