@@ -934,6 +934,27 @@ def test_sync_uses_canonical_config_with_legacy_profile(tmp_path: Path) -> None:
     assert _cli("--root", str(tmp_path), "doctor").returncode == 0
 
 
+def test_existing_esm_repository_can_sync_strict_js_without_changing_other_adopters(tmp_path: Path) -> None:
+    _typescript_repo(tmp_path)
+    assert _cli("--root", str(tmp_path), "setup", "--no-install").returncode == 0
+    package_path = tmp_path / "package.json"
+    package: dict[str, object] = json.loads(package_path.read_text(encoding="utf-8"))  # pyright: ignore[reportAny] -- fixture JSON is an object
+    package["type"] = "module"
+    package_path.write_text(json.dumps(package) + "\n", encoding="utf-8")
+    (tmp_path / "eslint.strict.mjs").rename(tmp_path / "eslint.strict.js")
+    entrypoint = tmp_path / "eslint.config.mjs"
+    entrypoint.write_text(
+        entrypoint.read_text(encoding="utf-8").replace("eslint.strict.mjs", "eslint.strict.js"),
+        encoding="utf-8",
+    )
+
+    plan = service.plan_sync(tmp_path, configs=("eslint",))
+
+    assert plan.targets[0].destination == tmp_path / "eslint.strict.js"
+    assert _cli("--root", str(tmp_path), "doctor").returncode == 0
+    assert _cli("--root", str(tmp_path), "update", "--check", "--offline", "--no-install").returncode == 0
+
+
 @pytest.mark.parametrize("profile", ["standard", "application"])
 def test_all_adopted_ruff_configs_reject_preferred_stack_import(tmp_path: Path, profile: str) -> None:
     pytest.importorskip("ruff", reason="ruff not installed in this env")

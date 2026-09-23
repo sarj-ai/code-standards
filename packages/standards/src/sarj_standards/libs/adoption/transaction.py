@@ -24,6 +24,7 @@ _OWNED_NAMES: Final = frozenset(
         ".yamllint.yaml",
         "eslint.config.mjs",
         "eslint.strict.mjs",
+        "eslint.strict.js",
         "package.json",
         "package-lock.json",
         "pnpm-lock.yaml",

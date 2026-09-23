@@ -554,6 +554,7 @@ const BUILD_OUTPUT_IGNORES = [
   "**/eslint.config.mjs",
   "**/eslint.config.ts",
   "**/eslint.strict.mjs",
+  "**/eslint.strict.js",
   "**/*.min.js",
   "**/*.min.mjs",
   "**/*.min.cjs",

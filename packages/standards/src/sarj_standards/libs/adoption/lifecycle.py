@@ -29,7 +29,14 @@ _PROJECT_SKIP_DIRS = frozenset({".git", ".venv", "build", "dist", "node_modules"
 _SKILL_ARTIFACT_ROOTS = frozenset({".agents", ".claude"})
 _ESLINT_SUFFIXES = frozenset({".cjs", ".cts", ".js", ".jsx", ".mjs", ".mts", ".ts", ".tsx"})
 _ESLINT_GLOBAL_IGNORE_NAMES = frozenset(
-    {"eslint.config.js", "eslint.config.cjs", "eslint.config.mjs", "eslint.config.ts", "eslint.strict.mjs"}
+    {
+        "eslint.config.js",
+        "eslint.config.cjs",
+        "eslint.config.mjs",
+        "eslint.config.ts",
+        "eslint.strict.mjs",
+        "eslint.strict.js",
+    }
 )
 _COMMAND_TIMEOUT = timedelta(minutes=10)
 _GIT_DISCOVERY_TIMEOUT = timedelta(seconds=5)

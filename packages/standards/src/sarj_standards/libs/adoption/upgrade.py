@@ -16,7 +16,12 @@ from sarj_standards.libs.filesystem import is_link_like
 from sarj_standards.libs.repository import ledger
 
 from . import doctor, hooks, lifecycle, manifest, packagemanager, retired_suppressions, scaffold, transaction, uvtool
-from .configs import MOBILE_COMPANION_CONFIGS, PYTHON_COMPANION_CONFIGS, TYPESCRIPT_COMPANION_CONFIGS
+from .configs import (
+    MOBILE_COMPANION_CONFIGS,
+    PYTHON_COMPANION_CONFIGS,
+    TYPESCRIPT_COMPANION_CONFIGS,
+    eslint_target_name,
+)
 
 
 if TYPE_CHECKING:
@@ -288,6 +293,8 @@ def _upgrade_config_writes(root: Path, adopted: manifest.Manifest, changes: list
             raise ValueError(msg)
         standard, _application, target_name, kind = spec
         destination = destinations[kind]
+        if name == "eslint":
+            target_name = eslint_target_name(destination)
         try:
             destination.relative_to(root.resolve())
         except ValueError as exc:

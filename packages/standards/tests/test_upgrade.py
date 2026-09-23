@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 import yaml
 
+from sarj_standards._meta import CONFIGS_DIR
 import sarj_standards.cli.main as cli
 from sarj_standards.libs.adoption import doctor, launcher, lifecycle, manifest, scaffold, transaction, upgrade
 from sarj_standards.libs.diagnostics import baseline
@@ -190,6 +191,18 @@ def test_upgrade_preserves_preexisting_nested_eslint_projects(tmp_path: Path) ->
 
     assert consumer_config not in {path for path, _contents in (*plan.scaffold_plan.writes, *plan.scaffold_plan.edits)}
     assert consumer_config.read_text(encoding="utf-8") == "export default [];\n"
+
+
+def test_upgrade_keeps_existing_strict_js_destination(tmp_path: Path) -> None:
+    (tmp_path / "package.json").write_text('{"name":"workspace","type":"module"}\n', encoding="utf-8")
+    (tmp_path / "eslint.strict.js").write_text("export default [];\n", encoding="utf-8")
+    adopted = manifest.Manifest("0.0.1", ("eslint",), ".", ".", hook_manager="none")
+    (tmp_path / manifest.MANIFEST_NAME).write_text(adopted.render(), encoding="utf-8")
+
+    plan = upgrade.build_plan(tmp_path)
+
+    assert (CONFIGS_DIR / "eslint.strict.mjs", tmp_path / "eslint.strict.js") in plan.config_writes
+    assert all(target.name != "eslint.strict.mjs" for _source, target in plan.config_writes)
 
 
 def test_upgrade_synchronizes_identical_generated_config_mirrors(tmp_path: Path) -> None:

@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Final
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
+    from pathlib import Path
 
 
 CONFIG_NAMES: Final[Mapping[str, tuple[str, str]]] = MappingProxyType(
@@ -55,6 +56,12 @@ APPLICATION_CONFIG_NAMES: Final[Mapping[str, str]] = MappingProxyType(
         "eslint": "eslint.strict.mjs",
     }
 )
+
+
+def eslint_target_name(typescript_root: Path) -> str:
+    return "eslint.strict.js" if (typescript_root / "eslint.strict.js").is_file() else "eslint.strict.mjs"
+
+
 PYTHON_CONFIGS: Final = frozenset({"ruff", "pyright"})
 SWIFT_CONFIGS: Final = frozenset({"swiftformat", "swiftlint"})
 KOTLIN_CONFIGS: Final = frozenset({"detekt", "ktlint"})

@@ -23,7 +23,7 @@ from sarj_standards.libs.filesystem import is_link_like
 from sarj_standards.libs.repository import hooks as repository_hooks, ledger
 
 from . import hooks, launcher, manifest, packagemanager, retired_suppressions, scaffold
-from .configs import PYTHON_COMPANION_CONFIGS
+from .configs import PYTHON_COMPANION_CONFIGS, eslint_target_name
 
 
 if TYPE_CHECKING:
@@ -1373,6 +1373,7 @@ def _check_adoption_wiring(root: Path) -> Iterator[Finding]:
 def _check_typescript_wiring(root: Path, typescript_root: Path | None, adopted: manifest.Manifest) -> Iterator[Finding]:
     if typescript_root is None or "eslint" not in adopted.configs:
         return
+    strict_name = eslint_target_name(typescript_root)
     entrypoints = [typescript_root / name for name in _ESLINT_CONFIG_NAMES if (typescript_root / name).is_file()]
     if len(entrypoints) > 1:
         yield Finding(
@@ -1387,16 +1388,16 @@ def _check_typescript_wiring(root: Path, typescript_root: Path | None, adopted: 
         yield Finding(
             Level.OK,
             str(active_entrypoint.relative_to(root)),
-            "references eslint.strict.mjs",
+            f"references {strict_name}",
             "doctor.eslint.wiring",
         )
     else:
         yield Finding(
             Level.DRIFT,
             str(active_entrypoint.relative_to(root)),
-            "does not reference eslint.strict.mjs directly or through a local config",
+            f"does not reference {strict_name} directly or through a local config",
             "doctor.eslint.wiring",
-            "import and spread `./eslint.strict.mjs` from the active ESLint config chain",
+            f"import and spread `./{strict_name}` from the active ESLint config chain",
         )
     shadowing = _nested_eslint_configs(typescript_root, active_entrypoint)
     if shadowing:
@@ -1406,7 +1407,7 @@ def _check_typescript_wiring(root: Path, typescript_root: Path | None, adopted: 
             str(typescript_root.relative_to(root)),
             f"package-local ESLint configs can bypass the adopted config: {rendered}",
             "doctor.eslint.shadowed-config",
-            "make each package config import the adopted eslint.strict.mjs chain, or remove the shadowing config",
+            f"make each package config import the adopted {strict_name} chain, or remove the shadowing config",
         )
     yield from _check_eslint_peer_set(root, typescript_root)
 
@@ -1460,6 +1461,8 @@ def _check_adopted_config(root: Path, name: str, destinations: Mapping[str, Path
     if destination is None:
         return
     target = destination / target_name
+    if name == "eslint":
+        target = destination / eslint_target_name(destination)
     source_name = standard_source
     expected = CONFIGS_DIR / source_name
     if not target.is_file():
@@ -1582,7 +1585,7 @@ def _nested_eslint_configs(typescript_root: Path, active_entrypoint: Path) -> tu
     for path in _walk(typescript_root):
         if path == active_entrypoint or path.name not in names:
             continue
-        if path.parent == typescript_root and path.name == "eslint.strict.mjs":
+        if path.parent == typescript_root and path.name in {"eslint.strict.mjs", "eslint.strict.js"}:
             continue
         if _eslint_wiring_reaches_strict(path, typescript_root):
             continue
@@ -1639,7 +1642,7 @@ def _eslint_wiring_reaches_strict(path: Path, root: Path, seen: set[Path] | None
     text = _read(resolved)
     for match in _LOCAL_MODULE.finditer(text):
         target = (resolved.parent / match.group("path")).resolve()
-        if target.name == "eslint.strict.mjs" and target.is_file():
+        if target.name in {"eslint.strict.mjs", "eslint.strict.js"} and target.is_file():
             return True
         candidates = (target, *(target.with_suffix(suffix) for suffix in (".js", ".mjs", ".cjs", ".ts")))
         if any(_eslint_wiring_reaches_strict(candidate, root, visited) for candidate in candidates):

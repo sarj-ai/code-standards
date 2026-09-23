@@ -19,6 +19,7 @@ from .configs import (
     PYTHON_CONFIGS,
     SWIFT_CONFIGS,
     TYPESCRIPT_COMPANION_CONFIGS,
+    eslint_target_name,
 )
 
 
@@ -161,6 +162,7 @@ def plan_sync(
         source_name = standard_source
         if name == "eslint":
             base = destination(_DestinationKind.TYPESCRIPT, typescript_dest)
+            target_name = eslint_target_name(base)
         elif name in PYTHON_CONFIGS:
             base = destination(_DestinationKind.PYTHON, python_dest)
         elif name in SWIFT_CONFIGS:
@@ -502,7 +504,7 @@ def init_destination(
         base = root / kotlin_dest
     else:
         base = root
-    return base / CONFIG_NAMES[name][1]
+    return base / (eslint_target_name(base) if name == "eslint" else CONFIG_NAMES[name][1])
 
 
 def _selected_configs(configs: Sequence[str] | None, adopted: manifest.Manifest | None) -> tuple[str, ...]:
