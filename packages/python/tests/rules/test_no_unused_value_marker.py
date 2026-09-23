@@ -70,10 +70,36 @@ def test_reports_nested_markers_in_source_order() -> None:
             _ = first
             def inner(second: object) -> None:
                 _ = second
+                _ = first
         """
     )
 
-    assert [(item.line, item.col) for item in diagnostics] == [(3, 5), (5, 9)]
+    assert [(item.line, item.col) for item in diagnostics] == [(6, 9)]
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "def callback(cwd: Path) -> None:\n    _ = cwd\n",
+        "def callback(cwd: Path, capture_output: bool) -> None:\n    _ = cwd, capture_output\n",
+        "def callback(cwd: Path, capture_output: bool) -> None:\n    _ = (cwd, capture_output)\n",
+    ],
+)
+def test_allows_pure_parameter_markers(source: str) -> None:
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "def callback(cwd: Path) -> None:\n    _ = cwd.name\n",
+        "def callback(cwd: Path) -> None:\n    _ = cwd, other\n",
+        "def callback(cwd: Path) -> None:\n    _ = [cwd]\n",
+        "def callback(cwd: Path) -> None:\n    cwd = Path('.')\n    _ = cwd\n",
+    ],
+)
+def test_reports_other_discard_assignments_inside_functions(source: str) -> None:
+    assert len(_check(source)) == 1
 
 
 def test_exact_reasoned_suppression_is_respected() -> None:
