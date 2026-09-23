@@ -35,9 +35,9 @@ def test_rollout_cli_preserves_command_options(command: str, tmp_path: Path, mon
     assert calls == [
         rollout.RolloutArgs(
             registry=path,
-            command=command,
+            command=rollout.RolloutCommand(command),
             version="7.10.2",
-            channel="canary",
+            channel=rollout.RolloutChannel.CANARY,
             dry_run=command in {"apply", "reconcile"},
         )
     ]

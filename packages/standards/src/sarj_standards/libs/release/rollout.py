@@ -15,7 +15,7 @@ import tempfile
 import time
 import tomllib
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Annotated, NamedTuple, Protocol, TypeGuard
+from typing import TYPE_CHECKING, Annotated, NamedTuple, Protocol, TypeGuard, assert_never
 from urllib.parse import quote
 
 import typer
@@ -55,7 +55,22 @@ RETIRED_ESLINT_SELECTORS = ("@sarj/prefer-single-sentence-comment", "@sarj/prefe
 SOURCE_SUFFIXES = frozenset(
     {".py", ".pyi", ".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs", ".go", ".rs", ".sql"}
 )
-ROLLOUT_CHANNELS = ("canary", "early", "stable")
+
+
+class RolloutChannel(StrEnum):
+    CANARY = "canary"
+    EARLY = "early"
+    STABLE = "stable"
+
+
+class RolloutCommand(StrEnum):
+    APPLY = "apply"
+    PLAN = "plan"
+    RECONCILE = "reconcile"
+    STATUS = "status"
+
+
+ROLLOUT_CHANNELS = tuple(RolloutChannel)
 BASELINE_ENGINE_BY_SOURCE = MappingProxyType(
     {
         "sarj-iac-lint": "iac",
@@ -166,10 +181,10 @@ def optional_bool(table: Mapping[str, object], key: str) -> bool:
 @dataclass
 class RolloutArgs:
     registry: Path = DEFAULT_REGISTRY
-    command: str = ""
+    command: RolloutCommand | None = None
     version: str | None = None
     dry_run: bool = False
-    channel: str = "stable"
+    channel: RolloutChannel = RolloutChannel.STABLE
 
 
 class CommandRunner(Protocol):
@@ -205,16 +220,26 @@ class Consumer:
     verify: tuple[str, ...]
     requires_approval: bool = False
     auto_merge: bool = False
-    channel: str = "stable"
+    channel: RolloutChannel = RolloutChannel.STABLE
     baseline_rules: tuple[str, ...] = ()
     baseline_paths: tuple[str, ...] = ()
     baseline_update: tuple[str, ...] = ()
 
 
+class OutcomeState(StrEnum):
+    ALREADY_CURRENT = "already-current"
+    BLOCKED = "blocked"
+    ERROR = "error"
+    MERGED = "merged"
+    MISSING = "missing"
+    PR_OPEN = "pr-open"
+    WOULD_CREATE = "would-create"
+
+
 @dataclass(frozen=True)
 class Outcome:
     consumer: Consumer
-    state: str
+    state: OutcomeState
     url: str = ""
     detail: str = ""
 
@@ -223,7 +248,7 @@ class Outcome:
             "name": self.consumer.name,
             "repository": self.consumer.repository,
             "branch": self.consumer.branch,
-            "state": self.state,
+            "state": self.state.value,
             "url": self.url or None,
             "detail": self.detail or None,
         }
@@ -276,10 +301,7 @@ def load_registry(path: Path) -> tuple[Consumer, ...]:
     return tuple(consumers)
 
 
-def select_channel(consumers: Sequence[Consumer], channel: str) -> tuple[Consumer, ...]:
-    if channel not in ROLLOUT_CHANNELS:
-        msg = f"invalid rollout channel: {channel!r}"
-        raise RolloutError(msg)
+def select_channel(consumers: Sequence[Consumer], channel: RolloutChannel) -> tuple[Consumer, ...]:
     ceiling = ROLLOUT_CHANNELS.index(channel)
     return tuple(item for item in consumers if ROLLOUT_CHANNELS.index(item.channel) <= ceiling)
 
@@ -478,36 +500,38 @@ def open_pull_commit_provenance(
     url = str(pull.get("url", ""))
     head_sha = pull.get("headRefOid")
     if not isinstance(head_sha, str) or re.fullmatch(r"[0-9a-f]{40}", head_sha) is None:
-        return Outcome(consumer, "blocked", url, "managed rollout PR has no valid head commit SHA")
+        return Outcome(consumer, OutcomeState.BLOCKED, url, "managed rollout PR has no valid head commit SHA")
     commit = runner.run(
         ("gh", "api", f"repos/{consumer.repository}/commits/{head_sha}"),
         check=False,
     )
     if commit.returncode != 0:
-        return Outcome(consumer, "blocked", url, "managed rollout commit provenance could not be read")
+        return Outcome(consumer, OutcomeState.BLOCKED, url, "managed rollout commit provenance could not be read")
     try:
         payload = json_result(commit)
     except RolloutError:
-        return Outcome(consumer, "blocked", url, "managed rollout commit provenance is malformed")
+        return Outcome(consumer, OutcomeState.BLOCKED, url, "managed rollout commit provenance is malformed")
     parents_value = payload.get("parents") if is_object(payload) else None
     parents = parents_value if is_array(parents_value) else []
     parent_shas = tuple(sha for item in parents if is_object(item) and isinstance((sha := item.get("sha")), str))
     if len(parents) != 1 or len(parent_shas) != 1 or re.fullmatch(r"[0-9a-f]{40}", parent_shas[0]) is None:
-        return Outcome(consumer, "blocked", url, "managed rollout head must be exactly one commit with one parent")
+        return Outcome(
+            consumer, OutcomeState.BLOCKED, url, "managed rollout head must be exactly one commit with one parent"
+        )
     commit_metadata = payload.get("commit") if is_object(payload) else None
     message = commit_metadata.get("message") if is_object(commit_metadata) else None
     tree = commit_metadata.get("tree") if is_object(commit_metadata) else None
     tree_sha = tree.get("sha") if is_object(tree) else None
     if not managed_tree_provenance_matches(message, tree_sha):
-        return Outcome(consumer, "blocked", url, "managed rollout commit tree provenance does not match")
+        return Outcome(consumer, OutcomeState.BLOCKED, url, "managed rollout commit tree provenance does not match")
     try:
         base_sha = live_consumer_base_sha(consumer, runner)
     except RolloutError as exc:
-        return Outcome(consumer, "blocked", url, str(exc))
+        return Outcome(consumer, OutcomeState.BLOCKED, url, str(exc))
     if parent_shas[0] != base_sha:
         return Outcome(
             consumer,
-            "missing",
+            OutcomeState.MISSING,
             url,
             f"managed rollout commit parent {parent_shas[0]} no longer matches current consumer base {base_sha}; "
             "reconcile will refresh this managed PR",
@@ -526,21 +550,21 @@ def status_one(consumer: Consumer, version: str, runner: CommandRunner) -> Outco
         if not identity_is_valid:
             return Outcome(
                 consumer,
-                "blocked",
+                OutcomeState.BLOCKED,
                 str(pull.get("url", "")),
                 "rollout PR ownership marker, head, or base does not match",
             )
         if desired_marker(version) not in str(pull.get("body", "")):
             return Outcome(
                 consumer,
-                "missing",
+                OutcomeState.MISSING,
                 str(pull.get("url", "")),
                 "open managed PR targets an older Standards release",
             )
         if VERIFICATION_FAILED_MARKER in str(pull.get("body", "")):
             return Outcome(
                 consumer,
-                "blocked",
+                OutcomeState.BLOCKED,
                 str(pull.get("url", "")),
                 "consumer verification failed; reconcile will retry this managed PR",
             )
@@ -549,12 +573,12 @@ def status_one(consumer: Consumer, version: str, runner: CommandRunner) -> Outco
             and (provenance := open_pull_commit_provenance(consumer, pull, runner)) is not None
         ):
             return provenance
-        state = "merged" if pull.get("mergedAt") else "pr-open"
+        state = OutcomeState.MERGED if pull.get("mergedAt") else OutcomeState.PR_OPEN
         return Outcome(consumer, state, str(pull.get("url", "")))
     adopted = manifest_version(base_manifest(consumer, runner) or "")
     if adopted == version:
-        return Outcome(consumer, "already-current")
-    return Outcome(consumer, "missing", detail=f"base branch has {adopted or 'no readable manifest'}")
+        return Outcome(consumer, OutcomeState.ALREADY_CURRENT)
+    return Outcome(consumer, OutcomeState.MISSING, detail=f"base branch has {adopted or 'no readable manifest'}")
 
 
 def status(version: str, consumers: Sequence[Consumer], runner: CommandRunner) -> tuple[Outcome, ...]:
@@ -1114,14 +1138,16 @@ def apply_one(  # ruff: ignore[too-many-locals] - one transaction keeps verifica
     dry_run: bool = False,
 ) -> Outcome:
     existing = status_one(consumer, version, runner)
-    retry_verification = existing.state == "blocked" and existing.detail.startswith("consumer verification failed")
-    if existing.state == "blocked" and not retry_verification:
+    retry_verification = existing.state is OutcomeState.BLOCKED and existing.detail.startswith(
+        "consumer verification failed"
+    )
+    if existing.state is OutcomeState.BLOCKED and not retry_verification:
         msg = f"{consumer.name}: {existing.detail}: {existing.url}"
         raise RolloutError(msg)
-    if existing.state != "missing" and not retry_verification:
+    if existing.state is not OutcomeState.MISSING and not retry_verification:
         return existing
     if dry_run:
-        return Outcome(consumer, "would-create", detail=rollout_branch(version))
+        return Outcome(consumer, OutcomeState.WOULD_CREATE, detail=rollout_branch(version))
     # Consumer package managers can leave short-lived background cleanup work
     # behind after their command exits. The hosted runner discards this
     # workspace, so a best-effort temporary-directory cleanup must never mask
@@ -1282,9 +1308,9 @@ def apply(
     prior = tuple(item for item in consumers if ROLLOUT_CHANNELS.index(item.channel) < selected_channel)
     if prior:
         prior_status = status(version, prior, runner)
-        if any(item.state not in {"merged", "already-current"} for item in prior_status):
+        if any(item.state not in {OutcomeState.MERGED, OutcomeState.ALREADY_CURRENT} for item in prior_status):
             blocked = tuple(
-                Outcome(item, "blocked", detail="prior rollout wave has not merged cleanly")
+                Outcome(item, OutcomeState.BLOCKED, detail="prior rollout wave has not merged cleanly")
                 for item in consumers
                 if item not in prior
             )
@@ -1315,8 +1341,10 @@ def latest_version(runner: CommandRunner) -> str:
 
 
 def print_outcomes(version: str, outcomes: Sequence[Outcome], *, source_sha: str = "") -> None:
-    adopted = sum(item.state in {"merged", "already-current"} for item in outcomes)
-    distributed = sum(item.state in {"pr-open", "merged", "already-current"} for item in outcomes)
+    adopted = sum(item.state in {OutcomeState.MERGED, OutcomeState.ALREADY_CURRENT} for item in outcomes)
+    distributed = sum(
+        item.state in {OutcomeState.PR_OPEN, OutcomeState.MERGED, OutcomeState.ALREADY_CURRENT} for item in outcomes
+    )
     sys.stdout.write(
         json.dumps(
             {
@@ -1343,19 +1371,26 @@ def execute(args: RolloutArgs, runner: CommandRunner) -> int:
         raise RolloutError(msg)
     version = validate_version(args.version) if args.version else latest_version(runner)
     match args.command:
-        case "plan":
+        case RolloutCommand.PLAN:
             rollout_plan = plan(version, consumers, runner)
             outcomes = rollout_plan.outcomes
             print_outcomes(version, outcomes, source_sha=rollout_plan.source_sha)
-        case "status":
+        case RolloutCommand.STATUS:
             outcomes = status(version, consumers, runner)
             print_outcomes(version, outcomes)
-            return 0 if all(item.state in {"merged", "already-current"} for item in outcomes) else 1
-        case _:
+            return (
+                0 if all(item.state in {OutcomeState.MERGED, OutcomeState.ALREADY_CURRENT} for item in outcomes) else 1
+            )
+        case RolloutCommand.APPLY | RolloutCommand.RECONCILE:
             outcomes = apply(version, consumers, runner, dry_run=args.dry_run)
             print_outcomes(version, outcomes)
-            if any(item.state in {"blocked", "error"} for item in outcomes):
+            if any(item.state in {OutcomeState.BLOCKED, OutcomeState.ERROR} for item in outcomes):
                 return 1
+        case None:
+            msg = "rollout command is required"
+            raise RolloutError(msg)
+        case unreachable:
+            assert_never(unreachable)
     return 0
 
 
@@ -1372,45 +1407,45 @@ def main(argv: Sequence[str] | None = None, *, runner: CommandRunner | None = No
     def configure(registry: Annotated[Path, typer.Option("--registry")] = DEFAULT_REGISTRY) -> None:
         args.registry = registry
 
-    def run(command: str, version: str | None, channel: _Channel, *, dry_run: bool = False) -> None:
+    def run(command: RolloutCommand, version: str | None, channel: RolloutChannel, *, dry_run: bool = False) -> None:
         nonlocal exit_code
         args.command = command
         args.version = version
-        args.channel = channel.value
+        args.channel = channel
         args.dry_run = dry_run
         exit_code = _execute_cli(args, runner or SubprocessRunner())
 
     @app.command("plan")
     def plan_command(
         version: Annotated[str, typer.Option("--version")],
-        channel: Annotated[_Channel, typer.Option("--channel")] = _Channel.STABLE,
+        channel: Annotated[RolloutChannel, typer.Option("--channel")] = RolloutChannel.STABLE,
     ) -> None:
-        run("plan", version, channel)
+        run(RolloutCommand.PLAN, version, channel)
 
     @app.command("apply")
     def apply_command(
         *,
         version: Annotated[str, typer.Option("--version")],
-        channel: Annotated[_Channel, typer.Option("--channel")] = _Channel.STABLE,
+        channel: Annotated[RolloutChannel, typer.Option("--channel")] = RolloutChannel.STABLE,
         dry_run: Annotated[bool, typer.Option("--dry-run")] = False,
     ) -> None:
-        run("apply", version, channel, dry_run=dry_run)
+        run(RolloutCommand.APPLY, version, channel, dry_run=dry_run)
 
     @app.command("status")
     def status_command(
         version: Annotated[str, typer.Option("--version")],
-        channel: Annotated[_Channel, typer.Option("--channel")] = _Channel.STABLE,
+        channel: Annotated[RolloutChannel, typer.Option("--channel")] = RolloutChannel.STABLE,
     ) -> None:
-        run("status", version, channel)
+        run(RolloutCommand.STATUS, version, channel)
 
     @app.command("reconcile")
     def reconcile_command(
         *,
         version: Annotated[str | None, typer.Option("--version", help="default: latest published version")] = None,
-        channel: Annotated[_Channel, typer.Option("--channel")] = _Channel.STABLE,
+        channel: Annotated[RolloutChannel, typer.Option("--channel")] = RolloutChannel.STABLE,
         dry_run: Annotated[bool, typer.Option("--dry-run")] = False,
     ) -> None:
-        run("reconcile", version, channel, dry_run=dry_run)
+        run(RolloutCommand.RECONCILE, version, channel, dry_run=dry_run)
 
     try:
         app(args=None if argv is None else list(argv), prog_name="standards-rollout")
@@ -1418,12 +1453,6 @@ def main(argv: Sequence[str] | None = None, *, runner: CommandRunner | None = No
         if exc.code != 0:
             raise
     return exit_code
-
-
-class _Channel(StrEnum):
-    CANARY = "canary"
-    EARLY = "early"
-    STABLE = "stable"
 
 
 def _execute_cli(args: RolloutArgs, runner: CommandRunner) -> int:
@@ -1469,7 +1498,7 @@ def _registry_consumer(entry_value: object) -> Consumer:
     baseline_rules_value = entry.get("baseline_rules", [])
     baseline_paths_value = entry.get("baseline_paths", [])
     baseline_update_value = entry.get("baseline_update", [])
-    if channel_value not in ROLLOUT_CHANNELS:
+    if not isinstance(channel_value, str) or channel_value not in ROLLOUT_CHANNELS:
         msg = f"invalid rollout channel: {channel_value!r}"
         raise RolloutError(msg)
     if not is_array(verify_value) or not verify_value:
@@ -1487,7 +1516,7 @@ def _registry_consumer(entry_value: object) -> Consumer:
         verify=verify,
         requires_approval=requires_approval,
         auto_merge=auto_merge,
-        channel=channel_value,
+        channel=RolloutChannel(channel_value),
         baseline_rules=_registry_strings(baseline_rules_value),
         baseline_paths=baseline_paths,
         baseline_update=_registry_strings(baseline_update_value),
@@ -1600,9 +1629,9 @@ def _apply_consumers(
         try:
             outcomes.append(apply_one(consumer, version, runner, dry_run=dry_run))
         except subprocess.CalledProcessError as exc:
-            outcomes.append(Outcome(consumer, "error", detail=process_failure_detail(exc)))
+            outcomes.append(Outcome(consumer, OutcomeState.ERROR, detail=process_failure_detail(exc)))
         except (OSError, RolloutError) as exc:
-            outcomes.append(Outcome(consumer, "error", detail=str(exc)))
+            outcomes.append(Outcome(consumer, OutcomeState.ERROR, detail=str(exc)))
     return tuple(outcomes)
 
 
@@ -1689,7 +1718,7 @@ def _publish_rollout_pull(
     if refreshed_pull is None:
         return Outcome(
             consumer,
-            "blocked",
+            OutcomeState.BLOCKED,
             url,
             "managed rollout PR could not be read after create or edit",
         )
@@ -1702,14 +1731,14 @@ def _publish_rollout_pull(
     if not refreshed_identity_is_valid:
         return Outcome(
             consumer,
-            "blocked",
+            OutcomeState.BLOCKED,
             refreshed_url,
             "rollout PR ownership marker, head, or base does not match after update",
         )
     if refreshed_pull.get("headRefOid") != pushed_head_sha:
         return Outcome(
             consumer,
-            "missing",
+            OutcomeState.MISSING,
             refreshed_url,
             "managed rollout PR head has not refreshed to the pushed commit; reconcile will retry",
         )
@@ -1733,8 +1762,8 @@ def _publish_rollout_pull(
             check=False,
         )
     if verification_failure:
-        return Outcome(consumer, "blocked", url, "consumer verification failed; PR opened for remediation")
-    return Outcome(consumer, "pr-open", url)
+        return Outcome(consumer, OutcomeState.BLOCKED, url, "consumer verification failed; PR opened for remediation")
+    return Outcome(consumer, OutcomeState.PR_OPEN, url)
 
 
 class _RolloutBaseline(NamedTuple):
