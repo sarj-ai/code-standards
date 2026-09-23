@@ -76,6 +76,44 @@ other: dict[str, Plain]
     assert len(_check(source)) == 1
 
 
+def test_flags_unambiguous_implicit_mapping_alias_used_in_function_annotations() -> None:
+    source = "from typing import Any\nRow = dict[str, Any]\ndef read() -> Row: ...\n"
+
+    findings = _check(source)
+
+    assert [(finding.line, finding.code) for finding in findings] == [(2, "SARJ447")]
+
+
+def test_flags_implicit_mapping_alias_used_in_string_annotation() -> None:
+    source = "from typing import Any\nRow = dict[str, Any]\ndef read() -> 'Row': ...\n"
+
+    assert [(finding.line, finding.code) for finding in _check(source)] == [(2, "SARJ447")]
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "from typing import Any\nRow = dict[str, Any]\nvalue = Row()\n",
+        "from typing import Any\nRow = dict[str, Any]\nRow = dict[str, object]\ndef read() -> Row: ...\n",
+        "from typing import Any\nRow = dict[str, Any]\nif enabled:\n    Row = dict[str, object]\ndef read() -> Row: ...\n",
+        "from typing import Any\nif enabled:\n    Row = dict[str, Any]\ndef read() -> Row: ...\n",
+        "from typing import Any\nRow = dict[str, Any]\ndef read(Row: type) -> Row: ...\n",
+    ],
+)
+def test_skips_unproven_implicit_aliases(source: str) -> None:
+    assert _check(source) == []
+
+
+def test_implicit_alias_honors_suppression() -> None:
+    source = (
+        "from typing import Any\n"
+        "Row = dict[str, Any]  # sarj-noqa: SARJ447 — compatibility with external rows\n"
+        "def read() -> Row: ...\n"
+    )
+
+    assert _check(source) == []
+
+
 @pytest.mark.parametrize(
     "source",
     [

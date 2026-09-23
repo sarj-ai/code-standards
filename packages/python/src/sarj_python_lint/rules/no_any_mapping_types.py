@@ -57,7 +57,8 @@ class NoAnyMappingTypes(Rule):
             ),
             (
                 "Unique unconditional module-level PEP 695 and explicit TypeAlias chains are resolved with cycle "
-                "guards; generic, imported, conditional, rebound, and ambiguous aliases are excluded."
+                "guards. Plain module assignments are checked only when they directly define an Any-valued mapping "
+                "used in a module-level annotation; imported, conditional, rebound, and ambiguous aliases are excluded."
             ),
             "Generated and vendored sources are excluded; exact local suppressions remain auditable.",
         ),
@@ -108,7 +109,8 @@ class NoAnyMappingTypes(Rule):
         lines = source.splitlines()
         findings: list[Diagnostic] = []
         seen: set[tuple[int, int]] = set()
-        for expression, owner in _type_expressions(tree, imports, parents, scope_cache):
+        expressions = [*_type_expressions(tree, imports, parents, scope_cache), *_implicit_mapping_aliases(tree)]
+        for expression, owner in expressions:
             for mapping, location in _unshadowed_any_mappings(expression, owner, semantics, parents, scope_cache):
                 key = (location.lineno, location.col_offset)
                 if key in seen or is_suppressed(lines, location.lineno, self.code):
@@ -127,6 +129,55 @@ class NoAnyMappingTypes(Rule):
                     )
                 )
         return sorted(findings, key=lambda finding: (finding.line, finding.col))
+
+
+def _implicit_mapping_aliases(tree: ast.Module) -> list[tuple[ast.expr, ast.Assign]]:
+    bindings = [scope_bound_names([statement]) for statement in tree.body]
+    aliases: list[tuple[ast.expr, ast.Assign]] = []
+    for statement in tree.body:
+        if not isinstance(statement, ast.Assign) or len(statement.targets) != 1:
+            continue
+        target = statement.targets[0]
+        if not isinstance(target, ast.Name) or not isinstance(statement.value, ast.Subscript):
+            continue
+        if sum(target.id in names for names in bindings) != 1:
+            continue
+        if _used_in_module_annotation(tree, target.id):
+            aliases.append((statement.value, statement))
+    return aliases
+
+
+def _used_in_module_annotation(tree: ast.Module, name: str) -> bool:
+    return any(
+        _annotation_contains_name(annotation, name)
+        for statement in tree.body
+        for annotation in _module_statement_annotations(statement, name)
+    )
+
+
+def _module_statement_annotations(statement: ast.stmt, alias_name: str) -> list[ast.expr]:
+    if isinstance(statement, ast.AnnAssign):
+        return [statement.annotation]
+    if not isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef)):
+        return []
+    arguments = statement.args
+    parameters = (*arguments.posonlyargs, *arguments.args, *arguments.kwonlyargs)
+    if any(argument.arg == alias_name for argument in parameters):
+        return []
+    annotations = [argument.annotation for argument in parameters if argument.annotation is not None]
+    if statement.returns is not None:
+        annotations.append(statement.returns)
+    return annotations
+
+
+def _annotation_contains_name(annotation: ast.expr, name: str) -> bool:
+    parsed = annotation
+    if isinstance(annotation, ast.Constant) and isinstance(annotation.value, str):
+        try:
+            parsed = ast.parse(annotation.value, mode="eval").body
+        except SyntaxError:
+            return False
+    return any(isinstance(node, ast.Name) and node.id == name for node in ast.walk(parsed))
 
 
 def _unshadowed_any_mappings(
