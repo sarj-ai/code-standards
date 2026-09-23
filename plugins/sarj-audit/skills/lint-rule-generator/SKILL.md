@@ -98,8 +98,9 @@ and `make verify`. Do not manually clone or modify consumer repositories during
 rule authoring; downstream propagation starts only after publication through
 the rollout controller.
 When the task also includes publishing or propagating the resulting Standards
-bundle, hand off to `rollout-standards-release` after publication. Do not claim
-the release or propagation complete until that skill's fleet status gate passes.
+bundle, run `make rollout VERSION=<published-version>` after publication and
+inspect the controller's status for every registered consumer before reporting
+propagation complete.
 
 ## Promotion gate
 
