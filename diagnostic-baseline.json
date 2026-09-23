@@ -1,9 +1,9 @@
 {
   "schemaVersion": 2,
   "provenance": {
-    "bundleVersion": "7.31.7",
-    "consumerBaseSha": "5f2a9caafc1319eb3fc8b5180c0e5b584e5081ba",
-    "catalogDigest": "29dc54cb3c6fb4efb347dd95fd54616b6aac2919d70578fc722654d374bf7e82"
+    "bundleVersion": "7.31.8",
+    "consumerBaseSha": "66d08b795e0e55f8f915f516c4d26ef82bba64d0",
+    "catalogDigest": "73aef04266f5542e68e0f348bf4b8fdd71681ecca060867b28bd87e012d15b08"
   },
   "diagnostics": [
     {
@@ -102,34 +102,6 @@
       "source": "sarj-python-lint",
       "ruleId": "no-positional-tuple-record",
       "path": "packages/python/src/sarj_python_lint/rules/timestamp_order_requires_tiebreaker.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "3bc08b159b7377cc23473abb8836cd549b46265a33f1f4743b7b0939b78a4f93",
-      "source": "sarj-python-lint",
-      "ruleId": "no-positional-tuple-record",
-      "path": "packages/standards/src/sarj_standards/cli/main.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "99a022e20608d88a41752b628afdf95e901bd25128d0906b552d49b92f9f411f",
-      "source": "sarj-python-lint",
-      "ruleId": "no-positional-tuple-record",
-      "path": "packages/standards/src/sarj_standards/libs/linting/textlint.py",
-      "count": 3
-    },
-    {
-      "fingerprint": "584f901f1858d7874e0f9c9f459cb79aedc82f09f68402bc6fad64d67914cd5d",
-      "source": "sarj-python-lint",
-      "ruleId": "no-positional-tuple-record",
-      "path": "packages/standards/src/sarj_standards/libs/repository/comment_corpus.py",
-      "count": 5
-    },
-    {
-      "fingerprint": "e5ef354f3551105f7eff46929823e4ccec1b7bf4903f5a74ba99f36a5e33c230",
-      "source": "sarj-python-lint",
-      "ruleId": "no-positional-tuple-record",
-      "path": "packages/standards/src/sarj_standards/libs/repository/rule_catalog_artifact.py",
       "count": 1
     }
   ]

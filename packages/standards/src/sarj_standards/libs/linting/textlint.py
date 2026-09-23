@@ -59,6 +59,24 @@ class _HeredocSpec(NamedTuple):
     literal: bool
 
 
+@dataclass(frozen=True, slots=True)
+class _HeredocWordResult:
+    cursor: int
+    spec: _HeredocSpec | None
+
+
+@dataclass(frozen=True, slots=True)
+class _QuotedShellPosition:
+    index: int
+    quote: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class _HeredocWordStart:
+    cursor: int
+    strip_tabs: bool
+
+
 class _TextPolicy(NamedTuple):
     durable: tuple[str, ...]
     excluded: tuple[str, ...]
@@ -1339,7 +1357,9 @@ def _shell_heredoc_specs(line: str) -> list[_HeredocSpec]:
     while index < len(line):
         character = line[index]
         if quote is not None:
-            index, quote = _skip_quoted_shell_character(line, index, quote)
+            position = _skip_quoted_shell_character(line, index, quote)
+            index = position.index
+            quote = position.quote
             continue
         if character in {"'", '"'}:
             quote = character
@@ -1354,11 +1374,11 @@ def _shell_heredoc_specs(line: str) -> list[_HeredocSpec]:
             index += 1
             continue
 
-        cursor, strip_tabs = _heredoc_word_start(line, index)
-        cursor, spec = _read_heredoc_word(line, cursor, strip_tabs=strip_tabs)
-        if spec is not None:
-            specs.append(spec)
-        index = max(cursor, index + 2)
+        start = _heredoc_word_start(line, index)
+        word = _read_heredoc_word(line, start.cursor, strip_tabs=start.strip_tabs)
+        if word.spec is not None:
+            specs.append(word.spec)
+        index = max(word.cursor, index + 2)
     return specs
 
 
@@ -2775,7 +2795,7 @@ def _is_inline_source_flag(argument: str, flags: frozenset[str]) -> bool:
     return argument in flags or any(argument.startswith(f"{flag}=") for flag in flags if flag.startswith("--"))
 
 
-def _read_heredoc_word(line: str, cursor: int, *, strip_tabs: bool) -> tuple[int, _HeredocSpec | None]:
+def _read_heredoc_word(line: str, cursor: int, *, strip_tabs: bool) -> _HeredocWordResult:
     delimiter: list[str] = []
     word_started = False
     word_quote: str | None = None
@@ -2813,8 +2833,8 @@ def _read_heredoc_word(line: str, cursor: int, *, strip_tabs: bool) -> tuple[int
         cursor += 1
 
     if word_started and word_quote is None:
-        return cursor, _HeredocSpec("".join(delimiter), strip_tabs, literal)
-    return cursor, None
+        return _HeredocWordResult(cursor=cursor, spec=_HeredocSpec("".join(delimiter), strip_tabs, literal))
+    return _HeredocWordResult(cursor=cursor, spec=None)
 
 
 def _unique_workflow_steps(steps: list[MappingNode]) -> list[MappingNode]:
@@ -2835,14 +2855,14 @@ def _has_attached_option_value(item: str, value_options: frozenset[str]) -> bool
     )
 
 
-def _skip_quoted_shell_character(line: str, index: int, quote: str | None) -> tuple[int, str | None]:
+def _skip_quoted_shell_character(line: str, index: int, quote: str | None) -> _QuotedShellPosition:
     character = line[index]
     if character == quote:
         quote = None
     elif character == "\\" and quote == '"' and index + 1 < len(line):
         index += 1
     index += 1
-    return index, quote
+    return _QuotedShellPosition(index=index, quote=quote)
 
 
 def _has_attached_pattern_value(item: str, pattern_options: set[str]) -> bool:
@@ -2876,7 +2896,7 @@ def _inactive_config_run_leader(
     return None
 
 
-def _heredoc_word_start(line: str, index: int) -> tuple[int, bool]:
+def _heredoc_word_start(line: str, index: int) -> _HeredocWordStart:
     cursor = index + 2
     strip_tabs = cursor < len(line) and line[cursor] == "-"
     if strip_tabs:
@@ -2884,7 +2904,7 @@ def _heredoc_word_start(line: str, index: int) -> tuple[int, bool]:
     while cursor < len(line) and line[cursor] in {" ", "\t"}:
         cursor += 1
 
-    return cursor, strip_tabs
+    return _HeredocWordStart(cursor=cursor, strip_tabs=strip_tabs)
 
 
 def _has_adjacent_config_key(
