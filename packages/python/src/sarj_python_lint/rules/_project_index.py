@@ -162,6 +162,47 @@ class ProjectIndexSet:
             consumers.update(_unit_constructor_consumers(candidate, candidate.tree, target))
         return frozenset(consumers)
 
+    def direct_subclasses(self, unit: SourceUnit, name: str) -> frozenset[tuple[Path, str]]:
+        if unit.module is None:
+            return frozenset()
+        target = SymbolRef(unit.module, name)
+        return frozenset(
+            (candidate.path, node.name)
+            for candidate in self._units.values()
+            if candidate.tree is not None and name in candidate.source
+            for node in candidate.tree.body
+            if isinstance(node, ast.ClassDef)
+            and any(_direct_base_symbol(candidate, base) == target for base in node.bases)
+        )
+
+    def typed_class_consumers(self, unit: SourceUnit, name: str) -> frozenset[tuple[Path, str]]:
+        if unit.module is None:
+            return frozenset()
+        target = SymbolRef(unit.module, name)
+        return frozenset(
+            (candidate.path, owner.name)
+            for candidate in self._units.values()
+            if candidate.tree is not None and name in candidate.source
+            for owner in candidate.tree.body
+            if isinstance(owner, ast.ClassDef) and _class_has_typed_dependency(candidate, owner, target)
+        )
+
+    def test_mock_specs(self, unit: SourceUnit, name: str) -> frozenset[Path]:
+        if unit.module is None:
+            return frozenset()
+        target = SymbolRef(unit.module, name)
+        return frozenset(
+            candidate.path
+            for candidate in self._units.values()
+            if candidate.tree is not None
+            and name in candidate.source
+            and any(
+                _is_mock_spec_for(candidate, call, target)
+                for call in ast.walk(candidate.tree)
+                if isinstance(call, ast.Call)
+            )
+        )
+
     def class_inherits_from(self, unit: SourceUnit, name: str, qualified_bases: frozenset[str]) -> bool:
         if unit.module is None:
             return False
@@ -213,6 +254,9 @@ def _is_index_candidate(source: str, matched_classes: set[str]) -> bool:
     return (
         "NewType(" in source
         or "class " in source
+        or "spec=" in source
+        or "spec_set=" in source
+        or "create_autospec(" in source
         or ("match " in source and "str(" in source)
         or any(f"class {name}" in source for name in matched_classes)
     )
@@ -223,6 +267,9 @@ def _module_name(path: Path, roots: Sequence[Path]) -> str | None:
     root = next((candidate for candidate in roots if resolved == candidate or candidate in resolved.parents), None)
     if root is not None:
         try:
+            project_module = _project_module_name(resolved, root)
+            if project_module is not None:
+                return project_module
             package_dir = _outer_package_directory(resolved, root)
         except OSError:
             return None
@@ -231,6 +278,23 @@ def _module_name(path: Path, roots: Sequence[Path]) -> str | None:
             suffix = relative.parts[:-1] if relative.name == "__init__.py" else (*relative.parts[:-1], relative.stem)
             return ".".join((package_dir.name, *suffix))
     return _package_module_name(path)
+
+
+def _project_module_name(resolved: Path, root: Path) -> str | None:
+    # PEP 420 namespace directories do not have __init__.py. The closest
+    # Python project boundary preserves their complete importable path.
+    project = next(
+        (ancestor for ancestor in resolved.parents if (ancestor / "pyproject.toml").is_file()),
+        None,
+    )
+    if project is None or not (project == root or root in project.parents):
+        return None
+    relative = resolved.relative_to(project)
+    parts = relative.parts[1:] if relative.parts[0] == "src" else relative.parts
+    if not parts:
+        return None
+    suffix = parts[:-1] if parts[-1] == "__init__.py" else (*parts[:-1], Path(parts[-1]).stem)
+    return ".".join(suffix) or None
 
 
 def _package_module_name(path: Path) -> str | None:
@@ -321,6 +385,21 @@ def _resolve(unit: SourceUnit, expression: ast.expr) -> SymbolRef | None:
         root = unit.imports.get(expression.value.id)
         if root is not None and not root.name:
             return SymbolRef(root.module, expression.attr)
+    return None
+
+
+def _direct_base_symbol(unit: SourceUnit, expression: ast.expr) -> SymbolRef | None:
+    resolved = _resolve(unit, expression)
+    if resolved is not None or not isinstance(expression, ast.Name) or unit.tree is None:
+        return resolved
+    # Test support modules need not be packages. Absolute imports still prove
+    # the base identity even when the file itself has no importable module name.
+    for statement in _module_import_statements(unit.tree):
+        if not isinstance(statement, ast.ImportFrom) or statement.level or statement.module is None:
+            continue
+        for alias in statement.names:
+            if (alias.asname or alias.name) == expression.id:
+                return SymbolRef(statement.module, alias.name)
     return None
 
 
@@ -456,6 +535,75 @@ def _unit_constructor_consumers(
             if parameter.arg != "self"
         ):
             yield (candidate.path, owner.name)
+
+
+def _class_has_typed_dependency(unit: SourceUnit, owner: ast.ClassDef, target: SymbolRef) -> bool:
+    for statement in owner.body:
+        if isinstance(statement, ast.AnnAssign) and _annotation_contains_symbol(unit, statement.annotation, target):
+            return True
+        if not isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        parameters = (*statement.args.posonlyargs, *statement.args.args, *statement.args.kwonlyargs)
+        if any(
+            parameter.arg not in {"self", "cls"} and _annotation_contains_symbol(unit, parameter.annotation, target)
+            for parameter in parameters
+        ):
+            return True
+    return False
+
+
+def _is_mock_spec_for(unit: SourceUnit, call: ast.Call, target: SymbolRef) -> bool:
+    mock_name = _mock_function_name(unit, call.func)
+    if mock_name is None:
+        return False
+    return any(
+        keyword.arg in {"spec", "spec_set"} and _direct_base_symbol(unit, keyword.value) == target
+        for keyword in call.keywords
+    ) or (mock_name == "create_autospec" and bool(call.args) and _direct_base_symbol(unit, call.args[0]) == target)
+
+
+def _mock_function_name(unit: SourceUnit, function: ast.expr) -> str | None:
+    if isinstance(function, ast.Name):
+        return _imported_mock_name(unit, function.id)
+    if not isinstance(function, ast.Attribute) or not isinstance(function.value, ast.Name):
+        return None
+    return _module_mock_name(unit, function.value.id, function.attr)
+
+
+def _imported_mock_name(unit: SourceUnit, name: str) -> str | None:
+    imported = _direct_import_symbol(unit, name)
+    if imported is None or imported.module != "unittest.mock":
+        return None
+    return imported.name if imported.name in {"Mock", "MagicMock", "AsyncMock", "create_autospec"} else None
+
+
+def _module_mock_name(unit: SourceUnit, module_name: str, method_name: str) -> str | None:
+    imported = _direct_import_symbol(unit, module_name)
+    if imported not in {SymbolRef("unittest", "mock"), SymbolRef("unittest.mock", "")}:
+        return None
+    return method_name if method_name in {"Mock", "MagicMock", "AsyncMock", "create_autospec"} else None
+
+
+def _direct_import_symbol(unit: SourceUnit, name: str) -> SymbolRef | None:
+    imported = unit.imports.get(name)
+    if imported is not None or unit.tree is None:
+        return imported
+    for statement in _module_import_statements(unit.tree):
+        if (matched := _absolute_import_symbol(statement, name)) is not None:
+            return matched
+    return None
+
+
+def _absolute_import_symbol(statement: ast.stmt, name: str) -> SymbolRef | None:
+    if isinstance(statement, ast.ImportFrom) and statement.level == 0 and statement.module is not None:
+        for alias in statement.names:
+            if (alias.asname or alias.name) == name:
+                return SymbolRef(statement.module, alias.name)
+    if isinstance(statement, ast.Import):
+        for alias in statement.names:
+            if (alias.asname or alias.name.partition(".")[0]) == name:
+                return SymbolRef(alias.name if alias.asname else alias.name.partition(".")[0], "")
+    return None
 
 
 def _annotation_contains_symbol(unit: SourceUnit, annotation: ast.expr | None, target: SymbolRef) -> bool:

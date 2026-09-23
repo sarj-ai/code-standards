@@ -162,7 +162,7 @@ _HTTP_PARAM_MARKERS = frozenset({"Header", "Query", "Depends", "Body", "Path", "
 _TOP_LEVEL_SCRIPT_DIR_NAMES = frozenset({"scripts", "bin", "tools"})
 _MIGRATION_DIR_NAMES = frozenset({"migrations", "alembic"})
 
-# One public method is a function in a trenchcoat; an ABC over it is ceremony.
+# A one-method service needs concrete substitution evidence before suggesting a port.
 _MIN_PUBLIC_METHODS = 2
 
 # A store/repository-backed application service is ordinary layering, not
@@ -205,7 +205,7 @@ class RequirePortForService(ProjectRule):
         limitations=(
             "This advisory uses service-family names, constructor annotations, collaborator calls, and public-method counts as heuristics.",
             "Only direct module classes are checked; tests, generated code, scripts, framework callbacks, Store/Repository persistence dependencies, and external or interface-like bases are excluded.",
-            "A suffixless or store-backed class is checked only when project analysis proves that at least two production classes inject the concrete type. A port owned in another module may require an exact suppression on the implementation.",
+            "A one-method, suffixless, or store-backed class is checked only when project analysis proves a concrete production type dependency and a test subclass or typed mock, or at least two production consumers for a multi-method class. A port owned in another module may require an exact suppression on the implementation.",
         ),
         examples=(
             RuleExample(
@@ -280,40 +280,70 @@ class RequirePortForService(ProjectRule):
 
         diags: list[Diagnostic] = []
         for node in classes:
-            collaborator = _unsubstitutable_service(
+            diagnostic = self._class_diagnostic(
+                path,
                 node,
-                data_names,
-                bound_names,
-                local_class_names,
-                local_port_names,
+                source_lines=source_lines,
+                data_names=data_names,
+                bound_names=bound_names,
+                local_class_names=local_class_names,
+                local_port_names=local_port_names,
                 imports=imports,
             )
-            consumer_count = self._concrete_consumer_count(path, node, local_class_names, local_port_names)
-            if (collaborator is None and consumer_count < _MIN_PROJECT_CONSUMERS) or _class_is_suppressed(
-                node, source_lines, self.code
-            ):
-                continue
-            if collaborator is not None:
-                evidence = f"injects `{collaborator}` and exposes {_public_method_count(node)} public methods"
-            else:
-                evidence = f"is injected directly into {consumer_count} production classes"
-            diags.append(
-                Diagnostic(
-                    path=path,
-                    line=node.lineno,
-                    col=node.col_offset + 1,
-                    code=self.code,
-                    severity=Severity.WARNING,
-                    message=(
-                        f"`{node.name}` {evidence} with no recognizable in-file or inherited port. If a real "
-                        "consumer needs substitution, define a small consumer-owned `Protocol` and type that "
-                        "consumer against it; otherwise suppress this advisory instead of adding an unused "
-                        "abstraction."
-                    ),
-                )
-            )
+            if diagnostic is not None:
+                diags.append(diagnostic)
         diags.sort(key=lambda d: (d.line, d.col))
         return diags
+
+    def _class_diagnostic(
+        self,
+        path: Path,
+        node: ast.ClassDef,
+        *,
+        source_lines: list[str],
+        data_names: set[str],
+        bound_names: set[str],
+        local_class_names: set[str],
+        local_port_names: set[str],
+        imports: ImportIndex,
+    ) -> Diagnostic | None:
+        if _class_is_suppressed(node, source_lines, self.code):
+            return None
+        collaborator = _unsubstitutable_service(
+            node, data_names, bound_names, local_class_names, local_port_names, imports=imports
+        )
+        consumer_count = self._concrete_consumer_count(path, node, local_class_names, local_port_names)
+        typed_consumer_count = self._typed_consumer_count(path, node, local_class_names, local_port_names)
+        test_subclass_count = self._test_subclass_count(path, node) if typed_consumer_count else 0
+        test_mock_count = self._test_mock_count(path, node) if typed_consumer_count else 0
+        substituted_boundary = typed_consumer_count >= 1 and (test_subclass_count + test_mock_count) >= 1
+        if (
+            collaborator is None
+            and (consumer_count < _MIN_PROJECT_CONSUMERS or _public_method_count(node) < _MIN_PUBLIC_METHODS)
+            and not substituted_boundary
+        ):
+            return None
+        if collaborator is not None:
+            evidence = f"injects `{collaborator}` and exposes {_public_method_count(node)} public methods"
+        elif substituted_boundary:
+            evidence = (
+                f"is typed directly by {typed_consumer_count} production classes and has "
+                f"{test_subclass_count} test subclasses and {test_mock_count} test mock specs"
+            )
+        else:
+            evidence = f"is injected directly into {consumer_count} production classes"
+        return Diagnostic(
+            path=path,
+            line=node.lineno,
+            col=node.col_offset + 1,
+            code=self.code,
+            severity=Severity.WARNING,
+            message=(
+                f"`{node.name}` {evidence} with no recognizable in-file or inherited port. If a real "
+                "consumer needs substitution, define a small consumer-owned `Protocol` and type that "
+                "consumer against it; otherwise suppress this advisory instead of adding an unused abstraction."
+            ),
+        )
 
     def _concrete_consumer_count(
         self,
@@ -334,6 +364,51 @@ class RequirePortForService(ProjectRule):
                 for consumer_path, consumer_name in indexes.constructor_consumers(unit, node.name)
                 if not is_test_path(consumer_path) and not is_test_support_path(consumer_path)
             }
+        )
+
+    def _typed_consumer_count(
+        self,
+        path: Path,
+        node: ast.ClassDef,
+        local_class_names: frozenset[str] | set[str],
+        local_port_names: frozenset[str] | set[str],
+    ) -> int:
+        indexes = self._project_indexes
+        if indexes is None or not _project_boundary_candidate(node, local_class_names, local_port_names):
+            return 0
+        unit = indexes.unit(path)
+        if unit is None:
+            return 0
+        return len(
+            {
+                (consumer_path, consumer_name)
+                for consumer_path, consumer_name in indexes.typed_class_consumers(unit, node.name)
+                if not is_test_path(consumer_path) and not is_test_support_path(consumer_path)
+            }
+        )
+
+    def _test_subclass_count(self, path: Path, node: ast.ClassDef) -> int:
+        indexes = self._project_indexes
+        if indexes is None:
+            return 0
+        unit = indexes.unit(path)
+        if unit is None:
+            return 0
+        return sum(
+            is_test_path(subclass_path) or is_test_support_path(subclass_path)
+            for subclass_path, _ in indexes.direct_subclasses(unit, node.name)
+        )
+
+    def _test_mock_count(self, path: Path, node: ast.ClassDef) -> int:
+        indexes = self._project_indexes
+        if indexes is None:
+            return 0
+        unit = indexes.unit(path)
+        if unit is None:
+            return 0
+        return sum(
+            is_test_path(test_path) or is_test_support_path(test_path)
+            for test_path in indexes.test_mock_specs(unit, node.name)
         )
 
 
@@ -419,7 +494,7 @@ def _project_boundary_candidate(
         or _has_base(node, local_class_names, local_port_names)
         or _is_data_type(node)
         or _declares_interface(node)
-        or _public_method_count(node) < _MIN_PUBLIC_METHODS
+        or _public_method_count(node) < 1
         or _handles_http_requests(node)
         or _has_framework_callback_method(node)
     )

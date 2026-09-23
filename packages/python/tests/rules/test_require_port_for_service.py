@@ -121,6 +121,177 @@ def test_project_evidence_needs_two_production_consumers(tmp_path: Path) -> None
     assert rule.check(definition, loaded[definition]) == []
 
 
+def test_one_method_service_with_production_consumer_and_test_subclass_needs_port(tmp_path: Path) -> None:
+    root = tmp_path / "project"
+    package = root / "app"
+    tests = root / "tests"
+    package.mkdir(parents=True)
+    tests.mkdir()
+    (root / "pyproject.toml").write_text("[project]\nname = 'example'\nversion = '0.1.0'\n")
+    (package / "__init__.py").write_text("")
+    definition = package / "extraction.py"
+    consumer = package / "executor.py"
+    fake = tests / "fakes.py"
+    definition.write_text(
+        "class DocumentExtractionService:\n"
+        "    def __init__(self, store: ObjectStore) -> None:\n"
+        "        self.store = store\n"
+        "    async def extract(self, task_id: str) -> None:\n"
+        "        await self.store.get(task_id)\n"
+    )
+    consumer.write_text(
+        "from app.extraction import DocumentExtractionService\n"
+        "class TaskExecutor:\n"
+        "    def __init__(self, extraction: DocumentExtractionService) -> None:\n"
+        "        self.extraction = extraction\n"
+    )
+    fake.write_text(
+        "from app.extraction import DocumentExtractionService\n"
+        "class RecordingDocumentExtractionService(DocumentExtractionService):\n"
+        "    async def extract(self, task_id: str) -> None: ...\n"
+    )
+    loaded = {path: path.read_text() for path in (definition, consumer, fake)}
+    rule = RequirePortForService()
+    rule.prepare(ProjectIndexSet.build(list(loaded), loaded))
+
+    diagnostics = rule.check(definition, loaded[definition])
+
+    assert len(diagnostics) == 1
+    assert diagnostics[0].code == "SARJ071"
+    assert "1 test subclasses" in diagnostics[0].message
+
+
+def test_one_method_service_without_test_substitution_does_not_need_port(tmp_path: Path) -> None:
+    root = tmp_path / "project"
+    package = root / "app"
+    package.mkdir(parents=True)
+    (root / "pyproject.toml").write_text("[project]\nname = 'example'\nversion = '0.1.0'\n")
+    (package / "__init__.py").write_text("")
+    definition = package / "extraction.py"
+    consumer = package / "executor.py"
+    definition.write_text("class DocumentExtractionService:\n    def extract(self) -> None: ...\n")
+    consumer.write_text(
+        "from app.extraction import DocumentExtractionService\n"
+        "class TaskExecutor:\n"
+        "    def __init__(self, extraction: DocumentExtractionService) -> None:\n"
+        "        self.extraction = extraction\n"
+    )
+    loaded = {path: path.read_text() for path in (definition, consumer)}
+    rule = RequirePortForService()
+    rule.prepare(ProjectIndexSet.build(list(loaded), loaded))
+
+    assert rule.check(definition, loaded[definition]) == []
+
+
+@pytest.mark.parametrize(
+    ("consumer_body", "substitute_body"),
+    [
+        (
+            "@dataclass\nclass ExecutionContext:\n    crm_service: ZohoCRMService\n",
+            "class RecordingZohoCRMService(ZohoCRMService):\n    async def update_record(self) -> None: ...\n",
+        ),
+        (
+            "class NotificationsHandler:\n    async def route(self, crm_service: ZohoCRMService) -> None: ...\n",
+            "from unittest import mock\nfake = mock.Mock(spec=ZohoCRMService)\n",
+        ),
+        (
+            "class DeskTool:\n    def __init__(self, client: ZohoCRMService) -> None:\n        self.client = client\n",
+            "from unittest.mock import MagicMock\nfake = MagicMock(spec_set=ZohoCRMService)\n",
+        ),
+    ],
+)
+def test_proven_concrete_service_substitution_needs_port(
+    tmp_path: Path, consumer_body: str, substitute_body: str
+) -> None:
+    root = tmp_path / "project"
+    package = root / "app"
+    tests = root / "tests"
+    package.mkdir(parents=True)
+    tests.mkdir()
+    (root / "pyproject.toml").write_text("[project]\nname = 'example'\nversion = '0.1.0'\n")
+    (package / "__init__.py").write_text("")
+    definition = package / "crm.py"
+    consumer = package / "consumer.py"
+    substitute = tests / "test_consumer.py"
+    definition.write_text(
+        "class ZohoCRMService:\n"
+        "    def __init__(self, dao: ZohoCRMDAO) -> None:\n"
+        "        self.dao = dao\n"
+        "    async def update_record(self) -> None: ...\n"
+        "    async def attach_call_to_record(self) -> None: ...\n"
+    )
+    consumer.write_text("from dataclasses import dataclass\nfrom app.crm import ZohoCRMService\n" + consumer_body)
+    substitute.write_text("from app.crm import ZohoCRMService\n" + substitute_body)
+    loaded = {path: path.read_text() for path in (definition, consumer, substitute)}
+    rule = RequirePortForService()
+    rule.prepare(ProjectIndexSet.build(list(loaded), loaded))
+
+    diagnostics = rule.check(definition, loaded[definition])
+
+    assert len(diagnostics) == 1
+    assert diagnostics[0].code == "SARJ071"
+    assert diagnostics[0].severity is Severity.WARNING
+
+
+def test_mock_spec_without_production_typed_consumer_does_not_need_port(tmp_path: Path) -> None:
+    root = tmp_path / "project"
+    package = root / "app"
+    tests = root / "tests"
+    package.mkdir(parents=True)
+    tests.mkdir()
+    (root / "pyproject.toml").write_text("[project]\nname = 'example'\nversion = '0.1.0'\n")
+    (package / "__init__.py").write_text("")
+    definition = package / "crm.py"
+    substitute = tests / "test_crm.py"
+    definition.write_text("class ZohoCRMService:\n    def update_record(self) -> None: ...\n")
+    substitute.write_text(
+        "from unittest import mock\nfrom app.crm import ZohoCRMService\nmock.Mock(spec=ZohoCRMService)\n"
+    )
+    loaded = {path: path.read_text() for path in (definition, substitute)}
+    rule = RequirePortForService()
+    rule.prepare(ProjectIndexSet.build(list(loaded), loaded))
+
+    assert rule.check(definition, loaded[definition]) == []
+
+
+def test_namespace_package_manager_with_mocked_consumer_needs_port(tmp_path: Path) -> None:
+    root = tmp_path / "project"
+    common = root / "common"
+    agent = root / "agent"
+    definition = common / "sarj" / "plt" / "common" / "integrations_manager.py"
+    consumer = agent / "sarj" / "plt" / "agent" / "tool_builder.py"
+    substitute = agent / "tests" / "test_tool_builder.py"
+    for path in (definition, consumer, substitute):
+        path.parent.mkdir(parents=True, exist_ok=True)
+    for project in (common, agent):
+        (project / "pyproject.toml").write_text("[project]\nname = 'example'\nversion = '0.1.0'\n")
+    definition.write_text(
+        "class IntegrationsManager:\n"
+        "    def __init__(self, store: CredentialStore) -> None:\n"
+        "        self.store = store\n"
+        "    def get_client(self) -> object: ...\n"
+    )
+    consumer.write_text(
+        "from sarj.plt.common.integrations_manager import IntegrationsManager\n"
+        "class ToolBuilder:\n"
+        "    def __init__(self, manager: IntegrationsManager) -> None:\n"
+        "        self.manager = manager\n"
+    )
+    substitute.write_text(
+        "from unittest import mock\n"
+        "from sarj.plt.common.integrations_manager import IntegrationsManager\n"
+        "manager = mock.Mock(spec=IntegrationsManager)\n"
+    )
+    loaded = {path: path.read_text() for path in (definition, consumer, substitute)}
+    rule = RequirePortForService()
+    rule.prepare(ProjectIndexSet.build(list(loaded), loaded))
+
+    diagnostics = rule.check(definition, loaded[definition])
+
+    assert len(diagnostics) == 1
+    assert "1 test mock specs" in diagnostics[0].message
+
+
 def test_message_is_exactly_the_shipped_text() -> None:
     # Pins the whole message, not a substring: mutation testing showed the constants
     # could be replaced wholesale without a single test noticing.
