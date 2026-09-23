@@ -1,6 +1,8 @@
 name: release
 
 # Publishing model:
+# - Before admin-merging a publishable PR, compare its version with current main;
+#   another merge can claim that version after the PR's release-ready check ran.
 # - Push to main or hourly reconciliation: the `detect` job finds current
 #   versions missing either an authoritative-registry publication or their
 #   immutable verification tag. This automatically recovers a release skipped
