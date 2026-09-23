@@ -20,8 +20,6 @@ name: release
 #   and must not change a publishable artifact or bump another version; causality
 #   then has no new supersession edge while `detect` still reconciles every current
 #   manifest that is missing publication or a verification tag.
-# A push whose current versions are all public publishes nothing.
-
 on:
   push:
     branches: [main]
