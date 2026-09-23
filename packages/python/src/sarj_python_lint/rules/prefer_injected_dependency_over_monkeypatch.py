@@ -16,6 +16,7 @@ from sarj_python_lint.rule_base import (
     Severity,
     parse_or_none,
 )
+from sarj_python_lint.rules._ast_position import AstPosition, ast_position
 from sarj_python_lint.rules._imports import ImportIndex
 from sarj_python_lint.rules._paths import is_generated, is_test_path
 
@@ -250,10 +251,10 @@ def _parameter_rebound_before(
     return any(handle in _bound_targets(node) and _position(node) < use_position for node in nodes)
 
 
-def _position(node: ast.AST) -> tuple[int, int]:
+def _position(node: ast.AST) -> AstPosition:
     if isinstance(node, ast.withitem):
         return _position(node.context_expr)
-    return (getattr(node, "lineno", 0), getattr(node, "col_offset", 0))
+    return ast_position(node, missing=0)
 
 
 def _direct_aliases(nodes: tuple[ast.AST, ...], handles: set[str], parameters: set[str]) -> set[str]:

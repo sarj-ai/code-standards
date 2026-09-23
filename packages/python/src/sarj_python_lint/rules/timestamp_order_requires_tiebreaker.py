@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+from dataclasses import dataclass
 from pathlib import PurePosixPath
 import re
 from typing import TYPE_CHECKING, final, override
@@ -183,19 +184,26 @@ def _is_fully_static_string(node: ast.expr) -> bool:
     )
 
 
+@dataclass(frozen=True, slots=True)
+class _OrderClauseItems:
+    end: int
+    boundary: str
+    item_starts: list[int]
+
+
 def _timestamp_ending_order_clause(sql: str) -> str | None:
     if _GROUPED_OR_DISTINCT.search(sql) is not None:
         return None
     depths = _depths(sql)
     for order in _ORDER_BY.finditer(sql):
         clause_depth = depths[order.start()]
-        clause_end, boundary, item_starts = _order_clause_items(sql, depths, order.end(), clause_depth)
-        if boundary not in {"LIMIT", "OFFSET", "FETCH"} or (
-            boundary == "FETCH" and _WITH_TIES.match(sql[clause_end:]) is not None
+        clause = _order_clause_items(sql, depths, order.end(), clause_depth)
+        if clause.boundary not in {"LIMIT", "OFFSET", "FETCH"} or (
+            clause.boundary == "FETCH" and _WITH_TIES.match(sql[clause.end :]) is not None
         ):
             continue
-        item_ends = [start - 1 for start in item_starts[1:]] + [clause_end]
-        items = [sql[start:end].strip() for start, end in zip(item_starts, item_ends, strict=True)]
+        item_ends = [start - 1 for start in clause.item_starts[1:]] + [clause.end]
+        items = [sql[start:end].strip() for start, end in zip(clause.item_starts, item_ends, strict=True)]
         timestamp = _unstable_timestamp_item(sql, depths, order.start(), clause_depth, items)
         if timestamp is not None:
             return timestamp
@@ -226,7 +234,7 @@ def _depths(sql: str) -> list[int]:
     return depths
 
 
-def _order_clause_items(sql: str, depths: list[int], item_start: int, clause_depth: int) -> tuple[int, str, list[int]]:
+def _order_clause_items(sql: str, depths: list[int], item_start: int, clause_depth: int) -> _OrderClauseItems:
     clause_end = len(sql)
     boundary = ""
     item_starts = [item_start]
@@ -243,7 +251,7 @@ def _order_clause_items(sql: str, depths: list[int], item_start: int, clause_dep
                 boundary = boundary_match.group(0).upper()
                 break
         index += 1
-    return clause_end, boundary, item_starts
+    return _OrderClauseItems(end=clause_end, boundary=boundary, item_starts=item_starts)
 
 
 def _unstable_timestamp_item(

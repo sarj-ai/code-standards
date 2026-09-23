@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+from dataclasses import dataclass
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, ClassVar, NamedTuple, final, override
 
@@ -495,22 +496,34 @@ def _valid_write_delegation(
     if wrapper_parameters is None:
         return False
     initial_bindings = {parameter.arg: f"name:{parameter.arg}" for parameter in wrapper_parameters}
-    pending = [(wrapper.name, initial_bindings)]
+    pending = [_DelegationState(method=wrapper.name, bindings=initial_bindings)]
     visited: set[tuple[str, tuple[tuple[str, str], ...]]] = set()
     while pending:
-        current, bindings = pending.pop()
-        state = current, tuple(sorted(bindings.items()))
+        candidate = pending.pop()
+        state = candidate.method, tuple(sorted(candidate.bindings.items()))
         if state in visited:
             continue
         visited.add(state)
-        method = methods.get(current)
+        method = methods.get(candidate.method)
         if method is None:
             continue
-        reached_bulk, next_states = _delegation_targets(method, bulk, methods, bindings, expectation)
-        if reached_bulk:
+        targets = _delegation_targets(method, bulk, methods, candidate.bindings, expectation)
+        if targets.reached_bulk:
             return True
-        pending.extend(next_states)
+        pending.extend(targets.next_states)
     return False
+
+
+@dataclass(frozen=True, slots=True)
+class _DelegationState:
+    method: str
+    bindings: dict[str, str]
+
+
+@dataclass(frozen=True, slots=True)
+class _DelegationTargets:
+    reached_bulk: bool
+    next_states: list[_DelegationState]
 
 
 def _delegation_targets(
@@ -519,17 +532,19 @@ def _delegation_targets(
     methods: dict[str, ast.FunctionDef | ast.AsyncFunctionDef],
     bindings: dict[str, str],
     expectation: _WriteExpectation,
-) -> tuple[bool, list[tuple[str, dict[str, str]]]]:
-    next_states: list[tuple[str, dict[str, str]]] = []
+) -> _DelegationTargets:
+    next_states: list[_DelegationState] = []
     for call, awaited in _delegation_calls(method):
         resolved = _resolve_delegation_call(call, methods, bindings, awaited=awaited)
         if resolved is None:
             continue
-        called, called_bindings = resolved
-        if called == bulk.name:
-            return _matches_write_expectation(called_bindings, expectation), next_states
-        next_states.append((called, called_bindings))
-    return False, next_states
+        if resolved.method == bulk.name:
+            return _DelegationTargets(
+                reached_bulk=_matches_write_expectation(resolved.bindings, expectation),
+                next_states=next_states,
+            )
+        next_states.append(resolved)
+    return _DelegationTargets(reached_bulk=False, next_states=next_states)
 
 
 def _resolve_delegation_call(
@@ -538,7 +553,7 @@ def _resolve_delegation_call(
     bindings: dict[str, str],
     *,
     awaited: bool,
-) -> tuple[str, dict[str, str]] | None:
+) -> _DelegationState | None:
     if not isinstance(call.func, ast.Attribute):
         return None
     called = call.func.attr
@@ -546,7 +561,7 @@ def _resolve_delegation_call(
     if called_method is None or (isinstance(called_method, ast.AsyncFunctionDef) and not awaited):
         return None
     called_bindings = _bind_call(call, called_method, bindings)
-    return None if called_bindings is None else (called, called_bindings)
+    return None if called_bindings is None else _DelegationState(method=called, bindings=called_bindings)
 
 
 def _matches_write_expectation(bindings: dict[str, str], expectation: _WriteExpectation) -> bool:

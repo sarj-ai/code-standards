@@ -16,6 +16,7 @@ from sarj_python_lint.rule_base import (
     Severity,
     parse_or_none,
 )
+from sarj_python_lint.rules._ast_position import AstPosition, ast_position
 from sarj_python_lint.rules._imports import ImportIndex
 from sarj_python_lint.rules._paths import is_generated, is_test_path
 
@@ -294,8 +295,8 @@ def _import_root_rebound_before(
     )
 
 
-def _position(node: ast.AST) -> tuple[int, int]:
-    return (getattr(node, "lineno", 0), getattr(node, "col_offset", 0))
+def _position(node: ast.AST) -> AstPosition:
+    return ast_position(node, missing=0)
 
 
 def _restored_mutations(

@@ -1,10 +1,6 @@
 schema = 4
-bundle = "7.31.8"
+bundle = "7.31.9"
 rule_profile = "all"
-
-[baseline]
-diagnostics = "diagnostic-baseline.json"
-
 
 [capabilities]
 # The TypeScript package defines the ESLint preset itself, so its authored

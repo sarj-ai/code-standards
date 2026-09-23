@@ -115,7 +115,7 @@ dogfood-python:
 	rule_args=(); \
 	for rule in "$${python_rules[@]}"; do rule_args+=(--rule "$$rule"); done; \
 	set +e; \
-	output="$$(uv run --quiet --project packages/python --frozen sarj-python-lint check "$${rule_args[@]}" --baseline packages/python/dogfood-baseline.json -- "$${python_files[@]}" 2>&1)"; \
+	output="$$(uv run --quiet --project packages/python --frozen sarj-python-lint check "$${rule_args[@]}" -- "$${python_files[@]}" 2>&1)"; \
 	status=$$?; \
 	set -e; \
 	if (( status != 0 )); then printf '%s\n' "$$output"; exit $$status; fi; \

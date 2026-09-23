@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+from dataclasses import dataclass
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, ClassVar, NamedTuple, final, override
 
@@ -215,17 +216,23 @@ def _classifier_starts(
     for statements in _nested_statement_lists(body):
         index = 0
         while index < len(statements):
-            candidates, cursor = _adjacent_bare_ifs(statements, index)
-            branches = _validated_branches(candidates, subject, imports)
-            if branches is not None and _is_classifier(branches, statements, cursor):
+            adjacent = _adjacent_bare_ifs(statements, index)
+            branches = _validated_branches(adjacent.candidates, subject, imports)
+            if branches is not None and _is_classifier(branches, statements, adjacent.cursor):
                 findings.append(branches[0][0])
-                index = cursor + 1
+                index = adjacent.cursor + 1
             else:
-                index = max(cursor, index + 1)
+                index = max(adjacent.cursor, index + 1)
     return tuple(findings)
 
 
-def _adjacent_bare_ifs(statements: list[ast.stmt], start: int) -> tuple[list[ast.If], int]:
+@dataclass(frozen=True, slots=True)
+class _AdjacentBareIfs:
+    candidates: list[ast.If]
+    cursor: int
+
+
+def _adjacent_bare_ifs(statements: list[ast.stmt], start: int) -> _AdjacentBareIfs:
     cursor = start
     candidates: list[ast.If] = []
     while cursor < len(statements):
@@ -234,7 +241,7 @@ def _adjacent_bare_ifs(statements: list[ast.stmt], start: int) -> tuple[list[ast
             break
         candidates.append(candidate)
         cursor += 1
-    return candidates, cursor
+    return _AdjacentBareIfs(candidates=candidates, cursor=cursor)
 
 
 def _validated_branches(

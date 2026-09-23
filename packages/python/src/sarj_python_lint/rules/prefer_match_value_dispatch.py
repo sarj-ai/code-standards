@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ast
 from collections import Counter
+from dataclasses import dataclass
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, ClassVar, final, override
 
@@ -164,12 +165,12 @@ class PreferMatchValueDispatch(Rule):
         for node in ast.walk(tree):
             if not isinstance(node, ast.If) or id(node) in continuations:
                 continue
-            branches, current = _elif_chain(node, lines, continuations)
-            if len(branches) < _MIN_TESTS or not current.orelse:
+            chain = _elif_chain(node, lines, continuations)
+            if len(chain.branches) < _MIN_TESTS or not chain.last.orelse:
                 continue
-            subject = _dispatch_subject(branches, constants)
+            subject = _dispatch_subject(chain.branches, constants)
             if subject is None:
-                subject = _expanded_dispatch_subject(branches, constants)
+                subject = _expanded_dispatch_subject(chain.branches, constants)
             if subject is not None:
                 candidates.append((node, subject))
         for branches in _terminal_sibling_dispatches(tree):
@@ -368,7 +369,13 @@ def _subject(expression: ast.expr) -> str | None:
             return None
 
 
-def _elif_chain(node: ast.If, lines: list[str], continuations: set[int]) -> tuple[list[ast.If], ast.If]:
+@dataclass(frozen=True, slots=True)
+class _ElifChain:
+    branches: list[ast.If]
+    last: ast.If
+
+
+def _elif_chain(node: ast.If, lines: list[str], continuations: set[int]) -> _ElifChain:
     branches = [node]
     current = node
     while len(current.orelse) == 1:
@@ -378,7 +385,7 @@ def _elif_chain(node: ast.If, lines: list[str], continuations: set[int]) -> tupl
         continuations.add(id(child))
         branches.append(child)
         current = child
-    return branches, current
+    return _ElifChain(branches=branches, last=current)
 
 
 def _collect_terminal_siblings(field: list[ast.stmt], candidates: list[list[ast.If]]) -> None:

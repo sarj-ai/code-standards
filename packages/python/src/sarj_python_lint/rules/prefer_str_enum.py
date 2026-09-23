@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+from dataclasses import dataclass
 from pathlib import PurePosixPath
 import re
 from types import MappingProxyType
@@ -499,9 +500,9 @@ class PreferStrEnum(Rule):
         choice_groups = _class_choice_groups(cls)
         candidates = _class_choice_fields(cls, raw_string_aliases, imports)
         for stmt, name, default in candidates:
-            associated_values, generic_values = _choice_values_for_field(choice_groups, name)
-            if not associated_values and not (
-                default is not None and len(candidates) == 1 and default in generic_values
+            choices = _choice_values_for_field(choice_groups, name)
+            if not choices.associated and not (
+                default is not None and len(candidates) == 1 and default in choices.generic
             ):
                 continue
             diags.append(
@@ -1429,14 +1430,20 @@ def _match_pattern_literals(pattern: ast.pattern) -> list[str]:
             return []
 
 
-def _choice_values_for_field(choice_groups: list[tuple[str, set[str]]], name: str) -> tuple[set[str], set[str]]:
+@dataclass(frozen=True, slots=True)
+class _ChoiceValues:
+    associated: set[str]
+    generic: set[str]
+
+
+def _choice_values_for_field(choice_groups: list[tuple[str, set[str]]], name: str) -> _ChoiceValues:
     associated_values = {
         value for binding, values in choice_groups if _choice_binding_field(binding) == name.lower() for value in values
     }
     generic_values = {
         value for binding, values in choice_groups if _choice_binding_field(binding) is None for value in values
     }
-    return associated_values, generic_values
+    return _ChoiceValues(associated=associated_values, generic=generic_values)
 
 
 def _choice_binding_field(binding: str) -> str | None:
