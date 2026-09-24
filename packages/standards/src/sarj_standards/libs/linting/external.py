@@ -41,6 +41,7 @@ from sarj_standards.libs.diagnostics import (
     TrustMode,
 )
 from sarj_standards.libs.json_boundary import parse_json
+from sarj_standards.libs.typed_containers import is_object_list, is_object_mapping
 from sarj_standards.libs.yaml_boundary import parse_yaml
 
 from . import mobile_tools
@@ -2833,11 +2834,11 @@ def _contained_path(value: str, root: Path) -> str:
 
 
 def _table(value: object, label: str) -> dict[str, object]:
-    if not isinstance(value, dict):
+    if not is_object_mapping(value):
         msg = f"{label} must be an object"
         raise TypeError(msg)
     table: dict[str, object] = {}
-    for key, item in value.items():  # pyright: ignore[reportUnknownVariableType] -- dynamic JSON narrowed here.
+    for key, item in value.items():
         if not isinstance(key, str):
             msg = f"{label} contains a non-string key"
             raise TypeError(msg)
@@ -2846,10 +2847,10 @@ def _table(value: object, label: str) -> dict[str, object]:
 
 
 def _array(value: object, label: str) -> list[object]:
-    if not isinstance(value, list):
+    if not is_object_list(value):
         msg = f"{label} must be an array"
         raise TypeError(msg)
-    return list(value)  # pyright: ignore[reportUnknownArgumentType] -- elements stay opaque.
+    return list(value)
 
 
 def _text(table: dict[str, object], key: str) -> str:

@@ -7,6 +7,8 @@ from pathlib import Path, PureWindowsPath
 from typing import Final, NewType, TypedDict
 from urllib.parse import urlparse
 
+from sarj_standards.libs.typed_containers import is_object_tuple
+
 
 SCHEMA_VERSION: Final = 1
 SCHEMA_URI: Final = "https://standards.sarj.ai/schemas/analysis/v1"
@@ -535,10 +537,10 @@ def _validate_help_url(value: str | None) -> None:
 
 
 def _require_tuple_text(value: object, label: str) -> None:
-    if not isinstance(value, tuple):
+    if not is_object_tuple(value):
         msg = f"{label} must be a tuple of non-empty strings"
         raise TypeError(msg)
-    for item in value:  # pyright: ignore[reportUnknownVariableType]
+    for item in value:
         if not isinstance(item, str) or not item:
             msg = f"{label} must be a tuple of non-empty strings"
             raise TypeError(msg)
@@ -569,13 +571,10 @@ def _require_instance(value: object, expected: type[object], label: str) -> None
 
 
 def _require_tuple_items(value: object, expected: type[object], label: str) -> None:
-    if not isinstance(value, tuple):
+    if not is_object_tuple(value):
         invalid = True
     else:
-        invalid = type(value) is not tuple or any(  # pyright: ignore[reportUnknownArgumentType] -- validated below.
-            not isinstance(item, expected)
-            for item in value  # pyright: ignore[reportUnknownVariableType] -- tuple elements are validated here.
-        )
+        invalid = type(value) is not tuple or any(not isinstance(item, expected) for item in value)
     if invalid:
         msg = f"{label} must be a tuple of {expected.__name__} values"
         raise TypeError(msg)

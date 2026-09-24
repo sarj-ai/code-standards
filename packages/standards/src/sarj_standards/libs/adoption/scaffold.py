@@ -17,6 +17,7 @@ import yaml
 
 from sarj_standards.libs.filesystem import is_link_like
 from sarj_standards.libs.json_boundary import parse_json
+from sarj_standards.libs.typed_containers import is_object_list, is_object_mapping
 from sarj_standards.libs.yaml_boundary import parse_yaml
 
 from . import hooks, launcher, manifest, packagemanager, uvtool
@@ -2509,25 +2510,23 @@ def _migrate_legacy_workflow_gate(path: Path) -> str | None:
 
 
 def _workflow_run_commands(value: object) -> tuple[str, ...]:
-    match value:
-        case dict():
-            commands: list[str] = []
-            table = manifest.as_table(value)  # pyright: ignore[reportUnknownArgumentType] -- narrowed parser data
-            for key, item in table.items():
-                if key == "run" and isinstance(item, str):
-                    commands.append(item)
-                else:
-                    commands.extend(_workflow_run_commands(item))
-            return tuple(commands)
-        case list():
-            items = _object_list(value)  # pyright: ignore[reportUnknownArgumentType] -- narrowed parser data
-            return tuple(command for item in items for command in _workflow_run_commands(item))
-        case _:
-            return ()
+    if is_object_mapping(value):
+        commands: list[str] = []
+        table = manifest.as_table(value)
+        for key, item in table.items():
+            if key == "run" and isinstance(item, str):
+                commands.append(item)
+            else:
+                commands.extend(_workflow_run_commands(item))
+        return tuple(commands)
+    if is_object_list(value):
+        items = _object_list(value)
+        return tuple(command for item in items for command in _workflow_run_commands(item))
+    return ()
 
 
 def _object_list(value: object) -> list[object]:
-    return value if isinstance(value, list) else []  # pyright: ignore[reportUnknownVariableType] -- narrowed parser data
+    return value if is_object_list(value) else []
 
 
 def _ci_javascript_install(client: PackageManager, yarn: YarnVariant) -> str:

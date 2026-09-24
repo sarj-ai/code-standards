@@ -17,6 +17,7 @@ import yaml
 
 from sarj_standards.libs.adoption.manifest import as_table, list_field, table_field, text_field
 from sarj_standards.libs.json_boundary import parse_json
+from sarj_standards.libs.typed_containers import is_object_list, is_object_mapping
 from sarj_standards.libs.yaml_boundary import parse_yaml
 
 
@@ -614,12 +615,11 @@ def _strings(table: Mapping[str, object], key: str) -> tuple[str, ...]:
 
 
 def _string_values(value: object, label: str) -> tuple[str, ...]:
-    if not isinstance(value, list):
+    if not is_object_list(value):
         msg = f"{label} must be a list of strings"
         raise TypeError(msg)
-    items: list[object] = value  # pyright: ignore[reportUnknownVariableType]
-    strings = tuple(item for item in items if isinstance(item, str))
-    if len(strings) != len(items):
+    strings = tuple(item for item in value if isinstance(item, str))
+    if len(strings) != len(value):
         msg = f"{label} must contain only strings"
         raise ValueError(msg)
     return strings
@@ -629,10 +629,10 @@ def _objects(table: Mapping[str, object], key: str) -> list[object]:
     if key not in table:
         return []
     value = table[key]
-    if not isinstance(value, list):
+    if not is_object_list(value):
         msg = f"repository.{key} must be an array of tables"
         raise TypeError(msg)
-    return value  # pyright: ignore[reportUnknownVariableType]
+    return value
 
 
 def _table(table: Mapping[str, object], key: str, *, required: bool = False) -> Mapping[str, object]:
@@ -642,10 +642,10 @@ def _table(table: Mapping[str, object], key: str, *, required: bool = False) -> 
             raise ValueError(msg)
         return {}
     value = table[key]
-    if not isinstance(value, dict):
+    if not is_object_mapping(value):
         msg = f"{key} must be a table"
         raise TypeError(msg)
-    return as_table(value)  # pyright: ignore[reportUnknownArgumentType]
+    return as_table(value)
 
 
 def _known_keys(table: Mapping[str, object], allowed: frozenset[str], label: str) -> None:

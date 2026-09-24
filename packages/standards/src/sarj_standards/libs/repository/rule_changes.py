@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Final, Literal, TypedDict
 from sarj_standards.libs.json_boundary import parse_json
 from sarj_standards.libs.release.process import ProcessRunner, run_process
 from sarj_standards.libs.rules import DefaultLevel
+from sarj_standards.libs.typed_containers import is_object_list, is_object_mapping
 
 
 if TYPE_CHECKING:
@@ -320,20 +321,20 @@ def _rules_array(document: dict[str, object], *, label: str) -> list[object]:
         msg = f"{label} must contain exactly schemaVersion 1 and rules"
         raise ValueError(msg)
     rules = document["rules"]
-    if not isinstance(rules, list):
+    if not is_object_list(rules):
         msg = f"{label} rules must be an array"
         raise TypeError(msg)
-    return rules  # pyright: ignore[reportUnknownVariableType]
+    return rules
 
 
 def _object(value: object, *, label: str) -> dict[str, object]:
-    if not isinstance(value, dict):
+    if not is_object_mapping(value):
         msg = f"{label} must be an object"
         raise TypeError(msg)
-    if not all(isinstance(key, str) for key in value):  # pyright: ignore[reportUnknownVariableType]
+    if not all(isinstance(key, str) for key in value):
         msg = f"{label} must have string keys"
         raise TypeError(msg)
-    return value  # pyright: ignore[reportUnknownVariableType]
+    return {key: item for key, item in value.items() if isinstance(key, str)}
 
 
 def _string(value: dict[str, object], key: str) -> str:
