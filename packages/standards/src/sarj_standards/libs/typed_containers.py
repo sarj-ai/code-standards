@@ -1,8 +1,13 @@
+from collections.abc import Mapping
 from typing import TypeIs
 
 
 def is_object_mapping(value: object) -> TypeIs[dict[object, object]]:
     return isinstance(value, dict)
+
+
+def is_object_mapping_view(value: object) -> TypeIs[Mapping[object, object]]:
+    return isinstance(value, Mapping)
 
 
 def is_object_list(value: object) -> TypeIs[list[object]]:

@@ -12,6 +12,7 @@ from packaging.utils import canonicalize_name
 
 from sarj_standards.libs.adoption.manifest import as_table, list_field
 from sarj_standards.libs.json_boundary import parse_json
+from sarj_standards.libs.typed_containers import is_object_mapping
 
 
 if TYPE_CHECKING:
@@ -620,10 +621,10 @@ def _package_json_dependencies(path: Path) -> tuple[tuple[Ecosystem, str], ...]:
     except (OSError, UnicodeError, json.JSONDecodeError) as exc:
         msg = f"cannot parse {path}: {exc}"
         raise ManifestPolicyError(msg) from exc
-    if not isinstance(parsed, dict):
+    if not is_object_mapping(parsed):
         msg = f"{path} must contain a JSON object"
         raise ManifestPolicyError(msg)
-    data = as_table(parsed)  # pyright: ignore[reportUnknownArgumentType] - json object leaves are narrowed below
+    data = as_table(parsed)
     result: list[tuple[Ecosystem, str]] = []
     for field in ("dependencies", "devDependencies", "optionalDependencies", "peerDependencies"):
         dependencies = data.get(field)
