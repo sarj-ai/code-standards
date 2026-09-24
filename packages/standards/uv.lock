@@ -272,7 +272,7 @@ wheels = [
 
 [[package]]
 name = "code-standards"
-version = "7.32.2"
+version = "7.32.3"
 source = { editable = "." }
 dependencies = [
     { name = "basedpyright" },

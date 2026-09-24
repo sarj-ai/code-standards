@@ -11,6 +11,7 @@ import {
   type TSESTree,
 } from "@typescript-eslint/utils";
 
+import { forEachOwnAstChild } from "./_for-each-own-ast-child.js";
 import { createRule, type RuleDocumentation } from "./_docs.js";
 
 type MessageIds = "corsWildcardWithCredentials";
@@ -124,30 +125,8 @@ function subtreeContainsStarLiteral(node: TSESTree.Node): boolean {
   if (isStarLiteral(node)) {
     return true;
   }
-  for (const key of Object.keys(node)) {
-    if (key === "parent" || key === "loc" || key === "range") {
-      continue;
-    }
-    const value = (node as unknown as Record<string, unknown>)[key];
-    if (Array.isArray(value)) {
-      for (const child of value) {
-        if (isNode(child) && subtreeContainsStarLiteral(child)) {
-          return true;
-        }
-      }
-    } else if (isNode(value) && subtreeContainsStarLiteral(value)) {
-      return true;
-    }
-  }
-  return false;
-}
-
-function isNode(value: unknown): value is TSESTree.Node {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    typeof (value as { type?: unknown }).type === "string"
-  );
+  return forEachOwnAstChild(node, subtreeContainsStarLiteral,
+    key => key !== "loc" && key !== "range");
 }
 
 /**

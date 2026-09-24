@@ -6,6 +6,7 @@
 
 import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 
+import { forEachOwnAstChild } from "./_for-each-own-ast-child.js";
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import type { RuleContext, Scope } from "@typescript-eslint/utils/ts-eslint";
 
@@ -103,21 +104,7 @@ const subtreeReadsImportedBinding = (
   if (node.type === AST_NODE_TYPES.Identifier) {
     return imported.has(node.name);
   }
-  for (const key of Object.keys(node) as (keyof TSESTree.Node)[]) {
-    if (key === "parent") continue;
-    const value = node[key];
-    for (const child of (Array.isArray(value) ? value : [value]) as unknown[]) {
-      if (
-        child !== null &&
-        typeof child === "object" &&
-        typeof (child as { type?: unknown }).type === "string" &&
-        subtreeReadsImportedBinding(child as TSESTree.Node, imported)
-      ) {
-        return true;
-      }
-    }
-  }
-  return false;
+  return forEachOwnAstChild(node, child => subtreeReadsImportedBinding(child, imported));
 };
 
 const isUseClientDirective = (
