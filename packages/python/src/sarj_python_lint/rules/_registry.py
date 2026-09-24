@@ -47,6 +47,7 @@ from sarj_python_lint.rules.no_file_level_escape_hatch_suppression import (
 from sarj_python_lint.rules.no_first_party_private_import import (
     NoFirstPartyPrivateImport,
 )
+from sarj_python_lint.rules.no_fixed_sleep_before_assert import NoFixedSleepBeforeAssert
 from sarj_python_lint.rules.no_frozen_after_validator_field_write import (
     NoFrozenAfterValidatorFieldWrite,
 )
@@ -204,6 +205,7 @@ REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
         NoRawSourceTextTestOracle.id: NoRawSourceTextTestOracle,
         IacSourceCoupledTest.id: IacSourceCoupledTest,
         NoRawConnectionInTests.id: NoRawConnectionInTests,
+        NoFixedSleepBeforeAssert.id: NoFixedSleepBeforeAssert,
         NoAnalyticalAggregationInPostgresStore.id: NoAnalyticalAggregationInPostgresStore,
         NoSelectStar.id: NoSelectStar,
         NoServiceBehaviorInSettings.id: NoServiceBehaviorInSettings,

@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "13719330174736347b57ff0cb6be1487c507dc212a477f7510358cbf9b28ed09",
-  "cliSha256": "820311707adaf2e72717b213943c4ff2a843aad324e9f9690561016e907752f8",
+  "catalogSha256": "47e206720de46124767431f3f95a6d5e426ac3f76dab822ecadf7b7f597ff978",
+  "cliSha256": "8594925b352aea981a444e015f7231cccb660f572e4ff2a3929e42ab1b22142e",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -6036,6 +6036,71 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Service imports a public helper"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:no-fixed-sleep-before-assert": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "tests/test_monitor.py",
+              "source": "import asyncio\n\n\nasync def test_reports_silence(monitor):\n    monitor.start()\n    await asyncio.wait_for(monitor.fired.wait(), timeout=5)\n    assert monitor.reason == \"silence\"\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_monitor.py",
+          "id": "test-awaits-signal-then-asserts",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "A test awaits the signal with a deadline before asserting"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "tests/test_worker.py",
+              "source": "import time\n\n\ndef test_worker_drains_queue(worker, queue):\n    worker.start()\n    time.sleep(1)\n    assert queue.pending() == 0\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_worker.py",
+          "id": "test-blocks-then-asserts",
+          "outcome": "reject",
+          "scenarioId": "blocking-sleep",
+          "title": "A synchronous test blocks for a guessed interval before asserting"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "tests/test_worker.py",
+              "source": "import time\n\n\ndef test_worker_drains_queue(worker, queue):\n    worker.start()\n    deadline = time.monotonic() + 5\n    while queue.pending() and time.monotonic() < deadline:\n        time.sleep(0.01)\n    assert queue.pending() == 0\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_worker.py",
+          "id": "test-polls-with-deadline-then-asserts",
+          "outcome": "accept",
+          "scenarioId": "blocking-sleep",
+          "title": "A synchronous test polls the condition with a deadline before asserting"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "tests/test_monitor.py",
+              "source": "import asyncio\n\n\nasync def test_reports_silence(monitor):\n    monitor.start()\n    await asyncio.sleep(0.5)\n    assert monitor.reason == \"silence\"\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_monitor.py",
+          "id": "test-sleeps-then-asserts",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A test waits a guessed interval before asserting"
         }
       ],
       "optionsSchemaSource": null

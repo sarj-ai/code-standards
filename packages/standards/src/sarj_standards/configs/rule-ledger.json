@@ -52,6 +52,7 @@
       "no-fastapi-on-event",
       "no-file-level-escape-hatch-suppression",
       "no-first-party-private-import",
+      "no-fixed-sleep-before-assert",
       "no-frozen-after-validator-field-write",
       "no-generic-single-export-module",
       "no-hidden-constructor-fallback",
@@ -402,7 +403,8 @@
       "SARJ451",
       "SARJ452",
       "SARJ453",
-      "SARJ454"
+      "SARJ454",
+      "SARJ455"
     ],
     "sql": [
       "SARJ101",
