@@ -6,6 +6,7 @@
 
 import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
 
+import { forEachAstChild } from "./_for-each-ast-child.js";
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile, isTestFile } from "./_paths.js";
 
@@ -308,14 +309,7 @@ function walk(
 ): void {
   visit(node, nestedFunction);
   const nested = nestedFunction || isFunction(node);
-  for (const key of visitorKeys[node.type] ?? []) {
-    const child = (node as unknown as Record<string, unknown>)[key];
-    if (Array.isArray(child)) {
-      for (const item of child) if (typeof item === "object" && item !== null && "type" in item) walk(item as TSESTree.Node, visitorKeys, visit, nested);
-    } else if (typeof child === "object" && child !== null && "type" in child) {
-      walk(child as TSESTree.Node, visitorKeys, visit, nested);
-    }
-  }
+  forEachAstChild(node, visitorKeys, child => walk(child, visitorKeys, visit, nested));
 }
 
 function classScope(

@@ -6,6 +6,7 @@
 
 import { AST_NODE_TYPES, ASTUtils, type TSESTree, type TSESLint } from "@typescript-eslint/utils";
 
+import { forEachAstChild } from "./_for-each-ast-child.js";
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile, isTestFile } from "./_paths.js";
 
@@ -220,18 +221,7 @@ function contains(
   predicate: (current: TSESTree.Node) => boolean,
 ): boolean {
   if (predicate(node)) return true;
-  for (const key of visitorKeys[node.type] ?? []) {
-    const child = (node as unknown as Record<string, unknown>)[key];
-    for (const value of (Array.isArray(child) ? child : [child]) as unknown[]) {
-      if (
-        value !== null &&
-        typeof value === "object" &&
-        "type" in value &&
-        contains(value as TSESTree.Node, visitorKeys, predicate)
-      ) return true;
-    }
-  }
-  return false;
+  return forEachAstChild(node, visitorKeys, child => contains(child, visitorKeys, predicate));
 }
 
 function belongsToFunction(node: TSESTree.Node, fn: FunctionNode): boolean {
