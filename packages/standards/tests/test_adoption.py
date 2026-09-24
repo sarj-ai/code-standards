@@ -1240,7 +1240,7 @@ def test_init_on_an_empty_directory_adopts_repository_wide_policy(tmp_path: Path
     commit_policy = tmp_path / ".github" / "workflows" / "commit-policy.yml"
     assert commit_policy.is_file()
     assert (
-        "sarj-ai/repo-standards/pull-request-commits@31d5537d368f348ce7d4a39188afcc93a98a54bc # v6.0.0"
+        "sarj-ai/repo-standards/pull-request-commits@bac8511f40968ca16f4cf0f649aa96fae4b7be08 # v6.0.1"
         in commit_policy.read_text(encoding="utf-8")
     )
 
