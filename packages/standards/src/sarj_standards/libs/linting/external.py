@@ -40,6 +40,7 @@ from sarj_standards.libs.diagnostics import (
     ToolReport,
     TrustMode,
 )
+from sarj_standards.libs.json_boundary import parse_json
 from sarj_standards.libs.yaml_boundary import parse_yaml
 
 from . import mobile_tools
@@ -979,7 +980,7 @@ def _react_project_roots(
             continue
         package_json = directory / "package.json"
         try:
-            parsed: object = json.loads(package_json.read_text(encoding="utf-8"))  # pyright: ignore[reportAny]
+            parsed: object = parse_json(package_json.read_text(encoding="utf-8"))
         except OSError, ValueError:
             continue
         document = manifest.as_table(parsed)
@@ -1467,7 +1468,7 @@ def change_scope_base() -> str:
     if not event_path:
         return ""
     try:
-        payload: object = json.loads(Path(event_path).read_text(encoding="utf-8"))  # pyright: ignore[reportAny]
+        payload: object = parse_json(Path(event_path).read_text(encoding="utf-8"))
     except OSError, json.JSONDecodeError:
         return ""
     pull_request = manifest.as_table(manifest.as_table(payload).get("pull_request"))
@@ -1488,7 +1489,7 @@ def is_non_default_github_push() -> bool:
     if not event_path:
         return False
     try:
-        payload: object = json.loads(Path(event_path).read_text(encoding="utf-8"))  # pyright: ignore[reportAny]
+        payload: object = parse_json(Path(event_path).read_text(encoding="utf-8"))
     except OSError, json.JSONDecodeError:
         return False
     event = manifest.as_table(payload)
@@ -2802,7 +2803,7 @@ def _loads(payload: str) -> object:
     if not payload.strip():
         msg = "analyzer returned empty structured output"
         raise ValueError(msg)
-    return json.loads(payload)  # pyright: ignore[reportAny] -- narrowed immediately.
+    return parse_json(payload)
 
 
 def _prepare_inputs(

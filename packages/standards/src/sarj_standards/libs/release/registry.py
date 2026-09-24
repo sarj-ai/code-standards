@@ -19,6 +19,7 @@ from packaging.version import InvalidVersion, Version
 from pydantic import BaseModel, ConfigDict, Field
 import typer
 
+from sarj_standards.libs.json_boundary import parse_json
 from sarj_standards.libs.release._values import is_object_dict, is_object_list, string_object_dict
 from sarj_standards.libs.release.tags import RELEASE_TARGETS, read_manifest_version
 
@@ -169,7 +170,7 @@ def lint_config_requirements(root: Path) -> tuple[RegistryRequirement, ...]:
 
     peers_path = resolved / "packages/standards/src/sarj_standards/configs/eslint.peers.json"
     try:
-        peers_value: object = json.loads(peers_path.read_text(encoding="utf-8"))  # pyright: ignore[reportAny]
+        peers_value: object = parse_json(peers_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         msg = f"could not read compatibility-bundle peers {peers_path}: {exc}"
         raise ValueError(msg) from exc

@@ -3,12 +3,12 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
-import json
 import re
 from typing import TYPE_CHECKING, Final
 
 from sarj_standards._meta import CONFIGS_DIR
 from sarj_standards.libs.adoption.manifest import as_table, list_field, text_field
+from sarj_standards.libs.json_boundary import parse_json
 
 
 if TYPE_CHECKING:
@@ -68,9 +68,7 @@ class Ledger:
 
 
 def load() -> Ledger:
-    parsed: object = json.loads(  # pyright: ignore[reportAny] -- json.loads is an untyped stdlib boundary; the shape is narrowed below
-        LEDGER_JSON.read_text(encoding="utf-8")
-    )
+    parsed: object = parse_json(LEDGER_JSON.read_text(encoding="utf-8"))
     data = as_table(parsed)
     return Ledger(
         rules=_families(data, "rules"),

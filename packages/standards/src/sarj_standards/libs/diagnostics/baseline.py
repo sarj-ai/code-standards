@@ -12,6 +12,7 @@ import subprocess  # ruff: ignore[suspicious-subprocess-import] -- fixed read-on
 from typing import TYPE_CHECKING, TypeIs
 
 from sarj_standards.libs.filesystem import is_link_like
+from sarj_standards.libs.json_boundary import parse_json
 
 
 if TYPE_CHECKING:
@@ -122,7 +123,7 @@ def load(
         msg = f"diagnostic baseline exceeds {_MAX_BYTES} bytes: {path}"
         raise ValueError(msg)
     try:
-        parsed: object = json.loads(path.read_text(encoding="utf-8"))  # pyright: ignore[reportAny]
+        parsed: object = parse_json(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeError, json.JSONDecodeError) as exc:
         msg = f"cannot read diagnostic baseline {path}: {exc}"
         raise ValueError(msg) from exc
@@ -224,7 +225,7 @@ def merge_scoped(
         msg = "a scoped baseline merge requires at least one promoted selector"
         raise ValueError(msg)
     load(path)
-    parsed: object = json.loads(path.read_text(encoding="utf-8"))  # pyright: ignore[reportAny]
+    parsed: object = parse_json(path.read_text(encoding="utf-8"))
     root = _string_object_dict(parsed, label="diagnostic baseline")
     current = root.get("diagnostics")
     if not _is_object_list(current):
@@ -263,7 +264,7 @@ def remove_rules(
         msg = "a baseline rule removal requires at least one selector"
         raise ValueError(msg)
     load(path)
-    parsed: object = json.loads(path.read_text(encoding="utf-8"))  # pyright: ignore[reportAny]
+    parsed: object = parse_json(path.read_text(encoding="utf-8"))
     root = _string_object_dict(parsed, label="diagnostic baseline")
     current = root.get("diagnostics")
     if not _is_object_list(current):

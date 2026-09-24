@@ -6,6 +6,7 @@ import tarfile
 from typing import TYPE_CHECKING, NamedTuple
 import zipfile
 
+from sarj_standards.libs.json_boundary import parse_json
 from sarj_standards.libs.release._values import is_object_dict, is_object_list, string_object_dict
 
 
@@ -68,7 +69,7 @@ def _safe_artifact_path(value: str) -> str:
 def load_package_json(package_root: Path) -> dict[str, JsonValue]:
     manifest = package_root / "package.json"
     try:
-        untyped: object = json.loads(manifest.read_text(encoding="utf-8"))  # pyright: ignore[reportAny]
+        untyped: object = parse_json(manifest.read_text(encoding="utf-8"))
         value = _json_value(untyped)
     except (OSError, json.JSONDecodeError) as exc:
         msg = f"could not read {manifest}: {exc}"

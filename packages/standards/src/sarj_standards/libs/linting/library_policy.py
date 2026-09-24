@@ -11,6 +11,7 @@ from packaging.requirements import InvalidRequirement, Requirement
 from packaging.utils import canonicalize_name
 
 from sarj_standards.libs.adoption.manifest import as_table, list_field
+from sarj_standards.libs.json_boundary import parse_json
 
 
 if TYPE_CHECKING:
@@ -615,7 +616,7 @@ def _dependency_group_list(value: object, where: str) -> tuple[str, ...]:
 
 def _package_json_dependencies(path: Path) -> tuple[tuple[Ecosystem, str], ...]:
     try:
-        parsed: object = json.loads(path.read_text(encoding="utf-8-sig"))  # pyright: ignore[reportAny] - narrowed at the parser boundary
+        parsed: object = parse_json(path.read_text(encoding="utf-8-sig"))
     except (OSError, UnicodeError, json.JSONDecodeError) as exc:
         msg = f"cannot parse {path}: {exc}"
         raise ManifestPolicyError(msg) from exc

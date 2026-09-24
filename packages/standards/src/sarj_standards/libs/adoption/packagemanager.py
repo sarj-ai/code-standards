@@ -2,9 +2,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
-import json
 import re
 from typing import TYPE_CHECKING, Final
+
+from sarj_standards.libs.json_boundary import parse_json
 
 from . import manifest
 
@@ -109,9 +110,7 @@ def _declared_manager_spec(package_json: Path) -> str | None:
     if not package_json.is_file():
         return None
     try:
-        parsed: object = json.loads(  # pyright: ignore[reportAny] -- json.loads is an untyped stdlib boundary; the shape is narrowed below
-            package_json.read_text(encoding="utf-8")
-        )
+        parsed: object = parse_json(package_json.read_text(encoding="utf-8"))
     except OSError, ValueError:
         return None
     return manifest.text_field(manifest.as_table(parsed), "packageManager")

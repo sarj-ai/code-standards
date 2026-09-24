@@ -7,6 +7,8 @@ from pathlib import PurePosixPath
 import re
 from typing import TYPE_CHECKING, Final, NewType, Self
 
+from sarj_standards.libs.json_boundary import parse_json
+
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -229,7 +231,7 @@ class RuleSpec:
         self._validate_metadata()
         if self.options_schema is not None:
             try:
-                parsed_schema: object = json.loads(self.options_schema)  # pyright: ignore[reportAny]
+                parsed_schema: object = parse_json(self.options_schema)
             except json.JSONDecodeError as exc:
                 msg = "rule options schema must be valid JSON"
                 raise ValueError(msg) from exc

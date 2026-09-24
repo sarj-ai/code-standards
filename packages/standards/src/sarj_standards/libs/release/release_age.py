@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, NamedTuple, Protocol, Self
 from urllib.parse import quote
 from urllib.request import Request, urlopen
 
+from sarj_standards.libs.json_boundary import parse_json
 from sarj_standards.libs.release._values import is_object_dict, string_object_dict
 
 
@@ -122,7 +123,7 @@ def locked_registry_packages(lockfile: Path, policy: ReleaseAgePolicy) -> tuple[
 
 def _load_object(path: Path) -> dict[str, object]:
     try:
-        untyped: object = json.loads(path.read_text(encoding="utf-8"))  # pyright: ignore[reportAny]
+        untyped: object = parse_json(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         msg = f"could not read npm lockfile {path}: {exc}"
         raise ValueError(msg) from exc

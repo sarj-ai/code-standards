@@ -16,6 +16,7 @@ import sys
 from typing import TYPE_CHECKING, NamedTuple
 
 from sarj_standards.libs.filesystem import is_link_like
+from sarj_standards.libs.json_boundary import parse_json
 from sarj_standards.libs.linting import runner
 
 from . import manifest, packagemanager, scaffold, transaction
@@ -567,7 +568,7 @@ def _pyright_has_explicit_scope(path: Path) -> bool:
     if not path.is_file():
         return False
     try:
-        parsed: object = json.loads(path.read_text(encoding="utf-8"))  # pyright: ignore[reportAny] -- parser boundary
+        parsed: object = parse_json(path.read_text(encoding="utf-8"))
     except OSError, json.JSONDecodeError:
         return False
     return isinstance(parsed, dict) and any(key in parsed for key in ("include", "files"))

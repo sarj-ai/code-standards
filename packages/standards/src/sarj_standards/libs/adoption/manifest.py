@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Final, Literal
 from packaging.version import InvalidVersion, Version
 
 from sarj_standards._meta import CONFIGS_DIR, __version__
+from sarj_standards.libs.json_boundary import parse_json
 
 
 if TYPE_CHECKING:
@@ -68,7 +69,7 @@ def eslint_yarn_identity_pins() -> dict[str, str]:
 
 
 def _eslint_exact_versions(key: str) -> dict[str, str]:
-    raw: object = json.loads(PEERS_JSON.read_text(encoding="utf-8"))  # pyright: ignore[reportAny]
+    raw: object = parse_json(PEERS_JSON.read_text(encoding="utf-8"))
     table = as_table(raw)
     versions = as_table(table.get(key))
     if not versions or any(not isinstance(value, str) or not value for value in versions.values()):
@@ -679,9 +680,7 @@ def installed_versions() -> dict[str, str]:
 
 
 def eslint_peers() -> dict[str, str]:
-    parsed: object = json.loads(  # pyright: ignore[reportAny] — json.loads is an untyped stdlib boundary; the shape is narrowed below
-        PEERS_JSON.read_text(encoding="utf-8")
-    )
+    parsed: object = parse_json(PEERS_JSON.read_text(encoding="utf-8"))
     table = table_field(as_table(parsed), "peers")
     if not table:
         msg = f"{PEERS_JSON} must contain a `peers` object"
@@ -690,9 +689,7 @@ def eslint_peers() -> dict[str, str]:
 
 
 def eslint_overrides() -> dict[str, object]:
-    parsed: object = json.loads(  # pyright: ignore[reportAny] — json.loads is an untyped stdlib boundary; the shape is narrowed below
-        PEERS_JSON.read_text(encoding="utf-8")
-    )
+    parsed: object = parse_json(PEERS_JSON.read_text(encoding="utf-8"))
     return table_field(as_table(parsed), "npmOverrides")
 
 

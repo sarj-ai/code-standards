@@ -6,6 +6,7 @@ from operator import itemgetter
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Final, Literal, TypedDict
 
+from sarj_standards.libs.json_boundary import parse_json
 from sarj_standards.libs.release.process import ProcessRunner, run_process
 from sarj_standards.libs.rules import DefaultLevel
 
@@ -307,7 +308,7 @@ def _git_blob_oid(root: Path, sha: str, path: str, *, runner: ProcessRunner) -> 
 def _git_json(root: Path, sha: str, path: str, *, runner: ProcessRunner) -> dict[str, object]:
     result = runner(("git", "show", f"{sha}:{path}"), cwd=root, capture_output=True)
     try:
-        payload: object = json.loads(result.stdout)  # pyright: ignore[reportAny]
+        payload: object = parse_json(result.stdout)
     except json.JSONDecodeError as exc:
         msg = f"{path} at {sha} is not valid JSON"
         raise ValueError(msg) from exc
