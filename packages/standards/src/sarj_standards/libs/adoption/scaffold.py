@@ -19,6 +19,7 @@ from sarj_standards.libs.filesystem import is_link_like
 
 from . import hooks, launcher, manifest, packagemanager, uvtool
 from .packagemanager import LOCKFILES, Overrides, PackageManager, YarnVariant
+from .yaml_boundary import parse_yaml
 
 
 if TYPE_CHECKING:
@@ -870,7 +871,7 @@ def _workflow_supports_mobile(path: Path, *, swift: bool, kotlin: bool) -> bool:
     if not swift and not kotlin:
         return True
     try:
-        parsed: object = yaml.safe_load(path.read_text(encoding="utf-8"))  # pyright: ignore[reportAny]
+        parsed: object = parse_yaml(path.read_text(encoding="utf-8"))
     except OSError, yaml.YAMLError:
         return False
     repository = path.parents[2]
@@ -1915,7 +1916,7 @@ def _migrate_official_remote_hook(text: str, runner_prefix: str) -> _HookMigrati
 
 def _official_hook_error(block: hooks.PrecommitRepoBlock) -> str | None:
     try:
-        parsed: object = yaml.safe_load(f"repos:\n{block.text}")  # pyright: ignore[reportAny] -- narrowed below.
+        parsed: object = parse_yaml(f"repos:\n{block.text}")
     except yaml.YAMLError as exc:
         return f"official Standards hook contains invalid YAML: {exc}"
     repos = manifest.list_field(manifest.as_table(parsed), "repos")
@@ -1997,9 +1998,7 @@ def _remove_owned_precommit_hooks(text: str) -> str:
             insert_canonical=False,
         )
         try:
-            parsed: object = yaml.safe_load(  # pyright: ignore[reportAny] -- parser boundary
-                f"repos:\n{replacement}"
-            )
+            parsed: object = parse_yaml(f"repos:\n{replacement}")
         except yaml.YAMLError as exc:
             msg = "generated local hook block is not valid YAML"
             raise ValueError(msg) from exc
@@ -2029,7 +2028,7 @@ def _owned_hook_custom_keys(text: str) -> frozenset[str]:
 
 def _owned_hook_mappings(text: str) -> tuple[dict[str, object], ...]:
     try:
-        parsed: object = yaml.safe_load(f"repos:\n{text}")  # pyright: ignore[reportAny] -- narrowed below.
+        parsed: object = parse_yaml(f"repos:\n{text}")
     except yaml.YAMLError as exc:
         msg = "cannot safely inspect local pre-commit hooks: repository block is invalid YAML"
         raise ValueError(msg) from exc
@@ -2049,7 +2048,7 @@ def _all_local_hook_mappings(text: str) -> tuple[dict[str, object], ...]:
         if block.repository != "local":
             continue
         try:
-            parsed: object = yaml.safe_load(f"repos:\n{block.text}")  # pyright: ignore[reportAny]
+            parsed: object = parse_yaml(f"repos:\n{block.text}")
         except yaml.YAMLError:
             continue
         repositories = manifest.list_field(manifest.as_table(parsed), "repos")
@@ -2388,9 +2387,7 @@ def standards_check_workflows(root: Path) -> tuple[Path, ...]:
 
 def _workflow_runs_standards_check(path: Path, *, source_checkout: bool) -> bool:
     try:
-        parsed: object = yaml.safe_load(  # pyright: ignore[reportAny] -- parser boundary
-            path.read_text(encoding="utf-8")
-        )
+        parsed: object = parse_yaml(path.read_text(encoding="utf-8"))
     except OSError, yaml.YAMLError:
         return False
     return any(
