@@ -6,6 +6,7 @@ from pathlib import Path, PurePosixPath
 from typing import Final, TypedDict, TypeGuard
 
 from sarj_standards._meta import CONFIGS_DIR
+from sarj_standards.libs.json_boundary import parse_json
 
 
 SCHEMA_VERSION: Final = 1
@@ -96,7 +97,7 @@ def _relative_repository_path(value: str, *, field: str, index: int) -> str:
 
 def load(path: Path = RULE_INVENTORY_PATH) -> RuleInventory:
     try:
-        payload: object = json.loads(path.read_text(encoding="utf-8"))  # pyright: ignore[reportAny]
+        payload: object = parse_json(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         msg = f"cannot load shipped rule inventory {path}: {exc}"
         raise ValueError(msg) from exc

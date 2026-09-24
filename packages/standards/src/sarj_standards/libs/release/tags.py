@@ -12,6 +12,7 @@ import tomllib
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Final, Literal
 
+from sarj_standards.libs.json_boundary import parse_json
 from sarj_standards.libs.release._values import is_object_dict, string_object_dict
 from sarj_standards.libs.release.process import ProcessFailureError, ProcessRunner, run_process
 
@@ -164,7 +165,7 @@ def read_manifest_version_text(contents: str, manifest_format: ManifestFormat, *
 
 def _read_manifest_text(contents: str, manifest_format: ManifestFormat) -> dict[str, object]:
     if manifest_format == "json":
-        untyped: object = json.loads(contents)  # pyright: ignore[reportAny]
+        untyped: object = parse_json(contents)
         return string_object_dict(untyped, label="release manifest")
     untyped_toml: object = tomllib.loads(contents)
     return string_object_dict(untyped_toml, label="release manifest")

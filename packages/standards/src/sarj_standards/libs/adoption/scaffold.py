@@ -16,6 +16,7 @@ from repo_standards.core.parser import parse_manifest_bytes
 import yaml
 
 from sarj_standards.libs.filesystem import is_link_like
+from sarj_standards.libs.json_boundary import parse_json
 from sarj_standards.libs.yaml_boundary import parse_yaml
 
 from . import hooks, launcher, manifest, packagemanager, uvtool
@@ -1415,9 +1416,7 @@ def _extend_ruff_replacement_policy(text: str) -> str:
 
 def _json_object(path: Path) -> _JsonObjectResult:
     try:
-        parsed: object = json.loads(  # pyright: ignore[reportAny] -- untyped stdlib boundary
-            path.read_text(encoding="utf-8")
-        )
+        parsed: object = parse_json(path.read_text(encoding="utf-8"))
     except (OSError, ValueError) as exc:
         return _JsonObjectResult(None, str(exc))
     if not isinstance(parsed, dict):
@@ -1618,7 +1617,7 @@ def _merged_pnpm_workspace(text: str, entries: Mapping[str, object]) -> str:
 
 
 def _merged_npm_overrides(text: str, overrides: Overrides | None, *, client: PackageManager) -> str | None:
-    parsed: object = json.loads(text)  # pyright: ignore[reportAny] -- untyped stdlib boundary
+    parsed: object = parse_json(text)
     data = manifest.as_table(parsed)
     if not data:
         msg = "package.json must contain a non-empty JSON object"

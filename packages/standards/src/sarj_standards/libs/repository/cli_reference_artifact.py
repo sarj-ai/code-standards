@@ -9,6 +9,7 @@ from typer.core import TyperArgument, TyperCommand, TyperGroup, TyperOption
 from typer.main import get_command
 
 from sarj_standards._meta import CONFIGS_DIR, __version__
+from sarj_standards.libs.json_boundary import parse_json
 
 
 if TYPE_CHECKING:
@@ -174,7 +175,7 @@ def _is_launcher(value: object) -> TypeGuard[ReferenceLauncher]:
 
 def load(path: Path = CLI_REFERENCE_PATH) -> CliReference:
     try:
-        payload: object = json.loads(path.read_text(encoding="utf-8"))  # pyright: ignore[reportAny]
+        payload: object = parse_json(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         msg = f"cannot load shipped CLI reference {path}: {exc}"
         raise ValueError(msg) from exc

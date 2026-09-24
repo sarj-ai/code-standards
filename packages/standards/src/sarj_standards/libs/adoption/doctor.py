@@ -20,6 +20,7 @@ from repo_standards.core.parser import load_manifest as load_repository_manifest
 
 from sarj_standards._meta import CONFIGS_DIR
 from sarj_standards.libs.filesystem import is_link_like
+from sarj_standards.libs.json_boundary import parse_json
 from sarj_standards.libs.repository import hooks as repository_hooks, ledger
 
 from . import hooks, launcher, manifest, packagemanager, retired_suppressions, scaffold
@@ -1334,7 +1335,7 @@ def _local_eslint_plugin_matches(root: Path, manifest_path: Path, pinned: str, f
     if not candidate.is_relative_to(repository):
         return False
     try:
-        raw: object = json.loads((candidate / "package.json").read_text(encoding="utf-8"))  # pyright: ignore[reportAny]
+        raw: object = parse_json((candidate / "package.json").read_text(encoding="utf-8"))
     except OSError, json.JSONDecodeError:
         return False
     return _is_object_table(raw) and raw.get("name") == _ESLINT_PLUGIN and raw.get("version") == floor
@@ -1660,7 +1661,7 @@ def _check_eslint_peer_set(root: Path, typescript_root: Path) -> Iterator[Findin
         )
         return
     try:
-        parsed: object = json.loads(_read(package_json))  # pyright: ignore[reportAny] -- untyped stdlib boundary
+        parsed: object = parse_json(_read(package_json))
     except json.JSONDecodeError as exc:
         yield Finding(
             Level.DRIFT,
@@ -1765,7 +1766,7 @@ def _is_exact_pin(pinned: str, expected: str) -> bool:
 
 
 def _package_json_pin_text(text: str) -> str | None:
-    parsed: object = json.loads(text)  # pyright: ignore[reportAny] — json.loads is an untyped stdlib boundary; the shape is narrowed below
+    parsed: object = parse_json(text)
     package_json = manifest.as_table(parsed)
     for field in ("dependencies", "devDependencies"):
         pinned = manifest.as_table(package_json.get(field)).get(_ESLINT_PLUGIN)

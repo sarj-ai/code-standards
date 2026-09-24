@@ -16,6 +16,7 @@ from typing import Final
 import yaml
 
 from sarj_standards.libs.adoption.manifest import as_table, list_field, table_field, text_field
+from sarj_standards.libs.json_boundary import parse_json
 from sarj_standards.libs.yaml_boundary import parse_yaml
 
 
@@ -427,7 +428,7 @@ def _reference_version(path: Path, reference: VersionReference) -> str | None:
         msg = f"unknown version reference format: {reference.format}"
         raise ValueError(msg)
     try:
-        document: object = json.loads(path.read_text(encoding="utf-8"))  # pyright: ignore[reportAny]
+        document: object = parse_json(path.read_text(encoding="utf-8"))
     except OSError, json.JSONDecodeError:
         return None
     value = document
@@ -530,7 +531,7 @@ def _is_full_checkout(step: Mapping[str, object]) -> bool:
 def _manifest_version(path: Path) -> str | None:
     if path.suffix == ".json":
         try:
-            value: object = json.loads(path.read_text(encoding="utf-8"))  # pyright: ignore[reportAny]
+            value: object = parse_json(path.read_text(encoding="utf-8"))
         except OSError, json.JSONDecodeError:
             return None
         return text_field(as_table(value), "version")

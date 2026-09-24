@@ -22,6 +22,7 @@ from yaml.nodes import MappingNode, Node, ScalarNode, SequenceNode
 from yaml.tokens import ScalarToken
 
 from sarj_standards.libs.adoption.manifest import as_table, list_field, table_field
+from sarj_standards.libs.json_boundary import parse_json
 from sarj_standards.libs.rules.contracts import (
     AutofixPolicy,
     DefaultLevel,
@@ -1505,7 +1506,7 @@ def _structured_config_document(suffix: str, source: str) -> object | None:
             payload = _strip_jsonc_comments(source) if suffix == ".jsonc" else source
             if suffix == ".jsonc":
                 payload = re.sub(r",(?=\s*[}\]])", "", payload)
-            return json.loads(payload)  # pyright: ignore[reportAny]
+            return parse_json(payload)
         if suffix == ".toml":
             return tomllib.loads(source)
     except json.JSONDecodeError, tomllib.TOMLDecodeError:

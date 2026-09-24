@@ -9,6 +9,7 @@ import re
 from typing import TYPE_CHECKING, Final, NamedTuple, Protocol, TypeIs
 
 from sarj_standards.libs.adoption.manifest import as_table, list_field
+from sarj_standards.libs.json_boundary import parse_json
 from sarj_standards.libs.linting import textlint
 
 from . import ledger, repository
@@ -169,7 +170,7 @@ def repository_table(value: object) -> dict[str, object]:
 
 
 def _load_ledger(path: Path) -> dict[str, object]:
-    value: object = json.loads(path.read_text(encoding="utf-8"))  # pyright: ignore[reportAny]
+    value: object = parse_json(path.read_text(encoding="utf-8"))
     return repository_table(value)
 
 

@@ -30,6 +30,7 @@ from sarj_standards.libs.adoption import (
     scaffold as adoption_scaffold,
     uvtool as adoption_uvtool,
 )
+from sarj_standards.libs.json_boundary import parse_json
 from sarj_standards.libs.release import retirement
 from sarj_standards.libs.repository import ledger as rule_ledger, rule_catalog_artifact
 from sarj_standards.libs.yaml_boundary import parse_yaml
@@ -335,7 +336,7 @@ def stdout(result: subprocess.CompletedProcess[str]) -> str:
 def json_result(result: subprocess.CompletedProcess[str]) -> object:
     rendered = stdout(result)
     try:
-        parsed: object = json.loads(rendered or "null")  # pyright: ignore[reportAny]
+        parsed: object = parse_json(rendered or "null")
     except json.JSONDecodeError as exc:
         msg = f"command returned invalid JSON: {rendered[:200]}"
         raise RolloutError(msg) from exc
@@ -953,7 +954,7 @@ def _declared_corepack_manager(repo: Path) -> str | None:
         if any(part in {"node_modules", ".git"} for part in manifest.parts):
             continue
         try:
-            parsed: object = json.loads(manifest.read_text(encoding="utf-8"))  # pyright: ignore[reportAny]
+            parsed: object = parse_json(manifest.read_text(encoding="utf-8"))
         except OSError, json.JSONDecodeError:
             continue
         if not is_object(parsed):
@@ -1102,7 +1103,7 @@ def react_doctor_policy_snapshot(repo: Path) -> ReactDoctorPolicy:
     package_pin: str | None = None
     if package_path.is_file():
         try:
-            parsed: object = json.loads(package_path.read_text(encoding="utf-8"))  # pyright: ignore[reportAny]
+            parsed: object = parse_json(package_path.read_text(encoding="utf-8"))
         except OSError, ValueError:
             parsed = None
         if is_object(parsed):
