@@ -5,6 +5,8 @@
 
 import { AST_NODE_TYPES, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
 
+import { forEachOwnAstChild } from "./_for-each-own-ast-child.js";
+
 /** Mask SQL values and comments without changing text or line lengths. */
 export function stripSqlNoise(text: string): string {
   return scanSqlNoise(text);
@@ -162,17 +164,7 @@ function isJoinedFragmentArray(node: TSESTree.ArrayExpression): boolean {
 /** Every string-bearing descendant that a composite node has already absorbed. */
 function markConsumed(node: TSESTree.Node, consumed: WeakSet<TSESTree.Node>): void {
   consumed.add(node);
-  for (const key of Object.keys(node)) {
-    if (key === "parent") {
-      continue;
-    }
-    const value = (node as unknown as Record<string, unknown>)[key];
-    for (const child of Array.isArray(value) ? value : [value]) {
-      if (child !== null && typeof child === "object" && "type" in child) {
-        markConsumed(child as TSESTree.Node, consumed);
-      }
-    }
-  }
+  forEachOwnAstChild(node, child => markConsumed(child, consumed));
 }
 
 /** Hand each whole, statically resolvable SQL statement to `handler` once. */

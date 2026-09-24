@@ -6,6 +6,7 @@
 
 import { type TSESTree, AST_NODE_TYPES } from "@typescript-eslint/utils";
 
+import { forEachOwnAstChild } from "./_for-each-own-ast-child.js";
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile } from "./_paths.js";
 
@@ -94,14 +95,6 @@ const PURE_CONSTRUCTORS: ReadonlySet<string> = new Set([
   "TransformStream", "Response", "AbortController",
 ]);
 
-function isNode(value: unknown): value is TSESTree.Node {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    typeof (value as { type?: unknown }).type === "string"
-  );
-}
-
 /** A call whose value is a known pure, non-throwing helper. */
 function isPureCall(node: TSESTree.CallExpression): boolean {
   const callee = node.callee;
@@ -168,31 +161,8 @@ function subtreeMatches(
       found = true;
       return;
     }
-    for (const key of Object.keys(current)) {
-      if (key === "parent") {
-        continue;
-      }
-      if (
-        !descendIntoFunctions &&
-        NESTED_FUNCTION_TYPES.has(current.type) &&
-        key === "body"
-      ) {
-        continue;
-      }
-      const value = (current as unknown as Record<string, unknown>)[key];
-      if (Array.isArray(value)) {
-        for (const child of value) {
-          if (isNode(child)) {
-            visit(child);
-          }
-        }
-      } else if (isNode(value)) {
-        visit(value);
-      }
-      if (found) {
-        return;
-      }
-    }
+    forEachOwnAstChild(current, visit, key =>
+      descendIntoFunctions || !NESTED_FUNCTION_TYPES.has(current.type) || key !== "body");
   };
 
   visit(stmt);

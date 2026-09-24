@@ -5,6 +5,7 @@
 
 import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
 
+import { forEachOwnAstChild } from "./_for-each-own-ast-child.js";
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile, isTestFile } from "./_paths.js";
 
@@ -86,17 +87,8 @@ function nearestFunction(node: TSESTree.Node): TSESTree.Node | null {
 
 function walkOwnScope(node: TSESTree.Node, predicate: (current: TSESTree.Node) => boolean): boolean {
   if (predicate(node)) return true;
-  for (const key of Object.keys(node)) {
-    if (key === "parent") continue;
-    const value = (node as unknown as Record<string, unknown>)[key];
-    for (const child of Array.isArray(value) ? value : [value]) {
-      if (typeof child === "object" && child !== null && typeof (child as { type?: unknown }).type === "string") {
-        const childNode = child as TSESTree.Node;
-        if (!FUNCTION_TYPES.has(childNode.type) && walkOwnScope(childNode, predicate)) return true;
-      }
-    }
-  }
-  return false;
+  return forEachOwnAstChild(node, child =>
+    !FUNCTION_TYPES.has(child.type) && walkOwnScope(child, predicate));
 }
 
 function isAssertion(node: TSESTree.Node, context: Context): boolean {
