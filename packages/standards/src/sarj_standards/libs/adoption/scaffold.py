@@ -16,10 +16,10 @@ from repo_standards.core.parser import parse_manifest_bytes
 import yaml
 
 from sarj_standards.libs.filesystem import is_link_like
+from sarj_standards.libs.yaml_boundary import parse_yaml
 
 from . import hooks, launcher, manifest, packagemanager, uvtool
 from .packagemanager import LOCKFILES, Overrides, PackageManager, YarnVariant
-from .yaml_boundary import parse_yaml
 
 
 if TYPE_CHECKING:

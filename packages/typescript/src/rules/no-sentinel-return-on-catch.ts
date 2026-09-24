@@ -106,7 +106,9 @@ function isSentinelArgument(arg: TSESTree.Expression | null): boolean {
   return false;
 }
 
-function isFunctionNode(node: TSESTree.Node): boolean {
+function isFunctionNode(
+  node: TSESTree.Node,
+): node is TSESTree.FunctionDeclaration | TSESTree.FunctionExpression | TSESTree.ArrowFunctionExpression {
   return (
     node.type === AST_NODE_TYPES.FunctionDeclaration ||
     node.type === AST_NODE_TYPES.FunctionExpression ||
@@ -190,7 +192,7 @@ function subtreeReadsName(node: TSESTree.Node, name: string): boolean {
   /** Whether this function rebinds `name`. */
   const shadowsName = (fn: TSESTree.Node): boolean =>
     isFunctionNode(fn) &&
-    (fn as unknown as { params: TSESTree.Parameter[] }).params.some((param) =>
+    fn.params.some((param) =>
       bindsName(param, name),
     );
 
