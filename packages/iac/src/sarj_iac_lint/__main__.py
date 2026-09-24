@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Annotated
 import typer
 
 from sarj_iac_lint import __version__
+from sarj_iac_lint.json_boundary import is_object_mapping, parse_json
 from sarj_iac_lint.rule_base import Diagnostic, is_suppressed
 from sarj_iac_lint.rules import REGISTRY
 
@@ -104,18 +105,16 @@ def baseline_counts(diags: list[Diagnostic], *, root: Path | None = None) -> dic
 
 
 def read_baseline(path: Path) -> dict[str, dict[str, int]]:
-    raw: object = json.loads(  # pyright: ignore[reportAny] — json.loads is an untyped stdlib boundary; the shape is narrowed below
-        path.read_text(encoding="utf-8")
-    )
-    if not isinstance(raw, dict):
+    raw = parse_json(path.read_text(encoding="utf-8"))
+    if not is_object_mapping(raw):
         return {}
     counts: dict[str, dict[str, int]] = {}
-    for file_key, per_code in raw.items():  # pyright: ignore[reportUnknownVariableType] — json leaves are Any; narrowed below
-        if not isinstance(file_key, str) or not isinstance(per_code, dict):
+    for file_key, per_code in raw.items():
+        if not isinstance(file_key, str) or not is_object_mapping(per_code):
             continue
         counts[file_key] = {
             code: n
-            for code, n in per_code.items()  # pyright: ignore[reportUnknownVariableType] — same
+            for code, n in per_code.items()
             if isinstance(code, str) and isinstance(n, int) and not isinstance(n, bool)
         }
     return counts

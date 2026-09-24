@@ -9,6 +9,8 @@ import tokenize
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Final, NamedTuple, TypeGuard
 
+from sarj_python_lint.json_boundary import is_object_mapping, parse_json
+
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator, Mapping
@@ -216,9 +218,7 @@ def seed(measurement: Measurement, baseline: Baseline) -> Baseline:
 
 
 def load_baseline(path: Path) -> Baseline:
-    raw: object = json.loads(  # pyright: ignore[reportAny] — json.loads is an untyped stdlib boundary; every read below narrows
-        path.read_text(encoding="utf-8")
-    )
+    raw = parse_json(path.read_text(encoding="utf-8"))
     schema = _get(raw, "schema_version")
     if schema is not None and schema != BASELINE_SCHEMA_VERSION:
         msg = f"unsupported suppression baseline schema_version: {schema!r}"
@@ -238,9 +238,9 @@ def load_baseline(path: Path) -> Baseline:
 
 
 def _get(mapping: object, key: str) -> object:
-    if not isinstance(mapping, dict):
+    if not is_object_mapping(mapping):
         return None
-    return mapping.get(key)  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType] — json leaves are Any
+    return mapping.get(key)
 
 
 def dump_baseline(baseline: Baseline, packages: Iterable[str]) -> str:
@@ -308,10 +308,7 @@ def _is_object_list(value: object) -> TypeGuard[list[object]]:
 
 
 def _is_string_object_mapping(value: object) -> TypeGuard[dict[str, object]]:
-    return isinstance(value, dict) and all(
-        isinstance(key, str)
-        for key in value  # pyright: ignore[reportUnknownVariableType] — runtime validation narrows untyped JSON keys.
-    )
+    return is_object_mapping(value) and all(isinstance(key, str) for key in value)
 
 
 def _normalized_subtree(value: str) -> str:

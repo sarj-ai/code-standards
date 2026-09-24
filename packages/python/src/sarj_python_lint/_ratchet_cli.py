@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-import json
 from pathlib import Path
 import subprocess  # ruff: ignore[suspicious-subprocess-import] -- fixed local Ruff introspection only
 import sys
@@ -11,6 +10,7 @@ import typer
 
 from sarj_python_lint._filesystem import atomic_write_text
 from sarj_python_lint._version import __version__
+from sarj_python_lint.json_boundary import parse_json
 from sarj_python_lint.ratchet import (
     DEFAULT_PER_FILE_CEILING,
     Baseline,
@@ -142,7 +142,7 @@ def _ruff_selector_aliases() -> dict[str, str]:
         encoding="utf-8",
         text=True,
     )
-    raw: object = json.loads(completed.stdout)  # pyright: ignore[reportAny] -- validated below
+    raw = parse_json(completed.stdout)
     if not _is_object_list(raw):
         msg = "Ruff rule catalog was not a JSON list"
         raise TypeError(msg)
