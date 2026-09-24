@@ -2570,7 +2570,7 @@ def test_show_ci_renders_a_complete_versioned_workflow(tmp_path: Path, ecosystem
     assert isinstance(parsed, dict)
     assert "permissions:\n  contents: read" in rendered.stdout
     assert "actions/checkout@v7" in rendered.stdout
-    assert "astral-sh/setup-uv@v10.0.1" in rendered.stdout
+    assert "astral-sh/setup-uv@v10.2.0" in rendered.stdout
     uv_config = manifest.as_table(tomllib.loads((REPO_ROOT / "uv.toml").read_text(encoding="utf-8")))
     uv_required = manifest.text_field(uv_config, "required-version")
     assert uv_required is not None
@@ -3062,7 +3062,7 @@ def test_setup_adopts_mobile_configs_and_staged_hook_only_for_configured_project
         assert "runs-on: macos-15" in workflow
     else:
         assert "runs-on: ubuntu-latest" in workflow
-        assert "actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961" in workflow
+        assert "actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6" in workflow
         assert "distribution: temurin" in workflow
         assert "java-version: '21'" in workflow
 

@@ -167,7 +167,7 @@ def test_release_tags_dispatches_rollout_from_the_immutable_release_tag() -> Non
     assert len(steps) == 2
     harden = steps[0]
     assert _is_object(harden)
-    assert harden.get("uses") == "step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c"
+    assert harden.get("uses") == "step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1"
     step = steps[1]
     assert _is_object(step)
     command = step.get("run")

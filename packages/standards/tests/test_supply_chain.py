@@ -18,8 +18,8 @@ def test_every_setup_uv_step_pins_the_uv_binary() -> None:
         text = workflow.read_text(encoding="utf-8")
         for match in re.finditer(r"(?m)^\s*- uses: astral-sh/setup-uv@[^\n]+$", text):
             following = text[match.end() :].split("\n      - ", 1)[0]
-            if "version: '0.12.13'" not in following:
-                violations.append(f"setup-uv does not pin uv 0.12.13 in {workflow}")
+            if "version: '0.12.18'" not in following:
+                violations.append(f"setup-uv does not pin uv 0.12.18 in {workflow}")
     assert violations == []
 
 
@@ -252,7 +252,7 @@ def test_npm_release_disables_install_scripts_and_keeps_publishers_dependency_fr
         "npm ci --ignore-scripts --no-audit --no-fund" in typescript_ci
     )
     assert (
-        release.count("npm install --global npm@12.0.2 --ignore-scripts") == 2
+        release.count("npm install --global npm@12.1.0 --ignore-scripts") == 2
     )  # sarj-noqa: SARJ402 -- workflow text is the publishing-policy contract
 
     def assert_dependency_free(job: str) -> None:

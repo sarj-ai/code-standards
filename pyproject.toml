@@ -1,6 +1,6 @@
 [project]
 name = "sarj-python-lint"
-version = "0.87.7"
+version = "0.87.8"
 description = "Custom Python lint rules — AST-based, pre-commit-friendly, hypermodern defaults"
 readme = "packages/python/README.md"
 authors = [{ name = "sarj-ai" }]
@@ -14,7 +14,7 @@ classifiers = [
   "Programming Language :: Python :: 3.14",
   "Topic :: Software Development :: Quality Assurance",
 ]
-dependencies = ["packaging==26.3", "sqlglot==30.18.0", "typer==0.27.2"]
+dependencies = ["packaging==26.3", "sqlglot==30.19.0", "typer==0.27.2"]
 
 [tool.ruff]
 extend = ".ruff-strict.toml"
@@ -29,7 +29,7 @@ Repository = "https://github.com/sarj-ai/code-standards"
 Issues = "https://github.com/sarj-ai/code-standards/issues"
 
 [build-system]
-requires = ["hatchling==1.32.0"]
+requires = ["hatchling==1.32.4"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
