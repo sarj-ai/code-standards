@@ -40,6 +40,7 @@ from sarj_standards.libs.diagnostics import (
     ToolReport,
     TrustMode,
 )
+from sarj_standards.libs.yaml_boundary import parse_yaml
 
 from . import mobile_tools
 from .runner import GroupedPaths, group_paths
@@ -702,7 +703,7 @@ def _mobsfscan_argv(rules: Path, *, config: Path | None) -> tuple[str, ...]:
     )
     if config is None:
         return (*argv, "--severity", "WARNING", "--severity", "ERROR")
-    raw = _YAML_OBJECT_ADAPTER.validate_python(yaml.safe_load(_read_mobile_config(config)))
+    raw = _YAML_OBJECT_ADAPTER.validate_python(parse_yaml(_read_mobile_config(config)))
     entries = _array(raw, "mobsfscan config")
     if len(entries) != 1:
         msg = "mobsfscan config must contain exactly one mapping"

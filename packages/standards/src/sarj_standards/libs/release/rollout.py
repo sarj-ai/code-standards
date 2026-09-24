@@ -32,6 +32,7 @@ from sarj_standards.libs.adoption import (
 )
 from sarj_standards.libs.release import retirement
 from sarj_standards.libs.repository import ledger as rule_ledger, rule_catalog_artifact
+from sarj_standards.libs.yaml_boundary import parse_yaml
 
 
 if TYPE_CHECKING:
@@ -839,7 +840,7 @@ def declared_workflow_tools(repo: Path) -> tuple[str, ...]:
     workflow_root = repo / ".github/workflows"
     for path in sorted((*workflow_root.glob("*.yml"), *workflow_root.glob("*.yaml"))):
         try:
-            parsed: object = yaml.safe_load(path.read_text(encoding="utf-8"))  # pyright: ignore[reportAny]
+            parsed: object = parse_yaml(path.read_text(encoding="utf-8"))
         except (OSError, yaml.YAMLError) as exc:
             msg = f"could not read consumer workflow tool declarations from {path}: {exc}"
             raise RolloutError(msg) from exc

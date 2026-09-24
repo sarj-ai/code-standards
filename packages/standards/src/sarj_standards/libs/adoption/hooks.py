@@ -10,8 +10,9 @@ import yaml
 from yaml.constructor import ConstructorError
 from yaml.resolver import BaseResolver
 
+from sarj_standards.libs.yaml_boundary import parse_yaml
+
 from . import launcher, manifest
-from .yaml_boundary import parse_yaml
 
 
 if TYPE_CHECKING:

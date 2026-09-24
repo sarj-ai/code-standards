@@ -16,6 +16,7 @@ from typing import Final
 import yaml
 
 from sarj_standards.libs.adoption.manifest import as_table, list_field, table_field, text_field
+from sarj_standards.libs.yaml_boundary import parse_yaml
 
 
 _CONFLICT_RE: Final = re.compile(r"^(?:<<<<<<< |>>>>>>> |\|\|\|\|\|\|\| )", re.MULTILINE)
@@ -349,7 +350,7 @@ def check_ci_history(root: Path) -> list[Finding]:
     findings: list[Finding] = []
     for path in sorted((root / ".github/workflows").glob("*.yml")):
         try:
-            document: object = yaml.safe_load(path.read_text(encoding="utf-8"))  # pyright: ignore[reportAny]
+            document: object = parse_yaml(path.read_text(encoding="utf-8"))
         except (OSError, yaml.YAMLError) as exc:
             findings.append(Finding("ci-history", str(path.relative_to(root)), f"invalid workflow YAML: {exc}"))
             continue
