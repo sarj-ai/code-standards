@@ -58,7 +58,7 @@ def _adopt(repository: Path) -> Path:
     manifest = repository / ".repo-standards" / "repository.toml"
     manifest.parent.mkdir()
     manifest.write_text(
-        'schema_version = 6\nrepository_id = "fixture"\ncomponents = []\n',
+        'repository_id = "fixture"\ncomponents = []\n',
         encoding="utf-8",
     )
     return manifest
@@ -106,7 +106,7 @@ def test_staged_manifest_deletion_cannot_be_hidden_by_worktree_recreation(tmp_pa
     subprocess.run(("git", "rm", str(manifest)), cwd=tmp_path, check=True, capture_output=True)
     manifest.parent.mkdir(exist_ok=True)
     manifest.write_text(
-        'schema_version = 6\nrepository_id = "unstaged"\ncomponents = []\n',
+        'repository_id = "unstaged"\ncomponents = []\n',
         encoding="utf-8",
     )
 
