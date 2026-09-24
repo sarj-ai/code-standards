@@ -6,6 +6,7 @@
 
 import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
 
+import { forEachOwnAstChild } from "./_for-each-own-ast-child.js";
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isTestFile } from "./_paths.js";
 
@@ -125,27 +126,8 @@ function walkOwnScope(node: TSESTree.Node, predicate: (current: TSESTree.Node) =
   if (predicate(node)) {
     return true;
   }
-  for (const key of Object.keys(node)) {
-    if (key === "parent") {
-      continue;
-    }
-    const value = (node as unknown as Record<string, unknown>)[key];
-    const children = Array.isArray(value) ? value : [value];
-    for (const child of children) {
-      if (
-        typeof child !== "object" ||
-        child === null ||
-        typeof (child as { type?: unknown }).type !== "string"
-      ) {
-        continue;
-      }
-      const childNode = child as TSESTree.Node;
-      if (!FUNCTION_TYPES.has(childNode.type) && walkOwnScope(childNode, predicate)) {
-        return true;
-      }
-    }
-  }
-  return false;
+  return forEachOwnAstChild(node, child =>
+    !FUNCTION_TYPES.has(child.type) && walkOwnScope(child, predicate));
 }
 
 function isAssertion(

@@ -6,6 +6,7 @@
 
 import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 
+import { forEachOwnAstChild } from "./_for-each-own-ast-child.js";
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile, isScriptFile, isStoryFile, isTestFile } from "./_paths.js";
 
@@ -288,15 +289,7 @@ const readConstructor = (
     }
 
     function enqueueChildren(current: TSESTree.Node): void {
-      for (const key of Object.keys(current) as (keyof TSESTree.Node)[]) {
-        if (key === "parent") continue;
-        const value = current[key];
-        for (const child of (Array.isArray(value) ? value : [value]) as unknown[]) {
-          if (child !== null && typeof child === "object" && typeof (child as { type?: unknown }).type === "string") {
-            pending.push(child as TSESTree.Node);
-          }
-        }
-      }
+      forEachOwnAstChild(current, child => { pending.push(child); });
 
     }
 
@@ -484,19 +477,10 @@ const subtreeHas = (root: TSESTree.Node, found: (node: TSESTree.Node) => boolean
       hit = true;
       return;
     }
-    for (const key of Object.keys(current) as (keyof TSESTree.Node)[]) {
-      if (key === "parent") continue;
-      const value = current[key];
-      for (const child of (Array.isArray(value) ? value : [value]) as unknown[]) {
-        if (
-          child !== null &&
-          typeof child === "object" &&
-          typeof (child as { type?: unknown }).type === "string"
-        ) {
-          visit(child as TSESTree.Node);
-        }
-      }
-    }
+    forEachOwnAstChild(current, child => {
+      visit(child);
+      return hit;
+    });
   };
   visit(root);
   return hit;
@@ -545,17 +529,7 @@ const behaviorallyInvokedFields = (body: TSESTree.ClassBody): ReadonlySet<string
       const field = invokedInstanceField(current);
       if (field !== null) invoked.add(field);
     }
-    for (const key of Object.keys(current) as (keyof TSESTree.Node)[]) {
-      if (key === "parent") continue;
-      const value = current[key];
-      for (const child of (Array.isArray(value) ? value : [value]) as unknown[]) {
-        if (
-          child !== null &&
-          typeof child === "object" &&
-          typeof (child as { type?: unknown }).type === "string"
-        ) visit(child as TSESTree.Node);
-      }
-    }
+    forEachOwnAstChild(current, visit);
   };
   for (const member of body.body) {
     if (member.type === AST_NODE_TYPES.StaticBlock || member.static) continue;

@@ -7,6 +7,7 @@
 import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
 import type { RuleContext, Scope } from "@typescript-eslint/utils/ts-eslint";
 
+import { forEachOwnAstChild } from "./_for-each-own-ast-child.js";
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile, isScriptFile, isTestFile } from "./_paths.js";
 
@@ -182,19 +183,10 @@ const isLocalFileRead = (node: TSESTree.Node | null | undefined): boolean => {
       found = true;
       return;
     }
-    for (const key of Object.keys(current) as (keyof TSESTree.Node)[]) {
-      if (key === "parent") continue;
-      const value = current[key];
-      for (const child of (Array.isArray(value) ? value : [value]) as unknown[]) {
-        if (
-          child !== null &&
-          typeof child === "object" &&
-          typeof (child as { type?: unknown }).type === "string"
-        ) {
-          visit(child as TSESTree.Node);
-        }
-      }
-    }
+    forEachOwnAstChild(current, child => {
+      visit(child);
+      return found;
+    });
   };
   visit(node);
   return found;
