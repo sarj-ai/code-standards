@@ -6,6 +6,7 @@
 import { AST_NODE_TYPES, ASTUtils, ESLintUtils, type TSESTree } from "@typescript-eslint/utils";
 import ts from "typescript";
 
+import { forEachAstChild } from "./_for-each-ast-child.js";
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile } from "./_paths.js";
 
@@ -90,13 +91,7 @@ export default createRule<[], "copy">({
             context.report({ node: current, messageId: "copy" });
           }
           if (current.type === AST_NODE_TYPES.CallExpression) inspectCall(current);
-          for (const key of context.sourceCode.visitorKeys[current.type] ?? []) {
-            // ESLint visitor keys contain only AST children, never parent links.
-            const child = (current as unknown as Record<string, unknown>)[key];
-            if (Array.isArray(child)) {
-              for (const item of child) if (item !== null && typeof item === "object" && "type" in item) inspect(item as TSESTree.Node);
-            } else if (child !== null && typeof child === "object" && "type" in child) inspect(child as TSESTree.Node);
-          }
+          forEachAstChild(current, context.sourceCode.visitorKeys, inspect);
         };
         inspect(callback.body);
       },

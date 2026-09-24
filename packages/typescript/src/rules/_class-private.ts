@@ -10,6 +10,8 @@ import {
 } from "@typescript-eslint/utils";
 import type * as ts from "typescript";
 
+import { forEachAstChild } from "./_for-each-ast-child.js";
+
 export type PrivateConvertibleMember =
   | TSESTree.MethodDefinition
   | TSESTree.PropertyDefinition
@@ -151,18 +153,7 @@ function walk(
   visit: (current: TSESTree.Node) => void,
 ): void {
   visit(node);
-  for (const key of visitorKeys[node.type] ?? []) {
-    const child = (node as unknown as Record<string, unknown>)[key];
-    if (Array.isArray(child)) {
-      for (const item of child) {
-        if (typeof item === "object" && item !== null && "type" in item) {
-          walk(item as TSESTree.Node, visitorKeys, visit);
-        }
-      }
-    } else if (typeof child === "object" && child !== null && "type" in child) {
-      walk(child as TSESTree.Node, visitorKeys, visit);
-    }
-  }
+  forEachAstChild(node, visitorKeys, child => walk(child, visitorKeys, visit));
 }
 
 export function convertibleMemberName(member: TSESTree.ClassElement): string | null {

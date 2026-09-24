@@ -6,6 +6,7 @@
 
 import { AST_NODE_TYPES, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
 
+import { forEachAstChild } from "./_for-each-ast-child.js";
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile } from "./_paths.js";
 
@@ -141,15 +142,7 @@ export function functionComplexity(
     visitChildren(node, nesting);
   }
   function visitChildren(node: TSESTree.Node, nesting: number): void {
-    for (const key of visitorKeys[node.type] ?? []) {
-      const value: unknown = (node as unknown as Record<string, unknown>)[key];
-      const candidates: readonly unknown[] = Array.isArray(value) ? value : [value];
-      for (const candidate of candidates) {
-        if (typeof candidate === "object" && candidate !== null && "type" in candidate) {
-          visit(candidate as TSESTree.Node, nesting);
-        }
-      }
-    }
+    forEachAstChild(node, visitorKeys, child => visit(child, nesting));
   }
   visit(fn.body, 0);
   return points;
