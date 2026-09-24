@@ -2246,7 +2246,7 @@ def github_ci_workflow(root: Path, *, ecosystems: Ecosystems | None = None) -> s
     if ecosystems.kotlin:
         lines.extend(
             (
-                "      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5",
+                "      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1",
                 "        with:",
                 "          distribution: temurin",
                 "          java-version: '21'",
@@ -2254,7 +2254,7 @@ def github_ci_workflow(root: Path, *, ecosystems: Ecosystems | None = None) -> s
         )
     lines.extend(
         (
-            "      - uses: astral-sh/setup-uv@v10.0.1",
+            "      - uses: astral-sh/setup-uv@v10.2.0",
             "        with:",
             _setup_uv_version(root, ecosystems.python_root),
             "          enable-cache: true",
@@ -2347,7 +2347,7 @@ def _append_javascript_ci(lines: list[str], root: Path, ecosystems: Ecosystems, 
 def _setup_uv_version(root: Path, python_root: Path | None) -> str:
     source = uvtool.version_file(python_root)
     if source is None:
-        return "          version: '0.12.13'"
+        return "          version: '0.12.18'"
     return f"          version-file: {json.dumps(source.relative_to(root).as_posix())}"
 
 
@@ -2489,7 +2489,7 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: Harden the runner
-        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
+        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
         with:
           egress-policy: audit
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7

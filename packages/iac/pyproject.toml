@@ -1,6 +1,6 @@
 [project]
 name = "sarj-iac-lint"
-version = "0.15.12"
+version = "0.15.13"
 description = "Custom Terraform / IaC lint rules, pre-commit-friendly."
 readme = "README.md"
 authors = [{ name = "sarj-ai" }]
@@ -35,7 +35,7 @@ dev = [
 ]
 
 [build-system]
-requires = ["hatchling==1.32.0"]
+requires = ["hatchling==1.32.4"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]

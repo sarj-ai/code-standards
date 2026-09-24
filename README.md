@@ -16,7 +16,7 @@ The canonical staged check includes semantic lint and repository policy; do not 
 
 ## Contributing
 
-Install uv 0.12.13, Python 3.14, Node 24.19, and GNU Make. Then bootstrap a fresh checkout:
+Install uv 0.12.18, Python 3.14, Node 24.21, and GNU Make. Then bootstrap a fresh checkout:
 
 ```bash
 make setup

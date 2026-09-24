@@ -251,8 +251,8 @@ def test_ci_yaml_quotes_a_nested_install_root_with_shell_metacharacters(tmp_path
 @pytest.mark.parametrize(
     "declaration",
     [
-        pytest.param("npm@12.0.2", id="version"),
-        pytest.param("npm@12.0.2+sha512.abcdef", id="version-with-integrity"),
+        pytest.param("npm@12.1.0", id="version"),
+        pytest.param("npm@12.1.0+sha512.abcdef", id="version-with-integrity"),
     ],
 )
 def test_ci_activates_the_exact_declared_npm_version(tmp_path: Path, declaration: str) -> None:
@@ -260,7 +260,7 @@ def test_ci_activates_the_exact_declared_npm_version(tmp_path: Path, declaration
 
     workflow = scaffold.github_ci_workflow(tmp_path)
 
-    activation = "run: npm install --global npm@12.0.2 --ignore-scripts"
+    activation = "run: npm install --global npm@12.1.0 --ignore-scripts"
     assert activation in workflow
     assert workflow.index(activation) < workflow.index("run: npm ci")
 

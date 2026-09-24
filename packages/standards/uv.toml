@@ -1,4 +1,4 @@
-required-version = "==0.12.13"
+required-version = "==0.12.18"
 exclude-newer = "0 days"
 index-strategy = "first-index"
 preview-features = ["malware-check"]

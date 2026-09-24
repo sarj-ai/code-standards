@@ -1,6 +1,6 @@
 [project]
 name = "sarj-sql-lint"
-version = "0.17.6"
+version = "0.17.7"
 description = "Deterministic PostgreSQL migration rules for safe, repeatable schema changes."
 readme = "README.md"
 authors = [{ name = "sarj-ai" }]
@@ -36,7 +36,7 @@ dev = [
 ]
 
 [build-system]
-requires = ["hatchling==1.32.0"]
+requires = ["hatchling==1.32.4"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
