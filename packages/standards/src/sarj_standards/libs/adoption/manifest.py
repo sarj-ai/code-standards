@@ -13,6 +13,7 @@ from packaging.version import InvalidVersion, Version
 
 from sarj_standards._meta import CONFIGS_DIR, __version__
 from sarj_standards.libs.json_boundary import parse_json
+from sarj_standards.libs.typed_containers import is_object_list, is_object_mapping
 
 
 if TYPE_CHECKING:
@@ -189,14 +190,9 @@ class Manifest:
 
 
 def as_table(value: object) -> dict[str, object]:
-    if not isinstance(value, dict):
+    if not is_object_mapping(value):
         return {}
-    # Centralize untyped-parser narrowing so downstream tables stay typed.
-    entries: dict[str, object] = {}
-    for key, item in value.items():  # pyright: ignore[reportUnknownVariableType]
-        if isinstance(key, str):
-            entries[key] = item  # ruff: ignore[manual-dict-comprehension] - pyright needs narrowing
-    return entries
+    return {key: item for key, item in value.items() if isinstance(key, str)}
 
 
 def text_field(table: Mapping[str, object], key: str) -> str | None:
@@ -206,7 +202,7 @@ def text_field(table: Mapping[str, object], key: str) -> str | None:
 
 def list_field(table: Mapping[str, object], key: str) -> list[object]:
     value = table.get(key)
-    return value if isinstance(value, list) else []  # pyright: ignore[reportUnknownVariableType] — a narrowed `list` from an untyped parser has Unknown leaves
+    return value if is_object_list(value) else []
 
 
 def table_field(table: Mapping[str, object], key: str) -> dict[str, object]:
@@ -362,10 +358,10 @@ def _manifest_table(data: Mapping[str, object], key: str) -> dict[str, object]:
     value = data.get(key)
     if value is None:
         return {}
-    if not isinstance(value, dict):
+    if not is_object_mapping(value):
         msg = f"manifest [{key}] must be a table"
         raise TypeError(msg)
-    return as_table(value)  # pyright: ignore[reportUnknownArgumentType] -- runtime dict narrowed above; as_table validates keys
+    return as_table(value)
 
 
 def load_for_setup(root: Path) -> Manifest | None:

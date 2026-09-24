@@ -28,6 +28,7 @@ from sarj_standards.libs.rules import (
     RuleSelector,
     RuleSpec,
 )
+from sarj_standards.libs.typed_containers import is_object_list, is_object_mapping
 from sarj_standards.schemas import RULE_CATALOG
 
 
@@ -267,14 +268,11 @@ class _NativeSpec(Protocol):
 
 
 def _is_object(value: object) -> TypeGuard[dict[str, object]]:
-    return isinstance(value, dict) and all(
-        isinstance(key, str)
-        for key in value  # pyright: ignore[reportUnknownVariableType]
-    )
+    return is_object_mapping(value) and all(isinstance(key, str) for key in value)
 
 
 def _is_array(value: object) -> TypeGuard[list[object]]:
-    return isinstance(value, list)
+    return is_object_list(value)
 
 
 def _native_spec(native: _NativeSpec, *, engine: RuleEngine, languages: frozenset[Language]) -> RuleSpec:

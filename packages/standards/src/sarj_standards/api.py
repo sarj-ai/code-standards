@@ -64,6 +64,7 @@ from .libs.linting.library_policy import (
 from .libs.linting.policy import Policy
 from .libs.linting.runner import group_paths, run as check
 from .libs.rules import RuleEngine, RuleId, RuleSelection, RuleSelector
+from .libs.typed_containers import is_object_list, is_object_mapping
 
 
 if TYPE_CHECKING:
@@ -756,7 +757,7 @@ def _rule_selection(values: Sequence[str | RuleSelector] | None) -> RuleSelectio
     raw_rules = _object_list(catalog.get("rules"), "shipped rule catalog rules")
     live: set[RuleSelector] = set()
     for value in raw_rules:
-        key: object = value.get("key") if isinstance(value, dict) else None  # pyright: ignore[reportUnknownMemberType,reportUnknownVariableType]
+        key = value.get("key") if is_object_mapping(value) else None
         if isinstance(key, str):
             live.add(RuleSelector.parse(key))
     selected: set[RuleSelector] = set()
@@ -951,7 +952,7 @@ def _sync_target_changes(source: Path, destination: Path) -> bool:
 
 
 def _object_list(value: object, label: str) -> list[object]:
-    if not isinstance(value, list):
+    if not is_object_list(value):
         msg = f"{label} must be an array"
         raise TypeError(msg)
-    return value  # pyright: ignore[reportUnknownVariableType]
+    return value

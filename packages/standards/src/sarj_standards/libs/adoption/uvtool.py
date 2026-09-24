@@ -5,6 +5,8 @@ from typing import TYPE_CHECKING, Final
 
 from packaging.specifiers import InvalidSpecifier, SpecifierSet
 
+from sarj_standards.libs.typed_containers import is_object_mapping
+
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -45,9 +47,9 @@ def required_version(path: Path) -> str | None:
 
 
 def _table(value: object) -> dict[str, object]:
-    if not isinstance(value, dict):
+    if not is_object_mapping(value):
         return {}
-    return {key: item for key, item in value.items() if isinstance(key, str)}  # pyright: ignore[reportUnknownVariableType]
+    return {key: item for key, item in value.items() if isinstance(key, str)}
 
 
 def argv(project: Path, *arguments: str) -> tuple[str, ...]:

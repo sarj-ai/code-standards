@@ -36,6 +36,7 @@ from sarj_standards.libs.rules.contracts import (
     RuleId,
     RuleSpec,
 )
+from sarj_standards.libs.typed_containers import is_object_list, is_object_mapping
 from sarj_standards.libs.yaml_boundary import mapping_items, sequence_items
 
 
@@ -1554,19 +1555,14 @@ def _yaml_plan_address_allowlist_line(node: Node | None) -> int | None:
 
 
 def _contains_plan_address_allowlist_key(value: object) -> bool:
-    match value:
-        case dict():
-            mapping: dict[object, object] = value  # pyright: ignore[reportUnknownVariableType]
-            return any(
-                (isinstance(key, str) and _is_plan_address_allowlist_key(key))
-                or _contains_plan_address_allowlist_key(item)
-                for key, item in mapping.items()
-            )
-        case list():
-            sequence: list[object] = value  # pyright: ignore[reportUnknownVariableType]
-            return any(_contains_plan_address_allowlist_key(item) for item in sequence)
-        case _:
-            return False
+    if is_object_mapping(value):
+        return any(
+            (isinstance(key, str) and _is_plan_address_allowlist_key(key)) or _contains_plan_address_allowlist_key(item)
+            for key, item in value.items()
+        )
+    if is_object_list(value):
+        return any(_contains_plan_address_allowlist_key(item) for item in value)
+    return False
 
 
 def _is_plan_address_allowlist_key(value: str) -> bool:

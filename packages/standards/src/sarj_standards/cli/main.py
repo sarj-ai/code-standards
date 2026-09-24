@@ -28,6 +28,7 @@ from sarj_standards.libs.adoption.configs import CONFIG_NAMES
 from sarj_standards.libs.filesystem import is_link_like
 from sarj_standards.libs.linting.policy import Policy
 from sarj_standards.libs.rules import RuleSelector
+from sarj_standards.libs.typed_containers import is_object_mapping
 
 
 if TYPE_CHECKING:
@@ -1523,13 +1524,9 @@ def _is_object_list(value: object) -> TypeIs[list[object]]:
 
 
 def _object_table(value: object) -> dict[str, object] | None:
-    if not isinstance(value, dict):
+    if not is_object_mapping(value):
         return None
-    table: dict[str, object] = {}
-    for key, item in value.items():  # pyright: ignore[reportUnknownVariableType]
-        if isinstance(key, str):
-            table[key] = item  # ruff: ignore[manual-dict-comprehension] -- pyright needs explicit narrowing.
-    return table
+    return {key: item for key, item in value.items() if isinstance(key, str)}
 
 
 def cmd_observe(args: _Args) -> int:
