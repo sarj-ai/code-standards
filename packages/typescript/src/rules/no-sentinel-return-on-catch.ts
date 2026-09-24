@@ -6,6 +6,7 @@
 
 import { type TSESTree, AST_NODE_TYPES, ASTUtils } from "@typescript-eslint/utils";
 
+import { forEachOwnAstChild } from "./_for-each-own-ast-child.js";
 import {
   createLogMatcher,
   calleeName,
@@ -139,21 +140,10 @@ function walkWithinScope(
     if (isFunctionNode(current)) {
       return;
     }
-    for (const key of Object.keys(current)) {
-      if (key === "parent") {
-        continue;
-      }
-      const value = (current as unknown as Record<string, unknown>)[key];
-      if (Array.isArray(value)) {
-        for (const child of value) {
-          if (isNode(child)) {
-            recurse(child);
-          }
-        }
-      } else if (isNode(value)) {
-        recurse(value);
-      }
-    }
+    forEachOwnAstChild(current, child => {
+      recurse(child);
+      return found;
+    });
   };
 
 
@@ -215,22 +205,10 @@ function subtreeReadsName(node: TSESTree.Node, name: string): boolean {
     if (shadowsName(current)) {
       return;
     }
-    for (const key of Object.keys(current)) {
-      if (key === "parent") {
-        continue;
-      }
-      if (isNonReadingProperty(current, key)) continue;
-      const value = (current as unknown as Record<string, unknown>)[key];
-      if (Array.isArray(value)) {
-        for (const child of value) {
-          if (isNode(child)) {
-            recurse(child);
-          }
-        }
-      } else if (isNode(value)) {
-        recurse(value);
-      }
-    }
+    forEachOwnAstChild(current, child => {
+      recurse(child);
+      return found;
+    }, key => !isNonReadingProperty(current, key));
   };
 
   recurse(node);
@@ -438,14 +416,10 @@ function tryReturnsSafeParse(catchNode: TSESTree.CatchClause): boolean {
   };
 
   function visitChildren(current: TSESTree.Node): void {
-    for (const key of Object.keys(current)) {
-      if (key === "parent") continue;
-      const value = (current as unknown as Record<string, unknown>)[key];
-      const children = Array.isArray(value) ? value : [value];
-      for (const child of children) {
-        if (isNode(child)) recurse(child);
-      }
-    }
+    forEachOwnAstChild(current, child => {
+      recurse(child);
+      return sawUnsafeOperation;
+    });
   }
 
   recurse(tryBlock);
