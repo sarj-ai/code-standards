@@ -36,6 +36,7 @@ from sarj_standards.libs.rules.contracts import (
     RuleId,
     RuleSpec,
 )
+from sarj_standards.libs.yaml_boundary import mapping_items, sequence_items
 
 
 if TYPE_CHECKING:
@@ -1433,7 +1434,7 @@ def _workflow_document(source: str) -> MappingNode | None:
 def _mapping_value(node: Node | None, key: str) -> Node | None:
     if not isinstance(node, MappingNode):
         return None
-    pairs: list[tuple[Node, Node]] = node.value  # pyright: ignore[reportAny]
+    pairs = mapping_items(node)
     return next(
         (value for candidate, value in pairs if isinstance(candidate, ScalarNode) and _scalar_value(candidate) == key),
         None,
@@ -1454,19 +1455,19 @@ def _workflow_step_nodes(source: str) -> list[MappingNode]:
     steps: list[MappingNode] = []
     top_level_steps = _mapping_value(document, "steps")
     if isinstance(top_level_steps, SequenceNode):
-        children: list[Node] = top_level_steps.value  # pyright: ignore[reportAny]
+        children = sequence_items(top_level_steps)
         steps.extend(step for step in children if isinstance(step, MappingNode))
     jobs = _mapping_value(document, "jobs")
     if not isinstance(jobs, MappingNode):
         return steps
-    job_items: list[tuple[Node, Node]] = jobs.value  # pyright: ignore[reportAny]
+    job_items = mapping_items(jobs)
     for _job_name, job in job_items:
         if not isinstance(job, MappingNode):
             continue
         sequence = _mapping_value(job, "steps")
         if not isinstance(sequence, SequenceNode):
             continue
-        children = sequence.value  # pyright: ignore[reportAny]
+        children = sequence_items(sequence)
         steps.extend(step for step in children if isinstance(step, MappingNode))
     return _unique_workflow_steps(steps)
 
@@ -1538,15 +1539,13 @@ def _strip_jsonc_comments(source: str) -> str:
 def _yaml_plan_address_allowlist_line(node: Node | None) -> int | None:
     match node:
         case MappingNode():
-            mapping_items: list[tuple[Node, Node]] = node.value  # pyright: ignore[reportAny]
-            for key, value in mapping_items:
+            for key, value in mapping_items(node):
                 if isinstance(key, ScalarNode) and _is_plan_address_allowlist_key(_scalar_value(key)):
                     return key.start_mark.line + 1
                 if (nested := _yaml_plan_address_allowlist_line(value)) is not None:
                     return nested
         case SequenceNode():
-            sequence_items: list[Node] = node.value  # pyright: ignore[reportAny]
-            for value in sequence_items:
+            for value in sequence_items(node):
                 if (nested := _yaml_plan_address_allowlist_line(value)) is not None:
                     return nested
         case _:
@@ -2661,7 +2660,7 @@ def _commented_config_key(path: Path, body: str) -> str | None:
     node = _workflow_document(body)
     if node is None:
         return None
-    pairs: list[tuple[Node, Node]] = node.value  # pyright: ignore[reportAny]
+    pairs = mapping_items(node)
     if len(pairs) != 1:
         return None
     key, value = pairs[0]
