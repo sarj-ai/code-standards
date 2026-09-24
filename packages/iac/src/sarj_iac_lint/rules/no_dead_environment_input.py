@@ -11,6 +11,7 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING, NamedTuple, final, override
 
 from sarj_iac_lint._hcl import Block, document
+from sarj_iac_lint.json_boundary import is_object_mapping, parse_json
 from sarj_iac_lint.rule_base import (
     AutofixPolicy,
     DefaultLevel,
@@ -582,21 +583,19 @@ def _manifest_blind(root: Path, environments: frozenset[str]) -> Iterator[_Blind
         yield _BlindEnvironment("(all)", f"`{_ENVS_MANIFEST}` names this root's environments but cannot be read")
         return
     try:
-        raw: object = json.loads(  # pyright: ignore[reportAny] — json.loads is untyped; the shape is narrowed below
-            text
-        )
+        raw = parse_json(text)
     except json.JSONDecodeError as exc:
         yield _BlindEnvironment(
             "(all)", f"`{_ENVS_MANIFEST}` names this root's environments but cannot be parsed: {exc}"
         )
         return
-    if not isinstance(raw, dict):
+    if not is_object_mapping(raw):
         yield _BlindEnvironment("(all)", f"`{_ENVS_MANIFEST}` names this root's environments but is not a JSON object")
         return
-    for name, entry in raw.items():  # pyright: ignore[reportUnknownVariableType] — json leaves are Any; narrowed below
+    for name, entry in raw.items():
         if not isinstance(name, str) or name in environments:
             continue
-        secret = _tfvars_secret(entry)  # pyright: ignore[reportUnknownArgumentType] — json leaves are Any; `_tfvars_secret` narrows
+        secret = _tfvars_secret(entry)
         held = f" with tfvars held in secret `{secret}`" if secret is not None else ""
         yield _BlindEnvironment(
             name, f"`{_ENVS_MANIFEST}` declares environment `{name}`{held} but no tfvars file for it is on disk"
@@ -604,9 +603,9 @@ def _manifest_blind(root: Path, environments: frozenset[str]) -> Iterator[_Blind
 
 
 def _tfvars_secret(entry: object) -> str | None:
-    if not isinstance(entry, dict):
+    if not is_object_mapping(entry):
         return None
-    for key, value in entry.items():  # pyright: ignore[reportUnknownVariableType] — json leaves are Any; narrowed below
+    for key, value in entry.items():
         if isinstance(key, str) and "tfvars" in key and isinstance(value, str):
             return value
     return None

@@ -14,6 +14,7 @@ import typer
 from sarj_python_lint import __version__
 from sarj_python_lint._analysis_session import AnalysisSession
 from sarj_python_lint._filesystem import atomic_write_text
+from sarj_python_lint.json_boundary import is_object_mapping, parse_json
 from sarj_python_lint.rule_base import Diagnostic, ProjectRule, Rule, Severity, is_suppressed
 from sarj_python_lint.rules import REGISTRY
 from sarj_python_lint.rules._paths import clear_path_caches
@@ -335,20 +336,14 @@ def _baseline_path(path: Path, *, root: Path | None = None) -> str:
 
 
 def _read_baseline(path: Path) -> dict[str, dict[str, int]]:
-    raw: object = json.loads(  # pyright: ignore[reportAny] — json.loads is an untyped stdlib boundary; the shape is narrowed below
-        path.read_text(encoding="utf-8")
-    )
-    if not isinstance(raw, dict):
+    raw = parse_json(path.read_text(encoding="utf-8"))
+    if not is_object_mapping(raw):
         return {}
     counts: dict[str, dict[str, int]] = {}
-    for file_key, per_code in raw.items():  # pyright: ignore[reportUnknownVariableType] — json.loads yields Any leaves
-        if not isinstance(file_key, str) or not isinstance(per_code, dict):
+    for file_key, per_code in raw.items():
+        if not isinstance(file_key, str) or not is_object_mapping(per_code):
             continue
-        counts[file_key] = {
-            code: n
-            for code, n in per_code.items()  # pyright: ignore[reportUnknownVariableType] — same
-            if isinstance(code, str) and isinstance(n, int)
-        }
+        counts[file_key] = {code: n for code, n in per_code.items() if isinstance(code, str) and isinstance(n, int)}
     return counts
 
 
