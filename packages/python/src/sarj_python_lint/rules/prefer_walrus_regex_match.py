@@ -18,7 +18,7 @@ from sarj_python_lint.rule_base import (
     is_suppressed,
     parse_or_none,
 )
-from sarj_python_lint.rules._ast_index import children, nodes, walk
+from sarj_python_lint.rules._ast_index import children, nodes, object_list, walk
 from sarj_python_lint.rules._paths import is_generated, is_test_path
 
 
@@ -148,10 +148,10 @@ class PreferWalrusRegexMatch(Rule):
         )
 
         for node in walk(tree):
-            raw_body = getattr(node, "body", None)
-            if not isinstance(raw_body, list):
+            raw_body: object = getattr(node, "body", None)
+            if not object_list(raw_body):
                 continue
-            body: list[ast.stmt] = [st for st in raw_body if isinstance(st, ast.stmt)]  # pyright: ignore[reportUnknownVariableType]
+            body: list[ast.stmt] = [st for st in raw_body if isinstance(st, ast.stmt)]
             diags.extend(_check_body(node, body, context))
 
         return sorted(diags, key=lambda d: (d.line, d.col))

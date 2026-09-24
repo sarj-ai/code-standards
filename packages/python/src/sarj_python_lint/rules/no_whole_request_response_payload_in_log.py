@@ -19,7 +19,7 @@ from sarj_python_lint.rule_base import (
     Severity,
     parse_or_none,
 )
-from sarj_python_lint.rules._ast_index import nodes
+from sarj_python_lint.rules._ast_index import nodes, object_list
 from sarj_python_lint.rules._logging import LOG_METHODS, is_logger_expr
 
 
@@ -308,9 +308,9 @@ def _analysis_facts(tree: ast.Module) -> _AnalysisFacts:
 
 
 def _statement_list(value: object) -> list[ast.stmt] | None:
-    if not isinstance(value, list):
+    if not object_list(value):
         return None
-    ast_items: list[ast.AST] = [item for item in value if isinstance(item, ast.AST)]  # pyright: ignore[reportUnknownVariableType] — narrowed by isinstance
+    ast_items: list[ast.AST] = [item for item in value if isinstance(item, ast.AST)]
     if not ast_items or not all(isinstance(item, ast.stmt) for item in ast_items):
         return None
     return [item for item in ast_items if isinstance(item, ast.stmt)]

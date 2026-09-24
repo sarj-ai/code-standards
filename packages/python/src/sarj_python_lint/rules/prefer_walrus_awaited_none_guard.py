@@ -20,6 +20,7 @@ from sarj_python_lint.rule_base import (
     is_suppressed,
     parse_or_none,
 )
+from sarj_python_lint.rules._ast_index import object_list
 from sarj_python_lint.rules._paths import is_generated
 
 
@@ -314,11 +315,11 @@ def _statement_lists(tree: ast.AST) -> list[list[ast.stmt]]:
     result: list[list[ast.stmt]] = []
     for node in ast.walk(tree):
         for field in ("body", "orelse", "finalbody"):
-            value = getattr(node, field, None)
-            if not isinstance(value, list):
+            value: object = getattr(node, field, None)
+            if not object_list(value):
                 continue
             statements: list[ast.stmt] = []
-            for item in value:  # pyright: ignore[reportUnknownVariableType] -- AST fields are untyped lists
+            for item in value:
                 if not isinstance(item, ast.stmt):
                     break
                 statements.append(item)
