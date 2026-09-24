@@ -1240,7 +1240,7 @@ def test_init_on_an_empty_directory_adopts_repository_wide_policy(tmp_path: Path
     commit_policy = tmp_path / ".github" / "workflows" / "commit-policy.yml"
     assert commit_policy.is_file()
     assert (
-        "sarj-ai/repo-standards/pull-request-commits@bb2fe3d3a8b1362427fa412b6411d3013bede2c4 # v5.17.0"
+        "sarj-ai/repo-standards/pull-request-commits@31d5537d368f348ce7d4a39188afcc93a98a54bc # v6.0.0"
         in commit_policy.read_text(encoding="utf-8")
     )
 
@@ -1387,15 +1387,36 @@ def test_generated_precommit_block_carries_no_rev(tmp_path: Path) -> None:
     assert "schema_version" not in repository_manifest
 
 
-def test_setup_rejects_a_repository_manifest_without_commit_message_enforcement(tmp_path: Path) -> None:
+def test_setup_migrates_a_repository_manifest_without_explicit_commit_message_config(
+    tmp_path: Path,
+) -> None:
     path = tmp_path / ".repo-standards" / "repository.toml"
     path.parent.mkdir()
     path.write_text('schema_version = 5\nrepository_id = "example"\ncomponents = []\n')
 
     result = _cli("--root", str(tmp_path), "setup", "--commit-policy-only", "--no-install")
 
-    assert result.returncode == 2
-    assert "predates commit-message enforcement" in result.stderr
+    assert result.returncode == 0, result.stderr
+    assert path.read_text(encoding="utf-8") == 'repository_id = "example"\ncomponents = []\n'
+
+
+def test_setup_migrates_a_versioned_repository_manifest(tmp_path: Path) -> None:
+    path = tmp_path / ".repo-standards" / "repository.toml"
+    path.parent.mkdir()
+    path.write_text(
+        'schema_version = 6 # retired\nrepository_id = "example"\ncomponents = []\n'
+        '[commit_message]\nenforcement = "strict"\n',
+        encoding="utf-8",
+    )
+
+    first = _cli("--root", str(tmp_path), "setup", "--commit-policy-only", "--no-install")
+    second = _cli("--root", str(tmp_path), "setup", "--commit-policy-only", "--no-install")
+
+    assert first.returncode == 0, first.stderr
+    assert second.returncode == 0, second.stderr
+    assert path.read_text(encoding="utf-8") == (
+        'repository_id = "example"\ncomponents = []\n[commit_message]\nenforcement = "strict"\n'
+    )
 
 
 def test_doctor_reports_a_duplicate_direct_repo_standards_hook(tmp_path: Path) -> None:

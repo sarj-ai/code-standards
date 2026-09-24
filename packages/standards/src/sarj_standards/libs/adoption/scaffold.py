@@ -779,14 +779,16 @@ def _plan_repo_commit_message_policy(root: Path, plan: Plan) -> None:
     path = root / ".repo-standards" / "repository.toml"
     if path.is_file():
         try:
-            existing = parse_manifest_bytes(path.read_bytes())
+            contents = path.read_bytes()
+            migrated = _without_manifest_schema_version(contents)
+            parse_manifest_bytes(migrated)
         except (OSError, TypeError, ValueError) as exc:
             plan.errors.append(f"invalid Repo Standards manifest: {exc}")
             return
-        if existing.commit_message is None:
-            plan.errors.append("Repo Standards manifest predates commit-message enforcement; migrate it first")
-            return
-        plan.skips.append((path, "repository policy is already configured"))
+        if migrated != contents:
+            plan.writes.append((path, migrated.decode("utf-8")))
+        else:
+            plan.skips.append((path, "repository policy is already configured"))
         return
     repository_id = re.sub(r"[^a-z0-9]+", "-", root.name.casefold()).strip("-")
     if not repository_id or not repository_id[0].isalpha():
@@ -794,6 +796,16 @@ def _plan_repo_commit_message_policy(root: Path, plan: Plan) -> None:
     contents = f'repository_id = "{repository_id}"\ncomponents = []\n'
     parse_manifest_bytes(contents.encode("utf-8"))
     plan.writes.append((path, contents))
+
+
+def _without_manifest_schema_version(contents: bytes) -> bytes:
+    lines = contents.splitlines(keepends=True)
+    for index, line in enumerate(lines):
+        if line.lstrip().startswith(b"["):
+            break
+        if re.fullmatch(rb"schema_version[ \t]*=[ \t]*[2-7][ \t]*(?:#.*)?(?:\r?\n)?", line):
+            return b"".join((*lines[:index], *lines[index + 1 :]))
+    return contents
 
 
 def _plan_lefthook(root: Path, plan: Plan) -> None:
@@ -2487,7 +2499,7 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: sarj-ai/repo-standards/pull-request-commits@bb2fe3d3a8b1362427fa412b6411d3013bede2c4 # v5.17.0
+      - uses: sarj-ai/repo-standards/pull-request-commits@31d5537d368f348ce7d4a39188afcc93a98a54bc # v6.0.0
 """
 
 
