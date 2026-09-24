@@ -8,7 +8,7 @@ import shutil
 import subprocess  # ruff: ignore[suspicious-subprocess-import] -- Windows cannot replace the current process.
 import sys
 import tomllib
-from typing import TYPE_CHECKING, Final, NoReturn
+from typing import TYPE_CHECKING, Final, NoReturn, TypeIs
 
 
 if TYPE_CHECKING:
@@ -74,14 +74,18 @@ def find_root(start: Path) -> Path:
 
 
 def table(value: object) -> Mapping[str, object]:
-    if not isinstance(value, dict):
+    if not _is_object_mapping(value):
         message = f"{MANIFEST_NAME} must contain a TOML table"
         raise BootstrapError(message)
     entries: dict[str, object] = {}
-    for key, item in value.items():  # pyright: ignore[reportUnknownVariableType]
+    for key, item in value.items():
         if isinstance(key, str):
             entries[key] = item  # ruff: ignore[manual-dict-comprehension] — pyright needs explicit narrowing.
     return entries
+
+
+def _is_object_mapping(value: object) -> TypeIs[dict[object, object]]:
+    return isinstance(value, dict)
 
 
 def bundle(root: Path) -> str:
