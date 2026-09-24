@@ -6,6 +6,8 @@ from tempfile import TemporaryDirectory
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Literal
 
+from sarj_standards.libs.json_boundary import decode_json_prefix
+from sarj_standards.libs.release._values import is_object_dict, is_object_list
 from sarj_standards.libs.release.artifacts import verify_python_wheel_license
 from sarj_standards.libs.release.process import ProcessRunner, run_build_process, run_process
 from sarj_standards.libs.release.typescript import run_typescript_release
@@ -73,12 +75,12 @@ def _npm_pack_filename(output: str) -> str:
         if output[index] != "[":
             continue
         try:
-            report, _ = decoder.raw_decode(output[index:])  # pyright: ignore[reportAny]
+            report = decode_json_prefix(decoder, output[index:])
         except json.JSONDecodeError:
             continue
-        if not isinstance(report, list) or not report or not isinstance(report[0], dict):
+        if not is_object_list(report) or not report or not is_object_dict(report[0]):
             continue
-        filename = report[0].get("filename")  # pyright: ignore[reportUnknownMemberType,reportUnknownVariableType]
+        filename = report[0].get("filename")
         if isinstance(filename, str) and Path(filename).name == filename and filename.endswith(".tgz"):
             return filename
     msg = "npm pack returned no safe artifact filename"

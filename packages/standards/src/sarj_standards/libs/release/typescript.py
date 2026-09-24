@@ -6,6 +6,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import TYPE_CHECKING, Literal
 
+from sarj_standards.libs.json_boundary import decode_json_prefix
 from sarj_standards.libs.release._values import is_object_dict, is_object_list, string_object_dict
 from sarj_standards.libs.release.artifacts import (
     load_package_json,
@@ -85,8 +86,7 @@ def _npm_pack_report(output: str) -> dict[str, object]:
         if character not in "[{":
             continue
         try:
-            candidate: object
-            candidate, _ = decoder.raw_decode(output[index:])  # pyright: ignore[reportAny]
+            candidate = decode_json_prefix(decoder, output[index:])
         except json.JSONDecodeError:
             continue
         report = _as_pack_report(candidate)
