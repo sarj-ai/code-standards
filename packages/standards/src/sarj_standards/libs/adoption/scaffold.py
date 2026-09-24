@@ -1420,9 +1420,9 @@ def _json_object(path: Path) -> _JsonObjectResult:
         parsed: object = parse_json(path.read_text(encoding="utf-8"))
     except (OSError, ValueError) as exc:
         return _JsonObjectResult(None, str(exc))
-    if not isinstance(parsed, dict):
+    if not is_object_mapping(parsed):
         return _JsonObjectResult(None, "expected a JSON object")
-    document = manifest.as_table(parsed)  # pyright: ignore[reportUnknownArgumentType] -- isinstance establishes the JSON object boundary; as_table narrows its leaves
+    document = manifest.as_table(parsed)
     return _JsonObjectResult(document, None)
 
 

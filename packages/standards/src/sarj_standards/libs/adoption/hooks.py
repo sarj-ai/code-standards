@@ -10,6 +10,7 @@ import yaml
 from yaml.constructor import ConstructorError
 from yaml.resolver import BaseResolver
 
+from sarj_standards.libs.typed_containers import is_object_list, is_object_mapping
 from sarj_standards.libs.yaml_boundary import mapping_items, parse_yaml
 
 from . import launcher, manifest
@@ -696,23 +697,20 @@ def _lefthook_run_values(value: object, *, depth: int = 0, seen: set[int] | None
     if depth > _MAX_JOB_DEPTH:
         return []
     visited: set[int] = set() if seen is None else seen
-    if isinstance(value, (dict, list)):
-        identity = id(value)  # pyright: ignore[reportUnknownArgumentType] -- identity is the cycle guard.
+    if is_object_mapping(value) or is_object_list(value):
+        identity = id(value)
         if identity in visited:
             return []
         visited.add(identity)
-    table = manifest.as_table(value)  # pyright: ignore[reportUnknownArgumentType] -- narrowed parser value.
+    table = manifest.as_table(value)
     if table:
         found: list[str] = [run for run in (table.get("run"),) if isinstance(run, str)]
         for child in table.values():
             found.extend(_lefthook_run_values(child, depth=depth + 1, seen=visited))
         return found
-    if isinstance(value, list):
+    if is_object_list(value):
         found = []
-        for child in manifest.list_field(
-            {"items": value},  # pyright: ignore[reportUnknownArgumentType] -- narrowed parser list.
-            "items",
-        ):
+        for child in value:
             found.extend(_lefthook_run_values(child, depth=depth + 1, seen=visited))
         return found
     return []
@@ -739,12 +737,12 @@ def _replace_lefthook_run(text: str, *, old: str, new: str) -> str | None:
 
 
 def _jobs_run_staged_check(value: object, seen: set[int] | None = None, *, depth: int = 0) -> bool:
-    if not isinstance(value, list):
+    if not is_object_list(value):
         return False
     if depth > _MAX_JOB_DEPTH:
         return False
     visited: set[int] = set() if seen is None else seen
-    identity = id(value)  # pyright: ignore[reportUnknownArgumentType] -- YAML list identity detects alias cycles.
+    identity = id(value)
     if identity in visited:
         return False
     visited.add(identity)

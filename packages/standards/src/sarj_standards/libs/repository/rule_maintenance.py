@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
 from dataclasses import dataclass
 from importlib import import_module
 import json
@@ -11,11 +10,13 @@ from typing import TYPE_CHECKING, Final, NamedTuple, Protocol, TypeIs
 from sarj_standards.libs.adoption.manifest import as_table, list_field
 from sarj_standards.libs.json_boundary import parse_json
 from sarj_standards.libs.linting import textlint
+from sarj_standards.libs.typed_containers import is_object_mapping_view
 
 from . import ledger, repository
 
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
     from pathlib import Path
 
 
@@ -177,11 +178,11 @@ def _load_ledger(path: Path) -> dict[str, object]:
 def _registry(module_name: str) -> Mapping[str, type[Rule]]:
     module = import_module(module_name)
     value: object = getattr(module, "REGISTRY", None)
-    if not isinstance(value, Mapping):
+    if not is_object_mapping_view(value):
         msg = f"{module_name} has no registry"
         raise TypeError(msg)
     registry: dict[str, object] = {}
-    for rule_id, rule in value.items():  # pyright: ignore[reportUnknownVariableType]
+    for rule_id, rule in value.items():
         if not isinstance(rule_id, str):
             msg = f"{module_name} registry keys must be rule IDs"
             raise TypeError(msg)
