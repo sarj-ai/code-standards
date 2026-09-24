@@ -11,6 +11,7 @@ from yaml.constructor import ConstructorError
 from yaml.resolver import BaseResolver
 
 from . import launcher, manifest
+from .yaml_boundary import parse_yaml
 
 
 if TYPE_CHECKING:
@@ -199,7 +200,7 @@ def _line_offsets(lines: list[str]) -> list[int]:
 
 def _repository_scalar(raw: str) -> str | None:
     try:
-        parsed: object = yaml.safe_load(f"value: {raw}\n")  # pyright: ignore[reportAny] -- narrowed below.
+        parsed: object = parse_yaml(f"value: {raw}\n")
         value = manifest.as_table(parsed).get("value")
     except yaml.YAMLError:
         return None
@@ -267,9 +268,7 @@ def precommit_runs_staged_check(root: Path) -> bool:
     if len(paths) != 1:
         return False
     try:
-        parsed: object = yaml.safe_load(  # pyright: ignore[reportAny] -- narrowed below.
-            paths[0].read_text(encoding="utf-8")
-        )
+        parsed: object = parse_yaml(paths[0].read_text(encoding="utf-8"))
     except OSError, UnicodeError, yaml.YAMLError:
         return False
     candidates: list[dict[str, object]] = []
@@ -303,9 +302,7 @@ def precommit_runs_commit_message_check(root: Path, *, runner_prefix: str | None
     if len(paths) != 1:
         return False
     try:
-        parsed: object = yaml.safe_load(  # pyright: ignore[reportAny] -- narrowed below.
-            paths[0].read_text(encoding="utf-8")
-        )
+        parsed: object = parse_yaml(paths[0].read_text(encoding="utf-8"))
     except OSError, UnicodeError, yaml.YAMLError:
         return False
     candidates: list[dict[str, object]] = []
@@ -336,9 +333,7 @@ def runs_direct_repo_standards_check(root: Path) -> bool:
     paths = [root / name for name in PRECOMMIT_NAMES if (root / name).is_file()]
     if len(paths) == 1:
         try:
-            parsed: object = yaml.safe_load(  # pyright: ignore[reportAny] -- narrowed below.
-                paths[0].read_text(encoding="utf-8")
-            )
+            parsed: object = parse_yaml(paths[0].read_text(encoding="utf-8"))
         except OSError, UnicodeError, yaml.YAMLError:
             parsed = None
         if _precommit_has_direct_repository_check(parsed):
@@ -347,7 +342,7 @@ def runs_direct_repo_standards_check(root: Path) -> bool:
     if path is None:
         return False
     try:
-        parsed = yaml.safe_load(path.read_text(encoding="utf-8"))  # pyright: ignore[reportAny]
+        parsed = parse_yaml(path.read_text(encoding="utf-8"))
     except OSError, UnicodeError, yaml.YAMLError:
         return False
     pre_commit = manifest.as_table(manifest.as_table(parsed).get("pre-commit"))
@@ -368,9 +363,7 @@ def lefthook_runs_staged_check(root: Path) -> bool:
     if path is None:
         return False
     try:
-        parsed: object = yaml.safe_load(  # pyright: ignore[reportAny] -- narrow the untyped YAML parser boundary below.
-            path.read_text(encoding="utf-8")
-        )
+        parsed: object = parse_yaml(path.read_text(encoding="utf-8"))
     except OSError, UnicodeError, yaml.YAMLError:
         return False
     document = manifest.as_table(parsed)
@@ -384,9 +377,7 @@ def lefthook_runs_commit_message_check(root: Path, *, runner_prefix: str | None 
     if path is None:
         return False
     try:
-        parsed: object = yaml.safe_load(  # pyright: ignore[reportAny] -- narrowed below.
-            path.read_text(encoding="utf-8")
-        )
+        parsed: object = parse_yaml(path.read_text(encoding="utf-8"))
     except OSError, UnicodeError, yaml.YAMLError:
         return False
     commit_message = manifest.as_table(manifest.as_table(parsed).get("commit-msg"))
@@ -413,7 +404,7 @@ def wire_lefthook_commit_message_check(
         raise ValueError(msg)
     text = path.read_text(encoding="utf-8") if contents is None else contents
     try:
-        parsed: object = yaml.safe_load(text)  # pyright: ignore[reportAny] -- narrowed below.
+        parsed: object = parse_yaml(text)
         document = manifest.as_table(parsed)
     except (OSError, UnicodeError, TypeError, yaml.YAMLError) as exc:
         msg = f"cannot safely wire {path.name}: expected valid YAML"
@@ -508,7 +499,7 @@ def wire_lefthook_staged_check(root: Path) -> LefthookWrite:
 def _load_lefthook_entries(path: Path) -> _LefthookEntries:
     try:
         text = path.read_text(encoding="utf-8")
-        parsed: object = yaml.safe_load(text)  # pyright: ignore[reportAny] -- narrowed immediately below.
+        parsed: object = parse_yaml(text)
         document = manifest.as_table(parsed)
         pre_commit = manifest.as_table(document.get("pre-commit"))
     except (OSError, UnicodeError, TypeError, yaml.YAMLError) as exc:
@@ -734,7 +725,7 @@ def _replace_lefthook_run(text: str, *, old: str, new: str) -> str | None:
     matches: list[re.Match[str]] = []
     for match in re.finditer(r"(?m)^(?P<prefix>\s*run:\s*)(?P<value>[^\r\n]+)$", text):
         try:
-            parsed: object = yaml.safe_load(f"value: {match.group('value')}\n")  # pyright: ignore[reportAny]
+            parsed: object = parse_yaml(f"value: {match.group('value')}\n")
             value = manifest.as_table(parsed).get("value")
         except yaml.YAMLError:
             continue
