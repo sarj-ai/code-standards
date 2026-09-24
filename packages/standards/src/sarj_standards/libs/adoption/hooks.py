@@ -10,7 +10,7 @@ import yaml
 from yaml.constructor import ConstructorError
 from yaml.resolver import BaseResolver
 
-from sarj_standards.libs.yaml_boundary import parse_yaml
+from sarj_standards.libs.yaml_boundary import mapping_items, parse_yaml
 
 from . import launcher, manifest
 
@@ -55,9 +55,9 @@ def _construct_unique_mapping(
 ) -> dict[object, object]:
     loader.flatten_mapping(node)
     mapping: dict[object, object] = {}
-    for key_node, value_node in node.value:  # pyright: ignore[reportAny]
+    for key_node, value_node in mapping_items(node):
         key: object = loader.construct_object(  # pyright: ignore[reportUnknownMemberType,reportUnknownVariableType]
-            key_node,  # pyright: ignore[reportAny]
+            key_node,
             deep=deep,
         )
         try:
@@ -69,7 +69,7 @@ def _construct_unique_mapping(
                 context,
                 node.start_mark,
                 problem,
-                key_node.start_mark,  # pyright: ignore[reportAny]
+                key_node.start_mark,
             ) from exc
         if duplicate:
             context = "while constructing a mapping"
@@ -78,10 +78,10 @@ def _construct_unique_mapping(
                 context,
                 node.start_mark,
                 problem,
-                key_node.start_mark,  # pyright: ignore[reportAny]
+                key_node.start_mark,
             )
         mapping[key] = loader.construct_object(  # pyright: ignore[reportUnknownMemberType]
-            value_node,  # pyright: ignore[reportAny]
+            value_node,
             deep=deep,
         )
     return mapping
