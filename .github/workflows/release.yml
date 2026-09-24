@@ -22,6 +22,8 @@ name: release
 #   and must not change a publishable artifact or bump another version; causality
 #   then has no new supersession edge while `detect` still reconciles every current
 #   manifest that is missing publication or a verification tag.
+#   The barrier is complete only after its exact push revision passes CI; PR checks
+#   alone do not authorize reconciliation to publish.
 on:
   push:
     branches: [main]
