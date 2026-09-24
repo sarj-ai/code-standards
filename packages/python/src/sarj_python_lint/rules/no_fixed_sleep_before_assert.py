@@ -15,6 +15,7 @@ from sarj_python_lint.rule_base import (
     RuleCategory,
     RuleDocumentation,
     RuleExample,
+    Severity,
     parse_or_none,
 )
 from sarj_python_lint.rules._imports import ImportIndex
@@ -42,6 +43,7 @@ class NoFixedSleepBeforeAssert(Rule):
     id = "no-fixed-sleep-before-assert"
     code = "SARJ455"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
+        default_level=Severity.WARNING,
         summary="Do not sleep for a fixed interval and then assert in a test.",
         rationale=(
             "A fixed sleep followed by an assertion guesses how long the code under test needs. On a loaded CI "
