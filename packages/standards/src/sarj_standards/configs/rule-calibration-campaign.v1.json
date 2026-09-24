@@ -3,6 +3,14 @@
   "precisionGate": "Review every finding up to 200; above 200, review every major cluster and a deterministic stratified sample of at least 50. Treat ambiguous findings as false positives for error-level rules.",
   "tasks": [
     {
+      "task": "rule-audit/python/no-fixed-sleep-before-assert",
+      "family": "python",
+      "ruleId": "no-fixed-sleep-before-assert",
+      "state": "complete",
+      "evidence": "52 focused cases pass, and 9 in-process mutations of the rule's invariants are all caught. Every finding across two private corpora and Code Standards (about 2,800 Python files) was reviewed: 2 guessed waits before positive assertions and 3 deliberate quiet-window assertions. Every other sleep in a test body was a zero-duration yield, a clock advance before an assignment, or a polling loop. Rule-only time is 73 ms over 1,500 files; full-runner wall time is unchanged within noise.",
+      "outcome": "Introduce SARJ455 at error without autofix. A deliberate quiet-window assertion is syntactically identical to a guessed wait, so it takes an exact SARJ455 suppression that names the window."
+    },
+    {
       "task": "rule-audit/python/prefer-pydantic-json-value",
       "family": "python",
       "ruleId": "prefer-pydantic-json-value",

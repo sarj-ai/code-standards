@@ -239,5 +239,6 @@
   "SARJ451": "fastapi-class-router-contract",
   "SARJ452": "no-unused-value-marker",
   "SARJ453": "prefer-match-exception-dispatch",
-  "SARJ454": "prefer-pydantic-json-value"
+  "SARJ454": "prefer-pydantic-json-value",
+  "SARJ455": "no-fixed-sleep-before-assert"
 }
