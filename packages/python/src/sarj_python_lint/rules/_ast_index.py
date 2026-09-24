@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import ast
-from typing import TYPE_CHECKING, final
+from typing import TYPE_CHECKING, TypeIs, final
 
 
 if TYPE_CHECKING:
@@ -13,12 +13,16 @@ if TYPE_CHECKING:
 _AST = ast.AST
 
 
+def object_list(value: object) -> TypeIs[list[object]]:
+    return isinstance(value, list)
+
+
 def children(node: ast.AST) -> list[ast.AST]:
     out: list[ast.AST] = []
     for name in node._fields:
         value: object = getattr(node, name, None)
-        if isinstance(value, list):
-            out += [item for item in value if isinstance(item, _AST)]  # pyright: ignore[reportUnknownVariableType] — element narrowed by isinstance
+        if object_list(value):
+            out += [item for item in value if isinstance(item, _AST)]
         elif isinstance(value, _AST):
             out.append(value)
     return out
@@ -30,12 +34,7 @@ def walk(node: ast.AST) -> Iterator[ast.AST]:
     while i < len(queue):
         current = queue[i]
         i += 1
-        for name in current._fields:
-            value: object = getattr(current, name, None)
-            if isinstance(value, list):
-                queue += [item for item in value if isinstance(item, _AST)]  # pyright: ignore[reportUnknownVariableType] — element narrowed by isinstance
-            elif isinstance(value, _AST):
-                queue.append(value)
+        queue += children(current)
         yield current
 
 
@@ -56,12 +55,7 @@ class _NodeIndex:
                 buckets[cls] = [current]
             else:
                 bucket.append(current)
-            for name in cls._fields:
-                value: object = getattr(current, name, None)
-                if isinstance(value, list):
-                    flat += [item for item in value if isinstance(item, _AST)]  # pyright: ignore[reportUnknownVariableType] — element narrowed by isinstance
-                elif isinstance(value, _AST):
-                    flat.append(value)
+            flat += children(current)
         self._buckets: dict[type[ast.AST], list[ast.AST]] = buckets
         self._flat: list[ast.AST] = flat
         self._queries: dict[tuple[type[ast.AST], ...], list[ast.AST]] = {}
