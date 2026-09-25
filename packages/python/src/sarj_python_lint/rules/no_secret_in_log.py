@@ -75,7 +75,7 @@ class NoSecretInLog(Rule):
         remediation="Omit the credential or log only approved non-sensitive metadata through a centralized sanitizer.",
         category=RuleCategory.SECURITY,
         limitations=(
-            "Detection covers direct secret-named names, terminal attributes, constant secret-key subscripts, identity slices, f-string and literal format arguments, literal extra mappings, and immediate structured-logger bindings.",
+            "Detection covers direct secret-named names, terminal attributes, constant secret-key subscripts, identity slices, f-string and literal format arguments, nested literal extra mappings, literal keyword unpacking, and immediate structured-logger bindings.",
             "Logger recognition and secret classification are lexical; general aliases, arbitrary calls, dynamic containers, and interprocedural dataflow are not inspected.",
         ),
         examples=(
@@ -176,14 +176,43 @@ def _unsafe_formatted_values(parts: list[ast.expr]) -> tuple[ast.expr, ...]:
 
 def _collect_keyword_secrets(path: Path, node: ast.Call, code: str, diags: list[Diagnostic]) -> None:
     for kw in node.keywords:
-        # `**kwargs` has arg=None — nothing to inspect.
         if kw.arg is None:
+            if isinstance(kw.value, ast.Dict):
+                diags.extend(
+                    _diagnostic(path, value, code, "literal unpacked logging field")
+                    for value in _literal_mapping_secret_values(kw.value)
+                )
             continue
         if kw.arg == "extra" and isinstance(kw.value, ast.Dict):
             diags.extend(
                 _diagnostic(path, value, code, "literal `extra` field")
-                for value in kw.value.values
-                if _is_raw_secret_reference(value)
+                for value in _literal_mapping_secret_values(kw.value)
             )
         elif _is_raw_secret_reference(kw.value):
             diags.append(_diagnostic(path, kw.value, code, f"`{kw.arg}` logging field"))
+
+
+def _literal_mapping_secret_values(mapping: ast.Dict) -> tuple[ast.expr, ...]:
+    return tuple(
+        secret
+        for _, value in _literal_mapping_items(mapping)
+        for secret in (
+            _literal_mapping_secret_values(value)
+            if isinstance(value, ast.Dict)
+            else (value,)
+            if _is_raw_secret_reference(value)
+            else ()
+        )
+    )
+
+
+def _literal_mapping_items(mapping: ast.Dict) -> tuple[tuple[str, ast.expr], ...]:
+    items: dict[str, ast.expr] = {}
+    for key, value in zip(mapping.keys, mapping.values, strict=True):
+        if key is None and isinstance(value, ast.Dict):
+            items.update(_literal_mapping_items(value))
+        elif isinstance(key, ast.Constant) and isinstance(key.value, str):
+            items[key.value] = value
+        else:
+            items.clear()
+    return tuple(items.items())
