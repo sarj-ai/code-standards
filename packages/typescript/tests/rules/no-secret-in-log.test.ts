@@ -119,8 +119,7 @@ RULE_TESTER.run("no-secret-in-log", rule, {
     { code: 'logger.info("auth", { isTokenStrategy, wasPasswordReset });' },
     { code: "logger.info(hasApiKey);" },
     // `hash_secret` IS a secret to the shared predicate — `hash` is a whole word,
-    // not the prefix `has` — but this rule exempts every `hash` name via its own
-    // REDACTION_RE, the same clause that keeps the pinned `passwordHash` valid.
+    // not the prefix `has` — but this rule exempts it as a derived value.
     // Its firing behaviour is therefore owned by `prefer-constant-time-secret-compare`,
     // not by the leading-flag guard.
     { code: 'logger.info("auth", { hash_secret });' },
@@ -153,6 +152,10 @@ RULE_TESTER.run("no-secret-in-log", rule, {
     { code: 'logger.info("resp", { bodyPreview });' },
     { code: 'logger.info("resp", { payloadSummary });' },
     { code: 'logger.info("resp", { safeBody });' },
+    { code: 'logger.info("auth", { token: redactedToken });' },
+    { code: 'logger.info("auth", `${token.length}`);' },
+    { code: 'logger.info("auth", { token: redactedToken, ...{ token: maskedToken } });' },
+    { code: 'logger.info("auth", { token, ...unknownFields });' },
     { code: 'logger.info("resp", { bodySize, paramsCount });' },
     // Boolean flags about a blob, not the blob.
     { code: 'logger.info("resp", { hasBody });' },
@@ -188,6 +191,15 @@ RULE_TESTER.run("no-secret-in-log", rule, {
     },
   ],
   invalid: [
+    { name: "unmasked is not a redaction", code: 'logger.info("auth", { unmaskedToken });', errors: [{ messageId: "noSecretInLog" }] },
+    { name: "unredacted is not a redaction", code: 'logger.info("request", { unredactedBody });', errors: [{ messageId: "noRawBodyInLog" }] },
+    { name: "unsafe secret value under a secret key", code: 'logger.info("auth", { token: unmaskedToken });', errors: [{ messageId: "noSecretInLog" }] },
+    { name: "template interpolation logs the token", code: 'logger.info("auth", `${token}`);', errors: [{ messageId: "noSecretInLog" }] },
+    { name: "string concatenation logs the token", code: 'logger.info("auth: " + token);', errors: [{ messageId: "noSecretInLog" }] },
+    { name: "literal spread logs the token", code: 'logger.info("auth", { ...{ token } });', errors: [{ messageId: "noSecretInLog" }] },
+    { name: "nested literal logs the token", code: 'logger.info("auth", { context: { token } });', errors: [{ messageId: "noSecretInLog" }] },
+    { name: "literal array logs the token", code: 'logger.info("auth", [token]);', errors: [{ messageId: "noSecretInLog" }] },
+    { name: "later unsafe value replaces redacted value", code: 'logger.info("auth", { token: redactedToken, ...{ token } });', errors: [{ messageId: "noSecretInLog" }] },
     { name: "detects a secret value under an innocuous key", code: "logger.info('auth', { value: token });", errors: [{ messageId: "noSecretInLog" }] },
     { name: "detects a secret member value under an innocuous key", code: "logger.info('auth', { value: request.apiKey });", errors: [{ messageId: "noSecretInLog" }] },
     {
@@ -301,7 +313,7 @@ RULE_TESTER.run("no-secret-in-log", rule, {
     // The leading-flag exemption matches a whole WORD, never a character prefix,
     // so these credentials keep firing (`issuer` != `is`, `canary` != `can`).
     // `hash_secret` is pinned in the shared-predicate tests instead: this rule's
-    // own REDACTION_RE exempts every `hash` name, deliberately and separately.
+    // whole-word derivation marker exempts it deliberately and separately.
     {
       code: 'logger.info("oauth", { issuer_token });',
       errors: [{ messageId: "noSecretInLog" }],

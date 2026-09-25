@@ -300,6 +300,34 @@ def test_skips_double_star_alongside_flagged_keyword():
     assert _codes(src) == ["SARJ012"]
 
 
+@pytest.mark.parametrize(
+    "source",
+    [
+        'logger.info("auth", **{"token": token})',
+        'logger.info("auth", extra={"nested": {"token": token}})',
+        'logger.info("auth", extra={**{"token": token}})',
+        'logger.info("auth", extra={"token": redacted_token, **{"token": token}})',
+    ],
+)
+def test_rejects_secrets_in_literal_logging_mappings(source: str) -> None:
+    assert _codes(source) == ["SARJ012"]
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        'logger.info("auth", **{"token": redacted_token})',
+        'logger.info("auth", extra={"nested": {"token": token_present}})',
+        'logger.info("auth", extra={"token": token, "token": redacted_token})',
+        'logger.info("auth", extra={"token": token, **unknown_fields})',
+        'logger.info("auth", **unknown_fields)',
+        'metrics.info("auth", extra={"token": token})',
+    ],
+)
+def test_allows_safe_or_unproven_logging_mappings(source: str) -> None:
+    assert _check(source) == []
+
+
 NON_SECRET_KEYWORDS = [
     "user_id",
     "count",

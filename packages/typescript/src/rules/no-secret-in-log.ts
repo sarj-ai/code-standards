@@ -29,7 +29,7 @@ export const NO_SECRET_IN_LOG_DOCUMENTATION = {
   rationale: "Logs are widely retained and distributed, so credentials and raw bodies can become durable data leaks.",
   remediation: "Omit the value, log allowlisted non-sensitive context, or use an approved redactor; truncation alone is not a safety guarantee.",
   category: "security",
-  limitations: ["Detection uses configurable logger names and statically recognizable secret names, raw-body names, and redaction markers. Name-based exemptions are policy heuristics, not proof that a value is safely redacted."],
+  limitations: ["Detection uses configurable logger names and statically recognizable secret names, raw-body names, and redaction markers. Literal containers and template/string concatenation expressions are inspected; unknown spreads, computed properties, aliases, and opaque calls are not followed. Name-based exemptions are policy heuristics, not proof that a value is safely redacted."],
   examples: [
     { id: "redacted-secret", title: "Log non-sensitive context instead of the secret", outcome: "no-match", files: [{ path: "src/auth.ts", source: "logger.info('auth', { requestId });" }], focusPath: "src/auth.ts", expectedCount: 0, public: true },
     { id: "logged-secret", title: "Do not send a secret to logs", outcome: "match", files: [{ path: "src/auth.ts", source: "logger.error('auth failed', { token });" }], focusPath: "src/auth.ts", expectedCount: 1, public: true },
@@ -82,8 +82,9 @@ const LOG_INNOCUOUS_WORDS: ReadonlySet<string> = new Set([
   "length",
 ]);
 
-const REDACTION_RE = /prefix|suffix|redact|mask|hash|hint|_len|length/i;
-const WHOLE_TOKEN_REDACTION_MARKERS: ReadonlySet<string> = new Set(["tag"]);
+const SECRET_REDACTION_TOKENS: ReadonlySet<string> = new Set([
+  "prefix", "suffix", "redact", "redacted", "mask", "masked", "hash", "hashed", "hint", "len", "length", "tag",
+]);
 
 /** True if the name names a raw secret and is not a redacted derivative. */
 function isSecretKeyword(name: string): boolean {
@@ -91,7 +92,7 @@ function isSecretKeyword(name: string): boolean {
 }
 
 function hasRedactionMarker(name: string): boolean {
-  return REDACTION_RE.test(name) || tokenize(name).some((tok) => WHOLE_TOKEN_REDACTION_MARKERS.has(tok));
+  return tokenize(name).some((token) => SECRET_REDACTION_TOKENS.has(token));
 }
 
 function valueName(node: TSESTree.Node): string | null {
@@ -128,16 +129,20 @@ const RAW_BLOB_WORDS: ReadonlySet<string> = new Set([
 const RAW_BLOB_IDENTIFIERS: ReadonlySet<string> = new Set(["formdata"]);
 
 /**
- * Substrings that mark a blob name as an already-derived, safe-to-log form:
+ * Whole words that mark a blob name as an already-derived form:
  * `redactedBody`, `sanitizedPayload`, `truncatedBody`, `bodyPreview`.
  */
-const BLOB_REDACTION_RE = /redact|sanit|scrub|mask|truncat|anonym|filtered|preview|summar/i;
+const BLOB_TRANSFORM_TOKENS: ReadonlySet<string> = new Set([
+  "redact", "redacted", "sanitize", "sanitized", "scrub", "scrubbed", "mask", "masked",
+  "truncate", "truncated", "anonymize", "anonymized", "filter", "filtered", "preview",
+  "summarize", "summarized", "summary",
+]);
 
 /**
  * Derivation markers that are only safe when matched as a WHOLE token — `safe` as
  * a substring would wrongly exempt `unsafeBody`.
  */
-const BLOB_REDACTION_TOKENS: ReadonlySet<string> = new Set([
+const BLOB_SAFE_TOKENS: ReadonlySet<string> = new Set([
   "safe",
   "clean",
   "shape",
@@ -175,11 +180,8 @@ function rawBlobValueName(value: TSESTree.Node): string | null {
 
 /** True if the name names a raw request/response blob and is not a derived form. */
 function isRawBlobName(name: string): boolean {
-  if (REDACTION_RE.test(name) || BLOB_REDACTION_RE.test(name)) {
-    return false;
-  }
   const tokens = tokenize(name);
-  if (tokens.some((tok) => BLOB_REDACTION_TOKENS.has(tok))) {
+  if (tokens.some((tok) => SECRET_REDACTION_TOKENS.has(tok) || BLOB_TRANSFORM_TOKENS.has(tok) || BLOB_SAFE_TOKENS.has(tok))) {
     return false;
   }
   // Same leading boolean-predicate words the secret arm uses: `hasBody` answers
@@ -260,14 +262,66 @@ export default createRule<Options, MessageIds>({
     }
 
     /** Reports `node` when `value` carries an un-redacted request/response blob. */
-    function reportRawBlob(node: TSESTree.Node, value: TSESTree.Node): void {
+    function reportRawBlob(node: TSESTree.Node, value: TSESTree.Node): boolean {
       if (!blobArmApplies) {
-        return;
+        return false;
       }
       const name = rawBlobValueName(value);
       if (name !== null) {
         context.report({ node, messageId: "noRawBodyInLog", data: { name } });
+        return true;
       }
+      return false;
+    }
+
+    function literalProperties(value: TSESTree.ObjectExpression): TSESTree.Property[] {
+      const effective = new Map<string, TSESTree.Property>();
+      for (const entry of value.properties) {
+        if (entry.type === "SpreadElement") {
+          if (entry.argument.type !== "ObjectExpression") {
+            effective.clear();
+            continue;
+          }
+          for (const property of literalProperties(entry.argument)) {
+            const key = propertyKeyName(property);
+            if (key !== null) effective.set(key, property);
+          }
+          continue;
+        }
+        const key = propertyKeyName(entry);
+        if (key === null) {
+          effective.clear();
+          continue;
+        }
+        effective.set(key, entry);
+      }
+      return [...effective.values()];
+    }
+
+    function inspectLoggedValue(value: TSESTree.Node): void {
+      if (value.type === "ObjectExpression") {
+        for (const property of literalProperties(value)) {
+          if (reportSecretProperty(property) || reportRawBlob(property, property.value)) continue;
+          inspectLoggedValue(property.value);
+        }
+        return;
+      }
+      if (value.type === "ArrayExpression") {
+        for (const element of value.elements) {
+          if (element !== null && element.type !== "SpreadElement") inspectLoggedValue(element);
+        }
+        return;
+      }
+      if (value.type === "TemplateLiteral") {
+        for (const expression of value.expressions) inspectLoggedValue(expression);
+        return;
+      }
+      if (value.type === "BinaryExpression" && value.operator === "+") {
+        inspectLoggedValue(value.left);
+        inspectLoggedValue(value.right);
+        return;
+      }
+      if (!reportSecretArgument(value)) reportRawBlob(value, value);
     }
 
     return {
@@ -277,20 +331,7 @@ export default createRule<Options, MessageIds>({
         }
 
         for (const arg of node.arguments) {
-          if (arg.type === "ObjectExpression") {
-            for (const prop of arg.properties) {
-              if (prop.type !== "Property") {
-                continue;
-              }
-              if (!reportSecretProperty(prop)) {
-                reportRawBlob(prop, prop.value);
-              }
-            }
-            continue;
-          }
-          if (!reportSecretArgument(arg)) {
-            reportRawBlob(arg, arg);
-          }
+          if (arg.type !== "SpreadElement") inspectLoggedValue(arg);
         }
       },
     };
