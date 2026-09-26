@@ -46,6 +46,8 @@ class _UpstreamRuleEngine(StrEnum):
 LINT_CONFIGS: Final = "code-standards"
 _PYTHON_LINT: Final = "sarj-python-lint"
 SIBLING_PACKAGES: Final = (_PYTHON_LINT, "sarj-sql-lint", "sarj-iac-lint")
+REPO_STANDARDS_VERSION: Final = "6.1.0"
+REPO_STANDARDS_REVISION: Final = "2e44cf52cb569e8f5dcdc7b00de2f7a4b6b50310"
 
 
 def adopted_version() -> str:
@@ -669,7 +671,7 @@ def _relative_file(root: Path, table: Mapping[str, object], key: str) -> str | N
 
 def installed_versions() -> dict[str, str]:
     found = {LINT_CONFIGS: adopted_version()}
-    for name in SIBLING_PACKAGES:
+    for name in (*SIBLING_PACKAGES, "repo-standards"):
         try:
             found[name] = version(name)
         except PackageNotFoundError:
