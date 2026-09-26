@@ -550,6 +550,7 @@ jobs:
 
   publish-python:
     needs: build-python
+    if: always() && needs.build-python.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment: pypi-python-release
