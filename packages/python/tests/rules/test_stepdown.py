@@ -567,7 +567,7 @@ class H:
     assert "_load" in diags[0].message
 
 
-def test_helper_used_as_value_reference_fires():
+def test_helper_used_as_value_reference_is_excluded():
     src = """
 def _h() -> int:
     return 1
@@ -575,9 +575,7 @@ def _h() -> int:
 def caller():
     return _h
 """
-    diags = _check(src)
-    assert len(diags) == 1
-    assert "_h" in diags[0].message
+    assert _check(src) == []
 
 
 def test_nested_def_default_reference_fires():
@@ -739,10 +737,10 @@ def caller() -> int:
 
 def test_lambda_parameter_shadow_does_not_pin_module_helper():
     src = """
+handler = lambda _h: _h()
+
 def _h() -> int:
     return 1
-
-handler = lambda _h: _h()
 
 def caller() -> int:
     return _h()
@@ -1009,9 +1007,7 @@ class Runner:
     assert _check(src) == []
 
 
-def test_function_caller_defined_below_a_class_still_fires():
-    # The class-caller guard is about the *flagged* caller only — a genuine
-    # single function caller is reported even when classes sit in between.
+def test_class_execution_is_a_definition_order_barrier():
     src = """
 def _load() -> dict:
     return {}
@@ -1022,10 +1018,7 @@ class Unrelated:
 def run() -> dict:
     return _load()
 """
-    diags = _check(src)
-    assert len(diags) == 1
-    assert "_load" in diags[0].message
-    assert "run" in diags[0].message
+    assert _check(src) == []
 
 
 def test_class_scope_method_helper_still_fires():
@@ -1088,7 +1081,7 @@ class Band:
     assert _check(src) == []
 
 
-def test_a_helper_whose_only_caller_is_overloaded_now_fires():
+def test_overload_decorators_remain_definition_order_barriers():
     src = """
 from typing import overload
 
@@ -1102,10 +1095,7 @@ def get_df(sql: str, kind: str) -> object: ...
 def get_df(sql: str, kind: object) -> object:
     return _get_pandas_df(sql)
 """
-    diags = _check(src)
-    assert len(diags) == 1
-    assert "_get_pandas_df" in diags[0].message
-    assert "get_df" in diags[0].message
+    assert _check(src) == []
 
 
 def test_a_singledispatch_registration_is_never_a_stepdown_target():
@@ -1163,3 +1153,167 @@ def test_a_codegen_root_makes_the_subtree_generated(tmp_path: Path):
 
 def test_a_hand_written_path_still_reports():
     assert len(_check(_ABOVE_ITS_ONLY_CALLER, "src/app/service.py")) == 1
+
+
+@pytest.mark.parametrize("use", ["return _helper", "register(_helper)", "yield _helper"])
+def test_escaped_callable_is_not_a_sole_caller(use: str) -> None:
+    assert _check(f"def _helper(): return 1\ndef caller():\n    {use}\n") == []
+
+
+def test_local_callable_alias_with_only_calls_establishes_caller() -> None:
+    source = "def _helper(): return 1\ndef caller():\n    invoke = _helper\n    return invoke()\n"
+    assert len(_check(source)) == 1
+
+
+@pytest.mark.parametrize("use", ["return invoke", "register(invoke)", "invoke = replacement\n    return invoke()"])
+def test_escaping_or_reassigned_callable_alias_pins_helper(use: str) -> None:
+    source = f"def _helper(): return 1\ndef caller():\n    invoke = _helper\n    {use}\n"
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize("between", ["run_startup()", "state = 2", "if enabled:\n    run_startup()"])
+def test_executable_statement_is_a_movement_barrier(between: str) -> None:
+    source = f"def _helper(value=state): return value\n{between}\ndef caller(): return _helper()\n"
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize("signature", ["value=initialize()", "value: initialize()", "*, value=initialize()"])
+def test_definition_time_execution_is_a_movement_barrier(signature: str) -> None:
+    source = f"def _helper(): return 1\ndef unrelated({signature}): pass\ndef caller(): return _helper()\n"
+    assert _check(source) == []
+
+
+def test_redefining_a_captured_default_is_a_movement_barrier() -> None:
+    source = "def capture(): pass\ndef _helper(value=capture): return value()\ndef capture(): pass\ndef caller(): return _helper()\n"
+    assert _check(source) == []
+
+
+def test_comprehension_walrus_binds_the_containing_function() -> None:
+    source = "def _helper(): return 1\ndef caller(values):\n    [(_helper := value) for value in values]\n    return _helper()\n"
+    assert _check(source) == []
+
+
+def test_comprehension_walrus_inside_lambda_does_not_bind_outer_function() -> None:
+    source = "def _helper(): return 1\ndef caller():\n    nested = lambda values: [(_helper := value) for value in values]\n    return _helper()\n"
+    assert len(_check(source)) == 1
+
+
+def test_nested_sibling_helpers_in_a_declaration_region_are_checked() -> None:
+    source = "def outer():\n    def _helper(): return 1\n    def caller(): return _helper()\n    return caller()\n"
+    assert len(_check(source)) == 1
+
+
+def test_nested_sibling_helper_cannot_cross_eager_use() -> None:
+    source = "def outer():\n    def _helper(): return 1\n    value = _helper()\n    def caller(): return _helper()\n    return caller() + value\n"
+    assert _check(source) == []
+
+
+def test_nested_class_reference_pins_module_helper() -> None:
+    source = "def _helper(): return 1\ndef caller():\n    return _helper()\ndef other():\n    class Nested:\n        def run(this): return _helper()\n    return Nested\n"
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize("receiver", ["this", "instance", "klass"])
+def test_actual_receiver_parameter_establishes_method_caller(receiver: str) -> None:
+    source = f"class Service:\n    def _helper({receiver}): return 1\n    def caller({receiver}): return {receiver}._helper()\n"
+    assert len(_check(source)) == 1
+
+
+def test_stable_receiver_alias_establishes_method_caller() -> None:
+    source = "class Service:\n    def _helper(this): return 1\n    def caller(this):\n        receiver = this\n        return receiver._helper()\n"
+    assert len(_check(source)) == 1
+
+
+def test_stable_bound_method_alias_establishes_method_caller() -> None:
+    source = "class Service:\n    def _helper(this): return 1\n    def caller(this):\n        invoke = this._helper\n        return invoke()\n"
+    assert len(_check(source)) == 1
+
+
+def test_rebound_receiver_does_not_establish_method_caller() -> None:
+    source = "class Service:\n    def _helper(self): return 1\n    def caller(self):\n        self = another\n        return self._helper()\n"
+    assert _check(source) == []
+
+
+def test_staticmethod_parameter_named_self_is_not_a_receiver() -> None:
+    source = "class Service:\n    def _helper(self): return 1\n    @staticmethod\n    def caller(self): return self._helper()\n"
+    assert _check(source) == []
+
+
+def test_method_reference_hidden_in_nested_class_pins_helper() -> None:
+    source = "class Service:\n    def _helper(self): return 1\n    def caller(self): return self._helper()\n    def other(self):\n        class Nested:\n            def run(inner): return self._helper()\n        return Nested\n"
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    ("preamble", "decorator"),
+    [("import builtins as b", "b.classmethod"), ("from builtins import classmethod as cm", "cm")],
+)
+def test_qualified_builtin_decorator_and_actual_class_receiver(preamble: str, decorator: str) -> None:
+    source = f"{preamble}\nclass Service:\n    @{decorator}\n    def _helper(klass): return 1\n    @{decorator}\n    def caller(klass): return klass._helper()\n"
+    assert len(_check(source)) == 1
+
+
+def test_unrelated_local_builtin_shadow_does_not_hide_classmethod() -> None:
+    source = "def unrelated(classmethod): return classmethod\nclass Service:\n    @classmethod\n    def _helper(klass): return 1\n    @classmethod\n    def caller(klass): return klass._helper()\n"
+    assert len(_check(source)) == 1
+
+
+def test_class_scope_builtin_shadow_is_not_transparent() -> None:
+    source = "class Service:\n    classmethod = register\n    @classmethod\n    def _helper(klass): return 1\n    @classmethod\n    def caller(klass): return klass._helper()\n"
+    assert _check(source) == []
+
+
+def test_actual_receiver_in_subclass_prevents_sole_caller_claim() -> None:
+    source = "class Base:\n    def _helper(this): return 1\n    def caller(this): return this._helper()\nclass Child(Base):\n    def other(instance): return instance._helper()\n"
+    assert _check(source) == []
+
+
+def test_nonlocal_rebinding_pins_nested_helper() -> None:
+    source = "def outer():\n    def _helper(): return 1\n    def mutate():\n        nonlocal _helper\n        _helper = replacement\n    def caller(): return _helper()\n    return caller()\n"
+    assert _check(source) == []
+
+
+def test_nonlocal_rebinding_pins_method_receiver() -> None:
+    source = "class Service:\n    def _helper(this): return 1\n    def caller(this):\n        def mutate():\n            nonlocal this\n            this = replacement\n        mutate()\n        return this._helper()\n"
+    assert _check(source) == []
+
+
+def test_walrus_in_nested_default_binds_the_containing_function() -> None:
+    source = "def _helper(): return 1\ndef caller():\n    def nested(value=(_helper := replacement)): pass\n    return _helper()\n"
+    assert _check(source) == []
+
+
+def test_walrus_in_nested_default_rebinds_method_receiver() -> None:
+    source = "class Service:\n    def _helper(this): return 1\n    def caller(this):\n        def nested(value=(this := replacement)): pass\n        return this._helper()\n"
+    assert _check(source) == []
+
+
+def test_dynamic_attribute_name_prevents_a_sole_method_caller_claim() -> None:
+    source = "class Service:\n    def _helper(self): return 1\n    def caller(self): return self._helper()\n    def other(self, key): return getattr(self, key)()\n"
+    assert _check(source) == []
+
+
+def test_rebound_class_name_prevents_a_sole_method_caller_claim() -> None:
+    source = "class Service:\n    @staticmethod\n    def _helper(): return 1\n    @staticmethod\n    def caller(): return Service._helper()\nService = Other\n"
+    assert _check(source) == []
+
+
+def test_late_class_import_cannot_prove_an_earlier_decorator_builtin() -> None:
+    source = "sm = custom\nclass Service:\n    @sm\n    def _helper(): return 1\n    @staticmethod\n    def caller(): return Service._helper()\n    from builtins import staticmethod as sm\n"
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    "body",
+    ["return lambda: _helper()", "def nested(): return _helper()\n    return nested", "register(lambda: _helper())"],
+)
+def test_escaping_closure_does_not_establish_a_sole_caller(body: str) -> None:
+    assert _check(f"def _helper(): return 1\ndef caller():\n    {body}\n") == []
+
+
+def test_immediately_called_lambda_establishes_a_sole_caller() -> None:
+    assert len(_check("def _helper(): return 1\ndef caller(): return (lambda: _helper())()\n")) == 1
+
+
+def test_helper_returning_itself_is_an_escaped_callable() -> None:
+    assert _check("def _helper(): return _helper\ndef caller(): return _helper()\n") == []

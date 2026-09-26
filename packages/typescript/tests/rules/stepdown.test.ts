@@ -97,8 +97,104 @@ RULE_TESTER.run("stepdown", rule, {
       code: "class Service { private normalize(v: string) { return v.trim(); } handler = this.normalize; run(v: string) { return this.normalize(v); } }",
     },
     {
-      name: "allows a private method also called through a this alias",
-      code: "class Service { private load() { return 1; } private run() { const self = this; return this.load() + self.load(); } }",
+      name: "does not suggest reordering a cycle through a public method",
+      code: "class Service { private load() { return this.run(); } public run() { return this.load(); } }",
+    },
+    {
+      name: "does not suggest reordering a cycle through a protected method",
+      code: "class Service { private load() { return this.run(); } protected run() { return this.load(); } }",
+    },
+    {
+      name: "does not move a const helper across eager execution",
+      code: "const load = () => 1; run(); function run() { return load(); }",
+    },
+    {
+      name: "does not move a const helper across an initializer",
+      code: "const load = () => 1; const result = run(); function run() { return load(); }",
+    },
+    {
+      name: "does not move an individual helper from a multi-declarator statement",
+      code: "const load = () => 1, other = run(); function run() { return load(); }",
+    },
+    {
+      name: "pins an escaped local callable alias",
+      code: "function load() { return 1; } function run() { const call = load; consume(call); return call(); }",
+    },
+    {
+      name: "pins a callable alias used by a nested callback",
+      code: "function load() { return 1; } function run() { const call = load; return () => call(); }",
+    },
+    {
+      name: "pins a mutable callable alias",
+      code: "function load() { return 1; } function run() { let call = load; return call(); }",
+    },
+    {
+      name: "pins a class receiver that can be reassigned",
+      code: "let Service = class { private static load() { return 1; } static run() { return Service.load(); } };",
+    },
+    {
+      name: "pins an escaped method alias",
+      code: "class Service { private load() { return 1; } run() { const call = this.load; consume(call); return call(); } }",
+    },
+    {
+      name: "pins a dynamic computed receiver reference",
+      code: "class Service { private load() { return 1; } run(key: string) { return this.load() + this[key](); } }",
+    },
+    {
+      name: "pins a dynamic computed reference through a mutable receiver alias",
+      code: "class Service { private load() { return 1; } run() { return this.load(); } other(key: string) { let that = this; return that[key](); } }",
+    },
+    {
+      name: "pins destructuring through an uncertain receiver",
+      code: "class Service { private load() { return 1; } run() { return this.load(); } other() { let that = this; const { 'load': call } = that; return call(); } }",
+    },
+    {
+      name: "pins a dynamic computed reference through a default receiver alias",
+      code: "class Service { private load() { return 1; } run() { return this.load(); } other(key: string, that = this) { return that[key](); } }",
+    },
+    {
+      name: "includes quoted method names when identifying cycles",
+      code: "class Service { private load() { return this.hop(); } run() { return this.load(); } 'hop'() { return this.run(); } }",
+    },
+    {
+      name: "includes overloaded method implementations when identifying cycles",
+      code: "class Service { private load() { return this.hop(); } run() { return this.load(); } hop(): number; hop() { return this.run(); } }",
+    },
+    {
+      name: "pins callers whose computed method identity is unknown",
+      code: "class Service { private load() { return 1; } run() { return this.load(); } ['other' + suffix]() { return this.load(); } }",
+    },
+    {
+      name: "pins a quoted destructuring reference",
+      code: "class Service { private load() { return 1; } run() { const { 'load': call } = this; return this.load() + call(); } }",
+    },
+    {
+      name: "pins a computed destructuring reference",
+      code: "class Service { private load() { return 1; } run(key: string) { const { [key]: call } = this; return this.load() + call(); } }",
+    },
+    {
+      name: "pins destructuring in a parameter default",
+      code: "class Service { private load() { return 1; } run({ 'load': call } = this) { return this.load() + call(); } }",
+    },
+    {
+      name: "pins a destructuring assignment",
+      code: "class Service { private load() { return 1; } run() { let call; ({ 'load': call } = this); return this.load() + call(); } }",
+    },
+    {
+      name: "pins an escaping receiver alias",
+      code: "class Service { private load() { return 1; } run() { const self = this; consume(self); return this.load(); } }",
+    },
+    {
+      name: "pins a receiver alias used in a nested function",
+      code: "class Service { private load() { return 1; } run() { const self = this; const callback = () => self.load(); return this.load(); } }",
+    },
+    {
+      name: "keeps mixed static and instance call cycles intact",
+      code: "class Service { private load() { return Service.run(); } static run(value: Service) { return value.load(); } }",
+    },
+    {
+      name: "pins a callable referenced inside a nested class",
+      code: "class Service { private load() { return 1; } run() { class Nested { run() { return this.load(); } } return this.load(); } }",
     },
     {
       name: "allows a private method destructured from this",
@@ -153,6 +249,51 @@ RULE_TESTER.run("stepdown", rule, {
   ],
   invalid: [
     { name: "reports the documented helper-first order", code: STEPDOWN_DOCUMENTATION.examples[1].files[0].source, errors: [{ messageId: "helperAboveOnlyCaller", data: { helper: "load", caller: "run" } }] },
+    {
+      name: "counts a stable local receiver alias",
+      code: "class Service { private load() { return 1; } run() { const self = this; return this.load() + self.load(); } }",
+      errors: [{ messageId: "helperAboveOnlyCaller", data: { helper: "load", caller: "run" } }],
+    },
+    {
+      name: "keeps static and instance method identities separate",
+      code: "class Service { private load() { return 1; } static load() { return 2; } run() { return this.load(); } }",
+      errors: [{ messageId: "helperAboveOnlyCaller", data: { helper: "load", caller: "run" } }],
+    },
+    {
+      name: "resolves the immutable internal class name when its outer binding is reassigned",
+      code: "class Service { private static load() { return 1; } static run() { return Service.load(); } } Service = replacement;",
+      errors: [{ messageId: "helperAboveOnlyCaller", data: { helper: "load", caller: "run" } }],
+    },
+    {
+      name: "keeps static and instance callers separate",
+      code: "class Service { private static load() { return 1; } static run() { return this.load(); } run() { return 2; } }",
+      errors: [{ messageId: "helperAboveOnlyCaller", data: { helper: "load", caller: "run" } }],
+    },
+    {
+      name: "counts a local nonescaping callable alias chain",
+      code: "function load() { return 1; } function run() { const first = load; const second = first; return second(); }",
+      errors: [{ messageId: "helperAboveOnlyCaller", data: { helper: "load", caller: "run" } }],
+    },
+    {
+      name: "counts a local nonescaping method alias",
+      code: "class Service { private load() { return 1; } run() { const call = this.load; return call(); } }",
+      errors: [{ messageId: "helperAboveOnlyCaller", data: { helper: "load", caller: "run" } }],
+    },
+    {
+      name: "recognizes erased wrappers around callable definitions and calls",
+      code: "const load = (() => 1) satisfies () => number; function run() { return (load as () => number)!(); }",
+      errors: [{ messageId: "helperAboveOnlyCaller", data: { helper: "load", caller: "run" } }],
+    },
+    {
+      name: "recognizes erased wrappers around a method receiver and callable",
+      code: "class Service { private load() { return 1; } run() { return ((this as Service).load satisfies () => number)!(); } }",
+      errors: [{ messageId: "helperAboveOnlyCaller", data: { helper: "load", caller: "run" } }],
+    },
+    {
+      name: "retains hoisted function movement across eager execution",
+      code: "function load() { return 1; } run(); function run() { return load(); }",
+      errors: [{ messageId: "helperAboveOnlyCaller", data: { helper: "load", caller: "run" } }],
+    },
     {
       name: "keeps an overlapping deep dependency chain report-only instead of partially rewriting it",
       code: DEEP_CHAIN,

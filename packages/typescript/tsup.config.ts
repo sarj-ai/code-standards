@@ -1,7 +1,7 @@
 import { defineConfig } from "tsup";
 
 export default defineConfig({
-  entry: ["src/index.ts", "src/rule-examples.ts"],
+  entry: { index: "src/index.ts", "rule-examples": "src/verify-rule-examples.ts" },
   format: ["esm", "cjs"],
   dts: true,
   sourcemap: false,

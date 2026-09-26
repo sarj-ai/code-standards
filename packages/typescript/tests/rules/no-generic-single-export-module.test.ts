@@ -15,6 +15,14 @@ const RULE_TESTER = new RuleTester({
 
 RULE_TESTER.run("no-generic-single-export-module", rule, {
   valid: [
+    { name: "exported import-equals leaves the runtime surface unknown", filename: "src/utils.ts", code: "namespace Domain { export class Entry {} } export import Entry = Domain.Entry; export const only = 1;" },
+    { name: "imported values may be erased type bindings", filename: "src/utils.ts", code: "import { Contract } from './contracts.js'; export { Contract }; export const parseOrder = () => ({});" },
+    { name: "imported identifier defaults remain unresolved", filename: "src/utils.ts", code: "import Contract from './contracts.js'; export default Contract;" },
+    { name: "const enums are not silently dropped", filename: "src/utils.ts", code: "export const enum State { Ready } export function parseOrder() {}" },
+    { name: "aliased const enums are not silently dropped", filename: "src/utils.ts", code: "const enum State { Ready } export { State }; export function parseOrder() {}" },
+    { name: "empty namespaces have uncertain emission", filename: "src/utils.ts", code: "export namespace Other {} export function parseOrder() {}" },
+    { name: "erased namespaces do not create runtime responsibilities", filename: "src/utils.ts", code: "export namespace Contracts { export interface Contract {} }" },
+    { name: "two public names remain distinct", filename: "src/utils.ts", code: "const parseOrder = () => ({}); export { parseOrder, parseOrder as parse };" },
     { name: "does not claim a sole export alongside destructured bindings", filename: "src/utils.ts", code: "export const {first, second} = pair; export function third() {}" },
     { name: "does not overlook nested array exports", filename: "src/utils.ts", code: "export const [first, ...rest] = values; export function third() {}" },
     { filename: "/repo/src/order-parser.ts", code: NO_GENERIC_SINGLE_EXPORT_MODULE_DOCUMENTATION.examples[0].files[0].source },
@@ -67,6 +75,11 @@ RULE_TESTER.run("no-generic-single-export-module", rule, {
     },
   ],
   invalid: [
+    { name: "supporting types do not hide the sole runtime export", filename: "src/utils.ts", code: "export interface Contract {} export function parseOrder() {}", errors: [{ messageId: "genericSingleExport", data: { stem: "utils", exported: "parseOrder" } }] },
+    { name: "type only namespaces are ignored beside runtime names", filename: "src/utils.ts", code: "export namespace Contracts { export interface Contract {} } export function parseOrder() {}", errors: [{ messageId: "genericSingleExport", data: { stem: "utils", exported: "parseOrder" } }] },
+    { name: "namespace values are runtime exports", filename: "src/utils.ts", code: "export namespace Orders { export const count = 1; }", errors: [{ messageId: "genericSingleExport", data: { stem: "utils", exported: "Orders" } }] },
+    { name: "identifier defaults use local responsibility names", filename: "src/utils.ts", code: "function parseOrder() {} export default parseOrder;", errors: [{ messageId: "genericSingleExport", data: { stem: "utils", exported: "parseOrder" } }] },
+    { name: "named aliases use public keys", filename: "src/utils.ts", code: "function internal() {} export { internal as parseOrder };", errors: [{ messageId: "genericSingleExport", data: { stem: "utils", exported: "parseOrder" } }] },
     { name: "reports the documented generic module", filename: "/repo/src/utils.ts", code: NO_GENERIC_SINGLE_EXPORT_MODULE_DOCUMENTATION.examples[1].files[0].source, errors: [{ messageId: "genericSingleExport", data: { stem: "utils", exported: "parseOrder", expected: "parse-order.ts" } }] },
     {
       name: "a generic export does not make a generic filename informative",

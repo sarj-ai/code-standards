@@ -256,7 +256,7 @@ export default createRule<Options, MessageIds>({{
 
 def _eslint_test(slug: str) -> str:
     return f"""import {{ it }} from "vitest";
-import {{ verifyRuleExamples }} from "../../src/rule-examples.js";
+import {{ verifyRuleExamples }} from "../../src/verify-rule-examples.js";
 import rule from "../../src/rules/{slug}.js";
 
 it("executes the documented examples", async () => {{

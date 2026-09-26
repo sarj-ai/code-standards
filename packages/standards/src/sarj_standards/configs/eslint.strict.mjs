@@ -1249,7 +1249,7 @@ export function createConfig(options = {}) {
       "@sarj/prefer-shared-zod-enum": "warn",
       "@sarj/prefer-switch-for-repeated-equality": "warn",
       "@sarj/require-sql-access-class": "warn",
-      "@sarj/sole-export-matches-filename": "warn",
+      "@sarj/sole-export-matches-filename": "error",
       "@sarj/require-assert-never": "error",
       "@sarj/require-static-next-matcher": "error",
       "@sarj/require-zod-form-validation": "error",

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ast
 from collections import Counter
+from dataclasses import dataclass
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, final, override
 
@@ -31,8 +32,6 @@ _SCOPE_NODES = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
 
 type _Def = ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef
 
-_SELF_NAMES = frozenset({"self", "cls"})
-
 # These decorators preserve an ordinary callable definition and do not register
 # it through user code at definition time. Unknown decorators are movement barriers.
 _ORDER_TRANSPARENT_DECORATORS = frozenset({"classmethod", "staticmethod"})
@@ -53,6 +52,12 @@ def _walk(node: ast.AST) -> Iterator[ast.AST]:
         stack.extend(_child_nodes(n))
 
 
+@dataclass(frozen=True, slots=True)
+class _TreeIndex:
+    nodes: list[ast.AST]
+    parents: dict[int, ast.AST]
+
+
 @final
 class Stepdown(Rule):
     id: str = "stepdown"
@@ -66,7 +71,8 @@ class Stepdown(Rule):
         limitations=(
             "Generated files, tests, `__main__.py`, mutual recursion, and helpers with multiple callers are excluded.",
             "Decorated definitions and dynamic references that cannot prove a sole caller are not reported.",
-            "Only bare builtin classmethod/staticmethod decorators without any visible rebinding are treated as transparent; other decorators remain ordering barriers.",
+            "Only lexically resolved builtin classmethod/staticmethod decorators are transparent; other decorators and executable statements are movement barriers.",
+            "Only direct calls and nonescaping local callable aliases establish callers; escaped values and ambiguous receivers are excluded.",
         ),
         examples=(
             RuleExample(
@@ -111,24 +117,59 @@ class Stepdown(Rule):
         tree = context.tree
         if tree is None:
             return []
-        transparent = _unshadowed_builtin_decorators(tree)
-        diags = _check_module_scope(path, tree, self.code, transparent)
-        classes = [node for node in _walk(tree) if isinstance(node, ast.ClassDef)]
+        index = _tree_index(tree)
+        nodes, parents = index.nodes, index.parents
+        transparent = _transparent_builtin_decorators(tree, nodes)
+        diags = _check_module_scope(path, tree, self.code, transparent, parents)
+        for node in nodes:
+            if isinstance(node, _DEF_NODES):
+                diags.extend(
+                    _check_module_scope(
+                        path, ast.Module(body=node.body, type_ignores=[]), self.code, transparent, parents
+                    )
+                )
+        classes = [node for node in nodes if isinstance(node, ast.ClassDef)]
         family_external = _family_external_refs(classes)
+        mutable_names = {name for node in nodes if isinstance(node, (ast.Global, ast.Nonlocal)) for name in node.names}
         for cls in classes:
             diags.extend(
-                _check_class_scope(path, cls, self.code, family_external.get(id(cls), frozenset()), transparent)
+                _check_class_scope(
+                    path,
+                    cls,
+                    self.code,
+                    family_external.get(id(cls), frozenset()),
+                    transparent,
+                    parents=parents,
+                    stable_class_name=cls.name not in mutable_names and _stable_class_binding(cls, parents),
+                )
             )
         diags.sort(key=lambda d: (d.line, d.col))
         return diags
+
+
+def _tree_index(tree: ast.Module) -> _TreeIndex:
+    nodes: list[ast.AST] = []
+    parents: dict[int, ast.AST] = {}
+    stack: list[ast.AST] = [tree]
+    while stack:
+        node = stack.pop()
+        nodes.append(node)
+        for child in _child_nodes(node):
+            parents[id(child)] = node
+            stack.append(child)
+    return _TreeIndex(nodes=nodes, parents=parents)
 
 
 def _last_by_name[DefT: _Def](defs: Sequence[DefT]) -> dict[str, DefT]:
     return {definition.name: definition for definition in defs}
 
 
-def _check_module_scope(path: Path, tree: ast.Module, code: str, transparent: frozenset[str]) -> list[Diagnostic]:
+def _check_module_scope(
+    path: Path, tree: ast.Module, code: str, transparent: Mapping[int, str], parents: Mapping[int, ast.AST]
+) -> list[Diagnostic]:
     defs = [n for n in tree.body if isinstance(n, _SCOPE_NODES)]
+    if not any(isinstance(node, _DEF_NODES) and _is_private_helper_name(node.name) for node in defs):
+        return []
     counts = Counter(d.name for d in defs)
     unique_defs = {name: d for d in defs if counts[name := d.name] == 1}
     all_defs = _last_by_name(defs)
@@ -138,7 +179,7 @@ def _check_module_scope(path: Path, tree: ast.Module, code: str, transparent: fr
 
     graph: dict[str, set[str]] = {}
     ref_lines: dict[tuple[str, str], int] = {}
-    _module_call_graph(defs, all_defs, graph, ref_lines)
+    _module_call_graph(defs, all_defs, graph, ref_lines, parents, pinned=pinned)
 
     diags: list[Diagnostic] = []
     for name, d in unique_defs.items():
@@ -148,16 +189,33 @@ def _check_module_scope(path: Path, tree: ast.Module, code: str, transparent: fr
             continue
         diags.extend(
             _flag_if_above_single_caller(
-                path, code, name, node=d, graph=graph, defs=all_defs, ref_lines=ref_lines, transparent=transparent
+                path,
+                code,
+                name,
+                node=d,
+                graph=graph,
+                defs=all_defs,
+                ref_lines=ref_lines,
+                transparent=transparent,
+                statements=tree.body,
             )
         )
     return diags
 
 
 def _check_class_scope(
-    path: Path, cls: ast.ClassDef, code: str, external_callers: frozenset[str], transparent: frozenset[str]
+    path: Path,
+    cls: ast.ClassDef,
+    code: str,
+    external_callers: frozenset[str],
+    transparent: Mapping[int, str],
+    *,
+    parents: Mapping[int, ast.AST],
+    stable_class_name: bool,
 ) -> list[Diagnostic]:
     methods = [n for n in cls.body if isinstance(n, _DEF_NODES)]
+    if not any(_is_private_helper_name(method.name) for method in methods):
+        return []
     counts = Counter(m.name for m in methods)
     unique = {name: m for m in methods if counts[name := m.name] == 1}
     all_methods = _last_by_name(methods)
@@ -169,7 +227,17 @@ def _check_class_scope(
 
     graph: dict[str, set[str]] = {}
     ref_lines: dict[tuple[str, str], int] = {}
-    _class_call_graph(cls, methods, all_methods, graph, ref_lines, pinned=pinned)
+    _class_call_graph(
+        cls,
+        methods,
+        all_methods,
+        graph,
+        ref_lines,
+        parents=parents,
+        pinned=pinned,
+        transparent=transparent,
+        stable_class_name=stable_class_name,
+    )
 
     diags: list[Diagnostic] = []
     for name, m in unique.items():
@@ -184,7 +252,15 @@ def _check_class_scope(
             continue
         diags.extend(
             _flag_if_above_single_caller(
-                path, code, name, node=m, graph=graph, defs=all_methods, ref_lines=ref_lines, transparent=transparent
+                path,
+                code,
+                name,
+                node=m,
+                graph=graph,
+                defs=all_methods,
+                ref_lines=ref_lines,
+                transparent=transparent,
+                statements=cls.body,
             )
         )
     return diags
@@ -199,7 +275,8 @@ def _flag_if_above_single_caller(
     graph: dict[str, set[str]],
     defs: Mapping[str, ast.stmt],
     ref_lines: dict[tuple[str, str], int],
-    transparent: frozenset[str],
+    transparent: Mapping[int, str],
+    statements: Sequence[ast.stmt],
 ) -> list[Diagnostic]:
     callers = [c for c, callees in graph.items() if name in callees]
     if len(callers) != 1:
@@ -217,6 +294,8 @@ def _flag_if_above_single_caller(
     if _reaches(graph, name, caller):
         return []
     if node.lineno >= defs[caller].lineno:
+        return []
+    if not _safe_movement(node, caller_node, statements, transparent):
         return []
     ref_line = ref_lines.get((caller, name), defs[caller].lineno)
     return [
@@ -300,20 +379,10 @@ def _class_self_method_refs(cls: ast.ClassDef) -> set[str]:
     for m in cls.body:
         if not isinstance(m, _DEF_NODES):
             continue
-        for n in _runtime_nodes(m.body):
-            if isinstance(n, ast.Attribute) and isinstance(n.ctx, ast.Load) and _is_self_like(n.value, cls.name):
+        for n in _walk(m):
+            if isinstance(n, ast.Attribute) and isinstance(n.ctx, ast.Load):
                 out.add(n.attr)
     return out
-
-
-def _is_self_like(value: ast.expr, class_name: str) -> bool:
-    match value:
-        case ast.Name(id=vid):
-            return vid in _SELF_NAMES or vid == class_name
-        case ast.Call(func=ast.Name(id="super")):
-            return True
-        case _:
-            return False
 
 
 def _is_private_helper_name(name: str) -> bool:
@@ -322,66 +391,191 @@ def _is_private_helper_name(name: str) -> bool:
     return not (name.startswith("__") and name.endswith("__"))
 
 
-def _unshadowed_builtin_decorators(tree: ast.Module) -> frozenset[str]:
-    bound: set[str] = set()
-    for node in _walk(tree):
-        match node:
-            case ast.ImportFrom(names=names) if any(alias.name == "*" for alias in names):
-                return frozenset()
-            case (
-                ast.Name(id=name, ctx=ast.Store() | ast.Del())
-                | ast.arg(arg=name)
-                | ast.FunctionDef(name=name)
-                | ast.AsyncFunctionDef(name=name)
-                | ast.ClassDef(name=name)
-            ):
-                bound.add(name)
-            case ast.alias(name=name, asname=asname):
-                bound.add(asname or name.split(".")[0])
-            case (
-                ast.ExceptHandler(name=str() as name)
-                | ast.MatchAs(name=str() as name)
-                | ast.MatchStar(name=str() as name)
-                | ast.MatchMapping(rest=str() as name)
-            ):
-                bound.add(name)
-            case _:
-                pass
-    return _ORDER_TRANSPARENT_DECORATORS - bound
+def _transparent_builtin_decorators(tree: ast.Module, nodes: Sequence[ast.AST]) -> dict[int, str]:
+    resolved: dict[int, str] = {}
+    mutated = {
+        node.attr for node in nodes if isinstance(node, ast.Attribute) and isinstance(node.ctx, (ast.Store, ast.Del))
+    }
+
+    def visit(scope: ast.Module | _Def, enclosing: dict[str, str]) -> None:
+        for child, visible in _scope_decorator_environments(scope, enclosing):
+            if isinstance(child, _DEF_NODES):
+                for decorator in child.decorator_list:
+                    target = _builtin_decorator_target(decorator, visible)
+                    if target in _ORDER_TRANSPARENT_DECORATORS and target not in mutated:
+                        resolved[id(decorator)] = target
+            # A method's body closes over the enclosing function/module,
+            # never over its containing class's namespace.
+            visit(child, enclosing if isinstance(scope, ast.ClassDef) else visible)
+
+    visit(tree, {name: name for name in _ORDER_TRANSPARENT_DECORATORS})
+    return resolved
 
 
-def _has_order_sensitive_decorator(node: ast.FunctionDef | ast.AsyncFunctionDef, transparent: frozenset[str]) -> bool:
+def _scope_decorator_environments(
+    scope: ast.Module | _Def, enclosing: Mapping[str, str]
+) -> Iterator[tuple[_Def, dict[str, str]]]:
+    if not any(child for statement in scope.body for child in _scope_declarations(statement)):
+        return
+    bindings = _scope_binding_counts(scope)
+    visible = {name: target for name, target in enclosing.items() if name not in bindings}
+    for statement in scope.body:
+        if isinstance(statement, ast.ImportFrom) and any(alias.name == "*" for alias in statement.names):
+            visible.clear()
+        visible.update((name, target) for name, target in _builtin_imports(statement) if bindings[name] == 1)
+        for child in _scope_declarations(statement):
+            yield child, visible
+
+
+def _scope_declarations(statement: ast.stmt) -> Iterator[_Def]:
+    if isinstance(statement, _SCOPE_NODES):
+        yield statement
+        return
+    for child in _child_nodes(statement):
+        if isinstance(child, ast.stmt):
+            yield from _scope_declarations(child)
+        elif isinstance(child, (ast.ExceptHandler, ast.match_case)):
+            for nested in child.body:
+                yield from _scope_declarations(nested)
+
+
+def _builtin_imports(statement: ast.stmt) -> Iterator[tuple[str, str]]:
+    if isinstance(statement, ast.Import):
+        for alias in statement.names:
+            if alias.name == "builtins":
+                yield alias.asname or alias.name, "builtins"
+    elif isinstance(statement, ast.ImportFrom) and statement.module == "builtins" and statement.level == 0:
+        for alias in statement.names:
+            if alias.name in _ORDER_TRANSPARENT_DECORATORS:
+                yield alias.asname or alias.name, alias.name
+
+
+def _builtin_decorator_target(node: ast.expr, visible: Mapping[str, str]) -> str | None:
+    if isinstance(node, ast.Name):
+        return visible.get(node.id)
+    if (
+        isinstance(node, ast.Attribute)
+        and isinstance(node.value, ast.Name)
+        and visible.get(node.value.id) == "builtins"
+    ):
+        return node.attr
+    return None
+
+
+def _has_order_sensitive_decorator(
+    node: ast.FunctionDef | ast.AsyncFunctionDef, transparent: Mapping[int, str]
+) -> bool:
+    return any(id(decorator) not in transparent for decorator in node.decorator_list)
+
+
+def _safe_movement(
+    helper: ast.stmt,
+    caller: ast.stmt,
+    statements: Sequence[ast.stmt],
+    transparent: Mapping[int, str],
+) -> bool:
+    if not isinstance(helper, _DEF_NODES):
+        return False
+    dependencies = _immediate_def_refs(helper)
+    crossed = [statement for statement in statements if helper.lineno < statement.lineno <= caller.lineno]
+    for statement in (helper, *crossed):
+        if isinstance(statement, ast.Pass) or (
+            isinstance(statement, ast.Expr) and isinstance(statement.value, ast.Constant)
+        ):
+            continue
+        if not isinstance(statement, _DEF_NODES) or _has_order_sensitive_decorator(statement, transparent):
+            return False
+        if statement is not helper and statement.name in dependencies:
+            return False
+        if _definition_executes_code(statement):
+            return False
+    return True
+
+
+def _definition_executes_code(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
+    # Calls during definition can execute arbitrary code, including the caller
+    # before the moved helper has been initialized.
     return any(
-        not isinstance(decorator, ast.Name) or decorator.id not in transparent for decorator in node.decorator_list
+        isinstance(child, (ast.Call, ast.Await, ast.Yield, ast.YieldFrom, ast.NamedExpr))
+        for part in _definition_expressions(node)
+        for child in _walk(part)
     )
 
 
-def _runtime_nodes(stmts: list[ast.stmt]) -> Iterator[ast.expr]:
-    stack: list[ast.AST] = list(stmts)
+def _definition_expressions(node: ast.FunctionDef | ast.AsyncFunctionDef) -> Iterator[ast.expr]:
+    yield from node.args.defaults
+    yield from (value for value in node.args.kw_defaults if value is not None)
+    for argument in (*node.args.posonlyargs, *node.args.args, *node.args.kwonlyargs, node.args.vararg, node.args.kwarg):
+        if argument is not None and argument.annotation is not None:
+            yield argument.annotation
+    if node.returns is not None:
+        yield node.returns
+
+
+def _scope_binding_counts(scope: ast.Module | _Def) -> Counter[str]:
+    counts: Counter[str] = Counter()
+    if isinstance(scope, _DEF_NODES):
+        counts.update(_argument_names(scope.args))
+    stack: list[ast.AST] = list(scope.body)
     while stack:
         node = stack.pop()
         match node:
-            case ast.FunctionDef() | ast.AsyncFunctionDef():
-                stack.extend(node.body)
-                stack.extend(node.decorator_list)
+            case ast.FunctionDef() | ast.AsyncFunctionDef() | ast.ClassDef():
+                counts[node.name] += 1
+                stack.extend(_scope_header_expressions(node))
+            case ast.Lambda():
                 stack.extend(node.args.defaults)
-                stack.extend(d for d in node.args.kw_defaults if d is not None)
-            case ast.ClassDef(decorator_list=decorators, bases=bases, keywords=keywords):
-                # A nested class owns a separate receiver namespace. Its method
-                # bodies are not calls made by the enclosing function/method.
-                stack.extend(decorators)
-                stack.extend(bases)
-                stack.extend(keyword.value for keyword in keywords)
-            case ast.AnnAssign(value=value):
-                if value is not None:
-                    stack.append(value)
-            case ast.If(test=test, orelse=orelse) if _is_type_checking_test(test):
-                stack.extend(orelse)
-            case ast.expr():
-                yield node
+                stack.extend(value for value in node.args.kw_defaults if value is not None)
+            case ast.ListComp() | ast.SetComp() | ast.DictComp() | ast.GeneratorExp():
+                stack.extend(_comprehension_expressions(node))
+            case ast.Name(id=name, ctx=ast.Store() | ast.Del()):
+                counts[name] += 1
+            case ast.alias(name=name, asname=asname):
+                counts[asname or name.split(".")[0]] += 1
+            case ast.ExceptHandler(name=str() as name):
+                counts[name] += 1
+                stack.extend(node.body)
+            case (
+                ast.MatchAs(name=str() as name)
+                | ast.MatchStar(name=str() as name)
+                | ast.MatchMapping(rest=str() as name)
+            ):
+                counts[name] += 1
                 stack.extend(_child_nodes(node))
             case _:
                 stack.extend(_child_nodes(node))
+    return counts
+
+
+def _scope_header_expressions(node: _Def) -> Iterator[ast.expr]:
+    yield from node.decorator_list
+    if isinstance(node, _DEF_NODES):
+        yield from _definition_expressions(node)
+    else:
+        yield from node.bases
+        yield from (keyword.value for keyword in node.keywords)
+
+
+def _stable_class_binding(cls: ast.ClassDef, parents: Mapping[int, ast.AST]) -> bool:
+    current: ast.AST = cls
+    while id(current) in parents:
+        current = parents[id(current)]
+        if isinstance(current, (ast.Module, *_SCOPE_NODES)):
+            return _scope_binding_counts(current)[cls.name] == 1
+    return False
+
+
+def _comprehension_expressions(
+    node: ast.ListComp | ast.SetComp | ast.DictComp | ast.GeneratorExp,
+) -> Iterator[ast.expr]:
+    for generator in node.generators:
+        yield generator.iter
+        yield from generator.ifs
+    if isinstance(node, ast.DictComp):
+        yield node.key
+        yield node.value
+    else:
+        yield node.elt
 
 
 def _module_pinned_names(tree: ast.Module, definition_names: frozenset[str]) -> set[str]:
@@ -400,7 +594,7 @@ def _module_pinned_names(tree: ast.Module, definition_names: frozenset[str]) -> 
 
 
 def _global_declaration_names(tree: ast.Module) -> set[str]:
-    return {name for node in _walk(tree) if isinstance(node, ast.Global) for name in node.names}
+    return {name for node in _walk(tree) if isinstance(node, (ast.Global, ast.Nonlocal)) for name in node.names}
 
 
 def _class_pinned_names(cls: ast.ClassDef) -> set[str]:
@@ -419,6 +613,8 @@ def _class_pinned_names(cls: ast.ClassDef) -> set[str]:
                 args=[_, ast.Constant(value=str() as name), *_],
             ):
                 pinned.add(name)
+            case ast.Call(func=ast.Name(id="getattr" | "setattr" | "hasattr" | "delattr")):
+                pinned.update(statement.name for statement in cls.body if isinstance(statement, _DEF_NODES))
             case _:
                 pass
     return pinned
@@ -489,14 +685,7 @@ def _class_attr_names(cls: ast.ClassDef) -> set[str]:
 
 
 def _self_attribute_stores(node: ast.stmt) -> set[str]:
-    return {
-        n.attr
-        for n in _walk(node)
-        if isinstance(n, ast.Attribute)
-        and isinstance(n.ctx, (ast.Store, ast.Del))
-        and isinstance(n.value, ast.Name)
-        and n.value.id in _SELF_NAMES
-    }
+    return {n.attr for n in _walk(node) if isinstance(n, ast.Attribute) and isinstance(n.ctx, (ast.Store, ast.Del))}
 
 
 def _resolved_lambda_loads(node: ast.Lambda, candidates: frozenset[str]) -> Iterator[ast.Name]:
@@ -535,8 +724,12 @@ def _direct_scope_bindings(node: ast.FunctionDef | ast.AsyncFunctionDef) -> set[
         match current:
             case ast.FunctionDef() | ast.AsyncFunctionDef() | ast.ClassDef():
                 bound.add(current.name)
-            case ast.Lambda() | ast.ListComp() | ast.SetComp() | ast.DictComp() | ast.GeneratorExp():
-                continue
+                stack.extend(_scope_header_expressions(current))
+            case ast.Lambda():
+                stack.extend(current.args.defaults)
+                stack.extend(value for value in current.args.kw_defaults if value is not None)
+            case ast.ListComp() | ast.SetComp() | ast.DictComp() | ast.GeneratorExp():
+                stack.extend(_comprehension_expressions(current))
             case ast.Name(id=name, ctx=ast.Store() | ast.Del()):
                 bound.add(name)
             case ast.alias(name=name, asname=asname):
@@ -616,30 +809,144 @@ def _reaches(graph: dict[str, set[str]], start: str, target: str) -> bool:
 
 
 def _module_call_graph(
-    defs: list[_Def | ast.ClassDef],
-    all_defs: dict[str, _Def | ast.ClassDef],
+    defs: list[_Def],
+    all_defs: dict[str, _Def],
     graph: dict[str, set[str]],
     ref_lines: dict[tuple[str, str], int],
+    parents: Mapping[int, ast.AST],
+    *,
+    pinned: set[str],
 ) -> None:
-    for d in defs:
-        name = d.name
+    for definition in defs:
+        name = definition.name
         callees = graph.setdefault(name, set())
         nodes = (
-            _resolved_function_loads(d, frozenset(all_defs))
-            if isinstance(d, _DEF_NODES)
-            else _runtime_nodes(_deferred_body(d))
+            _resolved_function_loads(definition, frozenset(all_defs))
+            if isinstance(definition, _DEF_NODES)
+            else _runtime_nodes(_deferred_body(definition))
         )
-        local: set[str] = set() if isinstance(d, _DEF_NODES) else _locally_bound_names(d)
-        for n in nodes:
-            if (
-                isinstance(n, ast.Name)
-                and isinstance(n.ctx, ast.Load)
-                and n.id in all_defs
-                and n.id != name
-                and n.id not in local
-            ):
-                callees.add(n.id)
-                _record_ref_line(ref_lines, name, n.id, n.lineno)
+        local: set[str] = set() if isinstance(definition, _DEF_NODES) else _locally_bound_names(definition)
+        for node in nodes:
+            if not isinstance(node, ast.Name) or node.id not in all_defs or node.id in local:
+                continue
+            line = _call_reference_line(node, definition, parents)
+            if line is None:
+                pinned.add(node.id)
+            elif node.id != name:
+                callees.add(node.id)
+                _record_ref_line(ref_lines, name, node.id, line)
+        pinned.update(_nested_class_name_loads(definition) & all_defs.keys())
+
+
+def _runtime_nodes(stmts: list[ast.stmt]) -> Iterator[ast.expr]:
+    stack: list[ast.AST] = list(stmts)
+    while stack:
+        node = stack.pop()
+        match node:
+            case ast.FunctionDef() | ast.AsyncFunctionDef():
+                stack.extend(node.body)
+                stack.extend(node.decorator_list)
+                stack.extend(node.args.defaults)
+                stack.extend(d for d in node.args.kw_defaults if d is not None)
+            case ast.ClassDef(decorator_list=decorators, bases=bases, keywords=keywords):
+                # A nested class owns a separate receiver namespace. Its method
+                # bodies are not calls made by the enclosing function/method.
+                stack.extend(decorators)
+                stack.extend(bases)
+                stack.extend(keyword.value for keyword in keywords)
+            case ast.AnnAssign(value=value):
+                if value is not None:
+                    stack.append(value)
+            case ast.If(test=test, orelse=orelse) if _is_type_checking_test(test):
+                stack.extend(orelse)
+            case ast.expr():
+                yield node
+                stack.extend(_child_nodes(node))
+            case _:
+                stack.extend(_child_nodes(node))
+
+
+def _nested_class_name_loads(definition: _Def) -> set[str]:
+    # Nested class closures are real references but have a distinct caller
+    # namespace. Do not erase them and claim another function is sole caller.
+    return {
+        name
+        for child in _walk(definition)
+        if isinstance(child, ast.ClassDef) and child is not definition
+        for name in _name_loads(child)
+    }
+
+
+def _call_reference_line(node: ast.expr, owner: _Def, parents: Mapping[int, ast.AST]) -> int | None:
+    parent = parents.get(id(node))
+    if isinstance(parent, ast.Call) and parent.func is node:
+        return node.lineno if _call_scope_is_local(node, owner, parents) else None
+    if not isinstance(owner, _DEF_NODES):
+        return None
+    alias = _assignment_alias(parent, node)
+    if alias is None or parent not in owner.body or _scope_binding_counts(owner)[alias] != 1:
+        return None
+    if alias in _global_names(owner) or any(
+        isinstance(child, ast.Nonlocal) and alias in child.names for child in _walk(owner)
+    ):
+        return None
+    return _local_alias_call_line(owner, alias, node.lineno, parents)
+
+
+def _call_scope_is_local(node: ast.expr, owner: _Def, parents: Mapping[int, ast.AST]) -> bool:
+    current: ast.AST = node
+    while id(current) in parents:
+        parent = parents[id(current)]
+        if parent is owner:
+            return True
+        if isinstance(parent, ast.ClassDef):
+            return False
+        if isinstance(parent, _DEF_NODES) and current in parent.body:
+            enclosing = parents.get(id(parent))
+            if not isinstance(enclosing, _DEF_NODES) or _scope_binding_counts(enclosing)[parent.name] != 1:
+                return False
+            if _local_alias_call_line(enclosing, parent.name, parent.lineno, parents) is None:
+                return False
+        if isinstance(parent, ast.Lambda) and current is parent.body:
+            return _call_reference_line(parent, owner, parents) is not None
+        current = parent
+    return False
+
+
+def _local_alias_call_line(
+    owner: ast.FunctionDef | ast.AsyncFunctionDef, alias: str, assigned_line: int, parents: Mapping[int, ast.AST]
+) -> int | None:
+    uses = [
+        child
+        for child in _walk(owner)
+        if isinstance(child, ast.Name) and child.id == alias and isinstance(child.ctx, ast.Load)
+    ]
+    if not uses:
+        return None
+    for use in uses:
+        call = parents.get(id(use))
+        if not isinstance(call, ast.Call) or call.func is not use or use.lineno <= assigned_line:
+            return None
+        # A nested closure can escape through its own return value. Only calls
+        # made directly by this lexical function establish a nonescaping alias.
+        current: ast.AST = use
+        while id(current) in parents:
+            current = parents[id(current)]
+            if current is owner:
+                break
+            if isinstance(current, (*_SCOPE_NODES, ast.Lambda)):
+                return None
+    return min(use.lineno for use in uses)
+
+
+def _assignment_alias(parent: ast.AST | None, value: ast.expr) -> str | None:
+    match parent:
+        case ast.Assign(targets=[ast.Name(id=name)], value=assigned) if assigned is value:
+            return name
+        case ast.AnnAssign(target=ast.Name(id=name), value=assigned) if assigned is value:
+            return name
+        case _:
+            return None
 
 
 def _resolved_function_loads(
@@ -690,27 +997,69 @@ def _class_call_graph(
     graph: dict[str, set[str]],
     ref_lines: dict[tuple[str, str], int],
     *,
+    parents: Mapping[int, ast.AST],
     pinned: set[str],
+    transparent: Mapping[int, str],
+    stable_class_name: bool,
 ) -> None:
-    for m in methods:
-        name = m.name
-        callees = graph.setdefault(name, set())
-        for n in _runtime_nodes(m.body):
-            if not isinstance(n, ast.Attribute) or not isinstance(n.ctx, ast.Load) or n.attr not in all_methods:
+    for method in methods:
+        callees = graph.setdefault(method.name, set())
+        receivers = _method_receivers(method, cls.name, transparent, stable_class_name=stable_class_name)
+        known = {id(node): receivers[node.id] for node in _resolved_loads(method.body, frozenset(receivers), set())}
+        for node in _walk(method):
+            if (
+                not isinstance(node, ast.Attribute)
+                or not isinstance(node.ctx, ast.Load)
+                or node.attr not in all_methods
+            ):
                 continue
-            if _is_same_class_ref(n.value, cls.name):
-                if n.attr != name:
-                    callees.add(n.attr)
-                    _record_ref_line(ref_lines, name, n.attr, n.lineno)
-            else:
-                # `peer._helper()` may target another instance of this class.
-                # Without type information, claiming `self._helper()` is the
-                # sole caller would be noisier than conservatively pinning it.
-                pinned.add(n.attr)
+            receiver_kind = known.get(id(node.value))
+            target = all_methods[node.attr]
+            target_is_instance = not any(
+                transparent.get(id(decorator)) in _ORDER_TRANSPARENT_DECORATORS for decorator in target.decorator_list
+            )
+            line = _call_reference_line(node, method, parents)
+            if receiver_kind is None or (receiver_kind == "class" and target_is_instance) or line is None:
+                pinned.add(node.attr)
+            elif node.attr != method.name:
+                callees.add(node.attr)
+                _record_ref_line(ref_lines, method.name, node.attr, line)
 
 
-def _is_same_class_ref(value: ast.expr, class_name: str) -> bool:
-    return isinstance(value, ast.Name) and (value.id in _SELF_NAMES or value.id == class_name)
+def _method_receivers(
+    method: ast.FunctionDef | ast.AsyncFunctionDef,
+    class_name: str,
+    transparent: Mapping[int, str],
+    *,
+    stable_class_name: bool,
+) -> dict[str, str]:
+    counts = _scope_binding_counts(method)
+    mutable_closures = {
+        name for node in _walk(method) if isinstance(node, (ast.Global, ast.Nonlocal)) for name in node.names
+    }
+    receivers = {} if class_name in counts or not stable_class_name else {class_name: "class"}
+    kinds = {transparent.get(id(decorator)) for decorator in method.decorator_list}
+    positional = (*method.args.posonlyargs, *method.args.args)
+    if "staticmethod" not in kinds and positional:
+        receiver = positional[0].arg
+        if counts[receiver] == 1 and receiver not in mutable_closures:
+            receivers[receiver] = "class" if "classmethod" in kinds else "instance"
+    return _receiver_aliases(method, receivers, counts, mutable_closures)
+
+
+def _receiver_aliases(
+    method: ast.FunctionDef | ast.AsyncFunctionDef,
+    receivers: dict[str, str],
+    counts: Counter[str],
+    mutable_closures: set[str],
+) -> dict[str, str]:
+    for statement in method.body:
+        value = statement.value if isinstance(statement, (ast.Assign, ast.AnnAssign)) else None
+        if isinstance(value, ast.Name) and value.id in receivers:
+            alias = _assignment_alias(statement, value)
+            if alias is not None and counts[alias] == 1 and alias not in mutable_closures:
+                receivers[alias] = receivers[value.id]
+    return receivers
 
 
 def _comprehension_target_ids(node: ast.stmt) -> set[int]:

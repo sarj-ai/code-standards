@@ -169,4 +169,16 @@ describe("configs.recommended / configs.strict are flat config", () => {
     expect(ADVISORY_RULES).toEqual(warningStageEslintRules());
     expect(nonErrors.toSorted()).toEqual([...ADVISORY_RULES]);
   });
+
+  it.each(PRESETS)("%s makes a sole-export filename mismatch blocking", (name) => {
+    const messages = new Linter().verify("export function parseOrder() {}", {
+      plugins: { "@sarj": plugin },
+      rules: {
+        "@sarj/sole-export-matches-filename": plugin.configs[name].rules["@sarj/sole-export-matches-filename"],
+      },
+    }, "src/orders.js");
+    expect(messages).toEqual([
+      expect.objectContaining({ ruleId: "@sarj/sole-export-matches-filename", severity: 2 }),
+    ]);
+  });
 });
