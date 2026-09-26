@@ -243,12 +243,14 @@ describe("the shipped eslint.strict.mjs actually loads", () => {
       expect(severityOf(unit["vitest/prefer-expect-resolves"])).toBe(2);
       expect(severityOf(unit["jest/prefer-to-be"])).toBe(0);
       expect(unit["playwright/no-unnecessary-assertions"]).toBeUndefined();
+      expect(unit["playwright/missing-playwright-await"]).toBeUndefined();
       expect(severityOf(bun["vitest/prefer-to-be"])).toBe(0);
       expect(severityOf(bun["jest/prefer-to-be"])).toBe(2);
       expect((bunConfig as Linter.Config).settings?.jest).toEqual({ globalPackage: "bun:test" });
       expect(severityOf(playwright["vitest/prefer-to-be"])).toBe(0);
       expect(severityOf(playwright["jest/prefer-to-be"])).toBe(0);
       expect(severityOf(playwright["playwright/no-unnecessary-assertions"])).toBe(2);
+      expect(severityOf(playwright["playwright/missing-playwright-await"])).toBe(2);
     },
   );
 
@@ -266,6 +268,7 @@ describe("the shipped eslint.strict.mjs actually loads", () => {
     expect(severityOf(rules["node-test/no-useless-assertion"])).toBe(2);
     expect(severityOf(rules["jest/prefer-to-be"])).toBe(0);
     expect(severityOf(rules["testing-library/prefer-screen-queries"])).toBe(0);
+    expect(severityOf(rules["testing-library/await-async-queries"])).toBe(0);
   });
 
   it.each(CONFIG_FACTORIES)("%s runs the retained upstream rules", async (_name, createConfig) => {
@@ -338,6 +341,41 @@ describe("the shipped eslint.strict.mjs actually loads", () => {
           "testing-library/no-unnecessary-act",
           "testing-library/prefer-screen-queries",
         ],
+      },
+      {
+        frameworks: ["node"],
+        path: "src/rejection.test.ts",
+        source: 'import assert from "node:assert/strict"; assert.throws(async () => work());',
+        nearMiss: 'import assert from "node:assert/strict"; await assert.rejects(async () => work());',
+        expected: ["node-test/no-assert-throws-async"],
+      },
+      {
+        frameworks: ["testing-library"],
+        path: "src/query.test.tsx",
+        source: 'import { screen } from "@testing-library/react"; void screen.findByText("ready");',
+        nearMiss: 'import { screen } from "@testing-library/react"; const pending = screen.findByText("ready"); await pending;',
+        expected: ["testing-library/await-async-queries"],
+      },
+      {
+        frameworks: ["testing-library"],
+        path: "src/wait.test.tsx",
+        source: 'import { waitFor } from "@testing-library/react"; void waitFor(() => check());',
+        nearMiss: 'import { waitFor } from "@testing-library/react"; await Promise.all([waitFor(() => check())]);',
+        expected: ["testing-library/await-async-utils"],
+      },
+      {
+        frameworks: ["testing-library"],
+        path: "src/event.test.tsx",
+        source: 'import userEvent from "@testing-library/user-event"; void userEvent.click(button);',
+        nearMiss: 'import userEvent from "@testing-library/user-event"; await userEvent.click(button);',
+        expected: ["testing-library/await-async-events"],
+      },
+      {
+        frameworks: ["playwright"],
+        path: "src/await.playwright.ts",
+        source: 'import { expect, test } from "@playwright/test"; test("opens", async ({page}) => { expect(page.locator("main")).toBeVisible(); });',
+        nearMiss: 'import { expect, test } from "@playwright/test"; test("opens", async ({page}) => { const pending = expect(page.locator("main")).toBeVisible(); await pending; });',
+        expected: ["playwright/missing-playwright-await"],
       },
       {
         frameworks: ["playwright"],

@@ -3,6 +3,7 @@ from __future__ import annotations
 from types import MappingProxyType
 from typing import TYPE_CHECKING
 
+from sarj_python_lint.rules.async_mock_call_without_await_assertion import AsyncMockCallWithoutAwaitAssertion
 from sarj_python_lint.rules.complex_postgres_query_requires_architecture_review import (
     ComplexPostgresQueryRequiresArchitectureReview,
 )
@@ -158,7 +159,6 @@ from sarj_python_lint.rules.require_pydantic_for_structured_payload import Requi
 from sarj_python_lint.rules.require_pydantic_ordinal_lower_bound import (
     RequirePydanticOrdinalLowerBound,
 )
-from sarj_python_lint.rules.require_typed_http_test_response import RequireTypedHttpTestResponse
 from sarj_python_lint.rules.restated_test_docstring import RestatedTestDocstring
 from sarj_python_lint.rules.stepdown import Stepdown
 from sarj_python_lint.rules.store_get_delegates_to_bulk_read import StoreGetDelegatesToBulkRead
@@ -180,6 +180,7 @@ if TYPE_CHECKING:
 
 REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
     {
+        AsyncMockCallWithoutAwaitAssertion.id: AsyncMockCallWithoutAwaitAssertion,
         ComplexPostgresQueryRequiresArchitectureReview.id: ComplexPostgresQueryRequiresArchitectureReview,
         ExcessiveCommentary.id: ExcessiveCommentary,
         PreferWalrusAwaitedNoneGuard.id: PreferWalrusAwaitedNoneGuard,
@@ -283,7 +284,6 @@ REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
         NoPsycopgExecutionOutsideInjectedOwner.id: NoPsycopgExecutionOutsideInjectedOwner,
         RequirePydanticOrdinalLowerBound.id: RequirePydanticOrdinalLowerBound,
         RequirePydanticForStructuredPayload.id: RequirePydanticForStructuredPayload,
-        RequireTypedHttpTestResponse.id: RequireTypedHttpTestResponse,
         RequireNoDecodeForSplittingSettingsField.id: RequireNoDecodeForSplittingSettingsField,
         NoVagueSuppressionDescription.id: NoVagueSuppressionDescription,
         NoWholeRequestResponsePayloadInLog.id: NoWholeRequestResponsePayloadInLog,

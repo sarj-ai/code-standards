@@ -3,6 +3,14 @@
   "precisionGate": "Review every finding up to 200; above 200, review every major cluster and a deterministic stratified sample of at least 50. Treat ambiguous findings as false positives for error-level rules.",
   "tasks": [
     {
+      "task": "rule-audit/python/async-mock-call-without-await-assertion",
+      "family": "python",
+      "ruleId": "async-mock-call-without-await-assertion",
+      "state": "complete",
+      "evidence": "72 focused regression cases and 374 cases including neighboring mock rules pass. A pinned isolated scan of 1,368 tracked Python test files (16,125,476 bytes) across five local repositories produced zero findings after the consumer assertion repairs. Removing the paired await assertions in memory reproduced two motivating findings. Runtime probes prove that call assertions miss unawaited coroutines and that replacing them with await assertions misses extra unawaited calls. Three-run medians were 1.611 seconds for the candidate, 3.983 seconds for the comparison rule, and 3.888 seconds combined; the difference is measurement noise, not a claimed speedup.",
+      "outcome": "Ship SARJ456 as a warning without autofix. Keep call assertions and add await assertions. Limit provenance to fresh local AsyncMock values and unchanged immediate async children; abstain on ambiguous aliases, fixtures, rebindings, resets, configured spec children, and nested blocks. Intentional scheduling-before-execution tests may use an exact reasoned suppression. Ruff, strict type checking, and all registered Python rules pass on the authored source and tests."
+    },
+    {
       "task": "rule-audit/python/no-fixed-sleep-before-assert",
       "family": "python",
       "ruleId": "no-fixed-sleep-before-assert",
@@ -611,14 +619,6 @@
       "state": "complete",
       "evidence": "Focused FastAPI fixtures cover nested payload extraction, literal-key subscripting and get/pop/setdefault access, direct typed fields, model_validate, TypeAdapter, unrelated dictionaries, and generated source. The sampled application corpora contained no unmatched pattern outside the motivating route shape.",
       "outcome": "Ship SARJ450 warning-first under the mandatory new-judgment-rule lifecycle. Structured nested route payloads must cross a Pydantic validation boundary before literal field consumption."
-    },
-    {
-      "task": "rule-audit/python/require-typed-http-test-response",
-      "family": "python",
-      "ruleId": "require-typed-http-test-response",
-      "state": "complete",
-      "evidence": "Focused fixtures cover direct response.json subscripts and mapping methods, model_validate and TypeAdapter parsing, non-test code, non-response JSON, assigned raw payloads, and generated source. Three existing application corpora produced 650 direct untyped response assertions; samples were genuine contract debt suitable for ratcheted adoption.",
-      "outcome": "Ship SARJ449 warning-first under the mandatory new-judgment-rule lifecycle. HTTP tests validate response JSON into named models before inspecting fields."
     },
     {
       "task": "rule-audit/python/prefer-nominal-id-types",

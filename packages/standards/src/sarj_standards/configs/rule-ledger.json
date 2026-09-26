@@ -24,6 +24,7 @@
   ],
   "rules": {
     "python": [
+      "async-mock-call-without-await-assertion",
       "complex-postgres-query-requires-architecture-review",
       "defect-xfail-requires-explicit-strict",
       "docstring-args-restate-signature",
@@ -125,7 +126,6 @@
       "require-pydantic-for-external-json",
       "require-pydantic-for-structured-payload",
       "require-pydantic-ordinal-lower-bound",
-      "require-typed-http-test-response",
       "restated-test-docstring",
       "stepdown",
       "store-get-delegates-to-bulk-read",
@@ -398,13 +398,13 @@
       "SARJ446",
       "SARJ447",
       "SARJ448",
-      "SARJ449",
       "SARJ450",
       "SARJ451",
       "SARJ452",
       "SARJ453",
       "SARJ454",
-      "SARJ455"
+      "SARJ455",
+      "SARJ456"
     ],
     "sql": [
       "SARJ101",
@@ -844,6 +844,13 @@
       "status": "removed",
       "replacement": null,
       "note": "Delete SARJ433 suppressions and baseline keys; Ruff TID251 (banned-api) owns typing.cast enforcement."
+    },
+    {
+      "id": "SARJ449",
+      "kind": "code",
+      "status": "removed",
+      "replacement": null,
+      "note": "Removed in sarj-python-lint 0.88.0: preserve raw wire-contract assertions; model validation can hide missing fields, coercion, and unexpected fields. Remove this rule from explicit selections."
     },
     {
       "id": "add-constraint-not-valid",
@@ -1306,6 +1313,13 @@
       "status": "renamed",
       "replacement": "replay-contract-insert-requires-duplicate-policy",
       "note": "Replace sarj-replay-named-store-insert-requires-duplicate-policy with sarj-replay-contract-insert-requires-duplicate-policy before upgrading."
+    },
+    {
+      "id": "require-typed-http-test-response",
+      "kind": "python",
+      "status": "removed",
+      "replacement": null,
+      "note": "Removed in sarj-python-lint 0.88.0: preserve raw wire-contract assertions; model validation can hide missing fields, coercion, and unexpected fields. Remove this rule from explicit selections."
     },
     {
       "id": "require-validated-row-factory",

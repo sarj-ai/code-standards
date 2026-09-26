@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "560c459aabef4461ad151cb782e873c0acf5fbf488c112722f5057a1a9b44c6b",
-  "cliSha256": "b888c04d7ee049ca7d39992317a6a9a6389c1593b174298fc79ba88b591b8941",
+  "catalogSha256": "fd327d9eb47db8f74f7d3b0770b247e477f7f9fb237d0c900361631726e242cc",
+  "cliSha256": "b02917032c47d94928d9a5be020e50c100c2139c38252fb6523bea7544df4feb",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -4832,6 +4832,41 @@
       ],
       "optionsSchemaSource": null
     },
+    "python:async-mock-call-without-await-assertion": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "tests/test_delivery.py",
+              "source": "from unittest.mock import AsyncMock\n\n\nasync def test_delivery():\n    send = AsyncMock()\n    await deliver(send)\n    send.assert_called_once_with(\"item\")\n    send.assert_awaited_once_with(\"item\")\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_delivery.py",
+          "id": "call-and-await-async-mock",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Call and await assertions protect different contracts"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "tests/test_delivery.py",
+              "source": "from unittest.mock import AsyncMock\n\n\nasync def test_delivery():\n    send = AsyncMock()\n    await deliver(send)\n    send.assert_called_once_with(\"item\")\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_delivery.py",
+          "id": "call-only-async-mock",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A call assertion does not prove awaiting"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "python:complex-postgres-query-requires-architecture-review": {
       "examples": [
         {
@@ -8991,41 +9026,6 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "An unqualified ordinal origin lacks a lower bound"
-        }
-      ],
-      "optionsSchemaSource": null
-    },
-    "python:require-typed-http-test-response": {
-      "examples": [
-        {
-          "expectedCount": 1,
-          "files": [
-            {
-              "path": "tests/test_cards.py",
-              "source": "def test_interaction(client):\n    response = client.post(\"/actions\")\n    assert response.json()[\"interactionId\"]\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "tests/test_cards.py",
-          "id": "raw-http-json-assertion",
-          "outcome": "reject",
-          "scenarioId": "primary",
-          "title": "A test indexes an unvalidated response body"
-        },
-        {
-          "expectedCount": 0,
-          "files": [
-            {
-              "path": "tests/test_cards.py",
-              "source": "def test_interaction(client):\n    response = client.post(\"/actions\")\n    body = InteractionResponse.model_validate(response.json())\n    assert body.interaction_id\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "tests/test_cards.py",
-          "id": "validated-http-json-assertion",
-          "outcome": "accept",
-          "scenarioId": "primary",
-          "title": "A test validates its response model"
         }
       ],
       "optionsSchemaSource": null

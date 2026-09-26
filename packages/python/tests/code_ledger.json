@@ -240,5 +240,6 @@
   "SARJ452": "no-unused-value-marker",
   "SARJ453": "prefer-match-exception-dispatch",
   "SARJ454": "prefer-pydantic-json-value",
-  "SARJ455": "no-fixed-sleep-before-assert"
+  "SARJ455": "no-fixed-sleep-before-assert",
+  "SARJ456": "async-mock-call-without-await-assertion"
 }
