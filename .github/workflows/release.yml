@@ -933,6 +933,13 @@ jobs:
           uv build --wheel --project ../iac --out-dir dist/deps
       - name: Verify wheel licenses
         run: uv run --frozen code-standards maintain release verify-wheel dist/*.whl dist/deps/*.whl
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '24'
+          cache: 'npm'
+          cache-dependency-path: packages/typescript/package-lock.json
+      - name: Install the rule authoring parser
+        run: npm --prefix ../typescript ci --ignore-scripts --no-audit --no-fund
       - name: Test against the built wheel
         run: |
           uv venv --clear --python 3.14 --seed
