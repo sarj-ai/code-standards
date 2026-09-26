@@ -5,6 +5,7 @@ from textwrap import dedent, indent
 from typing import TYPE_CHECKING
 
 import pytest
+from sarj_rule_contracts import EvaluationCase, ExpectedOutcome, Language
 
 from sarj_python_lint.rule_base import Severity
 from sarj_python_lint.rules.require_pydantic_for_external_json import (
@@ -992,3 +993,165 @@ def test_accepts_validated_aiohttp_response() -> None:
         """)
         == []
     )
+
+
+_WRAPPER = """
+import httpx
+
+class Envelope:
+    def __init__(self, body, metadata):
+        self.body = body
+        self.metadata = metadata
+
+    def payload(self):
+        return self.body
+
+    def headers(self):
+        return self.metadata
+"""
+
+
+@pytest.mark.parametrize(
+    ("case_id", "statement", "expected"),
+    [
+        ("method", "return result.payload().get('version')", 1),
+        ("field", "return result.body.get('version')", 1),
+        ("unrelated-field", "return result.headers().get('version')", 0),
+        ("unknown-method", "return result.unknown().get('version')", 0),
+        ("field-replaced", "result.body = {}\nreturn result.payload().get('version')", 0),
+        ("unknown-mutation", "result.reset()\nreturn result.payload().get('version')", 0),
+        ("escaped-instance", "change(result)\nreturn result.payload().get('version')", 0),
+        ("alias", "alias = result\nreturn alias.payload().get('version')", 1),
+        ("suppressed", "return result.payload().get('version')  # sarj-noqa: SARJ411", 0),
+        ("duplicate", "first = result.payload().get('version')\nreturn result.payload()['version']", 1),
+    ],
+)
+def test_wrapper_provenance_cases(case_id: str, statement: str, expected: int) -> None:
+    source = (
+        _WRAPPER
+        + '\ndef fetch():\n    result = Envelope(httpx.get("https://example.test").json(), {})\n'
+        + indent(statement, "    ")
+    )
+    case = EvaluationCase(
+        case_id, Language.PYTHON, source, ExpectedOutcome.MATCH if expected else ExpectedOutcome.NO_MATCH
+    )
+    assert len(_check(case.source)) == expected
+
+
+@pytest.mark.parametrize(
+    "accessor",
+    [
+        "return clean(self.body)",
+        "return {}",
+        "self.body = {}\nreturn self.body",
+    ],
+)
+def test_wrapper_unknown_or_mutating_accessors_stop_provenance(accessor: str) -> None:
+    source = _WRAPPER.replace("return self.body", indent(accessor, "        ").lstrip())
+    source += '\ndef fetch():\n    result = Envelope(httpx.get("https://example.test").json(), {})\n    return result.payload().get("version")\n'
+    assert not _check(source)
+
+
+def test_wrapper_inheritance_is_not_summarized() -> None:
+    source = _WRAPPER.replace("class Envelope:", "class Envelope(Parent):")
+    source += '\ndef fetch():\n    result = Envelope(httpx.get("https://example.test").json(), {})\n    return result.payload().get("version")\n'
+    assert not _check(source)
+
+
+def test_wrapper_local_input_is_not_external() -> None:
+    source = (
+        _WRAPPER
+        + '\ndef fetch():\n    result = Envelope({"version": 1}, {})\n    return result.payload().get("version")\n'
+    )
+    assert not _check(source)
+
+
+def test_wrapper_local_narrowing_preserves_unvalidated_fields() -> None:
+    source = _WRAPPER.replace("return self.body", "return narrow(self.body)")
+    source += "\ndef narrow(value):\n    return value if isinstance(value, dict) else {}\n"
+    source += '\ndef fetch():\n    result = Envelope(body=httpx.get("https://example.test").json(), metadata={})\n    return result.payload().get("version")\n'
+    assert len(_check(source)) == 1
+
+
+def test_wrapper_runtime_validation_stops_provenance() -> None:
+    source = _WRAPPER + "\nfrom pydantic import BaseModel\nclass Document(BaseModel):\n    version: int\n"
+    source += '\ndef fetch():\n    result = Envelope(Document.model_validate(httpx.get("https://example.test").json()), {})\n    return result.payload().get("version")\n'
+    assert not _check(source)
+
+
+@pytest.mark.parametrize(
+    ("before", "after"),
+    [
+        ("class Envelope:", "class Envelope(Parent):"),
+        ("class Envelope:", "@decorated\nclass Envelope:"),
+        ("return self.body", "return validate(self.body)"),
+        ("self.body = body", "self.body = validate(body)"),
+        ("self.body = body", "self.body = body\n        self.body = {}"),
+        ("def payload(self):", "@property\n    def payload(self):"),
+        ("def payload(self):", "@decorated\n    def payload(self):"),
+        ("def __init__(self, body, metadata):", "def __init__(self, *body, metadata):"),
+        ("def payload(self):", "def payload(self, other):"),
+        ("def payload(self):", "def payload(self):\n        return {}\n\n    def payload(self):"),
+    ],
+)
+def test_wrapper_ambiguous_declarations_are_excluded(before: str, after: str) -> None:
+    source = _WRAPPER.replace(before, after)
+    source += '\ndef fetch():\n    result = Envelope(httpx.get("https://example.test").json(), {})\n    return result.payload().get("version")\n'
+    assert not _check(source)
+
+
+@pytest.mark.parametrize(
+    "statement",
+    [
+        "alias = result\n    alias.body = {}",
+        "alias = result\n    mutate(alias)",
+        "alias = result\n    mutate(value=alias)",
+        "alias = result\n    alias.reset()",
+        "del result.body",
+    ],
+)
+def test_wrapper_alias_mutation_stops_provenance(statement: str) -> None:
+    source = _WRAPPER + '\ndef fetch():\n    result = Envelope(httpx.get("https://example.test").json(), {})\n'
+    source += f'    {statement}\n    return result.payload().get("version")\n'
+    assert not _check(source)
+
+
+def test_wrapper_factory_return_is_deliberately_out_of_scope() -> None:
+    source = _WRAPPER + '\ndef make() -> Envelope:\n    return Envelope(httpx.get("https://example.test").json(), {})\n'
+    source += '\ndef fetch():\n    result = make()\n    return result.payload().get("version")\n'
+    assert not _check(source)
+
+
+@pytest.mark.parametrize("mutation", ["Envelope.payload = replacement", "Envelope.body = Descriptor()"])
+def test_wrapper_class_monkeypatch_stops_provenance(mutation: str) -> None:
+    source = _WRAPPER + "\n" + mutation
+    source += '\ndef fetch():\n    result = Envelope(httpx.get("https://example.test").json(), {})\n    return result.payload().get("version")\n'
+    assert not _check(source)
+
+
+def test_wrapper_descriptor_is_not_transparent_storage() -> None:
+    source = _WRAPPER.replace("class Envelope:", "class Envelope:\n    body = Descriptor()")
+    source += '\ndef fetch():\n    result = Envelope(httpx.get("https://example.test").json(), {})\n    return result.payload().get("version")\n'
+    assert not _check(source)
+
+
+@pytest.mark.parametrize(
+    "capture",
+    [
+        "def reset():\n    result.body = {}\nreset()",
+        "async def reset():\n    result.body = {}\nschedule(reset())",
+        "reset = lambda: mutate(result)\nreset()",
+        "class Reset:\n    def run(self):\n        result.body = {}\nReset().run()",
+    ],
+)
+def test_wrapper_nested_capture_stops_provenance(capture: str) -> None:
+    source = _WRAPPER + '\ndef fetch():\n    result = Envelope(httpx.get("https://example.test").json(), {})\n'
+    source += indent(capture, "    ") + '\n    return result.payload().get("version")\n'
+    assert not _check(source)
+
+
+def test_wrapper_bound_unknown_method_escape_stops_provenance() -> None:
+    source = _WRAPPER + "\n    def reset(self):\n        mutate(self)\n"
+    source += '\ndef fetch():\n    result = Envelope(httpx.get("https://example.test").json(), {})\n'
+    source += '    reset = result.reset\n    reset()\n    return result.payload().get("version")\n'
+    assert not _check(source)
