@@ -246,5 +246,7 @@
   "SARJ458": "no-swallowed-asyncio-cancellation",
   "SARJ459": "shared-mutable-pydantic-factory",
   "SARJ460": "prefer-regex-fullmatch",
-  "SARJ461": "prefer-monotonic-for-elapsed-time"
+  "SARJ461": "prefer-monotonic-for-elapsed-time",
+  "SARJ462": "async-cleanup-registered-synchronously",
+  "SARJ463": "subprocess-kill-without-reap"
 }

@@ -3,6 +3,7 @@ from __future__ import annotations
 from types import MappingProxyType
 from typing import TYPE_CHECKING
 
+from sarj_python_lint.rules.async_cleanup_registered_synchronously import AsyncCleanupRegisteredSynchronously
 from sarj_python_lint.rules.async_mock_call_without_await_assertion import AsyncMockCallWithoutAwaitAssertion
 from sarj_python_lint.rules.complex_postgres_query_requires_architecture_review import (
     ComplexPostgresQueryRequiresArchitectureReview,
@@ -170,6 +171,7 @@ from sarj_python_lint.rules.store_get_delegates_to_bulk_read import StoreGetDele
 from sarj_python_lint.rules.store_insert_requires_on_conflict import (
     StoreInsertRequiresOnConflict,
 )
+from sarj_python_lint.rules.subprocess_kill_without_reap import SubprocessKillWithoutReap
 from sarj_python_lint.rules.timestamp_order_requires_tiebreaker import TimestampOrderRequiresTiebreaker
 from sarj_python_lint.rules.trailing_value_narration import TrailingValueNarration
 from sarj_python_lint.rules.typed_error_reasons import TypedErrorReasons
@@ -185,6 +187,8 @@ if TYPE_CHECKING:
 
 REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
     {
+        AsyncCleanupRegisteredSynchronously.id: AsyncCleanupRegisteredSynchronously,
+        SubprocessKillWithoutReap.id: SubprocessKillWithoutReap,
         NoSwallowedAsyncioCancellation.id: NoSwallowedAsyncioCancellation,
         AsyncMockCallWithoutAwaitAssertion.id: AsyncMockCallWithoutAwaitAssertion,
         ComplexPostgresQueryRequiresArchitectureReview.id: ComplexPostgresQueryRequiresArchitectureReview,

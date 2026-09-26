@@ -36,13 +36,13 @@ class PreferRegexFullmatch(Rule):
     code: str = "SARJ460"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
         default_level=Severity.WARNING,
-        summary="An anchored regex match rejects invalid values without requiring a full-string match.",
+        summary="An anchored regex validation predicate does not require a full-string match.",
         rationale="The regex `$` anchor can match before a final newline, so an anchored match can accept a value that was not fully validated.",
         remediation="Use `re.fullmatch` or the compiled pattern's `fullmatch` method for whole-value validation; review whether a terminal newline is intentionally allowed.",
         category=RuleCategory.CORRECTNESS,
         autofix=AutofixPolicy.NONE,
         limitations=(
-            "Only direct negative match or `is None` conditions whose sole rejection statement raises are checked; extraction, search, compound conditions, and return-based validators are excluded.",
+            "Checks direct negative match/is-None rejection guards and returns of bool(match), not match, or match is/is-not None. Match-object returns, extraction, search, and compound conditions are excluded.",
             "Patterns must be valid string or bytes literals bounded by `^` or `\\A` and an unescaped outer `$`; top-level alternation, inline extension groups other than noncapturing groups, and flags other than literal zero are excluded.",
             "Only imported standard-library re functions and unique, unconditional module or same-function compile bindings are resolved. Rebinding, import shadowing, escaped regex objects or modules, explicit match positions, tests, and generated files are excluded.",
             "Binding checks are deliberately file-wide, so unrelated same-named locals can suppress findings. Dynamic monkeypatching and interprocedural changes are not inferred.",
@@ -85,8 +85,8 @@ class PreferRegexFullmatch(Rule):
         )
         compiled = _compiled_patterns(context, bindings, mutated)
         findings: list[Diagnostic] = []
-        for guard in context.nodes(ast.If):
-            call = _rejection_call(guard)
+        for guard in context.nodes(ast.If, ast.Return):
+            call = _validation_call(guard, context, bindings)
             if call is None or is_suppressed(context.source_lines, call.lineno, self.code):
                 continue
             pattern = _match_pattern(context, call, bindings, mutated, compiled)
@@ -98,11 +98,28 @@ class PreferRegexFullmatch(Rule):
                     line=call.lineno,
                     col=call.col_offset + 1,
                     code=self.code,
-                    message="anchored match is used to reject invalid values, but `$` can accept a final newline; use fullmatch for whole-value validation and review newline handling.",
+                    message="anchored match is used as a validation predicate, but `$` can accept a final newline; use fullmatch for whole-value validation and review newline handling.",
                     severity=Severity.WARNING,
                 )
             )
         return sorted(findings, key=lambda item: (item.line, item.col))
+
+
+def _validation_call(node: ast.If | ast.Return, context: PythonFileContext, bindings: Counter[str]) -> ast.Call | None:
+    if isinstance(node, ast.If):
+        return _rejection_call(node)
+    match node.value:
+        case (
+            ast.UnaryOp(op=ast.Not(), operand=ast.Call() as call)
+            | ast.Compare(left=ast.Call() as call, ops=[ast.Is() | ast.IsNot()], comparators=[ast.Constant(value=None)])
+        ):
+            return call
+        case ast.Call(func=ast.Name(id="bool"), args=[ast.Call() as call], keywords=[]):
+            if context.imports.builtin_is_unshadowed("bool") and bindings["bool"] == 0:
+                return call
+        case _:
+            pass
+    return None
 
 
 def _rejection_call(guard: ast.If) -> ast.Call | None:

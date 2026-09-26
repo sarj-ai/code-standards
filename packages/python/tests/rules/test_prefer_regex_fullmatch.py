@@ -187,3 +187,30 @@ def test_documentation_examples_and_no_fix_policy() -> None:
 def test_trailing_newline_is_a_real_validation_difference() -> None:
     assert re.match(r"^[a-z]+$", "valid\n") is not None
     assert re.fullmatch(r"[a-z]+", "valid\n") is None
+
+
+@pytest.mark.parametrize(
+    "expression",
+    [
+        "bool(re.match(r'^a$', value))",
+        "re.match(r'^a$', value) is not None",
+        "re.match(r'^a$', value) is None",
+        "not re.match(r'^a$', value)",
+    ],
+)
+def test_boolean_return_validators(expression: str) -> None:
+    source = f"import re\ndef valid(value):\n    return {expression}\n"
+    assert len(PreferRegexFullmatch().check(Path("app/validation.py"), source)) == 1
+
+
+@pytest.mark.parametrize(
+    "expression", ["re.match(r'^a$', value)", "bool(re.match(r'a', value))", "predicate(re.match(r'^a$', value))"]
+)
+def test_returned_matches_and_unknown_predicates_are_excluded(expression: str) -> None:
+    source = f"import re\ndef valid(value):\n    return {expression}\n"
+    assert not PreferRegexFullmatch().check(Path("app/validation.py"), source)
+
+
+def test_shadowed_bool_return_is_excluded() -> None:
+    source = "import re\ndef valid(value, bool):\n    return bool(re.match(r'^a$', value))\n"
+    assert not PreferRegexFullmatch().check(Path("app/validation.py"), source)

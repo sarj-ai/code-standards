@@ -2089,8 +2089,8 @@
       "family": "python",
       "ruleId": "prefer-regex-fullmatch",
       "state": "complete",
-      "evidence": "59 focused regression cases. Pinned read-only corpus: 3,048 tracked Python files, 25,601,555 bytes across four private sources; fresh processes capped at 250 files. All 4 findings inspected; no observed false positives or duplicate locations. No full upstream public repository corpus was evaluated. Combined candidate runs took 34-47 seconds under concurrent verification; timing is load-sensitive and is not an optimization claim.",
-      "outcome": "Ship warning without autofix. Require a literal anchored pattern in an explicit rejection guard; exclude flags, ambiguous bindings, and extraction. Broader coverage and any error promotion require separate calibration."
+      "evidence": "67 focused regression cases, including eight additional boolean-return and shadowing cases. Pinned read-only corpus: 3,048 tracked Python files, 25,601,555 bytes across four private sources; fresh processes capped at 250 files. Candidate runs took 9.80 and 9.13 seconds versus 8.73 and 8.80 seconds for the shipped regex rule alone. All four unchanged regex findings inspected; no observed false positives or duplicate locations. No full upstream public corpus evaluated; process peak memory was not measured.",
+      "outcome": "Keep warning without autofix. Extend explicit rejection guards to returns of bool(match), not match, and match is/is-not None. Exclude match-object returns, flags, uncertain bindings, compound expressions and extraction. Runtime reproduction confirms the terminal-newline gap; broader coverage and promotion require separate calibration."
     },
     {
       "task": "rule-audit/python/prefer-monotonic-for-elapsed-time",
@@ -2099,6 +2099,22 @@
       "state": "complete",
       "evidence": "52 focused regression cases. Pinned read-only corpus: 3,048 tracked Python files, 25,601,555 bytes across four private sources; fresh processes capped at 250 files. All 29 findings inspected; no observed false positives or duplicate locations. No full upstream public repository corpus was evaluated. Combined candidate runs took 34-47 seconds under concurrent verification; timing is load-sensitive and is not an optimization claim.",
       "outcome": "Ship warning without autofix. Require a local start used exclusively in elapsed subtractions; exclude fields, epoch consumers, escapes, and mixed clocks. Broader coverage and any error promotion require separate calibration."
+    },
+    {
+      "task": "rule-audit/python/async-cleanup-registered-synchronously",
+      "family": "python",
+      "ruleId": "async-cleanup-registered-synchronously",
+      "state": "complete",
+      "evidence": "25 focused regression cases. No live corpus matches; zero hits are not evidence of correctness. Pinned read-only corpus: 3,048 tracked Python files, 25,601,555 bytes across four private sources; fresh processes capped at 250 files. Candidate runs took 9.80 and 9.13 seconds versus 8.73 and 8.80 seconds for the shipped regex rule alone. All four unchanged regex findings inspected; no observed false positives or duplicate locations. No full upstream public corpus evaluated; process peak memory was not measured.",
+      "outcome": "Ship warning without autofix. Runtime reproduction confirms callback drops async cleanup while push_async_callback awaits it. Only proven standard-library stacks and visible undecorated coroutine functions are supported. Unknown methods, decorators, escaped stacks and dynamic mutations are excluded."
+    },
+    {
+      "task": "rule-audit/python/subprocess-kill-without-reap",
+      "family": "python",
+      "ruleId": "subprocess-kill-without-reap",
+      "state": "complete",
+      "evidence": "24 focused regression cases. No live corpus matches; zero hits are not evidence of correctness. Pinned read-only corpus: 3,048 tracked Python files, 25,601,555 bytes across four private sources; fresh processes capped at 250 files. Candidate runs took 9.80 and 9.13 seconds versus 8.73 and 8.80 seconds for the shipped regex rule alone. All four unchanged regex findings inspected; no observed false positives or duplicate locations. No full upstream public corpus evaluated; process peak memory was not measured.",
+      "outcome": "Ship warning without autofix. Standard-library lifecycle requires waiting after kill. Only direct locally owned Popen timeout handlers ending in kill are supported; context managers, borrowed processes, callbacks, later cleanup and uncertain bindings are excluded. Choosing communicate versus wait requires output ownership review."
     }
   ]
 }
