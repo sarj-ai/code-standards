@@ -12,13 +12,13 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-_REVISION = "f477c87332eb605d8aabbc1a240d5c4542b7e320"
+_REVISION = "3470e87191e7f3403c56aba55197f182a0a6f960"
 
 
 def test_repo_standards_dependency_pin_tracks_the_installed_package() -> None:
-    result = doctor.rewrite_version_pins('dependencies = ["repo-standards>=6.0.1"]\n', {"repo-standards": "6.1.1"})
+    result = doctor.rewrite_version_pins('dependencies = ["repo-standards>=6.0.1"]\n', {"repo-standards": "6.1.2"})
 
-    assert result.contents == 'dependencies = ["repo-standards==6.1.1"]\n'
+    assert result.contents == 'dependencies = ["repo-standards==6.1.2"]\n'
     assert result.packages == ("repo-standards",)
     assert "repo-standards" in manifest.installed_versions()
 
@@ -26,7 +26,7 @@ def test_repo_standards_dependency_pin_tracks_the_installed_package() -> None:
 def test_repo_standards_pin_does_not_match_another_package_suffix() -> None:
     original = 'dependencies = ["other-repo-standards==1.0", "other_repo-standards==1.0"]\n'
 
-    assert doctor.rewrite_version_pins(original, {"repo-standards": "6.1.1"}).contents == original
+    assert doctor.rewrite_version_pins(original, {"repo-standards": "6.1.2"}).contents == original
 
 
 @pytest.mark.parametrize("action", ["", "/documentation", "/pull-request-commits", "/pull-request-review-policy"])
@@ -41,13 +41,13 @@ def test_existing_workflow_actions_preserve_options_and_quotes(tmp_path: Path, a
     )
     workflow.write_text(original, encoding="utf-8")
 
-    [update] = doctor.plan_version_pin_updates(tmp_path, {"repo-standards": "6.1.1"})
+    [update] = doctor.plan_version_pin_updates(tmp_path, {"repo-standards": "6.1.2"})
 
-    expected = original.replace("@v6.0.1", f"@{_REVISION}").replace("# v6.0.1", "# v6.1.1")
+    expected = original.replace("@v6.0.1", f"@{_REVISION}").replace("# v6.0.1", "# v6.1.2")
     assert update.contents == expected
     assert update.packages == ("repo-standards",)
     workflow.write_text(update.contents, encoding="utf-8")
-    assert not doctor.plan_version_pin_updates(tmp_path, {"repo-standards": "6.1.1"})
+    assert not doctor.plan_version_pin_updates(tmp_path, {"repo-standards": "6.1.2"})
 
 
 def test_action_update_ignores_shell_text_comments_and_unrelated_uses(tmp_path: Path) -> None:
@@ -65,7 +65,7 @@ def test_action_update_ignores_shell_text_comments_and_unrelated_uses(tmp_path: 
     )
     workflow.write_text(original, encoding="utf-8")
 
-    [update] = doctor.plan_version_pin_updates(tmp_path, {"repo-standards": "6.1.1"})
+    [update] = doctor.plan_version_pin_updates(tmp_path, {"repo-standards": "6.1.2"})
 
     assert update.contents == original.replace(
         "sarj-ai/repo-standards@v6.0.1 # reviewed", f"sarj-ai/repo-standards@{_REVISION} # reviewed"
@@ -82,13 +82,13 @@ def test_action_update_respects_doctor_exclusions_and_workflow_boundary(tmp_path
         '[doctor]\nexclude = [".github/workflows/policy.yml"]\n', encoding="utf-8"
     )
 
-    assert not doctor.plan_version_pin_updates(tmp_path, {"repo-standards": "6.1.1"})
+    assert not doctor.plan_version_pin_updates(tmp_path, {"repo-standards": "6.1.2"})
 
 
 def test_generated_commit_policy_uses_the_published_repo_standards_identity() -> None:
     assert manifest.installed_versions()["repo-standards"] == manifest.REPO_STANDARDS_VERSION
     assert (
-        f"sarj-ai/repo-standards/pull-request-commits@{_REVISION} # v6.1.1" in scaffold.commit_policy_github_workflow()
+        f"sarj-ai/repo-standards/pull-request-commits@{_REVISION} # v6.1.2" in scaffold.commit_policy_github_workflow()
     )
 
 
@@ -116,7 +116,7 @@ def test_upgrade_composes_action_pins_with_a_legacy_workflow_migration(tmp_path:
 
     expected = original.replace(" verify", " check --trust-repository-code")
     if not excluded:
-        expected = expected.replace("@v6.0.1", f"@{_REVISION}").replace("# v6.0.1", "# v6.1.1")
+        expected = expected.replace("@v6.0.1", f"@{_REVISION}").replace("# v6.0.1", "# v6.1.2")
     assert workflow.read_text(encoding="utf-8") == expected
     assert workflow not in {update.path for update in doctor.plan_version_pin_updates(tmp_path)}
     assert upgrade.apply(upgrade.build_plan(tmp_path), install=False) == 0
@@ -142,7 +142,7 @@ def test_action_update_preserves_ambiguous_or_indirect_yaml(tmp_path: Path, sour
     workflow.parent.mkdir(parents=True)
     workflow.write_text(source, encoding="utf-8")
 
-    assert not doctor.plan_version_pin_updates(tmp_path, {"repo-standards": "6.1.1"})
+    assert not doctor.plan_version_pin_updates(tmp_path, {"repo-standards": "6.1.2"})
 
 
 def test_action_update_preserves_valid_anchor_references_when_updating_another_step(tmp_path: Path) -> None:
@@ -156,7 +156,7 @@ def test_action_update_preserves_valid_anchor_references_when_updating_another_s
     )
     workflow.write_text(original, encoding="utf-8")
 
-    [update] = doctor.plan_version_pin_updates(tmp_path, {"repo-standards": "6.1.1"})
+    [update] = doctor.plan_version_pin_updates(tmp_path, {"repo-standards": "6.1.2"})
 
     expected = original.replace("/documentation@v6.0.1", f"/documentation@{_REVISION}")
     assert update.contents == expected
