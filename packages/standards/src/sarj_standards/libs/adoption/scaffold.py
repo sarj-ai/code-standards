@@ -1042,7 +1042,7 @@ def _plan_legacy_manifest(path: Path, contents: str, desired: manifest.Manifest,
             plan.errors.append(str(exc))
             return
         plan.writes.append((path, migrated))
-        plan.notes.append("migrated the schema 3 manifest to the current schema")
+        plan.notes.append("migrated the manifest to the current schema and rule catalog")
         return
     plan.writes.append((path, _migrate_schema_less_manifest(legacy_text, desired)))
     plan.notes.append("migrated the legacy manifest to the current schema")

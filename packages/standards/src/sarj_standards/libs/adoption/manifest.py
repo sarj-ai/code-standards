@@ -251,7 +251,7 @@ def _load_schema(  # ruff: ignore[too-many-locals] - one validation boundary kee
     root: Path,
     expected_schema: int,
     *,
-    discard_retired: bool = False,
+    discard_removed: bool = False,
 ) -> Manifest | None:
     path = manifest_path(root)
     if not path.is_file():
@@ -325,12 +325,12 @@ def _load_schema(  # ruff: ignore[too-many-locals] - one validation boundary kee
         excluded_rules=_rule_selectors(
             exclude_table,
             "rules",
-            discard_retired=discard_retired,
+            discard_removed=discard_removed,
         ),
         exclusion_overrides=_exclusion_overrides(
             root,
             exclude_table,
-            discard_retired=discard_retired,
+            discard_removed=discard_removed,
         ),
         durable_artifacts=_string_list(
             artifacts_table,
@@ -368,7 +368,7 @@ def _manifest_table(data: Mapping[str, object], key: str) -> dict[str, object]:
 
 def load_for_setup(root: Path) -> Manifest | None:
     try:
-        return _load_schema(root, MANIFEST_SCHEMA, discard_retired=True)
+        return _load_schema(root, MANIFEST_SCHEMA, discard_removed=True)
     except ValueError:
         schema_three = _load_schema_three_manifest(root)
         if schema_three is not None:
@@ -387,7 +387,7 @@ def _load_schema_three_manifest(root: Path) -> Manifest | None:
         return None
     if as_table(parsed).get("schema") != LEGACY_MANIFEST_SCHEMA:
         return None
-    return _load_schema(root, LEGACY_MANIFEST_SCHEMA, discard_retired=True)
+    return _load_schema(root, LEGACY_MANIFEST_SCHEMA, discard_removed=True)
 
 
 def _load_schema_less_manifest(  # ruff: ignore[too-many-locals] -- validate the complete legacy policy atomically.
@@ -445,8 +445,8 @@ def _load_schema_less_manifest(  # ruff: ignore[too-many-locals] -- validate the
         verify_paths=_verify_paths(root, verify_table),
         hook_manager=hook_manager,
         excluded_paths=_path_patterns(root, exclude_table, "paths"),
-        excluded_rules=_rule_selectors(exclude_table, "rules", discard_retired=True),
-        exclusion_overrides=_exclusion_overrides(root, exclude_table, discard_retired=True),
+        excluded_rules=_rule_selectors(exclude_table, "rules", discard_removed=True),
+        exclusion_overrides=_exclusion_overrides(root, exclude_table, discard_removed=True),
     )
 
 
@@ -499,13 +499,13 @@ def _rule_selectors(
     table: Mapping[str, object],
     key: str,
     *,
-    discard_retired: bool = False,
+    discard_removed: bool = False,
 ) -> tuple[str, ...]:
     selectors = _string_list(table, key, label=f"manifest [exclude].{key}")
     return tuple(
         validate_excluded_rule(selector)
         for selector in selectors
-        if not discard_retired or not _retired_rule_selector(selector)
+        if not discard_removed or not _removed_rule_selector(selector)
     )
 
 
@@ -538,16 +538,19 @@ def validate_excluded_rule(selector: str) -> str:
     return selector
 
 
-def _retired_rule_selector(selector: str) -> bool:
+def _removed_rule_selector(selector: str) -> bool:
     from sarj_standards.libs.repository import (  # ruff: ignore[import-outside-top-level] -- avoid a manifest/ledger import cycle.
         ledger,
     )
 
     engine, separator, rule = selector.partition(":")
-    if not separator:
+    if not separator or engine not in {*_SARJ_RULE_ENGINES, ledger.ESLINT}:
         return False
     kind = ledger.CODE if engine == "python" and re.fullmatch(r"SARJ[0-9]{3}", rule) else engine
-    return any(entry.kind == kind and entry.id == rule for entry in ledger.load().retired)
+    return any(
+        entry.kind == kind and entry.id == rule and entry.status is ledger.Status.REMOVED
+        for entry in ledger.load().retired
+    )
 
 
 def _validate_known_rule(engine: str, rule: str, selector: str) -> None:
@@ -592,14 +595,14 @@ def _exclusion_overrides(
     root: Path,
     table: Mapping[str, object],
     *,
-    discard_retired: bool = False,
+    discard_removed: bool = False,
 ) -> tuple[ExclusionOverride, ...]:
     values = list_field(table, "overrides")
     overrides: list[ExclusionOverride] = []
     for value in values:
         item = as_table(value)
         paths = _path_patterns(root, item, "paths")
-        rules = _rule_selectors(item, "rules", discard_retired=discard_retired)
+        rules = _rule_selectors(item, "rules", discard_removed=discard_removed)
         reason = text_field(item, "reason")
         if not paths or not list_field(item, "rules") or reason is None or not reason.strip():
             msg = "each [[exclude.overrides]] entry must set non-empty paths, rules, and reason"
