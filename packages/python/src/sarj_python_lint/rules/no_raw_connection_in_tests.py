@@ -14,13 +14,15 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    parse_or_none,
 )
-from sarj_python_lint.rules._paths import is_generated, is_test_path, is_test_support_path
+from sarj_python_lint.rules._ast_index import walk as walk_ast
+from sarj_python_lint.rules._paths import is_test_path, is_test_support_path
 
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+    from sarj_python_lint._file_context import PythonFileContext
 
 
 _POOL_TYPES = frozenset({"AsyncConnectionPool", "ConnectionPool"})
@@ -82,7 +84,8 @@ class NoRawConnectionInTests(Rule):
     description = documentation.summary
 
     @override
-    def check(self, path: Path, source: str) -> list[Diagnostic]:
+    def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
+        path = context.path
         excluded_path = any(
             (
                 not is_test_path(path),
@@ -92,15 +95,15 @@ class NoRawConnectionInTests(Rule):
                 _is_migration_test(path),
             )
         )
-        if excluded_path or is_generated(path, source):
+        if excluded_path or context.generated:
             return []
-        tree = parse_or_none(path, source)
+        tree = context.tree
         if tree is None:
             return []
         diagnostics: list[Diagnostic] = []
         scopes: list[ast.Module | ast.FunctionDef | ast.AsyncFunctionDef] = [
             tree,
-            *(node for node in ast.walk(tree) if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))),
+            *(node for node in context.nodes(ast.AST) if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))),
         ]
         for scope in scopes:
             pool_names = _proven_pool_names(scope)
@@ -200,7 +203,7 @@ def _is_internal_fixture_connection(
     return not any(
         isinstance(node, (ast.Return, ast.Yield, ast.YieldFrom))
         and node.value is not None
-        and any(isinstance(value, ast.Name) and value.id == bound_name for value in ast.walk(node.value))
+        and any(isinstance(value, ast.Name) and value.id == bound_name for value in walk_ast(node.value))
         for node in _scope_nodes(scope)
     )
 

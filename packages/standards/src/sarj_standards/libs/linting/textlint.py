@@ -23,18 +23,15 @@ from yaml.tokens import ScalarToken
 
 from sarj_standards.libs.adoption.manifest import as_table, list_field, table_field
 from sarj_standards.libs.json_boundary import parse_json
+from sarj_standards.libs.linting.text_rule_base import Finding as Finding, RuleMeta as RuleMeta
+from sarj_standards.libs.linting.text_rules._registry import REGISTRY as AUTHORED_RULES
 from sarj_standards.libs.rules.contracts import (
-    AutofixPolicy,
     DefaultLevel,
     ExampleFile,
     ExpectedOutcome,
     Language,
-    MessageId,
     RuleCategory,
-    RuleEngine,
     RuleExample,
-    RuleId,
-    RuleSpec,
 )
 from sarj_standards.libs.typed_containers import is_object_list, is_object_mapping
 from sarj_standards.libs.yaml_boundary import mapping_items, sequence_items
@@ -429,72 +426,6 @@ _SECRET_READ_PERMISSION_PREFIXES: Final = (
 )
 
 
-@dataclass(frozen=True)
-class Finding:
-    path: Path
-    line: int
-    code: str
-    message: str
-
-    def render(self) -> str:
-        rollout = " warning:" if not _META_BY_CODE[self.code].blocking else ""
-        return f"{self.path}:{self.line}:1: {self.code}{rollout} {self.message}"
-
-
-@dataclass(frozen=True)
-class RuleMeta:
-    code: str
-    summary: str
-    rationale: str
-    remediation: str
-    category: RuleCategory
-    languages: frozenset[Language]
-    file_patterns: tuple[str, ...]
-    examples: tuple[RuleExample, ...]
-    autofix: AutofixPolicy = AutofixPolicy.NONE
-    aliases: tuple[str, ...] = ()
-    limitations: tuple[str, ...] = ()
-    message_ids: tuple[str, ...] = ()
-    references: tuple[str, ...] = ()
-    since: str | None = None
-    default_level: DefaultLevel = DefaultLevel.ERROR
-
-    @property
-    def blocking(self) -> bool:
-        return self.default_level is DefaultLevel.ERROR
-
-    @property
-    def description(self) -> str:
-        """Preserve the existing analysis adapter while ``summary`` becomes canonical."""
-        return self.summary
-
-    @property
-    def public_examples(self) -> tuple[RuleExample, ...]:
-        """Return only examples explicitly reviewed for public documentation."""
-        return tuple(example for example in self.examples if example.public)
-
-    def native_spec(self, rule_id: str) -> RuleSpec:
-        return RuleSpec(
-            engine=RuleEngine.TEXT,
-            rule_id=RuleId(rule_id),
-            code=self.code,
-            summary=self.summary,
-            rationale=self.rationale,
-            remediation=self.remediation,
-            category=self.category,
-            default_level=self.default_level,
-            languages=self.languages,
-            autofix=self.autofix,
-            aliases=self.aliases,
-            examples=self.examples,
-            limitations=self.limitations,
-            file_patterns=self.file_patterns,
-            message_ids=tuple(MessageId(message_id) for message_id in self.message_ids),
-            references=self.references,
-            since=self.since,
-        )
-
-
 def _public_example(
     *,
     example_id: str,
@@ -520,6 +451,7 @@ def _public_example(
 
 REGISTRY: Final[Mapping[str, RuleMeta]] = MappingProxyType(
     {
+        **{rule_id: rule.documentation for rule_id, rule in AUTHORED_RULES.items()},
         "config-comment-wall": RuleMeta(
             code="SARJ300",
             default_level=DefaultLevel.ERROR,
@@ -1065,6 +997,7 @@ def check_paths(
             path_findings.extend(_claude_settings_secret_permission_findings(path, relative, source))
         if enabled_codes is None or enabled_codes.intersection({"SARJ300", "SARJ301", "SARJ306"}):
             path_findings.extend(_comment_findings(path, source))
+        path_findings.extend(_authored_findings(path, source, rule_ids))
         return path_findings
 
     for raw in paths:
@@ -1079,6 +1012,15 @@ def check_paths(
         path_findings = collect_path_findings(path, relative, source)
         findings.extend(_selected_text_findings(path_findings, path, source, enabled_codes))
     return sorted(findings, key=lambda item: (str(item.path), item.line, item.code))
+
+
+def _authored_findings(path: Path, source: str, rule_ids: frozenset[str] | None) -> list[Finding]:
+    return [
+        finding
+        for rule_id, rule in AUTHORED_RULES.items()
+        if rule_ids is None or rule_id in rule_ids
+        for finding in rule().check(path, source)
+    ]
 
 
 class _ShellHeredoc(NamedTuple):

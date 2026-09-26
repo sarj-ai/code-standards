@@ -67,6 +67,11 @@ def route(root: Path, base: str, head: str, *, event: str = "pull_request") -> f
             "packages/python/src/rule.py", {"python", "standards", "docs", "codeql-python"}, id="python-consumers"
         ),
         pytest.param(
+            "packages/contracts/src/sarj_rule_contracts/contracts.py",
+            {"python", "sql", "iac", "standards", "docs", "codeql-python"},
+            id="shared-contract-consumers",
+        ),
+        pytest.param(
             "packages/typescript/src/rule.ts",
             {"typescript", "standards", "docs", "codeql-javascript-typescript"},
             id="typescript-consumers",

@@ -19,7 +19,6 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    parse_or_none,
 )
 from sarj_python_lint.rules._ast_index import nodes
 from sarj_python_lint.rules._comments import (
@@ -33,11 +32,11 @@ from sarj_python_lint.rules._comments import (
     standalone_comments,
     statement_comment_walls,
 )
-from sarj_python_lint.rules._paths import is_generated
 
 
 if TYPE_CHECKING:
-    from pathlib import Path
+    from sarj_python_lint._file_context import PythonFileContext
+    from sarj_python_lint.rules._ast_index import NodeIndex
 
 
 _MAX_WORDS = 8
@@ -229,10 +228,9 @@ def _structural_code_tokens(code: str) -> set[str]:
 
 
 def _numbered_walkthrough_lines(
-    tree: ast.Module,
-    standalone: list[PositionedComment],
+    tree: ast.Module, standalone: list[PositionedComment], *, node_index: NodeIndex | None = None
 ) -> frozenset[int]:
-    owners = [*nodes(tree, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)]
+    owners = [*nodes(tree, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef, index=node_index)]
 
     def owner_of(line: int) -> int:
         containing = [node for node in owners if node.lineno <= line <= (node.end_lineno or node.lineno)]
@@ -307,15 +305,17 @@ class NoRestatedComment(Rule):
     description: str = documentation.summary
 
     @override
-    def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if is_generated(path, source):
+    def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
+        path = context.path
+        source = context.source
+        if context.generated:
             return []
         try:
             standalone, _ = standalone_comments(source)
             nested = nested_comment_lines(source)
         except tokenize.TokenError, IndentationError, SyntaxError:
             return []
-        lines = source.splitlines()
+        lines = context.source_lines
         wall_members = frozenset(
             line for members in statement_comment_walls(path, source, standalone).values() for line in members
         )
@@ -326,11 +326,11 @@ class NoRestatedComment(Rule):
         ]
         if not candidates:
             return []
-        tree = parse_or_none(path, source)
+        tree = context.tree
         if tree is None:
             return []
-        numbered_walkthrough = _numbered_walkthrough_lines(tree, standalone)
-        action_assignments = _action_assignments(candidates, lines, tree)
+        numbered_walkthrough = _numbered_walkthrough_lines(tree, standalone, node_index=context.node_index)
+        action_assignments = _action_assignments(candidates, lines, tree, node_index=context.node_index)
         diags: list[Diagnostic] = []
         for line, col, body in candidates:
             if line in numbered_walkthrough:
@@ -403,7 +403,7 @@ def _protect_walkthrough_run(entries: list[tuple[int, int]], protected: set[int]
 
 
 def _action_assignments(
-    candidates: list[PositionedComment], lines: list[str], tree: ast.Module
+    candidates: list[PositionedComment], lines: list[str], tree: ast.Module, *, node_index: NodeIndex | None = None
 ) -> dict[int, ast.Assign | ast.AnnAssign]:
     action_lines = {
         line + 1
@@ -412,6 +412,6 @@ def _action_assignments(
     }
     return {
         node.lineno: node
-        for node in nodes(tree, ast.Assign, ast.AnnAssign)
+        for node in nodes(tree, ast.Assign, ast.AnnAssign, index=node_index)
         if node.lineno in action_lines and _is_action_assignment(node)
     }

@@ -10,6 +10,7 @@ import re
 from types import MappingProxyType
 from typing import TYPE_CHECKING, final
 
+from sarj_python_lint.rules._ast_index import walk as walk_ast
 from sarj_python_lint.rules._first_party import FirstPartyFacts, project_root
 
 
@@ -139,7 +140,7 @@ class ProjectIndexSet:
         return self._classes.get(symbol) if symbol is not None else None
 
     def annotation_contains_enum(self, unit: SourceUnit, annotation: ast.expr) -> bool:
-        for member in ast.walk(annotation):
+        for member in walk_ast(annotation):
             if not isinstance(member, (ast.Name, ast.Attribute)):
                 continue
             symbol = self.resolve(unit, member)
@@ -198,7 +199,7 @@ class ProjectIndexSet:
             and name in candidate.source
             and any(
                 _is_mock_spec_for(candidate, call, target)
-                for call in ast.walk(candidate.tree)
+                for call in walk_ast(candidate.tree)
                 if isinstance(call, ast.Call)
             )
         )
@@ -614,7 +615,7 @@ def _annotation_contains_symbol(unit: SourceUnit, annotation: ast.expr | None, t
             annotation = ast.parse(annotation.value, mode="eval").body
     return any(
         _resolve(unit, candidate) == target
-        for candidate in ast.walk(annotation)
+        for candidate in walk_ast(annotation)
         if isinstance(candidate, (ast.Name, ast.Attribute))
     )
 

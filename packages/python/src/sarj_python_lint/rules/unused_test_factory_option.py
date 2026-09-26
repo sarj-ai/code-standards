@@ -15,14 +15,16 @@ from sarj_python_lint.rule_base import (
     RuleExample,
     Severity,
     is_suppressed,
-    parse_or_none,
 )
 from sarj_python_lint.rules._ast_index import nodes
-from sarj_python_lint.rules._paths import is_generated, is_test_path
+from sarj_python_lint.rules._paths import is_test_path
 
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+    from sarj_python_lint._file_context import PythonFileContext
+    from sarj_python_lint.rules._ast_index import NodeIndex
 
 
 _MIN_INVARIANT_CALLS = 2
@@ -79,22 +81,24 @@ class UnusedTestFactoryOption(Rule):
     )
     description = documentation.summary
 
-    def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if not is_test_path(path) or is_generated(path, source) or not ("_make_" in source or "_build_" in source):
+    def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
+        path = context.path
+        source = context.source
+        if not is_test_path(path) or context.generated or not ("_make_" in source or "_build_" in source):
             return []
-        tree = parse_or_none(path, source)
+        tree = context.tree
         if tree is None or (
-            any(node.id in _REFLECTION for node in nodes(tree, ast.Name))
-            or any(node.attr in _REFLECTION or node.attr == "__dict__" for node in nodes(tree, ast.Attribute))
-            or any(node.name in _REFLECTION or node.name == "*" for node in nodes(tree, ast.alias))
+            any(node.id in _REFLECTION for node in context.nodes(ast.Name))
+            or any(node.attr in _REFLECTION or node.attr == "__dict__" for node in context.nodes(ast.Attribute))
+            or any(node.name in _REFLECTION or node.name == "*" for node in context.nodes(ast.alias))
         ):
             return []
-        lines = source.splitlines()
+        lines = context.source_lines
         findings: list[Diagnostic] = []
         for function in tree.body:
             if not _is_factory(function):
                 continue
-            findings.extend(_factory_findings(tree, function, path, lines, self.code))
+            findings.extend(_factory_findings(tree, function, path, lines, self.code, node_index=context.node_index))
         return sorted(findings, key=lambda item: (item.line, item.col))
 
 
@@ -112,10 +116,16 @@ def _is_factory(node: ast.stmt) -> TypeGuard[ast.FunctionDef]:
 
 
 def _factory_findings(
-    tree: ast.Module, function: ast.FunctionDef, path: Path, lines: list[str], code: str
+    tree: ast.Module,
+    function: ast.FunctionDef,
+    path: Path,
+    lines: list[str],
+    code: str,
+    *,
+    node_index: NodeIndex | None = None,
 ) -> list[Diagnostic]:
     findings: list[Diagnostic] = []
-    calls = _direct_calls(tree, function)
+    calls = _direct_calls(tree, function, node_index=node_index)
     if not calls:
         return []
     bound = _bound_calls(function, calls)
@@ -170,12 +180,18 @@ def _bound_calls(function: ast.FunctionDef, calls: list[ast.Call]) -> list[dict[
     return bound
 
 
-def _direct_calls(tree: ast.Module, function: ast.FunctionDef) -> list[ast.Call]:
+def _direct_calls(
+    tree: ast.Module, function: ast.FunctionDef, *, node_index: NodeIndex | None = None
+) -> list[ast.Call]:
     name = function.name
-    if not _has_unambiguous_factory_name(tree, name):
+    if not _has_unambiguous_factory_name(tree, name, node_index=node_index):
         return []
-    references = [node for node in nodes(tree, ast.Name) if node.id == name]
-    calls = [node for node in nodes(tree, ast.Call) if isinstance(node.func, ast.Name) and node.func.id == name]
+    references = [node for node in nodes(tree, ast.Name, index=node_index) if node.id == name]
+    calls = [
+        node
+        for node in nodes(tree, ast.Call, index=node_index)
+        if isinstance(node.func, ast.Name) and node.func.id == name
+    ]
     if not calls or len(references) != len(calls) or any(not isinstance(node.ctx, ast.Load) for node in references):
         return []
     if _has_dynamic_factory_arguments(calls):
@@ -185,20 +201,26 @@ def _direct_calls(tree: ast.Module, function: ast.FunctionDef) -> list[ast.Call]
     return calls
 
 
-def _has_unambiguous_factory_name(tree: ast.Module, name: str) -> bool:
-    if sum(node.name == name for node in nodes(tree, ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)) != 1:
+def _has_unambiguous_factory_name(tree: ast.Module, name: str, *, node_index: NodeIndex | None = None) -> bool:
+    if (
+        sum(
+            node.name == name
+            for node in nodes(tree, ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, index=node_index)
+        )
+        != 1
+    ):
         return False
-    if any(node.arg == name for node in nodes(tree, ast.arg)):
+    if any(node.arg == name for node in nodes(tree, ast.arg, index=node_index)):
         return False
-    if any((node.asname or node.name.split(".")[0]) == name for node in nodes(tree, ast.alias)):
+    if any((node.asname or node.name.split(".")[0]) == name for node in nodes(tree, ast.alias, index=node_index)):
         return False
-    if any(node.attr == name for node in nodes(tree, ast.Attribute)):
+    if any(node.attr == name for node in nodes(tree, ast.Attribute, index=node_index)):
         return False
-    if any(node.value == name for node in nodes(tree, ast.Constant)):
+    if any(node.value == name for node in nodes(tree, ast.Constant, index=node_index)):
         return False
-    if any(node.name == name for node in nodes(tree, ast.MatchAs, ast.MatchStar, ast.ExceptHandler)):
+    if any(node.name == name for node in nodes(tree, ast.MatchAs, ast.MatchStar, ast.ExceptHandler, index=node_index)):
         return False
-    return not any(node.rest == name for node in nodes(tree, ast.MatchMapping))
+    return not any(node.rest == name for node in nodes(tree, ast.MatchMapping, index=node_index))
 
 
 def _has_dynamic_factory_arguments(calls: list[ast.Call]) -> bool:

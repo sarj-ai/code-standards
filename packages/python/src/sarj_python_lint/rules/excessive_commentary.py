@@ -14,8 +14,8 @@ from sarj_python_lint.rule_base import (
     RuleCategory,
     RuleDocumentation,
     RuleExample,
-    parse_or_none,
 )
+from sarj_python_lint.rules._ast_index import walk as walk_ast
 from sarj_python_lint.rules._prose_budget import (
     groups,
     has_technical_anchor,
@@ -23,7 +23,8 @@ from sarj_python_lint.rules._prose_budget import (
 
 
 if TYPE_CHECKING:
-    from pathlib import Path
+    from sarj_python_lint._file_context import PythonFileContext
+    from sarj_python_lint.rules._ast_index import NodeIndex
 
 
 _MIN_LINES = 4
@@ -104,11 +105,13 @@ class ExcessiveCommentary(Rule):
     description = documentation.summary
 
     @override
-    def check(self, path: Path, source: str) -> list[Diagnostic]:
-        tree = parse_or_none(path, source)
+    def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
+        path = context.path
+        source = context.source
+        tree = context.tree
         if tree is None:
             return []
-        accumulator_lines = _narrated_accumulator_lines(tree)
+        accumulator_lines = _narrated_accumulator_lines(tree, node_index=context.node_index)
         findings: list[Diagnostic] = []
         for group in groups(path, source):
             lines = tuple(stripped for line in group.text.splitlines() if (stripped := line.strip()))
@@ -139,9 +142,9 @@ class ExcessiveCommentary(Rule):
         return findings
 
 
-def _narrated_accumulator_lines(tree: ast.Module) -> set[int]:
+def _narrated_accumulator_lines(tree: ast.Module, *, node_index: NodeIndex | None = None) -> set[int]:
     lines: set[int] = set()
-    for function in ast.walk(tree):
+    for function in walk_ast(tree, index=node_index):
         if not isinstance(function, (ast.FunctionDef, ast.AsyncFunctionDef)):
             continue
         _collect_accumulators(function.body, lines)

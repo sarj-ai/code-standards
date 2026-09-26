@@ -15,15 +15,13 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    parse_or_none,
 )
-from sarj_python_lint.rules._ast_index import nodes, walk
+from sarj_python_lint.rules._ast_index import walk, walk as walk_ast
 from sarj_python_lint.rules._logging import LOG_METHODS, is_logger_expr
-from sarj_python_lint.rules._paths import is_generated
 
 
 if TYPE_CHECKING:
-    from pathlib import Path
+    from sarj_python_lint._file_context import PythonFileContext
 
 
 # Method names that make a logger-receiver call a logging call.
@@ -169,10 +167,12 @@ class PreferFstringOverConcat(Rule):
     description: str = documentation.summary
 
     @override
-    def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if "+" not in source or is_generated(path, source):
+    def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
+        path = context.path
+        source = context.source
+        if "+" not in source or context.generated:
             return []
-        tree = parse_or_none(path, source)
+        tree = context.tree
         if tree is None:
             return []
 
@@ -182,9 +182,9 @@ class PreferFstringOverConcat(Rule):
         inner: set[int] = set()
         excluded: set[int] = set()
         adds: list[ast.BinOp] = []
-        parents = {id(child): parent for parent in ast.walk(tree) for child in ast.iter_child_nodes(parent)}
+        parents = {id(child): parent for parent in context.nodes(ast.AST) for child in ast.iter_child_nodes(parent)}
         regex_bindings = _regex_bindings(tree)
-        for node in nodes(tree, ast.BinOp, ast.Call, ast.JoinedStr):
+        for node in context.nodes(ast.BinOp, ast.Call, ast.JoinedStr):
             _classify_concat_context(node, inner, excluded, adds, regex_bindings)
 
         diags: list[Diagnostic] = []
@@ -571,7 +571,7 @@ def _imported_modules(statements: list[ast.stmt], before_line: int | None) -> fr
 
 def _bound_names(node: ast.AST) -> set[str]:
     names = _stored_names(node)
-    for child in ast.walk(node):
+    for child in walk_ast(node):
         if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
             names.add(child.name)
         elif isinstance(child, (ast.Import, ast.ImportFrom)):
@@ -584,7 +584,7 @@ def _bound_names(node: ast.AST) -> set[str]:
 def _stored_names(node: ast.AST) -> set[str]:
     return {
         child.id
-        for child in ast.walk(node)
+        for child in walk_ast(node)
         if isinstance(child, ast.Name) and isinstance(child.ctx, (ast.Store, ast.Del))
     }
 

@@ -13,6 +13,7 @@ import typer
 
 from sarj_python_lint import __version__
 from sarj_python_lint._analysis_session import AnalysisSession
+from sarj_python_lint._file_context import PythonFileContext
 from sarj_python_lint._filesystem import atomic_write_text
 from sarj_python_lint.json_boundary import is_object_mapping, parse_json
 from sarj_python_lint.rule_base import Diagnostic, ProjectRule, Rule, Severity, is_suppressed
@@ -47,7 +48,7 @@ SKIP_DIR_NAMES = frozenset(
 _MAX_FILE_BYTES = 500_000
 
 
-def _expand_paths(paths: list[Path]) -> list[Path]:
+def expand_paths(paths: list[Path]) -> list[Path]:
     out: list[Path] = []
     for p in paths:
         if not p.exists():
@@ -91,7 +92,7 @@ def _check(rule_ids: list[str], paths: list[Path]) -> list[Diagnostic]:
     for rule in rules:
         rule.prepare_session(session)
     clear_path_caches()
-    expanded = _expand_paths(paths)
+    expanded = expand_paths(paths)
     loaded: dict[Path, str] = {}
     for path in expanded:
         try:
@@ -101,17 +102,21 @@ def _check(rule_ids: list[str], paths: list[Path]) -> list[Diagnostic]:
     project_rules = [rule for rule in rules if isinstance(rule, ProjectRule)]
     if project_rules:
         indexes = ProjectIndexSet.build(expanded, loaded, facts=session.first_party)
+        session.project = indexes
         for rule in project_rules:
             rule.prepare(indexes)
     diags: list[Diagnostic] = []
     for p, source in loaded.items():
-        diags.extend(_check_source(rules, p, source))
+        diags.extend(check_source(rules, p, source, session=session))
     return diags
 
 
-def _check_source(rules: list[Rule], p: Path, source: str) -> list[Diagnostic]:
-    source_lines = source.splitlines()
-    raw = [diagnostic for rule in rules for diagnostic in rule.check(p, source)]
+def check_source(
+    rules: list[Rule], p: Path, source: str, *, session: AnalysisSession | None = None
+) -> list[Diagnostic]:
+    context = PythonFileContext(p, source, session)
+    source_lines = context.source_lines
+    raw = [diagnostic for rule in rules for diagnostic in rule.check_context(context)]
     return deduplicate_diagnostics(
         [
             diagnostic

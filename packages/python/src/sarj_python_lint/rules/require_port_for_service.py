@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from itertools import pairwise
 from pathlib import Path, PurePosixPath
 import re
-from typing import ClassVar, NamedTuple, override
+from typing import TYPE_CHECKING, ClassVar, NamedTuple, override
 
 from sarj_python_lint.rule_base import (
     AutofixPolicy,
@@ -18,10 +18,15 @@ from sarj_python_lint.rule_base import (
     RuleExample,
     Severity,
     is_suppressed,
-    parse_or_none,
 )
-from sarj_python_lint.rules._imports import ImportIndex
-from sarj_python_lint.rules._paths import is_generated, is_test_path, is_test_support_path
+from sarj_python_lint.rules._ast_index import walk as walk_ast
+from sarj_python_lint.rules._paths import is_test_path, is_test_support_path
+
+
+if TYPE_CHECKING:
+    from sarj_python_lint._file_context import PythonFileContext
+    from sarj_python_lint.rules._imports import ImportIndex
+    from sarj_python_lint.rules._project_index import ProjectIndexSet
 
 
 # Name tails that mark a class as a service in this codebase's own vocabulary.
@@ -262,10 +267,12 @@ class RequirePortForService(ProjectRule):
     description: str = documentation.summary
 
     @override
-    def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if not _is_library_source(path) or is_generated(path, source) or "class " not in source:
+    def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
+        path = context.path
+        source = context.source
+        if not _is_library_source(path) or context.generated or "class " not in source:
             return []
-        tree = parse_or_none(path, source)
+        tree = context.tree
         if tree is None:
             return []
         if _has_main_guard(tree):
@@ -273,8 +280,8 @@ class RequirePortForService(ProjectRule):
 
         classes = [node for node in tree.body if isinstance(node, ast.ClassDef)]
         bound_names = _module_bound_names(tree)
-        imports = ImportIndex.from_tree(tree)
-        source_lines = source.splitlines()
+        imports = context.imports
+        source_lines = context.source_lines
         data_names = {node.name for node in classes if _is_data_type(node)}
         local_class_names = {node.name for node in classes}
         local_port_names = _local_port_names(classes)
@@ -284,6 +291,7 @@ class RequirePortForService(ProjectRule):
             diagnostic = self._class_diagnostic(
                 path,
                 node,
+                indexes=context.session.project,
                 source_lines=source_lines,
                 data_names=data_names,
                 bound_names=bound_names,
@@ -301,6 +309,7 @@ class RequirePortForService(ProjectRule):
         path: Path,
         node: ast.ClassDef,
         *,
+        indexes: ProjectIndexSet | None,
         source_lines: list[str],
         data_names: set[str],
         bound_names: set[str],
@@ -313,10 +322,12 @@ class RequirePortForService(ProjectRule):
         collaborator = _unsubstitutable_service(
             node, data_names, bound_names, local_class_names, local_port_names, imports=imports
         )
-        consumer_count = self._concrete_consumer_count(path, node, local_class_names, local_port_names)
-        typed_consumer_count = self._typed_consumer_count(path, node, local_class_names, local_port_names)
-        test_subclass_count = self._test_subclass_count(path, node) if typed_consumer_count else 0
-        test_mock_count = self._test_mock_count(path, node) if typed_consumer_count else 0
+        consumer_count = self._concrete_consumer_count(path, node, local_class_names, local_port_names, indexes=indexes)
+        typed_consumer_count = self._typed_consumer_count(
+            path, node, local_class_names, local_port_names, indexes=indexes
+        )
+        test_subclass_count = self._test_subclass_count(path, node, indexes=indexes) if typed_consumer_count else 0
+        test_mock_count = self._test_mock_count(path, node, indexes=indexes) if typed_consumer_count else 0
         substituted_boundary = typed_consumer_count >= 1 and (test_subclass_count + test_mock_count) >= 1
         if (
             collaborator is None
@@ -352,8 +363,9 @@ class RequirePortForService(ProjectRule):
         node: ast.ClassDef,
         local_class_names: frozenset[str] | set[str],
         local_port_names: frozenset[str] | set[str],
+        *,
+        indexes: ProjectIndexSet | None,
     ) -> int:
-        indexes = self._project_indexes
         if indexes is None or not _project_boundary_candidate(node, local_class_names, local_port_names):
             return 0
         unit = indexes.unit(path)
@@ -373,8 +385,9 @@ class RequirePortForService(ProjectRule):
         node: ast.ClassDef,
         local_class_names: frozenset[str] | set[str],
         local_port_names: frozenset[str] | set[str],
+        *,
+        indexes: ProjectIndexSet | None,
     ) -> int:
-        indexes = self._project_indexes
         if indexes is None or not _project_boundary_candidate(node, local_class_names, local_port_names):
             return 0
         unit = indexes.unit(path)
@@ -388,8 +401,7 @@ class RequirePortForService(ProjectRule):
             }
         )
 
-    def _test_subclass_count(self, path: Path, node: ast.ClassDef) -> int:
-        indexes = self._project_indexes
+    def _test_subclass_count(self, path: Path, node: ast.ClassDef, *, indexes: ProjectIndexSet | None) -> int:
         if indexes is None:
             return 0
         unit = indexes.unit(path)
@@ -400,8 +412,7 @@ class RequirePortForService(ProjectRule):
             for subclass_path, _ in indexes.direct_subclasses(unit, node.name)
         )
 
-    def _test_mock_count(self, path: Path, node: ast.ClassDef) -> int:
-        indexes = self._project_indexes
+    def _test_mock_count(self, path: Path, node: ast.ClassDef, *, indexes: ProjectIndexSet | None) -> int:
         if indexes is None:
             return 0
         unit = indexes.unit(path)
@@ -534,7 +545,7 @@ def _params_with_defaults(
 
 def _is_http_parameter(param: ast.arg, default: ast.expr | None) -> bool:
     if param.annotation is not None:
-        for inner in ast.walk(param.annotation):
+        for inner in walk_ast(param.annotation):
             if isinstance(inner, ast.Name | ast.Attribute) and _dotted_tail(inner) in _HTTP_PARAM_TYPES:
                 return True
             if isinstance(inner, ast.Call) and _dotted_tail(inner.func) in _HTTP_PARAM_MARKERS:

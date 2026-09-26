@@ -9,6 +9,7 @@
   stages: [pre-commit]
   verbose: true
   additional_dependencies:
+    - ./packages/contracts
     - ./packages/standards
     - ./packages/sql
     - ./packages/iac

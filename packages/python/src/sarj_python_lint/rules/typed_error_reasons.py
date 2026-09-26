@@ -14,14 +14,15 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    parse_or_none,
 )
-from sarj_python_lint.rules._paths import is_generated, is_test_path
+from sarj_python_lint.rules._ast_index import walk as walk_ast
+from sarj_python_lint.rules._paths import is_test_path
 
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
-    from pathlib import Path
+
+    from sarj_python_lint._file_context import PythonFileContext
 
 
 _ERROR_SUFFIXES = ("Error", "Exception")
@@ -130,17 +131,19 @@ class TypedErrorReasons(Rule):
     description = documentation.summary
 
     @override
-    def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if path.suffix != ".py" or is_test_path(path) or is_generated(path, source):
+    def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
+        path = context.path
+        source = context.source
+        if path.suffix != ".py" or is_test_path(path) or context.generated:
             return []
         if "list[str]" not in source or ".join(" not in source or "super(" not in source:
             return []
-        tree = parse_or_none(path, source)
+        tree = context.tree
         if tree is None:
             return []
 
         diagnostics: list[Diagnostic] = []
-        for error_class in (node for node in ast.walk(tree) if isinstance(node, ast.ClassDef)):
+        for error_class in (node for node in context.nodes(ast.AST) if isinstance(node, ast.ClassDef)):
             if not _is_conventional_exception(error_class):
                 continue
             constructor = _error_constructor(error_class)
@@ -215,7 +218,7 @@ def _joined_in_super_message(function: ast.FunctionDef, parameter: str) -> ast.C
             continue
         for argument in node.args:
             joined = next(
-                (candidate for candidate in ast.walk(argument) if _joins_parameter(candidate, parameter)),
+                (candidate for candidate in walk_ast(argument) if _joins_parameter(candidate, parameter)),
                 None,
             )
             if joined is not None:

@@ -14,15 +14,12 @@ from sarj_python_lint.rule_base import (
     RuleCategory,
     RuleDocumentation,
     RuleExample,
-    parse_or_none,
 )
-from sarj_python_lint.rules._ast_index import nodes
-from sarj_python_lint.rules._paths import is_generated
 from sarj_python_lint.rules._sql import strip_sql_noise
 
 
 if TYPE_CHECKING:
-    from pathlib import Path
+    from sarj_python_lint._file_context import PythonFileContext
 
 
 _RANDOM_UUID_RE = re.compile(r"\b(?:gen_random_uuid|uuid_generate_v4)\s*\(", re.IGNORECASE)
@@ -104,10 +101,11 @@ class NoRandomUuidInSql(Rule):
     description: str = documentation.summary
 
     @override
-    def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if is_generated(path, source):
+    def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
+        path = context.path
+        if context.generated:
             return []
-        tree = parse_or_none(path, source)
+        tree = context.tree
         if tree is None:
             return []
         diags = [
@@ -118,7 +116,7 @@ class NoRandomUuidInSql(Rule):
                 code=self.code,
                 message=_MESSAGE,
             )
-            for node in nodes(tree, ast.Constant)
+            for node in context.nodes(ast.Constant)
             if isinstance(node.value, str) and _is_offending_sql(node.value)
         ]
         diags.sort(key=lambda d: (d.line, d.col))

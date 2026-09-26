@@ -15,13 +15,11 @@ from sarj_python_lint.rule_base import (
     RuleExample,
     Severity,
     is_suppressed,
-    parse_or_none,
 )
-from sarj_python_lint.rules._paths import is_generated
 
 
 if TYPE_CHECKING:
-    from pathlib import Path
+    from sarj_python_lint._file_context import PythonFileContext
 
 
 @final
@@ -80,13 +78,15 @@ class NoDeleteStatement(Rule):
     )
     description = documentation.summary
 
-    def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if "del" not in source or is_generated(path, source):
+    def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
+        path = context.path
+        source = context.source
+        if "del" not in source or context.generated:
             return []
-        tree = parse_or_none(path, source)
+        tree = context.tree
         if tree is None:
             return []
-        source_lines = source.splitlines()
+        source_lines = context.source_lines
         return [
             Diagnostic(
                 path=path,
@@ -99,6 +99,6 @@ class NoDeleteStatement(Rule):
                     "immutably, or add an exact SARJ442 suppression explaining why deletion is required."
                 ),
             )
-            for node in ast.walk(tree)
+            for node in context.nodes(ast.AST)
             if isinstance(node, ast.Delete) and not is_suppressed(source_lines, node.lineno, self.code)
         ]

@@ -2,11 +2,22 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 import ast
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import StrEnum
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 import re
-from typing import TYPE_CHECKING, ClassVar, Final, Self
+from typing import TYPE_CHECKING, ClassVar, Final
+
+from sarj_rule_contracts import (
+    AutofixPolicy as AutofixPolicy,
+    ExampleFile as ExampleFile,
+    ExampleOutcome as ExampleOutcome,
+    NativeRuleSpec as NativeRuleSpec,
+    RuleCategory as RuleCategory,
+    RuleDocumentation as RuleDocumentation,
+    RuleExample as RuleExample,
+    Severity as Severity,
+)
 
 from sarj_python_lint._python_target import PythonTargetFacts
 
@@ -15,6 +26,7 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
 
     from sarj_python_lint._analysis_session import AnalysisSession
+    from sarj_python_lint._file_context import PythonFileContext
     from sarj_python_lint.rules._project_index import ProjectIndexSet
 
 
@@ -45,184 +57,9 @@ def is_suppressed(source_lines: Sequence[str], line: int, code: str) -> bool:
     return code.upper() in codes
 
 
-class Severity(StrEnum):
-    WARNING = "warning"
-    ERROR = "error"
-
-
 class ColumnEncoding(StrEnum):
     UTF8_BYTES = "utf8-bytes"
     CODEPOINTS = "codepoints"
-
-
-class RuleCategory(StrEnum):
-    ARCHITECTURE = "architecture"
-    CORRECTNESS = "correctness"
-    MAINTAINABILITY = "maintainability"
-    PERFORMANCE = "performance"
-    SECURITY = "security"
-    STYLE = "style"
-    TESTING = "testing"
-
-
-class AutofixPolicy(StrEnum):
-    NONE = "none"
-    SUGGESTION = "suggestion"
-    SAFE = "safe"
-
-
-class ExampleOutcome(StrEnum):
-    MATCH = "match"
-    NO_MATCH = "no-match"
-
-
-_KEBAB_CASE: Final = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
-_MAX_SUMMARY_LENGTH: Final = 160
-_PUBLIC_PAIR_SIZE: Final = 2
-type ExamplePath = str
-
-
-@dataclass(frozen=True, slots=True)
-class ExampleFile:
-    path: PurePosixPath
-    source: str = field(repr=False)
-
-    def __post_init__(self) -> None:
-        if self.path.is_absolute() or ".." in self.path.parts or not self.path.name:
-            msg = "example file paths must be safe relative paths"
-            raise ValueError(msg)
-        if not self.source:
-            msg = "example file source must not be empty"
-            raise ValueError(msg)
-
-    @classmethod
-    def python(cls, path: ExamplePath, source: str) -> Self:
-        return cls(PurePosixPath(path), source)
-
-
-@dataclass(frozen=True, slots=True)
-class RuleExample:
-    example_id: str
-    outcome: ExampleOutcome
-    files: tuple[ExampleFile, ...]
-    focus_path: PurePosixPath
-    expected_count: int
-    title: str
-    public: bool = False
-    fixed_files: tuple[ExampleFile, ...] = ()
-    scenario: str = "primary"
-
-    def __post_init__(self) -> None:
-        if not _KEBAB_CASE.fullmatch(self.example_id):
-            msg = "example ID must be lowercase kebab-case"
-            raise ValueError(msg)
-        if not _KEBAB_CASE.fullmatch(self.scenario):
-            msg = "example scenario must be lowercase kebab-case"
-            raise ValueError(msg)
-        if not self.title.strip():
-            msg = "example title must not be empty"
-            raise ValueError(msg)
-        paths = tuple(item.path for item in self.files)
-        if not paths or len(paths) != len(set(paths)):
-            msg = "example files must have unique paths"
-            raise ValueError(msg)
-        if self.focus_path not in paths:
-            msg = "example focus path must name one example file"
-            raise ValueError(msg)
-        fixed_paths = tuple(item.path for item in self.fixed_files)
-        if len(fixed_paths) != len(set(fixed_paths)):
-            msg = "fixed example files must have unique paths"
-            raise ValueError(msg)
-        if self.expected_count < 0:
-            msg = "example expected count must not be negative"
-            raise ValueError(msg)
-        if self.outcome is ExampleOutcome.MATCH and self.expected_count < 1:
-            msg = "matching examples must expect at least one diagnostic"
-            raise ValueError(msg)
-        if self.outcome is ExampleOutcome.NO_MATCH and self.expected_count != 0:
-            msg = "non-matching examples must expect zero diagnostics"
-            raise ValueError(msg)
-
-    @property
-    def focus_file(self) -> ExampleFile:
-        """Return the file a single-file native checker should inspect."""
-        return next(item for item in self.files if item.path == self.focus_path)
-
-
-@dataclass(frozen=True, slots=True)
-class RuleDocumentation:
-    summary: str
-    rationale: str
-    remediation: str
-    category: RuleCategory
-    default_level: Severity = Severity.ERROR
-    autofix: AutofixPolicy = AutofixPolicy.NONE
-    aliases: tuple[str, ...] = ()
-    limitations: tuple[str, ...] = ()
-    examples: tuple[RuleExample, ...] = ()
-
-    def __post_init__(self) -> None:
-        for label, value in (
-            ("summary", self.summary),
-            ("rationale", self.rationale),
-            ("remediation", self.remediation),
-        ):
-            if not value.strip():
-                msg = f"rule {label} must not be empty"
-                raise ValueError(msg)
-        if "\n" in self.summary or len(self.summary) > _MAX_SUMMARY_LENGTH:
-            msg = f"rule summary must be one line of at most {_MAX_SUMMARY_LENGTH} characters"
-            raise ValueError(msg)
-        if len(self.aliases) != len(set(self.aliases)) or any(
-            not _KEBAB_CASE.fullmatch(alias) for alias in self.aliases
-        ):
-            msg = "rule aliases must be unique lowercase kebab-case IDs"
-            raise ValueError(msg)
-        if any(not limitation.strip() for limitation in self.limitations):
-            msg = "rule limitations must not be empty"
-            raise ValueError(msg)
-        example_ids = tuple(example.example_id for example in self.examples)
-        if len(example_ids) != len(set(example_ids)):
-            msg = "rule example IDs must be unique"
-            raise ValueError(msg)
-        self._validate_public_scenarios()
-
-    def _validate_public_scenarios(self) -> None:
-        public_scenarios = {example.scenario for example in self.examples if example.public}
-        for scenario in public_scenarios:
-            pair = tuple(example for example in self.examples if example.public and example.scenario == scenario)
-            if len(pair) != _PUBLIC_PAIR_SIZE or {example.outcome for example in pair} != {
-                ExampleOutcome.MATCH,
-                ExampleOutcome.NO_MATCH,
-            }:
-                msg = f"published example scenario {scenario!r} must contain both matching and non-matching cases exactly once"
-                raise ValueError(msg)
-
-
-@dataclass(frozen=True, slots=True)
-class NativeRuleSpec:
-    engine: str
-    rule_id: str
-    code: str
-    summary: str
-    rationale: str
-    remediation: str
-    category: RuleCategory
-    default_level: Severity
-    autofix: AutofixPolicy
-    aliases: tuple[str, ...]
-    limitations: tuple[str, ...]
-    examples: tuple[RuleExample, ...]
-
-    @property
-    def key(self) -> str:
-        """Return the collision-free rule identity used by configuration and URLs."""
-        return f"{self.engine}:{self.rule_id}"
-
-    @property
-    def public_examples(self) -> tuple[RuleExample, ...]:
-        """Expose only fixtures explicitly reviewed for publication."""
-        return tuple(example for example in self.examples if example.public)
 
 
 @dataclass(frozen=True, slots=True)
@@ -254,8 +91,16 @@ class Rule(ABC):
         facts = self._analysis_session.python_target if self._analysis_session is not None else PythonTargetFacts()
         return facts.has_declared_support_before(path, minimum)
 
-    @abstractmethod
     def check(self, path: Path, source: str) -> list[Diagnostic]:
+        from sarj_python_lint._file_context import PythonFileContext  # ruff: ignore[import-outside-top-level] — avoids registry import cycle
+
+        context = PythonFileContext(path, source, self._analysis_session)
+        if isinstance(self, ProjectRule):
+            context.session.project = self.project_indexes
+        return self.check_context(context)
+
+    @abstractmethod
+    def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
         raise NotImplementedError
 
     @classmethod
@@ -299,23 +144,15 @@ class Rule(ABC):
 
 
 class ProjectRule(Rule, ABC):
-    _project_indexes: ProjectIndexSet | None = None
+    project_indexes: ProjectIndexSet | None = None
 
     def prepare(self, indexes: ProjectIndexSet) -> None:
-        self._project_indexes = indexes
-
-
-_last_parse: tuple[str, str, ast.Module | None] | None = None
+        self.project_indexes = indexes
 
 
 def parse_or_none(path: Path, source: str) -> ast.Module | None:
-    global _last_parse  # ruff:ignore[global-statement] — single-slot memo; the CLI runs rules per file sequentially
-    path_key = str(path)
-    if _last_parse is not None and _last_parse[0] == path_key and _last_parse[1] is source:
-        return _last_parse[2]
     try:
         tree = ast.parse(source, filename=str(path))
     except SyntaxError:
         tree = None
-    _last_parse = (path_key, source, tree)
     return tree

@@ -3,10 +3,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 import json
 from pathlib import Path, PurePosixPath
-from typing import Final, TypedDict, TypeGuard
+from typing import TYPE_CHECKING, Final, TypedDict, TypeGuard
 
 from sarj_standards._meta import CONFIGS_DIR
 from sarj_standards.libs.json_boundary import parse_json
+
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 
 SCHEMA_VERSION: Final = 1
@@ -122,7 +126,7 @@ def render(root: Path) -> str:
     )
 
 
-def sync(root: Path, *, check: bool) -> InventorySyncResult:
+def sync(root: Path, *, check: bool, writer: Callable[[Path, str], None] | None = None) -> InventorySyncResult:
     from sarj_standards.libs.adoption import transaction  # ruff: ignore[import-outside-top-level]
 
     destination = root.resolve() / _REPOSITORY_INVENTORY_PATH
@@ -139,5 +143,8 @@ def sync(root: Path, *, check: bool) -> InventorySyncResult:
             1,
             "drift: rule-inventory.v1.json differs from live registries; run `code-standards maintain rules sync`",
         )
-    transaction.atomic_write_text(root.resolve(), destination, expected)
+    if writer is None:
+        transaction.atomic_write_text(root.resolve(), destination, expected)
+    else:
+        writer(destination, expected)
     return InventorySyncResult(0, "updated: rule-inventory.v1.json")

@@ -14,16 +14,16 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    parse_or_none,
 )
-from sarj_python_lint.rules._ast_index import children, nodes, walk
-from sarj_python_lint.rules._imports import ImportIndex
-from sarj_python_lint.rules._paths import is_generated, is_test_path
+from sarj_python_lint.rules._ast_index import children, walk
+from sarj_python_lint.rules._paths import is_test_path
 
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
-    from pathlib import Path
+
+    from sarj_python_lint._file_context import PythonFileContext
+    from sarj_python_lint.rules._imports import ImportIndex
 
 
 # The two attributes that *configure* what a mock does when called.
@@ -133,17 +133,18 @@ class UnusedMockSetup(Rule):
     description: str = documentation.summary
 
     @override
-    def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if not is_test_path(path) or is_generated(path, source):
+    def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
+        path = context.path
+        if not is_test_path(path) or context.generated:
             return []
-        tree = parse_or_none(path, source)
+        tree = context.tree
         if tree is None:
             return []
 
-        imports = ImportIndex.from_tree(tree)
+        imports = context.imports
         seen: set[tuple[int, int]] = set()
         diags: list[Diagnostic] = []
-        for fn in nodes(tree, *_FUNC_NODES):
+        for fn in context.nodes(*_FUNC_NODES):
             for finding in _dead_setups(fn, imports):
                 position = (finding.node.lineno, finding.node.col_offset + 1)
                 if position in seen:

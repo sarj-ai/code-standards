@@ -18,16 +18,16 @@ from sarj_python_lint.rule_base import (
     RuleExample,
     Severity,
     is_suppressed,
-    parse_or_none,
 )
 from sarj_python_lint.rules._comments import split_identifier
-from sarj_python_lint.rules._paths import is_generated, is_test_path
+from sarj_python_lint.rules._paths import is_test_path
 from sarj_python_lint.rules.no_repeated_test_body import duplicate_test_owner_ids
 
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
-    from pathlib import Path
+
+    from sarj_python_lint._file_context import PythonFileContext
 
 
 _MIN_CASES = 3
@@ -136,10 +136,12 @@ class RepeatedStaticCallCases(Rule):
     description = documentation.summary
 
     @override
-    def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if not is_test_path(path) or is_generated(path, source) or len(_ASSERTION_LINE_RE.findall(source)) < _MIN_CASES:
+    def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
+        path = context.path
+        source = context.source
+        if not is_test_path(path) or context.generated or len(_ASSERTION_LINE_RE.findall(source)) < _MIN_CASES:
             return []
-        tree = parse_or_none(path, source)
+        tree = context.tree
         if tree is None:
             return []
         unsafe_callees = _mutating_aliases(tree)
@@ -161,7 +163,7 @@ class RepeatedStaticCallCases(Rule):
         if not candidate_runs:
             return []
         duplicate_owners = duplicate_test_owner_ids(tree, source)
-        source_lines = source.splitlines()
+        source_lines = context.source_lines
         findings = [
             Diagnostic(
                 path=path,

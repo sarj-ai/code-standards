@@ -25,12 +25,13 @@ from sarj_python_lint.rules._comments import (
     standalone_comments,
     statement_comment_walls,
 )
-from sarj_python_lint.rules._paths import is_generated
 
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
     from pathlib import Path
+
+    from sarj_python_lint._file_context import PythonFileContext
 
 
 _LEADING_PREAMBLE_MIN = 4
@@ -510,8 +511,10 @@ class NoCommentCruft(Rule):
     description: str = documentation.summary
 
     @override
-    def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if is_generated(path, source):
+    def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
+        path = context.path
+        source = context.source
+        if context.generated:
             return []
         # A Sphinx `docs/**/conf.py` is quickstart-generated boilerplate whose
         # `# Section` banners are the tool's own convention.

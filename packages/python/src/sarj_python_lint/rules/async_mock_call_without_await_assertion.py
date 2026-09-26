@@ -16,15 +16,15 @@ from sarj_python_lint.rule_base import (
     RuleExample,
     Severity,
     is_suppressed,
-    parse_or_none,
 )
+from sarj_python_lint.rules._ast_index import walk as walk_ast
 from sarj_python_lint.rules._imports import ImportIndex
-from sarj_python_lint.rules._paths import is_generated
 
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
-    from pathlib import Path
+
+    from sarj_python_lint._file_context import PythonFileContext
 
 
 _CALL_ASSERTIONS: Final = frozenset(
@@ -123,25 +123,27 @@ class AsyncMockCallWithoutAwaitAssertion(Rule):
     description = documentation.summary
 
     @override
-    def check(self, path: Path, source: str) -> list[Diagnostic]:
+    def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
+        path = context.path
+        source = context.source
         if (
             path.suffix != ".py"
             or "AsyncMock" not in source
             or "assert_called" not in source
             or not (path.stem.startswith("test_") or path.stem.endswith("_test"))
-            or is_generated(path, source)
+            or context.generated
         ):
             return []
-        tree = parse_or_none(path, source)
+        tree = context.tree
         if tree is None:
             return []
-        imports = ImportIndex.from_tree(tree, module_scope_only=True)
+        imports = context.module_imports
         writes = {
             _reference(node)
-            for node in ast.walk(tree)
+            for node in context.nodes(ast.AST)
             if isinstance(node, ast.Attribute) and isinstance(node.ctx, (ast.Store, ast.Del))
         }
-        lines = source.splitlines()
+        lines = context.source_lines
         return [
             Diagnostic(
                 path=path,
@@ -185,7 +187,7 @@ def _test_imports(module: ImportIndex, test: _TestFunction) -> ImportIndex:
 
 
 def _uncovered_calls(imports: ImportIndex, test: _TestFunction, writes: set[_Reference]) -> Iterator[ast.Call]:
-    nodes = tuple(ast.walk(test))
+    nodes = tuple(walk_ast(test))
     bindings = _mock_bindings(imports, test.body, writes)
     covered = _await_oracles(test.body)
     reported: set[_Reference] = set()
@@ -274,7 +276,7 @@ def _await_oracles(statements: list[ast.stmt]) -> set[_Reference]:
             case ast.Assert(test=condition):
                 covered.update(
                     _reference(node.value)
-                    for node in ast.walk(condition)
+                    for node in walk_ast(condition)
                     if isinstance(node, ast.Attribute) and node.attr in _AWAIT_STATE
                 )
             case _:

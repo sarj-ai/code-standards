@@ -21,15 +21,15 @@ from sarj_python_lint.rule_base import (
     RuleExample,
     Severity,
     is_suppressed,
-    parse_or_none,
 )
 from sarj_python_lint.rules._annotation_semantics import AnnotationSemantics
 from sarj_python_lint.rules._first_party import FirstPartyFacts, distribution_root
-from sarj_python_lint.rules._paths import is_generated
 
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+    from sarj_python_lint._file_context import PythonFileContext
 
 
 _JSON_SCALARS = frozenset({"None", "bool", "float", "int", "str"})
@@ -99,22 +99,24 @@ class PreferPydanticJsonValue(Rule):
     description = documentation.summary
 
     @override
-    def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if is_generated(path, source) or _is_vendor_path(path):
+    def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
+        path = context.path
+        source = context.source
+        if context.generated or _is_vendor_path(path):
             return []
         if "TypeAlias" not in source and _PEP695_ALIAS.search(source) is None:
             return []
-        tree = parse_or_none(path, source)
+        tree = context.tree
         if tree is None:
             return []
         semantics = AnnotationSemantics.from_tree(tree)
         aliases = [alias for statement in tree.body if (alias := _explicit_alias(statement, semantics)) is not None]
         if not aliases:
             return []
-        facts = self._analysis_session.first_party if self._analysis_session is not None else FirstPartyFacts()
+        facts = context.session.first_party
         if not _depends_on_pydantic_v2(path, facts):
             return []
-        lines = source.splitlines()
+        lines = context.source_lines
         findings: list[Diagnostic] = []
         for alias in aliases:
             name, value, location = alias

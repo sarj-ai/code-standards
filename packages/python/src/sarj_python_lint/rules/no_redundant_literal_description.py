@@ -15,14 +15,14 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    parse_or_none,
 )
+from sarj_python_lint.rules._ast_index import walk as walk_ast
 from sarj_python_lint.rules._imports import ImportIndex
-from sarj_python_lint.rules._paths import is_generated, is_test_path
+from sarj_python_lint.rules._paths import is_test_path
 
 
 if TYPE_CHECKING:
-    from pathlib import Path
+    from sarj_python_lint._file_context import PythonFileContext
 
 
 _PYDANTIC_BASE_MODEL_SOURCES = frozenset({"pydantic", "pydantic.main", "pydantic.v1", "pydantic.v1.main"})
@@ -105,10 +105,11 @@ class NoRedundantLiteralDescription(Rule):
     description = documentation.summary
 
     @override
-    def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if is_test_path(path) or is_generated(path, source):
+    def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
+        path = context.path
+        if is_test_path(path) or context.generated:
             return []
-        tree = parse_or_none(path, source)
+        tree = context.tree
         if tree is None:
             return []
         imports = _module_import_index(tree)
@@ -140,7 +141,7 @@ class NoRedundantLiteralDescription(Rule):
                     )
                 )
 
-        for model in (node for node in ast.walk(tree) if isinstance(node, ast.ClassDef)):
+        for model in (node for node in context.nodes(ast.AST) if isinstance(node, ast.ClassDef)):
             if not _is_direct_model(model, imports) or _has_custom_schema_hook(model):
                 continue
             for statement in model.body:
@@ -264,7 +265,7 @@ def _has_schema_override(annotation: ast.expr, imports: ImportIndex) -> bool:
             sources=frozenset({"pydantic", "pydantic.json_schema"}),
             symbol="WithJsonSchema",
         )
-        for node in ast.walk(annotation)
+        for node in walk_ast(annotation)
     )
 
 

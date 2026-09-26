@@ -15,16 +15,17 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    parse_or_none,
 )
+from sarj_python_lint.rules._ast_index import walk as walk_ast
 from sarj_python_lint.rules._docstrings import docstring_expression
-from sarj_python_lint.rules._paths import is_generated
 
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Sequence
     from pathlib import Path
 
+    from sarj_python_lint._file_context import PythonFileContext
+    from sarj_python_lint.rules._ast_index import NodeIndex
     from sarj_python_lint.rules._project_index import ProjectIndexSet
 
 
@@ -146,26 +147,29 @@ class NoUnnecessaryDocstring(ProjectRule):
     description: str = documentation.summary
 
     @override
-    def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if is_generated(path, source):
+    def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
+        path = context.path
+        if context.generated:
             return []
-        tree = parse_or_none(path, source)
+        tree = context.tree
         if tree is None:
             return []
         owner_keys = _owner_keys(tree)
-        explicitly_consumed = _explicit_docstring_consumers(tree, frozenset(owner_keys.values()))
+        explicitly_consumed = _explicit_docstring_consumers(
+            tree, frozenset(owner_keys.values()), node_index=context.node_index
+        )
         shadowed = _module_bound_names(tree)
         imports = _import_bindings(tree, shadowed)
         consumed_owner_ids = (
             _fastapi_docstring_consumers(tree, imports)
             | _typer_docstring_consumers(tree, imports)
             | _click_group_docstring_consumers(tree, imports)
-            | _schema_docstring_consumers(tree, imports)
-            | _project_schema_docstring_consumers(self._project_indexes, path, tree)
+            | _schema_docstring_consumers(tree, imports, node_index=context.node_index)
+            | _project_schema_docstring_consumers(context.session.project, path, tree, node_index=context.node_index)
         )
-        source_lines = source.splitlines()
+        source_lines = context.source_lines
         diagnostics: list[Diagnostic] = []
-        for owner in _docstring_owners(tree):
+        for owner in _docstring_owners(tree, node_index=context.node_index):
             expression = docstring_expression(owner)
             if expression is None:
                 continue
@@ -197,10 +201,14 @@ class NoUnnecessaryDocstring(ProjectRule):
         return sorted(diagnostics, key=lambda diagnostic: (diagnostic.line, diagnostic.col))
 
 
-def _docstring_owners(tree: ast.Module) -> Iterable[ast.Module | ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef]:
+def _docstring_owners(
+    tree: ast.Module, *, node_index: NodeIndex | None = None
+) -> Iterable[ast.Module | ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef]:
     yield tree
     yield from (
-        node for node in ast.walk(tree) if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef))
+        node
+        for node in walk_ast(tree, index=node_index)
+        if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef))
     )
 
 
@@ -230,7 +238,9 @@ def _suppressed_on_docstring(source_lines: list[str], expression: ast.Expr, code
     return match is not None and code in {item.strip().upper() for item in match.group("codes").split(",")}
 
 
-def _explicit_docstring_consumers(tree: ast.Module, owners: frozenset[str]) -> frozenset[str]:
+def _explicit_docstring_consumers(
+    tree: ast.Module, owners: frozenset[str], *, node_index: NodeIndex | None = None
+) -> frozenset[str]:
     consumed: set[str] = set()
     owner_index = _owner_index(owners)
     aliases = _module_aliases(tree, owners, owner_index)
@@ -238,7 +248,7 @@ def _explicit_docstring_consumers(tree: ast.Module, owners: frozenset[str]) -> f
     getdoc_names: set[str] = set()
     shadowed = _module_bound_names(tree)
     imports = _import_bindings(tree, shadowed)
-    if _bare_module_docstring_consumed(tree):
+    if _bare_module_docstring_consumed(tree, node_index=node_index):
         consumed.add("__doc__")
     builtin_help_available = _doc_consumer_imports(tree, shadowed, inspect_names, getdoc_names)
 
@@ -256,7 +266,7 @@ def _explicit_docstring_consumers(tree: ast.Module, owners: frozenset[str]) -> f
         ):
             consumed.add(key)
 
-    for node in ast.walk(tree):
+    for node in walk_ast(tree, index=node_index):
         if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load) and node.id == "__doc__":
             continue
         if isinstance(node, ast.Attribute) and isinstance(node.ctx, ast.Load) and node.attr == "__doc__":
@@ -266,7 +276,11 @@ def _explicit_docstring_consumers(tree: ast.Module, owners: frozenset[str]) -> f
             collect_call_consumers(node)
 
     def collect_wrapped_owners() -> None:
-        for owner in (node for node in ast.walk(tree) if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))):
+        for owner in (
+            node
+            for node in walk_ast(tree, index=node_index)
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        ):
             for decorator in owner.decorator_list:
                 if not isinstance(decorator, ast.Call) or not decorator.args:
                     continue
@@ -350,9 +364,11 @@ def _owner_index(owners: frozenset[str]) -> dict[str, tuple[str, ...]]:
     return {name: tuple(values) for name, values in grouped.items()}
 
 
-def _bare_module_docstring_consumed(tree: ast.Module) -> bool:
-    parents = {id(child): parent for parent in ast.walk(tree) for child in ast.iter_child_nodes(parent)}
-    for node in ast.walk(tree):
+def _bare_module_docstring_consumed(tree: ast.Module, *, node_index: NodeIndex | None = None) -> bool:
+    parents = {
+        id(child): parent for parent in walk_ast(tree, index=node_index) for child in ast.iter_child_nodes(parent)
+    }
+    for node in walk_ast(tree, index=node_index):
         if not (isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load) and node.id == "__doc__"):
             continue
         current: ast.AST = node
@@ -384,7 +400,7 @@ def _function_binds_docstring_name(owner: ast.FunctionDef | ast.AsyncFunctionDef
         return True
     body = owner.body if isinstance(owner, (ast.FunctionDef, ast.AsyncFunctionDef)) else [owner.body]
     if any(
-        isinstance(node, ast.Global) and "__doc__" in node.names for statement in body for node in ast.walk(statement)
+        isinstance(node, ast.Global) and "__doc__" in node.names for statement in body for node in walk_ast(statement)
     ):
         return False
 
@@ -563,8 +579,14 @@ def _click_group_docstring_consumers(tree: ast.Module, imports: dict[str, str]) 
     return frozenset(consumed)
 
 
-def _schema_docstring_consumers(tree: ast.Module, imports: dict[str, str]) -> frozenset[int]:
-    classes = {statement.name: statement for statement in ast.walk(tree) if isinstance(statement, ast.ClassDef)}
+def _schema_docstring_consumers(
+    tree: ast.Module, imports: dict[str, str], *, node_index: NodeIndex | None = None
+) -> frozenset[int]:
+    classes = {
+        statement.name: statement
+        for statement in walk_ast(tree, index=node_index)
+        if isinstance(statement, ast.ClassDef)
+    }
     consumed: set[str] = set()
     changed = True
     while changed:
@@ -583,13 +605,13 @@ def _schema_docstring_consumers(tree: ast.Module, imports: dict[str, str]) -> fr
 
 
 def _project_schema_docstring_consumers(
-    indexes: ProjectIndexSet | None, path: Path, tree: ast.Module
+    indexes: ProjectIndexSet | None, path: Path, tree: ast.Module, *, node_index: NodeIndex | None = None
 ) -> frozenset[int]:
     if indexes is None or (unit := indexes.unit(path)) is None:
         return frozenset()
     return frozenset(
         id(owner)
-        for owner in ast.walk(tree)
+        for owner in walk_ast(tree, index=node_index)
         if isinstance(owner, ast.ClassDef) and indexes.class_inherits_from(unit, owner.name, _KNOWN_SCHEMA_BASES)
     )
 

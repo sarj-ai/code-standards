@@ -16,16 +16,18 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    parse_or_none,
 )
-from sarj_python_lint.rules._ast_index import children, nodes
-from sarj_python_lint.rules._imports import ImportIndex
-from sarj_python_lint.rules._paths import is_generated, is_test_path, is_test_support_path
+from sarj_python_lint.rules._ast_index import children, nodes, walk as walk_ast
+from sarj_python_lint.rules._paths import is_test_path, is_test_support_path
 
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
     from pathlib import Path
+
+    from sarj_python_lint._file_context import PythonFileContext
+    from sarj_python_lint.rules._ast_index import NodeIndex
+    from sarj_python_lint.rules._imports import ImportIndex
 
 
 type _Function = ast.FunctionDef | ast.AsyncFunctionDef
@@ -147,19 +149,20 @@ class PreferModuleLevelConstant(Rule):
     description: str = documentation.summary
 
     @override
-    def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if _is_excluded_test_path(path) or is_generated(path, source):
+    def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
+        path = context.path
+        if _is_excluded_test_path(path) or context.generated:
             return []
-        tree = parse_or_none(path, source)
+        tree = context.tree
         if tree is None:
             return []
-        imports = ImportIndex.from_tree(tree)
-        unsafe_bindings = _unsafe_bindings(tree)
-        re_attribute_mutated = _has_re_attribute_mutation(tree)
+        imports = context.imports
+        unsafe_bindings = _unsafe_bindings(tree, node_index=context.node_index)
+        re_attribute_mutated = _has_re_attribute_mutation(tree, node_index=context.node_index)
         if "*" in unsafe_bindings:
             return []
         diags: list[Diagnostic] = []
-        for func in _iter_functions(tree):
+        for func in _iter_functions(tree, node_index=context.node_index):
             for stmt, name, candidate in _hoistable_bindings(
                 func,
                 imports,
@@ -199,8 +202,8 @@ class _BindingCandidate:
     value: ast.expr
 
 
-def _iter_functions(tree: ast.Module) -> Iterator[_Function]:
-    yield from nodes(tree, *_FUNCTION_NODES)
+def _iter_functions(tree: ast.Module, *, node_index: NodeIndex | None = None) -> Iterator[_Function]:
+    yield from nodes(tree, *_FUNCTION_NODES, index=node_index)
 
 
 def _hoistable_bindings(
@@ -547,20 +550,20 @@ def _is_safe_callee(
     )
 
 
-def _unsafe_bindings(tree: ast.Module) -> frozenset[str]:
+def _unsafe_bindings(tree: ast.Module, *, node_index: NodeIndex | None = None) -> frozenset[str]:
     module_imports = {id(statement) for statement in tree.body if isinstance(statement, (ast.Import, ast.ImportFrom))}
     names = {
         alias.asname or alias.name.partition(".")[0]
-        for statement in ast.walk(tree)
+        for statement in walk_ast(tree, index=node_index)
         if isinstance(statement, (ast.Import, ast.ImportFrom)) and id(statement) not in module_imports
         for alias in statement.names
     }
     if any(
         isinstance(statement, ast.ImportFrom) and any(alias.name == "*" for alias in statement.names)
-        for statement in ast.walk(tree)
+        for statement in walk_ast(tree, index=node_index)
     ):
         names.add("*")
-    _collect_pattern_bindings(tree, names)
+    _collect_pattern_bindings(tree, names, node_index=node_index)
     return frozenset(names)
 
 
@@ -570,7 +573,7 @@ def _root_name(node: ast.expr) -> str | None:
     return node.id if isinstance(node, ast.Name) else None
 
 
-def _has_re_attribute_mutation(tree: ast.Module) -> bool:
+def _has_re_attribute_mutation(tree: ast.Module, *, node_index: NodeIndex | None = None) -> bool:
     module_names = {
         alias.asname or "re"
         for statement in tree.body
@@ -582,7 +585,7 @@ def _has_re_attribute_mutation(tree: ast.Module) -> bool:
         isinstance(node, ast.Attribute)
         and isinstance(node.ctx, (ast.Store, ast.Del))
         and _root_name(node) in module_names
-        for node in ast.walk(tree)
+        for node in walk_ast(tree, index=node_index)
     )
 
 
@@ -604,14 +607,14 @@ def _message(name: str, candidate: _Candidate) -> str:
     )
 
 
-def _collect_pattern_bindings(tree: ast.Module, names: set[str]) -> None:
+def _collect_pattern_bindings(tree: ast.Module, names: set[str], *, node_index: NodeIndex | None = None) -> None:
     names.update(
         candidate.name
-        for candidate in ast.walk(tree)
+        for candidate in walk_ast(tree, index=node_index)
         if isinstance(candidate, (ast.ExceptHandler, ast.MatchAs, ast.MatchStar)) and candidate.name is not None
     )
     names.update(
         candidate.rest
-        for candidate in ast.walk(tree)
+        for candidate in walk_ast(tree, index=node_index)
         if isinstance(candidate, ast.MatchMapping) and candidate.rest is not None
     )

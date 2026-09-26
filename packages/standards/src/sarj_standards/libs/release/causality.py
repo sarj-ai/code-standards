@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from .changes import changed_release_targets
-from .process import ProcessRunner, run_process
+from .process import ProcessFailureError, ProcessRunner, run_process
 from .tags import (
     RELEASE_ARTIFACT_FILES,
     RELEASE_ARTIFACT_PREFIXES,
@@ -155,11 +155,24 @@ def _supersession_violations(
         if not changed:
             continue
         target = RELEASE_TARGETS[name]
-        prior_contents = runner(
-            ("git", "show", f"{before}:{target.manifest.as_posix()}"),
-            cwd=root,
-            capture_output=True,
-        ).stdout
+        try:
+            prior_contents = runner(
+                ("git", "show", f"{before}:{target.manifest.as_posix()}"),
+                cwd=root,
+                capture_output=True,
+            ).stdout
+        except ProcessFailureError:
+            # An initial publication has no previous manifest to supersede.
+            # Confirm absence in a valid tree; transport or invalid-ref errors
+            # must still fail rather than masquerade as a new package.
+            previous = runner(
+                ("git", "ls-tree", "--name-only", before, "--", target.manifest.as_posix()),
+                cwd=root,
+                capture_output=True,
+            )
+            if not previous.stdout.strip():
+                continue
+            raise
         prior_version = read_manifest_version_text(
             prior_contents,
             target.format,

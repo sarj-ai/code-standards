@@ -13,14 +13,13 @@ from sarj_python_lint.rule_base import (
     RuleCategory,
     RuleDocumentation,
     RuleExample,
-    parse_or_none,
 )
-from sarj_python_lint.rules._ast_index import nodes, walk
-from sarj_python_lint.rules._imports import ImportIndex
+from sarj_python_lint.rules._ast_index import walk
 
 
 if TYPE_CHECKING:
-    from pathlib import Path
+    from sarj_python_lint._file_context import PythonFileContext
+    from sarj_python_lint.rules._imports import ImportIndex
 
 
 _CORS_MODULES = frozenset({"fastapi.middleware.cors", "starlette.middleware.cors"})
@@ -77,13 +76,14 @@ class NoCorsWildcardWithCredentials(Rule):
     description = documentation.summary
 
     @override
-    def check(self, path: Path, source: str) -> list[Diagnostic]:
-        tree = parse_or_none(path, source)
+    def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
+        path = context.path
+        tree = context.tree
         if tree is None:
             return []
-        imports = ImportIndex.from_tree(tree)
+        imports = context.imports
         diags: list[Diagnostic] = []
-        for node in nodes(tree, ast.Call):
+        for node in context.nodes(ast.Call):
             if not _is_cors_construction(node, imports):
                 continue
             keywords = {arg: kw.value for kw in node.keywords if (arg := kw.arg) is not None}

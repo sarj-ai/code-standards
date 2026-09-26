@@ -15,14 +15,12 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    parse_or_none,
 )
-from sarj_python_lint.rules._imports import ImportIndex
-from sarj_python_lint.rules._paths import is_generated
 
 
 if TYPE_CHECKING:
-    from pathlib import Path
+    from sarj_python_lint._file_context import PythonFileContext
+    from sarj_python_lint.rules._imports import ImportIndex
 
 
 _SYS_SOURCES = frozenset({"sys"})
@@ -133,18 +131,20 @@ class NoRedundantModuleAliasExports(Rule):
     description: str = documentation.summary
 
     @override
-    def check(self, path: Path, source: str) -> list[Diagnostic]:
+    def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
+        path = context.path
+        source = context.source
         has_module_replacement_candidate = "modules" in source and "__name__" in source
         if (
             path.suffix != ".py"
             or (not has_module_replacement_candidate and _PRIVATE_ALIAS_CANDIDATE_RE.search(source) is None)
-            or is_generated(path, source)
+            or context.generated
         ):
             return []
-        tree = parse_or_none(path, source)
+        tree = context.tree
         if tree is None:
             return []
-        imports = ImportIndex.from_tree(tree, module_scope_only=True)
+        imports = context.module_imports
         direct_sys_bindings = _direct_sys_bindings(tree)
         findings = [
             Diagnostic(

@@ -13,15 +13,15 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    parse_or_none,
 )
-from sarj_python_lint.rules._ast_index import nodes
+from sarj_python_lint.rules._ast_index import nodes, walk as walk_ast
 from sarj_python_lint.rules._imports import ImportIndex
-from sarj_python_lint.rules._paths import is_generated, is_test_path
+from sarj_python_lint.rules._paths import is_test_path
 
 
 if TYPE_CHECKING:
-    from pathlib import Path
+    from sarj_python_lint._file_context import PythonFileContext
+    from sarj_python_lint.rules._ast_index import NodeIndex
 
 
 _PARAMETRIZE = "parametrize"
@@ -104,10 +104,11 @@ class OpaqueParametrizeCaseNeedsId(Rule):
     description: str = documentation.summary
 
     @override
-    def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if not is_test_path(path) or is_generated(path, source):
+    def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
+        path = context.path
+        if not is_test_path(path) or context.generated:
             return []
-        tree = parse_or_none(path, source)
+        tree = context.tree
         if tree is None:
             return []
 
@@ -121,7 +122,7 @@ class OpaqueParametrizeCaseNeedsId(Rule):
                 message=_message(count),
                 severity=Severity.WARNING,
             )
-            for node, count in _tables_with_unnameable_cases(tree, imports)
+            for node, count in _tables_with_unnameable_cases(tree, imports, node_index=context.node_index)
         ]
         diags.sort(key=lambda d: (d.line, d.col))
         return diags
@@ -135,12 +136,14 @@ def _message(count: int) -> str:
     )
 
 
-def _tables_with_unnameable_cases(tree: ast.Module, imports: ImportIndex) -> list[_UnnameableTable]:
+def _tables_with_unnameable_cases(
+    tree: ast.Module, imports: ImportIndex, *, node_index: NodeIndex | None = None
+) -> list[_UnnameableTable]:
     # One diagnostic per table, not per case: a single `ids=` on the decorator
     # resolves every case at once, so per-case reporting would be N copies of
     # one fix and would bury a large table's other diagnostics.
     hits: list[_UnnameableTable] = []
-    for node in _decorator_calls(tree):
+    for node in _decorator_calls(tree, node_index=node_index):
         if not _is_parametrize(node.func, imports):
             continue
         argnames = _argument(node, 0, "argnames")
@@ -165,8 +168,13 @@ def _tables_with_unnameable_cases(tree: ast.Module, imports: ImportIndex) -> lis
     return hits
 
 
-def _decorator_calls(tree: ast.Module) -> list[ast.Call]:
-    return [dec for node in nodes(tree, *_DECORATED_NODES) for dec in node.decorator_list if isinstance(dec, ast.Call)]
+def _decorator_calls(tree: ast.Module, *, node_index: NodeIndex | None = None) -> list[ast.Call]:
+    return [
+        dec
+        for node in nodes(tree, *_DECORATED_NODES, index=node_index)
+        for dec in node.decorator_list
+        if isinstance(dec, ast.Call)
+    ]
 
 
 def _is_parametrize(func: ast.expr, imports: ImportIndex) -> bool:
@@ -279,7 +287,7 @@ def _statement_bound_names(statement: ast.stmt) -> frozenset[str]:
         return frozenset({statement.name})
     return frozenset(
         node.id
-        for node in ast.walk(statement)
+        for node in walk_ast(statement)
         if isinstance(node, ast.Name) and isinstance(node.ctx, (ast.Store, ast.Del))
     )
 

@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 from sarj_standards.libs.release.causality import check_release_causality
-from sarj_standards.libs.release.process import ProcessResult
+from sarj_standards.libs.release.process import ProcessFailureError, ProcessResult
 from sarj_standards.libs.release.registry import RegistryRequirement
 
 
@@ -251,6 +251,39 @@ def test_version_bump_fails_closed_when_prior_registry_lookup_fails(tmp_path: Pa
             tag_checker=lambda *_args, **_kwargs: False,
             publication_checker=publication_checker,
         )
+
+
+@pytest.mark.parametrize("prior_tree", ["missing-manifest", "existing-manifest", "invalid-revision"])
+def test_initial_contracts_release_requires_proven_absence_of_a_prior_manifest(tmp_path: Path, prior_tree: str) -> None:
+    manifest = "packages/contracts/pyproject.toml"
+
+    def runner(argv: tuple[str, ...], *, cwd: Path, capture_output: bool = False) -> ProcessResult:
+        _ = cwd, capture_output
+        if argv[:2] == ("git", "show"):
+            raise ProcessFailureError(argv, 128)
+        if argv[:2] == ("git", "ls-tree"):
+            if prior_tree == "invalid-revision":
+                raise ProcessFailureError(argv, 128)
+            return ProcessResult(0, f"{manifest}\n" if prior_tree == "existing-manifest" else "")
+        if "--name-only" in argv:
+            return ProcessResult(0, f"{manifest}\0packages/contracts/src/sarj_rule_contracts/contracts.py\0")
+        return ProcessResult(0, '+version = "1.0.0"\n' if argv[-1] == manifest else "")
+
+    def unexpected_publication(_requirement: RegistryRequirement) -> bool:
+        pytest.fail("a new manifest has no previous release to look up")
+
+    if prior_tree == "missing-manifest":
+        report = check_release_causality(
+            tmp_path, before="base", after="head", runner=runner, publication_checker=unexpected_publication
+        )
+        assert report.ok
+        assert report.changed_targets == ("contracts",)
+        assert report.bumped_targets == ("contracts",)
+    else:
+        with pytest.raises(ProcessFailureError):
+            check_release_causality(
+                tmp_path, before="base", after="head", runner=runner, publication_checker=unexpected_publication
+            )
 
 
 def test_non_publishable_push_is_a_clean_release_recovery_barrier(tmp_path: Path) -> None:

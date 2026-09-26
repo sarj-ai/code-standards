@@ -13,13 +13,11 @@ from sarj_python_lint.rule_base import (
     RuleCategory,
     RuleDocumentation,
     RuleExample,
-    parse_or_none,
 )
-from sarj_python_lint.rules._ast_index import nodes
 
 
 if TYPE_CHECKING:
-    from pathlib import Path
+    from sarj_python_lint._file_context import PythonFileContext
 
 
 class _PluginTarget(NamedTuple):
@@ -69,14 +67,15 @@ class NoConftestTestModuleImport(Rule):
     description = documentation.summary
 
     @override
-    def check(self, path: Path, source: str) -> list[Diagnostic]:
+    def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
+        path = context.path
         if path.name != "conftest.py":
             return []
-        tree = parse_or_none(path, source)
+        tree = context.tree
         if tree is None:
             return []
         diagnostics: list[Diagnostic] = []
-        for statement in nodes(tree, ast.Import, ast.ImportFrom):
+        for statement in context.nodes(ast.Import, ast.ImportFrom):
             targets = _imported_test_targets(statement)
             if not targets:
                 continue

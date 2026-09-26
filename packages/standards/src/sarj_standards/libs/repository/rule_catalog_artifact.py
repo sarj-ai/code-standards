@@ -1,14 +1,14 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import timedelta
 import json
 from pathlib import Path, PurePosixPath
 import shutil
 import subprocess  # ruff: ignore[suspicious-subprocess-import] -- fixed local build commands generate the committed catalog.
 from types import MappingProxyType
-from typing import Final, Protocol, TypeGuard
+from typing import TYPE_CHECKING, Final, Protocol, TypeGuard
 
 from sarj_standards.libs.json_boundary import parse_json
 from sarj_standards.libs.repository import rule_inventory_artifact
@@ -30,6 +30,10 @@ from sarj_standards.libs.rules import (
 )
 from sarj_standards.libs.typed_containers import is_object_list, is_object_mapping
 from sarj_standards.schemas import RULE_CATALOG
+
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 
 _CATALOG_PATH: Final = Path("packages/standards/src/sarj_standards/schemas/rule-catalog.v1.json")
@@ -275,7 +279,7 @@ def _is_array(value: object) -> TypeGuard[list[object]]:
     return is_object_list(value)
 
 
-def _native_spec(native: _NativeSpec, *, engine: RuleEngine, languages: frozenset[Language]) -> RuleSpec:
+def native_spec(native: _NativeSpec, *, engine: RuleEngine, languages: frozenset[Language]) -> RuleSpec:
     return RuleSpec(
         engine=engine,
         rule_id=RuleId(native.rule_id),
@@ -423,6 +427,9 @@ def _typescript_file(value: object) -> ExampleFile:
 
 def build(
     root: Path,
+    *,
+    typescript: tuple[RuleSpec, ...] | None = None,
+    levels: Mapping[str, DefaultLevel] | None = None,
 ) -> RuleCatalogDocument:
     from sarj_standards.libs.linting import textlint  # ruff: ignore[import-outside-top-level]
 
@@ -449,7 +456,7 @@ def build(
         *_sql_specs(),
         *_iac_specs(),
         *(meta.native_spec(rule_id) for rule_id, meta in textlint.REGISTRY.items()),
-        *_typescript_specs(resolved),
+        *(_typescript_specs(resolved) if typescript is None else typescript),
     )
     engine_family = {
         RuleEngine.ESLINT: "typescript",
@@ -459,7 +466,12 @@ def build(
         RuleEngine.TEXT: "text",
     }
     documented: list[DocumentedRule] = []
-    for spec in specs:
+    for authored in specs:
+        spec = (
+            replace(authored, default_level=levels[authored.key])
+            if levels is not None and authored.key in levels
+            else authored
+        )
         family = engine_family[spec.engine]
         try:
             source, test = locations.pop((family, spec.rule_id))
@@ -489,7 +501,7 @@ def _python_specs() -> tuple[RuleSpec, ...]:
         if native is None:
             msg = f"python:{rule_id} is missing source-owned documentation"
             raise ValueError(msg)
-        specs.append(_native_spec(native, engine=RuleEngine.PYTHON, languages=frozenset({Language.PYTHON})))
+        specs.append(native_spec(native, engine=RuleEngine.PYTHON, languages=frozenset({Language.PYTHON})))
     return tuple(specs)
 
 
@@ -502,7 +514,7 @@ def _sql_specs() -> tuple[RuleSpec, ...]:
         if native is None:
             msg = f"sql:{rule_id} is missing source-owned documentation"
             raise ValueError(msg)
-        specs.append(_native_spec(native, engine=RuleEngine.SQL, languages=frozenset({Language.SQL})))
+        specs.append(native_spec(native, engine=RuleEngine.SQL, languages=frozenset({Language.SQL})))
     return tuple(specs)
 
 
@@ -515,17 +527,15 @@ def _iac_specs() -> tuple[RuleSpec, ...]:
         if native is None:
             msg = f"iac:{rule_id} is missing source-owned documentation"
             raise ValueError(msg)
-        specs.append(_native_spec(native, engine=RuleEngine.IAC, languages=frozenset({Language.IAC})))
+        specs.append(native_spec(native, engine=RuleEngine.IAC, languages=frozenset({Language.IAC})))
     return tuple(specs)
 
 
-def _typescript_specs(root: Path) -> tuple[RuleSpec, ...]:
+def build_typescript(root: Path) -> None:
     package = root / _TYPESCRIPT_PACKAGE
     npm = shutil.which("npm")
-    node = shutil.which("node")
-    if npm is None or node is None:
-        missing = "npm" if npm is None else "node"
-        msg = f"cannot generate the TypeScript rule catalog: {missing} is not installed"
+    if npm is None:
+        msg = "cannot build the TypeScript rules: npm is not installed"
         raise RuntimeError(msg)
     subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- resolved executable and fixed argv.
         (npm, "run", "build", "--silent"),
@@ -533,9 +543,22 @@ def _typescript_specs(root: Path) -> tuple[RuleSpec, ...]:
         check=True,
         timeout=_PROCESS_TIMEOUT.total_seconds(),
     )
+
+
+def _typescript_specs(root: Path) -> tuple[RuleSpec, ...]:
+    return typescript_specs(root)
+
+
+def typescript_specs(root: Path, *, already_built: bool = False) -> tuple[RuleSpec, ...]:
+    if not already_built:
+        build_typescript(root)
+    node = shutil.which("node")
+    if node is None:
+        msg = "cannot generate the TypeScript rule catalog: node is not installed"
+        raise RuntimeError(msg)
     completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- resolved executable and fixed projection.
         (node, "--input-type=module", "--eval", _NODE_PROJECTION),
-        cwd=package,
+        cwd=root / _TYPESCRIPT_PACKAGE,
         check=True,
         capture_output=True,
         text=True,
@@ -545,20 +568,39 @@ def _typescript_specs(root: Path) -> tuple[RuleSpec, ...]:
     return parse_typescript_projection(payload)
 
 
-def render(root: Path) -> str:
-    return json.dumps(build(root).as_public_dict(), ensure_ascii=False, separators=(",", ":"), sort_keys=True) + "\n"
+def render(
+    root: Path, *, typescript: tuple[RuleSpec, ...] | None = None, levels: Mapping[str, DefaultLevel] | None = None
+) -> str:
+    catalog = (
+        build(root) if typescript is None and levels is None else build(root, typescript=typescript, levels=levels)
+    )
+    return json.dumps(catalog.as_public_dict(), ensure_ascii=False, separators=(",", ":"), sort_keys=True) + "\n"
 
 
-def sync(root: Path, *, check: bool) -> CatalogSyncResult:
+def sync(
+    root: Path,
+    *,
+    check: bool,
+    typescript: tuple[RuleSpec, ...] | None = None,
+    levels: Mapping[str, DefaultLevel] | None = None,
+    writer: Callable[[Path, str], None] | None = None,
+) -> CatalogSyncResult:
     from sarj_standards.libs.adoption import transaction  # ruff: ignore[import-outside-top-level]
 
     resolved = root.resolve()
     destination = resolved / _CATALOG_PATH
-    expected = render(resolved)
+    expected = (
+        render(resolved)
+        if typescript is None and levels is None
+        else render(resolved, typescript=typescript, levels=levels)
+    )
     current = destination.read_text(encoding="utf-8") if destination.is_file() else ""
     if current == expected:
         return CatalogSyncResult(0, "ok: rule-catalog.v1.json matches source-owned metadata")
     if check:
         return CatalogSyncResult(1, "drift: rule-catalog.v1.json differs; run `code-standards maintain catalog sync`")
-    transaction.atomic_write_text(resolved, destination, expected)
+    if writer is None:
+        transaction.atomic_write_text(resolved, destination, expected)
+    else:
+        writer(destination, expected)
     return CatalogSyncResult(0, "updated: rule-catalog.v1.json")

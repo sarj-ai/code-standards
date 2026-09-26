@@ -8,7 +8,7 @@ import tokenize
 from typing import TYPE_CHECKING, Final
 
 from sarj_python_lint.rule_base import ColumnEncoding, parse_or_none
-from sarj_python_lint.rules._ast_index import nodes
+from sarj_python_lint.rules._ast_index import nodes, walk as walk_ast
 from sarj_python_lint.rules._docstrings import PROMPT_DECORATOR_MARKERS, decorator_markers, sections
 from sarj_python_lint.rules._paths import is_generated
 
@@ -263,9 +263,9 @@ def _parse_type_expression(value: str) -> ast.expr | None:
         ast.Yield,
         ast.YieldFrom,
     )
-    if any(isinstance(part, unsafe) for part in ast.walk(parsed)):
+    if any(isinstance(part, unsafe) for part in walk_ast(parsed)):
         return None
-    if any(isinstance(part, ast.BinOp) and not isinstance(part.op, ast.BitOr) for part in ast.walk(parsed)):
+    if any(isinstance(part, ast.BinOp) and not isinstance(part.op, ast.BitOr) for part in walk_ast(parsed)):
         return None
     return parsed
 

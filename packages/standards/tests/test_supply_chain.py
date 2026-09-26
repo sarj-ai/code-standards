@@ -59,7 +59,7 @@ def test_release_has_no_manual_or_tag_publish_bypass() -> None:
     assert "workflow_dispatch" not in trigger
     assert "tags:" not in trigger
     assert "branches: [main]" in trigger
-    assert release.count("uv build\n") == 5  # sarj-noqa: SARJ402 -- workflow text is the release-policy contract
+    assert release.count("uv build\n") == 6  # sarj-noqa: SARJ402 -- workflow text is the release-policy contract
     assert release.count("*.tar.gz") >= 8  # sarj-noqa: SARJ402 -- workflow text is the release-policy contract
     assert (
         re.search(r"(?m)^\s+path: .*dist/\*\s*$", release) is None
@@ -86,7 +86,7 @@ def test_release_waits_for_exact_revision_safety_checks() -> None:
         "release-safety:\n    needs: detect\n" in release
     )  # sarj-noqa: SARJ402 -- workflow text is the release-policy contract
     release_safety = release.partition("\n  release-safety:\n")[2].partition("\n  detect:\n")[0]
-    for package in ("typescript", "bootstrap", "python", "sql", "iac", "standards", "tsconfig"):
+    for package in ("typescript", "bootstrap", "contracts", "python", "sql", "iac", "standards", "tsconfig"):
         assert (
             f"needs.detect.outputs.{package} == 'true'" in release_safety
         )  # sarj-noqa: SARJ402 -- workflow text is the release-gate contract
@@ -110,11 +110,23 @@ def test_release_waits_for_exact_revision_safety_checks() -> None:
         "timed out waiting for $expected_name" in release
     )  # sarj-noqa: SARJ402 -- workflow text is the release-gate contract
     assert (
-        release.count("needs: [detect, release-safety]") == 7
+        release.count("needs: [detect, release-safety]") == 5
     )  # sarj-noqa: SARJ402 -- workflow text is the release-gate contract
     assert (
         "needs.release-safety.result == 'success'" in release
     )  # sarj-noqa: SARJ402 -- workflow text is the release-gate contract
+    for package in ("python", "sql", "iac"):
+        job = re.search(rf"(?ms)^  build-{package}:\n.*?(?=^  [a-zA-Z0-9_-]+:\n|\Z)", release)
+        assert job is not None
+        assert (  # sarj-noqa: SARJ402 -- workflow text is the core publication gate contract
+            "needs: [detect, release-safety, publish-contracts]" in job[0]
+        )
+        assert (  # sarj-noqa: SARJ402 -- workflow text is the core publication gate contract
+            "needs.release-safety.result == 'success'" in job[0]
+        )
+        assert (  # sarj-noqa: SARJ402 -- workflow text is the core publication gate contract
+            "needs.publish-contracts.result == 'success' || needs.publish-contracts.result == 'skipped'" in job[0]
+        )
 
 
 def test_typescript_release_does_not_emit_source_maps() -> None:
@@ -168,10 +180,10 @@ def test_publishers_have_distinct_identities_and_digest_binding() -> None:
         "environment: pypi-bootstrap-release" in release
     )  # sarj-noqa: SARJ402 -- workflow text is the publisher-identity contract
     assert (
-        release.count("artifact_sha256:") == 7
+        release.count("artifact_sha256:") == 8
     )  # sarj-noqa: SARJ402 -- workflow text is the artifact-integrity contract
     assert (
-        release.count("Verify build-bound artifact digest") == 7
+        release.count("Verify build-bound artifact digest") == 8
     )  # sarj-noqa: SARJ402 -- workflow text is the artifact-integrity contract
     assert (
         "test \"$actual_name\" = '@sarj/tsconfig'" in release
@@ -221,11 +233,11 @@ def test_security_workflow_scans_tree_and_history_with_pinned_gitleaks() -> None
 @pytest.mark.parametrize(
     ("needle", "expected_count"),
     [
-        ("path: verified-dist", 5),
-        ("verified-dist/SHA256SUMS", 5),
-        ("Stage verified distributions for publication", 5),
-        ("cp verified-dist/*.whl verified-dist/*.tar.gz publish-dist/", 5),
-        ("packages-dir: publish-dist/", 5),
+        ("path: verified-dist", 6),
+        ("verified-dist/SHA256SUMS", 6),
+        ("Stage verified distributions for publication", 6),
+        ("cp verified-dist/*.whl verified-dist/*.tar.gz publish-dist/", 6),
+        ("packages-dir: publish-dist/", 6),
     ],
     ids=["staged-path", "checksums", "staging-step", "wheel-copy", "publish-path"],
 )
@@ -383,6 +395,7 @@ def test_documentation_deploy_is_revision_bound_self_verifying_and_single_site()
     ("package", "module", "executable"),
     [
         ("bootstrap", "sarj_standards_bootstrap", "code-standards"),
+        ("contracts", "sarj_rule_contracts", None),
         ("python", "sarj_python_lint", "sarj-python-lint"),
         ("sql", "sarj_sql_lint", "sarj-sql-lint"),
         ("iac", "sarj_iac_lint", "sarj-iac-lint"),
@@ -391,7 +404,7 @@ def test_documentation_deploy_is_revision_bound_self_verifying_and_single_site()
 def test_python_publishers_smoke_and_bind_wheels_and_sdists(
     package: str,
     module: str,
-    executable: str,
+    executable: str | None,
 ) -> None:
     release = (REPO_ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
     assert (  # sarj-noqa: SARJ402 -- workflow text is the publishing-policy contract
@@ -401,11 +414,12 @@ def test_python_publishers_smoke_and_bind_wheels_and_sdists(
         f'uv pip install --python "$RUNNER_TEMP/{package}-sdist/bin/python"' in release
     )  # sarj-noqa: SARJ402 -- workflow text is the publishing-policy contract
     assert f"import {module}" in release  # sarj-noqa: SARJ402 -- workflow text is the package smoke-test contract
+    if executable is not None:
+        assert (
+            f'bin/{executable}" --help' in release
+        )  # sarj-noqa: SARJ402 -- workflow text is the package smoke-test contract
     assert (
-        f'bin/{executable}" --help' in release
-    )  # sarj-noqa: SARJ402 -- workflow text is the package smoke-test contract
-    assert (
-        release.count("sha256sum --check --strict SHA256SUMS") == 5
+        release.count("sha256sum --check --strict SHA256SUMS") == 6
     )  # sarj-noqa: SARJ402 -- workflow text is the package-integrity contract
     assert (
         "code_standards-*.whl pytest==9.1.1 jsonschema==4.25.1 ruff" in release

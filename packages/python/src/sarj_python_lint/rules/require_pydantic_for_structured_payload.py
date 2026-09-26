@@ -14,15 +14,14 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     is_suppressed,
-    parse_or_none,
 )
-from sarj_python_lint.rules._fastapi import FastapiIndex
-from sarj_python_lint.rules._imports import ImportIndex
-from sarj_python_lint.rules._paths import is_generated, is_test_path
+from sarj_python_lint.rules._ast_index import walk as walk_ast
+from sarj_python_lint.rules._paths import is_test_path
 
 
 if TYPE_CHECKING:
-    from pathlib import Path
+    from sarj_python_lint._file_context import PythonFileContext
+    from sarj_python_lint.rules._imports import ImportIndex
 
 
 @final
@@ -76,18 +75,21 @@ class RequirePydanticForStructuredPayload(Rule):
     description = documentation.summary
 
     @override
-    def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if is_test_path(path) or is_generated(path, source):
+    def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
+        path = context.path
+        if is_test_path(path) or context.generated:
             return []
-        tree = parse_or_none(path, source)
+        tree = context.tree
         if tree is None:
             return []
-        index = FastapiIndex(tree, path=path)
-        imports = ImportIndex.from_tree(tree, module_scope_only=True)
+        index = context.fastapi
+        imports = context.module_imports
         structured_fields = _structured_record_fields(tree, imports)
-        lines = source.splitlines()
+        lines = context.source_lines
         findings: list[Diagnostic] = []
-        for function in (node for node in ast.walk(tree) if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))):
+        for function in (
+            node for node in context.nodes(ast.AST) if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        ):
             if not index.routes(function):
                 continue
             parameters = {
@@ -116,7 +118,7 @@ def _nested_payload_bindings(
     structured_fields: frozenset[tuple[str, str]],
 ) -> set[str]:
     result: set[str] = set()
-    for node in ast.walk(function):
+    for node in walk_ast(function):
         if not isinstance(node, (ast.Assign, ast.AnnAssign)):
             continue
         value = node.value
@@ -189,7 +191,7 @@ def _annotation_name(node: ast.expr | None) -> str | None:
 def _fixed_key_accesses(function: ast.FunctionDef | ast.AsyncFunctionDef, raw_names: set[str]) -> list[ast.expr]:
     return [
         node
-        for node in ast.walk(function)
+        for node in walk_ast(function)
         if isinstance(node, ast.expr)
         and (_is_fixed_subscript(node, raw_names) or _is_fixed_mapping_call(node, raw_names))
     ]

@@ -23,11 +23,12 @@ if TYPE_CHECKING:
     from urllib.request import Request
 
 
-def _bundle(root: Path, *, python_pin: str = "sarj-python-lint==1.2.3") -> None:
+def _bundle(root: Path, *, python_pin: str = "sarj-python-lint==1.2.3", contracts_pin: str | None = None) -> None:
     manifest = root / "packages/standards/pyproject.toml"
     manifest.parent.mkdir(parents=True)
+    dependencies = [python_pin, "ruff==1.0.0", *([contracts_pin] if contracts_pin is not None else [])]
     manifest.write_text(
-        f'[project]\nname = "code-standards"\nversion = "4.0.0"\ndependencies = ["{python_pin}", "ruff==1.0.0"]\n',
+        f'[project]\nname = "code-standards"\nversion = "4.0.0"\ndependencies = {json.dumps(dependencies)}\n',
         encoding="utf-8",
     )
     peers = root / "packages/standards/src/sarj_standards/configs/eslint.peers.json"
@@ -95,6 +96,20 @@ def test_lint_config_requirements_read_exact_pypi_and_npm_pins(tmp_path: Path) -
 def test_lint_config_requirements_reject_nonexact_sibling_pin(tmp_path: Path) -> None:
     _bundle(tmp_path, python_pin="sarj-python-lint>=1.2.3")
 
+    with pytest.raises(ValueError, match="must use an exact pin"):
+        lint_config_requirements(tmp_path)
+
+
+def test_contracts_dependency_must_be_registry_visible_before_standards_publication(tmp_path: Path) -> None:
+    _bundle(tmp_path, contracts_pin="sarj-rule-contracts==1.0.0")
+    expected = RegistryRequirement("pypi", "sarj-rule-contracts", "1.0.0")
+    assert expected in lint_config_requirements(tmp_path)
+    with pytest.raises(ValueError, match=r"sarj-rule-contracts@1\.0\.0"):
+        require_lint_config_dependencies(tmp_path, checker=lambda requirement: requirement != expected)
+
+
+def test_contracts_dependency_rejects_an_inexact_pin(tmp_path: Path) -> None:
+    _bundle(tmp_path, contracts_pin="sarj-rule-contracts>=1.0.0")
     with pytest.raises(ValueError, match="must use an exact pin"):
         lint_config_requirements(tmp_path)
 

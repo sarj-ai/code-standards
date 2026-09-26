@@ -16,13 +16,13 @@ from sarj_python_lint.rule_base import (
     RuleExample,
     Severity,
     is_suppressed,
-    parse_or_none,
 )
-from sarj_python_lint.rules._paths import is_generated, is_test_path, is_test_support_path
+from sarj_python_lint.rules._ast_index import walk as walk_ast
+from sarj_python_lint.rules._paths import is_test_path, is_test_support_path
 
 
 if TYPE_CHECKING:
-    from pathlib import Path
+    from sarj_python_lint._file_context import PythonFileContext
 
 
 _DATA_NAME_RE = re.compile(r"(?:Settings|Config|Configuration|Options)$")
@@ -110,18 +110,20 @@ class NoServiceBehaviorInSettings(Rule):
     description: str = documentation.summary
 
     @override
-    def check(self, path: Path, source: str) -> list[Diagnostic]:
+    def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
+        path = context.path
+        source = context.source
         if (
             is_test_path(path)
             or is_test_support_path(path)
-            or is_generated(path, source)
+            or context.generated
             or _DATA_CLASS_RE.search(source) is None
         ):
             return []
-        tree = parse_or_none(path, source)
+        tree = context.tree
         if tree is None:
             return []
-        source_lines = source.splitlines()
+        source_lines = context.source_lines
         diagnostics: list[Diagnostic] = []
         for node in tree.body:
             if not isinstance(node, ast.ClassDef) or _DATA_NAME_RE.search(node.name) is None:
@@ -180,7 +182,7 @@ def _is_collaborator_annotation(annotation: ast.expr | None) -> bool:
         return False
     return any(
         _COLLABORATOR_RE.search(_dotted_tail(candidate) or "") is not None
-        for candidate in ast.walk(annotation)
+        for candidate in walk_ast(annotation)
         if isinstance(candidate, (ast.Name, ast.Attribute))
     )
 
@@ -198,7 +200,7 @@ def _is_behavioral_method(method: ast.FunctionDef | ast.AsyncFunctionDef) -> boo
 def _calls_collaborator(method: ast.FunctionDef | ast.AsyncFunctionDef, fields: frozenset[str]) -> bool:
     return any(
         (field := _self_field(call.func)) is not None and field in fields
-        for call in ast.walk(method)
+        for call in walk_ast(method)
         if isinstance(call, ast.Call)
     )
 

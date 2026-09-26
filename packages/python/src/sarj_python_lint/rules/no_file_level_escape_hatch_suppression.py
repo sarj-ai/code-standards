@@ -18,7 +18,7 @@ from sarj_python_lint.rules._suppression_comments import Comment, scan_comments_
 
 
 if TYPE_CHECKING:
-    from pathlib import Path
+    from sarj_python_lint._file_context import PythonFileContext
 
 
 # These selectors require inline, reasoned suppressions rather than file-wide
@@ -86,7 +86,9 @@ class NoFileLevelEscapeHatchSuppression(Rule):
     description: str = documentation.summary
 
     @override
-    def check(self, path: Path, source: str) -> list[Diagnostic]:
+    def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
+        path = context.path
+        source = context.source
         comments = scan_comments_or_none(source)
         if comments is None:
             return []

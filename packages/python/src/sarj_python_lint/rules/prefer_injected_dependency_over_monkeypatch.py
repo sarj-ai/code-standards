@@ -14,16 +14,18 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    parse_or_none,
 )
+from sarj_python_lint.rules._ast_index import walk as walk_ast
 from sarj_python_lint.rules._ast_position import AstPosition, ast_position
-from sarj_python_lint.rules._imports import ImportIndex
-from sarj_python_lint.rules._paths import is_generated, is_test_path
+from sarj_python_lint.rules._paths import is_test_path
 
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
-    from pathlib import Path
+
+    from sarj_python_lint._file_context import PythonFileContext
+    from sarj_python_lint.rules._ast_index import NodeIndex
+    from sarj_python_lint.rules._imports import ImportIndex
 
 
 _ATTRIBUTE_MUTATIONS = frozenset({"delattr", "setattr"})
@@ -96,19 +98,20 @@ class PreferInjectedDependencyOverMonkeypatch(Rule):
     description: str = documentation.summary
 
     @override
-    def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if not is_test_path(path) or is_generated(path, source):
+    def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
+        path = context.path
+        if not is_test_path(path) or context.generated:
             return []
-        tree = parse_or_none(path, source)
+        tree = context.tree
         if tree is None:
             return []
-        imports = ImportIndex.from_tree(tree, module_scope_only=True)
+        imports = context.module_imports
         replacements = [
             (call, f"monkeypatch.{_operation(call)}")
-            for function in _functions(tree)
+            for function in _functions(tree, node_index=context.node_index)
             for call in _attribute_mutations(function, imports)
         ]
-        replacements.extend((call, label) for call, label in _patch_calls(tree, imports))
+        replacements.extend((call, label) for call, label in _patch_calls(tree, imports, node_index=context.node_index))
         diagnostics = [
             Diagnostic(
                 path=path,
@@ -137,9 +140,11 @@ def _operation(call: ast.Call) -> str:
     return func.attr
 
 
-def _patch_calls(tree: ast.Module, imports: ImportIndex) -> list[tuple[ast.Call, str]]:
+def _patch_calls(
+    tree: ast.Module, imports: ImportIndex, *, node_index: NodeIndex | None = None
+) -> list[tuple[ast.Call, str]]:
     calls: list[tuple[ast.Call, str]] = []
-    for node in ast.walk(tree):
+    for node in walk_ast(tree, index=node_index):
         if not isinstance(node, ast.Call):
             continue
         if _resolves_patch(node.func, imports):
@@ -185,8 +190,10 @@ def _pytest_mock_patch_label(call: ast.Call) -> str | None:
     return None
 
 
-def _functions(tree: ast.Module) -> Iterator[ast.FunctionDef | ast.AsyncFunctionDef]:
-    for node in ast.walk(tree):
+def _functions(
+    tree: ast.Module, *, node_index: NodeIndex | None = None
+) -> Iterator[ast.FunctionDef | ast.AsyncFunctionDef]:
+    for node in walk_ast(tree, index=node_index):
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             yield node
 

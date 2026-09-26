@@ -67,6 +67,32 @@ def _settings_project(tmp_path: Path, service_source: str) -> Path:
     return service
 
 
+def test_reused_rule_observes_dependency_edits_without_a_prepared_session(tmp_path: Path) -> None:
+    service = _settings_project(
+        tmp_path,
+        "from app.config import settings\n"
+        "class Generator:\n"
+        "    def __init__(self, *, model: str | None = None) -> None:\n"
+        "        self.model = model or settings.MODEL\n",
+    )
+    config = service.with_name("config.py")
+    settings_source = config.read_text()
+    service_source = service.read_text()
+    rule = NoHiddenConstructorFallback()
+
+    assert len(rule.check(service, service_source)) == 1
+    config.write_text(
+        "from dataclasses import dataclass\n"
+        "@dataclass\n"
+        "class Settings:\n"
+        "    MODEL: str = 'model'\n"
+        "settings = Settings()\n"
+    )
+    assert rule.check(service, service_source) == []
+    config.write_text(settings_source)
+    assert len(rule.check(service, service_source)) == 1
+
+
 @pytest.mark.parametrize(
     "fallback",
     [

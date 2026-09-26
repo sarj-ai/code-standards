@@ -19,6 +19,8 @@ code-standards doctor
 code-standards update
 ```
 
-Use repeatable `check --rule ENGINE:ID` selectors to check only selected Sarj custom rules. Exclusions, baselines, and severities still apply; upstream rules such as Ruff IDs are not supported. Native linters execute only selected rules; ESLint runs its configured rules and filters the findings.
+Use repeatable `check --rule ENGINE:ID` selectors to check only selected Sarj custom rules. Exclusions, baselines, and severities still apply; upstream rules such as Ruff IDs are not supported. Native linters and ESLint execute only selected rules. ESLint retains configured parsers, options, severities, and suppression directives.
+
+`check --jobs 2` overlaps native analysis with the external-tool pipeline. The default is `--jobs 1`; external tools remain sequential and report ordering is deterministic.
 
 [Documentation](https://code-standards.sarj.ai/) · [Source](https://github.com/sarj-ai/code-standards)

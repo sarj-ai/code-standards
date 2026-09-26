@@ -3,7 +3,7 @@ from __future__ import annotations
 import ast
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
-from typing import NamedTuple, final, override
+from typing import TYPE_CHECKING, NamedTuple, final, override
 
 from sarj_python_lint.rule_base import (
     AutofixPolicy,
@@ -14,10 +14,13 @@ from sarj_python_lint.rule_base import (
     RuleCategory,
     RuleDocumentation,
     RuleExample,
-    parse_or_none,
 )
 from sarj_python_lint.rules._imports import ImportIndex
-from sarj_python_lint.rules._paths import is_generated, is_test_path
+from sarj_python_lint.rules._paths import is_test_path
+
+
+if TYPE_CHECKING:
+    from sarj_python_lint._file_context import PythonFileContext
 
 
 _PYDANTIC_BASE_MODEL_SOURCES = frozenset({"pydantic", "pydantic.main"})
@@ -211,15 +214,16 @@ class InvalidPydanticFieldDefault(Rule):
     description = documentation.summary
 
     @override
-    def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if is_test_path(path) or is_generated(path, source):
+    def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
+        path = context.path
+        if is_test_path(path) or context.generated:
             return []
-        tree = parse_or_none(path, source)
+        tree = context.tree
         if tree is None:
             return []
-        imports = ImportIndex.from_tree(tree)
+        imports = context.imports
         diagnostics: list[Diagnostic] = []
-        for class_node in (node for node in ast.walk(tree) if isinstance(node, ast.ClassDef)):
+        for class_node in (node for node in context.nodes(ast.AST) if isinstance(node, ast.ClassDef)):
             if not _is_direct_base_model(class_node, imports):
                 continue
             transformers = _default_transformers(class_node, imports)

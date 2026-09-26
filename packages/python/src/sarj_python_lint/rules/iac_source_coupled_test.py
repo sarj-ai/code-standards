@@ -13,15 +13,13 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    parse_or_none,
 )
-from sarj_python_lint.rules._imports import ImportIndex
-from sarj_python_lint.rules._paths import is_generated, is_test_path
+from sarj_python_lint.rules._paths import is_test_path
 from sarj_python_lint.rules.no_raw_source_text_test_oracle import FunctionAnalyzer, top_level_test_functions
 
 
 if TYPE_CHECKING:
-    from pathlib import Path
+    from sarj_python_lint._file_context import PythonFileContext
 
 
 IAC_SOURCE_SUFFIXES = (".hcl", ".tf", ".tf.json", ".tfvars", ".tftest.hcl", ".tftest.json")
@@ -86,14 +84,15 @@ class IacSourceCoupledTest(Rule):
     description = documentation.summary
 
     @override
-    def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if not is_test_path(path) or is_generated(path, source):
+    def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
+        path = context.path
+        if not is_test_path(path) or context.generated:
             return []
-        tree = parse_or_none(path, source)
+        tree = context.tree
         if not isinstance(tree, ast.Module):
             return []
-        imports = ImportIndex.from_tree(tree, module_scope_only=True)
-        source_lines = source.splitlines()
+        imports = context.module_imports
+        source_lines = context.source_lines
         assertions = [
             assertion
             for function, unittest_style in top_level_test_functions(tree, imports)

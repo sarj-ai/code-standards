@@ -15,10 +15,9 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    parse_or_none,
 )
 from sarj_python_lint.rules._ast_index import nodes, walk
-from sarj_python_lint.rules._paths import is_generated, is_test_path
+from sarj_python_lint.rules._paths import is_test_path
 from sarj_python_lint.rules._sql import is_store_module, sql_string_value, strip_sql_noise
 from sarj_python_lint.rules.no_analytical_aggregation_in_postgres_store import analytical_signal
 
@@ -28,6 +27,9 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from sqlglot import exp
+
+    from sarj_python_lint._file_context import PythonFileContext
+    from sarj_python_lint.rules._ast_index import NodeIndex
 
 
 _QUERY_SHAPE = re.compile(r"\bSELECT\b[\s\S]*?\bFROM\b", re.IGNORECASE)
@@ -69,9 +71,9 @@ class _ConstructorImport(NamedTuple):
     name: str
 
 
-def _docstring_node_ids(tree: ast.AST) -> set[int]:
+def _docstring_node_ids(tree: ast.AST, *, node_index: NodeIndex | None = None) -> set[int]:
     result: set[int] = set()
-    for owner in nodes(tree, ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef):
+    for owner in nodes(tree, ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef, index=node_index):
         body = owner.body
         if not body or not isinstance(body[0], ast.Expr):
             continue
@@ -91,7 +93,9 @@ def _is_query_context(node: ast.expr, parents: dict[int, ast.AST], roots: frozen
         current = parent
 
 
-def _query_roots(tree: ast.Module, parents: dict[int, ast.AST]) -> frozenset[int]:
+def _query_roots(
+    tree: ast.Module, parents: dict[int, ast.AST], *, node_index: NodeIndex | None = None
+) -> frozenset[int]:
     binding_counts: dict[tuple[int, str], int] = {}
     binding_values: dict[tuple[int, str], ast.expr] = {}
     wildcard_scopes: set[int] = set()
@@ -100,13 +104,13 @@ def _query_roots(tree: ast.Module, parents: dict[int, ast.AST]) -> frozenset[int
         key = (id(owner), name)
         binding_counts[key] = binding_counts.get(key, 0) + 1
 
-    _count_query_bindings(tree, parents, count, wildcard_scopes)
+    _count_query_bindings(tree, parents, count, wildcard_scopes, node_index=node_index)
 
-    constructor_imports = _postgres_sql_constructors(tree, parents)
-    _query_binding_values(tree, parents, binding_values)
+    constructor_imports = _postgres_sql_constructors(tree, parents, node_index=node_index)
+    _query_binding_values(tree, parents, binding_values, node_index=node_index)
 
     roots: set[int] = set()
-    for call in nodes(tree, ast.Call):
+    for call in nodes(tree, ast.Call, index=node_index):
         argument = _query_argument(call)
         if argument is None:
             continue
@@ -164,9 +168,11 @@ def _call_name(function: ast.expr) -> str:
             return ""
 
 
-def _postgres_sql_constructors(tree: ast.Module, parents: dict[int, ast.AST]) -> frozenset[_ConstructorImport]:
+def _postgres_sql_constructors(
+    tree: ast.Module, parents: dict[int, ast.AST], *, node_index: NodeIndex | None = None
+) -> frozenset[_ConstructorImport]:
     constructors: set[_ConstructorImport] = set()
-    for node in nodes(tree, ast.Import, ast.ImportFrom):
+    for node in nodes(tree, ast.Import, ast.ImportFrom, index=node_index):
         owner_id = id(_scope(node, parents))
         _record_sql_constructors(node, owner_id, constructors)
     return frozenset(constructors)
@@ -363,21 +369,22 @@ class ComplexPostgresQueryRequiresArchitectureReview(Rule):
     description = documentation.summary
 
     @override
-    def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if is_test_path(path) or is_generated(path, source):
+    def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
+        path = context.path
+        if is_test_path(path) or context.generated:
             return []
-        tree = parse_or_none(path, source)
+        tree = context.tree
         if tree is None:
             return []
-        if not _is_postgres_module(tree):
+        if not _is_postgres_module(tree, node_index=context.node_index):
             return []
 
-        docstrings = _docstring_node_ids(tree)
-        parents = {id(child): parent for parent in ast.walk(tree) for child in ast.iter_child_nodes(parent)}
-        query_roots = _query_roots(tree, parents)
+        docstrings = _docstring_node_ids(tree, node_index=context.node_index)
+        parents = {id(child): parent for parent in context.nodes(ast.AST) for child in ast.iter_child_nodes(parent)}
+        query_roots = _query_roots(tree, parents, node_index=context.node_index)
         diagnostics: list[Diagnostic] = []
         consumed: set[int] = set()
-        for node in nodes(tree, ast.Constant, ast.BinOp, ast.JoinedStr):
+        for node in context.nodes(ast.Constant, ast.BinOp, ast.JoinedStr):
             if id(node) in consumed or id(node) in docstrings or not _is_query_context(node, parents, query_roots):
                 continue
             text_value = sql_string_value(node, interpolation_placeholder=_SQL_HOLE)
@@ -409,34 +416,43 @@ class ComplexPostgresQueryRequiresArchitectureReview(Rule):
 
 
 def _count_query_bindings(
-    tree: ast.Module, parents: dict[int, ast.AST], count: Callable[[ast.AST, str], None], wildcard_scopes: set[int]
+    tree: ast.Module,
+    parents: dict[int, ast.AST],
+    count: Callable[[ast.AST, str], None],
+    wildcard_scopes: set[int],
+    *,
+    node_index: NodeIndex | None = None,
 ) -> None:
-    for name in nodes(tree, ast.Name):
+    for name in nodes(tree, ast.Name, index=node_index):
         if isinstance(name.ctx, (ast.Store, ast.Del)):
             count(_scope(name, parents), name.id)
-    for argument in nodes(tree, ast.arg):
+    for argument in nodes(tree, ast.arg, index=node_index):
         count(_scope(argument, parents), argument.arg)
-    _count_import_bindings(tree, parents, count, wildcard_scopes)
-    for definition in nodes(tree, ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef):
+    _count_import_bindings(tree, parents, count, wildcard_scopes, node_index=node_index)
+    for definition in nodes(tree, ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, index=node_index):
         parent = parents.get(id(definition))
         if parent is not None:
             count(_scope(parent, parents), definition.name)
-    for handler in nodes(tree, ast.ExceptHandler):
+    for handler in nodes(tree, ast.ExceptHandler, index=node_index):
         if handler.name:
             count(_scope(handler, parents), handler.name)
-    for pattern in nodes(tree, ast.MatchAs, ast.MatchStar, ast.MatchMapping):
+    for pattern in nodes(tree, ast.MatchAs, ast.MatchStar, ast.MatchMapping, index=node_index):
         name = pattern.name if isinstance(pattern, (ast.MatchAs, ast.MatchStar)) else pattern.rest
         if name:
             count(_scope(pattern, parents), name)
-    for declaration in nodes(tree, ast.Global, ast.Nonlocal):
+    for declaration in nodes(tree, ast.Global, ast.Nonlocal, index=node_index):
         for name in declaration.names:
             count(_scope(declaration, parents), name)
 
 
 def _query_binding_values(
-    tree: ast.Module, parents: dict[int, ast.AST], binding_values: dict[tuple[int, str], ast.expr]
+    tree: ast.Module,
+    parents: dict[int, ast.AST],
+    binding_values: dict[tuple[int, str], ast.expr],
+    *,
+    node_index: NodeIndex | None = None,
 ) -> None:
-    for assignment in nodes(tree, ast.Assign, ast.AnnAssign):
+    for assignment in nodes(tree, ast.Assign, ast.AnnAssign, index=node_index):
         target: ast.expr | None = None
         if isinstance(assignment, ast.Assign) and len(assignment.targets) == 1:
             target = assignment.targets[0]
@@ -574,9 +590,14 @@ def _maximum_query_joins(statement: exp.Query) -> int:
 
 
 def _count_import_bindings(
-    tree: ast.Module, parents: dict[int, ast.AST], count: Callable[[ast.AST, str], None], wildcard_scopes: set[int]
+    tree: ast.Module,
+    parents: dict[int, ast.AST],
+    count: Callable[[ast.AST, str], None],
+    wildcard_scopes: set[int],
+    *,
+    node_index: NodeIndex | None = None,
 ) -> None:
-    for imported in nodes(tree, ast.Import, ast.ImportFrom):
+    for imported in nodes(tree, ast.Import, ast.ImportFrom, index=node_index):
         owner = _scope(imported, parents)
         for alias in imported.names:
             if alias.name == "*":
@@ -605,8 +626,8 @@ def _query_review_guidance(text_value: str) -> str:
     )
 
 
-def _is_postgres_module(tree: ast.Module) -> bool:
-    imports = _import_names(tree)
+def _is_postgres_module(tree: ast.Module, *, node_index: NodeIndex | None = None) -> bool:
+    imports = _import_names(tree, node_index=node_index)
     return _has_import_prefix(imports, _POSTGRES_IMPORT_PREFIXES) and not _has_import_prefix(
         imports, _AMBIGUOUS_RELATIONAL_IMPORT_PREFIXES
     )
@@ -616,9 +637,9 @@ def _has_import_prefix(imports: frozenset[str], prefixes: tuple[str, ...]) -> bo
     return any(name == prefix or name.startswith(f"{prefix}.") for name in imports for prefix in prefixes)
 
 
-def _import_names(tree: ast.AST) -> frozenset[str]:
+def _import_names(tree: ast.AST, *, node_index: NodeIndex | None = None) -> frozenset[str]:
     names: set[str] = set()
-    for node in nodes(tree, ast.Import, ast.ImportFrom):
+    for node in nodes(tree, ast.Import, ast.ImportFrom, index=node_index):
         if isinstance(node, ast.Import):
             names.update(alias.name.lower() for alias in node.names)
             continue

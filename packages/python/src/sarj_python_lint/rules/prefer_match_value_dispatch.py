@@ -16,13 +16,13 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    parse_or_none,
 )
-from sarj_python_lint.rules._paths import is_generated
+from sarj_python_lint.rules._ast_index import walk as walk_ast
 
 
 if TYPE_CHECKING:
-    from pathlib import Path
+    from sarj_python_lint._file_context import PythonFileContext
+    from sarj_python_lint.rules._ast_index import NodeIndex
 
 
 type _Literal = str | bytes | int | float
@@ -152,18 +152,19 @@ class PreferMatchValueDispatch(Rule):
     description: str = documentation.summary
 
     @override
-    def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if is_generated(path, source):
+    def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
+        path = context.path
+        if context.generated:
             return []
-        tree = parse_or_none(path, source)
+        tree = context.tree
         if tree is None:
             return []
-        constants = _module_constants(tree)
-        lines = source.splitlines()
+        constants = _module_constants(tree, node_index=context.node_index)
+        lines = context.source_lines
         continuations: set[int] = set()
         findings: list[Diagnostic] = []
         candidates: list[tuple[ast.If, str]] = []
-        for node in ast.walk(tree):
+        for node in context.nodes(ast.AST):
             if not isinstance(node, ast.If) or id(node) in continuations:
                 continue
             chain = _elif_chain(node, lines, continuations)
@@ -174,11 +175,11 @@ class PreferMatchValueDispatch(Rule):
                 subject = _expanded_dispatch_subject(chain.branches, constants)
             if subject is not None:
                 candidates.append((node, subject))
-        for branches in _terminal_sibling_dispatches(tree):
+        for branches in _terminal_sibling_dispatches(tree, node_index=context.node_index):
             subject = _expanded_dispatch_subject(branches, constants)
             if subject is not None:
                 candidates.append((branches[0], subject))
-        if candidates and self.has_declared_python_support_before(path, (3, 10)):
+        if candidates and context.session.python_target.has_declared_support_before(path, (3, 10)):
             return []
         for node, subject in sorted(candidates, key=lambda candidate: candidate[0].lineno):
             findings.append(
@@ -198,9 +199,9 @@ class PreferMatchValueDispatch(Rule):
         return findings
 
 
-def _terminal_sibling_dispatches(tree: ast.Module) -> list[list[ast.If]]:
+def _terminal_sibling_dispatches(tree: ast.Module, *, node_index: NodeIndex | None = None) -> list[list[ast.If]]:
     candidates: list[list[ast.If]] = []
-    for node in ast.walk(tree):
+    for node in walk_ast(tree, index=node_index):
         for field in _statement_lists(node):
             _collect_terminal_siblings(field, candidates)
     return candidates
@@ -278,9 +279,9 @@ def _expanded_selector(expression: ast.expr, constants: dict[str, _Literal]) -> 
             return None
 
 
-def _module_constants(tree: ast.Module) -> dict[str, _Literal]:
+def _module_constants(tree: ast.Module, *, node_index: NodeIndex | None = None) -> dict[str, _Literal]:
     bindings: Counter[str] = Counter()
-    for node in ast.walk(tree):
+    for node in walk_ast(tree, index=node_index):
         match node:
             case (
                 ast.Name(id=name, ctx=ast.Store() | ast.Del())
@@ -410,7 +411,7 @@ def _guarded_selector(selector: ast.expr, *, is_last: bool) -> ast.expr | None:
             return None
         if any(
             isinstance(node, (ast.NamedExpr, ast.Await, ast.Yield, ast.YieldFrom))
-            for node in ast.walk(selector.values[1])
+            for node in walk_ast(selector.values[1])
         ):
             return None
         selector = selector.values[0]

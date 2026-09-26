@@ -13,14 +13,15 @@ from sarj_python_lint.rule_base import (
     RuleCategory,
     RuleDocumentation,
     RuleExample,
-    parse_or_none,
 )
+from sarj_python_lint.rules._ast_index import walk as walk_ast
 from sarj_python_lint.rules._imports import ImportIndex
-from sarj_python_lint.rules._paths import is_generated, is_test_path
+from sarj_python_lint.rules._paths import is_test_path
 
 
 if TYPE_CHECKING:
-    from pathlib import Path
+    from sarj_python_lint._file_context import PythonFileContext
+    from sarj_python_lint.rules._ast_index import NodeIndex
 
 
 _PYDANTIC_BASE_MODEL_SOURCES = frozenset({"pydantic", "pydantic.main", "pydantic.v1", "pydantic.v1.main"})
@@ -99,14 +100,15 @@ class NoNestedPydanticFieldValidator(Rule):
     description = documentation.summary
 
     @override
-    def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if is_test_path(path) or is_generated(path, source):
+    def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
+        path = context.path
+        if is_test_path(path) or context.generated:
             return []
-        tree = parse_or_none(path, source)
+        tree = context.tree
         if tree is None:
             return []
         imports = _module_scope_imports(tree)
-        parents = _parent_index(tree)
+        parents = _parent_index(tree, node_index=context.node_index)
         diagnostics: list[Diagnostic] = []
 
         def collect_nested_validators(outer: ast.ClassDef, nested: ast.ClassDef, outer_fields: frozenset[str]) -> None:
@@ -132,7 +134,7 @@ class NoNestedPydanticFieldValidator(Rule):
                         )
                     )
 
-        for outer in (node for node in ast.walk(tree) if isinstance(node, ast.ClassDef)):
+        for outer in (node for node in context.nodes(ast.AST) if isinstance(node, ast.ClassDef)):
             if not _is_direct_model(outer, imports, parents):
                 continue
             outer_fields = _direct_fields(outer, imports)
@@ -219,8 +221,8 @@ def _module_scope_imports(tree: ast.Module) -> ImportIndex:
     return ImportIndex.from_tree(ast.Module(body=body, type_ignores=[]))
 
 
-def _parent_index(tree: ast.Module) -> dict[ast.AST, ast.AST]:
-    return {child: owner for owner in ast.walk(tree) for child in ast.iter_child_nodes(owner)}
+def _parent_index(tree: ast.Module, *, node_index: NodeIndex | None = None) -> dict[ast.AST, ast.AST]:
+    return {child: owner for owner in walk_ast(tree, index=node_index) for child in ast.iter_child_nodes(owner)}
 
 
 def _shadowed_in_enclosing_function(

@@ -15,18 +15,18 @@ from sarj_python_lint.rule_base import (
     RuleExample,
     Severity,
     is_suppressed,
-    parse_or_none,
 )
 from sarj_python_lint.rules._annotation_semantics import AnnotationSemantics, scope_bound_names
-from sarj_python_lint.rules._ast_index import children, nodes
-from sarj_python_lint.rules._fastapi import FastapiIndex
+from sarj_python_lint.rules._ast_index import children, nodes, walk as walk_ast
 from sarj_python_lint.rules._fixed_record import builds_fixed_record
-from sarj_python_lint.rules._paths import is_generated, is_test_path, is_test_support_path
+from sarj_python_lint.rules._paths import is_test_path, is_test_support_path
 
 
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from sarj_python_lint._file_context import PythonFileContext
+    from sarj_python_lint.rules._ast_index import NodeIndex
     from sarj_python_lint.rules._imports import ImportIndex
 
 
@@ -91,25 +91,21 @@ class NamedRecordAtBoundaries(Rule):
     description: str = documentation.summary
 
     @override
-    def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if (
-            is_test_path(path)
-            or is_test_support_path(path)
-            or is_generated(path, source)
-            or _is_documentation_path(path)
-        ):
+    def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
+        path = context.path
+        if is_test_path(path) or is_test_support_path(path) or context.generated or _is_documentation_path(path):
             return []
-        tree = parse_or_none(path, source)
+        tree = context.tree
         if tree is None:
             return []
         diags: list[Diagnostic] = []
-        source_lines = source.splitlines()
+        source_lines = context.source_lines
         local = _local_function_ids(tree)
         private_class_methods = _private_class_function_ids(tree)
         semantics = AnnotationSemantics.from_tree(tree)
         imports = semantics.imports
-        fastapi = FastapiIndex(tree, path=path)
-        class_shadowed_annotations = _class_shadowed_annotation_ids(tree, semantics)
+        fastapi = context.fastapi
+        class_shadowed_annotations = _class_shadowed_annotation_ids(tree, semantics, node_index=context.node_index)
 
         def collect_boundary(node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
             if _is_overload(node, imports):
@@ -163,7 +159,7 @@ class NamedRecordAtBoundaries(Rule):
                 )
             )
 
-        for node in nodes(tree, ast.FunctionDef, ast.AsyncFunctionDef):
+        for node in context.nodes(ast.FunctionDef, ast.AsyncFunctionDef):
             collect_boundary(node)
         return sorted(diags, key=lambda diagnostic: (diagnostic.line, diagnostic.col, diagnostic.message))
 
@@ -185,16 +181,18 @@ def _is_documentation_path(path: Path) -> bool:
     return any(part.lower() in _DOCUMENTATION_DIR_NAMES for part in path.parts)
 
 
-def _class_shadowed_annotation_ids(tree: ast.Module, semantics: AnnotationSemantics) -> set[int]:
+def _class_shadowed_annotation_ids(
+    tree: ast.Module, semantics: AnnotationSemantics, *, node_index: NodeIndex | None = None
+) -> set[int]:
     shadowed: set[int] = set()
-    for class_node in nodes(tree, ast.ClassDef):
+    for class_node in nodes(tree, ast.ClassDef, index=node_index):
         bindings = scope_bound_names(class_node.body)
         for statement in class_node.body:
             if not isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 continue
             annotation = semantics.parse(statement.returns)
             if annotation is not None and any(
-                isinstance(child, ast.Name) and child.id in bindings for child in ast.walk(annotation)
+                isinstance(child, ast.Name) and child.id in bindings for child in walk_ast(annotation)
             ):
                 shadowed.add(id(statement))
     return shadowed

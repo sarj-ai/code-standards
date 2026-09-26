@@ -14,6 +14,7 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 GENERATED_READMES = (
     Path("README.md"),
     Path("packages/bootstrap/README.md"),
+    Path("packages/contracts/README.md"),
     Path("packages/standards/README.md"),
     Path("packages/standards-compat/README.md"),
     Path("packages/python/README.md"),
@@ -55,6 +56,10 @@ def _repository(root: Path) -> None:
                 'description = "Standards bootstrap."\nlicense = "MIT"\nrequires-python = ">=3.14"\n'
                 '[project.scripts]\ncode-standards = "sarj_standards_bootstrap:main"\n'
             ),
+        ),
+        "contracts": (
+            "pyproject.toml",
+            '[project]\nname = "sarj-rule-contracts"\nversion = "0.1.0"\ndescription = "Shared rule contracts."\n',
         ),
         "standards-compat": (
             "pyproject.toml",

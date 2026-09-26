@@ -12,7 +12,7 @@ from sarj_standards.libs.rules import RuleEngine
 
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping, Sequence
+    from collections.abc import Callable, Mapping, Sequence
 
 
 _RUFF_APPLICATION: Final = CONFIGS_DIR / "ruff.application.toml"
@@ -196,12 +196,15 @@ def warning_level_artifacts(repository: Path) -> Mapping[Path, str]:
     }
 
 
-def sync_warning_levels(repository: Path, *, check: bool) -> bool:
+def sync_warning_levels(repository: Path, *, check: bool, writer: Callable[[Path, str], None] | None = None) -> bool:
     expected = warning_level_artifacts(repository)
     if check:
         return all(path.is_file() and path.read_text(encoding="utf-8") == text for path, text in expected.items())
     for path, text in expected.items():
-        path.write_text(text, encoding="utf-8")
+        if writer is None:
+            path.write_text(text, encoding="utf-8")
+        else:
+            writer(path, text)
     return True
 
 

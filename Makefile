@@ -32,9 +32,14 @@ verify: doctor docs-check format-check lint dogfood typecheck test repo-check ch
 doctor:
 	@$(STANDARDS) doctor
 
-docs-artifacts-check:
+typescript-build:
+	cd packages/typescript && npm run build
+
+.PHONY: typescript-build
+
+docs-artifacts-check: typescript-build
 	@$(STANDARDS) --root . maintain rules check
-	@$(STANDARDS) --root . maintain catalog check
+	@$(STANDARDS) --root . maintain catalog check --typescript-built
 	@uv run --project packages/standards --frozen python -m sarj_standards.libs.repository.third_party_catalog_artifact --root . --check
 	@$(STANDARDS) --root . maintain cli-reference check
 	@$(STANDARDS) --root . maintain docs check
@@ -43,13 +48,13 @@ docs-code-sync:
 	cd apps/docs && npm run code-examples:sync
 
 docs-check: docs-artifacts-check
-	cd packages/typescript && npm run build
 	cd apps/docs && npm run code-examples:check
 	cd apps/docs && npm run lint && npm run check && npm run build
 
 format-check:
 	uv run --project packages/standards --frozen ruff format --check \
 	  packages/bootstrap/src packages/bootstrap/tests \
+	  packages/contracts/src packages/contracts/tests \
 	  packages/python/src packages/python/tests \
 	  packages/sql/src packages/sql/tests \
 	  packages/iac/src packages/iac/tests \
@@ -59,6 +64,7 @@ build:
 	cd packages/typescript     && npm run build
 	cd apps/docs               && npm run build
 	cd packages/bootstrap      && uv build
+	cd packages/contracts      && uv build
 	cd packages/python         && uv build
 	cd packages/sql            && uv build
 	cd packages/iac            && uv build
@@ -68,6 +74,7 @@ build:
 test: check-versions-synced
 	cd packages/typescript     && npm test
 	cd packages/bootstrap      && uv run pytest -q
+	cd packages/contracts      && uv run pytest -q
 	cd packages/python         && uv run pytest -q
 	cd packages/sql            && uv run pytest -q
 	cd packages/iac            && uv run pytest -q
@@ -78,6 +85,7 @@ test: check-versions-synced
 	# `make test` usable on a version-bump branch.
 	cd packages/standards   && rm -rf dist \
 	  && uv build --wheel >/dev/null \
+	  && uv build --wheel --project ../contracts --out-dir dist/deps >/dev/null \
 	  && uv build --wheel --project ../python --out-dir dist/deps >/dev/null \
 	  && uv build --wheel --project ../sql    --out-dir dist/deps >/dev/null \
 	  && uv build --wheel --project ../iac    --out-dir dist/deps >/dev/null \
@@ -90,6 +98,7 @@ test: check-versions-synced
 lint:
 	cd packages/typescript     && npm run lint
 	cd packages/bootstrap      && uv run ruff check src/ tests/
+	cd packages/contracts      && uv run ruff check src/ tests/
 	cd packages/python         && uv run ruff check src/ tests/
 	cd packages/sql            && uv run ruff check src/ tests/
 	cd packages/iac            && uv run ruff check src/ tests/
@@ -122,11 +131,12 @@ dogfood-python:
 	if [[ -n "$$output" ]]; then printf '%s\n' "$$output"; fi; \
 	printf 'dogfood: %d Python rules, %d source files, 0 blocking diagnostics\n' "$${#python_rules[@]}" "$${#python_files[@]}"
 
-dogfood-typescript:
-	cd packages/typescript && npm run dogfood
+dogfood-typescript: typescript-build
+	cd packages/typescript && npm run dogfood:built
 
 typecheck:
 	cd packages/bootstrap      && uv run basedpyright
+	cd packages/contracts      && uv run basedpyright
 	cd packages/python         && uv run basedpyright
 	cd packages/sql            && uv run basedpyright
 	cd packages/iac            && uv run basedpyright

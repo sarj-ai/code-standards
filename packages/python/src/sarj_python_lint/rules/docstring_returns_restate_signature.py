@@ -16,7 +16,6 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    parse_or_none,
 )
 from sarj_python_lint.rules._ast_index import children
 from sarj_python_lint.rules._comments import is_protected, stem
@@ -29,12 +28,13 @@ from sarj_python_lint.rules._docstrings import (
     restates,
     sections,
 )
-from sarj_python_lint.rules._imports import ImportIndex
-from sarj_python_lint.rules._paths import is_generated
 
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+    from sarj_python_lint._file_context import PythonFileContext
+    from sarj_python_lint.rules._imports import ImportIndex
 
 
 _RETURN_SECTIONS = ("Returns", "Return", "Yields", "Yield")
@@ -177,14 +177,15 @@ class DocstringReturnsRestateSignature(Rule):
     description: str = documentation.summary
 
     @override
-    def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if is_generated(path, source):
+    def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
+        path = context.path
+        if context.generated:
             return []
-        tree = parse_or_none(path, source)
+        tree = context.tree
         if tree is None:
             return []
         diags: list[Diagnostic] = []
-        self._walk(tree, None, path, ImportIndex.from_tree(tree), diags)
+        self._walk(tree, None, path, context.imports, diags)
         return sorted(diags, key=lambda diag: diag.line)
 
     def _walk(

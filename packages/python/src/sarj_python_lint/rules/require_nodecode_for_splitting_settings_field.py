@@ -15,14 +15,15 @@ from sarj_python_lint.rule_base import (
     RuleExample,
     Severity,
     is_suppressed,
-    parse_or_none,
 )
-from sarj_python_lint.rules._imports import ImportIndex
-from sarj_python_lint.rules._paths import is_generated, is_test_path
+from sarj_python_lint.rules._paths import is_test_path
 
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+    from sarj_python_lint._file_context import PythonFileContext
+    from sarj_python_lint.rules._imports import ImportIndex
 
 
 _SETTINGS_SOURCES = frozenset({"pydantic_settings", "pydantic_settings.main"})
@@ -105,22 +106,24 @@ class RequireNoDecodeForSplittingSettingsField(Rule):
     description = documentation.summary
 
     @override
-    def check(self, path: Path, source: str) -> list[Diagnostic]:
+    def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
+        path = context.path
+        source = context.source
         if (
             is_test_path(path)
-            or is_generated(path, source)
+            or context.generated
             or "pydantic_settings" not in source
             or "field_validator" not in source
             or "split" not in source
         ):
             return []
-        tree = parse_or_none(path, source)
+        tree = context.tree
         if tree is None:
             return []
-        imports = ImportIndex.from_tree(tree)
-        source_lines = source.splitlines()
+        imports = context.imports
+        source_lines = context.source_lines
         diagnostics: list[Diagnostic] = []
-        for model in (node for node in ast.walk(tree) if isinstance(node, ast.ClassDef)):
+        for model in (node for node in context.nodes(ast.AST) if isinstance(node, ast.ClassDef)):
             if not _is_direct_settings(model, imports) or _customises_settings_sources(model):
                 continue
             diagnostics.extend(_settings_split_findings(model, imports, source_lines, path, self.code))

@@ -23,10 +23,11 @@ make setup
 make verify
 ```
 
-Once a new rule and its tests are registered, stage it as a warning and validate it locally:
+Create a rule with `maintain rules new ENGINE:ID --category CATEGORY --summary TEXT --apply`. Without `--apply`, the command shows its plan. Creation writes the detector and executable test, registers the rule, and reserves its identifier atomically. New rules default to warning. Run authoring commands through `uv run --project packages/standards --frozen code-standards` to use the source and dependencies of the checkout being edited. Implement the detector and replace the example placeholders, then verify and prepare it:
 
 ```bash
-code-standards --root . maintain rules stage-warning python:no-string-concat-in-loop
+code-standards --root . maintain rules verify python:no-string-concat-in-loop
+code-standards --root . maintain rules prepare python:no-string-concat-in-loop
 code-standards --root . maintain rules evaluate --rule python:no-string-concat-in-loop --scope corpus
 make verify
 ```
@@ -44,6 +45,20 @@ code-standards --root . maintain rules changes --before origin/main --after HEAD
 ```
 
 Fleet calibration and downstream PR creation run automatically after review and release.
+
+### Rule implementation
+
+`sarj-rule-contracts` owns immutable metadata and executable example contracts. Each rule owns its documentation and positive/negative examples; generated catalogs and docs consume those declarations. Verification executes all examples, including private and multi-file cases, with the owning engine and runs the focused test file. A detector that always reports or never reports fails. TypeScript examples can also verify fixes and a clean second pass.
+
+Python rules implement `check_context(context: PythonFileContext)`. The context shares parsing, breadth-first node indexing, import resolution, and generated-file detection across rules for one file. Project discovery belongs to the analysis session; file facts expire after that file. The existing `check(path, source)` entrypoint delegates through a fresh context. SQL, IaC, and text retain their own parsers and diagnostics.
+
+Measure native Python analysis and diagnostic stability with:
+
+```bash
+code-standards --root . maintain rules bench packages/python/src --repeats 5
+```
+
+The JSON report includes file and byte counts, source and diagnostic digests, per-run timings, and process peak memory. It excludes interpreter startup; peak memory is the process high-water mark. Use fresh processes for cold-start and independent memory comparisons.
 
 ### Rule artifact provenance
 

@@ -165,9 +165,10 @@ wheels = [
 
 [[package]]
 name = "sarj-iac-lint"
-version = "0.15.13"
+version = "0.16.0"
 source = { editable = "." }
 dependencies = [
+    { name = "sarj-rule-contracts" },
     { name = "typer" },
 ]
 
@@ -179,7 +180,24 @@ dev = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "typer", specifier = "==0.27.2" }]
+requires-dist = [
+    { name = "sarj-rule-contracts", editable = "../contracts" },
+    { name = "typer", specifier = "==0.27.2" },
+]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "basedpyright", specifier = ">=1.40.1" },
+    { name = "pytest", specifier = ">=9.1.1" },
+    { name = "ruff", specifier = ">=0.16.8" },
+]
+
+[[package]]
+name = "sarj-rule-contracts"
+version = "0.1.0"
+source = { editable = "../contracts" }
+
+[package.metadata]
 
 [package.metadata.requires-dev]
 dev = [

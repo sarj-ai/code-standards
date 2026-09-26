@@ -18,15 +18,17 @@ from sarj_python_lint.rule_base import (
     RuleExample,
     Severity,
     is_suppressed,
-    parse_or_none,
 )
-from sarj_python_lint.rules._ast_index import children, walk
-from sarj_python_lint.rules._imports import ImportIndex
-from sarj_python_lint.rules._paths import is_generated, is_test_path
+from sarj_python_lint.rules._ast_index import children, walk, walk as walk_ast
+from sarj_python_lint.rules._paths import is_test_path
 
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+    from sarj_python_lint._file_context import PythonFileContext
+    from sarj_python_lint.rules._ast_index import NodeIndex
+    from sarj_python_lint.rules._imports import ImportIndex
 
 
 #: Per-variable accumulator containing location and literals grouped by comparison operator.
@@ -283,18 +285,20 @@ class PreferStrEnum(Rule):
     description = documentation.summary
 
     @override
-    def check(self, path: Path, source: str) -> list[Diagnostic]:  # ruff: ignore[too-many-locals] -- traversal state.
+    def check_context(self, context: PythonFileContext) -> list[Diagnostic]:  # ruff: ignore[too-many-locals] -- traversal state.
+        path = context.path
+        source = context.source
         if path.suffix != ".py":
             return []
-        if is_generated(path, source):
+        if context.generated:
             return []
         if not _has_str_enum_signal(source):
             return []
-        tree = parse_or_none(path, source)
+        tree = context.tree
         if tree is None:
             return []
         class_choice_signal = "str" in source and any(name in source.lower() for name in CHOICES_ATTR_NAMES)
-        imports = ImportIndex.from_tree(tree) if class_choice_signal or "assert_never" in source else None
+        imports = context.imports if class_choice_signal or "assert_never" in source else None
         test_path = is_test_path(path)
         check_clusters = not test_path
         literal_aliases = _module_literal_aliases(tree)
@@ -302,15 +306,19 @@ class PreferStrEnum(Rule):
         alias_valuesets = literal_aliases.value_sets
         raw_string_aliases = _module_raw_string_aliases(tree)
         choice_string_aliases: frozenset[str] = (
-            _module_proven_raw_string_aliases(tree, imports) if imports is not None else frozenset()
+            _module_proven_raw_string_aliases(tree, imports, node_index=context.node_index)
+            if imports is not None
+            else frozenset()
         )
         literal_funcs = _literal_returning_functions(tree)
         module_func_names = frozenset(
             statement.name for statement in tree.body if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef))
         )
-        method_owned_attributes = _class_method_owned_attributes(tree)
-        method_closed_attributes = _class_method_closed_attributes(tree, alias_names, raw_string_aliases)
-        enum_like_classes = _enum_like_class_ids(tree)
+        method_owned_attributes = _class_method_owned_attributes(tree, node_index=context.node_index)
+        method_closed_attributes = _class_method_closed_attributes(
+            tree, alias_names, raw_string_aliases, node_index=context.node_index
+        )
+        enum_like_classes = _enum_like_class_ids(tree, node_index=context.node_index)
         class_nodes: list[ast.ClassDef] = []
         all_clusters: list[tuple[dict[str, _ClusterEntry], frozenset[str], frozenset[str] | None]] = []
         cluster_opacity: dict[int, frozenset[str]] = {}
@@ -483,7 +491,7 @@ class PreferStrEnum(Rule):
 
         diags.extend(class_diags)
         diags.sort(key=lambda d: (d.line, d.col))
-        source_lines = source.splitlines()
+        source_lines = context.source_lines
         return [diag for diag in diags if not is_suppressed(source_lines, diag.line, self.code)]
 
     def _class_field_diags(
@@ -539,13 +547,13 @@ def _has_str_enum_signal(source: str) -> bool:
     )
 
 
-def _enum_like_class_ids(tree: ast.Module) -> frozenset[int]:
+def _enum_like_class_ids(tree: ast.Module, *, node_index: NodeIndex | None = None) -> frozenset[int]:
     enum_names = set(_ENUM_BASE_NAMES)
     enum_modules = {"enum"}
     assignments: list[tuple[str, ast.expr]] = []
-    _collect_enum_bindings(tree, enum_names, enum_modules, assignments)
+    _collect_enum_bindings(tree, enum_names, enum_modules, assignments, node_index=node_index)
 
-    classes = [node for node in ast.walk(tree) if isinstance(node, ast.ClassDef)]
+    classes = [node for node in walk_ast(tree, index=node_index) if isinstance(node, ast.ClassDef)]
     enum_class_ids: set[int] = set()
     changed = True
     while changed:
@@ -647,7 +655,9 @@ def _module_raw_string_aliases(tree: ast.Module) -> frozenset[str]:
     return frozenset(raw)
 
 
-def _module_proven_raw_string_aliases(tree: ast.Module, imports: ImportIndex) -> frozenset[str]:
+def _module_proven_raw_string_aliases(
+    tree: ast.Module, imports: ImportIndex, *, node_index: NodeIndex | None = None
+) -> frozenset[str]:
     assignments: dict[str, list[ast.expr]] = {}
     for statement in tree.body:
         match statement:
@@ -659,7 +669,7 @@ def _module_proven_raw_string_aliases(tree: ast.Module, imports: ImportIndex) ->
                 assignments.setdefault(name, []).append(value)
             case _:
                 pass
-    binding_counts = _alias_binding_counts(tree)
+    binding_counts = _alias_binding_counts(tree, node_index=node_index)
     unique = {
         name: values[0] for name, values in assignments.items() if len(values) == 1 and binding_counts.get(name) == 1
     }
@@ -701,9 +711,11 @@ def _opaque_names(
     return _close_over_assignments(func, base)
 
 
-def _class_method_owned_attributes(tree: ast.Module) -> dict[int, frozenset[str]]:
+def _class_method_owned_attributes(
+    tree: ast.Module, *, node_index: NodeIndex | None = None
+) -> dict[int, frozenset[str]]:
     result: dict[int, frozenset[str]] = {}
-    for cls in (node for node in ast.walk(tree) if isinstance(node, ast.ClassDef)):
+    for cls in (node for node in walk_ast(tree, index=node_index) if isinstance(node, ast.ClassDef)):
         attributes: set[str] = set()
         methods = [stmt for stmt in cls.body if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef))]
         _collect_class_owned_attributes(cls, attributes)
@@ -717,9 +729,11 @@ def _class_method_closed_attributes(
     tree: ast.Module,
     alias_names: frozenset[str],
     raw_string_aliases: frozenset[str],
+    *,
+    node_index: NodeIndex | None = None,
 ) -> dict[int, frozenset[str]]:
     result: dict[int, frozenset[str]] = {}
-    for cls in (node for node in ast.walk(tree) if isinstance(node, ast.ClassDef)):
+    for cls in (node for node in walk_ast(tree, index=node_index) if isinstance(node, ast.ClassDef)):
         closed = {
             statement.target.id
             for statement in cls.body
@@ -787,7 +801,7 @@ def _collect_fallback_chain_names(node: ast.If, open_names: set[str]) -> None:
 
 def _statements_read_key(statements: list[ast.stmt], key: str) -> bool:
     for statement in statements:
-        for node in ast.walk(statement):
+        for node in walk_ast(statement):
             if (
                 isinstance(node, (ast.Name, ast.Attribute))
                 and _name_key(node) == key
@@ -1323,7 +1337,7 @@ def _closed_domain_node_ids(
     if guarded_keys:
         closed.update(
             id(node)
-            for node in ast.walk(function)
+            for node in walk_ast(function)
             if isinstance(node, ast.Compare)
             and (extracted := _extract_compare(node)) is not None
             and extracted.key in guarded_keys
@@ -1562,9 +1576,14 @@ def _extract_equality_compare(op: ast.Eq | ast.NotEq, left: ast.expr, right: ast
 
 
 def _collect_enum_bindings(
-    tree: ast.Module, enum_names: set[str], enum_modules: set[str], assignments: list[tuple[str, ast.expr]]
+    tree: ast.Module,
+    enum_names: set[str],
+    enum_modules: set[str],
+    assignments: list[tuple[str, ast.expr]],
+    *,
+    node_index: NodeIndex | None = None,
 ) -> None:
-    for node in ast.walk(tree):
+    for node in walk_ast(tree, index=node_index):
         match node:
             case ast.Import(names=aliases):
                 enum_modules.update(alias.asname or alias.name for alias in aliases if alias.name == "enum")
@@ -1613,9 +1632,9 @@ def _unwrap_type_alias_value(value: ast.expr) -> ast.expr:
     return value
 
 
-def _alias_binding_counts(tree: ast.Module) -> dict[str, int]:
+def _alias_binding_counts(tree: ast.Module, *, node_index: NodeIndex | None = None) -> dict[str, int]:
     binding_counts: dict[str, int] = {}
-    for node in ast.walk(tree):
+    for node in walk_ast(tree, index=node_index):
         match node:
             case ast.Name(id=name, ctx=(ast.Store() | ast.Del())) | ast.arg(arg=name):
                 binding_counts[name] = binding_counts.get(name, 0) + 1

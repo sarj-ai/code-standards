@@ -65,6 +65,13 @@ def test_stage_warning_selector_is_typed_at_the_parser_boundary() -> None:
     assert args["selector"] == RuleSelector(RuleEngine.PYTHON, RuleId("no-print"))
 
 
+def test_check_concurrency_is_opt_in_and_bounded() -> None:
+    assert _parse(("check",))["jobs"] == 1
+    assert _parse(("check", "--jobs", "2"))["jobs"] == 2
+    result = CliRunner().invoke(build_app(), ["check", "--jobs", "3"])
+    assert result.exit_code == 2
+
+
 def test_promote_error_selector_is_typed_at_the_parser_boundary() -> None:
     args = _parse(("maintain", "rules", "promote-error", "python:no-print"))
 

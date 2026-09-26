@@ -14,16 +14,18 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    parse_or_none,
 )
+from sarj_python_lint.rules._ast_index import walk as walk_ast
 from sarj_python_lint.rules._ast_position import AstPosition, ast_position
 from sarj_python_lint.rules._imports import ImportIndex
-from sarj_python_lint.rules._paths import is_generated, is_test_path
+from sarj_python_lint.rules._paths import is_test_path
 
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator
-    from pathlib import Path
+
+    from sarj_python_lint._file_context import PythonFileContext
+    from sarj_python_lint.rules._ast_index import NodeIndex
 
 
 _OS = frozenset({"os"})
@@ -98,16 +100,19 @@ class PreferMonkeypatchForProcessStateInTest(Rule):
     description = documentation.summary
 
     @override
-    def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if not is_test_path(path) or is_generated(path, source):
+    def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
+        path = context.path
+        if not is_test_path(path) or context.generated:
             return []
-        tree = parse_or_none(path, source)
+        tree = context.tree
         if tree is None:
             return []
 
-        module_imports = ImportIndex.from_tree(tree, module_scope_only=True)
+        module_imports = context.module_imports
         mutations = [
-            mutation for function in _functions(tree) for mutation in _function_mutations(function, module_imports)
+            mutation
+            for function in _functions(tree, node_index=context.node_index)
+            for mutation in _function_mutations(function, module_imports)
         ]
         diagnostics = [
             Diagnostic(
@@ -127,8 +132,10 @@ class PreferMonkeypatchForProcessStateInTest(Rule):
         return diagnostics
 
 
-def _functions(tree: ast.Module) -> Iterator[ast.FunctionDef | ast.AsyncFunctionDef]:
-    for node in ast.walk(tree):
+def _functions(
+    tree: ast.Module, *, node_index: NodeIndex | None = None
+) -> Iterator[ast.FunctionDef | ast.AsyncFunctionDef]:
+    for node in walk_ast(tree, index=node_index):
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             yield node
 
@@ -273,7 +280,7 @@ def _import_root_rebound_before(
 ) -> bool:
     roots = {
         node.id
-        for node in ast.walk(use)
+        for node in walk_ast(use)
         if isinstance(node, ast.Name) and (node.id in module_imports.bindings or node.id in local_imports.bindings)
     }
     parameters = {
@@ -342,7 +349,7 @@ def _restored_for_try(
 
 def _descendants(statements: Iterable[ast.stmt]) -> Iterator[ast.AST]:
     for statement in statements:
-        yield from ast.walk(statement)
+        yield from walk_ast(statement)
 
 
 def _same_state(left: _Mutation, right: _Mutation) -> bool:
@@ -365,5 +372,5 @@ def _finalbody_removes_path(
         and bool(node.args)
         and ast.dump(node.args[0], include_attributes=False) == identity
         for statement in statements
-        for node in ast.walk(statement)
+        for node in walk_ast(statement)
     )

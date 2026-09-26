@@ -14,15 +14,15 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    parse_or_none,
 )
 from sarj_python_lint.rules._ast_index import nodes, walk
 from sarj_python_lint.rules._imports import ImportIndex
-from sarj_python_lint.rules._paths import is_generated, is_test_path
+from sarj_python_lint.rules._paths import is_test_path
 
 
 if TYPE_CHECKING:
-    from pathlib import Path
+    from sarj_python_lint._file_context import PythonFileContext
+    from sarj_python_lint.rules._ast_index import NodeIndex
 
 
 _MOCK_MODULE = "unittest.mock"
@@ -214,10 +214,11 @@ class MockWithoutSpec(Rule):
     description: str = documentation.summary
 
     @override
-    def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if not is_test_path(path) or is_generated(path, source):
+    def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
+        path = context.path
+        if not is_test_path(path) or context.generated:
             return []
-        tree = parse_or_none(path, source)
+        tree = context.tree
         if tree is None:
             return []
 
@@ -235,7 +236,9 @@ class MockWithoutSpec(Rule):
                 message=_diagnostic_message(label),
                 severity=Severity.WARNING,
             )
-            for node, label in _unspecced_calls(tree, names, pytest_mocker, _FileFacts.from_tree(tree))
+            for node, label in _unspecced_calls(
+                tree, names, pytest_mocker, _FileFacts.from_tree(tree), node_index=context.node_index
+            )
         ]
         diags.sort(key=lambda d: (d.line, d.col))
         return diags
@@ -528,11 +531,13 @@ def _looks_like_class_name(name: str) -> bool:
     return bool(name) and name[0].isupper()
 
 
-def _has_unshadowed_sys_import(tree: ast.Module) -> bool:
+def _has_unshadowed_sys_import(tree: ast.Module, *, node_index: NodeIndex | None = None) -> bool:
     imported = any(
-        alias.name == "sys" and alias.asname is None for node in nodes(tree, ast.Import) for alias in node.names
+        alias.name == "sys" and alias.asname is None
+        for node in nodes(tree, ast.Import, index=node_index)
+        for alias in node.names
     )
-    return imported and "sys" not in _shadowed_mock_bindings(tree, {"sys"})
+    return imported and "sys" not in _shadowed_mock_bindings(tree, {"sys"}, node_index=node_index)
 
 
 def _is_sys_modules_subscript(target: ast.expr | None) -> bool:
@@ -620,9 +625,18 @@ def _module_shadowed_bindings(tree: ast.Module, imported: set[str]) -> set[str]:
     return rebound & imported
 
 
-def _shadowed_mock_bindings(tree: ast.Module, imported: set[str]) -> set[str]:
+def _shadowed_mock_bindings(tree: ast.Module, imported: set[str], *, node_index: NodeIndex | None = None) -> set[str]:
     rebound: set[str] = set()
-    for node in nodes(tree, ast.Name, ast.arg, ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.ExceptHandler):
+    for node in nodes(
+        tree,
+        ast.Name,
+        ast.arg,
+        ast.FunctionDef,
+        ast.AsyncFunctionDef,
+        ast.ClassDef,
+        ast.ExceptHandler,
+        index=node_index,
+    ):
         match node:
             case ast.Name(id=name, ctx=ast.Store()) | ast.arg(arg=name):
                 rebound.add(name)
@@ -729,9 +743,11 @@ def _unspecced_calls(
     names: _MockNames,
     pytest_mocker: dict[ast.Call, str],
     facts: _FileFacts,
+    *,
+    node_index: NodeIndex | None = None,
 ) -> list[_UnspeccedCall]:
     hits: list[_UnspeccedCall] = []
-    for node in nodes(tree, ast.Call):
+    for node in nodes(tree, ast.Call, index=node_index):
         symbol = names.resolve(node.func) or pytest_mocker.get(node)
         if symbol is None:
             continue

@@ -14,15 +14,14 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    parse_or_none,
 )
 from sarj_python_lint.rules._ast_index import nodes
-from sarj_python_lint.rules._imports import ImportIndex
-from sarj_python_lint.rules._paths import is_generated
 
 
 if TYPE_CHECKING:
-    from pathlib import Path
+    from sarj_python_lint._file_context import PythonFileContext
+    from sarj_python_lint.rules._ast_index import NodeIndex
+    from sarj_python_lint.rules._imports import ImportIndex
 
 
 # A dispatch needs at least this many real (non-wildcard) arms to be flagged.
@@ -105,21 +104,22 @@ class PreferMatchAssertNever(Rule):
     description = documentation.summary
 
     @override
-    def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if is_generated(path, source):
+    def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
+        path = context.path
+        if context.generated:
             return []
-        tree = parse_or_none(path, source)
+        tree = context.tree
         if tree is None:
             return []
         module_classdefs = _module_scope_classdefs(tree)
-        imports = ImportIndex.from_tree(tree)
+        imports = context.imports
         local_enums = _local_enum_names(module_classdefs, imports, tree)
         enum_members = _enum_members(module_classdefs, local_enums)
         diags: list[Diagnostic] = []
         consumed_elifs: set[int] = set()
-        for node in nodes(tree, ast.Match, ast.If):
+        for node in context.nodes(ast.Match, ast.If):
             if isinstance(node, ast.Match):
-                enum_name = _annotated_local_enum(tree, node.subject, node, local_enums)
+                enum_name = _annotated_local_enum(tree, node.subject, node, local_enums, node_index=context.node_index)
                 wildcard = _silent_enum_wildcard(node, enum_name, enum_members)
                 if wildcard is not None:
                     diags.append(
@@ -138,7 +138,7 @@ class PreferMatchAssertNever(Rule):
             else:
                 if id(node) in consumed_elifs:
                     continue
-                enum_name = _silent_enum_chain(tree, node, enum_members, consumed_elifs)
+                enum_name = _silent_enum_chain(tree, node, enum_members, consumed_elifs, node_index=context.node_index)
                 if enum_name is not None:
                     diags.append(
                         Diagnostic(
@@ -183,12 +183,14 @@ def _annotated_local_enum(
     subject: ast.expr,
     anchor: ast.stmt,
     local_enums: frozenset[str],
+    *,
+    node_index: NodeIndex | None = None,
 ) -> str | None:
     if not isinstance(subject, ast.Name):
         return None
     scopes = [
         scope
-        for scope in nodes(tree, ast.FunctionDef, ast.AsyncFunctionDef)
+        for scope in nodes(tree, ast.FunctionDef, ast.AsyncFunctionDef, index=node_index)
         if scope.lineno <= anchor.lineno <= (scope.end_lineno or scope.lineno)
     ]
     if not scopes:
@@ -324,6 +326,8 @@ def _silent_enum_chain(
     head: ast.If,
     enum_members: dict[str, frozenset[str]],
     consumed_elifs: set[int],
+    *,
+    node_index: NodeIndex | None = None,
 ) -> str | None:
     local_enums = frozenset(enum_members)
     if not local_enums:
@@ -360,7 +364,7 @@ def _silent_enum_chain(
         return None
     if enum_name is None or first_target is None:
         return None
-    if _annotated_local_enum(tree, first_target, head, local_enums) != enum_name:
+    if _annotated_local_enum(tree, first_target, head, local_enums, node_index=node_index) != enum_name:
         return None
     consumed_elifs.update(map(id, child_elifs))
     return enum_name

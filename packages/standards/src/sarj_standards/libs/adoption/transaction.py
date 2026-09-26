@@ -156,11 +156,12 @@ class FileTransaction:
     before: dict[Path, FileSnapshot]
     written: dict[Path, bytes | None]
     absent_parents: set[Path]
+    explicit_only: bool = False
 
     @classmethod
-    def capture(cls, root: Path, extra: tuple[Path, ...] = ()) -> Self:
+    def capture(cls, root: Path, extra: tuple[Path, ...] = (), *, explicit_only: bool = False) -> Self:
         resolved = root.resolve()
-        candidates = _capture_candidates(resolved, extra)
+        candidates = set(extra) if explicit_only else _capture_candidates(resolved, extra)
         before: dict[Path, FileSnapshot] = {}
         absent_parents: set[Path] = set()
         for path in candidates:
@@ -178,7 +179,13 @@ class FileTransaction:
                 raise OSError(msg)
             before[path] = _snapshot(path)
             absent_parents.update(_absent_parents(resolved, path.parent))
-        return cls(resolved, before, {}, absent_parents)
+        return cls(resolved, before, {}, absent_parents, explicit_only)
+
+    def write_text(self, path: Path, contents: str) -> None:
+        snapshot = self.before[path]
+        assert_expected(self.root, path, self.written.get(path, snapshot.contents))
+        atomic_write_text(self.root, path, contents)
+        self.written[path] = contents.encode("utf-8")
 
     def track(self, *paths: Path) -> None:
         for path in paths:
@@ -195,6 +202,8 @@ class FileTransaction:
     def rollback(self) -> RollbackReport:
         issues: list[RollbackIssue] = []
         for path, snapshot in self.before.items():
+            if self.explicit_only and path not in self.written:
+                continue
             expected = self.written.get(path, _UNTRACKED)
             issue = _restore_path(self.root, path, snapshot, expected)
             if issue is not None:

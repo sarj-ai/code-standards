@@ -13,14 +13,13 @@ from sarj_python_lint.rule_base import (
     RuleCategory,
     RuleDocumentation,
     RuleExample,
-    parse_or_none,
 )
-from sarj_python_lint.rules._imports import ImportIndex
-from sarj_python_lint.rules._paths import is_generated, is_test_path
+from sarj_python_lint.rules._paths import is_test_path
 
 
 if TYPE_CHECKING:
-    from pathlib import Path
+    from sarj_python_lint._file_context import PythonFileContext
+    from sarj_python_lint.rules._imports import ImportIndex
 
 
 _PYDANTIC_SOURCES = frozenset({"pydantic"})
@@ -105,13 +104,14 @@ class NoFrozenAfterValidatorFieldWrite(Rule):
     description = documentation.summary
 
     @override
-    def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if is_test_path(path) or is_generated(path, source):
+    def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
+        path = context.path
+        if is_test_path(path) or context.generated:
             return []
-        tree = parse_or_none(path, source)
+        tree = context.tree
         if tree is None:
             return []
-        imports = ImportIndex.from_tree(tree)
+        imports = context.imports
         diagnostics: list[Diagnostic] = []
 
         def collect_validator_writes(class_node: ast.ClassDef, fields: frozenset[str]) -> None:
@@ -135,7 +135,7 @@ class NoFrozenAfterValidatorFieldWrite(Rule):
                     for target in _declared_field_writes(statement, receiver, fields)
                 )
 
-        for class_node in (node for node in ast.walk(tree) if isinstance(node, ast.ClassDef)):
+        for class_node in (node for node in context.nodes(ast.AST) if isinstance(node, ast.ClassDef)):
             if not _is_frozen_direct_model(class_node, imports):
                 continue
             fields = _direct_public_fields(class_node, imports)

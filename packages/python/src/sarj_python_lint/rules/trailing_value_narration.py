@@ -17,8 +17,8 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    parse_or_none,
 )
+from sarj_python_lint.rules._ast_index import walk as walk_ast
 from sarj_python_lint.rules._comments import (
     code_tokens,
     has_external_reference,
@@ -26,11 +26,11 @@ from sarj_python_lint.rules._comments import (
     stem,
     trailing_comments,
 )
-from sarj_python_lint.rules._paths import is_generated
 
 
 if TYPE_CHECKING:
-    from pathlib import Path
+    from sarj_python_lint._file_context import PythonFileContext
+    from sarj_python_lint.rules._ast_index import NodeIndex
 
 
 # A number that is not part of an identifier or a dotted attribute path.
@@ -204,8 +204,10 @@ class TrailingValueNarration(Rule):
     description: str = documentation.summary
 
     @override
-    def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if is_generated(path, source):
+    def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
+        path = context.path
+        source = context.source
+        if context.generated:
             return []
         try:
             trailing = trailing_comments(source)
@@ -214,11 +216,11 @@ class TrailingValueNarration(Rule):
             return []
         if not trailing:
             return []
-        tree = parse_or_none(path, source)
+        tree = context.tree
         if tree is None:
             return []
-        lines = source.splitlines()
-        assignments = _numeric_assignments(tree)
+        lines = context.source_lines
+        assignments = _numeric_assignments(tree, node_index=context.node_index)
         diags: list[Diagnostic] = []
         for line, col, body in trailing:
             if line > len(lines) or line in nested:
@@ -241,10 +243,10 @@ class TrailingValueNarration(Rule):
         return diags
 
 
-def _numeric_assignments(tree: ast.AST) -> dict[int, frozenset[str]]:
+def _numeric_assignments(tree: ast.AST, *, node_index: NodeIndex | None = None) -> dict[int, frozenset[str]]:
     statements_per_line: dict[int, int] = {}
     candidates: dict[int, list[frozenset[str]]] = {}
-    for statement in ast.walk(tree):
+    for statement in walk_ast(tree, index=node_index):
         if not isinstance(statement, ast.stmt):
             continue
         statements_per_line[statement.lineno] = statements_per_line.get(statement.lineno, 0) + 1

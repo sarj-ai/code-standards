@@ -17,15 +17,17 @@ from sarj_python_lint.rule_base import (
     RuleExample,
     Severity,
     is_suppressed,
-    parse_or_none,
 )
-from sarj_python_lint.rules._ast_index import nodes
+from sarj_python_lint.rules._ast_index import nodes, walk as walk_ast
 from sarj_python_lint.rules._imports import ImportIndex
 from sarj_python_lint.rules._paths import is_generated, is_test_path, is_test_support_path
 
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+    from sarj_python_lint._file_context import PythonFileContext
+    from sarj_python_lint.rules._ast_index import NodeIndex
 
 
 _JSON_MODULES = frozenset({"json", "orjson", "rapidjson", "ujson"})
@@ -151,17 +153,19 @@ class RequirePydanticForExternalJson(Rule):
     description = documentation.summary
 
     @override
-    def check(self, path: Path, source: str) -> list[Diagnostic]:
+    def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
+        path = context.path
+        source = context.source
         if _excluded(path, source) or ("loads" not in source and ".json(" not in source):
             return []
-        tree = parse_or_none(path, source)
+        tree = context.tree
         if tree is None:
             return []
-        imports = ImportIndex.from_tree(tree)
-        source_lines = source.splitlines()
-        summaries = _module_summaries(tree, imports, source_lines)
+        imports = context.imports
+        source_lines = context.source_lines
+        summaries = _module_summaries(tree, imports, source_lines, node_index=context.node_index)
         findings: list[tuple[ast.expr, ast.Call]] = []
-        for function in _functions(tree):
+        for function in _functions(tree, node_index=context.node_index):
             findings.extend(_function_findings(function, imports, summaries))
 
         first_by_origin: dict[int, tuple[ast.expr, ast.Call]] = {}
@@ -185,11 +189,17 @@ class RequirePydanticForExternalJson(Rule):
         ]
 
 
-def _functions(tree: ast.Module) -> tuple[ast.FunctionDef | ast.AsyncFunctionDef, ...]:
-    return tuple(node for node in ast.walk(tree) if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)))
+def _functions(
+    tree: ast.Module, *, node_index: NodeIndex | None = None
+) -> tuple[ast.FunctionDef | ast.AsyncFunctionDef, ...]:
+    return tuple(
+        node for node in walk_ast(tree, index=node_index) if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    )
 
 
-def _module_summaries(tree: ast.Module, imports: ImportIndex, source_lines: list[str]) -> _ModuleSummaries:
+def _module_summaries(
+    tree: ast.Module, imports: ImportIndex, source_lines: list[str], *, node_index: NodeIndex | None = None
+) -> _ModuleSummaries:
     binding_counts = _suite_binding_counts(tree.body)
     schema_names = _marshmallow_schema_names(tree, imports, binding_counts)
     module_validator_names = _jsonschema_validator_names_from_statements(
@@ -208,7 +218,7 @@ def _module_summaries(tree: ast.Module, imports: ImportIndex, source_lines: list
         if function.name in duplicate_names:
             continue
         _summarize_function(function, imports, module_validator_names, source_lines, decoders, records=records)
-    response_callables = _response_callables(tree, imports)
+    response_callables = _response_callables(tree, imports, node_index=node_index)
     return _ModuleSummaries(
         decoders,
         records,
@@ -217,7 +227,7 @@ def _module_summaries(tree: ast.Module, imports: ImportIndex, source_lines: list
         response_callables.methods,
         response_callables.client_methods,
         response_callables.function_owners,
-        _http_client_attribute_names(tree, imports),
+        _http_client_attribute_names(tree, imports, node_index=node_index),
         schema_names,
         _marshmallow_schema_instances(tree, imports, schema_names, binding_counts),
         module_validator_names,
@@ -226,7 +236,9 @@ def _module_summaries(tree: ast.Module, imports: ImportIndex, source_lines: list
     )
 
 
-def _response_callables(tree: ast.Module, imports: ImportIndex) -> _ResponseCallables:
+def _response_callables(
+    tree: ast.Module, imports: ImportIndex, *, node_index: NodeIndex | None = None
+) -> _ResponseCallables:
     rebound_names = _module_rebound_names(tree)
     module_declarations: dict[str, list[ast.FunctionDef | ast.AsyncFunctionDef]] = {}
     for statement in tree.body:
@@ -241,7 +253,7 @@ def _response_callables(tree: ast.Module, imports: ImportIndex) -> _ResponseCall
     response_methods: set[tuple[int, str]] = set()
     client_methods: set[tuple[int, str]] = set()
     function_owners: dict[int, int] = {}
-    for class_node in nodes(tree, ast.ClassDef):
+    for class_node in nodes(tree, ast.ClassDef, index=node_index):
         _record_class_response_methods(class_node, imports, response_methods, client_methods, function_owners)
     return _ResponseCallables(
         response_functions,
@@ -267,7 +279,7 @@ def _suite_rebound_names(statements: list[ast.stmt]) -> frozenset[str]:
         else:
             names.update(
                 node.id
-                for node in ast.walk(statement)
+                for node in walk_ast(statement)
                 if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store)
             )
     return frozenset(names)
@@ -465,9 +477,11 @@ def _returns_http_response(function: ast.FunctionDef | ast.AsyncFunctionDef, imp
     )
 
 
-def _http_client_attribute_names(tree: ast.Module, imports: ImportIndex) -> frozenset[_OwnedName]:
+def _http_client_attribute_names(
+    tree: ast.Module, imports: ImportIndex, *, node_index: NodeIndex | None = None
+) -> frozenset[_OwnedName]:
     owned_attributes: set[_OwnedName] = set()
-    for class_node in nodes(tree, ast.ClassDef):
+    for class_node in nodes(tree, ast.ClassDef, index=node_index):
         assignments: dict[str, list[bool]] = {}
         for function in class_node.body:
             if not isinstance(function, (ast.FunctionDef, ast.AsyncFunctionDef)):
@@ -567,14 +581,14 @@ def _ambiguous_binding_names(scope: tuple[ast.AST, ...]) -> frozenset[str]:
 
 def _stored_names(node: ast.expr) -> frozenset[str]:
     return frozenset(
-        child.id for child in ast.walk(node) if isinstance(child, ast.Name) and isinstance(child.ctx, ast.Store)
+        child.id for child in walk_ast(node) if isinstance(child, ast.Name) and isinstance(child.ctx, ast.Store)
     )
 
 
 def _pattern_names(pattern: ast.pattern) -> frozenset[str]:
     return frozenset(
         name
-        for child in ast.walk(pattern)
+        for child in walk_ast(pattern)
         for name in (
             child.name
             if isinstance(child, (ast.MatchAs, ast.MatchStar))

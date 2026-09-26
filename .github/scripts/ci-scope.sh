@@ -28,6 +28,7 @@ local_sources = {
     "sarj-python-lint": "../python",
     "sarj-sql-lint": "../sql",
     "sarj-iac-lint": "../iac",
+    "sarj-rule-contracts": "../contracts",
 }
 documents = []
 for revision in (base, head):
@@ -36,7 +37,7 @@ for revision in (base, head):
     if path.endswith("pyproject.toml"):
         del document["project"]["version"]
         document["project"]["dependencies"] = [
-            re.sub(r"^(sarj-(?:python|sql|iac)-lint)==[0-9]+(?:\.[0-9]+)*$", r"\1", dependency)
+            re.sub(r"^(sarj-(?:python|sql|iac)-lint|sarj-rule-contracts)==[0-9]+(?:\.[0-9]+)*$", r"\1", dependency)
             for dependency in document["project"].get("dependencies", [])
         ]
     else:
@@ -87,6 +88,8 @@ else
         select_scopes "${scopes[@]}" ;;
       packages/bootstrap/*)
         select_scopes bootstrap standards docs ;;
+      packages/contracts/*)
+        select_scopes python sql iac standards docs ;;
       packages/python/*)
         select_scopes python standards docs ;;
       packages/sql/*)

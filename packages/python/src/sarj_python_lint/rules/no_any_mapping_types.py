@@ -17,12 +17,14 @@ from sarj_python_lint.rule_base import (
     is_suppressed,
 )
 from sarj_python_lint.rules._annotation_semantics import AnnotationSemantics, scope_bound_names
-from sarj_python_lint.rules._paths import is_generated
+from sarj_python_lint.rules._ast_index import walk as walk_ast
 
 
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from sarj_python_lint._file_context import PythonFileContext
+    from sarj_python_lint.rules._ast_index import NodeIndex
     from sarj_python_lint.rules._imports import ImportIndex
 
 
@@ -97,8 +99,10 @@ class NoAnyMappingTypes(Rule):
     description = documentation.summary
 
     @override
-    def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if is_generated(path, source) or _is_vendor_path(path):
+    def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
+        path = context.path
+        source = context.source
+        if context.generated or _is_vendor_path(path):
             return []
         try:
             tree = ast.parse(source, filename=str(path), type_comments=True)
@@ -106,12 +110,15 @@ class NoAnyMappingTypes(Rule):
             return []
         semantics = AnnotationSemantics.from_tree(tree)
         imports = semantics.imports
-        parents = {id(child): parent for parent in ast.walk(tree) for child in ast.iter_child_nodes(parent)}
+        parents = {id(child): parent for parent in walk_ast(tree) for child in ast.iter_child_nodes(parent)}
         scope_cache: dict[int, frozenset[str]] = {}
-        lines = source.splitlines()
+        lines = context.source_lines
         findings: list[Diagnostic] = []
         seen: set[tuple[int, int]] = set()
-        expressions = [*_type_expressions(tree, imports, parents, scope_cache), *_implicit_mapping_aliases(tree)]
+        expressions = [
+            *_type_expressions(tree, imports, parents, scope_cache, node_index=context.node_index),
+            *_implicit_mapping_aliases(tree),
+        ]
         for expression, owner in expressions:
             for mapping, location in _unshadowed_any_mappings(expression, owner, semantics, parents, scope_cache):
                 key = (location.lineno, location.col_offset)
@@ -179,7 +186,7 @@ def _annotation_contains_name(annotation: ast.expr, name: str) -> bool:
             parsed = ast.parse(annotation.value, mode="eval").body
         except SyntaxError:
             return False
-    return any(isinstance(node, ast.Name) and node.id == name for node in ast.walk(parsed))
+    return any(isinstance(node, ast.Name) and node.id == name for node in walk_ast(parsed))
 
 
 def _unshadowed_any_mappings(
@@ -192,7 +199,7 @@ def _unshadowed_any_mappings(
     parsed = semantics.parse(expression)
     if parsed is None:
         return []
-    names = {node.id for node in ast.walk(parsed) if isinstance(node, ast.Name)}
+    names = {node.id for node in walk_ast(parsed) if isinstance(node, ast.Name)}
     if not names.isdisjoint(_shadowed_names(owner, parents, scope_cache)):
         return []
     return [
@@ -206,14 +213,18 @@ def _type_expressions(
     imports: ImportIndex,
     parents: dict[int, ast.AST],
     scope_cache: dict[int, frozenset[str]],
+    *,
+    node_index: NodeIndex | None = None,
 ) -> list[tuple[ast.expr, ast.AST]]:
     expressions = [
-        (annotation, node) for node in ast.walk(tree) if (annotation := _node_annotation(node, imports)) is not None
+        (annotation, node)
+        for node in walk_ast(tree, index=node_index)
+        if (annotation := _node_annotation(node, imports)) is not None
     ]
-    for node in ast.walk(tree):
+    for node in walk_ast(tree, index=node_index):
         if not isinstance(node, ast.Call) or not node.args:
             continue
-        function_names = {child.id for child in ast.walk(node.func) if isinstance(child, ast.Name)}
+        function_names = {child.id for child in walk_ast(node.func) if isinstance(child, ast.Name)}
         if not function_names.isdisjoint(_shadowed_names(node, parents, scope_cache)):
             continue
         if imports.resolves(node.func, sources=_TYPING_SOURCES, symbol="cast") or imports.resolves(
@@ -309,7 +320,7 @@ def _any_mappings(annotation: ast.expr, semantics: AnnotationSemantics) -> list[
     resolved = semantics.parse(annotation)
     if resolved is None:
         return []
-    return [node for node in ast.walk(resolved) if isinstance(node, ast.Subscript) and _is_any_mapping(node, semantics)]
+    return [node for node in walk_ast(resolved) if isinstance(node, ast.Subscript) and _is_any_mapping(node, semantics)]
 
 
 def _is_any_mapping(node: ast.Subscript, semantics: AnnotationSemantics) -> bool:

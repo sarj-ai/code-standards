@@ -14,15 +14,14 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    parse_or_none,
 )
-from sarj_python_lint.rules._ast_index import children, nodes
-from sarj_python_lint.rules._paths import is_generated
+from sarj_python_lint.rules._ast_index import children
 
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
-    from pathlib import Path
+
+    from sarj_python_lint._file_context import PythonFileContext
 
 
 _ERROR_COMPLEXITY = 20
@@ -238,11 +237,12 @@ class NoExcessiveCognitiveComplexity(Rule):
     description = documentation.summary
 
     @override
-    def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if is_generated(path, source) or (tree := parse_or_none(path, source)) is None:
+    def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
+        path = context.path
+        if context.generated or context.tree is None:
             return []
         diagnostics: list[Diagnostic] = []
-        for function in nodes(tree, ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda):
+        for function in context.nodes(ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda):
             points = function_complexity(function)
             score = sum(point.amount for point in points)
             if score <= _ERROR_COMPLEXITY:

@@ -16,11 +16,14 @@ from sarj_python_lint.rule_base import (
     Severity,
     parse_or_none,
 )
+from sarj_python_lint.rules._ast_index import walk as walk_ast
 from sarj_python_lint.rules._prose_budget import groups
 
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+    from sarj_python_lint._file_context import PythonFileContext
 
 
 @final
@@ -81,7 +84,9 @@ class NoTypedDocSections(Rule):
     description = documentation.summary
 
     @override
-    def check(self, path: Path, source: str) -> list[Diagnostic]:
+    def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
+        path = context.path
+        source = context.source
         excluded_lines = _public_contract_docstring_lines(path, source)
         return [
             Diagnostic(
@@ -109,9 +114,9 @@ def _public_contract_docstring_lines(path: Path, source: str) -> frozenset[int]:
     tree = parse_or_none(path, source)
     if tree is None:
         return frozenset()
-    parents = {id(child): parent for parent in ast.walk(tree) for child in ast.iter_child_nodes(parent)}
+    parents = {id(child): parent for parent in walk_ast(tree) for child in ast.iter_child_nodes(parent)}
     excluded: set[int] = set()
-    for node in ast.walk(tree):
+    for node in walk_ast(tree):
         if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) or not node.body:
             continue
         first = node.body[0]
