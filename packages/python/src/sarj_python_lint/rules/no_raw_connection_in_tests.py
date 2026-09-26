@@ -33,7 +33,7 @@ class NoRawConnectionInTests(Rule):
     id = "no-raw-connection-in-tests"
     code = "SARJ429"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        default_level=Severity.WARNING,
+        default_level=Severity.ERROR,
         summary="Do not acquire raw database connections in tests.",
         rationale=(
             "Tests that reach through a pool couple assertions and setup to persistence internals, bypass the "
