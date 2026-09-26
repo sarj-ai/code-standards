@@ -127,6 +127,41 @@ def test_thing():
     assert _check(src) == []
 
 
+@pytest.mark.parametrize("parent", ["helper", "test_parent"])
+def test_nested_test_named_closures_are_exempt(parent: str) -> None:
+    source = f"""
+def {parent}():
+    def test_one():
+        return UpsertCall({_NINE_KWARGS})
+    def test_two():
+        return UpsertCall({_NINE_KWARGS})
+    return test_one, test_two
+"""
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    ("imports", "decorator"),
+    [
+        ("import pytest_asyncio", "pytest_asyncio.fixture"),
+        ("import pytest_asyncio as pa", "pa.fixture()"),
+        ("from pytest_asyncio import fixture", "fixture"),
+        ("from pytest_asyncio import fixture as af", "af()"),
+    ],
+)
+def test_async_fixture_with_test_name_is_exempt(imports: str, decorator: str) -> None:
+    source = f"""
+{imports}
+
+@{decorator}
+async def test_records():
+    first = UpsertCall({_NINE_KWARGS})
+    second = UpsertCall({_NINE_KWARGS})
+    return first, second
+"""
+    assert _check(source) == []
+
+
 def test_construction_inside_a_lambda_in_a_test_is_exempt():
     src = f"""
 def test_thing():

@@ -21,6 +21,29 @@ def test_specific_test_docstring_finding_suppresses_generic_restatements() -> No
     assert [finding.code for finding in deduplicate_diagnostics(diagnostics)] == ["SARJ088"]
 
 
+def test_repeated_composition_owns_wide_setup_at_same_call() -> None:
+    diagnostics = [_diagnostic("SARJ045"), _diagnostic("SARJ457"), _diagnostic("SARJ045", line=4)]
+
+    assert [(finding.code, finding.line) for finding in deduplicate_diagnostics(diagnostics)] == [
+        ("SARJ457", 3),
+        ("SARJ045", 4),
+    ]
+
+
+def test_repeated_body_owns_composition_only_inside_its_test() -> None:
+    source = "def test_one():\n    service = build()\n    service.run()\n\ndef test_two():\n    service = build()\n"
+    diagnostics = [
+        _diagnostic("SARJ066", line=1),
+        _diagnostic("SARJ457", line=2),
+        _diagnostic("SARJ457", line=6),
+    ]
+
+    assert [(finding.code, finding.line) for finding in deduplicate_diagnostics(diagnostics, source=source)] == [
+        ("SARJ066", 1),
+        ("SARJ457", 6),
+    ]
+
+
 def test_typed_section_finding_suppresses_per_section_twins() -> None:
     diagnostics = [_diagnostic("SARJ086"), _diagnostic("SARJ087"), _diagnostic("SARJ092")]
 

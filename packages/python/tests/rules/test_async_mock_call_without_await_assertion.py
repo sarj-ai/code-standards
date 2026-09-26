@@ -198,16 +198,16 @@ def test_reports_one_diagnostic_for_redundant_call_assertions() -> None:
 
 
 @pytest.mark.parametrize("suppression", ["", "  # sarj-noqa: SARJ456 — contract checks scheduling before awaiting"])
-def test_cli_is_advisory_and_supports_scheduling_exceptions(
+def test_cli_blocks_missing_await_evidence_and_supports_scheduling_exceptions(
     tmp_path: Path, capsys: CaptureFixture[str], suppression: str
 ) -> None:
     source = f"from unittest.mock import AsyncMock\ndef test_schedules():\n    send = AsyncMock()\n    schedule(send)\n    send.assert_called_once(){suppression}\n"
     path = tmp_path / "test_delivery.py"
     path.write_text(source)
 
-    assert main(["check", "--rule", "async-mock-call-without-await-assertion", str(path)]) == 0
+    assert main(["check", "--rule", "async-mock-call-without-await-assertion", str(path)]) == (0 if suppression else 1)
     output = capsys.readouterr()
-    assert output.out.count("SARJ456 warning:") == (0 if suppression else 1)
+    assert output.out.count("SARJ456 ") == (0 if suppression else 1)
     assert not output.err
 
 

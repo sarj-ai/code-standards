@@ -38,7 +38,7 @@ _DATA_METHODS = frozenset({"update"})
 # `mock.assert_called_once_with(a=1, ...)` builds nothing: it pins the exact call
 # the code under test made, so defaulting its keywords away deletes the assertion.
 _MOCK_ASSERTION_PREFIX = "assert_"
-_PYTEST_SOURCES = frozenset({"pytest"})
+_PYTEST_SOURCES = frozenset({"pytest", "pytest_asyncio"})
 _SIMPLE_NAMESPACE_SOURCES = frozenset({"types"})
 _MOCK_CALL_SOURCES = frozenset({"unittest.mock"})
 
@@ -60,7 +60,7 @@ class RepeatedKwargHeavyCallInTest(Rule):
     id: str = "repeated-kwarg-heavy-call-in-test"
     code: str = "SARJ045"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        default_level=Severity.WARNING,
+        default_level=Severity.ERROR,
         summary="Tests repeat at least seven explicit keyword names across calls to the same callee.",
         rationale=(
             "Large repeated argument lists duplicate incidental setup, bury scenario differences, and make signature "
@@ -154,7 +154,7 @@ class RepeatedKwargHeavyCallInTest(Rule):
                     "burying scenario differences in repeated setup. Extract a helper with defaults or a "
                     "parametrized case table; suppress SARJ045 when every argument is intentionally under test."
                 ),
-                severity=Severity.WARNING,
+                severity=Severity.ERROR,
             )
             for node, count, shared_count, occurrence_count in visitor.reportable_hits()
         ]
@@ -227,7 +227,7 @@ class _KwargHeavyVisitor(ast.NodeVisitor):
 
     def _in_test_function(self) -> bool:
         nearest = self._func_names[-1] if self._func_names else None
-        return nearest is not None and nearest.startswith("test_")
+        return len(self._func_names) == 1 and nearest is not None and nearest.startswith("test_")
 
 
 def _is_data_callable(func: ast.expr, imports: ImportIndex) -> bool:
