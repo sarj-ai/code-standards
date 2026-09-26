@@ -428,8 +428,11 @@ def test_disabled_external_capabilities_are_not_executed(monkeypatch: pytest.Mon
     (tmp_path / ".sarj-standards.toml").write_text(adopted.render(), encoding="utf-8")
     called: list[str] = []
 
-    def forbidden(_argv: Sequence[str], *, cwd: Path) -> external_module.ProcessOutput:
-        _ = cwd
+    def forbidden(
+        _argv: Sequence[str],
+        *,
+        cwd: Path,  # ruff: ignore[unused-function-argument] -- ProcessRunner fixes this keyword.
+    ) -> external_module.ProcessOutput:
         called.append("external")
         return external_module.ProcessOutput(0, "[]", "")
 

@@ -504,7 +504,10 @@ def _rule_selectors(
     )
 
 
-def validate_excluded_path(root: Path, pattern: str) -> str:
+def validate_excluded_path(
+    root: Path,  # ruff: ignore[unused-function-argument] -- Preserve the public exclusion validator keyword.
+    pattern: str,
+) -> str:
     normalized = pattern.replace("\\", "/")
     if normalized.startswith(("/", "!")) or ".." in normalized.split("/"):
         msg = f"manifest exclusion pattern must be a repository-relative denylist pattern: {pattern}"
@@ -515,7 +518,6 @@ def validate_excluded_path(root: Path, pattern: str) -> str:
     if normalized in {MANIFEST_NAME, f"**/{MANIFEST_NAME}"}:
         msg = "manifest exclusion cannot hide the Standards manifest"
         raise ValueError(msg)
-    _ = root
     return normalized
 
 

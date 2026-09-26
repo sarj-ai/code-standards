@@ -74,8 +74,11 @@ def test_doctor_leaves_maintainer_repository_policy_to_maintain_check(
     def clean(_args: object) -> int:
         return 0
 
-    def sync_cleanly(_args: object, *, next_steps: bool) -> int:
-        _ = next_steps
+    def sync_cleanly(
+        _args: object,
+        *,
+        next_steps: bool,  # ruff: ignore[unused-function-argument] -- The sync dispatcher fixes this keyword.
+    ) -> int:
         return 0
 
     def no_custom_rules(_root: Path, *, paths: Iterable[str]) -> int:

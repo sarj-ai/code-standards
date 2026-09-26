@@ -548,9 +548,8 @@ def test_highest_status_is_propagated(
         _registry: Mapping[str, type[object]],
         _files: Sequence[str],
         *,
-        extra_args: Sequence[str] = (),
+        extra_args: Sequence[str] = (),  # ruff: ignore[unused-function-argument] -- The lint runner fixes this keyword.
     ) -> int:
-        _ = extra_args
         return next(statuses)
 
     def clean_text(_files: Sequence[str]) -> int:
@@ -621,9 +620,8 @@ def test_noise_only_selects_comment_and_docstring_rules(monkeypatch: pytest.Monk
         registry: Mapping[str, type[object]],
         _files: Sequence[str],
         *,
-        extra_args: Sequence[str] = (),
+        extra_args: Sequence[str] = (),  # ruff: ignore[unused-function-argument] -- The lint runner fixes this keyword.
     ) -> int:
-        _ = extra_args
         selected.append(set(registry))
         return 0
 

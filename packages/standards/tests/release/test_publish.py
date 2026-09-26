@@ -10,8 +10,12 @@ from sarj_standards.libs.release import ProcessResult, publish_target
 def test_python_publish_builds_then_publishes_without_shell(tmp_path: Path) -> None:
     calls: list[tuple[tuple[str, ...], Path]] = []
 
-    def runner(argv: tuple[str, ...], *, cwd: Path, capture_output: bool = False) -> ProcessResult:
-        _ = capture_output
+    def runner(
+        argv: tuple[str, ...],
+        *,
+        cwd: Path,
+        capture_output: bool = False,  # ruff: ignore[unused-function-argument] -- ProcessRunner fixes this keyword.
+    ) -> ProcessResult:
         calls.append((argv, cwd))
         if argv[:2] == ("uv", "build"):
             destination = Path(argv[-1])
@@ -32,8 +36,12 @@ def test_python_publish_builds_then_publishes_without_shell(tmp_path: Path) -> N
 def test_bootstrap_publish_uses_the_python_artifact_path(tmp_path: Path) -> None:
     calls: list[tuple[tuple[str, ...], Path]] = []
 
-    def runner(argv: tuple[str, ...], *, cwd: Path, capture_output: bool = False) -> ProcessResult:
-        _ = capture_output
+    def runner(
+        argv: tuple[str, ...],
+        *,
+        cwd: Path,
+        capture_output: bool = False,  # ruff: ignore[unused-function-argument] -- ProcessRunner fixes this keyword.
+    ) -> ProcessResult:
         calls.append((argv, cwd))
         if argv[:2] == ("uv", "build"):
             destination = Path(argv[-1])
@@ -49,8 +57,12 @@ def test_bootstrap_publish_uses_the_python_artifact_path(tmp_path: Path) -> None
 def test_tsconfig_publish_uses_exact_native_command(tmp_path: Path) -> None:
     calls: list[tuple[tuple[str, ...], Path]] = []
 
-    def runner(argv: tuple[str, ...], *, cwd: Path, capture_output: bool = False) -> ProcessResult:
-        _ = capture_output
+    def runner(
+        argv: tuple[str, ...],
+        *,
+        cwd: Path,
+        capture_output: bool = False,  # ruff: ignore[unused-function-argument] -- ProcessRunner fixes this keyword.
+    ) -> ProcessResult:
         calls.append((argv, cwd))
         if argv[:2] == ("npm", "pack"):
             destination = Path(argv[-1])

@@ -26,14 +26,22 @@ def _manifests(root: Path) -> None:
     compatibility.write_text('version = "1.0.0"\n', encoding="utf-8")
 
 
-def _unchanged(argv: tuple[str, ...], *, cwd: Path, capture_output: bool = False) -> ProcessResult:
-    _ = argv, cwd, capture_output
+def _unchanged(
+    argv: tuple[str, ...],  # ruff: ignore[unused-function-argument] -- ProcessRunner fixes this keyword.
+    *,
+    cwd: Path,  # ruff: ignore[unused-function-argument] -- ProcessRunner fixes this keyword.
+    capture_output: bool = False,  # ruff: ignore[unused-function-argument] -- ProcessRunner fixes this keyword.
+) -> ProcessResult:
     return ProcessResult(0, "")
 
 
 def test_changed_release_targets_detects_only_manifest_version_lines(tmp_path: Path) -> None:
-    def runner(argv: tuple[str, ...], *, cwd: Path, capture_output: bool = False) -> ProcessResult:
-        _ = cwd, capture_output
+    def runner(
+        argv: tuple[str, ...],
+        *,
+        cwd: Path,  # ruff: ignore[unused-function-argument] -- ProcessRunner fixes this keyword.
+        capture_output: bool = False,  # ruff: ignore[unused-function-argument] -- ProcessRunner fixes this keyword.
+    ) -> ProcessResult:
         manifest = argv[-1]
         match manifest:
             case "packages/typescript/package.json":
@@ -53,8 +61,12 @@ def test_changed_release_targets_detects_only_manifest_version_lines(tmp_path: P
 
 
 def test_changed_release_targets_fails_closed_when_git_diff_fails(tmp_path: Path) -> None:
-    def runner(argv: tuple[str, ...], *, cwd: Path, capture_output: bool = False) -> ProcessResult:
-        _ = cwd, capture_output
+    def runner(
+        argv: tuple[str, ...],
+        *,
+        cwd: Path,  # ruff: ignore[unused-function-argument] -- ProcessRunner fixes this keyword.
+        capture_output: bool = False,  # ruff: ignore[unused-function-argument] -- ProcessRunner fixes this keyword.
+    ) -> ProcessResult:
         raise ProcessFailureError(argv, 128)
 
     with pytest.raises(ProcessFailureError) as raised:
@@ -67,8 +79,12 @@ def test_pending_release_targets_publish_only_current_versions_missing_from_regi
     _manifests(tmp_path)
     checked: list[str] = []
 
-    def runner(argv: tuple[str, ...], *, cwd: Path, capture_output: bool = False) -> ProcessResult:
-        _ = cwd, capture_output
+    def runner(
+        argv: tuple[str, ...],
+        *,
+        cwd: Path,  # ruff: ignore[unused-function-argument] -- ProcessRunner fixes this keyword.
+        capture_output: bool = False,  # ruff: ignore[unused-function-argument] -- ProcessRunner fixes this keyword.
+    ) -> ProcessResult:
         output = '+version = "2.0.0"\n' if argv[-1] == "packages/standards/pyproject.toml" else ""
         return ProcessResult(0, output)
 
@@ -95,8 +111,12 @@ def test_pending_release_targets_publish_only_current_versions_missing_from_regi
 def test_pending_standards_release_recovers_when_only_compatibility_project_is_missing(tmp_path: Path) -> None:
     _manifests(tmp_path)
 
-    def unchanged(argv: tuple[str, ...], *, cwd: Path, capture_output: bool = False) -> ProcessResult:
-        _ = argv, cwd, capture_output
+    def unchanged(
+        argv: tuple[str, ...],  # ruff: ignore[unused-function-argument] -- ProcessRunner fixes this keyword.
+        *,
+        cwd: Path,  # ruff: ignore[unused-function-argument] -- ProcessRunner fixes this keyword.
+        capture_output: bool = False,  # ruff: ignore[unused-function-argument] -- ProcessRunner fixes this keyword.
+    ) -> ProcessResult:
         return ProcessResult(0, "")
 
     pending = pending_release_targets(
@@ -114,8 +134,12 @@ def test_pending_standards_release_recovers_when_only_compatibility_project_is_m
 def test_pending_release_target_changed_but_already_public_is_a_noop(tmp_path: Path) -> None:
     _manifests(tmp_path)
 
-    def runner(argv: tuple[str, ...], *, cwd: Path, capture_output: bool = False) -> ProcessResult:
-        _ = cwd, capture_output
+    def runner(
+        argv: tuple[str, ...],
+        *,
+        cwd: Path,  # ruff: ignore[unused-function-argument] -- ProcessRunner fixes this keyword.
+        capture_output: bool = False,  # ruff: ignore[unused-function-argument] -- ProcessRunner fixes this keyword.
+    ) -> ProcessResult:
         output = '+version = "2.0.0"\n' if argv[-1] == "packages/python/pyproject.toml" else ""
         return ProcessResult(0, output)
 
@@ -134,8 +158,12 @@ def test_pending_release_target_changed_but_already_public_is_a_noop(tmp_path: P
 def test_pending_release_targets_fails_closed_when_registry_lookup_fails(tmp_path: Path) -> None:
     _manifests(tmp_path)
 
-    def runner(argv: tuple[str, ...], *, cwd: Path, capture_output: bool = False) -> ProcessResult:
-        _ = argv, cwd, capture_output
+    def runner(
+        argv: tuple[str, ...],  # ruff: ignore[unused-function-argument] -- ProcessRunner fixes this keyword.
+        *,
+        cwd: Path,  # ruff: ignore[unused-function-argument] -- ProcessRunner fixes this keyword.
+        capture_output: bool = False,  # ruff: ignore[unused-function-argument] -- ProcessRunner fixes this keyword.
+    ) -> ProcessResult:
         return ProcessResult(0, "")
 
     def unavailable(_requirement: RegistryRequirement) -> bool:

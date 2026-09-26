@@ -419,8 +419,11 @@ def test_scoped_baseline_update_normalizes_native_sarj_rule_source(
     )
     captured: list[tuple[object, object, object]] = []
 
-    def analyze(self: api.Standards, paths: object = None, **kwargs: object) -> AnalysisReport:
-        _ = self, paths
+    def analyze(
+        _self: api.Standards,
+        paths: object = None,  # ruff: ignore[unused-function-argument] -- Standards.analyze fixes this keyword.
+        **kwargs: object,
+    ) -> AnalysisReport:
         captured.append(
             (
                 kwargs.get("rules"),
@@ -592,8 +595,11 @@ def test_scoped_baseline_update_replaces_native_debt_for_canonical_selector(
         fingerprint="b" * 64,
     )
 
-    def analyze(self: api.Standards, paths: object = None, **kwargs: object) -> AnalysisReport:
-        _ = self, paths, kwargs
+    def analyze(
+        _self: api.Standards,
+        paths: object = None,  # ruff: ignore[unused-function-argument] -- Standards.analyze fixes this keyword.
+        **_kwargs: object,
+    ) -> AnalysisReport:
         return report_from_tools(tmp_path, (ToolReport(source, Completion.COMPLETE, (replacement,)),))
 
     monkeypatch.setattr(api.Standards, "analyze", analyze)  # sarj-noqa: SARJ445 -- intercepts baseline analyzer routing
@@ -651,8 +657,11 @@ def test_scoped_baseline_update_replaces_debt_recorded_under_a_catalogued_alias(
         fingerprint="b" * 64,
     )
 
-    def analyze(self: api.Standards, paths: object = None, **kwargs: object) -> AnalysisReport:
-        _ = self, paths, kwargs
+    def analyze(
+        _self: api.Standards,
+        paths: object = None,  # ruff: ignore[unused-function-argument] -- Standards.analyze fixes this keyword.
+        **_kwargs: object,
+    ) -> AnalysisReport:
         return report_from_tools(tmp_path, (ToolReport("sarj-iac-lint", Completion.COMPLETE, (replacement,)),))
 
     monkeypatch.setattr(api.Standards, "analyze", analyze)  # sarj-noqa: SARJ445 -- intercepts baseline analyzer routing
@@ -708,8 +717,11 @@ def test_scoped_baseline_update_replaces_plugin_qualified_eslint_alias_debt(
         fingerprint="b" * 64,
     )
 
-    def analyze(self: api.Standards, paths: object = None, **kwargs: object) -> AnalysisReport:
-        _ = self, paths, kwargs
+    def analyze(
+        _self: api.Standards,
+        paths: object = None,  # ruff: ignore[unused-function-argument] -- Standards.analyze fixes this keyword.
+        **_kwargs: object,
+    ) -> AnalysisReport:
         return report_from_tools(
             tmp_path,
             (ToolReport("eslint", Completion.COMPLETE, (replacement,)),),
@@ -912,8 +924,7 @@ def test_scoped_baseline_update_uses_manifest_verification_paths(
     (tmp_path / MANIFEST_NAME).write_text(adopted.render(), encoding="utf-8")
     captured: list[object] = []
 
-    def analyze_eslint(files: object, **kwargs: object) -> tuple[ToolReport, ...]:
-        _ = kwargs
+    def analyze_eslint(files: object, **_kwargs: object) -> tuple[ToolReport, ...]:
         captured.append(files)
         return ()
 
@@ -972,8 +983,7 @@ def test_scoped_baseline_update_includes_tracked_terraform_tests_outside_verific
     )
     captured: list[object] = []
 
-    def analyze(self: api.Standards, paths: object = None, **kwargs: object) -> AnalysisReport:
-        _ = self, kwargs
+    def analyze(_self: api.Standards, paths: object = None, **_kwargs: object) -> AnalysisReport:
         captured.append(paths)
         diagnostics = (finding,) if isinstance(paths, list) and str(source) in paths else ()
         return report_from_tools(tmp_path, (ToolReport("sarj-iac-lint", Completion.COMPLETE, diagnostics),))
@@ -1022,8 +1032,7 @@ def test_scoped_baseline_update_runs_only_eslint_for_upstream_selector(
     (tmp_path / MANIFEST_NAME).write_text(adopted.render(), encoding="utf-8")
     captured: list[tuple[object, object]] = []
 
-    def analyze(self: api.Standards, paths: object = None, **kwargs: object) -> AnalysisReport:
-        _ = self, paths
+    def analyze(_self: api.Standards, paths: object = None, **kwargs: object) -> AnalysisReport:
         captured.append((paths, kwargs.get("rules")))
         return report_from_tools(tmp_path, ())
 

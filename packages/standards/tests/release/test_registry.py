@@ -52,8 +52,12 @@ def test_registry_cli_preserves_typed_retry_options(tmp_path: Path, monkeypatch:
 
 
 def test_registry_cli_preserves_failure_exit(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    def wait(_root: Path, *, attempts: int, delay: timedelta) -> tuple[RegistryRequirement, ...]:
-        _ = attempts, delay
+    def wait(
+        _root: Path,
+        *,
+        attempts: int,  # ruff: ignore[unused-function-argument] -- Registry polling fixes this keyword.
+        delay: timedelta,  # ruff: ignore[unused-function-argument] -- Registry polling fixes this keyword.
+    ) -> tuple[RegistryRequirement, ...]:
         msg = "publication unavailable"
         raise ValueError(msg)
 
@@ -260,8 +264,11 @@ def test_pypi_publication_requires_exact_version_in_simple_api(monkeypatch: pyte
 
     seen: list[Request] = []
 
-    def open_url(request: Request, *, timeout: int) -> Response:
-        _ = timeout
+    def open_url(
+        request: Request,
+        *,
+        timeout: int,  # ruff: ignore[unused-function-argument] -- urlopen fixes this keyword.
+    ) -> Response:
         seen.append(request)
         return Response()
 
@@ -291,8 +298,11 @@ def test_pypi_simple_metadata_without_exact_version_is_not_ready(monkeypatch: py
         def read(self) -> bytes:
             return payload
 
-    def open_url(_request: object, *, timeout: int) -> Response:
-        _ = timeout
+    def open_url(
+        _request: object,
+        *,
+        timeout: int,  # ruff: ignore[unused-function-argument] -- urlopen fixes this keyword.
+    ) -> Response:
         return Response()
 
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- test supplies a deterministic registry HTTP failure response

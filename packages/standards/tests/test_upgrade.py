@@ -1826,9 +1826,8 @@ def test_upgrade_surfaces_incomplete_rollback(monkeypatch: pytest.MonkeyPatch, t
         _plan: upgrade.UpgradePlan,
         _file_transaction: transaction.FileTransaction,
         *,
-        install: bool,
+        install: bool,  # ruff: ignore[unused-function-argument] -- The upgrade transaction fixes this keyword.
     ) -> int:
-        _ = install
         return 1
 
     def incomplete(_transaction: transaction.FileTransaction) -> transaction.RollbackReport:
