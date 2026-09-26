@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "a14796e8b3c6ffbdfd8b8a29688a2e9d9ab70b3adc0dacdf446724321e772930",
-  "cliSha256": "a8b8121b7b3c0faec7ba6377271403dbbfcee7cb72deb95acf2172c02cb12772",
+  "catalogSha256": "2965d03e95c00ed0d15c312d2ba1ad60d2cc72c97080f02b4df08c6d0f58c6d3",
+  "cliSha256": "624ce3bc0d5d95e197e18d6c42702dc5dc83ece96629f9663e878265f3a0748c",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -9167,6 +9167,36 @@
     },
     "python:require-pydantic-for-external-json": {
       "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "protocol.py",
+              "source": "import httpx\n\n\nclass Envelope:\n    def __init__(self, body):\n        self.body = body\n\n    def payload(self):\n        return self.body\n\n\ndef wrap(body):\n    result = Envelope(body)\n    return result\n\n\ndef fetch():\n    raw = httpx.get(\"https://api.example/report\").json()\n    return wrap(raw).payload()[\"version\"]\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "protocol.py",
+          "id": "factory-forwarded-external-json",
+          "outcome": "reject",
+          "scenarioId": "factory-forwarding",
+          "title": "A local factory forwards an unvalidated response"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "protocol.py",
+              "source": "import httpx\n\n\nclass Envelope:\n    def __init__(self, body):\n        self.body = body\n\n    def payload(self):\n        return self.body\n\n\ndef wrap(body):\n    return Envelope(body)\n\n\ndef fetch():\n    remote = httpx.get(\"https://api.example/report\").json()\n    return wrap({\"version\": 1}).payload()[\"version\"]\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "protocol.py",
+          "id": "factory-local-record",
+          "outcome": "accept",
+          "scenarioId": "factory-forwarding",
+          "title": "A factory receives a locally constructed record"
+        },
         {
           "expectedCount": 1,
           "files": [
