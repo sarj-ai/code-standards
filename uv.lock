@@ -78,7 +78,7 @@ wheels = [
 
 [[package]]
 name = "sarj-python-lint"
-version = "1.6.0"
+version = "1.6.1"
 source = { editable = "." }
 dependencies = [
     { name = "packaging" },
@@ -97,7 +97,7 @@ requires-dist = [
 
 [[package]]
 name = "sarj-rule-contracts"
-version = "0.1.0"
+version = "0.1.1"
 source = { editable = "packages/contracts" }
 
 [package.metadata]
@@ -106,7 +106,7 @@ source = { editable = "packages/contracts" }
 dev = [
     { name = "basedpyright", specifier = ">=1.40.1" },
     { name = "pytest", specifier = ">=9.1.1" },
-    { name = "ruff", specifier = ">=0.16.8" },
+    { name = "ruff", specifier = ">=0.16.9" },
 ]
 
 [[package]]

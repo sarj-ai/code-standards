@@ -2466,7 +2466,8 @@ def _launcher_options_are_valid(
 
 
 def commit_policy_github_workflow() -> str:
-    return """\
+    return (
+        """\
 # Managed by code-standards commit policy; regenerate with `code-standards setup`.
 name: Commit policy
 
@@ -2496,8 +2497,10 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: sarj-ai/repo-standards/pull-request-commits@bac8511f40968ca16f4cf0f649aa96fae4b7be08 # v6.0.1
 """
+        f"      - uses: sarj-ai/repo-standards/pull-request-commits@{manifest.REPO_STANDARDS_REVISION}"
+        f" # v{manifest.REPO_STANDARDS_VERSION}\n"
+    )
 
 
 def _migrate_legacy_workflow_gate(path: Path) -> str | None:
