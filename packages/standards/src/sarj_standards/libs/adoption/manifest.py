@@ -34,6 +34,7 @@ _ESLINT_RULE_KEY: Final = re.compile(
     re.MULTILINE,
 )
 _SARJ_RULE_ENGINES: Final = frozenset({"python", "sql", "iac", "text"})
+_TOML_COLUMN_WIDTH: Final = 80  # Taplo's default; the shipped strict config does not override column_width.
 
 
 class _UpstreamRuleEngine(StrEnum):
@@ -146,46 +147,40 @@ class Manifest:
     def render(self) -> str:
         enabled = set(self.enabled_capabilities)
         disabled = tuple(name for name in ALL_CAPABILITIES if name not in enabled)
-        disabled_text = ", ".join(f'"{name}"' for name in disabled)
-        durable_text = ", ".join(json.dumps(value) for value in self.durable_artifacts)
         sections = [
             (
                 "# Managed by `code-standards setup`; commit this file.\n"
-                f"schema = {MANIFEST_SCHEMA}\n"
                 f'bundle = "{self.version}"\n'
                 'rule_profile = "all"\n'
+                f"schema = {MANIFEST_SCHEMA}\n"
                 "\n"
                 "[capabilities]\n"
-                f"disable = [{disabled_text}]\n"
+                f"{_array_field('disable', disabled)}"
                 "\n"
                 "[artifacts]\n"
-                f"durable = [{durable_text}]\n"
+                f"{_array_field('durable', self.durable_artifacts)}"
                 "\n"
                 "[dest]\n"
-                f'python = "{self.python_dest}"\n'
-                f'typescript = "{self.typescript_dest}"\n'
-                f'swift = "{self.swift_dest}"\n'
-                f'kotlin = "{self.kotlin_dest}"\n'
+                f"kotlin = {_toml_string(self.kotlin_dest)}\n"
+                f"python = {_toml_string(self.python_dest)}\n"
+                f"swift = {_toml_string(self.swift_dest)}\n"
+                f"typescript = {_toml_string(self.typescript_dest)}\n"
                 "\n"
                 "[hooks]\n"
                 f'manager = "{self.hook_manager}"\n'
             )
         ]
         if self.verify_paths != (".",):
-            paths = ", ".join(json.dumps(value) for value in self.verify_paths)
-            sections.append(f"\n[verify]\npaths = [{paths}]\n")
+            sections.append(f"\n[verify]\n{_array_field('paths', self.verify_paths)}")
         sections.extend(_exclusion_sections(self))
         if self.text_excluded_paths:
-            paths = ", ".join(json.dumps(value) for value in self.text_excluded_paths)
-            sections.append(f"\n[text]\nexclude = [{paths}]\n")
+            sections.append(f"\n[text]\n{_array_field('exclude', self.text_excluded_paths)}")
         if self.doctor_excluded_paths:
-            paths = ", ".join(json.dumps(value) for value in self.doctor_excluded_paths)
-            sections.append(f"\n[doctor]\nexclude = [{paths}]\n")
+            sections.append(f"\n[doctor]\n{_array_field('exclude', self.doctor_excluded_paths)}")
         if self.diagnostic_baseline is not None:
-            sections.append(f"\n[baseline]\ndiagnostics = {json.dumps(self.diagnostic_baseline)}\n")
+            sections.append(f"\n[baseline]\ndiagnostics = {_toml_string(self.diagnostic_baseline)}\n")
         if self.ci_bootstrap:
-            commands = ", ".join(json.dumps(command) for command in self.ci_bootstrap)
-            sections.append(f"\n[ci]\nbootstrap = [{commands}]\n")
+            sections.append(f"\n[ci]\n{_array_field('bootstrap', self.ci_bootstrap)}")
         return "".join(sections)
 
 
@@ -697,13 +692,24 @@ def eslint_overrides() -> dict[str, object]:
 def _exclusion_sections(manifest: Manifest) -> list[str]:
     sections: list[str] = []
     if manifest.excluded_paths or manifest.excluded_rules:
-        paths = ", ".join(json.dumps(value) for value in manifest.excluded_paths)
-        rules = ", ".join(json.dumps(value) for value in manifest.excluded_rules)
-        sections.append(f"\n[exclude]\npaths = [{paths}]\nrules = [{rules}]\n")
+        paths = _array_field("paths", manifest.excluded_paths)
+        rules = _array_field("rules", manifest.excluded_rules)
+        sections.append(f"\n[exclude]\n{paths}{rules}")
     for override in manifest.exclusion_overrides:
-        paths = ", ".join(json.dumps(value) for value in override.paths)
-        rules = ", ".join(json.dumps(value) for value in override.rules)
-        sections.append(
-            f"\n[[exclude.overrides]]\npaths = [{paths}]\nrules = [{rules}]\nreason = {json.dumps(override.reason)}\n"
-        )
+        paths = _array_field("paths", override.paths)
+        rules = _array_field("rules", override.rules)
+        sections.append(f"\n[[exclude.overrides]]\n{paths}reason = {_toml_string(override.reason)}\n{rules}")
     return sections
+
+
+def _array_field(key: str, values: tuple[str, ...]) -> str:
+    rendered = tuple(_toml_string(value) for value in values)
+    inline = f"{key} = [{', '.join(rendered)}]"
+    if len(inline) <= _TOML_COLUMN_WIDTH:
+        return f"{inline}\n"
+    items = "".join(f"  {value},\n" for value in rendered)
+    return f"{key} = [\n{items}]\n"
+
+
+def _toml_string(value: str) -> str:
+    return json.dumps(value, ensure_ascii=False).replace("\x7f", r"\u007f")

@@ -661,6 +661,7 @@ jobs:
 
   publish-sql:
     needs: build-sql
+    if: always() && needs.build-sql.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment: pypi-sql-release
@@ -771,6 +772,7 @@ jobs:
 
   publish-iac:
     needs: build-iac
+    if: always() && needs.build-iac.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment: pypi-iac-release

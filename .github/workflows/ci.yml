@@ -662,6 +662,11 @@ jobs:
       - run: uv python install 3.14
       - run: uv sync --locked --dev
       - run: npm --prefix ../typescript ci --ignore-scripts --no-audit --no-fund
+      - name: Install pinned formatter for generated-manifest integration tests
+        run: |
+          npm --prefix "$RUNNER_TEMP/taplo" install --ignore-scripts --no-audit --no-fund --no-save @taplo/cli@0.7.0
+          test -x "$RUNNER_TEMP/taplo/node_modules/.bin/taplo"
+          echo "$RUNNER_TEMP/taplo/node_modules/.bin" >> "$GITHUB_PATH"
       - name: Build wheel
         run: |
           uv build --wheel
