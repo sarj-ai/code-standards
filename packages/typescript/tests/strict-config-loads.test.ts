@@ -577,6 +577,34 @@ describe("the shipped eslint.strict.mjs actually loads", () => {
     }
   });
 
+  it.each(["js", "jsx", "mjs", "cjs"])(
+    "preserves JavaScript type contracts while rejecting untyped implementation JSDoc in .%s",
+    async (extension) => {
+      const focusedConfig = STRICT_CONFIG_FACTORY({ projectService: false }).map((entry) => ({
+        ...entry,
+        rules: Object.fromEntries(
+          Object.entries(entry.rules ?? {}).filter(([ruleId]) => ruleId === "jsdoc/no-restricted-syntax"),
+        ),
+      }));
+      const eslint = new ESLint({ overrideConfigFile: true, overrideConfig: focusedConfig });
+      const code = [
+        "/** @param {string} value */ function size(value) { return value.length; }",
+        "/** @returns {string[]} */ const empty = () => [];",
+        "/** @type {(value: number) => number} */ const twice = function(value) { return value * 2; };",
+        "/** @template T @param {T[]} values @returns {T | undefined} */ function first(values) { return values[0]; }",
+        "/** @template T */ function genericEmpty() { return /** @type {T[]} */ ([]); }",
+        "/** Return the size. */ function prose(value) { return value.length; }",
+        "/** @param value */ function untyped(value) { return value; }",
+      ].join("\n");
+
+      const [result] = await eslint.lintText(code, { filePath: `src/contracts.${extension}` });
+      expect(result?.messages.map(({ ruleId, line, severity }) => ({ ruleId, line, severity }))).toEqual([
+        { ruleId: "jsdoc/no-restricted-syntax", line: 6, severity: 2 },
+        { ruleId: "jsdoc/no-restricted-syntax", line: 7, severity: 2 },
+      ]);
+    },
+  );
+
   it.each(PROBE_PATHS)(
     "resolves without error for %s",
     async (filePath) => {
