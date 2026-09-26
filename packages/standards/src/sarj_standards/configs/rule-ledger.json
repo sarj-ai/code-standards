@@ -119,6 +119,7 @@
       "redundant-module-docstring",
       "repeated-kwarg-heavy-call-in-test",
       "repeated-static-call-cases",
+      "repeated-test-composition",
       "replay-contract-insert-requires-duplicate-policy",
       "require-keyword-only-swap-prone-params",
       "require-nodecode-for-splitting-settings-field",
@@ -404,7 +405,8 @@
       "SARJ453",
       "SARJ454",
       "SARJ455",
-      "SARJ456"
+      "SARJ456",
+      "SARJ457"
     ],
     "sql": [
       "SARJ101",

@@ -69,7 +69,7 @@ class AsyncMockCallWithoutAwaitAssertion(Rule):
     id = "async-mock-call-without-await-assertion"
     code = "SARJ456"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        default_level=Severity.WARNING,
+        default_level=Severity.ERROR,
         summary="Pair positive AsyncMock call assertions with evidence that the mock was awaited.",
         rationale=(
             "Calling an AsyncMock records a call before its coroutine is awaited. A positive call assertion can "
@@ -150,7 +150,7 @@ class AsyncMockCallWithoutAwaitAssertion(Rule):
                 line=call.lineno,
                 col=call.col_offset + 1,
                 code=self.code,
-                severity=Severity.WARNING,
+                severity=Severity.ERROR,
                 message="AsyncMock call assertions do not prove awaiting; keep this assertion and add an await assertion",
             )
             for test in _collected_tests(tree.body)

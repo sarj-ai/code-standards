@@ -160,6 +160,7 @@ _DIAGNOSTIC_PRECEDENCE = MappingProxyType(
         # still owns every fixed dictionary return when selected alone, while
         # an all-rules run emits one actionable diagnostic for this overlap.
         "SARJ447": frozenset({"SARJ008"}),
+        "SARJ457": frozenset({"SARJ045"}),
     }
 )
 
@@ -174,6 +175,7 @@ class _OwnerLocation(NamedTuple):
 
 
 def deduplicate_diagnostics(diags: list[Diagnostic], *, source: str | None = None) -> list[Diagnostic]:
+    diags = _deduplicate_test_composition(diags, source)
     codes = frozenset(diagnostic.code for diagnostic in diags)
     needs_docstring_owners = ("SARJ092" in codes and not codes.isdisjoint(_DIAGNOSTIC_PRECEDENCE["SARJ092"])) or (
         "SARJ420" in codes and not codes.isdisjoint(_DOCSTRING_PRECEDENCE_CODES)
@@ -219,6 +221,32 @@ def deduplicate_diagnostics(diags: list[Diagnostic], *, source: str | None = Non
             not in suppressed
         )
     ]
+
+
+def _deduplicate_test_composition(diags: list[Diagnostic], source: str | None) -> list[Diagnostic]:
+    codes = {diagnostic.code for diagnostic in diags}
+    if source is None or not {"SARJ066", "SARJ457"} <= codes:
+        return diags
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return diags
+    whole_tests = {
+        (diagnostic.path, diagnostic.line): diagnostic.severity for diagnostic in diags if diagnostic.code == "SARJ066"
+    }
+    functions = [node for node in ast.walk(tree) if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))]
+
+    def redundant(diagnostic: Diagnostic) -> bool:
+        if diagnostic.code != "SARJ457":
+            return False
+        owners = [node for node in functions if node.lineno <= diagnostic.line <= (node.end_lineno or node.lineno)]
+        if not owners:
+            return False
+        owner = max(owners, key=lambda node: node.lineno)
+        severity = whole_tests.get((diagnostic.path, owner.lineno))
+        return severity is not None and (severity is Severity.ERROR or diagnostic.severity is Severity.WARNING)
+
+    return [diagnostic for diagnostic in diags if not redundant(diagnostic)]
 
 
 def _suppressed_diagnostics(

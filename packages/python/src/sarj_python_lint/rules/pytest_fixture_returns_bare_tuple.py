@@ -44,7 +44,7 @@ class PytestFixtureReturnsBareTuple(Rule):
     id: str = "pytest-fixture-returns-bare-tuple"
     code: str = "SARJ044"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        default_level=Severity.WARNING,
+        default_level=Severity.ERROR,
         summary="Pytest fixture exposes a fixed positional record as an unnamed tuple.",
         rationale=(
             "Tuple-shaped fixture APIs encode each value's role in its position, so call sites are opaque and "
@@ -131,7 +131,7 @@ class PytestFixtureReturnsBareTuple(Rule):
                     "result object and access fields by name; split independent values into fixtures, or use an "
                     "exact SARJ044 suppression when tuple order is the tested domain contract."
                 ),
-                severity=Severity.WARNING,
+                severity=Severity.ERROR,
             )
             for result in _bare_tuple_results(tree)
             for arities in (" or ".join(map(str, result.field_counts)),)

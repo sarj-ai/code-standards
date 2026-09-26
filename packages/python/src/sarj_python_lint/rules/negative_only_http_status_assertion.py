@@ -204,7 +204,7 @@ class NegativeOnlyHttpStatusAssertion(Rule):
     id = "negative-only-http-status-assertion"
     code = "SARJ408"
     documentation = RuleDocumentation(
-        default_level=Severity.WARNING,
+        default_level=Severity.ERROR,
         summary="HTTP test assertion only excludes a server error instead of identifying the intended response.",
         rationale=(
             "Authentication, routing, validation, and domain failures can all replace the intended response while "
@@ -276,7 +276,7 @@ class NegativeOnlyHttpStatusAssertion(Rule):
                     line=node.lineno,
                     col=node.col_offset + 1,
                     code=self.code,
-                    severity=Severity.WARNING,
+                    severity=Severity.ERROR,
                     message=(
                         "this assertion proves only that the response avoided a server-error outcome. Assert the "
                         "intended status and domain effect, or suppress SARJ408 with a reason when avoiding a server "

@@ -129,6 +129,9 @@ def test_recognizes_imported_monkeypatch_annotation() -> None:
 @pytest.mark.parametrize("annotation", ['"pytest.MonkeyPatch"', '"MonkeyPatch"'])
 def test_recognizes_string_annotations(annotation: str) -> None:
     diagnostics = _check(f"""
+        import pytest
+        from pytest import MonkeyPatch
+
         def install_boundary(mp: {annotation}):
             mp.setattr(runtime, "client", fake)
     """)
@@ -244,12 +247,14 @@ def test_recognizes_union_annotation() -> None:
 
 def test_nested_scope_owns_its_own_fixture_handle() -> None:
     diagnostics = _check("""
-        def helper(monkeypatch):
-            def nested(monkeypatch):
+        import pytest
+
+        def helper(monkeypatch: pytest.MonkeyPatch):
+            def nested(monkeypatch: pytest.MonkeyPatch):
                 monkeypatch.setattr(service, "nested", fake)
             monkeypatch.setattr(service, "outer", fake)
     """)
-    assert [(diagnostic.line, diagnostic.col) for diagnostic in diagnostics] == [(4, 9), (5, 5)]
+    assert [(diagnostic.line, diagnostic.col) for diagnostic in diagnostics] == [(6, 9), (7, 5)]
 
 
 @pytest.mark.parametrize("path", ["src/service.py", "app/testing_helpers.py"])
@@ -320,3 +325,199 @@ def test_exact_local_suppression_is_honored_by_analysis(tmp_path: Path) -> None:
         encoding="utf-8",
     )
     assert analyze([PreferInjectedDependencyOverMonkeypatch.id], [target]) == []
+
+
+@pytest.mark.parametrize("handle", ["monkeypatch", "mocker"])
+def test_untyped_helper_parameters_are_not_assumed_to_be_fixtures(handle: str) -> None:
+    operation = "setattr" if handle == "monkeypatch" else "patch"
+    assert _check(f"def helper({handle}):\n    {handle}.{operation}('target', fake)\n") == []
+
+
+@pytest.mark.parametrize("handle", ["monkeypatch", "mocker"])
+def test_parametrized_values_are_not_fixture_handles(handle: str) -> None:
+    operation = "setattr" if handle == "monkeypatch" else "patch"
+    assert (
+        _check(f"""
+        import pytest as pt
+
+        @pt.mark.parametrize("{handle}", [CustomPatcher()])
+        def test_service({handle}):
+            {handle}.{operation}("target", fake)
+    """)
+        == []
+    )
+
+
+@pytest.mark.parametrize("decorator", ["fixture", "fixture()"])
+def test_fixture_functions_supply_handle_provenance(decorator: str) -> None:
+    diagnostics = _check(f"""
+        from pytest import fixture
+
+        @{decorator}
+        def installed_client(monkeypatch, mocker):
+            monkeypatch.setattr(service, "client", fake)
+            mocker.patch("app.service.client", fake)
+    """)
+    assert len(diagnostics) == 2
+
+
+def test_recognizes_typed_mock_helper_and_single_assignment_alias() -> None:
+    diagnostics = _check("""
+        from pytest_mock import MockerFixture as MF
+
+        def helper(handle: "MF"):
+            alias = handle
+            alias.patch.object(service, "client", fake)
+    """)
+    assert len(diagnostics) == 1
+
+
+@pytest.mark.parametrize("binding", ["mocker = CustomPatcher()", "from other import mocker", "def mocker(): pass"])
+def test_rebound_mocker_fixture_is_ignored(binding: str) -> None:
+    assert (
+        _check(f"""
+        def test_service(mocker):
+            {binding}
+            mocker.patch("app.service.client", fake)
+    """)
+        == []
+    )
+
+
+def test_reports_mocker_before_rebinding_but_not_after() -> None:
+    diagnostics = _check("""
+        def test_service(mocker):
+            mocker.patch("app.service.client", fake)
+            mocker = CustomPatcher()
+            mocker.patch("app.service.client", fake)
+    """)
+    assert [diagnostic.line for diagnostic in diagnostics] == [3]
+
+
+@pytest.mark.parametrize(
+    ("signature", "binding"),
+    [
+        ("patch", "pass"),
+        ("", "patch = CustomPatcher()"),
+        ("", "from other import patch"),
+        ("", "def patch(*args): pass"),
+    ],
+)
+def test_local_bindings_shadow_imported_patch(signature: str, binding: str) -> None:
+    assert (
+        _check(f"""
+        from unittest.mock import patch
+
+        def test_service({signature}):
+            {binding}
+            patch("app.service.client", fake)
+    """)
+        == []
+    )
+
+
+def test_shadowing_in_one_function_does_not_hide_other_patch_calls_or_decorators() -> None:
+    diagnostics = _check("""
+        from unittest.mock import patch
+
+        @patch("app.service.client")
+        def test_custom(patch):
+            patch("app.service.client", fake)
+
+        def test_imported():
+            patch("app.service.client", fake)
+    """)
+    assert [diagnostic.line for diagnostic in diagnostics] == [4, 9]
+
+
+def test_outer_parameter_shadows_import_in_nested_function() -> None:
+    assert (
+        _check("""
+        from unittest.mock import patch
+
+        def helper(patch):
+            def nested():
+                patch("app.service.client", fake)
+    """)
+        == []
+    )
+
+
+@pytest.mark.parametrize("annotation", ['"MonkeyPatch"', '"pytest.MonkeyPatch"', '"bad syntax!"'])
+def test_unresolved_string_annotations_are_not_assumed_to_be_pytest(annotation: str) -> None:
+    assert (
+        _check(f"""
+        def helper(handle: {annotation}):
+            handle.setattr(service, "client", fake)
+    """)
+        == []
+    )
+
+
+def test_class_parametrization_excludes_fixture_inference() -> None:
+    assert (
+        _check("""
+        import pytest
+
+        @pytest.mark.parametrize(argnames=["monkeypatch", "mocker"], argvalues=[])
+        class TestCustomPatcher:
+            def test_custom(self, monkeypatch, mocker):
+                monkeypatch.setattr(service, "client", fake)
+                mocker.patch("app.service.client", fake)
+    """)
+        == []
+    )
+
+
+def test_nested_test_name_does_not_establish_fixture_provenance() -> None:
+    assert (
+        _check("""
+        def helper():
+            def test_custom(monkeypatch, mocker):
+                monkeypatch.setattr(service, "client", fake)
+                mocker.patch("app.service.client", fake)
+    """)
+        == []
+    )
+
+
+def test_async_fixture_alias_establishes_provenance() -> None:
+    diagnostics = _check("""
+        import pytest_asyncio as pa
+
+        @pa.fixture
+        async def installed_client(monkeypatch):
+            monkeypatch.setattr(service, "client", fake)
+    """)
+    assert len(diagnostics) == 1
+
+
+@pytest.mark.parametrize(
+    "expression",
+    [
+        '[patch("target") for patch in custom_patchers]',
+        '(lambda patch: patch("target"))(custom_patcher)',
+        '(lambda *patch: patch("target"))(custom_patcher)',
+    ],
+)
+def test_nested_expression_bindings_shadow_patch_import(expression: str) -> None:
+    assert (
+        _check(f"""
+        from unittest.mock import patch
+
+        def test_custom():
+            result = {expression}
+    """)
+        == []
+    )
+
+
+def test_comprehension_bindings_do_not_inherit_fixture_handles() -> None:
+    assert (
+        _check("""
+        def test_custom(monkeypatch, mocker):
+            one = [monkeypatch.setattr(service, "client", fake) for monkeypatch in custom_patchers]
+            two = [mocker.patch("target") for mocker in custom_patchers]
+    """)
+        == []
+    )

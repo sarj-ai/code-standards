@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "c996829e94a9835e22bbd230131077e0c9b75da71bd987e3a1ffb690c8162007",
-  "cliSha256": "4bb0e06a153a4f34e83a5db33d582c56093f3c327f839b645a4ec6bb7f5b6989",
+  "catalogSha256": "0cf39bd59e5c99d9f017fb53fe7d6db6b81931e6487a2a75b39b33d3fcc4d68a",
+  "cliSha256": "89eae0bcc817922088d6261f0b54ec64e04cf36ecaa76794d8ac517585dc5af7",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -8781,6 +8781,41 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Do not hide independent inputs in one callback"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:repeated-test-composition": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "tests/test_client.py",
+              "source": "async def test_response(client):\n    assert await client.get(\"/\")\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_client.py",
+          "id": "fixture-client",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Request a managed test client fixture"
+        },
+        {
+          "expectedCount": 3,
+          "files": [
+            {
+              "path": "tests/test_client.py",
+              "source": "from httpx import AsyncClient, ASGITransport\n\n\nasync def test_case_0(app):\n    async with AsyncClient(\n        transport=ASGITransport(app=app), base_url=\"http://test\"\n    ) as client:\n        assert await client.get(\"/\")\n\n\nasync def test_case_1(app):\n    async with AsyncClient(\n        transport=ASGITransport(app=app), base_url=\"http://test\"\n    ) as client:\n        assert await client.get(\"/\")\n\n\nasync def test_case_2(app):\n    async with AsyncClient(\n        transport=ASGITransport(app=app), base_url=\"http://test\"\n    ) as client:\n        assert await client.get(\"/\")\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_client.py",
+          "id": "repeated-managed-clients",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Share managed test-client assembly"
         }
       ],
       "optionsSchemaSource": null
