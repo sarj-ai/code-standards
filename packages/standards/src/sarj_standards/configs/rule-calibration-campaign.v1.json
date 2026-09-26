@@ -2099,6 +2099,14 @@
       "state": "complete",
       "evidence": "52 focused regression cases. Pinned read-only corpus: 3,048 tracked Python files, 25,601,555 bytes across four private sources; fresh processes capped at 250 files. All 29 findings inspected; no observed false positives or duplicate locations. No full upstream public repository corpus was evaluated. Combined candidate runs took 34-47 seconds under concurrent verification; timing is load-sensitive and is not an optimization claim.",
       "outcome": "Ship warning without autofix. Require a local start used exclusively in elapsed subtractions; exclude fields, epoch consumers, escapes, and mixed clocks. Broader coverage and any error promotion require separate calibration."
+    },
+    {
+      "task": "rule-audit/python/require-explicit-psycopg-transaction",
+      "family": "python",
+      "ruleId": "require-explicit-psycopg-transaction",
+      "state": "pending",
+      "evidence": "38 focused tests pass; 21 labeled cases have 7 true positives, 14 true negatives, zero false positives/negatives and no duplicate locations. An isolated scan of three private consumer snapshots plus Standards covered 3,185 Python files and 29,043,012 bytes in 16 batches capped at 250 files. All five findings were inspected: four transaction hazards reproduced with real PostgreSQL; one manually committed cleanup needs owner classification. Corrected consumer files have zero findings. On 197 store files (2,492,248 bytes), three alternating full-runner baseline/candidate medians were 15.281/15.374 seconds (+0.61%); candidate-only full-corpus runtime was 6.886 seconds. The first candidate timing was 19.687 seconds, so no cold-start or runtime guarantee is claimed. No OS-cache reset, peak-memory measurement or independent public application corpus. Ruff has no equivalent; SARJ415 covers injected ownership, not transaction scope.",
+      "outcome": "Ship SARJ462 as a warning without autofix; keep calibration pending until the manual-commit finding is classified. Recognize import-proven typed Psycopg owners, literal SQL, aliases and explicit same-connection transaction contexts. Exclude standalone reads, one atomic SQL statement, tests/generated files and unsupported dynamic/control-flow relationships. Unrelated independent writes can need an exact explained suppression. This is a conservative local analysis, not proof of isolation or interprocedural atomicity; preserve fault-injection integration tests and defer error promotion."
     }
   ]
 }
