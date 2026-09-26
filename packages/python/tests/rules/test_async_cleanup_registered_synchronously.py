@@ -51,7 +51,7 @@ CASES = (
     EvaluationCase(
         "suppression",
         Language.PYTHON,
-        _BASE.replace("stack.callback(close)", "stack.callback(close)  # sarj-noqa: SARJ462"),
+        _BASE.replace("stack.callback(close)", "stack.callback(close)  # sarj-noqa: SARJ463"),
     ),
     EvaluationCase("generated", Language.PYTHON, "# @generated\n" + _BASE),
     EvaluationCase(

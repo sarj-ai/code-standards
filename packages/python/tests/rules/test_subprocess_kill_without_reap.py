@@ -32,7 +32,7 @@ CASES = (
     ),
     EvaluationCase("custom-kill", Language.PYTHON, _BASE.replace("    try:", "    process.kill = custom\n    try:")),
     EvaluationCase(
-        "suppression", Language.PYTHON, _BASE.replace("process.kill()", "process.kill()  # sarj-noqa: SARJ463")
+        "suppression", Language.PYTHON, _BASE.replace("process.kill()", "process.kill()  # sarj-noqa: SARJ464")
     ),
     EvaluationCase("generated", Language.PYTHON, "# @generated\n" + _BASE),
     EvaluationCase(

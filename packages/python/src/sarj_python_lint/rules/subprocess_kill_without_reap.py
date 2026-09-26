@@ -29,7 +29,7 @@ _REAP_METHODS = frozenset({"wait", "communicate", "poll"})
 
 class SubprocessKillWithoutReap(Rule):
     id: str = "subprocess-kill-without-reap"
-    code: str = "SARJ463"
+    code: str = "SARJ464"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
         default_level=Severity.WARNING,
         summary="Reap a locally owned subprocess after killing it on timeout.",

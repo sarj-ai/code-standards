@@ -247,6 +247,7 @@
   "SARJ459": "shared-mutable-pydantic-factory",
   "SARJ460": "prefer-regex-fullmatch",
   "SARJ461": "prefer-monotonic-for-elapsed-time",
-  "SARJ462": "async-cleanup-registered-synchronously",
-  "SARJ463": "subprocess-kill-without-reap"
+  "SARJ462": "require-explicit-psycopg-transaction",
+  "SARJ463": "async-cleanup-registered-synchronously",
+  "SARJ464": "subprocess-kill-without-reap"
 }

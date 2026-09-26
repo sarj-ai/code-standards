@@ -28,7 +28,7 @@ _BAD = "from contextlib import AsyncExitStack\nasync def close():\n    await rel
 
 class AsyncCleanupRegisteredSynchronously(Rule):
     id: str = "async-cleanup-registered-synchronously"
-    code: str = "SARJ462"
+    code: str = "SARJ463"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
         default_level=Severity.WARNING,
         summary="Do not register a proven async cleanup function with ExitStack.callback.",

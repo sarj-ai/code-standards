@@ -150,6 +150,7 @@ from sarj_python_lint.rules.redundant_module_docstring import RedundantModuleDoc
 from sarj_python_lint.rules.repeated_kwarg_heavy_call_in_test import RepeatedKwargHeavyCallInTest
 from sarj_python_lint.rules.repeated_static_call_cases import RepeatedStaticCallCases
 from sarj_python_lint.rules.repeated_test_composition import RepeatedTestComposition
+from sarj_python_lint.rules.require_explicit_psycopg_transaction import RequireExplicitPsycopgTransaction
 from sarj_python_lint.rules.require_keyword_only_swap_prone_params import (
     RequireKeywordOnlySwapProneParams,
 )
@@ -190,6 +191,7 @@ REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
         AsyncCleanupRegisteredSynchronously.id: AsyncCleanupRegisteredSynchronously,
         SubprocessKillWithoutReap.id: SubprocessKillWithoutReap,
         NoSwallowedAsyncioCancellation.id: NoSwallowedAsyncioCancellation,
+        RequireExplicitPsycopgTransaction.id: RequireExplicitPsycopgTransaction,
         AsyncMockCallWithoutAwaitAssertion.id: AsyncMockCallWithoutAwaitAssertion,
         ComplexPostgresQueryRequiresArchitectureReview.id: ComplexPostgresQueryRequiresArchitectureReview,
         ExcessiveCommentary.id: ExcessiveCommentary,
