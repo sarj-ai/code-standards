@@ -49,11 +49,10 @@ def test_build_process_isolates_posix_and_windows_config_homes(monkeypatch: pyte
     def run(
         _argv: tuple[str, ...],
         *,
-        cwd: Path,
-        capture_output: bool,
+        cwd: Path,  # ruff: ignore[unused-function-argument] -- The process adapter fixes this keyword.
+        capture_output: bool,  # ruff: ignore[unused-function-argument] -- The process adapter fixes this keyword.
         environment: dict[str, str] | None,
     ) -> ProcessResult:
-        _ = cwd, capture_output
         assert environment is not None
         seen.update(environment)
         return ProcessResult(0)

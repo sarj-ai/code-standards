@@ -869,9 +869,12 @@ def test_mobile_config_parse_failures_return_a_failed_tool_report(tmp_path: Path
     (tmp_path / ".mobsf").write_text("[unterminated", encoding="utf-8")
     invoked = False
 
-    def runner(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
+    def runner(
+        argv: Sequence[str],  # ruff: ignore[unused-function-argument] -- ProcessRunner fixes this keyword.
+        *,
+        cwd: Path,
+    ) -> ProcessOutput:
         nonlocal invoked
-        _ = argv
         assert cwd == tmp_path
         invoked = True
         return ProcessOutput(0, "", "")
@@ -1045,8 +1048,11 @@ def test_shellcheck_rejects_reported_paths_outside_repository(tmp_path: Path) ->
 
 
 def test_shellcheck_exact_version_is_attested(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    def old_version(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
-        _ = argv, cwd
+    def old_version(
+        argv: Sequence[str],  # ruff: ignore[unused-function-argument] -- ProcessRunner fixes this keyword.
+        *,
+        cwd: Path,  # ruff: ignore[unused-function-argument] -- ProcessRunner fixes this keyword.
+    ) -> ProcessOutput:
         return ProcessOutput(0, "ShellCheck\nversion: 0.10.0\n", "")
 
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- intercepts external tool routing
@@ -2264,8 +2270,11 @@ def test_react_doctor_full_scan_still_rejects_non_detection(tmp_path: Path) -> N
     project = tmp_path / "apps" / "web"
     project.mkdir(parents=True)
 
-    def runner(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
-        _ = argv
+    def runner(
+        argv: Sequence[str],  # ruff: ignore[unused-function-argument] -- ProcessRunner fixes this keyword.
+        *,
+        cwd: Path,
+    ) -> ProcessOutput:
         assert cwd == tmp_path
         return ProcessOutput(
             0,
@@ -2715,8 +2724,11 @@ def test_eslint_fatal_message_is_an_execution_failure(tmp_path: Path) -> None:
         ]
     )
 
-    def fatal(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
-        _ = argv, cwd
+    def fatal(
+        argv: Sequence[str],  # ruff: ignore[unused-function-argument] -- ProcessRunner fixes this keyword.
+        *,
+        cwd: Path,  # ruff: ignore[unused-function-argument] -- ProcessRunner fixes this keyword.
+    ) -> ProcessOutput:
         return ProcessOutput(1, payload, "")
 
     reports = analyze_external([str(source)], root=tmp_path, trust=TrustMode.TRUSTED, runner=fatal)
@@ -2737,8 +2749,11 @@ def test_missing_local_eslint_fails_before_package_manager_execution(
     (tmp_path / "package-lock.json").write_text('{"lockfileVersion":3}\n', encoding="utf-8")
     (tmp_path / "eslint.config.mjs").write_text("export default [];\n", encoding="utf-8")
 
-    def forbidden(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
-        _ = argv, cwd
+    def forbidden(
+        argv: Sequence[str],  # ruff: ignore[unused-function-argument] -- ProcessRunner fixes this keyword.
+        *,
+        cwd: Path,  # ruff: ignore[unused-function-argument] -- ProcessRunner fixes this keyword.
+    ) -> ProcessOutput:
         pytest.fail("the package manager ran without a local ESLint installation")
 
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- intercepts external tool routing
@@ -2769,7 +2784,6 @@ def test_hoisted_eslint_above_analysis_root_is_accepted(monkeypatch: pytest.Monk
 
     def successful(argv: Sequence[str], *, cwd: Path, timeout_seconds: float) -> ProcessOutput:
         assert 0 < timeout_seconds <= 300
-        _ = cwd
         called.append(tuple(argv))
         return ProcessOutput(0, _eslint_clean_payload(argv, cwd), "")
 
@@ -2796,8 +2810,11 @@ def test_eslint_empty_output_preserves_package_manager_stderr(tmp_path: Path) ->
     (tmp_path / "package.json").write_text('{"name":"fixture"}\n', encoding="utf-8")
     (tmp_path / "eslint.config.mjs").write_text("export default [];\n", encoding="utf-8")
 
-    def missing(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
-        _ = argv, cwd
+    def missing(
+        argv: Sequence[str],  # ruff: ignore[unused-function-argument] -- ProcessRunner fixes this keyword.
+        *,
+        cwd: Path,  # ruff: ignore[unused-function-argument] -- ProcessRunner fixes this keyword.
+    ) -> ProcessOutput:
         return ProcessOutput(1, "", "ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL Command 'eslint' not found")
 
     reports = analyze_external([str(source)], root=tmp_path, trust=TrustMode.TRUSTED, runner=missing)
@@ -2816,8 +2833,11 @@ def test_eslint_malformed_output_preserves_stderr_without_json_exception_name(tm
     (tmp_path / "package.json").write_text('{"name":"fixture"}\n', encoding="utf-8")
     (tmp_path / "eslint.config.mjs").write_text("export default [];\n", encoding="utf-8")
 
-    def broken(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
-        _ = argv, cwd
+    def broken(
+        argv: Sequence[str],  # ruff: ignore[unused-function-argument] -- ProcessRunner fixes this keyword.
+        *,
+        cwd: Path,  # ruff: ignore[unused-function-argument] -- ProcessRunner fixes this keyword.
+    ) -> ProcessOutput:
         return ProcessOutput(1, "not-json", "eslint could not load its local configuration")
 
     reports = analyze_external([str(source)], root=tmp_path, trust=TrustMode.TRUSTED, runner=broken)
@@ -2995,8 +3015,11 @@ def test_safe_mode_never_executes_repository_eslint_config(tmp_path: Path) -> No
     source = tmp_path / "example.ts"
     source.write_text("export const value = 1;\n", encoding="utf-8")
 
-    def forbidden(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
-        _ = argv, cwd
+    def forbidden(
+        argv: Sequence[str],  # ruff: ignore[unused-function-argument] -- ProcessRunner fixes this keyword.
+        *,
+        cwd: Path,  # ruff: ignore[unused-function-argument] -- ProcessRunner fixes this keyword.
+    ) -> ProcessOutput:
         pytest.fail("safe mode executed repository code")
 
     reports = analyze_external([str(source)], root=tmp_path, trust=TrustMode.SAFE, runner=forbidden)
@@ -3013,8 +3036,11 @@ def test_string_safe_mode_never_executes_repository_eslint_config(tmp_path: Path
     source = tmp_path / "example.ts"
     source.write_text("export const value = 1;\n", encoding="utf-8")
 
-    def forbidden(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
-        _ = argv, cwd
+    def forbidden(
+        argv: Sequence[str],  # ruff: ignore[unused-function-argument] -- ProcessRunner fixes this keyword.
+        *,
+        cwd: Path,  # ruff: ignore[unused-function-argument] -- ProcessRunner fixes this keyword.
+    ) -> ProcessOutput:
         pytest.fail("string safe mode executed repository code")
 
     reports = analyze_external([str(source)], root=tmp_path, trust="safe", runner=forbidden)
@@ -3026,8 +3052,11 @@ def test_signal_terminated_tool_is_an_execution_failure(tmp_path: Path) -> None:
     source = tmp_path / "example.py"
     source.write_text("value = 1\n", encoding="utf-8")
 
-    def terminated(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
-        _ = argv, cwd
+    def terminated(
+        argv: Sequence[str],  # ruff: ignore[unused-function-argument] -- ProcessRunner fixes this keyword.
+        *,
+        cwd: Path,  # ruff: ignore[unused-function-argument] -- ProcessRunner fixes this keyword.
+    ) -> ProcessOutput:
         return ProcessOutput(-9, "[]", "")
 
     reports = analyze_external([str(source)], root=tmp_path, trust=TrustMode.SAFE, runner=terminated)
@@ -3040,8 +3069,11 @@ def test_finding_exit_without_diagnostics_fails_the_external_protocol(tmp_path: 
     source = tmp_path / "example.py"
     source.write_text("value = 1\n", encoding="utf-8")
 
-    def empty_finding_exit(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
-        _ = cwd
+    def empty_finding_exit(
+        argv: Sequence[str],
+        *,
+        cwd: Path,  # ruff: ignore[unused-function-argument] -- ProcessRunner fixes this keyword.
+    ) -> ProcessOutput:
         payload = '{"generalDiagnostics":[]}' if argv[0] == "basedpyright" else "[]"
         return ProcessOutput(1, payload, "")
 
@@ -3113,8 +3145,11 @@ def test_malformed_nested_json_becomes_a_bounded_tool_failure(tmp_path: Path) ->
     source = tmp_path / "example.py"
     source.write_text("value = 1\n", encoding="utf-8")
 
-    def nested(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
-        _ = argv, cwd
+    def nested(
+        argv: Sequence[str],  # ruff: ignore[unused-function-argument] -- ProcessRunner fixes this keyword.
+        *,
+        cwd: Path,  # ruff: ignore[unused-function-argument] -- ProcessRunner fixes this keyword.
+    ) -> ProcessOutput:
         return ProcessOutput(0, "[" * 100_000, "")
 
     reports = analyze_external([str(source)], root=tmp_path, trust=TrustMode.SAFE, runner=nested)
@@ -3127,8 +3162,11 @@ def test_external_failure_redacts_secrets_and_absolute_paths(tmp_path: Path) -> 
     source = tmp_path / "example.py"
     source.write_text("value = 1\n", encoding="utf-8")
 
-    def failed(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
-        _ = argv, cwd
+    def failed(
+        argv: Sequence[str],  # ruff: ignore[unused-function-argument] -- ProcessRunner fixes this keyword.
+        *,
+        cwd: Path,
+    ) -> ProcessOutput:
         return ProcessOutput(
             2,
             "",
@@ -3167,8 +3205,11 @@ def test_python_external_tools_use_structured_output_without_uv(tmp_path: Path, 
     source.write_text("value = 1\n", encoding="utf-8")
     seen: list[tuple[str, ...]] = []
 
-    def runner(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
-        _ = cwd
+    def runner(
+        argv: Sequence[str],
+        *,
+        cwd: Path,  # ruff: ignore[unused-function-argument] -- ProcessRunner fixes this keyword.
+    ) -> ProcessOutput:
         seen.append(tuple(argv))
         if argv[0] == "ruff":
             return ProcessOutput(0, "[]", "")
@@ -3229,8 +3270,11 @@ def test_basedpyright_uses_the_project_environment_for_import_resolution(tmp_pat
     source.write_text("value = 1\n", encoding="utf-8")
     seen: list[tuple[str, ...]] = []
 
-    def runner(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
-        _ = cwd
+    def runner(
+        argv: Sequence[str],
+        *,
+        cwd: Path,  # ruff: ignore[unused-function-argument] -- ProcessRunner fixes this keyword.
+    ) -> ProcessOutput:
         seen.append(tuple(argv))
         payload = "[]" if argv[0] == "ruff" else '{"generalDiagnostics":[]}'
         return ProcessOutput(0, payload, "")
@@ -3274,8 +3318,11 @@ def test_basedpyright_runs_in_project_mode_and_filters_unselected_diagnostics(tm
     unselected.write_text("value = 2\n", encoding="utf-8")
     seen: list[tuple[str, ...]] = []
 
-    def runner(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
-        _ = cwd
+    def runner(
+        argv: Sequence[str],
+        *,
+        cwd: Path,  # ruff: ignore[unused-function-argument] -- ProcessRunner fixes this keyword.
+    ) -> ProcessOutput:
         seen.append(tuple(argv))
         if argv[0] == "ruff":
             return ProcessOutput(0, "[]", "")
@@ -3351,8 +3398,11 @@ def test_external_analyzer_cannot_leak_a_path_outside_repository(tmp_path: Path)
     source.write_text("value = 1\n", encoding="utf-8")
     outside = tmp_path.parent / "private.py"
 
-    def runner(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
-        _ = cwd
+    def runner(
+        argv: Sequence[str],
+        *,
+        cwd: Path,  # ruff: ignore[unused-function-argument] -- ProcessRunner fixes this keyword.
+    ) -> ProcessOutput:
         if argv[0] == "ruff":
             return ProcessOutput(
                 1,

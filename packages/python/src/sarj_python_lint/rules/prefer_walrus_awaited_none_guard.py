@@ -272,11 +272,11 @@ class _NameUsage(ast.NodeVisitor):
 
     @override
     def visit_Lambda(self, node: ast.Lambda) -> None:
-        _ = node
+        """Skip the deferred lambda body when tracking immediate name usage."""
 
     @override
     def visit_GeneratorExp(self, node: ast.GeneratorExp) -> None:
-        _ = node
+        """Skip the deferred generator body when tracking immediate name usage."""
 
     def visit_Import(self, node: ast.Import) -> None:
         self.rebound |= any((alias.asname or alias.name.split(".", maxsplit=1)[0]) == self.name for alias in node.names)

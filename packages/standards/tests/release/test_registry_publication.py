@@ -130,13 +130,21 @@ def test_ambiguous_publish_failure_is_accepted_only_after_exact_verification(
         verifier, "_npm_version_exists", _missing
     )
 
-    def publish(_argv: tuple[str, ...], *, check: bool, timeout: int) -> None:
-        _ = check, timeout
+    def publish(
+        _argv: tuple[str, ...],
+        *,
+        check: bool,  # ruff: ignore[unused-function-argument] -- subprocess.run fixes this keyword.
+        timeout: int,  # ruff: ignore[unused-function-argument] -- subprocess.run fixes this keyword.
+    ) -> None:
         raise subprocess.CalledProcessError(1, "npm publish")
 
-    def verify(_tarball: Path, *, commit: str, environment: str) -> None:
+    def verify(
+        _tarball: Path,
+        *,
+        commit: str,  # ruff: ignore[unused-function-argument] -- The provenance verifier fixes this keyword.
+        environment: str,  # ruff: ignore[unused-function-argument] -- The provenance verifier fixes this keyword.
+    ) -> None:
         nonlocal calls
-        _ = commit, environment
         calls += 1
 
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- test injects an ambiguous npm subprocess failure
@@ -157,12 +165,20 @@ def test_ambiguous_publish_and_verification_failure_reports_failure(
         verifier, "_npm_version_exists", _missing
     )
 
-    def publish(_argv: tuple[str, ...], *, check: bool, timeout: int) -> None:
-        _ = check, timeout
+    def publish(
+        _argv: tuple[str, ...],
+        *,
+        check: bool,  # ruff: ignore[unused-function-argument] -- subprocess.run fixes this keyword.
+        timeout: int,  # ruff: ignore[unused-function-argument] -- subprocess.run fixes this keyword.
+    ) -> None:
         raise subprocess.CalledProcessError(1, "npm publish")
 
-    def reject(_tarball: Path, *, commit: str, environment: str) -> None:
-        _ = commit, environment
+    def reject(
+        _tarball: Path,
+        *,
+        commit: str,  # ruff: ignore[unused-function-argument] -- The provenance verifier fixes this keyword.
+        environment: str,  # ruff: ignore[unused-function-argument] -- The provenance verifier fixes this keyword.
+    ) -> None:
         msg = "registry never converged"
         raise OSError(msg)
 
@@ -263,10 +279,9 @@ def test_npm_verification_has_independent_stage_budgets(
         operation: Callable[[], object],
         *,
         timeout: timedelta,
-        clock: Callable[[], float],
-        sleeper: Callable[[float], None],
+        clock: Callable[[], float],  # ruff: ignore[unused-function-argument] -- The retry stage fixes this keyword.
+        sleeper: Callable[[float], None],  # ruff: ignore[unused-function-argument] -- The retry stage fixes this keyword.
     ) -> object:
-        _ = clock, sleeper
         stages.append((stage, timeout))
         return operation()
 
@@ -277,7 +292,7 @@ def test_npm_verification_has_independent_stage_budgets(
         return artifact
 
     def verify_provenance(_artifact: object, *, commit: str, environment: str) -> None:
-        _ = commit, environment
+        """Treat provenance as already verified while exercising publication timeouts."""
 
     def verify_installability(_identity: PackageIdentity) -> None:
         return None
@@ -334,8 +349,12 @@ def test_npm_verification_converges_independently_after_each_stage_is_delayed(
     def delayed_metadata(_tarball: Path, _identity: PackageIdentity) -> object:
         return delayed("metadata", artifact)
 
-    def delayed_provenance(_artifact: object, *, commit: str, environment: str) -> object:
-        _ = commit, environment
+    def delayed_provenance(
+        _artifact: object,
+        *,
+        commit: str,  # ruff: ignore[unused-function-argument] -- The provenance verifier fixes this keyword.
+        environment: str,  # ruff: ignore[unused-function-argument] -- The provenance verifier fixes this keyword.
+    ) -> object:
         return delayed("provenance")
 
     def delayed_install(_identity: PackageIdentity) -> object:

@@ -405,7 +405,7 @@ def execute(commands: Iterable[Command]) -> int:
                 [executable, *command.argv[1:]],
                 cwd=command.cwd,
                 check=False,
-                env=_command_environment(command),
+                env=_command_environment(),
                 timeout=_COMMAND_TIMEOUT.total_seconds(),
             )
         except subprocess.TimeoutExpired:
@@ -509,8 +509,7 @@ def _git_environment() -> dict[str, str]:
     }
 
 
-def _command_environment(command: Command) -> dict[str, str] | None:
-    _ = command
+def _command_environment() -> dict[str, str] | None:
     environment = os.environ.copy()  # ruff: ignore[banned-api] -- tools must not mistake the isolated runner for the consumer environment.
     environment.pop("VIRTUAL_ENV", None)
     return environment
