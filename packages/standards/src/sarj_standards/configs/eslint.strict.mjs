@@ -1243,6 +1243,7 @@ export function createConfig(options = {}) {
       "@sarj/prefer-module-level-refined-schema": "warn",
       "@sarj/prefer-multi-value-zod-literal": ["warn", { zodMajorVersion: 4 }],
       "@sarj/prefer-named-callback-domain": "error",
+      "@sarj/prefer-nominal-id-types": "warn",
       "@sarj/prefer-node-crypto-hash": "warn",
       "@sarj/prefer-node-fs-promises": "warn",
       "@sarj/prefer-shared-zod-enum": "warn",

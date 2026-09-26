@@ -85,6 +85,7 @@ import preferModuleLevelConstant from "./rules/prefer-module-level-constant.js";
 import preferModuleLevelSchema from "./rules/prefer-module-level-schema.js";
 import preferModuleLevelRefinedSchema from "./rules/prefer-module-level-refined-schema.js";
 import preferMultiValueZodLiteral from "./rules/prefer-multi-value-zod-literal.js";
+import preferNominalIdTypes from "./rules/prefer-nominal-id-types.js";
 import preferNamedCallbackDomain from "./rules/prefer-named-callback-domain.js";
 import preferNamedComplexReturnType from "./rules/prefer-named-complex-return-type.js";
 import preferNativeRandomUuid from "./rules/prefer-native-random-uuid.js";
@@ -208,6 +209,7 @@ const RULES = {
   "prefer-module-level-refined-schema": preferModuleLevelRefinedSchema,
   "prefer-multi-value-zod-literal": preferMultiValueZodLiteral,
   "prefer-named-callback-domain": preferNamedCallbackDomain,
+  "prefer-nominal-id-types": preferNominalIdTypes,
   "prefer-named-complex-return-type": preferNamedComplexReturnType,
   "prefer-native-random-uuid": preferNativeRandomUuid,
   "prefer-node-crypto-hash": preferNodeCryptoHash,
@@ -240,7 +242,7 @@ const RULES = {
 
 const meta = {
   name: "@sarj/eslint-plugin",
-  version: "15.27.0",
+  version: "15.28.0",
 } as const;
 
 /** @deprecated All repositories use one policy; retained for import compatibility. */
@@ -264,6 +266,7 @@ const ADVISORY_RULES = [
   "@sarj/prefer-named-complex-return-type",
   "@sarj/prefer-node-crypto-hash",
   "@sarj/prefer-node-fs-promises",
+  "@sarj/prefer-nominal-id-types",
   "@sarj/prefer-shared-zod-enum",
   "@sarj/prefer-switch-for-repeated-equality",
   "@sarj/prefer-whole-object-assertion",
@@ -355,6 +358,7 @@ const RECOMMENDED_RULES = {
   "@sarj/prefer-module-level-refined-schema": "warn",
   "@sarj/prefer-multi-value-zod-literal": ["warn", { zodMajorVersion: 4 }],
   "@sarj/prefer-named-callback-domain": "error",
+  "@sarj/prefer-nominal-id-types": "warn",
   "@sarj/prefer-named-complex-return-type": "warn",
   "@sarj/prefer-node-crypto-hash": "warn",
   "@sarj/prefer-node-fs-promises": "warn",
@@ -473,6 +477,7 @@ const STRICT_RULES = {
   "@sarj/prefer-module-level-refined-schema": "warn",
   "@sarj/prefer-multi-value-zod-literal": ["warn", { zodMajorVersion: 4 }],
   "@sarj/prefer-named-callback-domain": "error",
+  "@sarj/prefer-nominal-id-types": "warn",
   "@sarj/prefer-named-complex-return-type": "warn",
   "@sarj/prefer-node-crypto-hash": "warn",
   "@sarj/prefer-node-fs-promises": "warn",
