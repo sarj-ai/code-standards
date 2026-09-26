@@ -52,7 +52,7 @@ class RepeatedTestComposition(ProjectRule):
     id: str = "repeated-test-composition"
     code: str = "SARJ457"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        default_level=Severity.WARNING,
+        default_level=Severity.ERROR,
         summary="Sibling tests repeat service collaborator wiring or managed ASGI HTTP clients.",
         rationale="Repeated assembly hides scenario differences and spreads dependency signature changes across tests.",
         remediation="Move shared assembly into a function-scoped fixture or typed factory fixture; keep scenario values explicit.",
@@ -109,7 +109,7 @@ class RepeatedTestComposition(ProjectRule):
                 col=call.col_offset + 1,
                 code=self.code,
                 message="sibling tests repeat dependency composition; use a function-scoped fixture or typed factory fixture and keep scenario inputs explicit.",
-                severity=Severity.WARNING,
+                severity=Severity.ERROR,
             )
             for call in sorted(hits, key=lambda node: (node.lineno, node.col_offset))
         ]
