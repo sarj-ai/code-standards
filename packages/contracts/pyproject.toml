@@ -1,6 +1,6 @@
 [project]
 name = "sarj-rule-contracts"
-version = "0.1.0"
+version = "0.1.1"
 description = "Shared immutable rule metadata and executable examples for Sarj linters."
 readme = "README.md"
 requires-python = ">=3.14"
@@ -10,7 +10,7 @@ authors = [{ name = "sarj-ai" }]
 dependencies = []
 
 [dependency-groups]
-dev = ["pytest>=9.1.1", "ruff>=0.16.8", "basedpyright>=1.40.1"]
+dev = ["pytest>=9.1.1", "ruff>=0.16.9", "basedpyright>=1.40.1"]
 
 [build-system]
 requires = ["hatchling==1.32.4"]

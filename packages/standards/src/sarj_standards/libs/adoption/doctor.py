@@ -17,11 +17,14 @@ from typing import TYPE_CHECKING, Final, NamedTuple
 
 from pydantic import TypeAdapter, ValidationError
 from repo_standards.core.parser import load_manifest as load_repository_manifest
+import yaml
+from yaml.nodes import MappingNode, Node, ScalarNode, SequenceNode
 
 from sarj_standards._meta import CONFIGS_DIR
 from sarj_standards.libs.filesystem import is_link_like
 from sarj_standards.libs.json_boundary import parse_json
 from sarj_standards.libs.repository import hooks as repository_hooks, ledger
+from sarj_standards.libs.yaml_boundary import mapping_items, sequence_items
 
 from . import hooks, launcher, manifest, packagemanager, retired_suppressions, scaffold
 from .configs import PYTHON_COMPANION_CONFIGS
@@ -80,10 +83,15 @@ class _PackageEslintPinRewrite(NamedTuple):
 
 #: `sarj-python-lint==0.25.0`, `"code-standards>=0.9"`, `--from sarj-sql-lint==1.2.3`.
 _PIN = re.compile(
-    r"(?P<name>sarj-(?:python|sql|iac)-lint|sarj-standards-bootstrap|(?:code|sarj)-standards)\s*"
+    r"(?<![A-Za-z0-9_.-])(?P<name>sarj-(?:python|sql|iac)-lint|sarj-standards-bootstrap|(?:code|sarj|repo)-standards)\s*"
     r"(?P<op>==|>=|~=)\s*"
     r"(?P<version>[0-9][0-9A-Za-z._+\-]*)"
 )
+_REPO_STANDARDS_ACTION = re.compile(
+    r"(?P<action>sarj-ai/repo-standards(?:/(?:documentation|pull-request-commits|pull-request-review-policy))?)"
+    r"@[A-Za-z0-9_./-]+"
+)
+_ACTION_VERSION_COMMENT = re.compile(r"([ \t]+)# v\d+\.\d+\.\d+([ \t]*)(?=\r?$)", re.MULTILINE)
 _PREAPPROVED_ESLINT = re.compile(
     r"(?m)^(?P<prefix>[ \t]*(?:npmPreapprovedPackages|minimumReleaseAgeExclude):[^\n]*\n"
     r'(?:[ \t]+-[^\n]*\n)*?[ \t]+-\s*["\']?@sarj/eslint-plugin@)'
@@ -354,11 +362,12 @@ def _check_commit_policy_hooks(root: Path) -> Iterator[Finding]:
 
 def authored_files(root: Path) -> tuple[Path, ...]:
     exclusions = _doctor_exclusions(root)
-    return tuple(
-        path
-        for path in _walk(root)
-        if not any(fnmatch(path.relative_to(root).as_posix(), pattern) for pattern in exclusions)
-    )
+    return tuple(path for path in _walk(root) if not _path_is_excluded(root, path, exclusions))
+
+
+def _path_is_excluded(root: Path, path: Path, exclusions: Sequence[str]) -> bool:
+    relative = path.relative_to(root).as_posix()
+    return any(fnmatch(relative, pattern) for pattern in exclusions)
 
 
 def diagnose_adoption_health(root: Path, selected: Sequence[Path] = ()) -> list[Finding]:
@@ -981,6 +990,14 @@ def _check_pin_files(root: Path, files: Sequence[Path], installed: Mapping[str, 
 
 def _check_pin_file(root: Path, path: Path, installed: Mapping[str, str]) -> Iterator[Finding]:
     original = _read(path)
+    if _is_github_workflow(path) and _rewrite_repo_standards_actions(original).contents != original:
+        yield Finding(
+            Level.DRIFT,
+            path.relative_to(root).as_posix(),
+            "Repo Standards Actions differ from the bundled immutable release",
+            "doctor.version.pin",
+            "run `code-standards update`",
+        )
     migration = launcher.rewrite_legacy_repository_invocations(original)
     if migration.contents != original:
         yield Finding(
@@ -1224,21 +1241,111 @@ def plan_version_pin_updates(
     for path in _walk(root):
         if not _is_pin_site(path):
             continue
-        relative = path.relative_to(root).as_posix()
-        if any(fnmatch(relative, pattern) for pattern in exclusions):
+        if _path_is_excluded(root, path, exclusions):
             continue
-        original = _read(path)
-        contents, packages = rewrite_version_pins(original, versions)
-        if path.name == "package.json":
-            contents, plugin_changed = _rewrite_package_eslint_pins(
-                contents,
-                versions[_ESLINT_PLUGIN],
-            )
-            if plugin_changed:
-                packages = tuple(sorted({*packages, _ESLINT_PLUGIN}))
+        contents, packages = rewrite_file_version_pins(root, path, _read(path), versions)
         if packages:
             updates.append(VersionPinUpdate(path, contents, packages))
     return tuple(updates)
+
+
+def rewrite_file_version_pins(
+    root: Path,
+    path: Path,
+    contents: str,
+    installed: Mapping[str, str],
+    *,
+    exclusions: Sequence[str] = (),
+) -> VersionPinRewrite:
+    if _path_is_excluded(root, path, exclusions):
+        return VersionPinRewrite(contents, ())
+    contents, packages = rewrite_version_pins(contents, installed)
+    if _is_github_workflow(path):
+        action_update = _rewrite_repo_standards_actions(contents)
+        contents = action_update.contents
+        packages = tuple(sorted({*packages, *action_update.packages}))
+    if path.name == "package.json":
+        plugin_version = installed.get(_ESLINT_PLUGIN) or manifest.eslint_peers()[_ESLINT_PLUGIN]
+        contents, plugin_changed = _rewrite_package_eslint_pins(contents, plugin_version)
+        if plugin_changed:
+            packages = tuple(sorted({*packages, _ESLINT_PLUGIN}))
+    return VersionPinRewrite(contents, packages)
+
+
+def _is_github_workflow(path: Path) -> bool:
+    return path.parent.name == "workflows" and path.parent.parent.name == ".github" and path.suffix in {".yml", ".yaml"}
+
+
+def _rewrite_repo_standards_actions(source: str) -> VersionPinRewrite:
+    if "sarj-ai/repo-standards" not in source:
+        return VersionPinRewrite(source, ())
+    replacements: dict[int, tuple[int, str]] = {}
+    for node in _workflow_action_nodes(source):
+        value = _yaml_scalar_text(node)
+        match = _REPO_STANDARDS_ACTION.fullmatch(value)
+        if match is None or node.style in {"|", ">"}:
+            continue
+        start, end = node.start_mark.index, node.end_mark.index
+        quote = node.style or ""
+        if source[start:end] != f"{quote}{value}{quote}":
+            continue  # Preserve anchors, tags, escaped scalars, and other noncanonical YAML syntax.
+        replacement = f"{quote}{match['action']}@{manifest.REPO_STANDARDS_REVISION}{quote}"
+        if comment := _ACTION_VERSION_COMMENT.match(source, end):
+            end = comment.end()
+            replacement += f"{comment[1]}# v{manifest.REPO_STANDARDS_VERSION}{comment[2]}"
+        if source[start:end] != replacement:
+            replacements[start] = (end, replacement)
+    fragments: list[str] = []
+    position = 0
+    for start, (end, replacement) in sorted(replacements.items()):
+        fragments.extend((source[position:start], replacement))
+        position = end
+    fragments.append(source[position:])
+    return VersionPinRewrite("".join(fragments), ("repo-standards",) if replacements else ())
+
+
+def _workflow_action_nodes(source: str) -> Iterator[ScalarNode]:
+    try:
+        document: object = yaml.compose(source, Loader=yaml.SafeLoader)  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType] -- PyYAML parser boundary.
+    except yaml.YAMLError:
+        return
+    jobs = _yaml_field(document if isinstance(document, MappingNode) else None, "jobs")
+    if not isinstance(jobs, MappingNode):
+        return
+    for name, job in mapping_items(jobs):
+        if not name.end_mark.index <= job.start_mark.index < jobs.end_mark.index:
+            continue
+        steps = _yaml_field(job, "steps")
+        if not isinstance(steps, SequenceNode):
+            continue
+        for step in sequence_items(steps):
+            uses = _yaml_field(step, "uses")
+            # Aliases can point into env/run data; only edit uses scalars authored in these steps.
+            if (
+                isinstance(uses, ScalarNode)
+                and isinstance(step, MappingNode)
+                and steps.start_mark.index <= step.start_mark.index < steps.end_mark.index
+                and step.start_mark.index <= uses.start_mark.index < step.end_mark.index
+            ):
+                yield uses
+
+
+def _yaml_field(node: Node | None, key: str) -> Node | None:
+    if not isinstance(node, MappingNode):
+        return None
+    fields = [
+        (name, value)
+        for name, value in mapping_items(node)
+        if isinstance(name, ScalarNode) and _yaml_scalar_text(name) == key
+    ]
+    if len(fields) != 1:
+        return None
+    name, value = fields[0]
+    return value if name.end_mark.index <= value.start_mark.index < node.end_mark.index else None
+
+
+def _yaml_scalar_text(node: ScalarNode) -> str:
+    return node.value  # pyright: ignore[reportAny] -- PyYAML scalar value boundary.
 
 
 def _rewrite_package_eslint_pins(text: str, version: str) -> _PackageEslintPinRewrite:

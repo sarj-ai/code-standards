@@ -37,15 +37,16 @@ const cliSource = await readFile(cliPath, "utf8");
 const catalog = JSON.parse(catalogSource);
 const cli = JSON.parse(cliSource);
 const cache = new Map();
+const ruffVersion = "0.16.9";
 
-assert.match(
+assert.equal(
   execFileSync(
     resolve(repositoryRoot, "packages/standards/.venv/bin/ruff"),
     ["--version"],
     { encoding: "utf8" },
-  ),
-  /^ruff 0\.16\.8\b/u,
-  "formatted code requires repository-pinned Ruff 0.16.8",
+  ).trim(),
+  `ruff ${ruffVersion}`,
+  `formatted code requires repository-pinned Ruff ${ruffVersion}`,
 );
 assert.match(
   execFileSync("terraform", ["version"], { encoding: "utf8" }),
@@ -358,7 +359,7 @@ const docsProjection = {
     prettier: "3.9.6",
     prettierPluginSh: "0.19.0",
     prettierPluginToml: "2.0.6",
-    ruff: "0.16.8",
+    ruff: ruffVersion,
     sqlFormatter: "15.8.2",
     terraform: "1.15.8",
   },
