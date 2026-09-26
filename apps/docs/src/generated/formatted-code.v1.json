@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "0788264e8afe8329e87ec776dda028333511cc74fcc9c49eebbbe372df7c1ed5",
-  "cliSha256": "221b6348b240723ba766e4c78eec799b9a550029b9f6a536bcf561c1a3dfd18d",
+  "catalogSha256": "ed8318d6baee6de2cfd7506e046b9452c35629fbce6323f07be0d85a6969c710",
+  "cliSha256": "a9d817c17a6ac962a2ce5aeec0b760dd912ea2d9fd39c1acb4108dbed4a34446",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -4867,6 +4867,41 @@
       ],
       "optionsSchemaSource": null
     },
+    "python:async-cleanup-registered-synchronously": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/resources.py",
+              "source": "from contextlib import AsyncExitStack\n\n\nasync def close():\n    await release()\n\n\nasync def run():\n    async with AsyncExitStack() as stack:\n        stack.push_async_callback(close)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/resources.py",
+          "id": "awaited-cleanup",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Register cleanup with the async API"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/resources.py",
+              "source": "from contextlib import AsyncExitStack\n\n\nasync def close():\n    await release()\n\n\nasync def run():\n    async with AsyncExitStack() as stack:\n        stack.callback(close)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/resources.py",
+          "id": "dropped-cleanup",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Synchronous callbacks do not await cleanup"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "python:async-mock-call-without-await-assertion": {
       "examples": [
         {
@@ -9436,6 +9471,41 @@
           "outcome": "accept",
           "scenarioId": "write",
           "title": "Route singleton mutations through the bulk primitive"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:subprocess-kill-without-reap": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/processes.py",
+              "source": "import subprocess\n\n\ndef run(args):\n    process = subprocess.Popen(args)\n    try:\n        process.communicate(timeout=1)\n    except subprocess.TimeoutExpired:\n        process.kill()\n        process.communicate()\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/processes.py",
+          "id": "reaped-child",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Drain and wait after killing"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/processes.py",
+              "source": "import subprocess\n\n\ndef run(args):\n    process = subprocess.Popen(args)\n    try:\n        process.communicate(timeout=1)\n    except subprocess.TimeoutExpired:\n        process.kill()\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/processes.py",
+          "id": "unreaped-child",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Killing does not complete cleanup"
         }
       ],
       "optionsSchemaSource": null

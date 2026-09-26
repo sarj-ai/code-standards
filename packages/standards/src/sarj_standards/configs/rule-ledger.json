@@ -24,6 +24,7 @@
   ],
   "rules": {
     "python": [
+      "async-cleanup-registered-synchronously",
       "async-mock-call-without-await-assertion",
       "complex-postgres-query-requires-architecture-review",
       "defect-xfail-requires-explicit-strict",
@@ -135,6 +136,7 @@
       "shared-mutable-pydantic-factory",
       "stepdown",
       "store-get-delegates-to-bulk-read",
+      "subprocess-kill-without-reap",
       "timestamp-order-requires-tiebreaker",
       "typed-error-reasons",
       "unused-test-factory-option"
@@ -417,7 +419,9 @@
       "SARJ459",
       "SARJ460",
       "SARJ461",
-      "SARJ462"
+      "SARJ462",
+      "SARJ463",
+      "SARJ464"
     ],
     "sql": [
       "SARJ101",
