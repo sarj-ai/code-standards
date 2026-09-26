@@ -13,6 +13,7 @@ import yaml
 import sarj_standards.cli.main as cli
 from sarj_standards.libs.adoption import doctor, launcher, lifecycle, manifest, scaffold, transaction, upgrade
 from sarj_standards.libs.diagnostics import baseline
+from sarj_standards.libs.json_boundary import parse_json
 
 
 BOOTSTRAP_COMMAND = "uvx --no-config --isolated --python 3.14 --from sarj-standards-bootstrap code-standards"
@@ -663,6 +664,40 @@ def test_upgrade_preserves_workspace_plugin_ranges(tmp_path: Path) -> None:
 
     assert updates == ()
     assert package.read_text(encoding="utf-8") == original
+
+
+def test_upgrade_composes_package_pins_with_peer_scaffolding(tmp_path: Path) -> None:
+    adopted = manifest.Manifest("0.0.1", ("eslint",), ".", ".", hook_manager="none")
+    (tmp_path / manifest.MANIFEST_NAME).write_text(adopted.render(), encoding="utf-8")
+    package = tmp_path / "package.json"
+    current = manifest.eslint_peers()["@sarj/eslint-plugin"]
+    old = f"{current.split('.')[0]}.0.0"
+    package.write_text(
+        json.dumps(
+            {
+                "name": "consumer",
+                "dependencies": {"@sarj/eslint-plugin": old, "application": "1.2.3"},
+                "devDependencies": {"@sarj/eslint-plugin": old, "test-tool": "4.5.6"},
+                "scripts": {"custom": "keep this"},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    plan = upgrade.build_plan(tmp_path)
+    assert package in {path for path, _contents in plan.scaffold_plan.writes}
+    assert upgrade.apply(plan, install=False) == 0
+
+    updated = package.read_text(encoding="utf-8")
+    data = manifest.as_table(parse_json(updated))
+    assert manifest.table_field(data, "dependencies") == {"@sarj/eslint-plugin": current, "application": "1.2.3"}
+    dev_dependencies = manifest.table_field(data, "devDependencies")
+    assert "@sarj/eslint-plugin" not in dev_dependencies
+    assert dev_dependencies["test-tool"] == "4.5.6"
+    assert manifest.table_field(data, "scripts") == {"custom": "keep this"}
+    assert package not in {update.path for update in doctor.plan_version_pin_updates(tmp_path)}
+    assert upgrade.apply(upgrade.build_plan(tmp_path), install=False) == 0
+    assert package.read_text(encoding="utf-8") == updated
 
 
 def test_upgrade_refreshes_a_secondary_javascript_lock_after_rewriting_its_pin(
