@@ -115,6 +115,7 @@ from sarj_python_lint.rules.prefer_module_level_constant import (
 from sarj_python_lint.rules.prefer_monkeypatch_for_process_state_in_test import (
     PreferMonkeypatchForProcessStateInTest,
 )
+from sarj_python_lint.rules.prefer_monotonic_for_elapsed_time import PreferMonotonicForElapsedTime
 from sarj_python_lint.rules.prefer_namedtuple_over_tuple_return import (
     PreferNamedtupleOverTupleReturn,
 )
@@ -124,6 +125,7 @@ from sarj_python_lint.rules.prefer_non_nullable_collection import (
 )
 from sarj_python_lint.rules.prefer_or_pattern import PreferOrPattern
 from sarj_python_lint.rules.prefer_pydantic_json_value import PreferPydanticJsonValue
+from sarj_python_lint.rules.prefer_regex_fullmatch import PreferRegexFullmatch
 from sarj_python_lint.rules.prefer_self_documenting_constant import (
     PreferSelfDocumentingConstant,
 )
@@ -162,6 +164,7 @@ from sarj_python_lint.rules.require_pydantic_ordinal_lower_bound import (
     RequirePydanticOrdinalLowerBound,
 )
 from sarj_python_lint.rules.restated_test_docstring import RestatedTestDocstring
+from sarj_python_lint.rules.shared_mutable_pydantic_factory import SharedMutablePydanticFactory
 from sarj_python_lint.rules.stepdown import Stepdown
 from sarj_python_lint.rules.store_get_delegates_to_bulk_read import StoreGetDelegatesToBulkRead
 from sarj_python_lint.rules.store_insert_requires_on_conflict import (
@@ -291,6 +294,9 @@ REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
         RequireNoDecodeForSplittingSettingsField.id: RequireNoDecodeForSplittingSettingsField,
         NoVagueSuppressionDescription.id: NoVagueSuppressionDescription,
         NoWholeRequestResponsePayloadInLog.id: NoWholeRequestResponsePayloadInLog,
+        SharedMutablePydanticFactory.id: SharedMutablePydanticFactory,
+        PreferRegexFullmatch.id: PreferRegexFullmatch,
+        PreferMonotonicForElapsedTime.id: PreferMonotonicForElapsedTime,
         TypedErrorReasons.id: TypedErrorReasons,
     }
 )

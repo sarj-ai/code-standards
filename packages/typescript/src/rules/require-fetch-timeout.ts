@@ -21,7 +21,7 @@ export const REQUIRE_FETCH_TIMEOUT_DOCUMENTATION = {
   rationale: "An unbounded request can occupy work indefinitely when an upstream stalls.",
   remediation: "Pass an abort signal, such as `AbortSignal.timeout(ms)`, in the fetch init.",
   category: "correctness",
-  limitations: ["Signal presence establishes an explicit cancellation path, not a guaranteed timeout. Forwarded Request objects can carry an existing signal."],
+  limitations: ["Signal presence establishes an explicit cancellation path, not a guaranteed timeout. Literal null, global undefined, and void 0 do not provide a signal. Unknown spreads and dynamic values are not inferred. Forwarded Request objects can carry an existing signal."],
   examples: [
     { id: "bounded-fetch", title: "Bound the request", outcome: "no-match", files: [{ path: "src/client.ts", source: "await fetch(url, { signal: AbortSignal.timeout(5000) });" }], focusPath: "src/client.ts", expectedCount: 0, public: true },
     { id: "unbounded-fetch", title: "Do not leave fetch unbounded", outcome: "match", files: [{ path: "src/client.ts", source: "await fetch('https://api.example.com/items');" }], focusPath: "src/client.ts", expectedCount: 1, public: true },
@@ -53,27 +53,32 @@ function matchesAnyPattern(
   return false;
 }
 
-function initProvablyLacksSignal(init: TSESTree.CallExpressionArgument): boolean {
-  if (init.type !== AST_NODE_TYPES.ObjectExpression) {
-    return false;
-  }
+function initProvablyLacksSignal(
+  init: TSESTree.CallExpressionArgument,
+  resolvesToGlobal: (identifier: TSESTree.Identifier) => boolean,
+): boolean {
+  if (init.type !== AST_NODE_TYPES.ObjectExpression) return false;
+  let lacksSignal = true;
   for (const prop of init.properties) {
     if (prop.type === AST_NODE_TYPES.SpreadElement) {
-      return false;
+      lacksSignal = false;
+      continue;
     }
-    if (
-      (prop.key.type === AST_NODE_TYPES.Identifier &&
-        prop.key.name === "signal") ||
-      (prop.key.type === AST_NODE_TYPES.Literal && prop.key.value === "signal")
-    ) {
-      return false;
-    }
-    // A computed key could be "signal" at runtime; assume it is.
-    if (prop.computed) {
-      return false;
+    const isSignal =
+      (!prop.computed && prop.key.type === AST_NODE_TYPES.Identifier && prop.key.name === "signal") ||
+      (prop.key.type === AST_NODE_TYPES.Literal && prop.key.value === "signal");
+    if (isSignal) {
+      const value = prop.value;
+      lacksSignal = prop.kind === "init" && !prop.method && (
+        (value.type === AST_NODE_TYPES.Literal && value.value === null) ||
+        (value.type === AST_NODE_TYPES.Identifier && value.name === "undefined" && resolvesToGlobal(value)) ||
+        (value.type === AST_NODE_TYPES.UnaryExpression && value.operator === "void" && value.argument.type === AST_NODE_TYPES.Literal && value.argument.value === 0)
+      );
+    } else if (prop.computed && prop.key.type !== AST_NODE_TYPES.Literal) {
+      lacksSignal = false;
     }
   }
-  return true;
+  return lacksSignal;
 }
 
 /** True for a URL spelled inline rather than a forwarded Request. */
@@ -169,7 +174,7 @@ export default createRule<Options, MessageIds>({
         definition?.type !== "Variable" ||
         definition.parent.kind !== "const" ||
         definition.node.init?.type !== AST_NODE_TYPES.ObjectExpression ||
-        !initProvablyLacksSignal(definition.node.init)
+        !initProvablyLacksSignal(definition.node.init, resolvesToGlobal)
       ) {
         return false;
       }
@@ -222,7 +227,7 @@ export default createRule<Options, MessageIds>({
 
         if (
           init === undefined ||
-          initProvablyLacksSignal(init) ||
+          initProvablyLacksSignal(init, resolvesToGlobal) ||
           (init.type === AST_NODE_TYPES.Identifier &&
             localConstInitProvablyLacksSignal(init))
         ) {
