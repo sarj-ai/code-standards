@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "fd327d9eb47db8f74f7d3b0770b247e477f7f9fb237d0c900361631726e242cc",
-  "cliSha256": "3c21bdb080e6fa16679a964f01ce5b81954e927bd6965ebb36160aac0f4fe682",
+  "catalogSha256": "c996829e94a9835e22bbd230131077e0c9b75da71bd987e3a1ffb690c8162007",
+  "cliSha256": "b33fc6ac42a47794f2f0be1565833fda784d4786498f3fb766894bdd592758ce",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -7481,7 +7481,7 @@
           "files": [
             {
               "path": "auth.py",
-              "source": "import hmac\n\n\ndef authenticated(request, settings):\n    provided = request.headers[\"X-API-Key\"]\n    return hmac.compare_digest(\n        provided.encode(\"ascii\"), settings.api_key.encode(\"ascii\")\n    )\n"
+              "source": "import hmac\n\n\ndef authenticated(request, settings):\n    provided = request.headers[\"X-API-Key\"]\n    return hmac.compare_digest(\n        provided.encode(\"utf-8\"), settings.api_key.encode(\"utf-8\")\n    )\n"
             }
           ],
           "fixedFiles": [],

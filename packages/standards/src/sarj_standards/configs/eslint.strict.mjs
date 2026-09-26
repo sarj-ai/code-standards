@@ -162,15 +162,20 @@ const SUPPORTED_TEST_FRAMEWORKS = new Set(["vitest", "bun", "node", "testing-lib
 
 // typescript-eslint's strict presets assume ESLint's recommended preset is
 // composed before them: the later TypeScript configs disable compiler-owned
-// duplicates while leaving syntax/runtime correctness rules active. Introduce
-// the newly inherited rules at warning so fleet findings can be calibrated
-// before a separate promotion release.
-const ESLINT_RECOMMENDED_WARNING_CONFIG = {
+// duplicates while leaving syntax/runtime correctness rules active. Keep
+// uncalibrated rules at warning; promote only the reviewed correctness subset.
+const ESLINT_RECOMMENDED_CONFIG = {
   ...js.configs.recommended,
-  name: "sarj/eslint-recommended-warning",
-  rules: Object.fromEntries(
-    Object.keys(js.configs.recommended.rules).map((rule) => [rule, "warn"]),
-  ),
+  name: "sarj/eslint-recommended",
+  rules: {
+    ...Object.fromEntries(
+      Object.keys(js.configs.recommended.rules).map((rule) => [rule, "warn"]),
+    ),
+    "no-async-promise-executor": "error",
+    "no-constant-binary-expression": "error",
+    "no-unsafe-finally": "error",
+    "no-unsafe-optional-chaining": "error",
+  },
 };
 
 // Prefer expression bodies whenever an arrow contains only a return. Unlike
@@ -546,6 +551,7 @@ const BUILD_OUTPUT_IGNORES = [
   "**/.wrangler/**",
   "**/.pnp.cjs",
   "**/.pnp.loader.mjs",
+  "**/.yarn/releases/**",
   "**/storybook-static/**",
   "**/__generated__/**",
   "**/generated/**",
@@ -600,7 +606,7 @@ export function createConfig(options = {}) {
   // per-file entry that ignores nothing.
   { ignores: BUILD_OUTPUT_IGNORES },
 
-  ESLINT_RECOMMENDED_WARNING_CONFIG,
+  ESLINT_RECOMMENDED_CONFIG,
   ...tseslint.configs.strictTypeChecked,
   ...tseslint.configs.stylisticTypeChecked,
 

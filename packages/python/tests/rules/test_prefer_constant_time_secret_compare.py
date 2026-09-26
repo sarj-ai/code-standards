@@ -4,11 +4,14 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from sarj_python_lint.__main__ import main
 from sarj_python_lint.rule_base import RuleExample, Severity
 from sarj_python_lint.rules.prefer_constant_time_secret_compare import PreferConstantTimeSecretCompare
 
 
 if TYPE_CHECKING:
+    from _pytest.capture import CaptureFixture
+
     from sarj_python_lint.rule_base import Diagnostic
 
 
@@ -33,7 +36,7 @@ def test_request_header_compared_to_settings_secret_fires(operator: str) -> None
     source = f'def auth(request, settings):\n    return request.headers["X-API-Key"] {operator} settings.api_key\n'
     [diagnostic] = _check(source)
     assert diagnostic.code == "SARJ011"
-    assert diagnostic.severity is Severity.WARNING
+    assert diagnostic.severity is Severity.ERROR
     assert "compare_digest" in diagnostic.message
 
 
@@ -305,6 +308,7 @@ def test_generated_header_is_clean() -> None:
     [
         'import hmac\ndef auth(request, settings):\n    return hmac.compare_digest(request.headers["X-API-Key"], settings.api_key)\n',
         'import secrets\ndef auth(request, settings):\n    return secrets.compare_digest(request.headers["X-API-Key"], settings.api_key)\n',
+        'import hmac\ndef auth(request, settings):\n    return hmac.compare_digest(request.headers["X-API-Key"].encode("utf-8"), settings.api_key.encode("utf-8"))\n',
     ],
 )
 def test_constant_time_comparisons_are_clean(source: str) -> None:
@@ -314,3 +318,17 @@ def test_constant_time_comparisons_are_clean(source: str) -> None:
 @pytest.mark.parametrize("source", ["", "# comment\n", "def broken(:\n"])
 def test_empty_or_invalid_source_is_clean(source: str) -> None:
     assert _check(source) == []
+
+
+@pytest.mark.parametrize("suppression", ["", "  # sarj-noqa: SARJ011 — synthetic compatibility boundary"])
+def test_error_exit_and_exact_suppression(tmp_path: Path, capsys: CaptureFixture[str], suppression: str) -> None:
+    path = tmp_path / "auth.py"
+    path.write_text(
+        f'def auth(request, settings):\n    return request.headers["X-API-Key"] == settings.api_key{suppression}\n'
+    )
+
+    for _ in range(2):
+        assert main(["check", "--rule", "prefer-constant-time-secret-compare", str(path)]) == (0 if suppression else 1)
+        output = capsys.readouterr()
+        assert output.out.count("SARJ011 ") == (0 if suppression else 1)
+        assert not output.err

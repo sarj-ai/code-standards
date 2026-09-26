@@ -137,14 +137,19 @@ describe("the shipped eslint.strict.mjs actually loads", () => {
       "no-unused-vars",
       "no-with",
     ]);
-    expect(warnings).toHaveLength(43);
+    expect(warnings).toHaveLength(39);
     expect(severityOf(rules["no-prototype-builtins"])).toBe(2);
     expect(severityOf(rules["no-fallthrough"])).toBe(2);
     for (const rule of [
       "no-async-promise-executor",
       "no-constant-binary-expression",
-      "no-unassigned-vars",
+      "no-unsafe-finally",
       "no-unsafe-optional-chaining",
+    ]) {
+      expect(severityOf(rules[rule])).toBe(2);
+    }
+    for (const rule of [
+      "no-unassigned-vars",
       "no-useless-assignment",
       "preserve-caught-error",
     ]) {

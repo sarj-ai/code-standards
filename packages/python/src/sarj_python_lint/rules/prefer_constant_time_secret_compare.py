@@ -95,7 +95,7 @@ class PreferConstantTimeSecretCompare(Rule):
     id: str = "prefer-constant-time-secret-compare"
     code: str = "SARJ011"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        default_level=Severity.WARNING,
+        default_level=Severity.ERROR,
         summary="Externally supplied authenticators are compared with timing-sensitive equality.",
         rationale=(
             "Ordinary equality may short-circuit based on matching content when attacker-controlled credentials are "
@@ -107,7 +107,7 @@ class PreferConstantTimeSecretCompare(Rule):
         ),
         category=RuleCategory.SECURITY,
         limitations=(
-            "The warning requires evidence of an externally supplied credential and configured or stored secret state.",
+            "The diagnostic requires evidence of an externally supplied credential and configured or stored secret state.",
             "Only direct equality and unambiguous same-scope aliases from headers, cookies, settings, or environment are traced.",
             "Generated files, tests, test-support modules, equality methods, public sentinels, and type-like values are excluded.",
             "`compare_digest` requires compatible ASCII string or bytes-like operands and may still reveal type or length.",
@@ -134,7 +134,7 @@ class PreferConstantTimeSecretCompare(Rule):
                 files=(
                     ExampleFile.python(
                         "auth.py",
-                        'import hmac\n\ndef authenticated(request, settings):\n    provided = request.headers["X-API-Key"]\n    return hmac.compare_digest(provided.encode("ascii"), settings.api_key.encode("ascii"))\n',
+                        'import hmac\n\ndef authenticated(request, settings):\n    provided = request.headers["X-API-Key"]\n    return hmac.compare_digest(provided.encode("utf-8"), settings.api_key.encode("utf-8"))\n',
                     ),
                 ),
                 focus_path=PurePosixPath("auth.py"),
@@ -182,7 +182,7 @@ class PreferConstantTimeSecretCompare(Rule):
                     line=comparison.lineno,
                     col=comparison.col_offset + 1,
                     code=self.code,
-                    severity=Severity.WARNING,
+                    severity=Severity.ERROR,
                     message=_message(operand_roles),
                 )
             )
