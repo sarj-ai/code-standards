@@ -21,6 +21,8 @@ from sarj_python_lint.rules._sql import is_store_module, sql_string_value, strip
 
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from sarj_python_lint._file_context import PythonFileContext
     from sarj_python_lint.rules._ast_index import NodeIndex
 
@@ -130,7 +132,7 @@ class StoreInsertRequiresOnConflict(Rule):
             return []
 
         diags: list[Diagnostic] = []
-        parents = {id(child): parent for parent in context.nodes(ast.AST) for child in ast.iter_child_nodes(parent)}
+        parents = context.parents
         consumed: set[int] = set()
         for node in context.nodes(ast.Constant, ast.BinOp, ast.JoinedStr):
             if id(node) in consumed:
@@ -187,11 +189,11 @@ def _source_span(function: ast.FunctionDef | ast.AsyncFunctionDef) -> int:
 def _is_executable_sql(
     node: ast.expr,
     owner: ast.FunctionDef | ast.AsyncFunctionDef,
-    parents: dict[int, ast.AST],
+    parents: Mapping[ast.AST, ast.AST],
 ) -> bool:
     current: ast.AST = node
     while current is not owner:
-        parent = parents.get(id(current))
+        parent = parents.get(current)
         if parent is None:
             return False
         if isinstance(parent, (ast.Assign, ast.AnnAssign, ast.NamedExpr)):
@@ -226,13 +228,13 @@ def _sql_template_value(node: ast.expr) -> str | None:
 def _has_dynamic_duplicate_policy(
     node: ast.expr,
     owner: ast.FunctionDef | ast.AsyncFunctionDef,
-    parents: dict[int, ast.AST],
+    parents: Mapping[ast.AST, ast.AST],
 ) -> bool:
     if isinstance(node, ast.JoinedStr):
         return _has_interpolated_duplicate_policy(node)
     current: ast.AST = node
     while current is not owner:
-        parent = parents.get(id(current))
+        parent = parents.get(current)
         if parent is None:
             break
         if isinstance(parent, ast.Call) and isinstance(parent.func, ast.Attribute) and parent.func.attr == "format":

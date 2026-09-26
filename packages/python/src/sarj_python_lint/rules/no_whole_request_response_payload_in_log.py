@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ast
 from collections import Counter
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, final, override
@@ -26,7 +27,6 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from sarj_python_lint._file_context import PythonFileContext
-    from sarj_python_lint.rules._ast_index import NodeIndex
 
 
 _PAYLOAD_TERMINALS = frozenset({"body", "bodies", "content", "data", "json", "payload", "payloads", "text"})
@@ -60,7 +60,7 @@ class _SuiteFacts:
 class _AnalysisFacts:
     suites: dict[int, _SuiteFacts]
     statement_suites: dict[int, int]
-    parents: dict[int, ast.AST]
+    parents: Mapping[ast.AST, ast.AST]
 
 
 def _reference_tokens(value: ast.expr) -> tuple[str, ...]:
@@ -171,7 +171,7 @@ class NoWholeRequestResponsePayloadInLog(Rule):
         tree = context.tree
         if tree is None:
             return []
-        facts = _analysis_facts(tree, node_index=context.node_index)
+        facts = _analysis_facts(context)
         diagnostics: list[Diagnostic] = []
         for node in context.nodes(ast.Call):
             if not _is_logging_call(node):
@@ -295,13 +295,11 @@ def _is_payload_reference(value: ast.expr, *, label: str | None = None) -> bool:
     return bool(_REQUEST_RESPONSE.intersection(tokens) and _PAYLOAD_TERMINALS.intersection(tokens))
 
 
-def _analysis_facts(tree: ast.Module, *, node_index: NodeIndex | None = None) -> _AnalysisFacts:
+def _analysis_facts(context: PythonFileContext) -> _AnalysisFacts:
     suites: dict[int, _SuiteFacts] = {}
     statement_suites: dict[int, int] = {}
-    parents = {
-        id(child): parent for parent in walk_ast(tree, index=node_index) for child in ast.iter_child_nodes(parent)
-    }
-    for owner in walk_ast(tree, index=node_index):
+    parents = context.parents
+    for owner in context.nodes(ast.AST):
         for field_name in owner._fields:
             statements = _statement_list(getattr(owner, field_name, None))
             if statements is None:
@@ -387,10 +385,10 @@ def _root_name(node: ast.expr) -> str | None:
     return node.id if isinstance(node, ast.Name) else None
 
 
-def _containing_statement(node: ast.AST, parents: dict[int, ast.AST]) -> ast.stmt | None:
+def _containing_statement(node: ast.AST, parents: Mapping[ast.AST, ast.AST]) -> ast.stmt | None:
     current: ast.AST | None = node
     while current is not None and not isinstance(current, ast.stmt):
-        current = parents.get(id(current))
+        current = parents.get(current)
     return current
 
 

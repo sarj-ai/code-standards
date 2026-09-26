@@ -20,6 +20,8 @@ from sarj_python_lint.rules._ast_index import walk as walk_ast
 
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from sarj_python_lint._file_context import PythonFileContext
 
 
@@ -136,8 +138,8 @@ class NoUnusedValueMarker(Rule):
         ]
         if not markers:
             return []
-        parents = (
-            {child: parent for parent in context.nodes(ast.AST) for child in ast.iter_child_nodes(parent)}
+        parents: Mapping[ast.AST, ast.AST] = (
+            context.parents
             if any(isinstance(node, ast.Assign) and isinstance(node.value, (ast.Name, ast.Tuple)) for node in markers)
             else {}
         )
@@ -166,7 +168,7 @@ def _is_unused_value_marker(node: ast.Assign | ast.AnnAssign) -> bool:
 
 def _is_pure_parameter_marker(
     node: ast.Assign | ast.AnnAssign,
-    parents: dict[ast.AST, ast.AST],
+    parents: Mapping[ast.AST, ast.AST],
 ) -> bool:
     if not isinstance(node, ast.Assign) or len(node.targets) != 1:
         return False
@@ -193,7 +195,7 @@ def _marker_reference_names(value: ast.expr) -> set[str] | None:
 
 
 def _enclosing_function(
-    node: ast.AST, parents: dict[ast.AST, ast.AST]
+    node: ast.AST, parents: Mapping[ast.AST, ast.AST]
 ) -> ast.FunctionDef | ast.AsyncFunctionDef | None:
     current = node
     while current in parents:

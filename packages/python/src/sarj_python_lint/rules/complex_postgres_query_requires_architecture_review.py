@@ -23,7 +23,7 @@ from sarj_python_lint.rules.no_analytical_aggregation_in_postgres_store import a
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Mapping
     from pathlib import Path
 
     from sqlglot import exp
@@ -83,18 +83,18 @@ def _docstring_node_ids(tree: ast.AST, *, node_index: NodeIndex | None = None) -
     return result
 
 
-def _is_query_context(node: ast.expr, parents: dict[int, ast.AST], roots: frozenset[int]) -> bool:
+def _is_query_context(node: ast.expr, parents: Mapping[ast.AST, ast.AST], roots: frozenset[int]) -> bool:
     current: ast.AST = node
     while True:
         if id(current) in roots:
             return True
-        if (parent := parents.get(id(current))) is None:
+        if (parent := parents.get(current)) is None:
             return False
         current = parent
 
 
 def _query_roots(
-    tree: ast.Module, parents: dict[int, ast.AST], *, node_index: NodeIndex | None = None
+    tree: ast.Module, parents: Mapping[ast.AST, ast.AST], *, node_index: NodeIndex | None = None
 ) -> frozenset[int]:
     binding_counts: dict[tuple[int, str], int] = {}
     binding_values: dict[tuple[int, str], ast.expr] = {}
@@ -133,10 +133,10 @@ def _query_roots(
     return frozenset(roots)
 
 
-def _scope(node: ast.AST, parents: dict[int, ast.AST]) -> ast.AST:
+def _scope(node: ast.AST, parents: Mapping[ast.AST, ast.AST]) -> ast.AST:
     current = node
     while not isinstance(current, (ast.Module, ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.ClassDef)):
-        parent = parents.get(id(current))
+        parent = parents.get(current)
         if parent is None:
             return current
         current = parent
@@ -169,7 +169,7 @@ def _call_name(function: ast.expr) -> str:
 
 
 def _postgres_sql_constructors(
-    tree: ast.Module, parents: dict[int, ast.AST], *, node_index: NodeIndex | None = None
+    tree: ast.Module, parents: Mapping[ast.AST, ast.AST], *, node_index: NodeIndex | None = None
 ) -> frozenset[_ConstructorImport]:
     constructors: set[_ConstructorImport] = set()
     for node in nodes(tree, ast.Import, ast.ImportFrom, index=node_index):
@@ -204,7 +204,7 @@ def _qualified_name(node: ast.expr) -> str:
 def _visible_constructors(
     owner: ast.AST,
     imports: frozenset[_ConstructorImport],
-    parents: dict[int, ast.AST],
+    parents: Mapping[ast.AST, ast.AST],
     binding_counts: dict[tuple[int, str], int],
     wildcard_scopes: set[int],
 ) -> frozenset[str]:
@@ -212,7 +212,7 @@ def _visible_constructors(
     current = owner
     while True:
         scope_chain.append(id(current))
-        parent = parents.get(id(current))
+        parent = parents.get(current)
         if parent is None:
             break
         current = _scope(parent, parents)
@@ -380,7 +380,7 @@ class ComplexPostgresQueryRequiresArchitectureReview(Rule):
             return []
 
         docstrings = _docstring_node_ids(tree, node_index=context.node_index)
-        parents = {id(child): parent for parent in context.nodes(ast.AST) for child in ast.iter_child_nodes(parent)}
+        parents = context.parents
         query_roots = _query_roots(tree, parents, node_index=context.node_index)
         diagnostics: list[Diagnostic] = []
         consumed: set[int] = set()
@@ -417,7 +417,7 @@ class ComplexPostgresQueryRequiresArchitectureReview(Rule):
 
 def _count_query_bindings(
     tree: ast.Module,
-    parents: dict[int, ast.AST],
+    parents: Mapping[ast.AST, ast.AST],
     count: Callable[[ast.AST, str], None],
     wildcard_scopes: set[int],
     *,
@@ -430,7 +430,7 @@ def _count_query_bindings(
         count(_scope(argument, parents), argument.arg)
     _count_import_bindings(tree, parents, count, wildcard_scopes, node_index=node_index)
     for definition in nodes(tree, ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, index=node_index):
-        parent = parents.get(id(definition))
+        parent = parents.get(definition)
         if parent is not None:
             count(_scope(parent, parents), definition.name)
     for handler in nodes(tree, ast.ExceptHandler, index=node_index):
@@ -447,7 +447,7 @@ def _count_query_bindings(
 
 def _query_binding_values(
     tree: ast.Module,
-    parents: dict[int, ast.AST],
+    parents: Mapping[ast.AST, ast.AST],
     binding_values: dict[tuple[int, str], ast.expr],
     *,
     node_index: NodeIndex | None = None,
@@ -461,7 +461,7 @@ def _query_binding_values(
         if not isinstance(target, ast.Name) or assignment.value is None:
             continue
         owner = _scope(assignment, parents)
-        if parents.get(id(assignment)) is owner:
+        if parents.get(assignment) is owner:
             binding_values[id(owner), target.id] = assignment.value
 
 
@@ -591,7 +591,7 @@ def _maximum_query_joins(statement: exp.Query) -> int:
 
 def _count_import_bindings(
     tree: ast.Module,
-    parents: dict[int, ast.AST],
+    parents: Mapping[ast.AST, ast.AST],
     count: Callable[[ast.AST, str], None],
     wildcard_scopes: set[int],
     *,

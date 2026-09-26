@@ -12,6 +12,7 @@ from sarj_python_lint.rules._paths import is_generated
 
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
     from pathlib import Path
 
 
@@ -47,6 +48,10 @@ class PythonFileContext:
 
     def nodes[NodeT: ast.AST](self, *types: type[NodeT]) -> list[NodeT]:
         return [node for node in self.node_index.query(types) if isinstance(node, types)]
+
+    @property
+    def parents(self) -> Mapping[ast.AST, ast.AST]:
+        return self.node_index.parents
 
     @cached_property
     def imports(self) -> ImportIndex:

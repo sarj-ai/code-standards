@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import ast
+from types import MappingProxyType
 from typing import TYPE_CHECKING, TypeIs, final
 
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Iterator, Mapping
 
 
 _AST = ast.AST
@@ -43,7 +44,7 @@ def walk(node: ast.AST, *, index: NodeIndex | None = None) -> Iterator[ast.AST]:
 
 @final
 class NodeIndex:
-    __slots__ = ("_buckets", "_flat", "_queries", "tree")
+    __slots__ = ("_buckets", "_flat", "_parents", "_queries", "tree")
 
     def __init__(self, tree: ast.AST) -> None:
         self.tree = tree
@@ -62,7 +63,14 @@ class NodeIndex:
             flat += children(current)
         self._buckets: dict[type[ast.AST], list[ast.AST]] = buckets
         self._flat: list[ast.AST] = flat
+        self._parents: Mapping[ast.AST, ast.AST] | None = None
         self._queries: dict[tuple[type[ast.AST], ...], list[ast.AST]] = {}
+
+    @property
+    def parents(self) -> Mapping[ast.AST, ast.AST]:
+        if self._parents is None:
+            self._parents = MappingProxyType({child: parent for parent in self._flat for child in children(parent)})
+        return self._parents
 
     def query(self, types: tuple[type[ast.AST], ...]) -> list[ast.AST]:
         hit = self._queries.get(types)
@@ -87,3 +95,8 @@ class NodeIndex:
 def nodes[NodeT: ast.AST](tree: ast.AST, *types: type[NodeT], index: NodeIndex | None = None) -> list[NodeT]:
     selected = index if index is not None and index.tree is tree else NodeIndex(tree)
     return [node for node in selected.query(types) if isinstance(node, types)]
+
+
+def parent_map(tree: ast.AST, *, index: NodeIndex | None = None) -> Mapping[ast.AST, ast.AST]:
+    selected = index if index is not None and index.tree is tree else NodeIndex(tree)
+    return selected.parents

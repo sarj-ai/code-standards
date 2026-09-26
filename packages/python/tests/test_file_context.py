@@ -3,6 +3,7 @@ from __future__ import annotations
 import ast
 import gc
 from pathlib import Path
+from types import MappingProxyType
 from typing import TYPE_CHECKING, final, override
 import weakref
 
@@ -11,7 +12,7 @@ from sarj_python_lint._analysis_session import AnalysisSession
 from sarj_python_lint._file_context import PythonFileContext
 from sarj_python_lint.rule_base import Rule
 from sarj_python_lint.rules import REGISTRY
-from sarj_python_lint.rules._ast_index import nodes, walk
+from sarj_python_lint.rules._ast_index import nodes, parent_map, walk
 from sarj_python_lint.rules._project_index import ProjectIndexSet
 
 
@@ -60,6 +61,7 @@ def test_context_and_ast_are_collectable_after_file_checks() -> None:
     assert context.imports is context.imports
     assert context.module_imports is context.module_imports
     assert context.fastapi.tree is tree
+    assert context.parents is context.parents
     context_ref, tree_ref = weakref.ref(context), weakref.ref(tree)
     del context, tree  # sarj-noqa: SARJ442 -- release strong references to test fact lifetime.
     gc.collect()
@@ -185,3 +187,30 @@ def test_explicit_context_session_owns_target_policy(tmp_path: Path) -> None:
     manifest.write_text("[project]\nname = 'sample'\nversion = '0.1.0'\nrequires-python = '>=3.10'\n", encoding="utf-8")
     current = PythonFileContext(path, example.focus_file.source, AnalysisSession())
     assert len(rule.check_context(current)) == example.expected_count
+
+
+def test_parent_facts_preserve_breadth_first_last_parent_for_shared_nodes() -> None:
+    context = PythonFileContext(
+        Path("app.py"), "first = source\ndef nested():\n    return other + source\nlast = other\n"
+    )
+    tree = context.tree
+    assert tree is not None
+    expected = {child: parent for parent in ast.walk(tree) for child in ast.iter_child_nodes(parent)}
+    assert context.parents == expected
+    assert context.parents is context.parents
+    assert isinstance(context.parents, MappingProxyType)
+    loads = [node for node in ast.walk(tree) if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load)]
+    assert len(loads) > 1
+    assert all(node.ctx is loads[0].ctx for node in loads)
+    assert context.parents[loads[0].ctx] is loads[-1]
+    assert tree not in context.parents
+
+
+def test_parent_facts_do_not_reuse_another_files_tree() -> None:
+    first = PythonFileContext(Path("app.py"), "first = source\n")
+    second = PythonFileContext(Path("app.py"), "second = source\n")
+    second_tree = second.tree
+    assert second_tree is not None
+    assert first.parents is not second.parents
+    assert parent_map(second_tree, index=first.node_index) == second.parents
+    assert not any(isinstance(node, ast.Name) and node.id == "first" for node in second.parents)

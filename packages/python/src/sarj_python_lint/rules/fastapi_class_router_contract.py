@@ -20,6 +20,7 @@ from sarj_python_lint.rules._paths import is_test_path
 
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
     from pathlib import Path
 
     from sarj_python_lint._file_context import PythonFileContext
@@ -92,7 +93,7 @@ class FastapiClassRouterContract(Rule):
         if tree is None:
             return []
         index = context.fastapi
-        parents = _parents(tree, node_index=context.node_index)
+        parents = context.parents
         findings = _router_construction_findings(path, tree, index, parents, node_index=context.node_index)
         for function in (
             node for node in context.nodes(ast.AST) if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
@@ -109,7 +110,7 @@ def _router_construction_findings(
     path: Path,
     tree: ast.Module,
     index: FastapiIndex,
-    parents: dict[int, ast.AST],
+    parents: Mapping[ast.AST, ast.AST],
     *,
     node_index: NodeIndex | None = None,
 ) -> list[Diagnostic]:
@@ -187,16 +188,12 @@ def _is_collection_or_scalar(annotation: ast.expr) -> bool:
     return flat_name(target) in _TOP_LEVEL_COLLECTIONS | _SCALARS
 
 
-def _parents(tree: ast.Module, *, node_index: NodeIndex | None = None) -> dict[int, ast.AST]:
-    return {id(child): parent for parent in walk_ast(tree, index=node_index) for child in ast.iter_child_nodes(parent)}
-
-
 def _ancestor(
-    node: ast.AST, parents: dict[int, ast.AST], kind: type[ast.AST] | tuple[type[ast.AST], ...]
+    node: ast.AST, parents: Mapping[ast.AST, ast.AST], kind: type[ast.AST] | tuple[type[ast.AST], ...]
 ) -> ast.AST | None:
-    current = parents.get(id(node))
+    current = parents.get(node)
     while current is not None:
         if isinstance(current, kind):
             return current
-        current = parents.get(id(current))
+        current = parents.get(current)
     return None

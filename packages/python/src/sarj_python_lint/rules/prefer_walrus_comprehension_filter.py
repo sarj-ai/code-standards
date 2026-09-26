@@ -21,6 +21,7 @@ from sarj_python_lint.rules._paths import is_test_path
 
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
     from pathlib import Path
 
     from sarj_python_lint._file_context import PythonFileContext
@@ -68,7 +69,7 @@ def _check_comprehension_node(
     source_lines: list[str],
     code: str,
     path: Path,
-    parents: dict[ast.AST, ast.AST],
+    parents: Mapping[ast.AST, ast.AST],
 ) -> list[Diagnostic]:
     if len(node.generators) != 1 or not _has_callable_scope(node, parents):
         return []
@@ -141,7 +142,7 @@ def _calls_in_immediate_scope(expression: ast.expr) -> list[ast.Call]:
     return calls
 
 
-def _runs_on_every_retained_path(call: ast.Call, clause: ast.expr, parents: dict[ast.AST, ast.AST]) -> bool:
+def _runs_on_every_retained_path(call: ast.Call, clause: ast.expr, parents: Mapping[ast.AST, ast.AST]) -> bool:
     child: ast.AST = call
     while child is not clause:
         parent = parents.get(child)
@@ -170,7 +171,7 @@ def _callee_name(call: ast.Call) -> str | None:
             return None
 
 
-def _has_callable_scope(node: ast.AST, parents: dict[ast.AST, ast.AST]) -> bool:
+def _has_callable_scope(node: ast.AST, parents: Mapping[ast.AST, ast.AST]) -> bool:
     child = node
     while (parent := parents.get(child)) is not None:
         match parent:
@@ -265,7 +266,7 @@ class PreferWalrusComprehensionFilter(Rule):
             return []
         source_lines = context.source_lines
         diags: list[Diagnostic] = []
-        parents = {child: parent for parent in context.nodes(ast.AST) for child in children(parent)}
+        parents = context.parents
 
         for node in comprehensions:
             diags.extend(_check_comprehension_node(node, source_lines, self.code, path, parents))

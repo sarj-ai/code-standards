@@ -1,0 +1,336 @@
+{
+  "baseline_revision": "7ca9b786b1384325c9dcdd230a837fdf1bd57d40",
+  "native_analysis": {
+    "baseline": {
+      "commit": "7ca9b786b1384325c9dcdd230a837fdf1bd57d40",
+      "source_tree": "679ed2ad29fbb861fe02ff5c6a3db3512b7e11f6",
+      "source_digest": "a6f8298b027c409239332d49f71a05d01dfeb09df3828dbee734807d77139efb"
+    },
+    "candidate": {
+      "python_source_digest": "8fced9d2f21431df36e0a94d6e3a8e36b2dc999d876e818cf45069b72466b065",
+      "contracts_source_digest": "be8ecb4f9436e18670d70b867eb530e0e668dc2d8c6e670e8a8f819e3e162913",
+      "harness_digest": "05b7ff9caeb9a8283605cc981b1c4d06824bb7cdf25755207108b1efc197fcd6"
+    },
+    "corpus": "baseline:packages/python/src",
+    "files": 140,
+    "bytes": 2072398,
+    "source_digest": "a6f8298b027c409239332d49f71a05d01dfeb09df3828dbee734807d77139efb",
+    "platform": "macOS-27.0-arm64-arm-64bit-Mach-O",
+    "samples": {
+      "baseline": [
+        {
+          "native_seconds": 13.894666666004923,
+          "diagnostics": 0,
+          "diagnostic_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "peak_memory_bytes": 315801600,
+          "rules": 108,
+          "imported_from": "packages/python/src/sarj_python_lint/__init__.py",
+          "python_version": "3.14.7 (main, Sep 24 2026, 17:46:50) [Clang 22.1.3 ]",
+          "startup_inclusive_seconds": 14.29978454200318,
+          "round": 0
+        },
+        {
+          "native_seconds": 13.934009584001615,
+          "diagnostics": 0,
+          "diagnostic_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "peak_memory_bytes": 313606144,
+          "rules": 108,
+          "imported_from": "packages/python/src/sarj_python_lint/__init__.py",
+          "python_version": "3.14.7 (main, Sep 24 2026, 17:46:50) [Clang 22.1.3 ]",
+          "startup_inclusive_seconds": 14.092828749999171,
+          "round": 1
+        },
+        {
+          "native_seconds": 13.91269770800136,
+          "diagnostics": 0,
+          "diagnostic_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "peak_memory_bytes": 314130432,
+          "rules": 108,
+          "imported_from": "packages/python/src/sarj_python_lint/__init__.py",
+          "python_version": "3.14.7 (main, Sep 24 2026, 17:46:50) [Clang 22.1.3 ]",
+          "startup_inclusive_seconds": 14.078426375010167,
+          "round": 2
+        },
+        {
+          "native_seconds": 13.645502458006376,
+          "diagnostics": 0,
+          "diagnostic_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "peak_memory_bytes": 313999360,
+          "rules": 108,
+          "imported_from": "packages/python/src/sarj_python_lint/__init__.py",
+          "python_version": "3.14.7 (main, Sep 24 2026, 17:46:50) [Clang 22.1.3 ]",
+          "startup_inclusive_seconds": 13.79865250000148,
+          "round": 3
+        },
+        {
+          "native_seconds": 13.558135875005974,
+          "diagnostics": 0,
+          "diagnostic_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "peak_memory_bytes": 314146816,
+          "rules": 108,
+          "imported_from": "packages/python/src/sarj_python_lint/__init__.py",
+          "python_version": "3.14.7 (main, Sep 24 2026, 17:46:50) [Clang 22.1.3 ]",
+          "startup_inclusive_seconds": 13.713362375012366,
+          "round": 4
+        }
+      ],
+      "candidate": [
+        {
+          "native_seconds": 12.468954334006412,
+          "diagnostics": 0,
+          "diagnostic_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "peak_memory_bytes": 314490880,
+          "rules": 108,
+          "imported_from": "packages/python/src/sarj_python_lint/__init__.py",
+          "python_version": "3.14.7 (main, Sep 24 2026, 17:46:50) [Clang 22.1.3 ]",
+          "startup_inclusive_seconds": 12.68373462499585,
+          "round": 0
+        },
+        {
+          "native_seconds": 12.545257874997333,
+          "diagnostics": 0,
+          "diagnostic_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "peak_memory_bytes": 315031552,
+          "rules": 108,
+          "imported_from": "packages/python/src/sarj_python_lint/__init__.py",
+          "python_version": "3.14.7 (main, Sep 24 2026, 17:46:50) [Clang 22.1.3 ]",
+          "startup_inclusive_seconds": 12.693981917007477,
+          "round": 1
+        },
+        {
+          "native_seconds": 12.471241791994544,
+          "diagnostics": 0,
+          "diagnostic_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "peak_memory_bytes": 314245120,
+          "rules": 108,
+          "imported_from": "packages/python/src/sarj_python_lint/__init__.py",
+          "python_version": "3.14.7 (main, Sep 24 2026, 17:46:50) [Clang 22.1.3 ]",
+          "startup_inclusive_seconds": 12.62720708300185,
+          "round": 2
+        },
+        {
+          "native_seconds": 12.456513291006559,
+          "diagnostics": 0,
+          "diagnostic_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "peak_memory_bytes": 313901056,
+          "rules": 108,
+          "imported_from": "packages/python/src/sarj_python_lint/__init__.py",
+          "python_version": "3.14.7 (main, Sep 24 2026, 17:46:50) [Clang 22.1.3 ]",
+          "startup_inclusive_seconds": 12.611251834008726,
+          "round": 3
+        },
+        {
+          "native_seconds": 12.383564832998673,
+          "diagnostics": 0,
+          "diagnostic_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "peak_memory_bytes": 314245120,
+          "rules": 108,
+          "imported_from": "packages/python/src/sarj_python_lint/__init__.py",
+          "python_version": "3.14.7 (main, Sep 24 2026, 17:46:50) [Clang 22.1.3 ]",
+          "startup_inclusive_seconds": 12.528237375008757,
+          "round": 4
+        }
+      ]
+    },
+    "summary": {
+      "baseline": {
+        "native_seconds": 13.894666666004923,
+        "startup_inclusive_seconds": 14.078426375010167,
+        "peak_memory_bytes": 314130432
+      },
+      "candidate": {
+        "native_seconds": 12.468954334006412,
+        "startup_inclusive_seconds": 12.62720708300185,
+        "peak_memory_bytes": 314245120
+      }
+    },
+    "speedup": 1.1143409698847149,
+    "time_reduction_pct": 10.260860273004601
+  },
+  "directory_discovery": {
+    "retained_files": 30,
+    "ignored_python_files": 6000,
+    "samples": {
+      "baseline": [
+        {
+          "round": 0,
+          "seconds": 0.14518683300411794,
+          "directory_scans": 6010
+        },
+        {
+          "round": 1,
+          "seconds": 0.1406610000121873,
+          "directory_scans": 6010
+        },
+        {
+          "round": 2,
+          "seconds": 0.13745850000123028,
+          "directory_scans": 6010
+        },
+        {
+          "round": 3,
+          "seconds": 0.14146475000598002,
+          "directory_scans": 6010
+        },
+        {
+          "round": 4,
+          "seconds": 0.13685187500959728,
+          "directory_scans": 6010
+        }
+      ],
+      "candidate": [
+        {
+          "round": 0,
+          "seconds": 0.0005238329904386774,
+          "directory_scans": 2
+        },
+        {
+          "round": 1,
+          "seconds": 0.0005214999982854351,
+          "directory_scans": 2
+        },
+        {
+          "round": 2,
+          "seconds": 0.0006061659951228648,
+          "directory_scans": 2
+        },
+        {
+          "round": 3,
+          "seconds": 0.0005305410013534129,
+          "directory_scans": 2
+        },
+        {
+          "round": 4,
+          "seconds": 0.0005236249999143183,
+          "directory_scans": 2
+        }
+      ]
+    },
+    "median_seconds": {
+      "baseline": 0.1406610000121873,
+      "candidate": 0.0005238329904386774
+    },
+    "time_reduction_pct": 99.62759187664435,
+    "diagnostics": 1,
+    "identity_digest": "8d74d77df37a8a6b22cdb3528cfa42afa3ad58b8343e8955ef6aa79ff34622e2",
+    "harness_sha256": "2b8c7adb97057c948503d24fe9c7a66845ed1bd83a757cf5d25942ab6f50d923",
+    "reproduction_python": [
+      "import hashlib",
+      "import json",
+      "import os",
+      "from pathlib import Path",
+      "from statistics import median",
+      "import subprocess",
+      "import sys",
+      "import tempfile",
+      "",
+      "WORKER = '''",
+      "import cProfile, hashlib, json, sys, time",
+      "from pathlib import Path",
+      "from sarj_python_lint.__main__ import analyze, expand_paths",
+      "root = Path(sys.argv[1])",
+      "start = time.perf_counter()",
+      "paths = expand_paths([root])",
+      "elapsed = time.perf_counter() - start",
+      "findings = analyze(['no-dunder-all'], paths)",
+      "rows = [[str(d.path.relative_to(root)), d.line, d.col, d.code, d.message, d.severity.value, d.column_encoding.value] for d in findings]",
+      "files = sorted(str(p.relative_to(root)) for p in paths)",
+      "with cProfile.Profile() as profile:",
+      "    repeated = expand_paths([root])",
+      "assert paths == repeated",
+      "scans = sum(e.callcount for e in profile.getstats() if isinstance(e.code, str) and 'scandir' in e.code)",
+      "print(json.dumps({'seconds':elapsed, 'directory_scans':scans, 'files':files, 'diagnostics':rows}))",
+      "'''",
+      "",
+      "baseline, candidate, output = (Path(value).resolve() for value in sys.argv[1:4])",
+      "interpreter = Path(sys.executable).absolute()",
+      "samples = {'baseline': [], 'candidate': []}",
+      "expected = None",
+      "with tempfile.TemporaryDirectory(prefix='standards-discovery-proof-') as directory:",
+      "    root = Path(directory)",
+      "    source = root / 'src'",
+      "    source.mkdir()",
+      "    for number in range(30):",
+      "        text = '__all__ = [\"value\"]\\nvalue = 1\\n' if number == 0 else 'value = 1\\n'",
+      "        (source / f'module_{number}.py').write_text(text, encoding='utf-8')",
+      "    for ignored in ('.venv', 'node_modules', '.git'):",
+      "        for number in range(500):",
+      "            folder = root / ignored / f'package_{number}' / 'nested'",
+      "            folder.mkdir(parents=True)",
+      "            for file_number in range(4):",
+      "                (folder / f'dependency_{file_number}.py').write_text('value = 1\\n', encoding='utf-8')",
+      "    for round_number in range(5):",
+      "        order = ('baseline', 'candidate') if round_number % 2 == 0 else ('candidate', 'baseline')",
+      "        for kind in order:",
+      "            checkout = baseline if kind == 'baseline' else candidate",
+      "            search = os.pathsep.join(str(checkout / 'packages' / package / 'src') for package in ('python', 'contracts'))",
+      "            result = subprocess.run([str(interpreter), '-c', WORKER, str(root)], cwd=checkout,",
+      "                                    env=dict(os.environ, PYTHONPATH=search), text=True, capture_output=True, check=True)",
+      "            sample = json.loads(result.stdout)",
+      "            identity = {'files': sample.pop('files'), 'diagnostics': sample.pop('diagnostics')}",
+      "            if expected is None:",
+      "                expected = identity",
+      "            assert identity == expected",
+      "            assert len(identity['files']) == 30 and len(identity['diagnostics']) == 1",
+      "            samples[kind].append({'round': round_number, **sample})",
+      "assert expected is not None",
+      "summary = {kind: median(sample['seconds'] for sample in rows) for kind, rows in samples.items()}",
+      "report = {'retained_files': 30, 'ignored_python_files': 6000, 'samples': samples,",
+      "          'median_seconds': summary, 'time_reduction_pct': 100 * (1 - summary['candidate'] / summary['baseline']),",
+      "          'diagnostics': len(expected['diagnostics']),",
+      "          'identity_digest': hashlib.sha256(json.dumps(expected, sort_keys=True).encode()).hexdigest(),",
+      "          'harness_sha256': hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),",
+      "          'reproduction_python': Path(__file__).read_text().splitlines(),",
+      "          'reproduction_command': '<python> discovery.py <baseline-checkout> <candidate-checkout> <output.json>'}",
+      "output.write_text(json.dumps(report, indent=2) + '\\n', encoding='utf-8')",
+      "print(json.dumps({key: report[key] for key in ('median_seconds', 'time_reduction_pct', 'identity_digest')}))"
+    ],
+    "reproduction_command": "<python> discovery.py <baseline-checkout> <candidate-checkout> <output.json>"
+  },
+  "correctness": {
+    "rules": 108,
+    "cases": 256,
+    "positive_cases": 128,
+    "negative_cases": 128,
+    "multifile_cases": 7,
+    "diagnostics": 133,
+    "digest": "7a850b8745ed01bf6ce5d661e3db0c7686bbe62e54b4e2649940078277e5f842",
+    "expected_mismatches": []
+  },
+  "procedure": {
+    "native": "Five alternating baseline/candidate pairs in fresh interpreters, fixed clean baseline source corpus, all 108 Python rules. Other heavy checks paused.",
+    "discovery": "Five alternating fresh-process pairs on 30 source files and 6,000 Python files beneath .venv, node_modules, and .git. Time only initial expand_paths; separately count real scandir calls and run the shipped no-dunder-all rule to prove identical retained file sets and one ordered finding.",
+    "native_reproduction": "git worktree add --detach /tmp/code-standards-pass2-baseline 7ca9b786b1384325c9dcdd230a837fdf1bd57d40 && uv run --project packages/python --frozen python packages/python/benchmarks/compare.py /tmp/code-standards-pass2-baseline . --repeats 5 --output /tmp/pass2-comparison.json",
+    "example_runner_python": [
+      "import hashlib,json,tempfile",
+      "from pathlib import Path",
+      "from sarj_python_lint.__main__ import analyze",
+      "from sarj_python_lint.rules import REGISTRY",
+      "rows=[];cases=0;positives=0;multifile=0;mismatches=[]",
+      "with tempfile.TemporaryDirectory(prefix='standards-example-parity-') as temporary:",
+      " for rule_id,rule in sorted(REGISTRY.items()):",
+      "  for example in rule.public_examples():",
+      "   root=Path(temporary)/rule_id/example.example_id",
+      "   paths=[]",
+      "   for item in example.files:",
+      "    target=root/item.path;target.parent.mkdir(parents=True,exist_ok=True);target.write_text(item.source,encoding='utf-8')",
+      "    if target.suffix=='.py':paths.append(target)",
+      "   findings=analyze([rule_id],paths,root=root)",
+      "   focus=[d for d in findings if d.path==root/example.focus_path and d.code==rule.code]",
+      "   actual=[[str(d.path.relative_to(root)),d.line,d.col,d.code,d.message,d.severity.value,d.column_encoding.value] for d in findings]",
+      "   rows.append([rule_id,example.example_id,actual])",
+      "   if len(focus)!=example.expected_count:mismatches.append([rule_id,example.example_id,example.expected_count,len(focus)])",
+      "   cases+=1;positives+=example.expected_count>0;multifile+=len(example.files)>1",
+      "print(json.dumps({'rules':len(REGISTRY),'cases':cases,'positive_cases':positives,'negative_cases':cases-positives,'multifile_cases':multifile,'diagnostics':sum(len(row[2]) for row in rows),'digest':hashlib.sha256(json.dumps(rows,sort_keys=True).encode()).hexdigest(),'expected_mismatches':mismatches,'rows':rows}))"
+    ],
+    "example_runner_setup": "Join these lines into a script; run under the same Python with PYTHONPATH pointing separately at baseline/candidate packages/python/src and packages/contracts/src, then compare complete JSON outputs."
+  },
+  "limitations": [
+    "Single macOS arm64 workstation; results do not measure total multi-language checking or CI duration.",
+    "Interpreters start fresh, but operating-system filesystem caches are not flushed.",
+    "The native implementation corpus has zero findings; correctness with nonzero findings is verified independently across all 256 published examples and in the discovery fixture.",
+    "Discovery timings are for a synthetic dependency-heavy tree and are separate from native rule analysis timings.",
+    "Directory-discovered files now have deterministic sorted order; explicit file argument order is preserved. File membership and diagnostic contents are unchanged.",
+    "Peak RSS is a process high-water mark; median RSS changed by +0.04% in this study. Shared parent facts remain scoped to one file."
+  ]
+}

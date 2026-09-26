@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+from collections.abc import Mapping
 from pathlib import Path, PurePosixPath
 import re
 from typing import TYPE_CHECKING, ClassVar, NamedTuple, override
@@ -17,7 +18,7 @@ from sarj_python_lint.rule_base import (
     Severity,
     is_suppressed,
 )
-from sarj_python_lint.rules._ast_index import children, object_list, walk
+from sarj_python_lint.rules._ast_index import object_list, walk
 from sarj_python_lint.rules._paths import is_test_path
 
 
@@ -40,7 +41,7 @@ class _AnalysisContext(NamedTuple):
     environment: _RegexEnvironment
     module_body: list[ast.stmt]
     module_non_imports: frozenset[str]
-    parents: dict[ast.AST, ast.AST]
+    parents: Mapping[ast.AST, ast.AST]
     source: str
     source_lines: list[str]
     path: Path
@@ -130,7 +131,7 @@ class PreferWalrusRegexMatch(Rule):
 
         source_lines = context.source_lines
         diags: list[Diagnostic] = []
-        parents = {child: parent for parent in context.nodes(ast.AST) for child in children(parent)}
+        parents = context.parents
         regex_imports = _regex_imports(tree.body)
         module_non_imports = _scope_non_import_bindings(tree.body)
         module_names = regex_imports.modules - module_non_imports
@@ -359,7 +360,7 @@ def _owner_bindings(node: ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef)
 
 def _lexical_owner(
     node: ast.AST,
-    parents: dict[ast.AST, ast.AST],
+    parents: Mapping[ast.AST, ast.AST],
 ) -> ast.Module | ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef:
     current = node
     while True:

@@ -22,7 +22,7 @@ from sarj_python_lint.rules._paths import is_test_path
 
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Iterator, Mapping
 
     from sarj_python_lint._file_context import PythonFileContext
 
@@ -108,7 +108,7 @@ class NoUniqueViolationMessageMatch(Rule):
         if tree is None:
             return []
         imports = _module_import_index(tree)
-        parents = {id(child): parent for parent in context.nodes(ast.AST) for child in ast.iter_child_nodes(parent)}
+        parents = context.parents
         findings: list[tuple[ast.expr, _HandlerContext]] = []
         for handler in (node for node in context.nodes(ast.AST) if isinstance(node, ast.ExceptHandler)):
             driver = _caught_driver(handler.type, imports)
@@ -194,11 +194,11 @@ def _statement_bound_names(statement: ast.stmt) -> frozenset[str]:
 def _locally_shadows_exception(
     caught: ast.expr | None,
     handler: ast.ExceptHandler,
-    parents: dict[int, ast.AST],
+    parents: Mapping[ast.AST, ast.AST],
 ) -> bool:
     roots = _exception_root_names(caught)
     owner: ast.AST = handler
-    while (parent := parents.get(id(owner))) is not None:
+    while (parent := parents.get(owner)) is not None:
         owner = parent
         if isinstance(owner, (ast.FunctionDef, ast.AsyncFunctionDef)):
             return any(
@@ -244,10 +244,10 @@ def _walk_same_scope(node: ast.AST) -> Iterator[ast.AST]:
 def _builtins_are_available(
     tree: ast.Module,
     handler: ast.ExceptHandler,
-    parents: dict[int, ast.AST],
+    parents: Mapping[ast.AST, ast.AST],
 ) -> bool:
     owner: ast.AST = handler
-    while (parent := parents.get(id(owner))) is not None:
+    while (parent := parents.get(owner)) is not None:
         owner = parent
         if isinstance(owner, (ast.FunctionDef, ast.AsyncFunctionDef)):
             return not any(
