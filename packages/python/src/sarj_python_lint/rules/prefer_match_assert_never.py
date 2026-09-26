@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ast
 from pathlib import PurePosixPath
+import re
 from typing import TYPE_CHECKING, NamedTuple, final, override
 
 from sarj_python_lint.rule_base import (
@@ -14,8 +15,10 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
+    is_suppressed,
 )
 from sarj_python_lint.rules._ast_index import nodes
+from sarj_python_lint.rules._suppression_comments import scan_comments_or_none
 
 
 if TYPE_CHECKING:
@@ -28,6 +31,8 @@ if TYPE_CHECKING:
 _MIN_ARMS = 2
 
 _ENUM_BASES = frozenset({"Enum", "StrEnum", "IntEnum", "ReprEnum"})
+_ARGUMENT_IGNORE = re.compile(r"^(?:type|pyright):\s*ignore\b(?:\[([^\]]*)\])?")
+_TYPING_SOURCES = frozenset({"typing", "typing_extensions"})
 
 
 class _EnumComparison(NamedTuple):
@@ -58,17 +63,20 @@ class PreferMatchAssertNever(Rule):
     documentation = RuleDocumentation(
         summary="Typed enum dispatch must not silently ignore unhandled members.",
         rationale=(
-            "A no-op wildcard or else branch hides missing enum members and lets newly added members pass unnoticed."
+            "A no-op wildcard or else branch hides missing enum members and lets newly added members pass unnoticed. "
+            "Suppressing the argument-type error at assert_never also disables its static exhaustiveness guarantee."
         ),
         remediation=(
             "Handle every enum member, bind the catch-all value, and pass it to `typing.assert_never`; "
-            "raise an explicit exception when static exhaustiveness is unavailable."
+            "raise an explicit exception when static exhaustiveness is unavailable. Narrow the accepted type or "
+            "handle missing variants instead of suppressing assert_never's argument check."
         ),
         category=RuleCategory.CORRECTNESS,
         autofix=AutofixPolicy.NONE,
         limitations=(
             "Only subjects explicitly annotated as a locally declared Enum, StrEnum, IntEnum, or ReprEnum are checked.",
             "Flags, imported or untyped domains, class-pattern unions, guarded arms, generated files, and dynamic dispatch are excluded.",
+            "Independently warns on import-proven assert_never calls with a trailing blanket or argument-type ignore; module-wide disables are not analyzed.",
         ),
         examples=(
             RuleExample(
@@ -115,7 +123,7 @@ class PreferMatchAssertNever(Rule):
         imports = context.imports
         local_enums = _local_enum_names(module_classdefs, imports, tree)
         enum_members = _enum_members(module_classdefs, local_enums)
-        diags: list[Diagnostic] = []
+        diags = _suppressed_exhaustiveness_calls(context, self.code)
         consumed_elifs: set[int] = set()
         for node in context.nodes(ast.Match, ast.If):
             if isinstance(node, ast.Match):
@@ -155,6 +163,48 @@ class PreferMatchAssertNever(Rule):
                     )
         diags.sort(key=lambda d: (d.line, d.col))
         return diags
+
+
+def _suppressed_exhaustiveness_calls(context: PythonFileContext, code: str) -> list[Diagnostic]:
+    if "ignore" not in context.source:
+        return []
+    comments = scan_comments_or_none(context.source)
+    if comments is None:
+        return []
+    ignored_lines = {
+        comment.line for comment in comments if not comment.standalone and _ignores_argument_type(comment.body)
+    }
+    findings: list[Diagnostic] = []
+    for call in context.nodes(ast.Call):
+        if not context.imports.resolves(call.func, sources=_TYPING_SOURCES, symbol="assert_never"):
+            continue
+        call_lines = range(call.lineno, (call.end_lineno or call.lineno) + 1)
+        if not any(line in ignored_lines for line in call_lines):
+            continue
+        if any(is_suppressed(context.source_lines, line, code) for line in call_lines):
+            continue
+        findings.append(
+            Diagnostic(
+                path=context.path,
+                line=call.lineno,
+                col=call.col_offset + 1,
+                code=code,
+                severity=Severity.WARNING,
+                message=(
+                    "assert_never has its argument-type check suppressed; handle the missing variants, narrow "
+                    "the accepted type, or use an explicit runtime exception instead of claiming exhaustiveness."
+                ),
+            )
+        )
+    return findings
+
+
+def _ignores_argument_type(comment: str) -> bool:
+    match = _ARGUMENT_IGNORE.match(comment)
+    if match is None:
+        return False
+    codes = match.group(1)
+    return codes is None or bool({code.strip() for code in codes.split(",")} & {"reportArgumentType", "arg-type"})
 
 
 def _module_scope_classdefs(tree: ast.Module) -> list[ast.ClassDef]:
