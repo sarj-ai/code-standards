@@ -17,6 +17,7 @@ from sarj_python_lint.rule_base import (
     is_suppressed,
 )
 from sarj_python_lint.rules._ast_index import walk as walk_ast
+from sarj_python_lint.rules._dict_key_views import proven_dict_key_views
 from sarj_python_lint.rules._project_index import ProjectIndexSet
 from sarj_python_lint.rules._set_fields import declared_set_fields
 
@@ -59,6 +60,7 @@ class PreferSetIsdisjoint(ProjectRule):
         autofix=AutofixPolicy.SUGGESTION,
         limitations=(
             "Set receivers must come from a literal, comprehension, constructor, dominating local assignment, or an unchanged parameter's directly declared first-party set/frozenset field.",
+            "Dictionary key-view receivers require a literal/comprehension/constructor or one unreassigned, dominating local binding. Custom mappings and unproven parameters are excluded.",
             "Declared fields rely on the annotated contract. Unknown or union field types, properties, explicit owner/field reassignment, branch-merged bindings, stored intersections, and generated files are excluded. The other operand must be a known iterable.",
             "The suggestion is intentionally not an autofix because short-circuiting may make custom element equality or hashing side effects observable.",
         ),
@@ -109,7 +111,8 @@ class PreferSetIsdisjoint(ProjectRule):
             node: declared_set_fields(node, project, context)
             for node in context.nodes(ast.FunctionDef, ast.AsyncFunctionDef)
         }
-        scanner = _Scanner(path, context.source_lines, _shadowed_builtins(tree, node_index=context.node_index), fields)
+        shadowed = _shadowed_builtins(tree, node_index=context.node_index)
+        scanner = _Scanner(path, context.source_lines, shadowed, fields, proven_dict_key_views(tree, shadowed))
         scanner.scan_body(tree.body, set())
         scanner.diagnostics.sort(key=lambda item: (item.line, item.col))
         return scanner.diagnostics
@@ -123,6 +126,7 @@ class _Scanner:
         source_lines: list[str],
         shadowed: frozenset[str],
         fields: dict[ast.FunctionDef | ast.AsyncFunctionDef, set[str]],
+        key_views: set[ast.Call],
     ) -> None:
         self.path = path
         self.source_lines = source_lines
@@ -130,6 +134,7 @@ class _Scanner:
         self.diagnostics: list[Diagnostic] = []
         self.reported: set[int] = set()
         self.fields = fields
+        self.key_views = key_views
 
     def scan_body(self, body: list[ast.stmt], exact: set[str]) -> None:
         local = set(exact)
@@ -227,7 +232,7 @@ class _Scanner:
             candidate = expression.operand
         if isinstance(candidate, ast.Call) and _is_builtin_bool_call(candidate, self.shadowed):
             candidate = candidate.args[0]
-        if _is_intersection(candidate, safe_exact, self.shadowed):
+        if _is_intersection(candidate, safe_exact, self.shadowed, self.key_views):
             self._report(candidate, negated=negated)
 
     def _report(self, node: ast.expr, *, negated: bool) -> None:
@@ -283,9 +288,11 @@ class _Scanner:
                 pass
 
 
-def _is_intersection(node: ast.expr, exact: set[str], shadowed: frozenset[str]) -> bool:
+def _is_intersection(node: ast.expr, exact: set[str], shadowed: frozenset[str], key_views: set[ast.Call]) -> bool:
     if isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitAnd):
-        return _is_exact_set(node.left, exact, shadowed) and _is_proven_iterable(node.right, exact, shadowed)
+        return (_is_exact_set(node.left, exact, shadowed) or node.left in key_views) and _is_proven_iterable(
+            node.right, exact, shadowed
+        )
     return (
         isinstance(node, ast.Call)
         and isinstance(node.func, ast.Attribute)
@@ -374,6 +381,14 @@ def _shadowed_builtins(tree: ast.Module, *, node_index: NodeIndex | None = None)
     for node in walk_ast(tree, index=node_index):
         if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store) and node.id in _TRACKED_BUILTINS:
             shadowed.add(node.id)
+        elif isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef) and node.name in _TRACKED_BUILTINS:
+            shadowed.add(node.name)
+        elif isinstance(node, ast.ImportFrom) and any(alias.name == "*" for alias in node.names):
+            shadowed.update(_TRACKED_BUILTINS)
+        elif isinstance(node, ast.ExceptHandler | ast.MatchAs | ast.MatchStar) and node.name in _TRACKED_BUILTINS:
+            shadowed.add(node.name)
+        elif isinstance(node, ast.MatchMapping) and node.rest in _TRACKED_BUILTINS:
+            shadowed.add(node.rest)
         elif isinstance(node, ast.arg) and node.arg in _TRACKED_BUILTINS:
             shadowed.add(node.arg)
         elif isinstance(node, ast.alias) and (node.asname or node.name.split(".")[0]) in _TRACKED_BUILTINS:

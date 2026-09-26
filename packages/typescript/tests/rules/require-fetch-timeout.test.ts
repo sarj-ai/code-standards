@@ -17,6 +17,15 @@ const RULE_TESTER = new RuleTester({
 
 RULE_TESTER.run("require-fetch-timeout", rule, {
   valid: [
+    { name: "accepts shadowed undefined", code: "function send(undefined: AbortSignal) { fetch('/x', {signal: undefined}); }" },
+    { name: "accepts a later signal override", code: "fetch('/x', {signal: null, ...options});" },
+    { name: "accepts a later explicit signal", code: "fetch('/x', {signal: null, signal: controller.signal});" },
+    { name: "ignores an unknown computed override", code: "fetch('/x', {signal: null, [key]: value});" },
+    { name: "ignores a signal getter", code: "fetch('/x', {get signal() { return null; }});" },
+    { name: "preserves forwarded Request exceptions", code: "fetch(new Request('/x'), {signal: null});" },
+    { name: "ignores a local init acquiring a signal", code: "const init = {signal: null}; init.signal = controller.signal; fetch('/x', init);" },
+    { name: "ignores void with side effects", code: "fetch('/x', {signal: void configure()});" },
+
     { name: "preserves a Request signal with an inline init", code: "fetch(new Request('/items', {signal: AbortSignal.timeout(5000)}), {method: 'POST'});" },
     { name: "preserves a forwarded Request signal with a local init", code: "const request = new Request('/items', {signal: controller.signal}); const init = {method: 'POST'}; fetch(request, init);" },
     { name: "accepts the documented bounded fetch", code: REQUIRE_FETCH_TIMEOUT_DOCUMENTATION.examples[0].files[0].source },
@@ -133,6 +142,14 @@ RULE_TESTER.run("require-fetch-timeout", rule, {
     },
   ],
   invalid: [
+    { name: "rejects null signal", code: "fetch('/x', {'signal': null});", errors: [{messageId: "missingSignal"}] },
+    { name: "rejects undefined signal", code: "fetch('/x', {'signal': undefined});", errors: [{messageId: "missingSignal"}] },
+    { name: "rejects void zero signal", code: "fetch('/x', {'signal': void 0});", errors: [{messageId: "missingSignal"}] },
+    { name: "rejects null after a spread", code: "fetch('/x', {...options, signal: null});", errors: [{messageId: "missingSignal"}] },
+    { name: "rejects a final null override", code: "fetch('/x', {signal: controller.signal, signal: null});", errors: [{messageId: "missingSignal"}] },
+    { name: "rejects a computed literal null signal", code: "fetch('/x', {['signal']: null});", errors: [{messageId: "missingSignal"}] },
+    { name: "rejects an immutable local null signal", code: "const init = {signal: null}; fetch('/x', init);", errors: [{messageId: "missingSignal"}] },
+
     { name: "reports the documented unbounded fetch", code: REQUIRE_FETCH_TIMEOUT_DOCUMENTATION.examples[1].files[0].source, errors: [{ messageId: "missingSignal" }] },
     {
       name: "rejects a production fetch without a signal",

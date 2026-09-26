@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "a7fb8ba40df25a6b1df39c1470075554539bc4aac151194b5a52dca30272d5a7",
-  "cliSha256": "1d660eb88383363f62fe058b6cf98e22246a6751831d26c104de58d1f2543ca8",
+  "catalogSha256": "1de9cfeb8489e1920d5df8b8d1c8c2d4c2e6ee2f2a26d8d44849ee9694a8574a",
+  "cliSha256": "1aa1a9ceba7fa85bb4e9002c80009da51fd0c2e993879bcd13ee3feea6120f76",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -8049,6 +8049,41 @@
       ],
       "optionsSchemaSource": null
     },
+    "python:prefer-monotonic-for-elapsed-time": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/metrics.py",
+              "source": "import time\n\n\ndef measure():\n    started = time.monotonic()\n    work()\n    return time.monotonic() - started\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/metrics.py",
+          "id": "monotonic-elapsed",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "A monotonic clock measures duration"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/metrics.py",
+              "source": "import time\n\n\ndef measure():\n    started = time.time()\n    work()\n    return time.time() - started\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/metrics.py",
+          "id": "wall-clock-elapsed",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A local wall clock measures duration"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "python:prefer-nominal-id-types": {
       "examples": [
         {
@@ -8189,6 +8224,41 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Use Pydantic's canonical recursive JSON value"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:prefer-regex-fullmatch": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/validation.py",
+              "source": "import re\n\n\ndef validate(value):\n    if not re.match(r\"^[a-z]+$\", value):\n        raise ValueError(\"invalid value\")\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/validation.py",
+          "id": "anchored-rejection",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "An end anchor permits a final newline"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/validation.py",
+              "source": "import re\n\n\ndef validate(value):\n    if not re.fullmatch(r\"[a-z]+\", value):\n        raise ValueError(\"invalid value\")\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/validation.py",
+          "id": "whole-value-rejection",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Validate the entire value"
         }
       ],
       "optionsSchemaSource": null
@@ -9196,6 +9266,41 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Docstring records a hidden failure mode"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:shared-mutable-pydantic-factory": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/models.py",
+              "source": "from pydantic import BaseModel, Field\n\nSHARED = []\n\n\nclass Model(BaseModel):\n    values: list[int] = Field(default_factory=lambda: SHARED)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/models.py",
+          "id": "captured-list",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A factory returns the same mutable list for every model"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/models.py",
+              "source": "from pydantic import BaseModel, Field\n\n\nclass Model(BaseModel):\n    values: list[int] = Field(default_factory=list)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/models.py",
+          "id": "fresh-list",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "The factory creates an independent list"
         }
       ],
       "optionsSchemaSource": null

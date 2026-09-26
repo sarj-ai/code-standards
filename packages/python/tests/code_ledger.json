@@ -243,5 +243,8 @@
   "SARJ455": "no-fixed-sleep-before-assert",
   "SARJ456": "async-mock-call-without-await-assertion",
   "SARJ457": "repeated-test-composition",
-  "SARJ458": "no-swallowed-asyncio-cancellation"
+  "SARJ458": "no-swallowed-asyncio-cancellation",
+  "SARJ459": "shared-mutable-pydantic-factory",
+  "SARJ460": "prefer-regex-fullmatch",
+  "SARJ461": "prefer-monotonic-for-elapsed-time"
 }

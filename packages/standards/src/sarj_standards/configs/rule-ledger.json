@@ -100,10 +100,12 @@
       "prefer-match-value-dispatch",
       "prefer-module-level-constant",
       "prefer-monkeypatch-for-process-state-in-test",
+      "prefer-monotonic-for-elapsed-time",
       "prefer-nominal-id-types",
       "prefer-non-nullable-collection",
       "prefer-or-pattern",
       "prefer-pydantic-json-value",
+      "prefer-regex-fullmatch",
       "prefer-self-documenting-constant",
       "prefer-self-type-annotation",
       "prefer-set-isdisjoint",
@@ -129,6 +131,7 @@
       "require-pydantic-for-structured-payload",
       "require-pydantic-ordinal-lower-bound",
       "restated-test-docstring",
+      "shared-mutable-pydantic-factory",
       "stepdown",
       "store-get-delegates-to-bulk-read",
       "timestamp-order-requires-tiebreaker",
@@ -409,7 +412,10 @@
       "SARJ455",
       "SARJ456",
       "SARJ457",
-      "SARJ458"
+      "SARJ458",
+      "SARJ459",
+      "SARJ460",
+      "SARJ461"
     ],
     "sql": [
       "SARJ101",

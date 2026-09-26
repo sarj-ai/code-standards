@@ -203,3 +203,45 @@ def test_rebound_owner_type_is_not_inferred() -> None:
         )
         == []
     )
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "if {'a': 1}.keys() & {'a'}:\n    pass",
+        "if not dict(a=1).keys() & {'a'}:\n    pass",
+        "payload = {'a': 1}\nif payload.keys() & {'a'}:\n    pass",
+        "def check():\n    payload: dict[str, int] = dict(a=1)\n    if payload.keys() & {'a'}:\n        pass",
+        "payload = {key: value for key, value in rows}\nassert payload.keys() & {'a'}",
+    ],
+)
+def test_dict_key_view_boolean_intersection(source: str) -> None:
+    assert len(_check(source)) == 1
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "def check(payload: dict):\n    if payload.keys() & {'a'}:\n        pass",
+        "payload = custom()\nif payload.keys() & {'a'}:\n    pass",
+        "payload = {}\npayload = custom()\nif payload.keys() & {'a'}:\n    pass",
+        "if ready:\n    payload = {}\nif payload.keys() & {'a'}:\n    pass",
+        "payload = {}\nresult = payload.keys() & {'a'}",
+        "payload = {}\nif payload.items() & {('a', 1)}:\n    pass",
+        "payload = {}\nif payload.values() & {1}:\n    pass",
+        "dict = custom\nif dict().keys() & {'a'}:\n    pass",
+        "def dict():\n    return custom\nif dict().keys() & {'a'}:\n    pass",
+        "from custom import *\nif dict().keys() & {'a'}:\n    pass",
+        "try:\n    work()\nexcept Error as dict:\n    if dict().keys() & {'a'}:\n        pass",
+        "match custom:\n    case dict:\n        if dict().keys() & {'a'}:\n            pass",
+        "payload = {}\nmatch other:\n    case {**payload}:\n        if payload.keys() & {'a'}:\n            pass",
+        "payload = {}\nresults = [x for payload in rows if payload.keys() & {'a'}]",
+        "payload = {}\ncheck = lambda payload: 1 if payload.keys() & {'a'} else 0",
+        "payload = {}\ntry:\n    pass\nexcept Error as payload:\n    if payload.keys() & {'a'}:\n        pass",
+        "payload = {}\ndef check():\n    if payload.keys() & {'a'}:\n        pass",
+        "payload = {}\nif (payload := custom()).keys() & {'a'}:\n    pass",
+        "payload = {}\nif payload.keys() & {'a'}:  # sarj-noqa: SARJ431\n    pass",
+    ],
+)
+def test_dict_key_view_exclusions(source: str) -> None:
+    assert _check(source) == []
