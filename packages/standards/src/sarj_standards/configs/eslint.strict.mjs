@@ -1358,6 +1358,23 @@ export function createConfig(options = {}) {
     },
   },
 
+  // JavaScript needs JSDoc for type contracts that TypeScript expresses in its
+  // syntax. Preserve generic declarations as well as parsed type expressions.
+  {
+    files: ["**/*.{js,jsx,mjs,cjs}"],
+    rules: {
+      "jsdoc/no-restricted-syntax": [
+        "error",
+        {
+          contexts: [{
+            context: ":matches(ArrowFunctionExpression, FunctionDeclaration[body.type='BlockStatement'], FunctionExpression[body.type='BlockStatement'])",
+            comment: "JsdocBlock:not(:has(JsdocTag[parsedType])):not(:has(JsdocTag[tag='template']))",
+            message: "Do not attach untyped JSDoc to an implementation; preserve required type contracts.",
+          }],
+        },
+      ],
+    },
+  },
   {
     files: TEST_FILES,
     settings: {
