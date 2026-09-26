@@ -57,7 +57,7 @@ class PreferInjectedDependencyOverMonkeypatch(Rule):
         autofix=AutofixPolicy.NONE,
         limitations=(
             "Only maintained test paths are analyzed; generated files and production helpers are excluded.",
-            "The rule recognizes pytest monkeypatch and statically resolved unittest.mock or pytest-mock patch APIs.",
+            "The rule recognizes pytest monkeypatch fixtures, unambiguous local MonkeyPatch constructors and context handles, and statically resolved unittest.mock or pytest-mock patch APIs.",
             "Environment, mapping, import-path, and working-directory mutations are intentionally allowed.",
             "Untyped handles are recognized only on pytest tests or fixtures; directly parametrized values are excluded.",
             "A nested function that captures a monkeypatch handle from an outer scope is not inferred.",
@@ -109,10 +109,13 @@ class PreferInjectedDependencyOverMonkeypatch(Rule):
             return []
         imports = context.module_imports
         parents = parent_map(tree, index=context.node_index)
+        has_factory = "MonkeyPatch" in context.source and any(
+            _creates_monkeypatch(call, imports) for call in context.nodes(ast.Call)
+        )
         replacements = [
             (call, f"monkeypatch.{_operation(call)}")
             for function in _functions(tree, node_index=context.node_index)
-            for call in _attribute_mutations(function, imports, parents)
+            for call in _attribute_mutations(function, imports, parents, has_factory=has_factory)
         ]
         replacements.extend((call, label) for call, label in _patch_calls(tree, imports, node_index=context.node_index))
         diagnostics = [
@@ -264,9 +267,11 @@ def _attribute_mutations(
     function: ast.FunctionDef | ast.AsyncFunctionDef,
     imports: ImportIndex,
     parents: Mapping[ast.AST, ast.AST],
+    *,
+    has_factory: bool,
 ) -> list[ast.Call]:
     parameters = _parameter_handles(function, imports, parents)
-    if not parameters:
+    if not parameters and not has_factory:
         return []
     nodes = tuple(_lexical_body_nodes(function))
     handles = set(parameters)
@@ -278,9 +283,71 @@ def _attribute_mutations(
         and isinstance(node.func, ast.Attribute)
         and node.func.attr in _ATTRIBUTE_MUTATIONS
         and isinstance(node.func.value, ast.Name)
-        and node.func.value.id in handles
+        and (
+            node.func.value.id in handles
+            or _constructed_reference(
+                node.func.value.id, node, function, nodes=nodes, imports=imports, parents=parents, seen=frozenset()
+            )
+        )
         and not _parameter_rebound_before(node, node.func.value.id, nodes, parameters)
     ]
+
+
+def _creates_monkeypatch(call: ast.Call, imports: ImportIndex) -> bool:
+    callee = call.func
+    if isinstance(callee, ast.Attribute) and callee.attr == "context":
+        callee = callee.value
+    return imports.resolves(callee, sources=_PYTEST, symbol="MonkeyPatch")
+
+
+def _constructed_reference(
+    name: str,
+    use: ast.AST,
+    function: ast.FunctionDef | ast.AsyncFunctionDef,
+    *,
+    nodes: tuple[ast.AST, ...],
+    imports: ImportIndex,
+    parents: Mapping[ast.AST, ast.AST],
+    seen: frozenset[str],
+) -> bool:
+    if name in seen or name in {arg.arg for arg in _arguments(function.args)}:
+        return False
+    definitions = [node for node in nodes if name in _bound_targets(node)]
+    if len(definitions) != 1 or _position(definitions[0]) >= _position(use):
+        return False
+    definition = definitions[0]
+    value: ast.expr | None = None
+    if isinstance(definition, (ast.Assign, ast.AnnAssign)) and parents.get(definition) is function:
+        value = definition.value
+    elif isinstance(definition, ast.withitem) and _within(use, parents.get(definition), parents):
+        expression = definition.context_expr
+        if (
+            isinstance(expression, ast.Call)
+            and isinstance(expression.func, ast.Attribute)
+            and expression.func.attr == "context"
+        ):
+            value = expression.func.value
+            if imports.resolves(value, sources=_PYTEST, symbol="MonkeyPatch"):
+                value = ast.Call(func=value, args=[], keywords=[])
+    if isinstance(value, ast.Name):
+        return _constructed_reference(
+            value.id, definition, function, nodes=nodes, imports=imports, parents=parents, seen=seen | {name}
+        )
+    return (
+        isinstance(value, ast.Call)
+        and imports.resolves(value.func, sources=_PYTEST, symbol="MonkeyPatch")
+        and not _import_shadowed(value.func, parents, {})
+    )
+
+
+def _within(node: ast.AST, ancestor: ast.AST | None, parents: Mapping[ast.AST, ast.AST]) -> bool:
+    if ancestor is None:
+        return False
+    while (parent := parents.get(node)) is not None:
+        if parent is ancestor:
+            return True
+        node = parent
+    return False
 
 
 def _parameter_handles(

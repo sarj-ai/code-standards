@@ -521,3 +521,53 @@ def test_comprehension_bindings_do_not_inherit_fixture_handles() -> None:
     """)
         == []
     )
+
+
+@pytest.mark.parametrize(
+    "setup",
+    [
+        "    patcher = pytest.MonkeyPatch()\n    patcher.setattr(service, 'clock', fake)",
+        "    with pytest.MonkeyPatch.context() as patcher:\n        patcher.delattr(service, 'clock')",
+        "    with pytest.MonkeyPatch().context() as patcher:\n        patcher.setattr(service, 'clock', fake)",
+        "    patcher = pytest.MonkeyPatch()\n    alias = patcher\n    alias.setattr(service, 'clock', fake)",
+    ],
+)
+def test_explicit_monkeypatch_handles(setup: str) -> None:
+    source = f"import pytest\ndef test_service():\n{setup}\n"
+    assert len(_check(source)) == 1
+    assert _check(source.replace("import pytest", "import custom as pytest")) == []
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "    patcher = pytest.MonkeyPatch()\n    patcher.setenv('MODE', 'test')",
+        "    patcher = pytest.MonkeyPatch()\n    patcher = custom\n    patcher.setattr(service, 'clock', fake)",
+        "    if enabled:\n        patcher = pytest.MonkeyPatch()\n    patcher.setattr(service, 'clock', fake)",
+        "    patcher.setattr(service, 'clock', fake)\n    patcher = pytest.MonkeyPatch()",
+    ],
+)
+def test_constructed_handle_exclusions(body: str) -> None:
+    assert _check(f"import pytest\ndef test_service():\n{body}\n") == []
+
+
+def test_monkeypatch_constructor_import_alias_and_shadowing() -> None:
+    source = "from pytest import MonkeyPatch as MP\ndef test_service():\n    patcher = MP()\n    patcher.setattr(service, 'clock', fake)\n"
+    assert len(_check(source)) == 1
+    assert _check(source.replace("test_service()", "test_service(MP)")) == []
+
+
+def test_context_on_constructed_monkeypatch_handle(tmp_path: Path) -> None:
+    source = "import pytest\ndef test_service():\n    patcher = pytest.MonkeyPatch()\n    with patcher.context() as scoped:\n        scoped.setattr(service, 'clock', fake)\n"
+    assert len(_check(source)) == 1
+    assert (
+        _check(source.replace("    with patcher.context()", "    patcher = custom\n    with patcher.context()")) == []
+    )
+    target = tmp_path / "test_service.py"
+    target.write_text(
+        source.replace(
+            "scoped.setattr(service, 'clock', fake)",
+            "scoped.setattr(service, 'clock', fake)  # sarj-noqa: SARJ445 -- global interception is under test",
+        )
+    )
+    assert analyze([PreferInjectedDependencyOverMonkeypatch.id], [target]) == []
