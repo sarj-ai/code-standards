@@ -240,38 +240,34 @@ export default createRule<Options, MessageIds>({
     // Bodies in a test file are fixtures the author wrote, not production PII.
     const blobArmApplies = !isTestFile(context.filename);
 
-    function reportSecretArgument(arg: TSESTree.Node): boolean {
-      const name = valueName(arg);
-      if (name === null || !isSecretKeyword(name)) {
-        return false;
-      }
-      context.report({ node: arg, messageId: "noSecretInLog", data: { name } });
-      return true;
-    }
 
-    function reportSecretProperty(prop: TSESTree.Property): boolean {
-      const keyName = propertyKeyName(prop);
-      const value = valueName(prop.value);
-      if (value !== null && hasRedactionMarker(value)) return false;
-      const name = value !== null && isSecretKeyword(value) ? value : keyName;
-      if (name === null || !isSecretKeyword(name) || !isRawSecretValue(prop)) {
-        return false;
-      }
-      context.report({ node: prop, messageId: "noSecretInLog", data: { name } });
-      return true;
-    }
 
-    /** Reports `node` when `value` carries an un-redacted request/response blob. */
-    function reportRawBlob(node: TSESTree.Node, value: TSESTree.Node): boolean {
-      if (!blobArmApplies) {
-        return false;
+
+
+    function inspectLoggedValue(value: TSESTree.Node): void {
+      if (value.type === "ObjectExpression") {
+        for (const property of literalProperties(value)) {
+          if (reportSecretProperty(property) || reportRawBlob(property, property.value)) continue;
+          inspectLoggedValue(property.value);
+        }
+        return;
       }
-      const name = rawBlobValueName(value);
-      if (name !== null) {
-        context.report({ node, messageId: "noRawBodyInLog", data: { name } });
-        return true;
+      if (value.type === "ArrayExpression") {
+        for (const element of value.elements) {
+          if (element !== null && element.type !== "SpreadElement") inspectLoggedValue(element);
+        }
+        return;
       }
-      return false;
+      if (value.type === "TemplateLiteral") {
+        for (const expression of value.expressions) inspectLoggedValue(expression);
+        return;
+      }
+      if (value.type === "BinaryExpression" && value.operator === "+") {
+        inspectLoggedValue(value.left);
+        inspectLoggedValue(value.right);
+        return;
+      }
+      if (!reportSecretArgument(value)) reportRawBlob(value, value);
     }
 
     function literalProperties(value: TSESTree.ObjectExpression): TSESTree.Property[] {
@@ -298,30 +294,38 @@ export default createRule<Options, MessageIds>({
       return [...effective.values()];
     }
 
-    function inspectLoggedValue(value: TSESTree.Node): void {
-      if (value.type === "ObjectExpression") {
-        for (const property of literalProperties(value)) {
-          if (reportSecretProperty(property) || reportRawBlob(property, property.value)) continue;
-          inspectLoggedValue(property.value);
-        }
-        return;
+    /** Reports `node` when `value` carries an un-redacted request/response blob. */
+    function reportRawBlob(node: TSESTree.Node, value: TSESTree.Node): boolean {
+      if (!blobArmApplies) {
+        return false;
       }
-      if (value.type === "ArrayExpression") {
-        for (const element of value.elements) {
-          if (element !== null && element.type !== "SpreadElement") inspectLoggedValue(element);
-        }
-        return;
+      const name = rawBlobValueName(value);
+      if (name !== null) {
+        context.report({ node, messageId: "noRawBodyInLog", data: { name } });
+        return true;
       }
-      if (value.type === "TemplateLiteral") {
-        for (const expression of value.expressions) inspectLoggedValue(expression);
-        return;
+      return false;
+    }
+
+    function reportSecretProperty(prop: TSESTree.Property): boolean {
+      const keyName = propertyKeyName(prop);
+      const value = valueName(prop.value);
+      if (value !== null && hasRedactionMarker(value)) return false;
+      const name = value !== null && isSecretKeyword(value) ? value : keyName;
+      if (name === null || !isSecretKeyword(name) || !isRawSecretValue(prop)) {
+        return false;
       }
-      if (value.type === "BinaryExpression" && value.operator === "+") {
-        inspectLoggedValue(value.left);
-        inspectLoggedValue(value.right);
-        return;
+      context.report({ node: prop, messageId: "noSecretInLog", data: { name } });
+      return true;
+    }
+
+    function reportSecretArgument(arg: TSESTree.Node): boolean {
+      const name = valueName(arg);
+      if (name === null || !isSecretKeyword(name)) {
+        return false;
       }
-      if (!reportSecretArgument(value)) reportRawBlob(value, value);
+      context.report({ node: arg, messageId: "noSecretInLog", data: { name } });
+      return true;
     }
 
     return {

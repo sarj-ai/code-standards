@@ -256,6 +256,15 @@ export default createRule<Options, MessageIds>({
       return callee?.type === AST_NODE_TYPES.Identifier && bindingOf(callee) === bindingOf(parameter);
     };
 
+    let clientModule: boolean | null = null;
+    const reportsSleepHere = (): boolean => {
+      if (checkClientModules) {
+        return true;
+      }
+      clientModule ??= isClientModule();
+      return !clientModule;
+    };
+
     function isClientModule(): boolean {
       if (/\.[cm]?[jt]sx$/.test(filename)) {
         return true;
@@ -279,15 +288,6 @@ export default createRule<Options, MessageIds>({
       }
       return false;
     }
-
-    let clientModule: boolean | null = null;
-    const reportsSleepHere = (): boolean => {
-      if (checkClientModules) {
-        return true;
-      }
-      clientModule ??= isClientModule();
-      return !clientModule;
-    };
 
     return {
       NewExpression(node: TSESTree.NewExpression): void {

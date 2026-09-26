@@ -70,6 +70,15 @@ export default createRule<[], "copy">({
         if (!accumulator || accumulator.references.some(reference => reference.isWrite())) return;
         const referencesAccumulator = (value: TSESTree.Node): boolean => value.type === AST_NODE_TYPES.Identifier &&
           ASTUtils.findVariable(context.sourceCode.getScope(value), value.name) === accumulator;
+        const inspect = (current: TSESTree.Node): void => {
+          if (current !== callback.body && [AST_NODE_TYPES.ArrowFunctionExpression, AST_NODE_TYPES.FunctionExpression, AST_NODE_TYPES.FunctionDeclaration].some(kind => kind === current.type)) return;
+          if (current.type === AST_NODE_TYPES.SpreadElement && ((arraySeed && current.parent.type === AST_NODE_TYPES.ArrayExpression) || (objectSeed && current.parent.type === AST_NODE_TYPES.ObjectExpression)) && referencesAccumulator(current.argument)) {
+            context.report({ node: current, messageId: "copy" });
+          }
+          if (current.type === AST_NODE_TYPES.CallExpression) inspectCall(current);
+          forEachAstChild(current, context.sourceCode.visitorKeys, inspect);
+        };
+
         const inspectCall = (current: TSESTree.CallExpression): void => {
           if (current.callee.type !== AST_NODE_TYPES.MemberExpression) return;
           const member = current.callee;
@@ -84,14 +93,6 @@ export default createRule<[], "copy">({
           const assignCopy = objectSeed && name === "assign" && globalObject && target?.type === AST_NODE_TYPES.ObjectExpression &&
             current.arguments.slice(1).some(referencesAccumulator);
           if (directCopy || fromCopy || assignCopy) context.report({ node: current, messageId: "copy" });
-        };
-        const inspect = (current: TSESTree.Node): void => {
-          if (current !== callback.body && [AST_NODE_TYPES.ArrowFunctionExpression, AST_NODE_TYPES.FunctionExpression, AST_NODE_TYPES.FunctionDeclaration].some(kind => kind === current.type)) return;
-          if (current.type === AST_NODE_TYPES.SpreadElement && ((arraySeed && current.parent.type === AST_NODE_TYPES.ArrayExpression) || (objectSeed && current.parent.type === AST_NODE_TYPES.ObjectExpression)) && referencesAccumulator(current.argument)) {
-            context.report({ node: current, messageId: "copy" });
-          }
-          if (current.type === AST_NODE_TYPES.CallExpression) inspectCall(current);
-          forEachAstChild(current, context.sourceCode.visitorKeys, inspect);
         };
         inspect(callback.body);
       },
