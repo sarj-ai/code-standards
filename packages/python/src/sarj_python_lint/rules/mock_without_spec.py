@@ -789,7 +789,7 @@ def _keyword_supplies_contract(keyword: ast.keyword, names: _MockNames, symbol: 
             return False
         return names.resolve(keyword.value) not in _UNSPECCED_FACTORIES
     return keyword.arg in _PATCH_CONTRACT_KEYWORDS and not (
-        isinstance(keyword.value, ast.Constant) and keyword.value.value is None
+        isinstance(keyword.value, ast.Constant) and (keyword.value.value is None or keyword.value.value is False)
     )
 
 

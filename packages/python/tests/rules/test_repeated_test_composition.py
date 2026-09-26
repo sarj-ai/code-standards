@@ -219,3 +219,27 @@ def test_constructed_dependency_import_shadowing_is_excluded() -> None:
         "    result =", "    from elsewhere import FakePort\n    result ="
     )
     assert RepeatedTestComposition().check(Path("tests/test_service.py"), source) == []
+
+
+@pytest.mark.parametrize("constructed", [False, True])
+@pytest.mark.parametrize(
+    "mutation", ["alias.configure()", "alias.option = 1", "del alias.option", "alias.options[0] = 1"]
+)
+@pytest.mark.parametrize("chain", ["alias = first", "intermediate = first\n    alias = intermediate"])
+def test_mutations_through_dependency_aliases_are_excluded(constructed: bool, mutation: str, chain: str) -> None:
+    setup = ("first = FakePort()\n    " if constructed else "") + chain + "\n    " + mutation + "\n    "
+    source = _SERVICE + "\nclass FakePort(Port):\n    def run(self): return True\n"
+    source += _tests().replace("    result =", "    " + setup + "result =")
+    assert RepeatedTestComposition().check(Path("tests/test_service.py"), source) == []
+
+
+def test_mutating_an_unrelated_alias_does_not_hide_repetition() -> None:
+    source = _SERVICE + _tests().replace("    result =", "    alias = other\n    alias.configure()\n    result =")
+    assert len(RepeatedTestComposition().check(Path("tests/test_service.py"), source)) == 3
+
+
+def test_dependency_mutation_after_construction_remains_outside_setup() -> None:
+    source = _SERVICE + _tests().replace(
+        "    assert result.run()", "    alias = first\n    alias.configure()\n    assert result.run()"
+    )
+    assert len(RepeatedTestComposition().check(Path("tests/test_service.py"), source)) == 3
