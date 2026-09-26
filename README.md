@@ -50,7 +50,9 @@ Fleet calibration and downstream PR creation run automatically after review and 
 
 `sarj-rule-contracts` owns immutable metadata and executable example contracts. Each rule owns its documentation and positive/negative examples; generated catalogs and docs consume those declarations. Verification executes all examples, including private and multi-file cases, with the owning engine and runs the focused test file. A detector that always reports or never reports fails. TypeScript examples can also verify fixes and a clean second pass.
 
-Python rules implement `check_context(context: PythonFileContext)`. The context shares parsing, breadth-first node indexing, import resolution, and generated-file detection across rules for one file. Project discovery belongs to the analysis session; file facts expire after that file. The existing `check(path, source)` entrypoint delegates through a fresh context. SQL, IaC, and text retain their own parsers and diagnostics.
+Python rules implement `check_context(context: PythonFileContext)`. The context shares parsing, breadth-first node indexing, parent lookup, import resolution, and generated-file detection across rules for one file. Use `context.parents.get(node)` to find a node's parent without rebuilding a map. Project discovery belongs to the analysis session; file facts expire after that file. The existing `check(path, source)` entrypoint delegates through a fresh context. SQL, IaC, and text retain their own parsers and diagnostics.
+
+Native Python directory inputs prune dependency and cache trees before scanning them, and return files in sorted order. Explicit file arguments retain their supplied order.
 
 Measure native Python analysis and diagnostic stability with:
 

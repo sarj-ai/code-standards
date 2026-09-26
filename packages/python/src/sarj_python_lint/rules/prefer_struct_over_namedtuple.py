@@ -21,6 +21,7 @@ from sarj_python_lint.rules._paths import is_test_path
 
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
     from pathlib import Path
 
     from sarj_python_lint._file_context import PythonFileContext
@@ -96,7 +97,7 @@ class PreferStructOverNamedtuple(Rule):
         tree = context.tree
         if tree is None:
             return []
-        parents = {child: parent for parent in context.nodes(ast.AST) for child in ast.iter_child_nodes(parent)}
+        parents = context.parents
         scopes = [
             node
             for node in context.nodes(ast.AST)
@@ -131,7 +132,7 @@ class PreferStructOverNamedtuple(Rule):
 
 
 def _is_static_owned_declaration(
-    call: ast.Call, tree: ast.Module, parents: dict[ast.AST, ast.AST], *, node_index: NodeIndex | None = None
+    call: ast.Call, tree: ast.Module, parents: Mapping[ast.AST, ast.AST], *, node_index: NodeIndex | None = None
 ) -> bool:
     declaration = _declaration_name(call, parents)
     typename = _string_argument(call, 0, "typename")
@@ -151,7 +152,7 @@ def _is_static_owned_declaration(
     return not _record_has_declared_field_types(tree, call, parents, declaration, fields, node_index=node_index)
 
 
-def _declaration_name(call: ast.Call, parents: dict[ast.AST, ast.AST]) -> str | None:
+def _declaration_name(call: ast.Call, parents: Mapping[ast.AST, ast.AST]) -> str | None:
     parent = parents.get(call)
     if isinstance(parent, ast.Assign) and parent.value is call and len(parent.targets) == 1:
         target = parent.targets[0]
@@ -186,7 +187,7 @@ def _field_names(node: ast.expr | None) -> tuple[str, ...] | None:
 def _record_has_declared_field_types(
     tree: ast.Module,
     call: ast.Call,
-    parents: dict[ast.AST, ast.AST],
+    parents: Mapping[ast.AST, ast.AST],
     name: str,
     fields: tuple[str, ...],
     *,
@@ -223,7 +224,7 @@ def _is_annotations_target(node: ast.expr, name: str) -> bool:
 def _resolves_collections_namedtuple(
     call: ast.Call,
     tree: ast.Module,
-    parents: dict[ast.AST, ast.AST],
+    parents: Mapping[ast.AST, ast.AST],
     events: dict[int, dict[str, tuple[_BindingEvent, ...]]],
 ) -> bool:
     match call.func:
@@ -251,7 +252,7 @@ def _resolves_collections_namedtuple(
     return False
 
 
-def _inside_class_header(call: ast.Call, scope: ast.ClassDef, parents: dict[ast.AST, ast.AST]) -> bool:
+def _inside_class_header(call: ast.Call, scope: ast.ClassDef, parents: Mapping[ast.AST, ast.AST]) -> bool:
     current: ast.AST = call
     while (parent := parents.get(current)) is not None and parent is not scope:
         current = parent
@@ -263,7 +264,7 @@ def _inside_class_header(call: ast.Call, scope: ast.ClassDef, parents: dict[ast.
 def _enclosing_scopes(
     node: ast.AST,
     tree: ast.Module,
-    parents: dict[ast.AST, ast.AST],
+    parents: Mapping[ast.AST, ast.AST],
 ) -> tuple[ast.Module | ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef, ...]:
     scopes: list[ast.Module | ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef] = []
     current: ast.AST | None = node
@@ -341,7 +342,7 @@ def _collect_statement_bindings(
             _collect_statement_bindings(child, collected, direct=False)
 
 
-def _inside_compatibility_branch(call: ast.Call, parents: dict[ast.AST, ast.AST]) -> bool:
+def _inside_compatibility_branch(call: ast.Call, parents: Mapping[ast.AST, ast.AST]) -> bool:
     current = parents.get(call)
     while current is not None:
         if isinstance(current, ast.If) and any(

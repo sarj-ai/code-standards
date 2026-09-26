@@ -14,14 +14,12 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    parse_or_none,
 )
-from sarj_python_lint.rules._ast_index import walk as walk_ast
 from sarj_python_lint.rules._prose_budget import groups
 
 
 if TYPE_CHECKING:
-    from pathlib import Path
+    from collections.abc import Mapping
 
     from sarj_python_lint._file_context import PythonFileContext
 
@@ -87,7 +85,7 @@ class NoTypedDocSections(Rule):
     def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
         path = context.path
         source = context.source
-        excluded_lines = _public_contract_docstring_lines(path, source)
+        excluded_lines = _public_contract_docstring_lines(context)
         return [
             Diagnostic(
                 path,
@@ -110,14 +108,14 @@ _PUBLIC_CONTRACT_DECORATORS = frozenset({"abstractmethod", "cached_property", "o
 _PUBLIC_CONTRACT_BASES = frozenset({"Protocol"})
 
 
-def _public_contract_docstring_lines(path: Path, source: str) -> frozenset[int]:
-    tree = parse_or_none(path, source)
+def _public_contract_docstring_lines(context: PythonFileContext) -> frozenset[int]:
+    tree = context.tree
     if tree is None:
         return frozenset()
-    parents = {id(child): parent for parent in walk_ast(tree) for child in ast.iter_child_nodes(parent)}
+    parents = context.parents
     excluded: set[int] = set()
-    for node in walk_ast(tree):
-        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) or not node.body:
+    for node in context.nodes(ast.FunctionDef, ast.AsyncFunctionDef):
+        if not node.body:
             continue
         first = node.body[0]
         if not (isinstance(first, ast.Expr) and isinstance(first.value, ast.Constant)):
@@ -127,9 +125,9 @@ def _public_contract_docstring_lines(path: Path, source: str) -> frozenset[int]:
     return frozenset(excluded)
 
 
-def _is_public_contract(node: ast.FunctionDef | ast.AsyncFunctionDef, parents: dict[int, ast.AST]) -> bool:
+def _is_public_contract(node: ast.FunctionDef | ast.AsyncFunctionDef, parents: Mapping[ast.AST, ast.AST]) -> bool:
     decorators = {_terminal_name(item.func if isinstance(item, ast.Call) else item) for item in node.decorator_list}
-    owner = parents.get(id(node))
+    owner = parents.get(node)
     protocol_method = isinstance(owner, ast.ClassDef) and any(
         _terminal_name(base) in _PUBLIC_CONTRACT_BASES for base in owner.bases
     )

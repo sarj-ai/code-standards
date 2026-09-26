@@ -16,7 +16,7 @@ from sarj_python_lint.rule_base import (
     RuleExample,
     Severity,
 )
-from sarj_python_lint.rules._ast_index import walk as walk_ast
+from sarj_python_lint.rules._ast_index import parent_map, walk as walk_ast
 from sarj_python_lint.rules._docstrings import docstring_expression
 
 
@@ -365,15 +365,13 @@ def _owner_index(owners: frozenset[str]) -> dict[str, tuple[str, ...]]:
 
 
 def _bare_module_docstring_consumed(tree: ast.Module, *, node_index: NodeIndex | None = None) -> bool:
-    parents = {
-        id(child): parent for parent in walk_ast(tree, index=node_index) for child in ast.iter_child_nodes(parent)
-    }
+    parents = parent_map(tree, index=node_index)
     for node in walk_ast(tree, index=node_index):
         if not (isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load) and node.id == "__doc__"):
             continue
         current: ast.AST = node
         inside_function = False
-        while (parent := parents.get(id(current))) is not None:
+        while (parent := parents.get(current)) is not None:
             if isinstance(parent, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
                 inside_function = True
                 if _function_binds_docstring_name(parent):

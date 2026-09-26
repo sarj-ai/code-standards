@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
@@ -23,7 +24,6 @@ from sarj_standards.libs.rules import DefaultLevel, RuleEngine, RuleId, RuleSele
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-    from pathlib import Path
 
 
 _SELECTOR = RuleSelector(RuleEngine.PYTHON, RuleId("new-rule"))
@@ -335,13 +335,15 @@ def test_source_severity_editor_round_trips_other_engines(
     path.write_text(source, encoding="utf-8")
     selector = RuleSelector(engine, RuleId("sample"))
 
-    staged = rule_level_source.prepare(tmp_path, selector, "rule.txt", DefaultLevel.WARNING)
+    root = Path(__file__).resolve().parents[3] if engine is RuleEngine.ESLINT else tmp_path
+    staged = rule_level_source.prepare(root, selector, str(path), DefaultLevel.WARNING)
     assert staged.current is DefaultLevel.ERROR
     assert field in staged.after
     path.write_text(staged.after, encoding="utf-8")
-    promoted = rule_level_source.prepare(tmp_path, selector, "rule.txt", DefaultLevel.ERROR)
+    promoted = rule_level_source.prepare(root, selector, str(path), DefaultLevel.ERROR)
     assert promoted.current is DefaultLevel.WARNING
-    assert promoted.after == source
+    expected = staged.after.replace('"warning"', '"error"') if engine is RuleEngine.ESLINT else source
+    assert promoted.after == expected
 
 
 def test_stage_warning_projects_new_severity_after_rule_was_imported(

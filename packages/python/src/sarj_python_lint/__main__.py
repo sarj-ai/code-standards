@@ -3,6 +3,7 @@ from __future__ import annotations
 import ast
 from collections import Counter
 from dataclasses import dataclass
+from fnmatch import fnmatch
 import json
 from pathlib import Path
 import sys
@@ -66,19 +67,21 @@ def expand_paths(paths: list[Path]) -> list[Path]:
 
 
 def _python_files(p: Path) -> list[Path]:
+    if not SKIP_DIR_NAMES.isdisjoint(p.parts):
+        return []
     out: list[Path] = []
-    for child in p.rglob("*.py"):
-        if not child.is_file():
-            continue
-        if any(part in SKIP_DIR_NAMES for part in child.parts):
-            continue
-        try:
-            if child.stat().st_size > _MAX_FILE_BYTES:
+    for directory, directories, filenames in p.walk():
+        directories[:] = [name for name in directories if name not in SKIP_DIR_NAMES]
+        for name in filenames:
+            if not fnmatch(name, "*.py"):
                 continue
-        except OSError:
-            continue
-        out.append(child)
-    return out
+            child = directory / name
+            try:
+                if child.is_file() and child.stat().st_size <= _MAX_FILE_BYTES:
+                    out.append(child)
+            except OSError:
+                continue
+    return sorted(out)
 
 
 def _check(rule_ids: list[str], paths: list[Path]) -> list[Diagnostic]:

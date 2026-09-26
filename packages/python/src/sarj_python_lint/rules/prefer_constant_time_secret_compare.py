@@ -22,7 +22,7 @@ from sarj_python_lint.rules._paths import is_test_path, is_test_support_path
 
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Iterator
+    from collections.abc import Iterable, Iterator, Mapping
 
     from sarj_python_lint._file_context import PythonFileContext
     from sarj_python_lint.rules._ast_index import NodeIndex
@@ -156,7 +156,7 @@ class PreferConstantTimeSecretCompare(Rule):
         tree = context.tree
         if tree is None:
             return []
-        parents = {id(child): parent for parent in context.nodes(ast.AST) for child in ast.iter_child_nodes(parent)}
+        parents = context.parents
         role_cache: dict[int, _Roles] = {}
         environment_names = _environment_names(tree)
         dunder_compares = _equality_dunder_compares(tree, source, node_index=context.node_index)
@@ -427,13 +427,13 @@ def _bound_names(scope: ast.FunctionDef | ast.AsyncFunctionDef) -> frozenset[str
 
 def _dominating_walrus_roles(
     comparison: ast.Compare,
-    parents: dict[int, ast.AST],
+    parents: Mapping[ast.AST, ast.AST],
     roles: _Roles,
     position: tuple[int, int],
 ) -> dict[str, _Role]:
     result: dict[str, _Role] = {}
     current: ast.AST = comparison
-    while (parent := parents.get(id(current))) is not None:
+    while (parent := parents.get(current)) is not None:
         if isinstance(parent, ast.If) and current in parent.body:
             for named in nodes(parent.test, ast.NamedExpr):
                 result[named.target.id] = _operand_role(named.value, roles, position, result)
@@ -459,11 +459,11 @@ def _terminal_name(node: ast.expr) -> str | None:
 
 def _enclosing_scope(
     node: ast.AST,
-    parents: dict[int, ast.AST],
+    parents: Mapping[ast.AST, ast.AST],
     module: ast.Module,
 ) -> ast.Module | ast.FunctionDef | ast.AsyncFunctionDef:
     current: ast.AST = node
-    while (parent := parents.get(id(current))) is not None:
+    while (parent := parents.get(current)) is not None:
         if isinstance(parent, (ast.Module, ast.FunctionDef, ast.AsyncFunctionDef)):
             return parent
         current = parent

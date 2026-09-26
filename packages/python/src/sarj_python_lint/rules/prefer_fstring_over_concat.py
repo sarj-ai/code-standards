@@ -21,6 +21,8 @@ from sarj_python_lint.rules._logging import LOG_METHODS, is_logger_expr
 
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from sarj_python_lint._file_context import PythonFileContext
 
 
@@ -182,7 +184,7 @@ class PreferFstringOverConcat(Rule):
         inner: set[int] = set()
         excluded: set[int] = set()
         adds: list[ast.BinOp] = []
-        parents = {id(child): parent for parent in context.nodes(ast.AST) for child in ast.iter_child_nodes(parent)}
+        parents = context.parents
         regex_bindings = _regex_bindings(tree)
         for node in context.nodes(ast.BinOp, ast.Call, ast.JoinedStr):
             _classify_concat_context(node, inner, excluded, adds, regex_bindings)
@@ -261,9 +263,9 @@ def _regex_bindings(tree: ast.Module) -> _RegexBindings:
     return _RegexBindings(frozenset(modules), frozenset(functions))
 
 
-def _in_callable_scope(node: ast.AST, parents: dict[int, ast.AST]) -> bool:
+def _in_callable_scope(node: ast.AST, parents: Mapping[ast.AST, ast.AST]) -> bool:
     current = node
-    while (parent := parents.get(id(current))) is not None:
+    while (parent := parents.get(current)) is not None:
         if isinstance(parent, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
             return True
         if isinstance(parent, ast.ClassDef):
@@ -454,17 +456,17 @@ def _is_string_repetition(expr: ast.expr) -> bool:
     return any(isinstance(side, ast.Constant) and isinstance(side.value, str) for side in (expr.left, expr.right))
 
 
-def _string_evidence(node: ast.BinOp, parents: dict[int, ast.AST]) -> _StringEvidence:
+def _string_evidence(node: ast.BinOp, parents: Mapping[ast.AST, ast.AST]) -> _StringEvidence:
     scope: ast.AST = node
     while not isinstance(scope, ast.Module | ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda):
-        parent = parents.get(id(scope))
+        parent = parents.get(scope)
         if parent is None:
             return _StringEvidence(frozenset(), frozenset(), frozenset())
         scope = parent
 
     module = scope
     while not isinstance(module, ast.Module):
-        parent = parents.get(id(module))
+        parent = parents.get(module)
         if parent is None:
             return _StringEvidence(frozenset(), frozenset(), frozenset())
         module = parent

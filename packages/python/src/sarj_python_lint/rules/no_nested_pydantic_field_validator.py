@@ -14,14 +14,14 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
 )
-from sarj_python_lint.rules._ast_index import walk as walk_ast
 from sarj_python_lint.rules._imports import ImportIndex
 from sarj_python_lint.rules._paths import is_test_path
 
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from sarj_python_lint._file_context import PythonFileContext
-    from sarj_python_lint.rules._ast_index import NodeIndex
 
 
 _PYDANTIC_BASE_MODEL_SOURCES = frozenset({"pydantic", "pydantic.main", "pydantic.v1", "pydantic.v1.main"})
@@ -108,7 +108,7 @@ class NoNestedPydanticFieldValidator(Rule):
         if tree is None:
             return []
         imports = _module_scope_imports(tree)
-        parents = _parent_index(tree, node_index=context.node_index)
+        parents = context.parents
         diagnostics: list[Diagnostic] = []
 
         def collect_nested_validators(outer: ast.ClassDef, nested: ast.ClassDef, outer_fields: frozenset[str]) -> None:
@@ -148,7 +148,7 @@ class NoNestedPydanticFieldValidator(Rule):
         return diagnostics
 
 
-def _is_direct_model(node: ast.ClassDef, imports: ImportIndex, parents: dict[ast.AST, ast.AST]) -> bool:
+def _is_direct_model(node: ast.ClassDef, imports: ImportIndex, parents: Mapping[ast.AST, ast.AST]) -> bool:
     return any(
         (
             imports.resolves(base, sources=_PYDANTIC_BASE_MODEL_SOURCES, symbol="BaseModel")
@@ -174,7 +174,7 @@ def _direct_fields(node: ast.ClassDef, imports: ImportIndex) -> frozenset[str]:
 def _field_validators(
     node: ast.FunctionDef | ast.AsyncFunctionDef,
     imports: ImportIndex,
-    parents: dict[ast.AST, ast.AST],
+    parents: Mapping[ast.AST, ast.AST],
 ) -> tuple[tuple[ast.Call, frozenset[str]], ...]:
     validators: list[tuple[ast.Call, frozenset[str]]] = []
     for decorator in node.decorator_list:
@@ -221,14 +221,10 @@ def _module_scope_imports(tree: ast.Module) -> ImportIndex:
     return ImportIndex.from_tree(ast.Module(body=body, type_ignores=[]))
 
 
-def _parent_index(tree: ast.Module, *, node_index: NodeIndex | None = None) -> dict[ast.AST, ast.AST]:
-    return {child: owner for owner in walk_ast(tree, index=node_index) for child in ast.iter_child_nodes(owner)}
-
-
 def _shadowed_in_enclosing_function(
     reference: ast.expr,
     owner: ast.AST,
-    parents: dict[ast.AST, ast.AST],
+    parents: Mapping[ast.AST, ast.AST],
 ) -> bool:
     root = _root_name(reference)
     if root is None:

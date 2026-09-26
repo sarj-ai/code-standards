@@ -21,6 +21,8 @@ from sarj_python_lint.rules._sql import sql_string_value, strip_sql_noise
 
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from sarj_python_lint._file_context import PythonFileContext
     from sarj_python_lint.rules._ast_index import NodeIndex
 
@@ -176,7 +178,7 @@ class NoSelectStar(Rule):
             return []
 
         diags: list[Diagnostic] = []
-        parents = {id(child): parent for parent in context.nodes(ast.AST) for child in ast.iter_child_nodes(parent)}
+        parents = context.parents
         docstrings = _docstring_value_ids(tree, node_index=context.node_index)
         consumed: set[int] = set()
         for node in context.nodes(ast.Constant, ast.BinOp, ast.JoinedStr):
@@ -221,9 +223,9 @@ def _docstring_value_ids(tree: ast.AST, *, node_index: NodeIndex | None = None) 
     }
 
 
-def _is_query_context(node: ast.expr, parents: dict[int, ast.AST]) -> bool:
+def _is_query_context(node: ast.expr, parents: Mapping[ast.AST, ast.AST]) -> bool:
     current: ast.AST = node
-    while (parent := parents.get(id(current))) is not None:
+    while (parent := parents.get(current)) is not None:
         match parent:
             case ast.Assign() | ast.AnnAssign() | ast.NamedExpr():
                 return any(_is_query_binding(target) for target in _assignment_targets(parent))
