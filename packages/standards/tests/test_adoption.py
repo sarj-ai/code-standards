@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+from dataclasses import replace
 import json
 import os
 from pathlib import Path
 import re
+import shutil
 import subprocess
 import sys
 import tomllib
@@ -394,6 +396,134 @@ def test_manifest_renders_as_valid_toml() -> None:
 
 def test_missing_manifest_is_not_an_error(tmp_path: Path) -> None:
     assert manifest.load(tmp_path) is None
+
+
+def test_manifest_renders_formatter_stable_owned_fields(tmp_path: Path) -> None:
+    adopted = manifest.Manifest(
+        version="8.1.4",
+        configs=manifest.ALL_CONFIGS,
+        python_dest=".",
+        typescript_dest=".",
+        excluded_paths=("generated/**",),
+        exclusion_overrides=(manifest.ExclusionOverride(("tests/**",), ("python:SARJ012",), "legacy fixture"),),
+        durable_artifacts=("docs/" + "x" * 70, "docs/short"),
+    )
+    rendered = adopted.render()
+    expected = (
+        "# Managed by `code-standards setup`; commit this file.\n"
+        'bundle = "8.1.4"\nrule_profile = "all"\nschema = 4\n\n'
+        "[capabilities]\ndisable = []\n\n"
+        '[artifacts]\ndurable = [\n  "docs/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",\n'
+        '  "docs/short",\n]\n\n'
+        '[dest]\nkotlin = "."\npython = "."\nswift = "."\ntypescript = "."\n\n'
+        '[hooks]\nmanager = "pre-commit"\n\n'
+        '[exclude]\npaths = ["generated/**"]\nrules = []\n\n'
+        '[[exclude.overrides]]\npaths = ["tests/**"]\nreason = "legacy fixture"\nrules = ["python:SARJ012"]\n'
+    )
+    assert rendered == expected
+    (tmp_path / manifest.MANIFEST_NAME).write_text(rendered, encoding="utf-8")
+    reloaded = manifest.load(tmp_path)
+    assert reloaded is not None
+    assert reloaded == adopted
+    assert reloaded.render() == rendered
+
+
+@pytest.mark.parametrize("operation", ["setup", "update"])
+def test_manifest_setup_and_update_preserve_extensions_and_formatting(tmp_path: Path, operation: str) -> None:
+    _exercise_manifest_formatting(tmp_path, operation)
+
+
+def _exercise_manifest_formatting(tmp_path: Path, operation: str) -> None:
+    assert _cli("--root", str(tmp_path), "setup", "--config", "taplo", "--no-install").returncode == 0
+    path = tmp_path / manifest.MANIFEST_NAME
+    extension = '\n# Consumer-maintained values stay byte-for-byte intact.\n[repository]\ncustom = "fixture"\n'
+    original = path.read_text(encoding="utf-8")
+    path.write_text(original.replace(manifest.adopted_version(), "0.0.1") + extension, encoding="utf-8")
+    options = ("--config", "taplo") if operation == "setup" else ("--offline",)
+
+    first = _cli("--root", str(tmp_path), operation, *options, "--no-install")
+
+    assert first.returncode == 0, first.stderr
+    updated = path.read_text(encoding="utf-8")
+    assert updated.endswith(extension)
+    adopted = manifest.load(tmp_path)
+    assert adopted is not None
+    assert updated == adopted.render() + extension
+    repeated = _cli("--root", str(tmp_path), operation, *options, "--no-install")
+    assert repeated.returncode == 0, repeated.stderr
+    assert path.read_text(encoding="utf-8") == updated
+
+
+@pytest.mark.parametrize("operation", ["setup", "update"])
+def test_generated_manifest_passes_real_taplo(tmp_path: Path, operation: str) -> None:
+    taplo = shutil.which("taplo")
+    if taplo is None:
+        pytest.skip("requires the Taplo formatter")
+    _exercise_manifest_formatting(tmp_path, operation)
+    path = tmp_path / manifest.MANIFEST_NAME
+    before = path.read_text(encoding="utf-8")
+
+    formatted = subprocess.run(
+        (taplo, "fmt", "--check", manifest.MANIFEST_NAME), cwd=tmp_path, capture_output=True, text=True, check=False
+    )
+
+    assert formatted.returncode == 0, formatted.stderr
+    assert path.read_text(encoding="utf-8") == before
+
+
+@pytest.mark.parametrize("length", [65, 66, 67])
+def test_manifest_array_wrap_boundary(tmp_path: Path, length: int) -> None:
+    adopted = manifest.Manifest("8.1.4", ("taplo",), ".", ".", durable_artifacts=("x" * length,))
+    rendered = adopted.render()
+    multiline = length == 67
+    assert ("durable = [\n" in rendered) is multiline
+    (tmp_path / manifest.MANIFEST_NAME).write_text(rendered, encoding="utf-8")
+    assert manifest.load(tmp_path) == adopted
+
+
+def test_manifest_string_literals_round_trip_without_reformatting_extensions(tmp_path: Path) -> None:
+    values = ('docs/café/😀/"quoted"', "docs/back\\slash", "docs/line\nbreak", "docs/delete\x7fcharacter")
+    adopted = manifest.Manifest(
+        "8.1.4",
+        ("taplo",),
+        'src/😀/"quoted"',
+        ".",
+        durable_artifacts=values,
+        exclusion_overrides=(manifest.ExclusionOverride(("tests/**",), ("python:SARJ012",), 'Reason 😀 "quoted"'),),
+    )
+    rendered = adopted.render()
+    assert "café/😀" in rendered
+    assert r"\u007f" in rendered
+    assert r"\"quoted\"" in rendered
+    (tmp_path / manifest.MANIFEST_NAME).write_text(rendered, encoding="utf-8")
+    assert manifest.load(tmp_path) == adopted
+
+
+@pytest.mark.parametrize(
+    "values",
+    [
+        pytest.param(("x" * 65,), id="below-width"),
+        pytest.param(("x" * 66,), id="exact-width"),
+        pytest.param(("x" * 67,), id="above-width"),
+        pytest.param(('café/😀/"quoted"', "back\\slash"), id="escaped-unicode"),
+        pytest.param(("é" * 35,), id="multibyte-character-width"),
+        pytest.param(("😀" * 20,), id="non-bmp-character-width"),
+        pytest.param(("delete\x7fcharacter",), id="escaped-delete-character"),
+    ],
+)
+def test_manifest_literals_pass_real_taplo(tmp_path: Path, values: tuple[str, ...]) -> None:
+    taplo = shutil.which("taplo")
+    if taplo is None:
+        pytest.skip("requires the Taplo formatter")
+    adopted = manifest.Manifest("8.1.4", ("taplo",), ".", ".", durable_artifacts=values)
+    (tmp_path / manifest.MANIFEST_NAME).write_text(adopted.render(), encoding="utf-8")
+    (tmp_path / ".taplo.toml").write_bytes((CONFIGS_DIR / "taplo.strict.toml").read_bytes())
+
+    formatted = subprocess.run(
+        (taplo, "fmt", "--check", manifest.MANIFEST_NAME), cwd=tmp_path, capture_output=True, text=True, check=False
+    )
+
+    assert formatted.returncode == 0, formatted.stderr
 
 
 def test_malformed_manifest_is_reported_not_ignored(tmp_path: Path) -> None:
@@ -978,11 +1108,9 @@ def test_setup_preserves_every_supported_manifest_policy_section(tmp_path: Path)
     first = _cli("--root", str(tmp_path), "setup", "--config", "markdownlint", "--no-install")
     assert first.returncode == 0, first.stderr
     path = tmp_path / manifest.MANIFEST_NAME
-    default_durable = ", ".join(json.dumps(value) for value in manifest.DEFAULT_DURABLE_ARTIFACTS)
-    current = path.read_text(encoding="utf-8").replace(
-        f"[artifacts]\ndurable = [{default_durable}]",
-        '[artifacts]\ndurable = ["evidence/**"]',
-    )
+    adopted = manifest.load(tmp_path)
+    assert adopted is not None
+    current = replace(adopted, durable_artifacts=("evidence/**",)).render()
     path.write_text(
         f'{current}\n[text]\nexclude = ["templates/**"]\n\n[doctor]\nexclude = ["tests/fixtures/**"]\n'
         '\n[baseline]\ndiagnostics = "quality/diagnostics.json"\n'

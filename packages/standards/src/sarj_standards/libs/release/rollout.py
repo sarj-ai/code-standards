@@ -85,6 +85,7 @@ MANAGED_WORKFLOW_PATHS = frozenset({".github/workflows/standards.yml", ".github/
 COMMIT_POLICY_WORKFLOW_PATH = ".github/workflows/commit-policy.yml"
 MANAGED_ROLLOUT_NAMES = frozenset(
     {
+        *adoption_packagemanager.AGE_GATE_POLICY_NAMES,
         ".basedpyright-strict.json",
         ".lefthook.yml",
         ".lefthook.yaml",
@@ -95,7 +96,6 @@ MANAGED_ROLLOUT_NAMES = frozenset(
         ".ruff-strict.toml",
         ".taplo.toml",
         ".tool-versions",
-        ".yarnrc.yml",
         ".yamllint.yaml",
         "bun.lock",
         "doctor.config.json",
@@ -105,7 +105,6 @@ MANAGED_ROLLOUT_NAMES = frozenset(
         "package-lock.json",
         "package.json",
         "pnpm-lock.yaml",
-        "pnpm-workspace.yaml",
         "pyproject.toml",
         "pyright.strict.json",
         "pyrightconfig.json",
