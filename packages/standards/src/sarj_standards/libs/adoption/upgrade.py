@@ -15,7 +15,18 @@ from sarj_standards.libs.diagnostics import baseline
 from sarj_standards.libs.filesystem import is_link_like
 from sarj_standards.libs.repository import ledger
 
-from . import doctor, hooks, lifecycle, manifest, packagemanager, retired_suppressions, scaffold, transaction, uvtool
+from . import (
+    age_transition,
+    doctor,
+    hooks,
+    lifecycle,
+    manifest,
+    packagemanager,
+    retired_suppressions,
+    scaffold,
+    transaction,
+    uvtool,
+)
 from .configs import MOBILE_COMPANION_CONFIGS, PYTHON_COMPANION_CONFIGS, TYPESCRIPT_COMPANION_CONFIGS
 
 
@@ -116,7 +127,13 @@ def build_plan(root: Path) -> UpgradePlan:  # ruff: ignore[too-many-locals] -- o
     pin_updates = doctor.plan_version_pin_updates(root, installed)
     # Compose pin migrations into scaffold rewrites of the same file.
     scaffold_plan.writes = [
-        (path, doctor.rewrite_version_pins(contents, installed)[0]) for path, contents in scaffold_plan.writes
+        (
+            path,
+            doctor.rewrite_file_version_pins(
+                root, path, contents, installed, exclusions=adopted.doctor_excluded_paths
+            ).contents,
+        )
+        for path, contents in scaffold_plan.writes
     ]
     scaffold_write_paths = {path for path, _contents in scaffold_plan.writes}
     pin_writes = [(update.path, update.contents) for update in pin_updates if update.path not in scaffold_write_paths]
@@ -515,10 +532,15 @@ def _apply_and_validate(
 ) -> int:
     _write_plan(plan, file_transaction)
     if install:
+        # PNPM validates the existing lockfile before resolving replacements.
+        # Retain its previously approved exact versions only until installation finishes.
+        policies = age_transition.retain_previous_approvals(file_transaction, plan.preconditions)
         status = lifecycle.execute(_upgrade_install_commands(plan))
         _mark_installer_writes(file_transaction)
         if status:
             return status
+        for path, canonical in policies:
+            file_transaction.write_text(path, canonical)
     return _validate_applied_upgrade(plan, install=install, allow_retired_debt=allow_retired_debt)
 
 
