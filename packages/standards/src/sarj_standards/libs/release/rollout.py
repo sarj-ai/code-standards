@@ -817,13 +817,21 @@ def assert_baselines_unchanged(expected: Mapping[Path, bytes]) -> None:
         assert_baseline_unchanged(path, contents)
 
 
+def load_consumer_manifest(repo: Path, *, for_setup: bool = False) -> adoption_manifest.Manifest | None:
+    try:
+        return adoption_manifest.load_for_setup(repo) if for_setup else adoption_manifest.load(repo)
+    except (TypeError, ValueError) as exc:
+        msg = f"invalid consumer {MANIFEST}: {exc}"
+        raise RolloutError(msg) from exc
+
+
 def managed_rollout_paths(repo: Path, workflow_paths: frozenset[str]) -> frozenset[str]:
     allowed = set(DEFAULT_ALLOWED_ROLLOUT_PATHS)
     allowed.update(workflow_paths)
     for path in repo.rglob("*"):
         if path.is_file() and path.name in MANAGED_ROLLOUT_NAMES:
             allowed.add(path.relative_to(repo).as_posix())
-    adopted = adoption_manifest.load_for_setup(repo)
+    adopted = load_consumer_manifest(repo, for_setup=True)
     roots = {repo}
     if adopted is not None:
         roots.update({repo / adopted.python_dest, repo / adopted.typescript_dest})
@@ -867,7 +875,7 @@ def provision_consumer_tools(
 
     # Tool provisioning happens before `code-standards update`, so consumers
     # may still use the immediately preceding manifest schema here.
-    adopted = adoption_manifest.load_for_setup(repo)
+    adopted = load_consumer_manifest(repo, for_setup=True)
     python_root = None if adopted is None else repo / adopted.python_dest
     uv_source = adoption_uvtool.version_file(python_root)
     uv_required = None if uv_source is None else adoption_uvtool.required_version(uv_source)
@@ -897,7 +905,7 @@ def run_consumer_bootstrap(
     runner: CommandRunner,
     environment: Mapping[str, str],
 ) -> subprocess.CompletedProcess[str] | None:
-    adopted = adoption_manifest.load(repo)
+    adopted = load_consumer_manifest(repo)
     if adopted is None:
         return None
     python_install = adoption_scaffold.python_ci_install_argv(repo, adopted.python_dest)
@@ -1093,7 +1101,7 @@ def react_doctor_policy_snapshot(repo: Path) -> ReactDoctorPolicy:
     # by setup/update. Fleet consumers can legitimately still be on the prior
     # manifest schema; the rollout is responsible for migrating them before the
     # strict current-schema loader is used below.
-    adopted = adoption_manifest.load_for_setup(repo)
+    adopted = load_consumer_manifest(repo, for_setup=True)
     if adopted is None:
         return ReactDoctorPolicy(None, None)
     project = repo / adopted.typescript_dest
@@ -1784,7 +1792,7 @@ def _prepare_rollout_baseline(
     tool: tuple[str, ...],
     environment: Mapping[str, str],
 ) -> _RolloutBaseline:
-    adopted = adoption_manifest.load(repo)
+    adopted = load_consumer_manifest(repo)
     baseline_relative = None if adopted is None else adopted.diagnostic_baseline
     allowed_baseline_paths = frozenset(
         (*(() if baseline_relative is None else (baseline_relative,)), *consumer.baseline_paths)
