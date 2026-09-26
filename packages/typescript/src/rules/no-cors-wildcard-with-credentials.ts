@@ -258,12 +258,29 @@ export default createRule<Options, MessageIds>({
     const variableIds = new WeakMap<TSESLint.Scope.Variable, number>();
     let nextVariableId = 0;
 
-    function variableId(variable: TSESLint.Scope.Variable): number {
-      const existing = variableIds.get(variable);
-      if (existing !== undefined) return existing;
-      const value = nextVariableId++;
-      variableIds.set(variable, value);
-      return value;
+    function recordHeaderSet(
+      node: TSESTree.CallExpression,
+      kind: HeaderSetKind,
+    ): void {
+      if (node.callee.type !== AST_NODE_TYPES.MemberExpression) return;
+      const receiver = receiverIdentity(node.callee.object);
+      if (receiver === null) return;
+      const key = enclosingScope(node) ?? "module";
+      let receivers = scopeHeaderSets.get(key);
+      if (receivers === undefined) {
+        receivers = new Map();
+        scopeHeaderSets.set(key, receivers);
+      }
+      let entry = receivers.get(receiver);
+      if (entry === undefined) {
+        entry = { originNodes: [], credentialsNodes: [] };
+        receivers.set(receiver, entry);
+      }
+      if (kind === "origin") {
+        entry.originNodes.push(node);
+      } else {
+        entry.credentialsNodes.push(node);
+      }
     }
 
     function receiverIdentity(node: TSESTree.Node): string | null {
@@ -288,29 +305,12 @@ export default createRule<Options, MessageIds>({
       return null;
     }
 
-    function recordHeaderSet(
-      node: TSESTree.CallExpression,
-      kind: HeaderSetKind,
-    ): void {
-      if (node.callee.type !== AST_NODE_TYPES.MemberExpression) return;
-      const receiver = receiverIdentity(node.callee.object);
-      if (receiver === null) return;
-      const key = enclosingScope(node) ?? "module";
-      let receivers = scopeHeaderSets.get(key);
-      if (receivers === undefined) {
-        receivers = new Map();
-        scopeHeaderSets.set(key, receivers);
-      }
-      let entry = receivers.get(receiver);
-      if (entry === undefined) {
-        entry = { originNodes: [], credentialsNodes: [] };
-        receivers.set(receiver, entry);
-      }
-      if (kind === "origin") {
-        entry.originNodes.push(node);
-      } else {
-        entry.credentialsNodes.push(node);
-      }
+    function variableId(variable: TSESLint.Scope.Variable): number {
+      const existing = variableIds.get(variable);
+      if (existing !== undefined) return existing;
+      const value = nextVariableId++;
+      variableIds.set(variable, value);
+      return value;
     }
 
     return {

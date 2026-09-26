@@ -49,20 +49,6 @@ export function functionComplexity(
   function add(node: TSESTree.Node, nesting: number, construct: string): void {
     points.push({ line: node.loc.start.line, amount: nesting + 1, construct });
   }
-  function logical(node: TSESTree.LogicalExpression, nesting: number): void {
-    let previous: string | undefined;
-    function flatten(expression: TSESTree.Node): void {
-      if (expression.type !== AST_NODE_TYPES.LogicalExpression || expression.operator === "??") {
-        visit(expression, nesting);
-        return;
-      }
-      flatten(expression.left);
-      if (previous !== expression.operator) add(expression, 0, expression.operator);
-      previous = expression.operator;
-      flatten(expression.right);
-    }
-    flatten(node);
-  }
   function conditional(node: TSESTree.IfStatement, nesting: number): void {
     add(node, nesting, "if");
     let branch = node;
@@ -140,6 +126,21 @@ export function functionComplexity(
         return;
     }
     visitChildren(node, nesting);
+  }
+
+  function logical(node: TSESTree.LogicalExpression, nesting: number): void {
+    let previous: string | undefined;
+    function flatten(expression: TSESTree.Node): void {
+      if (expression.type !== AST_NODE_TYPES.LogicalExpression || expression.operator === "??") {
+        visit(expression, nesting);
+        return;
+      }
+      flatten(expression.left);
+      if (previous !== expression.operator) add(expression, 0, expression.operator);
+      previous = expression.operator;
+      flatten(expression.right);
+    }
+    flatten(node);
   }
   function visitChildren(node: TSESTree.Node, nesting: number): void {
     forEachAstChild(node, visitorKeys, child => visit(child, nesting));
