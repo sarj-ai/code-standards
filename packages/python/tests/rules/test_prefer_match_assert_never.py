@@ -550,3 +550,74 @@ def by_if(status: Status) -> None:
 @pytest.mark.parametrize("source", ["", "   ", "# comment\n", "def f(:\n    pass"])
 def test_trivial_or_invalid_source_is_ignored(source: str) -> None:
     assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    "comment",
+    [
+        "type: ignore",
+        "type: ignore[reportArgumentType]",
+        "type: ignore[arg-type]",
+        "pyright: ignore",
+        "pyright: ignore[reportArgumentType, reportUnknownArgumentType]",
+    ],
+)
+def test_warns_when_exhaustiveness_argument_check_is_suppressed(comment: str) -> None:
+    source = f"from typing import assert_never\nassert_never(value)  # {comment}\n"
+
+    findings = _check(source)
+
+    assert len(findings) == 1
+    assert findings[0].severity.value == "warning"
+    assert findings[0].line == 2
+
+
+@pytest.mark.parametrize(
+    ("imports", "call"),
+    [
+        ("import typing as t", "t.assert_never"),
+        ("from typing_extensions import assert_never as unreachable", "unreachable"),
+        ("import typing_extensions", "typing_extensions.assert_never"),
+    ],
+)
+def test_resolves_exhaustiveness_aliases_and_multiline_arguments(imports: str, call: str) -> None:
+    source = f"{imports}\n{call}(\n    value,  # pyright: ignore[reportArgumentType]\n)\n"
+
+    assert len(_check(source)) == 1
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "from typing import assert_never\nassert_never(value)\n",
+        "from typing import assert_never\nassert_never(value)  # pyright: ignore[reportUnknownArgumentType]\n",
+        "from typing import assert_never\nassert_never(value)  # type: ignore[assignment]\n",
+        "from typing import assert_never\n# type: ignore[reportArgumentType]\nassert_never(value)\n",
+        "from typing import assert_never\nassert_never('type: ignore[reportArgumentType]')\n",
+        "from custom import assert_never\nassert_never(value)  # type: ignore\n",
+        "def assert_never(value): ...\nassert_never(value)  # type: ignore\n",
+        "from typing import assert_never\ndef f(assert_never):\n    assert_never(value)  # type: ignore\n",
+        "from typing import assert_never\nassert_never(value)  # type: ignore[reportArgumentType] # sarj-noqa: SARJ032 — explicit runtime rejection\n",
+    ],
+)
+def test_preserves_unrelated_ignores_and_unproven_exhaustiveness_calls(source: str) -> None:
+    assert _check(source) == []
+
+
+def test_warning_extension_does_not_weaken_existing_errors() -> None:
+    source = f"""{_ENUM_PREAMBLE}
+from typing import assert_never
+
+def handle(status: Status) -> None:
+    match status:
+        case Status.OPEN:
+            open_it()
+        case Status.CLOSED:
+            close_it()
+        case _:
+            pass
+assert_never(value)  # type: ignore[reportArgumentType]
+"""
+    findings = _check(source)
+
+    assert [finding.severity.value for finding in findings] == ["error", "warning"]
