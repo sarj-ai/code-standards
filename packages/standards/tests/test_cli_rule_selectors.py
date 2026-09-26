@@ -177,6 +177,51 @@ def test_check_unknown_rule_fails_closed(tmp_path: Path, capsys: pytest.CaptureF
     assert "unknown" in capsys.readouterr().out.lower()
 
 
+@pytest.mark.parametrize(
+    ("filename", "suppression", "expected_status"),
+    [
+        ("tests/test_orders.py", "", 1),
+        (
+            "tests/test_orders.py",
+            "  # sarj-noqa: SARJ429 — verify transaction locking on a dedicated connection",
+            0,
+        ),
+        (
+            "tests/test_orders.py",
+            "  # sarj-noqa: SARJ020 — verify transaction locking on a dedicated connection",
+            1,
+        ),
+        ("tests/fixtures/database.py", "", 0),
+    ],
+    ids=("blocking-default", "exact-transaction-exception", "unrelated-suppression", "shared-fixture"),
+)
+def test_raw_database_connections_block_outside_an_explicit_test_support_boundary(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    filename: str,
+    suppression: str,
+    expected_status: int,
+) -> None:
+    target = tmp_path / filename
+    target.parent.mkdir(parents=True)
+    target.write_text(
+        "from psycopg_pool import AsyncConnectionPool\n\n"
+        "async def test_orders(pool: AsyncConnectionPool):\n"
+        f"    async with pool.connection() as conn:{suppression}\n"
+        "        await conn.execute('SELECT 1')\n"
+    )
+
+    status = main(
+        ["--root", str(tmp_path), "check", "--rule", "python:no-raw-connection-in-tests", "--format", "json", filename]
+    )
+
+    report = _report(capsys.readouterr().out)
+    assert status == expected_status
+    assert [(as_table(item)["code"], as_table(item)["severity"]) for item in list_field(report, "diagnostics")] == (
+        [("SARJ429", "error")] if expected_status else []
+    )
+
+
 @pytest.mark.parametrize(("stage", "partial", "expected"), [(False, False, 0), (True, False, 1), (True, True, 2)])
 def test_check_rule_respects_staged_content(
     tmp_path: Path, capsys: pytest.CaptureFixture[str], *, stage: bool, partial: bool, expected: int
