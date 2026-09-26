@@ -69,6 +69,42 @@ function severity(setting: unknown): unknown {
 const ESLINT_MAJOR = Number.parseInt(ESLint.version.split(".")[0] ?? "0", 10);
 
 describe("the shipped eslint.strict.mjs can actually lint", () => {
+  it.each(CONFIG_FACTORIES)(
+    "%s rejects void-discarded promises while retaining handled promises",
+    async (_name, createConfig) => {
+      const ruleId = "@typescript-eslint/no-floating-promises";
+      const focused = createConfig({ tsconfigRootDir: FIXTURE_DIR }).map((entry) => ({
+        ...entry,
+        rules: Object.fromEntries(
+          Object.entries(entry.rules ?? {}).filter(([id]) => id === ruleId),
+        ),
+      }));
+      const eslint = new ESLint({
+        cwd: FIXTURE_DIR,
+        overrideConfigFile: true,
+        overrideConfig: [...focused, { rules: { [ruleId]: "error" } }],
+      });
+      const [result] = await eslint.lintText(
+        [
+          "declare function start(): Promise<void>;",
+          "declare function handleError(error: unknown): void;",
+          "void start();",
+          "void start().then(() => {});",
+          "void start().catch(handleError);",
+          "void start().then(() => {}, handleError);",
+          "await start();",
+          "function returned() { return start(); }",
+          "void 0;",
+        ].join("\n"),
+        { filePath: resolve(FIXTURE_DIR, "example.ts") },
+      );
+      expect(result?.messages.map(({ ruleId: id, line, severity: level }) => ({ id, line, level }))).toEqual([
+        { id: ruleId, line: 3, level: 2 },
+        { id: ruleId, line: 4, level: 2 },
+      ]);
+    },
+  );
+
   it("keeps quoted snake_case wire access compatible with camelCase policy", async () => {
     const eslint = new ESLint({
       cwd: FIXTURE_DIR,

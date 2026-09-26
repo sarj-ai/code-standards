@@ -672,7 +672,7 @@ export function createConfig(options = {}) {
       "@typescript-eslint/no-unsafe-argument": "error",
       "@typescript-eslint/no-unsafe-call": "error",
       "@typescript-eslint/no-unsafe-return": "error",
-      "@typescript-eslint/no-floating-promises": "error",
+      "@typescript-eslint/no-floating-promises": ["error", { ignoreVoid: false }],
       "@typescript-eslint/await-thenable": "error",
       "@typescript-eslint/no-misused-promises": "error",
       // The upstream rule flags every nested then/catch/finally call, including
