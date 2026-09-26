@@ -18,6 +18,7 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING, Annotated, NamedTuple, Protocol, TypeGuard, assert_never
 from urllib.parse import quote
 
+from packaging.version import InvalidVersion, Version
 import typer
 import yaml
 
@@ -50,6 +51,7 @@ PORCELAIN_RECORD_MINIMUM = 4
 MANAGED_TRAILER = "Standards-Rollout: managed/v1"
 MANAGED_TREE_TRAILER_PREFIX = "Standards-Rollout-Tree: "
 PR_MARKER_PREFIX = "<!-- sarj-standards-rollout:managed/v1"
+DESIRED_MARKER_PREFIX = "<!-- sarj-standards-rollout:desired"
 REPOSITORY_VERSION_PIN = re.compile(r"^(STANDARDS_VERSION[ \t]*:?=[ \t]*)\S+[ \t]*$", re.MULTILINE)
 PYRIGHT_COMMAND = re.compile(r"(?m)^(?P<indent>[ \t]*)cd python && uv run pyright[ \t]*$")
 VERIFICATION_FAILED_MARKER = "<!-- sarj-standards-rollout:verification-failed -->"
@@ -311,6 +313,11 @@ def validate_version(version: str) -> str:
     if not VERSION_RE.fullmatch(version):
         msg = f"invalid immutable version: {version!r}"
         raise RolloutError(msg)
+    try:
+        Version(version)
+    except InvalidVersion as exc:
+        msg = f"invalid immutable version: {version!r}"
+        raise RolloutError(msg) from exc
     return version
 
 
@@ -325,7 +332,26 @@ def pr_marker(consumer: Consumer, version: str) -> str:
 
 
 def desired_marker(version: str) -> str:
-    return f"<!-- sarj-standards-rollout:desired={validate_version(version)} -->"
+    return f"{DESIRED_MARKER_PREFIX}={validate_version(version)} -->"
+
+
+def desired_version(body: str) -> str:
+    markers = [line for line in body.splitlines() if DESIRED_MARKER_PREFIX in line]
+    match = re.fullmatch(rf"{re.escape(DESIRED_MARKER_PREFIX)}=(.+) -->", markers[0]) if len(markers) == 1 else None
+    if match is None:
+        msg = "managed rollout PR must contain exactly one valid desired version marker"
+        raise RolloutError(msg)
+    try:
+        return validate_version(match.group(1))
+    except RolloutError as exc:
+        msg = f"managed rollout PR desired version is invalid: {exc}"
+        raise RolloutError(msg) from exc
+
+
+def reject_rollout_downgrade(current: str, requested: str) -> None:
+    if Version(validate_version(current)) > Version(validate_version(requested)):
+        msg = f"refusing rollout downgrade from Standards {current} to {requested}"
+        raise RolloutError(msg)
 
 
 def stdout(result: subprocess.CompletedProcess[str]) -> str:
@@ -470,6 +496,14 @@ def pull_request(consumer: Consumer, version: str, runner: CommandRunner) -> dic
     return first if is_object(first) else None
 
 
+def pull_identity_matches(consumer: Consumer, version: str, pull: dict[str, object]) -> bool:
+    return (
+        pull.get("headRefName") == rollout_branch(version)
+        and pull.get("baseRefName") == consumer.branch
+        and pr_marker(consumer, version) in str(pull.get("body", ""))
+    )
+
+
 def live_consumer_base_sha(consumer: Consumer, runner: CommandRunner) -> str:
     ref = quote(f"heads/{consumer.branch}", safe="")
     result = runner.run(
@@ -543,19 +577,19 @@ def open_pull_commit_provenance(
 def status_one(consumer: Consumer, version: str, runner: CommandRunner) -> Outcome:
     pull = pull_request(consumer, version, runner)
     if pull is not None:
-        identity_is_valid = (
-            pull.get("headRefName") == rollout_branch(version)
-            and pull.get("baseRefName") == consumer.branch
-            and pr_marker(consumer, version) in str(pull.get("body", ""))
-        )
-        if not identity_is_valid:
+        if not pull_identity_matches(consumer, version, pull):
             return Outcome(
                 consumer,
                 OutcomeState.BLOCKED,
                 str(pull.get("url", "")),
                 "rollout PR ownership marker, head, or base does not match",
             )
-        if desired_marker(version) not in str(pull.get("body", "")):
+        try:
+            desired = desired_version(str(pull.get("body", "")))
+            reject_rollout_downgrade(desired, version)
+        except RolloutError as exc:
+            return Outcome(consumer, OutcomeState.BLOCKED, str(pull.get("url", "")), str(exc))
+        if desired != version:
             return Outcome(
                 consumer,
                 OutcomeState.MISSING,
@@ -1091,6 +1125,8 @@ def prepare_branch(
     ):
         msg = f"refusing human-modified rollout branch {branch}"
         raise RolloutError(msg)
+    previous_version = message.splitlines()[0].removeprefix(BOT_COMMIT_PREFIX)
+    reject_rollout_downgrade(previous_version, version)
     runner.run(("git", "switch", "-C", branch, base_sha), cwd=repo)
     return BranchPreparation(branch, previous_sha)
 
@@ -1681,6 +1717,25 @@ def _publish_rollout_pull(
     verification_failure: str,
 ) -> Outcome:
     pull = pull_request(consumer, version, runner)
+    if pull is not None and pull.get("headRefOid") != pushed_head_sha:
+        return Outcome(
+            consumer,
+            OutcomeState.MISSING,
+            str(pull.get("url", "")),
+            "managed rollout PR head does not match the pushed commit; refusing metadata update",
+        )
+    if pull is not None:
+        if not pull_identity_matches(consumer, version, pull):
+            return Outcome(
+                consumer,
+                OutcomeState.BLOCKED,
+                str(pull.get("url", "")),
+                "rollout PR ownership marker, head, or base does not match before update",
+            )
+        try:
+            reject_rollout_downgrade(desired_version(str(pull.get("body", ""))), version)
+        except RolloutError as exc:
+            return Outcome(consumer, OutcomeState.BLOCKED, str(pull.get("url", "")), str(exc))
     body = f"{pr_marker(consumer, version)}\n{desired_marker(version)}\n\n"
     if verification_failure:
         body += (
@@ -1732,12 +1787,7 @@ def _publish_rollout_pull(
             "managed rollout PR could not be read after create or edit",
         )
     refreshed_url = str(refreshed_pull.get("url", url))
-    refreshed_identity_is_valid = (
-        refreshed_pull.get("headRefName") == rollout_branch(version)
-        and refreshed_pull.get("baseRefName") == consumer.branch
-        and pr_marker(consumer, version) in str(refreshed_pull.get("body", ""))
-    )
-    if not refreshed_identity_is_valid:
+    if not pull_identity_matches(consumer, version, refreshed_pull):
         return Outcome(
             consumer,
             OutcomeState.BLOCKED,
