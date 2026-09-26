@@ -61,7 +61,15 @@ class _ExternalRecordFinding(NamedTuple):
 
 
 @dataclass(frozen=True, slots=True)
+class _WrapperSummary:
+    parameters: tuple[str, ...]
+    fields: dict[str, str]
+    accessors: dict[str, str]
+
+
+@dataclass(frozen=True, slots=True)
 class _ModuleSummaries:
+    wrappers: dict[str, _WrapperSummary]
     decoder_parameters: dict[str, int]
     record_parameters: dict[str, frozenset[int]]
     local_parameters: dict[str, frozenset[int]]
@@ -114,6 +122,7 @@ class RequirePydanticForExternalJson(Rule):
         autofix=AutofixPolicy.NONE,
         limitations=(
             "The rule follows import-proven JSON decoders, requests/httpx/aiohttp responses and clients, environment or subprocess results, and simple module-local helpers through single-assignment names.",
+            "Simple same-module wrappers preserve constructor arguments through direct stored-field accessor methods, including local identity-or-empty-dict narrowing helpers; inheritance, decorators, mutation, nested captures, unknown member escapes/helpers, and wrapper factory returns are excluded.",
             "It diagnoses literal-key subscription and get calls; iteration and other dynamic JSON use remain out of scope.",
             "Unannotated parameters and unknown expressions are not assumed to be external; interprocedural and framework-specific boundaries can remain unreported.",
             "Names bound by loops, comprehensions, context managers, exception handlers, pattern matching, imports, or destructuring are excluded when their provenance is ambiguous; unrelated binders do not suppress the rest of a function.",
@@ -220,6 +229,7 @@ def _module_summaries(
         _summarize_function(function, imports, module_validator_names, source_lines, decoders, records=records)
     response_callables = _response_callables(tree, imports, node_index=node_index)
     return _ModuleSummaries(
+        _wrapper_summaries(tree, imports),
         decoders,
         records,
         _locally_sourced_parameters(functions),
@@ -538,6 +548,7 @@ def _function_findings(
         response_names,
         bindings,
         local_bound_names,
+        scope,
     )
     validated_names = _validated_names(function, imports, summaries.jsonschema_validator_names)
     findings: list[_ExternalRecordFinding] = []
@@ -748,6 +759,7 @@ class _OriginResolver:
     response_names: frozenset[str]
     bindings: dict[str, ast.expr]
     local_bound_names: frozenset[str]
+    scope: tuple[ast.AST, ...]
 
     def origins(self, expression: ast.expr, resolving: frozenset[str] = frozenset()) -> frozenset[ast.Call]:
         expression = _unwrap_await(expression)
@@ -756,29 +768,79 @@ class _OriginResolver:
                 return frozenset()
             return self.origins(value, resolving | {expression.id})
         if isinstance(expression, ast.Call):
-            if self._is_validation_call(expression):
-                return frozenset()
-            if self._is_source(expression):
-                return frozenset({expression})
-            found_origins: set[ast.Call] = set()
-            if (
-                isinstance(expression.func, ast.Name)
-                and expression.func.id not in self.local_bound_names
-                and (position := self.summaries.decoder_parameters.get(expression.func.id)) is not None
-                and position < len(expression.args)
-                and self._is_external_input(expression.args[position])
-            ):
-                found_origins.add(expression)
-            for argument in expression.args:
-                found_origins.update(self.origins(argument, resolving))
-            for keyword in expression.keywords:
-                found_origins.update(self.origins(keyword.value, resolving))
-            return frozenset(found_origins)
-        found_origins = set()
+            return self._call_origins(expression, resolving)
+        found_origins: set[ast.Call] = set()
         for child in ast.iter_child_nodes(expression):
             if isinstance(child, ast.expr):
                 found_origins.update(self.origins(child, resolving))
         return frozenset(found_origins)
+
+    def _call_origins(self, call: ast.Call, resolving: frozenset[str]) -> frozenset[ast.Call]:
+        if isinstance(call.func, ast.Attribute) and not call.args and not call.keywords:
+            wrapped = self._wrapper_value(call.func)
+            if wrapped is not None:
+                return self.origins(wrapped, resolving)
+        if self._is_validation_call(call):
+            return frozenset()
+        if self._is_source(call):
+            return frozenset({call})
+        found_origins: set[ast.Call] = set()
+        if (
+            isinstance(call.func, ast.Name)
+            and call.func.id not in self.local_bound_names
+            and (position := self.summaries.decoder_parameters.get(call.func.id)) is not None
+            and position < len(call.args)
+            and self._is_external_input(call.args[position])
+        ):
+            found_origins.add(call)
+        for argument in call.args:
+            found_origins.update(self.origins(argument, resolving))
+        for keyword in call.keywords:
+            found_origins.update(self.origins(keyword.value, resolving))
+        return frozenset(found_origins)
+
+    def _wrapper_value(self, access: ast.Attribute) -> ast.expr | None:
+        receiver = self._resolved_binding(access.value) if isinstance(access.value, ast.Name) else access.value
+        if not isinstance(receiver, ast.Call) or not isinstance(receiver.func, ast.Name):
+            return None
+        if receiver.func.id in self.local_bound_names:
+            return None
+        summary = self.summaries.wrappers.get(receiver.func.id)
+        if summary is None or not self._wrapper_is_stable(receiver, summary):
+            return None
+        field = summary.accessors.get(access.attr)
+        parameter = summary.fields.get(field) if field is not None else None
+        if parameter is None or any(isinstance(argument, ast.Starred) for argument in receiver.args):
+            return None
+        if any(keyword.arg is None for keyword in receiver.keywords):
+            return None
+        position = summary.parameters.index(parameter)
+        if position < len(receiver.args):
+            return receiver.args[position]
+        return next((keyword.value for keyword in receiver.keywords if keyword.arg == parameter), None)
+
+    def _wrapper_is_stable(self, constructor: ast.Call, summary: _WrapperSummary) -> bool:
+        def refers_to_wrapper(value: ast.expr) -> bool:
+            return isinstance(value, ast.Name) and self._resolved_binding(value) is constructor
+
+        for node in self.scope:
+            if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef | ast.Lambda) and any(
+                isinstance(child, ast.Name) and refers_to_wrapper(child) for child in ast.walk(node)
+            ):
+                return False
+            if (
+                isinstance(node, ast.Attribute)
+                and refers_to_wrapper(node.value)
+                and (isinstance(node.ctx, ast.Store | ast.Del) or node.attr not in summary.accessors | summary.fields)
+            ):
+                return False
+            if not isinstance(node, ast.Call):
+                continue
+            if any(refers_to_wrapper(argument) for argument in node.args) or any(
+                refers_to_wrapper(keyword.value) for keyword in node.keywords
+            ):
+                return False
+        return True
 
     def _is_validation_call(self, call: ast.Call) -> bool:
         if _is_validation_call(
@@ -1462,3 +1524,170 @@ def _typed_http_clients(
             imports.resolves(argument.annotation, sources=_HTTP_MODULES, symbol=symbol) for symbol in _HTTP_CLIENT_TYPES
         )
     }
+
+
+def _wrapper_summaries(tree: ast.Module, imports: ImportIndex) -> dict[str, _WrapperSummary]:
+    counts = _suite_binding_counts(tree.body)
+    narrowing_helpers = _narrowing_helpers(tree, imports, counts)
+    mutated_classes = _wrapper_mutated_classes(tree)
+    summaries: dict[str, _WrapperSummary] = {}
+    for node in tree.body:
+        if not isinstance(node, ast.ClassDef) or node.bases or node.keywords or node.decorator_list:
+            continue
+        if counts[node.name] != 1 or node.name in mutated_classes:
+            continue
+        summary = _wrapper_summary(node, narrowing_helpers)
+        if summary is not None:
+            summaries[node.name] = summary
+    return summaries
+
+
+def _wrapper_summary(node: ast.ClassDef, narrowing_helpers: frozenset[str]) -> _WrapperSummary | None:
+    if any(_wrapper_descriptor(statement) for statement in node.body):
+        return None
+    methods = [statement for statement in node.body if isinstance(statement, ast.FunctionDef)]
+    if any(method.name.startswith("__") and method.name != "__init__" for method in methods):
+        return None
+    constructors = [method for method in methods if method.name == "__init__"]
+    if len(constructors) != 1:
+        return None
+    constructor = constructors[0]
+    fields = _wrapper_fields(constructor)
+    if not fields or fields.keys() & {method.name for method in methods}:
+        return None
+    if any(_wrapper_method_mutates(method) for method in methods if method is not constructor):
+        return None
+    accessors = _wrapper_accessors(node, methods, fields, narrowing_helpers)
+    parameters = tuple(_parameter_positions(constructor))[1:]
+    return _WrapperSummary(parameters, fields, accessors)
+
+
+def _wrapper_accessors(
+    node: ast.ClassDef,
+    methods: list[ast.FunctionDef],
+    fields: dict[str, str],
+    narrowing_helpers: frozenset[str],
+) -> dict[str, str]:
+    method_counts = _suite_binding_counts(node.body)
+    return {
+        method.name: field
+        for method in methods
+        if method_counts[method.name] == 1 and (field := _wrapper_accessor(method, narrowing_helpers)) in fields
+    }
+
+
+def _wrapper_method_mutates(method: ast.FunctionDef) -> bool:
+    return any(
+        isinstance(child, ast.Attribute)
+        and isinstance(child.ctx, ast.Store | ast.Del)
+        and isinstance(child.value, ast.Name)
+        and child.value.id == "self"
+        for child in _own_scope(method)
+    )
+
+
+def _wrapper_fields(constructor: ast.FunctionDef) -> dict[str, str]:
+    if constructor.decorator_list or constructor.args.vararg or constructor.args.kwarg or constructor.args.kwonlyargs:
+        return {}
+    parameters = _parameter_positions(constructor)
+    if parameters.get("self") != 0:
+        return {}
+    fields: dict[str, str] = {}
+    for statement in constructor.body:
+        if isinstance(statement, ast.Expr) and isinstance(statement.value, ast.Constant):
+            continue
+        if isinstance(statement, ast.Assign) and len(statement.targets) == 1:
+            target, value = statement.targets[0], statement.value
+        elif isinstance(statement, ast.AnnAssign) and statement.value is not None:
+            target, value = statement.target, statement.value
+        else:
+            return {}
+        if not (
+            isinstance(target, ast.Attribute)
+            and isinstance(target.value, ast.Name)
+            and target.value.id == "self"
+            and target.attr not in fields
+            and isinstance(value, ast.Name)
+            and value.id in parameters
+            and parameters[value.id] > 0
+        ):
+            return {}
+        fields[target.attr] = value.id
+    return fields
+
+
+def _wrapper_accessor(method: ast.FunctionDef, narrowing_helpers: frozenset[str]) -> str | None:
+    if (
+        method.decorator_list
+        or len(method.body) != 1
+        or tuple(_parameter_positions(method)) != ("self",)
+        or any((method.args.vararg, method.args.kwarg, method.args.kwonlyargs))
+    ):
+        return None
+    statement = method.body[0]
+    if not isinstance(statement, ast.Return):
+        return None
+    value = statement.value
+    if (
+        isinstance(value, ast.Call)
+        and isinstance(value.func, ast.Name)
+        and value.func.id in narrowing_helpers
+        and len(value.args) == 1
+        and not value.keywords
+    ):
+        value = value.args[0]
+    return (
+        value.attr
+        if isinstance(value, ast.Attribute) and isinstance(value.value, ast.Name) and value.value.id == "self"
+        else None
+    )
+
+
+def _narrowing_helpers(tree: ast.Module, imports: ImportIndex, counts: Counter[str]) -> frozenset[str]:
+    if not imports.builtin_is_unshadowed("isinstance") or not imports.builtin_is_unshadowed("dict"):
+        return frozenset()
+    names: set[str] = set()
+    for function in tree.body:
+        if not isinstance(function, ast.FunctionDef) or function.decorator_list or counts[function.name] != 1:
+            continue
+        parameters = tuple(_parameter_positions(function))
+        if len(parameters) != 1 or len(function.body) != 1:
+            continue
+        statement = function.body[0]
+        if not isinstance(statement, ast.Return) or not isinstance(statement.value, ast.IfExp):
+            continue
+        if any((function.args.kwonlyargs, function.args.vararg, function.args.kwarg)):
+            continue
+        if parameters[0] not in {"dict", "isinstance"} and _is_identity_dict_narrowing(statement.value, parameters[0]):
+            names.add(function.name)
+    return frozenset(names)
+
+
+def _is_identity_dict_narrowing(value: ast.IfExp, parameter: str) -> bool:
+    match value:
+        case ast.IfExp(
+            body=ast.Name(id=returned),
+            orelse=ast.Dict(keys=[]),
+            test=ast.Call(
+                func=ast.Name(id="isinstance"), args=[ast.Name(id=checked), ast.Name(id="dict")], keywords=[]
+            ),
+        ):
+            return returned == parameter == checked
+        case _:
+            return False
+
+
+def _wrapper_mutated_classes(tree: ast.Module) -> frozenset[str]:
+    return frozenset(
+        node.value.id
+        for node in walk_ast(tree)
+        if isinstance(node, ast.Attribute)
+        and isinstance(node.ctx, ast.Store | ast.Del)
+        and isinstance(node.value, ast.Name)
+    )
+
+
+def _wrapper_descriptor(statement: ast.stmt) -> bool:
+    if isinstance(statement, ast.Assign):
+        return not all(isinstance(target, ast.Name) and target.id == "__slots__" for target in statement.targets)
+    return isinstance(statement, ast.AnnAssign | ast.AugAssign)
