@@ -25,6 +25,7 @@ _WALK_EXCLUDES: Final = frozenset(
 _GENERATED_READMES: Final = (
     Path("README.md"),
     Path("packages/bootstrap/README.md"),
+    Path("packages/contracts/README.md"),
     Path("packages/standards/README.md"),
     Path("packages/standards-compat/README.md"),
     Path("packages/python/README.md"),
@@ -40,6 +41,7 @@ _PACKAGE_DEFINITIONS: Final = (
     ("packages/standards/pyproject.toml", "PyPI", "text"),
     ("packages/standards-compat/pyproject.toml", "PyPI", None),
     ("packages/bootstrap/pyproject.toml", "PyPI", None),
+    ("packages/contracts/pyproject.toml", "PyPI", None),
     ("packages/python/pyproject.toml", "PyPI", "python"),
     ("packages/sql/pyproject.toml", "PyPI", "sql"),
     ("packages/iac/pyproject.toml", "PyPI", "iac"),
@@ -126,9 +128,15 @@ def _root_readme(
             "## Contributing\n\n"
             "Install uv 0.12.18, Python 3.14, Node 24.21, and GNU Make. Then bootstrap a fresh checkout:\n\n"
             "```bash\nmake setup\nmake verify\n```"
-            "\n\nOnce a new rule and its tests are registered, stage it as a warning and validate it locally:\n\n"
+            "\n\nCreate a rule with `maintain rules new ENGINE:ID --category CATEGORY --summary TEXT --apply`. "
+            "Without `--apply`, the command shows its plan. Creation writes the detector and executable test, "
+            "registers the rule, and reserves its identifier atomically. New rules default to warning. "
+            "Run authoring commands through `uv run --project packages/standards --frozen code-standards` "
+            "to use the source and dependencies of the checkout being edited. Implement the detector and "
+            "replace the example placeholders, then verify and prepare it:\n\n"
             "```bash\n"
-            "code-standards --root . maintain rules stage-warning python:no-string-concat-in-loop\n"
+            "code-standards --root . maintain rules verify python:no-string-concat-in-loop\n"
+            "code-standards --root . maintain rules prepare python:no-string-concat-in-loop\n"
             "code-standards --root . maintain rules evaluate --rule python:no-string-concat-in-loop --scope corpus\n"
             "make verify\n"
             "```\n\nFor reproducible multi-repository calibration, use an immutable public manifest and an optional "
@@ -141,6 +149,24 @@ def _root_readme(
             "code-standards --root . maintain rules changes --before origin/main --after HEAD\n"
             "```\n\n"
             "Fleet calibration and downstream PR creation run automatically after review and release.\n\n"
+            "### Rule implementation\n\n"
+            "`sarj-rule-contracts` owns immutable metadata and executable example contracts. Each rule owns its "
+            "documentation and positive/negative examples; generated catalogs and docs consume those declarations. "
+            "Verification executes all examples, including private and multi-file cases, with the owning engine "
+            "and runs the focused test file. A detector that always reports or never reports fails. "
+            "TypeScript examples can also verify fixes and a clean second pass.\n\n"
+            "Python rules implement `check_context(context: PythonFileContext)`. The context shares parsing, "
+            "breadth-first node indexing, import resolution, and generated-file detection across rules for one file. "
+            "Project discovery belongs to the analysis session; file facts expire after that file. "
+            "The existing `check(path, source)` entrypoint delegates through a fresh context. SQL, IaC, "
+            "and text retain their own parsers and diagnostics.\n\n"
+            "Measure native Python analysis and diagnostic stability with:\n\n"
+            "```bash\n"
+            "code-standards --root . maintain rules bench packages/python/src --repeats 5\n"
+            "```\n\n"
+            "The JSON report includes file and byte counts, source and diagnostic digests, per-run timings, "
+            "and process peak memory. It excludes interpreter startup; peak memory is the process high-water mark. "
+            "Use fresh processes for cold-start and independent memory comparisons.\n\n"
             "### Rule artifact provenance\n\n"
             "- Each rule's source-owned `default_level` is lifecycle policy. Severity is a reviewed decision, "
             "not something inferred from current findings.\n"
@@ -193,7 +219,16 @@ def _package_usage(name: str, engine: str | None) -> str:
             "```\n\n"
             "Use repeatable `check --rule ENGINE:ID` selectors to check only selected Sarj custom rules. "
             "Exclusions, baselines, and severities still apply; upstream rules such as Ruff IDs are not supported. "
-            "Native linters execute only selected rules; ESLint runs its configured rules and filters the findings."
+            "Native linters and ESLint execute only selected rules. ESLint retains configured parsers, options, "
+            "severities, and suppression directives.\n\n"
+            "`check --jobs 2` overlaps native analysis with the external-tool pipeline. The default is "
+            "`--jobs 1`; external tools remain sequential and report ordering is deterministic."
+        )
+    if name == "sarj-rule-contracts":
+        return (
+            "Standard-library-only immutable contracts for rule documentation, metadata, and executable examples. "
+            "Native engines and the Standards catalog share these declarations. Language parsers, analysis "
+            "contexts, diagnostics, and suppression policies belong to their engines."
         )
     if name == "sarj-standards":
         return (
@@ -262,6 +297,8 @@ def _security_policy() -> str:
 
 
 def _install_command(name: str, registry: str) -> str:
+    if name == "sarj-rule-contracts":
+        return f"uv add {name}"
     if registry == "npm":
         return f"npm install --save-dev {name}"
     python = " --python 3.14" if name == "code-standards" else ""

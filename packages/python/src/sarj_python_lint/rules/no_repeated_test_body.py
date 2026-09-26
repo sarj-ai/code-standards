@@ -19,17 +19,17 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    parse_or_none,
 )
 from sarj_python_lint.rules._ast_index import children
 from sarj_python_lint.rules._comments import standalone_comments, trailing_comments
 from sarj_python_lint.rules._imports import ImportIndex
-from sarj_python_lint.rules._paths import is_generated, is_test_path
+from sarj_python_lint.rules._paths import is_test_path
 
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
-    from pathlib import Path
+
+    from sarj_python_lint._file_context import PythonFileContext
 
 
 _FUNC_NODES = (ast.FunctionDef, ast.AsyncFunctionDef)
@@ -184,10 +184,12 @@ class NoRepeatedTestBody(Rule):
     description: str = documentation.summary
 
     @override
-    def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if not is_test_path(path) or path.name == "conftest.py" or is_generated(path, source):
+    def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
+        path = context.path
+        source = context.source
+        if not is_test_path(path) or path.name == "conftest.py" or context.generated:
             return []
-        tree = parse_or_none(path, source)
+        tree = context.tree
         if tree is None:
             return []
         try:

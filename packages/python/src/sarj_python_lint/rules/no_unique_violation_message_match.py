@@ -15,15 +15,16 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    parse_or_none,
 )
+from sarj_python_lint.rules._ast_index import walk as walk_ast
 from sarj_python_lint.rules._imports import ImportIndex
-from sarj_python_lint.rules._paths import is_generated, is_test_path
+from sarj_python_lint.rules._paths import is_test_path
 
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
-    from pathlib import Path
+
+    from sarj_python_lint._file_context import PythonFileContext
 
 
 _PSYCOPG_ERROR_SOURCES = frozenset({"psycopg.errors", "psycopg2.errors"})
@@ -98,16 +99,18 @@ class NoUniqueViolationMessageMatch(Rule):
     description = documentation.summary
 
     @override
-    def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if is_test_path(path) or is_generated(path, source) or "UniqueViolation" not in source:
+    def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
+        path = context.path
+        source = context.source
+        if is_test_path(path) or context.generated or "UniqueViolation" not in source:
             return []
-        tree = parse_or_none(path, source)
+        tree = context.tree
         if tree is None:
             return []
         imports = _module_import_index(tree)
-        parents = {id(child): parent for parent in ast.walk(tree) for child in ast.iter_child_nodes(parent)}
+        parents = {id(child): parent for parent in context.nodes(ast.AST) for child in ast.iter_child_nodes(parent)}
         findings: list[tuple[ast.expr, _HandlerContext]] = []
-        for handler in (node for node in ast.walk(tree) if isinstance(node, ast.ExceptHandler)):
+        for handler in (node for node in context.nodes(ast.AST) if isinstance(node, ast.ExceptHandler)):
             driver = _caught_driver(handler.type, imports)
             if (
                 handler.name is None
@@ -117,13 +120,15 @@ class NoUniqueViolationMessageMatch(Rule):
                 or not _builtins_are_available(tree, handler, parents)
             ):
                 continue
-            context = _HandlerContext(
+            analysis_context = _HandlerContext(
                 exception_name=handler.name,
                 driver=driver,
                 aliases=_stable_message_aliases(handler, handler.name),
                 imports=imports,
             )
-            findings.extend((node, context) for node in _classification_matches(handler.body, context))
+            findings.extend(
+                (node, analysis_context) for node in _classification_matches(handler.body, analysis_context)
+            )
         findings.sort(key=lambda item: (item[0].lineno, item[0].col_offset))
         return [
             Diagnostic(
@@ -131,10 +136,10 @@ class NoUniqueViolationMessageMatch(Rule):
                 line=node.lineno,
                 col=node.col_offset + 1,
                 code=self.code,
-                message=_message(context),
+                message=_message(analysis_context),
                 severity=Severity.ERROR,
             )
-            for node, context in findings
+            for node, analysis_context in findings
         ]
 
 
@@ -178,7 +183,7 @@ def _statement_bound_names(statement: ast.stmt) -> frozenset[str]:
         case ast.FunctionDef() | ast.AsyncFunctionDef() | ast.ClassDef():
             names.add(statement.name)
         case _:
-            for node in ast.walk(statement):
+            for node in walk_ast(statement):
                 if isinstance(node, ast.Name) and isinstance(node.ctx, (ast.Store, ast.Del)):
                     names.add(node.id)
                 elif isinstance(node, ast.alias):

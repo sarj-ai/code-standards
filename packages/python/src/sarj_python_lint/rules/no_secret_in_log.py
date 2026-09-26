@@ -13,14 +13,14 @@ from sarj_python_lint.rule_base import (
     RuleCategory,
     RuleDocumentation,
     RuleExample,
-    parse_or_none,
 )
-from sarj_python_lint.rules._ast_index import nodes
 from sarj_python_lint.rules._logging import LOG_METHODS, is_logger_expr
 
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+    from sarj_python_lint._file_context import PythonFileContext
 
 
 # A whole redaction token (`token_prefix`, `password_hash`, `secret_masked`,
@@ -107,12 +107,13 @@ class NoSecretInLog(Rule):
     description: str = documentation.summary
 
     @override
-    def check(self, path: Path, source: str) -> list[Diagnostic]:
-        tree = parse_or_none(path, source)
+    def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
+        path = context.path
+        tree = context.tree
         if tree is None:
             return []
         diags: list[Diagnostic] = []
-        for node in nodes(tree, ast.Call):
+        for node in context.nodes(ast.Call):
             function = node.func
             if not isinstance(function, ast.Attribute) or not _is_logging_call(node):
                 continue

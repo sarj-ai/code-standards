@@ -19,16 +19,17 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    parse_or_none,
 )
+from sarj_python_lint.rules._ast_index import walk as walk_ast
 from sarj_python_lint.rules._comments import split_identifier, standalone_comments
-from sarj_python_lint.rules._imports import ImportIndex
-from sarj_python_lint.rules._paths import is_generated
 
 
 if TYPE_CHECKING:
     from collections.abc import Iterator, Sequence
-    from pathlib import Path
+
+    from sarj_python_lint._file_context import PythonFileContext
+    from sarj_python_lint.rules._ast_index import NodeIndex
+    from sarj_python_lint.rules._imports import ImportIndex
 
 
 _CONSTANT_NAME_RE = re.compile(r"^_?[A-Z][A-Z0-9_]*$")
@@ -297,22 +298,27 @@ class PreferSelfDocumentingConstant(Rule):
     description = documentation.summary
 
     @override
-    def check(self, path: Path, source: str) -> list[Diagnostic]:
-        tree = parse_or_none(path, source)
+    def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
+        path = context.path
+        source = context.source
+        tree = context.tree
         if tree is None:
             return []
         if not _has_syntactic_candidate(tree):
             return []
-        imports = ImportIndex.from_tree(tree)
-        enum_class_ids = _enum_class_ids(tree, imports)
+        imports = context.imports
+        enum_class_ids = _enum_class_ids(tree, imports, node_index=context.node_index)
         bindings = [
             binding
             for binding in _constant_bindings(tree, enum_class_ids)
             if _numeric_scalar(binding[2]) is not None or _looks_like_status_collection(binding[2])
         ]
-        if not bindings or is_generated(path, source):
+        if not bindings or context.generated:
             return []
-        frozenset_risks = (_has_wildcard_import(tree), _builtins_frozenset_mutated(tree, imports))
+        frozenset_risks = (
+            _has_wildcard_import(tree),
+            _builtins_frozenset_mutated(tree, imports, node_index=context.node_index),
+        )
         comments, _first_code_line = standalone_comments(source)
         by_line = {line: (col, body) for line, col, body in comments}
         findings: list[Diagnostic] = []
@@ -552,7 +558,7 @@ def _has_http_context(name: str, comment: str) -> bool:
 
 def _annotation_tokens(annotation: ast.expr) -> set[str]:
     tokens: set[str] = set()
-    for node in ast.walk(annotation):
+    for node in walk_ast(annotation):
         if isinstance(node, ast.Name):
             tokens.update(split_identifier(node.id))
         elif isinstance(node, ast.Attribute):
@@ -591,9 +597,9 @@ def _number_words(text: str) -> int | None:
     return total + current
 
 
-def _enum_class_ids(tree: ast.Module, imports: ImportIndex) -> frozenset[int]:
+def _enum_class_ids(tree: ast.Module, imports: ImportIndex, *, node_index: NodeIndex | None = None) -> frozenset[int]:
     aliases = _enum_aliases(tree, imports)
-    classes = [node for node in ast.walk(tree) if isinstance(node, ast.ClassDef)]
+    classes = [node for node in walk_ast(tree, index=node_index) if isinstance(node, ast.ClassDef)]
     enum_names = set(aliases)
     enum_ids: set[int] = set()
     changed = True
@@ -659,12 +665,12 @@ def _has_wildcard_import(tree: ast.Module) -> bool:
     )
 
 
-def _builtins_frozenset_mutated(tree: ast.Module, imports: ImportIndex) -> bool:
+def _builtins_frozenset_mutated(tree: ast.Module, imports: ImportIndex, *, node_index: NodeIndex | None = None) -> bool:
     return any(
         isinstance(node, ast.Attribute)
         and isinstance(node.ctx, (ast.Store, ast.Del))
         and imports.resolves(node, sources=frozenset({"builtins"}), symbol="frozenset")
-        for node in ast.walk(tree)
+        for node in walk_ast(tree, index=node_index)
     )
 
 

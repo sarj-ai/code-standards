@@ -16,14 +16,13 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    parse_or_none,
 )
 from sarj_python_lint.rules._comments import nested_comment_lines, standalone_comments
-from sarj_python_lint.rules._paths import is_generated, is_test_path
+from sarj_python_lint.rules._paths import is_test_path
 
 
 if TYPE_CHECKING:
-    from pathlib import Path
+    from sarj_python_lint._file_context import PythonFileContext
 
 
 # A bounded whole-body grammar: decoration and joins are ceremony only when
@@ -94,8 +93,10 @@ class TestPhaseLabelComment(Rule):
     description: str = documentation.summary
 
     @override
-    def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if is_generated(path, source) or not is_test_path(path) or parse_or_none(path, source) is None:
+    def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
+        path = context.path
+        source = context.source
+        if context.generated or not is_test_path(path) or context.tree is None:
             return []
         try:
             standalone, _ = standalone_comments(source)

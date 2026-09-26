@@ -17,11 +17,12 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
 
 
-PublishTarget = Literal["typescript", "bootstrap", "python", "sql", "iac", "standards", "tsconfig"]
+PublishTarget = Literal["typescript", "bootstrap", "contracts", "python", "sql", "iac", "standards", "tsconfig"]
 _EXPECTED_PYTHON_ARTIFACTS = 1
 _PYTHON_TARGETS: Mapping[str, str] = MappingProxyType(
     {
         "bootstrap": "bootstrap",
+        "contracts": "contracts",
         "python": "python",
         "sql": "sql",
         "iac": "iac",

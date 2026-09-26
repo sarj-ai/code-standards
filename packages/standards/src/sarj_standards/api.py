@@ -63,6 +63,7 @@ from .libs.linting.library_policy import (
 )
 from .libs.linting.policy import Policy
 from .libs.linting.runner import group_paths, run as check
+from .libs.linting.scheduling import analyze_groups
 from .libs.rules import RuleEngine, RuleId, RuleSelection, RuleSelector
 from .libs.typed_containers import is_object_list, is_object_mapping
 
@@ -238,7 +239,7 @@ class Standards:
             return _operation_result(max(source_status, eslint_status, 1 if findings else 0), findings=findings)
         return _operation_result(_verify(self.root))
 
-    def analyze(  # ruff: ignore[too-many-locals] -- one boundary coordinates routing, policy, and coverage.
+    def analyze(
         self,
         paths: Sequence[str] | None = None,
         *,
@@ -250,7 +251,10 @@ class Standards:
         react_doctor_triggered: bool = False,
         include_react_doctor: bool = True,
         pass_on_unpruned_eslint_suppressions: bool = False,
+        jobs: int = 1,
     ) -> AnalysisReport:
+        if jobs not in {1, 2}:
+            return _failed_analysis(self.root, "invalid-input", "analysis jobs must be 1 or 2")
         try:
             normalized_trust = TrustMode(trust)
             normalized_mode = AnalysisMode(mode)
@@ -277,19 +281,24 @@ class Standards:
         react_doctor_full_scan = not staged and (
             requested_paths is None or any(Path(path) == Path() for path in requested_paths)
         )
-        native = analyze_paths(
-            active_selected,
-            root=self.root,
-            policy=selection_policy,
-            grouped=selected_groups,
-            rule_selection=rule_selection,
-        )
-        if rule_selection is None:
-            native = _with_library_policy(self.root, native, active_selected, selection_policy)
-        if rule_selection is None and normalized_mode is AnalysisMode.POLICY:
-            native = _with_repository_analysis(self.root, native, staged=staged)
+
+        def native_analysis() -> tuple[ToolReport, ...]:
+            native = analyze_paths(
+                active_selected,
+                root=self.root,
+                policy=selection_policy,
+                grouped=selected_groups,
+                rule_selection=rule_selection,
+            )
+            if rule_selection is None:
+                native = _with_library_policy(self.root, native, active_selected, selection_policy)
+            if rule_selection is None and normalized_mode is AnalysisMode.POLICY:
+                native = _with_repository_analysis(self.root, native, staged=staged)
+            return native.tools
+
         coverage = _selection_coverage(self.root, selected, active_selected, selected_groups, rule_selection)
         if not external:
+            native = report_from_tools(self.root, native_analysis())
             _native_typescript_coverage(selected_groups, adopted, rule_selection, coverage)
             if normalized_mode in {AnalysisMode.POLICY, AnalysisMode.OBSERVE}:
                 native = _with_warning_severity(native, _warning_rule_keys())
@@ -305,21 +314,26 @@ class Standards:
                     CoverageDisposition.NOT_REQUESTED,
                 )
             )
-        external_reports = _selected_external_analysis(
-            active_selected,
-            root=self.root,
-            selected_groups=selected_groups,
-            adopted=adopted,
-            selection_policy=selection_policy,
-            rule_selection=rule_selection,
-            normalized_trust=normalized_trust,
-            include_react_doctor=include_react_doctor,
-            react_doctor_triggered=react_doctor_triggered,
-            staged=staged,
-            react_doctor_full_scan=react_doctor_full_scan,
-            pass_on_unpruned_eslint_suppressions=pass_on_unpruned_eslint_suppressions,
+
+        def external_analysis() -> tuple[ToolReport, ...]:
+            return _selected_external_analysis(
+                active_selected,
+                root=self.root,
+                selected_groups=selected_groups,
+                adopted=adopted,
+                selection_policy=selection_policy,
+                rule_selection=rule_selection,
+                normalized_trust=normalized_trust,
+                include_react_doctor=include_react_doctor,
+                react_doctor_triggered=react_doctor_triggered,
+                staged=staged,
+                react_doctor_full_scan=react_doctor_full_scan,
+                pass_on_unpruned_eslint_suppressions=pass_on_unpruned_eslint_suppressions,
+            )
+
+        combined = report_from_tools(
+            self.root, analyze_groups(self.root, native_analysis, external_analysis, jobs=jobs)
         )
-        combined = report_from_tools(self.root, (*native.tools, *external_reports))
         if normalized_mode in {AnalysisMode.POLICY, AnalysisMode.OBSERVE}:
             combined = _with_warning_severity(combined, _warning_rule_keys())
         return _with_coverage(
@@ -335,8 +349,9 @@ class Standards:
         mode: AnalysisMode | str = AnalysisMode.POLICY,
         rules: Sequence[str | RuleSelector] | None = None,
         staged: bool = False,
+        jobs: int = 1,
     ) -> AnalysisReport:
-        return self.analyze(paths, external=external, trust=trust, mode=mode, rules=rules, staged=staged)
+        return self.analyze(paths, external=external, trust=trust, mode=mode, rules=rules, staged=staged, jobs=jobs)
 
     def fix(self) -> Result:
         from .libs.adoption import (  # ruff: ignore[import-outside-top-level] -- selected operation only
@@ -603,6 +618,11 @@ def _selected_external_analysis(
     react_doctor_full_scan: bool,
     pass_on_unpruned_eslint_suppressions: bool,
 ) -> tuple[ToolReport, ...]:
+    rule_ids = (
+        frozenset(str(value) for value in rule_selection.ids_for(RuleEngine.ESLINT))
+        if rule_selection is not None
+        else None
+    )
     run_eslint = rule_selection is None or RuleEngine.ESLINT in rule_selection.engines
     external_reports = (
         (
@@ -615,6 +635,7 @@ def _selected_external_analysis(
                     frozenset({"eslint"}) if rule_selection is not None else frozenset(adopted.enabled_capabilities)
                 ),
                 grouped=selected_groups,
+                rule_ids=rule_ids,
                 include_react_doctor=include_react_doctor and rule_selection is None,
                 force_react_doctor=react_doctor_triggered,
                 react_doctor_staged=staged,
@@ -628,6 +649,7 @@ def _selected_external_analysis(
                 trust=normalized_trust,
                 capabilities=frozenset({"eslint"}) if rule_selection is not None else None,
                 grouped=selected_groups,
+                rule_ids=rule_ids,
                 include_react_doctor=include_react_doctor and rule_selection is None,
                 force_react_doctor=react_doctor_triggered,
                 react_doctor_staged=staged,

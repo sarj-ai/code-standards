@@ -14,14 +14,14 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    parse_or_none,
 )
-from sarj_python_lint.rules._imports import ImportIndex
-from sarj_python_lint.rules._paths import is_generated
 
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+    from sarj_python_lint._file_context import PythonFileContext
+    from sarj_python_lint.rules._imports import ImportIndex
 
 
 _MIN_BRANCHES = 3
@@ -199,14 +199,15 @@ class PreferMatchTypeDispatch(Rule):
     description: str = documentation.summary
 
     @override
-    def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if is_generated(path, source):
+    def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
+        path = context.path
+        if context.generated:
             return []
-        tree = parse_or_none(path, source)
+        tree = context.tree
         if tree is None:
             return []
-        imports = ImportIndex.from_tree(tree)
-        all_nodes = tuple(ast.walk(tree))
+        imports = context.imports
+        all_nodes = tuple(context.nodes(ast.AST))
         unsafe_bindings = _unsafe_local_bound_names(tree, all_nodes)
         has_wildcard_import = any(
             isinstance(node, ast.ImportFrom) and any(alias.name == "*" for alias in node.names) for node in all_nodes
@@ -242,7 +243,7 @@ class PreferMatchTypeDispatch(Rule):
                 unsafe_bindings=unsafe_bindings,
             )
         )
-        if findings and self.has_declared_python_support_before(path, (3, 10)):
+        if findings and context.session.python_target.has_declared_support_before(path, (3, 10)):
             return []
         findings.sort(key=lambda diagnostic: (diagnostic.line, diagnostic.col))
         return findings

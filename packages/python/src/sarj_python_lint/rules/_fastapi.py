@@ -5,6 +5,7 @@ from collections import Counter
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal, NamedTuple
 
+from sarj_python_lint.rules._ast_index import walk as walk_ast
 from sarj_python_lint.rules._imports import ImportIndex
 
 
@@ -153,7 +154,7 @@ class FastapiIndex:
         visit(tree, 0, None)
 
     def _read_imports(self, tree: ast.Module) -> None:
-        for node in ast.walk(tree):
+        for node in walk_ast(tree):
             if self._node_scopes[id(node)] != 0:
                 continue
             if isinstance(node, ast.Import):
@@ -197,7 +198,7 @@ class FastapiIndex:
 
     def _read_aliases(self, tree: ast.Module) -> None:
         assignments: list[tuple[int, str, ast.expr]] = []
-        for node in ast.walk(tree):
+        for node in walk_ast(tree):
             self._read_bound_names(node)
             assignment = self._alias_assignment(node)
             if assignment is not None:
@@ -638,7 +639,7 @@ def _statement_binds(statement: ast.stmt, name: str) -> bool:
 
 def _stored_names(node: ast.expr) -> frozenset[str]:
     return frozenset(
-        child.id for child in ast.walk(node) if isinstance(child, ast.Name) and isinstance(child.ctx, ast.Store)
+        child.id for child in walk_ast(node) if isinstance(child, ast.Name) and isinstance(child.ctx, ast.Store)
     )
 
 

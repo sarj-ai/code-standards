@@ -15,14 +15,13 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    parse_or_none,
 )
-from sarj_python_lint.rules._paths import is_generated
+from sarj_python_lint.rules._ast_index import walk as walk_ast
 from sarj_python_lint.rules._sql import is_store_module
 
 
 if TYPE_CHECKING:
-    from pathlib import Path
+    from sarj_python_lint._file_context import PythonFileContext
 
 
 _BULK_NAMES = frozenset({"get_by_ids", "get_many"})
@@ -202,10 +201,11 @@ class StoreGetDelegatesToBulkRead(Rule):
     description = documentation.summary
 
     @override
-    def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if not is_store_module(path) or is_generated(path, source):
+    def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
+        path = context.path
+        if not is_store_module(path) or context.generated:
             return []
-        tree = parse_or_none(path, source)
+        tree = context.tree
         if tree is None:
             return []
         diagnostics: list[Diagnostic] = []
@@ -662,7 +662,7 @@ def _statement_delegation_call(statement: ast.stmt) -> tuple[ast.Call, bool] | N
 
 
 def _call_count(node: ast.AST) -> int:
-    return sum(isinstance(child, ast.Call) for child in ast.walk(node))
+    return sum(isinstance(child, ast.Call) for child in walk_ast(node))
 
 
 def _bind_call(

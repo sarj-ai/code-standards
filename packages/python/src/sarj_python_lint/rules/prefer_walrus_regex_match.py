@@ -3,7 +3,7 @@ from __future__ import annotations
 import ast
 from pathlib import Path, PurePosixPath
 import re
-from typing import ClassVar, NamedTuple, override
+from typing import TYPE_CHECKING, ClassVar, NamedTuple, override
 
 from sarj_python_lint.rule_base import (
     AutofixPolicy,
@@ -16,10 +16,13 @@ from sarj_python_lint.rule_base import (
     RuleExample,
     Severity,
     is_suppressed,
-    parse_or_none,
 )
-from sarj_python_lint.rules._ast_index import children, nodes, object_list, walk
-from sarj_python_lint.rules._paths import is_generated, is_test_path
+from sarj_python_lint.rules._ast_index import children, object_list, walk
+from sarj_python_lint.rules._paths import is_test_path
+
+
+if TYPE_CHECKING:
+    from sarj_python_lint._file_context import PythonFileContext
 
 
 class _RegexImports(NamedTuple):
@@ -116,16 +119,18 @@ class PreferWalrusRegexMatch(Rule):
     description: str = documentation.summary
 
     @override
-    def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if _CALL_CANDIDATE_RE.search(source) is None or is_test_path(path) or is_generated(path, source):
+    def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
+        path = context.path
+        source = context.source
+        if _CALL_CANDIDATE_RE.search(source) is None or is_test_path(path) or context.generated:
             return []
-        tree = parse_or_none(path, source)
+        tree = context.tree
         if tree is None:
             return []
 
-        source_lines = source.splitlines()
+        source_lines = context.source_lines
         diags: list[Diagnostic] = []
-        parents = {child: parent for parent in nodes(tree, ast.AST) for child in children(parent)}
+        parents = {child: parent for parent in context.nodes(ast.AST) for child in children(parent)}
         regex_imports = _regex_imports(tree.body)
         module_non_imports = _scope_non_import_bindings(tree.body)
         module_names = regex_imports.modules - module_non_imports
@@ -136,7 +141,7 @@ class PreferWalrusRegexMatch(Rule):
             compile_functions,
             binding_counts=_scope_binding_counts(tree.body),
         )
-        context = _AnalysisContext(
+        analysis_context = _AnalysisContext(
             _RegexEnvironment(module_names, compile_functions, module_compiled),
             tree.body,
             module_non_imports,
@@ -152,7 +157,7 @@ class PreferWalrusRegexMatch(Rule):
             if not object_list(raw_body):
                 continue
             body: list[ast.stmt] = [st for st in raw_body if isinstance(st, ast.stmt)]
-            diags.extend(_check_body(node, body, context))
+            diags.extend(_check_body(node, body, analysis_context))
 
         return sorted(diags, key=lambda d: (d.line, d.col))
 

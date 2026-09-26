@@ -5,6 +5,8 @@ from dataclasses import dataclass, field
 from enum import Enum, auto
 from typing import TYPE_CHECKING
 
+from sarj_python_lint.rules._ast_index import walk as walk_ast
+
 
 if TYPE_CHECKING:
     from sarj_python_lint.rules._imports import ImportIndex
@@ -164,7 +166,7 @@ class _Analyzer:
 
     def _loop_statement(self, statement: ast.stmt, state: _State) -> _Flow:
         self.invalidate_loop(statement, state)
-        has_return = any(isinstance(child, ast.Return) for child in ast.walk(statement))
+        has_return = any(isinstance(child, ast.Return) for child in walk_ast(statement))
         returned = [_ReturnKind.UNKNOWN] if has_return else []
         return _Flow(active=[state], returned=returned)
 
@@ -173,7 +175,7 @@ class _Analyzer:
         state.detach(name)
 
     def _inspect_fallback(self, statement: ast.stmt, state: _State) -> None:
-        for child in ast.walk(statement):
+        for child in walk_ast(statement):
             match child:
                 case ast.Call():
                     self.call(child, state)
@@ -424,7 +426,7 @@ class _Analyzer:
     def escape_expression(self, value: ast.expr, state: _State) -> None:
         if isinstance(value, (ast.Lambda, ast.Dict, ast.List, ast.Set, ast.Tuple)):
             self._mark_loaded_records_open(value, state)
-        for child in ast.walk(value):
+        for child in walk_ast(value):
             match child:
                 case ast.Call():
                     self.call(child, state)
@@ -455,7 +457,7 @@ class _Analyzer:
             state.detach(name)
 
     def invalidate_loop(self, node: ast.stmt, state: _State) -> None:
-        for child in ast.walk(node):
+        for child in walk_ast(node):
             match child:
                 case ast.Name(id=name, ctx=ast.Store()):
                     record = state.record(name)
@@ -504,13 +506,13 @@ def _root_name(node: ast.expr) -> str | None:
 
 
 def _loaded_names(node: ast.AST) -> set[str]:
-    return {child.id for child in ast.walk(node) if isinstance(child, ast.Name) and isinstance(child.ctx, ast.Load)}
+    return {child.id for child in walk_ast(node) if isinstance(child, ast.Name) and isinstance(child.ctx, ast.Load)}
 
 
 def _stored_names(node: ast.AST) -> set[str]:
     return {
         child.id
-        for child in ast.walk(node)
+        for child in walk_ast(node)
         if isinstance(child, ast.Name) and isinstance(child.ctx, (ast.Store, ast.Del))
     }
 
@@ -521,7 +523,7 @@ def _is_unguarded_irrefutable(case: ast.match_case) -> bool:
 
 def _pattern_names(pattern: ast.pattern) -> set[str]:
     names: set[str] = set()
-    for node in ast.walk(pattern):
+    for node in walk_ast(pattern):
         match node:
             case ast.MatchAs(name=name) | ast.MatchStar(name=name) if name is not None:
                 names.add(name)
@@ -535,7 +537,7 @@ def _pattern_names(pattern: ast.pattern) -> set[str]:
 def _function_bound_names(node: ast.FunctionDef | ast.AsyncFunctionDef) -> set[str]:
     names = _argument_names(node.args)
     for statement in node.body:
-        for child in ast.walk(statement):
+        for child in walk_ast(statement):
             names.update(_names_bound_by_node(child))
     return names
 
@@ -572,7 +574,7 @@ def _function_external_names(node: ast.FunctionDef | ast.AsyncFunctionDef) -> se
     return {
         name
         for statement in node.body
-        for child in ast.walk(statement)
+        for child in walk_ast(statement)
         if isinstance(child, (ast.Global, ast.Nonlocal))
         for name in child.names
     }

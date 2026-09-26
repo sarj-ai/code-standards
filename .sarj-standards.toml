@@ -1,5 +1,5 @@
 schema = 4
-bundle = "7.33.0"
+bundle = "8.0.0"
 rule_profile = "all"
 
 [capabilities]
@@ -30,6 +30,8 @@ exclude = [
 # gate: every maintained Python implementation and test package is in scope.
 paths = [
   "README.md",
+  "packages/contracts/src",
+  "packages/contracts/tests",
   "packages/python/src",
   "packages/python/tests",
   "packages/sql/src",
@@ -113,6 +115,7 @@ glob = "packages/*/pyrightconfig.json"
 pattern = '"extends": "([^"]+)"'
 
 [repository.versions]
+contracts = ["packages/contracts/pyproject.toml"]
 bootstrap = ["packages/bootstrap/pyproject.toml"]
 python = ["pyproject.toml", "packages/python/pyproject.toml"]
 sql = ["packages/sql/pyproject.toml"]
@@ -212,6 +215,12 @@ version = "typescript"
 selector = "/packages//version"
 
 [[repository.version_references]]
+path = "apps/docs/package-lock.json"
+format = "json-pointer"
+version = "typescript"
+selector = "/packages/..~1..~1packages~1typescript/version"
+
+[[repository.version_references]]
 path = "packages/standards/src/sarj_standards/configs/eslint.peers.json"
 format = "json-pointer"
 version = "typescript"
@@ -219,6 +228,7 @@ selector = "/peers/@sarj~1eslint-plugin"
 
 [repository.version_coverage]
 manifests = [
+  "packages/contracts/pyproject.toml",
   "packages/bootstrap/pyproject.toml",
   "packages/python/pyproject.toml",
   "packages/sql/pyproject.toml",
@@ -229,6 +239,7 @@ manifests = [
   "packages/typescript/package.json",
 ]
 locks = [
+  "packages/contracts/uv.lock",
   "apps/docs/package-lock.json",
   "packages/bootstrap/uv.lock",
   "uv.lock",
@@ -238,3 +249,69 @@ locks = [
   "packages/standards/uv.lock",
   "packages/typescript/package-lock.json",
 ]
+
+[[repository.version_references]]
+path = "uv.lock"
+format = "uv-lock"
+version = "contracts"
+selector = "sarj-rule-contracts"
+
+[[repository.version_references]]
+path = "packages/contracts/uv.lock"
+format = "uv-lock"
+version = "contracts"
+selector = "sarj-rule-contracts"
+
+[[repository.version_references]]
+path = "packages/python/uv.lock"
+format = "uv-lock"
+version = "contracts"
+selector = "sarj-rule-contracts"
+
+[[repository.version_references]]
+path = "packages/sql/uv.lock"
+format = "uv-lock"
+version = "contracts"
+selector = "sarj-rule-contracts"
+
+[[repository.version_references]]
+path = "packages/iac/uv.lock"
+format = "uv-lock"
+version = "contracts"
+selector = "sarj-rule-contracts"
+
+[[repository.version_references]]
+path = "packages/standards/uv.lock"
+format = "uv-lock"
+version = "contracts"
+selector = "sarj-rule-contracts"
+
+[[repository.version_references]]
+path = "pyproject.toml"
+format = "exact-pin"
+version = "contracts"
+selector = "sarj-rule-contracts"
+
+[[repository.version_references]]
+path = "packages/python/pyproject.toml"
+format = "exact-pin"
+version = "contracts"
+selector = "sarj-rule-contracts"
+
+[[repository.version_references]]
+path = "packages/sql/pyproject.toml"
+format = "exact-pin"
+version = "contracts"
+selector = "sarj-rule-contracts"
+
+[[repository.version_references]]
+path = "packages/iac/pyproject.toml"
+format = "exact-pin"
+version = "contracts"
+selector = "sarj-rule-contracts"
+
+[[repository.version_references]]
+path = "packages/standards/pyproject.toml"
+format = "exact-pin"
+version = "contracts"
+selector = "sarj-rule-contracts"

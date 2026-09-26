@@ -13,14 +13,17 @@ from sarj_python_lint.rule_base import (
     RuleCategory,
     RuleDocumentation,
     RuleExample,
-    parse_or_none,
 )
+from sarj_python_lint.rules._ast_index import walk as walk_ast
 from sarj_python_lint.rules._fastapi import FastapiIndex, Route, flat_name
-from sarj_python_lint.rules._paths import is_generated, is_test_path
+from sarj_python_lint.rules._paths import is_test_path
 
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+    from sarj_python_lint._file_context import PythonFileContext
+    from sarj_python_lint.rules._ast_index import NodeIndex
 
 
 _NO_BODY = frozenset({204, 304})
@@ -81,16 +84,19 @@ class FastapiClassRouterContract(Rule):
     description = documentation.summary
 
     @override
-    def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if is_test_path(path) or is_generated(path, source):
+    def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
+        path = context.path
+        if is_test_path(path) or context.generated:
             return []
-        tree = parse_or_none(path, source)
+        tree = context.tree
         if tree is None:
             return []
-        index = FastapiIndex(tree, path=path)
-        parents = _parents(tree)
-        findings = _router_construction_findings(path, tree, index, parents)
-        for function in (node for node in ast.walk(tree) if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))):
+        index = context.fastapi
+        parents = _parents(tree, node_index=context.node_index)
+        findings = _router_construction_findings(path, tree, index, parents, node_index=context.node_index)
+        for function in (
+            node for node in context.nodes(ast.AST) if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        ):
             routes = tuple(route for route in index.routes(function) if not route.is_hidden)
             for route in routes:
                 problem = _response_problem(function, route, index)
@@ -100,10 +106,15 @@ class FastapiClassRouterContract(Rule):
 
 
 def _router_construction_findings(
-    path: Path, tree: ast.Module, index: FastapiIndex, parents: dict[int, ast.AST]
+    path: Path,
+    tree: ast.Module,
+    index: FastapiIndex,
+    parents: dict[int, ast.AST],
+    *,
+    node_index: NodeIndex | None = None,
 ) -> list[Diagnostic]:
     findings: list[Diagnostic] = []
-    for call in (node for node in ast.walk(tree) if isinstance(node, ast.Call)):
+    for call in (node for node in walk_ast(tree, index=node_index) if isinstance(node, ast.Call)):
         if index.canonical(call.func) != "APIRouter":
             continue
         function = _ancestor(call, parents, (ast.FunctionDef, ast.AsyncFunctionDef))
@@ -176,8 +187,8 @@ def _is_collection_or_scalar(annotation: ast.expr) -> bool:
     return flat_name(target) in _TOP_LEVEL_COLLECTIONS | _SCALARS
 
 
-def _parents(tree: ast.Module) -> dict[int, ast.AST]:
-    return {id(child): parent for parent in ast.walk(tree) for child in ast.iter_child_nodes(parent)}
+def _parents(tree: ast.Module, *, node_index: NodeIndex | None = None) -> dict[int, ast.AST]:
+    return {id(child): parent for parent in walk_ast(tree, index=node_index) for child in ast.iter_child_nodes(parent)}
 
 
 def _ancestor(

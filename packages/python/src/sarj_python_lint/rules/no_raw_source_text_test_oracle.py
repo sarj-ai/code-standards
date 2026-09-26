@@ -16,14 +16,14 @@ from sarj_python_lint.rule_base import (
     RuleExample,
     Severity,
     is_suppressed,
-    parse_or_none,
 )
+from sarj_python_lint.rules._ast_index import walk as walk_ast
 from sarj_python_lint.rules._imports import ImportIndex
-from sarj_python_lint.rules._paths import is_generated, is_test_path
+from sarj_python_lint.rules._paths import is_test_path
 
 
 if TYPE_CHECKING:
-    from pathlib import Path
+    from sarj_python_lint._file_context import PythonFileContext
 
 
 GENERAL_SOURCE_SUFFIXES = (
@@ -162,14 +162,15 @@ class NoRawSourceTextTestOracle(Rule):
     description = documentation.summary
 
     @override
-    def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if not is_test_path(path) or is_generated(path, source):
+    def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
+        path = context.path
+        if not is_test_path(path) or context.generated:
             return []
-        tree = parse_or_none(path, source)
+        tree = context.tree
         if not isinstance(tree, ast.Module):
             return []
-        imports = ImportIndex.from_tree(tree, module_scope_only=True)
-        source_lines = source.splitlines()
+        imports = context.module_imports
+        source_lines = context.source_lines
         assertions = [
             assertion
             for function, unittest_style in top_level_test_functions(tree, imports)
@@ -582,7 +583,7 @@ class FunctionAnalyzer(ast.NodeVisitor):
             self._raw_origins[target.id] = raw_origins or {value.lineno}
 
     def _clear_target(self, target: ast.expr) -> None:
-        for child in ast.walk(target):
+        for child in walk_ast(target):
             if isinstance(child, ast.Name) and isinstance(child.ctx, ast.Store):
                 self._clear_name(child.id)
 
@@ -764,7 +765,7 @@ def _source_path_expression(
 
 
 def _representation_fixture_path(node: ast.AST) -> bool:
-    for child in ast.walk(node):
+    for child in walk_ast(node):
         if not isinstance(child, ast.Constant) or not isinstance(child.value, str):
             continue
         parts = {part.lower() for part in child.value.replace("\\", "/").split("/")}
@@ -774,7 +775,7 @@ def _representation_fixture_path(node: ast.AST) -> bool:
 
 
 def _ephemeral_path_expression(node: ast.AST, ephemeral_path_names: set[str]) -> bool:
-    return any(isinstance(child, ast.Name) and child.id in ephemeral_path_names for child in ast.walk(node))
+    return any(isinstance(child, ast.Name) and child.id in ephemeral_path_names for child in walk_ast(node))
 
 
 def _source_path_collection(
@@ -905,7 +906,7 @@ def _expression_origins(
     flow: _TextFlow,
 ) -> set[int]:
     origins: set[int] = set()
-    for child in ast.walk(node):
+    for child in walk_ast(node):
         if isinstance(child, ast.Name):
             origins.update(raw_origins.get(child.id, set()))
         elif isinstance(child, ast.Call) and _raw_source_read(

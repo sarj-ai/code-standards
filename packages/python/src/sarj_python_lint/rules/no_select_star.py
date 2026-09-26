@@ -14,15 +14,15 @@ from sarj_python_lint.rule_base import (
     RuleCategory,
     RuleDocumentation,
     RuleExample,
-    parse_or_none,
 )
-from sarj_python_lint.rules._ast_index import nodes, walk
-from sarj_python_lint.rules._paths import is_generated, is_test_path
+from sarj_python_lint.rules._ast_index import walk, walk as walk_ast
+from sarj_python_lint.rules._paths import is_test_path
 from sarj_python_lint.rules._sql import sql_string_value, strip_sql_noise
 
 
 if TYPE_CHECKING:
-    from pathlib import Path
+    from sarj_python_lint._file_context import PythonFileContext
+    from sarj_python_lint.rules._ast_index import NodeIndex
 
 
 _SQL_TOKEN = re.compile(r"[A-Za-z_][A-Za-z0-9_$]*|\d+(?:\.\d+)?|[(),.*;]")
@@ -163,22 +163,23 @@ class NoSelectStar(Rule):
     description = documentation.summary
 
     @override
-    def check(self, path: Path, source: str) -> list[Diagnostic]:
+    def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
+        path = context.path
         if (
             is_test_path(path)
-            or is_generated(path, source)
+            or context.generated
             or any(part.lower() in _NON_PRODUCTION_SQL_PARTS for part in path.parts)
         ):
             return []
-        tree = parse_or_none(path, source)
+        tree = context.tree
         if tree is None:
             return []
 
         diags: list[Diagnostic] = []
-        parents = {id(child): parent for parent in ast.walk(tree) for child in ast.iter_child_nodes(parent)}
-        docstrings = _docstring_value_ids(tree)
+        parents = {id(child): parent for parent in context.nodes(ast.AST) for child in ast.iter_child_nodes(parent)}
+        docstrings = _docstring_value_ids(tree, node_index=context.node_index)
         consumed: set[int] = set()
-        for node in nodes(tree, ast.Constant, ast.BinOp, ast.JoinedStr):
+        for node in context.nodes(ast.Constant, ast.BinOp, ast.JoinedStr):
             if id(node) in consumed or id(node) in docstrings or not _is_query_context(node, parents):
                 continue
             text = sql_string_value(node, interpolation_placeholder=" __SARJ_DYNAMIC__ ")
@@ -207,11 +208,11 @@ class NoSelectStar(Rule):
         return diags
 
 
-def _docstring_value_ids(tree: ast.AST) -> set[int]:
+def _docstring_value_ids(tree: ast.AST, *, node_index: NodeIndex | None = None) -> set[int]:
     owners = (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)
     return {
         id(owner.body[0].value)
-        for owner in ast.walk(tree)
+        for owner in walk_ast(tree, index=node_index)
         if isinstance(owner, owners)
         and owner.body
         and isinstance(owner.body[0], ast.Expr)

@@ -15,9 +15,7 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    parse_or_none,
 )
-from sarj_python_lint.rules._ast_index import nodes
 from sarj_python_lint.rules._first_party import FirstPartyFacts, distribution_root
 from sarj_python_lint.rules._paths import is_generated, is_test_path
 
@@ -26,6 +24,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
 
     from sarj_python_lint._analysis_session import AnalysisSession
+    from sarj_python_lint._file_context import PythonFileContext
 
 
 _MIGRATION_PARTS = frozenset({"alembic", "migration", "migrations", "versions"})
@@ -159,26 +158,23 @@ class NoHiddenConstructorFallback(Rule):
         self._constructor_facts = _ConstructorFacts()
 
     @override
-    def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if (
-            is_test_path(path)
-            or is_generated(path, source)
-            or any(part.lower() in _MIGRATION_PARTS for part in path.parts)
-        ):
+    def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
+        path = context.path
+        if is_test_path(path) or context.generated or any(part.lower() in _MIGRATION_PARTS for part in path.parts):
             return []
-        tree = parse_or_none(path, source)
+        tree = context.tree
         if tree is None:
             return []
 
-        first_party = self._analysis_session.first_party if self._analysis_session is not None else FirstPartyFacts()
-        facts = self._constructor_facts if self._analysis_session is not None else _ConstructorFacts()
+        first_party = context.session.first_party
+        facts = self._constructor_facts if self._analysis_session is context.session else None
         if facts is None:
             facts = _ConstructorFacts()
         resolver = _RuntimeConfigResolver(path, tree, first_party, facts)
         diagnostics: list[Diagnostic] = []
 
         def collect_hidden_constructors() -> None:
-            for class_node in nodes(tree, ast.ClassDef):
+            for class_node in context.nodes(ast.ClassDef):
                 init = next(
                     (
                         statement

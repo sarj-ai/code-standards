@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 from dataclasses import dataclass
 from pathlib import Path
 import re
@@ -95,6 +96,8 @@ def _add_native_import(source: str, import_start: str, name: str) -> str:
 
 def _text(source: str, level: DefaultLevel, *, rule_id: str) -> _RenderedLevel:
     anchor = f'        "{rule_id}": RuleMeta(\n'
+    if anchor not in source:
+        return _modular_text(source, level)
     if source.count(anchor) != 1:
         msg = "text rule source must contain one registry entry"
         raise ValueError(msg)
@@ -115,3 +118,28 @@ def _text(source: str, level: DefaultLevel, *, rule_id: str) -> _RenderedLevel:
             chunk[: field.start()] + f"            default_level=DefaultLevel.{level.name},\n" + chunk[field.end() :]
         )
     return _RenderedLevel(source[:start] + replacement + source[end:], current)
+
+
+def _modular_text(source: str, level: DefaultLevel) -> _RenderedLevel:
+    calls = [
+        node
+        for node in ast.walk(ast.parse(source))
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "RuleMeta"
+    ]
+    if len(calls) != 1:
+        msg = "text rule source must contain one documentation declaration"
+        raise ValueError(msg)
+    field = next((keyword for keyword in calls[0].keywords if keyword.arg == "default_level"), None)
+    if field is None or not isinstance(field.value, ast.Attribute):
+        msg = "modular text rule documentation must declare an explicit default_level"
+        raise ValueError(msg)
+    current = DefaultLevel(field.value.attr.lower())
+    if current is level:
+        return _RenderedLevel(source, current)
+    lines = source.splitlines(keepends=True)
+    node = field.value
+    start = sum(map(len, lines[: node.lineno - 1])) + len(lines[node.lineno - 1].encode()[: node.col_offset].decode())
+    end = sum(map(len, lines[: (node.end_lineno or node.lineno) - 1])) + len(
+        lines[(node.end_lineno or node.lineno) - 1].encode()[: node.end_col_offset].decode()
+    )
+    return _RenderedLevel(source[:start] + f"DefaultLevel.{level.name}" + source[end:], current)

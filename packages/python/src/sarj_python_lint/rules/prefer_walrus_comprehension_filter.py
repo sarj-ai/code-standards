@@ -15,14 +15,15 @@ from sarj_python_lint.rule_base import (
     RuleExample,
     Severity,
     is_suppressed,
-    parse_or_none,
 )
-from sarj_python_lint.rules._ast_index import children, nodes, walk
-from sarj_python_lint.rules._paths import is_generated, is_test_path
+from sarj_python_lint.rules._ast_index import children, walk
+from sarj_python_lint.rules._paths import is_test_path
 
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+    from sarj_python_lint._file_context import PythonFileContext
 
 
 _DEFERRED_SCOPES = (ast.Lambda, ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)
@@ -248,21 +249,23 @@ class PreferWalrusComprehensionFilter(Rule):
     description: str = documentation.summary
 
     @override
-    def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if is_test_path(path) or is_generated(path, source):
+    def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
+        path = context.path
+        source = context.source
+        if is_test_path(path) or context.generated:
             return []
         if "for" not in source or "if" not in source or "(" not in source:
             return []
-        tree = parse_or_none(path, source)
+        tree = context.tree
         if tree is None:
             return []
 
-        comprehensions = nodes(tree, ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)
+        comprehensions = context.nodes(ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)
         if not comprehensions:
             return []
-        source_lines = source.splitlines()
+        source_lines = context.source_lines
         diags: list[Diagnostic] = []
-        parents = {child: parent for parent in nodes(tree, ast.AST) for child in children(parent)}
+        parents = {child: parent for parent in context.nodes(ast.AST) for child in children(parent)}
 
         for node in comprehensions:
             diags.extend(_check_comprehension_node(node, source_lines, self.code, path, parents))

@@ -13,14 +13,13 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    parse_or_none,
 )
-from sarj_python_lint.rules._ast_index import children
-from sarj_python_lint.rules._paths import is_generated, is_test_path
+from sarj_python_lint.rules._ast_index import children, walk as walk_ast
+from sarj_python_lint.rules._paths import is_test_path
 
 
 if TYPE_CHECKING:
-    from pathlib import Path
+    from sarj_python_lint._file_context import PythonFileContext
 
 
 _FIXTURE = "fixture"
@@ -113,10 +112,11 @@ class PytestFixtureReturnsBareTuple(Rule):
     description: str = documentation.summary
 
     @override
-    def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if not is_test_path(path) or is_generated(path, source):
+    def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
+        path = context.path
+        if not is_test_path(path) or context.generated:
             return []
-        tree = parse_or_none(path, source)
+        tree = context.tree
         if tree is None:
             return []
 
@@ -210,11 +210,11 @@ def _bound_names(statement: ast.stmt) -> set[str]:
         case ast.FunctionDef() | ast.AsyncFunctionDef() | ast.ClassDef():
             return {statement.name}
         case ast.Delete(targets=targets):
-            return {node.id for target in targets for node in ast.walk(target) if isinstance(node, ast.Name)}
+            return {node.id for target in targets for node in walk_ast(target) if isinstance(node, ast.Name)}
         case _:
             return {
                 node.id
-                for node in ast.walk(statement)
+                for node in walk_ast(statement)
                 if isinstance(node, ast.Name) and isinstance(node.ctx, (ast.Store, ast.Del))
             }
 

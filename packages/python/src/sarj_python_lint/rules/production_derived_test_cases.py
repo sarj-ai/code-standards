@@ -15,15 +15,16 @@ from sarj_python_lint.rule_base import (
     RuleExample,
     Severity,
     is_suppressed,
-    parse_or_none,
 )
 from sarj_python_lint.rules._first_party import FirstPartyFacts, has_first_party_source, is_first_party_module
-from sarj_python_lint.rules._paths import is_generated, is_test_path
+from sarj_python_lint.rules._paths import is_test_path
 
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
     from pathlib import Path
+
+    from sarj_python_lint._file_context import PythonFileContext
 
 
 _COLLECTION_WRAPPERS = frozenset({"frozenset", "list", "set", "sorted", "tuple"})
@@ -357,20 +358,22 @@ class ProductionDerivedTestCases(Rule):
     description = documentation.summary
 
     @override
-    def check(self, path: Path, source: str) -> list[Diagnostic]:
+    def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
+        path = context.path
+        source = context.source
         lowered = source.lower()
         if (
             "parametrize" not in source
             or not any(token in lowered for token in _MEMBERSHIP_TOKENS)
             or not is_test_path(path)
-            or is_generated(path, source)
+            or context.generated
         ):
             return []
-        tree = parse_or_none(path, source)
+        tree = context.tree
         if tree is None:
             return []
         binding_counts = _scope_binding_counts(tree.body)
-        facts = self._analysis_session.first_party if self._analysis_session is not None else FirstPartyFacts()
+        facts = context.session.first_party
         imported = _imported_bindings(tree, binding_counts, path, facts)
         if not imported:
             return []
@@ -378,7 +381,7 @@ class ProductionDerivedTestCases(Rule):
         tests = _collected_tests(tree)
         independently_asserted = _independently_asserted_collections(tree, imported, tests)
         builtin_wrappers = _COLLECTION_WRAPPERS - binding_counts.keys()
-        source_lines = source.splitlines()
+        source_lines = context.source_lines
         findings: list[Diagnostic] = []
         for node, blocked in tests:
             for decorator in node.decorator_list:

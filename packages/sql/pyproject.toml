@@ -1,6 +1,6 @@
 [project]
 name = "sarj-sql-lint"
-version = "0.17.7"
+version = "0.18.0"
 description = "Deterministic PostgreSQL migration rules for safe, repeatable schema changes."
 readme = "README.md"
 authors = [{ name = "sarj-ai" }]
@@ -15,7 +15,7 @@ classifiers = [
   "Programming Language :: Python :: 3.14",
   "Topic :: Software Development :: Quality Assurance",
 ]
-dependencies = ["typer==0.27.2"]
+dependencies = ["sarj-rule-contracts==0.1.0", "typer==0.27.2"]
 
 [project.scripts]
 sarj-sql-lint = "sarj_sql_lint.__main__:main"
@@ -61,3 +61,6 @@ testpaths = ["tests"]
 # Dogfooding: linted/formatted by this repo's own published config (root-synced).
 [tool.ruff]
 extend = "../../.ruff-strict.toml"
+
+[tool.uv.sources]
+sarj-rule-contracts = { path = "../contracts", editable = true }

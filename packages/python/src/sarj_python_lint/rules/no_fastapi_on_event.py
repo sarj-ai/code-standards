@@ -13,14 +13,15 @@ from sarj_python_lint.rule_base import (
     RuleCategory,
     RuleDocumentation,
     RuleExample,
-    parse_or_none,
 )
-from sarj_python_lint.rules._imports import ImportIndex
 
 
 if TYPE_CHECKING:
     from collections.abc import Set as AbstractSet
     from pathlib import Path
+
+    from sarj_python_lint._file_context import PythonFileContext
+    from sarj_python_lint.rules._imports import ImportIndex
 
 
 _APP_TYPES = frozenset(
@@ -86,11 +87,12 @@ class NoFastapiOnEvent(Rule):
     description = documentation.summary
 
     @override
-    def check(self, path: Path, source: str) -> list[Diagnostic]:
-        tree = parse_or_none(path, source)
+    def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
+        path = context.path
+        tree = context.tree
         if tree is None:
             return []
-        imports = ImportIndex.from_tree(tree)
+        imports = context.imports
         return _scope_diagnostics(path, tree.body, imports)
 
 

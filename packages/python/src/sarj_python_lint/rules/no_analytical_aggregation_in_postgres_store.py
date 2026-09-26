@@ -15,17 +15,16 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    parse_or_none,
 )
 from sarj_python_lint.rules._ast_index import nodes, walk
-from sarj_python_lint.rules._paths import is_generated
 from sarj_python_lint.rules._sql import is_store_module, sql_string_value, strip_sql_noise
 
 
 if TYPE_CHECKING:
-    from pathlib import Path
-
     from sqlglot import exp
+
+    from sarj_python_lint._file_context import PythonFileContext
+    from sarj_python_lint.rules._ast_index import NodeIndex
 
 
 _QUERY_SHAPE = re.compile(r"\bSELECT\b[\s\S]*?\bFROM\b", re.IGNORECASE)
@@ -66,9 +65,9 @@ _STRONG_ANALYTICAL: tuple[tuple[str, re.Pattern[str]], ...] = (
 )
 
 
-def _docstring_node_ids(tree: ast.AST) -> set[int]:
+def _docstring_node_ids(tree: ast.AST, *, node_index: NodeIndex | None = None) -> set[int]:
     result: set[int] = set()
-    for owner in nodes(tree, ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef):
+    for owner in nodes(tree, ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef, index=node_index):
         body = owner.body
         if not body or not isinstance(body[0], ast.Expr):
             continue
@@ -207,17 +206,19 @@ class NoAnalyticalAggregationInPostgresStore(Rule):
     description = documentation.summary
 
     @override
-    def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if not is_store_module(path) or is_generated(path, source) or _POSTGRES_OWNER.search(source) is None:
+    def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
+        path = context.path
+        source = context.source
+        if not is_store_module(path) or context.generated or _POSTGRES_OWNER.search(source) is None:
             return []
-        tree = parse_or_none(path, source)
+        tree = context.tree
         if tree is None:
             return []
 
-        docstrings = _docstring_node_ids(tree)
+        docstrings = _docstring_node_ids(tree, node_index=context.node_index)
         diagnostics: list[Diagnostic] = []
         consumed: set[int] = set()
-        for node in nodes(tree, ast.Constant, ast.BinOp):
+        for node in context.nodes(ast.Constant, ast.BinOp):
             if id(node) in consumed or id(node) in docstrings:
                 continue
             text_value = sql_string_value(node)

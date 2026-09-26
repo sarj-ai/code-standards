@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import ast
-from pathlib import Path, PurePosixPath
+from pathlib import PurePosixPath
 import re
-from typing import ClassVar, Literal, override
+from typing import TYPE_CHECKING, ClassVar, Literal, override
 
 from sarj_python_lint.rule_base import (
     AutofixPolicy,
@@ -16,10 +16,12 @@ from sarj_python_lint.rule_base import (
     RuleExample,
     Severity,
     is_suppressed,
-    parse_or_none,
 )
-from sarj_python_lint.rules._ast_index import nodes
-from sarj_python_lint.rules._paths import is_generated, is_test_path
+from sarj_python_lint.rules._paths import is_test_path
+
+
+if TYPE_CHECKING:
+    from sarj_python_lint._file_context import PythonFileContext
 
 
 _LOOP_CANDIDATE_RE = re.compile(r"\bwhile\b[^\n:]*\bTrue\b[^\n:]*:")
@@ -117,19 +119,21 @@ class PreferWalrusStreamLoop(Rule):
     description: str = documentation.summary
 
     @override
-    def check(self, path: Path, source: str) -> list[Diagnostic]:
+    def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
+        path = context.path
+        source = context.source
         if (
             _LOOP_CANDIDATE_RE.search(source) is None
             or "break" not in source
             or is_test_path(path)
-            or is_generated(path, source)
+            or context.generated
         ):
             return []
-        tree = parse_or_none(path, source)
+        tree = context.tree
         if tree is None:
             return []
 
-        source_lines = source.splitlines()
+        source_lines = context.source_lines
         diags: list[Diagnostic] = []
 
         def collect_stream_loop(node: ast.While) -> None:
@@ -184,7 +188,7 @@ class PreferWalrusStreamLoop(Rule):
                         )
                     )
 
-        for node in nodes(tree, ast.While):
+        for node in context.nodes(ast.While):
             collect_stream_loop(node)
         return sorted(diags, key=lambda d: (d.line, d.col))
 

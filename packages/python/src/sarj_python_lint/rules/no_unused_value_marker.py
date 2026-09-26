@@ -15,13 +15,12 @@ from sarj_python_lint.rule_base import (
     RuleExample,
     Severity,
     is_suppressed,
-    parse_or_none,
 )
-from sarj_python_lint.rules._paths import is_generated
+from sarj_python_lint.rules._ast_index import walk as walk_ast
 
 
 if TYPE_CHECKING:
-    from pathlib import Path
+    from sarj_python_lint._file_context import PythonFileContext
 
 
 @final
@@ -121,22 +120,24 @@ class NoUnusedValueMarker(Rule):
     )
     description = documentation.summary
 
-    def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if "_" not in source or "=" not in source or is_generated(path, source):
+    def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
+        path = context.path
+        source = context.source
+        if "_" not in source or "=" not in source or context.generated:
             return []
-        tree = parse_or_none(path, source)
+        tree = context.tree
         if tree is None:
             return []
-        source_lines = source.splitlines()
+        source_lines = context.source_lines
         markers = [
             node
-            for node in ast.walk(tree)
+            for node in context.nodes(ast.AST)
             if isinstance(node, (ast.Assign, ast.AnnAssign)) and _is_unused_value_marker(node)
         ]
         if not markers:
             return []
         parents = (
-            {child: parent for parent in ast.walk(tree) for child in ast.iter_child_nodes(parent)}
+            {child: parent for parent in context.nodes(ast.AST) for child in ast.iter_child_nodes(parent)}
             if any(isinstance(node, ast.Assign) and isinstance(node.value, (ast.Name, ast.Tuple)) for node in markers)
             else {}
         )
@@ -177,10 +178,10 @@ def _is_pure_parameter_marker(
     function = _enclosing_function(node, parents)
     if function is None:
         return False
-    parameters = {argument.arg for argument in ast.walk(function.args) if isinstance(argument, ast.arg)}
+    parameters = {argument.arg for argument in walk_ast(function.args) if isinstance(argument, ast.arg)}
     return names <= parameters and not any(
         isinstance(child, ast.Name) and isinstance(child.ctx, ast.Store) and child.id in names
-        for child in ast.walk(function)
+        for child in walk_ast(function)
     )
 
 

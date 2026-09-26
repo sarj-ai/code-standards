@@ -4,7 +4,7 @@ import ast
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 import re
-from typing import ClassVar, override
+from typing import TYPE_CHECKING, ClassVar, override
 
 from sarj_python_lint.rule_base import (
     AutofixPolicy,
@@ -17,15 +17,18 @@ from sarj_python_lint.rule_base import (
     RuleExample,
     Severity,
     is_suppressed,
-    parse_or_none,
 )
-from sarj_python_lint.rules._ast_index import children
+from sarj_python_lint.rules._ast_index import children, walk as walk_ast
 from sarj_python_lint.rules._comments import is_protected, split_identifier, stem
 from sarj_python_lint.rules._docstrings import (
     VALUE_MARKER_RE,
     signature_stems,
 )
-from sarj_python_lint.rules._paths import is_generated
+
+
+if TYPE_CHECKING:
+    from sarj_python_lint._file_context import PythonFileContext
+    from sarj_python_lint.rules._ast_index import NodeIndex
 
 
 _DOCSTRING_TOKEN_RE = re.compile(r"[^\W\d_]+(?:'[^\W\d_]+)?|\d+")
@@ -94,17 +97,18 @@ class RedundantDocstring(Rule):
     description: str = documentation.summary
 
     @override
-    def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if is_generated(path, source):
+    def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
+        path = context.path
+        if context.generated:
             return []
-        tree = parse_or_none(path, source)
+        tree = context.tree
         if tree is None:
             return []
-        source_lines = source.splitlines()
-        consumed_docstrings = _consumed_docstring_names(tree)
+        source_lines = context.source_lines
+        consumed_docstrings = _consumed_docstring_names(tree, node_index=context.node_index)
         diags: list[Diagnostic] = []
-        context = _ScanContext(path, source_lines, consumed_docstrings, diags)
-        self._walk(tree, context)
+        analysis_context = _ScanContext(path, source_lines, consumed_docstrings, diags)
+        self._walk(tree, analysis_context)
         return sorted(diags, key=lambda d: d.line)
 
     def _walk(
@@ -188,10 +192,10 @@ def _parameters_are_distinguished(groups: list[set[str]], content: set[str]) -> 
     return True
 
 
-def _consumed_docstring_names(tree: ast.Module) -> set[str]:
+def _consumed_docstring_names(tree: ast.Module, *, node_index: NodeIndex | None = None) -> set[str]:
     consumed: set[str] = set()
     aliases: dict[str, set[str]] = {}
-    for node in ast.walk(tree):
+    for node in walk_ast(tree, index=node_index):
         _record_docstring_use(node, consumed, aliases)
     changed = True
     while changed:

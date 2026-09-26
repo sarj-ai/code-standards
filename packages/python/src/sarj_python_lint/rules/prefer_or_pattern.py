@@ -14,15 +14,13 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    parse_or_none,
 )
-from sarj_python_lint.rules._ast_index import nodes, walk
+from sarj_python_lint.rules._ast_index import walk
 from sarj_python_lint.rules._comments import all_comments
-from sarj_python_lint.rules._paths import is_generated
 
 
 if TYPE_CHECKING:
-    from pathlib import Path
+    from sarj_python_lint._file_context import PythonFileContext
 
 
 # A run must contain at least this many arms before merging buys anything.
@@ -91,14 +89,16 @@ class PreferOrPattern(Rule):
     description: str = documentation.summary
 
     @override
-    def check(self, path: Path, source: str) -> list[Diagnostic]:
-        tree = parse_or_none(path, source)
+    def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
+        path = context.path
+        source = context.source
+        tree = context.tree
         if tree is None:
             return []
-        match_nodes = [node for node in nodes(tree, ast.Match) if _has_structural_candidate(node)]
+        match_nodes = [node for node in context.nodes(ast.Match) if _has_structural_candidate(node)]
         if not match_nodes:
             return []
-        if is_generated(path, source):
+        if context.generated:
             return []
         comment_scan, _first_code_line = all_comments(source)
         comments = [(comment.line, comment.column, comment.body, comment.standalone) for comment in comment_scan]

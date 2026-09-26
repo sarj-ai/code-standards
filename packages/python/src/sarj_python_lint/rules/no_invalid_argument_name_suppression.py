@@ -14,12 +14,11 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
 )
-from sarj_python_lint.rules._paths import is_generated
 from sarj_python_lint.rules._suppression_comments import scan_comments_or_none
 
 
 if TYPE_CHECKING:
-    from pathlib import Path
+    from sarj_python_lint._file_context import PythonFileContext
 
 
 _FORBIDDEN = re.compile(r"(?:^|[,:\s\[])\s*(?:N803|invalid-argument-name)(?=$|[,\]\s])", re.IGNORECASE)
@@ -72,8 +71,10 @@ class NoInvalidArgumentNameSuppression(Rule):
     description = documentation.summary
 
     @override
-    def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if is_generated(path, source):
+    def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
+        path = context.path
+        source = context.source
+        if context.generated:
             return []
         comments = scan_comments_or_none(source)
         if comments is None:

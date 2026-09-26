@@ -14,15 +14,17 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    parse_or_none,
 )
-from sarj_python_lint.rules._imports import ImportIndex
-from sarj_python_lint.rules._paths import is_generated, is_test_path, is_test_support_path
+from sarj_python_lint.rules._ast_index import walk as walk_ast
+from sarj_python_lint.rules._paths import is_test_path, is_test_support_path
 
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
-    from pathlib import Path
+
+    from sarj_python_lint._file_context import PythonFileContext
+    from sarj_python_lint.rules._ast_index import NodeIndex
+    from sarj_python_lint.rules._imports import ImportIndex
 
 
 _TYPING_SOURCES = frozenset({"typing", "typing_extensions"})
@@ -92,14 +94,15 @@ class PreferNonNullableCollection(Rule):
     description: str = documentation.summary
 
     @override
-    def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if is_test_path(path) or is_test_support_path(path) or is_generated(path, source):
+    def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
+        path = context.path
+        if is_test_path(path) or is_test_support_path(path) or context.generated:
             return []
-        tree = parse_or_none(path, source)
-        if tree is None or _has_wildcard_import(tree):
+        tree = context.tree
+        if tree is None or _has_wildcard_import(tree, node_index=context.node_index):
             return []
 
-        imports = ImportIndex.from_tree(tree)
+        imports = context.imports
         diagnostics: list[Diagnostic] = []
         for function in _eligible_functions(tree, imports):
             if function.decorator_list:
@@ -122,9 +125,10 @@ class PreferNonNullableCollection(Rule):
         return sorted(diagnostics, key=lambda diagnostic: (diagnostic.line, diagnostic.col))
 
 
-def _has_wildcard_import(tree: ast.Module) -> bool:
+def _has_wildcard_import(tree: ast.Module, *, node_index: NodeIndex | None = None) -> bool:
     return any(
-        isinstance(node, ast.ImportFrom) and any(alias.name == "*" for alias in node.names) for node in ast.walk(tree)
+        isinstance(node, ast.ImportFrom) and any(alias.name == "*" for alias in node.names)
+        for node in walk_ast(tree, index=node_index)
     )
 
 
@@ -238,12 +242,12 @@ def _is_docstring(statement: ast.stmt) -> bool:
 
 
 def _captured_by_nested_scope(function: ast.FunctionDef | ast.AsyncFunctionDef, name: str) -> bool:
-    for node in ast.walk(function):
+    for node in walk_ast(function):
         if node is function or not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.ClassDef)):
             continue
         if any(
             isinstance(child, ast.Name) and isinstance(child.ctx, ast.Load) and child.id == name
-            for child in ast.walk(node)
+            for child in walk_ast(node)
         ):
             return True
     return False

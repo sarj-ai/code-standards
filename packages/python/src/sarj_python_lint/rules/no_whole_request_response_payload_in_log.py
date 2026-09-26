@@ -17,14 +17,16 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    parse_or_none,
 )
-from sarj_python_lint.rules._ast_index import nodes, object_list
+from sarj_python_lint.rules._ast_index import object_list, walk as walk_ast
 from sarj_python_lint.rules._logging import LOG_METHODS, is_logger_expr
 
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+    from sarj_python_lint._file_context import PythonFileContext
+    from sarj_python_lint.rules._ast_index import NodeIndex
 
 
 _PAYLOAD_TERMINALS = frozenset({"body", "bodies", "content", "data", "json", "payload", "payloads", "text"})
@@ -164,13 +166,14 @@ class NoWholeRequestResponsePayloadInLog(Rule):
     description = documentation.summary
 
     @override
-    def check(self, path: Path, source: str) -> list[Diagnostic]:
-        tree = parse_or_none(path, source)
+    def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
+        path = context.path
+        tree = context.tree
         if tree is None:
             return []
-        facts = _analysis_facts(tree)
+        facts = _analysis_facts(tree, node_index=context.node_index)
         diagnostics: list[Diagnostic] = []
-        for node in nodes(tree, ast.Call):
+        for node in context.nodes(ast.Call):
             if not _is_logging_call(node):
                 continue
             statement = _containing_statement(node, facts.parents)
@@ -292,11 +295,13 @@ def _is_payload_reference(value: ast.expr, *, label: str | None = None) -> bool:
     return bool(_REQUEST_RESPONSE.intersection(tokens) and _PAYLOAD_TERMINALS.intersection(tokens))
 
 
-def _analysis_facts(tree: ast.Module) -> _AnalysisFacts:
+def _analysis_facts(tree: ast.Module, *, node_index: NodeIndex | None = None) -> _AnalysisFacts:
     suites: dict[int, _SuiteFacts] = {}
     statement_suites: dict[int, int] = {}
-    parents = {id(child): parent for parent in ast.walk(tree) for child in ast.iter_child_nodes(parent)}
-    for owner in ast.walk(tree):
+    parents = {
+        id(child): parent for parent in walk_ast(tree, index=node_index) for child in ast.iter_child_nodes(parent)
+    }
+    for owner in walk_ast(tree, index=node_index):
         for field_name in owner._fields:
             statements = _statement_list(getattr(owner, field_name, None))
             if statements is None:
@@ -361,7 +366,7 @@ def _bound_names(statement: ast.stmt) -> tuple[str, ...]:
 
 def _mutated_names(statement: ast.stmt) -> frozenset[str]:
     names: set[str] = set()
-    for node in ast.walk(statement):
+    for node in walk_ast(statement):
         if isinstance(node, (ast.Subscript, ast.Attribute)) and isinstance(node.ctx, (ast.Store, ast.Del)):
             root = _root_name(node)
             if root is not None:

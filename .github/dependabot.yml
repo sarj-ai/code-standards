@@ -25,6 +25,7 @@ updates:
   - package-ecosystem: pip
     directories:
       - /packages/bootstrap
+      - /packages/contracts
       - /packages/python
       - /packages/sql
       - /packages/iac

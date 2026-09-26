@@ -15,13 +15,15 @@ from sarj_python_lint.rule_base import (
     RuleExample,
     Severity,
     is_suppressed,
-    parse_or_none,
 )
-from sarj_python_lint.rules._paths import is_generated
+from sarj_python_lint.rules._ast_index import walk as walk_ast
 
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+    from sarj_python_lint._file_context import PythonFileContext
+    from sarj_python_lint.rules._ast_index import NodeIndex
 
 
 _TRACKED_BUILTINS = frozenset(
@@ -92,13 +94,15 @@ class PreferSetIsdisjoint(Rule):
     description = documentation.summary
 
     @override
-    def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if ("&" not in source and ".intersection" not in source) or is_generated(path, source):
+    def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
+        path = context.path
+        source = context.source
+        if ("&" not in source and ".intersection" not in source) or context.generated:
             return []
-        tree = parse_or_none(path, source)
+        tree = context.tree
         if tree is None:
             return []
-        scanner = _Scanner(path, source.splitlines(), _shadowed_builtins(tree))
+        scanner = _Scanner(path, context.source_lines, _shadowed_builtins(tree, node_index=context.node_index))
         scanner.scan_body(tree.body, set())
         scanner.diagnostics.sort(key=lambda item: (item.line, item.col))
         return scanner.diagnostics
@@ -327,11 +331,11 @@ def _is_proven_iterable(node: ast.expr, exact: set[str], shadowed: frozenset[str
 
 
 def _stored_names(node: ast.AST) -> set[str]:
-    return {child.id for child in ast.walk(node) if isinstance(child, ast.Name) and isinstance(child.ctx, ast.Store)}
+    return {child.id for child in walk_ast(node) if isinstance(child, ast.Name) and isinstance(child.ctx, ast.Store)}
 
 
 def _named_expression_targets(node: ast.AST) -> set[str]:
-    return {expression.target.id for expression in ast.walk(node) if isinstance(expression, ast.NamedExpr)}
+    return {expression.target.id for expression in walk_ast(node) if isinstance(expression, ast.NamedExpr)}
 
 
 def _argument_names(arguments: ast.arguments) -> set[str]:
@@ -347,9 +351,9 @@ def _argument_names(arguments: ast.arguments) -> set[str]:
     }
 
 
-def _shadowed_builtins(tree: ast.Module) -> frozenset[str]:
+def _shadowed_builtins(tree: ast.Module, *, node_index: NodeIndex | None = None) -> frozenset[str]:
     shadowed: set[str] = set()
-    for node in ast.walk(tree):
+    for node in walk_ast(tree, index=node_index):
         if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store) and node.id in _TRACKED_BUILTINS:
             shadowed.add(node.id)
         elif isinstance(node, ast.arg) and node.arg in _TRACKED_BUILTINS:

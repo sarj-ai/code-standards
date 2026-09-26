@@ -13,13 +13,14 @@ from sarj_python_lint.rule_base import (
     RuleCategory,
     RuleDocumentation,
     RuleExample,
-    parse_or_none,
 )
-from sarj_python_lint.rules._paths import is_generated
+from sarj_python_lint.rules._ast_index import walk as walk_ast
 
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+    from sarj_python_lint._file_context import PythonFileContext
 
 
 # Generic module stems that describe no responsibility.
@@ -79,16 +80,17 @@ class NoGenericSingleExportModule(Rule):
     description = documentation.summary
 
     @override
-    def check(self, path: Path, source: str) -> list[Diagnostic]:
+    def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
+        path = context.path
         if path.suffix != ".py":
             return []
-        if is_generated(path, source):
+        if context.generated:
             return []
         if _is_skipped_path(path):
             return []
         if path.stem not in _JUNK_DRAWER_STEMS:
             return []
-        tree = parse_or_none(path, source)
+        tree = context.tree
         if tree is None:
             return []
 
@@ -162,7 +164,7 @@ def _dunder_all_matches_primary(tree: ast.Module, primary_name: str) -> bool:
 
 
 def _mentions_dunder_all(node: ast.AST) -> bool:
-    for child in ast.walk(node):
+    for child in walk_ast(node):
         match child:
             case ast.Name(id="__all__"):
                 return True
@@ -196,7 +198,7 @@ def _is_skipped_path(path: Path) -> bool:
 
 
 def _has_public_constant(targets: list[ast.expr]) -> bool:
-    assigned_names = (node for target in targets for node in ast.walk(target) if isinstance(node, ast.Name))
+    assigned_names = (node for target in targets for node in walk_ast(target) if isinstance(node, ast.Name))
     return any(
         not name.id.startswith("_") and name.id == name.id.upper() and any(c.isalpha() for c in name.id)
         for name in assigned_names

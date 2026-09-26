@@ -17,15 +17,17 @@ from sarj_python_lint.rule_base import (
     RuleExample,
     Severity,
     is_suppressed,
-    parse_or_none,
 )
+from sarj_python_lint.rules._ast_index import walk as walk_ast
 from sarj_python_lint.rules._imports import ImportIndex
-from sarj_python_lint.rules._paths import is_generated, is_test_path, is_test_support_path
+from sarj_python_lint.rules._paths import is_test_path, is_test_support_path
 
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
     from pathlib import Path
+
+    from sarj_python_lint._file_context import PythonFileContext
 
 
 _POOL_MODULES = frozenset({"psycopg_pool"})
@@ -121,22 +123,25 @@ class NoPsycopgExecutionOutsideInjectedOwner(Rule):
     description = documentation.summary
 
     @override
-    def check(self, path: Path, source: str) -> list[Diagnostic]:
+    def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
+        path = context.path
         path_parts = {part.lower() for part in path.parts}
         if (
-            is_generated(path, source)
+            context.generated
             or is_test_path(path)
             or is_test_support_path(path)
             or not path_parts.isdisjoint({"migration", "migrations"})
             or _is_operational_path(path)
         ):
             return []
-        tree = parse_or_none(path, source)
+        tree = context.tree
         if not isinstance(tree, ast.Module):
             return []
         types = _type_index(tree)
-        ownership = {node: _class_ownership(node, types) for node in ast.walk(tree) if isinstance(node, ast.ClassDef)}
-        source_lines = source.splitlines()
+        ownership = {
+            node: _class_ownership(node, types) for node in context.nodes(ast.AST) if isinstance(node, ast.ClassDef)
+        }
+        source_lines = context.source_lines
         calls: list[ast.Call] = []
         for scope in _function_scopes(tree):
             owned = ownership[scope.owner] if scope.owner is not None else _ClassOwnership(frozenset(), frozenset())
@@ -668,7 +673,7 @@ class _FunctionAnalyzer:
 
     @staticmethod
     def _bind(target: ast.expr, origin: _Origin | None, state: dict[str, _Origin]) -> None:
-        for child in ast.walk(target):
+        for child in walk_ast(target):
             if isinstance(child, ast.Name) and isinstance(child.ctx, ast.Store | ast.Del):
                 if origin is None:
                     state.pop(child.id, None)
@@ -742,7 +747,7 @@ def _module_binding_counts(tree: ast.Module) -> dict[str, int]:
 
 def _target_names(target: ast.expr) -> set[str]:
     return {
-        node.id for node in ast.walk(target) if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store | ast.Del)
+        node.id for node in walk_ast(target) if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store | ast.Del)
     }
 
 
@@ -759,7 +764,7 @@ def _scope_nodes(scope: ast.FunctionDef | ast.AsyncFunctionDef) -> list[ast.AST]
 
 
 def _pattern_names(pattern: ast.pattern) -> set[str]:
-    return {node.name for node in ast.walk(pattern) if isinstance(node, ast.MatchAs) and node.name is not None}
+    return {node.name for node in walk_ast(pattern) if isinstance(node, ast.MatchAs) and node.name is not None}
 
 
 def _join_exits(left: dict[str, _Origin] | None, right: dict[str, _Origin] | None) -> dict[str, _Origin] | None:

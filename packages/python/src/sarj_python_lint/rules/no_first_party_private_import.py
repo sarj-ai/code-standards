@@ -13,9 +13,8 @@ from sarj_python_lint.rule_base import (
     RuleCategory,
     RuleDocumentation,
     RuleExample,
-    parse_or_none,
 )
-from sarj_python_lint.rules._ast_index import nodes
+from sarj_python_lint.rules._ast_index import nodes, walk as walk_ast
 from sarj_python_lint.rules._first_party import (
     FirstPartyFacts,
     has_first_party_source,
@@ -27,6 +26,9 @@ from sarj_python_lint.rules._first_party import (
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+    from sarj_python_lint._file_context import PythonFileContext
+    from sarj_python_lint.rules._ast_index import NodeIndex
 
 
 class NoFirstPartyPrivateImport(Rule):
@@ -82,15 +84,19 @@ class NoFirstPartyPrivateImport(Rule):
     description: str = documentation.summary
 
     @override
-    def check(self, path: Path, source: str) -> list[Diagnostic]:
-        tree = parse_or_none(path, source)
+    def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
+        path = context.path
+        tree = context.tree
         if tree is None:
             return []
-        facts = self._analysis_session.first_party if self._analysis_session is not None else FirstPartyFacts()
+        facts = context.session.first_party
         own_top = own_top_package(path, facts=facts)
         diags = [
             Diagnostic(path=path, line=hit.line, col=hit.col, code=self.code, message=_message(hit.module, hit.name))
-            for hit in (*_private_imports(tree), *_dynamic_private_imports(tree))
+            for hit in (
+                *_private_imports(tree, node_index=context.node_index),
+                *_dynamic_private_imports(tree, node_index=context.node_index),
+            )
             if _is_ours(hit.module, path, own_top, facts) and not _is_our_own_internals(hit, path, facts)
         ]
         diags.sort(key=lambda d: (d.line, d.col))
@@ -139,9 +145,9 @@ def _is_ours(module: str, path: Path, own_top: str | None, facts: FirstPartyFact
     return is_first_party_module(module, path, facts=facts)
 
 
-def _private_imports(tree: ast.Module) -> list[_PrivateImport]:
+def _private_imports(tree: ast.Module, *, node_index: NodeIndex | None = None) -> list[_PrivateImport]:
     hits: list[_PrivateImport] = []
-    for node in nodes(tree, ast.ImportFrom, ast.Import):
+    for node in nodes(tree, ast.ImportFrom, ast.Import, index=node_index):
         if isinstance(node, ast.ImportFrom):
             hits.extend(_from_import_hits(node))
         else:
@@ -149,10 +155,10 @@ def _private_imports(tree: ast.Module) -> list[_PrivateImport]:
     return hits
 
 
-def _dynamic_private_imports(tree: ast.Module) -> list[_PrivateImport]:
-    bindings = _stable_import_module_bindings(tree)
+def _dynamic_private_imports(tree: ast.Module, *, node_index: NodeIndex | None = None) -> list[_PrivateImport]:
+    bindings = _stable_import_module_bindings(tree, node_index=node_index)
     hits: list[_PrivateImport] = []
-    for call in nodes(tree, ast.Call):
+    for call in nodes(tree, ast.Call, index=node_index):
         if not call.args or not isinstance(call.args[0], ast.Constant) or not isinstance(call.args[0].value, str):
             continue
         func = call.func
@@ -180,11 +186,11 @@ def _dynamic_private_imports(tree: ast.Module) -> list[_PrivateImport]:
     return hits
 
 
-def _stable_import_module_bindings(tree: ast.Module) -> _ImportModuleBindings:
+def _stable_import_module_bindings(tree: ast.Module, *, node_index: NodeIndex | None = None) -> _ImportModuleBindings:
     module_candidates: set[str] = set()
     function_candidates: set[str] = set()
     import_binding_counts: dict[str, int] = {}
-    for node in nodes(tree, ast.Import, ast.ImportFrom):
+    for node in nodes(tree, ast.Import, ast.ImportFrom, index=node_index):
         if isinstance(node, ast.Import):
             _collect_importlib_modules(node, import_binding_counts, module_candidates)
         else:
@@ -194,7 +200,7 @@ def _stable_import_module_bindings(tree: ast.Module) -> _ImportModuleBindings:
                 if node.level == 0 and node.module == "importlib" and alias.name == "import_module":
                     function_candidates.add(local)
 
-    shadowed = _non_import_bindings(tree)
+    shadowed = _non_import_bindings(tree, node_index=node_index)
 
     def stable(name: str) -> bool:
         return import_binding_counts.get(name) == 1 and name not in shadowed
@@ -205,9 +211,13 @@ def _stable_import_module_bindings(tree: ast.Module) -> _ImportModuleBindings:
     )
 
 
-def _non_import_bindings(tree: ast.Module) -> frozenset[str]:
-    bound = {node.id for node in ast.walk(tree) if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store)}
-    for node in ast.walk(tree):
+def _non_import_bindings(tree: ast.Module, *, node_index: NodeIndex | None = None) -> frozenset[str]:
+    bound = {
+        node.id
+        for node in walk_ast(tree, index=node_index)
+        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store)
+    }
+    for node in walk_ast(tree, index=node_index):
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
             bound.add(node.name)
         elif isinstance(node, ast.arg):

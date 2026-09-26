@@ -114,6 +114,7 @@ def test_umbrella_hook_installs_the_complete_revision_local_bundle() -> None:
 
     assert hook.get("id") == "sarj-standards"
     assert hook.get("additional_dependencies") == [
+        "./packages/contracts",
         "./packages/standards",
         "./packages/sql",
         "./packages/iac",

@@ -15,15 +15,14 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    parse_or_none,
 )
-from sarj_python_lint.rules._ast_index import nodes, walk
-from sarj_python_lint.rules._paths import is_generated
+from sarj_python_lint.rules._ast_index import nodes, walk, walk as walk_ast
 from sarj_python_lint.rules._sql import is_store_module, sql_string_value, strip_sql_noise
 
 
 if TYPE_CHECKING:
-    from pathlib import Path
+    from sarj_python_lint._file_context import PythonFileContext
+    from sarj_python_lint.rules._ast_index import NodeIndex
 
 
 # Strict keyword adjacency distinguishes SQL writes from prose.
@@ -122,17 +121,18 @@ class StoreInsertRequiresOnConflict(Rule):
     description = documentation.summary
 
     @override
-    def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if not is_store_module(path) or is_generated(path, source):
+    def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
+        path = context.path
+        if not is_store_module(path) or context.generated:
             return []
-        tree = parse_or_none(path, source)
+        tree = context.tree
         if tree is None:
             return []
 
         diags: list[Diagnostic] = []
-        parents = {id(child): parent for parent in ast.walk(tree) for child in ast.iter_child_nodes(parent)}
+        parents = {id(child): parent for parent in context.nodes(ast.AST) for child in ast.iter_child_nodes(parent)}
         consumed: set[int] = set()
-        for node in nodes(tree, ast.Constant, ast.BinOp, ast.JoinedStr):
+        for node in context.nodes(ast.Constant, ast.BinOp, ast.JoinedStr):
             if id(node) in consumed:
                 continue
             text = _sql_template_value(node)
@@ -141,7 +141,7 @@ class StoreInsertRequiresOnConflict(Rule):
             consumed.update(id(sub) for sub in walk(node))
 
             sql = strip_sql_noise(text, mask_dollar_quotes=False, mask_double_quotes=False)
-            owner = _enclosing_callable(tree, node)
+            owner = _enclosing_callable(tree, node, node_index=context.node_index)
             if (
                 owner is None
                 or _REPLAY_CONTRACT_NAME.search(owner.name) is None
@@ -169,12 +169,11 @@ class StoreInsertRequiresOnConflict(Rule):
 
 
 def _enclosing_callable(
-    tree: ast.AST,
-    node: ast.expr,
+    tree: ast.AST, node: ast.expr, *, node_index: NodeIndex | None = None
 ) -> ast.FunctionDef | ast.AsyncFunctionDef | None:
     owners = [
         function
-        for function in nodes(tree, ast.FunctionDef, ast.AsyncFunctionDef)
+        for function in nodes(tree, ast.FunctionDef, ast.AsyncFunctionDef, index=node_index)
         if function.lineno <= node.lineno <= (function.end_lineno or function.lineno)
     ]
     return min(owners, key=_source_span) if owners else None
@@ -336,5 +335,5 @@ def _has_intervening_sql_rebinding(
         and isinstance(candidate.ctx, ast.Store)
         and candidate.id in used
         and assignment.lineno < candidate.lineno < call.lineno
-        for candidate in ast.walk(owner)
+        for candidate in walk_ast(owner)
     )

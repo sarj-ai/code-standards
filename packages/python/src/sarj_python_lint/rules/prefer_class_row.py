@@ -14,14 +14,16 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    parse_or_none,
 )
-from sarj_python_lint.rules._paths import is_generated, is_test_path
+from sarj_python_lint.rules._ast_index import walk as walk_ast
+from sarj_python_lint.rules._paths import is_test_path
 
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator
-    from pathlib import Path
+
+    from sarj_python_lint._file_context import PythonFileContext
+    from sarj_python_lint.rules._ast_index import NodeIndex
 
 
 _DICT_ROW = "dict_row"
@@ -100,15 +102,16 @@ class PreferClassRow(Rule):
     description: str = documentation.summary
 
     @override
-    def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if is_generated(path, source) or is_test_path(path) or "migrations" in {part.lower() for part in path.parts}:
+    def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
+        path = context.path
+        if context.generated or is_test_path(path) or "migrations" in {part.lower() for part in path.parts}:
             return []
-        tree = parse_or_none(path, source)
+        tree = context.tree
         if tree is None:
             return []
         imports = _PsycopgImports.from_tree(tree)
         diagnostics: list[Diagnostic] = []
-        for function in _functions(tree):
+        for function in _functions(tree, node_index=context.node_index):
             shadowed = _scope_bindings(function)
             for cursor in _bound_cursors(function):
                 if not imports.is_dict_row(cursor.factory, shadowed):
@@ -244,8 +247,12 @@ def _scope_bindings(function: ast.FunctionDef | ast.AsyncFunctionDef) -> frozens
     return frozenset(parameters) | _bound_names(function.body)
 
 
-def _functions(tree: ast.Module) -> Iterator[ast.FunctionDef | ast.AsyncFunctionDef]:
-    return (node for node in ast.walk(tree) if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)))
+def _functions(
+    tree: ast.Module, *, node_index: NodeIndex | None = None
+) -> Iterator[ast.FunctionDef | ast.AsyncFunctionDef]:
+    return (
+        node for node in walk_ast(tree, index=node_index) if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    )
 
 
 def _bound_cursors(function: ast.FunctionDef | ast.AsyncFunctionDef) -> list[_BoundCursor]:

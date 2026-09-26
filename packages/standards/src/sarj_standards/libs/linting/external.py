@@ -93,6 +93,7 @@ _REACT_DOCTOR_SOURCE_SUFFIXES = frozenset(
 )
 _ESLINT_NODE_OPTIONS: Final = "--max-old-space-size=4096"
 _ESLINT_FORMATTER: Final = Path(__file__).parents[2] / "configs" / "eslint-compact-formatter.mjs"
+_ESLINT_SELECTED_RUNNER: Final = Path(__file__).parents[2] / "configs" / "eslint-selected-rules.mjs"
 _JSON_OBJECT_ADAPTER = TypeAdapter(dict[str, object])
 _YAML_OBJECT_ADAPTER = TypeAdapter(object)
 _REACT_RUNTIME_PACKAGES = frozenset(
@@ -304,6 +305,7 @@ def analyze_external(
     force_react_doctor: bool = False,
     react_doctor_full_scan: bool = False,
     pass_on_unpruned_eslint_suppressions: bool = False,
+    rule_ids: frozenset[str] | None = None,
 ) -> tuple[ToolReport, ...]:
     execute = run_process if runner is None else runner
     try:
@@ -437,7 +439,13 @@ def analyze_external(
             reports.append(
                 _invoke(
                     "eslint",
-                    _local_eslint_argv(
+                    _selected_eslint_argv(
+                        command,
+                        rule_ids,
+                        pass_on_unpruned_suppressions=pass_on_unpruned_eslint_suppressions,
+                    )
+                    if rule_ids is not None
+                    else _local_eslint_argv(
                         _eslint_json_argv(
                             command.argv,
                             pass_on_unpruned_suppressions=pass_on_unpruned_eslint_suppressions,
@@ -2755,6 +2763,29 @@ def _eslint_batches(commands: Sequence[Command], *, root: Path) -> tuple[tuple[C
 def _eslint_selected_files(command: Command) -> frozenset[Path]:
     boundary = max(index for index, value in enumerate(command.argv) if value == "--") + 1
     return frozenset((command.cwd / value).resolve() for value in command.argv[boundary:])
+
+
+def _selected_eslint_argv(
+    command: Command, rule_ids: frozenset[str], *, pass_on_unpruned_suppressions: bool = False
+) -> tuple[str, ...]:
+    boundary = max(index for index, value in enumerate(command.argv) if value == "--")
+    config = command.argv[command.argv.index("--config") + 1] if "--config" in command.argv else None
+    request = json.dumps(
+        {"rules": sorted(rule_ids), "config": config, "passOnUnpruned": pass_on_unpruned_suppressions},
+        separators=(",", ":"),
+    )
+    tail = (str(_ESLINT_SELECTED_RUNNER), request, "--", *command.argv[boundary + 1 :])
+    if any(
+        (parent / marker).is_file()
+        for parent in (command.cwd, *command.cwd.parents)
+        for marker in (".pnp.cjs", ".pnp.loader.mjs")
+    ):
+        return (*command.argv[: command.argv.index("eslint")], "node", *tail)
+    node = shutil.which("node")
+    if node is None:
+        msg = "selected ESLint analysis requires the repository's Node runtime"
+        raise OSError(msg)
+    return (node, *tail)
 
 
 def _validate_eslint_coverage(payload: str, *, root: Path, selected_files: frozenset[Path]) -> ExecutionIssue | None:

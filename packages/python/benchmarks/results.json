@@ -1,0 +1,212 @@
+{
+  "baseline": {
+    "commit": "71e00f7b79aebe4a8a5d4d488c2f5e729332cdb1",
+    "source_tree": "ac1b2b216e83f87172b86d0171fb95659793798d",
+    "source_digest": "6dbb7083c0c4395bf2abbc81c95452ec6e7c4d86d9a6e0b07de7920b8aa5e974"
+  },
+  "candidate": {
+    "python_source_digest": "5ef7f488844d5aa5cb343908fa387f022ebac250b2c6a1d7f0a5d856dd9169d5",
+    "contracts_source_digest": "be8ecb4f9436e18670d70b867eb530e0e668dc2d8c6e670e8a8f819e3e162913",
+    "harness_digest": "05b7ff9caeb9a8283605cc981b1c4d06824bb7cdf25755207108b1efc197fcd6"
+  },
+  "corpus": "baseline:packages/python/src",
+  "files": 138,
+  "bytes": 2053960,
+  "source_digest": "6dbb7083c0c4395bf2abbc81c95452ec6e7c4d86d9a6e0b07de7920b8aa5e974",
+  "platform": "macOS-27.0-arm64-arm-64bit-Mach-O",
+  "samples": {
+    "baseline": [
+      {
+        "native_seconds": 22.545322833000682,
+        "diagnostics": 0,
+        "diagnostic_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "peak_memory_bytes": 317243392,
+        "rules": 108,
+        "imported_from": "packages/python/src/sarj_python_lint/__init__.py",
+        "python_version": "3.14.7 (main, Sep 24 2026, 17:46:50) [Clang 22.1.3 ]",
+        "startup_inclusive_seconds": 22.709752124996157,
+        "round": 0
+      },
+      {
+        "native_seconds": 22.854326250002487,
+        "diagnostics": 0,
+        "diagnostic_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "peak_memory_bytes": 317095936,
+        "rules": 108,
+        "imported_from": "packages/python/src/sarj_python_lint/__init__.py",
+        "python_version": "3.14.7 (main, Sep 24 2026, 17:46:50) [Clang 22.1.3 ]",
+        "startup_inclusive_seconds": 22.986701041998458,
+        "round": 1
+      },
+      {
+        "native_seconds": 22.142708083993057,
+        "diagnostics": 0,
+        "diagnostic_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "peak_memory_bytes": 317161472,
+        "rules": 108,
+        "imported_from": "packages/python/src/sarj_python_lint/__init__.py",
+        "python_version": "3.14.7 (main, Sep 24 2026, 17:46:50) [Clang 22.1.3 ]",
+        "startup_inclusive_seconds": 22.284514458006015,
+        "round": 2
+      },
+      {
+        "native_seconds": 22.470279000001028,
+        "diagnostics": 0,
+        "diagnostic_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "peak_memory_bytes": 317243392,
+        "rules": 108,
+        "imported_from": "packages/python/src/sarj_python_lint/__init__.py",
+        "python_version": "3.14.7 (main, Sep 24 2026, 17:46:50) [Clang 22.1.3 ]",
+        "startup_inclusive_seconds": 22.61526637499628,
+        "round": 3
+      },
+      {
+        "native_seconds": 22.881758582996554,
+        "diagnostics": 0,
+        "diagnostic_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "peak_memory_bytes": 317259776,
+        "rules": 108,
+        "imported_from": "packages/python/src/sarj_python_lint/__init__.py",
+        "python_version": "3.14.7 (main, Sep 24 2026, 17:46:50) [Clang 22.1.3 ]",
+        "startup_inclusive_seconds": 23.017295583995292,
+        "round": 4
+      }
+    ],
+    "candidate": [
+      {
+        "native_seconds": 13.420057124996674,
+        "diagnostics": 0,
+        "diagnostic_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "peak_memory_bytes": 312573952,
+        "rules": 108,
+        "imported_from": "packages/python/src/sarj_python_lint/__init__.py",
+        "python_version": "3.14.7 (main, Sep 24 2026, 17:46:50) [Clang 22.1.3 ]",
+        "startup_inclusive_seconds": 13.567118250008207,
+        "round": 0
+      },
+      {
+        "native_seconds": 13.090256541996496,
+        "diagnostics": 0,
+        "diagnostic_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "peak_memory_bytes": 311181312,
+        "rules": 108,
+        "imported_from": "packages/python/src/sarj_python_lint/__init__.py",
+        "python_version": "3.14.7 (main, Sep 24 2026, 17:46:50) [Clang 22.1.3 ]",
+        "startup_inclusive_seconds": 13.2324680419988,
+        "round": 1
+      },
+      {
+        "native_seconds": 12.853214082992054,
+        "diagnostics": 0,
+        "diagnostic_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "peak_memory_bytes": 311033856,
+        "rules": 108,
+        "imported_from": "packages/python/src/sarj_python_lint/__init__.py",
+        "python_version": "3.14.7 (main, Sep 24 2026, 17:46:50) [Clang 22.1.3 ]",
+        "startup_inclusive_seconds": 12.98859595900285,
+        "round": 2
+      },
+      {
+        "native_seconds": 13.255203541993978,
+        "diagnostics": 0,
+        "diagnostic_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "peak_memory_bytes": 310755328,
+        "rules": 108,
+        "imported_from": "packages/python/src/sarj_python_lint/__init__.py",
+        "python_version": "3.14.7 (main, Sep 24 2026, 17:46:50) [Clang 22.1.3 ]",
+        "startup_inclusive_seconds": 13.402982958999928,
+        "round": 3
+      },
+      {
+        "native_seconds": 12.773551499994937,
+        "diagnostics": 0,
+        "diagnostic_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "peak_memory_bytes": 310886400,
+        "rules": 108,
+        "imported_from": "packages/python/src/sarj_python_lint/__init__.py",
+        "python_version": "3.14.7 (main, Sep 24 2026, 17:46:50) [Clang 22.1.3 ]",
+        "startup_inclusive_seconds": 12.904149832989788,
+        "round": 4
+      }
+    ]
+  },
+  "summary": {
+    "baseline": {
+      "native_seconds": 22.545322833000682,
+      "startup_inclusive_seconds": 22.709752124996157,
+      "peak_memory_bytes": 317243392
+    },
+    "candidate": {
+      "native_seconds": 13.090256541996496,
+      "startup_inclusive_seconds": 13.2324680419988,
+      "peak_memory_bytes": 311033856
+    }
+  },
+  "speedup": 1.722298013080966,
+  "time_reduction_pct": 41.93803903825385,
+  "date": "2026-09-26",
+  "procedure": {
+    "performance": "Five alternating baseline/candidate pairs, one fresh interpreter per sample; fixed baseline source corpus; full 108-rule selection. Independent heavy checks paused during measurements.",
+    "identity_checks": "The harness verifies baseline Git status, commit, source tree and source digest before and after; candidate Python, contracts, and harness fingerprints must also remain unchanged during measurement.",
+    "examples": "For every published example in every registered rule, materialize all example files in an isolated temporary root, invoke analyze([rule_id], Python fixture paths), check expected focus-file count, and compare all ordered diagnostic fields after relativizing paths. No examples skipped."
+  },
+  "correctness": {
+    "rules": 108,
+    "cases": 256,
+    "positive_cases": 128,
+    "negative_cases": 128,
+    "multifile_cases": 7,
+    "diagnostics": 133,
+    "digest": "2ac7f763fdd6e5f302750f34b1066366433032d936d3bae471c473a7a40769ca",
+    "expected_mismatches": []
+  },
+  "validation": {
+    "python_tests_passed": 8700,
+    "new_context_and_benchmark_tests": 15,
+    "basedpyright": "0 errors, 0 warnings, 0 notes",
+    "ruff": "passed",
+    "python_test_command": "uv run --project packages/python --frozen pytest packages/python/tests -q",
+    "typecheck_command": "cd packages/python && uv run --frozen basedpyright",
+    "focused_native_self_lint": "all 108 rules, no findings on added runtime, benchmark harness, and new regression tests",
+    "full_make_verify_tests_passed": 18762,
+    "typescript_release_tarball_check": "passed"
+  },
+  "reproduction": {
+    "baseline_command": "git worktree add --detach /tmp/code-standards-benchmark-base 71e00f7b79aebe4a8a5d4d488c2f5e729332cdb1",
+    "comparison_command": "uv run --project packages/python --frozen python packages/python/benchmarks/compare.py /tmp/code-standards-benchmark-base . --repeats 5 --output /tmp/standards-comparison.json",
+    "native_benchmark_command": "uv run --project packages/python --frozen python -m sarj_python_lint.benchmark --repeats 5 packages/python/src",
+    "example_runner_python": [
+      "import hashlib,json,tempfile",
+      "from pathlib import Path",
+      "from sarj_python_lint.__main__ import analyze",
+      "from sarj_python_lint.rules import REGISTRY",
+      "rows=[];cases=0;positives=0;multifile=0;mismatches=[]",
+      "with tempfile.TemporaryDirectory(prefix='standards-example-parity-') as temporary:",
+      " for rule_id,rule in sorted(REGISTRY.items()):",
+      "  for example in rule.public_examples():",
+      "   root=Path(temporary)/rule_id/example.example_id",
+      "   paths=[]",
+      "   for item in example.files:",
+      "    target=root/item.path;target.parent.mkdir(parents=True,exist_ok=True);target.write_text(item.source,encoding='utf-8')",
+      "    if target.suffix=='.py':paths.append(target)",
+      "   findings=analyze([rule_id],paths,root=root)",
+      "   focus=[d for d in findings if d.path==root/example.focus_path and d.code==rule.code]",
+      "   actual=[[str(d.path.relative_to(root)),d.line,d.col,d.code,d.message,d.severity.value,d.column_encoding.value] for d in findings]",
+      "   rows.append([rule_id,example.example_id,actual])",
+      "   if len(focus)!=example.expected_count:mismatches.append([rule_id,example.example_id,example.expected_count,len(focus)])",
+      "   cases+=1;positives+=example.expected_count>0;multifile+=len(example.files)>1",
+      "print(json.dumps({'rules':len(REGISTRY),'cases':cases,'positive_cases':positives,'negative_cases':cases-positives,'multifile_cases':multifile,'diagnostics':sum(len(row[2]) for row in rows),'digest':hashlib.sha256(json.dumps(rows,sort_keys=True).encode()).hexdigest(),'expected_mismatches':mismatches,'rows':rows}))"
+    ],
+    "example_commands": [
+      "PYTHONPATH=/tmp/code-standards-benchmark-base/packages/python/src <python> /tmp/example-runner.py > /tmp/baseline-examples.json",
+      "PYTHONPATH=packages/python/src:packages/contracts/src <python> /tmp/example-runner.py > /tmp/candidate-examples.json"
+    ],
+    "example_runner_setup": "Join example_runner_python with newlines into /tmp/example-runner.py; use the same dependency-equipped Python interpreter for both commands; compare complete JSON outputs."
+  },
+  "limitations": [
+    "Single macOS arm64 workstation and native Python engine; these timings do not establish total multi-language check or CI speedup.",
+    "Each sample starts a fresh interpreter, but OS filesystem caches were not flushed.",
+    "The implementation corpus has zero diagnostics; nonzero correctness is established separately by 256 published examples and the Python regression suite.",
+    "Peak RSS is a per-process high-water mark, not a measurement of retained memory; context/AST collection is tested separately."
+  ]
+}

@@ -18,16 +18,18 @@ from sarj_python_lint.rule_base import (
     RuleExample,
     Severity,
     is_suppressed,
-    parse_or_none,
 )
+from sarj_python_lint.rules._ast_index import walk as walk_ast
 from sarj_python_lint.rules._ast_position import AstPosition, ast_position
-from sarj_python_lint.rules._imports import ImportIndex
-from sarj_python_lint.rules._paths import is_generated, is_test_path, is_test_support_path
+from sarj_python_lint.rules._paths import is_test_path, is_test_support_path
 
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator, Sequence
     from pathlib import Path
+
+    from sarj_python_lint._file_context import PythonFileContext
+    from sarj_python_lint.rules._imports import ImportIndex
 
 
 _CONNECTIONS = frozenset({"AsyncConnection", "Connection"})
@@ -113,9 +115,11 @@ class NoPositionalPsycopgRowEscape(Rule):
     description = documentation.summary
 
     @override
-    def check(self, path: Path, source: str) -> list[Diagnostic]:
+    def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
+        path = context.path
+        source = context.source
         if (
-            is_generated(path, source)
+            context.generated
             or is_test_path(path)
             or is_test_support_path(path)
             or "migrations" in {part.lower() for part in path.parts}
@@ -123,11 +127,11 @@ class NoPositionalPsycopgRowEscape(Rule):
             return []
         if ".cursor" not in source or not any(f".{method}" in source for method in _FETCH_METHODS):
             return []
-        tree = parse_or_none(path, source)
+        tree = context.tree
         if tree is None:
             return []
-        imports = ImportIndex.from_tree(tree, module_scope_only=True)
-        source_lines = source.splitlines()
+        imports = context.module_imports
+        source_lines = context.source_lines
         class_attrs = _class_connection_attributes(tree, imports)
         diagnostics: list[Diagnostic] = []
         for function, owner in _functions(tree):
@@ -402,7 +406,7 @@ def _context_cursor(
 def _invalidate_reassigned_bindings(statement: ast.stmt, visible: dict[str, _Shape]) -> None:
     for name in _same_scope_bindings(statement):
         visible.pop(name, None)
-    for node in ast.walk(statement):
+    for node in walk_ast(statement):
         if (
             isinstance(node, ast.Attribute)
             and node.attr == "row_factory"
@@ -660,7 +664,7 @@ def _cursor_shape(cursor: _Cursor, fetch: ast.Call, imports: ImportIndex, shadow
 
 
 def _assigns_cursor_factory(node: ast.AST, cursor: str) -> bool:
-    for child in ast.walk(node):
+    for child in walk_ast(node):
         if isinstance(child, ast.Call) and _setattr_row_factory_target(child) == cursor:
             return True
         if isinstance(child, ast.Assign | ast.AnnAssign | ast.AugAssign):
@@ -852,7 +856,7 @@ def _statement_mutation_roots(statement: ast.stmt) -> frozenset[str]:
         expressions.extend(item.context_expr for item in statement.items)
     elif isinstance(statement, ast.Match):
         expressions.extend(case.guard for case in statement.cases if case.guard is not None)
-    nodes = (node for expression in expressions for node in ast.walk(expression))
+    nodes = (node for expression in expressions for node in walk_ast(expression))
     for node in nodes:
         root = _expression_mutation_root(node)
         if root is not None:

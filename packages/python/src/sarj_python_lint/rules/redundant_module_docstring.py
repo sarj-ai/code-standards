@@ -16,15 +16,18 @@ from sarj_python_lint.rule_base import (
     RuleExample,
     Severity,
     is_suppressed,
-    parse_or_none,
 )
+from sarj_python_lint.rules._ast_index import walk as walk_ast
 from sarj_python_lint.rules._comments import is_protected, split_identifier, stem
 from sarj_python_lint.rules._docstrings import VALUE_MARKER_RE, sections
-from sarj_python_lint.rules._paths import is_generated, is_test_path
+from sarj_python_lint.rules._paths import is_test_path
 
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+    from sarj_python_lint._file_context import PythonFileContext
+    from sarj_python_lint.rules._ast_index import NodeIndex
 
 
 _SPECIAL_MODULES = frozenset({"__init__.py", "__main__.py"})
@@ -97,13 +100,15 @@ class RedundantModuleDocstring(Rule):
     description = documentation.summary
 
     @override
-    def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if self._excluded_path(path) or is_generated(path, source) or source.startswith("#!"):
+    def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
+        path = context.path
+        source = context.source
+        if self._excluded_path(path) or context.generated or source.startswith("#!"):
             return []
-        tree = parse_or_none(path, source)
+        tree = context.tree
         if tree is None or len(tree.body) <= 1:
             return []
-        if _is_executable_module(tree) or _uses_module_docstring(tree):
+        if _is_executable_module(tree) or _uses_module_docstring(tree, node_index=context.node_index):
             return []
         expression = tree.body[0]
         if (
@@ -117,7 +122,7 @@ class RedundantModuleDocstring(Rule):
             return []
         if not _restates_path(docstring, path):
             return []
-        if is_suppressed(source.splitlines(), expression.lineno, self.code):
+        if is_suppressed(context.source_lines, expression.lineno, self.code):
             return []
         return [
             Diagnostic(
@@ -189,8 +194,8 @@ def _matches_component(words: list[str], tokens: list[str], token_stems: list[st
     return bool(words) and "".join(words) == "".join(tokens)
 
 
-def _uses_module_docstring(tree: ast.Module) -> bool:
-    for node in ast.walk(tree):
+def _uses_module_docstring(tree: ast.Module, *, node_index: NodeIndex | None = None) -> bool:
+    for node in walk_ast(tree, index=node_index):
         if isinstance(node, ast.Name) and node.id == "__doc__" and isinstance(node.ctx, ast.Load):
             return True
         if isinstance(node, ast.Attribute) and node.attr == "__doc__":

@@ -15,14 +15,16 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    parse_or_none,
 )
-from sarj_python_lint.rules._imports import ImportIndex
-from sarj_python_lint.rules._paths import is_generated
+from sarj_python_lint.rules._ast_index import walk as walk_ast
 
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+    from sarj_python_lint._file_context import PythonFileContext
+    from sarj_python_lint.rules._ast_index import NodeIndex
+    from sarj_python_lint.rules._imports import ImportIndex
 
 
 _MIN_TYPE_BRANCHES = 3
@@ -165,29 +167,38 @@ class PreferMatchExceptionDispatch(Rule):
     description: str = documentation.summary
 
     @override
-    def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if is_generated(path, source):
+    def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
+        path = context.path
+        if context.generated:
             return []
-        tree = parse_or_none(path, source)
+        tree = context.tree
         if tree is None:
             return []
-        imports = ImportIndex.from_tree(tree)
-        if not imports.builtin_is_unshadowed("isinstance") or _has_wildcard_import(tree) or _has_local_import(tree):
+        imports = context.imports
+        if (
+            not imports.builtin_is_unshadowed("isinstance")
+            or _has_wildcard_import(tree, node_index=context.node_index)
+            or _has_local_import(tree, node_index=context.node_index)
+        ):
             return []
         findings = [
             _diagnostic(path, self.code, first, subject)
-            for function in _functions(tree)
+            for function in _functions(tree, node_index=context.node_index)
             for subject in _exception_subjects(function, imports)
             for first in _classifier_starts(function.body, subject, imports)
         ]
-        if findings and self.has_declared_python_support_before(path, (3, 10)):
+        if findings and context.session.python_target.has_declared_support_before(path, (3, 10)):
             return []
         findings.sort(key=lambda diagnostic: (diagnostic.line, diagnostic.col))
         return findings
 
 
-def _functions(tree: ast.Module) -> tuple[ast.FunctionDef | ast.AsyncFunctionDef, ...]:
-    return tuple(node for node in ast.walk(tree) if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)))
+def _functions(
+    tree: ast.Module, *, node_index: NodeIndex | None = None
+) -> tuple[ast.FunctionDef | ast.AsyncFunctionDef, ...]:
+    return tuple(
+        node for node in walk_ast(tree, index=node_index) if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    )
 
 
 def _exception_subjects(
@@ -366,7 +377,7 @@ def _is_refinement_body(body: list[ast.stmt], subject: str) -> bool:
         and not statement.orelse
         and _body_terminates(statement.body)
         and _is_subject_refinement(statement.test, subject)
-        and not any(isinstance(node, ast.NamedExpr) for node in ast.walk(statement.test))
+        and not any(isinstance(node, ast.NamedExpr) for node in walk_ast(statement.test))
         for statement in body
     )
 
@@ -401,16 +412,18 @@ def _body_terminates(body: list[ast.stmt]) -> bool:
             return False
 
 
-def _has_wildcard_import(tree: ast.Module) -> bool:
+def _has_wildcard_import(tree: ast.Module, *, node_index: NodeIndex | None = None) -> bool:
     return any(
-        isinstance(node, ast.ImportFrom) and any(alias.name == "*" for alias in node.names) for node in ast.walk(tree)
+        isinstance(node, ast.ImportFrom) and any(alias.name == "*" for alias in node.names)
+        for node in walk_ast(tree, index=node_index)
     )
 
 
-def _has_local_import(tree: ast.Module) -> bool:
+def _has_local_import(tree: ast.Module, *, node_index: NodeIndex | None = None) -> bool:
     module_imports = {id(statement) for statement in tree.body if isinstance(statement, (ast.Import, ast.ImportFrom))}
     return any(
-        isinstance(node, (ast.Import, ast.ImportFrom)) and id(node) not in module_imports for node in ast.walk(tree)
+        isinstance(node, (ast.Import, ast.ImportFrom)) and id(node) not in module_imports
+        for node in walk_ast(tree, index=node_index)
     )
 
 

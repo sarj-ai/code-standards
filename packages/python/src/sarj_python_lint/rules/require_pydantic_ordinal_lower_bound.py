@@ -18,14 +18,15 @@ from sarj_python_lint.rule_base import (
     RuleExample,
     Severity,
     is_suppressed,
-    parse_or_none,
 )
-from sarj_python_lint.rules._imports import ImportIndex
-from sarj_python_lint.rules._paths import is_generated, is_test_path, is_test_support_path
+from sarj_python_lint.rules._paths import is_test_path, is_test_support_path
 
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+    from sarj_python_lint._file_context import PythonFileContext
+    from sarj_python_lint.rules._imports import ImportIndex
 
 
 _ORDINAL = re.compile(
@@ -147,20 +148,22 @@ class RequirePydanticOrdinalLowerBound(Rule):
     description = documentation.summary
 
     @override
-    def check(self, path: Path, source: str) -> list[Diagnostic]:
+    def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
+        path = context.path
+        source = context.source
         if (
             is_test_path(path)
             or is_test_support_path(path)
-            or is_generated(path, source)
+            or context.generated
             or ("for first" not in source.lower() and "for the first" not in source.lower())
         ):
             return []
-        tree = parse_or_none(path, source)
+        tree = context.tree
         if tree is None:
             return []
-        imports = ImportIndex.from_tree(tree, module_scope_only=True)
+        imports = context.module_imports
         aliases = _annotation_aliases(tree)
-        source_lines = source.splitlines()
+        source_lines = context.source_lines
         diagnostics: list[Diagnostic] = []
         for cls in (node for node in tree.body if isinstance(node, ast.ClassDef) and _is_model(node, imports)):
             diagnostics.extend(_ordinal_class_findings(cls, imports, aliases, path, source_lines, code=self.code))

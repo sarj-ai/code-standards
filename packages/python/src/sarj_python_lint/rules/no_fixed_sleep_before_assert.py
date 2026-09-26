@@ -16,15 +16,15 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    parse_or_none,
 )
-from sarj_python_lint.rules._imports import ImportIndex
-from sarj_python_lint.rules._paths import is_generated
 
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
     from pathlib import Path
+
+    from sarj_python_lint._file_context import PythonFileContext
+    from sarj_python_lint.rules._imports import ImportIndex
 
 
 _ASYNC_SLEEPS: Final = frozenset({"asyncio.sleep", "anyio.sleep", "trio.sleep"})
@@ -133,13 +133,15 @@ class NoFixedSleepBeforeAssert(Rule):
     description = documentation.summary
 
     @override
-    def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if not _is_collected_test_module(path) or "sleep" not in source or is_generated(path, source):
+    def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
+        path = context.path
+        source = context.source
+        if not _is_collected_test_module(path) or "sleep" not in source or context.generated:
             return []
-        tree = parse_or_none(path, source)
+        tree = context.tree
         if tree is None:
             return []
-        imports = ImportIndex.from_tree(tree)
+        imports = context.imports
         diagnostics = [
             Diagnostic(path=path, line=statement.lineno, col=statement.col_offset + 1, code=self.code, message=_MESSAGE)
             for test in _collected_tests(tree.body)

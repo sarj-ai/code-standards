@@ -17,9 +17,8 @@ from sarj_python_lint.rule_base import (
     RuleExample,
     Severity,
     is_suppressed,
-    parse_or_none,
 )
-from sarj_python_lint.rules._ast_index import children
+from sarj_python_lint.rules._ast_index import children, walk as walk_ast
 from sarj_python_lint.rules._comments import is_protected, split_identifier, stem
 from sarj_python_lint.rules._docstrings import (
     VALUE_MARKER_RE,
@@ -29,11 +28,14 @@ from sarj_python_lint.rules._docstrings import (
     signature_stems,
 )
 from sarj_python_lint.rules._imports import ImportIndex
-from sarj_python_lint.rules._paths import is_generated, is_test_path
+from sarj_python_lint.rules._paths import is_test_path
 
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
+
+    from sarj_python_lint._file_context import PythonFileContext
+    from sarj_python_lint.rules._ast_index import NodeIndex
 
 
 # The vocabulary a test docstring spends on *being a test*.
@@ -263,24 +265,25 @@ class RestatedTestDocstring(Rule):
     description: str = documentation.summary
 
     @override
-    def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if is_generated(path, source) or not is_test_path(path):
+    def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
+        path = context.path
+        if context.generated or not is_test_path(path):
             return []
-        tree = parse_or_none(path, source)
+        tree = context.tree
         if tree is None:
             return []
-        source_lines = source.splitlines()
-        consumed_nodes = _consumed_docstring_owners(tree)
+        source_lines = context.source_lines
+        consumed_nodes = _consumed_docstring_owners(tree, node_index=context.node_index)
         diags: list[Diagnostic] = []
-        context = _ScanContext(
+        analysis_context = _ScanContext(
             path=path,
             source_lines=source_lines,
             consumed_nodes=consumed_nodes,
-            imports=ImportIndex.from_tree(tree, module_scope_only=True),
+            imports=context.module_imports,
             module_opt_outs=_attribute_test_opt_outs(tree.body),
             diagnostics=diags,
         )
-        self._walk(tree, None, context)
+        self._walk(tree, None, analysis_context)
         return sorted(diags, key=lambda diag: diag.line)
 
     def _walk(self, node: ast.AST, owner: ast.ClassDef | None, context: _ScanContext) -> None:
@@ -424,7 +427,7 @@ def _class_bindings_before(
     return frozenset(bound)
 
 
-def _consumed_docstring_owners(tree: ast.Module) -> set[int]:
+def _consumed_docstring_owners(tree: ast.Module, *, node_index: NodeIndex | None = None) -> set[int]:
     bindings: dict[str, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef | None] = {}
     binding_counts: dict[str, int] = {}
     consumed: set[int] = set()
@@ -441,7 +444,7 @@ def _consumed_docstring_owners(tree: ast.Module) -> set[int]:
             binding_counts[name] = binding_counts.get(name, 0) + 1
             bindings[name] = None
         _bind_docstring_owner(statement, alias_owner, bindings)
-    _consume_scope_docstrings(tree, bindings, binding_counts, consumed)
+    _consume_scope_docstrings(tree, bindings, binding_counts, consumed, node_index=node_index)
     return consumed
 
 
@@ -451,7 +454,7 @@ def _direct_expressions(statement: ast.stmt) -> Iterator[ast.expr]:
 
 def _docstring_reader_names(expression: ast.AST) -> set[str]:
     names: set[str] = set()
-    for node in ast.walk(expression):
+    for node in walk_ast(expression):
         if isinstance(node, ast.Attribute) and node.attr == "__doc__" and isinstance(node.value, ast.Name):
             names.add(node.value.id)
         elif isinstance(node, ast.Call) and _is_docstring_reader(node) and isinstance(node.args[0], ast.Name):
@@ -522,8 +525,10 @@ def _consume_scope_docstrings(
     bindings: dict[str, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef | None],
     binding_counts: dict[str, int],
     consumed: set[int],
+    *,
+    node_index: NodeIndex | None = None,
 ) -> None:
-    for scope in ast.walk(tree):
+    for scope in walk_ast(tree, index=node_index):
         if isinstance(scope, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
             local_names = _scope_bound_names(scope)
             for name in _scope_docstring_reader_names(scope):

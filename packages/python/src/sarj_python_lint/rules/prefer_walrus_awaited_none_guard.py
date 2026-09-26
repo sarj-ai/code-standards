@@ -18,14 +18,13 @@ from sarj_python_lint.rule_base import (
     RuleExample,
     Severity,
     is_suppressed,
-    parse_or_none,
 )
-from sarj_python_lint.rules._ast_index import object_list
-from sarj_python_lint.rules._paths import is_generated
+from sarj_python_lint.rules._ast_index import object_list, walk as walk_ast
 
 
 if TYPE_CHECKING:
-    from pathlib import Path
+    from sarj_python_lint._file_context import PythonFileContext
+    from sarj_python_lint.rules._ast_index import NodeIndex
 
 
 _MAX_COMBINED_LINE_LENGTH = 120
@@ -105,15 +104,17 @@ class PreferWalrusAwaitedNoneGuard(Rule):
     description = documentation.summary
 
     @override
-    def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if path.suffix == ".pyi" or is_generated(path, source):
+    def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
+        path = context.path
+        source = context.source
+        if path.suffix == ".pyi" or context.generated:
             return []
         if any(token not in source for token in ("await", "None", "if", "=")):
             return []
-        tree = parse_or_none(path, source)
+        tree = context.tree
         if tree is None:
             return []
-        source_lines = source.splitlines()
+        source_lines = context.source_lines
         comment_lines = _comment_lines(source)
         diagnostics: list[Diagnostic] = []
 
@@ -150,7 +151,7 @@ class PreferWalrusAwaitedNoneGuard(Rule):
                     )
                 )
 
-        for body in _statement_lists(tree):
+        for body in _statement_lists(tree, node_index=context.node_index):
             collect_body_candidates(body)
         return sorted(diagnostics, key=lambda item: (item.line, item.col))
 
@@ -226,7 +227,7 @@ def _none_guard_kind(test: ast.expr, name: str) -> bool | None:
 
 def _loads_name(node: ast.AST, name: str) -> bool:
     return any(
-        isinstance(child, ast.Name) and isinstance(child.ctx, ast.Load) and child.id == name for child in ast.walk(node)
+        isinstance(child, ast.Name) and isinstance(child.ctx, ast.Load) and child.id == name for child in walk_ast(node)
     )
 
 
@@ -311,9 +312,9 @@ class _NameUsage(ast.NodeVisitor):
         self.rebound |= self.name in node.names
 
 
-def _statement_lists(tree: ast.AST) -> list[list[ast.stmt]]:
+def _statement_lists(tree: ast.AST, *, node_index: NodeIndex | None = None) -> list[list[ast.stmt]]:
     result: list[list[ast.stmt]] = []
-    for node in ast.walk(tree):
+    for node in walk_ast(tree, index=node_index):
         for field in ("body", "orelse", "finalbody"):
             value: object = getattr(node, field, None)
             if not object_list(value):

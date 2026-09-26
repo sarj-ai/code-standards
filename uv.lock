@@ -78,10 +78,11 @@ wheels = [
 
 [[package]]
 name = "sarj-python-lint"
-version = "0.88.0"
+version = "1.0.0"
 source = { editable = "." }
 dependencies = [
     { name = "packaging" },
+    { name = "sarj-rule-contracts" },
     { name = "sqlglot" },
     { name = "typer" },
 ]
@@ -89,8 +90,23 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "packaging", specifier = "==26.3" },
+    { name = "sarj-rule-contracts", editable = "packages/contracts" },
     { name = "sqlglot", specifier = "==30.19.0" },
     { name = "typer", specifier = "==0.27.2" },
+]
+
+[[package]]
+name = "sarj-rule-contracts"
+version = "0.1.0"
+source = { editable = "packages/contracts" }
+
+[package.metadata]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "basedpyright", specifier = ">=1.40.1" },
+    { name = "pytest", specifier = ">=9.1.1" },
+    { name = "ruff", specifier = ">=0.16.8" },
 ]
 
 [[package]]

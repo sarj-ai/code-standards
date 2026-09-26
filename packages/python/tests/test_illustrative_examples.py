@@ -9,8 +9,7 @@ from tests.illustrative_examples import illustrative_examples
 
 
 if TYPE_CHECKING:
-    from pathlib import Path
-
+    from sarj_python_lint._file_context import PythonFileContext
     from sarj_python_lint.rule_base import Diagnostic, RuleDocumentation
 
 
@@ -22,7 +21,7 @@ class _UndocumentedRule(Rule):
     documentation: ClassVar[RuleDocumentation | None] = None
 
     @override
-    def check(self, path: Path, source: str) -> list[Diagnostic]:
+    def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
         return []
 
 

@@ -16,15 +16,13 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    parse_or_none,
 )
-from sarj_python_lint.rules._ast_index import nodes, walk
-from sarj_python_lint.rules._paths import is_generated
+from sarj_python_lint.rules._ast_index import walk
 from sarj_python_lint.rules._sql import is_store_module, sql_string_value, strip_sql_noise
 
 
 if TYPE_CHECKING:
-    from pathlib import Path
+    from sarj_python_lint._file_context import PythonFileContext
 
 
 _QUERY_SHAPE = re.compile(r"\bSELECT\b[\s\S]*?\bFROM\b", re.IGNORECASE)
@@ -132,17 +130,18 @@ class TimestampOrderRequiresTiebreaker(Rule):
     description = documentation.summary
 
     @override
-    def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if not is_store_module(path) or is_generated(path, source):
+    def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
+        path = context.path
+        if not is_store_module(path) or context.generated:
             return []
-        tree = parse_or_none(path, source)
+        tree = context.tree
         if tree is None:
             return []
 
         diagnostics: list[Diagnostic] = []
         consumed: set[int] = set()
         docstrings = _docstring_nodes(tree)
-        for node in nodes(tree, ast.Constant, ast.BinOp, ast.JoinedStr):
+        for node in context.nodes(ast.Constant, ast.BinOp, ast.JoinedStr):
             if id(node) in consumed or id(node) in docstrings:
                 continue
             if isinstance(node, (ast.BinOp, ast.JoinedStr)):

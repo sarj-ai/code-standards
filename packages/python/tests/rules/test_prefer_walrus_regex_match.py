@@ -4,7 +4,6 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-import sarj_python_lint.rules.prefer_walrus_regex_match as rule_module
 from sarj_python_lint.rules.prefer_walrus_regex_match import PreferWalrusRegexMatch
 
 
@@ -314,7 +313,7 @@ def test_lexical_gate_avoids_parsing_unrelated_source(monkeypatch: pytest.Monkey
         pytest.fail("parse_or_none should not run")
 
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- interception proves the lexical gate avoids parsing.
-        rule_module, "parse_or_none", fail_parse
+        "sarj_python_lint._file_context.ast.parse", fail_parse
     )
     assert _check("def value() -> int:\n    return 1\n") == []
 

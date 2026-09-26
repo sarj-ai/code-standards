@@ -16,14 +16,16 @@ from sarj_python_lint.rule_base import (
     RuleExample,
     Severity,
     is_suppressed,
-    parse_or_none,
 )
-from sarj_python_lint.rules._imports import ImportIndex
-from sarj_python_lint.rules._paths import is_generated
+from sarj_python_lint.rules._ast_index import walk as walk_ast
 
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+    from sarj_python_lint._file_context import PythonFileContext
+    from sarj_python_lint.rules._ast_index import NodeIndex
+    from sarj_python_lint.rules._imports import ImportIndex
 
 
 _TYPING_SOURCES = frozenset({"typing", "typing_extensions"})
@@ -149,16 +151,17 @@ class PreferNominalIdTypes(Rule):
     description: str = documentation.summary
 
     @override
-    def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if _is_excluded_path(path) or is_generated(path, source):
+    def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
+        path = context.path
+        if _is_excluded_path(path) or context.generated:
             return []
-        tree = parse_or_none(path, source)
-        if tree is None or _has_wildcard_import(tree):
+        tree = context.tree
+        if tree is None or _has_wildcard_import(tree, node_index=context.node_index):
             return []
 
-        imports = ImportIndex.from_tree(tree)
+        imports = context.imports
         facts = _type_facts(tree, imports)
-        source_lines = source.splitlines()
+        source_lines = context.source_lines
         class_role_names = {
             node: {role.name for role in _qualifying_roles(_boundary_roles(node, imports, facts))}
             for node in tree.body
@@ -210,9 +213,10 @@ def _is_excluded_path(path: Path) -> bool:
     )
 
 
-def _has_wildcard_import(tree: ast.Module) -> bool:
+def _has_wildcard_import(tree: ast.Module, *, node_index: NodeIndex | None = None) -> bool:
     return any(
-        isinstance(node, ast.ImportFrom) and any(alias.name == "*" for alias in node.names) for node in ast.walk(tree)
+        isinstance(node, ast.ImportFrom) and any(alias.name == "*" for alias in node.names)
+        for node in walk_ast(tree, index=node_index)
     )
 
 

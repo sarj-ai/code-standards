@@ -13,13 +13,13 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    parse_or_none,
 )
-from sarj_python_lint.rules._paths import is_generated
+from sarj_python_lint.rules._ast_index import walk as walk_ast
 
 
 if TYPE_CHECKING:
-    from pathlib import Path
+    from sarj_python_lint._file_context import PythonFileContext
+    from sarj_python_lint.rules._ast_index import NodeIndex
 
 
 class _Tautology(NamedTuple):
@@ -88,13 +88,14 @@ class NoTautologicalExpect(Rule):
     description: str = documentation.summary
 
     @override
-    def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if is_generated(path, source):
+    def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
+        path = context.path
+        if context.generated:
             return []
-        tree = parse_or_none(path, source)
+        tree = context.tree
         if tree is None:
             return []
-        exempt = _exempt_nodes(tree)
+        exempt = _exempt_nodes(tree, node_index=context.node_index)
         diags = [
             Diagnostic(
                 path=path,
@@ -104,15 +105,15 @@ class NoTautologicalExpect(Rule):
                 message=_message(node, reason),
                 severity=Severity.ERROR,
             )
-            for node, reason in _tautologies(tree, exempt)
+            for node, reason in _tautologies(tree, exempt, node_index=context.node_index)
         ]
         diags.sort(key=lambda d: (d.line, d.col))
         return diags
 
 
-def _exempt_nodes(tree: ast.Module) -> set[ast.AST]:
+def _exempt_nodes(tree: ast.Module, *, node_index: NodeIndex | None = None) -> set[ast.AST]:
     exempt: set[ast.AST] = set()
-    for node in ast.walk(tree):
+    for node in walk_ast(tree, index=node_index):
         if isinstance(node, ast.Match):
             exempt.update(_match_arm_markers(node))
     return exempt
@@ -139,9 +140,9 @@ def _always_fails(stmt: ast.stmt) -> bool:
     return isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Call) and _called_method(stmt.value) == _FAIL
 
 
-def _tautologies(tree: ast.Module, exempt: set[ast.AST]) -> list[_Tautology]:
+def _tautologies(tree: ast.Module, exempt: set[ast.AST], *, node_index: NodeIndex | None = None) -> list[_Tautology]:
     found: list[_Tautology] = []
-    for node in ast.walk(tree):
+    for node in walk_ast(tree, index=node_index):
         if not isinstance(node, ast.Assert) or node in exempt:
             continue
         reason = _fixed_truth_reason(node.test)

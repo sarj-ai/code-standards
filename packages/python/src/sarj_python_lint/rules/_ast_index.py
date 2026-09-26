@@ -28,7 +28,10 @@ def children(node: ast.AST) -> list[ast.AST]:
     return out
 
 
-def walk(node: ast.AST) -> Iterator[ast.AST]:
+def walk(node: ast.AST, *, index: NodeIndex | None = None) -> Iterator[ast.AST]:
+    if index is not None and index.tree is node:
+        yield from index.query((ast.AST,))
+        return
     queue: list[ast.AST] = [node]
     i = 0
     while i < len(queue):
@@ -39,10 +42,11 @@ def walk(node: ast.AST) -> Iterator[ast.AST]:
 
 
 @final
-class _NodeIndex:
-    __slots__ = ("_buckets", "_flat", "_queries")
+class NodeIndex:
+    __slots__ = ("_buckets", "_flat", "_queries", "tree")
 
     def __init__(self, tree: ast.AST) -> None:
+        self.tree = tree
         buckets: dict[type[ast.AST], list[ast.AST]] = {}
         flat: list[ast.AST] = [tree]
         i = 0
@@ -80,13 +84,6 @@ class _NodeIndex:
         return result
 
 
-_last_index: tuple[ast.AST, _NodeIndex] | None = None
-# The strong tree reference prevents a recycled object id from ever reusing a stale index.
-
-
-def nodes[NodeT: ast.AST](tree: ast.AST, *types: type[NodeT]) -> list[NodeT]:
-    global _last_index  # ruff: ignore[global-statement] — single-slot memo, mirroring `parse_or_none`
-    if _last_index is None or _last_index[0] is not tree:
-        _last_index = (tree, _NodeIndex(tree))
-    # The `isinstance` pass is what narrows `list[ast.AST]` to `list[NodeT]`
-    return [node for node in _last_index[1].query(types) if isinstance(node, types)]
+def nodes[NodeT: ast.AST](tree: ast.AST, *types: type[NodeT], index: NodeIndex | None = None) -> list[NodeT]:
+    selected = index if index is not None and index.tree is tree else NodeIndex(tree)
+    return [node for node in selected.query(types) if isinstance(node, types)]

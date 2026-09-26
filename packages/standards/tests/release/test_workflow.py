@@ -39,6 +39,7 @@ def _run_release_tag_preflight(
     versions = {
         "typescript": "1.0.0",
         "bootstrap": "1.5.0",
+        "contracts": "1.0.0",
         "python": "2.0.0",
         "sql": "3.0.0",
         "iac": "4.0.0",
@@ -190,7 +191,7 @@ def test_release_tags_registry_visible_packages_at_the_published_commit() -> Non
         "pending_jobs == 0 && successful_jobs > 0" in workflow
     )  # sarj-noqa: SARJ402 -- workflow text is the release-gate contract
     assert (
-        "maintain release create-tags typescript bootstrap python sql iac standards tsconfig" in workflow
+        "maintain release create-tags typescript bootstrap contracts python sql iac standards tsconfig" in workflow
     )  # sarj-noqa: SARJ402 -- workflow text is the release-policy contract
     assert '--commit "$PUBLISHED_SHA"' in workflow  # sarj-noqa: SARJ402 -- workflow text is the release-policy contract
     assert (
@@ -256,13 +257,14 @@ def test_every_pypi_publish_job_verifies_exact_bytes_and_attestations() -> None:
     workflow = (REPO_ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
 
     assert (  # sarj-noqa: SARJ402 -- workflow text is the release-policy contract
-        workflow.count("verify_registry_publication.py pypi") == 5
+        workflow.count("verify_registry_publication.py pypi") == 6
     )
     assert (
-        workflow.count("skip-existing: true") == 5
+        workflow.count("skip-existing: true") == 6
     )  # sarj-noqa: SARJ402 -- workflow text is the release-policy contract
     for project, environment in (
         ("sarj-standards-bootstrap", "pypi-bootstrap-release"),
+        ("sarj-rule-contracts", "pypi-contracts-release"),
         ("sarj-python-lint", "pypi-python-release"),
         ("sarj-sql-lint", "pypi-sql-release"),
         ("sarj-iac-lint", "pypi-iac-release"),

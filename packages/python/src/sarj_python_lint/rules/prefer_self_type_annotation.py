@@ -17,14 +17,14 @@ from sarj_python_lint.rule_base import (
     RuleExample,
     Severity,
     is_suppressed,
-    parse_or_none,
 )
-from sarj_python_lint.rules._imports import ImportIndex
-from sarj_python_lint.rules._paths import is_generated
+from sarj_python_lint.rules._ast_index import walk as walk_ast
 
 
 if TYPE_CHECKING:
-    from pathlib import Path
+    from sarj_python_lint._file_context import PythonFileContext
+    from sarj_python_lint.rules._ast_index import NodeIndex
+    from sarj_python_lint.rules._imports import ImportIndex
 
 
 _BUILTINS = frozenset({"builtins"})
@@ -201,15 +201,16 @@ class PreferSelfTypeAnnotation(Rule):
     description: str = documentation.summary
 
     @override
-    def check(self, path: Path, source: str) -> list[Diagnostic]:
-        tree = parse_or_none(path, source)
-        if tree is None or not _has_candidate_annotation(tree) or is_generated(path, source):
+    def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
+        path = context.path
+        tree = context.tree
+        if tree is None or not _has_candidate_annotation(tree, node_index=context.node_index) or context.generated:
             return []
-        imports = ImportIndex.from_tree(tree)
-        mutated_builtins = _mutated_builtin_symbols(tree, imports)
-        metaclass_ids = _metaclass_ids(tree, imports, mutated_builtins)
+        imports = context.imports
+        mutated_builtins = _mutated_builtin_symbols(tree, imports, node_index=context.node_index)
+        metaclass_ids = _metaclass_ids(tree, imports, mutated_builtins, node_index=context.node_index)
 
-        source_lines = source.splitlines()
+        source_lines = context.source_lines
         diags: list[Diagnostic] = []
 
         class ClassVisitor(ast.NodeVisitor):
@@ -432,11 +433,9 @@ def _is_pydantic_model(node: ast.ClassDef, imports: ImportIndex) -> bool:
 
 
 def _metaclass_ids(
-    tree: ast.Module,
-    imports: ImportIndex,
-    mutated_builtins: frozenset[str],
+    tree: ast.Module, imports: ImportIndex, mutated_builtins: frozenset[str], *, node_index: NodeIndex | None = None
 ) -> frozenset[int]:
-    classes = [node for node in ast.walk(tree) if isinstance(node, ast.ClassDef)]
+    classes = [node for node in walk_ast(tree, index=node_index) if isinstance(node, ast.ClassDef)]
     metaclass_type_names = _declared_metaclass_names(classes)
     aliases = _safe_module_assignment_aliases(tree)
     changed = True
@@ -577,7 +576,7 @@ def _safe_module_assignment_aliases(tree: ast.Module) -> dict[str, ast.expr]:
     return {name: value for name, value in candidates.items() if binding_counts.get(name) == 1}
 
 
-def _has_candidate_annotation(tree: ast.Module) -> bool:
+def _has_candidate_annotation(tree: ast.Module, *, node_index: NodeIndex | None = None) -> bool:
     def class_has_candidate(node: ast.ClassDef) -> bool:
         for statement in node.body:
             if not isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef)) or statement.returns is None:
@@ -589,10 +588,14 @@ def _has_candidate_annotation(tree: ast.Module) -> bool:
                 return True
         return False
 
-    return any(isinstance(node, ast.ClassDef) and class_has_candidate(node) for node in ast.walk(tree))
+    return any(
+        isinstance(node, ast.ClassDef) and class_has_candidate(node) for node in walk_ast(tree, index=node_index)
+    )
 
 
-def _mutated_builtin_symbols(tree: ast.Module, imports: ImportIndex) -> frozenset[str]:
+def _mutated_builtin_symbols(
+    tree: ast.Module, imports: ImportIndex, *, node_index: NodeIndex | None = None
+) -> frozenset[str]:
     symbols = {"classmethod", "property", "staticmethod", "type"}
     return frozenset(
         symbol
@@ -601,7 +604,7 @@ def _mutated_builtin_symbols(tree: ast.Module, imports: ImportIndex) -> frozense
             isinstance(node, ast.Attribute)
             and isinstance(node.ctx, (ast.Store, ast.Del))
             and imports.resolves(node, sources=_BUILTINS, symbol=symbol)
-            for node in ast.walk(tree)
+            for node in walk_ast(tree, index=node_index)
         )
     )
 

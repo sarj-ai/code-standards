@@ -10,11 +10,12 @@ from sarj_standards.libs.adoption import transaction
 from sarj_standards.libs.repository import (
     config_generation,
     rule_catalog_artifact,
+    rule_checkout,
     rule_inventory_artifact,
     rule_level_source,
     rule_maintenance,
 )
-from sarj_standards.libs.rules import DefaultLevel, RuleEngine, RuleId, RuleSelector
+from sarj_standards.libs.rules import DefaultLevel, RuleEngine, RuleId, RuleSelector, RuleSpec
 
 
 _INVENTORY_PATH: Final = Path("packages/standards/src/sarj_standards/configs/rule-inventory.v1.json")
@@ -43,16 +44,27 @@ class StageResult:
     message: str
 
 
-def stage_warning(root: Path, selector: RuleSelector, *, check: bool = False) -> StageResult:
-    return _set_warning(root, selector, warning=True, check=check)
+def stage_warning(
+    root: Path, selector: RuleSelector, *, check: bool = False, typescript: tuple[RuleSpec, ...] | None = None
+) -> StageResult:
+    return _set_warning(root, selector, warning=True, check=check, typescript=typescript)
 
 
-def promote_error(root: Path, selector: RuleSelector, *, check: bool = False) -> StageResult:
-    return _set_warning(root, selector, warning=False, check=check)
+def promote_error(
+    root: Path, selector: RuleSelector, *, check: bool = False, typescript: tuple[RuleSpec, ...] | None = None
+) -> StageResult:
+    return _set_warning(root, selector, warning=False, check=check, typescript=typescript)
 
 
-def _set_warning(root: Path, selector: RuleSelector, *, warning: bool, check: bool) -> StageResult:
+def _set_warning(
+    root: Path, selector: RuleSelector, *, warning: bool, check: bool, typescript: tuple[RuleSpec, ...] | None = None
+) -> StageResult:
     repository = root.resolve()
+    rule_checkout.ensure_current(
+        repository,
+        ("maintain", "rules", "stage-warning" if warning else "promote-error", str(selector)),
+        all_engines=True,
+    )
     sources = _live_sources(repository)
     if selector not in sources:
         raise ValueError(_unknown_selector_message(selector, set(sources)))
@@ -60,7 +72,12 @@ def _set_warning(root: Path, selector: RuleSelector, *, warning: bool, check: bo
     level = DefaultLevel.WARNING if warning else DefaultLevel.ERROR
     edit = rule_level_source.prepare(repository, selector, sources[selector], level)
     already_staged = edit.current is level
-    derived_current = _derived_current(repository) if already_staged else False
+    levels = {str(selector): level}
+    if already_staged and typescript is None:
+        typescript = rule_catalog_artifact.typescript_specs(repository)
+    elif not already_staged and selector.engine is RuleEngine.ESLINT:
+        typescript = None
+    derived_current = _derived_current(repository, levels, typescript) if already_staged else False
     if already_staged and derived_current:
         level = "warning-stage" if warning else "error-level"
         return StageResult(status=0, changed=False, message=f"ok: {selector} is already {level}")
@@ -73,12 +90,12 @@ def _set_warning(root: Path, selector: RuleSelector, *, warning: bool, check: bo
 
     managed = (_INVENTORY_PATH, _CATALOG_PATH, _LEDGER_PATH, *_ESLINT_MANAGED_PATHS)
     paths = (edit.path, *(repository / path for path in managed))
-    mutation = transaction.FileTransaction.capture(repository, paths)
+    mutation = transaction.FileTransaction.capture(repository, paths, explicit_only=True)
     try:
         if edit.before != edit.after:
-            transaction.atomic_write_text(repository, edit.path, edit.after)
-            mutation.mark_written(edit.path)
-        _synchronize(repository, mutation)
+            transaction.assert_expected(repository, edit.path, edit.before.encode("utf-8"))
+            mutation.write_text(edit.path, edit.after)
+        _synchronize(repository, mutation, levels, typescript)
     except BaseException:
         rollback = mutation.rollback()
         if not rollback.ok:
@@ -125,31 +142,43 @@ def _unknown_selector_message(selector: RuleSelector, known: set[RuleSelector]) 
     return f"unknown live rule selector: {requested}; run `code-standards maintain rules manifest` to list selectors"
 
 
-def _derived_current(repository: Path) -> bool:
+def _derived_current(
+    repository: Path, levels: dict[str, DefaultLevel], typescript: tuple[RuleSpec, ...] | None
+) -> bool:
     results = (
         rule_inventory_artifact.sync(repository, check=True),
         rule_maintenance.sync_ledger(repository, check=True),
-        rule_catalog_artifact.sync(repository, check=True),
+        rule_catalog_artifact.sync(repository, check=True, levels=levels, typescript=typescript),
     )
     return all(result.status == 0 for result in results) and config_generation.sync_warning_levels(
         repository, check=True
     )
 
 
-def _synchronize(repository: Path, mutation: transaction.FileTransaction) -> None:
+def _synchronize(
+    repository: Path,
+    mutation: transaction.FileTransaction,
+    levels: dict[str, DefaultLevel],
+    typescript: tuple[RuleSpec, ...] | None,
+) -> None:
     operations = (
         (rule_maintenance.sync_ledger, repository / _LEDGER_PATH),
         (rule_inventory_artifact.sync, repository / _INVENTORY_PATH),
-        (rule_catalog_artifact.sync, repository / _CATALOG_PATH),
     )
     for operation, path in operations:
-        result = operation(repository, check=False)
-        mutation.mark_written(path)
+        result = operation(repository, check=False, writer=mutation.write_text)
         if result.status != 0:
             msg = f"could not synchronize derived rule artifact: {path}"
             raise RuntimeError(msg)
-    if not config_generation.sync_warning_levels(repository, check=False):  # pragma: no cover - writer returns true.
+    projection = rule_catalog_artifact.typescript_specs(repository) if typescript is None else typescript
+    catalog = rule_catalog_artifact.sync(
+        repository, check=False, levels=levels, typescript=projection, writer=mutation.write_text
+    )
+    if catalog.status != 0:
+        msg = "could not synchronize derived rule catalog"
+        raise RuntimeError(msg)
+    if not config_generation.sync_warning_levels(
+        repository, check=False, writer=mutation.write_text
+    ):  # pragma: no cover - writer returns true.
         msg = "could not synchronize ESLint warning levels"
         raise RuntimeError(msg)
-    for path in _ESLINT_MANAGED_PATHS:
-        mutation.mark_written(repository / path)

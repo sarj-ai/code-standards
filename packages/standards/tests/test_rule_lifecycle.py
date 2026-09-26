@@ -1,13 +1,18 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import TYPE_CHECKING
 
 import pytest
 
 from sarj_standards.libs.adoption import transaction
+from sarj_standards.libs.adoption.manifest import as_table, list_field
+from sarj_standards.libs.json_boundary import parse_json
+from sarj_standards.libs.linting import textlint
 from sarj_standards.libs.repository import (
     config_generation,
     rule_catalog_artifact,
+    rule_examples,
     rule_inventory_artifact,
     rule_level_source,
     rule_lifecycle,
@@ -68,8 +73,15 @@ def _mock_builders(monkeypatch: pytest.MonkeyPatch, *, fail_catalog_sync: bool =
         rule_catalog_artifact, "build", build_catalog
     )
 
-    def sync_warning_levels(_root: Path, *, check: bool) -> bool:
-        _ = check
+    def typescript_specs(_root: Path) -> tuple[()]:
+        return ()
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- intercept live engine registries and catalog dispatch under test.
+        rule_catalog_artifact, "typescript_specs", typescript_specs
+    )
+
+    def sync_warning_levels(_root: Path, *, check: bool, writer: Callable[[Path, str], None] | None = None) -> bool:
+        _ = check, writer
         return True
 
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- lifecycle orchestration interception is the behavior under test.
@@ -79,14 +91,25 @@ def _mock_builders(monkeypatch: pytest.MonkeyPatch, *, fail_catalog_sync: bool =
     )
 
     def sync_to(relative: str, *, fail: bool = False) -> Callable[..., object]:
-        def sync(root: Path, *, check: bool) -> object:
+        def sync(
+            root: Path,
+            *,
+            check: bool,
+            levels: object = None,
+            typescript: object = None,
+            writer: Callable[[Path, str], None] | None = None,
+        ) -> object:
+            _ = levels, typescript
             if check:
                 status = 0 if (root / relative).read_text(encoding="utf-8") == '{"updated":true}\n' else 1
                 return type("Result", (), {"status": status})()
             if fail:
                 msg = "catalog generation failed"
                 raise RuntimeError(msg)
-            transaction.atomic_write_text(root, root / relative, '{"updated":true}\n')
+            if writer is None:
+                transaction.atomic_write_text(root, root / relative, '{"updated":true}\n')
+            else:
+                writer(root / relative, '{"updated":true}\n')
             return type("Result", (), {"status": 0})()
 
         return sync
@@ -195,6 +218,62 @@ def test_stage_warning_check_and_unknown_rule_never_write(
     assert tuple(path.read_bytes() for path in paths) == before
 
 
+def test_lifecycle_rollback_preserves_unwritten_and_unrelated_edits(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    paths = _files(tmp_path)
+    before = {path: path.read_bytes() for path in paths}
+    unrelated = tmp_path / "package.json"
+    unrelated.write_text("original\n", encoding="utf-8")
+    _mock_builders(monkeypatch)
+    catalog_path = paths[2]
+
+    def fail_catalog(
+        _root: Path,
+        *,
+        check: bool,
+        levels: object = None,
+        typescript: object = None,
+        writer: Callable[[Path, str], None] | None = None,
+    ) -> object:
+        _ = check, levels, typescript, writer
+        catalog_path.write_text("concurrent catalog\n", encoding="utf-8")
+        unrelated.write_text("concurrent package\n", encoding="utf-8")
+        msg = "injected catalog failure"
+        raise RuntimeError(msg)
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- concurrent source writes are the behavior under test.
+        rule_catalog_artifact, "sync", fail_catalog
+    )
+    with pytest.raises(RuntimeError, match="injected catalog failure"):
+        rule_lifecycle.stage_warning(tmp_path, _SELECTOR)
+
+    assert unrelated.read_text(encoding="utf-8") == "concurrent package\n"
+    assert catalog_path.read_text(encoding="utf-8") == "concurrent catalog\n"
+    assert all(path.read_bytes() == value for path, value in before.items() if path != catalog_path)
+
+
+def test_lifecycle_rolls_back_partial_config_generation(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    paths = _files(tmp_path)
+    before = tuple(path.read_bytes() for path in paths)
+    _mock_builders(monkeypatch)
+
+    def fail_configs(_root: Path, *, check: bool, writer: Callable[[Path, str], None] | None = None) -> bool:
+        assert not check
+        assert writer is not None
+        writer(paths[4], "partial generated config\n")
+        msg = "injected config failure"
+        raise RuntimeError(msg)
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- partial artifact generation is the behavior under test.
+        config_generation, "sync_warning_levels", fail_configs
+    )
+    with pytest.raises(RuntimeError, match="injected config failure"):
+        rule_lifecycle.stage_warning(tmp_path, _SELECTOR)
+
+    assert tuple(path.read_bytes() for path in paths) == before
+
+
 def test_stage_warning_suggests_the_closest_live_selector(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -263,3 +342,65 @@ def test_source_severity_editor_round_trips_other_engines(
     promoted = rule_level_source.prepare(tmp_path, selector, "rule.txt", DefaultLevel.ERROR)
     assert promoted.current is DefaultLevel.WARNING
     assert promoted.after == source
+
+
+def test_stage_warning_projects_new_severity_after_rule_was_imported(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source, *_ = _files(tmp_path)
+    imported = rule_examples.selected(RuleSelector.parse("python:no-dunder-all")).spec
+    stale = replace(imported, rule_id=RuleId("new-rule"), code="SARJ999", default_level=DefaultLevel.ERROR)
+    real_build = rule_catalog_artifact.build
+    real_sync = rule_catalog_artifact.sync
+    _mock_builders(monkeypatch)
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- intercept live engine registries and catalog dispatch under test.
+        rule_catalog_artifact, "build", real_build
+    )
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- intercept live engine registries and catalog dispatch under test.
+        rule_catalog_artifact, "sync", real_sync
+    )
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- intercept live engine registries and catalog dispatch under test.
+        rule_catalog_artifact, "_python_specs", lambda: (stale,)
+    )
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- intercept live engine registries and catalog dispatch under test.
+        rule_catalog_artifact, "_sql_specs", lambda: ()
+    )
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- intercept live engine registries and catalog dispatch under test.
+        rule_catalog_artifact, "_iac_specs", lambda: ()
+    )
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- intercept live engine registries and catalog dispatch under test.
+        textlint, "REGISTRY", {}
+    )
+
+    assert rule_lifecycle.stage_warning(tmp_path, _SELECTOR).status == 0
+    assert stale.default_level is DefaultLevel.ERROR
+    assert "default_level=Severity.WARNING" in source.read_text(encoding="utf-8")
+    catalog = as_table(
+        parse_json(
+            (tmp_path / "packages/standards/src/sarj_standards/schemas/rule-catalog.v1.json").read_text(
+                encoding="utf-8"
+            )
+        )
+    )
+    assert as_table(list_field(catalog, "rules")[0])["defaultLevel"] == "warning"
+    assert rule_lifecycle.promote_error(tmp_path, _SELECTOR).status == 0
+    catalog = as_table(
+        parse_json(
+            (tmp_path / "packages/standards/src/sarj_standards/schemas/rule-catalog.v1.json").read_text(
+                encoding="utf-8"
+            )
+        )
+    )
+    assert as_table(list_field(catalog, "rules")[0])["defaultLevel"] == "error"
+
+
+def test_modular_text_severity_uses_ast_independent_of_field_order(tmp_path: Path) -> None:
+    source = "documentation = RuleMeta(summary='example', default_level = DefaultLevel.WARNING, code='SARJ399')\n"
+    path = tmp_path / "rule.py"
+    path.write_text(source, encoding="utf-8")
+    selector = RuleSelector.parse("text:sample")
+    promoted = rule_level_source.prepare(tmp_path, selector, "rule.py", DefaultLevel.ERROR)
+    assert promoted.current is DefaultLevel.WARNING
+    assert "default_level = DefaultLevel.ERROR" in promoted.after
+    path.write_text(promoted.after, encoding="utf-8")
+    assert rule_level_source.prepare(tmp_path, selector, "rule.py", DefaultLevel.WARNING).after == source

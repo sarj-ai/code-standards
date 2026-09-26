@@ -16,14 +16,16 @@ from sarj_python_lint.rule_base import (
     RuleExample,
     Severity,
     is_suppressed,
-    parse_or_none,
 )
 from sarj_python_lint.rules._ast_index import nodes, walk
-from sarj_python_lint.rules._paths import is_generated, is_test_path
+from sarj_python_lint.rules._paths import is_test_path
 
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+    from sarj_python_lint._file_context import PythonFileContext
+    from sarj_python_lint.rules._ast_index import NodeIndex
 
 
 _MIN_SAME_TYPE = 2
@@ -167,27 +169,28 @@ class RequireKeywordOnlySwapProneParams(Rule):
     description = documentation.summary
 
     @override
-    def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if is_test_path(path) or is_generated(path, source) or _is_exempt_path(path):
+    def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
+        path = context.path
+        if is_test_path(path) or context.generated or _is_exempt_path(path):
             return []
-        tree = parse_or_none(path, source)
+        tree = context.tree
         if tree is None:
             return []
         # Run cheap signature guards before allocating the analysis visitor.
         candidates = [
             (node, offending)
-            for node in nodes(tree, ast.FunctionDef, ast.AsyncFunctionDef)
+            for node in context.nodes(ast.FunctionDef, ast.AsyncFunctionDef)
             if not _is_exempt(node) and (offending := _swap_prone_annotation(node.args)) is not None
         ]
         if not candidates:
             return []
-        value_referenced = _value_referenced_names(tree)
-        overload_names = _overload_stub_names(tree)
-        method_ids = _method_node_ids(tree)
-        externally_owned_method_ids = _externally_owned_method_node_ids(tree)
-        protocol_method_names = _protocol_method_names(tree)
+        value_referenced = _value_referenced_names(tree, node_index=context.node_index)
+        overload_names = _overload_stub_names(tree, node_index=context.node_index)
+        method_ids = _method_node_ids(tree, node_index=context.node_index)
+        externally_owned_method_ids = _externally_owned_method_node_ids(tree, node_index=context.node_index)
+        protocol_method_names = _protocol_method_names(tree, node_index=context.node_index)
         trusted_hmac_bindings = _trusted_hmac_bindings(tree)
-        source_lines = source.splitlines()
+        source_lines = context.source_lines
         diags: list[Diagnostic] = []
         for node, offending in candidates:
             exclusions = (
@@ -277,19 +280,19 @@ def _dotted_name(node: ast.expr) -> tuple[str, ...] | None:
     return None
 
 
-def _method_node_ids(tree: ast.AST) -> frozenset[int]:
+def _method_node_ids(tree: ast.AST, *, node_index: NodeIndex | None = None) -> frozenset[int]:
     return frozenset(
         id(child)
-        for node in nodes(tree, ast.ClassDef)
+        for node in nodes(tree, ast.ClassDef, index=node_index)
         for child in node.body
         if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef))
     )
 
 
-def _externally_owned_method_node_ids(tree: ast.AST) -> frozenset[int]:
+def _externally_owned_method_node_ids(tree: ast.AST, *, node_index: NodeIndex | None = None) -> frozenset[int]:
     return frozenset(
         id(child)
-        for node in nodes(tree, ast.ClassDef)
+        for node in nodes(tree, ast.ClassDef, index=node_index)
         if node.decorator_list
         or node.keywords
         or any(not (isinstance(base, ast.Name) and base.id == "object") for base in node.bases)
@@ -298,10 +301,10 @@ def _externally_owned_method_node_ids(tree: ast.AST) -> frozenset[int]:
     )
 
 
-def _protocol_method_names(tree: ast.AST) -> frozenset[str]:
+def _protocol_method_names(tree: ast.AST, *, node_index: NodeIndex | None = None) -> frozenset[str]:
     return frozenset(
         child.name
-        for node in nodes(tree, ast.ClassDef)
+        for node in nodes(tree, ast.ClassDef, index=node_index)
         if any((base_name := _dotted_name(base)) is not None and base_name[-1] == "Protocol" for base in node.bases)
         for child in node.body
         if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef))
@@ -489,21 +492,25 @@ def _shares_one_stem(arg_names: list[str], suffix: re.Pattern[str]) -> bool:
     return len(stems) == 1 and bool(next(iter(stems)))
 
 
-def _value_referenced_names(tree: ast.AST) -> frozenset[str]:
-    call_funcs = {id(node.func) for node in nodes(tree, ast.Call)}
-    names = {node.id for node in nodes(tree, ast.Name) if isinstance(node.ctx, ast.Load) and id(node) not in call_funcs}
+def _value_referenced_names(tree: ast.AST, *, node_index: NodeIndex | None = None) -> frozenset[str]:
+    call_funcs = {id(node.func) for node in nodes(tree, ast.Call, index=node_index)}
+    names = {
+        node.id
+        for node in nodes(tree, ast.Name, index=node_index)
+        if isinstance(node.ctx, ast.Load) and id(node) not in call_funcs
+    }
     names.update(
         node.attr
-        for node in nodes(tree, ast.Attribute)
+        for node in nodes(tree, ast.Attribute, index=node_index)
         if isinstance(node.ctx, ast.Load) and id(node) not in call_funcs
     )
     return frozenset(names)
 
 
-def _overload_stub_names(tree: ast.AST) -> frozenset[str]:
+def _overload_stub_names(tree: ast.AST, *, node_index: NodeIndex | None = None) -> frozenset[str]:
     return frozenset(
         node.name
-        for node in nodes(tree, ast.FunctionDef, ast.AsyncFunctionDef)
+        for node in nodes(tree, ast.FunctionDef, ast.AsyncFunctionDef, index=node_index)
         if any(
             (isinstance(dec, ast.Name) and dec.id == "overload")
             or (isinstance(dec, ast.Attribute) and dec.attr == "overload")

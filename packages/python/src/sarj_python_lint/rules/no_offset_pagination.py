@@ -15,15 +15,14 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    parse_or_none,
 )
 from sarj_python_lint.rules._ast_index import nodes, walk
-from sarj_python_lint.rules._paths import is_generated
 from sarj_python_lint.rules._sql import is_store_module, sql_string_value, strip_sql_noise
 
 
 if TYPE_CHECKING:
-    from pathlib import Path
+    from sarj_python_lint._file_context import PythonFileContext
+    from sarj_python_lint.rules._ast_index import NodeIndex
 
 
 _DYNAMIC_VALUE = r"(?:%s|%\(\w+\)s|\?\d*|:\w+|@\w+|\$\d+|:__sarj_dynamic__)"
@@ -94,21 +93,22 @@ class NoOffsetPagination(Rule):
     description = documentation.summary
 
     @override
-    def check(self, path: Path, source: str) -> list[Diagnostic]:
+    def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
+        path = context.path
         if (
             not is_store_module(path)
-            or is_generated(path, source)
+            or context.generated
             or _MIGRATION_PARTS.intersection(part.casefold() for part in path.parts)
         ):
             return []
-        tree = parse_or_none(path, source)
+        tree = context.tree
         if tree is None:
             return []
 
         diags: list[Diagnostic] = []
         consumed: set[int] = set()
-        docstrings = _docstring_node_ids(tree)
-        for node in nodes(tree, ast.Constant, ast.BinOp, ast.JoinedStr):
+        docstrings = _docstring_node_ids(tree, node_index=context.node_index)
+        for node in context.nodes(ast.Constant, ast.BinOp, ast.JoinedStr):
             if id(node) in consumed or id(node) in docstrings:
                 continue
             text = _sql_value(node)
@@ -151,9 +151,9 @@ def _sql_value(node: ast.expr) -> str | None:
     return sql_string_value(node)
 
 
-def _docstring_node_ids(tree: ast.Module) -> set[int]:
+def _docstring_node_ids(tree: ast.Module, *, node_index: NodeIndex | None = None) -> set[int]:
     result: set[int] = set()
-    for owner in nodes(tree, ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef):
+    for owner in nodes(tree, ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef, index=node_index):
         if not owner.body or not isinstance(owner.body[0], ast.Expr):
             continue
         value = owner.body[0].value

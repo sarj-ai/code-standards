@@ -14,6 +14,7 @@ if TYPE_CHECKING:
 def _write_manifests(root: Path, version: str) -> None:
     for relative in (
         "packages/bootstrap/pyproject.toml",
+        "packages/contracts/pyproject.toml",
         "packages/python/pyproject.toml",
         "packages/sql/pyproject.toml",
         "packages/iac/pyproject.toml",
@@ -41,7 +42,7 @@ def test_evaluate_reports_every_stale_manifest(tmp_path: Path) -> None:
     result = evaluate(tmp_path, {"info": {"version": "0.16.7"}})
 
     assert not result.current
-    assert len(result.stale) == 5
+    assert len(result.stale) == 6
 
 
 @pytest.mark.parametrize("version", ["0.17.0rc1", "0.17.0.dev1"])

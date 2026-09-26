@@ -20,14 +20,15 @@ from sarj_python_lint.rule_base import (
     RuleExample,
     Severity,
     is_suppressed,
-    parse_or_none,
 )
-from sarj_python_lint.rules._paths import is_generated
+from sarj_python_lint.rules._ast_index import walk as walk_ast
 
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
-    from pathlib import Path
+
+    from sarj_python_lint._file_context import PythonFileContext
+    from sarj_python_lint.rules._ast_index import NodeIndex
 
 
 _Callable = ast.FunctionDef | ast.AsyncFunctionDef
@@ -193,17 +194,19 @@ class PreferCollectionComprehension(Rule):
     description = documentation.summary
 
     @override
-    def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if is_generated(path, source):
+    def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
+        path = context.path
+        source = context.source
+        if context.generated:
             return []
-        tree = parse_or_none(path, source)
+        tree = context.tree
         if tree is None:
             return []
 
-        source_lines = source.splitlines()
+        source_lines = context.source_lines
         comments = _comment_lines(source)
         diagnostics: list[Diagnostic] = []
-        for owner in (node for node in ast.walk(tree) if isinstance(node, _Callable)):
+        for owner in (node for node in context.nodes(ast.AST) if isinstance(node, _Callable)):
             for block in _statement_blocks(owner.body):
                 for init, loop in pairwise(block):
                     finding = _candidate(
@@ -213,6 +216,7 @@ class PreferCollectionComprehension(Rule):
                         loop=loop,
                         source_lines=source_lines,
                         comments=comments,
+                        node_index=context.node_index,
                     )
                     if finding is None:
                         continue
@@ -254,6 +258,7 @@ def _candidate(
     loop: ast.stmt,
     source_lines: list[str],
     comments: frozenset[int],
+    node_index: NodeIndex | None = None,
 ) -> _Candidate | None:
     if not isinstance(init, _Init) or not isinstance(loop, ast.For) or loop.orelse:
         return None
@@ -261,7 +266,7 @@ def _candidate(
     if initialized is None:
         return None
     name = initialized.name
-    if initialized.kind is _CollectionKind.SET and _set_is_shadowed(tree):
+    if initialized.kind is _CollectionKind.SET and _set_is_shadowed(tree, node_index=node_index):
         return None
     if _has_comment(init, loop, comments) or is_suppressed(
         source_lines, loop.lineno, PreferCollectionComprehension.code
@@ -458,7 +463,7 @@ def _bounded_list_projection(node: ast.expr, names: frozenset[str]) -> bool:
                 return False
             values = (*args, *(keyword.value for keyword in keywords))
             return all(
-                not any(isinstance(item, ast.Call) for item in ast.walk(value))
+                not any(isinstance(item, ast.Call) for item in walk_ast(value))
                 and not _contains_prohibited_expression(value)
                 for value in values
             )
@@ -526,29 +531,29 @@ def _is_derived(node: ast.AST) -> bool:
 
 def _bound_names(target: ast.expr) -> frozenset[str]:
     return frozenset(
-        node.id for node in ast.walk(target) if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store)
+        node.id for node in walk_ast(target) if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store)
     )
 
 
 def _contains_starred(target: ast.expr) -> bool:
-    return any(isinstance(node, ast.Starred) for node in ast.walk(target))
+    return any(isinstance(node, ast.Starred) for node in walk_ast(target))
 
 
 def _loads_name(node: ast.AST, name: str) -> bool:
     return any(
-        isinstance(item, ast.Name) and isinstance(item.ctx, ast.Load) and item.id == name for item in ast.walk(node)
+        isinstance(item, ast.Name) and isinstance(item.ctx, ast.Load) and item.id == name for item in walk_ast(node)
     )
 
 
 def _contains_prohibited_expression(node: ast.AST) -> bool:
-    return any(isinstance(item, _PROHIBITED_EXPRESSION_NODES) for item in ast.walk(node))
+    return any(isinstance(item, _PROHIBITED_EXPRESSION_NODES) for item in walk_ast(node))
 
 
 def _target_binding_is_observable(owner: _Callable, names: frozenset[str], loop: ast.For) -> bool:
     if _declares_external(owner, names) or any(_loads_name(loop.iter, name) for name in names):
         return True
     end_line = loop.end_lineno or loop.lineno
-    for node in ast.walk(owner):
+    for node in walk_ast(owner):
         if isinstance(node, ast.arg) and node.arg in names:
             return True
         if (
@@ -565,12 +570,12 @@ def _target_binding_is_observable(owner: _Callable, names: frozenset[str], loop:
 
 def _declares_external(owner: _Callable, names: frozenset[str]) -> bool:
     return any(
-        isinstance(node, (ast.Global, ast.Nonlocal)) and not names.isdisjoint(node.names) for node in ast.walk(owner)
+        isinstance(node, (ast.Global, ast.Nonlocal)) and not names.isdisjoint(node.names) for node in walk_ast(owner)
     )
 
 
-def _set_is_shadowed(tree: ast.Module) -> bool:
-    for node in ast.walk(tree):
+def _set_is_shadowed(tree: ast.Module, *, node_index: NodeIndex | None = None) -> bool:
+    for node in walk_ast(tree, index=node_index):
         match node:
             case (
                 ast.arg(arg="set")

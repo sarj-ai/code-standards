@@ -34,6 +34,7 @@ _TAGGER_NAME = "sarj-ai release automation"
 class ReleaseTargetId(StrEnum):
     TYPESCRIPT = "typescript"
     BOOTSTRAP = "bootstrap"
+    CONTRACTS = "contracts"
     PYTHON = "python"
     SQL = "sql"
     IAC = "iac"
@@ -78,6 +79,9 @@ RELEASE_TARGETS: Final[Mapping[str, ReleaseTarget]] = MappingProxyType(
         ReleaseTargetId.BOOTSTRAP: ReleaseTarget(
             Path("packages/bootstrap/pyproject.toml"), "toml", (ReleasePublication("pypi", "sarj-standards-bootstrap"),)
         ),
+        ReleaseTargetId.CONTRACTS: ReleaseTarget(
+            Path("packages/contracts/pyproject.toml"), "toml", (ReleasePublication("pypi", "sarj-rule-contracts"),)
+        ),
         ReleaseTargetId.PYTHON: ReleaseTarget(
             Path("packages/python/pyproject.toml"), "toml", (ReleasePublication("pypi", "sarj-python-lint"),)
         ),
@@ -103,6 +107,7 @@ RELEASE_TARGETS: Final[Mapping[str, ReleaseTarget]] = MappingProxyType(
 RELEASE_ARTIFACT_PREFIXES: Final[Mapping[str, tuple[str, ...]]] = MappingProxyType(
     {
         ReleaseTargetId.BOOTSTRAP: ("packages/bootstrap/src/",),
+        ReleaseTargetId.CONTRACTS: ("packages/contracts/src/",),
         ReleaseTargetId.PYTHON: ("packages/python/src/",),
         ReleaseTargetId.SQL: ("packages/sql/src/",),
         ReleaseTargetId.IAC: ("packages/iac/src/",),

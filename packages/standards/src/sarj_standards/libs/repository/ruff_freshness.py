@@ -22,6 +22,7 @@ _ISSUE_TITLE: Final = "[Ruff freshness] Standards is behind PyPI"
 _MANIFESTS: Final = (
     ("packages/standards/pyproject.toml", "=="),
     ("packages/bootstrap/pyproject.toml", ">="),
+    ("packages/contracts/pyproject.toml", ">="),
     ("packages/python/pyproject.toml", ">="),
     ("packages/sql/pyproject.toml", ">="),
     ("packages/iac/pyproject.toml", ">="),

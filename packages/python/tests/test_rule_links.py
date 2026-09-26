@@ -11,7 +11,7 @@ from sarj_python_lint.rules.invalid_pydantic_field_default import InvalidPydanti
 
 
 if TYPE_CHECKING:
-    from pathlib import Path
+    from sarj_python_lint._file_context import PythonFileContext
 
 
 class _Fake(Rule):
@@ -19,10 +19,9 @@ class _Fake(Rule):
     code: str = "SARJ999"
     description: str = "Fake rule used to test derived example links."
 
-    def check(
+    def check_context(
         self,
-        path: Path,  # ruff: ignore[unused-method-argument] -- Rule.check fixes the fake's callback signature.
-        source: str,  # ruff: ignore[unused-method-argument] -- Rule.check fixes the fake's callback signature.
+        context: PythonFileContext,  # ruff: ignore[unused-method-argument] — implements the rule callback signature.
     ) -> list[Diagnostic]:
         return []
 

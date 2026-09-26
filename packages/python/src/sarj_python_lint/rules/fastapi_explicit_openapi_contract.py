@@ -17,9 +17,8 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    parse_or_none,
 )
-from sarj_python_lint.rules._ast_index import children, nodes
+from sarj_python_lint.rules._ast_index import children
 from sarj_python_lint.rules._fastapi import (
     SCHEMA_MARKERS,
     FastapiIndex,
@@ -27,16 +26,16 @@ from sarj_python_lint.rules._fastapi import (
     flat_name,
 )
 from sarj_python_lint.rules._fixed_record import builds_fixed_record
-from sarj_python_lint.rules._paths import is_generated, is_test_path
+from sarj_python_lint.rules._paths import is_test_path
+
+
+if TYPE_CHECKING:
+    from sarj_python_lint._file_context import PythonFileContext
 
 
 class _FunctionParameter(NamedTuple):
     parameter: ast.arg
     default: ast.expr | None
-
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 
 _PATH_PARAMETER_RE = re.compile(r"\{([A-Za-z_][A-Za-z0-9_]*)(?::[^}]+)?\}")
@@ -199,21 +198,22 @@ class FastapiExplicitOpenapiContract(Rule):
     description: str = documentation.summary
 
     @override
-    def check(self, path: Path, source: str) -> list[Diagnostic]:
+    def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
+        path = context.path
         if (
             is_test_path(path)
-            or is_generated(path, source)
+            or context.generated
             or any(part.lower() in _DOCUMENTATION_EXAMPLE_DIR_NAMES for part in path.parts)
         ):
             return []
-        tree = parse_or_none(path, source)
+        tree = context.tree
         if tree is None:
             return []
-        index = FastapiIndex(tree, path=path)
+        index = context.fastapi
         scopes = _function_scopes(tree)
         findings: list[_Finding] = []
         declared: list[tuple[int, Route]] = []
-        for function in nodes(tree, ast.FunctionDef, ast.AsyncFunctionDef):
+        for function in context.nodes(ast.FunctionDef, ast.AsyncFunctionDef):
             all_routes = index.routes(function)
             declared.extend((scopes[id(function)], route) for route in all_routes)
             routes = tuple(route for route in all_routes if not route.is_hidden)

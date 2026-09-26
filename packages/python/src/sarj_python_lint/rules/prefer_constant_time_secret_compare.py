@@ -16,15 +16,16 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
-    parse_or_none,
 )
 from sarj_python_lint.rules._ast_index import children, nodes
-from sarj_python_lint.rules._paths import is_generated, is_test_path, is_test_support_path
+from sarj_python_lint.rules._paths import is_test_path, is_test_support_path
 
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator
-    from pathlib import Path
+
+    from sarj_python_lint._file_context import PythonFileContext
+    from sarj_python_lint.rules._ast_index import NodeIndex
 
 
 _AUTH_WORDS = frozenset(
@@ -145,20 +146,22 @@ class PreferConstantTimeSecretCompare(Rule):
     description: str = documentation.summary
 
     @override
-    def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if is_generated(path, source) or is_test_path(path) or is_test_support_path(path):
+    def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
+        path = context.path
+        source = context.source
+        if context.generated or is_test_path(path) or is_test_support_path(path):
             return []
         if "==" not in source and "!=" not in source:
             return []
-        tree = parse_or_none(path, source)
+        tree = context.tree
         if tree is None:
             return []
-        parents = {id(child): parent for parent in ast.walk(tree) for child in ast.iter_child_nodes(parent)}
+        parents = {id(child): parent for parent in context.nodes(ast.AST) for child in ast.iter_child_nodes(parent)}
         role_cache: dict[int, _Roles] = {}
         environment_names = _environment_names(tree)
-        dunder_compares = _equality_dunder_compares(tree, source)
+        dunder_compares = _equality_dunder_compares(tree, source, node_index=context.node_index)
         diagnostics: list[Diagnostic] = []
-        for comparison in nodes(tree, ast.Compare):
+        for comparison in context.nodes(ast.Compare):
             if id(comparison) in dunder_compares or len(comparison.ops) != 1:
                 continue
             if not isinstance(comparison.ops[0], (ast.Eq, ast.NotEq)):
@@ -487,12 +490,12 @@ def _operand_name(node: ast.expr) -> str | None:
             return None
 
 
-def _equality_dunder_compares(tree: ast.AST, source: str) -> frozenset[int]:
+def _equality_dunder_compares(tree: ast.AST, source: str, *, node_index: NodeIndex | None = None) -> frozenset[int]:
     if not any(dunder in source for dunder in _EQUALITY_DUNDERS):
         return frozenset()
     return frozenset(
         id(inner)
-        for function in nodes(tree, ast.FunctionDef, ast.AsyncFunctionDef)
+        for function in nodes(tree, ast.FunctionDef, ast.AsyncFunctionDef, index=node_index)
         if function.name in _EQUALITY_DUNDERS
         for inner in _same_scope_compares(function)
     )

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from datetime import timedelta
 from enum import StrEnum
 from functools import lru_cache
@@ -122,6 +122,7 @@ class _Args:
     roots: list[Path] = field(default_factory=list)
     include_text: Path | None = None
     rules_cmd: str = ""
+    repeats: int = 5
     rule_category: str = ""
     rule_summary: str = ""
     apply_rule: bool = False
@@ -145,6 +146,7 @@ class _Args:
     release_exclude_file: list[Path] = field(default_factory=list)
     output: Path | None = None
     external: bool = False
+    jobs: int = 1
     trust: str = "safe"
     trust_repository_code: bool = False
     before: str = ""
@@ -156,6 +158,7 @@ class _Args:
     hooks: manifest.HookManager | None = None
     show_cmd: str = ""
     catalog_cmd: str = ""
+    typescript_built: bool = False
     exclude_cmd: str = ""
     exclude_kind: str = ""
     value: str = ""
@@ -1000,6 +1003,7 @@ def cmd_verify(args: _Args) -> int:
         root,
         None if adopted is None else adopted.verify_paths,
         raw=adopted is None,
+        jobs=args.jobs,
         trusted=args.trust_repository_code,
     )
 
@@ -1076,7 +1080,7 @@ def cmd_check(args: _Args) -> int:
             return health_status
         args.files = [path for path in args.files if runner.accepts_hook_path(Path(path), root=root)]
         if not args.files and not scope.react_doctor_triggered:
-            return _run_canonical_check(root, (), trusted=args.trust_repository_code, staged=True)
+            return _run_canonical_check(root, (), trusted=args.trust_repository_code, staged=True, jobs=args.jobs)
     if args.output_format != "text":
         return _check_machine_output(args, root, scope)
     return _check_text_output(args, root, scope)
@@ -1090,6 +1094,7 @@ def _check_selected_rules(args: _Args, root: Path, scope: _CheckScope) -> int:
     paths = args.files if args.files or args.staged or scope.pull_request_scoped else None
     report = Standards(root).analyze(
         paths,
+        jobs=args.jobs,
         rules=args.selected_rules,
         external=any(selector.engine.value == "eslint" for selector in args.selected_rules),
         trust=TrustMode.TRUSTED if args.trust_repository_code else TrustMode.SAFE,
@@ -1110,8 +1115,9 @@ def _check_text_output(args: _Args, root: Path, scope: _CheckScope) -> int:
                     (),
                     trusted=args.trust_repository_code,
                     react_doctor_triggered=True,
+                    jobs=args.jobs,
                 )
-            return _run_canonical_check(root, (), trusted=args.trust_repository_code)
+            return _run_canonical_check(root, (), trusted=args.trust_repository_code, jobs=args.jobs)
     if not args.files:
         return cmd_verify(args)
     check_options: dict[str, bool] = {
@@ -1120,7 +1126,7 @@ def _check_text_output(args: _Args, root: Path, scope: _CheckScope) -> int:
     }
     if scope.react_doctor_triggered:
         check_options["react_doctor_triggered"] = True
-    return _run_canonical_check(root, list(args.files), **check_options)
+    return _run_canonical_check(root, list(args.files), jobs=args.jobs, **check_options)
 
 
 @dataclass(slots=True)
@@ -1229,6 +1235,7 @@ def _check_machine_output(args: _Args, root: Path, scope: _CheckScope) -> int:
         report = Standards(root).analyze(
             (),
             external=True,
+            jobs=args.jobs,
             trust=TrustMode.TRUSTED if args.trust_repository_code else TrustMode.SAFE,
             mode=AnalysisMode.POLICY,
             react_doctor_triggered=scope.react_doctor_triggered,
@@ -1308,6 +1315,7 @@ def _run_canonical_check(
     trusted: bool = False,
     staged: bool = False,
     react_doctor_triggered: bool = False,
+    jobs: int = 1,
 ) -> int:
     from sarj_standards.api import AnalysisMode, Standards, TrustMode  # ruff: ignore[import-outside-top-level]
     from sarj_standards.libs.diagnostics import to_text  # ruff: ignore[import-outside-top-level]
@@ -1315,6 +1323,7 @@ def _run_canonical_check(
     report = Standards(root).analyze(
         paths,
         external=True,
+        jobs=jobs,
         trust=TrustMode.TRUSTED if trusted else TrustMode.SAFE,
         mode=AnalysisMode.RAW if raw else AnalysisMode.POLICY,
         staged=staged,
@@ -1337,6 +1346,7 @@ def cmd_analyze(args: _Args) -> int:
         return 2
     report = Standards(root).analyze(
         args.files or None,
+        jobs=args.jobs,
         external=args.external,
         trust=args.trust,
         mode=AnalysisMode(args.analysis_mode),
@@ -1359,6 +1369,7 @@ def cmd_rule_evaluate(args: _Args) -> int:
         return 2
     report = Standards(root).analyze(
         args.files or None,
+        jobs=args.jobs,
         external=any(selector.engine.value == "eslint" for selector in args.selected_rules),
         trust=TrustMode.TRUSTED if args.trust_repository_code else TrustMode.SAFE,
         mode=(AnalysisMode.CORPUS if args.evaluation_scope is _EvaluationScope.CORPUS else AnalysisMode.POLICY),
@@ -1548,6 +1559,7 @@ def cmd_observe(args: _Args) -> int:
         return 2
     report = Standards(root).analyze(
         args.files or None,
+        jobs=args.jobs,
         external=any(selector.engine.value == "eslint" for selector in args.selected_rules),
         trust=TrustMode.TRUSTED if args.trust_repository_code else TrustMode.SAFE,
         mode=AnalysisMode.OBSERVE,
@@ -2621,6 +2633,7 @@ class _ExcludeKind(StrEnum):
 
 
 class _ReleaseTargetChoice(StrEnum):
+    CONTRACTS = "contracts"
     TYPESCRIPT = "typescript"
     BOOTSTRAP = "bootstrap"
     PYTHON = "python"
@@ -2837,6 +2850,9 @@ def build_app(handler: Callable[[_Args], int] = _dispatch) -> typer.Typer:
                 help="allow executable repository ESLint configuration (generated hooks and CI set this explicitly)",
             ),
         ] = False,
+        jobs: Annotated[
+            int, typer.Option("--jobs", min=1, max=2, help="overlap native and external analysis (default: 1)")
+        ] = 1,
         staged: Annotated[
             bool,
             typer.Option(
@@ -2861,6 +2877,7 @@ def build_app(handler: Callable[[_Args], int] = _dispatch) -> typer.Typer:
             _Args(
                 dest=_command_root(ctx),
                 cmd="check",
+                jobs=jobs,
                 trust_repository_code=trust_repository_code,
                 staged=staged,
                 selected_rules=selected_rules if selected_rules is not None else [],
@@ -3725,6 +3742,31 @@ def build_app(handler: Callable[[_Args], int] = _dispatch) -> typer.Typer:
             )
         )
 
+    @group_maintain_rules.command("bench", help="measure native Python analysis with diagnostic and source digests")
+    def command_maintain_rules_bench(
+        ctx: typer.Context,
+        files: Annotated[list[str], typer.Argument(help="Python files or directories")],
+        *,
+        repeats: Annotated[int, typer.Option(min=1)] = 5,
+        selected_rules: Annotated[
+            list[RuleSelector] | None,
+            typer.Option(
+                "--rule", parser=_parse_rule_selector, help="python:ID selector; defaults to all Python rules"
+            ),
+        ] = None,
+    ) -> int:
+        return handler(
+            _Args(
+                dest=_command_root(ctx),
+                cmd="maintain",
+                repo_cmd="rules",
+                rules_cmd="bench",
+                files=files,
+                repeats=repeats,
+                selected_rules=selected_rules or [],
+            )
+        )
+
     @group_maintain_rules.command("changes", help="compare rule inventory and policy between two Git revisions")
     def command_maintain_rules_changes(
         ctx: typer.Context,
@@ -3806,6 +3848,11 @@ def build_app(handler: Callable[[_Args], int] = _dispatch) -> typer.Typer:
     @group_maintain_catalog.command("check", help="verify the public catalog matches every live rule")
     def command_maintain_catalog_check(
         ctx: typer.Context,
+        *,
+        typescript_built: Annotated[
+            bool,
+            typer.Option("--typescript-built", help="reuse the TypeScript build completed by this verification run"),
+        ] = False,
     ) -> int:
         return handler(
             _Args(
@@ -3813,6 +3860,7 @@ def build_app(handler: Callable[[_Args], int] = _dispatch) -> typer.Typer:
                 cmd="maintain",
                 repo_cmd="catalog",
                 catalog_cmd="check",
+                typescript_built=typescript_built,
             )
         )
 
@@ -3972,8 +4020,11 @@ def _run_repo_check(args: _Args) -> int:
 
 
 def _run_repo_sync_ledger(args: _Args) -> int:
-    from sarj_standards.libs.repository import rule_maintenance  # ruff: ignore[import-outside-top-level]
+    from sarj_standards.libs.repository import rule_checkout, rule_maintenance  # ruff: ignore[import-outside-top-level]
 
+    rule_checkout.ensure_current(
+        _resolve_dest(args.dest), ("maintain", "sync-ledger", *(("--check",) if args.check else ())), all_engines=True
+    )
     result = rule_maintenance.sync_ledger(_resolve_dest(args.dest), check=args.check)
     print(result.message)
     return result.status
@@ -4010,8 +4061,17 @@ def _run_repo_hooks(args: _Args) -> int:
 
 
 def _run_repo_rules(args: _Args) -> int:
-    from sarj_standards.libs.repository import rule_inventory_artifact  # ruff: ignore[import-outside-top-level]
+    from sarj_standards.libs.repository import rule_checkout, rule_inventory_artifact  # ruff: ignore[import-outside-top-level]
 
+    if args.selector is not None and args.rules_cmd in {"new", "verify", "prepare", "stage-warning", "promote-error"}:
+        rule_checkout.ensure_current(
+            _resolve_dest(args.dest),
+            ("maintain", "rules", args.rules_cmd, str(args.selector)),
+            engine=args.selector.engine,
+            all_engines=args.rules_cmd in {"prepare", "stage-warning", "promote-error"},
+        )
+    if args.rules_cmd in {"sync", "check"}:
+        rule_checkout.ensure_current(_resolve_dest(args.dest), ("maintain", "rules", args.rules_cmd), all_engines=True)
     if args.rules_cmd == "manifest":
         print(json.dumps(rule_inventory_artifact.load(), indent=2))
         return 0
@@ -4019,6 +4079,8 @@ def _run_repo_rules(args: _Args) -> int:
         return _run_repo_rules_changes(args)
     if args.rules_cmd == "evaluate":
         return cmd_rule_evaluate(args)
+    if args.rules_cmd == "bench":
+        return _run_repo_rules_bench(args)
     if args.rules_cmd == "new":
         return _run_repo_rules_new(args)
     if args.rules_cmd == "verify":
@@ -4030,10 +4092,38 @@ def _run_repo_rules(args: _Args) -> int:
     return result.status
 
 
-def _run_repo_catalog(args: _Args) -> int:
-    from sarj_standards.libs.repository import rule_catalog_artifact  # ruff: ignore[import-outside-top-level]
+def _run_repo_rules_bench(args: _Args) -> int:
+    from sarj_python_lint.benchmark import measure  # ruff: ignore[import-outside-top-level] -- benchmark-only dependency
+    from sarj_python_lint.rules import REGISTRY  # ruff: ignore[import-outside-top-level] -- benchmark selection
 
-    result = rule_catalog_artifact.sync(_resolve_dest(args.dest), check=args.catalog_cmd == "check")
+    for selector in args.selected_rules:
+        if selector.engine.value != "python" or selector.rule_id not in REGISTRY:
+            print(f"error: benchmark requires a registered python:ID selector: {selector}", file=sys.stderr)
+            return 2
+    root = _resolve_dest(args.dest)
+    try:
+        result = measure(
+            [root / path for path in args.files],
+            [selector.rule_id for selector in args.selected_rules] or None,
+            repeats=args.repeats,
+        )
+    except (OSError, ValueError, RuntimeError) as exc:
+        print(f"error: benchmark failed: {exc}", file=sys.stderr)
+        return 2
+    print(json.dumps(asdict(result), indent=2))
+    return 0
+
+
+def _run_repo_catalog(args: _Args) -> int:
+    from sarj_standards.libs.repository import rule_catalog_artifact, rule_checkout  # ruff: ignore[import-outside-top-level]
+
+    root = _resolve_dest(args.dest)
+    rule_checkout.ensure_current(root, ("maintain", "catalog", args.catalog_cmd), all_engines=True)
+    if args.typescript_built:
+        projection = rule_catalog_artifact.typescript_specs(root, already_built=True)
+        result = rule_catalog_artifact.sync(root, check=args.catalog_cmd == "check", typescript=projection)
+    else:
+        result = rule_catalog_artifact.sync(root, check=args.catalog_cmd == "check")
     print(result.message)
     return result.status
 
@@ -4150,7 +4240,7 @@ def _run_repo_release_publish(args: _Args, root: Path) -> int:
 
     target = args.release_target
     match target:
-        case "typescript" | "bootstrap" | "python" | "sql" | "iac" | "standards" | "tsconfig":
+        case "typescript" | "bootstrap" | "contracts" | "python" | "sql" | "iac" | "standards" | "tsconfig":
             publish_target = target
         case _:
             return 2
@@ -4218,7 +4308,7 @@ def _run_repo_rules_verify(args: _Args) -> int:
         msg = "verify requires a rule selector"
         raise TypeError(msg)
     try:
-        result = rule_authoring.verify(_resolve_dest(args.dest), args.selector)
+        result = rule_authoring.verify(_resolve_dest(args.dest), args.selector, run_tests=True)
     except (OSError, TypeError, ValueError, RuntimeError) as exc:
         print(f"error: cannot verify rule: {exc}", file=sys.stderr)
         return 2
@@ -4232,22 +4322,28 @@ def _run_repo_rules_stage_warning(args: _Args) -> int:
     if args.selector is None:  # pragma: no cover - Typer requires the positional value
         msg = f"{args.rules_cmd} requires a rule selector"
         raise TypeError(msg)
+    typescript = None
     if args.rules_cmd == "prepare":
         from sarj_standards.libs.repository import (  # ruff: ignore[import-outside-top-level]
             rule_authoring,
         )
 
         try:
-            verified = rule_authoring.verify(_resolve_dest(args.dest), args.selector)
+            verified = rule_authoring.verify(_resolve_dest(args.dest), args.selector, run_tests=True)
         except (OSError, TypeError, ValueError, RuntimeError) as exc:
             print(f"error: cannot verify rule before preparation: {exc}", file=sys.stderr)
             return 2
         if verified.status != 0:
             print(verified.message)
             return verified.status
+        typescript = verified.typescript
     try:
         operation = rule_lifecycle.promote_error if args.rules_cmd == "promote-error" else rule_lifecycle.stage_warning
-        result = operation(_resolve_dest(args.dest), args.selector, check=args.check)
+        result = (
+            operation(_resolve_dest(args.dest), args.selector, check=args.check)
+            if typescript is None
+            else operation(_resolve_dest(args.dest), args.selector, check=args.check, typescript=typescript)
+        )
     except (OSError, TypeError, ValueError, RuntimeError) as exc:
         print(f"error: cannot update rule lifecycle: {exc}", file=sys.stderr)
         return 2

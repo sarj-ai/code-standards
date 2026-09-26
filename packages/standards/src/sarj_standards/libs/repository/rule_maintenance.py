@@ -10,13 +10,14 @@ from typing import TYPE_CHECKING, Final, NamedTuple, Protocol, TypeIs
 from sarj_standards.libs.adoption.manifest import as_table, list_field
 from sarj_standards.libs.json_boundary import parse_json
 from sarj_standards.libs.linting import textlint
+from sarj_standards.libs.linting.text_rules._registry import REGISTRY as TEXT_RULES
 from sarj_standards.libs.typed_containers import is_object_mapping_view
 
 from . import ledger, repository
 
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Callable, Mapping
     from pathlib import Path
 
 
@@ -68,13 +69,19 @@ def inventory(root: Path) -> list[dict[str, str]]:
                 }
             )
     for rule_id, meta in sorted(textlint.REGISTRY.items()):
+        authored = TEXT_RULES.get(rule_id)
+        module = None if authored is None else authored.__module__.replace(".", "/")
         items.append(
             {
                 "family": "text",
                 "id": rule_id,
                 "code": meta.code,
-                "source": "packages/standards/src/sarj_standards/libs/linting/textlint.py",
-                "test": "packages/standards/tests/test_textlint.py",
+                "source": "packages/standards/src/sarj_standards/libs/linting/textlint.py"
+                if module is None
+                else f"packages/standards/src/{module}.py",
+                "test": "packages/standards/tests/test_textlint.py"
+                if module is None
+                else f"packages/standards/tests/text_rules/test_{module.rsplit('/', 1)[-1]}.py",
             }
         )
     eslint_rules = (
@@ -95,7 +102,7 @@ def inventory(root: Path) -> list[dict[str, str]]:
     return sorted(items, key=itemgetter("family", "id"))
 
 
-def sync_ledger(root: Path, *, check: bool) -> SyncResult:
+def sync_ledger(root: Path, *, check: bool, writer: Callable[[Path, str], None] | None = None) -> SyncResult:
     path = root / "packages/standards/src/sarj_standards/configs/rule-ledger.json"
     previous = _load_ledger(path)
     rules, codes, source_renames = _native_ledger_state()
@@ -122,7 +129,10 @@ def sync_ledger(root: Path, *, check: bool) -> SyncResult:
         return SyncResult(0, f"ok: {path.name} matches the registries")
     if check:
         return SyncResult(1, f"drift: {path}")
-    path.write_text(rendered, encoding="utf-8")
+    if writer is None:
+        path.write_text(rendered, encoding="utf-8")
+    else:
+        writer(path, rendered)
     status = 1 if any(entry.get("note") == _PLACEHOLDER for entry in retired) else 0
     return SyncResult(status, f"wrote: {path}")
 

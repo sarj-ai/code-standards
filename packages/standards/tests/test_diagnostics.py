@@ -44,6 +44,7 @@ from sarj_standards.libs.diagnostics import (
     to_sarif,
     to_text,
 )
+from sarj_standards.libs.json_boundary import parse_json
 from sarj_standards.libs.linting import external as external_module
 from sarj_standards.libs.linting.analysis import analyze as analyze_paths, report_from_tools
 from sarj_standards.libs.linting.policy import Policy
@@ -520,10 +521,9 @@ def test_standards_analysis_forwards_scoped_eslint_suppression_policy_to_the_pro
 
     assert report.issues == ()
     assert len(seen) == 1
-    flag = "--pass-on-unpruned-suppressions"
-    assert (flag in seen[0]) is expected
-    if expected:
-        assert seen[0].index(flag) < seen[0].index("--")
+    request = as_table(parse_json(seen[0][2]))
+    assert request["passOnUnpruned"] is expected
+    assert request["rules"] == ["prefer-ecmascript-private-members"]
 
 
 def test_fix_rejects_overlapping_edits() -> None:

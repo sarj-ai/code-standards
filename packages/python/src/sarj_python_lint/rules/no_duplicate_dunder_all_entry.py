@@ -13,13 +13,12 @@ from sarj_python_lint.rule_base import (
     RuleCategory,
     RuleDocumentation,
     RuleExample,
-    parse_or_none,
 )
-from sarj_python_lint.rules._paths import is_generated
+from sarj_python_lint.rules._ast_index import walk as walk_ast
 
 
 if TYPE_CHECKING:
-    from pathlib import Path
+    from sarj_python_lint._file_context import PythonFileContext
 
 
 class _LiteralElement(NamedTuple):
@@ -82,10 +81,11 @@ class NoDuplicateDunderAllEntry(Rule):
     description = documentation.summary
 
     @override
-    def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if path.suffix != ".py" or is_generated(path, source):
+    def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
+        path = context.path
+        if path.suffix != ".py" or context.generated:
             return []
-        tree = parse_or_none(path, source)
+        tree = context.tree
         if tree is None:
             return []
 
@@ -156,7 +156,7 @@ def _is_supported_dunder_all_growth(statement: ast.stmt) -> bool:
 
 
 def _mentions_dunder_all(node: ast.AST) -> bool:
-    for child in ast.walk(node):
+    for child in walk_ast(node):
         match child:
             case ast.Name(id="__all__"):
                 return True

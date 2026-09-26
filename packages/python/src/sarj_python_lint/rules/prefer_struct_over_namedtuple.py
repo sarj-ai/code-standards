@@ -15,13 +15,16 @@ from sarj_python_lint.rule_base import (
     RuleExample,
     Severity,
     is_suppressed,
-    parse_or_none,
 )
-from sarj_python_lint.rules._paths import is_generated, is_test_path
+from sarj_python_lint.rules._ast_index import walk as walk_ast
+from sarj_python_lint.rules._paths import is_test_path
 
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+    from sarj_python_lint._file_context import PythonFileContext
+    from sarj_python_lint.rules._ast_index import NodeIndex
 
 
 _MODULE_FACTORY = "module-factory"
@@ -85,27 +88,29 @@ class PreferStructOverNamedtuple(Rule):
     description: str = documentation.summary
 
     @override
-    def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if path.suffix != ".py" or "namedtuple" not in source or is_test_path(path) or is_generated(path, source):
+    def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
+        path = context.path
+        source = context.source
+        if path.suffix != ".py" or "namedtuple" not in source or is_test_path(path) or context.generated:
             return []
-        tree = parse_or_none(path, source)
+        tree = context.tree
         if tree is None:
             return []
-        parents = {child: parent for parent in ast.walk(tree) for child in ast.iter_child_nodes(parent)}
+        parents = {child: parent for parent in context.nodes(ast.AST) for child in ast.iter_child_nodes(parent)}
         scopes = [
             node
-            for node in ast.walk(tree)
+            for node in context.nodes(ast.AST)
             if isinstance(node, (ast.Module, ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
         ]
         events = {id(scope): _scope_binding_events(scope) for scope in scopes}
-        lines = source.splitlines()
+        lines = context.source_lines
         return [
             self._diag(path, call)
             for call in sorted(
-                (node for node in ast.walk(tree) if isinstance(node, ast.Call)),
+                (node for node in context.nodes(ast.AST) if isinstance(node, ast.Call)),
                 key=lambda node: (node.lineno, node.col_offset),
             )
-            if _is_static_owned_declaration(call, tree, parents)
+            if _is_static_owned_declaration(call, tree, parents, node_index=context.node_index)
             and _resolves_collections_namedtuple(call, tree, parents, events)
             and not _inside_compatibility_branch(call, parents)
             and not is_suppressed(lines, call.lineno, self.code)
@@ -125,7 +130,9 @@ class PreferStructOverNamedtuple(Rule):
         )
 
 
-def _is_static_owned_declaration(call: ast.Call, tree: ast.Module, parents: dict[ast.AST, ast.AST]) -> bool:
+def _is_static_owned_declaration(
+    call: ast.Call, tree: ast.Module, parents: dict[ast.AST, ast.AST], *, node_index: NodeIndex | None = None
+) -> bool:
     declaration = _declaration_name(call, parents)
     typename = _string_argument(call, 0, "typename")
     fields = _field_names(_argument(call, 1, "field_names"))
@@ -141,7 +148,7 @@ def _is_static_owned_declaration(call: ast.Call, tree: ast.Module, parents: dict
     module = next((item.value for item in call.keywords if item.arg == "module"), None)
     if module is not None and not (isinstance(module, ast.Constant) and module.value is None):
         return False
-    return not _record_has_declared_field_types(tree, call, parents, declaration, fields)
+    return not _record_has_declared_field_types(tree, call, parents, declaration, fields, node_index=node_index)
 
 
 def _declaration_name(call: ast.Call, parents: dict[ast.AST, ast.AST]) -> str | None:
@@ -182,6 +189,8 @@ def _record_has_declared_field_types(
     parents: dict[ast.AST, ast.AST],
     name: str,
     fields: tuple[str, ...],
+    *,
+    node_index: NodeIndex | None = None,
 ) -> bool:
     parent = parents.get(call)
     if isinstance(parent, ast.ClassDef):
@@ -191,7 +200,7 @@ def _record_has_declared_field_types(
             if isinstance(statement, ast.AnnAssign) and isinstance(statement.target, ast.Name)
         }
         return set(fields) <= annotated
-    for node in ast.walk(tree):
+    for node in walk_ast(tree, index=node_index):
         if not isinstance(node, ast.Assign) or node.lineno < call.lineno or not isinstance(node.value, ast.Dict):
             continue
         if not any(_is_annotations_target(target, name) for target in node.targets):
@@ -338,7 +347,7 @@ def _inside_compatibility_branch(call: ast.Call, parents: dict[ast.AST, ast.AST]
         if isinstance(current, ast.If) and any(
             (isinstance(node, ast.Name) and node.id == "TYPE_CHECKING")
             or (isinstance(node, ast.Attribute) and node.attr in {"version_info", "platform", "implementation"})
-            for node in ast.walk(current.test)
+            for node in walk_ast(current.test)
         ):
             return True
         current = parents.get(current)

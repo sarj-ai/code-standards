@@ -872,7 +872,7 @@ def test_match_free_module_skips_expensive_source_scans(monkeypatch: pytest.Monk
         prefer_or_pattern_module, "all_comments", fail_if_called
     )
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- lookup interception proves the lexical gate skips scanning.
-        prefer_or_pattern_module, "is_generated", fail_if_called
+        "sarj_python_lint._file_context.is_generated", fail_if_called
     )
     assert _check("def f(value):\n    return value\n") == []
 
@@ -885,7 +885,7 @@ def test_nonmergeable_match_skips_expensive_source_scans(monkeypatch: pytest.Mon
         prefer_or_pattern_module, "all_comments", fail_if_called
     )
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- lookup interception proves the shape gate skips scanning.
-        prefer_or_pattern_module, "is_generated", fail_if_called
+        "sarj_python_lint._file_context.is_generated", fail_if_called
     )
     assert (
         _check(

@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Self
 
+from sarj_python_lint.rules._ast_index import walk as walk_ast
+
 
 @dataclass(frozen=True, slots=True)
 class _ImportTarget:
@@ -77,7 +79,7 @@ class ImportIndex:
 
 def _non_import_bindings(tree: ast.Module) -> set[str]:
     names: set[str] = set()
-    for node in ast.walk(tree):
+    for node in walk_ast(tree):
         match node:
             case ast.Name(id=name, ctx=(ast.Store() | ast.Del())) | ast.arg(arg=name):
                 names.add(name)

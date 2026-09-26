@@ -1,6 +1,6 @@
 [project]
 name = "sarj-python-lint"
-version = "0.88.0"
+version = "1.0.0"
 description = "Custom Python lint rules — AST-based, pre-commit-friendly, hypermodern defaults"
 readme = "packages/python/README.md"
 authors = [{ name = "sarj-ai" }]
@@ -14,7 +14,7 @@ classifiers = [
   "Programming Language :: Python :: 3.14",
   "Topic :: Software Development :: Quality Assurance",
 ]
-dependencies = ["packaging==26.3", "sqlglot==30.19.0", "typer==0.27.2"]
+dependencies = ["sarj-rule-contracts==0.1.0", "packaging==26.3", "sqlglot==30.19.0", "typer==0.27.2"]
 
 [tool.ruff]
 extend = ".ruff-strict.toml"
@@ -39,3 +39,6 @@ packages = ["packages/python/src/sarj_python_lint"]
 # Sibling projects are checked against their own manifests; this root wheel ships only the Python linter.
 extend_exclude = ["packages/(bootstrap|iac|sql|standards.*|python/tests)"]
 known_first_party = ["sarj_python_lint"]
+
+[tool.uv.sources]
+sarj-rule-contracts = { path = "packages/contracts", editable = true }
