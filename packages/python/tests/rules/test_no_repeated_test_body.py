@@ -235,6 +235,79 @@ def test_readiness_returns_healthy(client):
     assert _check(src) == []
 
 
+@pytest.mark.parametrize("operator", ["in", "not in"])
+def test_distinct_asserted_membership_needles_preserve_contracts(operator: str):
+    src = f"""
+def test_response_mentions_database():
+    response = render_status()
+    body = response.text
+    assert "database" {operator} body
+
+
+def test_response_mentions_voice():
+    response = render_status()
+    body = response.text
+    assert "voice" {operator} body
+"""
+    assert _check(src) == []
+
+
+@pytest.mark.parametrize("operator", ["in", "not in"])
+def test_unchanged_membership_needle_keeps_duplicate_input_cases(operator: str):
+    src = f"""
+def test_status_admin():
+    response = render_status("admin")
+    body = response.text
+    assert "healthy" {operator} body
+
+
+def test_status_editor():
+    response = render_status("editor")
+    body = response.text
+    assert "healthy" {operator} body
+"""
+    assert len(_check(src)) == 1
+
+
+def test_identical_membership_assertions_still_report_verbatim_copies():
+    src = """
+def test_status_first():
+    response = render_status()
+    body = response.text
+    assert "healthy" in body
+
+
+def test_status_second():
+    response = render_status()
+    body = response.text
+    assert "healthy" in body
+"""
+    [diagnostic] = _check(src)
+    assert "is a verbatim copy of" in diagnostic.message
+
+
+def test_mixed_membership_contracts_do_not_split_into_new_duplicate_groups():
+    src = """
+def test_status_database_first():
+    response = render_status()
+    body = response.text
+    assert "database" in body
+
+
+def test_status_database_second():
+    response = render_status()
+    body = response.text
+    assert "database" in body
+
+
+def test_status_voice():
+    response = render_status()
+    body = response.text
+    assert "voice" in body
+"""
+    assert _check(src) == []
+
+
 def test_flags_methods_of_a_pytest_style_class():
     src = """
 class TestDeletion:

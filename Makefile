@@ -83,7 +83,7 @@ test: check-versions-synced
 	  && uv build --wheel --project ../iac    --out-dir dist/deps >/dev/null \
 	  && uv venv --quiet --clear dist/test-venv \
 	  && uv pip install --quiet --python dist/test-venv/bin/python pytest==9.1.1 jsonschema==4.25.1 ./dist/deps/*.whl ./dist/code_standards-*.whl \
-	  && dist/test-venv/bin/python -m pytest -q tests/
+	  && PATH="$$PWD/dist/test-venv/bin:$$PATH" dist/test-venv/bin/python -m pytest -q tests/
 	cd packages/tsconfig       && node -e "JSON.parse(require('fs').readFileSync('base.json','utf8'))" && node -e "JSON.parse(require('fs').readFileSync('strict.json','utf8'))"
 
 # Each package runs its native type-aware lint gate.
@@ -108,7 +108,7 @@ dogfood: dogfood-python dogfood-typescript
 
 dogfood-python:
 	@python_files=(); \
-	while IFS= read -r -d '' file; do python_files+=("$$file"); done < <(git ls-files -z --cached --others --exclude-standard -- 'packages/*/src/*.py' 'packages/*/src/**/*.py' 'packages/*/tests/*.py' 'packages/*/tests/**/*.py'); \
+	while IFS= read -r -d '' file; do if [[ -f "$$file" ]]; then python_files+=("$$file"); fi; done < <(git ls-files -z --cached --others --exclude-standard -- 'packages/*/src/*.py' 'packages/*/src/**/*.py' 'packages/*/tests/*.py' 'packages/*/tests/**/*.py'); \
 	python_rules=(); \
 	while IFS= read -r rule; do python_rules+=("$$rule"); done < <(uv run --quiet --project packages/python --frozen sarj-python-lint list-rules | awk '{print $$2}'); \
 	if (( $${#python_files[@]} == 0 || $${#python_rules[@]} == 0 )); then echo 'dogfood: Python source or registry is unexpectedly empty' >&2; exit 2; fi; \

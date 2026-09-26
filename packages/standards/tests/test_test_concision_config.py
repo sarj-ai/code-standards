@@ -14,14 +14,19 @@ EXPECTED_RULES = {
         "prefer-to-be",
     },
     "node-test": {
+        "no-assert-throws-async",
         "no-assert-throws-multiple-statements",
         "no-unneeded-async-rejects-callback",
         "no-useless-assertion",
     },
     "playwright": {
+        "missing-playwright-await",
         "no-unnecessary-assertions",
     },
     "testing-library": {
+        "await-async-events",
+        "await-async-queries",
+        "await-async-utils",
         "no-unnecessary-act",
         "prefer-screen-queries",
     },

@@ -1390,6 +1390,7 @@ export function createConfig(options = {}) {
       "jest/prefer-to-be": HAS_BUN && !HAS_VITEST ? "error" : "off",
 
       "node-test/no-assert-throws-multiple-statements": HAS_NODE ? "error" : "off",
+      "node-test/no-assert-throws-async": HAS_NODE ? "error" : "off",
       "node-test/no-unneeded-async-rejects-callback": HAS_NODE ? "error" : "off",
       "node-test/no-useless-assertion": HAS_NODE ? "error" : "off",
 
@@ -1397,6 +1398,9 @@ export function createConfig(options = {}) {
         ? ["error", { isStrict: false }]
         : "off",
       "testing-library/prefer-screen-queries": HAS_TESTING_LIBRARY ? "error" : "off",
+      "testing-library/await-async-queries": HAS_TESTING_LIBRARY ? "error" : "off",
+      "testing-library/await-async-utils": HAS_TESTING_LIBRARY ? "error" : "off",
+      "testing-library/await-async-events": HAS_TESTING_LIBRARY ? "error" : "off",
 
     },
   },
@@ -1418,6 +1422,7 @@ export function createConfig(options = {}) {
       ...Object.fromEntries(Object.keys(vitest.rules).map((name) => [`vitest/${name}`, "off"])),
       ...Object.fromEntries(Object.keys(jest.rules).map((name) => [`jest/${name}`, "off"])),
       "playwright/no-unnecessary-assertions": "error",
+      "playwright/missing-playwright-await": "error",
     },
   }] : []),
 

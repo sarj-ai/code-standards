@@ -118,6 +118,7 @@ class NoRepeatedTestBody(Rule):
             "At least three consecutive call-and-literal-equality cases with corroborating behavior names are compared even with only two statements.",
             "Meaningful docstring or comment differences keep tests distinct.",
             "Two-test groups with varying literals require corroborating behavior names; long scenario prose and distinct API resources remain separate contracts.",
+            "Differing direct string needles in asserted membership comparisons preserve distinct contracts.",
         ),
         examples=(
             RuleExample(
@@ -486,10 +487,29 @@ def _is_fixture_document(value: object) -> bool:
 
 def _erases_contract_identity(members: list[_Shape]) -> bool:
     columns: list[tuple[object, ...]] = list(zip(*(member.literals for member in members), strict=True))
-    return any(
+    if any(
         len(set(column)) > 1 and all(isinstance(value, str) and value.startswith("/") for value in column)
         for column in columns
+    ):
+        return True
+    needles: list[tuple[str | None, ...]] = list(
+        zip(*(_asserted_membership_needles(member.node) for member in members), strict=True)
     )
+    return any(len(set(column)) > 1 and all(isinstance(value, str) for value in column) for column in needles)
+
+
+def _asserted_membership_needles(node: ast.FunctionDef | ast.AsyncFunctionDef) -> tuple[str | None, ...]:
+    needles: list[str | None] = []
+    for child in _walk(node):
+        if not isinstance(child, ast.Assert) or not isinstance(child.test, ast.Compare):
+            continue
+        comparison = child.test
+        for operand, operator in zip((comparison.left, *comparison.comparators[:-1]), comparison.ops, strict=True):
+            if isinstance(operator, ast.In | ast.NotIn):
+                needles.append(
+                    operand.value if isinstance(operand, ast.Constant) and isinstance(operand.value, str) else None
+                )
+    return tuple(needles)
 
 
 def _has_enough_duplicate_evidence(members: list[_Shape]) -> bool:
