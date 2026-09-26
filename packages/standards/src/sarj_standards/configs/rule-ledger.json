@@ -78,6 +78,7 @@
       "no-service-behavior-in-settings",
       "no-statically-truthy-assertion",
       "no-string-concat-in-loop",
+      "no-swallowed-asyncio-cancellation",
       "no-trailing-numeric-unit-assignment-comment",
       "no-unique-violation-message-match",
       "no-unnecessary-docstring",
@@ -406,7 +407,8 @@
       "SARJ454",
       "SARJ455",
       "SARJ456",
-      "SARJ457"
+      "SARJ457",
+      "SARJ458"
     ],
     "sql": [
       "SARJ101",

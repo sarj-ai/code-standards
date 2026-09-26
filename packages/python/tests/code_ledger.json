@@ -242,5 +242,6 @@
   "SARJ454": "prefer-pydantic-json-value",
   "SARJ455": "no-fixed-sleep-before-assert",
   "SARJ456": "async-mock-call-without-await-assertion",
-  "SARJ457": "repeated-test-composition"
+  "SARJ457": "repeated-test-composition",
+  "SARJ458": "no-swallowed-asyncio-cancellation"
 }

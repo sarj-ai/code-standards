@@ -3,6 +3,14 @@
   "precisionGate": "Review every finding up to 200; above 200, review every major cluster and a deterministic stratified sample of at least 50. Treat ambiguous findings as false positives for error-level rules.",
   "tasks": [
     {
+      "task": "rule-audit/python/no-swallowed-asyncio-cancellation",
+      "family": "python",
+      "ruleId": "no-swallowed-asyncio-cancellation",
+      "state": "complete",
+      "evidence": "38 focused cases pass. The labeled EvaluationCase run contains 8 true positives, 11 true negatives, zero false positives or false negatives, and no duplicate locations. Four alternating scans selected 3,177 tracked Python files (28,875,403 bytes) from two private corpora and Standards in fresh processes capped at 250 files. Both cancellation findings were inspected: a normal return and a shutdown-wait fallthrough that do not preserve caller cancellation. All 25 existing SARJ411 comparison findings remain unchanged. Cold comparison/candidate/combined times were 4.420/2.588/4.834 seconds; warm medians were 4.764/2.529/4.672 seconds. These shared-context, selected-rule timings were measured under concurrent builds, not a full-runner performance guarantee. Ruff has no rule for this explicit asyncio cancellation relationship; Python asyncio documentation recommends re-raising cancellation and warns about structured-concurrency interference.",
+      "outcome": "Ship SARJ458 as a warning without autofix. Inspect import-proven asyncio.CancelledError in async functions only when the handler has a straight-line return or fallthrough. Exclude tests, generated files, compound handlers/finalizers, re-raising, and translated errors. Any attribute call named uncancel is conservatively excluded without receiver proof, a deliberate false-negative boundary. Direct cancel-then-await of a single-assignment asyncio.create_task result is intentionally exempted as cleanup; that exemption does not prove concurrent caller cancellation is impossible. Dynamic helper effects, exception groups, and interprocedural ownership remain outside scope. Keep warning severity during adoption."
+    },
+    {
       "task": "rule-audit/python/repeated-test-composition",
       "family": "python",
       "ruleId": "repeated-test-composition",

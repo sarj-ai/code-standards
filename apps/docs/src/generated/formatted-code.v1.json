@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "139cac84bfdfd7beab459327583021838b7047c913214bcc2c3f12e1659b232f",
-  "cliSha256": "822ab66a01be4875c5bb1ce778a0e34d95a0db8874a8b739b360a648d8b014ed",
+  "catalogSha256": "7d00b369f7147137ddeb7bcd5dae4061c0baa782df44875a64643a5c87ddfbb8",
+  "cliSha256": "c815e51d91a893b72d2aa3ec97c286d848e1c262d90170876a6013ed268c8e05",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -7060,6 +7060,41 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "String accumulator grown on every iteration"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:no-swallowed-asyncio-cancellation": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "worker.py",
+              "source": "import asyncio\n\n\nasync def worker():\n    try:\n        await asyncio.sleep(10)\n    except asyncio.CancelledError:\n        raise\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "worker.py",
+          "id": "cancelled-operation-reraises",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Cleanup preserves cancellation"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "worker.py",
+              "source": "import asyncio\n\n\nasync def worker():\n    try:\n        await asyncio.sleep(10)\n    except asyncio.CancelledError:\n        return None\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "worker.py",
+          "id": "cancelled-operation-returns-success",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Cancellation becomes a successful return"
         }
       ],
       "optionsSchemaSource": null
