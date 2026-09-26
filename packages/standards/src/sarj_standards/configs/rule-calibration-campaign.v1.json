@@ -2075,6 +2075,30 @@
       "state": "complete",
       "evidence": "39 focused cases (17 positive, 22 negative). Read-only pinned local evaluation: 1,638 tracked TypeScript files, 8,814,406 bytes, fresh processes capped at 250 files. All 31 final findings inspected as nominal-typing opportunities, not proven swapped calls; zero known false positives or duplicate locations and zero parse failures. One serialized plural-ID input false positive was fixed and retained as a regression. Two disabled passes took 6.28/6.46 seconds; enabled passes took 6.69/6.82 seconds; peak enabled batch RSS 564 MB. Local timings are load-sensitive; no production optimization claim. No full upstream public repository corpus was evaluated.",
       "outcome": "Ship warning without autofix. Resolve only proven local primitive aliases; skip generated files, operational IDs, unknown imports, intersections and mixed branded/raw pairs. Plural identifier names require array carriers. Keep raw wire object schemas outside this callable-only rule; external callable compatibility remains a local suppression decision."
+    },
+    {
+      "task": "rule-audit/python/shared-mutable-pydantic-factory",
+      "family": "python",
+      "ruleId": "shared-mutable-pydantic-factory",
+      "state": "complete",
+      "evidence": "44 focused regression cases. Pinned read-only corpus: 3,048 tracked Python files, 25,601,555 bytes across four private sources; fresh processes capped at 250 files. All 1 findings inspected; no observed false positives or duplicate locations. No full upstream public repository corpus was evaluated. Combined candidate runs took 34-47 seconds under concurrent verification; timing is load-sensitive and is not an optimization claim.",
+      "outcome": "Ship warning without autofix. Require stable module bindings and direct unconfigured Pydantic models; exclude default validation that may copy values. Broader coverage and any error promotion require separate calibration."
+    },
+    {
+      "task": "rule-audit/python/prefer-regex-fullmatch",
+      "family": "python",
+      "ruleId": "prefer-regex-fullmatch",
+      "state": "complete",
+      "evidence": "59 focused regression cases. Pinned read-only corpus: 3,048 tracked Python files, 25,601,555 bytes across four private sources; fresh processes capped at 250 files. All 4 findings inspected; no observed false positives or duplicate locations. No full upstream public repository corpus was evaluated. Combined candidate runs took 34-47 seconds under concurrent verification; timing is load-sensitive and is not an optimization claim.",
+      "outcome": "Ship warning without autofix. Require a literal anchored pattern in an explicit rejection guard; exclude flags, ambiguous bindings, and extraction. Broader coverage and any error promotion require separate calibration."
+    },
+    {
+      "task": "rule-audit/python/prefer-monotonic-for-elapsed-time",
+      "family": "python",
+      "ruleId": "prefer-monotonic-for-elapsed-time",
+      "state": "complete",
+      "evidence": "52 focused regression cases. Pinned read-only corpus: 3,048 tracked Python files, 25,601,555 bytes across four private sources; fresh processes capped at 250 files. All 29 findings inspected; no observed false positives or duplicate locations. No full upstream public repository corpus was evaluated. Combined candidate runs took 34-47 seconds under concurrent verification; timing is load-sensitive and is not an optimization claim.",
+      "outcome": "Ship warning without autofix. Require a local start used exclusively in elapsed subtractions; exclude fields, epoch consumers, escapes, and mixed clocks. Broader coverage and any error promotion require separate calibration."
     }
   ]
 }
