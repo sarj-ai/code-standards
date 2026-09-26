@@ -1118,7 +1118,7 @@ def _render_manifest_preserving_extensions(  # ruff: ignore[too-many-locals] -- 
                 break
             start = previous_start
         end = matches[index + 1].start() if index + 1 < len(matches) else len(text)
-        preserved.append(text[start:end].rstrip())
+        preserved.append(text[start:end].strip("\n"))
     missing = extensions.difference(found)
     if missing:
         names = ", ".join(sorted(missing))

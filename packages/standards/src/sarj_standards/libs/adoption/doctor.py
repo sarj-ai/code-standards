@@ -1078,10 +1078,7 @@ def _is_pin_site(path: Path) -> bool:
         "gnumakefile",
         "lefthook.yml",
         "lefthook.yaml",
-        ".yarnrc.yml",
-        ".yarnrc.yaml",
-        ".npmrc",
-        "pnpm-workspace.yaml",
+        *packagemanager.AGE_GATE_POLICY_NAMES,
     }:
         return True
     if name.startswith("requirements") and path.suffix.lower() in {"", ".in", ".txt"}:
