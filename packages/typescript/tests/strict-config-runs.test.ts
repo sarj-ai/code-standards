@@ -676,21 +676,63 @@ describe("the shipped eslint.strict.mjs can actually lint", () => {
     expect(valid?.messages.filter((message) => message.ruleId === rule)).toEqual([]);
   });
 
-  it("runs ESLint recommended correctness rules at warning severity", async () => {
+  it.each([
+    {
+      rule: "no-async-promise-executor",
+      source: "new Promise(async (resolve) => { resolve(await operation()); });",
+      nearMiss: "new Promise((resolve, reject) => { operation().then(resolve, reject); });",
+    },
+    {
+      rule: "no-constant-binary-expression",
+      source: "function normalize(value) { return Boolean(value) ?? true; }",
+      nearMiss: "function normalize(value) { return value ?? true; }",
+    },
+    {
+      rule: "no-unsafe-finally",
+      source: "function read() { try { return operation(); } finally { return fallback(); } }",
+      nearMiss: "function read() { try { return operation(); } finally { cleanup(() => { return fallback(); }); } }",
+    },
+    {
+      rule: "no-unsafe-optional-chaining",
+      source: "function copy(value) { return [...value?.items]; }",
+      nearMiss: "function copy(value) { return [...(value?.items ?? [])]; }",
+    },
+  ])("blocks $rule while accepting its safe alternative", async ({ rule, source, nearMiss }) => {
+    const eslint = new ESLint({
+      cwd: FIXTURE_DIR,
+      overrideConfigFile: true,
+      overrideConfig: STRICT_CONFIG_FACTORY({ projectService: false }),
+    });
+    const options = { filePath: resolve(FIXTURE_DIR, "recommended-core.js") };
+    const [invalid] = await eslint.lintText(source, options);
+    const findings = invalid?.messages.filter((message) => message.ruleId === rule) ?? [];
+    expect(findings).toHaveLength(1);
+    expect(findings[0]?.severity).toBe(2);
+    expect(invalid?.fatalErrorCount).toBe(0);
+
+    const [valid] = await eslint.lintText(nearMiss, options);
+    expect(valid?.messages.filter((message) => message.ruleId === rule)).toEqual([]);
+    expect(valid?.fatalErrorCount).toBe(0);
+
+    const [suppressed] = await eslint.lintText(`/* eslint-disable ${rule} */\n${source}`, options);
+    expect(suppressed?.messages.filter((message) => message.ruleId === rule)).toEqual([]);
+    expect(suppressed?.suppressedMessages.filter((message) => message.ruleId === rule)).toHaveLength(1);
+  });
+
+  it("preserves optional-chain short circuits and cleanup-local control flow", async () => {
     const eslint = new ESLint({
       cwd: FIXTURE_DIR,
       overrideConfigFile: true,
       overrideConfig: STRICT_CONFIG_FACTORY({ projectService: false }),
     });
     const [result] = await eslint.lintText(
-      "new Promise(async (resolve) => { resolve(await operation()); });",
-      { filePath: resolve(FIXTURE_DIR, "recommended-core.js") },
+      "function read(value) { try { return value?.items.map(normalize); } finally { for (const task of tasks) { if (task.done) break; task.run(); } } } const copy = {...value?.items};",
+      { filePath: resolve(FIXTURE_DIR, "recommended-edge-cases.js") },
     );
-    const finding = result?.messages.find(
-      (message) => message.ruleId === "no-async-promise-executor",
-    );
-
-    expect(finding?.severity).toBe(1);
+    expect(result?.fatalErrorCount).toBe(0);
+    expect(result?.messages.filter((message) =>
+      message.ruleId === "no-unsafe-finally" || message.ruleId === "no-unsafe-optional-chaining",
+    )).toEqual([]);
   });
 
   it.each([
@@ -996,6 +1038,23 @@ describe("the shipped eslint.strict.mjs can actually lint", () => {
     ]);
 
     expect(generated.flatMap((result) => result.messages)).toEqual([]);
+  });
+
+  it.each(CONFIG_FACTORIES)("%s ignores vendored Yarn releases while checking authored plugins", async (_name, factory) => {
+    const eslint = new ESLint({
+      cwd: FIXTURE_DIR,
+      overrideConfigFile: true,
+      overrideConfig: factory({ projectService: false }),
+      warnIgnored: false,
+    });
+    const source = "new Promise(async (resolve) => { resolve(await operation()); });";
+    const vendored = await eslint.lintText(source, { filePath: ".yarn/releases/yarn.cjs" });
+    expect(vendored.flatMap((result) => result.messages)).toEqual([]);
+
+    const [authored] = await eslint.lintText(source, { filePath: ".yarn/plugins/custom.cjs" });
+    expect(authored?.fatalErrorCount).toBe(0);
+    expect(authored?.messages.filter((message) => message.ruleId === "no-async-promise-executor"))
+      .toMatchObject([{ severity: 2 }]);
   });
 
   /**
