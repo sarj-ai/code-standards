@@ -250,6 +250,8 @@ def load(root: Path) -> Manifest | None:
 def _load_schema(  # ruff: ignore[too-many-locals] - one validation boundary keeps manifest errors coherent.
     root: Path,
     expected_schema: int,
+    *,
+    discard_retired: bool = False,
 ) -> Manifest | None:
     path = manifest_path(root)
     if not path.is_file():
@@ -323,12 +325,12 @@ def _load_schema(  # ruff: ignore[too-many-locals] - one validation boundary kee
         excluded_rules=_rule_selectors(
             exclude_table,
             "rules",
-            discard_retired=expected_schema == LEGACY_MANIFEST_SCHEMA,
+            discard_retired=discard_retired,
         ),
         exclusion_overrides=_exclusion_overrides(
             root,
             exclude_table,
-            discard_retired=expected_schema == LEGACY_MANIFEST_SCHEMA,
+            discard_retired=discard_retired,
         ),
         durable_artifacts=_string_list(
             artifacts_table,
@@ -366,7 +368,7 @@ def _manifest_table(data: Mapping[str, object], key: str) -> dict[str, object]:
 
 def load_for_setup(root: Path) -> Manifest | None:
     try:
-        return load(root)
+        return _load_schema(root, MANIFEST_SCHEMA, discard_retired=True)
     except ValueError:
         schema_three = _load_schema_three_manifest(root)
         if schema_three is not None:
@@ -385,7 +387,7 @@ def _load_schema_three_manifest(root: Path) -> Manifest | None:
         return None
     if as_table(parsed).get("schema") != LEGACY_MANIFEST_SCHEMA:
         return None
-    return _load_schema(root, LEGACY_MANIFEST_SCHEMA)
+    return _load_schema(root, LEGACY_MANIFEST_SCHEMA, discard_retired=True)
 
 
 def _load_schema_less_manifest(  # ruff: ignore[too-many-locals] -- validate the complete legacy policy atomically.

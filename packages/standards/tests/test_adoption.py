@@ -454,15 +454,19 @@ def test_schema_three_manifest_is_available_to_setup_without_enabling_mobile_too
     assert set(manifest.SWIFT_CONFIGS + manifest.KOTLIN_CONFIGS + manifest.MOBILE_CONFIGS).isdisjoint(adopted.configs)
 
 
-def test_setup_discards_retired_rule_exclusions_while_migrating_schema_three(tmp_path: Path) -> None:
+@pytest.mark.parametrize(("schema", "bundle", "retired"), [(3, "7.7.0", "SARJ014"), (4, "7.32.14", "SARJ449")])
+def test_setup_discards_retired_rule_exclusions_while_migrating_manifest(
+    tmp_path: Path, schema: int, bundle: str, retired: str
+) -> None:
     _python_repo(tmp_path)
     manifest_path = tmp_path / manifest.MANIFEST_NAME
+    mobile = ', "swiftformat", "swiftlint", "ktlint", "detekt", "mobile-security"' if schema == 4 else ""
     manifest_path.write_text(
-        'schema = 3\nbundle = "7.7.0"\n'
-        '[capabilities]\ndisable = ["pyright", "eslint", "markdownlint", "shellcheck", "taplo", "yamllint"]\n'
-        '[exclude]\nrules = ["python:SARJ012", "python:SARJ014"]\n'
-        '[[exclude.overrides]]\npaths = ["tests/old/**"]\nrules = ["python:SARJ014"]\nreason = "retired"\n'
-        '[[exclude.overrides]]\npaths = ["tests/**"]\nrules = ["python:SARJ012", "python:SARJ014"]\n'
+        f'schema = {schema}\nbundle = "{bundle}"\n'
+        f'[capabilities]\ndisable = ["pyright", "eslint", "markdownlint", "shellcheck", "taplo", "yamllint"{mobile}]\n'
+        f'[exclude]\nrules = ["python:SARJ012", "python:{retired}"]\n'
+        f'[[exclude.overrides]]\npaths = ["tests/old/**"]\nrules = ["python:{retired}"]\nreason = "retired"\n'
+        f'[[exclude.overrides]]\npaths = ["tests/**"]\nrules = ["python:SARJ012", "python:{retired}"]\n'
         'reason = "mixed"\n',
         encoding="utf-8",
     )
@@ -474,7 +478,35 @@ def test_setup_discards_retired_rule_exclusions_while_migrating_schema_three(tmp
     assert migrated is not None
     assert migrated.excluded_rules == ("python:SARJ012",)
     assert migrated.exclusion_overrides == (manifest.ExclusionOverride(("tests/**",), ("python:SARJ012",), "mixed"),)
-    assert "SARJ014" not in manifest_path.read_text(encoding="utf-8")
+    assert retired not in manifest_path.read_text(encoding="utf-8")
+
+
+def test_setup_snapshot_discards_retired_exclusions_without_weakening_strict_load(tmp_path: Path) -> None:
+    manifest_path = tmp_path / manifest.MANIFEST_NAME
+    original = 'schema = 4\nbundle = "7.32.14"\n[exclude]\nrules = ["python:SARJ449"]\n'
+    manifest_path.write_text(original, encoding="utf-8")
+
+    migrated = manifest.load_for_setup(tmp_path)
+
+    assert migrated is not None
+    assert migrated.excluded_rules == ()
+    assert manifest_path.read_text(encoding="utf-8") == original
+    with pytest.raises(ValueError, match="unknown Standards rule exclusion: python:SARJ449"):
+        manifest.load(tmp_path)
+
+
+@pytest.mark.parametrize("schema", [3, 4])
+def test_setup_rejects_unknown_exclusions_without_rewriting_manifest(tmp_path: Path, schema: int) -> None:
+    _python_repo(tmp_path)
+    manifest_path = tmp_path / manifest.MANIFEST_NAME
+    original = f'schema = {schema}\nbundle = "7.7.0"\n[exclude]\nrules = ["python:SARJ999999"]\n'
+    manifest_path.write_text(original, encoding="utf-8")
+
+    proc = _cli("--root", str(tmp_path), "setup", "--no-install")
+
+    assert proc.returncode == 2
+    assert "unknown Standards rule exclusion: python:SARJ999999" in proc.stderr
+    assert manifest_path.read_text(encoding="utf-8") == original
 
 
 def test_setup_losslessly_rerenders_schema_three_as_schema_four(tmp_path: Path) -> None:
