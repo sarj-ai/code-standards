@@ -4,7 +4,7 @@ import noBroadReturnType from "./rules/no-broad-return-type.js";
 import noReduceAccumulatorCopy from "./rules/no-reduce-accumulator-copy.js";
 import noKnownValueWidening from "./rules/no-known-value-widening.js";
 /**
- * @fileoverview index — the plugin's rule registry and its two presets; the historical rename map lives in `rules/_renames.ts`.
+ * @fileoverview index — the plugin's rule registry and its two presets; the historical rename map lives in `rules/_renamed-rules.ts`.
  */
 
 import requireButtonAccessibleName from "./rules/require-button-accessible-name.js";
@@ -118,8 +118,8 @@ import sourceCoupledTest from "./rules/source-coupled-test.js";
 import soleExportMatchesFilename from "./rules/sole-export-matches-filename.js";
 import iacSourceCoupledTest from "./rules/iac-source-coupled-test.js";
 import requirePascalCaseZodSchemaName from "./rules/require-pascal-case-zod-schema-name.js";
-import { RENAMED_RULES } from "./rules/_renames.js";
-import { RETIRED_RULES } from "./rules/_retired.js";
+import { RENAMED_RULES } from "./rules/_renamed-rules.js";
+import { RETIRED_RULES } from "./rules/_retired-rules.js";
 
 const RULES = {
   "no-conditional-empty-object-spread": noConditionalEmptyObjectSpread,
@@ -242,7 +242,7 @@ const RULES = {
 
 const meta = {
   name: "@sarj/eslint-plugin",
-  version: "15.28.0",
+  version: "16.0.0",
 } as const;
 
 /** @deprecated All repositories use one policy; retained for import compatibility. */
@@ -273,7 +273,6 @@ const ADVISORY_RULES = [
   "@sarj/require-camelcase-properties",
   "@sarj/require-interface-for-exported-class",
   "@sarj/require-sql-access-class",
-  "@sarj/sole-export-matches-filename",
 ] as const;
 
 const RECOMMENDED_RULES = {
@@ -386,7 +385,7 @@ const RECOMMENDED_RULES = {
   "@sarj/store-insert-requires-on-conflict": "error",
   "@sarj/stepdown": "error",
   "@sarj/source-coupled-test": "error",
-  "@sarj/sole-export-matches-filename": "warn",
+  "@sarj/sole-export-matches-filename": "error",
   "@sarj/test-phase-label-comment": "error",
   "@sarj/require-pascal-case-zod-schema-name": "error",
 } as const;
@@ -505,7 +504,7 @@ const STRICT_RULES = {
   "@sarj/store-insert-requires-on-conflict": "error",
   "@sarj/stepdown": "error",
   "@sarj/source-coupled-test": "error",
-  "@sarj/sole-export-matches-filename": "warn",
+  "@sarj/sole-export-matches-filename": "error",
   "@sarj/test-phase-label-comment": "error",
   "@sarj/require-pascal-case-zod-schema-name": "error",
 } as const;
@@ -545,7 +544,7 @@ export {
   type RetiredRule,
   RETIRED_RULES,
   RETIRED_RULES as retiredRules,
-} from "./rules/_retired.js";
+} from "./rules/_retired-rules.js";
 export {
   ADVISORY_RULES,
   APPLICATION_ONLY_RULES,

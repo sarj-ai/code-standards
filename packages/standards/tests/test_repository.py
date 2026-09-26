@@ -1268,7 +1268,7 @@ def test_live_rule_inventory_does_not_depend_on_consumer_repository_layout(tmp_p
 
 
 def test_retired_rename_sync_preserves_historical_aliases_outside_live_source(tmp_path: Path) -> None:
-    renames = tmp_path / "packages" / "typescript" / "src" / "rules" / "_renames.ts"
+    renames = tmp_path / "packages" / "typescript" / "src" / "rules" / "_renamed-rules.ts"
     renames.parent.mkdir(parents=True)
     renames.write_text("export const renames = {};\n", encoding="utf-8")
     previous = {

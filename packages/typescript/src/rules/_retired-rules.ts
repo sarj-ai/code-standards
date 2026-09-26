@@ -1,4 +1,4 @@
-/** @fileoverview _retired — burned rule names and their migration action. */
+/** @fileoverview _retired-rules — burned rule names and their migration action. */
 
 /** Why a name was withdrawn, and in which release. */
 export interface RetiredRule {

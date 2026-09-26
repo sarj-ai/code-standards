@@ -1,6 +1,6 @@
 {
   "name": "@sarj/eslint-plugin",
-  "version": "15.28.0",
+  "version": "16.0.0",
   "packageManager": "npm@12.1.0",
   "description": "Custom ESLint rules for hypermodern TypeScript / React / Next.js projects",
   "type": "module",

@@ -19,9 +19,9 @@ export const STEPDOWN_DOCUMENTATION = {
   remediation: "Consider moving the private helper below its sole caller after reviewing initialization and reflection dependencies.",
   category: "maintainability",
   limitations: [
-    "Generated and test files, cycles, dynamic references, overload targets, and helpers with multiple callers are excluded.",
+    "Generated and test files, cycles, dynamic or escaped references, overload targets, and helpers with multiple callers are excluded; immutable local callable aliases are followed only when every use stays in the caller.",
     "Class helpers must be private; their sole caller may be public, protected, or private.",
-    "Runtime class-field, static-block, computed-member, and decorator barriers are never crossed.",
+    "Runtime class-field, static-block, computed-member, and decorator barriers are never crossed; non-hoisted module helpers also cannot cross eager execution or unrelated initialization.",
     "This rule is report-only: reordering methods can change reflective property order, and moving module declarations can change initialization behavior or introduce temporal-dead-zone failures. Review module cycles and eager callers manually.",
   ],
   examples: [
@@ -36,6 +36,7 @@ type FunctionNode =
   | TSESTree.FunctionExpression;
 
 interface Definition {
+  readonly key: string;
   readonly name: string;
   readonly node: TSESTree.Node;
   readonly functionNode?: FunctionNode;
@@ -58,7 +59,7 @@ function reportMisordered(
   pinned: ReadonlySet<string>,
   canMove: (helper: Definition, caller: Definition) => boolean = () => true,
 ): void {
-  const byName = new Map(scopeDefinitions.map((definition) => [definition.name, definition]));
+  const byName = new Map(scopeDefinitions.map((definition) => [definition.key, definition]));
   const cycles = cycleComponents(calls);
   const callers = new Map<string, Set<string>>();
   for (const [caller, callees] of calls) {
@@ -70,19 +71,19 @@ function reportMisordered(
     }
   }
   for (const helper of candidates) {
-    const helperCallers = [...(callers.get(helper.name) ?? [])];
-    if (pinned.has(helper.name) || helperCallers.length !== 1) continue;
+    const helperCallers = [...(callers.get(helper.key) ?? [])];
+    if (pinned.has(helper.key) || helperCallers.length !== 1) continue;
     const callerName = helperCallers[0];
     if (
       callerName === undefined ||
-      (cycles.has(helper.name) && cycles.get(helper.name) === cycles.get(callerName))
+      (cycles.has(helper.key) && cycles.get(helper.key) === cycles.get(callerName))
     ) continue;
     const caller = byName.get(callerName);
     if (caller === undefined || helper.node.range[0] >= caller.node.range[0] || !canMove(helper, caller)) continue;
     context.report({
       node: helper.node,
       messageId: "helperAboveOnlyCaller",
-      data: { helper: helper.name, caller: callerName },
+      data: { helper: helper.name, caller: caller.name },
     });
   }
 }
@@ -154,6 +155,73 @@ function cycleComponents(graph: ReadonlyMap<string, ReadonlySet<string>>): Reado
   return components;
 }
 
+type ErasedExpression =
+  | TSESTree.TSAsExpression
+  | TSESTree.TSTypeAssertion
+  | TSESTree.TSSatisfiesExpression
+  | TSESTree.TSNonNullExpression
+  | TSESTree.TSInstantiationExpression;
+
+type Variable = NonNullable<ReturnType<typeof ASTUtils.findVariable>>;
+
+function isErasedExpression(node: TSESTree.Node): node is ErasedExpression {
+  return node.type === AST_NODE_TYPES.TSAsExpression ||
+    node.type === AST_NODE_TYPES.TSTypeAssertion ||
+    node.type === AST_NODE_TYPES.TSSatisfiesExpression ||
+    node.type === AST_NODE_TYPES.TSNonNullExpression ||
+    node.type === AST_NODE_TYPES.TSInstantiationExpression;
+}
+
+function unwrapExpression(node: TSESTree.Node): TSESTree.Node {
+  let current = node;
+  while (isErasedExpression(current)) current = current.expression;
+  return current;
+}
+
+function wrappedExpression(node: TSESTree.Node): TSESTree.Node {
+  let current = node;
+  while (current.parent !== undefined && isErasedExpression(current.parent) && current.parent.expression === current) current = current.parent;
+  return current;
+}
+
+function enclosingFunction(
+  context: Readonly<TSESLint.RuleContext<MessageIds, Options>>,
+  node: TSESTree.Node,
+): FunctionNode | undefined {
+  return [...context.sourceCode.getAncestors(node)].reverse().find(isFunction);
+}
+
+/** A value is callable here only when every alias use remains a direct local call. */
+function localCallCount(
+  context: Readonly<TSESLint.RuleContext<MessageIds, Options>>,
+  node: TSESTree.Node,
+  owner: FunctionNode,
+): number | null {
+  const seen = new Set<Variable>();
+  const pending = [node];
+  let count = 0;
+  while (pending.length > 0) {
+    const current = pending.pop();
+    if (current === undefined || enclosingFunction(context, current) !== owner) return null;
+    const expression = wrappedExpression(current);
+    const parent = expression.parent;
+    if (parent?.type === AST_NODE_TYPES.CallExpression && parent.callee === expression) {
+      count += 1;
+      continue;
+    }
+    if (
+      parent?.type !== AST_NODE_TYPES.VariableDeclarator || parent.init !== expression ||
+      parent.id.type !== AST_NODE_TYPES.Identifier ||
+      parent.parent.type !== AST_NODE_TYPES.VariableDeclaration || parent.parent.kind !== "const"
+    ) return null;
+    const variable = context.sourceCode.getDeclaredVariables(parent)[0];
+    if (variable === undefined || seen.has(variable) || !stableVariable(variable)) return null;
+    seen.add(variable);
+    pending.push(...variable.references.filter((reference) => reference.isRead()).map((reference) => reference.identifier));
+  }
+  return count;
+}
+
 function moduleScope(
   context: Readonly<TSESLint.RuleContext<MessageIds, Options>>,
   program: TSESTree.Program,
@@ -172,6 +240,31 @@ function moduleScope(
   const definitions = scopeDefinitions.filter(
     (definition) => !exported.has(definition.name) && !overloadNames.has(definition.name),
   );
+  const { calls, pinned } = moduleCallGraph(context, scopeDefinitions);
+  const statementIndexes = new Map(program.body.map((statement, index) => [statement, index]));
+  const runtimeBarrierPrefix = [0];
+  for (const statement of program.body) {
+    runtimeBarrierPrefix.push((runtimeBarrierPrefix.at(-1) ?? 0) + (isDeferredModuleStatement(statement) ? 0 : 1));
+  }
+  const statementIndex = (definition: Definition): number | undefined => {
+    let current = definition.node;
+    while (current.parent !== undefined && current.parent.type !== AST_NODE_TYPES.Program) current = current.parent;
+    return statementIndexes.get(current as TSESTree.ProgramStatement);
+  };
+  const canMove = (helper: Definition, caller: Definition): boolean => {
+    if (helper.node.type === AST_NODE_TYPES.FunctionDeclaration) return true;
+    const helperIndex = statementIndex(helper);
+    const callerIndex = statementIndex(caller);
+    return helperIndex !== undefined && callerIndex !== undefined &&
+      runtimeBarrierPrefix[callerIndex + 1] === runtimeBarrierPrefix[helperIndex + 1];
+  };
+  reportMisordered(context, definitions, scopeDefinitions, calls, pinned, canMove);
+}
+
+function moduleCallGraph(
+  context: Readonly<TSESLint.RuleContext<MessageIds, Options>>,
+  scopeDefinitions: readonly Definition[],
+): { calls: Map<string, Set<string>>; pinned: Set<string> } {
   const byFunction = new Map(scopeDefinitions.map((definition) => [definition.functionNode, definition]));
   const calls = new Map<string, Set<string>>();
   const pinned = new Set<string>();
@@ -180,26 +273,39 @@ function moduleScope(
     const variable = context.sourceCode.getDeclaredVariables(definition.bindingNode!)[0];
     for (const reference of variable?.references ?? []) {
       if (reference.isWrite() && reference.init !== true) {
-        pinned.add(definition.name);
+        pinned.add(definition.key);
         continue;
       }
       if (!reference.isRead()) continue;
-      const identifier = reference.identifier;
-      const ancestors = context.sourceCode.getAncestors(identifier);
-      const nearestFunction = [...ancestors].reverse().find(isFunction);
-      const parent = identifier.parent;
-      const callerDefinition = nearestFunction === undefined ? undefined : byFunction.get(nearestFunction);
-      if (callerDefinition === undefined || parent.type !== AST_NODE_TYPES.CallExpression || parent.callee !== identifier) {
-        pinned.add(definition.name);
+      const callerDefinition = byFunction.get(enclosingFunction(context, reference.identifier));
+      if (callerDefinition?.functionNode === undefined) {
+        pinned.add(definition.key);
         continue;
       }
-      const caller = callerDefinition.name;
-      const callees = calls.get(caller) ?? new Set<string>();
-      callees.add(definition.name);
-      calls.set(caller, callees);
+      const count = localCallCount(context, reference.identifier, callerDefinition.functionNode);
+      if (count === null) {
+        pinned.add(definition.key);
+      } else if (count > 0) {
+        const callees = calls.get(callerDefinition.key) ?? new Set<string>();
+        callees.add(definition.key);
+        calls.set(callerDefinition.key, callees);
+      }
     }
   }
-  reportMisordered(context, definitions, scopeDefinitions, calls, pinned);
+  return { calls, pinned };
+}
+
+function isDeferredModuleStatement(statement: TSESTree.ProgramStatement): boolean {
+  const node = statement.type === AST_NODE_TYPES.ExportNamedDeclaration ||
+    statement.type === AST_NODE_TYPES.ExportDefaultDeclaration ? statement.declaration : statement;
+  if (node === null || node.type === AST_NODE_TYPES.FunctionDeclaration ||
+    node.type === AST_NODE_TYPES.TSDeclareFunction || node.type === AST_NODE_TYPES.TSInterfaceDeclaration ||
+    node.type === AST_NODE_TYPES.TSTypeAliasDeclaration || node.type === AST_NODE_TYPES.ImportDeclaration ||
+    node.type === AST_NODE_TYPES.ExportAllDeclaration || node.type === AST_NODE_TYPES.EmptyStatement) return true;
+  return node.type === AST_NODE_TYPES.VariableDeclaration && node.declarations.every((declaration) =>
+    declaration.id.type === AST_NODE_TYPES.Identifier && declaration.init !== null &&
+    isFunction(unwrapExpression(declaration.init)),
+  );
 }
 
 function exportedNames(program: TSESTree.Program): Set<string> {
@@ -248,20 +354,18 @@ function moduleDefinitions(program: TSESTree.Program): Definition[] {
       ? statement.declaration
       : statement;
     if (node?.type === AST_NODE_TYPES.FunctionDeclaration && node.id !== null && node.body !== null) {
-      definitions.push({ name: node.id.name, node, functionNode: node, bindingNode: node });
+      definitions.push({ key: node.id.name, name: node.id.name, node, functionNode: node, bindingNode: node });
       continue;
     }
-    if (node?.type !== AST_NODE_TYPES.VariableDeclaration || node.kind !== "const") continue;
+    if (node?.type !== AST_NODE_TYPES.VariableDeclaration || node.kind !== "const" || node.declarations.length !== 1) continue;
     for (const declarator of node.declarations) {
-      if (
-        declarator.id.type === AST_NODE_TYPES.Identifier &&
-        declarator.init !== null &&
-        isFunction(declarator.init)
-      ) {
+      const initializer = declarator.init === null ? null : unwrapExpression(declarator.init);
+      if (declarator.id.type === AST_NODE_TYPES.Identifier && initializer !== null && isFunction(initializer)) {
         definitions.push({
+          key: declarator.id.name,
           name: declarator.id.name,
           node: declarator,
-          functionNode: declarator.init,
+          functionNode: initializer,
           bindingNode: declarator,
         });
       }
@@ -272,25 +376,29 @@ function moduleDefinitions(program: TSESTree.Program): Definition[] {
 
 function methodName(node: TSESTree.MethodDefinition): string | null {
   if (node.key.type === AST_NODE_TYPES.PrivateIdentifier) return `#${node.key.name}`;
-  return !node.computed && node.key.type === AST_NODE_TYPES.Identifier ? node.key.name : null;
+  if (!node.computed && node.key.type === AST_NODE_TYPES.Identifier) return node.key.name;
+  return node.key.type === AST_NODE_TYPES.Literal && typeof node.key.value === "string" ? node.key.value : null;
 }
 
-function referencedMethod(
+function methodKey(name: string, isStatic: boolean): string {
+  return `${isStatic ? "static" : "instance"}:${name}`;
+}
+
+function receiverDomain(
   context: Readonly<TSESLint.RuleContext<MessageIds, Options>>,
-  node: TSESTree.MemberExpression,
-  classVariables: ReadonlySet<NonNullable<ReturnType<typeof ASTUtils.findVariable>>>,
-): string | null {
-  const objectVariable = node.object.type === AST_NODE_TYPES.Identifier
-    ? ASTUtils.findVariable(context.sourceCode.getScope(node.object), node.object.name)
-    : null;
-  const isClassReference =
-    objectVariable !== null && classVariables.has(objectVariable);
-  if (node.object.type !== AST_NODE_TYPES.ThisExpression && !isClassReference) return null;
-  if (node.property.type === AST_NODE_TYPES.PrivateIdentifier) return `#${node.property.name}`;
-  if (!node.computed && node.property.type === AST_NODE_TYPES.Identifier) return node.property.name;
-  return node.computed && node.property.type === AST_NODE_TYPES.Literal && typeof node.property.value === "string"
-    ? node.property.value
-    : null;
+  object: TSESTree.Node,
+  receivers: ReadonlyMap<Variable, boolean>,
+  thisIsStatic: boolean,
+): boolean | null {
+  const unwrapped = unwrapExpression(object);
+  if (unwrapped.type === AST_NODE_TYPES.ThisExpression) return thisIsStatic;
+  if (unwrapped.type !== AST_NODE_TYPES.Identifier) return null;
+  const variable = ASTUtils.findVariable(context.sourceCode.getScope(unwrapped), unwrapped.name);
+  return variable === null ? null : receivers.get(variable) ?? null;
+}
+
+function stableVariable(variable: Variable): boolean {
+  return !variable.references.some((reference) => reference.isWrite() && reference.init !== true);
 }
 
 function referencedPropertyName(node: TSESTree.MemberExpression): string | null {
@@ -308,7 +416,8 @@ function walk(
   nestedFunction = false,
 ): void {
   visit(node, nestedFunction);
-  const nested = nestedFunction || isFunction(node);
+  const nested = nestedFunction || isFunction(node) ||
+    node.type === AST_NODE_TYPES.ClassDeclaration || node.type === AST_NODE_TYPES.ClassExpression;
   forEachAstChild(node, visitorKeys, child => walk(child, visitorKeys, visit, nested));
 }
 
@@ -321,155 +430,130 @@ function classScope(
     (member): member is TSESTree.MethodDefinition => member.type === AST_NODE_TYPES.MethodDefinition,
   );
   const counts = classMethodCounts(node.body, methods);
-  const scopeDefinitions = methods.flatMap((method) => {
+  const implementations = methods.filter((method) => isFunction(method.value));
+  const implementationCounts = classMethodCounts(node.body, implementations);
+  const scopeDefinitions = implementations.flatMap((method) => {
     const name = methodName(method);
-    return name !== null && counts.get(name) === 1 ? [{ name, node: method }] : [];
+    const key = name === null ? null : methodKey(name, method.static);
+    return name !== null && key !== null && implementationCounts.get(key) === 1 ? [{ key, name, node: method }] : [];
   });
-  const definitions = methods.flatMap((method) => {
-    const name = methodName(method);
-    const isPrivate = method.accessibility === "private" || method.key.type === AST_NODE_TYPES.PrivateIdentifier;
-    return name !== null && isPrivate && counts.get(name) === 1 && method.decorators.length === 0
-      ? [{ name, node: method }]
-      : [];
-  });
+  const definitions = scopeDefinitions.filter(({ key, node: method }) =>
+    (method.accessibility === "private" || method.key.type === AST_NODE_TYPES.PrivateIdentifier) &&
+    counts.get(key) === 1 && method.decorators.length === 0 && !method.computed && method.kind === "method",
+  );
   if (definitions.length === 0) return;
-  const privateNames = new Set(definitions.map((definition) => definition.name));
+  const methodKeys = new Set(scopeDefinitions.map((definition) => definition.key));
   const calls = new Map<string, Set<string>>();
   const pinned = new Set<string>();
-  const classVariables = new Set<NonNullable<ReturnType<typeof ASTUtils.findVariable>>>();
-  if (node.id !== null) {
-    const internal = ASTUtils.findVariable(context.sourceCode.getScope(node), node.id.name);
-    if (internal !== null) classVariables.add(internal);
+  const classReceivers = classReceiverBindings(context, node);
+  const pinNames = (name: string | null, domain: boolean | null = null): void => {
+    for (const definition of definitions) {
+      if ((name === null || definition.name === name) && (domain === null || definition.node.static === domain)) {
+        pinned.add(definition.key);
+      }
+    }
+  };
+  function pinDestructuredMembers(binding: TSESTree.ObjectPattern, domain: boolean | null): void {
+    for (const property of binding.properties) {
+      if (property.type === AST_NODE_TYPES.RestElement || property.computed) {
+        pinNames(null, domain);
+      } else if (property.key.type === AST_NODE_TYPES.Identifier) {
+        pinNames(property.key.name, domain);
+      } else if (property.key.type === AST_NODE_TYPES.Literal && typeof property.key.value === "string") {
+        pinNames(property.key.value, domain);
+      }
+    }
   }
-  if (
-    node.type === AST_NODE_TYPES.ClassExpression &&
-    node.parent.type === AST_NODE_TYPES.VariableDeclarator &&
-    node.parent.id.type === AST_NODE_TYPES.Identifier
-  ) {
-    const outer = ASTUtils.findVariable(context.sourceCode.getScope(node.parent), node.parent.id.name);
-    if (outer !== null) classVariables.add(outer);
-  }
-
   function collectMethodCalls(method: TSESTree.MethodDefinition): void {
-    const caller = methodName(method);
-    if (caller === null || method.value.body === null) return;
-    const methodClassVariables = new Set(classVariables);
-    const methodAliases = new Set<NonNullable<ReturnType<typeof ASTUtils.findVariable>>>();
+    const name = methodName(method);
+    if (name === null) {
+      pinNames(null);
+      return;
+    }
+    if (!isFunction(method.value)) return;
+    const methodFunction = method.value;
+    const caller = methodKey(name, method.static);
+    const receivers = new Map(classReceivers);
     const parameterDecoratorNodes = new Set<TSESTree.Node>();
     for (const parameter of method.value.params) {
       for (const decorator of parameter.decorators) {
         walk(decorator, context.sourceCode.visitorKeys, (current) => parameterDecoratorNodes.add(current));
       }
     }
-    const thisValue = (value: TSESTree.Expression | null | undefined): boolean => {
-      let current = value;
-      while (
-        current?.type === AST_NODE_TYPES.TSAsExpression ||
-        current?.type === AST_NODE_TYPES.TSSatisfiesExpression ||
-        current?.type === AST_NODE_TYPES.TSNonNullExpression
-      ) current = current.expression;
-      return current?.type === AST_NODE_TYPES.ThisExpression;
-    };
     const collectAlias = (current: TSESTree.Node, nestedFunction: boolean): void => {
-      if (
-        nestedFunction ||
-        (current.type !== AST_NODE_TYPES.VariableDeclarator &&
-          current.type !== AST_NODE_TYPES.AssignmentPattern)
-      ) return;
-      if (
-        current.type === AST_NODE_TYPES.VariableDeclarator &&
-        (current.parent.type !== AST_NODE_TYPES.VariableDeclaration || current.parent.kind !== "const")
-      ) return;
-      const binding = current.type === AST_NODE_TYPES.VariableDeclarator ? current.id : current.left;
-      const value = current.type === AST_NODE_TYPES.VariableDeclarator ? current.init : current.right;
-      if (!thisValue(value)) return;
-      if (binding.type === AST_NODE_TYPES.ObjectPattern) {
-        pinDestructuredMembers(binding);
+      if (nestedFunction || current.type !== AST_NODE_TYPES.VariableDeclarator || current.init === null) return;
+      const domain = receiverDomain(context, current.init, receivers, method.static);
+      if (domain === null) return;
+      if (current.id.type === AST_NODE_TYPES.ObjectPattern) {
+        pinDestructuredMembers(current.id, domain);
         return;
       }
-      if (binding.type !== AST_NODE_TYPES.Identifier) return;
-      const variable = ASTUtils.findVariable(context.sourceCode.getScope(binding), binding.name);
-      if (variable !== null) {
-        methodClassVariables.add(variable);
-        methodAliases.add(variable);
+      if (current.id.type !== AST_NODE_TYPES.Identifier) return;
+      if (current.parent.type !== AST_NODE_TYPES.VariableDeclaration || current.parent.kind !== "const") {
+        pinNames(null, domain);
+        return;
       }
+      const variable = context.sourceCode.getDeclaredVariables(current)[0];
+      if (variable === undefined || !stableVariable(variable)) return;
+      const local = variable.references.every((reference) => {
+        if (!reference.isRead()) return true;
+        const expression = wrappedExpression(reference.identifier);
+        return enclosingFunction(context, reference.identifier) === methodFunction &&
+          expression.parent?.type === AST_NODE_TYPES.MemberExpression && expression.parent.object === expression;
+      });
+      if (local) receivers.set(variable, domain);
+      else pinNames(null, domain);
     };
-    for (const parameter of method.value.params) {
-      walk(parameter, context.sourceCode.visitorKeys, collectAlias);
-    }
-    for (const statement of method.value.body.body) {
-      walk(statement, context.sourceCode.visitorKeys, collectAlias);
-    }
-    function pinDestructuredMembers(binding: TSESTree.ObjectPattern): void {
-      for (const property of binding.properties) {
-        if (property.type === AST_NODE_TYPES.RestElement) {
-          for (const name of privateNames) pinned.add(name);
-        } else if (property.key.type === AST_NODE_TYPES.Identifier && privateNames.has(property.key.name)) {
-          pinned.add(property.key.name);
-        }
-      }
-
-    }
+    for (const statement of method.value.body.body) walk(statement, context.sourceCode.visitorKeys, collectAlias);
 
     const visitCall = (current: TSESTree.Node, nestedFunction: boolean): void => {
-      if (
-        current.type === AST_NODE_TYPES.VariableDeclarator &&
-        current.id.type === AST_NODE_TYPES.ObjectPattern &&
-        thisValue(current.init)
-      ) {
-        pinDestructuredMembers(current.id);
+      const destructuring = receiverDestructuring(current);
+      if (destructuring !== null) {
+        const domain = receiverDomain(context, destructuring.value, receivers, method.static);
+        pinDestructuredMembers(destructuring.binding, domain);
       }
       if (current.type !== AST_NODE_TYPES.MemberExpression) return;
-      const target = referencedMethod(context, current, methodClassVariables);
-      if (target === null) {
-        const possibleTarget = referencedPropertyName(current);
-        if (possibleTarget !== null && privateNames.has(possibleTarget)) pinned.add(possibleTarget);
+      const domain = receiverDomain(context, current.object, receivers, method.static);
+      const targetName = referencedPropertyName(current);
+      if (domain === null) {
+        pinNames(targetName);
         return;
       }
-      if (!privateNames.has(target)) return;
-      const objectVariable = current.object.type === AST_NODE_TYPES.Identifier
-        ? ASTUtils.findVariable(context.sourceCode.getScope(current.object), current.object.name)
-        : null;
-      if (objectVariable !== null && methodAliases.has(objectVariable)) {
+      if (targetName === null) {
+        if (current.computed) pinNames(null, domain);
+        return;
+      }
+      const target = methodKey(targetName, domain);
+      if (!methodKeys.has(target)) return;
+      if (current.computed || nestedFunction || parameterDecoratorNodes.has(current)) {
         pinned.add(target);
         return;
       }
-      if (
-        current.computed ||
-        nestedFunction ||
-        parameterDecoratorNodes.has(current) ||
-        current.parent.type !== AST_NODE_TYPES.CallExpression ||
-        current.parent.callee !== current
-      ) {
+      const count = localCallCount(context, current, methodFunction);
+      if (count === null) {
         pinned.add(target);
-        return;
+      } else if (count > 0) {
+        const callees = calls.get(caller) ?? new Set<string>();
+        callees.add(target);
+        calls.set(caller, callees);
       }
-      const callees = calls.get(caller) ?? new Set<string>();
-      callees.add(target);
-      calls.set(caller, callees);
     };
-    for (const decorator of method.decorators) {
-      walk(decorator, context.sourceCode.visitorKeys, visitCall, true);
-    }
+    for (const decorator of method.decorators) walk(decorator, context.sourceCode.visitorKeys, visitCall, true);
     if (method.computed) walk(method.key, context.sourceCode.visitorKeys, visitCall, true);
-    for (const parameter of method.value.params) {
-      walk(parameter, context.sourceCode.visitorKeys, visitCall);
-    }
-    for (const statement of method.value.body.body) {
-      walk(statement, context.sourceCode.visitorKeys, visitCall);
-    }
+    for (const parameter of method.value.params) walk(parameter, context.sourceCode.visitorKeys, visitCall);
+    for (const statement of method.value.body.body) walk(statement, context.sourceCode.visitorKeys, visitCall);
   }
   for (const method of methods) collectMethodCalls(method);
   for (const member of node.body.body) {
     if (member.type === AST_NODE_TYPES.MethodDefinition || member.type === AST_NODE_TYPES.TSAbstractMethodDefinition) continue;
     walk(member, context.sourceCode.visitorKeys, (current) => {
       if (current.type !== AST_NODE_TYPES.MemberExpression) return;
-      const target = referencedMethod(context, current, classVariables);
-      const possibleTarget = target ?? referencedPropertyName(current);
-      if (possibleTarget !== null && privateNames.has(possibleTarget)) pinned.add(possibleTarget);
+      pinNames(referencedPropertyName(current));
     });
   }
-  for (const name of privateNames) if (computedReferenceNames.has(name)) pinned.add(name);
+  for (const definition of definitions) {
+    if (computedReferenceNames.has(definition.name)) pinned.add(definition.key);
+  }
 
   const memberIndexes = new Map(node.body.body.map((member, index) => [member, index]));
   const runtimeBarrierPrefix = [0];
@@ -484,6 +568,38 @@ function classScope(
   };
 
   reportMisordered(context, definitions, scopeDefinitions, calls, pinned, canMove);
+}
+
+function classReceiverBindings(
+  context: Readonly<TSESLint.RuleContext<MessageIds, Options>>,
+  node: TSESTree.ClassDeclaration | TSESTree.ClassExpression,
+): Map<Variable, boolean> {
+  const classReceivers = new Map<Variable, boolean>();
+  if (node.id !== null) {
+    const internal = ASTUtils.findVariable(context.sourceCode.getScope(node), node.id.name);
+    if (internal !== null && stableVariable(internal)) classReceivers.set(internal, true);
+  }
+  if (
+    node.type === AST_NODE_TYPES.ClassExpression &&
+    node.parent.type === AST_NODE_TYPES.VariableDeclarator &&
+    node.parent.id.type === AST_NODE_TYPES.Identifier &&
+    node.parent.parent.type === AST_NODE_TYPES.VariableDeclaration && node.parent.parent.kind === "const"
+  ) {
+    const outer = ASTUtils.findVariable(context.sourceCode.getScope(node.parent), node.parent.id.name);
+    if (outer !== null && stableVariable(outer)) classReceivers.set(outer, true);
+  }
+  return classReceivers;
+}
+
+function receiverDestructuring(node: TSESTree.Node): { binding: TSESTree.ObjectPattern; value: TSESTree.Node } | null {
+  if (node.type === AST_NODE_TYPES.VariableDeclarator && node.id.type === AST_NODE_TYPES.ObjectPattern && node.init !== null) {
+    return { binding: node.id, value: node.init };
+  }
+  if ((node.type === AST_NODE_TYPES.AssignmentPattern || node.type === AST_NODE_TYPES.AssignmentExpression) &&
+    node.left.type === AST_NODE_TYPES.ObjectPattern) {
+    return { binding: node.left, value: node.right };
+  }
+  return null;
 }
 
 function isClassRuntimeBarrier(member: TSESTree.ClassElement): boolean {
@@ -540,12 +656,18 @@ function classMethodCounts(body: TSESTree.ClassBody, methods: readonly TSESTree.
   const counts = new Map<string, number>();
   for (const method of methods) {
     const name = methodName(method);
-    if (name !== null) counts.set(name, (counts.get(name) ?? 0) + 1);
+    if (name !== null) {
+      const key = methodKey(name, method.static);
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
   }
   for (const member of body.body) {
     if (member.type !== AST_NODE_TYPES.TSAbstractMethodDefinition) continue;
     const name = !member.computed && member.key.type === AST_NODE_TYPES.Identifier ? member.key.name : null;
-    if (name !== null) counts.set(name, (counts.get(name) ?? 0) + 1);
+    if (name !== null) {
+      const key = methodKey(name, member.static);
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
   }
   return counts;
 }

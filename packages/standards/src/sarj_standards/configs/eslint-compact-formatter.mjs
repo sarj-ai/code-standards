@@ -1,4 +1,4 @@
-export default function format(results) {
+export default function eslintCompactFormatter(results) {
   return JSON.stringify(
     results.map(({ filePath, messages }) => ({
       filePath,
