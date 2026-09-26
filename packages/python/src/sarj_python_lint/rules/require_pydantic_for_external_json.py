@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import ast
 from collections import Counter
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, ClassVar, NamedTuple, final, override
 
@@ -68,8 +68,15 @@ class _WrapperSummary:
 
 
 @dataclass(frozen=True, slots=True)
+class _WrapperFactorySummary:
+    wrapper: _WrapperSummary
+    accessor_origins: dict[str, frozenset[ast.Call]]
+
+
+@dataclass(frozen=True, slots=True)
 class _ModuleSummaries:
     wrappers: dict[str, _WrapperSummary]
+    wrapper_factories: dict[str, _WrapperFactorySummary]
     decoder_parameters: dict[str, int]
     record_parameters: dict[str, frozenset[int]]
     local_parameters: dict[str, frozenset[int]]
@@ -122,7 +129,8 @@ class RequirePydanticForExternalJson(Rule):
         autofix=AutofixPolicy.NONE,
         limitations=(
             "The rule follows import-proven JSON decoders, requests/httpx/aiohttp responses and clients, environment or subprocess results, and simple module-local helpers through single-assignment names.",
-            "Simple same-module wrappers preserve constructor arguments through direct stored-field accessor methods, including local identity-or-empty-dict narrowing helpers; inheritance, decorators, mutation, nested captures, unknown member escapes/helpers, and wrapper factory returns are excluded.",
+            "Simple same-module wrappers preserve constructor arguments through direct stored-field accessor methods, including local identity-or-empty-dict narrowing helpers; inheritance, decorators, mutation, nested captures, unknown member escapes, and unknown helpers are excluded.",
+            "No-argument synchronous module factories with an optional docstring and a single direct, fully bound wrapper-constructor return preserve accessor provenance; annotations alone, parameterized/async/method factories, returned aliases, and factory chains are not inferred.",
             "It diagnoses literal-key subscription and get calls; iteration and other dynamic JSON use remain out of scope.",
             "Unannotated parameters and unknown expressions are not assumed to be external; interprocedural and framework-specific boundaries can remain unreported.",
             "Names bound by loops, comprehensions, context managers, exception handlers, pattern matching, imports, or destructuring are excluded when their provenance is ambiguous; unrelated binders do not suppress the rest of a function.",
@@ -179,7 +187,8 @@ class RequirePydanticForExternalJson(Rule):
 
         first_by_origin: dict[int, tuple[ast.expr, ast.Call]] = {}
         for sink, origin in sorted(findings, key=lambda item: (item[0].lineno, item[0].col_offset)):
-            first_by_origin.setdefault(id(origin), (sink, origin))
+            if not is_suppressed(source_lines, sink.lineno, self.code):
+                first_by_origin.setdefault(id(origin), (sink, origin))
         return [
             Diagnostic(
                 path=path,
@@ -194,7 +203,6 @@ class RequirePydanticForExternalJson(Rule):
                 severity=Severity.WARNING,
             )
             for sink, _origin in first_by_origin.values()
-            if not is_suppressed(source_lines, sink.lineno, self.code)
         ]
 
 
@@ -228,8 +236,9 @@ def _module_summaries(
             continue
         _summarize_function(function, imports, module_validator_names, source_lines, decoders, records=records)
     response_callables = _response_callables(tree, imports, node_index=node_index)
-    return _ModuleSummaries(
+    summaries = _ModuleSummaries(
         _wrapper_summaries(tree, imports),
+        {},
         decoders,
         records,
         _locally_sourced_parameters(functions),
@@ -244,6 +253,7 @@ def _module_summaries(
         _pydantic_adapter_names(tree, imports, binding_counts),
         _pydantic_model_names(tree, imports, binding_counts),
     )
+    return replace(summaries, wrapper_factories=_wrapper_factory_summaries(tree, imports, summaries))
 
 
 def _response_callables(
@@ -777,6 +787,9 @@ class _OriginResolver:
 
     def _call_origins(self, call: ast.Call, resolving: frozenset[str]) -> frozenset[ast.Call]:
         if isinstance(call.func, ast.Attribute) and not call.args and not call.keywords:
+            factory_origins = self._factory_accessor_origins(call.func)
+            if factory_origins is not None:
+                return factory_origins
             wrapped = self._wrapper_value(call.func)
             if wrapped is not None:
                 return self.origins(wrapped, resolving)
@@ -798,6 +811,31 @@ class _OriginResolver:
         for keyword in call.keywords:
             found_origins.update(self.origins(keyword.value, resolving))
         return frozenset(found_origins)
+
+    def factory_argument_origins(self, value: ast.expr, narrowing_helpers: frozenset[str]) -> frozenset[ast.Call]:
+        if not isinstance(value, ast.Call) or self._is_validation_call(value):
+            return frozenset()
+        if self._is_source(value):
+            return frozenset({value})
+        if (
+            isinstance(value.func, ast.Name)
+            and value.func.id in narrowing_helpers
+            and len(value.args) == 1
+            and not value.keywords
+        ):
+            return self.factory_argument_origins(value.args[0], narrowing_helpers)
+        return frozenset()
+
+    def _factory_accessor_origins(self, access: ast.Attribute) -> frozenset[ast.Call] | None:
+        receiver = self._resolved_binding(access.value) if isinstance(access.value, ast.Name) else access.value
+        if not isinstance(receiver, ast.Call) or not isinstance(receiver.func, ast.Name):
+            return None
+        if receiver.args or receiver.keywords or receiver.func.id in self.local_bound_names:
+            return None
+        factory = self.summaries.wrapper_factories.get(receiver.func.id)
+        if factory is None or not self._wrapper_is_stable(receiver, factory.wrapper):
+            return None
+        return factory.accessor_origins.get(access.attr, frozenset())
 
     def _wrapper_value(self, access: ast.Attribute) -> ast.expr | None:
         receiver = self._resolved_binding(access.value) if isinstance(access.value, ast.Name) else access.value
@@ -1691,3 +1729,69 @@ def _wrapper_descriptor(statement: ast.stmt) -> bool:
     if isinstance(statement, ast.Assign):
         return not all(isinstance(target, ast.Name) and target.id == "__slots__" for target in statement.targets)
     return isinstance(statement, ast.AnnAssign | ast.AugAssign)
+
+
+def _wrapper_factory_summaries(
+    tree: ast.Module, imports: ImportIndex, summaries: _ModuleSummaries
+) -> dict[str, _WrapperFactorySummary]:
+    counts = _suite_binding_counts(tree.body)
+    narrowing_helpers = _narrowing_helpers(tree, imports, counts)
+    factories: dict[str, _WrapperFactorySummary] = {}
+    for function in tree.body:
+        if not isinstance(function, ast.FunctionDef) or counts[function.name] != 1:
+            continue
+        returned = _direct_factory_return(function)
+        if returned is None or not isinstance(returned.func, ast.Name):
+            continue
+        wrapper = summaries.wrappers.get(returned.func.id)
+        if wrapper is None:
+            continue
+        arguments = _factory_constructor_arguments(returned, wrapper)
+        if arguments is None:
+            continue
+        scope = _own_scope(function)
+        resolver = _OriginResolver(
+            imports,
+            summaries,
+            frozenset(),
+            frozenset(),
+            frozenset(),
+            {},
+            _function_local_bound_names(function, scope),
+            scope,
+        )
+        origins = {
+            accessor: resolver.factory_argument_origins(arguments[wrapper.fields[field]], narrowing_helpers)
+            for accessor, field in wrapper.accessors.items()
+        }
+        if any(origins.values()):
+            factories[function.name] = _WrapperFactorySummary(wrapper, origins)
+    return factories
+
+
+def _direct_factory_return(function: ast.FunctionDef) -> ast.Call | None:
+    statements = function.body[1:] if ast.get_docstring(function, clean=False) is not None else function.body
+    if (
+        function.decorator_list
+        or _parameter_positions(function)
+        or any((function.args.kwonlyargs, function.args.vararg, function.args.kwarg, function.type_params))
+        or len(statements) != 1
+    ):
+        return None
+    statement = statements[0]
+    if not isinstance(statement, ast.Return) or not isinstance(statement.value, ast.Call):
+        return None
+    if any(isinstance(node, ast.NamedExpr | ast.Yield | ast.YieldFrom | ast.Await) for node in ast.walk(statement)):
+        return None
+    return statement.value
+
+
+def _factory_constructor_arguments(call: ast.Call, wrapper: _WrapperSummary) -> dict[str, ast.expr] | None:
+    if len(call.args) > len(wrapper.parameters) or any(isinstance(argument, ast.Starred) for argument in call.args):
+        return None
+    arguments = dict(zip(wrapper.parameters, call.args, strict=False))
+    for keyword in call.keywords:
+        if keyword.arg not in wrapper.parameters or keyword.arg in arguments:
+            return None
+        arguments[keyword.arg] = keyword.value
+    return arguments if len(arguments) == len(wrapper.parameters) else None
