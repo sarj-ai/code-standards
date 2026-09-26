@@ -146,7 +146,7 @@ def test_repeated_composition_baseline_does_not_absorb_another_test(tmp_path: Pa
     standards = api.Standards(tmp_path)
     selectors = ["python:repeated-test-composition"]
     raw = standards.analyze([str(source)], rules=selectors, mode=api.AnalysisMode.RAW)
-    assert raw.exit_code == 0
+    assert raw.exit_code == 1
     assert len(raw.diagnostics) == 3
     baseline_path = tmp_path / "diagnostic-baseline.json"
     baseline_path.write_text(_policy_baseline(raw.diagnostics), encoding="utf-8")
@@ -158,7 +158,7 @@ def test_repeated_composition_baseline_does_not_absorb_another_test(tmp_path: Pa
 
     source.write_text(_repeated_client_tests(4), encoding="utf-8")
     changed = standards.analyze([str(source)], rules=selectors)
-    assert changed.exit_code == 0
+    assert changed.exit_code == 1
     assert [item.code for item in changed.diagnostics] == ["SARJ457"]
 
 

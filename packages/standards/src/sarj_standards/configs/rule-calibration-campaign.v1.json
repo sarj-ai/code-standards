@@ -8,7 +8,7 @@
       "ruleId": "repeated-test-composition",
       "state": "complete",
       "evidence": "38 focused regression cases cover service and ASGI client composition, scope, aliases, shadowing, validation, suppression, diagnostic precedence and stable baseline multiplicity. Calibration (2026-09-26): 3,600 pinned tracked Python files in 19 fresh bounded 250-file subprocess batches. All 38 findings across nine files were reviewed: 35 service constructions and three managed ASGI clients, zero known false positives, zero duplicate locations and zero Standards findings. Repeated complete diagnostics and implementation hashes were identical. The shared project-rule baseline took 33.843s; adding this rule took 38.959s and 39.438s, an added 5.116s / 5.594s (15.1% / 16.5%). OS caches were not flushed; one baseline and two combined runs were measured, without peak-memory instrumentation. Private corpus details remain in an owner-readable overlay.",
-      "outcome": "No autofix. Publish the first registered revision at warning level to satisfy the release gate, then promote the calibrated rule in a separate release under the approved strict pytest policy."
+      "outcome": "Promote to blocking error after the first warning release in sarj-python-lint 1.2.0 / code-standards 8.2.0 under the approved strict pytest policy. Matching behavior, conservative exclusions and calibration are unchanged. Existing scoped baselines retain old debt while each additional repeated construction remains visible. No autofix."
     },
     {
       "task": "rule-audit/python/async-mock-call-without-await-assertion",
