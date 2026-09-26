@@ -189,16 +189,27 @@ def local_names(function: Function) -> set[str]:
     return names
 
 
-def changed_before(function: Function, call: ast.Call) -> set[str]:
+def changed_before(function: Function, call: ast.Call, aliases: dict[str, ast.expr]) -> set[str]:
     changed: set[str] = set()
     for node in direct_nodes(function):
-        if not isinstance(node, (ast.Call, ast.Attribute)) or node.lineno >= call.lineno:
+        if not isinstance(node, (ast.Call, ast.Attribute, ast.Subscript)) or (node.lineno, node.col_offset) >= (
+            call.lineno,
+            call.col_offset,
+        ):
             continue
         target = node.func.value if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) else None
-        if isinstance(node, ast.Attribute) and isinstance(node.ctx, (ast.Store, ast.Del)):
+        if isinstance(node, (ast.Attribute, ast.Subscript)) and isinstance(node.ctx, (ast.Store, ast.Del)):
             target = node.value
-        if isinstance(target, ast.Name):
+        while isinstance(target, (ast.Attribute, ast.Subscript)):
+            target = target.value
+        seen: set[str] = set()
+        while isinstance(target, ast.Name) and target.id not in seen:
+            seen.add(target.id)
             changed.add(target.id)
+            value = aliases.get(target.id)
+            if value is None or (value.lineno, value.col_offset) >= (node.lineno, node.col_offset):
+                break
+            target = value
     return changed
 
 

@@ -235,3 +235,122 @@ def test_await_assertion_does_not_replace_call_count_coverage() -> None:
             send.assert_called_once_with("item")
     finally:
         pending.close()
+
+
+@pytest.mark.parametrize(
+    "condition",
+    [
+        "send.called",
+        "send.called is True",
+        "send.call_count",
+        "send.call_count == 2",
+        "2 == send.call_count",
+        "send.call_count > 0",
+        "1 <= send.call_count",
+        "send.call_count != 0",
+        "send.called and enabled",
+        "send.called or send.call_count > 0",
+    ],
+)
+def test_positive_call_state_requires_await_evidence(condition: str) -> None:
+    source = (
+        f"from unittest.mock import AsyncMock\nasync def test_send():\n    send = AsyncMock()\n    assert {condition}\n"
+    )
+    assert len(_check(source)) == 1
+
+
+@pytest.mark.parametrize(
+    "condition",
+    [
+        "send.call_count == 0",
+        "send.call_count >= 0",
+        "send.call_count < 2",
+        "not send.called",
+        "send.called is False",
+        "send.called or enabled",
+        "send.call_count != -1",
+    ],
+)
+def test_nonpositive_call_state_is_not_a_positive_call_contract(condition: str) -> None:
+    source = (
+        f"from unittest.mock import AsyncMock\nasync def test_send():\n    send = AsyncMock()\n    assert {condition}\n"
+    )
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    "oracle",
+    [
+        "assert send.await_count >= 0",
+        "assert send.await_count == 0",
+        "assert send.await_args is None",
+        "assert send.await_args_list == []",
+        "assert send.await_count > 0 or enabled",
+        "send.assert_has_awaits([])",
+    ],
+)
+def test_nonpositive_await_state_does_not_cover_positive_calls(oracle: str) -> None:
+    source = f"from unittest.mock import AsyncMock\nasync def test_send():\n    send = AsyncMock()\n    send.assert_called_once()\n    {oracle}\n"
+    assert len(_check(source)) == 1
+
+
+@pytest.mark.parametrize(
+    "condition",
+    [
+        "send.await_count",
+        "send.await_count > 0",
+        "1 <= send.await_count",
+        "send.await_args is not None",
+        "send.await_args_list",
+        "send.await_args_list != []",
+        "send.await_count > 0 and enabled",
+        "send.await_count == 1 or send.await_args is not None",
+    ],
+)
+def test_positive_await_state_covers_call_counts(condition: str) -> None:
+    source = f"from unittest.mock import AsyncMock\nasync def test_send():\n    send = AsyncMock()\n    assert send.call_count == 1\n    assert {condition}\n"
+    assert _check(source) == []
+
+
+def test_numeric_call_state_preserves_async_child_provenance_and_suppression() -> None:
+    source = "from unittest.mock import AsyncMock\nasync def test_send():\n    store = AsyncMock()\n    assert store.upsert.call_count == 2\n"
+    assert len(_check(source)) == 1
+    assert _check(source.replace("AsyncMock()", "AsyncMock(spec=Store)")) == []
+    assert _check(source.replace("== 2", "== 2  # sarj-noqa: SARJ456 -- scheduling before execution")) == []
+
+
+def test_unawaited_call_satisfies_numeric_call_assertion_and_nonpositive_await_check() -> None:
+    send = AsyncMock()
+    pending: Coroutine[object, object, object] = send("item")  # pyright: ignore[reportAny] -- runtime AsyncMock reproduction
+    try:
+        assert send.call_count == 1  # sarj-noqa: SARJ456 -- demonstrate a dropped coroutine
+        assert send.await_count >= 0
+        assert send.await_count == 0
+    finally:
+        pending.close()
+
+
+@pytest.mark.parametrize(
+    "oracle",
+    [
+        "assert not send.await_count == 0",
+        "assert not send.await_args is None",
+        "send.assert_has_awaits(calls=[call(1)])",
+    ],
+)
+def test_equivalent_positive_await_oracles_remain_valid(oracle: str) -> None:
+    source = f"from unittest.mock import AsyncMock\nasync def test_send():\n    send = AsyncMock()\n    assert send.call_count == 1\n    {oracle}\n"
+    assert _check(source) == []
+
+
+def test_two_mock_counts_on_one_line_have_distinct_locations() -> None:
+    source = "from unittest.mock import AsyncMock\nasync def test_send():\n    first = AsyncMock()\n    second = AsyncMock()\n    assert first.call_count == 1 and second.called\n"
+    findings = _check(source)
+    assert len(findings) == 2
+    assert len({(item.line, item.col) for item in findings}) == 2
+
+
+@pytest.mark.parametrize("state", ["call_count", "called", "await_count", "await_args", "await_args_list"])
+def test_replaced_call_or_await_state_is_not_inferred(state: str) -> None:
+    source = f"from unittest.mock import AsyncMock\nasync def test_send():\n    send = AsyncMock()\n    send.{state} = custom\n    assert send.call_count == 1\n"
+    assert _check(source) == []

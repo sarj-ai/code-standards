@@ -168,7 +168,7 @@ def _candidate(
     identity = f"{spec.symbol.module}.{spec.symbol.name}"
     if not _unconditional(context, node, function) or not _subject_called(context, function, node):
         return identity, None
-    blocked = (available.blocked - aliases.keys()) | changed_before(function, node)
+    blocked = (available.blocked - aliases.keys()) | changed_before(function, node, aliases)
     scope = WiringScope(available.parameters, aliases, frozenset(blocked))
     arguments = wiring(context, project, node, spec, scope)
     return identity, f"{identity}:{arguments!r}" if arguments is not None else None
