@@ -2067,6 +2067,14 @@
       "state": "pending",
       "evidence": "Focused fixtures cover object properties, class fields, methods, TypeScript signatures, member access, quoted wire keys, computed keys, generated files, and the cited date_from/date_to return shape. Standards dogfood reports zero diagnostics. The Platform corpus runner is currently blocked by an existing project-service coverage error for iac/dev-plan/filter-state.mjs, so broader consumer calibration remains pending.",
       "outcome": "Stage lower snake_case authored property names as a warning without autofix. Preserve quoted and bracketed external-contract keys, computed names, constants, and generated code; defer promotion until a clean consumer corpus run establishes migration cost."
+    },
+    {
+      "task": "rule-audit/eslint/prefer-nominal-id-types",
+      "family": "typescript",
+      "ruleId": "prefer-nominal-id-types",
+      "state": "complete",
+      "evidence": "39 focused cases (17 positive, 22 negative). Read-only pinned local evaluation: 1,638 tracked TypeScript files, 8,814,406 bytes, fresh processes capped at 250 files. All 31 final findings inspected as nominal-typing opportunities, not proven swapped calls; zero known false positives or duplicate locations and zero parse failures. One serialized plural-ID input false positive was fixed and retained as a regression. Two disabled passes took 6.28/6.46 seconds; enabled passes took 6.69/6.82 seconds; peak enabled batch RSS 564 MB. Local timings are load-sensitive; no production optimization claim. No full upstream public repository corpus was evaluated.",
+      "outcome": "Ship warning without autofix. Resolve only proven local primitive aliases; skip generated files, operational IDs, unknown imports, intersections and mixed branded/raw pairs. Plural identifier names require array carriers. Keep raw wire object schemas outside this callable-only rule; external callable compatibility remains a local suppression decision."
     }
   ]
 }

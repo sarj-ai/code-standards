@@ -250,6 +250,7 @@
       "prefer-native-random-uuid",
       "prefer-node-crypto-hash",
       "prefer-node-fs-promises",
+      "prefer-nominal-id-types",
       "prefer-non-nullable-collection",
       "prefer-nullish-filter-predicate",
       "prefer-schema-for-api-payload",

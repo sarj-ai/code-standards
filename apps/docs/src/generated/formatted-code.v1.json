@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "7d00b369f7147137ddeb7bcd5dae4061c0baa782df44875a64643a5c87ddfbb8",
-  "cliSha256": "c815e51d91a893b72d2aa3ec97c286d848e1c262d90170876a6013ed268c8e05",
+  "catalogSha256": "af0fb324e674358e087924d4493ee541a35c5b0cec4074a5b41c7ab380e2e290",
+  "cliSha256": "f0d2be858276137c4dc710f15e8688cac7ee23f0876ebe94c5804f4dc8d11dcc",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -3002,6 +3002,41 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Do not block on a synchronous read"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "eslint:prefer-nominal-id-types": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/store.ts",
+              "source": "type AccountId = string & { readonly account: unique symbol };\ntype InvoiceId = string & { readonly invoice: unique symbol };\nfunction load(accountId: AccountId, invoiceId: InvoiceId): void {}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/store.ts",
+          "id": "branded-identifiers",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Distinguish domain identifiers"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/store.ts",
+              "source": "function load(accountId: string, invoiceId: string): void {}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/store.ts",
+          "id": "raw-identifiers",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Do not accept interchangeable identifiers"
         }
       ],
       "optionsSchemaSource": null
