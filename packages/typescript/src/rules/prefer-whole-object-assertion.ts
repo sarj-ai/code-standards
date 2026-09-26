@@ -144,96 +144,6 @@ export default createRule<Options, MessageIds>({
     }
     const { sourceCode } = context;
 
-    function parseAssertion(statement: TSESTree.Statement): Assertion | null {
-      if (statement.type !== AST_NODE_TYPES.ExpressionStatement) {
-        return null;
-      }
-      const call = statement.expression;
-      if (call.type !== AST_NODE_TYPES.CallExpression) {
-        return null;
-      }
-      const callee = call.callee;
-      if (
-        callee.type !== AST_NODE_TYPES.MemberExpression ||
-        callee.computed ||
-        callee.property.type !== AST_NODE_TYPES.Identifier
-      ) {
-        return null;
-      }
-      const matcher = callee.property.name;
-      const expectCall = callee.object;
-      if (
-        expectCall.type !== AST_NODE_TYPES.CallExpression ||
-        expectCall.callee.type !== AST_NODE_TYPES.Identifier ||
-        expectCall.callee.name !== "expect" ||
-        expectCall.arguments.length !== 1
-      ) {
-        return null;
-      }
-      const actual = expectCall.arguments[0];
-      if (!isTestExpect(expectCall.callee)) return null;
-      if (actual === undefined || actual.type !== AST_NODE_TYPES.MemberExpression || actual.optional) {
-        return null;
-      }
-      if (!isPureReceiver(actual.object)) {
-        return null;
-      }
-
-      let key: AssertionKey;
-      let receiver: TSESTree.Expression;
-      if (actual.computed) {
-        const index = literalIndex(actual.property);
-        if (index === null) {
-          return null;
-        }
-        key = { kind: "index", index };
-        receiver = actual.object;
-      } else {
-        const access = propertyAccess(actual);
-        if (access === null) return null;
-        key = { kind: "property", path: access.path };
-        receiver = access.receiver;
-      }
-
-      return assertionExpectation(statement, call, receiver, key, matcher);
-    }
-
-    function assertionExpectation(statement: TSESTree.ExpressionStatement, call: TSESTree.CallExpression, receiver: TSESTree.Expression | TSESTree.Super, key: Assertion["key"], matcher: string): Assertion | null {
-      const synthetic = SYNTHETIC_LITERAL_MATCHERS.get(matcher);
-      if (synthetic !== undefined && call.arguments.length === 0) {
-        return { statement, receiver, key, matcher, expectedText: synthetic, expectedIsLiteral: true };
-      }
-      if (!MERGEABLE_MATCHERS.has(matcher)) {
-        return null;
-      }
-      const expected = call.arguments[0];
-      if (call.arguments.length !== 1 || expected === undefined || expected.type === AST_NODE_TYPES.SpreadElement) {
-        return null;
-      }
-      const literal = literalText(expected, (node) => sourceCode.getText(node));
-      return {
-        statement,
-        receiver,
-        key,
-        matcher,
-        expectedText: literal ?? sourceCode.getText(expected),
-        expectedIsLiteral: literal !== null,
-      };
-    }
-
-    function isTestExpect(callee: TSESTree.Identifier): boolean {
-      const variable = ASTUtils.findVariable(sourceCode.getScope(callee), callee.name);
-      if (variable !== null && variable.defs.some((definition) => {
-        if (definition.node.type !== AST_NODE_TYPES.ImportSpecifier) return true;
-        const declaration = definition.node.parent;
-        const imported = definition.node.imported;
-        return declaration.type !== AST_NODE_TYPES.ImportDeclaration ||
-          !["vitest", "@jest/globals", "@playwright/test", "bun:test"].includes(String(declaration.source.value)) ||
-          (imported.type === AST_NODE_TYPES.Identifier ? imported.name : imported.value) !== "expect";
-      })) return false;
-      return true;
-    }
-
     /** Distinct literal expectations are candidates, not proof of equivalent runtime reads. */
     function reportPropertyRun(run: readonly Assertion[]): void {
       type ObjectTree = Map<string, string | ObjectTree>;
@@ -354,6 +264,96 @@ export default createRule<Options, MessageIds>({
         }
       }
       flush();
+    }
+
+    function parseAssertion(statement: TSESTree.Statement): Assertion | null {
+      if (statement.type !== AST_NODE_TYPES.ExpressionStatement) {
+        return null;
+      }
+      const call = statement.expression;
+      if (call.type !== AST_NODE_TYPES.CallExpression) {
+        return null;
+      }
+      const callee = call.callee;
+      if (
+        callee.type !== AST_NODE_TYPES.MemberExpression ||
+        callee.computed ||
+        callee.property.type !== AST_NODE_TYPES.Identifier
+      ) {
+        return null;
+      }
+      const matcher = callee.property.name;
+      const expectCall = callee.object;
+      if (
+        expectCall.type !== AST_NODE_TYPES.CallExpression ||
+        expectCall.callee.type !== AST_NODE_TYPES.Identifier ||
+        expectCall.callee.name !== "expect" ||
+        expectCall.arguments.length !== 1
+      ) {
+        return null;
+      }
+      const actual = expectCall.arguments[0];
+      if (!isTestExpect(expectCall.callee)) return null;
+      if (actual === undefined || actual.type !== AST_NODE_TYPES.MemberExpression || actual.optional) {
+        return null;
+      }
+      if (!isPureReceiver(actual.object)) {
+        return null;
+      }
+
+      let key: AssertionKey;
+      let receiver: TSESTree.Expression;
+      if (actual.computed) {
+        const index = literalIndex(actual.property);
+        if (index === null) {
+          return null;
+        }
+        key = { kind: "index", index };
+        receiver = actual.object;
+      } else {
+        const access = propertyAccess(actual);
+        if (access === null) return null;
+        key = { kind: "property", path: access.path };
+        receiver = access.receiver;
+      }
+
+      return assertionExpectation(statement, call, receiver, key, matcher);
+    }
+
+    function isTestExpect(callee: TSESTree.Identifier): boolean {
+      const variable = ASTUtils.findVariable(sourceCode.getScope(callee), callee.name);
+      if (variable !== null && variable.defs.some((definition) => {
+        if (definition.node.type !== AST_NODE_TYPES.ImportSpecifier) return true;
+        const declaration = definition.node.parent;
+        const imported = definition.node.imported;
+        return declaration.type !== AST_NODE_TYPES.ImportDeclaration ||
+          !["vitest", "@jest/globals", "@playwright/test", "bun:test"].includes(String(declaration.source.value)) ||
+          (imported.type === AST_NODE_TYPES.Identifier ? imported.name : imported.value) !== "expect";
+      })) return false;
+      return true;
+    }
+
+    function assertionExpectation(statement: TSESTree.ExpressionStatement, call: TSESTree.CallExpression, receiver: TSESTree.Expression | TSESTree.Super, key: Assertion["key"], matcher: string): Assertion | null {
+      const synthetic = SYNTHETIC_LITERAL_MATCHERS.get(matcher);
+      if (synthetic !== undefined && call.arguments.length === 0) {
+        return { statement, receiver, key, matcher, expectedText: synthetic, expectedIsLiteral: true };
+      }
+      if (!MERGEABLE_MATCHERS.has(matcher)) {
+        return null;
+      }
+      const expected = call.arguments[0];
+      if (call.arguments.length !== 1 || expected === undefined || expected.type === AST_NODE_TYPES.SpreadElement) {
+        return null;
+      }
+      const literal = literalText(expected, (node) => sourceCode.getText(node));
+      return {
+        statement,
+        receiver,
+        key,
+        matcher,
+        expectedText: literal ?? sourceCode.getText(expected),
+        expectedIsLiteral: literal !== null,
+      };
     }
 
     return {

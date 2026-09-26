@@ -221,12 +221,6 @@ export default createRule<Options, MessageIds>({
       return matcher.isLoggingCall(statement.expression);
     }
 
-    /** True when a `//`/`/* *\/` run ends on the line directly above `node`. */
-    function hasCommentDirectlyAbove(node: TSESTree.Node): boolean {
-      const above = sourceCode.getCommentsBefore(node).at(-1);
-      return above !== undefined && above.loc.end.line === node.loc.start.line - 1;
-    }
-
     /**
      * Class 3 — a rationale written next to the braces instead of inside them.
      */
@@ -243,6 +237,12 @@ export default createRule<Options, MessageIds>({
         return false;
       }
       return hasCommentDirectlyAbove(block.parent);
+    }
+
+    /** True when a `//`/`/* *\/` run ends on the line directly above `node`. */
+    function hasCommentDirectlyAbove(node: TSESTree.Node): boolean {
+      const above = sourceCode.getCommentsBefore(node).at(-1);
+      return above !== undefined && above.loc.end.line === node.loc.start.line - 1;
     }
 
     if (isTestFile(filename) || BENCHMARK_DIR_RE.test(filename.replaceAll("\\", "/"))) {

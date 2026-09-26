@@ -101,6 +101,14 @@ export default createRule<[], MessageIds>({
       if (binding !== null) destination.add(binding);
     }
 
+    function checkAssertion(
+      node: TSESTree.TSAsExpression | TSESTree.TSTypeAssertion,
+    ): void {
+      if (isMockTypeReference(node.typeAnnotation)) {
+        context.report({ node, messageId: "unsafeMockCast" });
+      }
+    }
+
     function isMockTypeReference(node: TSESTree.TypeNode): boolean {
       if (node.type !== AST_NODE_TYPES.TSTypeReference) return false;
       const typeName = node.typeName;
@@ -117,14 +125,6 @@ export default createRule<[], MessageIds>({
         return binding !== null && namespaceBindings.has(binding);
       }
       return false;
-    }
-
-    function checkAssertion(
-      node: TSESTree.TSAsExpression | TSESTree.TSTypeAssertion,
-    ): void {
-      if (isMockTypeReference(node.typeAnnotation)) {
-        context.report({ node, messageId: "unsafeMockCast" });
-      }
     }
 
     return {
