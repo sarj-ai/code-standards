@@ -268,3 +268,46 @@ def test_expanded_warning_owns_generic_keyword_only_warning() -> None:
     assert {(finding.code, finding.severity) for finding in findings} == {
         ("SARJ093", Severity.WARNING),
     }
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "from example.types import FolderId\ndef move(file_id: str, folder_id: 'FolderId') -> None: ...\n",
+        "from example.types import Raw\ntype Local = Raw\ndef move(file_id: Local, folder_id: str) -> None: ...\n",
+        "from example.types import Raw\ntype Local = Raw\ntype Next = Local\ndef move(file_id: Next, folder_id: str) -> None: ...\n",
+    ],
+)
+def test_demanded_annotations_preserve_quotes_and_local_aliases(tmp_path: Path, source: str) -> None:
+    findings = _project_check(
+        tmp_path, source, "from typing import NewType\nFolderId = NewType('FolderId', str)\ntype Raw = str\n"
+    )
+    assert len(findings) == 1
+    assert findings[0].severity is Severity.WARNING
+
+
+@pytest.mark.parametrize("include_brand", [True, False])
+@pytest.mark.parametrize("excluded", [True, False])
+@pytest.mark.parametrize("globs", [True, False])
+def test_duplicate_distribution_names_are_scoped_by_declared_workspace(
+    tmp_path: Path, *, include_brand: bool, excluded: bool, globs: bool
+) -> None:
+    (tmp_path / ".git").mkdir()
+    for product, brand in (("first", include_brand), ("second", True)):
+        root = tmp_path / product
+        root.mkdir()
+        members = '["*"]' if globs else '["consumer", "shared"]'
+        exclusions = '["shared"]' if excluded else "[]"
+        (root / "pyproject.toml").write_text(f"[tool.uv.workspace]\nmembers = {members}\nexclude = {exclusions}\n")
+        for member in ("consumer", "shared"):
+            package = root / member
+            package.mkdir()
+            dependencies = '["shared"]' if member == "consumer" else "[]"
+            (package / "pyproject.toml").write_text(f'[project]\nname = "{member}"\ndependencies = {dependencies}\n')
+        if brand:
+            (root / "shared" / "ids.py").write_text("from typing import NewType\nRoomName = NewType('RoomName', str)\n")
+    path = tmp_path / "first" / "consumer" / "service.py"
+    source = "def record(room_name: str, call_id: str) -> None: ...\n"
+    path.write_text(source)
+    findings = PreferNominalIdTypes().check(path, source)
+    assert len(findings) == int(include_brand and not excluded)

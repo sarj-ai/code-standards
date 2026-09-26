@@ -63,10 +63,28 @@ class NominalSource:
 
 
 @dataclass(frozen=True, slots=True)
+class _Workspace:
+    root: Path
+    members: tuple[str, ...]
+    excludes: tuple[str, ...]
+
+    def contains(self, path: Path) -> bool:
+        if path == self.root:
+            return True
+        if not path.is_relative_to(self.root):
+            return False
+        relative = path.relative_to(self.root)
+        return any(relative.full_match(pattern) for pattern in self.members) and not any(
+            relative.full_match(pattern) for pattern in self.excludes
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class _Distribution:
     root: Path
-    name: str
+    name: str | None
     dependencies: frozenset[str]
+    workspace: _Workspace | None
 
 
 @final
@@ -97,9 +115,17 @@ class NominalProjectFacts:
                 if (distribution := _distribution(manifest)) is not None
             )
         distributions = self._distributions[root]
-        own = next((distribution for distribution in distributions if distribution.root == owner), None)
+        own = next(
+            (
+                distribution
+                for distribution in distributions
+                if distribution.root == owner and distribution.name is not None
+            ),
+            None,
+        )
         if own is None:
             return ()
+        distributions = _workspace_distributions(distributions, owner)
         return tuple(
             distribution
             for distribution in distributions
@@ -123,6 +149,18 @@ class NominalProjectFacts:
         return {module: source for module, source in sources.items() if module not in ambiguous}
 
 
+def _workspace_distributions(distributions: tuple[_Distribution, ...], owner: Path) -> tuple[_Distribution, ...]:
+    workspaces = [
+        distribution.workspace
+        for distribution in distributions
+        if distribution.workspace is not None and distribution.workspace.contains(owner)
+    ]
+    if workspaces:
+        workspace = max(workspaces, key=lambda scope: len(scope.root.parts))
+        distributions = tuple(distribution for distribution in distributions if workspace.contains(distribution.root))
+    return distributions
+
+
 def _distribution(manifest: Path) -> _Distribution | None:
     try:
         if manifest.is_symlink() or manifest.stat().st_size > _MAX_BYTES:
@@ -132,9 +170,10 @@ def _distribution(manifest: Path) -> _Distribution | None:
         return None
     if not _is_mapping(document):
         return None
+    workspace = _workspace(manifest.parent, document)
     project = document.get("project")
     if not _is_mapping(project):
-        return None
+        return _Distribution(manifest.parent, None, frozenset(), workspace) if workspace is not None else None
     name = project.get("name")
     dependencies = project.get("dependencies", [])
     if not isinstance(name, str) or not _is_list(dependencies):
@@ -147,7 +186,28 @@ def _distribution(manifest: Path) -> _Distribution | None:
             names.add(canonicalize_name(Requirement(dependency).name))
         except InvalidRequirement:
             continue
-    return _Distribution(manifest.parent, canonicalize_name(name), frozenset(names))
+    return _Distribution(manifest.parent, canonicalize_name(name), frozenset(names), workspace)
+
+
+def _workspace(root: Path, document: dict[object, object]) -> _Workspace | None:
+    value: object = document
+    for key in ("tool", "uv", "workspace"):
+        if not _is_mapping(value):
+            return None
+        value = value.get(key)
+    if not _is_mapping(value):
+        return None
+    members = _patterns(value.get("members"))
+    excludes = _patterns(value.get("exclude", []))
+    if members is None or excludes is None:
+        return None
+    return _Workspace(root, members, excludes)
+
+
+def _patterns(value: object) -> tuple[str, ...] | None:
+    if not _is_list(value) or any(not isinstance(item, str) for item in value):
+        return None
+    return tuple(item for item in value if isinstance(item, str))
 
 
 def _files(root: Path, pattern: str) -> list[Path]:
@@ -159,6 +219,8 @@ def _files(root: Path, pattern: str) -> list[Path]:
                 return []
             directories[:] = sorted(name for name in directories if not name.startswith(".") and name not in _SKIP)
             found.extend(directory / name for name in sorted(filenames) if Path(name).match(pattern))
+            if len(found) > _MAX_FILES:
+                return []
     except OSError:
         return []
     return found
