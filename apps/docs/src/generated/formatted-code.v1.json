@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "8168a781c4e2e2268da91a8035ae10cb0e233c32310362add2b6eff9e33abe0b",
-  "cliSha256": "1f32135c6358f8ded018e636e241ba9c7abe03b16d88f7b299d3d221252a7a76",
+  "catalogSha256": "a14796e8b3c6ffbdfd8b8a29688a2e9d9ab70b3adc0dacdf446724321e772930",
+  "cliSha256": "64a45cc7ce6c5f06f90ba6ae7eda0461e50f9565dc5f8a0c2a0486d8c30ebcbd",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -9021,6 +9021,41 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Replay-named store callable omits duplicate behavior"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:require-explicit-psycopg-transaction": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "repository.py",
+              "source": "from psycopg_pool import AsyncConnectionPool\n\n\nasync def save(pool: AsyncConnectionPool):\n    async with pool.connection() as conn, conn.transaction():\n        await conn.execute(\"SELECT id FROM items FOR UPDATE\")\n        await conn.execute(\"UPDATE items SET n = 1\")\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "repository.py",
+          "id": "explicit-lock-transaction",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Retain locks for the atomic operation"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "repository.py",
+              "source": "from psycopg_pool import AsyncConnectionPool\n\n\nasync def save(pool: AsyncConnectionPool):\n    async with pool.connection() as conn:\n        await conn.execute(\"SELECT id FROM items FOR UPDATE\")\n        await conn.execute(\"UPDATE items SET n = 1\")\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "repository.py",
+          "id": "unprotected-lock",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A pool checkout alone does not retain a lock"
         }
       ],
       "optionsSchemaSource": null

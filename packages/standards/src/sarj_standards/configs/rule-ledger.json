@@ -124,6 +124,7 @@
       "repeated-static-call-cases",
       "repeated-test-composition",
       "replay-contract-insert-requires-duplicate-policy",
+      "require-explicit-psycopg-transaction",
       "require-keyword-only-swap-prone-params",
       "require-nodecode-for-splitting-settings-field",
       "require-port-for-service",
@@ -415,7 +416,8 @@
       "SARJ458",
       "SARJ459",
       "SARJ460",
-      "SARJ461"
+      "SARJ461",
+      "SARJ462"
     ],
     "sql": [
       "SARJ101",
