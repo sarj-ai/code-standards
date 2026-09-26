@@ -529,6 +529,37 @@ export default createRule<Options, MessageIds>({
       pendingReports.set(key, { node, messageId, data });
     };
 
+
+    // Recurse through class fragments but leave calls to the CallExpression visitor.
+    const checkClassNode = (node: TSESTree.Node | null, objectKeys = false): void => {
+      if (node === null) return;
+      switch (node.type) {
+        case AST_NODE_TYPES.Literal:
+          if (typeof node.value === "string") reportClasses(node.value, node);
+          break;
+        case AST_NODE_TYPES.TemplateLiteral:
+          for (const quasi of node.quasis) reportClasses(quasi.value.cooked ?? "", quasi);
+          break;
+        case AST_NODE_TYPES.ArrayExpression:
+          for (const element of node.elements) {
+            if (element !== null && element.type !== AST_NODE_TYPES.SpreadElement) checkClassNode(element, objectKeys);
+          }
+          break;
+        case AST_NODE_TYPES.ObjectExpression:
+          checkClassProperties(node, objectKeys);
+          break;
+        case AST_NODE_TYPES.ConditionalExpression:
+          checkClassNode(node.consequent, objectKeys);
+          checkClassNode(node.alternate, objectKeys);
+          break;
+        case AST_NODE_TYPES.LogicalExpression:
+          checkClassNode(node.right, objectKeys);
+          break;
+        default:
+          break;
+      }
+    };
+
     const reportClasses = (value: string, node: TSESTree.Node): void => {
       const tokens = classTokens(value);
       for (const token of tokens) {
@@ -560,36 +591,6 @@ export default createRule<Options, MessageIds>({
           class: token,
           replacement: `${prefix}text-${role}-foreground`,
         });
-      }
-    };
-
-    // Recurse through class fragments but leave calls to the CallExpression visitor.
-    const checkClassNode = (node: TSESTree.Node | null, objectKeys = false): void => {
-      if (node === null) return;
-      switch (node.type) {
-        case AST_NODE_TYPES.Literal:
-          if (typeof node.value === "string") reportClasses(node.value, node);
-          break;
-        case AST_NODE_TYPES.TemplateLiteral:
-          for (const quasi of node.quasis) reportClasses(quasi.value.cooked ?? "", quasi);
-          break;
-        case AST_NODE_TYPES.ArrayExpression:
-          for (const element of node.elements) {
-            if (element !== null && element.type !== AST_NODE_TYPES.SpreadElement) checkClassNode(element, objectKeys);
-          }
-          break;
-        case AST_NODE_TYPES.ObjectExpression:
-          checkClassProperties(node, objectKeys);
-          break;
-        case AST_NODE_TYPES.ConditionalExpression:
-          checkClassNode(node.consequent, objectKeys);
-          checkClassNode(node.alternate, objectKeys);
-          break;
-        case AST_NODE_TYPES.LogicalExpression:
-          checkClassNode(node.right, objectKeys);
-          break;
-        default:
-          break;
       }
     };
 

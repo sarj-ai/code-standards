@@ -138,15 +138,6 @@ export default createRule<Options, MessageIds>({
       return trail !== undefined && trail.range[0] > member.range[0] ? trail : undefined;
     }
 
-    function isGroupLabel(comment: TSESTree.Comment, member: Judged, headsRun: boolean): boolean {
-      if (comment.loc.end.line >= member.node.loc.start.line) return false;
-      const body = commentBody(comment);
-      if (!BARE_LABEL_RE.test(body)) return false;
-      if (labelStems(body) === labelStems(sourceCode.getText(member.key))) return false;
-      const lineAbove = sourceCode.lines[comment.loc.start.line - 2];
-      return headsRun || (lineAbove !== undefined && lineAbove.trim().length === 0);
-    }
-
     function check(node: TSESTree.Node, members: readonly TSESTree.Node[]): void {
       const judged = members.map(named).filter((member): member is Judged => member !== undefined);
       if (judged.length === 0) return;
@@ -194,6 +185,15 @@ export default createRule<Options, MessageIds>({
         messageId: "commentWall",
         data: { restated: String(restated), commented: String(commented) },
       });
+    }
+
+    function isGroupLabel(comment: TSESTree.Comment, member: Judged, headsRun: boolean): boolean {
+      if (comment.loc.end.line >= member.node.loc.start.line) return false;
+      const body = commentBody(comment);
+      if (!BARE_LABEL_RE.test(body)) return false;
+      if (labelStems(body) === labelStems(sourceCode.getText(member.key))) return false;
+      const lineAbove = sourceCode.lines[comment.loc.start.line - 2];
+      return headsRun || (lineAbove !== undefined && lineAbove.trim().length === 0);
     }
 
     return {

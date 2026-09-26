@@ -451,6 +451,11 @@ export default createRule<Options, MessageIds>({
         data: { name, count: String(tuple.elements.length) },
       });
     };
+    const enterFunction = (node: FunctionNode): void => {
+      functionStack.push(node);
+      check(node);
+    };
+
     const check = (node: FunctionNode): void => {
       if (isQueryKeyFactory(node)) return;
       const annotation = node.returnType?.typeAnnotation;
@@ -465,10 +470,6 @@ export default createRule<Options, MessageIds>({
         return;
       }
       report(annotation, name);
-    };
-    const enterFunction = (node: FunctionNode): void => {
-      functionStack.push(node);
-      check(node);
     };
     const exitFunction = (): void => {
       functionStack.pop();

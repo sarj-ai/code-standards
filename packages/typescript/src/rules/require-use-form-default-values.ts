@@ -91,6 +91,12 @@ export default createRule<Options, MessageIds>({
       return (value.type === AST_NODE_TYPES.UnaryExpression && value.operator === "void") ||
         (value.type === AST_NODE_TYPES.Identifier && value.name === "undefined" && (bindingOf(value)?.defs.length ?? 0) === 0);
     };
+    const uninitializedUseFormCall = (node: TSESTree.Node): boolean => {
+      if (node.type !== AST_NODE_TYPES.CallExpression || node.callee.type !== AST_NODE_TYPES.Identifier || importedKind(node.callee) !== "useForm") return false;
+      const options = node.arguments[0];
+      return options?.type !== AST_NODE_TYPES.SpreadElement && initializationState(options) === "uninitialized";
+    };
+
     const initializationState = (node: TSESTree.Node | undefined): "initialized" | "uninitialized" | "unknown" => {
       if (node === undefined) return "uninitialized";
       if (node.type !== AST_NODE_TYPES.ObjectExpression) return "unknown";
@@ -102,11 +108,6 @@ export default createRule<Options, MessageIds>({
         if (name === "defaultValues" || name === "values") initialization.set(name, !isDefinitelyUndefined(property.value));
       }
       return [...initialization.values()].some(Boolean) ? "initialized" : "uninitialized";
-    };
-    const uninitializedUseFormCall = (node: TSESTree.Node): boolean => {
-      if (node.type !== AST_NODE_TYPES.CallExpression || node.callee.type !== AST_NODE_TYPES.Identifier || importedKind(node.callee) !== "useForm") return false;
-      const options = node.arguments[0];
-      return options?.type !== AST_NODE_TYPES.SpreadElement && initializationState(options) === "uninitialized";
     };
     const isUninitializedForm = (node: TSESTree.Node): boolean => {
       if (node.type !== AST_NODE_TYPES.Identifier) return false;

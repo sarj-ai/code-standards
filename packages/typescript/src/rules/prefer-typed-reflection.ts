@@ -106,16 +106,17 @@ export default createRule<[], "avoid">({
     const services = ESLintUtils.getParserServices(context);
     if (!services.program) return {};
     const checker = services.program.getTypeChecker();
-    const globalName = (node: TSESTree.Node, name: string): boolean =>
-      node.type === AST_NODE_TYPES.Identifier &&
-      node.name === name &&
-      !ASTUtils.findVariable(context.sourceCode.getScope(node), name)?.defs
-        .length;
     const isReflect = (node: TSESTree.Node): boolean =>
       globalName(node, "Reflect") ||
       (node.type === AST_NODE_TYPES.MemberExpression &&
         propertyName(node) === "Reflect" &&
         globalName(node.object, "globalThis"));
+
+    const globalName = (node: TSESTree.Node, name: string): boolean =>
+      node.type === AST_NODE_TYPES.Identifier &&
+      node.name === name &&
+      !ASTUtils.findVariable(context.sourceCode.getScope(node), name)?.defs
+        .length;
     const closedObject = (type: ts.Type): boolean => {
       if (type.isUnion()) return type.types.every(closedObject);
       return (

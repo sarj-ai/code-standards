@@ -132,19 +132,6 @@ export default createRule<Options, MessageIds>({
       return trail !== undefined && trail.range[0] > member.range[0] ? trail : undefined;
     }
 
-    function isGroupLabel(
-      comment: TSESTree.Comment,
-      member: NamedMember,
-      headsRun: boolean,
-    ): boolean {
-      if (comment.loc.end.line >= member.loc.start.line) return false;
-      const body = commentBody(comment);
-      if (!BARE_LABEL_RE.test(body)) return false;
-      if (labelStems(body) === labelStems(sourceCode.getText(member.key))) return false;
-      const lineAbove = sourceCode.lines[comment.loc.start.line - 2];
-      return headsRun || (lineAbove !== undefined && lineAbove.trim().length === 0);
-    }
-
     function check(node: TSESTree.TSInterfaceBody | TSESTree.TSTypeLiteral): void {
       const members = node.type === AST_NODE_TYPES.TSInterfaceBody ? node.body : node.members;
       const named = members.filter(isNamedMember);
@@ -183,6 +170,19 @@ export default createRule<Options, MessageIds>({
         messageId: "commentWall",
         data: { restated: String(restated), commented: String(commented) },
       });
+    }
+
+    function isGroupLabel(
+      comment: TSESTree.Comment,
+      member: NamedMember,
+      headsRun: boolean,
+    ): boolean {
+      if (comment.loc.end.line >= member.loc.start.line) return false;
+      const body = commentBody(comment);
+      if (!BARE_LABEL_RE.test(body)) return false;
+      if (labelStems(body) === labelStems(sourceCode.getText(member.key))) return false;
+      const lineAbove = sourceCode.lines[comment.loc.start.line - 2];
+      return headsRun || (lineAbove !== undefined && lineAbove.trim().length === 0);
     }
 
     return {

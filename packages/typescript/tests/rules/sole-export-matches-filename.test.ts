@@ -1,6 +1,9 @@
 import * as tsParser from "@typescript-eslint/parser";
 import { RuleTester } from "@typescript-eslint/rule-tester";
 import { Linter } from "eslint";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 
 import genericRule from "../../src/rules/no-generic-single-export-module.js";
@@ -13,9 +16,35 @@ RuleTester.it = it;
 RuleTester.itOnly = it.only;
 
 const RULE_TESTER = new RuleTester({ languageOptions: { parser: tsParser, sourceType: "module" } });
+const FRAMEWORK_ROOT = mkdtempSync(join(tmpdir(), "sarj-framework-entrypoints-"));
+const NEXT_ROOT = join(FRAMEWORK_ROOT, "web");
+const ASTRO_ROOT = join(FRAMEWORK_ROOT, "docs");
+const PLAIN_ROOT = join(NEXT_ROOT, "packages", "plain");
+const MALFORMED_ROOT = join(FRAMEWORK_ROOT, "malformed");
+for (const [root, dependencies] of [[NEXT_ROOT, { next: "16.0.0" }], [ASTRO_ROOT, { astro: "6.0.0" }], [PLAIN_ROOT, {}]] as const) {
+  mkdirSync(root, { recursive: true });
+  writeFileSync(join(root, "package.json"), JSON.stringify({ dependencies }));
+}
+mkdirSync(MALFORMED_ROOT);
+writeFileSync(join(MALFORMED_ROOT, "package.json"), "{");
+afterAll(() => rmSync(FRAMEWORK_ROOT, { recursive: true, force: true }));
 
 RULE_TESTER.run("sole-export-matches-filename", rule, {
   valid: [
+    { name: "Next app page has a default component contract", filename: join(NEXT_ROOT, "src/app/orders/page.tsx"), code: "export default function OrdersScreen() { return null; }" },
+    { name: "Next pages accept local default aliases and supporting types", filename: join(NEXT_ROOT, "src/app/orders/page.tsx"), code: "const Screen = () => null; export { Screen as default }; export interface Props {}" },
+    { name: "Next root app layout has a default component contract", filename: join(NEXT_ROOT, "app/(shop)/layout.tsx"), code: "export default function ShopShell() { return null; }" },
+    { name: "Next parallel and intercepted routes remain entrypoints", filename: join(NEXT_ROOT, "src/app/@modal/(.)photo/page.tsx"), code: "export default function PhotoModal() { return null; }" },
+    { name: "Next route handlers retain their HTTP export names", filename: join(NEXT_ROOT, "src/app/api/orders/route.ts"), code: "export function POST() { return new Response(); }" },
+    { name: "Next pages router preserves route filenames", filename: join(NEXT_ROOT, "pages/billing.tsx"), code: "export default function BillingScreen() { return null; }" },
+    { name: "Next src pages router preserves route filenames", filename: join(NEXT_ROOT, "src/pages/billing.tsx"), code: "export default function BillingScreen() { return null; }" },
+    { name: "Next API routes preserve their default handler contract", filename: join(NEXT_ROOT, "src/pages/api/billing.ts"), code: "export default function handleBilling() {}" },
+    { name: "Next middleware preserves its default handler contract", filename: join(NEXT_ROOT, "src/middleware.ts"), code: "export default function authenticate() {}" },
+    { name: "Next proxy preserves its default handler contract", filename: join(NEXT_ROOT, "proxy.ts"), code: "export default function authenticate() {}" },
+    { name: "Astro endpoint retains its path and HTTP export contract", filename: join(ASTRO_ROOT, "src/pages/feed.xml.ts"), code: "export function GET() { return new Response(); }" },
+    { name: "Astro pages have an implicit component alongside their routing hook", filename: join(ASTRO_ROOT, "src/pages/[slug].astro"), code: "export function getStaticPaths() { return []; }" },
+    { name: "Astro pages retain their rendering mode export", filename: join(ASTRO_ROOT, "src/pages/dashboard.astro"), code: "export const prerender = false;" },
+    { name: "Astro middleware retains its hook export contract", filename: join(ASTRO_ROOT, "src/middleware.ts"), code: "export function onRequest() {}" },
     { name: "exported import-equals leaves the runtime surface unknown", filename: "src/items.ts", code: "namespace Domain { export class Entry {} } export import Entry = Domain.Entry; export const only = 1;" },
     { name: "export equals leaves a mixed runtime surface unresolved", filename: "src/artifacts.ts", code: "export = other; export class ArtifactStore {}" },
     { name: "exported import aliases remain unresolved", filename: "src/artifacts.ts", code: "export import Other = Domain.Other; export class ArtifactStore {}" },
@@ -41,15 +70,15 @@ RULE_TESTER.run("sole-export-matches-filename", rule, {
     { name: "private helper prefix is preserved", filename: "src/_build-record.ts", code: "export function buildRecord() {}" },
     { name: "Next client instrumentation has a fixed export contract", filename: "src/instrumentation-client.ts", code: "export function onRouterTransitionStart() {}" },
     { name: "Astro collections have a framework-owned config filename", filename: "src/content.config.ts", code: "import { defineCollection } from 'astro:content'; export const collections = { posts: defineCollection({}) };" },
-    {filename: "app/error.tsx", code: "'use client'; export default function ErrorBoundary(){return null;}"},
-    {filename: "/repo/src/app/orders/global-error.tsx", code: "'use client'; export default function GlobalBoundary(){return null;}"},
-    {filename: "C:\\repo\\app\\orders\\error.tsx", code: "'use client'; export default function Boundary(){return null;}"},
+    {filename: join(NEXT_ROOT, "app/error.tsx"), code: "'use client'; export default function ErrorBoundary(){return null;}"},
+    {filename: join(NEXT_ROOT, "src/app/orders/global-error.tsx"), code: "'use client'; export default function GlobalBoundary(){return null;}"},
+    {filename: join(NEXT_ROOT, "app/orders/error.tsx").replaceAll("/", "\\"), code: "'use client'; export default function Boundary(){return null;}"},
     { filename: "src/artifact-store.ts", code: SOLE_EXPORT_MATCHES_FILENAME_DOCUMENTATION.examples[0].files[0].source },
     { filename: "src/oauth-client.server.ts", code: "export class OAuthClient {}" },
     { filename: "src/artifacts.ts", code: "export class ArtifactStore {} export const version = 1;" },
     { filename: "src/index.ts", code: "export class ArtifactStore {}" },
-    { filename: "src/page.tsx", code: "export default function PoetPage() { return null; }" },
-    { filename: "src/pages/robots.txt.ts", code: "export function GET() { return new Response(); }" },
+    { filename: join(NEXT_ROOT, "src/app/page.tsx"), code: "export default function PoetPage() { return null; }" },
+    { filename: join(ASTRO_ROOT, "src/pages/robots.txt.ts"), code: "export function GET() { return new Response(); }" },
     { filename: "src/artifacts.ts", code: "export * from './artifact-store.js';" },
     { filename: "src/artifacts.ts", code: "export { ArtifactStore } from './artifact-store.js';" },
     { filename: "src/artifacts.test.ts", code: "export class ArtifactStore {}" },
@@ -58,6 +87,21 @@ RULE_TESTER.run("sole-export-matches-filename", rule, {
     { filename: "src/artifacts.ts", code: "export type ArtifactStore = object;" },
   ],
   invalid: [
+    { name: "ordinary page modules must match their runtime export", filename: "src/services/page.ts", code: "export class BillingClient {}", errors: [{ messageId: "matchSoleExport", data: { exported: "BillingClient", expected: "billing-client" } }] },
+    { name: "a malformed package manifest cannot establish a framework exemption", filename: join(MALFORMED_ROOT, "src/pages/wrong.ts"), code: "export default function BillingScreen() {}", errors: [{ messageId: "matchSoleExport" }] },
+    { name: "ordinary pages directories do not create framework routes", filename: "src/domain/pages/wrong.ts", code: "export class BillingClient {}", errors: [{ messageId: "matchSoleExport" }] },
+    { name: "a default export inside an ordinary pages directory is still checked", filename: join(NEXT_ROOT, "src/domain/pages/wrong.ts"), code: "export default class BillingClient {}", errors: [{ messageId: "matchSoleExport" }] },
+    { name: "ordinary layouts are checked", filename: "src/services/layout.ts", code: "export function buildLayout() {}", errors: [{ messageId: "matchSoleExport" }] },
+    { name: "ordinary middleware modules are checked", filename: "src/services/middleware.ts", code: "export function authenticate() {}", errors: [{ messageId: "matchSoleExport" }] },
+    { name: "Next app paths require a framework export contract", filename: join(NEXT_ROOT, "src/app/orders/page.ts"), code: "export class BillingClient {}", errors: [{ messageId: "matchSoleExport" }] },
+    { name: "Next route paths require an HTTP export contract", filename: join(NEXT_ROOT, "src/app/orders/route.ts"), code: "export class BillingClient {}", errors: [{ messageId: "matchSoleExport" }] },
+    { name: "Next private app folders are not routes", filename: join(NEXT_ROOT, "src/app/_components/page.tsx"), code: "export default function BillingCard() { return null; }", errors: [{ messageId: "matchSoleExport" }] },
+    { name: "Next colocated ordinary modules remain checked", filename: join(NEXT_ROOT, "src/app/orders/client.ts"), code: "export default class BillingClient {}", errors: [{ messageId: "matchSoleExport" }] },
+    { name: "Next page-like suffixes are ordinary modules", filename: join(NEXT_ROOT, "src/app/orders/page.server.ts"), code: "export default function BillingClient() {}", errors: [{ messageId: "matchSoleExport" }] },
+    { name: "a nested package cannot inherit the outer Next entrypoint exemption", filename: join(PLAIN_ROOT, "src/pages/wrong.ts"), code: "export default class BillingClient {}", errors: [{ messageId: "matchSoleExport" }] },
+    { name: "Astro paths require an endpoint export", filename: join(ASTRO_ROOT, "src/pages/wrong.ts"), code: "export class BillingClient {}", errors: [{ messageId: "matchSoleExport" }] },
+    { name: "Astro nested pages folders are ordinary modules", filename: join(ASTRO_ROOT, "src/domain/pages/wrong.ts"), code: "export function GET() {}", errors: [{ messageId: "matchSoleExport" }] },
+    { name: "Astro route hooks outside the real pages root remain checked", filename: join(ASTRO_ROOT, "src/domain/pages/wrong.astro"), code: "export function getStaticPaths() {}", errors: [{ messageId: "matchSoleExport" }] },
     { name: "qualified namespace exports use their root runtime key", filename: "src/artifacts.ts", code: "export namespace ArtifactStore.Internal { export const count = 1; }", errors: [{ messageId: "matchSoleExport", data: { exported: "ArtifactStore", expected: "artifact-store" } }] },
     { name: "supporting type exports do not hide a runtime mismatch", filename: "src/provider-contract.ts", code: "export const ProviderSchema = {}; export type Provider = string;", errors: [{ messageId: "matchSoleExport", data: { exported: "ProviderSchema", expected: "provider-schema" } }] },
     { name: "leading phrases must use the complete export name", filename: "src/html.ts", code: "export function htmlEscape() {}", errors: [{ messageId: "matchSoleExport", data: { exported: "htmlEscape", expected: "html-escape" } }] },
