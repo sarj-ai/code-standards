@@ -3,6 +3,7 @@ from __future__ import annotations
 import ast
 from dataclasses import dataclass
 from pathlib import PurePosixPath
+import re
 from typing import TYPE_CHECKING, ClassVar, TypeGuard, final, override
 
 from sarj_python_lint.rule_base import (
@@ -18,6 +19,7 @@ from sarj_python_lint.rule_base import (
     is_suppressed,
 )
 from sarj_python_lint.rules._ast_index import walk as walk_ast
+from sarj_python_lint.rules._nominal_project import NominalSource
 
 
 if TYPE_CHECKING:
@@ -57,6 +59,7 @@ _RAW_SCHEMA_SUFFIXES = ("Config", "Credentials", "Settings")
 _MIN_SWAPPABLE_ROLES = 2
 _SECOND_ARGUMENT = 1
 _PAIR_ARITY = 2
+_MAX_ALIAS_DEPTH = 8
 _COLLECTION_WRAPPERS = frozenset(
     {
         "AbstractSet",
@@ -92,6 +95,32 @@ class _IdRole:
 class _TypeFacts:
     raw_aliases: dict[str, str]
     nominal_aliases: dict[str, str]
+    value_roles: dict[str, str] | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class _ScopeFacts:
+    sources: dict[str, NominalSource]
+    resolved: dict[str, _TypeFacts]
+    roles: dict[str, str]
+
+
+@dataclass(frozen=True, slots=True)
+class _BoundaryOwnership:
+    classes: dict[ast.ClassDef, set[str]]
+    original_classes: dict[ast.ClassDef, list[_IdRole]]
+    constructors: dict[ast.FunctionDef | ast.AsyncFunctionDef, ast.ClassDef]
+    original_constructor_owners: set[ast.ClassDef]
+
+    def redundant(self, node: ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef, *, has_original: bool) -> bool:
+        if isinstance(node, ast.ClassDef):
+            return node in self.original_constructor_owners and not has_original
+        owner = self.constructors.get(node)
+        return (
+            owner is not None
+            and bool(self.classes.get(owner))
+            and (bool(self.original_classes.get(owner)) or not has_original)
+        )
 
 
 @final
@@ -111,7 +140,9 @@ class PreferNominalIdTypes(Rule):
         category=RuleCategory.CORRECTNESS,
         autofix=AutofixPolicy.NONE,
         limitations=(
-            "The rule checks functions, methods, constructors, and classes for at least two ID-shaped roles with the same proven carrier.",
+            "The rule checks functions, methods, constructors, and classes for at least two ID-shaped roles with the same proven carrier. Existing coverage remains an error.",
+            "Imported first-party carriers and non-ID roles backed by a unique matching NewType in the owning distribution or a declared local dependency are warnings. Ambiguous exports, relative imports, cycles, and unresolved ownership are skipped.",
+            "Non-ID role discovery uses exact snake-case names and proven matching carriers; it does not infer brands from names alone. Dependency discovery excludes optional and transitive dependencies.",
             "Generated code, migrations, external adapters, operational context, raw schemas, SQLAlchemy Mapped fields, ambiguous imports, and unlike carrier shapes are excluded.",
         ),
         examples=(
@@ -150,6 +181,9 @@ class PreferNominalIdTypes(Rule):
     )
     description: str = documentation.summary
 
+    def __init__(self) -> None:
+        self._scope_cache: list[_ScopeFacts] = []
+
     @override
     def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
         path = context.path
@@ -160,7 +194,8 @@ class PreferNominalIdTypes(Rule):
             return []
 
         imports = context.imports
-        facts = _type_facts(tree, imports)
+        original_facts = _type_facts(tree, imports)
+        facts = self._expanded_facts(context, tree, imports)
         source_lines = context.source_lines
         class_role_names = {
             node: {role.name for role in _qualifying_roles(_boundary_roles(node, imports, facts))}
@@ -168,7 +203,18 @@ class PreferNominalIdTypes(Rule):
             if isinstance(node, ast.ClassDef)
         }
         constructor_owners = _constructor_owners(tree)
+        original_class_roles = {
+            node: _qualifying_roles(_boundary_roles(node, imports, original_facts)) for node in class_role_names
+        }
+        original_constructor_owners = {
+            owner
+            for constructor, owner in constructor_owners.items()
+            if _qualifying_roles(_boundary_roles(constructor, imports, original_facts))
+        }
 
+        ownership = _BoundaryOwnership(
+            class_role_names, original_class_roles, constructor_owners, original_constructor_owners
+        )
         diagnostics: list[Diagnostic] = []
 
         def collect_boundary_diagnostics() -> None:
@@ -176,15 +222,14 @@ class PreferNominalIdTypes(Rule):
                 roles = _qualifying_roles(_boundary_roles(node, imports, facts))
                 if not roles:
                     continue
-                owner = (
-                    constructor_owners.get(node) if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) else None
-                )
-                if owner is not None and class_role_names.get(owner):
+                old_roles = _qualifying_roles(_boundary_roles(node, imports, original_facts))
+                if ownership.redundant(node, has_original=bool(old_roles)):
                     continue
-                first_raw = next(role for role in roles if role.carrier.raw)
+                diagnostic_roles = old_roles or roles
+                first_raw = next(role for role in diagnostic_roles if role.carrier.raw)
                 if is_suppressed(source_lines, first_raw.annotation.lineno, self.code):
                     continue
-                names = ", ".join(f"`{role.name}`" for role in roles)
+                names = ", ".join(f"`{role.name}`" for role in diagnostic_roles)
                 diagnostics.append(
                     Diagnostic(
                         path=path,
@@ -192,15 +237,36 @@ class PreferNominalIdTypes(Rule):
                         col=first_raw.annotation.col_offset + 1,
                         code=self.code,
                         message=(
-                            f"{names} are swappable ID-shaped roles with the same carrier; introduce or reuse "
-                            "`typing.NewType` or nominal value-object identifiers and propagate them through this boundary."
+                            f"{names} are swappable domain roles with the same carrier; introduce or reuse "
+                            "`typing.NewType` or nominal value-object types and propagate them through this boundary."
                         ),
-                        severity=Severity.ERROR,
+                        severity=Severity.ERROR if old_roles else Severity.WARNING,
                     )
                 )
 
         collect_boundary_diagnostics()
         return sorted(diagnostics, key=lambda diagnostic: (diagnostic.line, diagnostic.col))
+
+    def _expanded_facts(self, context: PythonFileContext, tree: ast.Module, imports: ImportIndex) -> _TypeFacts:
+        sources = (
+            context.session.nominal_project.sources(context.path, context.session.first_party)
+            if context.path.is_file()
+            else {}
+        )
+        if not sources:
+            sources = {"__local__": NominalSource(context.path, context.source)}
+        cached = next((entry for entry in self._scope_cache if entry.sources is sources), None)
+        if cached is None:
+            resolved: dict[str, _TypeFacts] = {}
+            for module, source in sources.items():
+                if "NewType" in source.text:
+                    _module_facts(module, sources, resolved, ())
+            roles = _canonical_roles(sources, resolved)
+            cached = _ScopeFacts(sources, resolved, roles)
+            self._scope_cache = [*self._scope_cache[-7:], cached]
+        seed = _imported_facts(imports, sources, cached.resolved, (), tree)
+        facts = _type_facts(tree, imports, seed)
+        return _TypeFacts(facts.raw_aliases, facts.nominal_aliases, cached.roles)
 
 
 def _is_excluded_path(path: Path) -> bool:
@@ -298,10 +364,11 @@ def _role(
 ) -> _IdRole | None:
     if annotation is None or name in _OPERATIONAL_IDS:
         return None
-    if not (name.endswith(("_id", "_ids")) or (allow_bare_id and name == "id")):
-        return None
+    is_id = name.endswith(("_id", "_ids")) or (allow_bare_id and name == "id")
     carrier = _carrier(annotation, imports, facts)
     if carrier is None:
+        return None
+    if not is_id and (facts.value_roles is None or facts.value_roles.get(name) != carrier.shape):
         return None
     return _IdRole(name=name, annotation=annotation, carrier=carrier)
 
@@ -350,9 +417,9 @@ def _is_pydantic_wire_alias_call(value: ast.expr | None, imports: ImportIndex) -
     )
 
 
-def _type_facts(tree: ast.Module, imports: ImportIndex) -> _TypeFacts:
-    raw_aliases: dict[str, str] = {}
-    nominal_aliases: dict[str, str] = {}
+def _type_facts(tree: ast.Module, imports: ImportIndex, seed: _TypeFacts | None = None) -> _TypeFacts:
+    raw_aliases: dict[str, str] = dict(seed.raw_aliases) if seed is not None else {}
+    nominal_aliases: dict[str, str] = dict(seed.nominal_aliases) if seed is not None else {}
     aliases: dict[str, ast.expr] = {}
 
     _collect_type_aliases(tree, imports, raw_aliases, nominal_aliases, aliases)
@@ -428,11 +495,12 @@ def _type_alias_type_value(value: ast.expr, imports: ImportIndex) -> ast.expr | 
 def _carrier(annotation: ast.expr, imports: ImportIndex, facts: _TypeFacts) -> _Carrier | None:
     if (parsed := _stringized_annotation(annotation)) is not None:
         return _carrier(parsed, imports, facts)
-    if isinstance(annotation, ast.Name):
-        if annotation.id in facts.raw_aliases:
-            return _Carrier(facts.raw_aliases[annotation.id], raw=True)
-        if annotation.id in facts.nominal_aliases:
-            return _Carrier(facts.nominal_aliases[annotation.id], raw=False)
+    if isinstance(annotation, (ast.Name, ast.Attribute)):
+        name = ast.unparse(annotation)
+        if name in facts.raw_aliases:
+            return _Carrier(facts.raw_aliases[name], raw=True)
+        if name in facts.nominal_aliases:
+            return _Carrier(facts.nominal_aliases[name], raw=False)
     if primitive := _primitive_carrier(annotation, imports):
         return _Carrier(primitive, raw=True)
     if isinstance(annotation, ast.BinOp) and isinstance(annotation.op, ast.BitOr):
@@ -574,3 +642,106 @@ def _boundary_methods(statement: ast.ClassDef) -> list[ast.FunctionDef | ast.Asy
         for member in statement.body
         if isinstance(member, (ast.FunctionDef, ast.AsyncFunctionDef)) and not _is_operational_function(member)
     ]
+
+
+def _module_facts(
+    module: str,
+    sources: dict[str, NominalSource],
+    resolved: dict[str, _TypeFacts],
+    visiting: tuple[str, ...],
+) -> _TypeFacts:
+    if module in visiting or len(visiting) >= _MAX_ALIAS_DEPTH or module not in sources:
+        return _TypeFacts({}, {})
+    if module in resolved:
+        return resolved[module]
+    source = sources[module]
+    if source.tree is None:
+        return _TypeFacts({}, {})
+    seed = _imported_facts(source.imports, sources, resolved, (*visiting, module), source.tree)
+    facts = _type_facts(source.tree, source.imports, seed)
+    assignments: dict[str, list[_AliasAssignment]] = {}
+    for statement in source.tree.body:
+        if (assignment := _alias_assignment(statement)) is not None:
+            assignments.setdefault(assignment.target, []).append(assignment)
+    # Imports are re-exports only when their binding is unambiguous; local
+    # aliases must have exactly one top-level assignment and no other writes.
+    unique = {
+        name for name, values in assignments.items() if len(values) == 1 and _binding_count(source.tree, name) == 1
+    }
+    allowed = unique | set(source.imports.bindings)
+    result = _TypeFacts(
+        {name: shape for name, shape in facts.raw_aliases.items() if name in allowed},
+        {name: shape for name, shape in facts.nominal_aliases.items() if name in allowed},
+    )
+    resolved[module] = result
+    return result
+
+
+def _binding_count(tree: ast.Module, name: str) -> int:
+    return sum(
+        1
+        for node in walk_ast(tree)
+        if (isinstance(node, ast.Name) and isinstance(node.ctx, (ast.Store, ast.Del)) and node.id == name)
+        or (isinstance(node, ast.arg) and node.arg == name)
+        or (isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)) and node.name == name)
+        or (isinstance(node, ast.alias) and (node.asname or node.name.partition(".")[0]) == name)
+    )
+
+
+def _imported_facts(
+    imports: ImportIndex,
+    sources: dict[str, NominalSource],
+    resolved: dict[str, _TypeFacts],
+    visiting: tuple[str, ...],
+    tree: ast.Module,
+) -> _TypeFacts:
+    raw: dict[str, str] = {}
+    nominal: dict[str, str] = {}
+    mutated = {
+        ast.unparse(node).partition(".")[0]
+        for node in walk_ast(tree)
+        if isinstance(node, ast.Attribute) and isinstance(node.ctx, (ast.Store, ast.Del))
+    }
+    for local, binding in imports.bindings.items():
+        if local in mutated:
+            continue
+        facts = _module_facts(binding.module, sources, resolved, visiting)
+        for destination, aliases in ((raw, facts.raw_aliases), (nominal, facts.nominal_aliases)):
+            if binding.symbol is None:
+                destination.update({f"{local}.{name}": shape for name, shape in aliases.items()})
+            elif binding.symbol in aliases:
+                destination[local] = aliases[binding.symbol]
+    return _TypeFacts(raw, nominal)
+
+
+def _canonical_roles(sources: dict[str, NominalSource], resolved: dict[str, _TypeFacts]) -> dict[str, str]:
+    candidates: dict[str, list[str]] = {}
+    for module, source in sources.items():
+        if (
+            "NewType" not in source.text
+            or source.tree is None
+            or _is_excluded_path(source.path)
+            or not {"tests", "test", "fixtures", "fakes"}.isdisjoint(source.path.parts)
+            or source.path.name.startswith("test_")
+        ):
+            continue
+        facts = resolved.get(module, _TypeFacts({}, {}))
+        for statement in source.tree.body:
+            assignment = _alias_assignment(statement)
+            if assignment is None or not _is_new_type_call(assignment.value, source.imports):
+                continue
+            name = assignment.target
+            value = assignment.value
+            if (
+                len(value.args) != _MIN_SWAPPABLE_ROLES
+                or value.keywords
+                or not isinstance(value.args[0], ast.Constant)
+                or value.args[0].value != name
+            ):
+                continue
+            if name not in facts.nominal_aliases:
+                continue
+            first = re.sub(r"(.)([A-Z][a-z]+)", r"\1_\2", name)
+            role = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", first).lower()
+            candidates.setdefault(role, []).append(facts.nominal_aliases[name])
+    return {name: shapes[0] for name, shapes in candidates.items() if len(shapes) == 1}
