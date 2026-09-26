@@ -61,7 +61,7 @@ class RepeatedTestComposition(ProjectRule):
             "Requires three sibling tests with equivalent wiring of at least two stored and invoked first-party ABC/Protocol dependencies.",
             "Collaborators must resolve to equivalent fixture parameters or first-party constructor expressions, optionally through unambiguous local aliases.",
             "Requires an unconditional construction followed by a subject method call; dynamic arguments, parametrized tests, constructor validation, multiple instances, mutated dependencies, fixtures, helpers, generated files, and inherited test classes are excluded.",
-            "HTTPX detection requires a managed AsyncClient with an inline ASGITransport and equivalent options except its app.",
+            "HTTPX detection requires a managed AsyncClient with an inline or unchanged local ASGITransport and equivalent options except its app; unambiguous constructor aliases are accepted.",
         ),
         examples=(
             RuleExample(
@@ -159,8 +159,11 @@ def _candidate(
     callee = unalias(node.func, aliases)
     if shadowed(callee, available.parameters | available.blocked):
         return None
-    if context.imports.resolves(node.func, sources=_HTTPX, symbol="AsyncClient"):
-        key = _client_key(context, node) if _unconditional(context, node, function) else None
+    if context.imports.resolves(callee, sources=_HTTPX, symbol="AsyncClient"):
+        blocked = available.parameters | available.blocked
+        changed = changed_before(function, node, aliases)
+        stable = {name: value for name, value in aliases.items() if name not in changed}
+        key = _client_key(context, node, stable, blocked) if _unconditional(context, node, function) else None
         return "httpx.AsyncClient", key
     spec = constructor(context, callee, project)
     if spec is None:
@@ -238,9 +241,9 @@ def _subject_called(context: PythonFileContext, function: Function, call: ast.Ca
     )
 
 
-def _client_key(context: PythonFileContext, call: ast.Call) -> str | None:
-    if not context.imports.resolves(call.func, sources=_HTTPX, symbol="AsyncClient"):
-        return None
+def _client_key(
+    context: PythonFileContext, call: ast.Call, aliases: dict[str, ast.expr], blocked: frozenset[str]
+) -> str | None:
     parent = context.parents.get(call)
     if (
         not isinstance(parent, ast.withitem)
@@ -259,7 +262,7 @@ def _client_key(context: PythonFileContext, call: ast.Call) -> str | None:
                 return None
             options.append((keyword.arg, ast.dump(keyword.value)))
             continue
-        transport_options = _transport_options(context, keyword.value)
+        transport_options = _transport_options(context, unalias(keyword.value, aliases), aliases, blocked)
         if transport_options is None:
             return None
         found_transport = True
@@ -267,10 +270,14 @@ def _client_key(context: PythonFileContext, call: ast.Call) -> str | None:
     return repr(sorted(options)) if found_transport else None
 
 
-def _transport_options(context: PythonFileContext, transport: ast.expr) -> list[tuple[str, str]] | None:
-    if not isinstance(transport, ast.Call) or not context.imports.resolves(
-        transport.func, sources=_HTTPX, symbol="ASGITransport"
-    ):
+def _transport_options(
+    context: PythonFileContext, transport: ast.expr, aliases: dict[str, ast.expr], blocked: frozenset[str]
+) -> list[tuple[str, str]] | None:
+    if not isinstance(transport, ast.Call):
+        return None
+    earlier = {name: value for name, value in aliases.items() if value.lineno < transport.lineno}
+    callee = unalias(transport.func, earlier)
+    if shadowed(callee, blocked) or not context.imports.resolves(callee, sources=_HTTPX, symbol="ASGITransport"):
         return None
     if transport.args or any(option.arg is None for option in transport.keywords):
         return None

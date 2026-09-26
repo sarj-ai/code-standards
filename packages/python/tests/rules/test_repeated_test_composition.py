@@ -243,3 +243,31 @@ def test_dependency_mutation_after_construction_remains_outside_setup() -> None:
         "    assert result.run()", "    alias = first\n    alias.configure()\n    assert result.run()"
     )
     assert len(RepeatedTestComposition().check(Path("tests/test_service.py"), source)) == 3
+
+
+@pytest.mark.parametrize("extra", ["", "    alias = transport\n"])
+def test_managed_transport_aliases(extra: str) -> None:
+    receiver = "alias" if extra else "transport"
+    source = "from httpx import AsyncClient, ASGITransport\n" + "\n".join(
+        f"async def test_case_{number}(app):\n"
+        "    Client = AsyncClient\n    Transport = ASGITransport\n"
+        "    transport = Transport(app=app)\n"
+        + extra
+        + f"    async with Client(transport={receiver}, base_url='http://test') as client:\n"
+        "        assert await client.get('/')\n"
+        for number in range(3)
+    )
+    assert len(RepeatedTestComposition().check(Path("tests/test_client.py"), source)) == 3
+    for mutation in ("transport.option = True", "transport.configure()", "transport = custom"):
+        mutated = source.replace("    async with", "    " + mutation + "\n    async with")
+        assert RepeatedTestComposition().check(Path("tests/test_client.py"), mutated) == []
+
+
+def test_shadowed_transport_constructor_is_not_httpx() -> None:
+    source = "from httpx import AsyncClient, ASGITransport\n" + "\n".join(
+        f"async def test_case_{number}(app, ASGITransport):\n"
+        "    transport = ASGITransport(app=app)\n"
+        "    async with AsyncClient(transport=transport) as client:\n        assert await client.get('/')\n"
+        for number in range(3)
+    )
+    assert RepeatedTestComposition().check(Path("tests/test_client.py"), source) == []

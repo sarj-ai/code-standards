@@ -91,7 +91,7 @@ class NoHiddenConstructorFallback(Rule):
         remediation="Require the constructor argument and resolve any default at the composition root or call site.",
         category=RuleCategory.ARCHITECTURE,
         limitations=(
-            "Detection requires a proven local settings provider, an optional parameter defaulting to None, and a first-party composition call.",
+            "Detection requires a proven local settings provider and a first-party composition call; covers None fallbacks and settings attributes captured directly in module-level class constructor defaults.",
             "Tests, generated files, migrations, descriptors, library environment fallbacks, and unconstructed classes are excluded.",
         ),
         examples=(
@@ -186,7 +186,8 @@ class NoHiddenConstructorFallback(Rule):
                 )
                 if init is None or _is_descriptor(init):
                     continue
-                hidden = _hidden_parameters(init, resolver)
+                default_shadowed = _default_scope(class_node, init) if class_node in tree.body else None
+                hidden = _hidden_parameters(init, resolver, default_shadowed)
                 if not hidden or not _has_composition_call(path, class_node.name, first_party, facts):
                     continue
                 diagnostics.append(
@@ -208,23 +209,38 @@ def _is_descriptor(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
     return any(_tail(decorator) in _DESCRIPTOR_DECORATORS for decorator in node.decorator_list)
 
 
+def _default_scope(owner: ast.ClassDef, init: ast.FunctionDef | ast.AsyncFunctionDef) -> set[str]:
+    collector = _LocalBindingCollector()
+    for statement in owner.body:
+        if statement is init:
+            break
+        collector.visit(statement)
+    return collector.names
+
+
 def _hidden_parameters(
     init: ast.FunctionDef | ast.AsyncFunctionDef,
     resolver: _RuntimeConfigResolver,
+    default_shadowed: set[str] | None = None,
 ) -> list[_HiddenParameter]:
     positional = (*init.args.posonlyargs, *init.args.args)
     defaulted_positional = positional[-len(init.args.defaults) :] if init.args.defaults else ()
     positional_defaults = zip(defaulted_positional, init.args.defaults, strict=True)
+    defaults = (*positional_defaults, *zip(init.args.kwonlyargs, init.args.kw_defaults, strict=True))
+    captured = [
+        _HiddenParameter(parameter, uses_boolean_or=False)
+        for parameter, default in defaults
+        if default is not None
+        and default_shadowed is not None
+        and resolver.is_runtime_config(default, default_shadowed)
+    ]
     candidates = {
         parameter.arg: parameter
-        for parameter, default in (
-            *positional_defaults,
-            *zip(init.args.kwonlyargs, init.args.kw_defaults, strict=True),
-        )
+        for parameter, default in defaults
         if isinstance(default, ast.Constant) and default.value is None
     }
     if not candidates:
-        return []
+        return captured
 
     hidden: dict[str, bool] = {}
     rebound: set[str] = set()
@@ -239,7 +255,9 @@ def _hidden_parameters(
             hidden[name] = hidden.get(name, False) or uses_boolean_or
         rebound.update(_directly_bound_names(statement) & candidates.keys())
         shadowed.update(_directly_bound_names(statement))
-    return [_HiddenParameter(parameter, hidden[name]) for name, parameter in candidates.items() if name in hidden]
+    return captured + [
+        _HiddenParameter(parameter, hidden[name]) for name, parameter in candidates.items() if name in hidden
+    ]
 
 
 def _statement_fallbacks(

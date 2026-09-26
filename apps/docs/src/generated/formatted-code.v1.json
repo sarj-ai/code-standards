@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "55286ce2ae3a4635e198f532990d75b55aa3975ea71eedeb7a085d0f5a7641be",
-  "cliSha256": "e80ca0d03345235a8748bef10668a187aafe5d04bd0d703e958252b8e610e070",
+  "catalogSha256": "6031263db1e8907fcbd21181e20f5fb357a27955d56c6b1e631d1b04168b8141",
+  "cliSha256": "6525bdb159f684b8733457d5f11e36de8108bb4df59c8f840c055b482b323753",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -8330,7 +8330,7 @@
           "files": [
             {
               "path": "app/policy.py",
-              "source": "allowed = {\"read\", \"write\"}\nrequested = set(scopes)\nif not (allowed & requested):\n    deny()\n"
+              "source": "class AccessCase:\n    tags: frozenset[str]\n\n\ndef accepts(case: AccessCase):\n    if case.tags & {\"read\", \"write\"}:\n        allow()\n"
             }
           ],
           "fixedFiles": [],
@@ -8338,7 +8338,7 @@
           "id": "discarded-intersection",
           "outcome": "reject",
           "scenarioId": "primary",
-          "title": "Set intersection is used only for an emptiness test"
+          "title": "A declared set field is used only for an overlap test"
         },
         {
           "expectedCount": 0,

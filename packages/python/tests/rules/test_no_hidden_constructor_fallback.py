@@ -852,3 +852,31 @@ generator = Generator(model="explicit")
     )
     assert main(["check", "--rule", "no-hidden-constructor-fallback", str(service)]) == 0
     assert not capsys.readouterr().out
+
+
+@pytest.mark.parametrize("signature", ["model=settings.MODEL", "*, model=settings.MODEL"])
+def test_constructor_captures_settings_default(tmp_path: Path, signature: str) -> None:
+    service = _settings_project(
+        tmp_path,
+        "from app.config import settings\nclass Generator:\n"
+        f"    def __init__(self, {signature}):\n        self.model = model\n",
+    )
+    assert len(NoHiddenConstructorFallback().check(service, service.read_text())) == 1
+
+
+def test_default_settings_name_is_resolved_outside_parameter_scope(tmp_path: Path) -> None:
+    service = _settings_project(
+        tmp_path,
+        "from app.config import settings\nclass Generator:\n"
+        "    def __init__(self, settings, *, model=settings.MODEL):\n        self.model = model\n",
+    )
+    assert len(NoHiddenConstructorFallback().check(service, service.read_text())) == 1
+
+
+def test_class_local_settings_default_is_not_ambient_config(tmp_path: Path) -> None:
+    service = _settings_project(
+        tmp_path,
+        "from app.config import settings\nclass Generator:\n"
+        "    settings = custom\n    def __init__(self, *, model=settings.MODEL):\n        self.model = model\n",
+    )
+    assert NoHiddenConstructorFallback().check(service, service.read_text()) == []
