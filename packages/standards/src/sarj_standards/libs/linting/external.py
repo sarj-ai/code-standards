@@ -306,6 +306,7 @@ def analyze_external(
     react_doctor_full_scan: bool = False,
     pass_on_unpruned_eslint_suppressions: bool = False,
     rule_ids: frozenset[str] | None = None,
+    python_type_check: bool = True,
 ) -> tuple[ToolReport, ...]:
     execute = run_process if runner is None else runner
     try:
@@ -349,7 +350,7 @@ def analyze_external(
                         runner=execute,
                     )
                 )
-            if capabilities is None or "pyright" in capabilities:
+            if python_type_check and (capabilities is None or "pyright" in capabilities):
                 reports.extend(
                     _invoke_python_projects(
                         "basedpyright",

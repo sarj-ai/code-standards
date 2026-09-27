@@ -3285,6 +3285,30 @@ def test_basedpyright_uses_the_project_environment_for_import_resolution(tmp_pat
     assert seen[1][0] == str(analyzer)
 
 
+def test_python_type_check_can_be_left_to_repository_ci(tmp_path: Path) -> None:
+    project = tmp_path / "python"
+    project.mkdir()
+    (project / "pyproject.toml").write_text("[project]\nname='fixture'\nversion='0'\n", encoding="utf-8")
+    source = project / "app.py"
+    source.write_text("value = 1\n", encoding="utf-8")
+    seen: list[str] = []
+
+    def runner(
+        argv: Sequence[str],
+        *,
+        cwd: Path,  # ruff: ignore[unused-function-argument] -- ProcessRunner fixes this keyword.
+    ) -> ProcessOutput:
+        seen.append(Path(argv[0]).name)
+        return ProcessOutput(0, "[]", "")
+
+    reports = analyze_external(
+        [str(source)], root=tmp_path, trust=TrustMode.SAFE, runner=runner, python_type_check=False
+    )
+
+    assert [report.name for report in reports] == ["ruff"]
+    assert seen == ["ruff"]
+
+
 def test_basedpyright_prefers_a_parent_environment_over_a_nested_package_manifest(tmp_path: Path) -> None:
     project = tmp_path / "python"
     analyzer = project / ".venv" / "bin" / "basedpyright"

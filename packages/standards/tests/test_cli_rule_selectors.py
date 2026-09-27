@@ -72,6 +72,11 @@ def test_check_concurrency_is_opt_in_and_bounded() -> None:
     assert result.exit_code == 2
 
 
+def test_check_runs_python_type_checking_unless_skipped() -> None:
+    assert _parse(("check",))["python_type_check"] is True
+    assert _parse(("check", "--skip-python-type-check"))["python_type_check"] is False
+
+
 def test_promote_error_selector_is_typed_at_the_parser_boundary() -> None:
     args = _parse(("maintain", "rules", "promote-error", "python:no-print"))
 
