@@ -2268,7 +2268,11 @@ def github_ci_workflow(root: Path, *, ecosystems: Ecosystems | None = None) -> s
     )
     if ecosystems.typescript:
         _append_javascript_ci(
-            lines, root, ecosystems, install_root, pin_node=not ecosystems.swift and runs_on != DEFAULT_CI_RUNNER
+            lines,
+            root,
+            ecosystems,
+            install_root,
+            configured_runner=not ecosystems.swift and runs_on != DEFAULT_CI_RUNNER,
         )
     if ecosystems.python:
         python_install = python_ci_install_argv(root, python_dest)
@@ -2319,13 +2323,13 @@ def _workflow_ecosystems(root: Path, adopted: manifest.Manifest | None) -> Ecosy
 
 
 def _append_javascript_ci(
-    lines: list[str], root: Path, ecosystems: Ecosystems, install_root: Path | None, *, pin_node: bool
+    lines: list[str], root: Path, ecosystems: Ecosystems, install_root: Path | None, *, configured_runner: bool
 ) -> None:
     if ecosystems.client is PackageManager.BUN:
         lines.append("      - uses: oven-sh/setup-bun@v2")
     # Bun projects rely on the runner image's Node for Node-based analyzers. GitHub's image ships a current
     # Node; other runner images may not, so a configured runner gets the same pinned Node as npm projects.
-    if ecosystems.client is not PackageManager.BUN or pin_node:
+    if ecosystems.client is not PackageManager.BUN or configured_runner:
         lines.extend(
             (
                 "      - uses: actions/setup-node@v7",
@@ -2333,6 +2337,10 @@ def _append_javascript_ci(
                 "          node-version: 24",
             )
         )
+        # setup-node prefers the image's cached Node 24, which on other runner images can predate the
+        # declared npm's engine floor; resolving the newest 24.x keeps the configured runner image-independent.
+        if configured_runner:
+            lines.append("          check-latest: true")
     if (
         ecosystems.client is PackageManager.NPM
         and install_root is not None
