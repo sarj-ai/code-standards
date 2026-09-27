@@ -120,7 +120,9 @@ const workflow = [
         <code>runner = "blacksmith-2vcpu-ubuntu-2404"</code> under <code>[ci]</code> in
         <code>.sarj-standards.toml</code>; <code>update</code> regenerates both workflows on that label and
         <code>doctor</code> checks them against it. Public repositories receive free GitHub-hosted minutes,
-        so leave it unset there. Swift repositories keep <code>macos-15</code> for Standards.
+        so leave it unset there. Swift repositories keep <code>macos-15</code> for Standards. On a
+        <code>blacksmith-</code> label both workflows omit Harden Runner: it installs no agent there unless the
+        organization enables StepSecurity TLS inspection, so it would only add a 10-second post step.
       </p>
     </div>
   </section>

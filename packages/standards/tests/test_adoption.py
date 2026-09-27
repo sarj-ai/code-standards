@@ -405,8 +405,25 @@ def test_doctor_reports_commit_policy_drift_after_a_runner_change(tmp_path: Path
 def test_generated_workflows_default_to_github_hosted_linux(tmp_path: Path) -> None:
     _python_repo(tmp_path)
 
-    assert "    runs-on: ubuntu-latest\n" in scaffold.github_ci_workflow(tmp_path)
-    assert "    runs-on: ubuntu-latest\n" in scaffold.commit_policy_github_workflow()
+    for workflow in (scaffold.github_ci_workflow(tmp_path), scaffold.commit_policy_github_workflow()):
+        assert "    runs-on: ubuntu-latest\n" in workflow
+        assert _first_step(workflow) == "      - name: Harden the runner"
+
+
+def test_generated_workflows_on_blacksmith_start_at_checkout(tmp_path: Path) -> None:
+    _python_repo(tmp_path)
+    runner = "blacksmith-2vcpu-ubuntu-2404"
+    (tmp_path / manifest.MANIFEST_NAME).write_text(
+        f'schema = 4\nbundle = "1.2.3"\n[ci]\nrunner = "{runner}"\n', encoding="utf-8"
+    )
+
+    for workflow in (scaffold.github_ci_workflow(tmp_path), scaffold.commit_policy_github_workflow(runner)):
+        assert "harden-runner" not in workflow
+        assert _first_step(workflow).startswith("      - uses: actions/checkout@")
+
+
+def _first_step(workflow: str) -> str:
+    return workflow.partition("    steps:\n")[2].splitlines()[0]
 
 
 def test_manifest_rejects_custom_verification_path_escape(tmp_path: Path) -> None:
