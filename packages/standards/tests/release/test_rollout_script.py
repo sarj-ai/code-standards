@@ -1332,6 +1332,57 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
         with pytest.raises(rollout.RolloutError, match="did not resolve to a full commit SHA"):
             rollout.assert_consumer_base_unchanged(tmp_path, consumer(), "a" * 40, runner)
 
+    def test_identical_patch_on_the_same_base_keeps_the_remote_head_without_pushing(self, tmp_path: Path) -> None:
+        base_sha, previous_sha, head_sha, tree_sha = "a" * 40, "b" * 40, "c" * 40, "d" * 40
+        preparation = rollout.BranchPreparation("standards-rollout/current", previous_sha, tree_sha, base_sha)
+        runner = FakeRunner([(0, ""), (0, base_sha), (0, head_sha), (0, tree_sha)])
+
+        pushed = rollout.push_rollout_head(tmp_path, consumer(), preparation, base_sha, runner, environment={})
+
+        assert pushed == previous_sha
+        assert not any("push" in command for command in runner.commands)
+
+    @pytest.mark.parametrize(
+        ("previous_sha", "previous_tree", "previous_base", "expected_lease"),
+        [
+            pytest.param(None, None, None, "", id="first-rollout-push"),
+            pytest.param("b" * 40, "e" * 40, "a" * 40, "b" * 40, id="patch-changed"),
+            pytest.param("b" * 40, "d" * 40, "f" * 40, "b" * 40, id="base-advanced"),
+        ],
+    )
+    def test_new_rollout_content_is_pushed_with_a_lease_on_the_previous_head(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+        *,
+        previous_sha: str | None,
+        previous_tree: str | None,
+        previous_base: str | None,
+        expected_lease: str,
+    ) -> None:
+        monkeypatch.setenv("GH_TOKEN", "push-secret")
+        monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+        base_sha, head_sha, tree_sha = "a" * 40, "c" * 40, "d" * 40
+        preparation = rollout.BranchPreparation("standards-rollout/current", previous_sha, previous_tree, previous_base)
+        runner = FakeRunner([(0, ""), (0, base_sha), (0, head_sha), (0, tree_sha), (0, "")])
+
+        pushed = rollout.push_rollout_head(
+            tmp_path, consumer(), preparation, base_sha, runner, environment={"PATH": "/tools"}
+        )
+
+        assert pushed == head_sha
+        assert runner.commands[-1] == (
+            "git",
+            "-c",
+            "core.hooksPath=/dev/null",
+            "push",
+            f"--force-with-lease=refs/heads/standards-rollout/current:{expected_lease}",
+            "-u",
+            "origin",
+            "standards-rollout/current",
+        )
+        assert runner.environments[-1] == {"PATH": "/tools", "GH_TOKEN": "push-secret"}
+
     def test_reuses_a_merged_managed_branch_without_amending_the_base(self, tmp_path: Path) -> None:
         old_sha = "a" * 40
         base_sha = "b" * 40
@@ -1374,6 +1425,7 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
         prepared = rollout.prepare_branch(tmp_path, "5.8.1", base_sha, runner)
 
         assert prepared.previous_sha == old_sha
+        assert (prepared.previous_tree, prepared.previous_base) == (tree_sha, old_base_sha)
         assert runner.commands[-1] == ("git", "switch", "-C", "standards-rollout/current", base_sha)
         assert ("git", "merge-base", "--is-ancestor", old_base_sha, base_sha) in runner.commands
         assert not any(command[:2] == ("git", "rebase") for command in runner.commands)

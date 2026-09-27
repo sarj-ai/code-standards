@@ -267,6 +267,8 @@ class Plan:
 class BranchPreparation:
     branch: str
     previous_sha: str | None
+    previous_tree: str | None = None
+    previous_base: str | None = None
 
 
 class ProvisionedTools(NamedTuple):
@@ -1128,7 +1130,7 @@ def prepare_branch(
     previous_version = message.splitlines()[0].removeprefix(BOT_COMMIT_PREFIX)
     reject_rollout_downgrade(previous_version, version)
     runner.run(("git", "switch", "-C", branch, base_sha), cwd=repo)
-    return BranchPreparation(branch, previous_sha)
+    return BranchPreparation(branch, previous_sha, declared_trees[0], fetched_commit[1])
 
 
 def react_doctor_policy_snapshot(repo: Path) -> ReactDoctorPolicy:
@@ -1217,7 +1219,6 @@ def apply_one(  # ruff: ignore[too-many-locals] - one transaction keeps verifica
             raise RolloutError(msg)
         preparation = prepare_branch(repo, version, base_sha, runner)
         branch = preparation.branch
-        previous_sha = preparation.previous_sha
         previous_react_doctor_policy = react_doctor_policy_snapshot(repo)
         tool = (
             "uvx",
@@ -1316,24 +1317,45 @@ def apply_one(  # ruff: ignore[too-many-locals] - one transaction keeps verifica
             runner,
             comparison=f"origin/{consumer.branch}...HEAD",
         )
-        assert_consumer_base_unchanged(repo, consumer, base_sha, runner)
-        pushed_head_sha = stdout(runner.run(("git", "rev-parse", "HEAD"), cwd=repo))
-        if re.fullmatch(r"[0-9a-f]{40}", pushed_head_sha) is None:
-            msg = f"{consumer.name}: managed rollout head did not resolve to a full commit SHA"
-            raise RolloutError(msg)
-        lease = force_with_lease(branch, previous_sha)
-        # Consumer code already ran through the registry-owned verification
-        # command without credentials. Disable Git hooks for the transport-only
-        # push so gh's credential helper can receive the App token without
-        # exposing it to repository-controlled hook code.
-        runner.run(
-            ("git", "-c", "core.hooksPath=/dev/null", "push", lease, "-u", "origin", branch),
-            cwd=repo,
-            env=authenticated_git_environment(unauthenticated),
-        )
+        pushed_head_sha = push_rollout_head(repo, consumer, preparation, base_sha, runner, environment=unauthenticated)
     return _publish_rollout_pull(
         consumer, version, runner, branch, pushed_head_sha=pushed_head_sha, verification_failure=verification_failure
     )
+
+
+def push_rollout_head(
+    repo: Path,
+    consumer: Consumer,
+    preparation: BranchPreparation,
+    base_sha: str,
+    runner: CommandRunner,
+    *,
+    environment: Mapping[str, str],
+) -> str:
+    assert_consumer_base_unchanged(repo, consumer, base_sha, runner)
+    head_sha = stdout(runner.run(("git", "rev-parse", "HEAD"), cwd=repo))
+    if re.fullmatch(r"[0-9a-f]{40}", head_sha) is None:
+        msg = f"{consumer.name}: managed rollout head did not resolve to a full commit SHA"
+        raise RolloutError(msg)
+    head_tree = stdout(runner.run(("git", "rev-parse", "HEAD^{tree}"), cwd=repo))
+    if preparation.previous_sha is not None and (preparation.previous_tree, preparation.previous_base) == (
+        head_tree,
+        base_sha,
+    ):
+        # A byte-identical patch on the same base would only restart every
+        # consumer CI workflow, so the verified remote head stays in place.
+        return preparation.previous_sha
+    lease = force_with_lease(preparation.branch, preparation.previous_sha)
+    # Consumer code already ran through the registry-owned verification
+    # command without credentials. Disable Git hooks for the transport-only
+    # push so gh's credential helper can receive the App token without
+    # exposing it to repository-controlled hook code.
+    runner.run(
+        ("git", "-c", "core.hooksPath=/dev/null", "push", lease, "-u", "origin", preparation.branch),
+        cwd=repo,
+        env=authenticated_git_environment(environment),
+    )
+    return head_sha
 
 
 def plan(version: str, consumers: Sequence[Consumer], runner: CommandRunner) -> Plan:
