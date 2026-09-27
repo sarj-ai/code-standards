@@ -67,8 +67,8 @@ class NoApplicationSchemaCheck(Rule):
             "validators that can drift and turn an otherwise valid application deployment into failed writes."
         ),
         remediation=(
-            "Remove the application-schema CHECK and validate the JSON payload or closed value set with the typed "
-            "application boundary before writing it. Keep relational constraints such as foreign keys, uniqueness, "
+            "If the application owns the contract, validate the JSON payload or closed value set with the typed "
+            "application boundary before changing its CHECK. Preserve database-owned validation and checks needed by other writers; use an exact SARJ118 suppression explaining ownership. Keep relational constraints such as foreign keys, uniqueness, "
             "nullability, and cross-column invariants in the database."
         ),
         category=RuleCategory.ARCHITECTURE,
@@ -76,7 +76,7 @@ class NoApplicationSchemaCheck(Rule):
         limitations=(
             "Only PostgreSQL CHECK expressions that call JSON_TYPEOF, JSONB_TYPEOF, JSON_ARRAY_LENGTH, or JSONB_ARRAY_LENGTH are reported.",
             "Enum-like checks are reported only for a simple column IN a list of at least two string literals.",
-            "JSON operators and cross-column consistency checks are not inferred because their ownership can be ambiguous.",
+            "JSON operators alone are not matched. Function calls inside cross-column or mixed checks can match; application ownership is not proven and removal requires review of every writer.",
             "Dump files are excluded; generated migrations redirect findings to their owning model when identifiable.",
         ),
         examples=(
@@ -169,8 +169,8 @@ class NoApplicationSchemaCheck(Rule):
                         col=col,
                         code=self.code,
                         message=(
-                            "Application schema validation belongs in the typed application boundary; remove this "
-                            "JSON-shape or closed-value CHECK while retaining relational database invariants."
+                            "Review ownership of this "
+                            "JSON-shape or closed-value CHECK. Move application-owned validation to a typed boundary; retain database invariants and document their ownership."
                         ),
                     )
                 )
