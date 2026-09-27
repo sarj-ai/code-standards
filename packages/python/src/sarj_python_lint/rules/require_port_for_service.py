@@ -282,7 +282,7 @@ class RequirePortForService(ProjectRule):
         bound_names = _module_bound_names(tree)
         imports = context.imports
         source_lines = context.source_lines
-        data_names = {node.name for node in classes if _is_data_type(node)}
+        data_names = {node.name for node in classes if is_data_type(node)}
         local_class_names = {node.name for node in classes}
         local_port_names = _local_port_names(classes)
 
@@ -484,7 +484,7 @@ def _unsubstitutable_service(
         or f"{node.name}Port" in local_port_names
     ):
         return None
-    if _has_base(node, local_class_names, local_port_names) or _is_data_type(node) or _declares_interface(node):
+    if _has_base(node, local_class_names, local_port_names) or is_data_type(node) or _declares_interface(node):
         return None
     if (
         _public_method_count(node) < _MIN_PUBLIC_METHODS
@@ -504,7 +504,7 @@ def _project_boundary_candidate(
         node.name.startswith("_")
         or _BASE_NAME_RE.match(node.name)
         or _has_base(node, local_class_names, local_port_names)
-        or _is_data_type(node)
+        or is_data_type(node)
         or _declares_interface(node)
         or _public_method_count(node) < 1
         or _handles_http_requests(node)
@@ -516,7 +516,7 @@ def _has_framework_callback_method(node: ast.ClassDef) -> bool:
     return any(
         isinstance(target := decorator.func if isinstance(decorator, ast.Call) else decorator, ast.Attribute)
         and target.attr in _FRAMEWORK_METHOD_DECORATORS
-        for method in _methods(node)
+        for method in class_methods(node)
         if not method.name.startswith("_")
         for decorator in method.decorator_list
     )
@@ -525,7 +525,7 @@ def _has_framework_callback_method(node: ast.ClassDef) -> bool:
 def _handles_http_requests(node: ast.ClassDef) -> bool:
     return any(
         _is_http_parameter(param, default)
-        for method in _methods(node)
+        for method in class_methods(node)
         if not method.name.startswith("_")
         for param, default in _params_with_defaults(method)
     )
@@ -588,7 +588,7 @@ def _has_base(
     return False
 
 
-def _is_data_type(node: ast.ClassDef) -> bool:
+def is_data_type(node: ast.ClassDef) -> bool:
     if any(_dotted_tail(dec) in _DATA_DECORATORS for dec in node.decorator_list):
         return True
     return any(_dotted_tail(base) in _DATA_BASES for base in node.bases)
@@ -597,17 +597,19 @@ def _is_data_type(node: ast.ClassDef) -> bool:
 def _declares_interface(node: ast.ClassDef) -> bool:
     if any(_dotted_tail(dec) in _IMPLEMENTS_DECORATORS for dec in node.decorator_list):
         return True
-    return any(_dotted_tail(dec) in _INTERFACE_DECORATORS for method in _methods(node) for dec in method.decorator_list)
+    return any(
+        _dotted_tail(dec) in _INTERFACE_DECORATORS for method in class_methods(node) for dec in method.decorator_list
+    )
 
 
-def _methods(node: ast.ClassDef) -> list[ast.FunctionDef | ast.AsyncFunctionDef]:
+def class_methods(node: ast.ClassDef) -> list[ast.FunctionDef | ast.AsyncFunctionDef]:
     return [stmt for stmt in node.body if isinstance(stmt, _FUNC_NODES)]
 
 
 def _public_method_count(node: ast.ClassDef) -> int:
     return sum(
         1
-        for method in _methods(node)
+        for method in class_methods(node)
         if not method.name.startswith("_")
         and not any(_dotted_tail(dec) in _NON_METHOD_DECORATORS for dec in method.decorator_list)
     )
@@ -618,15 +620,15 @@ def _injected_collaborator(
     data_names: frozenset[str] | set[str],
     imports: ImportIndex,
 ) -> str | None:
-    init = next((method for method in _methods(node) if method.name == "__init__"), None)
+    init = next((method for method in class_methods(node) if method.name == "__init__"), None)
     if init is None:
         return None
-    stored_parameters = _self_stored_parameters(init, imports)
+    stored_parameters = self_stored_parameters(init, imports)
     candidates: list[tuple[str, frozenset[str]]] = []
     for param, default in _params_with_defaults(init):
         if param.arg == "self":
             continue
-        annotation = _annotation_tail(param.annotation)
+        annotation = annotation_tail(param.annotation)
         if (
             annotation is None
             or annotation in _PRIMITIVE_ANNOTATIONS
@@ -647,7 +649,7 @@ def _injected_collaborator(
     return _behavioral_collaborator(node, candidates)
 
 
-def _self_stored_parameters(
+def self_stored_parameters(
     init: ast.FunctionDef | ast.AsyncFunctionDef,
     imports: ImportIndex,
 ) -> _StoredParameters:
@@ -761,7 +763,7 @@ def _node_invokes_field(node: ast.AST, fields: frozenset[str]) -> bool:
         ),
     ):
         return False
-    if isinstance(node, ast.Call) and _called_self_field(node.func) in fields:
+    if isinstance(node, ast.Call) and called_self_field(node.func) in fields:
         return True
     if isinstance(node, ast.Compare) and len(node.ops) > 1:
         return False
@@ -794,7 +796,7 @@ def _static_truth(node: ast.AST) -> bool | None:
             return None
 
 
-def _called_self_field(func: ast.expr) -> str | None:
+def called_self_field(func: ast.expr) -> str | None:
     current = func
     while isinstance(current, ast.Attribute):
         if isinstance(current.value, ast.Name) and current.value.id == "self":
@@ -808,7 +810,7 @@ def _class_is_suppressed(node: ast.ClassDef, source_lines: list[str], code: str)
     return any(is_suppressed(source_lines, line, code) for line in range(start, node.lineno + 1))
 
 
-def _annotation_tail(annotation: ast.expr | None) -> str | None:
+def annotation_tail(annotation: ast.expr | None) -> str | None:
     match annotation:
         case None:
             return None
@@ -817,12 +819,12 @@ def _annotation_tail(annotation: ast.expr | None) -> str | None:
                 parsed = ast.parse(value, mode="eval")
             except SyntaxError, ValueError:
                 return None
-            return _annotation_tail(parsed.body)
+            return annotation_tail(parsed.body)
         case ast.Constant():
             return None
         case ast.BinOp(left=left, op=ast.BitOr(), right=right):
             for side in (left, right):
-                tail = _annotation_tail(side)
+                tail = annotation_tail(side)
                 if tail is not None and tail != "None":
                     return tail
             return None
@@ -832,7 +834,7 @@ def _annotation_tail(annotation: ast.expr | None) -> str | None:
                 return outer
             if isinstance(inner, ast.Tuple):
                 inner = inner.elts[0] if inner.elts else inner
-            return _annotation_tail(inner)
+            return annotation_tail(inner)
         case _:
             return _dotted_tail(annotation)
 
@@ -886,7 +888,7 @@ def _behavioral_collaborator(node: ast.ClassDef, candidates: list[tuple[str, fro
 def _behavioral_public_method_count(node: ast.ClassDef, fields: frozenset[str]) -> int:
     return sum(
         _method_invokes_field(method, fields)
-        for method in _methods(node)
+        for method in class_methods(node)
         if method.name != "__init__"
         and not method.name.startswith("_")
         and not any(_dotted_tail(dec) in _NON_METHOD_DECORATORS for dec in method.decorator_list)

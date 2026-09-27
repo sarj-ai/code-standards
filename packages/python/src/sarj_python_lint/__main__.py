@@ -161,6 +161,7 @@ _DIAGNOSTIC_PRECEDENCE = MappingProxyType(
         # an all-rules run emits one actionable diagnostic for this overlap.
         "SARJ447": frozenset({"SARJ008"}),
         "SARJ457": frozenset({"SARJ045"}),
+        "SARJ465": frozenset({"SARJ071"}),
     }
 )
 

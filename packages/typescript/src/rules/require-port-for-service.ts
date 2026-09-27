@@ -107,6 +107,11 @@ const isExportedClass = (node: TSESTree.ClassDeclaration, detached: ReadonlySet<
   node.parent.type === AST_NODE_TYPES.ExportDefaultDeclaration ||
   (node.id !== null && detached.has(node.id.name));
 
+export const createExportedServiceClassResolver = (program: TSESTree.Program): (node: TSESTree.ClassDeclaration) => boolean => {
+  const detached = detachedValueExports(program);
+  return (node): boolean => isExportedClass(node, detached);
+};
+
 /** The rightmost segment plus the full spelling of a bare type reference, or null for anything else. */
 const readTypeReference = (
   annotation: TSESTree.TypeNode | undefined,
@@ -786,9 +791,6 @@ function hasServicePort(
     const localAbstract = classes.get(node.superClass.name);
     if (localAbstract === undefined || localAbstract) return true;
   }
-  if (node.id !== null) {
-    if (hasStructuralPort(node.id.name, methods, interfaces)) return true;
-  }
   if (node.implements.length === 0) return false;
   return implementedSurfaceCovers(node, methods, classes, interfaces);
 }
@@ -822,7 +824,6 @@ export default createRule<Options, MessageIds>({
     const localInterfaces = localInterfaceSurfaces(context.sourceCode.ast);
     const objectTypes = (): FileTypeIndex =>
       (declaredTypes ??= fileTypeIndex(context.sourceCode.ast));
-
     return {
       ClassDeclaration(node: TSESTree.ClassDeclaration): void {
         if (node.id === null) return;
@@ -876,16 +877,6 @@ export default createRule<Options, MessageIds>({
   },
 });
 
-function hasStructuralPort(name: string, methods: readonly string[], interfaces: ReadonlyMap<string, ReadonlySet<string>>): boolean {
-  const classStem = stem(name);
-  const structuralPort = [...interfaces].find(([name]) => stem(name) === classStem)?.[1];
-  if (
-    structuralPort !== undefined &&
-    (structuralPort.has("*") || methods.every((method) => structuralPort.has(method)))
-  ) return true;
-  return false;
-}
-
 function implementedSurfaceCovers(node: TSESTree.ClassDeclaration, methods: readonly string[], classes: ReadonlyMap<string, boolean>, interfaces: ReadonlyMap<string, ReadonlySet<string>>): boolean {
   const combined = new Set<string>();
   for (const implementation of node.implements) {
@@ -900,4 +891,91 @@ function implementedSurfaceCovers(node: TSESTree.ClassDeclaration, methods: read
     for (const method of surface) combined.add(method);
   }
   return methods.every((method) => combined.has(method));
+}
+
+/** Shared, provenance-based evidence for the strict declared-contract rule. */
+export function createServiceOperationResolver(program: TSESTree.Program): (node: TSESTree.ClassDeclaration) => readonly string[] {
+  let declaredTypes: FileTypeIndex | null = null;
+  return (node): readonly string[] => {
+    const ctor = node.body.body.find(
+      (member): member is TSESTree.MethodDefinition =>
+        member.type === AST_NODE_TYPES.MethodDefinition && member.kind === "constructor" && member.value.body !== null,
+    );
+    if (ctor === undefined) return [];
+    const declared = (): FileTypeIndex => (declaredTypes ??= fileTypeIndex(program));
+    const facts = readConstructor(ctor, declared, typeParameterNames(node.typeParameters, ctor.value.typeParameters));
+    const retained = new Set(facts.collaborators.flatMap((collaborator) => collaborator.fields));
+    if (retained.size === 0) return [];
+
+    const callers = new Map<string, Set<string>>();
+    const active = new Set<string>();
+    for (const member of node.body.body) {
+      if (member.type !== AST_NODE_TYPES.MethodDefinition || member.kind !== "method" || member.value.body === null) continue;
+      const name = declaredMemberName(member);
+      if (name === null) continue;
+      const visit = (current: TSESTree.Node): void => {
+        if (current.type === AST_NODE_TYPES.FunctionDeclaration || current.type === AST_NODE_TYPES.FunctionExpression ||
+            current.type === AST_NODE_TYPES.ClassDeclaration || current.type === AST_NODE_TYPES.ClassExpression) return;
+        if (current.type === AST_NODE_TYPES.IfStatement && current.test.type === AST_NODE_TYPES.Literal &&
+            typeof current.test.value === "boolean") {
+          visit(current.test.value ? current.consequent : current.alternate ?? current.test);
+          return;
+        }
+        if (current.type === AST_NODE_TYPES.CallExpression) {
+          if (retained.has(invokedInstanceField(current) ?? "")) active.add(name);
+          if (current.callee.type === AST_NODE_TYPES.MemberExpression &&
+              current.callee.object.type === AST_NODE_TYPES.ThisExpression) {
+            const callee = staticMemberName(current.callee);
+            if (callee !== null) {
+              const linked = callers.get(callee) ?? new Set<string>();
+              linked.add(name);
+              callers.set(callee, linked);
+            }
+          }
+        }
+        forEachOwnAstChild(current, visit);
+      };
+      for (const statement of member.value.body.body) visit(statement);
+    }
+    const pending = [...active];
+    while (pending.length > 0) {
+      const callee = pending.pop();
+      if (callee === undefined) break;
+      for (const caller of callers.get(callee) ?? []) {
+        if (active.has(caller)) continue;
+        active.add(caller);
+        pending.push(caller);
+      }
+    }
+    return publicMethodNames(node.body, declared().functionAliases).filter((name) => active.has(name));
+  };
+}
+
+/** `null` means an imported base cannot be resolved by this syntax-only pass. */
+export function hasDeclaredServiceContract(
+  node: TSESTree.ClassDeclaration,
+  operations: readonly string[],
+  program: TSESTree.Program,
+): boolean | null {
+  const classes = localClassAbstractness(program);
+  const interfaces = localInterfaceSurfaces(program);
+  if (node.implements.length > 0) return implementedSurfaceCovers(node, operations, classes, interfaces);
+  if (node.superClass === null) return false;
+  if (node.superClass.type !== AST_NODE_TYPES.Identifier) return null;
+  const baseName = node.superClass.name;
+  const isAbstract = classes.get(baseName);
+  if (isAbstract === undefined) return null;
+  if (!isAbstract) return false;
+  const base = program.body.flatMap((statement) => {
+    const declaration = statement.type === AST_NODE_TYPES.ExportNamedDeclaration ? statement.declaration : statement;
+    return declaration?.type === AST_NODE_TYPES.ClassDeclaration && declaration.id?.name === baseName
+      ? [declaration] : [];
+  })[0];
+  if (base === undefined) return null;
+  const abstractOperations = new Set(base.body.body.flatMap((member) =>
+    member.type === AST_NODE_TYPES.TSAbstractMethodDefinition && member.accessibility !== "private" &&
+    member.accessibility !== "protected" && !member.static
+      ? [declaredMemberName(member)] : [],
+  ));
+  return operations.every((name) => abstractOperations.has(name) || publicMethodNames(base.body, new Set()).includes(name));
 }

@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "ffe724da4e76115218c92d18e965fddfe1a3e1444d358eda18eea791df6b070c",
-  "cliSha256": "f7d2ccea4bb38c77cadab7ed4b869ff9496f69c34f11215d441212b5e4056cf9",
+  "catalogSha256": "d34083076776616f5950b24e9d8b5ceb0bb5084dfb24acbc6cd9e49379cb7aa4",
+  "cliSha256": "4b5c5bb4b7d9b33b0f237f524d9268e16675b397390e39f057a25d73b8aa2332",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -3601,6 +3601,76 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Do not use unquoted wire casing as application property syntax"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "eslint:require-explicit-contract-implementation": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/service.ts",
+              "source": "interface Publisher {\n  publish(): void;\n}\nclass Consumer {\n  constructor(readonly publisher: Publisher) {}\n}\nclass FakePublisher implements Publisher {\n  publish() {}\n}\nnew Consumer(new FakePublisher());\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/service.ts",
+          "id": "explicit-fake-at-injection",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "The fake names its actual interface"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/service.ts",
+              "source": "interface Publisher {\n  publish(): void;\n}\nclass Consumer {\n  constructor(readonly publisher: Publisher) {}\n}\nclass FakePublisher {\n  publish() {}\n}\nnew Consumer(new FakePublisher());\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/service.ts",
+          "id": "structural-fake-at-injection",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A fake reaches a typed collaborator without implementing its interface"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "eslint:require-explicit-service-contract": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/service.ts",
+              "source": "export interface Runner {\n  run(): void;\n}\nclass OrchestratorService implements Runner {\n  constructor(private readonly worker: Worker) {}\n  run(): void {\n    this.worker.run();\n  }\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/service.ts",
+          "id": "explicit-single-operation-contract",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "The service declares its operation"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/service.ts",
+              "source": "class OrchestratorService {\n  constructor(private readonly worker: Worker) {}\n  run(): void {\n    this.worker.run();\n  }\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/service.ts",
+          "id": "single-operation-service-without-contract",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A single service operation still needs its contract"
         }
       ],
       "optionsSchemaSource": null
@@ -9120,6 +9190,65 @@
       ],
       "optionsSchemaSource": null
     },
+    "python:require-explicit-contract-implementation": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/__init__.py",
+              "source": "# package\n"
+            },
+            {
+              "path": "app/consumer.py",
+              "source": "from typing import Protocol\n\n\nclass Publisher(Protocol):\n    def publish(self) -> None: ...\n\n\nclass Consumer:\n    def __init__(self, publisher: Publisher) -> None:\n        self.publisher = publisher\n"
+            },
+            {
+              "path": "app/fake.py",
+              "source": "from app.consumer import Publisher\n\n\nclass FakePublisher(Publisher):\n    def publish(self) -> None: ...\n"
+            },
+            {
+              "path": "app/usage.py",
+              "source": "from app.consumer import Consumer\nfrom app.fake import FakePublisher\n\n\ndef setup() -> None:\n    Consumer(publisher=FakePublisher())\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/usage.py",
+          "id": "explicit-fake-at-injection",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "The fake declares the actual contract"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/__init__.py",
+              "source": "# package\n"
+            },
+            {
+              "path": "app/consumer.py",
+              "source": "from typing import Protocol\n\n\nclass Publisher(Protocol):\n    def publish(self) -> None: ...\n\n\nclass Consumer:\n    def __init__(self, publisher: Publisher) -> None:\n        self.publisher = publisher\n"
+            },
+            {
+              "path": "app/fake.py",
+              "source": "class FakePublisher:\n    def publish(self) -> None: ...\n"
+            },
+            {
+              "path": "app/usage.py",
+              "source": "from app.consumer import Consumer\nfrom app.fake import FakePublisher\n\n\ndef setup() -> None:\n    Consumer(publisher=FakePublisher())\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/usage.py",
+          "id": "structural-fake-at-injection",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A fake is supplied without declaring its contract"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "python:require-explicit-psycopg-transaction": {
       "examples": [
         {
@@ -9151,6 +9280,41 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "A pool checkout alone does not retain a lock"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:require-explicit-service-contract": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/service.py",
+              "source": "from abc import ABC, abstractmethod\n\n\nclass Runner(ABC):\n    @abstractmethod\n    def run(self) -> None: ...\n\n\nclass OrchestratorService(Runner):\n    def __init__(self, worker: Worker) -> None:\n        self.worker = worker\n\n    def run(self) -> None:\n        self.worker.run()\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/service.py",
+          "id": "explicit-single-operation-contract",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "The service declares its operation"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/service.py",
+              "source": "class OrchestratorService:\n    def __init__(self, worker: Worker) -> None:\n        self.worker = worker\n\n    def run(self) -> None:\n        self.worker.run()\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/service.py",
+          "id": "single-operation-service-without-contract",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "One service operation still needs its contract"
         }
       ],
       "optionsSchemaSource": null
@@ -9256,6 +9420,41 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "A visible structural port already describes the service boundary"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:require-public-dependency-contract": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/enqueuer.py",
+              "source": "from typing import Protocol\n\n\nclass _Publisher(Protocol):\n    def publish(self) -> None: ...\n\n\nclass Enqueuer:\n    def __init__(self, publisher: _Publisher) -> None:\n        self.publisher = publisher\n\n    def enqueue(self) -> None:\n        self.publisher.publish()\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/enqueuer.py",
+          "id": "private-publisher-protocol",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A public consumer hides its publisher contract"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/enqueuer.py",
+              "source": "from typing import Protocol\n\n\nclass Publisher(Protocol):\n    def publish(self) -> None: ...\n\n\nclass Enqueuer:\n    def __init__(self, publisher: Publisher) -> None:\n        self.publisher = publisher\n\n    def enqueue(self) -> None:\n        self.publisher.publish()\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/enqueuer.py",
+          "id": "public-publisher-protocol",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "The publisher contract is public"
         }
       ],
       "optionsSchemaSource": null

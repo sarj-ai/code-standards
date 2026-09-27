@@ -30,6 +30,18 @@ def test_repeated_composition_owns_wide_setup_at_same_call() -> None:
     ]
 
 
+def test_proven_service_contract_finding_owns_advisory_at_same_class() -> None:
+    diagnostics = [
+        Diagnostic(Path("service.py"), 3, 5, "SARJ071", "advisory", Severity.WARNING),
+        Diagnostic(Path("service.py"), 3, 5, "SARJ465", "contract", Severity.WARNING),
+        Diagnostic(Path("service.py"), 7, 5, "SARJ071", "other", Severity.WARNING),
+    ]
+    assert [(finding.code, finding.line) for finding in deduplicate_diagnostics(diagnostics)] == [
+        ("SARJ465", 3),
+        ("SARJ071", 7),
+    ]
+
+
 def test_repeated_body_owns_composition_only_inside_its_test() -> None:
     source = "def test_one():\n    service = build()\n    service.run()\n\ndef test_two():\n    service = build()\n"
     diagnostics = [

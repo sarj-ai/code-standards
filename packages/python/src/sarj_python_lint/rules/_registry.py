@@ -150,7 +150,9 @@ from sarj_python_lint.rules.redundant_module_docstring import RedundantModuleDoc
 from sarj_python_lint.rules.repeated_kwarg_heavy_call_in_test import RepeatedKwargHeavyCallInTest
 from sarj_python_lint.rules.repeated_static_call_cases import RepeatedStaticCallCases
 from sarj_python_lint.rules.repeated_test_composition import RepeatedTestComposition
+from sarj_python_lint.rules.require_explicit_contract_implementation import RequireExplicitContractImplementation
 from sarj_python_lint.rules.require_explicit_psycopg_transaction import RequireExplicitPsycopgTransaction
+from sarj_python_lint.rules.require_explicit_service_contract import RequireExplicitServiceContract
 from sarj_python_lint.rules.require_keyword_only_swap_prone_params import (
     RequireKeywordOnlySwapProneParams,
 )
@@ -158,6 +160,7 @@ from sarj_python_lint.rules.require_nodecode_for_splitting_settings_field import
     RequireNoDecodeForSplittingSettingsField,
 )
 from sarj_python_lint.rules.require_port_for_service import RequirePortForService
+from sarj_python_lint.rules.require_public_dependency_contract import RequirePublicDependencyContract
 from sarj_python_lint.rules.require_pydantic_for_external_json import (
     RequirePydanticForExternalJson,
 )
@@ -188,6 +191,9 @@ if TYPE_CHECKING:
 
 REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
     {
+        RequireExplicitContractImplementation.id: RequireExplicitContractImplementation,
+        RequirePublicDependencyContract.id: RequirePublicDependencyContract,
+        RequireExplicitServiceContract.id: RequireExplicitServiceContract,
         AsyncCleanupRegisteredSynchronously.id: AsyncCleanupRegisteredSynchronously,
         SubprocessKillWithoutReap.id: SubprocessKillWithoutReap,
         NoSwallowedAsyncioCancellation.id: NoSwallowedAsyncioCancellation,

@@ -9,6 +9,10 @@ from typing import Self
 from sarj_python_lint.rules._ast_index import walk as walk_ast
 
 
+ABC_SOURCES = frozenset({"abc"})
+TYPING_SOURCES = frozenset({"typing", "typing_extensions"})
+
+
 @dataclass(frozen=True, slots=True)
 class _ImportTarget:
     module: str
