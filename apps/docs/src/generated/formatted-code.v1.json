@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "15deaf3be4ceadaff940d23dea4023789e38fb26c4f439977ba336ad6cd316e9",
-  "cliSha256": "d6433fa228818df8e958f063439abc7bb7b7bf3594556ab2897f0eeafa6dc6a5",
+  "catalogSha256": "2a9f82a2d2816dac11a5fe82bcfe7e83533c6cda969fb506887677d575a8e9ca",
+  "cliSha256": "f8114eec246e4ed3ff4da789a19299a71c3074458daf67d5a4fbb4785d4a5b34",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -7750,6 +7750,21 @@
           "expectedCount": 0,
           "files": [
             {
+              "path": "tests/test_adapter.py",
+              "source": "import pytest\n\n\ndef unavailable_client():\n    raise ConnectionError\n\n\ndef test_constructor_failure():\n    with pytest.raises(AdapterUnavailable):\n        open_adapter(client_factory=unavailable_client)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_adapter.py",
+          "id": "injected-constructor-failure",
+          "outcome": "accept",
+          "scenarioId": "constructor-failure",
+          "title": "Inject a factory to exercise constructor failure"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
               "path": "tests/test_checkout.py",
               "source": "def test_checkout(recording_gateway):\n    service = CheckoutService(payment_gateway=recording_gateway)\n    assert service.run() == \"paid\"\n"
             }
@@ -7760,6 +7775,21 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Test injects a purpose-built collaborator"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "tests/test_adapter.py",
+              "source": "import pytest\nfrom unittest.mock import patch\n\n\ndef test_constructor_failure():\n    with patch(\"transport.Client\", side_effect=ConnectionError):\n        with pytest.raises(AdapterUnavailable):\n            open_adapter()\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_adapter.py",
+          "id": "patched-constructor-failure",
+          "outcome": "reject",
+          "scenarioId": "constructor-failure",
+          "title": "Avoid replacing the SDK constructor lookup"
         },
         {
           "expectedCount": 1,
@@ -8067,6 +8097,21 @@
           "title": "Test installs a module without guaranteed restoration"
         },
         {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "tests/test_plugins.py",
+              "source": "import sys\nimport pytest\n\n\n@pytest.fixture\ndef fresh_plugin():\n    sys.modules.pop(\"temporary_plugin\", None)\n    yield\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_plugins.py",
+          "id": "fixture-cleanup-unscoped",
+          "outcome": "reject",
+          "scenarioId": "fixture-cleanup",
+          "title": "Restore setup mutations even when setup fails"
+        },
+        {
           "expectedCount": 0,
           "files": [
             {
@@ -8080,6 +8125,21 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Pytest restores the module registry after the test"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "tests/test_plugins.py",
+              "source": "import sys\nimport pytest\n\n\n@pytest.fixture\ndef fresh_plugin():\n    yield\n    sys.modules.pop(\"temporary_plugin\", None)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_plugins.py",
+          "id": "yield-fixture-cleanup",
+          "outcome": "accept",
+          "scenarioId": "fixture-cleanup",
+          "title": "Do not undo fixture teardown"
         }
       ],
       "optionsSchemaSource": null

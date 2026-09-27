@@ -3,6 +3,7 @@ import textwrap
 from typing import TYPE_CHECKING
 
 import pytest
+from sarj_rule_contracts import EvaluationCase, ExpectedOutcome, Language
 
 from sarj_python_lint.__main__ import analyze
 from sarj_python_lint.rules.prefer_injected_dependency_over_monkeypatch import (
@@ -272,3 +273,93 @@ def test_non_test_generated_and_malformed_files_are_ignored() -> None:
     assert _check(source, "python/service/runtime.py") == []
     assert _check(f"# Generated file; do not edit\n{source}") == []
     assert _check("def broken(") == []
+
+
+_TEARDOWN_CASES = (
+    EvaluationCase(
+        "shadowed-nested-fixture",
+        Language.PYTHON,
+        "import pytest, sys\ndef factory(pytest):\n    @pytest.fixture\n    def loaded():\n        yield\n        sys.modules.pop('temporary', None)\n",
+        ExpectedOutcome.MATCH,
+    ),
+    EvaluationCase(
+        "multiple-yields",
+        Language.PYTHON,
+        "import pytest, sys\n@pytest.fixture\ndef loaded():\n    yield\n    yield\n    sys.modules.pop('temporary', None)\n",
+        ExpectedOutcome.MATCH,
+    ),
+    EvaluationCase(
+        "rebound-fixture-decorator",
+        Language.PYTHON,
+        "import pytest, sys\npytest = custom\n@pytest.fixture\ndef loaded():\n    yield\n    sys.modules.pop('temporary', None)\n",
+        ExpectedOutcome.MATCH,
+    ),
+    EvaluationCase(
+        "fixture-pop-cleanup",
+        Language.PYTHON,
+        "import pytest, sys\n@pytest.fixture\ndef loaded():\n    yield\n    sys.modules.pop('temporary', None)\n",
+    ),
+    EvaluationCase(
+        "fixture-loop-cleanup",
+        Language.PYTHON,
+        "import pytest, sys\n@pytest.fixture(autouse=True)\ndef loaded():\n    yield\n    for key in keys:\n        sys.modules.pop(key, None)\n",
+    ),
+    EvaluationCase(
+        "fixture-restore-value",
+        Language.PYTHON,
+        "import pytest, sys\n@pytest.fixture\ndef loaded():\n    yield\n    sys.modules['temporary'] = previous\n",
+    ),
+    EvaluationCase(
+        "aliased-fixture",
+        Language.PYTHON,
+        "import sys\nfrom pytest import fixture as resource\n@resource\ndef loaded():\n    yield\n    del sys.modules['temporary']\n",
+    ),
+    EvaluationCase(
+        "async-fixture",
+        Language.PYTHON,
+        "import pytest_asyncio as pa, os\n@pa.fixture\nasync def loaded():\n    yield\n    os.chdir(previous)\n",
+    ),
+    EvaluationCase(
+        "setup-still-reports",
+        Language.PYTHON,
+        "import pytest, sys\n@pytest.fixture\ndef loaded():\n    sys.modules.pop('temporary', None)\n    yield\n    sys.modules.pop('temporary', None)\n",
+        ExpectedOutcome.MATCH,
+    ),
+    EvaluationCase(
+        "ordinary-generator",
+        Language.PYTHON,
+        "import sys\ndef loaded():\n    yield\n    sys.modules.pop('temporary', None)\n",
+        ExpectedOutcome.MATCH,
+    ),
+    EvaluationCase(
+        "custom-fixture-decorator",
+        Language.PYTHON,
+        "import sys\nfrom custom import fixture\n@fixture\ndef loaded():\n    yield\n    sys.modules.pop('temporary', None)\n",
+        ExpectedOutcome.MATCH,
+    ),
+    EvaluationCase(
+        "conditional-yield",
+        Language.PYTHON,
+        "import pytest, sys\n@pytest.fixture\ndef loaded():\n    if condition:\n        yield\n    sys.modules.pop('temporary', None)\n",
+        ExpectedOutcome.MATCH,
+    ),
+    EvaluationCase(
+        "nested-helper-not-teardown-proof",
+        Language.PYTHON,
+        "import pytest, sys\n@pytest.fixture\ndef loaded():\n    yield\n    def cleanup():\n        sys.modules.pop('temporary', None)\n    cleanup()\n",
+        ExpectedOutcome.MATCH,
+    ),
+)
+
+
+@pytest.mark.parametrize("case", _TEARDOWN_CASES, ids=tuple(case.case_id for case in _TEARDOWN_CASES))
+def test_yield_fixture_cleanup(case: EvaluationCase) -> None:
+    assert len(_check(case.source)) == (1 if case.expected is ExpectedOutcome.MATCH else 0)
+
+
+def test_monkeypatch_in_teardown_can_restore_the_temporary_entry() -> None:
+    registry = {"temporary": object()}
+    with pytest.MonkeyPatch.context() as patcher:
+        patcher.delitem(registry, "temporary")
+        assert "temporary" not in registry
+    assert "temporary" in registry
