@@ -335,6 +335,80 @@ def test_manifest_rejects_unsafe_ci_bootstrap_shape(tmp_path: Path, command: str
         manifest.load(tmp_path)
 
 
+def test_manifest_round_trips_ci_runner_beside_bootstrap(tmp_path: Path) -> None:
+    written = manifest.Manifest(
+        version="1.2.3",
+        configs=("ruff",),
+        python_dest=".",
+        typescript_dest=".",
+        ci_bootstrap=("yarn generate",),
+        ci_runner="blacksmith-2vcpu-ubuntu-2404",
+    )
+    (tmp_path / manifest.MANIFEST_NAME).write_text(written.render())
+    assert manifest.load(tmp_path) == written
+
+
+@pytest.mark.parametrize("label", ["", "two labels", "-leading", "runner\nnext", "a" * 101])
+def test_manifest_rejects_malformed_ci_runner(tmp_path: Path, label: str) -> None:
+    (tmp_path / manifest.MANIFEST_NAME).write_text(
+        f'schema = 4\nbundle = "1.2.3"\n[ci]\nrunner = {json.dumps(label)}\n',
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="one GitHub Actions runner label"):
+        manifest.load(tmp_path)
+
+
+def test_manifest_rejects_non_string_ci_runner(tmp_path: Path) -> None:
+    (tmp_path / manifest.MANIFEST_NAME).write_text(
+        'schema = 4\nbundle = "1.2.3"\n[ci]\nrunner = ["blacksmith-2vcpu-ubuntu-2404"]\n',
+        encoding="utf-8",
+    )
+
+    with pytest.raises(TypeError, match=r"\[ci\]\.runner must be a string"):
+        manifest.load(tmp_path)
+
+
+def test_setup_renders_managed_workflows_on_the_configured_runner(tmp_path: Path) -> None:
+    _python_repo(tmp_path)
+    assert _cli("--root", str(tmp_path), "setup", "--no-install").returncode == 0
+    manifest_file = tmp_path / manifest.MANIFEST_NAME
+    manifest_file.write_text(
+        manifest_file.read_text(encoding="utf-8") + '\n[ci]\nrunner = "blacksmith-2vcpu-ubuntu-2404"\n',
+        encoding="utf-8",
+    )
+
+    rerun = _cli("--root", str(tmp_path), "setup", "--no-install")
+
+    assert rerun.returncode == 0, rerun.stdout + rerun.stderr
+    workflows = tmp_path / ".github" / "workflows"
+    for name in ("standards.yml", "commit-policy.yml"):
+        assert "    runs-on: blacksmith-2vcpu-ubuntu-2404\n" in (workflows / name).read_text(encoding="utf-8")
+    assert 'runner = "blacksmith-2vcpu-ubuntu-2404"' in manifest_file.read_text(encoding="utf-8")
+
+
+def test_doctor_reports_commit_policy_drift_after_a_runner_change(tmp_path: Path) -> None:
+    subprocess.run(("git", "init", "-q"), cwd=tmp_path, check=True, env={})
+    _python_repo(tmp_path)
+    assert _cli("--root", str(tmp_path), "setup", "--no-install").returncode == 0
+    stale = "the canonical exact-base commit-policy workflow is missing or stale"
+    assert stale not in _cli("--root", str(tmp_path), "doctor", "--no-install").stdout
+    manifest_file = tmp_path / manifest.MANIFEST_NAME
+    manifest_file.write_text(
+        manifest_file.read_text(encoding="utf-8") + '\n[ci]\nrunner = "blacksmith-2vcpu-ubuntu-2404"\n',
+        encoding="utf-8",
+    )
+
+    assert stale in _cli("--root", str(tmp_path), "doctor", "--no-install").stdout
+
+
+def test_generated_workflows_default_to_github_hosted_linux(tmp_path: Path) -> None:
+    _python_repo(tmp_path)
+
+    assert "    runs-on: ubuntu-latest\n" in scaffold.github_ci_workflow(tmp_path)
+    assert "    runs-on: ubuntu-latest\n" in scaffold.commit_policy_github_workflow()
+
+
 def test_manifest_rejects_custom_verification_path_escape(tmp_path: Path) -> None:
     (tmp_path / manifest.MANIFEST_NAME).write_text('schema = 4\nbundle = "1.2.3"\n[verify]\npaths = ["../outside"]\n')
 

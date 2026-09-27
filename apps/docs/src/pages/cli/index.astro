@@ -111,6 +111,20 @@ const workflow = [
     </div>
   </section>
 
+  <section class="command-block" aria-labelledby="ci-runner">
+    <div>
+      <h2 id="ci-runner">Generated workflow runner</h2>
+      <p>
+        The generated <code>standards.yml</code> and <code>commit-policy.yml</code> jobs run on
+        <code>ubuntu-latest</code>. A private repository that pays for GitHub-hosted minutes can set
+        <code>runner = "blacksmith-2vcpu-ubuntu-2404"</code> under <code>[ci]</code> in
+        <code>.sarj-standards.toml</code>; <code>update</code> regenerates both workflows on that label and
+        <code>doctor</code> checks them against it. Public repositories receive free GitHub-hosted minutes,
+        so leave it unset there. Swift repositories keep <code>macos-15</code> for Standards.
+      </p>
+    </div>
+  </section>
+
   <nav class="command-index" aria-label="CLI commands">
     {commandGroups.map((command) => <a href={`#${commandAnchor(command)}`}><code>{command.name}</code></a>)}
   </nav>

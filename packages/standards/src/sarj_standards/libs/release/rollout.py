@@ -1995,7 +1995,11 @@ def canonical_commit_policy_workflow_paths(repo: Path, paths: Sequence[str]) -> 
     workflow = repo / COMMIT_POLICY_WORKFLOW_PATH
     if workflow.is_symlink() or not workflow.is_file():
         return frozenset()
-    expected = adoption_scaffold.commit_policy_github_workflow().encode()
+    try:
+        runner = adoption_scaffold.managed_ci_runner(repo)
+    except OSError, TypeError, ValueError:
+        return frozenset()
+    expected = adoption_scaffold.commit_policy_github_workflow(runner).encode()
     return frozenset({COMMIT_POLICY_WORKFLOW_PATH}) if workflow.read_bytes() == expected else frozenset()
 
 

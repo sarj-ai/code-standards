@@ -99,6 +99,7 @@ class Plan:
     errors: list[str] = field(default_factory=list)
 
 
+DEFAULT_CI_RUNNER: Final = "ubuntu-latest"
 _ESLINT_CONFIG: Final = "eslint.config.mjs"
 _ESLINT_CONFIG_NAMES: Final = (
     "eslint.config.js",
@@ -853,7 +854,7 @@ def _plan_lefthook_commit_message(root: Path, plan: Plan) -> None:
 
 def _plan_commit_policy_workflow(root: Path, plan: Plan, *, force: bool) -> None:
     path = root / ".github" / "workflows" / "commit-policy.yml"
-    contents = commit_policy_github_workflow()
+    contents = commit_policy_github_workflow(managed_ci_runner(root))
     if path.is_file() and path.read_text(encoding="utf-8").startswith("# Managed by code-standards commit policy;"):
         if path.read_text(encoding="utf-8") == contents:
             plan.skips.append((path, "already runs the canonical commit policy"))
@@ -1070,6 +1071,7 @@ def _desired_manifest(root: Path, plan: Plan, current: manifest.Manifest | None)
         doctor_excluded_paths=() if current is None else current.doctor_excluded_paths,
         diagnostic_baseline=None if current is None else current.diagnostic_baseline,
         ci_bootstrap=() if current is None else current.ci_bootstrap,
+        ci_runner=None if current is None else current.ci_runner,
     )
 
 
@@ -2213,6 +2215,7 @@ def github_ci_workflow(root: Path, *, ecosystems: Ecosystems | None = None) -> s
         ecosystems = _workflow_ecosystems(root, adopted)
     install_root = ecosystems.typescript_install_root or ecosystems.typescript_root
     runner = launcher.repository_command()
+    runs_on = "macos-15" if ecosystems.swift else _configured_runner(adopted)
     lines = [
         "# Managed by code-standards; regenerate with `code-standards show ci --output .github/workflows/standards.yml`.",
         "name: Standards",
@@ -2231,7 +2234,7 @@ def github_ci_workflow(root: Path, *, ecosystems: Ecosystems | None = None) -> s
         "",
         "jobs:",
         "  standards:",
-        f"    runs-on: {'macos-15' if ecosystems.swift else 'ubuntu-latest'}",
+        f"    runs-on: {runs_on}",
         f"    timeout-minutes: {60 if ecosystems.mobile else 15}",
         "    steps:",
         "      - name: Harden the runner",
@@ -2264,7 +2267,9 @@ def github_ci_workflow(root: Path, *, ecosystems: Ecosystems | None = None) -> s
         )
     )
     if ecosystems.typescript:
-        _append_javascript_ci(lines, root, ecosystems, install_root)
+        _append_javascript_ci(
+            lines, root, ecosystems, install_root, pin_node=not ecosystems.swift and runs_on != DEFAULT_CI_RUNNER
+        )
     if ecosystems.python:
         python_install = python_ci_install_argv(root, python_dest)
         if python_install:
@@ -2313,10 +2318,14 @@ def _workflow_ecosystems(root: Path, adopted: manifest.Manifest | None) -> Ecosy
     )
 
 
-def _append_javascript_ci(lines: list[str], root: Path, ecosystems: Ecosystems, install_root: Path | None) -> None:
+def _append_javascript_ci(
+    lines: list[str], root: Path, ecosystems: Ecosystems, install_root: Path | None, *, pin_node: bool
+) -> None:
     if ecosystems.client is PackageManager.BUN:
         lines.append("      - uses: oven-sh/setup-bun@v2")
-    else:
+    # Bun projects rely on the runner image's Node for Node-based analyzers. GitHub's image ships a current
+    # Node; other runner images may not, so a configured runner gets the same pinned Node as npm projects.
+    if ecosystems.client is not PackageManager.BUN or pin_node:
         lines.extend(
             (
                 "      - uses: actions/setup-node@v7",
@@ -2465,7 +2474,17 @@ def _launcher_options_are_valid(
     return True
 
 
-def commit_policy_github_workflow() -> str:
+def managed_ci_runner(root: Path) -> str:
+    return _configured_runner(manifest.load_for_setup(root))
+
+
+def _configured_runner(adopted: manifest.Manifest | None) -> str:
+    if adopted is None or adopted.ci_runner is None:
+        return DEFAULT_CI_RUNNER
+    return adopted.ci_runner
+
+
+def commit_policy_github_workflow(runner: str = DEFAULT_CI_RUNNER) -> str:
     return (
         """\
 # Managed by code-standards commit policy; regenerate with `code-standards setup`.
@@ -2486,7 +2505,9 @@ concurrency:
 
 jobs:
   commit-policy-v1:
-    runs-on: ubuntu-latest
+"""
+        f"    runs-on: {runner}\n"
+        """\
     timeout-minutes: 5
     steps:
       - name: Harden the runner
