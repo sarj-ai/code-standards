@@ -64,6 +64,36 @@ class PreferInjectedDependencyOverMonkeypatch(Rule):
         ),
         examples=(
             RuleExample(
+                example_id="patched-constructor-failure",
+                title="Avoid replacing the SDK constructor lookup",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "tests/test_adapter.py",
+                        "import pytest\nfrom unittest.mock import patch\ndef test_constructor_failure():\n    with patch('transport.Client', side_effect=ConnectionError):\n        with pytest.raises(AdapterUnavailable):\n            open_adapter()\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("tests/test_adapter.py"),
+                expected_count=1,
+                public=True,
+                scenario="constructor-failure",
+            ),
+            RuleExample(
+                example_id="injected-constructor-failure",
+                title="Inject a factory to exercise constructor failure",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "tests/test_adapter.py",
+                        "import pytest\ndef unavailable_client():\n    raise ConnectionError\ndef test_constructor_failure():\n    with pytest.raises(AdapterUnavailable):\n        open_adapter(client_factory=unavailable_client)\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("tests/test_adapter.py"),
+                expected_count=0,
+                public=True,
+                scenario="constructor-failure",
+            ),
+            RuleExample(
                 example_id="patched-first-party-collaborator",
                 title="Test replaces an application collaborator",
                 outcome=ExampleOutcome.MATCH,
