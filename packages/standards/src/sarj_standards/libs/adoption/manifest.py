@@ -34,6 +34,7 @@ _ESLINT_RULE_KEY: Final = re.compile(
     re.MULTILINE,
 )
 _SARJ_RULE_ENGINES: Final = frozenset({"python", "sql", "iac", "text"})
+_RUNNER_LABEL: Final = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,99}")
 _TOML_COLUMN_WIDTH: Final = 80  # Taplo's default; the shipped strict config does not override column_width.
 
 
@@ -139,6 +140,7 @@ class Manifest:
     doctor_excluded_paths: tuple[str, ...] = ()
     diagnostic_baseline: str | None = None
     ci_bootstrap: tuple[str, ...] = ()
+    ci_runner: str | None = None
 
     @property
     def enabled_capabilities(self) -> tuple[str, ...]:
@@ -181,8 +183,11 @@ class Manifest:
             sections.append(f"\n[doctor]\n{_array_field('exclude', self.doctor_excluded_paths)}")
         if self.diagnostic_baseline is not None:
             sections.append(f"\n[baseline]\ndiagnostics = {_toml_string(self.diagnostic_baseline)}\n")
-        if self.ci_bootstrap:
-            sections.append(f"\n[ci]\n{_array_field('bootstrap', self.ci_bootstrap)}")
+        if self.ci_bootstrap or self.ci_runner is not None:
+            ci_fields = _array_field("bootstrap", self.ci_bootstrap) if self.ci_bootstrap else ""
+            if self.ci_runner is not None:
+                ci_fields += f"runner = {_toml_string(self.ci_runner)}\n"
+            sections.append(f"\n[ci]\n{ci_fields}")
         return "".join(sections)
 
 
@@ -339,6 +344,7 @@ def _load_schema(  # ruff: ignore[too-many-locals] - one validation boundary kee
         doctor_excluded_paths=_string_list(doctor_table, "exclude", label="manifest [doctor].exclude"),
         diagnostic_baseline=_relative_file(root, baseline_table, "diagnostics"),
         ci_bootstrap=_ci_bootstrap(ci_table),
+        ci_runner=_ci_runner(ci_table),
     )
 
 
@@ -485,6 +491,19 @@ def _ci_bootstrap(table: Mapping[str, object]) -> tuple[str, ...]:
         msg = "manifest [ci].bootstrap commands must be trimmed single-line strings"
         raise ValueError(msg)
     return commands
+
+
+def _ci_runner(table: Mapping[str, object]) -> str | None:
+    if "runner" not in table:
+        return None
+    label = table["runner"]
+    if not isinstance(label, str):
+        msg = "manifest [ci].runner must be a string"
+        raise TypeError(msg)
+    if _RUNNER_LABEL.fullmatch(label) is None:
+        msg = "manifest [ci].runner must be one GitHub Actions runner label, such as blacksmith-2vcpu-ubuntu-2404"
+        raise ValueError(msg)
+    return label
 
 
 def _path_patterns(root: Path, table: Mapping[str, object], key: str) -> tuple[str, ...]:

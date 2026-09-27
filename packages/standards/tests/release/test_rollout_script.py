@@ -527,6 +527,34 @@ class TestCanonicalCommitPolicyWorkflow:
                 allowed_workflow_paths=rollout.canonical_commit_policy_workflow_paths(tmp_path, (MANIFEST, relative)),
             )
 
+    def test_workflow_on_the_configured_runner_is_canonical(self, tmp_path: Path) -> None:
+        (tmp_path / MANIFEST).write_text(
+            'schema = 4\nbundle = "1.2.3"\n[ci]\nrunner = "blacksmith-2vcpu-ubuntu-2404"\n',
+            encoding="utf-8",
+        )
+        relative = rollout.COMMIT_POLICY_WORKFLOW_PATH
+        workflow = tmp_path / relative
+        workflow.parent.mkdir(parents=True)
+
+        workflow.write_text(
+            adoption_scaffold.commit_policy_github_workflow("blacksmith-2vcpu-ubuntu-2404"), encoding="utf-8"
+        )
+        assert rollout.canonical_commit_policy_workflow_paths(tmp_path, (MANIFEST, relative)) == frozenset({relative})
+
+        workflow.write_text(adoption_scaffold.commit_policy_github_workflow(), encoding="utf-8")
+        assert rollout.canonical_commit_policy_workflow_paths(tmp_path, (MANIFEST, relative)) == frozenset()
+
+    def test_workflow_under_an_unreadable_runner_is_not_canonical(self, tmp_path: Path) -> None:
+        (tmp_path / MANIFEST).write_text(
+            'schema = 4\nbundle = "1.2.3"\n[ci]\nrunner = "ubuntu-latest\\nfoo: bar"\n', encoding="utf-8"
+        )
+        relative = rollout.COMMIT_POLICY_WORKFLOW_PATH
+        workflow = tmp_path / relative
+        workflow.parent.mkdir(parents=True)
+        workflow.write_text(adoption_scaffold.commit_policy_github_workflow(), encoding="utf-8")
+
+        assert rollout.canonical_commit_policy_workflow_paths(tmp_path, (MANIFEST, relative)) == frozenset()
+
     def test_noncanonical_pin_is_not_prevalidated(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         relative = rollout.COMMIT_POLICY_WORKFLOW_PATH
         workflow = tmp_path / relative

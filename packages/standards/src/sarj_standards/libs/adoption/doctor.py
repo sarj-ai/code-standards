@@ -673,8 +673,12 @@ def _check_commit_policy_ci(root: Path) -> Iterator[Finding]:
         return
     if configured.commit_message is None:
         return
+    try:
+        runner = scaffold.managed_ci_runner(root)
+    except OSError, TypeError, ValueError:
+        return
     path = root / ".github" / "workflows" / "commit-policy.yml"
-    expected = scaffold.commit_policy_github_workflow()
+    expected = scaffold.commit_policy_github_workflow(runner)
     try:
         actual = path.read_text(encoding="utf-8")
     except OSError:
