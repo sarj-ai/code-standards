@@ -31,9 +31,21 @@ TESTER.run("require-explicit-contract-implementation", rule, {
     "interface Publisher { publish(): void } class Consumer { constructor(readonly publisher: Publisher) {} } class Fake implements Publisher { publish() {} } new Consumer(new Fake());",
     "interface Publisher { publish(): void } class Consumer { constructor(readonly publisher: Publisher) {} } class Fake { publish() {} } new Consumer(new Fake() as Publisher);",
     "interface Options { name: string } class Consumer { constructor(readonly options: Options) {} } class Fake { name = 'x'; } new Consumer(new Fake());",
+    "interface Options { onDone: () => void } class Consumer { constructor(readonly options: Options) {} } class Fake { onDone = () => {}; } new Consumer(new Fake());",
+    "interface Publisher { publish(): void } type PublisherAlias = Publisher; class Consumer { constructor(readonly publisher: PublisherAlias) {} } class Fake implements Publisher { publish() {} } new Consumer(new Fake());",
   ],
-  invalid: [{
-    code: "interface Publisher { publish(): void } class Consumer { constructor(readonly publisher: Publisher) {} } class Fake { publish() {} } new Consumer(new Fake());",
-    errors: [{ messageId: "declareActualContract" }],
-  }],
+  invalid: [
+    {
+      code: "interface Publisher { publish(): void } class Consumer { constructor(readonly publisher: Publisher) {} } class Fake { publish() {} } new Consumer(new Fake());",
+      errors: [{ messageId: "declareActualContract" }],
+    },
+    {
+      code: "interface Publisher { publish(): void } class Consumer { constructor(readonly publisher?: Publisher) {} } class Fake { publish() {} } new Consumer(new Fake());",
+      errors: [{ messageId: "declareActualContract" }],
+    },
+    {
+      code: "interface Publisher { publish(): void } interface Root { publish(): void } interface Left extends Root {} interface Right extends Root {} class Consumer { constructor(readonly publisher: Publisher) {} } class Fake implements Left, Right { publish() {} } new Consumer(new Fake());",
+      errors: [{ messageId: "declareActualContract" }],
+    },
+  ],
 });
