@@ -467,6 +467,31 @@ def test_raw_scoped_eslint_analysis_does_not_run_unselected_external_tools(
     assert captured == [frozenset({"eslint"})]
 
 
+def test_skipped_python_type_check_is_reported_as_not_requested_coverage(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    source = tmp_path / "app.py"
+    source.write_text("value = 1\n", encoding="utf-8")
+    adopted = Manifest(version="1.2.3", configs=("ruff", "pyright"), python_dest=".", typescript_dest=".")
+    (tmp_path / ".sarj-standards.toml").write_text(adopted.render(), encoding="utf-8")
+    captured: list[object] = []
+
+    def analyze_external(*_args: object, **kwargs: object) -> tuple[ToolReport, ...]:
+        captured.append(kwargs.get("python_type_check"))
+        return ()
+
+    monkeypatch.setattr(api, "analyze_external", analyze_external)  # sarj-noqa: SARJ445 -- intercepts analyzer dispatch
+
+    report = api.Standards(tmp_path).analyze(
+        ["app.py"], external=True, trust=TrustMode.TRUSTED, python_type_check=False
+    )
+
+    assert captured == [False]
+    assert [(notice.source, notice.disposition) for notice in report.coverage] == [
+        ("basedpyright", CoverageDisposition.NOT_REQUESTED)
+    ]
+
+
 @pytest.mark.parametrize(("pass_on_unpruned", "expected"), [(False, False), (True, True)])
 def test_standards_analysis_forwards_scoped_eslint_suppression_policy_to_the_process(
     monkeypatch: pytest.MonkeyPatch,

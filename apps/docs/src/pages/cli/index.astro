@@ -125,6 +125,19 @@ const workflow = [
     </div>
   </section>
 
+  <section class="command-block" aria-labelledby="python-type-check">
+    <div>
+      <h2 id="python-type-check">Repository-owned Python type checking</h2>
+      <p>
+        A repository whose own required CI job already runs BasedPyright over every Python project that Standards
+        routes can pass <code>--skip-python-type-check</code> to <code>check</code> in its hand-owned Standards
+        workflow. That run skips only BasedPyright and reports the selected Python files as not requested; Ruff,
+        custom rules, hooks, <code>doctor</code>, and managed BasedPyright configuration are unchanged. Leave it off
+        unless another required check covers the same projects.
+      </p>
+    </div>
+  </section>
+
   <nav class="command-index" aria-label="CLI commands">
     {commandGroups.map((command) => <a href={`#${commandAnchor(command)}`}><code>{command.name}</code></a>)}
   </nav>
