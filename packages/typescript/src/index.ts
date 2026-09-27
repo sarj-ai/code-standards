@@ -1,3 +1,5 @@
+import requireExplicitContractImplementation from "./rules/require-explicit-contract-implementation.js";
+import requireExplicitServiceContract from "./rules/require-explicit-service-contract.js";
 import noConditionalEmptyObjectSpread from "./rules/no-conditional-empty-object-spread.js";
 import preferTypedReflection from "./rules/prefer-typed-reflection.js";
 import noBroadReturnType from "./rules/no-broad-return-type.js";
@@ -122,6 +124,8 @@ import { RENAMED_RULES } from "./rules/_renamed-rules.js";
 import { RETIRED_RULES } from "./rules/_retired-rules.js";
 
 const RULES = {
+  "require-explicit-contract-implementation": requireExplicitContractImplementation,
+  "require-explicit-service-contract": requireExplicitServiceContract,
   "no-conditional-empty-object-spread": noConditionalEmptyObjectSpread,
   "prefer-typed-reflection": preferTypedReflection,
   "no-broad-return-type": noBroadReturnType,
@@ -242,7 +246,7 @@ const RULES = {
 
 const meta = {
   name: "@sarj/eslint-plugin",
-  version: "16.2.1",
+  version: "16.2.2",
 } as const;
 
 /** @deprecated All repositories use one policy; retained for import compatibility. */
@@ -271,6 +275,8 @@ const ADVISORY_RULES = [
   "@sarj/prefer-switch-for-repeated-equality",
   "@sarj/prefer-whole-object-assertion",
   "@sarj/require-camelcase-properties",
+  "@sarj/require-explicit-contract-implementation",
+  "@sarj/require-explicit-service-contract",
   "@sarj/require-interface-for-exported-class",
   "@sarj/require-sql-access-class",
 ] as const;
@@ -375,6 +381,8 @@ const RECOMMENDED_RULES = {
   "@sarj/prefer-zod-parse-output-type": "error",
   "@sarj/require-assert-never": "error",
   "@sarj/require-fetch-timeout": "error",
+  "@sarj/require-explicit-contract-implementation": "warn",
+  "@sarj/require-explicit-service-contract": "warn",
   "@sarj/require-interface-for-exported-class": "warn",
   "@sarj/require-port-for-service": "error",
   "@sarj/require-sql-access-class": "warn",
@@ -494,6 +502,8 @@ const STRICT_RULES = {
   "@sarj/prefer-zod-parse-output-type": "error",
   "@sarj/require-assert-never": "error",
   "@sarj/require-fetch-timeout": "error",
+  "@sarj/require-explicit-contract-implementation": "warn",
+  "@sarj/require-explicit-service-contract": "warn",
   "@sarj/require-interface-for-exported-class": "warn",
   "@sarj/require-port-for-service": "error",
   "@sarj/require-sql-access-class": "warn",

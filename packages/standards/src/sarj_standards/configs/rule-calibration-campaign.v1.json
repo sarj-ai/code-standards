@@ -2129,6 +2129,46 @@
       "state": "complete",
       "evidence": "Calibration 2026-09-27: 3,626 pinned Python files / 33,222,394 bytes across five private snapshots and Standards, in 19 fresh bounded subprocess batches. The four target rules plus SARJ040 produced 3,928 SARJ420, five SARJ462 and 294 unchanged SARJ040 findings; SARJ441/SARJ453 had no live matches. Zero matches do not establish precision; executable positive and exclusion fixtures remain required. The five focused Python/SQL rule modules pass 201 tests. All five retained matches reviewed: four previously reproduced transaction hazards and one explicit-style exception. The remaining cleanup caller constructs a non-autocommit pool, so its two writes and manual commit already share an implicit transaction; this is not an atomicity defect. Guidance now distinguishes implicit transactions from autocommit and avoids claiming manual commit is inherently unsafe. Psycopg transaction documentation confirms that distinction; Ruff has no equivalent, and SARJ415 owns injected resource lifetime rather than transaction grouping. Three alternating full-custom-runner comparisons on 64 files / 614,997 bytes measured median without-targets/baseline/candidate/targets-only 11.046/11.180/11.722/7.049s; first-pass times 11.046/9.994/10.346/6.608s. Peak worker RSS was 430.2 MiB. Fresh processes do not imply cold OS caches; caches were not flushed and some checks ran concurrently. No speedup or full-fleet performance guarantee is claimed. Samples use the first hits sorted by SHA-256 of seed 20260927-15 plus corpus/path/line/column. Private pins, locations, per-hit labels and runner commands remain in owner-readable local reports; public evidence contains aggregates only. No independent mature public application corpus was available. This completes scoped rule calibration, not downstream migration, policy adoption or proof of zero false negatives.",
       "outcome": "Complete the previously pending owner classification; retain SARJ462 warning without autofix. The safe implicit-transaction protocol needs an exact explained policy exception, not an automatic rewrite. Preserve literal-SQL, typed-owner and same-connection proof; dynamic control flow, interprocedural atomicity and isolation remain outside scope. Do not promote based on this calibration."
+    },
+    {
+      "task": "rule-audit/python/require-explicit-service-contract",
+      "family": "python",
+      "ruleId": "require-explicit-service-contract",
+      "state": "pending",
+      "evidence": "Focused positive, negative, inheritance, ambiguity, and documented examples pass. Python platform scans are read-only and reveal existing debt. Representative TypeScript corpus precision and full comparative timing remain to be measured.",
+      "outcome": "Keep the new rule as a warning until existing findings are classified and a separate baseline or ratchet lets new violations become errors without blocking prior debt."
+    },
+    {
+      "task": "rule-audit/python/require-public-dependency-contract",
+      "family": "python",
+      "ruleId": "require-public-dependency-contract",
+      "state": "pending",
+      "evidence": "Focused positive, negative, inheritance, ambiguity, and documented examples pass. Python platform scans are read-only and reveal existing debt. Representative TypeScript corpus precision and full comparative timing remain to be measured.",
+      "outcome": "Keep the new rule as a warning until existing findings are classified and a separate baseline or ratchet lets new violations become errors without blocking prior debt."
+    },
+    {
+      "task": "rule-audit/python/require-explicit-contract-implementation",
+      "family": "python",
+      "ruleId": "require-explicit-contract-implementation",
+      "state": "pending",
+      "evidence": "Focused positive, negative, inheritance, ambiguity, and documented examples pass. Python platform scans are read-only and reveal existing debt. Representative TypeScript corpus precision and full comparative timing remain to be measured.",
+      "outcome": "Keep the new rule as a warning until existing findings are classified and a separate baseline or ratchet lets new violations become errors without blocking prior debt."
+    },
+    {
+      "task": "rule-audit/typescript/require-explicit-service-contract",
+      "family": "typescript",
+      "ruleId": "require-explicit-service-contract",
+      "state": "pending",
+      "evidence": "Focused positive, negative, inheritance, ambiguity, and documented examples pass. Python platform scans are read-only and reveal existing debt. Representative TypeScript corpus precision and full comparative timing remain to be measured.",
+      "outcome": "Keep the new rule as a warning until existing findings are classified and a separate baseline or ratchet lets new violations become errors without blocking prior debt."
+    },
+    {
+      "task": "rule-audit/typescript/require-explicit-contract-implementation",
+      "family": "typescript",
+      "ruleId": "require-explicit-contract-implementation",
+      "state": "pending",
+      "evidence": "Focused positive, negative, inheritance, ambiguity, and documented examples pass. Python platform scans are read-only and reveal existing debt. Representative TypeScript corpus precision and full comparative timing remain to be measured.",
+      "outcome": "Keep the new rule as a warning until existing findings are classified and a separate baseline or ratchet lets new violations become errors without blocking prior debt."
     }
   ]
 }

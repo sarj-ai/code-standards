@@ -249,5 +249,8 @@
   "SARJ461": "prefer-monotonic-for-elapsed-time",
   "SARJ462": "require-explicit-psycopg-transaction",
   "SARJ463": "async-cleanup-registered-synchronously",
-  "SARJ464": "subprocess-kill-without-reap"
+  "SARJ464": "subprocess-kill-without-reap",
+  "SARJ465": "require-explicit-service-contract",
+  "SARJ466": "require-public-dependency-contract",
+  "SARJ467": "require-explicit-contract-implementation"
 }
