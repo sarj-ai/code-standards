@@ -16,8 +16,8 @@ from sarj_python_lint.rule_base import (
     Severity,
     is_suppressed,
 )
+from sarj_python_lint.rules._contract_annotation import annotation_reference
 from sarj_python_lint.rules._imports import ABC_SOURCES, TYPING_SOURCES, ImportIndex
-from sarj_python_lint.rules.require_port_for_service import annotation_tail
 
 
 if TYPE_CHECKING:
@@ -41,7 +41,7 @@ class RequireExplicitContractImplementation(ProjectRule):
         autofix=AutofixPolicy.NONE,
         limitations=(
             "Only direct constructor arguments and unreassigned local constructor results supplied to a resolvable typed parameter are checked.",
-            "Dynamic factories, containers, casts, unresolved ancestry, and third-party implementations are excluded.",
+            "Dynamic factories, containers, casts, unresolved or multiple owned ABC ancestry, and third-party implementations are excluded.",
         ),
         examples=(
             RuleExample(
@@ -238,10 +238,10 @@ class _InjectionVisitor(ast.NodeVisitor):
     def _check_argument(self, parameter: ast.arg | None, value: ast.expr, target_unit: SourceUnit) -> None:
         if parameter is None or parameter.annotation is None:
             return
-        name = annotation_tail(parameter.annotation)
-        if name is None:
+        reference = annotation_reference(parameter.annotation)
+        if reference is None:
             return
-        contract = self.project.class_for(target_unit, ast.Name(id=name, ctx=ast.Load()))
+        contract = self.project.class_for(target_unit, reference)
         if contract is None or not _is_direct_contract(contract, self.project):
             return
         origin = self._origin(value)
@@ -277,9 +277,6 @@ def _is_direct_contract(summary: ClassSummary, project: ProjectIndexSet) -> bool
         (base.module, base.name) in {("typing", "Protocol"), ("typing_extensions", "Protocol")}
         for base in summary.bases
     )
-    abc = any((base.module, base.name) == ("abc", "ABC") for base in summary.bases)
-    if not protocol and not abc:
-        return False
     unit = project.source_unit(summary.symbol.module)
     if unit is None or unit.tree is None:
         return False
@@ -289,19 +286,51 @@ def _is_direct_contract(summary: ClassSummary, project: ProjectIndexSet) -> bool
     )
     if declaration is None:
         return False
-    imports = ImportIndex.from_tree(unit.tree, module_scope_only=True)
-    return any(
-        isinstance(member, ast.FunctionDef | ast.AsyncFunctionDef)
-        and not member.name.startswith("_")
-        and (
-            protocol
-            or any(
-                imports.resolves(decorator, sources=ABC_SOURCES, symbol="abstractmethod")
-                for decorator in member.decorator_list
-            )
-        )
+    if protocol and any(
+        isinstance(member, ast.FunctionDef | ast.AsyncFunctionDef) and not member.name.startswith("_")
         for member in declaration.body
+    ):
+        return True
+    if not project.class_inherits_from(unit, summary.symbol.name, frozenset({"abc.ABC"})):
+        return False
+    return bool(_remaining_abstract_operations(summary, project, set()))
+
+
+def _remaining_abstract_operations(summary: ClassSummary, project: ProjectIndexSet, seen: set[SymbolRef]) -> set[str]:
+    if summary.symbol in seen:
+        return set()
+    seen.add(summary.symbol)
+    unit = project.source_unit(summary.symbol.module)
+    if unit is None or unit.tree is None:
+        return set()
+    declaration = next(
+        (item for item in unit.tree.body if isinstance(item, ast.ClassDef) and item.name == summary.symbol.name),
+        None,
     )
+    if declaration is None:
+        return set()
+    owned_parents = [base for base in summary.bases if project.source_unit(base.module) is not None]
+    if len(owned_parents) > 1:
+        return set()
+    abstract: set[str] = set()
+    for base in summary.bases:
+        parent_unit = project.source_unit(base.module)
+        parent = project.class_for(parent_unit, ast.Name(id=base.name, ctx=ast.Load())) if parent_unit else None
+        if parent is not None:
+            abstract.update(_remaining_abstract_operations(parent, project, seen.copy()))
+    imports = ImportIndex.from_tree(unit.tree, module_scope_only=True)
+    _apply_abstract_overrides(abstract, declaration, imports)
+    return abstract
+
+
+def _apply_abstract_overrides(abstract: set[str], declaration: ast.ClassDef, imports: ImportIndex) -> None:
+    for member in declaration.body:
+        if not isinstance(member, ast.FunctionDef | ast.AsyncFunctionDef) or member.name.startswith("_"):
+            continue
+        if any(imports.resolves(dec, sources=ABC_SOURCES, symbol="abstractmethod") for dec in member.decorator_list):
+            abstract.add(member.name)
+        else:
+            abstract.discard(member.name)
 
 
 def _inherits_contract(
@@ -326,7 +355,7 @@ def _inherits_contract(
         if ancestor is None:
             unknown = True
             continue
-        relationship = _inherits_contract(ancestor, target, project, seen)
+        relationship = _inherits_contract(ancestor, target, project, seen.copy())
         if relationship is True:
             return True
         unknown |= relationship is None

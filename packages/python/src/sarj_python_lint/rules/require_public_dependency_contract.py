@@ -16,6 +16,7 @@ from sarj_python_lint.rule_base import (
     Severity,
     is_suppressed,
 )
+from sarj_python_lint.rules._contract_annotation import annotation_reference
 from sarj_python_lint.rules._imports import ABC_SOURCES, TYPING_SOURCES, ImportIndex
 from sarj_python_lint.rules._paths import is_test_path
 from sarj_python_lint.rules.require_explicit_service_contract import (
@@ -24,7 +25,6 @@ from sarj_python_lint.rules.require_explicit_service_contract import (
     operations_for_fields,
 )
 from sarj_python_lint.rules.require_port_for_service import (
-    annotation_tail,
     class_methods,
     is_data_type,
     self_stored_parameters,
@@ -136,10 +136,10 @@ class RequirePublicDependencyContract(ProjectRule):
         fields = fields_by_parameter.get(parameter.arg)
         if fields is None or parameter.annotation is None or not operations_for_fields(node, fields):
             return None
-        annotation_name = annotation_tail(parameter.annotation)
-        if annotation_name is None or annotation_name in {"Callable", "Awaitable", "Coroutine"}:
+        reference = annotation_reference(parameter.annotation)
+        if reference is None:
             return None
-        reason = _hidden_dependency(annotation_name, classes, context)
+        reason = _hidden_dependency(reference, classes, context)
         if reason is None or is_suppressed(context.source_lines, parameter.lineno, self.code):
             return None
         return Diagnostic(
@@ -152,9 +152,16 @@ class RequirePublicDependencyContract(ProjectRule):
         )
 
 
-def _hidden_dependency(name: str, classes: dict[str, ast.ClassDef], context: PythonFileContext) -> str | None:
-    if name.startswith("_") and name in classes and not is_data_type(classes[name]):
-        return f"private local contract `{name}`"
+def _hidden_dependency(
+    reference: ast.Name | ast.Attribute, classes: dict[str, ast.ClassDef], context: PythonFileContext
+) -> str | None:
+    if (
+        isinstance(reference, ast.Name)
+        and reference.id.startswith("_")
+        and reference.id in classes
+        and not is_data_type(classes[reference.id])
+    ):
+        return f"private local contract `{reference.id}`"
     project = context.session.project
     if project is None:
         return None
@@ -162,14 +169,8 @@ def _hidden_dependency(name: str, classes: dict[str, ast.ClassDef], context: Pyt
     source_unit = project.unit(context.path)
     if source_unit is None:
         return None
-    annotation = ast.Name(id=name, ctx=ast.Load())
-    summary = project.class_for(source_unit, annotation)
+    summary = project.class_for(source_unit, reference)
     if summary is None:
-        return None
-    if (
-        name not in classes
-        and context.imports.resolved_qualified_name(annotation) != f"{summary.symbol.module}.{summary.symbol.name}"
-    ):
         return None
     declaration_unit = project.source_unit(summary.symbol.module)
     if declaration_unit is None or declaration_unit.tree is None:

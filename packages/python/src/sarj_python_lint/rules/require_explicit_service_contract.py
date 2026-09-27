@@ -260,7 +260,7 @@ def _contract_status(
         contract = _contract_surface(declaration, source_unit, source_imports, project, set())
         surfaces.update(contract.operations)
         unknown |= contract.unresolved
-    return True if operations.intersection(surfaces) else None if unknown else False
+    return True if operations <= surfaces else None if unknown else False
 
 
 def _resolve_base(
@@ -311,7 +311,7 @@ def _contract_surface(
             return _ContractSurface(operations=frozenset(), unresolved=True)
         seen.add(symbol)
     abc = any(imports.resolves(base, sources=ABC_SOURCES, symbol="ABC") for base in declaration.bases)
-    surface: set[str] = _abstract_operations(declaration, imports) if abc else set()
+    surface: set[str] = _public_operations(declaration) if abc else set()
     unknown = False
     local_classes = (
         {item.name: item for item in unit.tree.body if isinstance(item, ast.ClassDef)}
@@ -328,16 +328,11 @@ def _contract_surface(
             unknown = True
             continue
         ancestor, ancestor_unit, ancestor_imports = resolved
-        ancestor_surface = _contract_surface(ancestor, ancestor_unit, ancestor_imports, project, seen)
+        ancestor_surface = _contract_surface(ancestor, ancestor_unit, ancestor_imports, project, seen.copy())
         surface.update(ancestor_surface.operations)
         unknown |= ancestor_surface.unresolved
     return _ContractSurface(operations=frozenset(surface), unresolved=unknown)
 
 
-def _abstract_operations(declaration: ast.ClassDef, imports: ImportIndex) -> set[str]:
-    return {
-        method.name
-        for method in class_methods(declaration)
-        if not method.name.startswith("_")
-        and any(imports.resolves(dec, sources=ABC_SOURCES, symbol="abstractmethod") for dec in method.decorator_list)
-    }
+def _public_operations(declaration: ast.ClassDef) -> set[str]:
+    return {method.name for method in class_methods(declaration) if not method.name.startswith("_")}

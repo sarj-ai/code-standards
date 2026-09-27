@@ -22,7 +22,7 @@ export const REQUIRE_EXPLICIT_CONTRACT_IMPLEMENTATION_DOCUMENTATION = {
   autofix: "none",
   limitations: [
     "Only class instances whose concrete class and selected constructor parameter resolve through the TypeScript checker are checked.",
-    "Object literals, casts, any, unresolved heritage, dynamic factories, and third-party classes are excluded.",
+    "Object literals, casts, any, callback-valued data properties, unresolved heritage, dynamic factories, and third-party classes are excluded.",
   ],
   examples: [
     {
@@ -82,16 +82,23 @@ export const REQUIRE_EXPLICIT_CONTRACT_IMPLEMENTATION_DOCUMENTATION = {
   ],
 } as const satisfies RuleDocumentation;
 
-function isBehavioralContract(checker: ts.TypeChecker, type: ts.Type): boolean {
-  if ((type.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) !== 0) return false;
+function behavioralContract(checker: ts.TypeChecker, type: ts.Type): ts.Type | null {
+  if (type.isUnion()) {
+    const substantive = type.types.filter((member) =>
+      (member.flags & (ts.TypeFlags.Null | ts.TypeFlags.Undefined)) === 0);
+    if (substantive.length !== 1) return null;
+    return behavioralContract(checker, substantive[0]!);
+  }
+  if ((type.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) !== 0) return null;
   const declaration = type.getSymbol()?.declarations?.find((item) =>
     ts.isInterfaceDeclaration(item) || ts.isTypeAliasDeclaration(item) ||
     (ts.isClassDeclaration(item) && item.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.AbstractKeyword)));
-  if (declaration === undefined) return false;
+  if (declaration === undefined) return null;
   return checker.getPropertiesOfType(type).some((property) => {
+    if (!property.declarations?.some((member) => ts.isMethodSignature(member) || ts.isMethodDeclaration(member))) return false;
     const propertyType = checker.getTypeOfSymbolAtLocation(property, declaration);
     return propertyType.getCallSignatures().length > 0;
-  });
+  }) ? type : null;
 }
 
 function ownedClass(type: ts.Type): ts.ClassDeclaration | null {
@@ -128,7 +135,7 @@ function explicitlyImplements(
         unknown = true;
         continue;
       }
-      const relationship = explicitlyImplements(checker, inherited, target, seen);
+      const relationship = explicitlyImplements(checker, inherited, target, new Set(seen));
       if (relationship === true) return true;
       unknown ||= relationship === null;
     }
@@ -171,12 +178,13 @@ export default createRule<Options, MessageIds>({
         const parameter = parameters[index];
         if (parameter === undefined) continue;
         const parameterType = checker.getTypeOfSymbolAtLocation(parameter, tsNode);
-        if (!isBehavioralContract(checker, parameterType)) continue;
-        const contractSymbol = parameterType.getSymbol();
+        const contractType = behavioralContract(checker, parameterType);
+        if (contractType === null) continue;
+        const contractSymbol = contractType.getSymbol();
         if (contractSymbol === undefined) continue;
         const tsArgument = services.esTreeNodeToTSNodeMap.get(argument);
         const actualType = checker.getTypeAtLocation(tsArgument);
-        if (!checker.isTypeAssignableTo(actualType, parameterType)) continue;
+        if (!checker.isTypeAssignableTo(actualType, contractType)) continue;
         const implementation = ownedClass(actualType);
         if (implementation === null) continue;
         const relationship = explicitlyImplements(checker, implementation, contractSymbol, new Set());

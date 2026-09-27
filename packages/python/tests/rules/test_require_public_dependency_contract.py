@@ -25,13 +25,14 @@ def _check(source: str) -> list[str]:
     [
         ("_Worker", ["SARJ466"]),
         ("_Worker | None", ["SARJ466"]),
+        ("Union[_Worker, None]", ["SARJ466"]),
         ("Worker", []),
         ("Callable[[], None]", []),
     ],
 )
 def test_private_behavioral_contract_is_visible_at_the_constructor(annotation: str, expected: list[str]) -> None:
     source = f"""
-from typing import Protocol
+from typing import Protocol, Union
 class _Worker(Protocol):
     def run(self) -> None: ...
 class Worker(Protocol):
@@ -96,3 +97,26 @@ def test_owned_concrete_dependency_is_rejected_when_source_resolves(tmp_path: Pa
     rule.prepare(ProjectIndexSet.build(list(sources), sources))
     findings = rule.check(service, sources[service])
     assert [(finding.code, finding.line) for finding in findings] == [("SARJ466", 3)]
+
+
+def test_qualified_owned_concrete_dependency_is_rejected(tmp_path: Path) -> None:
+    root = tmp_path / "project"
+    package = root / "app"
+    package.mkdir(parents=True)
+    (root / "pyproject.toml").write_text("[project]\nname = 'example'\nversion = '0.1.0'\n")
+    (package / "__init__.py").write_text("")
+    implementation = package / "implementation.py"
+    service = package / "service.py"
+    implementation.write_text("class WorkerService:\n    def run(self) -> None: ...\n")
+    service.write_text(
+        "import app.implementation as implementation\n"
+        "class Consumer:\n"
+        "    def __init__(self, worker: implementation.WorkerService) -> None:\n"
+        "        self.worker = worker\n"
+        "    def run(self) -> None:\n"
+        "        self.worker.run()\n"
+    )
+    sources = {path: path.read_text() for path in (implementation, service)}
+    rule = RequirePublicDependencyContract()
+    rule.prepare(ProjectIndexSet.build(list(sources), sources))
+    assert [finding.code for finding in rule.check(service, sources[service])] == ["SARJ466"]

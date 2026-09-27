@@ -94,6 +94,39 @@ def _check(source: str, path: str = "app/service.py") -> list[str]:
         ),
         (
             """
+            from abc import ABC, abstractmethod
+            class Runner(ABC):
+                @abstractmethod
+                def run(self) -> None: ...
+            class Service(Runner):
+                def __init__(self, collaborator: Collaborator) -> None:
+                    self._collaborator = collaborator
+                def run(self) -> None:
+                    self._collaborator.run()
+                def stop(self) -> None:
+                    self._collaborator.stop()
+            """,
+            ["SARJ465"],
+        ),
+        (
+            """
+            from abc import ABC, abstractmethod
+            class Runner(ABC):
+                @abstractmethod
+                def run(self) -> None: ...
+                def stop(self) -> None: ...
+            class Service(Runner):
+                def __init__(self, collaborator: Collaborator) -> None:
+                    self._collaborator = collaborator
+                def run(self) -> None:
+                    self._collaborator.run()
+                def stop(self) -> None:
+                    self._collaborator.stop()
+            """,
+            [],
+        ),
+        (
+            """
             from dataclasses import dataclass
             @dataclass
             class Record:
