@@ -55,7 +55,7 @@ class RequireExplicitPsycopgTransaction(Rule):
             "Inspects literal SQL, simple local/module constants, and psycopg.sql.SQL wrappers. Dynamic SQL and unsupported SQL syntax are excluded.",
             "A locking SELECT followed by a write on the same connection outside transaction() is reported; a single statement containing a mutation is treated as atomic. Multiple writes on a reachable local path are a warning because independent writes can be intentional.",
             "Loops, exception handlers, match statements, comprehensions, and nested closures are not analyzed as execution paths. Manual BEGIN/commit protocols are not inferred. Tests, support fixtures, and generated files are excluded.",
-            "The rule cannot prove isolation level, database constraints, or application-level atomicity; fault-injection integration tests remain necessary.",
+            "Non-autocommit connections can already provide implicit transaction protection. A manual commit is not itself evidence of a defect or of safety in autocommit mode; document the proven connection configuration when retaining that protocol. The rule cannot prove isolation level, database constraints, or application-level atomicity; fault-injection integration tests remain necessary.",
         ),
         examples=(
             RuleExample(

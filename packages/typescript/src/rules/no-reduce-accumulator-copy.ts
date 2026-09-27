@@ -71,7 +71,7 @@ export default createRule<[], "copy">({
         const referencesAccumulator = (value: TSESTree.Node): boolean => value.type === AST_NODE_TYPES.Identifier &&
           ASTUtils.findVariable(context.sourceCode.getScope(value), value.name) === accumulator;
         const inspect = (current: TSESTree.Node): void => {
-          if (current !== callback.body && [AST_NODE_TYPES.ArrowFunctionExpression, AST_NODE_TYPES.FunctionExpression, AST_NODE_TYPES.FunctionDeclaration].some(kind => kind === current.type)) return;
+          if (current !== callback.body && [AST_NODE_TYPES.ArrowFunctionExpression, AST_NODE_TYPES.FunctionExpression, AST_NODE_TYPES.FunctionDeclaration, AST_NODE_TYPES.ClassDeclaration, AST_NODE_TYPES.ClassExpression, AST_NODE_TYPES.ForStatement, AST_NODE_TYPES.ForInStatement, AST_NODE_TYPES.ForOfStatement, AST_NODE_TYPES.WhileStatement, AST_NODE_TYPES.DoWhileStatement].some(kind => kind === current.type)) return;
           if (current.type === AST_NODE_TYPES.SpreadElement && ((arraySeed && current.parent.type === AST_NODE_TYPES.ArrayExpression) || (objectSeed && current.parent.type === AST_NODE_TYPES.ObjectExpression)) && referencesAccumulator(current.argument)) {
             context.report({ node: current, messageId: "copy" });
           }

@@ -219,14 +219,14 @@ def _is_syntax_required(owner: ast.Module | ast.ClassDef | ast.FunctionDef | ast
 def _owner_keys(tree: ast.Module) -> dict[int, str]:
     keys = {id(tree): "__doc__"}
 
-    def visit(body: list[ast.stmt], prefix: tuple[str, ...]) -> None:
-        for statement in body:
-            if isinstance(statement, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
-                qualified = (*prefix, statement.name)
-                keys[id(statement)] = ".".join(qualified)
-                visit(statement.body, qualified)
+    def visit(node: ast.AST, prefix: tuple[str, ...]) -> None:
+        if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+            prefix = (*prefix, node.name)
+            keys[id(node)] = ".".join(prefix)
+        for child in ast.iter_child_nodes(node):
+            visit(child, prefix)
 
-    visit(tree.body, ())
+    visit(tree, ())
     return keys
 
 

@@ -17,7 +17,6 @@ from sarj_python_lint.rule_base import (
     Severity,
     is_suppressed,
 )
-from sarj_python_lint.rules._ast_index import walk as walk_ast
 from sarj_python_lint.rules._paths import is_test_path, is_test_support_path
 
 
@@ -66,7 +65,7 @@ class NoServiceBehaviorInSettings(Rule):
         autofix=AutofixPolicy.NONE,
         limitations=(
             "Only direct module classes named *Settings, *Config, *Configuration, or *Options are checked.",
-            "A finding requires a typed collaborator field and an ordinary public method that calls that field; pure computations, properties, validators, serializers, factories, generated files, and tests are excluded.",
+            "A finding requires a typed collaborator field and an ordinary public method that calls that field; pure computations, properties, validators, serializers, factories, generated files, and tests are excluded. Nested scopes, containers of collaborators, class objects, and methods that rebind self are not inferred.",
             "The rule does not require every data object to use a particular record library and does not infer behavior from a filename alone.",
         ),
         examples=(
@@ -180,10 +179,19 @@ def _collaborator_fields(node: ast.ClassDef) -> frozenset[str]:
 def _is_collaborator_annotation(annotation: ast.expr | None) -> bool:
     if annotation is None:
         return False
-    return any(
-        _COLLABORATOR_RE.search(_dotted_tail(candidate) or "") is not None
-        for candidate in walk_ast(annotation)
-        if isinstance(candidate, (ast.Name, ast.Attribute))
+    if isinstance(annotation, ast.BinOp) and isinstance(annotation.op, ast.BitOr):
+        return _is_collaborator_annotation(annotation.left) or _is_collaborator_annotation(annotation.right)
+    if isinstance(annotation, ast.Subscript):
+        wrapper = _dotted_tail(annotation.value)
+        if wrapper in {"Optional", "Union"}:
+            members = annotation.slice.elts if isinstance(annotation.slice, ast.Tuple) else [annotation.slice]
+            return any(_is_collaborator_annotation(member) for member in members)
+        if wrapper == "Annotated" and isinstance(annotation.slice, ast.Tuple) and annotation.slice.elts:
+            return _is_collaborator_annotation(annotation.slice.elts[0])
+        return _is_collaborator_annotation(annotation.value)
+    return (
+        isinstance(annotation, (ast.Name, ast.Attribute))
+        and _COLLABORATOR_RE.search(_dotted_tail(annotation) or "") is not None
     )
 
 
@@ -198,9 +206,22 @@ def _is_behavioral_method(method: ast.FunctionDef | ast.AsyncFunctionDef) -> boo
 
 
 def _calls_collaborator(method: ast.FunctionDef | ast.AsyncFunctionDef, fields: frozenset[str]) -> bool:
+    nodes: list[ast.AST] = []
+    pending: list[ast.AST] = list(method.body)
+    while pending:
+        node = pending.pop()
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)):
+            continue
+        nodes.append(node)
+        pending.extend(ast.iter_child_nodes(node))
+    if any(
+        isinstance(node, ast.Name) and node.id == "self" and isinstance(node.ctx, (ast.Store, ast.Del))
+        for node in nodes
+    ):
+        return False
     return any(
         (field := _self_field(call.func)) is not None and field in fields
-        for call in walk_ast(method)
+        for call in nodes
         if isinstance(call, ast.Call)
     )
 
