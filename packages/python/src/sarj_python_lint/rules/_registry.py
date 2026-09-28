@@ -9,6 +9,7 @@ from sarj_python_lint.rules.complex_postgres_query_requires_architecture_review 
     ComplexPostgresQueryRequiresArchitectureReview,
 )
 from sarj_python_lint.rules.defect_xfail_requires_explicit_strict import DefectXfailRequiresExplicitStrict
+from sarj_python_lint.rules.discourage_nullable_constructor_parameters import DiscourageNullableConstructorParameters
 from sarj_python_lint.rules.docstring_args_restate_signature import (
     DocstringArgsRestateSignature,
 )
@@ -192,6 +193,7 @@ if TYPE_CHECKING:
 REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
     {
         RequireExplicitContractImplementation.id: RequireExplicitContractImplementation,
+        DiscourageNullableConstructorParameters.id: DiscourageNullableConstructorParameters,
         RequirePublicDependencyContract.id: RequirePublicDependencyContract,
         RequireExplicitServiceContract.id: RequireExplicitServiceContract,
         AsyncCleanupRegisteredSynchronously.id: AsyncCleanupRegisteredSynchronously,

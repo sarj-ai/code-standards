@@ -28,6 +28,7 @@
       "async-mock-call-without-await-assertion",
       "complex-postgres-query-requires-architecture-review",
       "defect-xfail-requires-explicit-strict",
+      "discourage-nullable-constructor-parameters",
       "docstring-args-restate-signature",
       "docstring-returns-restate-signature",
       "excessive-commentary",
@@ -429,7 +430,8 @@
       "SARJ464",
       "SARJ465",
       "SARJ466",
-      "SARJ467"
+      "SARJ467",
+      "SARJ468"
     ],
     "sql": [
       "SARJ101",
