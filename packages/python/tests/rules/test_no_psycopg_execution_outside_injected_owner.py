@@ -229,7 +229,7 @@ class Store:
     "path",
     [
         "tests/test_store.py",
-        "test_support/database.py",
+        "tests/conftest.py",
         "migrations/001_backfill.py",
         "scripts/backfill.py",
         "tools/seed.py",
@@ -523,3 +523,60 @@ def run(dsn: str):
 def test_public_examples(example: RuleExample) -> None:
     focus = example.focus_file
     assert len(_check(focus.source, str(focus.path))) == example.expected_count
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "tests/fixtures/queue_rows.py",
+        "app/tests/helpers/queue_rows.py",
+        "test_support/database.py",
+        "app/testing/database.py",
+    ],
+)
+def test_test_support_requires_an_injected_owner(path: str) -> None:
+    source = """
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from psycopg_pool import AsyncConnectionPool as Pool
+
+async def age_claim(pool: Pool):
+    async with pool.connection() as conn:
+        await conn.execute("UPDATE work_queue SET claimed_at = NULL")
+"""
+    findings = _check(source, path)
+    assert len(findings) == 1
+    assert findings[0].code == "SARJ415"
+
+
+@pytest.mark.parametrize("path", ["tests/fixtures/queue_rows.py", "test_support/database.py"])
+def test_test_support_accepts_an_injected_owner(path: str) -> None:
+    source = """
+from psycopg_pool import AsyncConnectionPool
+
+class QueueTestStore:
+    def __init__(self, pool: AsyncConnectionPool):
+        self.pool = pool
+
+    async def age_claim(self):
+        async with self.pool.connection() as conn:
+            await conn.execute("UPDATE work_queue SET claimed_at = NULL")
+"""
+    assert _check(source, path) == []
+
+
+@pytest.mark.parametrize(
+    ("path", "expected_count"),
+    [("tests/fixtures/database.py", 1), ("tests/conftest.py", 0), ("tests/test_database.py", 0)],
+)
+def test_fixture_decorator_does_not_exempt_shared_support(path: str, expected_count: int) -> None:
+    source = """
+import pytest
+from psycopg_pool import AsyncConnectionPool
+
+@pytest.fixture
+async def seeded(pool: AsyncConnectionPool):
+    async with pool.connection() as conn:
+        await conn.execute("INSERT INTO work_queue DEFAULT VALUES")
+"""
+    assert len(_check(source, path)) == expected_count
