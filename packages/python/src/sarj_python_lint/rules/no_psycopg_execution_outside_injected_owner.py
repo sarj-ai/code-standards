@@ -20,7 +20,6 @@ from sarj_python_lint.rule_base import (
 )
 from sarj_python_lint.rules._ast_index import walk as walk_ast
 from sarj_python_lint.rules._imports import ImportIndex
-from sarj_python_lint.rules._paths import is_test_path, is_test_support_path
 
 
 if TYPE_CHECKING:
@@ -38,7 +37,7 @@ _EXECUTE_METHODS = frozenset({"execute", "executemany"})
 _REFLECTIVE_WRITE_ARG_COUNT = 2
 _LANGUAGE_ROOT_PATH_DEPTH = 2
 _PACKAGE_ROOT_PATH_DEPTH = 3
-_OPERATIONAL_ROOTS = frozenset({"backfill", "backfills", "bin", "scripts", "test_support", "tools"})
+_OPERATIONAL_ROOTS = frozenset({"backfill", "backfills", "bin", "scripts", "tools"})
 
 
 class _Origin(StrEnum):
@@ -87,7 +86,7 @@ class NoPsycopgExecutionOutsideInjectedOwner(Rule):
         limitations=(
             "Only import-proven psycopg Connection or AsyncConnection and psycopg_pool ConnectionPool or AsyncConnectionPool flows are classified.",
             "Straightforward constructor injection, connection and cursor context managers, aliases, rebindings, and conservative control-flow joins are followed; interprocedural flows remain unreported.",
-            "Tests, test support, migrations, generated files, conventional operational-script roots, and literal SELECT 1 probes are excluded.",
+            "Collected test modules, conftest.py, migrations, generated files, conventional operational-script roots, and literal SELECT 1 probes are excluded. Shared test-support helpers must use an injected owner.",
         ),
         examples=(
             RuleExample(
@@ -126,10 +125,10 @@ class NoPsycopgExecutionOutsideInjectedOwner(Rule):
     def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
         path = context.path
         path_parts = {part.lower() for part in path.parts}
+        collected_test = path.name == "conftest.py" or path.name.startswith("test_") or path.name.endswith("_test.py")
         if (
             context.generated
-            or is_test_path(path)
-            or is_test_support_path(path)
+            or collected_test
             or not path_parts.isdisjoint({"migration", "migrations"})
             or _is_operational_path(path)
         ):
