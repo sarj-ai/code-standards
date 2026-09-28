@@ -1,3 +1,4 @@
+// vitest: shared-module-graph
 import { RuleTester } from "@typescript-eslint/rule-tester";
 import * as tsParser from "@typescript-eslint/parser";
 import { Linter } from "eslint";

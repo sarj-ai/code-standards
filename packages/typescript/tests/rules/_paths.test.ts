@@ -1,3 +1,4 @@
+// vitest: shared-module-graph
 /**
  * Shared defaults exempt path categories that are safe for every consumer.
  * Ambiguous directory names require explicit, recorded per-rule gates.

@@ -1,3 +1,4 @@
+// vitest: shared-module-graph
 /** Contract tests for the secret-name vocabulary shared by security rules. */
 
 import { describe, expect, it } from "vitest";

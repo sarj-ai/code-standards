@@ -1,3 +1,4 @@
+// vitest: shared-module-graph
 import * as tsParser from "@typescript-eslint/parser";
 import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 import { describe, expect, it } from "vitest";
