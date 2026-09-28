@@ -1,3 +1,4 @@
+// vitest: shared-module-graph
 import { it } from "vitest";
 import { verifyRuleExamples } from "../../src/verify-rule-examples.js";
 import rule from "../../src/rules/require-explicit-service-contract.js";

@@ -1,3 +1,4 @@
+// vitest: shared-module-graph
 import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, it } from "vitest";
 
