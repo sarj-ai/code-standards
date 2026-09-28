@@ -252,5 +252,6 @@
   "SARJ464": "subprocess-kill-without-reap",
   "SARJ465": "require-explicit-service-contract",
   "SARJ466": "require-public-dependency-contract",
-  "SARJ467": "require-explicit-contract-implementation"
+  "SARJ467": "require-explicit-contract-implementation",
+  "SARJ468": "discourage-nullable-constructor-parameters"
 }

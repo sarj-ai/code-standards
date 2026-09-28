@@ -2169,6 +2169,14 @@
       "state": "pending",
       "evidence": "Focused positive, negative, inheritance, ambiguity, and documented examples pass. Python platform scans are read-only and reveal existing debt. Representative TypeScript corpus precision and full comparative timing remain to be measured.",
       "outcome": "Keep the new rule as a warning until existing findings are classified and a separate baseline or ratchet lets new violations become errors without blocking prior debt."
+    },
+    {
+      "task": "rule-audit/python/discourage-nullable-constructor-parameters",
+      "family": "python",
+      "ruleId": "discourage-nullable-constructor-parameters",
+      "state": "pending",
+      "evidence": "Focused rule tests pass. The local Standards corpus reports six nullable constructor parameters. A Platform source scan finds 86 defaulted and 19 required nullable constructor parameters, including genuine domain absence; rollout impact remains to be classified.",
+      "outcome": "Publish at warning level to discourage nullable constructor interfaces. Keep intentional absence suppressible; consider error promotion only after classifying findings and reducing adoption debt."
     }
   ]
 }

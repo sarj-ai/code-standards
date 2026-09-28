@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "644ad7b95600ea38a93274a28414211e5690f05ec16622e5d2f988b7e12372f8",
-  "cliSha256": "09b223a3e782a10662528795d40f008a9dc98e5706200050e85c5ba3f1daed4f",
+  "catalogSha256": "8ec14c4ac0df43e7a2db9cad37f77b21a86627c54b7529bf8a5117b5852afe9d",
+  "cliSha256": "4419cb54a42083117f735373b10eee4b70cff01a909057f4d9b814f5ee7a75f5",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -5103,6 +5103,41 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Unexpected pass fails the suite"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:discourage-nullable-constructor-parameters": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/service.py",
+              "source": "class Service:\n    def __init__(self, store: Store) -> None:\n        self.store = store\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/service.py",
+          "id": "non-nullable-dependency",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Constructor requires a usable dependency"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/service.py",
+              "source": "class Service:\n    def __init__(self, store: Store | None = None) -> None:\n        self.store = store\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/service.py",
+          "id": "nullable-dependency",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Constructor permits a missing dependency"
         }
       ],
       "optionsSchemaSource": null
