@@ -2237,15 +2237,24 @@ def github_ci_workflow(root: Path, *, ecosystems: Ecosystems | None = None) -> s
         f"    runs-on: {runs_on}",
         f"    timeout-minutes: {60 if ecosystems.mobile else 15}",
         "    steps:",
-        "      - name: Harden the runner",
-        "        uses: step-security/harden-runner@v2",
-        "        with:",
-        "          egress-policy: audit",
-        "      - uses: actions/checkout@v7",
-        "        with:",
-        "          fetch-depth: 0",
-        "          persist-credentials: false",
     ]
+    if _harden_runner_supported(runs_on):
+        lines.extend(
+            (
+                "      - name: Harden the runner",
+                "        uses: step-security/harden-runner@v2",
+                "        with:",
+                "          egress-policy: audit",
+            )
+        )
+    lines.extend(
+        (
+            "      - uses: actions/checkout@v7",
+            "        with:",
+            "          fetch-depth: 0",
+            "          persist-credentials: false",
+        )
+    )
     if ecosystems.kotlin:
         lines.extend(
             (
@@ -2492,7 +2501,23 @@ def _configured_runner(adopted: manifest.Manifest | None) -> str:
     return adopted.ci_runner
 
 
+def _harden_runner_supported(runner: str) -> bool:
+    # On Blacksmith, Harden Runner installs its agent only for StepSecurity organizations with TLS inspection
+    # enabled. Without it the job gets no monitoring, yet the post step still polls 10 seconds for the agent.
+    return not runner.startswith("blacksmith-")
+
+
 def commit_policy_github_workflow(runner: str = DEFAULT_CI_RUNNER) -> str:
+    harden = (
+        """\
+      - name: Harden the runner
+        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        with:
+          egress-policy: audit
+"""
+        if _harden_runner_supported(runner)
+        else ""
+    )
     return (
         """\
 # Managed by code-standards commit policy; regenerate with `code-standards setup`.
@@ -2518,10 +2543,9 @@ jobs:
         """\
     timeout-minutes: 5
     steps:
-      - name: Harden the runner
-        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
-        with:
-          egress-policy: audit
+"""
+        f"{harden}"
+        """\
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
