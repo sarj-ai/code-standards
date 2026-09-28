@@ -52,7 +52,7 @@ class PreferSetIsdisjoint(ProjectRule):
     id = "prefer-set-isdisjoint"
     code = "SARJ431"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        default_level=Severity.WARNING,
+        default_level=Severity.ERROR,
         summary="Prefer `set.isdisjoint` when a built-in set intersection is used only as a boolean predicate.",
         rationale="`isdisjoint` names the overlap predicate directly and avoids allocating an intersection that is immediately discarded.",
         remediation="Use `left.isdisjoint(right)` and negate it when the condition requires overlap.",
@@ -70,6 +70,7 @@ class PreferSetIsdisjoint(ProjectRule):
                 title="A declared set field is used only for an overlap test",
                 outcome=ExampleOutcome.MATCH,
                 files=(
+                    ExampleFile(PurePosixPath("pyproject.toml"), '[project]\nname = "example"\nversion = "0.1.0"\n'),
                     ExampleFile.python(
                         "app/policy.py",
                         "class AccessCase:\n    tags: frozenset[str]\n\ndef accepts(case: AccessCase):\n    if case.tags & {'read', 'write'}:\n        allow()\n",

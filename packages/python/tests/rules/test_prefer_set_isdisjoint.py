@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from sarj_python_lint.rule_base import Severity
 from sarj_python_lint.rules._project_index import ProjectIndexSet
 from sarj_python_lint.rules.prefer_set_isdisjoint import PreferSetIsdisjoint
 
@@ -14,6 +15,11 @@ if TYPE_CHECKING:
 
 def _check(source: str, path: str = "app/policy.py") -> list[Diagnostic]:
     return PreferSetIsdisjoint().check(Path(path), textwrap.dedent(source))
+
+
+def test_boolean_set_intersection_is_blocking() -> None:
+    assert PreferSetIsdisjoint.documentation is not None
+    assert PreferSetIsdisjoint.documentation.default_level is Severity.ERROR
 
 
 @pytest.mark.parametrize(

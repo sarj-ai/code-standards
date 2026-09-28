@@ -1,5 +1,5 @@
 schema = 4
-bundle = "8.11.3"
+bundle = "8.11.4"
 rule_profile = "all"
 
 [capabilities]
