@@ -159,8 +159,10 @@ class NoAnalyticalAggregationInPostgresStore(Rule):
             "consistent operational aggregates remain valid PostgreSQL work."
         ),
         remediation=(
-            "Review the query bounds and execution plan. Move reporting scans to the repository's "
-            "columnar store, or document why the aggregate must remain transactional."
+            "Review the query bounds and execution plan. Prefer ClickHouse for reporting, historical analysis, "
+            "and broad aggregations, with measured performance and an explicit freshness contract. "
+            "For PostgreSQL, document why the aggregate must remain transactional, with EXPLAIN evidence. "
+            "Do not add reporting-specific indexes without evaluating ClickHouse."
         ),
         category=RuleCategory.ARCHITECTURE,
         autofix=AutofixPolicy.NONE,
@@ -247,7 +249,9 @@ class NoAnalyticalAggregationInPostgresStore(Rule):
                     severity=Severity.WARNING,
                     message=(
                         f"Possible analytical PostgreSQL query ({signal}); review its bounds and execution plan. "
-                        "Move reporting scans to the columnar store, or document why this aggregate must remain transactional."
+                        "Prefer ClickHouse for reporting, historical analysis, and broad aggregations. "
+                        "For PostgreSQL, document why this aggregate must remain transactional, with EXPLAIN evidence. "
+                        "Do not add reporting-specific indexes without evaluating ClickHouse."
                     ),
                 )
             )

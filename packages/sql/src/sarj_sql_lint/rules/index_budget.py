@@ -42,7 +42,8 @@ class IndexBudget(Rule):
             "`index-justification: app-read: ...; query: path#symbol; explain: URL` or "
             "`index-justification: referential-action: ...` comment immediately above each excess index. "
             "For `CREATE UNIQUE INDEX` only, `index-justification: uniqueness-constraint: ...; ticket: ABC-123` "
-            "is also accepted."
+            "is also accepted. Do not add reporting-specific indexes without evaluating ClickHouse for reporting, "
+            "historical analysis, and broad aggregations."
         ),
         category=RuleCategory.PERFORMANCE,
         autofix=AutofixPolicy.NONE,
@@ -120,7 +121,8 @@ class IndexBudget(Rule):
                     self.code,
                     "; ".join(limits)
                     + f". Remove the index or immediately precede it with an exact {accepted_kinds} justification; "
-                    "review columnar placement for repeated reporting or scan access.",
+                    "do not add reporting-specific indexes without evaluating ClickHouse for reporting, "
+                    "historical analysis, and broad aggregations.",
                 )
             )
         return findings

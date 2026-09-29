@@ -34,7 +34,7 @@ def test_multiple_joins_merit_one_review_warning(query: str) -> None:
     assert "4+ explicit JOINs" in diagnostics[0].message
     assert "write-time" in diagnostics[0].message
     assert "read-time reconstruction" in diagnostics[0].message
-    assert "not a defect or cost claim" in diagnostics[0].message
+    assert "Syntax alone does not establish runtime cost or datastore placement" in diagnostics[0].message
 
 
 @pytest.mark.parametrize(
