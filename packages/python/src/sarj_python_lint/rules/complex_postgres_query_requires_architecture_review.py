@@ -278,10 +278,12 @@ class ComplexPostgresQueryRequiresArchitectureReview(Rule):
             "cost, a bad data model, or the right datastore."
         ),
         remediation=(
-            "Review whether the schema exposes the operational fact directly, together with production-like "
-            "cardinality and EXPLAIN output. Simplify the query or read model when warranted, but do not mechanically "
-            "replace database joins with application joins. Keep atomic coordination in one statement; consider a "
-            "columnar store only for measured repeated analytical reads with an explicit freshness contract."
+            "Prefer ClickHouse for reporting, historical analysis, and broad aggregations, with measured performance "
+            "and an explicit freshness contract. For transactional work, simplify the query or document why "
+            "PostgreSQL is required, with query bounds and production-like EXPLAIN evidence. Review whether the "
+            "schema exposes the operational fact directly; preserve atomic coordination and do not mechanically "
+            "replace database joins with application joins. Do not add reporting-specific indexes without "
+            "evaluating ClickHouse."
         ),
         category=RuleCategory.ARCHITECTURE,
         autofix=AutofixPolicy.NONE,
@@ -405,9 +407,11 @@ class ComplexPostgresQueryRequiresArchitectureReview(Rule):
                     code=self.code,
                     severity=Severity.WARNING,
                     message=(
-                        f"{signal} requires architecture review;{guidance} "
-                        "Review warning only, not a defect or cost claim; syntax does not prove a bad data model or "
-                        "an offload decision."
+                        f"Complex PostgreSQL query: {signal}. Architecture review required;{guidance} "
+                        "Prefer ClickHouse for reporting, historical analysis, and broad aggregations. "
+                        "For transactional work, simplify the query or document why PostgreSQL is required, "
+                        "with query bounds and EXPLAIN evidence. Do not add reporting-specific indexes without "
+                        "evaluating ClickHouse. Syntax alone does not establish runtime cost or datastore placement."
                     ),
                 )
             )
