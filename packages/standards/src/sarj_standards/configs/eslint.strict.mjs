@@ -646,6 +646,10 @@ export function createConfig(options = {}) {
     },
     settings: { react: { version: "detect" } },
     rules: {
+      "no-restricted-properties": [
+        "error",
+        { property: "then", message: "Use async/await instead of .then()." },
+      ],
       "@typescript-eslint/no-explicit-any": "error",
       "@typescript-eslint/no-non-null-assertion": "error",
       "@typescript-eslint/no-deprecated": "error",
@@ -677,6 +681,7 @@ export function createConfig(options = {}) {
       "@typescript-eslint/no-misused-promises": "error",
       // The upstream rule flags every nested then/catch/finally call, including
       // deliberate fire-and-forget work and synchronous framework callbacks.
+      // Core no-restricted-properties bans only then; catch/finally stay available.
       // The typed @sarj rule below owns only semantics-preserving async returns.
       "promise/prefer-await-to-then": "off",
       "@typescript-eslint/require-await": "error",

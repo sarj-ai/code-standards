@@ -1011,6 +1011,34 @@ describe("the shipped eslint.strict.mjs can actually lint", () => {
     ]);
   });
 
+  it.each([
+    ["promise.then(handle);", 1],
+    ["promise?.then(handle);", 1],
+    ["promise.then?.(handle);", 1],
+    ['promise["then"](handle);', 1],
+    ["const { then: continuePromise } = promise;", 1],
+    ["async function load() { await promise.then(handle); }", 1],
+    ["await Promise.all([first(), second()]);", 0],
+    ["work().catch(reportError);", 0],
+    ["work().finally(cleanup);", 0],
+    ['const schema = { if: {}, then: { type: "string" } };', 0],
+    ['const text = "promise.then(handle)"; // promise.then(handle)', 0],
+  ])("enforces the then-only policy for %s", async (source, expectedCount) => {
+    const eslint = new ESLint({
+      cwd: FIXTURE_DIR,
+      overrideConfigFile: true,
+      overrideConfig: STRICT_CONFIG_FACTORY({ tsconfigRootDir: FIXTURE_DIR, projectService: false }),
+    });
+    const results = await eslint.lintText(source, { filePath: resolve(FIXTURE_DIR, "example.mjs") });
+    const violations = results.flatMap((result) => result.messages)
+      .filter((message) => message.ruleId === "no-restricted-properties");
+    expect(violations).toHaveLength(expectedCount);
+    for (const violation of violations) {
+      expect(violation.severity).toBe(2);
+      expect(violation.message).toContain("Use async/await");
+    }
+  });
+
   it("enforces explicit await for a direct typed async return", async () => {
     const ruleIds = (await lint("promise-probe.ts")).map((message) => message.ruleId);
     expect(ruleIds).toContain("@sarj/prefer-await-in-async-return");
