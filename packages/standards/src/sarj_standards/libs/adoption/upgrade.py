@@ -68,6 +68,8 @@ _CONFIG_SOURCES = MappingProxyType(
         "shellcheck": ("shellcheck.strict.rc", "shellcheck.strict.rc", ".shellcheckrc", "root"),
         "taplo": ("taplo.strict.toml", "taplo.strict.toml", ".taplo.toml", "root"),
         "yamllint": ("yamllint.strict.yaml", "yamllint.strict.yaml", ".yamllint.yaml", "root"),
+        "zizmor": ("zizmor.strict.yml", "zizmor.strict.yml", "zizmor.yml", "root"),
+        "checkov": ("checkov.strict.yml", "checkov.strict.yml", ".checkov.yml", "root"),
     }
 )
 _MIRROR_EXCLUDED_PARTS: Final = frozenset({"example", "examples", "fixture", "fixtures", "test", "tests"})
@@ -124,7 +126,7 @@ def build_plan(root: Path) -> UpgradePlan:  # ruff: ignore[too-many-locals] -- o
     javascript_install_roots = _javascript_install_roots(root, ecosystems, pin_updates)
     javascript_lockfiles = _javascript_lockfiles(javascript_install_roots)
 
-    manifest_text = _updated_manifest_text(path, current_text, hook_manager, has_manager="manager" in hooks_table)
+    manifest_text = _updated_manifest_text(path, current_text, adopted, has_manager="manager" in hooks_table)
     changes: list[Change] = []
     if manifest_text != current_text:
         changes.append(Change(path, f"adopt standards {manifest.adopted_version()}"))
@@ -365,14 +367,24 @@ def _javascript_lockfiles(javascript_install_roots: tuple[Path, ...]) -> tuple[P
     )
 
 
-def _updated_manifest_text(path: Path, current_text: str, hook_manager: str, *, has_manager: bool) -> str:
+def _updated_manifest_text(path: Path, current_text: str, adopted: manifest.Manifest, *, has_manager: bool) -> str:
     if not _BUNDLE_LINE.search(current_text):
         msg = f"{path} has no replaceable top-level bundle field"
         raise ValueError(msg)
+    implicit_disabled = (
+        set(manifest.ALL_CAPABILITIES) - set(adopted.enabled_capabilities) - set(adopted.disabled_capabilities)
+    )
+    if implicit_disabled:
+        # Version gates are effective capability choices too. Serialize them
+        # before a bundle bump can enable tools absent from this upgrade plan.
+        updated = replace(adopted, version=manifest.adopted_version())
+        return scaffold._render_manifest_preserving_extensions(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- reuse the adoption writer that preserves consumer extension tables.
+            current_text, updated.render()
+        )
     manifest_text = _BUNDLE_LINE.sub(f'bundle = "{manifest.adopted_version()}"', current_text, count=1)
     if not has_manager:
         separator = "" if manifest_text.endswith("\n\n") else "\n"
-        manifest_text += f'{separator}[hooks]\nmanager = "{hook_manager}"\n'
+        manifest_text += f'{separator}[hooks]\nmanager = "{adopted.hook_manager}"\n'
     return manifest_text
 
 

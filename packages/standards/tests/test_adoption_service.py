@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import json
 from typing import TYPE_CHECKING
+
+import pytest
 
 from sarj_standards.libs.adoption import launcher, lifecycle, manifest
 from sarj_standards.libs.adoption.service import (
@@ -16,8 +19,6 @@ from sarj_standards.libs.adoption.service import (
 if TYPE_CHECKING:
     from collections.abc import Iterable
     from pathlib import Path
-
-    import pytest
 
 
 def _python_project(root: Path) -> None:
@@ -92,6 +93,68 @@ def test_init_service_applies_configs_wiring_and_manifest(tmp_path: Path) -> Non
     precommit = (tmp_path / ".pre-commit-config.yaml").read_text(encoding="utf-8")
     assert ("uvx --no-config --isolated --python 3.14 --from sarj-standards-bootstrap code-standards") in precommit
     assert "verbose: true" not in precommit
+
+
+@pytest.mark.parametrize(
+    "configs",
+    [("yamllint",), ("zizmor",), ("checkov",), ("zizmor", "checkov")],
+    ids=("shared-only", "actions-only", "infrastructure-only", "both-security-tools"),
+)
+def test_setup_prepares_only_selected_security_tools_and_writes_their_configs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, configs: tuple[str, ...]
+) -> None:
+    (tmp_path / "main.tf").write_text('resource "terraform_data" "example" {}\n', encoding="utf-8")
+    workflow = tmp_path / ".github/workflows/ci.yml"
+    workflow.parent.mkdir(parents=True)
+    workflow.write_text("name: CI\non: push\njobs: {}\n", encoding="utf-8")
+    log = tmp_path / "prepared-tools.txt"
+    binaries = tmp_path / "bin"
+    binaries.mkdir()
+    executable = binaries / "uvx"
+    executable.write_text(
+        "#!/usr/bin/env python3\nimport sys\nfrom pathlib import Path\n"
+        f"with Path({str(log)!r}).open('a') as output:\n"
+        "    output.write(' '.join(sys.argv[1:]) + '\\n')\n",
+        encoding="utf-8",
+    )
+    executable.chmod(0o755)
+    monkeypatch.setenv("PATH", str(binaries), prepend=":")
+
+    plan = plan_init(tmp_path, configs=configs, hook_manager="none")
+    result = apply_init(plan)
+
+    assert result.status == 0
+    selected = set(configs) & {"zizmor", "checkov"}
+    adopted = manifest.load(tmp_path)
+    assert adopted is not None
+    assert set(adopted.enabled_capabilities) & {"zizmor", "checkov"} == selected
+    calls = log.read_text().splitlines() if log.exists() else []
+    assert len(calls) == len(selected)
+    generated = (tmp_path / ".github/workflows/standards.yml").read_text()
+    for tool, target in (("zizmor", "zizmor.yml"), ("checkov", ".checkov.yml")):
+        assert (tmp_path / target).is_file() == (tool in selected)
+        assert (f"Prepare pinned {tool}" in generated) == (tool in selected)
+        assert any(f"{tool}==" in call and "--version" in call for call in calls) == (tool in selected)
+    assert all("--offline" not in call for call in calls)
+
+
+def test_setup_existing_old_bundle_does_not_prepare_unadopted_security_tools(tmp_path: Path) -> None:
+    (tmp_path / "main.tf").write_text('resource "terraform_data" "example" {}\n', encoding="utf-8")
+    workflow = tmp_path / ".github/workflows/ci.yml"
+    workflow.parent.mkdir(parents=True)
+    workflow.write_text("name: CI\non: push\njobs: {}\n", encoding="utf-8")
+    disabled = [name for name in manifest.ALL_CAPABILITIES if name not in {"yamllint", "zizmor", "checkov"}]
+    (tmp_path / manifest.MANIFEST_NAME).write_text(
+        f'schema = 4\nbundle = "8.12.1"\n[capabilities]\ndisable = {json.dumps(disabled)}\n[hooks]\nmanager = "none"\n',
+        encoding="utf-8",
+    )
+
+    plan = plan_init(tmp_path)
+
+    assert plan.scaffold.configs == ("yamllint",)
+    assert plan.install_commands == ()
+    assert plan.sync is not None
+    assert all(target.name not in {"zizmor", "checkov"} for target in plan.sync.targets)
 
 
 def test_init_service_deletes_the_retired_managed_launcher_idempotently(tmp_path: Path) -> None:

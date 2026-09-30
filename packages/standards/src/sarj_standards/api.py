@@ -642,6 +642,7 @@ def _selected_external_analysis(
                 ),
                 grouped=selected_groups,
                 rule_ids=rule_ids,
+                security_selection=rule_selection,
                 include_react_doctor=include_react_doctor and rule_selection is None,
                 force_react_doctor=react_doctor_triggered,
                 react_doctor_staged=staged,
@@ -656,6 +657,7 @@ def _selected_external_analysis(
                 capabilities=selected_capabilities,
                 grouped=selected_groups,
                 rule_ids=rule_ids,
+                security_selection=rule_selection,
                 include_react_doctor=include_react_doctor and rule_selection is None,
                 force_react_doctor=react_doctor_triggered,
                 react_doctor_staged=staged,
@@ -796,6 +798,9 @@ def _rule_selection(values: Sequence[str | RuleSelector] | None) -> RuleSelectio
     selected: set[RuleSelector] = set()
     for value in values:
         selector = value if isinstance(value, RuleSelector) else RuleSelector.parse(value)
+        if selector.engine is RuleEngine.ZIZMOR and selector.rule_id in security_tools.ZIZMOR_ONLINE_ONLY:
+            msg = f"{selector} cannot run in offline analysis; choose an offline audit"
+            raise ValueError(msg)
         if selector not in live:
             msg = f"unknown or invalid rule selector: {value}"
             raise ValueError(msg)

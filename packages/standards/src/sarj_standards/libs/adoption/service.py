@@ -271,7 +271,7 @@ def plan_init(  # ruff: ignore[too-many-locals] -- one adoption boundary resolve
     commands = tuple(
         lifecycle.install_commands(
             resolved,
-            scaffold_plan.ecosystems,
+            scaffold.configured_ecosystems(scaffold_plan.ecosystems, scaffold_plan.configs),
             hook_manager=scaffold_plan.hook_manager,
         )
     )

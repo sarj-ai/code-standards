@@ -5,11 +5,12 @@ from typing import TYPE_CHECKING
 
 from pydantic import ValidationError
 import pytest
-from sarj_rule_contracts import RuleSelector
+from sarj_rule_contracts import RuleSelection, RuleSelector
 
 from sarj_standards._meta import CONFIGS_DIR
 from sarj_standards.api import Standards
 from sarj_standards.libs.adoption import configs, doctor, lifecycle, manifest, scaffold
+from sarj_standards.libs.adoption.service import plan_init
 from sarj_standards.libs.diagnostics import Completion, Severity, TrustMode
 from sarj_standards.libs.linting import external, security_tools
 from sarj_standards.libs.linting.external import ProcessOutput, analyze_external
@@ -414,7 +415,14 @@ def test_public_analysis_retains_only_the_selected_upstream_rule(
     binary_directory = tmp_path / "bin"
     binary_directory.mkdir()
     executable = binary_directory / "uvx"
-    executable.write_text(f"#!/usr/bin/env python3\nprint({json.dumps(payload)!r})\n", encoding="utf-8")
+    expected = ["--check", rule] if tool == "checkov" else ["--persona", "auditor"]
+    executable.write_text(
+        "#!/usr/bin/env python3\nimport sys\n"
+        f"expected = {expected!r}\n"
+        "assert sys.argv[sys.argv.index(expected[0]) + 1] == expected[1]\n"
+        f"print({json.dumps(payload)!r})\n",
+        encoding="utf-8",
+    )
     executable.chmod(0o755)
     monkeypatch.setenv("PATH", str(binary_directory), prepend=":")
     report = Standards(tmp_path).analyze([str(path)], external=True, rules=[f"{tool}:{rule}"])
@@ -494,5 +502,166 @@ def test_terraform_json_is_routed_to_checkov(tmp_path: Path) -> None:
     reports = analyze_external(
         [str(path)], root=tmp_path, trust=TrustMode.SAFE, runner=run, capabilities=frozenset({"checkov"})
     )
+    assert len(reports) == 1
+    assert reports[0].completion is Completion.COMPLETE
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "  apiVersion: v1\n  kind: Pod\n  metadata: {name: app}\n",
+        '"apiVersion": v1\n"kind": Pod\nmetadata: {name: app}\n',
+        "apiVersion: v1\nkind: List\nitems:\n  - apiVersion: v1\n    kind: Pod\n    metadata: {name: app}\n",
+    ],
+)
+def test_kubernetes_discovery_parses_valid_yaml_ownership(tmp_path: Path, source: str) -> None:
+    path = tmp_path / "manifest.yml"
+    path.write_text(source, encoding="utf-8")
+    assert security_tools.select_inputs([str(path)], root=tmp_path).kubernetes == (str(path),)
+
+
+def test_nested_metadata_does_not_own_generic_yaml(tmp_path: Path) -> None:
+    path = tmp_path / "dataset.yml"
+    path.write_text("fields:\n  apiVersion: text\n  kind: text\n", encoding="utf-8")
+    assert security_tools.select_inputs([str(path)], root=tmp_path).kubernetes == ()
+
+
+def test_discovery_ignores_large_unrelated_dataset_but_limits_owned_sources(tmp_path: Path) -> None:
+    dataset = tmp_path / "dataset.yml"
+    dataset.write_text("rows:\n" + "  - value\n" * 250_000, encoding="utf-8")
+    assert not scaffold.detect(tmp_path).infrastructure
+    # Explicit adoption of an unrelated capability must also complete discovery.
+    assert plan_init(tmp_path, configs=("yamllint",), hook_manager="none").scaffold.configs == ("yamllint",)
+    dataset.write_text("apiVersion: v1\nkind: Pod\n" + "# padding\n" * 250_000, encoding="utf-8")
+    with pytest.raises(ValueError, match="2 MiB size limit"):
+        security_tools.select_inputs([str(dataset)], root=tmp_path)
+
+
+@pytest.mark.parametrize(
+    "capabilities", [frozenset({"zizmor"}), frozenset({"checkov"})], ids=["zizmor-only", "gcp-only"]
+)
+def test_unrelated_security_selection_does_not_read_kubernetes_yaml(
+    tmp_path: Path, capabilities: frozenset[str]
+) -> None:
+    path = tmp_path / "pod.yml"
+    path.write_bytes(b"apiVersion: v1\nkind: Pod\n\xff")
+    inputs = security_tools.select_inputs(
+        [str(path)], root=tmp_path, capabilities=capabilities, checkov_rule_ids=frozenset({"CKV_GCP_95"})
+    )
+    assert inputs.kubernetes == ()
+
+
+@pytest.mark.parametrize(
+    ("kind", "prefix", "container_key", "companion", "severity"),
+    [
+        ("Pod", "spec:\n", "containers", "app@sha256:abc", Severity.INFO),
+        ("PodTemplate", "template:\n  spec:\n", "containers", "app@sha256:abc", Severity.INFO),
+        ("Deployment", "spec:\n  template:\n    spec:\n", "containers", "app@sha256:abc", Severity.INFO),
+        (
+            "CronJob",
+            "spec:\n  jobTemplate:\n    spec:\n      template:\n        spec:\n",
+            "containers",
+            "app@sha256:abc",
+            Severity.INFO,
+        ),
+        ("Pod", "spec:\n", "initContainers", "app:latest", Severity.WARNING),
+    ],
+)
+def test_digest_deferral_uses_only_upstream_container_paths(
+    tmp_path: Path, *, kind: str, prefix: str, container_key: str, companion: str, severity: Severity
+) -> None:
+    path = tmp_path / "pod.yml"
+    indentation = " " * (len(prefix.splitlines()[-1]) - len(prefix.splitlines()[-1].lstrip()) + 2)
+    source = (
+        f"apiVersion: v1\nkind: {kind}\nmetadata:\n  name: app\n  annotations:\n    image: logo.svg\n{prefix}"
+        f'{indentation}containers:\n{indentation}  - image: "${{IMAGE}}"\n'
+    )
+    if container_key != "containers":
+        source += f"{indentation}{container_key}:\n"
+    source += f"{indentation}  - image: {companion}\n"
+    path.write_text(source, encoding="utf-8")
+    report = _checkov(path, code="CKV_K8S_43", resource=f"{kind}.default.app")
+    assert security_tools.parse_checkov(json.dumps(report), root=tmp_path)[0].severity is severity
+
+
+def test_list_digest_deferral_is_scoped_to_the_upstream_resource(tmp_path: Path) -> None:
+    path = tmp_path / "pods.yml"
+    path.write_text(
+        "apiVersion: v1\nkind: List\nitems:\n  - apiVersion: v1\n    kind: Pod\n"
+        '    metadata: {name: app}\n    spec:\n      containers:\n        - image: "${IMAGE}"\n'
+        "  - apiVersion: v1\n    kind: Pod\n    metadata: {name: other}\n"
+        "    spec:\n      containers:\n        - image: app:latest\n",
+        encoding="utf-8",
+    )
+    for resource, severity in (("Pod.default.app", Severity.INFO), ("Pod.default.other", Severity.WARNING)):
+        report = _checkov(path, code="CKV_K8S_43", resource=resource)
+        assert security_tools.parse_checkov(json.dumps(report), root=tmp_path)[0].severity is severity
+
+
+@pytest.mark.parametrize("selected", [False, True])
+@pytest.mark.parametrize("payload", ["valid", "broken"])
+def test_explicit_zizmor_audit_enables_auditor_persona_without_relaxing_protocol(
+    tmp_path: Path, selected: bool, payload: str
+) -> None:
+    path = tmp_path / "action.yml"
+    path.write_text("name: fixture\n", encoding="utf-8")
+
+    def run(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
+        assert cwd == tmp_path
+        assert ("--persona" in argv) is selected
+        if selected:
+            assert argv[argv.index("--persona") + 1] == "auditor"
+        return ProcessOutput(0, json.dumps(_zizmor(path)) if payload == "valid" else "{}", "")
+
+    report = analyze_external(
+        [str(path)],
+        root=tmp_path,
+        trust=TrustMode.SAFE,
+        runner=run,
+        capabilities=frozenset({"zizmor"}),
+        security_selection=RuleSelection(frozenset({RuleSelector.parse("zizmor:concurrency-limits")}))
+        if selected
+        else None,
+    )[0]
+    assert report.completion is (Completion.COMPLETE if payload == "valid" else Completion.FAILED)
+
+
+@pytest.mark.parametrize("audit", sorted(security_tools.ZIZMOR_ONLINE_ONLY))
+def test_online_only_zizmor_selectors_fail_with_offline_diagnostic(tmp_path: Path, audit: str) -> None:
+    selector = f"zizmor:{audit}"
+    assert manifest.validate_excluded_rule(selector) == selector
+    report = Standards(tmp_path).analyze([], rules=[selector])
+    assert report.completion is Completion.FAILED
+    assert any("cannot run in offline analysis" in issue.message for tool in report.tools for issue in tool.issues)
+
+
+@pytest.mark.parametrize("code", ["CKV_GCP_95", "CKV_K8S_43"])
+def test_explicit_checkov_selection_limits_checks_and_preserves_terraform_provider_coverage(
+    tmp_path: Path, code: str
+) -> None:
+    terraform = tmp_path / "main.tf"
+    terraform.write_text('locals { region = "local" }\n', encoding="utf-8")
+    pod = tmp_path / "pod.yml"
+    pod.write_text("apiVersion: v1\nkind: Pod\nspec:\n  containers: [\n", encoding="utf-8")
+    calls: list[tuple[str, ...]] = []
+
+    def run(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
+        assert cwd == tmp_path
+        calls.append(tuple(argv))
+        assert argv[argv.index("--check") + 1] == code
+        assert argv[argv.index("--framework") + 1] == "terraform"
+        return ProcessOutput(0, json.dumps(_empty_checkov_summary()), "")
+
+    paths = [str(terraform), str(pod)] if code == "CKV_GCP_95" else [str(terraform)]
+    reports = analyze_external(
+        paths,
+        root=tmp_path,
+        trust=TrustMode.SAFE,
+        runner=run,
+        capabilities=frozenset({"checkov"}),
+        security_selection=RuleSelection(frozenset({RuleSelector.parse(f"checkov:{code}")})),
+    )
+    assert len(calls) == 1
+    assert all(str(pod) not in argv for argv in calls)
     assert len(reports) == 1
     assert reports[0].completion is Completion.COMPLETE

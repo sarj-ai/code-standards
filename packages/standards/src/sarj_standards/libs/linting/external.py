@@ -22,6 +22,7 @@ import zipfile
 
 from pathspec import PathSpec
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
+from sarj_rule_contracts import RuleEngine, RuleSelection
 import yaml
 
 from sarj_standards.libs.adoption import manifest, packagemanager
@@ -309,6 +310,7 @@ def analyze_external(
     react_doctor_full_scan: bool = False,
     pass_on_unpruned_eslint_suppressions: bool = False,
     rule_ids: frozenset[str] | None = None,
+    security_selection: RuleSelection | None = None,
 ) -> tuple[ToolReport, ...]:
     execute = run_process if runner is None else runner
     try:
@@ -318,7 +320,15 @@ def analyze_external(
         issue = ExecutionIssue("external", "invalid-input", str(exc))
         return (ToolReport("external", Completion.FAILED, issues=(issue,)),)
     reports: list[ToolReport] = []
-    reports.extend(_security_reports(routed.iac, root=root, runner=execute, capabilities=capabilities))
+    reports.extend(
+        _security_reports(
+            routed.iac,
+            root=root,
+            runner=execute,
+            capabilities=capabilities,
+            security_selection=security_selection,
+        )
+    )
     if capabilities is None or "shellcheck" in capabilities:
         reports.extend(_shellcheck_reports(routed, root=root, runner=execute, attest_version=runner is None))
     try:
@@ -524,11 +534,16 @@ def _security_reports(
     root: Path,
     runner: ProcessRunner,
     capabilities: frozenset[str] | None,
+    security_selection: RuleSelection | None = None,
 ) -> tuple[ToolReport, ...]:
     if capabilities is not None and not capabilities.intersection({"zizmor", "checkov"}):
         return ()
+    checkov_checks = security_selection.native_ids_for(RuleEngine.CHECKOV) if security_selection is not None else None
+    zizmor_selected = security_selection is not None and RuleEngine.ZIZMOR in security_selection.engines
     try:
-        selected = security_tools.select_inputs(files, root=root)
+        selected = security_tools.select_inputs(
+            files, root=root, capabilities=capabilities, checkov_rule_ids=checkov_checks
+        )
     except (OSError, TypeError, ValueError) as exc:
         issue = ExecutionIssue("security-tools", "invalid-input", _redact_message(str(exc), root))
         return (ToolReport("security-tools", Completion.FAILED, issues=(issue,)),)
@@ -542,6 +557,7 @@ def _security_reports(
                     (
                         *security_tools.command("zizmor"),
                         "--offline",
+                        *(("--persona", "auditor") if zizmor_selected else ()),
                         "--format=sarif",
                         "--no-exit-codes",
                         "--strict-collection",
@@ -561,33 +577,53 @@ def _security_reports(
                 )
             )
     if capabilities is None or "checkov" in capabilities:
-        for framework, paths in (("terraform", selected.terraform), ("kubernetes", selected.kubernetes)):
-            for start in range(0, len(paths), _ESLINT_BATCH_SIZE):
-                batch = paths[start : start + _ESLINT_BATCH_SIZE]
-                reports.append(
-                    _invoke(
-                        "checkov",
-                        (
-                            *security_tools.command("checkov"),
-                            "--config-file",
-                            str(_PACKAGED_MOBILE_CONFIGS / "checkov.strict.yml"),
-                            "--framework",
-                            framework,
-                            "--skip-download",
-                            "--output",
-                            "json",
-                            "--file",
-                            *batch,
-                        ),
-                        cwd=root,
-                        root=root,
-                        runner=partial(_security_runner, runner, name="checkov"),
-                        parser=security_tools.parse_checkov,
-                        version=security_tools.VERSIONS["checkov"],
-                        invocation_id=f"{framework}:batch-{start // _ESLINT_BATCH_SIZE + 1}",
-                        file_count=len(batch),
-                    )
+        reports.extend(_checkov_reports(selected, root=root, runner=runner, checkov_checks=checkov_checks))
+    return tuple(reports)
+
+
+def _checkov_reports(
+    selected: security_tools.SecurityInputs,
+    *,
+    root: Path,
+    runner: ProcessRunner,
+    checkov_checks: frozenset[str] | None,
+) -> tuple[ToolReport, ...]:
+    reports: list[ToolReport] = []
+    for framework, paths in (("terraform", selected.terraform), ("kubernetes", selected.kubernetes)):
+        checks = security_tools.CHECKOV_CHECKS if checkov_checks is None else checkov_checks
+        if framework == "kubernetes":
+            checks = checks.intersection(security_tools.KUBERNETES_CHECKS)
+        if not checks:
+            continue
+        for start in range(0, len(paths), _ESLINT_BATCH_SIZE):
+            batch = paths[start : start + _ESLINT_BATCH_SIZE]
+            reports.append(
+                _invoke(
+                    "checkov",
+                    (
+                        *security_tools.command("checkov"),
+                        "--config-file",
+                        str(_PACKAGED_MOBILE_CONFIGS / "checkov.strict.yml"),
+                        "--framework",
+                        framework,
+                        "--check",
+                        ",".join(sorted(checks)),
+                        "--skip-download",
+                        "--output",
+                        "json",
+                        "--file",
+                        *batch,
+                    ),
+                    cwd=root,
+                    root=root,
+                    runner=partial(_security_runner, runner, name="checkov"),
+                    parser=security_tools.parse_checkov,
+                    version=security_tools.VERSIONS["checkov"],
+                    invocation_id=f"{framework}:batch-{start // _ESLINT_BATCH_SIZE + 1}",
+                    file_count=len(batch),
                 )
+            )
+
     return tuple(reports)
 
 

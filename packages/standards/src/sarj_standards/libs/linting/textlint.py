@@ -710,6 +710,7 @@ REGISTRY: Final[Mapping[str, RuleMeta]] = MappingProxyType(
                 "Terraform coverage extracts literal strings and heredocs owned by resource local-exec.command with the default interpreter or a literal POSIX shell -c interpreter; HCL templates, computed commands, custom interpreters, remote-exec, and Terraform JSON are intentionally unreported.",
                 "A Terraform diagnostic can be suppressed locally with an exact-code # sarj-noqa: SARJ309 comment on the preceding physical line.",
                 "The bounded scanner reports explicitly recognized commands and deployment Actions; dynamic command construction and unlisted provider surfaces are intentionally unreported.",
+                "Multiline quoted shell data is excluded and command substitutions are not evaluated; function bodies are checked for possible mutations without proving invocation.",
                 "Wrapper-indirected commands are intentionally unreported; full-tree CI scans wrapper files directly only when they live in an operational root.",
                 "Wrangler deploy and versions deploy publish application artifacts and are intentionally not treated as infrastructure mutation; Wrangler resource-creation commands remain reportable.",
                 "Cloud Run image/source-only deploys and updates publish application artifacts; configuration, identity, scaling, networking, secret, and other infrastructure flags remain reportable.",
@@ -1421,8 +1422,18 @@ def _deployment_shell_lines(source: str, *, workflow: bool) -> list[_ShellLogica
 
 def _workflow_run_lines(source: str) -> list[_ShellLogicalLine]:
     commands: list[_ShellLogicalLine] = []
-    for step in _workflow_steps(source):
-        commands.extend(_offset_shell_lines(_shell_without_heredoc_bodies(step.command), step.line))
+    for step in _workflow_step_nodes(source):
+        run = _mapping_value(step, "run")
+        if not isinstance(run, ScalarNode):
+            continue
+        logical_lines = _shell_logical_lines(_shell_without_heredoc_bodies(_scalar_value(run)))
+        commands.extend(
+            _ShellLogicalLine(
+                run.start_mark.line + command.line + 1 if run.style == "|" else run.start_mark.line + 1,
+                command.command,
+            )
+            for command in logical_lines
+        )
     return commands
 
 
@@ -1938,7 +1949,7 @@ def _shell_logical_lines(source: str) -> list[_ShellLogicalLine]:
     logical: list[_ShellLogicalLine] = []
     pending: list[str] = []
     start = 1
-    for number, line in enumerate(source.splitlines(), start=1):
+    for number, line in enumerate(_shell_without_multiline_quoted_content(source).splitlines(), start=1):
         stripped = line.rstrip()
         slash_count = len(stripped) - len(stripped.rstrip("\\"))
         continued = slash_count % 2 == 1
@@ -1952,6 +1963,51 @@ def _shell_logical_lines(source: str) -> list[_ShellLogicalLine]:
     if pending:
         logical.append(_ShellLogicalLine(start, " ".join(pending)))
     return logical
+
+
+def _shell_without_multiline_quoted_content(source: str) -> str:
+    characters = list(source)
+    for start, end in _shell_quoted_spans(source):
+        if "\n" not in source[start:end]:
+            continue
+        for index in range(start, end):
+            if characters[index] not in {"\r", "\n"}:
+                characters[index] = " "
+    return "".join(characters)
+
+
+def _shell_quoted_spans(source: str) -> tuple[tuple[int, int], ...]:
+    spans: list[tuple[int, int]] = []
+    quote: str | None = None
+    start = 0
+    index = 0
+    while index < len(source):
+        character = source[index]
+        if quote is not None:
+            position = _skip_quoted_shell_character(source, index, quote)
+            if position.quote is None:
+                spans.append((start, position.index))
+            index = position.index
+            quote = position.quote
+            continue
+        if character in {"'", '"'}:
+            start = index
+            quote = character
+            index += 1
+            continue
+        if character == "\\":
+            index += 2
+            continue
+        if character == "#" and (index == 0 or source[index - 1].isspace() or source[index - 1] in ";|&("):
+            newline = source.find("\n", index)
+            if newline < 0:
+                break
+            index = newline
+            continue
+        index += 1
+    if quote is not None:
+        spans.append((start, len(source)))
+    return tuple(spans)
 
 
 def _shell_segments(tokens: Sequence[str]) -> list[_ShellSegment]:

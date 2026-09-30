@@ -69,8 +69,35 @@ ZIZMOR_RULES: Final = frozenset(
         "use-trusted-publishing",
     }
 )
+# These v1.30.1 audits return AuditLoadError::Skip when no_online_audits is set.
+# https://github.com/zizmorcore/zizmor/tree/v1.30.1/crates/zizmor/src/audit
+ZIZMOR_ONLINE_ONLY: Final = frozenset(
+    {"impostor-commit", "known-vulnerable-actions", "ref-confusion", "ref-version-mismatch", "stale-action-refs"}
+)
 _MAX_SOURCE_BYTES: Final = 2 * 1024 * 1024
 _PLACEHOLDER: Final = re.compile(r"\$\{|\{\{")
+_KUBERNETES_OWNERSHIP: Final = tuple(
+    re.compile(rf"^\s*['\"]?{key}['\"]?\s*:".encode()) for key in ("apiVersion", "kind")
+)
+_CONTAINER_SPEC_PATHS: Final = MappingProxyType(
+    {
+        "Pod": ("spec",),
+        "PodTemplate": ("template", "spec"),
+        "CronJob": ("spec", "jobTemplate", "spec", "template", "spec"),
+        **dict.fromkeys(
+            (
+                "Deployment",
+                "DeploymentConfig",
+                "DaemonSet",
+                "Job",
+                "ReplicaSet",
+                "ReplicationController",
+                "StatefulSet",
+            ),
+            ("spec", "template", "spec"),
+        ),
+    }
+)
 
 
 class _ProtocolModel(BaseModel):
@@ -199,27 +226,52 @@ def command(name: SecurityTool, *, offline: bool = True) -> tuple[str, ...]:
     )
 
 
-def select_inputs(files: Iterable[str], *, root: Path) -> SecurityInputs:
-    workflows: list[str] = []
-    terraform: list[str] = []
-    kubernetes: list[str] = []
+def select_inputs(
+    files: Iterable[str],
+    *,
+    root: Path,
+    capabilities: frozenset[str] | None = None,
+    checkov_rule_ids: frozenset[str] | None = None,
+) -> SecurityInputs:
+    selected: dict[str, list[str]] = {"workflows": [], "terraform": [], "kubernetes": []}
     for raw_path in sorted(set(files)):
         path = Path(raw_path).resolve()
         relative = path.relative_to(root.resolve())
         if not path.is_file():
             continue
-        if path.name.endswith((".tf", ".tf.json")):
-            terraform.append(str(path))
-            continue
-        if path.suffix.casefold() not in {".yaml", ".yml"}:
-            continue
-        if relative.parts[:2] == (".github", "workflows") or path.name in {"action.yml", "action.yaml"}:
-            workflows.append(str(path))
-            continue
-        text = _source(path)
-        if re.search(r"(?m)^apiVersion\s*:", text) and re.search(r"(?m)^kind\s*:", text):
-            kubernetes.append(str(path))
-    return SecurityInputs(tuple(workflows), tuple(terraform), tuple(kubernetes))
+        ownership = _security_input_kind(path, relative, capabilities=capabilities, checkov_checks=checkov_rule_ids)
+        if ownership is not None:
+            selected[ownership].append(str(path))
+    return SecurityInputs(tuple(selected["workflows"]), tuple(selected["terraform"]), tuple(selected["kubernetes"]))
+
+
+def _security_input_kind(
+    path: Path,
+    relative: Path,
+    *,
+    capabilities: frozenset[str] | None,
+    checkov_checks: frozenset[str] | None,
+) -> Literal["workflows", "terraform", "kubernetes"] | None:
+    checkov_enabled = capabilities is None or "checkov" in capabilities
+    if path.name.endswith((".tf", ".tf.json")):
+        return "terraform" if checkov_enabled else None
+    if path.suffix.casefold() not in {".yaml", ".yml"}:
+        return None
+    if relative.parts[:2] == (".github", "workflows") or path.name in {"action.yml", "action.yaml"}:
+        return "workflows" if capabilities is None or "zizmor" in capabilities else None
+    if not checkov_enabled or (checkov_checks is not None and checkov_checks.isdisjoint(KUBERNETES_CHECKS)):
+        return None
+    if not _has_kubernetes_ownership(path):
+        return None
+    documents = _yaml_documents(_source(path))
+    if any(
+        is_object_mapping(document)
+        and isinstance(document.get("apiVersion"), str)
+        and isinstance(document.get("kind"), str)
+        for document in documents
+    ):
+        return "kubernetes"
+    return None
 
 
 def parse_zizmor(payload: str, *, root: Path) -> tuple[Diagnostic, ...]:
@@ -348,6 +400,18 @@ def _contained_path(raw_path: str, root: Path) -> Path:
     return resolved
 
 
+def _has_kubernetes_ownership(path: Path) -> bool:
+    # Discover ownership before applying the source limit: unrelated datasets are
+    # not security inputs. Keep this prefilter byte-based and parse candidates.
+    matched: set[int] = set()
+    with path.open("rb") as source:
+        for line in source:
+            matched.update(index for index, pattern in enumerate(_KUBERNETES_OWNERSHIP) if pattern.search(line))
+            if len(matched) == len(_KUBERNETES_OWNERSHIP):
+                return True
+    return False
+
+
 def _source(path: Path) -> str:
     if path.stat().st_size > _MAX_SOURCE_BYTES:
         msg = "security source exceeds the 2 MiB size limit"
@@ -355,32 +419,59 @@ def _source(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def _has_image_placeholder(path: Path, resource: str) -> bool:
-    def images(value: object) -> tuple[str, ...]:
-        if is_object_mapping(value):
-            return tuple(
-                image
-                for key, child in value.items()
-                for image in ((child,) if key == "image" and isinstance(child, str) else images(child))
-            )
-        if is_object_list(value):
-            return tuple(image for child in value for image in images(child))
-        return ()
-
+def _yaml_documents(text: str) -> tuple[object, ...]:
     try:
-        documents: tuple[object, ...] = tuple(yaml.safe_load_all(_source(path)))
+        return tuple(yaml.safe_load_all(text))
     except yaml.YAMLError as exc:
-        msg = "cannot parse the source image template"
+        msg = "cannot parse the source Kubernetes template"
         raise ValueError(msg) from exc
-    for document in documents:
-        if not is_object_mapping(document):
-            continue
+
+
+def _has_image_placeholder(path: Path, resource: str) -> bool:
+    for document in _kubernetes_resources(_yaml_documents(_source(path))):
         metadata = document.get("metadata")
         if not is_object_mapping(metadata):
             continue
         identity = f"{document.get('kind')}.{metadata.get('namespace', 'default')}.{metadata.get('name')}"
         if resource != identity:
             continue
-        values = images(document)
-        return bool(values) and all(_PLACEHOLDER.search(image) is not None for image in values)
+        values = _container_images(document)
+        return bool(values) and all(
+            isinstance(image, str) and ("@" in image or _PLACEHOLDER.search(image) is not None) for image in values
+        )
     return False
+
+
+def _kubernetes_resources(documents: Iterable[object]) -> Iterable[dict[object, object]]:
+    for document in documents:
+        if not is_object_mapping(document):
+            continue
+        if document.get("kind") == "List":
+            items = document.get("items")
+            if is_object_list(items):
+                yield from (item for item in items if is_object_mapping(item))
+        else:
+            yield document
+
+
+def _container_images(document: dict[object, object]) -> tuple[str | None, ...]:
+    kind = document.get("kind")
+    if not isinstance(kind, str) or kind not in _CONTAINER_SPEC_PATHS:
+        return ()
+    spec: object = document
+    for key in _CONTAINER_SPEC_PATHS[kind]:
+        if not is_object_mapping(spec):
+            return ()
+        spec = spec.get(key)
+    if not is_object_mapping(spec):
+        return ()
+    containers: list[object] = []
+    for key in ("containers", "initContainers"):
+        values = spec.get(key)
+        if is_object_list(values):
+            containers.extend(values)
+    return tuple(
+        image if isinstance(image, str) else None
+        for container in containers
+        for image in (container.get("image") if is_object_mapping(container) else None,)
+    )

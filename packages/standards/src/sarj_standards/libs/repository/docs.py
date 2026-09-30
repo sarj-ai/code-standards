@@ -228,6 +228,8 @@ def _package_usage(name: str, engine: str | None) -> str:
             "runtimes. Setup and generated CI prewarm these tools; checks run offline with packaged policy. "
             "Use `--rule checkov:CKV_GCP_95` or `--rule zizmor:template-injection` to select upstream audits. "
             "Their findings start as warnings, use the canonical diagnostic baseline, and retain upstream IDs. "
+            "Checkov honors its inline suppression directives; zizmor ignore comments are disabled. "
+            "Explicit zizmor selectors include auditor-persona checks; online-only audits cannot run offline. "
             "Parsing or execution failures leave the analysis incomplete. Image digest evidence for source templates "
             "is deferred to their rendered deployment artifacts.\n\n"
             "`check --jobs 2` overlaps native analysis with the external-tool pipeline. The default is "

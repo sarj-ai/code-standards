@@ -1058,6 +1058,75 @@ def test_local_exec_abstains_on_malformed_hcl(tmp_path: Path, source: str) -> No
     assert textlint.check_paths([str(path)], root=tmp_path) == []
 
 
+@pytest.mark.parametrize("context", ["terraform", "workflow", "shell"])
+@pytest.mark.parametrize("quote", ["'", '"'])
+def test_deployment_boundary_never_executes_multiline_quoted_data(tmp_path: Path, context: str, quote: str) -> None:
+    body = (
+        f"description={quote}\ngcloud services enable example.googleapis.com\n{quote}\nprintf '%s' \"$description\"\n"
+    )
+    path = _deployment_script_fixture(tmp_path, context, body)
+    findings = textlint.check_paths([str(path)], root=tmp_path, rule_ids=frozenset({"declarative-deployment-boundary"}))
+    assert findings == []
+
+
+@pytest.mark.parametrize("context", ["terraform", "workflow", "shell"])
+@pytest.mark.parametrize(
+    "tail", ["'\ngcloud services enable example.googleapis.com", "'; gcloud services enable example.googleapis.com"]
+)
+def test_deployment_boundary_preserves_commands_after_quoted_data_and_physical_positions(
+    tmp_path: Path, context: str, tail: str
+) -> None:
+    body = f"description='\ngcloud services list --enabled\n{tail}\n"
+    path = _deployment_script_fixture(tmp_path, context, body)
+    findings = textlint.check_paths([str(path)], root=tmp_path, rule_ids=frozenset({"declarative-deployment-boundary"}))
+    expected_line = next(
+        index for index, line in enumerate(path.read_text().splitlines(), start=1) if "services enable" in line
+    )
+    assert [(finding.code, finding.line) for finding in findings] == [("SARJ309", expected_line)]
+
+
+@pytest.mark.parametrize("context", ["terraform", "workflow", "shell"])
+@pytest.mark.parametrize(
+    "prefix",
+    ["# documentation mentions an unmatched ' quote", "printf '%s' \\'", "printf '%s' \"single-line quoted data\""],
+)
+def test_deployment_boundary_quote_ownership_respects_comments_escapes_and_inline_strings(
+    tmp_path: Path, context: str, prefix: str
+) -> None:
+    path = _deployment_script_fixture(tmp_path, context, f"{prefix}\ngcloud services enable example.googleapis.com\n")
+    findings = textlint.check_paths([str(path)], root=tmp_path, rule_ids=frozenset({"declarative-deployment-boundary"}))
+    expected_line = next(
+        index for index, line in enumerate(path.read_text().splitlines(), start=1) if "services enable" in line
+    )
+    assert [(finding.code, finding.line) for finding in findings] == [("SARJ309", expected_line)]
+
+
+@pytest.mark.parametrize("code", ["SARJ309", "SARJ310"])
+def test_terraform_command_suppression_remains_exact_after_multiline_data(tmp_path: Path, code: str) -> None:
+    body = f"description='\nquoted data\n'\n# sarj-noqa: {code}\ngcloud services enable example.googleapis.com\n"
+    path = _deployment_script_fixture(tmp_path, "terraform", body)
+    findings = textlint.check_paths([str(path)], root=tmp_path, rule_ids=frozenset({"declarative-deployment-boundary"}))
+    assert len(findings) == (0 if code == "SARJ309" else 1)
+
+
+def _deployment_script_fixture(root: Path, context: str, body: str) -> Path:
+    match context:
+        case "terraform":
+            path = root / "main.tf"
+            source = f'resource "terraform_data" "example" {{\n provisioner "local-exec" {{\n command = <<EOT\n{body}EOT\n }}\n}}\n'
+        case "workflow":
+            path = root / ".github" / "workflows" / "ci.yml"
+            source = "jobs:\n  deploy:\n    steps:\n      - run: |\n" + "".join(
+                f"          {line}\n" for line in body.splitlines()
+            )
+        case _:
+            path = root / "deploy" / "example.sh"
+            source = body
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(source, encoding="utf-8")
+    return path
+
+
 def test_workflow_embedded_program_reports_once_per_run_scalar_at_run_line(
     tmp_path: Path,
 ) -> None:
