@@ -1,10 +1,11 @@
 import asyncio
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from textwrap import dedent
 from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock  # ruff: ignore[banned-api] — regression tests exercise AsyncMock assertion semantics
 
 import pytest
+from sarj_rule_contracts import EvaluationCase, ExpectedOutcome, Language
 
 from sarj_python_lint.__main__ import main
 from sarj_python_lint.rules.async_mock_call_without_await_assertion import AsyncMockCallWithoutAwaitAssertion
@@ -198,16 +199,16 @@ def test_reports_one_diagnostic_for_redundant_call_assertions() -> None:
 
 
 @pytest.mark.parametrize("suppression", ["", "  # sarj-noqa: SARJ456 — contract checks scheduling before awaiting"])
-def test_cli_blocks_missing_await_evidence_and_supports_scheduling_exceptions(
+def test_cli_is_advisory_and_supports_scheduling_exceptions(
     tmp_path: Path, capsys: CaptureFixture[str], suppression: str
 ) -> None:
     source = f"from unittest.mock import AsyncMock\ndef test_schedules():\n    send = AsyncMock()\n    schedule(send)\n    send.assert_called_once(){suppression}\n"
     path = tmp_path / "test_delivery.py"
     path.write_text(source)
 
-    assert main(["check", "--rule", "async-mock-call-without-await-assertion", str(path)]) == (0 if suppression else 1)
+    assert main(["check", "--rule", "async-mock-call-without-await-assertion", str(path)]) == 0
     output = capsys.readouterr()
-    assert output.out.count("SARJ456 ") == (0 if suppression else 1)
+    assert output.out.count("SARJ456 warning:") == (0 if suppression else 1)
     assert not output.err
 
 
@@ -354,3 +355,121 @@ def test_two_mock_counts_on_one_line_have_distinct_locations() -> None:
 def test_replaced_call_or_await_state_is_not_inferred(state: str) -> None:
     source = f"from unittest.mock import AsyncMock\nasync def test_send():\n    send = AsyncMock()\n    send.{state} = custom\n    assert send.call_count == 1\n"
     assert _check(source) == []
+
+
+def _assertion_case(case_id: str, body: str, expected: ExpectedOutcome) -> EvaluationCase:
+    source = "from unittest.mock import AsyncMock, call\nasync def test_delivery():\n    send = AsyncMock()\n"
+    source += "\n".join(f"    {line}" for line in body.splitlines()) + "\n"
+    return EvaluationCase(case_id, Language.PYTHON, source, expected, PurePosixPath("tests/test_delivery.py"))
+
+
+ASYNC_CALL_STATE_CASES = (
+    *(
+        _assertion_case(case_id, f"assert {condition}", ExpectedOutcome.MATCH)
+        for case_id, condition in (
+            ("positive-count-negated-zero", "not send.call_count == 0"),
+            ("positive-count-negated-bound", "not send.call_count < 1"),
+            ("positive-called-equality", "send.called == True"),
+            ("positive-called-reversed", "True == send.called"),
+            ("positive-called-not-false", "send.called != False"),
+            ("positive-called-negated-false", "not send.called == False"),
+            ("positive-called-negated-bare", "not not send.called"),
+        )
+    ),
+    *(
+        _assertion_case(case_id, f"assert {condition}", ExpectedOutcome.NO_MATCH)
+        for case_id, condition in (("dynamic-call-count", "send.call_count == expected_count"),)
+    ),
+    *(
+        _assertion_case(case_id, f"send.assert_called_once()\n{oracle}", ExpectedOutcome.MATCH)
+        for case_id, oracle in (
+            ("empty-awaits-tuple", "send.assert_has_awaits(())"),
+            ("empty-awaits-keyword-list", "send.assert_has_awaits(calls=[])"),
+            ("empty-awaits-keyword-tuple", "send.assert_has_awaits(calls=(), any_order=True)"),
+            ("await-or-another-reference", "other = AsyncMock()\nassert send.await_count > 0 or other.await_count > 0"),
+        )
+    ),
+    *(
+        _assertion_case(case_id, f"send.assert_called_once()\n{oracle}", ExpectedOutcome.NO_MATCH)
+        for case_id, oracle in (
+            ("dynamic-await-list-equality", "assert send.await_args_list == expected"),
+            ("starred-await-list-equality", "assert send.await_args_list == [*expected]"),
+            ("dynamic-await-count-equality", "assert send.await_count == expected_count"),
+        )
+    ),
+    *(
+        _assertion_case(case_id, f"assert send.call_count == 1\n{oracle}", ExpectedOutcome.NO_MATCH)
+        for case_id, oracle in (
+            ("boolean-await-count", "assert send.await_count == True"),
+            ("boolean-await-count-reversed", "assert True == send.await_count"),
+            ("await-and-unrelated", "assert enabled and send.await_count > 0"),
+            ("expected-awaits-local", "expected = [call(1)]\nsend.assert_has_awaits(expected)"),
+            ("expected-awaits-unresolved", "send.assert_has_awaits(expected)"),
+            ("expected-awaits-keyword-unresolved", "send.assert_has_awaits(calls=expected)"),
+            ("expected-awaits-starred", "send.assert_has_awaits([*expected])"),
+            ("expected-awaits-keyword-starred", "send.assert_has_awaits(calls=(*expected,))"),
+            ("expected-awaits-star-arguments", "send.assert_has_awaits(*arguments)"),
+        )
+    ),
+)
+
+
+@pytest.mark.parametrize("case", ASYNC_CALL_STATE_CASES, ids=[case.case_id for case in ASYNC_CALL_STATE_CASES])
+def test_labeled_call_and_await_evidence(case: EvaluationCase) -> None:
+    findings = _check(case.source, case.path.as_posix())
+    assert len(findings) == (1 if case.expected is ExpectedOutcome.MATCH else 0)
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "alias = send\nassert alias.call_count == 1",
+        "send = fixture\nassert send.call_count == 1",
+        "send.reset_mock()\nassert send.called",
+        "if enabled:\n    assert send.call_count == 1",
+        "def helper():\n    assert send.called",
+        "send.child = replacement\nassert send.child.call_count == 1",
+    ],
+)
+def test_numeric_call_state_preserves_provenance_and_scope_exclusions(body: str) -> None:
+    case = _assertion_case("excluded-provenance", body, ExpectedOutcome.NO_MATCH)
+    assert _check(case.source) == []
+
+
+def test_numeric_call_fixture_is_excluded() -> None:
+    source = "from unittest.mock import AsyncMock\nimport pytest\n@pytest.fixture\ndef test_delivery():\n    send = AsyncMock()\n    assert send.call_count == 1\n"
+    assert _check(source) == []
+
+
+def test_same_module_fixture_return_is_not_inferred() -> None:
+    source = """
+        import pytest
+        from unittest.mock import AsyncMock
+        @pytest.fixture
+        def send():
+            return AsyncMock()
+        async def test_delivery(send):
+            assert send.call_count == 1
+    """
+    assert _check(source) == []
+
+
+def test_redundant_numeric_and_method_assertions_deduplicate() -> None:
+    case = _assertion_case(
+        "duplicate-call-evidence",
+        "assert send.call_count == 1\nsend.assert_called_once()\nassert send.called",
+        ExpectedOutcome.MATCH,
+    )
+    assert len(_check(case.source)) == 1
+
+
+@pytest.mark.parametrize("suppressed", [False, True])
+def test_numeric_call_cli_remains_warning(tmp_path: Path, capsys: CaptureFixture[str], *, suppressed: bool) -> None:
+    suffix = "  # sarj-noqa: SARJ456 -- checks scheduling before execution" if suppressed else ""
+    case = _assertion_case("numeric-warning", f"assert send.call_count == 1{suffix}", ExpectedOutcome.MATCH)
+    path = tmp_path / "test_delivery.py"
+    path.write_text(case.source)
+    assert main(["check", "--rule", "async-mock-call-without-await-assertion", str(path)]) == 0
+    output = capsys.readouterr()
+    assert output.out.count("SARJ456 warning:") == (0 if suppressed else 1)
+    assert not output.err

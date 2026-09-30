@@ -14,6 +14,12 @@ specifically concerns one of them. In pull-request audits, separate executable
 test changes from support-only fixtures, fakes, and expected-data maintenance;
 classify individual tests rather than whole files or pull requests.
 
+Trace actual CI test selections and their effective pytest roots/configuration,
+coverage collection, skips and prerequisites, retries, and optional lanes before
+assessing which contracts execute. Establish the intended lane and available
+prerequisites; do not infer execution from a test's presence or require every
+lane to run every test.
+
 ## Judgment checks
 
 Report only a concrete test whose code and nearby production behavior establish
@@ -23,7 +29,10 @@ the weakness:
    observation that distinguishes success from a plausible wrong result.
    Existence, type, call count, truthiness, or 2xx status proves only that narrow
    fact; do not infer that such assertions are weak when that fact is the actual
-   contract.
+   contract. Distinguish a missing prerequisite from an observed failure of the
+   promised outcome converted into a skip: an authentication failure in a
+   successful-access test or a language mismatch in a language-correctness test
+   still needs an oracle unless the test explicitly measures availability.
 2. **Kill condition** — Name the smallest production deletion, constant change,
    or branch inversion that should make the test fail. If no repository-owned
    mutation exists, classify the test explicitly as compatibility, smoke,
@@ -70,6 +79,12 @@ the weakness:
     but a test added only to execute a forwarding line still needs an independent
     contract oracle. Recommend mutation review for new logic instead of treating
     line or branch execution as proof of test value.
+14. **Resource lifecycle** — Establish ownership and release behavior from the
+    concrete API or helper contract. After a successful acquisition, cleanup must
+    cover setup failures before a fixture yields; independent cleanup must still
+    run if an earlier teardown action fails. Identify the exact acquisition and
+    failing operation rather than inferring a leak from a resource's name or a
+    timeout whose API already closes it.
 
 Do not use assertion-to-code ratio, raw coverage percentage, test length, or the
 mere presence of mocks/private calls as evidence of low value. Prefer the
