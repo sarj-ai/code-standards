@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "a954fed7adac0f81c0dff6e32ad3727dddc97f44a0db628085de54c1c59cf8fe",
-  "cliSha256": "755d643caa357aefd247620b911d13138d00ec9d96fa47895235e9a71a2b56e0",
+  "catalogSha256": "53f7be7b2e94c6e0cce1522a41dc543389f06f4229e47e012295485eb9eeff17",
+  "cliSha256": "76f0b6b61a8764e5fea114476934779975ccbbb34e565c66b40634aa8f82cfbf",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -10788,6 +10788,36 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "CI applies the reviewed Terraform plan"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "main.tf",
+              "source": "resource \"terraform_data\" \"enable_api\" {\n  provisioner \"local-exec\" {\n    command = \"gcloud services enable example.googleapis.com\"\n  }\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "main.tf",
+          "id": "terraform-local-exec-control-plane",
+          "outcome": "reject",
+          "scenarioId": "terraform-local-exec",
+          "title": "Provider resources own API enablement"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "main.tf",
+              "source": "resource \"terraform_data\" \"inspect_api\" {\n  provisioner \"local-exec\" {\n    command = \"gcloud services list --enabled\"\n  }\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "main.tf",
+          "id": "terraform-local-exec-read-only",
+          "outcome": "accept",
+          "scenarioId": "terraform-local-exec",
+          "title": "Read-only local commands do not create drift"
         },
         {
           "expectedCount": 0,

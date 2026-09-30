@@ -485,6 +485,8 @@ def test_manifest_renders_as_valid_toml() -> None:
         "shellcheck",
         "taplo",
         "yamllint",
+        "zizmor",
+        "checkov",
     ]
 
 
@@ -494,7 +496,7 @@ def test_missing_manifest_is_not_an_error(tmp_path: Path) -> None:
 
 def test_manifest_renders_formatter_stable_owned_fields(tmp_path: Path) -> None:
     adopted = manifest.Manifest(
-        version="8.1.4",
+        version=manifest.adopted_version(),
         configs=manifest.ALL_CONFIGS,
         python_dest=".",
         typescript_dest=".",
@@ -505,7 +507,7 @@ def test_manifest_renders_formatter_stable_owned_fields(tmp_path: Path) -> None:
     rendered = adopted.render()
     expected = (
         "# Managed by `code-standards setup`; commit this file.\n"
-        'bundle = "8.1.4"\nrule_profile = "all"\nschema = 4\n\n'
+        f'bundle = "{manifest.adopted_version()}"\nrule_profile = "all"\nschema = 4\n\n'
         "[capabilities]\ndisable = []\n\n"
         '[artifacts]\ndurable = [\n  "docs/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",\n'
         '  "docs/short",\n]\n\n'

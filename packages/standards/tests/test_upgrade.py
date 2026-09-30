@@ -6,14 +6,20 @@ from __future__ import annotations
 from dataclasses import replace
 import json
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 import yaml
 
+from sarj_standards._meta import CONFIGS_DIR
 import sarj_standards.cli.main as cli
 from sarj_standards.libs.adoption import doctor, launcher, lifecycle, manifest, scaffold, transaction, upgrade
 from sarj_standards.libs.diagnostics import baseline
 from sarj_standards.libs.json_boundary import parse_json
+
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
 
 
 BOOTSTRAP_COMMAND = "uvx --no-config --isolated --python 3.14 --from sarj-standards-bootstrap code-standards"
@@ -74,6 +80,71 @@ def test_upgrade_preview_is_read_only_and_names_every_change(tmp_path: Path) -> 
     assert "sync ruff config" in upgrade.render(plan.changes)
     assert "adopt standards" in upgrade.render(plan.changes)
     assert {path: path.read_bytes() for path in tmp_path.iterdir() if path.is_file()} == before
+
+
+def test_upgrade_preserves_old_bundle_security_opt_out_without_unplanned_installs(tmp_path: Path) -> None:
+    (tmp_path / "main.tf").write_text('resource "terraform_data" "example" {}\n', encoding="utf-8")
+    workflow = tmp_path / ".github/workflows/ci.yml"
+    workflow.parent.mkdir(parents=True)
+    workflow.write_text("name: CI\non: push\njobs: {}\n", encoding="utf-8")
+    disabled = [name for name in manifest.ALL_CAPABILITIES if name not in {"yamllint", "zizmor", "checkov"}]
+    path = tmp_path / manifest.MANIFEST_NAME
+    path.write_text(
+        'schema = 4\nbundle = "8.12.1"\n[capabilities]\n'
+        f'disable = {json.dumps(disabled)}\n[hooks]\nmanager = "none"\n[consumer]\nkeep = true\n',
+        encoding="utf-8",
+    )
+    before = manifest.load(tmp_path)
+    assert before is not None
+
+    plan = upgrade.build_plan(tmp_path)
+    assert not plan.ecosystems.actions
+    assert not plan.ecosystems.infrastructure
+    assert upgrade.apply(plan) == 0
+
+    after = manifest.load(tmp_path)
+    assert after is not None
+    assert after.version == manifest.adopted_version()
+    assert after.enabled_capabilities == before.enabled_capabilities
+    assert not (tmp_path / "zizmor.yml").exists()
+    assert not (tmp_path / ".checkov.yml").exists()
+    assert "[consumer]\nkeep = true" in path.read_text()
+
+
+@pytest.mark.parametrize(
+    ("tool", "target", "source"),
+    [("zizmor", "zizmor.yml", "zizmor.strict.yml"), ("checkov", ".checkov.yml", "checkov.strict.yml")],
+)
+def test_upgrade_repairs_adopted_security_config_and_prepares_only_that_tool(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, tool: str, target: str, source: str
+) -> None:
+    (tmp_path / "main.tf").write_text('resource "terraform_data" "example" {}\n', encoding="utf-8")
+    workflow = tmp_path / ".github/workflows/ci.yml"
+    workflow.parent.mkdir(parents=True)
+    workflow.write_text("name: CI\non: push\njobs: {}\n", encoding="utf-8")
+    adopted = manifest.Manifest(
+        version=manifest.adopted_version(), configs=(tool,), python_dest=".", typescript_dest=".", hook_manager="none"
+    )
+    (tmp_path / manifest.MANIFEST_NAME).write_text(adopted.render(), encoding="utf-8")
+    (tmp_path / target).write_text("stale: true\n", encoding="utf-8")
+    prepared: list[lifecycle.Command] = []
+
+    def capture(commands: Iterable[lifecycle.Command]) -> int:
+        prepared.extend(commands)
+        return 0
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- inspect installer lookup; injection would skip upgrade routing.
+        lifecycle, "execute", capture
+    )
+    plan = upgrade.build_plan(tmp_path)
+
+    assert upgrade.apply(plan) == 0
+    assert (tmp_path / target).read_bytes() == (CONFIGS_DIR / source).read_bytes()
+    assert [command.label for command in prepared] == [f"prepare pinned {tool}"]
+    assert "--offline" not in prepared[0].argv
+    assert any(
+        finding.id == "doctor.config.current" and finding.where == target for finding in doctor.diagnose(tmp_path)
+    )
 
 
 def test_upgrade_transactionally_removes_retired_diagnostic_baseline_entries(tmp_path: Path) -> None:

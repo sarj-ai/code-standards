@@ -1,0 +1,15 @@
+# Checkov is isolated from the Standards runtime and never downloads modules.
+framework:
+  - terraform
+  - kubernetes
+check:
+  - CKV_GCP_41
+  - CKV_GCP_95
+  - CKV_GCP_97
+  - CKV_K8S_10
+  - CKV_K8S_12
+  - CKV_K8S_13
+  - CKV_K8S_43
+download-external-modules: false
+skip-download: true
+output: json

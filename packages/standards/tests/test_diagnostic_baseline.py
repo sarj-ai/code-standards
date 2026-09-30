@@ -27,6 +27,7 @@ from sarj_standards.libs.linting.policy import Policy
 
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
     from pathlib import Path
 
 
@@ -336,6 +337,28 @@ def test_existing_baseline_fingerprint_hides_only_matching_react_doctor_debt(tmp
     assert visible.tools[0].baselined_count == 1
 
 
+@pytest.fixture
+def checkov_process(monkeypatch: pytest.MonkeyPatch) -> None:
+    original = external._run_process  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+    payload = json.dumps(
+        {"passed": 0, "failed": 0, "skipped": 0, "parsing_errors": 0, "resource_count": 0, "checkov_version": "3.3.20"}
+    )
+
+    def run(
+        argv: Sequence[str], *, cwd: Path, environment: dict[str, str], timeout_seconds: float = 900
+    ) -> external.ProcessOutput:
+        if "checkov==3.3.20" in argv:
+            assert "--offline" in argv
+            assert "--skip-download" in argv
+            return external.ProcessOutput(0, payload, "")
+        return original(argv, cwd=cwd, environment=environment, timeout_seconds=timeout_seconds)
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- replaces only Checkov's process response; CLI, parser, and baseline behavior run normally without a provisioned scanner cache.
+        external, "_run_process", run
+    )
+
+
+@pytest.mark.usefixtures("checkov_process")
 def test_baseline_init_records_todays_findings_for_every_engine(tmp_path: Path) -> None:
     (tmp_path / "service.py").write_text("logger.info('request', token=token)\n", encoding="utf-8")
     (tmp_path / "main.tf").write_text(
@@ -353,6 +376,7 @@ def test_baseline_init_records_todays_findings_for_every_engine(tmp_path: Path) 
     assert sum(recorded.values()) == len(raw.diagnostics)
 
 
+@pytest.mark.usefixtures("checkov_process")
 def test_baselined_findings_stop_failing_but_a_new_one_still_does(tmp_path: Path) -> None:
     source = tmp_path / "main.tf"
     source.write_text(
@@ -375,6 +399,7 @@ def test_baselined_findings_stop_failing_but_a_new_one_still_does(tmp_path: Path
     assert "SARJ204" in [item.code for item in grown.diagnostics]
 
 
+@pytest.mark.usefixtures("checkov_process")
 def test_baseline_init_refuses_to_overwrite_and_update_replaces(tmp_path: Path) -> None:
     (tmp_path / "main.tf").write_text(
         'resource "google_storage_bucket" "a" {\n  count = var.environment == "prod" ? 1 : 0\n}\n',

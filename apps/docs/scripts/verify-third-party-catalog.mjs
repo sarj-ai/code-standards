@@ -22,7 +22,7 @@ assert.ok(
 const catalog = JSON.parse(await readFile(artifactPath, "utf8"));
 const profiles = ["application", "standard"];
 const autofixValues = new Set(["always", "available", "none", "sometimes"]);
-const pageSize = 40;
+const pageSize = 32;
 
 function verifySource() {
   exactFields(

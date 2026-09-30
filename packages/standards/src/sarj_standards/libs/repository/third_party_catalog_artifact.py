@@ -14,6 +14,8 @@ from typing import Annotated, ClassVar, Final, Literal, NewType
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 import typer
 
+from sarj_standards.libs.linting import security_tools
+
 
 _DESTINATION: Final = Path("apps/docs/src/generated/third-party-rules.v1.json")
 _NODE_PROJECTION: Final = Path("packages/typescript/scripts/project-third-party-rules.mjs")
@@ -51,7 +53,17 @@ _DETEKT_RULE_SETS: Final = frozenset(
 
 type ProfileName = Literal["application", "standard"]
 type ProviderEngine = Literal[
-    "deptry", "detekt", "eslint", "ktlint", "mobsfscan", "react-doctor", "ruff", "swiftformat", "swiftlint"
+    "checkov",
+    "deptry",
+    "detekt",
+    "eslint",
+    "ktlint",
+    "mobsfscan",
+    "react-doctor",
+    "ruff",
+    "swiftformat",
+    "swiftlint",
+    "zizmor",
 ]
 type ProjectionScope = Literal["complete", "config-explicit", "provider-only"]
 RuleId = NewType("RuleId", str)
@@ -164,7 +176,7 @@ class _MobileProviderSpec:
 
 
 @dataclass(frozen=True, slots=True)
-class _MobileProjection:
+class _ToolProjection:
     providers: tuple[_Provider, ...]
     rules: tuple[_Rule, ...]
 
@@ -193,29 +205,33 @@ def parse_enabled_ruff_rules(settings: str) -> frozenset[str]:
 
 def build(root: Path) -> _CatalogArtifact:
     resolved = root.resolve()
-    node = shutil.which("node")
-    npm = shutil.which("npm")
-    ruff = shutil.which("ruff")
-    deptry = shutil.which("deptry")
-    if node is None or npm is None or ruff is None or deptry is None:
-        missing = "node" if node is None else "npm" if npm is None else "ruff" if ruff is None else "deptry"
-        msg = f"cannot generate third-party catalog: {missing} is not installed"
-        raise RuntimeError(msg)
+    node = _required_tool("node")
+    npm = _required_tool("npm")
+    ruff = _required_tool("ruff")
+    deptry = _required_tool("deptry")
     _run((npm, "run", "build", "--silent"), cwd=resolved / "packages/typescript")
     eslint = _eslint_projection(resolved, node)
     react_doctor = _react_doctor_projection(resolved, node)
     ruff_projection = _ruff_projection(resolved, ruff)
     deptry_projection = _deptry_projection(resolved, deptry)
-    mobile = _mobile_projections(resolved)
-    rules = (*eslint.rules, *react_doctor.rules, *ruff_projection.rules, *deptry_projection.rules, *mobile.rules)
+    supplemental = (_mobile_projections(resolved), _security_projections())
+    rules = (
+        *eslint.rules,
+        *react_doctor.rules,
+        *ruff_projection.rules,
+        *deptry_projection.rules,
+        *(rule for projection in supplemental for rule in projection.rules),
+    )
     providers = (
         *eslint.providers,
         _react_doctor_provider(resolved),
         ruff_projection.provider,
         deptry_projection.provider,
-        *mobile.providers,
+        *(provider for projection in supplemental for provider in projection.providers),
     )
-    included_providers = {rule.provider for rule in rules} | {provider.id for provider in mobile.providers}
+    included_providers = {rule.provider for rule in rules} | {
+        provider.id for projection in supplemental for provider in projection.providers
+    }
     return _CatalogArtifact(
         schema_version=1,
         profiles=("application", "standard"),
@@ -224,6 +240,14 @@ def build(root: Path) -> _CatalogArtifact:
         ),
         rules=tuple(sorted(rules, key=lambda item: item.key)),
     )
+
+
+def _required_tool(name: str) -> str:
+    executable = shutil.which(name)
+    if executable is None:
+        msg = f"cannot generate third-party catalog: {name} is not installed"
+        raise RuntimeError(msg)
+    return executable
 
 
 def render(root: Path) -> str:
@@ -346,7 +370,7 @@ def _react_doctor_provider(root: Path) -> _Provider:
     )
 
 
-def _mobile_projections(root: Path) -> _MobileProjection:
+def _mobile_projections(root: Path) -> _ToolProjection:
     config_root = root / _MOBILE_CONFIG_ROOT
     versions = TypeAdapter(dict[str, str]).validate_json(
         (config_root / "mobile-tools.versions.json").read_text(encoding="utf-8"), strict=True
@@ -415,7 +439,62 @@ def _mobile_projections(root: Path) -> _MobileProjection:
             for rule_id in detekt_ids
         ),
     )
-    return _MobileProjection(providers, tuple(rules))
+    return _ToolProjection(providers, tuple(rules))
+
+
+def _security_projections() -> _ToolProjection:
+    providers = (
+        _Provider(
+            id="checkov",
+            label="Checkov",
+            engine="checkov",
+            package="checkov",
+            version=security_tools.VERSIONS["checkov"],
+            homepage="https://www.checkov.io/",
+            projection_scope="config-explicit",
+        ),
+        _Provider(
+            id="zizmor",
+            label="zizmor",
+            engine="zizmor",
+            package="zizmor",
+            version=security_tools.VERSIONS["zizmor"],
+            homepage="https://docs.zizmor.sh/",
+            projection_scope="provider-only",
+        ),
+    )
+    policies = {
+        "CKV_GCP_41": (
+            "Avoid project-level Service Account User and Token Creator grants",
+            "gcp/GoogleRoleServiceAccountUser",
+        ),
+        "CKV_GCP_95": ("Enable Redis authentication", "gcp/MemorystoreForRedisAuthEnabled"),
+        "CKV_GCP_97": ("Encrypt Redis connections in transit", "gcp/MemorystoreForRedisInTransitEncryption"),
+        "CKV_K8S_10": ("Declare container CPU requests", "k8s/CPURequests"),
+        "CKV_K8S_12": ("Declare container memory requests", "k8s/MemoryRequests"),
+        "CKV_K8S_13": ("Declare container memory limits", "k8s/MemoryLimits"),
+        "CKV_K8S_43": ("Pin deployed container images by digest", "k8s/ImageDigest"),
+    }
+    rules: list[_Rule] = []
+    for code in sorted(security_tools.CHECKOV_CHECKS):
+        summary, source = policies[code]
+        framework = "kubernetes" if code.startswith("CKV_K8S_") else "terraform"
+        context = _Context(id=ContextId(framework), label=framework.title(), level="warning")
+        rules.append(
+            _Rule(
+                key=f"checkov:{code}",
+                provider="checkov",
+                id=RuleId(code),
+                display_id=DisplayRuleId(code),
+                summary=summary,
+                docs_url=f"https://github.com/bridgecrewio/checkov/blob/{security_tools.VERSIONS['checkov']}/checkov/{framework}/checks/resource/{source}.py",
+                family="security",
+                autofix="none",
+                has_suggestions=False,
+                profiles=tuple(_Profile(name=name, contexts=(context,)) for name in ("application", "standard")),
+            )
+        )
+    return _ToolProjection(providers, tuple(rules))
 
 
 def _mobile_rule(*, provider: str, rule_id: RuleId, context_label: str, context_id: ContextId) -> _Rule:

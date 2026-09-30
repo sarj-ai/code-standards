@@ -906,6 +906,227 @@ def test_declarative_deployment_boundary_reports_once_per_file(tmp_path: Path) -
     assert _codes(path, root=tmp_path).count("SARJ309") == 1
 
 
+@pytest.mark.parametrize(
+    ("command", "expected_line"),
+    [
+        ('"gcloud services enable example.googleapis.com"', 3),
+        ('"kubectl apply -f deployment.yaml"', 3),
+        ("<<EOT\n    echo preparing\n    gcloud services enable example.googleapis.com\nEOT", 5),
+        ("<<-EOT\n    gcloud services \\\n      enable example.googleapis.com\n  EOT", 4),
+        ('"echo ready\\ngcloud services enable example.googleapis.com"', 3),
+        ('\n      "gcloud services enable example.googleapis.com"', 4),
+        ("\n      <<-EOT\n        echo ready\n        gcloud services enable example.googleapis.com\n      EOT", 6),
+        (
+            "<<-EOT\n    cat <<'DOC'\n    sample data\n    DOC\n    gcloud services enable example.googleapis.com\n  EOT",
+            7,
+        ),
+    ],
+)
+def test_deployment_boundary_extracts_owned_local_exec_commands(
+    tmp_path: Path, command: str, expected_line: int
+) -> None:
+    path = tmp_path / "main.tf"
+    path.write_text(
+        f'resource "terraform_data" "enable_api" {{\n  provisioner "local-exec" {{\n    command = {command}\n  }}\n}}\n'
+    )
+    findings = textlint.check_paths([str(path)], root=tmp_path)
+    assert [(finding.code, finding.line) for finding in findings] == [("SARJ309", expected_line)]
+    grouped = linting_runner.group_paths([str(path)])
+    assert grouped.iac == grouped.text == [str(path)]
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        'locals { command = "gcloud services enable example.googleapis.com" }',
+        'resource "terraform_data" "example" { input = "kubectl apply -f deployment.yaml" }',
+        (
+            'resource "terraform_data" "example" {\n provisioner "remote-exec" {\n'
+            ' command = "gcloud services enable example.googleapis.com"\n }\n}'
+        ),
+        ('resource "terraform_data" "example" {\n provisioner "local-exec" {\n command = var.command\n }\n}'),
+        (
+            'resource "terraform_data" "example" {\n provisioner "local-exec" {\n'
+            ' command = format("gcloud services enable %s", var.api)\n }\n}'
+        ),
+        (
+            'resource "terraform_data" "example" {\n provisioner "local-exec" {\n'
+            ' command = "gcloud services list --enabled"\n }\n}'
+        ),
+        (
+            'resource "terraform_data" "example" {\n provisioner "local-exec" {\n'
+            ' command = "terraform apply saved.tfplan"\n }\n}'
+        ),
+        (
+            'resource "terraform_data" "example" {\n provisioner "local-exec" {\n'
+            ' command = "gcloud run services update api --image $IMAGE --region us"\n }\n}'
+        ),
+        (
+            'resource "terraform_data" "example" {\n provisioner "local-exec" {\n'
+            " command = <<EOT\ncat <<'DOC'\ngcloud services enable example.googleapis.com\nDOC\nEOT\n }\n}"
+        ),
+        (
+            'resource "terraform_data" "example" {\n provisioner "local-exec" {\n'
+            ' command = <<EOT\necho "gcloud services enable example.googleapis.com"\nEOT\n }\n}'
+        ),
+        (
+            '/* resource "terraform_data" "example" {\n provisioner "local-exec" {\n'
+            ' command = "gcloud services enable example.googleapis.com"\n }\n} */'
+        ),
+        (
+            'resource "terraform_data" "example" {\n input = <<EOT\nprovisioner "local-exec" {\n'
+            ' command = "gcloud services enable example.googleapis.com"\n}\nEOT\n}'
+        ),
+        (
+            'resource "terraform_data" "example" {\n provisioner "local-exec" {\n'
+            " command = <<EOT\ngcloud services enable example.googleapis.com\n }\n}"
+        ),
+    ],
+)
+def test_deployment_boundary_ignores_unowned_or_nonmutating_hcl(tmp_path: Path, source: str) -> None:
+    path = tmp_path / "main.tf"
+    path.write_text(source)
+    assert textlint.check_paths([str(path)], root=tmp_path) == []
+
+
+def test_local_exec_respects_rule_selection_and_exact_suppression(tmp_path: Path) -> None:
+    path = tmp_path / "main.tf"
+    path.write_text(
+        'resource "terraform_data" "example" {\n provisioner "local-exec" {\n'
+        " # sarj-noqa: SARJ309\n"
+        ' command = "gcloud services enable example.googleapis.com"\n }\n}'
+    )
+    assert textlint.check_paths([str(path)], root=tmp_path) == []
+    assert textlint.check_paths([str(path)], root=tmp_path, rule_ids=frozenset()) == []
+
+
+@pytest.mark.parametrize(
+    ("interpreter", "expected"),
+    [
+        ('["bash", "-c"]', True),
+        ('["/bin/sh", "-c"]', True),
+        ('["bash", "-eu", "-c"]', True),
+        ('["echo"]', False),
+        ('["python3", "-c"]', False),
+        ('["powershell", "-Command"]', False),
+        ('["bash", "-c", "echo"]', False),
+        ('["bash", "-n", "-c"]', False),
+        ('[var.shell, "-c"]', False),
+        ('["${var.shell}", "-c"]', False),
+    ],
+)
+def test_local_exec_only_classifies_executed_shell_commands(tmp_path: Path, interpreter: str, expected: bool) -> None:
+    path = tmp_path / "main.tf"
+    path.write_text(
+        'resource "terraform_data" "example" {\n provisioner "local-exec" {\n'
+        f" interpreter = {interpreter}\n"
+        ' command = "gcloud services enable example.googleapis.com"\n }\n}'
+    )
+    assert bool(textlint.check_paths([str(path)], root=tmp_path)) is expected
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        '"gcloud services enable ${var.api}"',
+        '"gcloud run deploy api ${var.release_args}"',
+        '"%{ if var.enable }gcloud services enable example.googleapis.com%{ endif }"',
+        "<<EOT\n%{ if var.enable }\ngcloud services enable example.googleapis.com\n%{ endif }\nEOT",
+    ],
+)
+def test_local_exec_does_not_guess_terraform_templates(tmp_path: Path, command: str) -> None:
+    path = tmp_path / "main.tf"
+    path.write_text(
+        f'resource "terraform_data" "example" {{\n provisioner "local-exec" {{\n command = {command}\n }}\n}}'
+    )
+    assert textlint.check_paths([str(path)], root=tmp_path) == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "block {\n" * 130 + "}\n" * 130,
+        (
+            'resource "terraform_data" "example" {\n provisioner "local-exec" {\n'
+            ' command = "gcloud services enable example.googleapis.com"\n'
+        ),
+    ],
+)
+def test_local_exec_abstains_on_malformed_hcl(tmp_path: Path, source: str) -> None:
+    path = tmp_path / "main.tf"
+    path.write_text(source)
+    assert textlint.check_paths([str(path)], root=tmp_path) == []
+
+
+@pytest.mark.parametrize("context", ["terraform", "workflow", "shell"])
+@pytest.mark.parametrize("quote", ["'", '"'])
+def test_deployment_boundary_never_executes_multiline_quoted_data(tmp_path: Path, context: str, quote: str) -> None:
+    body = (
+        f"description={quote}\ngcloud services enable example.googleapis.com\n{quote}\nprintf '%s' \"$description\"\n"
+    )
+    path = _deployment_script_fixture(tmp_path, context, body)
+    findings = textlint.check_paths([str(path)], root=tmp_path, rule_ids=frozenset({"declarative-deployment-boundary"}))
+    assert findings == []
+
+
+@pytest.mark.parametrize("context", ["terraform", "workflow", "shell"])
+@pytest.mark.parametrize(
+    "tail", ["'\ngcloud services enable example.googleapis.com", "'; gcloud services enable example.googleapis.com"]
+)
+def test_deployment_boundary_preserves_commands_after_quoted_data_and_physical_positions(
+    tmp_path: Path, context: str, tail: str
+) -> None:
+    body = f"description='\ngcloud services list --enabled\n{tail}\n"
+    path = _deployment_script_fixture(tmp_path, context, body)
+    findings = textlint.check_paths([str(path)], root=tmp_path, rule_ids=frozenset({"declarative-deployment-boundary"}))
+    expected_line = next(
+        index for index, line in enumerate(path.read_text().splitlines(), start=1) if "services enable" in line
+    )
+    assert [(finding.code, finding.line) for finding in findings] == [("SARJ309", expected_line)]
+
+
+@pytest.mark.parametrize("context", ["terraform", "workflow", "shell"])
+@pytest.mark.parametrize(
+    "prefix",
+    ["# documentation mentions an unmatched ' quote", "printf '%s' \\'", "printf '%s' \"single-line quoted data\""],
+)
+def test_deployment_boundary_quote_ownership_respects_comments_escapes_and_inline_strings(
+    tmp_path: Path, context: str, prefix: str
+) -> None:
+    path = _deployment_script_fixture(tmp_path, context, f"{prefix}\ngcloud services enable example.googleapis.com\n")
+    findings = textlint.check_paths([str(path)], root=tmp_path, rule_ids=frozenset({"declarative-deployment-boundary"}))
+    expected_line = next(
+        index for index, line in enumerate(path.read_text().splitlines(), start=1) if "services enable" in line
+    )
+    assert [(finding.code, finding.line) for finding in findings] == [("SARJ309", expected_line)]
+
+
+@pytest.mark.parametrize("code", ["SARJ309", "SARJ310"])
+def test_terraform_command_suppression_remains_exact_after_multiline_data(tmp_path: Path, code: str) -> None:
+    body = f"description='\nquoted data\n'\n# sarj-noqa: {code}\ngcloud services enable example.googleapis.com\n"
+    path = _deployment_script_fixture(tmp_path, "terraform", body)
+    findings = textlint.check_paths([str(path)], root=tmp_path, rule_ids=frozenset({"declarative-deployment-boundary"}))
+    assert len(findings) == (0 if code == "SARJ309" else 1)
+
+
+def _deployment_script_fixture(root: Path, context: str, body: str) -> Path:
+    match context:
+        case "terraform":
+            path = root / "main.tf"
+            source = f'resource "terraform_data" "example" {{\n provisioner "local-exec" {{\n command = <<EOT\n{body}EOT\n }}\n}}\n'
+        case "workflow":
+            path = root / ".github" / "workflows" / "ci.yml"
+            source = "jobs:\n  deploy:\n    steps:\n      - run: |\n" + "".join(
+                f"          {line}\n" for line in body.splitlines()
+            )
+        case _:
+            path = root / "deploy" / "example.sh"
+            source = body
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(source, encoding="utf-8")
+    return path
+
+
 def test_workflow_embedded_program_reports_once_per_run_scalar_at_run_line(
     tmp_path: Path,
 ) -> None:
