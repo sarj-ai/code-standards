@@ -138,3 +138,39 @@ def test_exact_suppression_is_respected() -> None:
 
 def test_malformed_source_is_ignored() -> None:
     assert _check("class BrokenSettings(") == []
+
+
+@pytest.mark.parametrize(
+    "method",
+    [
+        "def build(self):\n    def callback(self):\n        return self.client.fetch()\n    return callback",
+        "def build(self):\n    class Local:\n        def run(self):\n            return self.client.fetch()\n    return Local",
+        "def build(self):\n    self = other\n    return self.client.fetch()",
+    ],
+)
+def test_does_not_attribute_unrelated_receiver_calls_to_settings(method: str) -> None:
+    source = "class AppSettings:\n    client: RemoteClient\n" + textwrap.indent(method, "    ")
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize("annotation", ["list[RemoteClient]", "dict[str, RemoteClient]", "type[RemoteClient]"])
+def test_collection_or_class_of_collaborators_is_not_an_injected_service(annotation: str) -> None:
+    assert (
+        _check(f"class AppSettings:\n    clients: {annotation}\n    def clear(self):\n        self.clients.clear()\n")
+        == []
+    )
+
+
+@pytest.mark.parametrize(
+    "annotation",
+    [
+        "RemoteClient | None",
+        "Optional[RemoteClient]",
+        "Union[RemoteClient, None]",
+        "Annotated[RemoteClient, 'service']",
+        "RemoteClient[str]",
+    ],
+)
+def test_wrapped_collaborator_still_reports_direct_orchestration(annotation: str) -> None:
+    source = f"class AppSettings:\n    client: {annotation}\n    def fetch(self): return self.client.fetch()\n"
+    assert len(_check(source)) == 1

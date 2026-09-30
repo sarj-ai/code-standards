@@ -646,6 +646,10 @@ export function createConfig(options = {}) {
     },
     settings: { react: { version: "detect" } },
     rules: {
+      "no-restricted-properties": [
+        "error",
+        { property: "then", message: "Use async/await instead of .then()." },
+      ],
       "@typescript-eslint/no-explicit-any": "error",
       "@typescript-eslint/no-non-null-assertion": "error",
       "@typescript-eslint/no-deprecated": "error",
@@ -672,11 +676,12 @@ export function createConfig(options = {}) {
       "@typescript-eslint/no-unsafe-argument": "error",
       "@typescript-eslint/no-unsafe-call": "error",
       "@typescript-eslint/no-unsafe-return": "error",
-      "@typescript-eslint/no-floating-promises": "error",
+      "@typescript-eslint/no-floating-promises": ["error", { ignoreVoid: false }],
       "@typescript-eslint/await-thenable": "error",
       "@typescript-eslint/no-misused-promises": "error",
       // The upstream rule flags every nested then/catch/finally call, including
       // deliberate fire-and-forget work and synchronous framework callbacks.
+      // Core no-restricted-properties bans only then; catch/finally stay available.
       // The typed @sarj rule below owns only semantics-preserving async returns.
       "promise/prefer-await-to-then": "off",
       "@typescript-eslint/require-await": "error",
@@ -1239,16 +1244,19 @@ export function createConfig(options = {}) {
       //
       "@sarj/require-pascal-case-zod-schema-name": "error",
       "@sarj/require-interface-for-exported-class": "warn",
+      "@sarj/require-explicit-contract-implementation": "warn",
+      "@sarj/require-explicit-service-contract": "warn",
       "@sarj/prefer-named-complex-return-type": "warn",
       "@sarj/prefer-module-level-refined-schema": "warn",
       "@sarj/prefer-multi-value-zod-literal": ["warn", { zodMajorVersion: 4 }],
       "@sarj/prefer-named-callback-domain": "error",
+      "@sarj/prefer-nominal-id-types": "warn",
       "@sarj/prefer-node-crypto-hash": "warn",
       "@sarj/prefer-node-fs-promises": "warn",
       "@sarj/prefer-shared-zod-enum": "warn",
       "@sarj/prefer-switch-for-repeated-equality": "warn",
       "@sarj/require-sql-access-class": "warn",
-      "@sarj/sole-export-matches-filename": "warn",
+      "@sarj/sole-export-matches-filename": "error",
       "@sarj/require-assert-never": "error",
       "@sarj/require-static-next-matcher": "error",
       "@sarj/require-zod-form-validation": "error",

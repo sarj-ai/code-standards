@@ -1,3 +1,4 @@
+// vitest: shared-module-graph
 import { describe, expect, it } from "vitest";
 
 import {

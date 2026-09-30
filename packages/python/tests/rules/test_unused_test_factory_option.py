@@ -259,3 +259,33 @@ def test_reports_only_unsupplied_options_once() -> None:
 def test_public_examples(example: RuleExample) -> None:
     focus = example.focus_file
     assert len(UnusedTestFactoryOption().check(Path(focus.path), focus.source)) == example.expected_count
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "    item = Widget(width=width)\n    return item\n",
+        "    chosen = width\n    return Widget(width=chosen)\n",
+        '    """Build an isolated widget."""\n    item: Widget = Widget(width=width)\n    return item\n',
+    ],
+)
+def test_straight_line_factory_options(body: str) -> None:
+    source = f"def _make_widget(*, width=3):\n{body}_make_widget()\n_make_widget(width=3)\n"
+    assert len(UnusedTestFactoryOption().check(Path("tests/test_widget.py"), source)) == 1
+    assert (
+        UnusedTestFactoryOption().check(Path("tests/test_widget.py"), source.replace("width=3)", "width=4)", 1)) == []
+    )
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "    if width:\n        return Widget(width=width)\n    return Widget()\n",
+        "    item = Widget(width=width)\n    item.save()\n    return item\n",
+        "    target.width = width\n    return target\n",
+        "    return width\n",
+    ],
+)
+def test_complex_helpers_remain_excluded(body: str) -> None:
+    source = f"def _make_widget(*, width=3):\n{body}_make_widget()\n"
+    assert UnusedTestFactoryOption().check(Path("tests/test_widget.py"), source) == []

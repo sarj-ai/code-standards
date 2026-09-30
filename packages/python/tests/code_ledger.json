@@ -241,5 +241,17 @@
   "SARJ453": "prefer-match-exception-dispatch",
   "SARJ454": "prefer-pydantic-json-value",
   "SARJ455": "no-fixed-sleep-before-assert",
-  "SARJ456": "async-mock-call-without-await-assertion"
+  "SARJ456": "async-mock-call-without-await-assertion",
+  "SARJ457": "repeated-test-composition",
+  "SARJ458": "no-swallowed-asyncio-cancellation",
+  "SARJ459": "shared-mutable-pydantic-factory",
+  "SARJ460": "prefer-regex-fullmatch",
+  "SARJ461": "prefer-monotonic-for-elapsed-time",
+  "SARJ462": "require-explicit-psycopg-transaction",
+  "SARJ463": "async-cleanup-registered-synchronously",
+  "SARJ464": "subprocess-kill-without-reap",
+  "SARJ465": "require-explicit-service-contract",
+  "SARJ466": "require-public-dependency-contract",
+  "SARJ467": "require-explicit-contract-implementation",
+  "SARJ468": "discourage-nullable-constructor-parameters"
 }

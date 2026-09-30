@@ -32,6 +32,11 @@ function erasesContract(type: ts.Type, checker: ts.TypeChecker): boolean {
     indexes.every((index) => (index.type.flags & ts.TypeFlags.Unknown) !== 0);
 }
 
+function hasUnknownContract(type: ts.Type, checker: ts.TypeChecker): boolean {
+  if (type.isUnionOrIntersection()) return type.types.some((part) => hasUnknownContract(part, checker));
+  return (type.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown | ts.TypeFlags.Never | ts.TypeFlags.TypeParameter | ts.TypeFlags.Conditional | ts.TypeFlags.IndexedAccess | ts.TypeFlags.Substitution)) !== 0 || erasesContract(type, checker);
+}
+
 export default createRule<[], "widening">({
   name: "no-known-value-widening",
   documentation: NO_KNOWN_VALUE_WIDENING_DOCUMENTATION,
@@ -54,7 +59,7 @@ export default createRule<[], "widening">({
           node.init?.type !== AST_NODE_TYPES.Identifier ||
           node.parent.kind !== "const" || node.parent.parent.type === AST_NODE_TYPES.ExportNamedDeclaration) return;
         const source = checker.getTypeAtLocation(services.esTreeNodeToTSNodeMap.get(node.init));
-        if ((source.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown | ts.TypeFlags.Never | ts.TypeFlags.TypeParameter)) !== 0 || erasesContract(source, checker)) return;
+        if (hasUnknownContract(source, checker)) return;
         const target = checker.getTypeAtLocation(services.esTreeNodeToTSNodeMap.get(node.id.typeAnnotation.typeAnnotation));
         if (erasesContract(target, checker)) context.report({ node: node.id.typeAnnotation, messageId: "widening" });
       },

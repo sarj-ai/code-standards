@@ -1,10 +1,12 @@
+import requireExplicitContractImplementation from "./rules/require-explicit-contract-implementation.js";
+import requireExplicitServiceContract from "./rules/require-explicit-service-contract.js";
 import noConditionalEmptyObjectSpread from "./rules/no-conditional-empty-object-spread.js";
 import preferTypedReflection from "./rules/prefer-typed-reflection.js";
 import noBroadReturnType from "./rules/no-broad-return-type.js";
 import noReduceAccumulatorCopy from "./rules/no-reduce-accumulator-copy.js";
 import noKnownValueWidening from "./rules/no-known-value-widening.js";
 /**
- * @fileoverview index — the plugin's rule registry and its two presets; the historical rename map lives in `rules/_renames.ts`.
+ * @fileoverview index — the plugin's rule registry and its two presets; the historical rename map lives in `rules/_renamed-rules.ts`.
  */
 
 import requireButtonAccessibleName from "./rules/require-button-accessible-name.js";
@@ -85,6 +87,7 @@ import preferModuleLevelConstant from "./rules/prefer-module-level-constant.js";
 import preferModuleLevelSchema from "./rules/prefer-module-level-schema.js";
 import preferModuleLevelRefinedSchema from "./rules/prefer-module-level-refined-schema.js";
 import preferMultiValueZodLiteral from "./rules/prefer-multi-value-zod-literal.js";
+import preferNominalIdTypes from "./rules/prefer-nominal-id-types.js";
 import preferNamedCallbackDomain from "./rules/prefer-named-callback-domain.js";
 import preferNamedComplexReturnType from "./rules/prefer-named-complex-return-type.js";
 import preferNativeRandomUuid from "./rules/prefer-native-random-uuid.js";
@@ -117,10 +120,12 @@ import sourceCoupledTest from "./rules/source-coupled-test.js";
 import soleExportMatchesFilename from "./rules/sole-export-matches-filename.js";
 import iacSourceCoupledTest from "./rules/iac-source-coupled-test.js";
 import requirePascalCaseZodSchemaName from "./rules/require-pascal-case-zod-schema-name.js";
-import { RENAMED_RULES } from "./rules/_renames.js";
-import { RETIRED_RULES } from "./rules/_retired.js";
+import { RENAMED_RULES } from "./rules/_renamed-rules.js";
+import { RETIRED_RULES } from "./rules/_retired-rules.js";
 
 const RULES = {
+  "require-explicit-contract-implementation": requireExplicitContractImplementation,
+  "require-explicit-service-contract": requireExplicitServiceContract,
   "no-conditional-empty-object-spread": noConditionalEmptyObjectSpread,
   "prefer-typed-reflection": preferTypedReflection,
   "no-broad-return-type": noBroadReturnType,
@@ -208,6 +213,7 @@ const RULES = {
   "prefer-module-level-refined-schema": preferModuleLevelRefinedSchema,
   "prefer-multi-value-zod-literal": preferMultiValueZodLiteral,
   "prefer-named-callback-domain": preferNamedCallbackDomain,
+  "prefer-nominal-id-types": preferNominalIdTypes,
   "prefer-named-complex-return-type": preferNamedComplexReturnType,
   "prefer-native-random-uuid": preferNativeRandomUuid,
   "prefer-node-crypto-hash": preferNodeCryptoHash,
@@ -240,7 +246,7 @@ const RULES = {
 
 const meta = {
   name: "@sarj/eslint-plugin",
-  version: "15.27.0",
+  version: "16.2.3",
 } as const;
 
 /** @deprecated All repositories use one policy; retained for import compatibility. */
@@ -264,13 +270,15 @@ const ADVISORY_RULES = [
   "@sarj/prefer-named-complex-return-type",
   "@sarj/prefer-node-crypto-hash",
   "@sarj/prefer-node-fs-promises",
+  "@sarj/prefer-nominal-id-types",
   "@sarj/prefer-shared-zod-enum",
   "@sarj/prefer-switch-for-repeated-equality",
   "@sarj/prefer-whole-object-assertion",
   "@sarj/require-camelcase-properties",
+  "@sarj/require-explicit-contract-implementation",
+  "@sarj/require-explicit-service-contract",
   "@sarj/require-interface-for-exported-class",
   "@sarj/require-sql-access-class",
-  "@sarj/sole-export-matches-filename",
 ] as const;
 
 const RECOMMENDED_RULES = {
@@ -355,6 +363,7 @@ const RECOMMENDED_RULES = {
   "@sarj/prefer-module-level-refined-schema": "warn",
   "@sarj/prefer-multi-value-zod-literal": ["warn", { zodMajorVersion: 4 }],
   "@sarj/prefer-named-callback-domain": "error",
+  "@sarj/prefer-nominal-id-types": "warn",
   "@sarj/prefer-named-complex-return-type": "warn",
   "@sarj/prefer-node-crypto-hash": "warn",
   "@sarj/prefer-node-fs-promises": "warn",
@@ -372,6 +381,8 @@ const RECOMMENDED_RULES = {
   "@sarj/prefer-zod-parse-output-type": "error",
   "@sarj/require-assert-never": "error",
   "@sarj/require-fetch-timeout": "error",
+  "@sarj/require-explicit-contract-implementation": "warn",
+  "@sarj/require-explicit-service-contract": "warn",
   "@sarj/require-interface-for-exported-class": "warn",
   "@sarj/require-port-for-service": "error",
   "@sarj/require-sql-access-class": "warn",
@@ -382,7 +393,7 @@ const RECOMMENDED_RULES = {
   "@sarj/store-insert-requires-on-conflict": "error",
   "@sarj/stepdown": "error",
   "@sarj/source-coupled-test": "error",
-  "@sarj/sole-export-matches-filename": "warn",
+  "@sarj/sole-export-matches-filename": "error",
   "@sarj/test-phase-label-comment": "error",
   "@sarj/require-pascal-case-zod-schema-name": "error",
 } as const;
@@ -473,6 +484,7 @@ const STRICT_RULES = {
   "@sarj/prefer-module-level-refined-schema": "warn",
   "@sarj/prefer-multi-value-zod-literal": ["warn", { zodMajorVersion: 4 }],
   "@sarj/prefer-named-callback-domain": "error",
+  "@sarj/prefer-nominal-id-types": "warn",
   "@sarj/prefer-named-complex-return-type": "warn",
   "@sarj/prefer-node-crypto-hash": "warn",
   "@sarj/prefer-node-fs-promises": "warn",
@@ -490,6 +502,8 @@ const STRICT_RULES = {
   "@sarj/prefer-zod-parse-output-type": "error",
   "@sarj/require-assert-never": "error",
   "@sarj/require-fetch-timeout": "error",
+  "@sarj/require-explicit-contract-implementation": "warn",
+  "@sarj/require-explicit-service-contract": "warn",
   "@sarj/require-interface-for-exported-class": "warn",
   "@sarj/require-port-for-service": "error",
   "@sarj/require-sql-access-class": "warn",
@@ -500,7 +514,7 @@ const STRICT_RULES = {
   "@sarj/store-insert-requires-on-conflict": "error",
   "@sarj/stepdown": "error",
   "@sarj/source-coupled-test": "error",
-  "@sarj/sole-export-matches-filename": "warn",
+  "@sarj/sole-export-matches-filename": "error",
   "@sarj/test-phase-label-comment": "error",
   "@sarj/require-pascal-case-zod-schema-name": "error",
 } as const;
@@ -540,7 +554,7 @@ export {
   type RetiredRule,
   RETIRED_RULES,
   RETIRED_RULES as retiredRules,
-} from "./rules/_retired.js";
+} from "./rules/_retired-rules.js";
 export {
   ADVISORY_RULES,
   APPLICATION_ONLY_RULES,

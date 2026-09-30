@@ -72,6 +72,11 @@ def test_check_concurrency_is_opt_in_and_bounded() -> None:
     assert result.exit_code == 2
 
 
+def test_check_runs_python_type_checking_unless_skipped() -> None:
+    assert _parse(("check",))["python_type_check"] is True
+    assert _parse(("check", "--skip-python-type-check"))["python_type_check"] is False
+
+
 def test_promote_error_selector_is_typed_at_the_parser_boundary() -> None:
     args = _parse(("maintain", "rules", "promote-error", "python:no-print"))
 
@@ -175,6 +180,51 @@ def test_check_unknown_rule_fails_closed(tmp_path: Path, capsys: pytest.CaptureF
     status = main(["--root", str(tmp_path), "check", "--rule", "python:nonexistent-rule", "--format", "json"])
     assert status == 2
     assert "unknown" in capsys.readouterr().out.lower()
+
+
+@pytest.mark.parametrize(
+    ("filename", "suppression", "expected_status"),
+    [
+        ("tests/test_orders.py", "", 1),
+        (
+            "tests/test_orders.py",
+            "  # sarj-noqa: SARJ429 — verify transaction locking on a dedicated connection",
+            0,
+        ),
+        (
+            "tests/test_orders.py",
+            "  # sarj-noqa: SARJ020 — verify transaction locking on a dedicated connection",
+            1,
+        ),
+        ("tests/fixtures/database.py", "", 0),
+    ],
+    ids=("blocking-default", "exact-transaction-exception", "unrelated-suppression", "shared-fixture"),
+)
+def test_raw_database_connections_block_outside_an_explicit_test_support_boundary(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    filename: str,
+    suppression: str,
+    expected_status: int,
+) -> None:
+    target = tmp_path / filename
+    target.parent.mkdir(parents=True)
+    target.write_text(
+        "from psycopg_pool import AsyncConnectionPool\n\n"
+        "async def test_orders(pool: AsyncConnectionPool):\n"
+        f"    async with pool.connection() as conn:{suppression}\n"
+        "        await conn.execute('SELECT 1')\n"
+    )
+
+    status = main(
+        ["--root", str(tmp_path), "check", "--rule", "python:no-raw-connection-in-tests", "--format", "json", filename]
+    )
+
+    report = _report(capsys.readouterr().out)
+    assert status == expected_status
+    assert [(as_table(item)["code"], as_table(item)["severity"]) for item in list_field(report, "diagnostics")] == (
+        [("SARJ429", "error")] if expected_status else []
+    )
 
 
 @pytest.mark.parametrize(("stage", "partial", "expected"), [(False, False, 0), (True, False, 1), (True, True, 2)])

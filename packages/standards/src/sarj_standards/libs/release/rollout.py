@@ -18,6 +18,7 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING, Annotated, NamedTuple, Protocol, TypeGuard, assert_never
 from urllib.parse import quote
 
+from packaging.version import InvalidVersion, Version
 import typer
 import yaml
 
@@ -50,6 +51,7 @@ PORCELAIN_RECORD_MINIMUM = 4
 MANAGED_TRAILER = "Standards-Rollout: managed/v1"
 MANAGED_TREE_TRAILER_PREFIX = "Standards-Rollout-Tree: "
 PR_MARKER_PREFIX = "<!-- sarj-standards-rollout:managed/v1"
+DESIRED_MARKER_PREFIX = "<!-- sarj-standards-rollout:desired"
 REPOSITORY_VERSION_PIN = re.compile(r"^(STANDARDS_VERSION[ \t]*:?=[ \t]*)\S+[ \t]*$", re.MULTILINE)
 PYRIGHT_COMMAND = re.compile(r"(?m)^(?P<indent>[ \t]*)cd python && uv run pyright[ \t]*$")
 VERIFICATION_FAILED_MARKER = "<!-- sarj-standards-rollout:verification-failed -->"
@@ -85,6 +87,7 @@ MANAGED_WORKFLOW_PATHS = frozenset({".github/workflows/standards.yml", ".github/
 COMMIT_POLICY_WORKFLOW_PATH = ".github/workflows/commit-policy.yml"
 MANAGED_ROLLOUT_NAMES = frozenset(
     {
+        *adoption_packagemanager.AGE_GATE_POLICY_NAMES,
         ".basedpyright-strict.json",
         ".lefthook.yml",
         ".lefthook.yaml",
@@ -95,7 +98,6 @@ MANAGED_ROLLOUT_NAMES = frozenset(
         ".ruff-strict.toml",
         ".taplo.toml",
         ".tool-versions",
-        ".yarnrc.yml",
         ".yamllint.yaml",
         "bun.lock",
         "doctor.config.json",
@@ -105,7 +107,6 @@ MANAGED_ROLLOUT_NAMES = frozenset(
         "package-lock.json",
         "package.json",
         "pnpm-lock.yaml",
-        "pnpm-workspace.yaml",
         "pyproject.toml",
         "pyright.strict.json",
         "pyrightconfig.json",
@@ -266,6 +267,8 @@ class Plan:
 class BranchPreparation:
     branch: str
     previous_sha: str | None
+    previous_tree: str | None = None
+    previous_base: str | None = None
 
 
 class ProvisionedTools(NamedTuple):
@@ -312,6 +315,11 @@ def validate_version(version: str) -> str:
     if not VERSION_RE.fullmatch(version):
         msg = f"invalid immutable version: {version!r}"
         raise RolloutError(msg)
+    try:
+        Version(version)
+    except InvalidVersion as exc:
+        msg = f"invalid immutable version: {version!r}"
+        raise RolloutError(msg) from exc
     return version
 
 
@@ -326,7 +334,26 @@ def pr_marker(consumer: Consumer, version: str) -> str:
 
 
 def desired_marker(version: str) -> str:
-    return f"<!-- sarj-standards-rollout:desired={validate_version(version)} -->"
+    return f"{DESIRED_MARKER_PREFIX}={validate_version(version)} -->"
+
+
+def desired_version(body: str) -> str:
+    markers = [line for line in body.splitlines() if DESIRED_MARKER_PREFIX in line]
+    match = re.fullmatch(rf"{re.escape(DESIRED_MARKER_PREFIX)}=(.+) -->", markers[0]) if len(markers) == 1 else None
+    if match is None:
+        msg = "managed rollout PR must contain exactly one valid desired version marker"
+        raise RolloutError(msg)
+    try:
+        return validate_version(match.group(1))
+    except RolloutError as exc:
+        msg = f"managed rollout PR desired version is invalid: {exc}"
+        raise RolloutError(msg) from exc
+
+
+def reject_rollout_downgrade(current: str, requested: str) -> None:
+    if Version(validate_version(current)) > Version(validate_version(requested)):
+        msg = f"refusing rollout downgrade from Standards {current} to {requested}"
+        raise RolloutError(msg)
 
 
 def stdout(result: subprocess.CompletedProcess[str]) -> str:
@@ -471,6 +498,14 @@ def pull_request(consumer: Consumer, version: str, runner: CommandRunner) -> dic
     return first if is_object(first) else None
 
 
+def pull_identity_matches(consumer: Consumer, version: str, pull: dict[str, object]) -> bool:
+    return (
+        pull.get("headRefName") == rollout_branch(version)
+        and pull.get("baseRefName") == consumer.branch
+        and pr_marker(consumer, version) in str(pull.get("body", ""))
+    )
+
+
 def live_consumer_base_sha(consumer: Consumer, runner: CommandRunner) -> str:
     ref = quote(f"heads/{consumer.branch}", safe="")
     result = runner.run(
@@ -544,19 +579,19 @@ def open_pull_commit_provenance(
 def status_one(consumer: Consumer, version: str, runner: CommandRunner) -> Outcome:
     pull = pull_request(consumer, version, runner)
     if pull is not None:
-        identity_is_valid = (
-            pull.get("headRefName") == rollout_branch(version)
-            and pull.get("baseRefName") == consumer.branch
-            and pr_marker(consumer, version) in str(pull.get("body", ""))
-        )
-        if not identity_is_valid:
+        if not pull_identity_matches(consumer, version, pull):
             return Outcome(
                 consumer,
                 OutcomeState.BLOCKED,
                 str(pull.get("url", "")),
                 "rollout PR ownership marker, head, or base does not match",
             )
-        if desired_marker(version) not in str(pull.get("body", "")):
+        try:
+            desired = desired_version(str(pull.get("body", "")))
+            reject_rollout_downgrade(desired, version)
+        except RolloutError as exc:
+            return Outcome(consumer, OutcomeState.BLOCKED, str(pull.get("url", "")), str(exc))
+        if desired != version:
             return Outcome(
                 consumer,
                 OutcomeState.MISSING,
@@ -1092,8 +1127,10 @@ def prepare_branch(
     ):
         msg = f"refusing human-modified rollout branch {branch}"
         raise RolloutError(msg)
+    previous_version = message.splitlines()[0].removeprefix(BOT_COMMIT_PREFIX)
+    reject_rollout_downgrade(previous_version, version)
     runner.run(("git", "switch", "-C", branch, base_sha), cwd=repo)
-    return BranchPreparation(branch, previous_sha)
+    return BranchPreparation(branch, previous_sha, declared_trees[0], fetched_commit[1])
 
 
 def react_doctor_policy_snapshot(repo: Path) -> ReactDoctorPolicy:
@@ -1182,7 +1219,6 @@ def apply_one(  # ruff: ignore[too-many-locals] - one transaction keeps verifica
             raise RolloutError(msg)
         preparation = prepare_branch(repo, version, base_sha, runner)
         branch = preparation.branch
-        previous_sha = preparation.previous_sha
         previous_react_doctor_policy = react_doctor_policy_snapshot(repo)
         tool = (
             "uvx",
@@ -1281,24 +1317,45 @@ def apply_one(  # ruff: ignore[too-many-locals] - one transaction keeps verifica
             runner,
             comparison=f"origin/{consumer.branch}...HEAD",
         )
-        assert_consumer_base_unchanged(repo, consumer, base_sha, runner)
-        pushed_head_sha = stdout(runner.run(("git", "rev-parse", "HEAD"), cwd=repo))
-        if re.fullmatch(r"[0-9a-f]{40}", pushed_head_sha) is None:
-            msg = f"{consumer.name}: managed rollout head did not resolve to a full commit SHA"
-            raise RolloutError(msg)
-        lease = force_with_lease(branch, previous_sha)
-        # Consumer code already ran through the registry-owned verification
-        # command without credentials. Disable Git hooks for the transport-only
-        # push so gh's credential helper can receive the App token without
-        # exposing it to repository-controlled hook code.
-        runner.run(
-            ("git", "-c", "core.hooksPath=/dev/null", "push", lease, "-u", "origin", branch),
-            cwd=repo,
-            env=authenticated_git_environment(unauthenticated),
-        )
+        pushed_head_sha = push_rollout_head(repo, consumer, preparation, base_sha, runner, environment=unauthenticated)
     return _publish_rollout_pull(
         consumer, version, runner, branch, pushed_head_sha=pushed_head_sha, verification_failure=verification_failure
     )
+
+
+def push_rollout_head(
+    repo: Path,
+    consumer: Consumer,
+    preparation: BranchPreparation,
+    base_sha: str,
+    runner: CommandRunner,
+    *,
+    environment: Mapping[str, str],
+) -> str:
+    assert_consumer_base_unchanged(repo, consumer, base_sha, runner)
+    head_sha = stdout(runner.run(("git", "rev-parse", "HEAD"), cwd=repo))
+    if re.fullmatch(r"[0-9a-f]{40}", head_sha) is None:
+        msg = f"{consumer.name}: managed rollout head did not resolve to a full commit SHA"
+        raise RolloutError(msg)
+    head_tree = stdout(runner.run(("git", "rev-parse", "HEAD^{tree}"), cwd=repo))
+    if preparation.previous_sha is not None and (preparation.previous_tree, preparation.previous_base) == (
+        head_tree,
+        base_sha,
+    ):
+        # A byte-identical patch on the same base would only restart every
+        # consumer CI workflow, so the verified remote head stays in place.
+        return preparation.previous_sha
+    lease = force_with_lease(preparation.branch, preparation.previous_sha)
+    # Consumer code already ran through the registry-owned verification
+    # command without credentials. Disable Git hooks for the transport-only
+    # push so gh's credential helper can receive the App token without
+    # exposing it to repository-controlled hook code.
+    runner.run(
+        ("git", "-c", "core.hooksPath=/dev/null", "push", lease, "-u", "origin", preparation.branch),
+        cwd=repo,
+        env=authenticated_git_environment(environment),
+    )
+    return head_sha
 
 
 def plan(version: str, consumers: Sequence[Consumer], runner: CommandRunner) -> Plan:
@@ -1682,6 +1739,25 @@ def _publish_rollout_pull(
     verification_failure: str,
 ) -> Outcome:
     pull = pull_request(consumer, version, runner)
+    if pull is not None and pull.get("headRefOid") != pushed_head_sha:
+        return Outcome(
+            consumer,
+            OutcomeState.MISSING,
+            str(pull.get("url", "")),
+            "managed rollout PR head does not match the pushed commit; refusing metadata update",
+        )
+    if pull is not None:
+        if not pull_identity_matches(consumer, version, pull):
+            return Outcome(
+                consumer,
+                OutcomeState.BLOCKED,
+                str(pull.get("url", "")),
+                "rollout PR ownership marker, head, or base does not match before update",
+            )
+        try:
+            reject_rollout_downgrade(desired_version(str(pull.get("body", ""))), version)
+        except RolloutError as exc:
+            return Outcome(consumer, OutcomeState.BLOCKED, str(pull.get("url", "")), str(exc))
     body = f"{pr_marker(consumer, version)}\n{desired_marker(version)}\n\n"
     if verification_failure:
         body += (
@@ -1733,12 +1809,7 @@ def _publish_rollout_pull(
             "managed rollout PR could not be read after create or edit",
         )
     refreshed_url = str(refreshed_pull.get("url", url))
-    refreshed_identity_is_valid = (
-        refreshed_pull.get("headRefName") == rollout_branch(version)
-        and refreshed_pull.get("baseRefName") == consumer.branch
-        and pr_marker(consumer, version) in str(refreshed_pull.get("body", ""))
-    )
-    if not refreshed_identity_is_valid:
+    if not pull_identity_matches(consumer, version, refreshed_pull):
         return Outcome(
             consumer,
             OutcomeState.BLOCKED,
@@ -1924,7 +1995,11 @@ def canonical_commit_policy_workflow_paths(repo: Path, paths: Sequence[str]) -> 
     workflow = repo / COMMIT_POLICY_WORKFLOW_PATH
     if workflow.is_symlink() or not workflow.is_file():
         return frozenset()
-    expected = adoption_scaffold.commit_policy_github_workflow().encode()
+    try:
+        runner = adoption_scaffold.managed_ci_runner(repo)
+    except OSError, TypeError, ValueError:
+        return frozenset()
+    expected = adoption_scaffold.commit_policy_github_workflow(runner).encode()
     return frozenset({COMMIT_POLICY_WORKFLOW_PATH}) if workflow.read_bytes() == expected else frozenset()
 
 

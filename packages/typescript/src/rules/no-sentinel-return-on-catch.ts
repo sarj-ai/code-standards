@@ -148,7 +148,6 @@ function walkWithinScope(
     });
   };
 
-
   recurse(node);
   return found;
 }
@@ -189,13 +188,6 @@ function bindsName(param: TSESTree.Node, name: string): boolean {
 function subtreeReadsName(node: TSESTree.Node, name: string): boolean {
   let found = false;
 
-  /** Whether this function rebinds `name`. */
-  const shadowsName = (fn: TSESTree.Node): boolean =>
-    isFunctionNode(fn) &&
-    fn.params.some((param) =>
-      bindsName(param, name),
-    );
-
   const recurse = (current: TSESTree.Node): void => {
     if (found) {
       return;
@@ -212,6 +204,13 @@ function subtreeReadsName(node: TSESTree.Node, name: string): boolean {
       return found;
     }, key => !isNonReadingProperty(current, key));
   };
+
+  /** Whether this function rebinds `name`. */
+  const shadowsName = (fn: TSESTree.Node): boolean =>
+    isFunctionNode(fn) &&
+    fn.params.some((param) =>
+      bindsName(param, name),
+    );
 
   recurse(node);
   return found;

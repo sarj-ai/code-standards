@@ -77,8 +77,9 @@ class LoadedSource:
 
 @final
 class ProjectIndexSet:
-    def __init__(self, units: Mapping[Path, SourceUnit]) -> None:
+    def __init__(self, units: Mapping[Path, SourceUnit], roots: Sequence[Path] = ()) -> None:
         self._units = MappingProxyType(dict(units))
+        self._roots = tuple(roots)
         by_module = {unit.module: unit for unit in units.values() if unit.module is not None}
         self._by_module = MappingProxyType(by_module)
         classes: dict[SymbolRef, ClassSummary] = {}
@@ -104,7 +105,7 @@ class ProjectIndexSet:
                 continue
         for root in roots:
             _load_root_sources(root, sources)
-        return cls(_units(sources, roots))
+        return cls(_units(sources, roots), roots)
 
     @classmethod
     def single(cls, path: Path, source: str) -> Self:
@@ -118,6 +119,21 @@ class ProjectIndexSet:
             return self._units.get(path.resolve())
         except OSError:
             return None
+
+    def unit_or_source(self, path: Path, source: str, tree: ast.Module) -> SourceUnit | None:
+        indexed = self.unit(path)
+        if indexed is not None:
+            return indexed
+        module = _module_name(path, self._roots)
+        if module is None:
+            return None
+        return SourceUnit(
+            path=path,
+            module=module,
+            source=source,
+            tree=tree,
+            imports=MappingProxyType(_imports(module, tree, is_package=path.name == "__init__.py")),
+        )
 
     def nominal_for_field(self, name: str) -> SymbolRef | None:
         matches = self._nominals.get(name)

@@ -121,7 +121,7 @@ class MockWithoutSpec(Rule):
     id: str = "mock-without-spec"
     code: str = "SARJ040"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        default_level=Severity.WARNING,
+        default_level=Severity.ERROR,
         summary="Unrestricted mock permits attributes outside the collaborator contract.",
         rationale=(
             "A mock without a spec permits removed or misspelled attributes; a callable mock without autospec may "
@@ -234,7 +234,7 @@ class MockWithoutSpec(Rule):
                 col=node.col_offset + 1,
                 code=self.code,
                 message=_diagnostic_message(label),
-                severity=Severity.WARNING,
+                severity=Severity.ERROR,
             )
             for node, label in _unspecced_calls(
                 tree, names, pytest_mocker, _FileFacts.from_tree(tree), node_index=context.node_index
@@ -789,7 +789,7 @@ def _keyword_supplies_contract(keyword: ast.keyword, names: _MockNames, symbol: 
             return False
         return names.resolve(keyword.value) not in _UNSPECCED_FACTORIES
     return keyword.arg in _PATCH_CONTRACT_KEYWORDS and not (
-        isinstance(keyword.value, ast.Constant) and keyword.value.value is None
+        isinstance(keyword.value, ast.Constant) and (keyword.value.value is None or keyword.value.value is False)
     )
 
 

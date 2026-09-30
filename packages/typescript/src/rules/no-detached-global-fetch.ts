@@ -116,14 +116,6 @@ export default createRule<Options, MessageIds>({
       if (variable !== null && isStableAlias(variable)) aliases.add(variable);
     }
 
-    function isGlobalFetchMember(node: TSESTree.MemberExpression): boolean {
-      if (!isGlobalReceiver(node.object)) return false;
-      if (!node.computed) {
-        return node.property.type === AST_NODE_TYPES.Identifier && node.property.name === "fetch";
-      }
-      return node.property.type === AST_NODE_TYPES.Literal && node.property.value === "fetch";
-    }
-
     function staticMemberName(node: TSESTree.MemberExpression): string | null {
       if (!node.computed) {
         return node.property.type === AST_NODE_TYPES.Identifier ? node.property.name : null;
@@ -159,6 +151,14 @@ export default createRule<Options, MessageIds>({
         return last !== undefined && mayBeRawFetch(last);
       }
       return false;
+    }
+
+    function isGlobalFetchMember(node: TSESTree.MemberExpression): boolean {
+      if (!isGlobalReceiver(node.object)) return false;
+      if (!node.computed) {
+        return node.property.type === AST_NODE_TYPES.Identifier && node.property.name === "fetch";
+      }
+      return node.property.type === AST_NODE_TYPES.Literal && node.property.value === "fetch";
     }
 
     function recordAliasFromValue(identifier: TSESTree.Identifier, value: TSESTree.Expression): void {

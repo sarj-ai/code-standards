@@ -17,6 +17,7 @@ const RULE_TESTER = new RuleTester({ languageOptions: { parser: tsParser, parser
 
 RULE_TESTER.run("no-reduce-accumulator-copy", rule, {
   valid: [
+    "declare const pages: string[][]; pages.reduce<string[]>((acc, page) => { for (const item of page) { consume(acc.slice()); } return page; }, []);",
     "declare const pages: string[][]; pages.reduce<string[]>((acc, page) => { { const acc: string[] = []; acc.slice(); } return page; }, []);",
     "declare const pages: string[][]; pages.reduce<string[]>((acc, page) => page.slice(), []);",
     "declare const pairs: [string, string][]; pairs.reduce<Record<string, string>>((acc, [key, value]) => Object.assign(acc, { [key]: value }), {});",

@@ -184,18 +184,6 @@ export default createRule<Options, MessageIds>({
       if (binding !== null) zodBindings.add(binding);
     }
 
-    function isZodChain(node: TSESTree.Node): boolean {
-      const root = calleeChainRoot(node);
-      if (root === null) return false;
-      const binding = resolvedBinding(root);
-      return binding !== null && zodBindings.has(binding);
-    }
-
-    function isSchemaBinding(identifier: TSESTree.Identifier): boolean {
-      const binding = resolvedBinding(identifier);
-      return binding !== null && schemaBindings.has(binding);
-    }
-
     function isConfirmedSchema(expression: TSESTree.Expression): boolean {
       const init = unwrapExpression(expression);
       if (init.type === AST_NODE_TYPES.Identifier) return isSchemaBinding(init);
@@ -212,6 +200,18 @@ export default createRule<Options, MessageIds>({
       }
       const root = calleeChainRoot(init.callee);
       return root !== null && isSchemaBinding(root) && SCHEMA_RETURNING_METHODS.has(terminal);
+    }
+
+    function isSchemaBinding(identifier: TSESTree.Identifier): boolean {
+      const binding = resolvedBinding(identifier);
+      return binding !== null && schemaBindings.has(binding);
+    }
+
+    function isZodChain(node: TSESTree.Node): boolean {
+      const root = calleeChainRoot(node);
+      if (root === null) return false;
+      const binding = resolvedBinding(root);
+      return binding !== null && zodBindings.has(binding);
     }
 
     // Test and benchmark schemas are local fixtures rather than APIs.

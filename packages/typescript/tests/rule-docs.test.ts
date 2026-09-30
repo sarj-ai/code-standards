@@ -273,7 +273,7 @@ describe("a rename ships a map, not a hole", () => {
       "a shipped rule name stopped resolving with no record of where it went. " +
         "Record it in `RENAMED_RULES` (which `make sync-rule-ledger` turns into the " +
         "ledger row `doctor` reads) — or retire it deliberately by deleting the " +
-        "rule, which `src/rules/_retired.ts` records.",
+        "rule, which `src/rules/_retired-rules.ts` records.",
     ).toEqual([]);
   });
 

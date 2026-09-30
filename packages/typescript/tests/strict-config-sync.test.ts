@@ -41,7 +41,7 @@ function gitOutput(...args: readonly string[]): string {
 function warnIfHistoryIsMissing(log: string, recorded: number): void {
   if (log.trim().length !== 0 || recorded === 0) return;
   console.warn(
-    `[strict-config-sync] history corroborates 0 of ${recorded} entries in _retired.ts: ` +
+    `[strict-config-sync] history corroborates 0 of ${recorded} entries in _retired-rules.ts: ` +
     `\`git log --diff-filter=D\` over src/rules is empty at ${gitOutput("rev-parse", "--short", "HEAD").trim()}. ` +
     "The subset gate still catches a NEW deletion that forgets its entry; it cannot re-derive the existing ones. " +
     "Expected after a history rewrite — investigate if the history was not rewritten.",
@@ -313,7 +313,7 @@ describe("standards eslint.strict.mjs stays wired to the plugin", () => {
   });
 
   /**
-   * The gate that keeps `src/rules/_retired.ts` honest, because a hand-kept list
+   * The gate that keeps `src/rules/_retired-rules.ts` honest, because a hand-kept list
    * is exactly what failed here before.
    *
    * The previous version of this test declared ONE name under a doc comment
@@ -346,14 +346,14 @@ describe("standards eslint.strict.mjs stays wired to the plugin", () => {
    * `RENAMED_RULES`.
    *
    * `--no-renames` is deliberate: a rule file that MOVED still has to be
-   * accounted for, and `_renames.ts` is what distinguishes the two cases. It has
+   * accounted for, and `_renamed-rules.ts` is what distinguishes the two cases. It has
    * to be read directly rather than inferred from `plugin.rules`, because 9.0.0
    * deleted the deprecated aliases 7.0.0 registered — the four renamed-away
    * filenames are gone from the registry too, and a rename is still not a
    * withdrawal. `rule-docs.test.ts` keeps the two maps disjoint, so a name can
    * be excused by exactly one of them.
    */
-  it("_retired.ts covers every rule file git has seen deleted", () => {
+  it("_retired-rules.ts covers every rule file git has seen deleted", () => {
     expect(gitOutput("rev-parse", "--is-shallow-repository").trim()).toBe(
       "false",
     );
@@ -383,8 +383,8 @@ describe("standards eslint.strict.mjs stays wired to the plugin", () => {
       .sort();
     expect(
       unrecorded,
-      `git history has deleted rule files that _retired.ts never recorded: ${unrecorded.join(", ")}. ` +
-      "Add them, or record the move in _renames.ts if the rule was renamed rather than withdrawn.",
+      `git history has deleted rule files that _retired-rules.ts never recorded: ${unrecorded.join(", ")}. ` +
+      "Add them, or record the move in _renamed-rules.ts if the rule was renamed rather than withdrawn.",
     ).toEqual([]);
   });
 
@@ -398,7 +398,7 @@ describe("standards eslint.strict.mjs stays wired to the plugin", () => {
    * run rather than inferred from a green tick, and so it stops being reported
    * once history has accumulated deletions that corroborate the ledger again.
    */
-  it("reports whether git history can still corroborate _retired.ts", () => {
+  it("reports whether git history can still corroborate _retired-rules.ts", () => {
     const log = gitOutput(
       "log",
       "--no-renames",
@@ -414,7 +414,7 @@ describe("standards eslint.strict.mjs stays wired to the plugin", () => {
     warnIfHistoryIsMissing(log, recorded);
 
     // Asserts the ledger is populated, not that history agrees with it: an empty
-    // `_retired.ts` alongside a truncated history would leave nothing checking
+    // `_retired-rules.ts` alongside a truncated history would leave nothing checking
     // anything, and that is worth failing on.
     expect(recorded).toBeGreaterThan(0);
   });

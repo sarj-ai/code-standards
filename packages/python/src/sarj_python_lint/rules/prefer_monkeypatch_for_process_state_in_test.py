@@ -60,12 +60,43 @@ class PreferMonkeypatchForProcessStateInTest(Rule):
         category=RuleCategory.TESTING,
         autofix=AutofixPolicy.NONE,
         limitations=(
+            "Teardown after a single direct yield in a module-level, import-proven pytest or pytest-asyncio fixture is excluded: registering undo operations during cleanup can restore the temporary state. Nested fixtures, conditional/delegated yields and out-of-line cleanup ownership are not inferred.",
             "Only maintained test paths are analyzed; generated files, production code, and module/class bootstrap mutations are excluded.",
             "The rule covers os.chdir, sys.path.insert(0, ...), and direct sys.modules set, delete, or unused pop operations with an equivalent pytest restoring helper.",
             "Environment variables remain owned by Ruff TID251/B003; argv, locale, timezone, warning filters, and process APIs without an equivalent helper are outside this rule.",
             "Imports and import aliases are resolved conservatively. Indirect container aliases and dynamically selected modules are not inferred.",
         ),
         examples=(
+            RuleExample(
+                example_id="fixture-cleanup-unscoped",
+                title="Restore setup mutations even when setup fails",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "tests/test_plugins.py",
+                        "import sys\nimport pytest\n@pytest.fixture\ndef fresh_plugin():\n    sys.modules.pop('temporary_plugin', None)\n    yield\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("tests/test_plugins.py"),
+                expected_count=1,
+                public=True,
+                scenario="fixture-cleanup",
+            ),
+            RuleExample(
+                example_id="yield-fixture-cleanup",
+                title="Do not undo fixture teardown",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "tests/test_plugins.py",
+                        "import sys\nimport pytest\n@pytest.fixture\ndef fresh_plugin():\n    yield\n    sys.modules.pop('temporary_plugin', None)\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("tests/test_plugins.py"),
+                expected_count=0,
+                public=True,
+                scenario="fixture-cleanup",
+            ),
             RuleExample(
                 example_id="direct-module-registry-mutation",
                 title="Test installs a module without guaranteed restoration",
@@ -112,7 +143,7 @@ class PreferMonkeypatchForProcessStateInTest(Rule):
         mutations = [
             mutation
             for function in _functions(tree, node_index=context.node_index)
-            for mutation in _function_mutations(function, module_imports)
+            for mutation in _function_mutations(function, module_imports, module_level=function in tree.body)
         ]
         diagnostics = [
             Diagnostic(
@@ -143,6 +174,8 @@ def _functions(
 def _function_mutations(
     function: ast.FunctionDef | ast.AsyncFunctionDef,
     module_imports: ImportIndex,
+    *,
+    module_level: bool,
 ) -> list[_Mutation]:
     local_tree = ast.Module(body=function.body, type_ignores=[])
     local_imports = ImportIndex.from_tree(local_tree)
@@ -155,7 +188,31 @@ def _function_mutations(
             continue
         mutations.append(mutation)
     restored = _restored_mutations(nodes, mutations, module_imports, local_imports)
+    if module_level:
+        restored.update(_fixture_teardown_nodes(function, nodes, module_imports))
     return [mutation for mutation in mutations if mutation.node not in restored]
+
+
+def _fixture_teardown_nodes(
+    function: ast.FunctionDef | ast.AsyncFunctionDef,
+    nodes: tuple[ast.AST, ...],
+    module_imports: ImportIndex,
+) -> set[ast.AST]:
+    if not any(
+        module_imports.resolves(
+            decorator.func if isinstance(decorator, ast.Call) else decorator,
+            sources=frozenset({"pytest", "pytest_asyncio"}),
+            symbol="fixture",
+        )
+        for decorator in function.decorator_list
+    ):
+        return set()
+    if sum(isinstance(node, ast.Yield | ast.YieldFrom) for node in nodes) != 1:
+        return set()
+    for index, statement in enumerate(function.body):
+        if isinstance(statement, ast.Expr) and isinstance(statement.value, ast.Yield):
+            return set(_descendants(function.body[index + 1 :]))
+    return set()
 
 
 def _lexical_nodes(function: ast.FunctionDef | ast.AsyncFunctionDef) -> Iterator[ast.AST]:

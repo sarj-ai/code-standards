@@ -479,6 +479,36 @@ def test_thing():
     assert len(_check(src)) == 1
 
 
+@pytest.mark.parametrize("option", ["spec=False", "spec_set=False"])
+@pytest.mark.parametrize(
+    "factory", ["mock.patch('module.Client', {option})", "mock.patch.object(owner, 'Client', {option})"]
+)
+@pytest.mark.parametrize("decorator", [False, True])
+def test_disabled_patch_specs_do_not_supply_a_contract(option: str, factory: str, decorator: bool) -> None:
+    call = factory.format(option=option)
+    body = (
+        f"@{call}\ndef test_client(client):\n    assert client\n"
+        if decorator
+        else f"def test_client():\n    with {call} as client:\n        assert client\n"
+    )
+    assert len(_check("from unittest import mock\n" + body)) == 1
+
+
+@pytest.mark.parametrize(
+    "call",
+    [
+        "mock.Mock(spec=False)",
+        "mock.Mock(spec_set=False)",
+        "mock.patch('module.Client', spec=False, autospec=True)",
+        "mock.patch('module.Client', spec=False, spec_set=Contract)",
+        "mock.patch('module.Client', spec_set=False, new=fake)",
+    ],
+)
+def test_disabled_patch_spec_fix_preserves_other_contracts(call: str) -> None:
+    source = f"from unittest import mock\ndef test_client():\n    client = {call}\n    assert client.some_attribute\n"
+    assert _check(source) == []
+
+
 def test_decorator_form_with_a_positional_replacement_is_exempt():
     src = """
 from unittest.mock import patch

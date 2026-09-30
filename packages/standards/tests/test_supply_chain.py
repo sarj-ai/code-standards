@@ -348,7 +348,7 @@ def test_standards_package_dogfoods_full_scope_on_pull_requests_and_pushes() -> 
     workflow = (REPO_ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
 
     assert (  # sarj-noqa: SARJ402 -- explicit root is the PR and push scope parity contract
-        "uv run code-standards --root ../.. check ." in workflow
+        "uv run code-standards --root ../.. check --jobs 2 ." in workflow
     )
 
 

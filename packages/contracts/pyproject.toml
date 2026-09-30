@@ -10,7 +10,7 @@ authors = [{ name = "sarj-ai" }]
 dependencies = []
 
 [dependency-groups]
-dev = ["pytest>=9.1.1", "ruff>=0.16.8", "basedpyright>=1.40.1"]
+dev = ["pytest>=9.1.1", "ruff>=0.16.9", "basedpyright>=1.40.1"]
 
 [build-system]
 requires = ["hatchling==1.32.4"]

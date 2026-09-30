@@ -104,8 +104,9 @@ def touches_changed_lines(diagnostic: Diagnostic, scope: ChangedLineScope | None
     return True
 
 
-def is_baselineable(diagnostic: Diagnostic) -> bool:
-    _ = diagnostic
+def is_baselineable(
+    diagnostic: Diagnostic,  # ruff: ignore[unused-function-argument] -- Preserve the public diagnostic policy keyword.
+) -> bool:
     return True
 
 

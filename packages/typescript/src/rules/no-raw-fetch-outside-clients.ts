@@ -338,52 +338,32 @@ export default createRule<Options, MessageIds>({
         : node;
     }
 
-    function propertyValue(
-      node: TSESTree.Node | null,
-      name: string,
-    ): TSESTree.Node | null {
-      if (node?.type !== AST_NODE_TYPES.ObjectExpression) return null;
-      if (node.properties.some((property) => property.type !== AST_NODE_TYPES.Property || property.computed)) return null;
-      for (const property of [...node.properties].reverse()) {
-        if (property.type !== AST_NODE_TYPES.Property || property.computed) continue;
-        const key = property.key;
-        const keyName =
-          key.type === AST_NODE_TYPES.Identifier
-            ? key.name
-            : key.type === AST_NODE_TYPES.Literal && typeof key.value === "string"
-              ? key.value
-              : null;
-        if (keyName !== name) continue;
-        return property.value.type === AST_NODE_TYPES.AssignmentPattern ||
-          property.value.type === AST_NODE_TYPES.ArrayPattern ||
-          property.value.type === AST_NODE_TYPES.ObjectPattern
-          ? null
-          : property.value;
-      }
-      return null;
-    }
 
-    function isInternalApiUrl(node: TSESTree.Node | null): boolean {
-      const resolved = resolveNode(node ?? undefined);
-      if (resolved?.type === AST_NODE_TYPES.Literal) {
-        return (
-          typeof resolved.value === "string" &&
-          internalApiPrefixes.some(
-            (prefix) => resolved.value === prefix || resolved.value.startsWith(`${prefix}/`),
-          )
-        );
+
+
+    function serverActionOwns(node: TSESTree.CallExpression): boolean {
+      if (
+        node.callee.type !== AST_NODE_TYPES.Identifier ||
+        !hasUseClientDirective ||
+        hasUseServerDirective ||
+        importsServerOnly ||
+        SERVER_ACTION_SKIP_FILE_RE.test(filename) ||
+        nonReactFramework
+      ) {
+        return false;
       }
-      if (resolved?.type === AST_NODE_TYPES.TemplateLiteral) {
-        const prefix = resolved.quasis[0]?.value.cooked;
-        return typeof prefix === "string" && internalApiPrefixes.some(
-          (apiPrefix) => prefix === apiPrefix || prefix.startsWith(`${apiPrefix}/`),
-        );
+      const url = node.arguments[0];
+      const init = node.arguments[1];
+      if (
+        url === undefined ||
+        url.type === AST_NODE_TYPES.SpreadElement ||
+        init === undefined ||
+        init.type === AST_NODE_TYPES.SpreadElement ||
+        !isInternalApiUrl(url)
+      ) {
+        return false;
       }
-      return (
-        resolved?.type === AST_NODE_TYPES.BinaryExpression &&
-        resolved.operator === "+" &&
-        isInternalApiUrl(resolved.left)
-      );
+      return isMutationMethod(propertyValue(resolveNode(init), "method"));
     }
 
     function isMutationMethod(node: TSESTree.Node | null): boolean {
@@ -415,29 +395,52 @@ export default createRule<Options, MessageIds>({
       );
     }
 
-    function serverActionOwns(node: TSESTree.CallExpression): boolean {
-      if (
-        node.callee.type !== AST_NODE_TYPES.Identifier ||
-        !hasUseClientDirective ||
-        hasUseServerDirective ||
-        importsServerOnly ||
-        SERVER_ACTION_SKIP_FILE_RE.test(filename) ||
-        nonReactFramework
-      ) {
-        return false;
+    function isInternalApiUrl(node: TSESTree.Node | null): boolean {
+      const resolved = resolveNode(node ?? undefined);
+      if (resolved?.type === AST_NODE_TYPES.Literal) {
+        return (
+          typeof resolved.value === "string" &&
+          internalApiPrefixes.some(
+            (prefix) => resolved.value === prefix || resolved.value.startsWith(`${prefix}/`),
+          )
+        );
       }
-      const url = node.arguments[0];
-      const init = node.arguments[1];
-      if (
-        url === undefined ||
-        url.type === AST_NODE_TYPES.SpreadElement ||
-        init === undefined ||
-        init.type === AST_NODE_TYPES.SpreadElement ||
-        !isInternalApiUrl(url)
-      ) {
-        return false;
+      if (resolved?.type === AST_NODE_TYPES.TemplateLiteral) {
+        const prefix = resolved.quasis[0]?.value.cooked;
+        return typeof prefix === "string" && internalApiPrefixes.some(
+          (apiPrefix) => prefix === apiPrefix || prefix.startsWith(`${apiPrefix}/`),
+        );
       }
-      return isMutationMethod(propertyValue(resolveNode(init), "method"));
+      return (
+        resolved?.type === AST_NODE_TYPES.BinaryExpression &&
+        resolved.operator === "+" &&
+        isInternalApiUrl(resolved.left)
+      );
+    }
+
+    function propertyValue(
+      node: TSESTree.Node | null,
+      name: string,
+    ): TSESTree.Node | null {
+      if (node?.type !== AST_NODE_TYPES.ObjectExpression) return null;
+      if (node.properties.some((property) => property.type !== AST_NODE_TYPES.Property || property.computed)) return null;
+      for (const property of [...node.properties].reverse()) {
+        if (property.type !== AST_NODE_TYPES.Property || property.computed) continue;
+        const key = property.key;
+        const keyName =
+          key.type === AST_NODE_TYPES.Identifier
+            ? key.name
+            : key.type === AST_NODE_TYPES.Literal && typeof key.value === "string"
+              ? key.value
+              : null;
+        if (keyName !== name) continue;
+        return property.value.type === AST_NODE_TYPES.AssignmentPattern ||
+          property.value.type === AST_NODE_TYPES.ArrayPattern ||
+          property.value.type === AST_NODE_TYPES.ObjectPattern
+          ? null
+          : property.value;
+      }
+      return null;
     }
 
     if (allowed.some((re) => re.test(filename))) {

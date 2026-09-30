@@ -96,8 +96,12 @@ def _git(root: Path, *args: str) -> str:
 def test_missing_remote_release_tags_derives_names_from_manifests(tmp_path: Path) -> None:
     _write_release_manifests(tmp_path)
 
-    def runner(argv: tuple[str, ...], *, cwd: Path, capture_output: bool = False) -> ProcessResult:
-        _ = cwd, capture_output
+    def runner(
+        argv: tuple[str, ...],
+        *,
+        cwd: Path,  # ruff: ignore[unused-function-argument] -- ProcessRunner fixes this keyword.
+        capture_output: bool = False,  # ruff: ignore[unused-function-argument] -- ProcessRunner fixes this keyword.
+    ) -> ProcessResult:
         if argv[-1] == "refs/tags/python-v1.2.3":
             return ProcessResult(0)
         raise ProcessFailureError(argv, 2)
@@ -115,8 +119,12 @@ def test_verify_remote_release_tags_accepts_exact_and_unchanged_existing_tags(tm
     exact = "a" * 40
     older = "b" * 40
 
-    def runner(argv: tuple[str, ...], *, cwd: Path, capture_output: bool = False) -> ProcessResult:
-        _ = cwd, capture_output
+    def runner(
+        argv: tuple[str, ...],
+        *,
+        cwd: Path,  # ruff: ignore[unused-function-argument] -- ProcessRunner fixes this keyword.
+        capture_output: bool = False,  # ruff: ignore[unused-function-argument] -- ProcessRunner fixes this keyword.
+    ) -> ProcessResult:
         if argv[:3] == ("git", "rev-parse", "--verify"):
             revision = argv[-1]
             resolved = older if revision == f"{older}^{{commit}}" else exact
@@ -145,8 +153,12 @@ def test_verify_remote_release_tags_rejects_wrong_existing_tag_tree(tmp_path: Pa
     exact = "a" * 40
     wrong = "b" * 40
 
-    def runner(argv: tuple[str, ...], *, cwd: Path, capture_output: bool = False) -> ProcessResult:
-        _ = cwd, capture_output
+    def runner(
+        argv: tuple[str, ...],
+        *,
+        cwd: Path,  # ruff: ignore[unused-function-argument] -- ProcessRunner fixes this keyword.
+        capture_output: bool = False,  # ruff: ignore[unused-function-argument] -- ProcessRunner fixes this keyword.
+    ) -> ProcessResult:
         if argv[:3] == ("git", "rev-parse", "--verify"):
             revision = argv[-1]
             resolved = wrong if revision == f"{wrong}^{{commit}}" else exact
@@ -171,8 +183,12 @@ def test_verify_remote_release_tags_rejects_tag_that_does_not_peel_to_a_commit(t
     exact = "a" * 40
     tree = "b" * 40
 
-    def runner(argv: tuple[str, ...], *, cwd: Path, capture_output: bool = False) -> ProcessResult:
-        _ = cwd, capture_output
+    def runner(
+        argv: tuple[str, ...],
+        *,
+        cwd: Path,  # ruff: ignore[unused-function-argument] -- ProcessRunner fixes this keyword.
+        capture_output: bool = False,  # ruff: ignore[unused-function-argument] -- ProcessRunner fixes this keyword.
+    ) -> ProcessResult:
         if argv[:3] == ("git", "rev-parse", "--verify"):
             if argv[-1] == f"{tree}^{{commit}}":
                 raise ProcessFailureError(argv, 128)
@@ -192,8 +208,12 @@ def test_create_release_tags_is_idempotent_and_pushes_exact_ref(tmp_path: Path) 
     _write_release_manifests(tmp_path)
     calls: list[tuple[str, ...]] = []
 
-    def runner(argv: tuple[str, ...], *, cwd: Path, capture_output: bool = False) -> ProcessResult:
-        _ = cwd, capture_output
+    def runner(
+        argv: tuple[str, ...],
+        *,
+        cwd: Path,  # ruff: ignore[unused-function-argument] -- ProcessRunner fixes this keyword.
+        capture_output: bool = False,  # ruff: ignore[unused-function-argument] -- ProcessRunner fixes this keyword.
+    ) -> ProcessResult:
         calls.append(argv)
         if argv[:2] == ("git", "ls-remote"):
             raise ProcessFailureError(argv, 2)
@@ -294,8 +314,12 @@ def test_create_release_tags_rejects_an_unpublished_manifest_version(tmp_path: P
     _write_release_manifests(tmp_path)
     calls: list[tuple[str, ...]] = []
 
-    def runner(argv: tuple[str, ...], *, cwd: Path, capture_output: bool = False) -> ProcessResult:
-        _ = cwd, capture_output
+    def runner(
+        argv: tuple[str, ...],
+        *,
+        cwd: Path,  # ruff: ignore[unused-function-argument] -- ProcessRunner fixes this keyword.
+        capture_output: bool = False,  # ruff: ignore[unused-function-argument] -- ProcessRunner fixes this keyword.
+    ) -> ProcessResult:
         calls.append(argv)
         if argv[:3] == ("git", "rev-parse", "--verify"):
             return ProcessResult(0)
@@ -320,8 +344,12 @@ def test_create_release_tags_rejects_an_unpublished_manifest_version(tmp_path: P
 def test_create_standards_tag_requires_both_registry_projects(tmp_path: Path) -> None:
     _write_release_manifests(tmp_path)
 
-    def runner(argv: tuple[str, ...], *, cwd: Path, capture_output: bool = False) -> ProcessResult:
-        _ = cwd, capture_output
+    def runner(
+        argv: tuple[str, ...],
+        *,
+        cwd: Path,  # ruff: ignore[unused-function-argument] -- ProcessRunner fixes this keyword.
+        capture_output: bool = False,  # ruff: ignore[unused-function-argument] -- ProcessRunner fixes this keyword.
+    ) -> ProcessResult:
         if argv[:3] == ("git", "rev-parse", "--verify"):
             return ProcessResult(0)
         raise ProcessFailureError(argv, 2)
@@ -342,8 +370,12 @@ def test_create_release_tags_retries_registry_propagation(tmp_path: Path) -> Non
     checks = iter((False, False, True))
     sleeps: list[float] = []
 
-    def runner(argv: tuple[str, ...], *, cwd: Path, capture_output: bool = False) -> ProcessResult:
-        _ = cwd, capture_output
+    def runner(
+        argv: tuple[str, ...],
+        *,
+        cwd: Path,  # ruff: ignore[unused-function-argument] -- ProcessRunner fixes this keyword.
+        capture_output: bool = False,  # ruff: ignore[unused-function-argument] -- ProcessRunner fixes this keyword.
+    ) -> ProcessResult:
         calls.append(argv)
         if argv[:3] == ("git", "rev-parse", "--verify") and argv[-1] == "publish-sha^{commit}":
             return ProcessResult(0, "published-commit\n")
@@ -371,8 +403,12 @@ def test_create_release_tags_retries_registry_propagation(tmp_path: Path) -> Non
 def test_create_release_tags_rejects_an_existing_tag_on_another_commit(tmp_path: Path) -> None:
     _write_release_manifests(tmp_path)
 
-    def runner(argv: tuple[str, ...], *, cwd: Path, capture_output: bool = False) -> ProcessResult:
-        _ = cwd, capture_output
+    def runner(
+        argv: tuple[str, ...],
+        *,
+        cwd: Path,  # ruff: ignore[unused-function-argument] -- ProcessRunner fixes this keyword.
+        capture_output: bool = False,  # ruff: ignore[unused-function-argument] -- ProcessRunner fixes this keyword.
+    ) -> ProcessResult:
         if argv[:3] == ("git", "rev-parse", "--verify"):
             resolved = "different-commit" if argv[-1] == "different-commit^{commit}" else "published-commit"
             return ProcessResult(0, f"{resolved}\n")
@@ -402,8 +438,12 @@ def test_create_release_tags_rejects_an_existing_tag_on_another_commit(tmp_path:
 def test_create_release_tags_accepts_unchanged_target_tagged_on_older_commit(tmp_path: Path) -> None:
     _write_release_manifests(tmp_path)
 
-    def runner(argv: tuple[str, ...], *, cwd: Path, capture_output: bool = False) -> ProcessResult:
-        _ = cwd, capture_output
+    def runner(
+        argv: tuple[str, ...],
+        *,
+        cwd: Path,  # ruff: ignore[unused-function-argument] -- ProcessRunner fixes this keyword.
+        capture_output: bool = False,  # ruff: ignore[unused-function-argument] -- ProcessRunner fixes this keyword.
+    ) -> ProcessResult:
         if argv[:3] == ("git", "rev-parse", "--verify"):
             resolved = "older-commit" if argv[-1] == "older-commit^{commit}" else "published-commit"
             return ProcessResult(0, f"{resolved}\n")
@@ -445,8 +485,12 @@ def test_create_release_tags_accepts_unchanged_target_tagged_on_older_commit(tmp
 def test_create_release_tags_rejects_non_ancestor_with_unchanged_target_tree(tmp_path: Path) -> None:
     _write_release_manifests(tmp_path)
 
-    def runner(argv: tuple[str, ...], *, cwd: Path, capture_output: bool = False) -> ProcessResult:
-        _ = cwd, capture_output
+    def runner(
+        argv: tuple[str, ...],
+        *,
+        cwd: Path,  # ruff: ignore[unused-function-argument] -- ProcessRunner fixes this keyword.
+        capture_output: bool = False,  # ruff: ignore[unused-function-argument] -- ProcessRunner fixes this keyword.
+    ) -> ProcessResult:
         if argv[:3] == ("git", "rev-parse", "--verify"):
             resolved = "future-commit" if argv[-1] == "future-commit^{commit}" else "published-commit"
             return ProcessResult(0, f"{resolved}\n")
@@ -474,8 +518,12 @@ def test_create_release_tags_rejects_non_ancestor_with_unchanged_target_tree(tmp
 def test_create_release_tags_rejects_a_local_tag_on_another_commit(tmp_path: Path) -> None:
     _write_release_manifests(tmp_path)
 
-    def runner(argv: tuple[str, ...], *, cwd: Path, capture_output: bool = False) -> ProcessResult:
-        _ = cwd, capture_output
+    def runner(
+        argv: tuple[str, ...],
+        *,
+        cwd: Path,  # ruff: ignore[unused-function-argument] -- ProcessRunner fixes this keyword.
+        capture_output: bool = False,  # ruff: ignore[unused-function-argument] -- ProcessRunner fixes this keyword.
+    ) -> ProcessResult:
         if argv[-1] == "publish-sha^{commit}":
             return ProcessResult(0, "published-commit\n")
         if argv[:2] == ("git", "ls-remote"):
@@ -497,8 +545,12 @@ def test_create_release_tags_rejects_a_local_tag_on_another_commit(tmp_path: Pat
 def test_remote_tag_network_failure_is_not_misreported_as_missing(tmp_path: Path) -> None:
     _write_release_manifests(tmp_path)
 
-    def runner(argv: tuple[str, ...], *, cwd: Path, capture_output: bool = False) -> ProcessResult:
-        _ = cwd, capture_output
+    def runner(
+        argv: tuple[str, ...],
+        *,
+        cwd: Path,  # ruff: ignore[unused-function-argument] -- ProcessRunner fixes this keyword.
+        capture_output: bool = False,  # ruff: ignore[unused-function-argument] -- ProcessRunner fixes this keyword.
+    ) -> ProcessResult:
         raise ProcessFailureError(argv, 128)
 
     with pytest.raises(ProcessFailureError):

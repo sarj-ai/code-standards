@@ -147,6 +147,7 @@ class _Args:
     output: Path | None = None
     external: bool = False
     jobs: int = 1
+    python_type_check: bool = True
     trust: str = "safe"
     trust_repository_code: bool = False
     before: str = ""
@@ -1005,6 +1006,7 @@ def cmd_verify(args: _Args) -> int:
         raw=adopted is None,
         jobs=args.jobs,
         trusted=args.trust_repository_code,
+        python_type_check=args.python_type_check,
     )
 
 
@@ -1080,7 +1082,14 @@ def cmd_check(args: _Args) -> int:
             return health_status
         args.files = [path for path in args.files if runner.accepts_hook_path(Path(path), root=root)]
         if not args.files and not scope.react_doctor_triggered:
-            return _run_canonical_check(root, (), trusted=args.trust_repository_code, staged=True, jobs=args.jobs)
+            return _run_canonical_check(
+                root,
+                (),
+                trusted=args.trust_repository_code,
+                staged=True,
+                jobs=args.jobs,
+                python_type_check=args.python_type_check,
+            )
     if args.output_format != "text":
         return _check_machine_output(args, root, scope)
     return _check_text_output(args, root, scope)
@@ -1116,8 +1125,15 @@ def _check_text_output(args: _Args, root: Path, scope: _CheckScope) -> int:
                     trusted=args.trust_repository_code,
                     react_doctor_triggered=True,
                     jobs=args.jobs,
+                    python_type_check=args.python_type_check,
                 )
-            return _run_canonical_check(root, (), trusted=args.trust_repository_code, jobs=args.jobs)
+            return _run_canonical_check(
+                root,
+                (),
+                trusted=args.trust_repository_code,
+                jobs=args.jobs,
+                python_type_check=args.python_type_check,
+            )
     if not args.files:
         return cmd_verify(args)
     check_options: dict[str, bool] = {
@@ -1126,7 +1142,9 @@ def _check_text_output(args: _Args, root: Path, scope: _CheckScope) -> int:
     }
     if scope.react_doctor_triggered:
         check_options["react_doctor_triggered"] = True
-    return _run_canonical_check(root, list(args.files), jobs=args.jobs, **check_options)
+    return _run_canonical_check(
+        root, list(args.files), jobs=args.jobs, python_type_check=args.python_type_check, **check_options
+    )
 
 
 @dataclass(slots=True)
@@ -1239,6 +1257,7 @@ def _check_machine_output(args: _Args, root: Path, scope: _CheckScope) -> int:
             trust=TrustMode.TRUSTED if args.trust_repository_code else TrustMode.SAFE,
             mode=AnalysisMode.POLICY,
             react_doctor_triggered=scope.react_doctor_triggered,
+            python_type_check=args.python_type_check,
         )
         return _emit_analysis_report(args, root, report)
     args.react_doctor_triggered = scope.react_doctor_triggered
@@ -1316,6 +1335,7 @@ def _run_canonical_check(
     staged: bool = False,
     react_doctor_triggered: bool = False,
     jobs: int = 1,
+    python_type_check: bool = True,
 ) -> int:
     from sarj_standards.api import AnalysisMode, Standards, TrustMode  # ruff: ignore[import-outside-top-level]
     from sarj_standards.libs.diagnostics import to_text  # ruff: ignore[import-outside-top-level]
@@ -1328,6 +1348,7 @@ def _run_canonical_check(
         mode=AnalysisMode.RAW if raw else AnalysisMode.POLICY,
         staged=staged,
         react_doctor_triggered=react_doctor_triggered,
+        python_type_check=python_type_check,
     )
     rendered = to_text(report)
     if rendered:
@@ -1352,6 +1373,7 @@ def cmd_analyze(args: _Args) -> int:
         mode=AnalysisMode(args.analysis_mode),
         staged=args.staged,
         react_doctor_triggered=args.react_doctor_triggered,
+        python_type_check=args.python_type_check,
     )
     return _emit_analysis_report(args, root, report)
 
@@ -2855,6 +2877,13 @@ def build_app(handler: Callable[[_Args], int] = _dispatch) -> typer.Typer:
         jobs: Annotated[
             int, typer.Option("--jobs", min=1, max=2, help="overlap native and external analysis (default: 1)")
         ] = 1,
+        skip_python_type_check: Annotated[
+            bool,
+            typer.Option(
+                "--skip-python-type-check",
+                help="leave BasedPyright to the repository's own required CI; configs stay managed",
+            ),
+        ] = False,
         staged: Annotated[
             bool,
             typer.Option(
@@ -2880,6 +2909,7 @@ def build_app(handler: Callable[[_Args], int] = _dispatch) -> typer.Typer:
                 dest=_command_root(ctx),
                 cmd="check",
                 jobs=jobs,
+                python_type_check=not skip_python_type_check,
                 trust_repository_code=trust_repository_code,
                 staged=staged,
                 selected_rules=selected_rules if selected_rules is not None else [],

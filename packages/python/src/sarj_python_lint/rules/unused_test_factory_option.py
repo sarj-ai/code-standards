@@ -44,7 +44,7 @@ class UnusedTestFactoryOption(Rule):
         category=RuleCategory.TESTING,
         autofix=AutofixPolicy.NONE,
         limitations=(
-            "Only module-level private _make_ and _build_ helpers consisting of a single return call are considered.",
+            "Only module-level private _make_ and _build_ helpers with straight-line local assignments ending in a construction return are considered; control flow and standalone side effects are excluded.",
             "Only literal defaults with direct, unambiguous calls in this file are reported. Explicit options require at least two calls with the same effective literal value. Decorators, rebinding, callable escapes, reflection, and argument unpacking exclude the helper.",
             "Cross-module callers cannot be proven absent. Shared helpers require an exact suppression; this advisory never autofixes signatures or changes default evaluation timing.",
         ),
@@ -109,10 +109,30 @@ def _is_factory(node: ast.stmt) -> TypeGuard[ast.FunctionDef]:
         and not node.decorator_list
         and node.args.vararg is None
         and node.args.kwarg is None
-        and len(node.body) == 1
-        and isinstance(node.body[0], ast.Return)
-        and isinstance(node.body[0].value, ast.Call)
+        and _returns_construction(node.body)
     )
+
+
+def _returns_construction(body: list[ast.stmt]) -> bool:
+    if body and isinstance(body[0], ast.Expr) and isinstance(body[0].value, ast.Constant):
+        body = body[1:]
+    if not body or not isinstance(body[-1], ast.Return):
+        return False
+    assigned: dict[str, ast.expr] = {}
+    for statement in body[:-1]:
+        match statement:
+            case ast.Assign(targets=[ast.Name(id=name)], value=value):
+                assigned[name] = value
+            case ast.AnnAssign(target=ast.Name(id=name), value=value) if value is not None:
+                assigned[name] = value
+            case _:
+                return False
+    value = body[-1].value
+    seen: set[str] = set()
+    while isinstance(value, ast.Name) and value.id not in seen:
+        seen.add(value.id)
+        value = assigned.get(value.id)
+    return isinstance(value, ast.Call)
 
 
 def _factory_findings(

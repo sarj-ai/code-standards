@@ -131,6 +131,38 @@ def test_diagnostic_baseline_exposes_fingerprint_count_growth(tmp_path: Path) ->
     assert [item.code for item in policy.diagnostics] == ["SARJ012"]
 
 
+def _repeated_client_tests(count: int) -> str:
+    return "from httpx import ASGITransport, AsyncClient\n\n" + "\n".join(
+        f"async def test_response_{index}(app):\n"
+        "    async with AsyncClient(transport=ASGITransport(app=app), base_url='http://test') as client:\n"
+        f"        response = await client.get('/items/{index}')\n"
+        "    assert response.status_code == 200\n"
+        for index in range(count)
+    )
+
+
+def test_repeated_composition_baseline_does_not_absorb_another_test(tmp_path: Path) -> None:
+    source = tmp_path / "test_endpoints.py"
+    source.write_text(_repeated_client_tests(3), encoding="utf-8")
+    standards = api.Standards(tmp_path)
+    selectors = ["python:repeated-test-composition"]
+    raw = standards.analyze([str(source)], rules=selectors, mode=api.AnalysisMode.RAW)
+    assert raw.exit_code == 1
+    assert len(raw.diagnostics) == 3
+    baseline_path = tmp_path / "diagnostic-baseline.json"
+    baseline_path.write_text(_policy_baseline(raw.diagnostics), encoding="utf-8")
+    (tmp_path / MANIFEST_NAME).write_text(_manifest(baseline_path.name).render(), encoding="utf-8")
+
+    unchanged = standards.analyze([str(source)], rules=selectors)
+    assert unchanged.exit_code == 0
+    assert unchanged.diagnostics == ()
+
+    source.write_text(_repeated_client_tests(4), encoding="utf-8")
+    changed = standards.analyze([str(source)], rules=selectors)
+    assert changed.exit_code == 1
+    assert [item.code for item in changed.diagnostics] == ["SARJ457"]
+
+
 def test_manifest_round_trips_diagnostic_baseline(tmp_path: Path) -> None:
     (tmp_path / MANIFEST_NAME).write_text(_manifest("quality/diagnostics.json").render(), encoding="utf-8")
 
@@ -412,8 +444,11 @@ def test_scoped_baseline_update_normalizes_native_sarj_rule_source(
     )
     captured: list[tuple[object, object, object]] = []
 
-    def analyze(self: api.Standards, paths: object = None, **kwargs: object) -> AnalysisReport:
-        _ = self, paths
+    def analyze(
+        _self: api.Standards,
+        paths: object = None,  # ruff: ignore[unused-function-argument] -- Standards.analyze fixes this keyword.
+        **kwargs: object,
+    ) -> AnalysisReport:
         captured.append(
             (
                 kwargs.get("rules"),
@@ -585,8 +620,11 @@ def test_scoped_baseline_update_replaces_native_debt_for_canonical_selector(
         fingerprint="b" * 64,
     )
 
-    def analyze(self: api.Standards, paths: object = None, **kwargs: object) -> AnalysisReport:
-        _ = self, paths, kwargs
+    def analyze(
+        _self: api.Standards,
+        paths: object = None,  # ruff: ignore[unused-function-argument] -- Standards.analyze fixes this keyword.
+        **_kwargs: object,
+    ) -> AnalysisReport:
         return report_from_tools(tmp_path, (ToolReport(source, Completion.COMPLETE, (replacement,)),))
 
     monkeypatch.setattr(api.Standards, "analyze", analyze)  # sarj-noqa: SARJ445 -- intercepts baseline analyzer routing
@@ -644,8 +682,11 @@ def test_scoped_baseline_update_replaces_debt_recorded_under_a_catalogued_alias(
         fingerprint="b" * 64,
     )
 
-    def analyze(self: api.Standards, paths: object = None, **kwargs: object) -> AnalysisReport:
-        _ = self, paths, kwargs
+    def analyze(
+        _self: api.Standards,
+        paths: object = None,  # ruff: ignore[unused-function-argument] -- Standards.analyze fixes this keyword.
+        **_kwargs: object,
+    ) -> AnalysisReport:
         return report_from_tools(tmp_path, (ToolReport("sarj-iac-lint", Completion.COMPLETE, (replacement,)),))
 
     monkeypatch.setattr(api.Standards, "analyze", analyze)  # sarj-noqa: SARJ445 -- intercepts baseline analyzer routing
@@ -701,8 +742,11 @@ def test_scoped_baseline_update_replaces_plugin_qualified_eslint_alias_debt(
         fingerprint="b" * 64,
     )
 
-    def analyze(self: api.Standards, paths: object = None, **kwargs: object) -> AnalysisReport:
-        _ = self, paths, kwargs
+    def analyze(
+        _self: api.Standards,
+        paths: object = None,  # ruff: ignore[unused-function-argument] -- Standards.analyze fixes this keyword.
+        **_kwargs: object,
+    ) -> AnalysisReport:
         return report_from_tools(
             tmp_path,
             (ToolReport("eslint", Completion.COMPLETE, (replacement,)),),
@@ -905,8 +949,7 @@ def test_scoped_baseline_update_uses_manifest_verification_paths(
     (tmp_path / MANIFEST_NAME).write_text(adopted.render(), encoding="utf-8")
     captured: list[object] = []
 
-    def analyze_eslint(files: object, **kwargs: object) -> tuple[ToolReport, ...]:
-        _ = kwargs
+    def analyze_eslint(files: object, **_kwargs: object) -> tuple[ToolReport, ...]:
         captured.append(files)
         return ()
 
@@ -965,8 +1008,7 @@ def test_scoped_baseline_update_includes_tracked_terraform_tests_outside_verific
     )
     captured: list[object] = []
 
-    def analyze(self: api.Standards, paths: object = None, **kwargs: object) -> AnalysisReport:
-        _ = self, kwargs
+    def analyze(_self: api.Standards, paths: object = None, **_kwargs: object) -> AnalysisReport:
         captured.append(paths)
         diagnostics = (finding,) if isinstance(paths, list) and str(source) in paths else ()
         return report_from_tools(tmp_path, (ToolReport("sarj-iac-lint", Completion.COMPLETE, diagnostics),))
@@ -1015,8 +1057,7 @@ def test_scoped_baseline_update_runs_only_eslint_for_upstream_selector(
     (tmp_path / MANIFEST_NAME).write_text(adopted.render(), encoding="utf-8")
     captured: list[tuple[object, object]] = []
 
-    def analyze(self: api.Standards, paths: object = None, **kwargs: object) -> AnalysisReport:
-        _ = self, paths
+    def analyze(_self: api.Standards, paths: object = None, **kwargs: object) -> AnalysisReport:
         captured.append((paths, kwargs.get("rules")))
         return report_from_tools(tmp_path, ())
 

@@ -1,12 +1,12 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "0a2e9bb403c8450e6bd42cb3bc7fe6e85a7efcca551ab0aa2d7c5477cd759326",
-  "cliSha256": "55c9fe7e977fe648b5a414b8b56792a58080d068da8f9caddafe00a54552ee70",
+  "catalogSha256": "7a1d0a85c76736c57cd25ca5e0a50dd84205b9d752d33df948f15c68dfcabad8",
+  "cliSha256": "76f0b6b61a8764e5fea114476934779975ccbbb34e565c66b40634aa8f82cfbf",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
     "prettierPluginToml": "2.0.6",
-    "ruff": "0.16.8",
+    "ruff": "0.16.9",
     "sqlFormatter": "15.8.2",
     "terraform": "1.15.8"
   },
@@ -3006,6 +3006,41 @@
       ],
       "optionsSchemaSource": null
     },
+    "eslint:prefer-nominal-id-types": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/store.ts",
+              "source": "type AccountId = string & { readonly account: unique symbol };\ntype InvoiceId = string & { readonly invoice: unique symbol };\nfunction load(accountId: AccountId, invoiceId: InvoiceId): void {}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/store.ts",
+          "id": "branded-identifiers",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Distinguish domain identifiers"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/store.ts",
+              "source": "function load(accountId: string, invoiceId: string): void {}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/store.ts",
+          "id": "raw-identifiers",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Do not accept interchangeable identifiers"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "eslint:prefer-non-nullable-collection": {
       "examples": [
         {
@@ -3566,6 +3601,76 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Do not use unquoted wire casing as application property syntax"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "eslint:require-explicit-contract-implementation": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/service.ts",
+              "source": "interface Publisher {\n  publish(): void;\n}\nclass Consumer {\n  constructor(readonly publisher: Publisher) {}\n}\nclass FakePublisher implements Publisher {\n  publish() {}\n}\nnew Consumer(new FakePublisher());\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/service.ts",
+          "id": "explicit-fake-at-injection",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "The fake names its actual interface"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/service.ts",
+              "source": "interface Publisher {\n  publish(): void;\n}\nclass Consumer {\n  constructor(readonly publisher: Publisher) {}\n}\nclass FakePublisher {\n  publish() {}\n}\nnew Consumer(new FakePublisher());\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/service.ts",
+          "id": "structural-fake-at-injection",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A fake reaches a typed collaborator without implementing its interface"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "eslint:require-explicit-service-contract": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/service.ts",
+              "source": "export interface Runner {\n  run(): void;\n}\nclass OrchestratorService implements Runner {\n  constructor(private readonly worker: Worker) {}\n  run(): void {\n    this.worker.run();\n  }\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/service.ts",
+          "id": "explicit-single-operation-contract",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "The service declares its operation"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/service.ts",
+              "source": "class OrchestratorService {\n  constructor(private readonly worker: Worker) {}\n  run(): void {\n    this.worker.run();\n  }\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/service.ts",
+          "id": "single-operation-service-without-contract",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A single service operation still needs its contract"
         }
       ],
       "optionsSchemaSource": null
@@ -4832,6 +4937,41 @@
       ],
       "optionsSchemaSource": null
     },
+    "python:async-cleanup-registered-synchronously": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/resources.py",
+              "source": "from contextlib import AsyncExitStack\n\n\nasync def close():\n    await release()\n\n\nasync def run():\n    async with AsyncExitStack() as stack:\n        stack.push_async_callback(close)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/resources.py",
+          "id": "awaited-cleanup",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Register cleanup with the async API"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/resources.py",
+              "source": "from contextlib import AsyncExitStack\n\n\nasync def close():\n    await release()\n\n\nasync def run():\n    async with AsyncExitStack() as stack:\n        stack.callback(close)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/resources.py",
+          "id": "dropped-cleanup",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Synchronous callbacks do not await cleanup"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "python:async-mock-call-without-await-assertion": {
       "examples": [
         {
@@ -4963,6 +5103,41 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Unexpected pass fails the suite"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:discourage-nullable-constructor-parameters": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/service.py",
+              "source": "class Service:\n    def __init__(self, store: Store) -> None:\n        self.store = store\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/service.py",
+          "id": "non-nullable-dependency",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Constructor requires a usable dependency"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/service.py",
+              "source": "class Service:\n    def __init__(self, store: Store | None = None) -> None:\n        self.store = store\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/service.py",
+          "id": "nullable-dependency",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Constructor permits a missing dependency"
         }
       ],
       "optionsSchemaSource": null
@@ -7064,6 +7239,41 @@
       ],
       "optionsSchemaSource": null
     },
+    "python:no-swallowed-asyncio-cancellation": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "worker.py",
+              "source": "import asyncio\n\n\nasync def worker():\n    try:\n        await asyncio.sleep(10)\n    except asyncio.CancelledError:\n        raise\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "worker.py",
+          "id": "cancelled-operation-reraises",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Cleanup preserves cancellation"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "worker.py",
+              "source": "import asyncio\n\n\nasync def worker():\n    try:\n        await asyncio.sleep(10)\n    except asyncio.CancelledError:\n        return None\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "worker.py",
+          "id": "cancelled-operation-returns-success",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Cancellation becomes a successful return"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "python:no-trailing-numeric-unit-assignment-comment": {
       "examples": [
         {
@@ -7172,6 +7382,21 @@
     "python:no-unused-value-marker": {
       "examples": [
         {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/adapter.py",
+              "source": "def render(root: Path, manifest: Path) -> str:\n    _ = root, manifest\n    return \"ready\"\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/adapter.py",
+          "id": "callback-parameter-marker",
+          "outcome": "reject",
+          "scenarioId": "callback-parameters",
+          "title": "A callback disguises unused parameters with a discard binding"
+        },
+        {
           "expectedCount": 0,
           "files": [
             {
@@ -7215,6 +7440,21 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "A standalone discard binding is unnecessary"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/adapter.py",
+              "source": "def on(event: str, callback: object) -> None:\n    pass\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/adapter.py",
+          "id": "intentional-callback-stub",
+          "outcome": "accept",
+          "scenarioId": "callback-parameters",
+          "title": "An intentional stub preserves its callback signature"
         },
         {
           "expectedCount": 0,
@@ -7615,6 +7855,21 @@
           "expectedCount": 0,
           "files": [
             {
+              "path": "tests/test_adapter.py",
+              "source": "import pytest\n\n\ndef unavailable_client():\n    raise ConnectionError\n\n\ndef test_constructor_failure():\n    with pytest.raises(AdapterUnavailable):\n        open_adapter(client_factory=unavailable_client)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_adapter.py",
+          "id": "injected-constructor-failure",
+          "outcome": "accept",
+          "scenarioId": "constructor-failure",
+          "title": "Inject a factory to exercise constructor failure"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
               "path": "tests/test_checkout.py",
               "source": "def test_checkout(recording_gateway):\n    service = CheckoutService(payment_gateway=recording_gateway)\n    assert service.run() == \"paid\"\n"
             }
@@ -7625,6 +7880,21 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Test injects a purpose-built collaborator"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "tests/test_adapter.py",
+              "source": "import pytest\nfrom unittest.mock import patch\n\n\ndef test_constructor_failure():\n    with patch(\"transport.Client\", side_effect=ConnectionError):\n        with pytest.raises(AdapterUnavailable):\n            open_adapter()\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_adapter.py",
+          "id": "patched-constructor-failure",
+          "outcome": "reject",
+          "scenarioId": "constructor-failure",
+          "title": "Avoid replacing the SDK constructor lookup"
         },
         {
           "expectedCount": 1,
@@ -7932,6 +8202,21 @@
           "title": "Test installs a module without guaranteed restoration"
         },
         {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "tests/test_plugins.py",
+              "source": "import sys\nimport pytest\n\n\n@pytest.fixture\ndef fresh_plugin():\n    sys.modules.pop(\"temporary_plugin\", None)\n    yield\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_plugins.py",
+          "id": "fixture-cleanup-unscoped",
+          "outcome": "reject",
+          "scenarioId": "fixture-cleanup",
+          "title": "Restore setup mutations even when setup fails"
+        },
+        {
           "expectedCount": 0,
           "files": [
             {
@@ -7945,6 +8230,56 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Pytest restores the module registry after the test"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "tests/test_plugins.py",
+              "source": "import sys\nimport pytest\n\n\n@pytest.fixture\ndef fresh_plugin():\n    yield\n    sys.modules.pop(\"temporary_plugin\", None)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_plugins.py",
+          "id": "yield-fixture-cleanup",
+          "outcome": "accept",
+          "scenarioId": "fixture-cleanup",
+          "title": "Do not undo fixture teardown"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:prefer-monotonic-for-elapsed-time": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/metrics.py",
+              "source": "import time\n\n\ndef measure():\n    started = time.monotonic()\n    work()\n    return time.monotonic() - started\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/metrics.py",
+          "id": "monotonic-elapsed",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "A monotonic clock measures duration"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/metrics.py",
+              "source": "import time\n\n\ndef measure():\n    started = time.time()\n    work()\n    return time.time() - started\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/metrics.py",
+          "id": "wall-clock-elapsed",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A local wall clock measures duration"
         }
       ],
       "optionsSchemaSource": null
@@ -8093,6 +8428,41 @@
       ],
       "optionsSchemaSource": null
     },
+    "python:prefer-regex-fullmatch": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/validation.py",
+              "source": "import re\n\n\ndef validate(value):\n    if not re.match(r\"^[a-z]+$\", value):\n        raise ValueError(\"invalid value\")\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/validation.py",
+          "id": "anchored-rejection",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "An end anchor permits a final newline"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/validation.py",
+              "source": "import re\n\n\ndef validate(value):\n    if not re.fullmatch(r\"[a-z]+\", value):\n        raise ValueError(\"invalid value\")\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/validation.py",
+          "id": "whole-value-rejection",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Validate the entire value"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "python:prefer-self-documenting-constant": {
       "examples": [
         {
@@ -8230,7 +8600,11 @@
           "files": [
             {
               "path": "app/policy.py",
-              "source": "allowed = {\"read\", \"write\"}\nrequested = set(scopes)\nif not (allowed & requested):\n    deny()\n"
+              "source": "class AccessCase:\n    tags: frozenset[str]\n\n\ndef accepts(case: AccessCase):\n    if case.tags & {\"read\", \"write\"}:\n        allow()\n"
+            },
+            {
+              "path": "pyproject.toml",
+              "source": "[project]\nname = \"example\"\nversion = \"0.1.0\"\n"
             }
           ],
           "fixedFiles": [],
@@ -8238,7 +8612,7 @@
           "id": "discarded-intersection",
           "outcome": "reject",
           "scenarioId": "primary",
-          "title": "Set intersection is used only for an emptiness test"
+          "title": "A declared set field is used only for an overlap test"
         },
         {
           "expectedCount": 0,
@@ -8785,6 +9159,41 @@
       ],
       "optionsSchemaSource": null
     },
+    "python:repeated-test-composition": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "tests/test_client.py",
+              "source": "async def test_response(client):\n    assert await client.get(\"/\")\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_client.py",
+          "id": "fixture-client",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Request a managed test client fixture"
+        },
+        {
+          "expectedCount": 3,
+          "files": [
+            {
+              "path": "tests/test_client.py",
+              "source": "from httpx import AsyncClient, ASGITransport\n\n\nasync def test_case_0(app):\n    async with AsyncClient(\n        transport=ASGITransport(app=app), base_url=\"http://test\"\n    ) as client:\n        assert await client.get(\"/\")\n\n\nasync def test_case_1(app):\n    async with AsyncClient(\n        transport=ASGITransport(app=app), base_url=\"http://test\"\n    ) as client:\n        assert await client.get(\"/\")\n\n\nasync def test_case_2(app):\n    async with AsyncClient(\n        transport=ASGITransport(app=app), base_url=\"http://test\"\n    ) as client:\n        assert await client.get(\"/\")\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_client.py",
+          "id": "repeated-managed-clients",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Share managed test-client assembly"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "python:replay-contract-insert-requires-duplicate-policy": {
       "examples": [
         {
@@ -8816,6 +9225,135 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Replay-named store callable omits duplicate behavior"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:require-explicit-contract-implementation": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/__init__.py",
+              "source": "# package\n"
+            },
+            {
+              "path": "app/consumer.py",
+              "source": "from typing import Protocol\n\n\nclass Publisher(Protocol):\n    def publish(self) -> None: ...\n\n\nclass Consumer:\n    def __init__(self, publisher: Publisher) -> None:\n        self.publisher = publisher\n"
+            },
+            {
+              "path": "app/fake.py",
+              "source": "from app.consumer import Publisher\n\n\nclass FakePublisher(Publisher):\n    def publish(self) -> None: ...\n"
+            },
+            {
+              "path": "app/usage.py",
+              "source": "from app.consumer import Consumer\nfrom app.fake import FakePublisher\n\n\ndef setup() -> None:\n    Consumer(publisher=FakePublisher())\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/usage.py",
+          "id": "explicit-fake-at-injection",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "The fake declares the actual contract"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/__init__.py",
+              "source": "# package\n"
+            },
+            {
+              "path": "app/consumer.py",
+              "source": "from typing import Protocol\n\n\nclass Publisher(Protocol):\n    def publish(self) -> None: ...\n\n\nclass Consumer:\n    def __init__(self, publisher: Publisher) -> None:\n        self.publisher = publisher\n"
+            },
+            {
+              "path": "app/fake.py",
+              "source": "class FakePublisher:\n    def publish(self) -> None: ...\n"
+            },
+            {
+              "path": "app/usage.py",
+              "source": "from app.consumer import Consumer\nfrom app.fake import FakePublisher\n\n\ndef setup() -> None:\n    Consumer(publisher=FakePublisher())\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/usage.py",
+          "id": "structural-fake-at-injection",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A fake is supplied without declaring its contract"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:require-explicit-psycopg-transaction": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "repository.py",
+              "source": "from psycopg_pool import AsyncConnectionPool\n\n\nasync def save(pool: AsyncConnectionPool):\n    async with pool.connection() as conn, conn.transaction():\n        await conn.execute(\"SELECT id FROM items FOR UPDATE\")\n        await conn.execute(\"UPDATE items SET n = 1\")\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "repository.py",
+          "id": "explicit-lock-transaction",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Retain locks for the atomic operation"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "repository.py",
+              "source": "from psycopg_pool import AsyncConnectionPool\n\n\nasync def save(pool: AsyncConnectionPool):\n    async with pool.connection() as conn:\n        await conn.execute(\"SELECT id FROM items FOR UPDATE\")\n        await conn.execute(\"UPDATE items SET n = 1\")\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "repository.py",
+          "id": "unprotected-lock",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A pool checkout alone does not retain a lock"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:require-explicit-service-contract": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/service.py",
+              "source": "from abc import ABC, abstractmethod\n\n\nclass Runner(ABC):\n    @abstractmethod\n    def run(self) -> None: ...\n\n\nclass OrchestratorService(Runner):\n    def __init__(self, worker: Worker) -> None:\n        self.worker = worker\n\n    def run(self) -> None:\n        self.worker.run()\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/service.py",
+          "id": "explicit-single-operation-contract",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "The service declares its operation"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/service.py",
+              "source": "class OrchestratorService:\n    def __init__(self, worker: Worker) -> None:\n        self.worker = worker\n\n    def run(self) -> None:\n        self.worker.run()\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/service.py",
+          "id": "single-operation-service-without-contract",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "One service operation still needs its contract"
         }
       ],
       "optionsSchemaSource": null
@@ -8925,8 +9463,73 @@
       ],
       "optionsSchemaSource": null
     },
+    "python:require-public-dependency-contract": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/enqueuer.py",
+              "source": "from typing import Protocol\n\n\nclass _Publisher(Protocol):\n    def publish(self) -> None: ...\n\n\nclass Enqueuer:\n    def __init__(self, publisher: _Publisher) -> None:\n        self.publisher = publisher\n\n    def enqueue(self) -> None:\n        self.publisher.publish()\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/enqueuer.py",
+          "id": "private-publisher-protocol",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A public consumer hides its publisher contract"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/enqueuer.py",
+              "source": "from typing import Protocol\n\n\nclass Publisher(Protocol):\n    def publish(self) -> None: ...\n\n\nclass Enqueuer:\n    def __init__(self, publisher: Publisher) -> None:\n        self.publisher = publisher\n\n    def enqueue(self) -> None:\n        self.publisher.publish()\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/enqueuer.py",
+          "id": "public-publisher-protocol",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "The publisher contract is public"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "python:require-pydantic-for-external-json": {
       "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "protocol.py",
+              "source": "import httpx\n\n\nclass Envelope:\n    def __init__(self, body):\n        self.body = body\n\n    def payload(self):\n        return self.body\n\n\ndef wrap(body):\n    result = Envelope(body)\n    return result\n\n\ndef fetch():\n    raw = httpx.get(\"https://api.example/report\").json()\n    return wrap(raw).payload()[\"version\"]\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "protocol.py",
+          "id": "factory-forwarded-external-json",
+          "outcome": "reject",
+          "scenarioId": "factory-forwarding",
+          "title": "A local factory forwards an unvalidated response"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "protocol.py",
+              "source": "import httpx\n\n\nclass Envelope:\n    def __init__(self, body):\n        self.body = body\n\n    def payload(self):\n        return self.body\n\n\ndef wrap(body):\n    return Envelope(body)\n\n\ndef fetch():\n    remote = httpx.get(\"https://api.example/report\").json()\n    return wrap({\"version\": 1}).payload()[\"version\"]\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "protocol.py",
+          "id": "factory-local-record",
+          "outcome": "accept",
+          "scenarioId": "factory-forwarding",
+          "title": "A factory receives a locally constructed record"
+        },
         {
           "expectedCount": 1,
           "files": [
@@ -9065,6 +9668,41 @@
       ],
       "optionsSchemaSource": null
     },
+    "python:shared-mutable-pydantic-factory": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/models.py",
+              "source": "from pydantic import BaseModel, Field\n\nSHARED = []\n\n\nclass Model(BaseModel):\n    values: list[int] = Field(default_factory=lambda: SHARED)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/models.py",
+          "id": "captured-list",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A factory returns the same mutable list for every model"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/models.py",
+              "source": "from pydantic import BaseModel, Field\n\n\nclass Model(BaseModel):\n    values: list[int] = Field(default_factory=list)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/models.py",
+          "id": "fresh-list",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "The factory creates an independent list"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "python:stepdown": {
       "examples": [
         {
@@ -9161,6 +9799,41 @@
           "outcome": "accept",
           "scenarioId": "write",
           "title": "Route singleton mutations through the bulk primitive"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:subprocess-kill-without-reap": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/processes.py",
+              "source": "import subprocess\n\n\ndef run(args):\n    process = subprocess.Popen(args)\n    try:\n        process.communicate(timeout=1)\n    except subprocess.TimeoutExpired:\n        process.kill()\n        process.communicate()\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/processes.py",
+          "id": "reaped-child",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Drain and wait after killing"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/processes.py",
+              "source": "import subprocess\n\n\ndef run(args):\n    process = subprocess.Popen(args)\n    try:\n        process.communicate(timeout=1)\n    except subprocess.TimeoutExpired:\n        process.kill()\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/processes.py",
+          "id": "unreaped-child",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Killing does not complete cleanup"
         }
       ],
       "optionsSchemaSource": null
@@ -10483,7 +11156,7 @@
       "commit-message": "code-standards commit-message [-h] COMMIT_MSG_FILE\n",
       "doctor": "code-standards doctor [-h] [--format OUTPUT_FORMAT] [--repair] [--no-install]\n",
       "setup": "code-standards setup [-h] [--hooks HOOKS] [--python-dest PYTHON_DEST] [--typescript-dest TYPESCRIPT_DEST] [--swift-dest SWIFT_DEST] [--kotlin-dest KOTLIN_DEST] [--dry-run] [--force] [--no-install] [--commit-policy-only] [--config ONLY ...]\n",
-      "check": "code-standards check [-h] [--trust-repository-code] [--jobs JOBS] [--staged] [--rule SELECTED_RULES ...] [--format OUTPUT_FORMAT] [--output OUTPUT] [--max-annotations-per-level MAX_ANNOTATIONS_PER_LEVEL] [FILES ...]\n",
+      "check": "code-standards check [-h] [--trust-repository-code] [--jobs JOBS] [--skip-python-type-check] [--staged] [--rule SELECTED_RULES ...] [--format OUTPUT_FORMAT] [--output OUTPUT] [--max-annotations-per-level MAX_ANNOTATIONS_PER_LEVEL] [FILES ...]\n",
       "validate-slack-automations": "code-standards validate-slack-automations [-h] PATH\n",
       "observe": "code-standards observe [-h] --rule SELECTED_RULES ... [--format OUTPUT_FORMAT] [--output OUTPUT] [--trust-repository-code] [--max-annotations-per-level MAX_ANNOTATIONS_PER_LEVEL] [FILES ...]\n",
       "fix": "code-standards fix [-h] [--staged] [FILES ...]\n",

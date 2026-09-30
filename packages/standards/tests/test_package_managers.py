@@ -283,6 +283,42 @@ def test_ci_bootstraps_bun_without_unneeded_node_or_corepack(tmp_path: Path) -> 
     assert "run: bun install --frozen-lockfile" in workflow
 
 
+def test_ci_pins_node_for_bun_on_a_configured_runner(tmp_path: Path) -> None:
+    _project(tmp_path, "bun.lock")
+    (tmp_path / manifest.MANIFEST_NAME).write_text(
+        'schema = 4\nbundle = "1.2.3"\n[ci]\nrunner = "blacksmith-2vcpu-ubuntu-2404"\n', encoding="utf-8"
+    )
+
+    workflow = scaffold.github_ci_workflow(tmp_path)
+
+    assert "    runs-on: blacksmith-2vcpu-ubuntu-2404\n" in workflow
+    assert workflow.index("oven-sh/setup-bun@v2") < workflow.index("actions/setup-node@v7")
+    assert "          node-version: 24\n          check-latest: true\n" in workflow
+    assert "run: bun install --frozen-lockfile" in workflow
+
+
+def test_ci_resolves_the_newest_node_before_npm_activation_on_a_configured_runner(tmp_path: Path) -> None:
+    _project(tmp_path, "package-lock.json", {"name": "web", "packageManager": "npm@12.0.2"})
+    (tmp_path / manifest.MANIFEST_NAME).write_text(
+        'schema = 4\nbundle = "1.2.3"\n[ci]\nrunner = "blacksmith-2vcpu-ubuntu-2404"\n', encoding="utf-8"
+    )
+
+    workflow = scaffold.github_ci_workflow(tmp_path)
+
+    node = "          node-version: 24\n          check-latest: true\n"
+    assert node in workflow
+    assert workflow.index(node) < workflow.index("run: npm install --global npm@12.0.2 --ignore-scripts")
+
+
+def test_ci_keeps_the_image_node_on_github_hosted_linux(tmp_path: Path) -> None:
+    _project(tmp_path, "package-lock.json", {"name": "web", "packageManager": "npm@12.0.2"})
+
+    workflow = scaffold.github_ci_workflow(tmp_path)
+
+    assert "          node-version: 24\n" in workflow
+    assert "check-latest" not in workflow
+
+
 def test_ci_only_runs_locked_uv_sync_for_a_uv_project(tmp_path: Path) -> None:
     (tmp_path / "pyproject.toml").write_text('[project]\nname="demo"\nversion="0.1.0"\n', encoding="utf-8")
 

@@ -1,4 +1,5 @@
 from pathlib import Path
+import textwrap
 from typing import TYPE_CHECKING
 
 import pytest
@@ -342,3 +343,20 @@ def test_specific_existing_docstring_diagnostic_wins_precedence(
     )
 
     assert [finding.code for finding in findings] == expected
+
+
+@pytest.mark.parametrize(
+    "wrapper", ["if enabled:", "try:", "for item in values:", "with scope():", "match value:\n    case 1:"]
+)
+def test_control_flow_docstring_owners_are_indexed(wrapper: str) -> None:
+    depth = 8 if wrapper.startswith("match") else 4
+    body = 'def run():\n    """Run the selected implementation."""\n    return 1\n'
+    source = wrapper + "\n" + textwrap.indent(body, " " * depth)
+    if wrapper == "try:":
+        source += "except Exception:\n    pass\n"
+    assert len(_check(source)) == 1
+
+
+def test_control_flow_owner_consumption_is_preserved() -> None:
+    source = 'if enabled:\n    def run():\n        """Runtime help text."""\n        return 1\nhelp(run)\n'
+    assert _check(source) == []

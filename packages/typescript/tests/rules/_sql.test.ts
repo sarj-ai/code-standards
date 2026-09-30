@@ -1,3 +1,4 @@
+// vitest: shared-module-graph
 /** Executable contract for TypeScript SQL extraction and masking. */
 
 import * as tsParser from "@typescript-eslint/parser";

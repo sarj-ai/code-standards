@@ -1,3 +1,4 @@
+// vitest: shared-module-graph
 import * as tsParser from "@typescript-eslint/parser";
 import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, it } from "vitest";
@@ -595,7 +596,7 @@ RULE_TESTER.run("require-port-for-service", rule, {
       `,
     },
     {
-      name: "accepts a same-stem structural port that covers the public surface",
+      name: "ignores a thin transport wrapper despite a nearby interface",
       filename: "/repo/src/app/api/parser.ts",
       code: `
         export interface Parser { parse(args: ParseArgs): Promise<Parsed>; }
@@ -959,6 +960,12 @@ RULE_TESTER.run("require-port-for-service", rule, {
   ],
 
   invalid: [
+    {
+      name: "a same-stem interface does not replace an implements clause",
+      filename: SRC,
+      code: "interface WorkerService { run(): void } export class WorkerServiceImpl { constructor(private readonly worker: Worker) {} run(): void { this.worker.run(); } }",
+      errors: [{ messageId: "requireInterface" }],
+    },
     { name: "different quoted method names do not establish a port", code: 'interface Handler { "save"(): void } export class RequestHandler implements Handler { constructor(private readonly store: TaskStore) {} "handle"(): void { this.store.handle(); } }', errors: [{ messageId: "requireInterface" }] },
     { name: "reports the documented concrete service", filename: REQUIRE_PORT_FOR_SERVICE_DOCUMENTATION.examples[1].focusPath, code: REQUIRE_PORT_FOR_SERVICE_DOCUMENTATION.examples[1].files[0].source, errors: [{ messageId: "requireInterface", data: { name: "RequestHandler", deps: "store: TaskStore", methods: "handle" } }] },
     {

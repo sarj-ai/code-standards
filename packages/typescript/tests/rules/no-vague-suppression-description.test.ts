@@ -1,3 +1,4 @@
+// vitest: shared-module-graph
 import eslintComments from "@eslint-community/eslint-plugin-eslint-comments";
 import * as tsParser from "@typescript-eslint/parser";
 import { RuleTester } from "@typescript-eslint/rule-tester";

@@ -311,6 +311,7 @@ def analyze_external(
     pass_on_unpruned_eslint_suppressions: bool = False,
     rule_ids: frozenset[str] | None = None,
     security_selection: RuleSelection | None = None,
+    python_type_check: bool = True,
 ) -> tuple[ToolReport, ...]:
     execute = run_process if runner is None else runner
     try:
@@ -363,7 +364,7 @@ def analyze_external(
                         runner=execute,
                     )
                 )
-            if capabilities is None or "pyright" in capabilities:
+            if python_type_check and (capabilities is None or "pyright" in capabilities):
                 reports.extend(
                     _invoke_python_projects(
                         "basedpyright",
@@ -536,7 +537,7 @@ def _security_reports(
     capabilities: frozenset[str] | None,
     security_selection: RuleSelection | None = None,
 ) -> tuple[ToolReport, ...]:
-    if capabilities is not None and not capabilities.intersection({"zizmor", "checkov"}):
+    if capabilities is not None and capabilities.isdisjoint({"zizmor", "checkov"}):
         return ()
     checkov_checks = security_selection.native_ids_for(RuleEngine.CHECKOV) if security_selection is not None else None
     zizmor_selected = security_selection is not None and RuleEngine.ZIZMOR in security_selection.engines

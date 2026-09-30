@@ -133,23 +133,6 @@ export default createRule<Options, MessageIds>({
       return false;
     }
 
-    function isZodSchemaExpression(node: TSESTree.Node): boolean {
-      if (node.type !== AST_NODE_TYPES.CallExpression) return false;
-      const { callee } = node;
-      if (callee.type === AST_NODE_TYPES.Identifier) {
-        return resolvesToTrackedImport(callee);
-      }
-      if (callee.type !== AST_NODE_TYPES.MemberExpression) return false;
-      if (
-        callee.object.type === AST_NODE_TYPES.Identifier &&
-        namespaces.has(callee.object.name) &&
-        resolvesToTrackedImport(callee.object)
-      ) {
-        return true;
-      }
-      return isZodSchemaExpression(callee.object);
-    }
-
     function isArraySchemaExpression(node: TSESTree.Node): boolean {
       if (node.type !== AST_NODE_TYPES.CallExpression) return false;
       const { callee } = node;
@@ -167,6 +150,23 @@ export default createRule<Options, MessageIds>({
         return true;
       }
       return isArraySchemaExpression(callee.object);
+    }
+
+    function isZodSchemaExpression(node: TSESTree.Node): boolean {
+      if (node.type !== AST_NODE_TYPES.CallExpression) return false;
+      const { callee } = node;
+      if (callee.type === AST_NODE_TYPES.Identifier) {
+        return resolvesToTrackedImport(callee);
+      }
+      if (callee.type !== AST_NODE_TYPES.MemberExpression) return false;
+      if (
+        callee.object.type === AST_NODE_TYPES.Identifier &&
+        namespaces.has(callee.object.name) &&
+        resolvesToTrackedImport(callee.object)
+      ) {
+        return true;
+      }
+      return isZodSchemaExpression(callee.object);
     }
 
     return {

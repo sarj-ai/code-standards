@@ -34,6 +34,8 @@ _ESLINT_RULE_KEY: Final = re.compile(
     re.MULTILINE,
 )
 _SARJ_RULE_ENGINES: Final = frozenset({"python", "sql", "iac", "text"})
+_RUNNER_LABEL: Final = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,99}")
+_TOML_COLUMN_WIDTH: Final = 80  # Taplo's default; the shipped strict config does not override column_width.
 
 
 class _UpstreamRuleEngine(StrEnum):
@@ -47,6 +49,8 @@ class _UpstreamRuleEngine(StrEnum):
 LINT_CONFIGS: Final = "code-standards"
 _PYTHON_LINT: Final = "sarj-python-lint"
 SIBLING_PACKAGES: Final = (_PYTHON_LINT, "sarj-sql-lint", "sarj-iac-lint")
+REPO_STANDARDS_VERSION: Final = "6.2.0"
+REPO_STANDARDS_REVISION: Final = "174067233a36b44382b25b8bfab65ab21c46bc2d"
 
 
 def adopted_version() -> str:
@@ -140,6 +144,7 @@ class Manifest:
     doctor_excluded_paths: tuple[str, ...] = ()
     diagnostic_baseline: str | None = None
     ci_bootstrap: tuple[str, ...] = ()
+    ci_runner: str | None = None
 
     @property
     def enabled_capabilities(self) -> tuple[str, ...]:
@@ -150,46 +155,43 @@ class Manifest:
     def render(self) -> str:
         enabled = set(self.enabled_capabilities)
         disabled = tuple(name for name in ALL_CAPABILITIES if name not in enabled)
-        disabled_text = ", ".join(f'"{name}"' for name in disabled)
-        durable_text = ", ".join(json.dumps(value) for value in self.durable_artifacts)
         sections = [
             (
                 "# Managed by `code-standards setup`; commit this file.\n"
-                f"schema = {MANIFEST_SCHEMA}\n"
                 f'bundle = "{self.version}"\n'
                 'rule_profile = "all"\n'
+                f"schema = {MANIFEST_SCHEMA}\n"
                 "\n"
                 "[capabilities]\n"
-                f"disable = [{disabled_text}]\n"
+                f"{_array_field('disable', disabled)}"
                 "\n"
                 "[artifacts]\n"
-                f"durable = [{durable_text}]\n"
+                f"{_array_field('durable', self.durable_artifacts)}"
                 "\n"
                 "[dest]\n"
-                f'python = "{self.python_dest}"\n'
-                f'typescript = "{self.typescript_dest}"\n'
-                f'swift = "{self.swift_dest}"\n'
-                f'kotlin = "{self.kotlin_dest}"\n'
+                f"kotlin = {_toml_string(self.kotlin_dest)}\n"
+                f"python = {_toml_string(self.python_dest)}\n"
+                f"swift = {_toml_string(self.swift_dest)}\n"
+                f"typescript = {_toml_string(self.typescript_dest)}\n"
                 "\n"
                 "[hooks]\n"
                 f'manager = "{self.hook_manager}"\n'
             )
         ]
         if self.verify_paths != (".",):
-            paths = ", ".join(json.dumps(value) for value in self.verify_paths)
-            sections.append(f"\n[verify]\npaths = [{paths}]\n")
+            sections.append(f"\n[verify]\n{_array_field('paths', self.verify_paths)}")
         sections.extend(_exclusion_sections(self))
         if self.text_excluded_paths:
-            paths = ", ".join(json.dumps(value) for value in self.text_excluded_paths)
-            sections.append(f"\n[text]\nexclude = [{paths}]\n")
+            sections.append(f"\n[text]\n{_array_field('exclude', self.text_excluded_paths)}")
         if self.doctor_excluded_paths:
-            paths = ", ".join(json.dumps(value) for value in self.doctor_excluded_paths)
-            sections.append(f"\n[doctor]\nexclude = [{paths}]\n")
+            sections.append(f"\n[doctor]\n{_array_field('exclude', self.doctor_excluded_paths)}")
         if self.diagnostic_baseline is not None:
-            sections.append(f"\n[baseline]\ndiagnostics = {json.dumps(self.diagnostic_baseline)}\n")
-        if self.ci_bootstrap:
-            commands = ", ".join(json.dumps(command) for command in self.ci_bootstrap)
-            sections.append(f"\n[ci]\nbootstrap = [{commands}]\n")
+            sections.append(f"\n[baseline]\ndiagnostics = {_toml_string(self.diagnostic_baseline)}\n")
+        if self.ci_bootstrap or self.ci_runner is not None:
+            ci_fields = _array_field("bootstrap", self.ci_bootstrap) if self.ci_bootstrap else ""
+            if self.ci_runner is not None:
+                ci_fields += f"runner = {_toml_string(self.ci_runner)}\n"
+            sections.append(f"\n[ci]\n{ci_fields}")
         return "".join(sections)
 
 
@@ -342,6 +344,7 @@ def _load_schema(  # ruff: ignore[too-many-locals] - one validation boundary kee
         doctor_excluded_paths=_string_list(doctor_table, "exclude", label="manifest [doctor].exclude"),
         diagnostic_baseline=_relative_file(root, baseline_table, "diagnostics"),
         ci_bootstrap=_ci_bootstrap(ci_table),
+        ci_runner=_ci_runner(ci_table),
     )
 
 
@@ -503,6 +506,19 @@ def _ci_bootstrap(table: Mapping[str, object]) -> tuple[str, ...]:
     return commands
 
 
+def _ci_runner(table: Mapping[str, object]) -> str | None:
+    if "runner" not in table:
+        return None
+    label = table["runner"]
+    if not isinstance(label, str):
+        msg = "manifest [ci].runner must be a string"
+        raise TypeError(msg)
+    if _RUNNER_LABEL.fullmatch(label) is None:
+        msg = "manifest [ci].runner must be one GitHub Actions runner label, such as blacksmith-2vcpu-ubuntu-2404"
+        raise ValueError(msg)
+    return label
+
+
 def _path_patterns(root: Path, table: Mapping[str, object], key: str) -> tuple[str, ...]:
     patterns = _string_list(table, key, label=f"manifest [exclude].{key}")
     return tuple(validate_excluded_path(root, pattern) for pattern in patterns)
@@ -522,7 +538,10 @@ def _rule_selectors(
     )
 
 
-def validate_excluded_path(root: Path, pattern: str) -> str:
+def validate_excluded_path(
+    root: Path,  # ruff: ignore[unused-function-argument] -- Preserve the public exclusion validator keyword.
+    pattern: str,
+) -> str:
     normalized = pattern.replace("\\", "/")
     if normalized.startswith(("/", "!")) or ".." in normalized.split("/"):
         msg = f"manifest exclusion pattern must be a repository-relative denylist pattern: {pattern}"
@@ -533,7 +552,6 @@ def validate_excluded_path(root: Path, pattern: str) -> str:
     if normalized in {MANIFEST_NAME, f"**/{MANIFEST_NAME}"}:
         msg = "manifest exclusion cannot hide the Standards manifest"
         raise ValueError(msg)
-    _ = root
     return normalized
 
 
@@ -698,7 +716,7 @@ def _relative_file(root: Path, table: Mapping[str, object], key: str) -> str | N
 
 def installed_versions() -> dict[str, str]:
     found = {LINT_CONFIGS: adopted_version()}
-    for name in SIBLING_PACKAGES:
+    for name in (*SIBLING_PACKAGES, "repo-standards"):
         try:
             found[name] = version(name)
         except PackageNotFoundError:
@@ -723,13 +741,24 @@ def eslint_overrides() -> dict[str, object]:
 def _exclusion_sections(manifest: Manifest) -> list[str]:
     sections: list[str] = []
     if manifest.excluded_paths or manifest.excluded_rules:
-        paths = ", ".join(json.dumps(value) for value in manifest.excluded_paths)
-        rules = ", ".join(json.dumps(value) for value in manifest.excluded_rules)
-        sections.append(f"\n[exclude]\npaths = [{paths}]\nrules = [{rules}]\n")
+        paths = _array_field("paths", manifest.excluded_paths)
+        rules = _array_field("rules", manifest.excluded_rules)
+        sections.append(f"\n[exclude]\n{paths}{rules}")
     for override in manifest.exclusion_overrides:
-        paths = ", ".join(json.dumps(value) for value in override.paths)
-        rules = ", ".join(json.dumps(value) for value in override.rules)
-        sections.append(
-            f"\n[[exclude.overrides]]\npaths = [{paths}]\nrules = [{rules}]\nreason = {json.dumps(override.reason)}\n"
-        )
+        paths = _array_field("paths", override.paths)
+        rules = _array_field("rules", override.rules)
+        sections.append(f"\n[[exclude.overrides]]\n{paths}reason = {_toml_string(override.reason)}\n{rules}")
     return sections
+
+
+def _array_field(key: str, values: tuple[str, ...]) -> str:
+    rendered = tuple(_toml_string(value) for value in values)
+    inline = f"{key} = [{', '.join(rendered)}]"
+    if len(inline) <= _TOML_COLUMN_WIDTH:
+        return f"{inline}\n"
+    items = "".join(f"  {value},\n" for value in rendered)
+    return f"{key} = [\n{items}]\n"
+
+
+def _toml_string(value: str) -> str:
+    return json.dumps(value, ensure_ascii=False).replace("\x7f", r"\u007f")

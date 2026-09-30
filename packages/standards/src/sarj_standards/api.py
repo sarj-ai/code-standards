@@ -252,6 +252,7 @@ class Standards:
         include_react_doctor: bool = True,
         pass_on_unpruned_eslint_suppressions: bool = False,
         jobs: int = 1,
+        python_type_check: bool = True,
     ) -> AnalysisReport:
         if jobs not in {1, 2}:
             return _failed_analysis(self.root, "invalid-input", "analysis jobs must be 1 or 2")
@@ -314,6 +315,15 @@ class Standards:
                     CoverageDisposition.NOT_REQUESTED,
                 )
             )
+        if selected_groups.python and not python_type_check:
+            coverage.append(
+                CoverageNotice(
+                    "basedpyright",
+                    "Python type checking is left to the repository's own CI",
+                    len(selected_groups.python),
+                    CoverageDisposition.NOT_REQUESTED,
+                )
+            )
 
         def external_analysis() -> tuple[ToolReport, ...]:
             return _selected_external_analysis(
@@ -329,6 +339,7 @@ class Standards:
                 staged=staged,
                 react_doctor_full_scan=react_doctor_full_scan,
                 pass_on_unpruned_eslint_suppressions=pass_on_unpruned_eslint_suppressions,
+                python_type_check=python_type_check,
             )
 
         combined = report_from_tools(
@@ -617,6 +628,7 @@ def _selected_external_analysis(
     staged: bool,
     react_doctor_full_scan: bool,
     pass_on_unpruned_eslint_suppressions: bool,
+    python_type_check: bool,
 ) -> tuple[ToolReport, ...]:
     rule_ids = (
         frozenset(str(value) for value in rule_selection.ids_for(RuleEngine.ESLINT))
@@ -648,6 +660,7 @@ def _selected_external_analysis(
                 react_doctor_staged=staged,
                 react_doctor_full_scan=react_doctor_full_scan,
                 pass_on_unpruned_eslint_suppressions=pass_on_unpruned_eslint_suppressions,
+                python_type_check=python_type_check,
             )
             if adopted is not None
             else analyze_external(
@@ -663,6 +676,7 @@ def _selected_external_analysis(
                 react_doctor_staged=staged,
                 react_doctor_full_scan=react_doctor_full_scan,
                 pass_on_unpruned_eslint_suppressions=pass_on_unpruned_eslint_suppressions,
+                python_type_check=python_type_check,
             )
         )
         if run_external

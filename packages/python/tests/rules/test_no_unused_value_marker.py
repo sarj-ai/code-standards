@@ -1,4 +1,6 @@
 from pathlib import Path
+import subprocess
+import sys
 import textwrap
 from typing import TYPE_CHECKING
 
@@ -74,7 +76,7 @@ def test_reports_nested_markers_in_source_order() -> None:
         """
     )
 
-    assert [(item.line, item.col) for item in diagnostics] == [(6, 9)]
+    assert [(item.line, item.col) for item in diagnostics] == [(3, 5), (5, 9), (6, 9)]
 
 
 @pytest.mark.parametrize(
@@ -83,10 +85,37 @@ def test_reports_nested_markers_in_source_order() -> None:
         "def callback(cwd: Path) -> None:\n    _ = cwd\n",
         "def callback(cwd: Path, capture_output: bool) -> None:\n    _ = cwd, capture_output\n",
         "def callback(cwd: Path, capture_output: bool) -> None:\n    _ = (cwd, capture_output)\n",
+        "async def say(message: str, **kwargs: object) -> None:\n    _ = message, kwargs\n",
+        "def callback(value: object, /, *, context: object) -> None:\n    _ = value, context\n",
+        "def callback(*values: object) -> None:\n    _ = values\n",
     ],
 )
-def test_allows_pure_parameter_markers(source: str) -> None:
+def test_reports_pure_parameter_markers(source: str) -> None:
+    diagnostics = _check(source)
+
+    assert len(diagnostics) == 1
+    assert diagnostics[0].severity is Severity.WARNING
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "def on(event: str, callback: object) -> None:\n    pass\n",
+        "def unsupported(event: str) -> None:\n    raise NotImplementedError\n",
+        "def callback(_value: object) -> None:\n    return\n",
+        "from typing import override\nclass Fake(Base):\n    @override\n    def on(self, event: str) -> None:\n        self.called = True\n",
+    ],
+)
+def test_allows_explicit_stub_and_signature_contracts(source: str) -> None:
     assert _check(source) == []
+    result = subprocess.run(
+        [sys.executable, "-m", "ruff", "check", "--isolated", "--no-cache", "--select", "ARG", "-"],
+        input=source,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stdout
 
 
 @pytest.mark.parametrize(

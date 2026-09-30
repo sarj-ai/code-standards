@@ -1,3 +1,4 @@
+// vitest: shared-module-graph
 import { stripTypeScriptTypes } from "node:module";
 import { runInNewContext } from "node:vm";
 import * as tsParser from "@typescript-eslint/parser";

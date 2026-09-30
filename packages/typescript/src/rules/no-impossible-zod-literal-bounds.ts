@@ -216,6 +216,26 @@ export default createRule<Options, MessageIds>({
       return false;
     }
 
+    function readChain(node: TSESTree.CallExpression): Chain | null {
+      const calls: { method: string; node: TSESTree.CallExpression }[] = [];
+      let current = node;
+      while (true) {
+        const kind = baseKind(current);
+        if (kind !== null) return { calls, kind };
+        const callee = current.callee;
+        if (
+          callee.type !== AST_NODE_TYPES.MemberExpression ||
+          callee.object.type !== AST_NODE_TYPES.CallExpression
+        ) {
+          return null;
+        }
+        const method = memberName(callee);
+        if (method === null) return null;
+        calls.push({ method, node: current });
+        current = callee.object;
+      }
+    }
+
     function baseKind(node: TSESTree.CallExpression): SchemaKind | null {
       const callee = node.callee;
       if (callee.type === AST_NODE_TYPES.Identifier) {
@@ -235,26 +255,6 @@ export default createRule<Options, MessageIds>({
       return name !== null && KINDS.has(name as SchemaKind)
         ? (name as SchemaKind)
         : null;
-    }
-
-    function readChain(node: TSESTree.CallExpression): Chain | null {
-      const calls: { method: string; node: TSESTree.CallExpression }[] = [];
-      let current = node;
-      while (true) {
-        const kind = baseKind(current);
-        if (kind !== null) return { calls, kind };
-        const callee = current.callee;
-        if (
-          callee.type !== AST_NODE_TYPES.MemberExpression ||
-          callee.object.type !== AST_NODE_TYPES.CallExpression
-        ) {
-          return null;
-        }
-        const method = memberName(callee);
-        if (method === null) return null;
-        calls.push({ method, node: current });
-        current = callee.object;
-      }
     }
 
     function isInsideReshapingCall(node: TSESTree.CallExpression): boolean {
