@@ -27,6 +27,69 @@ def _check(source: str, path: str | PurePosixPath = TEST_PATH) -> list[Diagnosti
 
 _PUBLIC_EXAMPLES = PreferMonkeypatchForProcessStateInTest.public_examples()
 
+_DESTRUCTIVE_TEARDOWN_CASES = tuple(
+    EvaluationCase(
+        case_id=case_id,
+        language=Language.PYTHON,
+        source=(f"import sys\nimport pytest\n\n@pytest.fixture\ndef registry_entry():\n    yield\n    {statement}\n"),
+        expected=ExpectedOutcome.MATCH,
+        path=PurePosixPath(TEST_PATH),
+    )
+    for case_id, statement in (
+        ("teardown-pop-can-delete-preexisting-entry", 'sys.modules.pop("optional", None)'),
+        ("teardown-delete-can-delete-preexisting-entry", 'del sys.modules["optional"]'),
+        ("teardown-assignment-can-overwrite-preexisting-entry", 'sys.modules["optional"] = fake'),
+        ("teardown-insertion-can-leak-import-path", "sys.path.insert(0, plugin_path)"),
+    )
+)
+
+
+@pytest.mark.parametrize(
+    "case", _DESTRUCTIVE_TEARDOWN_CASES, ids=tuple(case.case_id for case in _DESTRUCTIVE_TEARDOWN_CASES)
+)
+def test_fixture_teardown_does_not_prove_process_state_restoration(case: EvaluationCase) -> None:
+    diagnostics = _check(case.source, case.path)
+    assert len(diagnostics) == 1
+    assert diagnostics[0].code == "SARJ446"
+    assert diagnostics[0].severity.value == "warning"
+    assert diagnostics[0].line == 7
+
+
+def test_diagnostic_establishes_restoration_before_mutation() -> None:
+    diagnostics = _check("import sys\n\ndef helper():\n    del sys.modules['optional']\n")
+    assert len(diagnostics) == 1
+    assert "before the setup mutation" in diagnostics[0].message
+    assert "original state" in diagnostics[0].message
+
+
+def test_teardown_monkeypatch_can_reinstall_a_temporary_entry(request: pytest.FixtureRequest) -> None:
+    temporary = object()
+    registry = {"optional": temporary}
+    patcher = pytest.MonkeyPatch()
+
+    def verify_final_state() -> None:
+        assert registry["optional"] is temporary
+
+    request.addfinalizer(verify_final_state)
+    request.addfinalizer(patcher.undo)
+    patcher.delitem(registry, "optional")
+    assert "optional" not in registry
+
+
+def test_setup_monkeypatch_restores_the_original_entry_after_failure() -> None:
+    original = object()
+    registry = {"optional": original}
+
+    def fail_setup() -> None:
+        with pytest.MonkeyPatch.context() as patcher:
+            patcher.setitem(registry, "optional", object())
+            message = "setup failed"
+            raise RuntimeError(message)
+
+    with pytest.raises(RuntimeError, match="setup failed"):
+        fail_setup()
+    assert registry["optional"] is original
+
 
 @pytest.mark.parametrize("example", _PUBLIC_EXAMPLES, ids=tuple(example.example_id for example in _PUBLIC_EXAMPLES))
 def test_public_documentation_examples_are_executable(example: RuleExample) -> None:
@@ -277,70 +340,21 @@ def test_non_test_generated_and_malformed_files_are_ignored() -> None:
 
 _TEARDOWN_CASES = (
     EvaluationCase(
-        "shadowed-nested-fixture",
-        Language.PYTHON,
-        "import pytest, sys\ndef factory(pytest):\n    @pytest.fixture\n    def loaded():\n        yield\n        sys.modules.pop('temporary', None)\n",
-        ExpectedOutcome.MATCH,
-    ),
-    EvaluationCase(
-        "multiple-yields",
-        Language.PYTHON,
-        "import pytest, sys\n@pytest.fixture\ndef loaded():\n    yield\n    yield\n    sys.modules.pop('temporary', None)\n",
-        ExpectedOutcome.MATCH,
-    ),
-    EvaluationCase(
-        "rebound-fixture-decorator",
-        Language.PYTHON,
-        "import pytest, sys\npytest = custom\n@pytest.fixture\ndef loaded():\n    yield\n    sys.modules.pop('temporary', None)\n",
-        ExpectedOutcome.MATCH,
-    ),
-    EvaluationCase(
-        "fixture-pop-cleanup",
-        Language.PYTHON,
-        "import pytest, sys\n@pytest.fixture\ndef loaded():\n    yield\n    sys.modules.pop('temporary', None)\n",
-    ),
-    EvaluationCase(
         "fixture-loop-cleanup",
         Language.PYTHON,
         "import pytest, sys\n@pytest.fixture(autouse=True)\ndef loaded():\n    yield\n    for key in keys:\n        sys.modules.pop(key, None)\n",
-    ),
-    EvaluationCase(
-        "fixture-restore-value",
-        Language.PYTHON,
-        "import pytest, sys\n@pytest.fixture\ndef loaded():\n    yield\n    sys.modules['temporary'] = previous\n",
-    ),
-    EvaluationCase(
-        "aliased-fixture",
-        Language.PYTHON,
-        "import sys\nfrom pytest import fixture as resource\n@resource\ndef loaded():\n    yield\n    del sys.modules['temporary']\n",
+        ExpectedOutcome.MATCH,
     ),
     EvaluationCase(
         "async-fixture",
         Language.PYTHON,
         "import pytest_asyncio as pa, os\n@pa.fixture\nasync def loaded():\n    yield\n    os.chdir(previous)\n",
+        ExpectedOutcome.MATCH,
     ),
     EvaluationCase(
         "setup-still-reports",
         Language.PYTHON,
         "import pytest, sys\n@pytest.fixture\ndef loaded():\n    sys.modules.pop('temporary', None)\n    yield\n    sys.modules.pop('temporary', None)\n",
-        ExpectedOutcome.MATCH,
-    ),
-    EvaluationCase(
-        "ordinary-generator",
-        Language.PYTHON,
-        "import sys\ndef loaded():\n    yield\n    sys.modules.pop('temporary', None)\n",
-        ExpectedOutcome.MATCH,
-    ),
-    EvaluationCase(
-        "custom-fixture-decorator",
-        Language.PYTHON,
-        "import sys\nfrom custom import fixture\n@fixture\ndef loaded():\n    yield\n    sys.modules.pop('temporary', None)\n",
-        ExpectedOutcome.MATCH,
-    ),
-    EvaluationCase(
-        "conditional-yield",
-        Language.PYTHON,
-        "import pytest, sys\n@pytest.fixture\ndef loaded():\n    if condition:\n        yield\n    sys.modules.pop('temporary', None)\n",
         ExpectedOutcome.MATCH,
     ),
     EvaluationCase(
@@ -353,13 +367,5 @@ _TEARDOWN_CASES = (
 
 
 @pytest.mark.parametrize("case", _TEARDOWN_CASES, ids=tuple(case.case_id for case in _TEARDOWN_CASES))
-def test_yield_fixture_cleanup(case: EvaluationCase) -> None:
-    assert len(_check(case.source)) == (1 if case.expected is ExpectedOutcome.MATCH else 0)
-
-
-def test_monkeypatch_in_teardown_can_restore_the_temporary_entry() -> None:
-    registry = {"temporary": object()}
-    with pytest.MonkeyPatch.context() as patcher:
-        patcher.delitem(registry, "temporary")
-        assert "temporary" not in registry
-    assert "temporary" in registry
+def test_yield_does_not_establish_cleanup_ownership(case: EvaluationCase) -> None:
+    assert len(_check(case.source)) == (2 if case.case_id == "setup-still-reports" else 1)

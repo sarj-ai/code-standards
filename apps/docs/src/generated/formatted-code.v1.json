@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "f17e5754b2928781af36df9a6c967e3229a0c7a63582e75cb7ae964b186d7f6d",
-  "cliSha256": "d0a6361b728cc435217d2bc8de5e70aa43fbb4f2ec1ead0d39c021d0b7c35293",
+  "catalogSha256": "a954fed7adac0f81c0dff6e32ad3727dddc97f44a0db628085de54c1c59cf8fe",
+  "cliSha256": "755d643caa357aefd247620b911d13138d00ec9d96fa47895235e9a71a2b56e0",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -5003,6 +5003,36 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "A call assertion does not prove awaiting"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "tests/test_delivery.py",
+              "source": "from unittest.mock import AsyncMock\n\n\nasync def test_delivery(expected):\n    send = AsyncMock()\n    await deliver(send)\n    send.assert_called_once()\n    send.assert_has_awaits(expected)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_delivery.py",
+          "id": "dynamic-expected-awaits",
+          "outcome": "accept",
+          "scenarioId": "await-expectation-boundaries",
+          "title": "Unresolved await expectations retain their acceptance"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "tests/test_delivery.py",
+              "source": "from unittest.mock import AsyncMock\n\n\nasync def test_delivery():\n    send = AsyncMock()\n    await deliver(send)\n    assert send.call_count == 1\n    assert send.await_count >= 0\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_delivery.py",
+          "id": "vacuous-await-count",
+          "outcome": "reject",
+          "scenarioId": "await-expectation-boundaries",
+          "title": "A nonnegative await count does not prove execution"
         }
       ],
       "optionsSchemaSource": null
@@ -8202,21 +8232,6 @@
           "title": "Test installs a module without guaranteed restoration"
         },
         {
-          "expectedCount": 1,
-          "files": [
-            {
-              "path": "tests/test_plugins.py",
-              "source": "import sys\nimport pytest\n\n\n@pytest.fixture\ndef fresh_plugin():\n    sys.modules.pop(\"temporary_plugin\", None)\n    yield\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "tests/test_plugins.py",
-          "id": "fixture-cleanup-unscoped",
-          "outcome": "reject",
-          "scenarioId": "fixture-cleanup",
-          "title": "Restore setup mutations even when setup fails"
-        },
-        {
           "expectedCount": 0,
           "files": [
             {
@@ -8230,21 +8245,6 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Pytest restores the module registry after the test"
-        },
-        {
-          "expectedCount": 0,
-          "files": [
-            {
-              "path": "tests/test_plugins.py",
-              "source": "import sys\nimport pytest\n\n\n@pytest.fixture\ndef fresh_plugin():\n    yield\n    sys.modules.pop(\"temporary_plugin\", None)\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "tests/test_plugins.py",
-          "id": "yield-fixture-cleanup",
-          "outcome": "accept",
-          "scenarioId": "fixture-cleanup",
-          "title": "Do not undo fixture teardown"
         }
       ],
       "optionsSchemaSource": null
