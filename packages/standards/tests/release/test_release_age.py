@@ -57,6 +57,43 @@ def test_locked_registry_packages_rejects_non_npm_registry_artifact(tmp_path: Pa
         locked_registry_packages(lockfile, ReleaseAgePolicy())
 
 
+def test_lockfile_release_age_checks_alias_targets(tmp_path: Path) -> None:
+    lockfile = _lockfile(
+        tmp_path,
+        {
+            "node_modules/@typescript/native": {"name": "typescript", "version": "7.0.2"},
+            "node_modules/typescript": {"name": "@typescript/typescript6", "version": "6.0.2"},
+            "node_modules/@typescript/old": {"name": "typescript", "version": "6.0.3"},
+        },
+    )
+    publications = {
+        "typescript": {"time": {"7.0.2": "2025-01-25T12:00:00Z", "6.0.3": "2025-01-01T00:00:00Z"}},
+        "@typescript/typescript6": {"time": {"6.0.2": "2025-01-01T00:00:00Z"}},
+    }
+
+    report = check_lockfile_release_age(
+        lockfile,
+        fetcher=publications.__getitem__,
+        clock=lambda: datetime(2025, 2, 1, tzinfo=UTC),
+    )
+
+    assert report.checked == (
+        PackageIdentity("@typescript/typescript6", "6.0.2"),
+        PackageIdentity("typescript", "6.0.3"),
+        PackageIdentity("typescript", "7.0.2"),
+    )
+    assert [str(failure) for failure in report.failures] == ["typescript@7.0.2: 6.5 days old"]
+
+
+@pytest.mark.parametrize(("exclusion", "excluded"), [("typescript@7.0.2", True), ("@typescript/native@7.0.2", False)])
+def test_alias_release_age_exclusions_use_registry_identity(tmp_path: Path, exclusion: str, excluded: bool) -> None:
+    lockfile = _lockfile(tmp_path, {"node_modules/@typescript/native": {"name": "typescript", "version": "7.0.2"}})
+
+    packages = locked_registry_packages(lockfile, ReleaseAgePolicy(exclusions=frozenset({exclusion})))
+
+    assert packages == (() if excluded else (PackageIdentity("typescript", "7.0.2"),))
+
+
 def test_locked_registry_packages_applies_name_and_version_exclusions(tmp_path: Path) -> None:
     lockfile = _lockfile(
         tmp_path,

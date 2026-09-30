@@ -108,6 +108,9 @@ def locked_registry_packages(lockfile: Path, policy: ReleaseAgePolicy) -> tuple[
         if name is None or not is_object_dict(metadata_value):
             continue
         metadata = string_object_dict(metadata_value, label=f"package metadata for {lock_path}")
+        package_name = metadata.get("name")
+        if isinstance(package_name, str) and package_name:
+            name = package_name
         version = metadata.get("version")
         resolved = metadata.get("resolved")
         if not isinstance(version, str) or not version:
