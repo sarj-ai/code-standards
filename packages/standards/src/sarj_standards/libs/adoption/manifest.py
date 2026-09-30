@@ -37,8 +37,10 @@ _SARJ_RULE_ENGINES: Final = frozenset({"python", "sql", "iac", "text"})
 
 
 class _UpstreamRuleEngine(StrEnum):
+    CHECKOV = "checkov"
     ESLINT = "eslint"
     SHELLCHECK = "shellcheck"
+    ZIZMOR = "zizmor"
 
 
 #: Sibling distributions pinned exactly by `code-standards`.
@@ -87,6 +89,7 @@ SWIFT_CONFIGS: Final = ("swiftformat", "swiftlint")
 KOTLIN_CONFIGS: Final = ("ktlint", "detekt")
 MOBILE_CONFIGS: Final = ("mobile-security",)
 SHARED_CONFIGS: Final = ("markdownlint", "shellcheck", "taplo", "yamllint")
+SECURITY_CONFIGS: Final = ("zizmor", "checkov")
 _SCHEMA_THREE_CONFIGS: Final = (*PYTHON_CONFIGS, *TYPESCRIPT_CONFIGS, *SHARED_CONFIGS)
 ALL_CONFIGS: Final = (
     *PYTHON_CONFIGS,
@@ -95,6 +98,7 @@ ALL_CONFIGS: Final = (
     *KOTLIN_CONFIGS,
     *MOBILE_CONFIGS,
     *SHARED_CONFIGS,
+    *SECURITY_CONFIGS,
 )
 ALL_CAPABILITIES: Final = (*ALL_CONFIGS, *PYTHON_ANALYZERS)
 DEFAULT_DURABLE_ARTIFACTS: Final = (
@@ -216,8 +220,14 @@ def default_configs(
     has_swift: bool = False,
     has_kotlin: bool = False,
     has_mobile: bool = False,
+    has_actions: bool = False,
+    has_infrastructure: bool = False,
 ) -> tuple[str, ...]:
     selected: set[str] = set(SHARED_CONFIGS)
+    if has_actions:
+        selected.add("zizmor")
+    if has_infrastructure:
+        selected.add("checkov")
     if has_python:
         selected.update(PYTHON_CONFIGS)
     if has_typescript:
@@ -235,6 +245,7 @@ def default_configs(
         *KOTLIN_CONFIGS,
         *MOBILE_CONFIGS,
         *SHARED_CONFIGS,
+        *SECURITY_CONFIGS,
     )
     return tuple(name for name in order if name in selected)
 
@@ -271,7 +282,6 @@ def _load_schema(  # ruff: ignore[too-many-locals] - one validation boundary kee
     raw_profile = data.get("profile", "standard")
     capabilities_table = _manifest_table(data, "capabilities")
     disabled = _string_list(capabilities_table, "disable", label="manifest [capabilities].disable")
-    supported_configs = ALL_CONFIGS if expected_schema == MANIFEST_SCHEMA else _SCHEMA_THREE_CONFIGS
     supported_capabilities = ALL_CAPABILITIES if expected_schema == MANIFEST_SCHEMA else _SCHEMA_THREE_CONFIGS
     unknown_capabilities = sorted(set(disabled) - set(supported_capabilities))
     if unknown_capabilities:
@@ -280,17 +290,7 @@ def _load_schema(  # ruff: ignore[too-many-locals] - one validation boundary kee
     if declared is None:
         msg = f"{path} must set a string `bundle` declaration"
         raise TypeError(msg)
-    try:
-        bundle_version = Version(declared)
-    except InvalidVersion as exc:
-        msg = f"{path} `bundle` must be a valid PEP 440 version"
-        raise ValueError(msg) from exc
-    enabled_configs = (
-        _SCHEMA_THREE_CONFIGS
-        if expected_schema == MANIFEST_SCHEMA and bundle_version < Version("7.8.0")
-        else supported_configs
-    )
-    names = [name for name in enabled_configs if name not in disabled]
+    names = tuple(name for name in _bundle_configs(declared, path, expected_schema) if name not in disabled)
     if not isinstance(raw_profile, str) or raw_profile not in PROFILES:
         msg = f"{path} `profile` must be one of: {', '.join(PROFILES)}"
         raise ValueError(msg)
@@ -312,7 +312,7 @@ def _load_schema(  # ruff: ignore[too-many-locals] - one validation boundary kee
     hook_manager: HookManager = raw_hook_manager
     return Manifest(
         version=declared,
-        configs=tuple(names),
+        configs=names,
         python_dest=_dest_value(dest_table, "python"),
         typescript_dest=_dest_value(dest_table, "typescript"),
         swift_dest=_dest_value(dest_table, "swift", root=root),
@@ -343,6 +343,19 @@ def _load_schema(  # ruff: ignore[too-many-locals] - one validation boundary kee
         diagnostic_baseline=_relative_file(root, baseline_table, "diagnostics"),
         ci_bootstrap=_ci_bootstrap(ci_table),
     )
+
+
+def _bundle_configs(declared: str, path: Path, schema: int) -> tuple[str, ...]:
+    try:
+        version = Version(declared)
+    except InvalidVersion as exc:
+        msg = f"{path} `bundle` must be a valid PEP 440 version"
+        raise ValueError(msg) from exc
+    if schema != MANIFEST_SCHEMA or version < Version("7.8.0"):
+        return _SCHEMA_THREE_CONFIGS
+    if version < Version("8.13.0"):
+        return tuple(name for name in ALL_CONFIGS if name not in SECURITY_CONFIGS)
+    return ALL_CONFIGS
 
 
 def _check_manifest_schema(data: Mapping[str, object], path: Path, expected_schema: int) -> None:
@@ -528,7 +541,7 @@ def validate_excluded_rule(selector: str) -> str:
     engine, separator, rule = selector.partition(":")
     if (
         not separator
-        or engine not in {"ruff", "basedpyright", "eslint", "shellcheck", "python", "sql", "iac", "text"}
+        or engine not in {"ruff", "basedpyright", *_UpstreamRuleEngine, *_SARJ_RULE_ENGINES}
         or not rule
         or rule != rule.strip()
     ):
@@ -574,10 +587,8 @@ def _validate_known_rule(engine: str, rule: str, selector: str) -> None:
         upstream = _UpstreamRuleEngine(engine)
     except ValueError:
         return
-    if upstream is _UpstreamRuleEngine.SHELLCHECK:
-        if re.fullmatch(r"SC[0-9]{4}", rule) is None:
-            msg = f"unknown Standards rule exclusion: {selector}"
-            raise ValueError(msg)
+    if upstream is not _UpstreamRuleEngine.ESLINT:
+        _validate_source_tool_rule(upstream, rule, selector)
         return
     if rule.startswith("@sarj/"):
         known = frozenset(f"@sarj/{name}" for name in shipped.rules.get(ledger.ESLINT, ()))
@@ -587,6 +598,21 @@ def _validate_known_rule(engine: str, rule: str, selector: str) -> None:
     else:
         return
     if rule not in known:
+        msg = f"unknown Standards rule exclusion: {selector}"
+        raise ValueError(msg)
+
+
+def _validate_source_tool_rule(engine: _UpstreamRuleEngine, rule: str, selector: str) -> None:
+    from sarj_standards.libs.linting import (  # ruff: ignore[import-outside-top-level] -- defer analyzer imports while adoption initializes.
+        security_tools,
+    )
+
+    if engine is _UpstreamRuleEngine.SHELLCHECK:
+        valid = re.fullmatch(r"SC[0-9]{4}", rule) is not None
+    else:
+        known = security_tools.CHECKOV_CHECKS if engine is _UpstreamRuleEngine.CHECKOV else security_tools.ZIZMOR_RULES
+        valid = rule in known
+    if not valid:
         msg = f"unknown Standards rule exclusion: {selector}"
         raise ValueError(msg)
 

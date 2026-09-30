@@ -37,11 +37,13 @@ class RuleOrigin(StrEnum):
 
 
 class RuleEngine(StrEnum):
+    CHECKOV = "checkov"
     ESLINT = "eslint"
     IAC = "iac"
     PYTHON = "python"
     SQL = "sql"
     TEXT = "text"
+    ZIZMOR = "zizmor"
 
 
 @dataclass(frozen=True, slots=True, order=True)
@@ -50,7 +52,12 @@ class RuleSelector:
     rule_id: RuleId
 
     def __post_init__(self) -> None:
-        if not _KEBAB_CASE.fullmatch(self.rule_id):
+        valid = (
+            re.fullmatch(r"CKV(?:2)?_[A-Z0-9]+_[0-9]+", self.rule_id)
+            if self.engine is RuleEngine.CHECKOV
+            else _KEBAB_CASE.fullmatch(self.rule_id)
+        )
+        if not valid:
             msg = "rule ID must be non-empty lowercase kebab-case"
             raise ValueError(msg)
 

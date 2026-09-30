@@ -2606,6 +2606,7 @@ class _ProfileChoice(StrEnum):
 
 
 class _ConfigChoice(StrEnum):
+    CHECKOV = "checkov"
     DETEKT = "detekt"
     ESLINT = "eslint"
     KTLINT = "ktlint"
@@ -2618,6 +2619,7 @@ class _ConfigChoice(StrEnum):
     SWIFTLINT = "swiftlint"
     TAPLO = "taplo"
     YAMLLINT = "yamllint"
+    ZIZMOR = "zizmor"
 
 
 class _DiagnosticFormat(StrEnum):

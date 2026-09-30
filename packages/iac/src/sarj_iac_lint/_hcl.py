@@ -159,6 +159,7 @@ class Attribute:
     value: str
     line: int
     col: int
+    value_line: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -188,6 +189,7 @@ class _BodyParseResult(NamedTuple):
 class _ValueParseResult(NamedTuple):
     value: str
     next_index: int
+    line: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -235,7 +237,7 @@ def _parse_body(toks: list[_Tok], i: int, depth: int, lines: list[str]) -> _Body
         if j < len(toks) and toks[j].text == "=":
             parsed_value = _read_value(toks, j + 1, lines)
             i = parsed_value.next_index
-            attrs.append(Attribute(head.text, parsed_value.value, head.line, head.col))
+            attrs.append(Attribute(head.text, parsed_value.value, head.line, head.col, parsed_value.line))
             continue
         labels: list[str] = []
         while j < len(toks) and (toks[j].text[:1].isalnum() or toks[j].text[:1] in {'"', "_"}):
@@ -278,7 +280,8 @@ def _read_value(toks: list[_Tok], i: int, lines: list[str]) -> _ValueParseResult
         # `deletion_protection = (\n  var.env == "prod"\n)` is one value.
         if nest == 0 and (i >= len(toks) or toks[i].line != tok.line):
             break
-    return _ValueParseResult(_rejoin(toks, start, i, lines), i)
+    value_line = toks[start].line if start < len(toks) else 0
+    return _ValueParseResult(_rejoin(toks, start, i, lines), i, value_line)
 
 
 def _rejoin(toks: list[_Tok], start: int, end: int, lines: list[str]) -> str:

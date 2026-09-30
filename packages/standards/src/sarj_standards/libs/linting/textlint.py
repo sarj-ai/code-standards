@@ -17,6 +17,7 @@ from typing import (
 )
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from sarj_iac_lint.hcl import local_exec_commands
 import yaml
 from yaml.nodes import MappingNode, Node, ScalarNode, SequenceNode
 from yaml.tokens import ScalarToken
@@ -128,6 +129,7 @@ _TEXT_SUFFIXES: Final = frozenset(
         ".mdx",
         ".properties",
         ".sh",
+        ".tf",
         ".tftpl",
         ".toml",
         ".yaml",
@@ -605,7 +607,7 @@ REGISTRY: Final[Mapping[str, RuleMeta]] = MappingProxyType(
         "declarative-deployment-boundary": RuleMeta(
             code="SARJ309",
             default_level=DefaultLevel.WARNING,
-            summary="recognized control-plane commands mutate infrastructure outside Terraform",
+            summary="recognized control-plane commands bypass Terraform resource ownership",
             rationale=(
                 "Imperative control-plane commands and plan-address allowlists split deployment ownership between "
                 "Terraform and repository-specific orchestration, so drift and safety depend on execution order. "
@@ -620,8 +622,37 @@ REGISTRY: Final[Mapping[str, RuleMeta]] = MappingProxyType(
             file_patterns=(
                 ".github/workflows/*.{yaml,yml}",
                 "{cloudbuild,deploy,deployments,iac,infra,k8s,scripts,terraform,tools}/**",
+                "**/*.tf",
             ),
             examples=(
+                _public_example(
+                    example_id="terraform-local-exec-control-plane",
+                    title="Provider resources own API enablement",
+                    outcome=ExpectedOutcome.MATCH,
+                    path="main.tf",
+                    source=(
+                        'resource "terraform_data" "enable_api" {\n'
+                        '  provisioner "local-exec" {\n'
+                        '    command = "gcloud services enable example.googleapis.com"\n'
+                        "  }\n}\n"
+                    ),
+                    expected_count=1,
+                    scenario="terraform-local-exec",
+                ),
+                _public_example(
+                    example_id="terraform-local-exec-read-only",
+                    title="Read-only local commands do not create drift",
+                    outcome=ExpectedOutcome.NO_MATCH,
+                    path="main.tf",
+                    source=(
+                        'resource "terraform_data" "inspect_api" {\n'
+                        '  provisioner "local-exec" {\n'
+                        '    command = "gcloud services list --enabled"\n'
+                        "  }\n}\n"
+                    ),
+                    expected_count=0,
+                    scenario="terraform-local-exec",
+                ),
                 _public_example(
                     example_id="workflow-control-plane-mutation",
                     title="Keep Cloud Run infrastructure in Terraform",
@@ -676,6 +707,8 @@ REGISTRY: Final[Mapping[str, RuleMeta]] = MappingProxyType(
                 ),
             ),
             limitations=(
+                "Terraform coverage extracts literal strings and heredocs owned by resource local-exec.command with the default interpreter or a literal POSIX shell -c interpreter; HCL templates, computed commands, custom interpreters, remote-exec, and Terraform JSON are intentionally unreported.",
+                "A Terraform diagnostic can be suppressed locally with an exact-code # sarj-noqa: SARJ309 comment on the preceding physical line.",
                 "The bounded scanner reports explicitly recognized commands and deployment Actions; dynamic command construction and unlisted provider surfaces are intentionally unreported.",
                 "Wrapper-indirected commands are intentionally unreported; full-tree CI scans wrapper files directly only when they live in an operational root.",
                 "Wrangler deploy and versions deploy publish application artifacts and are intentionally not treated as infrastructure mutation; Wrangler resource-creation commands remain reportable.",
@@ -1009,7 +1042,13 @@ def check_paths(
         relative = _relative(path.resolve(), base)
         if any(fnmatch(relative, pattern) for pattern in excluded_patterns):
             continue
-        path_findings = collect_path_findings(path, relative, source)
+        if path.suffix.casefold() == ".tf":
+            # HCL comments and other attributes belong to the IaC analyzer.
+            path_findings = []
+            if enabled_codes is None or "SARJ309" in enabled_codes:
+                path_findings = _terraform_deployment_findings(path, source)
+        else:
+            path_findings = collect_path_findings(path, relative, source)
         findings.extend(_selected_text_findings(path_findings, path, source, enabled_codes))
     return sorted(findings, key=lambda item: (str(item.path), item.line, item.code))
 
@@ -1080,6 +1119,8 @@ def _shell_heredoc_delimiters(line: str) -> list[_ShellHeredoc]:
 
 
 def _declarative_deployment_findings(path: Path, relative: str, source: str) -> list[Finding]:
+    if path.suffix.casefold() == ".tf":
+        return _terraform_deployment_findings(path, source)
     pure = PurePosixPath(relative)
     in_workflow = _workflow_path(path, relative)
     in_operational_tree = bool(pure.parts) and pure.parts[0].casefold() in _OPERATIONAL_ROOTS
@@ -1118,6 +1159,36 @@ def _declarative_deployment_findings(path: Path, relative: str, source: str) -> 
                 )
             ]
     return []
+
+
+def _terraform_deployment_findings(path: Path, source: str) -> list[Finding]:
+    lines = source.splitlines()
+    for command in _terraform_local_exec_lines(source):
+        if _shell_line_mutates_control_plane(command.command) and not _suppresses_previous_line(
+            lines, command.line - 1, "SARJ309", path=path
+        ):
+            return [
+                Finding(
+                    path,
+                    command.line,
+                    "SARJ309",
+                    "local-exec mutates infrastructure outside Terraform provider state — model the resource with a provider.",
+                )
+            ]
+    return []
+
+
+def _terraform_local_exec_lines(source: str) -> list[_ShellLogicalLine]:
+    commands: list[_ShellLogicalLine] = []
+    for literal in local_exec_commands(source):
+        parsed = _shell_logical_lines(_shell_without_heredoc_bodies(literal.source))
+        commands.extend(
+            _ShellLogicalLine(
+                literal.line + command.line - 1 if literal.physical_lines else literal.line, command.command
+            )
+            for command in parsed
+        )
+    return commands
 
 
 def _workflow_path(path: Path, relative: str) -> bool:

@@ -17,6 +17,7 @@ import yaml
 
 from sarj_standards.libs.filesystem import is_link_like
 from sarj_standards.libs.json_boundary import parse_json
+from sarj_standards.libs.linting import security_tools
 from sarj_standards.libs.typed_containers import is_object_list, is_object_mapping
 from sarj_standards.libs.yaml_boundary import parse_yaml
 
@@ -52,11 +53,13 @@ class Ecosystems:
     swift_root: Path | None = None
     kotlin_root: Path | None = None
     mobile_swift: bool = False
+    actions: bool = False
+    infrastructure: bool = False
 
     @property
     def any(self) -> bool:
         """Whether anything at all was detected."""
-        return self.python or self.typescript or self.swift or self.kotlin
+        return self.python or self.typescript or self.swift or self.kotlin or self.actions or self.infrastructure
 
     @property
     def mobile(self) -> bool:
@@ -81,6 +84,8 @@ def configured_ecosystems(ecosystems: Ecosystems, configs: Sequence[str]) -> Eco
         swift_root=ecosystems.swift_root if swift else None,
         kotlin_root=ecosystems.kotlin_root if kotlin else None,
         mobile_swift=ecosystems.mobile_swift and swift,
+        actions=ecosystems.actions and "zizmor" in configs,
+        infrastructure=ecosystems.infrastructure and "checkov" in configs,
     )
 
 
@@ -219,6 +224,7 @@ def detect(
     kotlin_root = _validated_mobile_override(root, kotlin_dest, language="Kotlin") or _kotlin_root(root)
     install_root = packagemanager.workspace_root(typescript_root, root) if typescript_root else None
     client = packagemanager.detect(install_root) if install_root else PackageManager.NPM
+    security = _detect_security_inputs(root)
     return Ecosystems(
         python=python_root is not None,
         typescript=typescript_root is not None,
@@ -236,6 +242,8 @@ def detect(
         swift_root=swift_root,
         kotlin_root=kotlin_root,
         mobile_swift=swift_root is not None and _swift_root_is_mobile(swift_root),
+        actions=bool(security.workflows),
+        infrastructure=bool(security.terraform or security.kubernetes),
     )
 
 
@@ -268,7 +276,23 @@ def detect_adopted(root: Path, adopted: manifest.Manifest) -> Ecosystems:
         swift_root=swift_root,
         kotlin_root=kotlin_root,
         mobile_swift=swift_root is not None and _swift_root_is_mobile(swift_root),
+        actions="zizmor" in adopted.enabled_capabilities,
+        infrastructure="checkov" in adopted.enabled_capabilities,
     )
+
+
+def _detect_security_inputs(root: Path) -> security_tools.SecurityInputs:
+    files: list[str] = []
+    for parent, directories, filenames in os.walk(root, topdown=True, followlinks=False):
+        directories[:] = sorted(
+            name for name in directories if name not in _SKIP_DIRS and not is_link_like(Path(parent) / name)
+        )
+        files.extend(
+            str(Path(parent) / name)
+            for name in filenames
+            if name.endswith((".tf", ".tf.json", ".yml", ".yaml")) and not is_link_like(Path(parent) / name)
+        )
+    return security_tools.select_inputs(files, root=root)
 
 
 def _override(root: Path, dest: str | None) -> Path | None:
@@ -575,6 +599,8 @@ def build_plan(
             has_swift=ecosystems.swift,
             has_kotlin=ecosystems.kotlin,
             has_mobile=ecosystems.mobile,
+            has_actions=ecosystems.actions,
+            has_infrastructure=ecosystems.infrastructure,
         )
     )
     selected_hook_manager: manifest.HookManager = hook_manager or hooks.detect_manager(root)
@@ -641,6 +667,8 @@ def _unsupported_configs(selected: Sequence[str], ecosystems: Ecosystems) -> tup
         or (name in manifest.SWIFT_CONFIGS and not ecosystems.swift)
         or (name in manifest.KOTLIN_CONFIGS and not ecosystems.kotlin)
         or (name in manifest.MOBILE_CONFIGS and not ecosystems.mobile)
+        or (name == "zizmor" and not ecosystems.actions)
+        or (name == "checkov" and not ecosystems.infrastructure)
     )
 
 
@@ -2269,6 +2297,11 @@ def github_ci_workflow(root: Path, *, ecosystems: Ecosystems | None = None) -> s
         python_install = python_ci_install_argv(root, python_dest)
         if python_install:
             lines.extend(("      - name: Install Python dependencies", f"        run: {shlex.join(python_install)}"))
+    for name in security_tools.TOOLS:
+        enabled = ecosystems.actions if name == "zizmor" else ecosystems.infrastructure
+        if enabled:
+            argv = (*security_tools.command(name, offline=False), "--version")
+            lines.extend((f"      - name: Prepare pinned {name}", f"        run: {shlex.join(argv)}"))
     for index, command in enumerate(() if adopted is None else adopted.ci_bootstrap, start=1):
         label = "Bootstrap analysis inputs" if index == 1 else f"Bootstrap analysis inputs ({index})"
         lines.extend((f"      - name: {label}", "        run: |", f"          {command}"))
@@ -2304,13 +2337,14 @@ def _workflow_ecosystems(root: Path, adopted: manifest.Manifest | None) -> Ecosy
         if adopted is None or not any(name in adopted.configs for name in manifest.KOTLIN_CONFIGS)
         else adopted.kotlin_dest
     )
-    return detect(
+    detected = detect(
         root,
         python_dest=python_override,
         typescript_dest=typescript_override,
         swift_dest=swift_override,
         kotlin_dest=kotlin_override,
     )
+    return detected if adopted is None else configured_ecosystems(detected, adopted.enabled_capabilities)
 
 
 def _append_javascript_ci(lines: list[str], root: Path, ecosystems: Ecosystems, install_root: Path | None) -> None:

@@ -7,7 +7,8 @@ from sarj_standards.libs.rules import RuleEngine, RuleId, RuleSelection, RuleSel
 
 @pytest.mark.parametrize("engine", RuleEngine)
 def test_rule_selector_round_trips_every_engine(engine: RuleEngine) -> None:
-    selector = RuleSelector(engine, RuleId("no-ambiguous-rule"))
+    rule_id = "CKV_GCP_41" if engine is RuleEngine.CHECKOV else "no-ambiguous-rule"
+    selector = RuleSelector(engine, RuleId(rule_id))
 
     assert RuleSelector.parse(str(selector)) == selector
 

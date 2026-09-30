@@ -389,6 +389,8 @@ def test_manifest_renders_as_valid_toml() -> None:
         "shellcheck",
         "taplo",
         "yamllint",
+        "zizmor",
+        "checkov",
     ]
 
 

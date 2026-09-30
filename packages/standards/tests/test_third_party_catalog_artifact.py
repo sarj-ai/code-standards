@@ -88,6 +88,7 @@ def test_committed_third_party_catalog_has_a_closed_effective_inventory() -> Non
     provider_ids = {value["id"] for value in providers}
     assert {value["provider"] for value in rules} <= provider_ids
     assert {value["engine"] for value in providers} == {
+        "checkov",
         "deptry",
         "detekt",
         "eslint",
@@ -97,6 +98,7 @@ def test_committed_third_party_catalog_has_a_closed_effective_inventory() -> Non
         "ruff",
         "swiftformat",
         "swiftlint",
+        "zizmor",
     }
     assert "@sarj" not in provider_ids
     assert {
@@ -139,6 +141,8 @@ def test_committed_third_party_catalog_has_a_closed_effective_inventory() -> Non
     assert scopes["swiftlint"] == "config-explicit"
     assert scopes["swiftformat"] == "provider-only"
     assert scopes["mobsfscan"] == "provider-only"
+    assert scopes["checkov"] == "config-explicit"
+    assert scopes["zizmor"] == "provider-only"
     assert not any(value["provider"] in {"swiftformat", "mobsfscan"} for value in rules)
 
 

@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING, NamedTuple
 
 from sarj_standards.libs.filesystem import is_link_like
 from sarj_standards.libs.json_boundary import parse_json
-from sarj_standards.libs.linting import runner
+from sarj_standards.libs.linting import runner, security_tools
 
 from . import manifest, packagemanager, scaffold, transaction
 
@@ -73,6 +73,12 @@ def install_commands(
     hook_manager: manifest.HookManager = "pre-commit",
 ) -> list[Command]:
     commands: list[Command] = []
+    for name in security_tools.TOOLS:
+        enabled = ecosystems.actions if name == "zizmor" else ecosystems.infrastructure
+        if enabled:
+            commands.append(
+                Command(f"prepare pinned {name}", (*security_tools.command(name, offline=False), "--version"), root)
+            )
     if ecosystems.typescript_root is not None:
         install_root = ecosystems.typescript_install_root or ecosystems.typescript_root
         # Setup writes pnpm-workspace.yaml before this command executes because

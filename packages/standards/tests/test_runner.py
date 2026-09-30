@@ -37,7 +37,7 @@ def test_directories_expand_by_suffix_and_skip_generated_trees(tmp_path: Path) -
         python=[str(tmp_path / "app.py")],
         sql=[str(tmp_path / "migration.sql")],
         iac=[str(tmp_path / "main.tf")],
-        text=[],
+        text=[str(tmp_path / "main.tf")],
     )
 
 
@@ -308,7 +308,7 @@ def test_mixed_files_are_grouped_by_tool(
         python=["app.py"],
         sql=["migration.SQL"],
         iac=["main.tf", "values.yaml"],
-        text=["values.yaml", "README.md"],
+        text=["main.tf", "values.yaml", "README.md"],
     )
 
 

@@ -46,6 +46,8 @@ _MARKDOWN_LOCATIONS: Final = (
     "docs/audits/*.md",
 )
 _MANAGED_ROOT_CONFIGS: Final = (
+    (".checkov.yml", "checkov.strict.yml"),
+    ("zizmor.yml", "zizmor.strict.yml"),
     (".ruff-strict.toml", "ruff.strict.toml"),
     (".pyright-strict.json", "pyright.strict.json"),
     ("pyright.strict.json", "pyright.strict.json"),

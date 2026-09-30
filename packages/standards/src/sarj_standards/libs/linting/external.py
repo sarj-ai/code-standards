@@ -44,7 +44,7 @@ from sarj_standards.libs.json_boundary import parse_json
 from sarj_standards.libs.typed_containers import is_object_list, is_object_mapping
 from sarj_standards.libs.yaml_boundary import parse_yaml
 
-from . import mobile_tools
+from . import mobile_tools, security_tools
 from .runner import GroupedPaths, group_paths
 
 
@@ -157,6 +157,9 @@ _SAFE_ENVIRONMENT_KEYS = frozenset(
         "TMP",
         "TMPDIR",
         "WINDIR",
+        "UV_CACHE_DIR",
+        "UV_PYTHON_INSTALL_DIR",
+        "UV_TOOL_DIR",
     }
 )
 
@@ -315,6 +318,7 @@ def analyze_external(
         issue = ExecutionIssue("external", "invalid-input", str(exc))
         return (ToolReport("external", Completion.FAILED, issues=(issue,)),)
     reports: list[ToolReport] = []
+    reports.extend(_security_reports(routed.iac, root=root, runner=execute, capabilities=capabilities))
     if capabilities is None or "shellcheck" in capabilities:
         reports.extend(_shellcheck_reports(routed, root=root, runner=execute, attest_version=runner is None))
     try:
@@ -512,6 +516,91 @@ def analyze_external(
         )
         for report in reports
     )
+
+
+def _security_reports(
+    files: Sequence[str],
+    *,
+    root: Path,
+    runner: ProcessRunner,
+    capabilities: frozenset[str] | None,
+) -> tuple[ToolReport, ...]:
+    if capabilities is not None and not capabilities.intersection({"zizmor", "checkov"}):
+        return ()
+    try:
+        selected = security_tools.select_inputs(files, root=root)
+    except (OSError, TypeError, ValueError) as exc:
+        issue = ExecutionIssue("security-tools", "invalid-input", _redact_message(str(exc), root))
+        return (ToolReport("security-tools", Completion.FAILED, issues=(issue,)),)
+    reports: list[ToolReport] = []
+    if selected.workflows and (capabilities is None or "zizmor" in capabilities):
+        for start in range(0, len(selected.workflows), _ESLINT_BATCH_SIZE):
+            batch = selected.workflows[start : start + _ESLINT_BATCH_SIZE]
+            reports.append(
+                _invoke(
+                    "zizmor",
+                    (
+                        *security_tools.command("zizmor"),
+                        "--offline",
+                        "--format=sarif",
+                        "--no-exit-codes",
+                        "--strict-collection",
+                        "--no-ignores",
+                        "--config",
+                        str(_PACKAGED_MOBILE_CONFIGS / "zizmor.strict.yml"),
+                        "--",
+                        *batch,
+                    ),
+                    cwd=root,
+                    root=root,
+                    runner=partial(_security_runner, runner, name="zizmor"),
+                    parser=security_tools.parse_zizmor,
+                    version=security_tools.VERSIONS["zizmor"],
+                    invocation_id=f"batch-{start // _ESLINT_BATCH_SIZE + 1}",
+                    file_count=len(batch),
+                )
+            )
+    if capabilities is None or "checkov" in capabilities:
+        for framework, paths in (("terraform", selected.terraform), ("kubernetes", selected.kubernetes)):
+            for start in range(0, len(paths), _ESLINT_BATCH_SIZE):
+                batch = paths[start : start + _ESLINT_BATCH_SIZE]
+                reports.append(
+                    _invoke(
+                        "checkov",
+                        (
+                            *security_tools.command("checkov"),
+                            "--config-file",
+                            str(_PACKAGED_MOBILE_CONFIGS / "checkov.strict.yml"),
+                            "--framework",
+                            framework,
+                            "--skip-download",
+                            "--output",
+                            "json",
+                            "--file",
+                            *batch,
+                        ),
+                        cwd=root,
+                        root=root,
+                        runner=partial(_security_runner, runner, name="checkov"),
+                        parser=security_tools.parse_checkov,
+                        version=security_tools.VERSIONS["checkov"],
+                        invocation_id=f"{framework}:batch-{start // _ESLINT_BATCH_SIZE + 1}",
+                        file_count=len(batch),
+                    )
+                )
+    return tuple(reports)
+
+
+def _security_runner(runner: ProcessRunner, argv: Sequence[str], *, cwd: Path, name: str) -> ProcessOutput:
+    output = (
+        _run_process(argv, cwd=cwd, environment=_analysis_environment(), timeout_seconds=300)
+        if runner is run_process
+        else runner(argv, cwd=cwd)
+    )
+    if name == "zizmor" and output.returncode != 0:
+        msg = f"zizmor audit failed with exit {output.returncode}"
+        raise OSError(msg)
+    return output
 
 
 def _mobile_source_reports(
@@ -2125,6 +2214,7 @@ def _invoke(
     validator: ProtocolValidator | None = None,
     invocation_id: str | None = None,
     file_count: int,
+    version: str | None = None,
 ) -> ToolReport:
     started = time.monotonic()
     try:
@@ -2138,6 +2228,7 @@ def _invoke(
             invocation_id=InvocationId(name if invocation_id is None else f"{name}:{invocation_id}"),
             duration_ms=round((time.monotonic() - started) * 1_000),
             file_count=file_count,
+            version=version if report.completion is Completion.COMPLETE else None,
         )
     except (OSError, TypeError, ValueError, RecursionError, json.JSONDecodeError, subprocess.SubprocessError) as exc:
         message = _redact_message(f"{type(exc).__name__}: {exc}", root)

@@ -161,6 +161,8 @@ _CONFIG_TARGETS: Final = MappingProxyType(
         "shellcheck": ("shellcheck.strict.rc", "shellcheck.strict.rc", ".shellcheckrc", "root"),
         "taplo": ("taplo.strict.toml", "taplo.strict.toml", ".taplo.toml", "root"),
         "yamllint": ("yamllint.strict.yaml", "yamllint.strict.yaml", ".yamllint.yaml", "root"),
+        "zizmor": ("zizmor.strict.yml", "zizmor.strict.yml", "zizmor.yml", "root"),
+        "checkov": ("checkov.strict.yml", "checkov.strict.yml", ".checkov.yml", "root"),
     }
 )
 
