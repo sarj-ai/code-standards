@@ -1,6 +1,6 @@
 [project]
 name = "code-standards"
-version = "8.13.0"
+version = "8.13.1"
 description = "One deterministic quality gate for Sarj Python, TypeScript, Swift, Kotlin, shell, SQL, IaC, and repository policy."
 readme = "README.md"
 requires-python = ">=3.14"
@@ -66,6 +66,12 @@ dev = [
   "jsonschema==4.25.1",
   "pytest>=9.1.1",
 ]
+
+[tool.uv]
+# Semgrep 1.178.0 requires vulnerable PyJWT 2.13.x. Remove this override when
+# its upstream requirement admits the patched version.
+override-dependencies = ["pyjwt[crypto]==2.15.1"]
+
 [tool.uv.sources]
 sarj-rule-contracts = { path = "../contracts", editable = true }
 # Development uses the sibling packages while wheel smoke tests resolve the
