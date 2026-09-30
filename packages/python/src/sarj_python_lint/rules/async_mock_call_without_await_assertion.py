@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+from enum import Enum, auto
 from pathlib import PurePosixPath
 from types import MappingProxyType
 from typing import TYPE_CHECKING, ClassVar, Final, final, override
@@ -65,12 +66,18 @@ type _TestFunction = ast.FunctionDef | ast.AsyncFunctionDef
 type _Reference = tuple[str, ...]
 
 
+class _Evidence(Enum):
+    POSITIVE = auto()
+    INSUFFICIENT = auto()
+    UNRESOLVED = auto()
+
+
 @final
 class AsyncMockCallWithoutAwaitAssertion(Rule):
     id = "async-mock-call-without-await-assertion"
     code = "SARJ456"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        default_level=Severity.ERROR,
+        default_level=Severity.WARNING,
         summary="Pair positive AsyncMock call assertions with evidence that the mock was awaited.",
         rationale=(
             "Calling an AsyncMock records a call before its coroutine is awaited. A positive call assertion can "
@@ -87,25 +94,13 @@ class AsyncMockCallWithoutAwaitAssertion(Rule):
             "Only direct statements in collected test functions and methods are inspected; fixtures, helpers, nested blocks, and generated files are excluded.",
             "Requires a fresh local unittest.mock.AsyncMock constructor with unshadowed imports; aliases, reassignment, reset, and ambiguous configuration are excluded.",
             "Only the mock itself and unchanged immediate children of unspecced, unwrapped mocks are inferred; spec children, return values, and deeper chains are excluded.",
-            "Positive call-count and called-state assertions are covered as well as call-assertion methods. Await-state assertions must prove at least one await; argument equality and exact call/await counts are not compared.",
-            "Boolean conjunctions combine evidence; disjunctions require evidence in every branch. Dynamic counts and call lists are not inferred.",
+            "Positive call evidence includes direct assertion methods and literal integer or boolean call-state checks; unresolved call expectations are excluded.",
+            "Await evidence excludes provably vacuous checks, including zero or nonnegative counts and empty expected await sequences; unresolved expectations are accepted without inferring their values.",
+            "Conjunctions need one accepted await branch; disjunctions need accepted evidence for the same mock in every branch. Argument equality and assertion strength are not compared.",
+            "Compound negation and custom expression semantics remain unresolved; no variable values or fixture graphs are inferred.",
             "Custom assertion helpers and intentional scheduling contracts may require a reasoned local suppression.",
         ),
         examples=(
-            RuleExample(
-                example_id="numeric-call-with-vacuous-await-check",
-                title="A nonnegative await count does not prove execution",
-                outcome=ExampleOutcome.MATCH,
-                files=(
-                    ExampleFile.python(
-                        "tests/test_delivery.py",
-                        "from unittest.mock import AsyncMock\n\nasync def test_delivery():\n    send = AsyncMock()\n    await deliver(send)\n    assert send.call_count == 2\n    assert send.await_count >= 0\n",
-                    ),
-                ),
-                focus_path=PurePosixPath("tests/test_delivery.py"),
-                expected_count=1,
-                public=False,
-            ),
             RuleExample(
                 example_id="call-only-async-mock",
                 title="A call assertion does not prove awaiting",
@@ -128,6 +123,36 @@ class AsyncMockCallWithoutAwaitAssertion(Rule):
                     ExampleFile.python(
                         "tests/test_delivery.py",
                         "from unittest.mock import AsyncMock\n\nasync def test_delivery():\n    send = AsyncMock()\n    await deliver(send)\n    send.assert_called_once_with('item')\n    send.assert_awaited_once_with('item')\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("tests/test_delivery.py"),
+                expected_count=0,
+                public=True,
+            ),
+            RuleExample(
+                example_id="vacuous-await-count",
+                scenario="await-expectation-boundaries",
+                title="A nonnegative await count does not prove execution",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "tests/test_delivery.py",
+                        "from unittest.mock import AsyncMock\n\nasync def test_delivery():\n    send = AsyncMock()\n    await deliver(send)\n    assert send.call_count == 1\n    assert send.await_count >= 0\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("tests/test_delivery.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="dynamic-expected-awaits",
+                scenario="await-expectation-boundaries",
+                title="Unresolved await expectations retain their acceptance",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "tests/test_delivery.py",
+                        "from unittest.mock import AsyncMock\n\nasync def test_delivery(expected):\n    send = AsyncMock()\n    await deliver(send)\n    send.assert_called_once()\n    send.assert_has_awaits(expected)\n",
                     ),
                 ),
                 focus_path=PurePosixPath("tests/test_delivery.py"),
@@ -166,7 +191,7 @@ class AsyncMockCallWithoutAwaitAssertion(Rule):
                 line=call.lineno,
                 col=call.col_offset + 1,
                 code=self.code,
-                severity=Severity.ERROR,
+                severity=Severity.WARNING,
                 message="AsyncMock call assertions do not prove awaiting; keep this assertion and add an await assertion",
             )
             for test in _collected_tests(tree.body)
@@ -231,7 +256,7 @@ def _call_oracles(statement: ast.stmt) -> Iterator[tuple[_Reference, ast.Call | 
         ):
             yield _reference(receiver), call
         case ast.Assert(test=condition):
-            for reference in sorted(_positive_states(condition, _CALL_STATE)):
+            for reference in sorted(_asserted_states(condition, _CALL_STATE)):
                 oracle = next(
                     node
                     for node in walk_ast(condition)
@@ -304,49 +329,60 @@ def _await_oracles(statements: list[ast.stmt]) -> set[_Reference]:
             case ast.Expr(value=ast.Call(func=ast.Attribute(value=receiver, attr=method)) as call) if (
                 method in _AWAIT_ASSERTIONS
             ):
-                if method != "assert_has_awaits" or _has_nonempty_calls_argument(call):
+                if method != "assert_has_awaits" or _calls_evidence(call) is not _Evidence.INSUFFICIENT:
                     covered.add(_reference(receiver))
             case ast.Assert(test=condition):
-                covered.update(_positive_states(condition, _AWAIT_STATE))
+                covered.update(_asserted_states(condition, _AWAIT_STATE))
             case _:
                 pass
     return covered
 
 
-def _has_nonempty_calls_argument(call: ast.Call) -> bool:
+def _calls_evidence(call: ast.Call) -> _Evidence:
     if call.args:
-        return _nonempty_sequence(call.args[0])
-    return any(item.arg == "calls" and _nonempty_sequence(item.value) for item in call.keywords)
+        return _sequence_evidence(call.args[0])
+    for keyword in call.keywords:
+        if keyword.arg == "calls":
+            return _sequence_evidence(keyword.value)
+    return _Evidence.UNRESOLVED
 
 
-def _positive_states(condition: ast.expr, states: frozenset[str]) -> set[_Reference]:
-    if isinstance(condition, ast.UnaryOp) and isinstance(condition.op, ast.Not):
-        operand = condition.operand
-        if isinstance(operand, ast.Compare) and len(operand.ops) == 1:
-            inverse = _negated_operator(operand.ops[0])
-            if inverse is not None:
-                return _comparison_states(operand.left, inverse, operand.comparators[0], states) | _comparison_states(
-                    operand.comparators[0], _reversed_operator(inverse), operand.left, states
-                )
-        return set()
-    if isinstance(condition, ast.BoolOp):
-        branches = [_positive_states(value, states) for value in condition.values]
-        return (
-            branches[0].union(*branches[1:])
-            if isinstance(condition.op, ast.And)
-            else branches[0].intersection(*branches[1:])
-        )
-    if isinstance(condition, ast.Attribute) and condition.attr in states:
-        return {_reference(condition.value)}
-    if isinstance(condition, ast.Compare):
-        result: set[_Reference] = set()
-        for left, operator, right in zip(
-            (condition.left, *condition.comparators[:-1]), condition.ops, condition.comparators, strict=True
-        ):
-            result.update(_comparison_states(left, operator, right, states))
-            result.update(_comparison_states(right, _reversed_operator(operator), left, states))
-        return result
-    return set()
+def _sequence_evidence(node: ast.expr) -> _Evidence:
+    if isinstance(node, (ast.List, ast.Tuple)):
+        if not node.elts:
+            return _Evidence.INSUFFICIENT
+        if any(not isinstance(item, ast.Starred) for item in node.elts):
+            return _Evidence.POSITIVE
+    return _Evidence.UNRESOLVED
+
+
+def _asserted_states(condition: ast.expr, states: frozenset[str]) -> set[_Reference]:
+    match condition:
+        case ast.UnaryOp(op=ast.Not(), operand=ast.UnaryOp(op=ast.Not(), operand=operand)):
+            return _asserted_states(operand, states)
+        case ast.UnaryOp(op=ast.Not(), operand=ast.Compare(left=left, ops=[operator], comparators=[right])):
+            inverse = _negated_operator(operator)
+            return _comparison_states(left, inverse, right, states) if inverse is not None else set()
+        case ast.UnaryOp(op=ast.Not(), operand=ast.Attribute(attr=attribute)) if attribute in states:
+            return set()
+        case ast.BoolOp(op=operator, values=values):
+            branches = [_asserted_states(value, states) for value in values]
+            return (
+                branches[0].union(*branches[1:])
+                if isinstance(operator, ast.And)
+                else branches[0].intersection(*branches[1:])
+            )
+        case ast.Attribute(value=receiver, attr=attribute) if attribute in states:
+            return {_reference(receiver)}
+        case ast.Compare(left=left, ops=operators, comparators=rights):
+            result: set[_Reference] = set()
+            for first, operator, second in zip((left, *rights[:-1]), operators, rights, strict=True):
+                result.update(_comparison_states(first, operator, second, states))
+            return result
+        case _:
+            # Preserve acceptance of unresolved await-state assertions, such as
+            # len(mock.await_args_list) == expected, without value propagation.
+            return _unresolved_await_states(condition, states)
 
 
 def _negated_operator(operator: ast.cmpop) -> ast.cmpop | None:
@@ -364,6 +400,18 @@ def _negated_operator(operator: ast.cmpop) -> ast.cmpop | None:
     return factory() if factory is not None else None
 
 
+def _comparison_states(left: ast.expr, operator: ast.cmpop, right: ast.expr, states: frozenset[str]) -> set[_Reference]:
+    result: set[_Reference] = set()
+    for node, comparison, expected in ((left, operator, right), (right, _reversed_operator(operator), left)):
+        if isinstance(node, ast.Attribute) and node.attr in states:
+            evidence = _state_evidence(node.attr, comparison, expected)
+            if evidence is _Evidence.POSITIVE or (states == _AWAIT_STATE and evidence is _Evidence.UNRESOLVED):
+                result.add(_reference(node.value))
+        else:
+            result.update(_unresolved_await_states(node, states))
+    return result
+
+
 def _reversed_operator(operator: ast.cmpop) -> ast.cmpop:
     match operator:
         case ast.Lt():
@@ -378,32 +426,38 @@ def _reversed_operator(operator: ast.cmpop) -> ast.cmpop:
             return operator
 
 
-def _comparison_states(left: ast.expr, operator: ast.cmpop, right: ast.expr, states: frozenset[str]) -> set[_Reference]:
-    if not isinstance(left, ast.Attribute):
+def _unresolved_await_states(node: ast.expr, states: frozenset[str]) -> set[_Reference]:
+    if states != _AWAIT_STATE:
         return set()
+    return {
+        _reference(child.value) for child in walk_ast(node) if isinstance(child, ast.Attribute) and child.attr in states
+    }
+
+
+def _state_evidence(attribute: str, operator: ast.cmpop, expected: ast.expr) -> _Evidence:
+    positive: bool
     if (
-        states == _AWAIT_STATE
-        and isinstance(left.value, ast.Attribute)
-        and left.value.attr == "await_args"
-        and left.attr in {"args", "kwargs"}
+        attribute in {"call_count", "await_count"}
+        and isinstance(expected, ast.Constant)
+        and isinstance(expected.value, int)
     ):
-        return {_reference(left.value.value)}
-    if left.attr not in states:
-        return set()
-    positive = False
-    if left.attr in {"call_count", "await_count"} and isinstance(right, ast.Constant) and type(right.value) is int:
-        positive = _proves_positive_count(operator, right.value)
-    elif left.attr == "called" and isinstance(right, ast.Constant):
-        positive = (isinstance(operator, (ast.Eq, ast.Is)) and right.value is True) or (
-            isinstance(operator, (ast.NotEq, ast.IsNot)) and right.value is False
+        positive = _proves_positive_count(operator, expected.value)
+    elif attribute == "called" and isinstance(expected, ast.Constant) and isinstance(expected.value, bool):
+        positive = (isinstance(operator, (ast.Eq, ast.Is)) and expected.value) or (
+            isinstance(operator, (ast.NotEq, ast.IsNot)) and not expected.value
         )
-    elif left.attr == "await_args" and isinstance(right, ast.Constant) and right.value is None:
+    elif attribute == "await_args" and isinstance(expected, ast.Constant) and expected.value is None:
         positive = isinstance(operator, (ast.NotEq, ast.IsNot))
-    elif left.attr == "await_args_list":
-        positive = (isinstance(operator, ast.Eq) and _nonempty_sequence(right)) or (
-            isinstance(operator, ast.NotEq) and isinstance(right, ast.List) and not right.elts
+    elif attribute == "await_args_list" and isinstance(operator, (ast.Eq, ast.NotEq)):
+        sequence = _sequence_evidence(expected)
+        if sequence is _Evidence.UNRESOLVED:
+            return sequence
+        positive = (isinstance(operator, ast.Eq) and sequence is _Evidence.POSITIVE) or (
+            isinstance(operator, ast.NotEq) and isinstance(expected, ast.List) and sequence is _Evidence.INSUFFICIENT
         )
-    return {_reference(left.value)} if positive else set()
+    else:
+        return _Evidence.UNRESOLVED
+    return _Evidence.POSITIVE if positive else _Evidence.INSUFFICIENT
 
 
 def _proves_positive_count(operator: ast.cmpop, value: int) -> bool:
@@ -416,10 +470,6 @@ def _proves_positive_count(operator: ast.cmpop, value: int) -> bool:
             return value >= 0
         case _:
             return False
-
-
-def _nonempty_sequence(node: ast.expr) -> bool:
-    return isinstance(node, (ast.List, ast.Tuple)) and any(not isinstance(item, ast.Starred) for item in node.elts)
 
 
 def _invalidates_reference(node: ast.AST, reference: _Reference, binding: ast.Name) -> bool:
