@@ -387,7 +387,7 @@ jobs:
           node -e "JSON.parse(require('fs').readFileSync('strict.json','utf8'))"
       - name: Smoke test — extend strict.json against a sample
         run: |
-          npm install --ignore-scripts --no-audit --no-fund --save-dev typescript@6.0.3
+          npm install --ignore-scripts --no-audit --no-fund --save-dev typescript@7.0.2
           mkdir -p smoke/src
           cat > smoke/tsconfig.json <<'EOF'
           {

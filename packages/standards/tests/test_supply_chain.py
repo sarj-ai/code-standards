@@ -308,7 +308,7 @@ def test_release_ready_is_one_stable_required_gate() -> None:
         "packages/standards --locked --dev" in workflow
     )  # sarj-noqa: SARJ402 -- workflow text is the required-check contract
     assert "cancel-in-progress: true" in workflow  # sarj-noqa: SARJ402 -- workflow text is the required-check contract
-    assert "typescript@6.0.3" in tsconfig_workflow  # sarj-noqa: SARJ402 -- workflow text is the required-check contract
+    assert "typescript@7.0.2" in tsconfig_workflow  # sarj-noqa: SARJ402 -- workflow text is the required-check contract
     assert (
         "typescript@latest" not in tsconfig_workflow
     )  # sarj-noqa: SARJ402 -- workflow text is the required-check contract
