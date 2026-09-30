@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "53f7be7b2e94c6e0cce1522a41dc543389f06f4229e47e012295485eb9eeff17",
-  "cliSha256": "c5114def67521bd77c6f150634fa52156d2ca9ea84ae93a085878d47045ff869",
+  "catalogSha256": "ebaa51fe8770a2d723a6e6bc7e9852de92f076c28382ec364418e2ec3af9dfa7",
+  "cliSha256": "4650a71adae28f9e4d28e85d90aac6d94e3ab6adc5b847e8879620d476ad87f4",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -9459,6 +9459,44 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "A visible structural port already describes the service boundary"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/native.py",
+              "source": "from typing import Protocol\n\n\nclass Backend(Protocol):\n    def read(self) -> str: ...\n    def write(self, value: str) -> None: ...\n\n\nclass Coordinator:\n    def __init__(self) -> None:\n        self.backend: Backend = native_backend()\n\n    def read(self) -> str:\n        return self.backend.read()\n\n    def write(self, value: str) -> None:\n        self.backend.write(value)\n\n\nclass Consumer:\n    def receive(self) -> str:\n        return Coordinator().read()\n\n    def send(self, value: str) -> None:\n        Coordinator().write(value)\n"
+            },
+            {
+              "path": "pyproject.toml",
+              "source": "[project]\nname = \"boundary-example\"\nversion = \"0.1.0\"\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/native.py",
+          "id": "factory-created-boundary",
+          "outcome": "reject",
+          "scenarioId": "factory-created-boundary",
+          "title": "A native collaborator is hidden behind a directly constructed concrete boundary"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/native.py",
+              "source": "from typing import Protocol, final\n\n\nclass Backend(Protocol):\n    def read(self) -> str: ...\n    def write(self, value: str) -> None: ...\n\n\nclass Operations(Protocol):\n    def read(self) -> str: ...\n    def write(self, value: str) -> None: ...\n\n\n@final\nclass Coordinator:\n    def __init__(self) -> None:\n        self.backend: Backend = native_backend()\n\n    def read(self) -> str:\n        return self.backend.read()\n\n    def write(self, value: str) -> None:\n        self.backend.write(value)\n\n\ndef coordinator() -> Operations:\n    return Coordinator()\n\n\nclass Consumer:\n    def receive(self) -> str:\n        return coordinator().read()\n\n    def send(self, value: str) -> None:\n        coordinator().write(value)\n"
+            },
+            {
+              "path": "pyproject.toml",
+              "source": "[project]\nname = \"boundary-example\"\nversion = \"0.1.0\"\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/native.py",
+          "id": "factory-created-public-port",
+          "outcome": "accept",
+          "scenarioId": "factory-created-boundary",
+          "title": "A typed factory exposes the consumer's public Protocol"
         }
       ],
       "optionsSchemaSource": null
