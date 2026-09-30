@@ -20,6 +20,7 @@ from sarj_python_lint.rule_base import (
     is_suppressed,
 )
 from sarj_python_lint.rules._ast_index import walk as walk_ast
+from sarj_python_lint.rules._imports import ABC_SOURCES, TYPING_SOURCES
 from sarj_python_lint.rules._paths import is_test_path, is_test_support_path
 
 
@@ -43,6 +44,13 @@ class _ParameterDefault(NamedTuple):
 class _StoredParameters:
     fields_by_parameter: dict[str, frozenset[str]]
     fallback_stored: frozenset[str]
+
+
+@dataclass(frozen=True, slots=True)
+class _FactoryClassFacts:
+    owned_names: frozenset[str]
+    excluded_owners: frozenset[str]
+    excluded_collaborators: frozenset[str]
 
 
 # Classes named as the base of a family are the port being asked for, not a missing one.
@@ -211,9 +219,84 @@ class RequirePortForService(ProjectRule):
         limitations=(
             "This advisory uses service-family names, constructor annotations, collaborator calls, and public-method counts as heuristics.",
             "Only direct module classes are checked; tests, generated code, scripts, framework callbacks, Store/Repository persistence dependencies, and external or interface-like bases are excluded.",
-            "A one-method, suffixless, or store-backed class is checked only when project analysis proves a concrete production type dependency and a test subclass or typed mock, or at least two production consumers for a multi-method class. A port owned in another module may require an exact suppression on the implementation.",
+            "A suffixless class can also qualify when it retains a locally typed factory-created collaborator driving multiple public operations and production code constructs it directly to call at least two distinct operations. Constructor aliases and explicit module imports are resolved within the bounded project index; package-export indirection, wildcard imports, duplicate module identities, variable-held instances, factory indirection, and ambiguous control flow are not inferred. Top-level functions are analyzed in indexed modules; ordinary function-only modules may be excluded by the shared type index's lexical admission.",
+            "Otherwise, a one-method, suffixless, or store-backed class requires a concrete production type dependency and a test subclass or typed mock, or at least two production consumers for a multi-method class. A port owned in another module may require an exact suppression on the implementation.",
         ),
         examples=(
+            RuleExample(
+                example_id="factory-created-boundary",
+                scenario="factory-created-boundary",
+                title="A native collaborator is hidden behind a directly constructed concrete boundary",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile(
+                        path=PurePosixPath("pyproject.toml"),
+                        source='[project]\nname = "boundary-example"\nversion = "0.1.0"\n',
+                    ),
+                    ExampleFile.python(
+                        "app/native.py",
+                        "from typing import Protocol\n\n"
+                        "class Backend(Protocol):\n"
+                        "    def read(self) -> str: ...\n"
+                        "    def write(self, value: str) -> None: ...\n\n"
+                        "class Coordinator:\n"
+                        "    def __init__(self) -> None:\n"
+                        "        self.backend: Backend = native_backend()\n"
+                        "    def read(self) -> str:\n"
+                        "        return self.backend.read()\n"
+                        "    def write(self, value: str) -> None:\n"
+                        "        self.backend.write(value)\n\n"
+                        "class Consumer:\n"
+                        "    def receive(self) -> str:\n"
+                        "        return Coordinator().read()\n"
+                        "    def send(self, value: str) -> None:\n"
+                        "        Coordinator().write(value)\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/native.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="factory-created-public-port",
+                scenario="factory-created-boundary",
+                title="A typed factory exposes the consumer's public Protocol",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile(
+                        path=PurePosixPath("pyproject.toml"),
+                        source='[project]\nname = "boundary-example"\nversion = "0.1.0"\n',
+                    ),
+                    ExampleFile.python(
+                        "app/native.py",
+                        "from typing import Protocol, final\n\n"
+                        "class Backend(Protocol):\n"
+                        "    def read(self) -> str: ...\n"
+                        "    def write(self, value: str) -> None: ...\n\n"
+                        "class Operations(Protocol):\n"
+                        "    def read(self) -> str: ...\n"
+                        "    def write(self, value: str) -> None: ...\n\n"
+                        "@final\n"
+                        "class Coordinator:\n"
+                        "    def __init__(self) -> None:\n"
+                        "        self.backend: Backend = native_backend()\n"
+                        "    def read(self) -> str:\n"
+                        "        return self.backend.read()\n"
+                        "    def write(self, value: str) -> None:\n"
+                        "        self.backend.write(value)\n\n"
+                        "def coordinator() -> Operations:\n"
+                        "    return Coordinator()\n\n"
+                        "class Consumer:\n"
+                        "    def receive(self) -> str:\n"
+                        "        return coordinator().read()\n"
+                        "    def send(self, value: str) -> None:\n"
+                        "        coordinator().write(value)\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/native.py"),
+                expected_count=0,
+                public=True,
+            ),
             RuleExample(
                 example_id="concrete-service-boundary",
                 title="Concrete service directly exposes an injected collaborator",
@@ -285,6 +368,7 @@ class RequirePortForService(ProjectRule):
         data_names = {node.name for node in classes if is_data_type(node)}
         local_class_names = {node.name for node in classes}
         local_port_names = _local_port_names(classes)
+        factory_facts = _factory_class_facts(tree, classes, context.module_imports)
 
         diags: list[Diagnostic] = []
         for node in classes:
@@ -298,6 +382,7 @@ class RequirePortForService(ProjectRule):
                 local_class_names=local_class_names,
                 local_port_names=local_port_names,
                 imports=imports,
+                factory_facts=factory_facts,
             )
             if diagnostic is not None:
                 diags.append(diagnostic)
@@ -316,6 +401,7 @@ class RequirePortForService(ProjectRule):
         local_class_names: set[str],
         local_port_names: set[str],
         imports: ImportIndex,
+        factory_facts: _FactoryClassFacts,
     ) -> Diagnostic | None:
         if _class_is_suppressed(node, source_lines, self.code):
             return None
@@ -329,14 +415,22 @@ class RequirePortForService(ProjectRule):
         test_subclass_count = self._test_subclass_count(path, node, indexes=indexes) if typed_consumer_count else 0
         test_mock_count = self._test_mock_count(path, node, indexes=indexes) if typed_consumer_count else 0
         substituted_boundary = typed_consumer_count >= 1 and (test_subclass_count + test_mock_count) >= 1
+        factory_boundary = (
+            self._factory_boundary(path, node, local_class_names, local_port_names, factory_facts, indexes=indexes)
+            if collaborator is None
+            else None
+        )
         if (
             collaborator is None
             and (consumer_count < _MIN_PROJECT_CONSUMERS or _public_method_count(node) < _MIN_PUBLIC_METHODS)
             and not substituted_boundary
+            and factory_boundary is None
         ):
             return None
         if collaborator is not None:
             evidence = f"injects `{collaborator}` and exposes {_public_method_count(node)} public methods"
+        elif factory_boundary is not None:
+            evidence = f"retains factory-created `{factory_boundary}` and is constructed directly to invoke multiple public operations"
         elif substituted_boundary:
             evidence = (
                 f"is typed directly by {typed_consumer_count} production classes and has "
@@ -355,6 +449,49 @@ class RequirePortForService(ProjectRule):
                 "consumer needs substitution, define a small consumer-owned `Protocol` and type that "
                 "consumer against it; otherwise suppress this advisory instead of adding an unused abstraction."
             ),
+        )
+
+    def _factory_boundary(
+        self,
+        path: Path,
+        node: ast.ClassDef,
+        local_class_names: set[str],
+        local_port_names: set[str],
+        factory_facts: _FactoryClassFacts,
+        *,
+        indexes: ProjectIndexSet | None,
+    ) -> str | None:
+        if (
+            indexes is None
+            or node.name not in factory_facts.owned_names
+            or node.name in factory_facts.excluded_owners
+            or not _project_boundary_candidate(node, local_class_names, local_port_names)
+        ):
+            return None
+        collaborator = _factory_collaborator(node, factory_facts)
+        if collaborator is None:
+            return None
+        unit = indexes.unit(path)
+        if unit is None:
+            return None
+        public_methods = {
+            method.name
+            for method in class_methods(node)
+            if not method.name.startswith("_")
+            and not any(_dotted_tail(decorator) in _NON_METHOD_DECORATORS for decorator in method.decorator_list)
+        }
+        operations = {
+            operation
+            for consumer_path, operation in indexes.constructor_operations(unit, node.name)
+            if operation in public_methods and self._factory_library_consumer(consumer_path, indexes)
+        }
+        return collaborator if len(operations) >= _MIN_COLLABORATOR_METHODS else None
+
+    @staticmethod
+    def _factory_library_consumer(path: Path, indexes: ProjectIndexSet) -> bool:
+        unit = indexes.unit(path)
+        return (
+            _is_library_source(path) and unit is not None and unit.tree is not None and not _has_main_guard(unit.tree)
         )
 
     def _concrete_consumer_count(
@@ -647,6 +784,207 @@ def _injected_collaborator(
             return None
         candidates.append((annotation, fields))
     return _behavioral_collaborator(node, candidates)
+
+
+def _factory_class_facts(tree: ast.Module, classes: list[ast.ClassDef], imports: ImportIndex) -> _FactoryClassFacts:
+    local_names = {node.name for node in classes}
+    declarations: dict[str, int] = {}
+    for statement in tree.body:
+        for name in _factory_statement_bindings(statement):
+            declarations[name] = declarations.get(name, 0) + 1
+    owned_names: frozenset[str] = frozenset(name for name in local_names if declarations.get(name) == 1)
+    if any(
+        isinstance(item, ast.ImportFrom) and any(alias.name == "*" for alias in item.names) for item in walk_ast(tree)
+    ):
+        owned_names = frozenset()
+    interfaces = {node.name for node in classes if _factory_interface(node, imports)}
+    values = {node.name for node in classes if _factory_value_class(node, imports, local_names)}
+    _inherit_factory_exclusions(classes, interfaces)
+    _inherit_factory_exclusions(classes, values)
+    return _FactoryClassFacts(owned_names, frozenset(interfaces | values), frozenset(values))
+
+
+def _factory_interface(node: ast.ClassDef, imports: ImportIndex) -> bool:
+    return any(
+        imports.resolves(base, sources=TYPING_SOURCES, symbol="Protocol")
+        or imports.resolves(base, sources=ABC_SOURCES, symbol="ABC")
+        for base in node.bases
+    ) or any(
+        imports.resolved_symbol(decorator, sources=ABC_SOURCES) in _INTERFACE_DECORATORS
+        for method in class_methods(node)
+        for decorator in method.decorator_list
+    )
+
+
+def _factory_value_class(node: ast.ClassDef, imports: ImportIndex, local_names: set[str]) -> bool:
+    if is_data_type(node):
+        return True
+    if any(
+        imports.resolved_symbol(
+            decorator.func if isinstance(decorator, ast.Call) else decorator,
+            sources=frozenset({"dataclasses", "attrs", "attr"}),
+        )
+        in _DATA_DECORATORS
+        for decorator in node.decorator_list
+    ):
+        return True
+    return any(_factory_value_base(base, imports, local_names) for base in node.bases)
+
+
+def _factory_value_base(base: ast.expr, imports: ImportIndex, local_names: set[str]) -> bool:
+    if (
+        imports.resolved_symbol(
+            base, sources=frozenset({"pydantic", "typing", "typing_extensions", "enum", "msgspec", "builtins"})
+        )
+        in _DATA_BASES
+    ):
+        return True
+    if any(imports.resolves(base, sources=TYPING_SOURCES, symbol=name) for name in ("Protocol", "Generic")):
+        return False
+    if imports.resolves(base, sources=ABC_SOURCES, symbol="ABC"):
+        return False
+    return _dotted_tail(base) not in local_names | {"object", "Generic", "Protocol", "ABC", None}
+
+
+def _inherit_factory_exclusions(classes: list[ast.ClassDef], excluded: set[str]) -> None:
+    while grown := {
+        node.name
+        for node in classes
+        if node.name not in excluded and any(_dotted_tail(base) in excluded for base in node.bases)
+    }:
+        excluded.update(grown)
+
+
+def _factory_statement_bindings(statement: ast.stmt) -> frozenset[str]:
+    names: set[str] = set()
+    stack: list[ast.AST] = [statement]
+    while stack:
+        node = stack.pop()
+        match node:
+            case ast.FunctionDef(name=name) | ast.AsyncFunctionDef(name=name) | ast.ClassDef(name=name):
+                names.add(name)
+                continue
+            case ast.AnnAssign(value=None):
+                continue
+            case (
+                ast.Name(id=name, ctx=(ast.Store() | ast.Del()))
+                | ast.ExceptHandler(name=str(name))
+                | ast.MatchAs(name=str(name))
+                | ast.MatchStar(name=str(name))
+                | ast.MatchMapping(rest=str(name))
+            ):
+                names.add(name)
+            case ast.Import(names=aliases) | ast.ImportFrom(names=aliases):
+                names.update(alias.asname or alias.name.partition(".")[0] for alias in aliases)
+            case _:
+                pass
+        stack.extend(ast.iter_child_nodes(node))
+    return frozenset(names)
+
+
+def _factory_collaborator(node: ast.ClassDef, facts: _FactoryClassFacts) -> str | None:
+    init = next((method for method in class_methods(node) if method.name == "__init__"), None)
+    if init is None:
+        return None
+    origins: dict[str, ast.expr | None] = {}
+    candidates: list[tuple[str, frozenset[str]]] = []
+    writes = _constructor_field_writes(init)
+    available_names = set(facts.owned_names)
+    available_names.difference_update(
+        parameter.arg for parameter in (*init.args.posonlyargs, *init.args.args, *init.args.kwonlyargs)
+    )
+    for statement in init.body:
+        if isinstance(statement, ast.Raise):
+            return None
+        if isinstance(statement, ast.Return):
+            break
+        if not _factory_falls_through(statement):
+            return None
+        available_names.difference_update(_factory_statement_bindings(statement))
+        if not _update_factory_origins(statement, origins):
+            return None
+        candidate = _factory_field_candidate(statement, origins, writes, facts.excluded_collaborators, available_names)
+        if candidate is not None:
+            candidates.append(candidate)
+    return _behavioral_collaborator(node, candidates)
+
+
+def _factory_falls_through(statement: ast.stmt) -> bool:
+    if isinstance(statement, (ast.Return, ast.Raise, ast.While, *_UNSUPPORTED_COMPOUND_STATEMENTS)):
+        return False
+    if not isinstance(statement, ast.If):
+        return True
+    truth = _static_truth(statement.test)
+    if truth is not None:
+        return _factory_statements_fall_through(statement.body if truth else statement.orelse)
+    return _factory_statements_fall_through(statement.body) or _factory_statements_fall_through(statement.orelse)
+
+
+def _factory_statements_fall_through(statements: list[ast.stmt]) -> bool:
+    return all(_factory_falls_through(statement) for statement in statements)
+
+
+def _constructor_field_writes(init: ast.FunctionDef | ast.AsyncFunctionDef) -> dict[str, int]:
+    writes: dict[str, int] = {}
+    for statement in walk_ast(init):
+        if (
+            isinstance(statement, ast.Attribute)
+            and isinstance(statement.ctx, ast.Store | ast.Del)
+            and isinstance(statement.value, ast.Name)
+            and statement.value.id == "self"
+        ):
+            writes[statement.attr] = writes.get(statement.attr, 0) + 1
+    return writes
+
+
+def _update_factory_origins(statement: ast.stmt, origins: dict[str, ast.expr | None]) -> bool:
+    value = statement.value if isinstance(statement, ast.Assign | ast.AnnAssign) else None
+    snapshot = origins.get(value.id) if isinstance(value, ast.Name) else value
+    for name in _factory_statement_bindings(statement):
+        origins.pop(name, None)
+    if isinstance(statement, ast.Assign | ast.AnnAssign):
+        if statement.value is None:
+            return True
+        targets = statement.targets if isinstance(statement, ast.Assign) else [statement.target]
+        for target in targets:
+            if not isinstance(target, ast.Name):
+                continue
+            origins[target.id] = snapshot
+    elif isinstance(statement, (ast.If, ast.While, *_UNSUPPORTED_COMPOUND_STATEMENTS)):
+        for item in walk_ast(statement):
+            if isinstance(item, ast.Return):
+                return False
+    return True
+
+
+def _factory_field_candidate(
+    statement: ast.stmt,
+    origins: dict[str, ast.expr | None],
+    writes: dict[str, int],
+    data_names: frozenset[str],
+    local_class_names: set[str],
+) -> tuple[str, frozenset[str]] | None:
+    if not isinstance(statement, ast.AnnAssign):
+        return None
+    assignment = _self_field_assignment(statement)
+    annotation = annotation_tail(statement.annotation)
+    if assignment is None or annotation is None or annotation not in local_class_names:
+        return None
+    if any(isinstance(item, ast.Attribute) and item.attr == annotation for item in walk_ast(statement.annotation)):
+        return None
+    if (
+        annotation in data_names
+        or annotation in _DRIVER_HANDLE_ANNOTATIONS
+        or _PERSISTENCE_DEPENDENCY_RE.search(annotation)
+        or _WEAK_COLLABORATOR_RE.search(annotation)
+        or _annotation_allows_none(statement.annotation)
+    ):
+        return None
+    fields, value = assignment
+    origin = value if isinstance(value, ast.Call) else origins.get(value.id) if isinstance(value, ast.Name) else None
+    if not isinstance(origin, ast.Call) or any(writes[field] != 1 for field in fields):
+        return None
+    return annotation, frozenset(fields)
 
 
 def self_stored_parameters(
