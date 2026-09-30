@@ -147,7 +147,10 @@ def test_upgrade_repairs_adopted_security_config_and_prepares_only_that_tool(
     )
 
 
-def test_upgrade_transactionally_removes_retired_diagnostic_baseline_entries(tmp_path: Path) -> None:
+@pytest.mark.parametrize("include_retired", [False, True])
+def test_upgrade_migrates_baseline_provenance_without_increasing_approved_debt(
+    tmp_path: Path, include_retired: bool, monkeypatch: pytest.MonkeyPatch
+) -> None:
     _outdated_python_repo(tmp_path)
     adopted = manifest.load(tmp_path)
     assert adopted is not None
@@ -161,6 +164,18 @@ def test_upgrade_transactionally_removes_retired_diagnostic_baseline_entries(tmp
         "path": ".github/workflows/check.yml",
         "count": 3,
     }
+    entries = [retained]
+    if include_retired:
+        entries.insert(
+            0,
+            {
+                "fingerprint": "1" * 64,
+                "source": "sarj-text-lint",
+                "ruleId": "unpinned-github-action",
+                "path": ".github/workflows/check.yml",
+                "count": 4,
+            },
+        )
     baseline_path.write_text(
         json.dumps(
             {
@@ -170,16 +185,7 @@ def test_upgrade_transactionally_removes_retired_diagnostic_baseline_entries(tmp
                     "consumerBaseSha": "0" * 40,
                     "catalogDigest": "1" * 64,
                 },
-                "diagnostics": [
-                    {
-                        "fingerprint": "1" * 64,
-                        "source": "sarj-text-lint",
-                        "ruleId": "unpinned-github-action",
-                        "path": ".github/workflows/check.yml",
-                        "count": 4,
-                    },
-                    retained,
-                ],
+                "diagnostics": entries,
             },
             indent=2,
         )
@@ -203,6 +209,14 @@ def test_upgrade_transactionally_removes_retired_diagnostic_baseline_entries(tmp
         "consumerBaseSha": "0" * 40,
         "catalogDigest": baseline.bundled_catalog_digest(),
     }
+    assert baseline.load(
+        baseline_path,
+        require_v2=True,
+        expected_bundle_version=manifest.adopted_version(),
+        expected_catalog_digest=baseline.bundled_catalog_digest(),
+    ) == {"2" * 64: 3}
+    monkeypatch.setenv("SARJ_STANDARDS_BASE", "3" * 40)
+    assert not upgrade.build_plan(tmp_path).baseline_writes
 
 
 def test_upgrade_rejects_a_concurrently_edited_diagnostic_baseline(tmp_path: Path) -> None:

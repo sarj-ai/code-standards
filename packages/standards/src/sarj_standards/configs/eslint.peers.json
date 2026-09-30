@@ -19,8 +19,9 @@
     "@eslint-community/eslint-plugin-eslint-comments": "4.8.1",
     "@eslint/compat": "2.1.1",
     "@eslint/js": "10.0.1",
-    "@sarj/eslint-plugin": "16.2.3",
+    "@sarj/eslint-plugin": "16.2.4",
     "@shadcn/lint": "0.2.0",
+    "@typescript/native": "npm:typescript@7.0.2",
     "@vitest/eslint-plugin": "1.6.27",
     "eslint": "10.11.0",
     "eslint-node-test": "0.4.0",
@@ -38,11 +39,11 @@
     "eslint-plugin-unicorn": "76.0.0",
     "eslint-plugin-zod": "4.14.2",
     "react-doctor": "0.9.14",
-    "typescript": "6.0.3",
+    "typescript": "npm:@typescript/typescript6@6.0.2",
     "typescript-eslint": "8.70.1"
   },
   "ageGatePreapprovals": {
-    "@sarj/eslint-plugin": "16.2.3"
+    "@sarj/eslint-plugin": "16.2.4"
   },
   "yarnIdentityPins": {
     "@typescript-eslint/eslint-plugin": "8.70.1",
@@ -64,6 +65,6 @@
   },
   "ceilings": {
     "eslint-plugin-react": "7.37.5 is the newest release and peers `eslint <= ^9.7`; the npm override permits ESLint 10 and @eslint/compat restores its removed rule-context APIs so all React rules remain active.",
-    "typescript": "typescript-eslint@8 peers `>=4.8.4 <6.1.0`, so TypeScript 7 is rejected."
+    "typescript": "TypeScript 7 supplies tsc through @typescript/native. The official TypeScript 6 compatibility package supplies the JavaScript compiler API required by typescript-eslint and declaration generators; its tsc6 binary avoids colliding with native tsc."
   }
 }

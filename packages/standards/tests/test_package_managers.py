@@ -528,7 +528,7 @@ def test_npm_direct_peer_override_tracks_the_exact_pin_without_escaping_unicode(
     package_text = (tmp_path / "package.json").read_text(encoding="utf-8")
     parsed: object = json.loads(package_text)  # pyright: ignore[reportAny]
     package = manifest.as_table(parsed)
-    assert manifest.table_field(package, "devDependencies")["typescript"] == "6.0.3"
+    assert manifest.table_field(package, "devDependencies")["typescript"] == "npm:@typescript/typescript6@6.0.2"
     assert manifest.table_field(package, "overrides")["typescript"] == "$typescript"
     assert package["description"] == "Customer dashboard — browser client"
     assert "—" in package_text

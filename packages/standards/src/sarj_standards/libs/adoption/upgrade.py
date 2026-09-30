@@ -161,7 +161,7 @@ def build_plan(root: Path) -> UpgradePlan:  # ruff: ignore[too-many-locals] -- o
         for rewrite in retired_suppressions.plan(doctor.authored_files(root))
         if rewrite.path not in reserved_paths
     ]
-    baseline_writes = _retired_baseline_writes(root, adopted)
+    baseline_writes = _diagnostic_baseline_writes(root, adopted)
     plan = UpgradePlan(
         root,
         adopted,
@@ -222,9 +222,7 @@ def _append_upgrade_changes(plan: UpgradePlan, path: Path, pin_updates: Sequence
     plan.changes.extend(Change(lockfile, "refresh Python lockfile") for lockfile in plan.lockfiles)
     plan.changes.extend(Change(lockfile, "refresh JavaScript lockfile") for lockfile in plan.javascript_lockfiles)
     plan.changes.extend(Change(path, "migrate retired rule reference") for path, _contents in plan.suppression_writes)
-    plan.changes.extend(
-        Change(path, "remove retired diagnostic baseline entries") for path, _contents in plan.baseline_writes
-    )
+    plan.changes.extend(Change(path, "migrate diagnostic baseline") for path, _contents in plan.baseline_writes)
 
 
 def _upgrade_targets(plan: UpgradePlan, path: Path) -> tuple[Path, ...]:
@@ -351,7 +349,7 @@ def _append_companion_writes(
             config_writes.append((companion_source_path, companion_target_path))
 
 
-def _retired_baseline_writes(root: Path, adopted: manifest.Manifest) -> list[tuple[Path, str]]:
+def _diagnostic_baseline_writes(root: Path, adopted: manifest.Manifest) -> list[tuple[Path, str]]:
     baseline_writes: list[tuple[Path, str]] = []
     if adopted.diagnostic_baseline is not None:
         baseline_target = root / adopted.diagnostic_baseline
@@ -368,7 +366,7 @@ def _retired_baseline_writes(root: Path, adopted: manifest.Manifest) -> list[tup
                 consumer_base_sha=baseline.repository_base_sha(root),
                 catalog_digest=baseline.bundled_catalog_digest(),
             )
-            if removal.removed:
+            if removal.removed or adopted.version != manifest.adopted_version():
                 baseline_writes.append((baseline_target, removal.contents))
     return baseline_writes
 

@@ -201,11 +201,13 @@ def test_eslint_config_degrades_cleanly_without_a_type_project(config_name: str)
     assert '"**/eslint.config.mjs"' in text
 
 
-def test_peer_pins_are_exact_versions() -> None:
+def test_peer_pins_are_exact_versions_or_official_compiler_aliases() -> None:
     peers = manifest.eslint_peers()
     assert len(peers) >= 9, "every package eslint.strict.mjs imports must be pinned"
     for name, pin in peers.items():
-        assert re.fullmatch(r"\d+\.\d+\.\d+", pin), f"{name} must be pinned exactly, got {pin}"
+        assert re.fullmatch(r"(?:npm:(?:@typescript/typescript6|typescript)@)?\d+\.\d+\.\d+", pin), (
+            f"{name} must be pinned exactly, got {pin}"
+        )
 
 
 def test_react_doctor_config_is_offline_blocking_and_non_overlapping() -> None:
