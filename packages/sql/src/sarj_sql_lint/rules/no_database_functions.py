@@ -36,7 +36,7 @@ class NoDatabaseFunctions(Rule):
     id = "no-database-functions"
     code = "SARJ120"
     documentation = RuleDocumentation(
-        default_level=DefaultLevel.WARNING,
+        default_level=DefaultLevel.ERROR,
         summary="Keep stored SQL functions in application code.",
         rationale="Stored functions move application behavior into a second execution environment, obscuring writes and making simple fault fixtures require procedural database objects.",
         remediation="Use declarative constraints for data invariants and explicit transactional application code for behavior. Use an exact SARJ120 suppression for an approved compatibility exception.",

@@ -38,7 +38,7 @@ class NoDatabaseProgrammability(Rule):
     id = "no-database-programmability"
     code = "SARJ470"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        default_level=Severity.WARNING,
+        default_level=Severity.ERROR,
         summary="Keep stored SQL functions and triggers out of embedded SQL.",
         rationale="SQL hidden in Python can bypass migration-only architecture rules. Procedural fault fixtures require extra database objects and cleanup when a declarative constraint suffices.",
         remediation="Use declarative constraints or explicit transactional application behavior, including in test fixtures. Use an exact SARJ470 suppression for an approved compatibility exception.",
@@ -91,7 +91,7 @@ class NoDatabaseProgrammability(Rule):
                     line=node.lineno,
                     col=node.col_offset + 1,
                     code=self.code,
-                    severity=Severity.WARNING,
+                    severity=Severity.ERROR,
                     message="Stored SQL functions and triggers are prohibited by project architecture, including in test fixtures; use a declarative constraint or explicit transactional application code.",
                 )
             )
