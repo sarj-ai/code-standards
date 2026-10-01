@@ -61,6 +61,7 @@
       "no-hidden-constructor-fallback",
       "no-invalid-argument-name-suppression",
       "no-nested-pydantic-field-validator",
+      "no-nullable-dependency-fallback",
       "no-offset-pagination",
       "no-positional-psycopg-row-escape",
       "no-positional-tuple-record",
@@ -431,7 +432,8 @@
       "SARJ465",
       "SARJ466",
       "SARJ467",
-      "SARJ468"
+      "SARJ468",
+      "SARJ469"
     ],
     "sql": [
       "SARJ101",
