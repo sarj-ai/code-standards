@@ -15,14 +15,19 @@ from sarj_python_lint.rule_base import (
     Severity,
 )
 from sarj_python_lint.rules._paths import is_test_path
-from sarj_python_lint.rules.no_raw_source_text_test_oracle import FunctionAnalyzer, top_level_test_functions
+from sarj_python_lint.rules.no_raw_source_text_test_oracle import (
+    IAC_JSON_SOURCE_SUFFIXES,
+    FunctionAnalyzer,
+    module_source_path_tuples,
+    top_level_test_functions,
+)
 
 
 if TYPE_CHECKING:
     from sarj_python_lint._file_context import PythonFileContext
 
 
-IAC_SOURCE_SUFFIXES = (".hcl", ".tf", ".tf.json", ".tfvars", ".tftest.hcl", ".tftest.json")
+IAC_SOURCE_SUFFIXES = (".hcl", ".tf", ".tfvars", ".tftest.hcl", *IAC_JSON_SOURCE_SUFFIXES)
 
 
 @final
@@ -42,7 +47,7 @@ class IacSourceCoupledTest(Rule):
         ),
         category=RuleCategory.TESTING,
         limitations=(
-            "The rule follows local aliases, path collections, context-managed reads, and common normalization; interprocedural flows remain unreported.",
+            "The rule follows local aliases, path collections, context-managed reads, common normalization, and direct comprehension reads unpacked from stable module-level path tuples; interprocedural flows remain unreported.",
             "Files produced beneath recognized temporary-directory fixtures are generated outputs and remain unreported.",
             "The Python detector currently owns Terraform and HCL suffixes; YAML remains with the general source-coupled rule.",
             "Fixture, golden, and snapshot paths are treated as deliberate representation contracts; other packaging, formatter, and compatibility contracts require an exact suppression.",
@@ -93,11 +98,13 @@ class IacSourceCoupledTest(Rule):
             return []
         imports = context.module_imports
         source_lines = context.source_lines
+        module_tuples = module_source_path_tuples(tree, imports, IAC_SOURCE_SUFFIXES)
         assertions = [
             assertion
             for function, unittest_style in top_level_test_functions(tree, imports)
             for assertion in FunctionAnalyzer(
                 IAC_SOURCE_SUFFIXES,
+                module_path_tuples=module_tuples,
                 imports=imports,
                 suppression_code=self.code,
                 suppression_lines=source_lines,

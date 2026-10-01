@@ -261,3 +261,52 @@ def test_allows_iac_representation_contract_directories(directory: str) -> None:
     """)
         == []
     )
+
+
+@pytest.mark.parametrize("suffix", ["tf", "hcl", "tfvars", "tf.json", "tftest.hcl", "tftest.json"])
+def test_module_tuple_unpack_has_only_iac_owner(suffix: str) -> None:
+    source = f"""
+        PATHS = (Path('first.{suffix}'), Path('second.{suffix}'))
+        def test_policy():
+            first, second = (path.read_text() for path in PATHS)
+            assert 'prevent_destroy' in first
+            assert 'prevent_destroy' in second
+    """
+    [diagnostic] = check(source)
+    assert diagnostic.code == "SARJ412"
+    assert (
+        NoRawSourceTextTestOracle().check(
+            Path("tests/test_policy.py"), "from pathlib import Path\n" + textwrap.dedent(source)
+        )
+        == []
+    )
+
+
+@pytest.mark.parametrize("artifact", ["Dockerfile", "bootstrap.sh.tftpl"])
+def test_general_source_extensions_have_only_general_owner(artifact: str) -> None:
+    source = f"""
+        def test_policy():
+            source = Path('{artifact}').read_text()
+            assert 'install_agent' in source
+    """
+    assert check(source) == []
+    [diagnostic] = NoRawSourceTextTestOracle().check(
+        Path("tests/test_policy.py"), "from pathlib import Path\n" + textwrap.dedent(source)
+    )
+    assert diagnostic.code == "SARJ402"
+
+
+@pytest.mark.parametrize(
+    "binding",
+    [
+        "match runtime_paths():\n    case PATHS:\n        pass",
+        "try:\n    run()\nexcept RuntimePaths as PATHS:\n    pass",
+        "callback = lambda replacement=(PATHS := runtime_paths()): replacement",
+    ],
+)
+def test_local_binding_invalidates_module_iac_tuple(binding: str) -> None:
+    body = f"{binding}\nfirst, second = (path.read_text() for path in PATHS)\nassert 'prevent_destroy' in first\n"
+    assert (
+        check(f"PATHS = (Path('first.tf'), Path('second.tf'))\ndef test_policy():\n{textwrap.indent(body, '    ')}")
+        == []
+    )
