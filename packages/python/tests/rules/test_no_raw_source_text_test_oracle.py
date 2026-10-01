@@ -2,6 +2,7 @@ from pathlib import Path
 import textwrap
 
 import pytest
+from sarj_rule_contracts import EvaluationCase, ExpectedOutcome, Language
 
 from sarj_python_lint.rule_base import Severity
 from sarj_python_lint.rules.no_raw_source_text_test_oracle import NoRawSourceTextTestOracle
@@ -202,9 +203,144 @@ def test_flags_context_managed_read():
     diagnostics = check("""
         def test_policy():
             with open("scripts/deploy.sh") as source:
-                assert source.read().startswith("#!/bin/bash")
+                assert "deploy_service" in source.read()
     """)
     assert len(diagnostics) == 1
+
+
+_SOURCE_FLOW_CASES = (
+    EvaluationCase(
+        case_id="dockerfile-copy-oracle",
+        language=Language.PYTHON,
+        expected=ExpectedOutcome.MATCH,
+        source="def test_image():\n    source = Path('app/Dockerfile').read_text()\n    assert 'COPY app/' in source\n",
+    ),
+    EvaluationCase(
+        case_id="shell-template-command-oracle",
+        language=Language.PYTHON,
+        expected=ExpectedOutcome.MATCH,
+        source="def test_bootstrap():\n    source = Path('bootstrap.sh.tftpl').read_text()\n    assert 'install_agent' in source\n",
+    ),
+    EvaluationCase(
+        case_id="shebang-receiver-behavior-oracle",
+        language=Language.PYTHON,
+        expected=ExpectedOutcome.MATCH,
+        source="def test_bootstrap():\n    source = Path('bootstrap.sh.tftpl').read_text()\n    assert (source if 'install_agent' in source else '').startswith('#!/bin/sh')\n",
+    ),
+    EvaluationCase(
+        case_id="workflow-tuple-generator-unpack",
+        language=Language.PYTHON,
+        expected=ExpectedOutcome.MATCH,
+        source="PATHS = (Path('android.yml'), Path('ios.yml'))\ndef test_promotion():\n    android, ios = (path.read_text() for path in PATHS)\n    assert android.count('promotion') == 2\n    assert ios.count('promotion') == 2\n",
+    ),
+    EvaluationCase(
+        case_id="workflow-tuple-list-comprehension-unpack",
+        language=Language.PYTHON,
+        expected=ExpectedOutcome.MATCH,
+        source="PATHS = (Path('android.yml'), Path('ios.yml'))\ndef test_promotion():\n    android, ios = [path.read_bytes().decode() for path in PATHS]\n    assert 'promotion' in android\n    assert 'promotion' in ios\n",
+    ),
+    EvaluationCase(
+        case_id="parsed-unpacked-workflows",
+        language=Language.PYTHON,
+        source="PATHS = (Path('android.yml'), Path('ios.yml'))\ndef test_promotion():\n    android, ios = (yaml.safe_load(path.read_text()) for path in PATHS)\n    assert android['jobs']['build']['if'] == 'promotion'\n",
+    ),
+    EvaluationCase(
+        case_id="mutable-module-path-list",
+        language=Language.PYTHON,
+        source="PATHS = [Path('android.yml'), Path('ios.yml')]\ndef test_promotion():\n    android, ios = (path.read_text() for path in PATHS)\n    assert 'promotion' in android\n",
+    ),
+    EvaluationCase(
+        case_id="module-tuple-rebound",
+        language=Language.PYTHON,
+        source="PATHS = (Path('android.yml'), Path('ios.yml'))\nPATHS = runtime_paths()\ndef test_promotion():\n    android, ios = (path.read_text() for path in PATHS)\n    assert 'promotion' in android\n",
+    ),
+    EvaluationCase(
+        case_id="module-tuple-shadowed",
+        language=Language.PYTHON,
+        source="PATHS = (Path('android.yml'), Path('ios.yml'))\ndef test_promotion(PATHS):\n    android, ios = (path.read_text() for path in PATHS)\n    assert 'promotion' in android\n",
+    ),
+    EvaluationCase(
+        case_id="module-tuple-global-write",
+        language=Language.PYTHON,
+        source="PATHS = (Path('android.yml'), Path('ios.yml'))\ndef replace_paths():\n    global PATHS\n    PATHS = runtime_paths()\ndef test_promotion():\n    android, ios = (path.read_text() for path in PATHS)\n    assert 'promotion' in android\n",
+    ),
+    EvaluationCase(
+        case_id="unknown-path-producer",
+        language=Language.PYTHON,
+        source="PATHS = runtime_paths()\ndef test_promotion():\n    android, ios = (path.read_text() for path in PATHS)\n    assert 'promotion' in android\n",
+    ),
+    EvaluationCase(
+        case_id="filtered-generator",
+        language=Language.PYTHON,
+        source="PATHS = (Path('android.yml'), Path('ios.yml'))\ndef test_promotion():\n    android, ios = (path.read_text() for path in PATHS if enabled(path))\n    assert 'promotion' in android\n",
+    ),
+    EvaluationCase(
+        case_id="generated-dockerfile",
+        language=Language.PYTHON,
+        source="def test_image(tmp_path):\n    source = (tmp_path / 'Dockerfile').read_text()\n    assert 'COPY app/' in source\n",
+    ),
+    EvaluationCase(
+        case_id="golden-dockerfile",
+        language=Language.PYTHON,
+        source="def test_image():\n    source = Path('golden/Dockerfile').read_text()\n    assert 'COPY app/' in source\n",
+    ),
+    EvaluationCase(
+        case_id="shell-template-shebang-contract",
+        language=Language.PYTHON,
+        source="def test_interpreter():\n    source = Path('bootstrap.sh.tftpl').read_text()\n    assert source.startswith('#!/bin/sh\\n')\n",
+    ),
+    EvaluationCase(
+        case_id="shebang-plus-command-is-behavior-oracle",
+        language=Language.PYTHON,
+        source="def test_bootstrap():\n    source = Path('bootstrap.sh.tftpl').read_text()\n    assert source.startswith('#!/bin/sh\\ninstall_agent')\n",
+        expected=ExpectedOutcome.MATCH,
+    ),
+    EvaluationCase(
+        case_id="terraform-json-has-specific-owner",
+        language=Language.PYTHON,
+        source="def test_policy():\n    source = Path('main.tf.json').read_text()\n    assert 'prevent_destroy' in source\n",
+    ),
+    EvaluationCase(
+        case_id="terraform-test-json-has-specific-owner",
+        language=Language.PYTHON,
+        source="def test_policy():\n    source = Path('policy.tftest.json').read_text()\n    assert 'prevent_destroy' in source\n",
+    ),
+    EvaluationCase(
+        case_id="unknown-build-file-basename",
+        language=Language.PYTHON,
+        source="def test_image():\n    source = Path('Dockerfile.notes').read_text()\n    assert 'COPY app/' in source\n",
+    ),
+)
+
+
+@pytest.mark.parametrize("case", _SOURCE_FLOW_CASES, ids=[case.case_id for case in _SOURCE_FLOW_CASES])
+def test_source_flow_regressions(case: EvaluationCase) -> None:
+    diagnostics = check(case.source)
+    assert bool(diagnostics) is (case.expected is ExpectedOutcome.MATCH)
+    assert len(diagnostics) <= 1
+
+
+def test_shebang_format_check_does_not_hide_later_command_oracle() -> None:
+    [diagnostic] = check("""
+        def test_bootstrap():
+            source = Path('bootstrap.sh.tftpl').read_text()
+            assert source.startswith('#!/bin/sh\\n')
+            assert 'install_agent' in source
+    """)
+    assert diagnostic.line == 12
+
+
+def test_unpacked_workflow_suppression_is_preserved() -> None:
+    assert (
+        check("""
+        PATHS = (Path('android.yml'), Path('ios.yml'))
+        def test_promotion():
+            android, ios = (path.read_text() for path in PATHS)
+            assert android.count('promotion') == 2  # sarj-noqa: SARJ402 -- checked format
+            assert ios.count('promotion') == 2  # sarj-noqa: SARJ402 -- checked format
+    """)
+        == []
+    )
 
 
 def test_reassignment_kills_taint():
@@ -566,3 +702,96 @@ def test_skips_non_test_and_generated_paths():
 
 def test_malformed_python_is_ignored():
     assert check("def test_x(:") == []
+
+
+@pytest.mark.parametrize(
+    "binding",
+    [
+        "del PATHS",
+        "if FLAG:\n    PATHS = runtime_paths()",
+        "for PATHS in runtime_paths():\n    pass",
+        "from custom import PATHS",
+        "from custom import *",
+        "[(PATHS := runtime_paths()) for item in values]",
+        "def helper(value=(PATHS := runtime_paths())):\n    pass",
+        "helper = lambda value=(PATHS := runtime_paths()): value",
+    ],
+)
+def test_module_tuple_rebinding_abstains(binding: str) -> None:
+    assert (
+        check(
+            f"PATHS = (Path('android.yml'), Path('ios.yml'))\n{binding}\ndef test_policy():\n"
+            "    android, ios = (path.read_text() for path in PATHS)\n"
+            "    assert 'promotion' in android\n"
+        )
+        == []
+    )
+
+
+@pytest.mark.parametrize(
+    "read",
+    [
+        "(path.read_text() for path in PATHS if enabled)",
+        "(path.read_text() for path in PATHS for item in values)",
+        "(path.read_text() async for path in PATHS)",
+        "(custom_read(path) for path in PATHS)",
+        "(path.read_text() for path in unknown_paths())",
+        "(Path('workflow.yml').read_text() for Path in PATHS)",
+        "((PATHS := path).read_text() for path in PATHS)",
+    ],
+)
+def test_uncertain_unpacked_reads_abstain(read: str) -> None:
+    assert (
+        check(
+            "PATHS = (Path('android.yml'), Path('ios.yml'))\n"
+            "def test_policy():\n"
+            f"    android, ios = {read}\n"
+            "    assert 'promotion' in android\n"
+        )
+        == []
+    )
+
+
+def test_unpacked_raw_value_reassignment_kills_taint() -> None:
+    assert (
+        check("""
+        PATHS = (Path('android.yml'), Path('ios.yml'))
+        def test_policy():
+            android, ios = (path.read_text() for path in PATHS)
+            android = runtime_value()
+            assert 'promotion' in android
+    """)
+        == []
+    )
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "match runtime_paths():\n    case PATHS:\n        android, ios = (path.read_text() for path in PATHS)\n        assert 'promotion' in android",
+        "try:\n    run()\nexcept RuntimePaths as PATHS:\n    android, ios = (path.read_text() for path in PATHS)\n    assert 'promotion' in android",
+    ],
+)
+def test_capture_binding_shadows_module_tuple(body: str) -> None:
+    assert (
+        check(f"PATHS = (Path('android.yml'), Path('ios.yml'))\ndef test_policy():\n{textwrap.indent(body, '    ')}\n")
+        == []
+    )
+
+
+@pytest.mark.parametrize(
+    "binding",
+    [
+        "callback = lambda replacement=(PATHS := runtime_paths()): replacement",
+        "def helper(replacement=(PATHS := runtime_paths())):\n    pass",
+        "@decorate(PATHS := runtime_paths())\ndef helper():\n    pass",
+        "class Helper(base(PATHS := runtime_paths())):\n    pass",
+        "[(PATHS := runtime_paths()) for item in values]",
+    ],
+)
+def test_enclosing_expression_shadows_module_tuple(binding: str) -> None:
+    body = f"{binding}\nandroid, ios = (path.read_text() for path in PATHS)\nassert 'promotion' in android\n"
+    assert (
+        check(f"PATHS = (Path('android.yml'), Path('ios.yml'))\ndef test_policy():\n{textwrap.indent(body, '    ')}")
+        == []
+    )
