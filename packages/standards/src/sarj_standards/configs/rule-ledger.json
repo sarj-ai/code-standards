@@ -60,6 +60,7 @@
       "no-frozen-after-validator-field-write",
       "no-generic-single-export-module",
       "no-hidden-constructor-fallback",
+      "no-injected-module-loader",
       "no-invalid-argument-name-suppression",
       "no-nested-pydantic-field-validator",
       "no-nullable-dependency-fallback",
@@ -436,7 +437,8 @@
       "SARJ467",
       "SARJ468",
       "SARJ469",
-      "SARJ470"
+      "SARJ470",
+      "SARJ471"
     ],
     "sql": [
       "SARJ101",
