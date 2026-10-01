@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "3bdda46d6d31f9b26bcce7c9fa9cdc323f830bb05a9fc2ea62b00c595103951f",
-  "cliSha256": "dde3368c2882a0e55ee6ee6ac4099c29720afbe0ea0d88afd487c0a7c647ff86",
+  "catalogSha256": "6303c2fc5c74af4e21cd7d06736d78994b6512985eb542b8b35a2ed5136e1633",
+  "cliSha256": "b983deb3584853ab3a1bd88e563d6dcdcf21c399d56fee6391094e2a6a3ce1bf",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -5922,6 +5922,41 @@
       ],
       "optionsSchemaSource": null
     },
+    "python:no-database-programmability": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "tests/fakes/batch_fault.py",
+              "source": "await conn.execute(\n    \"ALTER TABLE batch ADD CONSTRAINT fail_counter CHECK (false) NOT VALID\"\n)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/fakes/batch_fault.py",
+          "id": "constraint-fault",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Declarative failure in a disposable database"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "tests/fakes/batch_fault.py",
+              "source": "await conn.execute(\n    \"CREATE TRIGGER fail_counter BEFORE UPDATE ON batch EXECUTE FUNCTION fail_counter()\"\n)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/fakes/batch_fault.py",
+          "id": "trigger-fault",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Procedural fault fixture"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "python:no-delete-statement": {
       "examples": [
         {
@@ -10356,6 +10391,41 @@
           "outcome": "reject",
           "scenarioId": "json-shape",
           "title": "Database duplicates a JSON array schema"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "sql:no-database-functions": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "supabase/migrations/001.sql",
+              "source": "ALTER TABLE batch\nADD CONSTRAINT fail_counter CHECK (FALSE) NOT VALID;\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "supabase/migrations/001.sql",
+          "id": "declarative-fault",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Declarative constraint in a disposable test database"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "supabase/migrations/001.sql",
+              "source": "CREATE FUNCTION fail_counter () RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'failure'; END $$;\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "supabase/migrations/001.sql",
+          "id": "stored-fault-function",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Procedural database fault fixture"
         }
       ],
       "optionsSchemaSource": null

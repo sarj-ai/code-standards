@@ -47,6 +47,7 @@
       "no-conftest-test-module-import",
       "no-copied-inherited-docstring",
       "no-cors-wildcard-with-credentials",
+      "no-database-programmability",
       "no-delete-statement",
       "no-docstring-type-restatement",
       "no-dunder-all",
@@ -155,6 +156,7 @@
       "insert-requires-replay-policy",
       "mixed-migration-phases",
       "no-application-schema-check",
+      "no-database-functions",
       "no-database-triggers",
       "no-duplicate-index",
       "no-long-migration-narration",
@@ -433,7 +435,8 @@
       "SARJ466",
       "SARJ467",
       "SARJ468",
-      "SARJ469"
+      "SARJ469",
+      "SARJ470"
     ],
     "sql": [
       "SARJ101",
@@ -454,7 +457,8 @@
       "SARJ116",
       "SARJ117",
       "SARJ118",
-      "SARJ119"
+      "SARJ119",
+      "SARJ120"
     ],
     "iac": [
       "SARJ201",
