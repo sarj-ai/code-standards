@@ -254,5 +254,6 @@
   "SARJ466": "require-public-dependency-contract",
   "SARJ467": "require-explicit-contract-implementation",
   "SARJ468": "discourage-nullable-constructor-parameters",
-  "SARJ469": "no-nullable-dependency-fallback"
+  "SARJ469": "no-nullable-dependency-fallback",
+  "SARJ470": "no-database-programmability"
 }

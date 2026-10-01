@@ -39,6 +39,7 @@ from sarj_python_lint.rules.no_copied_inherited_docstring import NoCopiedInherit
 from sarj_python_lint.rules.no_cors_wildcard_with_credentials import (
     NoCorsWildcardWithCredentials,
 )
+from sarj_python_lint.rules.no_database_programmability import NoDatabaseProgrammability
 from sarj_python_lint.rules.no_delete_statement import NoDeleteStatement
 from sarj_python_lint.rules.no_dunder_all import NoDunderAll
 from sarj_python_lint.rules.no_duplicate_dunder_all_entry import NoDuplicateDunderAllEntry
@@ -193,6 +194,7 @@ if TYPE_CHECKING:
 
 REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
     {
+        NoDatabaseProgrammability.id: NoDatabaseProgrammability,
         RequireExplicitContractImplementation.id: RequireExplicitContractImplementation,
         DiscourageNullableConstructorParameters.id: DiscourageNullableConstructorParameters,
         RequirePublicDependencyContract.id: RequirePublicDependencyContract,
