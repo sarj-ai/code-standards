@@ -102,12 +102,12 @@ def test_labeled_embedded_sql_policy(case: EvaluationCase) -> None:
     assert bool(findings) is (case.expected is ExpectedOutcome.MATCH)
 
 
-def test_one_warning_per_execution_including_composed_sql() -> None:
+def test_one_blocking_diagnostic_per_execution_including_composed_sql() -> None:
     source = f"from psycopg import sql\nconn.execute(sql.SQL({_FUNCTION!r}))\nconn.execute({_TRIGGER!r})\n"
     findings = NoDatabaseProgrammability().check(Path("app/store.py"), source)
     assert [(item.code, item.line, item.severity) for item in findings] == [
-        ("SARJ470", 2, Severity.WARNING),
-        ("SARJ470", 3, Severity.WARNING),
+        ("SARJ470", 2, Severity.ERROR),
+        ("SARJ470", 3, Severity.ERROR),
     ]
 
 
@@ -116,10 +116,10 @@ def test_reasoned_exact_suppression() -> None:
     assert NoDatabaseProgrammability().check(Path("app/store.py"), source) == []
 
 
-def test_cli_warns_for_embedded_ddl(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_cli_blocks_embedded_ddl(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     path = tmp_path / "fault.py"
     path.write_text(_BAD)
-    assert main(["check", "--rule", "no-database-programmability", str(path)]) == 0
+    assert main(["check", "--rule", "no-database-programmability", str(path)]) == 1
     assert "SARJ470" in capsys.readouterr().out
     path.write_text(_BAD.rstrip() + "  # sarj-noqa: SARJ470 -- approved compatibility migration\n")
     assert main(["check", "--rule", "no-database-programmability", str(path)]) == 0
