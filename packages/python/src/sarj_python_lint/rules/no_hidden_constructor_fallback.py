@@ -74,7 +74,7 @@ class _CanonicalSymbol(NamedTuple):
 
 
 @dataclass(slots=True)
-class _ConstructorFacts:
+class RuntimeConfigFacts:
     modules: dict[Path, ast.Module] = field(default_factory=dict)
     composition_calls: dict[tuple[Path, str, str], bool] = field(default_factory=dict)
     canonical_symbols: dict[tuple[Path, str, str], _CanonicalSymbol] = field(default_factory=dict)
@@ -82,7 +82,7 @@ class _ConstructorFacts:
 
 @final
 class NoHiddenConstructorFallback(Rule):
-    _constructor_facts: _ConstructorFacts | None = None
+    _constructor_facts: RuntimeConfigFacts | None = None
     id = "no-hidden-constructor-fallback"
     code = "SARJ095"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
@@ -155,7 +155,7 @@ class NoHiddenConstructorFallback(Rule):
     @override
     def prepare_session(self, session: AnalysisSession) -> None:
         super().prepare_session(session)
-        self._constructor_facts = _ConstructorFacts()
+        self._constructor_facts = RuntimeConfigFacts()
 
     @override
     def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
@@ -169,8 +169,8 @@ class NoHiddenConstructorFallback(Rule):
         first_party = context.session.first_party
         facts = self._constructor_facts if self._analysis_session is context.session else None
         if facts is None:
-            facts = _ConstructorFacts()
-        resolver = _RuntimeConfigResolver(path, tree, first_party, facts)
+            facts = RuntimeConfigFacts()
+        resolver = RuntimeConfigResolver(path, tree, first_party, facts)
         diagnostics: list[Diagnostic] = []
 
         def collect_hidden_constructors() -> None:
@@ -210,7 +210,7 @@ def _is_descriptor(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
 
 
 def _default_scope(owner: ast.ClassDef, init: ast.FunctionDef | ast.AsyncFunctionDef) -> set[str]:
-    collector = _LocalBindingCollector()
+    collector = LocalBindingCollector()
     for statement in owner.body:
         if statement is init:
             break
@@ -220,7 +220,7 @@ def _default_scope(owner: ast.ClassDef, init: ast.FunctionDef | ast.AsyncFunctio
 
 def _hidden_parameters(
     init: ast.FunctionDef | ast.AsyncFunctionDef,
-    resolver: _RuntimeConfigResolver,
+    resolver: RuntimeConfigResolver,
     default_shadowed: set[str] | None = None,
 ) -> list[_HiddenParameter]:
     positional = (*init.args.posonlyargs, *init.args.args)
@@ -247,7 +247,7 @@ def _hidden_parameters(
     # Python decides every local binding for the whole function before it
     # executes. Seed the resolver with that complete scope so a branch-local
     # `settings = ...` cannot be mistaken for the imported settings object.
-    shadowed = set(_scope_bindings(init))
+    shadowed = set(scope_bindings(init))
     receiver = positional[0].arg if positional else None
     for statement in init.body:
         available = candidates.keys() - rebound
@@ -263,7 +263,7 @@ def _hidden_parameters(
 def _statement_fallbacks(
     statement: ast.stmt,
     candidates: set[str],
-    resolver: _RuntimeConfigResolver,
+    resolver: RuntimeConfigResolver,
     shadowed: set[str],
     receiver: str | None,
 ) -> dict[str, bool]:
@@ -291,7 +291,7 @@ def _statement_fallbacks(
 def _expression_fallbacks(
     expression: ast.expr,
     candidates: set[str],
-    resolver: _RuntimeConfigResolver,
+    resolver: RuntimeConfigResolver,
     shadowed: set[str],
 ) -> dict[str, bool]:
     if isinstance(expression, ast.BoolOp) and isinstance(expression.op, ast.Or):
@@ -386,13 +386,13 @@ def _is_fallback_target(expression: ast.expr, parameter: str, receiver: str | No
 
 
 @final
-class _RuntimeConfigResolver:
+class RuntimeConfigResolver:
     def __init__(
         self,
         path: Path,
         tree: ast.Module,
         first_party: FirstPartyFacts,
-        facts: _ConstructorFacts,
+        facts: RuntimeConfigFacts,
     ) -> None:
         self._path = path
         self._tree = tree
@@ -629,7 +629,7 @@ def _module_path(module: str, root: Path | None) -> Path | None:
     return next((candidate for candidate in candidates if candidate.is_file()), None)
 
 
-def _read_module(path: Path, facts: _ConstructorFacts) -> ast.Module:
+def _read_module(path: Path, facts: RuntimeConfigFacts) -> ast.Module:
     cached = facts.modules.get(path)
     if cached is not None:
         return cached
@@ -650,7 +650,7 @@ def _has_composition_call(
     path: Path,
     class_name: str,
     first_party: FirstPartyFacts,
-    facts: _ConstructorFacts,
+    facts: RuntimeConfigFacts,
 ) -> bool:
     root = distribution_root(path, facts=first_party)
     module = _module_name(path, root)
@@ -663,7 +663,7 @@ def _distribution_calls_class(
     root: Path,
     target_module: str,
     class_name: str,
-    facts: _ConstructorFacts,
+    facts: RuntimeConfigFacts,
 ) -> bool:
     key = (root, target_module, class_name)
     if key in facts.composition_calls:
@@ -677,7 +677,7 @@ def _distribution_calls_class_uncached(
     root: Path,
     target_module: str,
     class_name: str,
-    facts: _ConstructorFacts,
+    facts: RuntimeConfigFacts,
 ) -> bool:
     skip_directories = _SCAN_SKIP_PARTS | _MIGRATION_PARTS | {"test", "tests"}
     for directory, directory_names, file_names in os.walk(root):
@@ -692,7 +692,7 @@ def _distribution_calls_class_uncached(
 
 
 def _candidate_calls_class(
-    candidate: Path, root: Path, target_module: str, class_name: str, facts: _ConstructorFacts
+    candidate: Path, root: Path, target_module: str, class_name: str, facts: RuntimeConfigFacts
 ) -> bool:
     if is_test_path(candidate):
         return False
@@ -721,7 +721,7 @@ def _module_calls_class(
     target_module: str,
     *,
     class_name: str,
-    facts: _ConstructorFacts,
+    facts: RuntimeConfigFacts,
 ) -> bool:
     for node, shadowed in _calls_with_shadowing(tree):
         parts = _attribute_parts(node.func)
@@ -746,7 +746,7 @@ def _canonical_symbol(
     root: Path,
     module: str,
     symbol: str,
-    facts: _ConstructorFacts,
+    facts: RuntimeConfigFacts,
 ) -> _CanonicalSymbol:
     key = (root, module, symbol)
     cached = facts.canonical_symbols.get(key)
@@ -762,7 +762,7 @@ def _canonical_symbol_inner(
     module: str,
     symbol: str,
     seen: frozenset[tuple[str, str]],
-    facts: _ConstructorFacts,
+    facts: RuntimeConfigFacts,
 ) -> _CanonicalSymbol:
     key = (module, symbol)
     if key in seen:
@@ -793,7 +793,7 @@ def _calls_with_shadowing(
             for outer in outer_nodes:
                 yield from _calls_with_shadowing(outer, shadowed, nested_scope_base)
             lexical_parent = nested_scope_base if nested_scope_base is not None else shadowed
-            yield from _calls_with_shadowing(body, lexical_parent | _scope_bindings(node))
+            yield from _calls_with_shadowing(body, lexical_parent | scope_bindings(node))
             return
         case ast.FunctionDef() | ast.AsyncFunctionDef():
             yield from _function_calls(node, shadowed, nested_scope_base)
@@ -814,8 +814,8 @@ def _calls_with_shadowing(
         yield from _calls_with_shadowing(child, shadowed, nested_scope_base)
 
 
-def _scope_bindings(node: ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda) -> frozenset[str]:
-    collector = _LocalBindingCollector()
+def scope_bindings(node: ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda) -> frozenset[str]:
+    collector = LocalBindingCollector()
     for argument in (*node.args.posonlyargs, *node.args.args, *node.args.kwonlyargs):
         collector.names.add(argument.arg)
     if node.args.vararg is not None:
@@ -829,13 +829,13 @@ def _scope_bindings(node: ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda) -
 
 
 def _class_bindings(node: ast.ClassDef) -> frozenset[str]:
-    collector = _LocalBindingCollector()
+    collector = LocalBindingCollector()
     for statement in node.body:
         collector.visit(statement)
     return frozenset(collector.names)
 
 
-class _LocalBindingCollector(ast.NodeVisitor):
+class LocalBindingCollector(ast.NodeVisitor):
     def __init__(self) -> None:
         self.names: set[str] = set()
         self.globals: set[str] = set()
@@ -928,7 +928,7 @@ def _function_calls(
     for outer in outer_nodes:
         yield from _calls_with_shadowing(outer, shadowed, nested_scope_base)
     lexical_parent = nested_scope_base if nested_scope_base is not None else shadowed
-    local_shadowed = lexical_parent | _scope_bindings(node)
+    local_shadowed = lexical_parent | scope_bindings(node)
     for statement in node.body:
         yield from _calls_with_shadowing(statement, local_shadowed)
     return

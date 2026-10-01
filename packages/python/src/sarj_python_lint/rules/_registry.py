@@ -60,6 +60,7 @@ from sarj_python_lint.rules.no_hidden_constructor_fallback import (
 )
 from sarj_python_lint.rules.no_invalid_argument_name_suppression import NoInvalidArgumentNameSuppression
 from sarj_python_lint.rules.no_nested_pydantic_field_validator import NoNestedPydanticFieldValidator
+from sarj_python_lint.rules.no_nullable_dependency_fallback import NoNullableDependencyFallback
 from sarj_python_lint.rules.no_offset_pagination import NoOffsetPagination
 from sarj_python_lint.rules.no_positional_psycopg_row_escape import NoPositionalPsycopgRowEscape
 from sarj_python_lint.rules.no_psycopg_execution_outside_injected_owner import (
@@ -254,6 +255,7 @@ REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
         NoRandomUuidInSql.id: NoRandomUuidInSql,
         NoRedundantModuleAliasExports.id: NoRedundantModuleAliasExports,
         NoHiddenConstructorFallback.id: NoHiddenConstructorFallback,
+        NoNullableDependencyFallback.id: NoNullableDependencyFallback,
         NoFileLevelEscapeHatchSuppression.id: NoFileLevelEscapeHatchSuppression,
         NoInvalidArgumentNameSuppression.id: NoInvalidArgumentNameSuppression,
         NoFastapiOnEvent.id: NoFastapiOnEvent,

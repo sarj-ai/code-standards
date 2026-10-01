@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "032fcb351183955aa035e6840adeb00efe88a62c06dd6aeb010c571b90749f9e",
-  "cliSha256": "c9108f1746d9d8ac4bef43cf12704e719cb7dfbb12cc6010d6fbe257903be7da",
+  "catalogSha256": "3bdda46d6d31f9b26bcce7c9fa9cdc323f830bb05a9fc2ea62b00c595103951f",
+  "cliSha256": "dde3368c2882a0e55ee6ee6ac4099c29720afbe0ea0d88afd487c0a7c647ff86",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -6540,6 +6540,41 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Validator belongs to the model"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:no-nullable-dependency-fallback": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/service.py",
+              "source": "def run(factory: Factory):\n    return factory()\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/service.py",
+          "id": "concrete-factory",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Caller supplies a concrete dependency"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/service.py",
+              "source": "def run(factory: Factory | None = None):\n    return (factory or DefaultFactory)()\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/service.py",
+          "id": "nullable-factory",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Omission silently selects an implementation"
         }
       ],
       "optionsSchemaSource": null

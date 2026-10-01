@@ -2177,6 +2177,14 @@
       "state": "pending",
       "evidence": "Focused rule tests pass. The local Standards corpus reports six nullable constructor parameters. A Platform source scan finds 86 defaulted and 19 required nullable constructor parameters, including genuine domain absence; rollout impact remains to be classified.",
       "outcome": "Publish at warning level to discourage nullable constructor interfaces. Keep intentional absence suppressible; consider error promotion only after classifying findings and reducing adoption debt."
+    },
+    {
+      "task": "rule-audit/python/no-nullable-dependency-fallback",
+      "family": "python",
+      "ruleId": "no-nullable-dependency-fallback",
+      "state": "complete",
+      "evidence": "31 focused tests pass, including 27 labeled cases (5 true positives, 22 true negatives, no false positives, false negatives, or duplicate locations). All 118 focused tests for the new rule and its existing constructor settings resolver pass. Pinned already-local public corpora contain 432 maintained source files / 6,237,976 bytes across Standards, Python 3.14.7 asyncio/logging, and installed Pydantic; the final rule reports zero findings. The initial broad public scan exposed 14 method/value fallback cases; narrowing to direct callable use or proven application settings excludes those cases, with path/string/list/mapping regressions. Three fresh-process cold/warm comparisons use a lexical first-100-file sample per public corpus (230 files / 3,077,535 bytes), a 250-file cap, and peak-memory instrumentation. Rule-only cold/warm medians range 0.12–0.21 seconds per public batch. Full-runner startup-inclusive medians with the candidate are within 25% of baseline under concurrent package verification. OS caches were not flushed. A matched follow-up on the unchanged 87-file public Pydantic corpus after package verification stopped produced three-run median startup-inclusive baseline/candidate times of 19.061/18.791 seconds, cold native times of 9.370/9.634 seconds, warm native times of 9.573/8.912 seconds, and peak memory of 435,027,968/437,403,648 bytes; this controls the earlier concurrent-verification noise and does not establish a speedup.",
+      "outcome": "Ship SARJ469 as a warning without autofix. Flag literal-None-defaulted function parameters whose fallback is called, assigned to a directly called local, or resolved from proven application settings. Exclude constructors owned by SARJ095/SARJ468, decorated APIs, tests/generated code, nested captures, non-callable object fallback, required nullable parameters without a None default, and unproven/interprocedural wiring. Genuine absent tasks and callbacks that skip work remain legal. Preserve lazy initialization and failure handling when manually moving dependency wiring. Keep warning severity during adoption."
     }
   ]
 }
