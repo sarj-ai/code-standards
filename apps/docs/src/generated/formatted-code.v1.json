@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "46582e5695c7bd697b9cf1bbb95795ff56666d882475d789977eb7d9d3d84372",
-  "cliSha256": "52e99a4789810aa9a1b64d7af65975f79940892d16ba6c1115bd0932de658763",
+  "catalogSha256": "37b4542ae3296ba11b8d6377c1134163a6e2c37fd7219a956f897ce1f85eacd3",
+  "cliSha256": "e9faf9dc8ed69602fe638268bd2e090f2317d56c58a84739203d7a23c0511ec3",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -2444,7 +2444,7 @@
           "title": "Do not directly return a Promise callback chain from async code"
         }
       ],
-      "optionsSchemaSource": null
+      "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"scope\": { \"enum\": [\"async-return\", \"all-promise-calls\"], \"type\": \"string\" }\n  },\n  \"type\": \"object\"\n}\n"
     },
     "eslint:prefer-constant-time-secret-compare": {
       "examples": [
