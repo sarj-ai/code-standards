@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "0927c19c49a677cf13ab3ad7fdd35ff27fd389b291c0fc9689919b67e9b8f2c0",
-  "cliSha256": "feb377072a19d0047c00d30de2de3dc65b55cb0c97c045d707e025f04aca4fd5",
+  "catalogSha256": "f2117c000d9eb68baa355f2ad693cfc962fab737908f2e4e816ceaecf3eef98d",
+  "cliSha256": "3c20618fa4b2b586f1aba358c40162585513f1af2f425b9436494b3313182f45",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -10158,6 +10158,21 @@
           "files": [
             {
               "path": "tests/test_widget.py",
+              "source": "def _read():\n    return \"value\"\n\n\ndef _make_widget(*, read=_read):\n    return Widget(read=read)\n\n\n_make_widget(read=other)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_widget.py",
+          "id": "exercised-callable-option",
+          "outcome": "accept",
+          "scenarioId": "callable-default",
+          "title": "Keep a dependency that a caller replaces"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "tests/test_widget.py",
               "source": "def _make_widget(*, size=3):\n    return Widget(size=size)\n\n\ndef test_widget():\n    assert _make_widget(size=4)\n"
             }
           ],
@@ -10182,6 +10197,21 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Repeated calls never vary the option"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "tests/test_widget.py",
+              "source": "def _read():\n    return \"value\"\n\n\ndef _make_widget(*, read=_read):\n    return Widget(read=read)\n\n\n_make_widget()\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_widget.py",
+          "id": "unused-callable-option",
+          "outcome": "reject",
+          "scenarioId": "callable-default",
+          "title": "Use an unexercised local dependency directly"
         }
       ],
       "optionsSchemaSource": null
