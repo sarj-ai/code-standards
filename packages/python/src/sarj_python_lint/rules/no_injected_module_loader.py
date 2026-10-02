@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+from itertools import chain
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, ClassVar, final, override
 
@@ -45,13 +46,14 @@ class NoInjectedModuleLoader(Rule):
     code = "SARJ471"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
         default_level=Severity.WARNING,
-        summary="Keep Python module loaders out of application parameter defaults.",
-        rationale="Exposing Python's import machinery as an injectable dependency expands the callable contract and hides the concrete imported API behind a generic loader.",
-        remediation="Use a normal or lazy import inside the implementation; pass the concrete configuration, object, or domain factory when callers need a real dependency boundary.",
+        summary="Avoid a generic module-loader parameter used only to import one fixed module.",
+        rationale="When every direct use imports the same literal module, a generic importer can be unnecessary customization rather than a domain dependency. Dynamic plugin/import APIs legitimately need import hooks.",
+        remediation="Consider owning the fixed import inside the implementation when import-hook substitution is unnecessary. Preserve intentional import hooks and plugin APIs; do not add wrapper factories or Protocols just to silence this advisory.",
         category=RuleCategory.ARCHITECTURE,
         autofix=AutofixPolicy.NONE,
         limitations=(
             "Flags defaults resolving to importlib.import_module, importlib.__import__, or builtins.__import__, including stable module-level import and single-assignment aliases and unshadowed __import__.",
+            "Every body reference to the parameter must be a direct call with one identical literal module name. Dynamic names, multiple module names, forwarding, returned/captured hooks, rebinding, unpacking and unused defaults are excluded.",
             "Tests, test support, and generated code are excluded. Required loader parameters, application loaders, wrapper lambdas, alias chains, comprehensions, and imports local to enclosing scopes are not inferred.",
             "Conservatively skips shadowed or rebound names, wildcard-import files, reassigned loader attributes, conflicting conditional or relative imports, and exception or pattern captures of importer roots, symbols or assignment aliases. Identical repeated importer imports remain valid. A relevant-name capture in an unrelated local scope can cause a false negative because capture checks are file-wide.",
             "Assignment aliases require one module binding and precede use by line and column. Defaults use their enclosing evaluation scope: earlier statements in the nearest executing class body can shadow loaders; methods and nested classes do not close over class attributes. Enclosing function body bindings remain conservative exclusions, but a function's parameters do not shadow its own defaults. Relevant global declarations and walrus writes exclude sensitive importer names. Compound class statements can cause conservative omissions. Dynamic namespace mutation is not inferred. No autofix: changing arguments or import placement can alter API and initialization behavior.",
@@ -110,7 +112,8 @@ class NoInjectedModuleLoader(Rule):
                     and (aliases[default.id].lineno, aliases[default.id].col_offset)
                     < (function.lineno, function.col_offset)
                 )
-                if not (direct or aliased) or _shadowed(default, function, context):
+                module_name = _fixed_module_name(context, function, argument.arg)
+                if not (direct or aliased) or _shadowed(default, function, context) or module_name is None:
                     continue
                 findings.append(
                     Diagnostic(
@@ -118,11 +121,41 @@ class NoInjectedModuleLoader(Rule):
                         line=argument.lineno,
                         col=argument.col_offset + 1,
                         code=self.code,
-                        message=f"Parameter `{argument.arg}` exposes Python's module loader; import directly or pass a concrete domain dependency.",
+                        message=(
+                            f"Parameter `{argument.arg}` exposes a generic module loader but only imports "
+                            f"`{module_name}`; consider an internal import unless this import hook is intentional."
+                        ),
                         severity=Severity.WARNING,
                     )
                 )
         return sorted(findings, key=lambda finding: (finding.line, finding.col))
+
+
+def _fixed_module_name(
+    context: PythonFileContext, function: ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda, name: str
+) -> str | None:
+    body = [function.body] if isinstance(function, ast.Lambda) else function.body
+    module_names: set[str] = set()
+    for reference in chain.from_iterable(ast.walk(statement) for statement in body):
+        if not isinstance(reference, ast.Name) or reference.id != name:
+            continue
+        call = context.parents.get(reference)
+        if not isinstance(reference.ctx, ast.Load) or not isinstance(call, ast.Call) or call.func is not reference:
+            return None
+        if (
+            call.keywords
+            or len(call.args) != 1
+            or not isinstance(call.args[0], ast.Constant)
+            or not isinstance(call.args[0].value, str)
+        ):
+            return None
+        parent = context.parents.get(call)
+        while parent is not None and parent is not function:
+            if isinstance(parent, _LEXICAL_SCOPES):
+                return None
+            parent = context.parents.get(parent)
+        module_names.add(call.args[0].value)
+    return next(iter(module_names)) if len(module_names) == 1 else None
 
 
 def _ambiguous_loader_bindings(context: PythonFileContext, aliases: Mapping[str, ast.stmt]) -> bool:

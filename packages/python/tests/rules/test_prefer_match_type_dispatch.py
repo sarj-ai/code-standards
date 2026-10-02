@@ -762,6 +762,34 @@ def parse(value: object):
     assert len(_check(source)) == 1
 
 
+@pytest.mark.parametrize(
+    "declaration",
+    [
+        "def type_group(cls):\n    return (cls, bytes)\n\n@type_group\nclass Text: ...",
+        "class TypeGroup(type):\n    def __new__(mcls, name, bases, namespace):\n        return (str, bytes)\n\nclass Text(metaclass=TypeGroup): ...",
+        'class TypeGroup(type):\n    def __new__(mcls, name, bases, namespace):\n        return (str, bytes)\n\nclass Text(**{"metaclass": TypeGroup}): ...',
+    ],
+    ids=("decorated-type-group", "metaclass-type-group", "unpacked-metaclass-type-group"),
+)
+def test_allows_class_definitions_with_unproven_runtime_type(declaration: str) -> None:
+    source = f"""
+{declaration}
+class Binary: ...
+class Mapping: ...
+
+def parse(value: object):
+    if isinstance(value, Text):
+        return "text"
+    elif isinstance(value, Binary):
+        return "binary"
+    elif isinstance(value, Mapping):
+        return "mapping"
+    return None
+"""
+
+    assert _check(source) == []
+
+
 def test_allows_imported_class_like_runtime_bindings() -> None:
     source = """
 from contracts import Text, Binary, Mapping

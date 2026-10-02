@@ -46,6 +46,7 @@ class NoUnusedValueMarker(Rule):
             "Plain and annotated assignments whose standalone target is `_` are reported, including chained assignments.",
             "Formal-parameter references are reported too, including positional, keyword-only, and variadic parameters.",
             "Unpacking placeholders, loop targets, wildcard imports, and underscore-prefixed names are excluded.",
+            "A binding read in the same enclosing scope is not a discard. Reads in nested scopes conservatively preserve it, even when shadowing cannot be resolved.",
             "Generated and vendored files are excluded.",
         ),
         examples=(
@@ -148,7 +149,9 @@ class NoUnusedValueMarker(Rule):
         markers = [
             node
             for node in context.nodes(ast.AST)
-            if isinstance(node, (ast.Assign, ast.AnnAssign)) and _is_unused_value_marker(node)
+            if isinstance(node, (ast.Assign, ast.AnnAssign))
+            and _is_unused_value_marker(node)
+            and not _scope_reads_marker(context, node)
         ]
         if not markers:
             return []
@@ -173,3 +176,14 @@ def _is_unused_value_marker(node: ast.Assign | ast.AnnAssign) -> bool:
     if isinstance(node, ast.AnnAssign):
         return node.value is not None and isinstance(node.target, ast.Name) and node.target.id == "_"
     return any(isinstance(target, ast.Name) and target.id == "_" for target in node.targets)
+
+
+def _scope_reads_marker(context: PythonFileContext, marker: ast.Assign | ast.AnnAssign) -> bool:
+    scope: ast.AST = marker
+    while (parent := context.parents.get(scope)) is not None:
+        scope = parent
+        if isinstance(scope, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef | ast.Module):
+            break
+    return any(
+        isinstance(node, ast.Name) and node.id == "_" and isinstance(node.ctx, ast.Load) for node in ast.walk(scope)
+    )

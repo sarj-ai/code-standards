@@ -161,3 +161,13 @@ def test_cli_blocks_embedded_ddl(tmp_path: Path, capsys: pytest.CaptureFixture[s
 def test_public_examples(example: RuleExample) -> None:
     focus = example.focus_file
     assert len(NoDatabaseProgrammability().check(Path(str(focus.path)), focus.source)) == example.expected_count
+
+
+def test_database_owned_invariant_guidance_preserves_atomicity() -> None:
+    source = 'conn.execute("CREATE CONSTRAINT TRIGGER tenant_guard AFTER INSERT ON child DEFERRABLE EXECUTE FUNCTION check_tenant()")\n'
+    findings = NoDatabaseProgrammability().check(Path("app/store.py"), source)
+    assert len(findings) == 1
+    assert "atomicity" in findings[0].message
+    assert "database-owned invariant" in findings[0].message
+    approved = f"{source.rstrip()}  # sarj-noqa: SARJ470 -- approved deferred integrity invariant\n"
+    assert NoDatabaseProgrammability().check(Path("app/store.py"), approved) == []

@@ -51,21 +51,26 @@ class PreferPytestFixtureInjection(Rule):
         summary="Request shared database-pool setup through a pytest fixture.",
         rationale=(
             "Calling a shared conftest pool helper during initial test setup bypasses an explicit pytest "
-            "fixture dependency for that setup."
+            "fixture dependency, per-test caching, and fixture overrides, even when the helper already "
+            "centralizes allocation. This preference does not establish a resource leak."
         ),
         remediation=(
-            "Request one function-scoped fixture visible to the test, preserving initial pool state, creation "
-            "timing, and cleanup ownership. Use yield teardown when the fixture owns cleanup; keep factories "
-            "for variants or fresh instances."
+            "Request one function-scoped fixture visible to the test. Declare required setup ordering as "
+            "fixture dependencies and preserve initial pool state and cleanup ownership. An unopened "
+            "allocation fixture should return the pool without opening or closing it when application "
+            "lifespan owns that lifecycle. Use yield teardown only when the fixture owns cleanup; keep "
+            "factories for variants or fresh instances."
         ),
         category=RuleCategory.TESTING,
         autofix=AutofixPolicy.NONE,
         limitations=(
             "Only directly collected module-level test functions in conventional pytest module names are checked.",
-            "Only unshadowed runtime imports from a uniquely resolved local conftest module are followed.",
+            "Only unshadowed runtime imports from a uniquely resolved conftest in the test's ancestor directories are followed under conventional pytest discovery.",
             "Helpers must be undecorated synchronous functions with no formal inputs and one direct return of an imported psycopg_pool pool constructor.",
+            "Async pools require an explicit literal open=False, no unpacked arguments, and no calls inside constructor arguments; opened or dynamically configured async pools need lifecycle-specific fixture design.",
             "Setup must be the first executable statement and immediately feed a plain call, or appear inline as a direct argument of that first call.",
             "Class tests, decorated helpers, unknown test decorators, dynamic imports, re-exports, and ambiguous or out-of-bound source paths are excluded.",
+            "Command-line conftest discovery overrides and external pytest plugin registrations are not inferred.",
         ),
         examples=(
             RuleExample(
@@ -82,6 +87,50 @@ class PreferPytestFixtureInjection(Rule):
                 ),
                 focus_path=PurePosixPath("tests/test_app.py"),
                 expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="manual-pool-with-application-lifespan",
+                scenario="application-lifecycle",
+                title="Application-owned lifecycle still uses a fixture dependency",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "tests/conftest.py", _SUPPORT_SOURCE.replace("ConnectionPool", "AsyncConnectionPool")
+                    ),
+                    ExampleFile.python(
+                        "tests/test_app.py",
+                        "from tests.conftest import pool\n\n"
+                        "async def test_app():\n    resource = pool()\n    app = Application(resource)\n"
+                        "    async with lifespan(app):\n        assert not resource.closed\n"
+                        "    assert resource.closed\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("tests/test_app.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="allocation-fixture-keeps-application-lifespan",
+                scenario="application-lifecycle",
+                title="An unopened fixture leaves open and close ownership with the application",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "tests/conftest.py",
+                        "import pytest\nfrom psycopg_pool import AsyncConnectionPool\n\n"
+                        "@pytest.fixture\ndef pool() -> AsyncConnectionPool[object]:\n"
+                        "    return AsyncConnectionPool[object](open=False)\n",
+                    ),
+                    ExampleFile.python(
+                        "tests/test_app.py",
+                        "async def test_app(pool):\n    app = Application(pool)\n    assert pool.closed\n"
+                        "    async with lifespan(app):\n        assert not pool.closed\n"
+                        "    assert pool.closed\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("tests/test_app.py"),
+                expected_count=0,
                 public=True,
             ),
             RuleExample(
@@ -145,8 +194,10 @@ class PreferPytestFixtureInjection(Rule):
                         code=self.code,
                         message=(
                             "test calls a shared conftest pool helper during initial setup; request one visible "
-                            "function-scoped fixture by parameter, preserving initial pool state, creation timing, "
-                            "and cleanup ownership; keep factories for variants or fresh instances."
+                            "function-scoped fixture by parameter for caching and overrides; declare required "
+                            "setup dependencies and preserve initial pool state and cleanup ownership; leave "
+                            "open/close with application lifespan when it owns them; keep factories for variants "
+                            "or fresh instances."
                         ),
                         severity=Severity.WARNING,
                     )
@@ -171,7 +222,9 @@ def _resource_helpers(context: PythonFileContext) -> frozenset[str]:
         )
         module = (
             context.session.local_source.read_module(target)
-            if target is not None and target.name == "conftest.py"
+            if (
+                target is not None and target.name == "conftest.py" and target.parent in context.path.absolute().parents
+            )
             else None
         )
         if module is not None and _is_resource_helper(module, reference.symbol):
@@ -214,15 +267,30 @@ def _is_resource_helper(module: LocalModule, symbol: str) -> bool:
     body = _executable_body(helper)
     if len(body) != 1 or not isinstance(body[0], ast.Return) or not isinstance(body[0].value, ast.Call):
         return False
-    constructor = body[0].value.func
+    allocation = body[0].value
+    constructor = allocation.func
     if isinstance(constructor, ast.Subscript):
         constructor = constructor.value
     root = _root_name(constructor)
+    qualified = module.runtime_imports.resolved_qualified_name(constructor)
     return (
         root is not None
         and _scope_bindings(module.tree)[root] == 1
         and not _root_mutated(module.tree, root)
-        and module.runtime_imports.resolved_qualified_name(constructor) in _POOL_CONSTRUCTORS
+        and qualified in _POOL_CONSTRUCTORS
+        and (qualified != "psycopg_pool.AsyncConnectionPool" or _unopened_async_allocation(allocation))
+    )
+
+
+def _unopened_async_allocation(allocation: ast.Call) -> bool:
+    return (
+        not any(isinstance(argument, ast.Starred) for argument in allocation.args)
+        and all(keyword.arg is not None for keyword in allocation.keywords)
+        and any(
+            keyword.arg == "open" and isinstance(keyword.value, ast.Constant) and keyword.value.value is False
+            for keyword in allocation.keywords
+        )
+        and not any(isinstance(node, ast.Call) for argument in _arguments(allocation) for node in ast.walk(argument))
     )
 
 

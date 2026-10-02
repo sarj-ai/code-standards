@@ -1,5 +1,6 @@
 from pathlib import Path
 from typing import TYPE_CHECKING
+from unittest.mock import Mock, create_autospec  # ruff: ignore[banned-api] -- reproduce SARJ474's signature gap
 
 import pytest
 from sarj_rule_contracts import EvaluationCase, ExpectedOutcome, Language
@@ -79,6 +80,16 @@ _CASES = (
         _BASE.replace("Mock", "create_autospec").replace("spec=send", "send, spec_set=True"),
     ),
     EvaluationCase("unspecced-owned-by-sarj040", Language.PYTHON, _BASE.replace("spec=send", "")),
+    EvaluationCase(
+        "unused-callable-only-negative-assertion",
+        Language.PYTHON,
+        _BASE.replace("double(recipient='sample')", "double.assert_not_called()"),
+    ),
+    EvaluationCase(
+        "external-sdk-signature-is-unresolved",
+        Language.PYTHON,
+        _BASE.replace("def send(*, recipient: str) -> None:\n    pass", "from external_sdk import send"),
+    ),
     EvaluationCase("non-callable-double", Language.PYTHON, _BASE.replace("Mock", "NonCallableMock")),
     EvaluationCase("unrestricted-keywords", Language.PYTHON, _BASE.replace("recipient: str", "**kwargs: object")),
     EvaluationCase("decorated-spec", Language.PYTHON, _BASE.replace("def send", "@decorator\ndef send")),
@@ -266,6 +277,18 @@ def test_metadata_and_anchor() -> None:
     finding = _check(_BASE)[0]
     assert (finding.code, finding.line, finding.col) == ("SARJ474", 5, 14)
     assert "create_autospec" in finding.message
+
+
+def test_autospec_rejects_call_shape_that_plain_function_spec_accepts() -> None:
+    def send(*, recipient: str) -> str:
+        return recipient
+
+    permissive = Mock(spec=send)
+    permissive(wrong_keyword="sample")
+    assert permissive.call_count == 1
+
+    with pytest.raises(TypeError):
+        create_autospec(send, spec_set=True)(wrong_keyword="sample")
 
 
 def test_suppression_and_warning_exit(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

@@ -101,7 +101,7 @@ class PreferMatchTypeDispatch(Rule):
         limitations=(
             "General dispatch requires three or more adjacent, unguarded `isinstance` branches over the same simple name. Two arms are checked only for an exact `ast.Name.id` / `ast.Attribute.attr` projection followed by a None-returning fallback.",
             "A terminating sibling prefix may precede a two-arm if/elif tail whose bodies can fall through. Preserve nested checks inside case bodies rather than moving them into case guards.",
-            "The checked types must be unshadowed builtins, unshadowed module-local classes, or proven stdlib ast classes; unresolved imports, runtime type groups, repeated type references, generated files, and non-terminating sibling checks are excluded.",
+            "The checked types must be unshadowed builtins, undecorated module-local classes without an explicit metaclass, or proven stdlib ast classes; unresolved imports, runtime type groups, repeated type references, generated files, and non-terminating sibling checks are excluded.",
             "Nested attribute-validation guards are excluded: converting them to keyword class patterns can turn attribute errors into match fallthrough, and an imported isinstance operand may be a runtime tuple rather than a class.",
             "A terminal-looking context-manager body does not prove a sibling branch terminates: exceptions can be suppressed. An unconditional return or raise after the context manager remains eligible.",
             "Declared support for Python before 3.10 suppresses this recommendation when proven by the nearest project metadata or exact installed-distribution ownership. Missing or ambiguous target metadata retains advisory behavior; it does not prove a modern target.",
@@ -288,19 +288,27 @@ class PreferMatchTypeDispatch(Rule):
 
 
 def _unshadowed_module_classes(tree: ast.Module, all_nodes: tuple[ast.AST, ...]) -> frozenset[str]:
-    classes = [statement.name for statement in tree.body if isinstance(statement, ast.ClassDef)]
-    rebound = {
-        candidate.id
-        for candidate in all_nodes
-        if isinstance(candidate, ast.Name) and isinstance(candidate.ctx, (ast.Store, ast.Del))
-    }
-    rebound.update(candidate.arg for candidate in all_nodes if isinstance(candidate, ast.arg))
-    rebound.update(
-        candidate.name
-        for candidate in all_nodes
-        if isinstance(candidate, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
-        and (not isinstance(candidate, ast.ClassDef) or candidate not in tree.body)
-    )
+    classes = [
+        statement.name
+        for statement in tree.body
+        if isinstance(statement, ast.ClassDef)
+        and not statement.decorator_list
+        and not any(keyword.arg in {"metaclass", None} for keyword in statement.keywords)
+    ]
+    rebound: set[str] = set()
+    for node in all_nodes:
+        match node:
+            case (
+                ast.Name(id=name, ctx=ast.Store() | ast.Del())
+                | ast.arg(arg=name)
+                | ast.FunctionDef(name=name)
+                | ast.AsyncFunctionDef(name=name)
+            ):
+                rebound.add(name)
+            case ast.ClassDef(name=name) if node not in tree.body:
+                rebound.add(name)
+            case _:
+                pass
     _add_module_import_bindings(tree, rebound)
     return frozenset(name for name in classes if classes.count(name) == 1 and name not in rebound)
 

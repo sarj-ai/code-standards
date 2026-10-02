@@ -31,28 +31,28 @@ class RequireExplicitContractImplementation(ProjectRule):
     code = "SARJ467"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
         default_level=Severity.WARNING,
-        summary="Require owned substitutes to explicitly inherit their injected contract.",
+        summary="Require owned substitutes to inherit an injected nominal abstract contract.",
         rationale=(
-            "Structural matching only checks a fake where it is passed. Explicit inheritance makes its obligation "
-            "visible at the class declaration and catches missing abstract operations at instantiation."
+            "An ABC is a nominal contract: inheriting it makes its abstract operations enforceable at instantiation. "
+            "Protocols intentionally use structural typing and do not require inheritance."
         ),
-        remediation="Make the owned implementation inherit the exact ABC or Protocol expected by the consumer.",
+        remediation="Make the owned implementation inherit the nominal ABC expected by the consumer.",
         category=RuleCategory.ARCHITECTURE,
         autofix=AutofixPolicy.NONE,
         limitations=(
             "Only direct constructor arguments and unreassigned local constructor results supplied to a resolvable typed parameter are checked.",
-            "Dynamic factories, containers, casts, unresolved or multiple owned ABC ancestry, and third-party implementations are excluded.",
+            "Structural Protocols, dynamic factories, containers, casts, unresolved or multiple owned ABC ancestry, and third-party implementations are excluded.",
         ),
         examples=(
             RuleExample(
-                example_id="structural-fake-at-injection",
-                title="A fake is supplied without declaring its contract",
+                example_id="nominal-abc-fake-at-injection",
+                title="A fake is supplied without inheriting its nominal ABC",
                 outcome=ExampleOutcome.MATCH,
                 files=(
                     ExampleFile.python("app/__init__.py", "# package\n"),
                     ExampleFile.python(
                         "app/consumer.py",
-                        "from typing import Protocol\nclass Publisher(Protocol):\n    def publish(self) -> None: ...\nclass Consumer:\n    def __init__(self, publisher: Publisher) -> None:\n        self.publisher = publisher\n",
+                        "from abc import ABC, abstractmethod\nclass Publisher(ABC):\n    @abstractmethod\n    def publish(self) -> None: ...\nclass Consumer:\n    def __init__(self, publisher: Publisher) -> None:\n        self.publisher = publisher\n",
                     ),
                     ExampleFile.python("app/fake.py", "class FakePublisher:\n    def publish(self) -> None: ...\n"),
                     ExampleFile.python(
@@ -72,7 +72,7 @@ class RequireExplicitContractImplementation(ProjectRule):
                     ExampleFile.python("app/__init__.py", "# package\n"),
                     ExampleFile.python(
                         "app/consumer.py",
-                        "from typing import Protocol\nclass Publisher(Protocol):\n    def publish(self) -> None: ...\nclass Consumer:\n    def __init__(self, publisher: Publisher) -> None:\n        self.publisher = publisher\n",
+                        "from abc import ABC, abstractmethod\nclass Publisher(ABC):\n    @abstractmethod\n    def publish(self) -> None: ...\nclass Consumer:\n    def __init__(self, publisher: Publisher) -> None:\n        self.publisher = publisher\n",
                     ),
                     ExampleFile.python(
                         "app/fake.py",
@@ -86,6 +86,30 @@ class RequireExplicitContractImplementation(ProjectRule):
                 focus_path=PurePosixPath("app/usage.py"),
                 expected_count=0,
                 public=True,
+            ),
+            RuleExample(
+                example_id="structural-protocol-at-injection",
+                title="A structurally compatible fake need not inherit a Protocol",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python("app/__init__.py", "# package\n"),
+                    ExampleFile.python(
+                        "app/consumer.py",
+                        "from typing import Protocol\nclass Publisher(Protocol):\n"
+                        "    def publish(self) -> None: ...\nclass Consumer:\n"
+                        "    def __init__(self, publisher: Publisher) -> None:\n"
+                        "        self.publisher = publisher\n",
+                    ),
+                    ExampleFile.python("app/fake.py", "class FakePublisher:\n    def publish(self) -> None: ...\n"),
+                    ExampleFile.python(
+                        "app/usage.py",
+                        "from app.consumer import Consumer\nfrom app.fake import FakePublisher\n"
+                        "def setup() -> None:\n    Consumer(publisher=FakePublisher())\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/usage.py"),
+                expected_count=0,
+                public=False,
             ),
         ),
     )
@@ -286,11 +310,8 @@ def _is_direct_contract(summary: ClassSummary, project: ProjectIndexSet) -> bool
     )
     if declaration is None:
         return False
-    if protocol and any(
-        isinstance(member, ast.FunctionDef | ast.AsyncFunctionDef) and not member.name.startswith("_")
-        for member in declaration.body
-    ):
-        return True
+    if protocol:
+        return False
     if not project.class_inherits_from(unit, summary.symbol.name, frozenset({"abc.ABC"})):
         return False
     return bool(_remaining_abstract_operations(summary, project, set()))

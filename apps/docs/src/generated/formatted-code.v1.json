@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "2baf252d7efb2409162dda58e9473e8a273b038ae6ab3c568ab50fd1c1e3c88b",
-  "cliSha256": "c0f3abe28f1cc8df7176b244a32ad87f68945801e646701709d853f330fe90ec",
+  "catalogSha256": "774f319c4f647486c90e5bf4424681d3519465df0cf32a65f648954ff0475288",
+  "cliSha256": "cd803353e0d32d3090fe15a07780ac9fbdcdff3144d77662b823ffe6c35f169f",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -3612,30 +3612,30 @@
           "files": [
             {
               "path": "src/service.ts",
-              "source": "interface Publisher {\n  publish(): void;\n}\nclass Consumer {\n  constructor(readonly publisher: Publisher) {}\n}\nclass FakePublisher implements Publisher {\n  publish() {}\n}\nnew Consumer(new FakePublisher());\n"
+              "source": "abstract class Publisher {\n  abstract publish(): void;\n}\nclass Consumer {\n  constructor(readonly publisher: Publisher) {\n    if (!(publisher instanceof Publisher))\n      throw new TypeError(\"Nominal publisher required\");\n  }\n}\nclass FakePublisher extends Publisher {\n  publish() {}\n}\nnew Consumer(new FakePublisher());\n"
             }
           ],
           "fixedFiles": [],
           "focusPath": "src/service.ts",
-          "id": "explicit-fake-at-injection",
+          "id": "runtime-nominal-guard-with-inherited-fake",
           "outcome": "accept",
           "scenarioId": "primary",
-          "title": "The fake names its actual interface"
+          "title": "The fake satisfies the existing nominal runtime contract"
         },
         {
           "expectedCount": 1,
           "files": [
             {
               "path": "src/service.ts",
-              "source": "interface Publisher {\n  publish(): void;\n}\nclass Consumer {\n  constructor(readonly publisher: Publisher) {}\n}\nclass FakePublisher {\n  publish() {}\n}\nnew Consumer(new FakePublisher());\n"
+              "source": "abstract class Publisher {\n  abstract publish(): void;\n}\nclass Consumer {\n  constructor(readonly publisher: Publisher) {\n    if (!(publisher instanceof Publisher))\n      throw new TypeError(\"Nominal publisher required\");\n  }\n}\nclass FakePublisher {\n  publish() {}\n}\nnew Consumer(new FakePublisher());\n"
             }
           ],
           "fixedFiles": [],
           "focusPath": "src/service.ts",
-          "id": "structural-fake-at-injection",
+          "id": "runtime-nominal-guard-with-structural-fake",
           "outcome": "reject",
           "scenarioId": "primary",
-          "title": "A fake reaches a typed collaborator without implementing its interface"
+          "title": "A structurally compatible fake fails the constructor's runtime guard"
         }
       ],
       "optionsSchemaSource": null
@@ -3647,7 +3647,7 @@
           "files": [
             {
               "path": "src/service.ts",
-              "source": "export interface Runner {\n  run(): void;\n}\nclass OrchestratorService implements Runner {\n  constructor(private readonly worker: Worker) {}\n  run(): void {\n    this.worker.run();\n  }\n}\n"
+              "source": "interface Runner {\n  run(): void;\n}\nclass OrchestratorService implements Runner {\n  constructor(private readonly worker: Worker) {}\n  run(): void {\n    this.worker.run();\n  }\n}\n"
             }
           ],
           "fixedFiles": [],
@@ -5140,34 +5140,34 @@
     "python:discourage-nullable-constructor-parameters": {
       "examples": [
         {
-          "expectedCount": 0,
-          "files": [
-            {
-              "path": "app/service.py",
-              "source": "class Service:\n    def __init__(self, store: Store) -> None:\n        self.store = store\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "app/service.py",
-          "id": "non-nullable-dependency",
-          "outcome": "accept",
-          "scenarioId": "primary",
-          "title": "Constructor requires a usable dependency"
-        },
-        {
           "expectedCount": 1,
           "files": [
             {
               "path": "app/service.py",
-              "source": "class Service:\n    def __init__(self, store: Store | None = None) -> None:\n        self.store = store\n"
+              "source": "class Service:\n    def __init__(self, store: Store | None = None) -> None:\n        if store is None:\n            raise ValueError(\"store is required\")\n        self.store = store\n"
             }
           ],
           "fixedFiles": [],
           "focusPath": "app/service.py",
-          "id": "nullable-dependency",
+          "id": "rejected-constructor-default",
           "outcome": "reject",
           "scenarioId": "primary",
-          "title": "Constructor permits a missing dependency"
+          "title": "The constructor immediately rejects its advertised default"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/service.py",
+              "source": "class Service:\n    def __init__(self, store: Store) -> None:\n        if store is None:\n            raise ValueError(\"store is required\")\n        self.store = store\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/service.py",
+          "id": "required-constructor-input",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "The signature requires the input that construction needs"
         }
       ],
       "optionsSchemaSource": null
@@ -8770,6 +8770,25 @@
           "files": [
             {
               "path": "tests/conftest.py",
+              "source": "import pytest\nfrom psycopg_pool import AsyncConnectionPool\n\n\n@pytest.fixture\ndef pool() -> AsyncConnectionPool[object]:\n    return AsyncConnectionPool[object](open=False)\n"
+            },
+            {
+              "path": "tests/test_app.py",
+              "source": "async def test_app(pool):\n    app = Application(pool)\n    assert pool.closed\n    async with lifespan(app):\n        assert not pool.closed\n    assert pool.closed\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_app.py",
+          "id": "allocation-fixture-keeps-application-lifespan",
+          "outcome": "accept",
+          "scenarioId": "application-lifecycle",
+          "title": "An unopened fixture leaves open and close ownership with the application"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "tests/conftest.py",
               "source": "import pytest\nfrom psycopg_pool import ConnectionPool\n\n\n@pytest.fixture\ndef pool() -> ConnectionPool[object]:\n    return ConnectionPool[object](open=False)\n"
             },
             {
@@ -8783,6 +8802,25 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "A test requests its shared resource"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "tests/conftest.py",
+              "source": "from psycopg_pool import AsyncConnectionPool\n\n\ndef pool() -> AsyncConnectionPool[object]:\n    return AsyncConnectionPool[object](open=False)\n"
+            },
+            {
+              "path": "tests/test_app.py",
+              "source": "from tests.conftest import pool\n\n\nasync def test_app():\n    resource = pool()\n    app = Application(resource)\n    async with lifespan(app):\n        assert not resource.closed\n    assert resource.closed\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_app.py",
+          "id": "manual-pool-with-application-lifespan",
+          "outcome": "reject",
+          "scenarioId": "application-lifecycle",
+          "title": "Application-owned lifecycle still uses a fixture dependency"
         },
         {
           "expectedCount": 1,
@@ -9618,7 +9656,7 @@
             },
             {
               "path": "app/consumer.py",
-              "source": "from typing import Protocol\n\n\nclass Publisher(Protocol):\n    def publish(self) -> None: ...\n\n\nclass Consumer:\n    def __init__(self, publisher: Publisher) -> None:\n        self.publisher = publisher\n"
+              "source": "from abc import ABC, abstractmethod\n\n\nclass Publisher(ABC):\n    @abstractmethod\n    def publish(self) -> None: ...\n\n\nclass Consumer:\n    def __init__(self, publisher: Publisher) -> None:\n        self.publisher = publisher\n"
             },
             {
               "path": "app/fake.py",
@@ -9645,7 +9683,7 @@
             },
             {
               "path": "app/consumer.py",
-              "source": "from typing import Protocol\n\n\nclass Publisher(Protocol):\n    def publish(self) -> None: ...\n\n\nclass Consumer:\n    def __init__(self, publisher: Publisher) -> None:\n        self.publisher = publisher\n"
+              "source": "from abc import ABC, abstractmethod\n\n\nclass Publisher(ABC):\n    @abstractmethod\n    def publish(self) -> None: ...\n\n\nclass Consumer:\n    def __init__(self, publisher: Publisher) -> None:\n        self.publisher = publisher\n"
             },
             {
               "path": "app/fake.py",
@@ -9658,10 +9696,10 @@
           ],
           "fixedFiles": [],
           "focusPath": "app/usage.py",
-          "id": "structural-fake-at-injection",
+          "id": "nominal-abc-fake-at-injection",
           "outcome": "reject",
           "scenarioId": "primary",
-          "title": "A fake is supplied without declaring its contract"
+          "title": "A fake is supplied without inheriting its nominal ABC"
         }
       ],
       "optionsSchemaSource": null
@@ -9920,31 +9958,47 @@
           "expectedCount": 1,
           "files": [
             {
-              "path": "app/enqueuer.py",
-              "source": "from typing import Protocol\n\n\nclass _Publisher(Protocol):\n    def publish(self) -> None: ...\n\n\nclass Enqueuer:\n    def __init__(self, publisher: _Publisher) -> None:\n        self.publisher = publisher\n\n    def enqueue(self) -> None:\n        self.publisher.publish()\n"
+              "path": "app/__init__.py",
+              "source": "# package\n"
+            },
+            {
+              "path": "app/consumer.py",
+              "source": "from app.publisher import Publisher, HttpPublisher\n\n\nclass Consumer:\n    def __init__(self, publisher: HttpPublisher) -> None:\n        self.publisher = publisher\n\n    def run(self) -> None:\n        self.publisher.publish()\n"
+            },
+            {
+              "path": "app/publisher.py",
+              "source": "from abc import ABC, abstractmethod\n\n\nclass Publisher(ABC):\n    @abstractmethod\n    def publish(self) -> None: ...\n\n\nclass HttpPublisher(Publisher):\n    def publish(self) -> None: ...\n\n\nclass QueuePublisher(Publisher):\n    def publish(self) -> None: ...\n"
             }
           ],
           "fixedFiles": [],
-          "focusPath": "app/enqueuer.py",
-          "id": "private-publisher-protocol",
+          "focusPath": "app/consumer.py",
+          "id": "existing-contract-httppublisher",
           "outcome": "reject",
           "scenarioId": "primary",
-          "title": "A public consumer hides its publisher contract"
+          "title": "Use the existing substitutable publisher contract"
         },
         {
           "expectedCount": 0,
           "files": [
             {
-              "path": "app/enqueuer.py",
-              "source": "from typing import Protocol\n\n\nclass Publisher(Protocol):\n    def publish(self) -> None: ...\n\n\nclass Enqueuer:\n    def __init__(self, publisher: Publisher) -> None:\n        self.publisher = publisher\n\n    def enqueue(self) -> None:\n        self.publisher.publish()\n"
+              "path": "app/__init__.py",
+              "source": "# package\n"
+            },
+            {
+              "path": "app/consumer.py",
+              "source": "from app.publisher import Publisher, HttpPublisher\n\n\nclass Consumer:\n    def __init__(self, publisher: Publisher) -> None:\n        self.publisher = publisher\n\n    def run(self) -> None:\n        self.publisher.publish()\n"
+            },
+            {
+              "path": "app/publisher.py",
+              "source": "from abc import ABC, abstractmethod\n\n\nclass Publisher(ABC):\n    @abstractmethod\n    def publish(self) -> None: ...\n\n\nclass HttpPublisher(Publisher):\n    def publish(self) -> None: ...\n\n\nclass QueuePublisher(Publisher):\n    def publish(self) -> None: ...\n"
             }
           ],
           "fixedFiles": [],
-          "focusPath": "app/enqueuer.py",
-          "id": "public-publisher-protocol",
+          "focusPath": "app/consumer.py",
+          "id": "existing-contract-publisher",
           "outcome": "accept",
           "scenarioId": "primary",
-          "title": "The publisher contract is public"
+          "title": "The consumer already uses the existing contract"
         }
       ],
       "optionsSchemaSource": null
@@ -10396,22 +10450,7 @@
           "files": [
             {
               "path": "tests/test_widget.py",
-              "source": "def _read():\n    return \"value\"\n\n\ndef _make_widget(*, read=_read):\n    return Widget(read=read)\n\n\n_make_widget(read=other)\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "tests/test_widget.py",
-          "id": "exercised-callable-option",
-          "outcome": "accept",
-          "scenarioId": "callable-default",
-          "title": "Keep a dependency that a caller replaces"
-        },
-        {
-          "expectedCount": 0,
-          "files": [
-            {
-              "path": "tests/test_widget.py",
-              "source": "def _make_widget(*, size=3):\n    return Widget(size=size)\n\n\ndef test_widget():\n    assert _make_widget(size=4)\n"
+              "source": "def test_widgets():\n    def _make_widget(*, size=3):\n        return Widget(size=size)\n\n    _make_widget()\n    _make_widget(size=4)\n"
             }
           ],
           "fixedFiles": [],
@@ -10426,7 +10465,7 @@
           "files": [
             {
               "path": "tests/test_widget.py",
-              "source": "def _make_widget(*, size=3):\n    return Widget(size=size)\n\n\n_make_widget()\n_make_widget(size=3)\n"
+              "source": "def test_widgets():\n    def _make_widget(*, size=3):\n        return Widget(size=size)\n\n    _make_widget()\n    _make_widget(size=3)\n"
             }
           ],
           "fixedFiles": [],
@@ -10435,21 +10474,6 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Repeated calls never vary the option"
-        },
-        {
-          "expectedCount": 1,
-          "files": [
-            {
-              "path": "tests/test_widget.py",
-              "source": "def _read():\n    return \"value\"\n\n\ndef _make_widget(*, read=_read):\n    return Widget(read=read)\n\n\n_make_widget()\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "tests/test_widget.py",
-          "id": "unused-callable-option",
-          "outcome": "reject",
-          "scenarioId": "callable-default",
-          "title": "Use an unexercised local dependency directly"
         }
       ],
       "optionsSchemaSource": null

@@ -49,19 +49,16 @@ _CASES = (
         "identical-conditional-module-import",
         Language.PYTHON,
         "import importlib\nif enabled:\n    import importlib\ndef run(loader=importlib.import_module):\n    return loader\n",
-        ExpectedOutcome.MATCH,
     ),
     EvaluationCase(
         "identical-conditional-symbol-import",
         Language.PYTHON,
         "from importlib import import_module as load\nif enabled:\n    from importlib import import_module as load\ndef run(loader=load):\n    return loader\n",
-        ExpectedOutcome.MATCH,
     ),
     EvaluationCase(
         "conditional-builtin-import-stays-loader",
         Language.PYTHON,
         "if enabled:\n    from builtins import __import__\ndef run(loader=__import__):\n    return loader\n",
-        ExpectedOutcome.MATCH,
     ),
     EvaluationCase(
         "enclosing-global-rebinding",
@@ -82,31 +79,26 @@ _CASES = (
         "unrelated-global-retains-loader",
         Language.PYTHON,
         "import importlib\ndef change():\n    global status\n    status = 'ready'\ndef run(loader=importlib.import_module):\n    pass\n",
-        ExpectedOutcome.MATCH,
     ),
     EvaluationCase(
         "later-class-binding-does-not-shadow-default",
         Language.PYTHON,
         "from importlib import import_module as load\nclass Service:\n    def run(self, loader=load):\n        pass\n    load = domain_loader\n",
-        ExpectedOutcome.MATCH,
     ),
     EvaluationCase(
         "method-name-binds-after-default",
         Language.PYTHON,
         "from importlib import import_module as load\nclass Service:\n    def load(self, loader=load):\n        pass\n",
-        ExpectedOutcome.MATCH,
     ),
     EvaluationCase(
         "method-body-does-not-close-over-class",
         Language.PYTHON,
         "import importlib\nclass Service:\n    importlib = domain_imports\n    def outer(self):\n        def run(loader=importlib.import_module):\n            pass\n",
-        ExpectedOutcome.MATCH,
     ),
     EvaluationCase(
         "nested-class-does-not-close-over-outer-class",
         Language.PYTHON,
         "from importlib import import_module as load\nclass Outer:\n    load = domain_loader\n    class Inner:\n        def run(self, loader=load):\n            pass\n",
-        ExpectedOutcome.MATCH,
     ),
     EvaluationCase(
         "enclosing-function-capture-through-class",
@@ -127,25 +119,21 @@ _CASES = (
         "same-line-later-class-binding",
         Language.PYTHON,
         "from importlib import import_module as load\nclass Service: run = lambda loader=load: None; load = domain_loader\n",
-        ExpectedOutcome.MATCH,
     ),
     EvaluationCase(
         "same-line-assignment-alias-default",
         Language.PYTHON,
         "load = __import__; run = lambda loader=load: None\n",
-        ExpectedOutcome.MATCH,
     ),
     EvaluationCase(
         "same-line-import-before-assignment-alias",
         Language.PYTHON,
         "import importlib; load = importlib.import_module\nrun = lambda loader=load: None\n",
-        ExpectedOutcome.MATCH,
     ),
     EvaluationCase(
         "nested-default-executes-enclosing-scope",
         Language.PYTHON,
         "from importlib import import_module as load\ndef outer(load=(lambda loader=load: None)):\n    pass\n",
-        ExpectedOutcome.MATCH,
     ),
     EvaluationCase(
         "class-loop-target-shadows-default",
@@ -161,56 +149,47 @@ _CASES = (
         "module-alias",
         Language.PYTHON,
         "import importlib as imports\ndef run(loader=imports.import_module):\n    pass\n",
-        ExpectedOutcome.MATCH,
     ),
     EvaluationCase(
         "symbol-alias",
         Language.PYTHON,
         "from importlib import import_module as load\ndef run(loader=load):\n    pass\n",
-        ExpectedOutcome.MATCH,
     ),
     EvaluationCase(
         "same-name-default",
         Language.PYTHON,
         "from importlib import import_module\ndef run(import_module=import_module):\n    pass\n",
-        ExpectedOutcome.MATCH,
     ),
-    EvaluationCase("builtin", Language.PYTHON, "def run(loader=__import__):\n    pass\n", ExpectedOutcome.MATCH),
+    EvaluationCase("builtin", Language.PYTHON, "def run(loader=__import__):\n    pass\n"),
     EvaluationCase(
         "builtin-alias",
         Language.PYTHON,
         "from builtins import __import__ as load\ndef run(loader=load):\n    pass\n",
-        ExpectedOutcome.MATCH,
     ),
     EvaluationCase(
         "qualified-builtin",
         Language.PYTHON,
         "import builtins\ndef run(loader=builtins.__import__):\n    pass\n",
-        ExpectedOutcome.MATCH,
     ),
     EvaluationCase(
         "importlib-builtin",
         Language.PYTHON,
         "import importlib\ndef run(loader=importlib.__import__):\n    pass\n",
-        ExpectedOutcome.MATCH,
     ),
     EvaluationCase(
         "async-posonly",
         Language.PYTHON,
         "import importlib\nasync def run(loader=importlib.import_module, /):\n    pass\n",
-        ExpectedOutcome.MATCH,
     ),
     EvaluationCase(
         "method",
         Language.PYTHON,
         "import importlib\nclass Service:\n    def run(self, loader=importlib.import_module):\n        pass\n",
-        ExpectedOutcome.MATCH,
     ),
     EvaluationCase(
         "nested",
         Language.PYTHON,
         "import importlib\ndef outer():\n    def run(loader=importlib.import_module):\n        pass\n",
-        ExpectedOutcome.MATCH,
     ),
     EvaluationCase(
         "lambda",
@@ -222,55 +201,46 @@ _CASES = (
         "assignment-alias",
         Language.PYTHON,
         "import importlib\nload = importlib.import_module\ndef run(loader=load):\n    pass\n",
-        ExpectedOutcome.MATCH,
     ),
     EvaluationCase(
         "annotated-alias",
         Language.PYTHON,
         "from importlib import import_module as imported\nload: object = imported\ndef run(loader=load):\n    pass\n",
-        ExpectedOutcome.MATCH,
     ),
     EvaluationCase(
         "builtin-assignment-alias",
         Language.PYTHON,
         "load = __import__\ndef run(loader=load):\n    pass\n",
-        ExpectedOutcome.MATCH,
     ),
     EvaluationCase(
         "alias-method",
         Language.PYTHON,
         "import importlib\nload = importlib.import_module\nclass Service:\n    def run(self, loader=load):\n        pass\n",
-        ExpectedOutcome.MATCH,
     ),
     EvaluationCase(
         "same-name-builtin-assignment-default",
         Language.PYTHON,
         "load = __import__\ndef run(load=load):\n    pass\n",
-        ExpectedOutcome.MATCH,
     ),
     EvaluationCase(
         "same-name-qualified-assignment-default",
         Language.PYTHON,
         "import importlib\nload = importlib.import_module\ndef run(*, load=load):\n    pass\n",
-        ExpectedOutcome.MATCH,
     ),
     EvaluationCase(
         "same-name-async-assignment-default",
         Language.PYTHON,
         "import importlib\nload = importlib.import_module\nasync def run(load=load, /):\n    pass\n",
-        ExpectedOutcome.MATCH,
     ),
     EvaluationCase(
         "unrelated-parameter-keeps-global-alias",
         Language.PYTHON,
         "load = __import__\ndef domain(load):\n    pass\ndef run(load=load):\n    pass\n",
-        ExpectedOutcome.MATCH,
     ),
     EvaluationCase(
         "unrelated-local-keeps-global-alias",
         Language.PYTHON,
         "load = __import__\ndef domain():\n    load = domain_loader\ndef run(load=load):\n    pass\n",
-        ExpectedOutcome.MATCH,
     ),
     EvaluationCase(
         "same-name-outer-parameter-shadow",
@@ -356,13 +326,11 @@ _CASES = (
         "unrelated-capture-retains-loader",
         Language.PYTHON,
         "import importlib\nmatch source:\n    case record:\n        pass\ndef run(loader=importlib.import_module):\n    pass\n",
-        ExpectedOutcome.MATCH,
     ),
     EvaluationCase(
         "unrelated-exception-retains-loader",
         Language.PYTHON,
         "import importlib\ntry:\n    pass\nexcept Exception as error:\n    pass\ndef run(loader=importlib.import_module):\n    pass\n",
-        ExpectedOutcome.MATCH,
     ),
     EvaluationCase(
         "alias-rebound",
@@ -524,7 +492,6 @@ _CASES = (
         "unrelated-default-walrus-retains-loader",
         Language.PYTHON,
         "import importlib\ndef configure(unused=(setting := 1)):\n    pass\ndef run(loader=importlib.import_module):\n    pass\n",
-        ExpectedOutcome.MATCH,
     ),
     EvaluationCase("malformed", Language.PYTHON, "def run(loader=importlib.import_module: pass\n"),
 )
@@ -548,7 +515,7 @@ def test_excluded_source(path: str) -> None:
 
 
 def test_exact_suppression() -> None:
-    source = "import importlib\ndef run(loader=importlib.import_module):  # sarj-noqa: SARJ471 -- this public importer intentionally exposes import machinery.\n    pass\n"
+    source = "import importlib\ndef run(loader=importlib.import_module):  # sarj-noqa: SARJ471 -- this public importer intentionally exposes import machinery.\n    return loader('plugin')\n"
     findings = _check(source)
     assert len(findings) == 1
     assert is_suppressed(source.splitlines(), findings[0].line, findings[0].code)
@@ -576,3 +543,144 @@ def test_native_cli_warning_is_nonblocking(tmp_path: Path, capsys: pytest.Captur
     path.write_text(_CASES[0].source)
     assert main(["check", "--rule", NoInjectedModuleLoader.id, str(path)]) == 0
     assert "SARJ471" in capsys.readouterr().out
+
+
+_FIXED_MODULE_CASES = (
+    EvaluationCase(
+        "fixed-import-hook",
+        Language.PYTHON,
+        "import importlib\ndef run(loader=importlib.import_module):\n    return loader('plugin').create()\n",
+        ExpectedOutcome.MATCH,
+    ),
+    EvaluationCase(
+        "same-fixed-module-twice",
+        Language.PYTHON,
+        "from importlib import import_module as load\ndef run(loader=load):\n    first = loader('plugin')\n    return loader('plugin').create()\n",
+        ExpectedOutcome.MATCH,
+    ),
+    EvaluationCase(
+        "fixed-aliased-builtin",
+        Language.PYTHON,
+        "load = __import__\ndef run(loader=load):\n    return loader('plugin')\n",
+        ExpectedOutcome.MATCH,
+    ),
+    EvaluationCase(
+        "dynamic-plugin-api",
+        Language.PYTHON,
+        "import importlib\ndef run(module_name, loader=importlib.import_module):\n    return loader(module_name).create()\n",
+    ),
+    EvaluationCase(
+        "multiple-plugin-modules",
+        Language.PYTHON,
+        "import importlib\ndef run(loader=importlib.import_module):\n    loader('first_plugin')\n    return loader('second_plugin')\n",
+    ),
+    EvaluationCase(
+        "forwarded-import-hook",
+        Language.PYTHON,
+        "import importlib\ndef run(loader=importlib.import_module):\n    return discover_plugins(loader)\n",
+    ),
+    EvaluationCase(
+        "fixed-and-forwarded-import-hook",
+        Language.PYTHON,
+        "import importlib\ndef run(loader=importlib.import_module):\n    loader('plugin')\n    return discover_plugins(loader)\n",
+    ),
+    EvaluationCase(
+        "returned-import-hook",
+        Language.PYTHON,
+        "import importlib\ndef run(loader=importlib.import_module):\n    return loader\n",
+    ),
+    EvaluationCase(
+        "captured-import-hook",
+        Language.PYTHON,
+        "import importlib\ndef run(loader=importlib.import_module):\n    return lambda: loader('plugin')\n",
+    ),
+    EvaluationCase(
+        "rebound-import-hook",
+        Language.PYTHON,
+        "import importlib\ndef run(loader=importlib.import_module):\n    loader = domain_loader\n    return loader('plugin')\n",
+    ),
+    EvaluationCase(
+        "unpacked-import-hook",
+        Language.PYTHON,
+        "import importlib\ndef run(options, loader=importlib.import_module):\n    return loader(*options)\n",
+    ),
+    EvaluationCase(
+        "unused-import-hook-default",
+        Language.PYTHON,
+        "import importlib\ndef run(loader=importlib.import_module):\n    return 'ready'\n",
+    ),
+    EvaluationCase(
+        "relative-package-api",
+        Language.PYTHON,
+        "import importlib\ndef run(package, loader=importlib.import_module):\n    return loader('.plugin', package=package)\n",
+    ),
+    EvaluationCase(
+        "domain-method-contract",
+        Language.PYTHON,
+        "import importlib\nclass Service:\n    def run(self, loader=importlib.import_module):\n        return loader('plugin')\n",
+        ExpectedOutcome.MATCH,
+    ),
+    EvaluationCase(
+        "fixed-module-alias",
+        Language.PYTHON,
+        "import importlib as modules\ndef run(loader=modules.import_module):\n    return loader('plugin')\n",
+        ExpectedOutcome.MATCH,
+    ),
+    EvaluationCase(
+        "fixed-default-uses-enclosing-binding",
+        Language.PYTHON,
+        "load = __import__\ndef run(load=load):\n    return load('plugin')\n",
+        ExpectedOutcome.MATCH,
+    ),
+    EvaluationCase(
+        "fixed-module-conditional-domain-replacement",
+        Language.PYTHON,
+        "import importlib\nif enabled:\n    from application import importer as importlib\ndef run(loader=importlib.import_module):\n    return loader('plugin')\n",
+    ),
+    EvaluationCase(
+        "fixed-module-captured-import-root",
+        Language.PYTHON,
+        "import importlib\nmatch source:\n    case importlib:\n        pass\ndef run(loader=importlib.import_module):\n    return loader('plugin')\n",
+    ),
+    EvaluationCase(
+        "fixed-module-outer-parameter-shadow",
+        Language.PYTHON,
+        "import importlib\ndef outer(importlib):\n    def run(loader=importlib.import_module):\n        return loader('plugin')\n",
+    ),
+    EvaluationCase(
+        "fixed-module-earlier-class-shadow",
+        Language.PYTHON,
+        "from importlib import import_module as load\nclass Service:\n    load = domain_loader\n    def run(self, loader=load):\n        return loader('plugin')\n",
+    ),
+    EvaluationCase(
+        "fixed-module-later-class-binding",
+        Language.PYTHON,
+        "from importlib import import_module as load\nclass Service:\n    def run(self, loader=load):\n        return loader('plugin')\n    load = domain_loader\n",
+        ExpectedOutcome.MATCH,
+    ),
+    EvaluationCase(
+        "fixed-module-global-loader-write",
+        Language.PYTHON,
+        "load = __import__\ndef change():\n    global load\n    load = domain_loader\ndef run(loader=load):\n    return loader('plugin')\n",
+    ),
+    EvaluationCase(
+        "fixed-module-stable-assignment-alias",
+        Language.PYTHON,
+        "import importlib\nload = importlib.import_module\ndef run(loader=load):\n    return loader('plugin')\n",
+        ExpectedOutcome.MATCH,
+    ),
+    EvaluationCase(
+        "fixed-module-rebound-assignment-alias",
+        Language.PYTHON,
+        "import importlib\nload = importlib.import_module\nload = domain_loader\ndef run(loader=load):\n    return loader('plugin')\n",
+    ),
+)
+
+
+@pytest.mark.parametrize("case", _FIXED_MODULE_CASES, ids=tuple(case.case_id for case in _FIXED_MODULE_CASES))
+def test_fixed_module_indirection_cases(case: EvaluationCase) -> None:
+    findings = _check(case.source)
+
+    assert bool(findings) is (case.expected is ExpectedOutcome.MATCH)
+    assert len(findings) <= 1
+    assert all(finding.severity is Severity.WARNING for finding in findings)

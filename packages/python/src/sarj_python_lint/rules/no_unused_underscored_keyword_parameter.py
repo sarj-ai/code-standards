@@ -39,7 +39,8 @@ class NoUnusedUnderscoredKeywordParameter(Rule):
         ),
         remediation=(
             "Remove the unused keyword-only parameter and update callers together. If an external contract requires "
-            "the input, preserve its required spelling and use a narrow, reasoned unused-argument suppression."
+            "the input, preserve its required spelling and use a narrow, reasoned unused-argument suppression. "
+            "Do not erase a precise callback signature with **kwargs or add dummy reads to silence this warning."
         ),
         category=RuleCategory.MAINTAINABILITY,
         autofix=AutofixPolicy.NONE,
@@ -48,7 +49,7 @@ class NoUnusedUnderscoredKeywordParameter(Rule):
             "Decorated functions other than unshadowed builtin staticmethod/classmethod, inherited methods, and intentional stubs are excluded.",
             "Any reference within the body counts as use, including nested scopes; shadowing and reassignment can produce false negatives.",
             "Functions accessing locals, vars, eval, or exec through recognized builtin bindings are excluded.",
-            "Call sites, lambda parameters, unknown dynamic reflection, and cross-module callback contracts are not resolved.",
+            "Callables referenced as values are excluded because their external keyword contract is unknown. Lambda parameters, unknown dynamic reflection, and cross-module callback contracts are not resolved.",
             "Generated and vendored files are excluded; test source is checked.",
         ),
         examples=(
@@ -103,7 +104,12 @@ def _unused_parameters(
     context: PythonFileContext, function: ast.FunctionDef | ast.AsyncFunctionDef
 ) -> tuple[ast.arg, ...]:
     candidates = [argument for argument in function.args.kwonlyargs if argument.arg.startswith("_")]
-    if not candidates or _has_contract(context, function) or _is_stub(function):
+    if (
+        not candidates
+        or _has_contract(context, function)
+        or _is_stub(function)
+        or _escapes_as_callback(context, function)
+    ):
         return ()
     body = list(chain.from_iterable(ast.walk(statement) for statement in function.body))
     if _reads_dynamic_locals(context, function, body):
@@ -174,3 +180,15 @@ def _reads_dynamic_locals(
         )
         for node in body
     )
+
+
+def _escapes_as_callback(context: PythonFileContext, function: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
+    for reference in context.nodes(ast.Name, ast.Attribute):
+        if (isinstance(reference, ast.Name) and reference.id != function.name) or (
+            isinstance(reference, ast.Attribute) and reference.attr != function.name
+        ):
+            continue
+        parent = context.parents.get(reference)
+        if isinstance(reference.ctx, ast.Load) and not (isinstance(parent, ast.Call) and parent.func is reference):
+            return True
+    return False

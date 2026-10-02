@@ -17,13 +17,14 @@ export const REQUIRE_EXPLICIT_SERVICE_CONTRACT_DOCUMENTATION = {
   defaultLevel: "warning",
   summary: "Require explicit contracts for classes that invoke retained collaborators.",
   rationale:
-    "A one-operation service can orchestrate a collaborator without declaring the contract that its callers and fakes must implement.",
-  remediation: "Export a focused interface or abstract class and explicitly implement or extend it.",
+    "A one-operation service can orchestrate a collaborator without declaring the contract that callers consume and implementations and fakes satisfy.",
+  remediation: "Explicitly implement a focused interface or extend an abstract class covering the service operations. Export the contract only when its consumers need it.",
   category: "architecture",
   autofix: "none",
   limitations: [
     "The rule checks service, store, and provider class declarations whose constructor stores a typed behavioral collaborator and whose public method reaches that collaborator.",
-    "Imported or dynamic base classes with unavailable declarations are unresolved and do not produce a finding.",
+    "Existing local interfaces, type aliases, and inherited contracts can cover the operations; the compiler owns signature compatibility.",
+    "Imported or dynamic base classes with unavailable declarations and decorated classes or operations are unresolved and do not produce a finding.",
     "Generated files and JavaScript without implements syntax are excluded.",
   ],
   examples: [
@@ -45,7 +46,7 @@ export const REQUIRE_EXPLICIT_SERVICE_CONTRACT_DOCUMENTATION = {
       outcome: "no-match",
       files: [{
         path: "src/service.ts",
-        source: "export interface Runner { run(): void } class OrchestratorService implements Runner { constructor(private readonly worker: Worker) {} run(): void { this.worker.run(); } }",
+        source: "interface Runner { run(): void } class OrchestratorService implements Runner { constructor(private readonly worker: Worker) {} run(): void { this.worker.run(); } }",
       }],
       focusPath: "src/service.ts",
       expectedCount: 0,
@@ -63,7 +64,7 @@ export default createRule<Options, MessageIds>({
     schema: [],
     messages: {
       requireExplicitServiceContract:
-        "`{{name}}` invokes a retained collaborator from {{operations}} without explicitly implementing a public contract for those operations.",
+        "`{{name}}` invokes a retained collaborator from {{operations}} without a declared interface or abstract-class contract covering those operations. Implement a focused contract; it can remain local.",
     },
   },
   defaultOptions: [],
@@ -75,7 +76,7 @@ export default createRule<Options, MessageIds>({
     const isExportedServiceClass = createExportedServiceClassResolver(program);
     return {
       ClassDeclaration(node): void {
-        if (node.id === null || node.abstract || !isServiceRole(node.id.name, context.filename)) return;
+        if (node.id === null || node.abstract || node.decorators.length > 0 || !isServiceRole(node.id.name, context.filename)) return;
         if (isExportedServiceClass(node) && !isTestFile(context.filename) &&
             !isStoryFile(context.filename) && !isScriptFile(context.filename)) return;
         const operations = operationsFor(node);

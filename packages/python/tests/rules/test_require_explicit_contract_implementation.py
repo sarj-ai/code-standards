@@ -75,7 +75,7 @@ def test_declared_relationship_and_known_origin_are_required(
     fake_path = package / "fake.py"
     caller = package / "usage.py"
     contracts.write_text(
-        "from typing import Protocol\nclass Publisher(Protocol):\n    def publish(self) -> None: ...\n"
+        "from abc import ABC, abstractmethod\nclass Publisher(ABC):\n    @abstractmethod\n    def publish(self) -> None: ...\n"
     )
     consumer.write_text(
         "from app.contracts import Publisher\nclass Consumer:\n    def __init__(self, publisher: Publisher) -> None: self.publisher = publisher\n"
@@ -104,7 +104,7 @@ def test_qualified_contract_annotation_keeps_its_module(annotation: str, tmp_pat
     fake = package / "fake.py"
     caller = package / "usage.py"
     contracts.write_text(
-        "from typing import Protocol\nclass Publisher(Protocol):\n    def publish(self) -> None: ...\n"
+        "from abc import ABC, abstractmethod\nclass Publisher(ABC):\n    @abstractmethod\n    def publish(self) -> None: ...\n"
     )
     consumer.write_text(
         f"from typing import Union\nimport app.contracts as contracts\nclass Consumer:\n    def __init__(self, publisher: {annotation}) -> None: self.publisher = publisher\n"
@@ -163,3 +163,38 @@ def test_only_still_abstract_abc_subclasses_are_contracts(
     rule = RequireExplicitContractImplementation()
     rule.prepare(ProjectIndexSet.build(list(sources), sources))
     assert [finding.code for finding in rule.check(caller, sources[caller])] == expected
+
+
+@pytest.mark.parametrize(
+    "protocol_import",
+    [
+        "from typing import Protocol",
+        "from typing_extensions import Protocol",
+        "from typing import Protocol as StructuralContract",
+    ],
+)
+def test_protocol_implementations_remain_structural(protocol_import: str, tmp_path: Path) -> None:
+    root = tmp_path / "project"
+    package = root / "app"
+    package.mkdir(parents=True)
+    (root / "pyproject.toml").write_text("[project]\nname = 'example'\nversion = '0.1.0'\n")
+    (package / "__init__.py").write_text("")
+    protocol = "StructuralContract" if " as " in protocol_import else "Protocol"
+    contracts = package / "contracts.py"
+    consumer = package / "consumer.py"
+    fake = package / "fake.py"
+    caller = package / "usage.py"
+    contracts.write_text(f"{protocol_import}\nclass Publisher({protocol}):\n    def publish(self) -> None: ...\n")
+    consumer.write_text(
+        "from app.contracts import Publisher\nclass Consumer:\n"
+        "    def __init__(self, publisher: Publisher) -> None: self.publisher = publisher\n"
+    )
+    fake.write_text("class FakePublisher:\n    def publish(self) -> None: ...\n")
+    caller.write_text(
+        "from app.consumer import Consumer\nfrom app.fake import FakePublisher\n"
+        "def setup() -> None:\n    Consumer(publisher=FakePublisher())\n"
+    )
+    sources = {path: path.read_text() for path in (contracts, consumer, fake, caller)}
+    rule = RequireExplicitContractImplementation()
+    rule.prepare(ProjectIndexSet.build(list(sources), sources))
+    assert rule.check(caller, sources[caller]) == []

@@ -4,11 +4,12 @@ import { dirname, join, relative } from "node:path";
 
 const HTTP_METHODS: ReadonlySet<string> = new Set(["GET", "HEAD", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"]);
 const NEXT_COMPONENT = /^(?:src\/)?app\/(?:.*\/)?(?:page|layout|loading|not-found|template|error|global-error|default|forbidden|unauthorized)\.[jt]sx?$/u;
+const NEXT_METADATA = /^(?:src\/)?app\/(?:.*\/)?(?:(?:opengraph-image|twitter-image|icon|apple-icon)\.[jt]sx?|(?:robots|sitemap|manifest)\.[jt]s)$/u;
 const NEXT_ROUTE = /^(?:src\/)?app\/(?:.*\/)?route\.[jt]s$/u;
 
 export function isFrameworkEntrypoint(filename: string, exportKey: string): boolean {
   const normalized = filename.replaceAll("\\", "/");
-  if (!/(?:^|\/)(?:app|pages)\/|(?:^|\/)(?:middleware|proxy)\.[jt]s$/u.test(normalized)) return false;
+  if (!/(?:^|\/)(?:app|pages)\/|(?:^|\/)(?:middleware|proxy|instrumentation)\.[jt]s$/u.test(normalized)) return false;
   const owner = packageOwner(normalized);
   if (owner === null) return false;
   const path = relative(owner.root, normalized).replaceAll("\\", "/");
@@ -18,9 +19,12 @@ export function isFrameworkEntrypoint(filename: string, exportKey: string): bool
 
 function isNextEntrypoint(path: string, exportKey: string): boolean {
   const privateAppFolder = /^(?:src\/)?app\/(?:.*\/)?_[^/]+\//u.test(path);
-  if (!privateAppFolder && NEXT_COMPONENT.test(path) && exportKey === "default") return true;
+  if (!privateAppFolder && (NEXT_COMPONENT.test(path) || NEXT_METADATA.test(path)) && exportKey === "default") return true;
   if (!privateAppFolder && NEXT_ROUTE.test(path) && HTTP_METHODS.has(exportKey)) return true;
   if (/^(?:src\/)?pages\/.*\.[jt]sx?$/u.test(path) && exportKey === "default") return true;
+  if (/^(?:src\/)?instrumentation\.[jt]s$/u.test(path)) {
+    return exportKey === "register" || exportKey === "onRequestError";
+  }
   const middleware = /^(?:src\/)?(middleware|proxy)\.[jt]s$/u.exec(path);
   return middleware !== null && (exportKey === "default" || exportKey === middleware[1]);
 }

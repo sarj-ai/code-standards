@@ -37,9 +37,9 @@ class NoDatabaseFunctions(Rule):
     code = "SARJ120"
     documentation = RuleDocumentation(
         default_level=DefaultLevel.ERROR,
-        summary="Keep stored SQL functions in application code.",
-        rationale="Stored functions move application behavior into a second execution environment, obscuring writes and making simple fault fixtures require procedural database objects.",
-        remediation="Use declarative constraints for data invariants and explicit transactional application code for behavior. Use an exact SARJ120 suppression for an approved compatibility exception.",
+        summary="Prefer explicit application behavior to stored SQL functions.",
+        rationale="Under a single-writer application architecture, stored functions can obscure application behavior. Database-owned invariants and expression indexes may still require approved stored functions.",
+        remediation="Prefer declarative constraints or explicit transactional application behavior where equivalent. Preserve transaction atomicity and database-enforced integrity; use an exact SARJ120 suppression for an approved database-owned invariant or compatibility exception.",
         category=RuleCategory.ARCHITECTURE,
         autofix=AutofixPolicy.NONE,
         limitations=(
@@ -98,7 +98,7 @@ class NoDatabaseFunctions(Rule):
                     line=line,
                     col=col,
                     code=self.code,
-                    message="Stored SQL functions are prohibited by project architecture; use a declarative constraint or explicit transactional application code.",
+                    message="Project architecture prefers declarative constraints or explicit transactional application behavior. Preserve atomicity and database-enforced integrity; use an exact SARJ120 suppression for an approved database-owned invariant or compatibility exception.",
                 )
             )
         return redirect_to_model(diagnostics, model_owned=is_generated_migration(path, source))

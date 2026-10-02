@@ -1239,9 +1239,9 @@ export function createConfig(options = {}) {
       // the paired tests, which its `meta.docs.url` points at.
       //
       "@sarj/require-pascal-case-zod-schema-name": "error",
-      "@sarj/require-interface-for-exported-class": "warn",
       "@sarj/require-explicit-contract-implementation": "warn",
       "@sarj/require-explicit-service-contract": "warn",
+      "@sarj/require-interface-for-exported-class": "warn",
       "@sarj/prefer-named-complex-return-type": "warn",
       "@sarj/prefer-module-level-refined-schema": "warn",
       "@sarj/prefer-multi-value-zod-literal": ["warn", { zodMajorVersion: 4 }],

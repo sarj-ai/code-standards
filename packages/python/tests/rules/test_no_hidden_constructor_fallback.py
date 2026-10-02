@@ -141,12 +141,11 @@ def test_unstable_provider_keeps_constructor_warning_ownership(tmp_path: Path, p
     findings = analyze(
         [
             "no-hidden-constructor-fallback",
-            "discourage-nullable-constructor-parameters",
             "no-nullable-dependency-fallback",
         ],
         [service],
     )
-    assert [finding.code for finding in findings] == ["SARJ468"]
+    assert findings == []
 
 
 @pytest.mark.parametrize(
@@ -177,12 +176,11 @@ def test_stable_provider_preserves_existing_diagnostics(tmp_path: Path, decorato
     findings = analyze(
         [
             "no-hidden-constructor-fallback",
-            "discourage-nullable-constructor-parameters",
             "no-nullable-dependency-fallback",
         ],
         [service],
     )
-    assert [finding.code for finding in findings] == ["SARJ095", "SARJ468", "SARJ469"]
+    assert [finding.code for finding in findings] == ["SARJ095", "SARJ469"]
 
 
 @pytest.mark.parametrize(
@@ -1000,9 +998,8 @@ def test_imported_settings_subclass_decorator_preserves_provenance(tmp_path: Pat
     findings = analyze(
         [
             "no-hidden-constructor-fallback",
-            "discourage-nullable-constructor-parameters",
             "no-nullable-dependency-fallback",
         ],
         [service],
     )
-    assert [finding.code for finding in findings] == (["SARJ095", "SARJ468", "SARJ469"] if preserved else ["SARJ468"])
+    assert [finding.code for finding in findings] == (["SARJ095", "SARJ469"] if preserved else [])

@@ -149,3 +149,25 @@ def test_generated_and_vendored_files_are_excluded(path: str, source: str) -> No
 
 def test_malformed_source_is_ignored() -> None:
     assert _check("_ = (") == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "_ = load()\nconsume(_)\n",
+        "_: object = load()\nconsume(_)\n",
+        "def callback(value):\n    _ = value\n    return _\n",
+        "async def callback(value):\n    _ = value\n    return _\n",
+        "class Capture:\n    _ = load()\n    saved = _\n",
+        "def outer(value):\n    _ = value\n    def inner():\n        return _\n    return inner\n",
+        "_ = value = load()\nconsume(_)\n",
+    ],
+)
+def test_keeps_underscore_bindings_that_are_read(source: str) -> None:
+    assert _check(source) == []
+
+
+def test_an_unrelated_scope_read_does_not_hide_a_discard() -> None:
+    source = "def first(value):\n    _ = value\ndef second(_):\n    return _\n"
+
+    assert len(_check(source)) == 1

@@ -31,6 +31,15 @@ afterAll(() => rmSync(FRAMEWORK_ROOT, { recursive: true, force: true }));
 
 RULE_TESTER.run("sole-export-matches-filename", rule, {
   valid: [
+    { name: "Next icon images preserve their framework filename", filename: join(NEXT_ROOT, "app/icon.tsx"), code: "export default function SiteIcon() { return new Response(); }" },
+    { name: "Next Apple icons preserve their framework filename", filename: join(NEXT_ROOT, "app/apple-icon.js"), code: "export default function SiteIcon() { return new Response(); }" },
+    { name: "Next sitemaps preserve their framework filename", filename: join(NEXT_ROOT, "src/app/sitemap.ts"), code: "export default function buildSitemap() { return []; }" },
+    { name: "Next manifests preserve their framework filename", filename: join(NEXT_ROOT, "app/manifest.js"), code: "export default function buildManifest() { return {}; }" },
+    { name: "Next Open Graph images preserve their route filename", filename: join(NEXT_ROOT, "src/app/orders/opengraph-image.tsx"), code: "export default function Image() { return new Response(); }" },
+    { name: "Next Twitter images preserve their route filename", filename: join(NEXT_ROOT, "app/twitter-image.ts"), code: "export default function SocialImage() { return new Response(); }" },
+    { name: "Next metadata files preserve their framework filename", filename: join(NEXT_ROOT, "app/robots.ts"), code: "export default function buildRobots() { return {}; }" },
+    { name: "Next server instrumentation preserves its register contract", filename: join(NEXT_ROOT, "src/instrumentation.ts"), code: "export function register() {}" },
+    { name: "Next server instrumentation preserves its error hook contract", filename: join(NEXT_ROOT, "instrumentation.js"), code: "export function onRequestError() {}" },
     { name: "Next app page has a default component contract", filename: join(NEXT_ROOT, "src/app/orders/page.tsx"), code: "export default function OrdersScreen() { return null; }" },
     { name: "Next pages accept local default aliases and supporting types", filename: join(NEXT_ROOT, "src/app/orders/page.tsx"), code: "const Screen = () => null; export { Screen as default }; export interface Props {}" },
     { name: "Next root app layout has a default component contract", filename: join(NEXT_ROOT, "app/(shop)/layout.tsx"), code: "export default function ShopShell() { return null; }" },
@@ -87,6 +96,13 @@ RULE_TESTER.run("sole-export-matches-filename", rule, {
     { filename: "src/artifacts.ts", code: "export type ArtifactStore = object;" },
   ],
   invalid: [
+    { name: "Next non-image metadata extensions must be conventional", filename: join(NEXT_ROOT, "app/robots.tsx"), code: "export default function buildRobots() {}", errors: [{ messageId: "matchSoleExport" }] },
+    { name: "Next image-like modules outside app remain ordinary exports", filename: join(NEXT_ROOT, "src/services/opengraph-image.ts"), code: "export default function Image() {}", errors: [{ messageId: "matchSoleExport" }] },
+    { name: "Next private metadata image folders remain ordinary modules", filename: join(NEXT_ROOT, "app/_components/opengraph-image.tsx"), code: "export default function Image() {}", errors: [{ messageId: "matchSoleExport" }] },
+    { name: "Next metadata filenames require the default export contract", filename: join(NEXT_ROOT, "app/opengraph-image.tsx"), code: "export function buildImage() {}", errors: [{ messageId: "matchSoleExport" }] },
+    { name: "Next instrumentation requires an instrumentation export", filename: join(NEXT_ROOT, "instrumentation.ts"), code: "export function configure() {}", errors: [{ messageId: "matchSoleExport" }] },
+    { name: "Nested ordinary instrumentation is not a root framework hook", filename: join(NEXT_ROOT, "src/services/instrumentation.ts"), code: "export function register() {}", errors: [{ messageId: "matchSoleExport" }] },
+    { name: "A nested package cannot inherit Next instrumentation", filename: join(PLAIN_ROOT, "instrumentation.ts"), code: "export function register() {}", errors: [{ messageId: "matchSoleExport" }] },
     { name: "ordinary page modules must match their runtime export", filename: "src/services/page.ts", code: "export class BillingClient {}", errors: [{ messageId: "matchSoleExport", data: { exported: "BillingClient", expected: "billing-client" } }] },
     { name: "a malformed package manifest cannot establish a framework exemption", filename: join(MALFORMED_ROOT, "src/pages/wrong.ts"), code: "export default function BillingScreen() {}", errors: [{ messageId: "matchSoleExport" }] },
     { name: "ordinary pages directories do not create framework routes", filename: "src/domain/pages/wrong.ts", code: "export class BillingClient {}", errors: [{ messageId: "matchSoleExport" }] },

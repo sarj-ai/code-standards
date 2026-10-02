@@ -93,3 +93,21 @@ def test_exact_suppression_and_blocking_exit(tmp_path: Path, capsys: pytest.Capt
 def test_public_examples(example: RuleExample) -> None:
     focus = example.focus_file
     assert len(NoDatabaseFunctions().check(Path(str(focus.path)), focus.source)) == example.expected_count
+
+
+def test_database_owned_index_invariant_uses_the_approved_exception(tmp_path: Path) -> None:
+    source = (
+        "CREATE FUNCTION normalized_key(value text) RETURNS text LANGUAGE sql IMMUTABLE AS $$ SELECT lower(value) $$;"
+    )
+    findings = NoDatabaseFunctions().check(Path("supabase/migrations/001.sql"), source)
+    assert len(findings) == 1
+    assert "atomicity" in findings[0].message
+    assert "database-owned invariant" in findings[0].message
+    path = tmp_path / "001.sql"
+    path.write_text(
+        "-- dialect: postgres\n"
+        + source
+        + " -- sarj-noqa: SARJ120 -- approved database-owned uniqueness invariant\n"
+        + "CREATE UNIQUE INDEX IF NOT EXISTS widget_key ON widget (normalized_key(name));\n"
+    )
+    assert main(["check", "--rule", "no-database-functions", str(path)]) == 0
