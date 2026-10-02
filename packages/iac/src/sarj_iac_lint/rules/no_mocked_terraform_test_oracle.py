@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from pathlib import PurePosixPath
 import re
-from types import MappingProxyType
 from typing import TYPE_CHECKING, ClassVar, NamedTuple, final, override
 
 from sarj_iac_lint._hcl import blocks, tokens
@@ -25,13 +24,6 @@ if TYPE_CHECKING:
     from sarj_iac_lint._hcl import Block
 
 _TEST_SUFFIX = ".tftest.hcl"
-_OVERRIDE_VALUE_ATTRIBUTES = MappingProxyType(
-    {
-        "override_data": "values",
-        "override_module": "outputs",
-        "override_resource": "values",
-    }
-)
 _IDENTIFIER_RE = re.compile(r"[A-Za-z_][\w-]*")
 _NUMBER_RE = re.compile(r"-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?")
 _STRING_RE = re.compile(r'"(?:\\.|[^"\\])*"')
@@ -50,10 +42,7 @@ class NoMockedTerraformTestOracle(Rule):
     id = "no-mocked-terraform-test-oracle"
     code = "SARJ206"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        summary=(
-            "Warn when a Terraform assertion directly reasserts the same literal injected by a resource, data, or "
-            "module override."
-        ),
+        summary=("Warn when a Terraform assertion directly reasserts the same literal injected by a module override."),
         rationale=(
             "An assertion that compares an overridden attribute directly with its authored override value is "
             "self-fulfilling; it does not exercise configuration logic or provider behavior."
@@ -67,30 +56,32 @@ class NoMockedTerraformTestOracle(Rule):
         aliases=("no-terraform-test-file",),
         limitations=(
             (
-                "Only direct literal entries in values/outputs maps on file-level or run-level override_resource, "
-                "override_data, and override_module blocks in .tftest.hcl are compared. Run overrides replace "
+                "Only direct literal entries in outputs maps on file-level or run-level override_module "
+                "blocks in .tftest.hcl are compared. Run overrides replace "
                 "file-level overrides for the entire target."
             ),
             (
-                "Mock providers, generated mock defaults, transformed assertions, JSON test syntax, provider-scoped "
-                "overrides, and dynamic expressions are deliberately excluded because their data flow is ambiguous."
+                "Resource/data overrides replace computed provider attributes, not configured or noncomputed "
+                "default attributes. Without provider-schema proof, these overrides are excluded, even for "
+                "genuine computed-value reassertions. Mock providers, generated defaults, transformed assertions, "
+                "JSON test syntax, provider-scoped overrides, and dynamic expressions are also excluded."
             ),
         ),
         examples=(
             RuleExample(
                 example_id="direct-override-reassertion",
-                title="Assertion repeats its own resource override",
+                title="Assertion repeats its own module output override",
                 outcome=ExampleOutcome.MATCH,
                 files=(
                     ExampleFile.iac(
                         "tests/routing.tftest.hcl",
-                        "override_resource {\n"
-                        "  target = aws_s3_bucket.main\n"
-                        '  values = { arn = "fixture-arn" }\n'
+                        "override_module {\n"
+                        "  target = module.storage\n"
+                        '  outputs = { arn = "fixture-arn" }\n'
                         "}\n\n"
                         'run "routing" {\n'
                         "  assert {\n"
-                        '    condition     = aws_s3_bucket.main.arn == "fixture-arn"\n'
+                        '    condition     = module.storage.arn == "fixture-arn"\n'
                         '    error_message = "ARN mismatch"\n'
                         "  }\n"
                         "}\n",
@@ -137,7 +128,7 @@ class NoMockedTerraformTestOracle(Rule):
             shadowed = {
                 "".join(tokens(target.value))
                 for block in run.blocks
-                if block.type in _OVERRIDE_VALUE_ATTRIBUTES and (target := block.attribute("target")) is not None
+                if block.type == "override_module" and (target := block.attribute("target")) is not None
             }
             injected = (
                 *(item for item in file_overrides if item.target not in shadowed),
@@ -150,11 +141,10 @@ class NoMockedTerraformTestOracle(Rule):
 def _injected_literals(items: tuple[Block, ...]) -> tuple[_InjectedLiteral, ...]:
     injected: list[_InjectedLiteral] = []
     for block in items:
-        value_attribute = _OVERRIDE_VALUE_ATTRIBUTES.get(block.type)
-        if value_attribute is None:
+        if block.type != "override_module":
             continue
         target = block.attribute("target")
-        values = block.attribute(value_attribute)
+        values = block.attribute("outputs")
         if target is None or values is None:
             continue
         target_expression = "".join(tokens(target.value))

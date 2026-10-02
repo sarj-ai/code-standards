@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "37b4542ae3296ba11b8d6377c1134163a6e2c37fd7219a956f897ce1f85eacd3",
-  "cliSha256": "e9faf9dc8ed69602fe638268bd2e090f2317d56c58a84739203d7a23c0511ec3",
+  "catalogSha256": "cdd66ec2a30ea59769d18f27e69af6de226975937e97ab4514b78fce22f389ff",
+  "cliSha256": "f14dc79fb7e9b1bc261a4026bb1acd0a6b66d6952519c0a242f3ec8e23813e74",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -4614,7 +4614,7 @@
           "files": [
             {
               "path": "tests/routing.tftest.hcl",
-              "source": "override_resource {\n  target = aws_s3_bucket.main\n  values = { arn = \"fixture-arn\" }\n}\n\nrun \"routing\" {\n  assert {\n    condition     = aws_s3_bucket.main.arn == \"fixture-arn\"\n    error_message = \"ARN mismatch\"\n  }\n}\n"
+              "source": "override_module {\n  target  = module.storage\n  outputs = { arn = \"fixture-arn\" }\n}\n\nrun \"routing\" {\n  assert {\n    condition     = module.storage.arn == \"fixture-arn\"\n    error_message = \"ARN mismatch\"\n  }\n}\n"
             }
           ],
           "fixedFiles": [],
@@ -4622,7 +4622,7 @@
           "id": "direct-override-reassertion",
           "outcome": "reject",
           "scenarioId": "terraform-provider-evidence",
-          "title": "Assertion repeats its own resource override"
+          "title": "Assertion repeats its own module output override"
         },
         {
           "expectedCount": 0,

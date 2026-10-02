@@ -80,13 +80,13 @@ def test_policy_analysis_hides_only_exact_baselined_diagnostics(tmp_path: Path) 
 
 
 def test_mocked_terraform_test_can_be_ratcheted_without_hiding_new_files(tmp_path: Path) -> None:
-    test_source = """override_resource {
-  target = aws_s3_bucket.main
-  values = { arn = "fixture-arn" }
+    test_source = """override_module {
+  target = module.fixture
+  outputs = { arn = "fixture-arn" }
 }
 run "routing" {
   assert {
-    condition = aws_s3_bucket.main.arn == "fixture-arn"
+    condition = module.fixture.arn == "fixture-arn"
     error_message = "ARN mismatch"
   }
 }
