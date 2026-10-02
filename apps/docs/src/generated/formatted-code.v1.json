@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "f2117c000d9eb68baa355f2ad693cfc962fab737908f2e4e816ceaecf3eef98d",
-  "cliSha256": "3c20618fa4b2b586f1aba358c40162585513f1af2f425b9436494b3313182f45",
+  "catalogSha256": "118a3e57f53a7e2942f484ea700c27a3b0776aa75953f2dc1e6c42f471cbd0bc",
+  "cliSha256": "e11dd834f6ec184eddc0b7d883c23df2b56161d9d13137407744e7c71fd18071",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -7780,6 +7780,41 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Test patches six collaborators"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:prefer-autospec-for-callable-mock": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "tests/test_delivery.py",
+              "source": "from unittest.mock import create_autospec\n\n\ndef send(*, recipient: str) -> None:\n    pass\n\n\ndef test_send():\n    double = create_autospec(send, spec_set=True)\n    double(recipient=\"sample\")\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_delivery.py",
+          "id": "autospecced-function-direct-call",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Autospec checks the function call shape"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "tests/test_delivery.py",
+              "source": "from unittest.mock import Mock\n\n\ndef send(*, recipient: str) -> None:\n    pass\n\n\ndef test_send():\n    double = Mock(spec=send)\n    double(recipient=\"sample\")\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_delivery.py",
+          "id": "specced-function-direct-call",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A function spec leaves invocation permissive"
         }
       ],
       "optionsSchemaSource": null

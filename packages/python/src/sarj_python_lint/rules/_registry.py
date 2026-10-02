@@ -98,6 +98,7 @@ from sarj_python_lint.rules.no_whole_request_response_payload_in_log import (
 from sarj_python_lint.rules.opaque_parametrize_case_needs_id import OpaqueParametrizeCaseNeedsId
 from sarj_python_lint.rules.over_mocked_test import OverMockedTest
 from sarj_python_lint.rules.phase_label_comment import TestPhaseLabelComment
+from sarj_python_lint.rules.prefer_autospec_for_callable_mock import PreferAutospecForCallableMock
 from sarj_python_lint.rules.prefer_class_row import PreferClassRow
 from sarj_python_lint.rules.prefer_collection_comprehension import PreferCollectionComprehension
 from sarj_python_lint.rules.prefer_constant_time_secret_compare import (
@@ -248,6 +249,7 @@ REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
         PreferInjectedDependencyOverMonkeypatch.id: PreferInjectedDependencyOverMonkeypatch,
         PreferMonkeypatchForProcessStateInTest.id: PreferMonkeypatchForProcessStateInTest,
         MockWithoutSpec.id: MockWithoutSpec,
+        PreferAutospecForCallableMock.id: PreferAutospecForCallableMock,
         OpaqueParametrizeCaseNeedsId.id: OpaqueParametrizeCaseNeedsId,
         PytestFixtureReturnsBareTuple.id: PytestFixtureReturnsBareTuple,
         StoreGetDelegatesToBulkRead.id: StoreGetDelegatesToBulkRead,
