@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "0e24a457e394bc5ef72f7110dd242f0e5b477e6f953d6f1319c7701968d16cf4",
-  "cliSha256": "f5dd7fb421b7177945c3b10935f437b957eb64667d2e99f44929baeae0da97db",
+  "catalogSha256": "2baf252d7efb2409162dda58e9473e8a273b038ae6ab3c568ab50fd1c1e3c88b",
+  "cliSha256": "c0f3abe28f1cc8df7176b244a32ad87f68945801e646701709d853f330fe90ec",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -5778,6 +5778,101 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Comment explains a consequence"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:no-broad-keyword-capture": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/adapter.py",
+              "source": "def wrapper(*args: object, **kwargs: object):\n    return target(*args, **kwargs)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/adapter.py",
+          "id": "broad-forwarding-arguments",
+          "outcome": "reject",
+          "scenarioId": "forwarding",
+          "title": "Forwarding broad arguments still loses the callable contract"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "tests/fakes/session.py",
+              "source": "class Session:\n    async def start(self, **_kwargs: object) -> None:\n        self.start_count += 1\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/fakes/session.py",
+          "id": "discarded-session-keywords",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "An ignored catch-all weakens a fake's contract"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/templates.py",
+              "source": "def render(\n    template: str, **values: object\n) -> (\n    str\n):  # sarj-noqa: SARJ477 — template supplies dynamic field names and object formatting\n    return template.format(**values)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/templates.py",
+          "id": "documented-open-template-fields",
+          "outcome": "accept",
+          "scenarioId": "dynamic-boundary",
+          "title": "Document why template fields require an open object-valued interface"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/templates.py",
+              "source": "def render(template: str, **values: object) -> str:\n    return template.format(**values)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/templates.py",
+          "id": "open-template-fields",
+          "outcome": "reject",
+          "scenarioId": "dynamic-boundary",
+          "title": "A deliberately open formatting interface still requests policy review"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/adapter.py",
+              "source": "from collections.abc import Callable\n\n\ndef wrapper[**P, R](target: Callable[P, R], *args: P.args, **kwargs: P.kwargs) -> R:\n    return target(*args, **kwargs)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/adapter.py",
+          "id": "typed-forwarding-arguments",
+          "outcome": "accept",
+          "scenarioId": "forwarding",
+          "title": "ParamSpec preserves the forwarded callable contract"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "tests/fakes/session.py",
+              "source": "class Session:\n    async def start(self, *, room: Room, agent: Agent) -> None:\n        _unused_inputs = room, agent\n        self.start_count += 1\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/fakes/session.py",
+          "id": "typed-unused-keywords",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Preserve named typed keywords with a named unused binding"
         }
       ],
       "optionsSchemaSource": null
