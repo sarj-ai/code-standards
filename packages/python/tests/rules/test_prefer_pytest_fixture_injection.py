@@ -240,6 +240,84 @@ _SUPPORT = {
 }
 
 
+_PROVENANCE_CASES = (
+    (
+        _case(
+            "rewritten-pytest-marker",
+            "import pytest\n"
+            + _BASE.replace(
+                "def test_service",
+                "pytest.mark.integration = pytest.fixture\n@pytest.mark.integration\ndef test_service",
+            ),
+        ),
+        _HELPER,
+    ),
+    (
+        _case(
+            "ordinary-pytest-marker",
+            "import pytest\n" + _BASE.replace("def test_service", "@pytest.mark.integration\ndef test_service"),
+            ExpectedOutcome.MATCH,
+        ),
+        _HELPER,
+    ),
+    (
+        _case(
+            "unrelated-pytest-attribute",
+            "import pytest\n"
+            + _BASE.replace("def test_service", "pytest.other = True\n@pytest.mark.integration\ndef test_service"),
+            ExpectedOutcome.MATCH,
+        ),
+        _HELPER,
+    ),
+    (
+        _case("global-constructor-writer", _BASE),
+        _HELPER + "def configure():\n    global ConnectionPool\n    ConnectionPool = replacement\nconfigure()\n",
+    ),
+    (
+        _case("global-helper-writer", _BASE),
+        _HELPER + "def configure():\n    global new_resource\n    new_resource = replacement\nconfigure()\n",
+    ),
+    (
+        _case("constructor-default-walrus", _BASE),
+        _HELPER + "def configure(unused=(ConnectionPool := replacement)):\n    pass\n",
+    ),
+    (
+        _case(
+            "caller-helper-default-walrus",
+            _BASE.replace(
+                "def test_service", "def configure(unused=(new_resource := replacement)):\n    pass\ndef test_service"
+            ),
+        ),
+        _HELPER,
+    ),
+    (
+        _case(
+            "caller-conditional-wildcard",
+            _BASE.replace("def test_service", "if enabled:\n    from sample.custom import *\ndef test_service"),
+        ),
+        _HELPER,
+    ),
+    (
+        _case("constructor-read-only-global", _BASE, ExpectedOutcome.MATCH),
+        _HELPER + "def observe():\n    global ConnectionPool\n    return ConnectionPool\n",
+    ),
+    (
+        _case("unrelated-default-walrus", _BASE, ExpectedOutcome.MATCH),
+        _HELPER + "def configure(unused=(other := object())):\n    pass\n",
+    ),
+)
+
+
+@pytest.mark.parametrize(
+    ("case", "helper"), _PROVENANCE_CASES, ids=tuple(case.case_id for case, _helper in _PROVENANCE_CASES)
+)
+def test_helper_requires_runtime_binding_provenance(
+    case: EvaluationCase, helper: str, project: Callable[[str, Mapping[str, str]], Path]
+) -> None:
+    path = project(case.path.as_posix(), {**_FILES, "tests/conftest.py": helper, "tests/test_service.py": case.source})
+    assert bool(PreferPytestFixtureInjection().check(path, case.source)) is (case.expected is ExpectedOutcome.MATCH)
+
+
 @pytest.fixture
 def project(tmp_path: Path) -> Callable[[str, Mapping[str, str]], Path]:
     sequence = count()
