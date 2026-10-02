@@ -51,6 +51,8 @@ class IacSourceCoupledTest(Rule):
             "Files produced beneath recognized temporary-directory fixtures are generated outputs and remain unreported.",
             "The Python detector currently owns Terraform and HCL suffixes; YAML remains with the general source-coupled rule.",
             "Fixture, golden, and snapshot paths are treated as deliberate representation contracts; other packaging, formatter, and compatibility contracts require an exact suppression.",
+            "Lambda bodies and unconsumed generators are not inferred. Comprehension targets and match captures cannot inherit stale outer source provenance; proven builtin all/any line-content checks remain in scope.",
+            "Exact byte copies into proven temporary outputs and same-path byte preservation following a visible write_bytes of the compared named value remain unreported. Fixed-source byte equality and unproven or overwritten writes still require an exact representation-contract suppression.",
         ),
         examples=(
             RuleExample(

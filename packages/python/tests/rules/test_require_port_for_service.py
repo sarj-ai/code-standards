@@ -2424,3 +2424,54 @@ def test_provider_wildcard_import_cannot_prove_owned_collaborator_from_separate_
     caller = tmp_path / "app" / "routing.py"
     caller.write_text("from app.adapter import Coordinator\nclass Consumer:" + consumer)
     assert not analyze([RequirePortForService.id], [provider, caller], root=tmp_path)
+
+
+@pytest.mark.parametrize(
+    "declaration",
+    [
+        "def expose_port(cls):\n    return other_factory\n\n@expose_port\nclass Coordinator:",
+        "def configure(unused=(Backend := object)):\n    pass\n\nclass Coordinator:",
+        "configure = lambda unused=(Backend := object): unused\n\nclass Coordinator:",
+        "def configure(unused=(Coordinator := other_factory)):\n    pass\n\nclass Consumer:",
+    ],
+)
+def test_factory_boundary_needs_owned_runtime_classes(declaration: str, tmp_path: Path) -> None:
+    owner = "class Consumer:" if "class Consumer:" in declaration else "class Coordinator:"
+    source = _FACTORY_BOUNDARY.replace(owner, declaration)
+    assert not _analyze_factory_source(source, tmp_path)
+
+
+@pytest.mark.parametrize(
+    "declaration",
+    [
+        "from typing import final as closed\n@closed\nclass Coordinator:",
+        "def configure(unused=(runtime_value := None)):\n    pass\n\nclass Coordinator:",
+        "def configure():\n    Backend = object\n\nclass Coordinator:",
+    ],
+)
+def test_factory_boundary_preserves_identity_decorator_and_unrelated_bindings(declaration: str, tmp_path: Path) -> None:
+    source = _FACTORY_BOUNDARY.replace("class Coordinator:", declaration)
+    assert len(_analyze_factory_source(source, tmp_path)) == 1
+
+
+@pytest.mark.parametrize("method", ["def read(self, key: str)", "def __init__(self, *, enabled: bool)"])
+def test_factory_boundary_does_not_infer_replaced_method_bodies(method: str, tmp_path: Path) -> None:
+    source = _FACTORY_BOUNDARY.replace(method, f"@replace_body\n    {method}")
+    assert not _analyze_factory_source(source, tmp_path)
+
+
+@pytest.mark.parametrize("decorator", ["final", "override"])
+def test_factory_boundary_keeps_canonical_method_identity(decorator: str, tmp_path: Path) -> None:
+    source = f"from typing import {decorator} as preserve\n" + _FACTORY_BOUNDARY.replace(
+        "def read(self, key: str)", "@preserve\n    def read(self, key: str)"
+    )
+    assert len(_analyze_factory_source(source, tmp_path)) == 1
+
+
+@pytest.mark.parametrize("operation", ["write", "inspect"])
+def test_factory_boundary_counts_only_proven_consumed_operations(operation: str, tmp_path: Path) -> None:
+    source = _FACTORY_BOUNDARY.replace(
+        "class Consumer:",
+        "    @replace_body\n    def inspect(self, key: str, value: str) -> None:\n        self.backend.write(key, value)\n\nclass Consumer:",
+    ).replace("Coordinator(enabled=True).write(key, value)", f"Coordinator(enabled=True).{operation}(key, value)")
+    assert len(_analyze_factory_source(source, tmp_path)) == (1 if operation == "write" else 0)

@@ -239,7 +239,14 @@ class PreferMatchTypeDispatch(Rule):
             return []
         imports = context.imports
         all_nodes = tuple(context.nodes(ast.AST))
-        unsafe_bindings = _unsafe_local_bound_names(tree, all_nodes)
+        unsafe_bindings = _unsafe_local_bound_names(tree, all_nodes) | frozenset(
+            qualified
+            for node in all_nodes
+            if isinstance(node, ast.Attribute)
+            and isinstance(node.ctx, (ast.Store, ast.Del))
+            and (qualified := imports.resolved_qualified_name(node)) is not None
+            and qualified.startswith("ast.")
+        )
         has_wildcard_import = any(
             isinstance(node, ast.ImportFrom) and any(alias.name == "*" for alias in node.names) for node in all_nodes
         )
@@ -627,7 +634,11 @@ def _type_reference(
     if isinstance(root, ast.Name) and root.id in unsafe_bindings:
         return None
     symbol = imports.resolved_symbol(expression, sources=frozenset({"ast"}))
-    if symbol is None or not (symbol[:1].isupper() or symbol in _LOWERCASE_AST_TYPES):
+    if (
+        symbol is None
+        or f"ast.{symbol}" in unsafe_bindings
+        or not (symbol[:1].isupper() or symbol in _LOWERCASE_AST_TYPES)
+    ):
         return None
     return f"ast.{symbol}"
 

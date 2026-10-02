@@ -190,6 +190,36 @@ _CASES = (
         "rebound-guard", Language.PYTHON, _BASE.replace("def is_mapping", "TypeGuard = custom_guard\ndef is_mapping")
     ),
     EvaluationCase("foreign-guard", Language.PYTHON, _BASE.replace("from typing import", "from custom import")),
+    EvaluationCase("relative-input-alias", Language.PYTHON, "from .contracts import object\n" + _BASE),
+    EvaluationCase("relative-container-alias", Language.PYTHON, "from .contracts import dict\n" + _BASE),
+    EvaluationCase("relative-instance-check", Language.PYTHON, "from .checks import isinstance\n" + _BASE),
+    EvaluationCase(
+        "type-checking-relative-input",
+        Language.PYTHON,
+        "from typing import TYPE_CHECKING\nif TYPE_CHECKING:\n    from .contracts import object\n" + _BASE,
+    ),
+    EvaluationCase(
+        "conditional-foreign-input",
+        Language.PYTHON,
+        "if use_contracts:\n    from domain import object\n" + _BASE,
+    ),
+    EvaluationCase(
+        "relative-guard-replacement",
+        Language.PYTHON,
+        _BASE.replace("def is_mapping", "from .contracts import TypeGuard\ndef is_mapping"),
+    ),
+    EvaluationCase(
+        "relative-container-symbol-alias-replacement",
+        Language.PYTHON,
+        "from builtins import dict as Mapping\nfrom .contracts import Mapping\n"
+        + _BASE.replace("dict[str, object]", "Mapping[str, object]").replace("value, dict", "value, Mapping"),
+    ),
+    EvaluationCase(
+        "unrelated-relative-import", Language.PYTHON, "from .contracts import Payload\n" + _BASE, ExpectedOutcome.MATCH
+    ),
+    EvaluationCase(
+        "explicit-builtin-import", Language.PYTHON, "from builtins import object, dict\n" + _BASE, ExpectedOutcome.MATCH
+    ),
     EvaluationCase("wildcard-import", Language.PYTHON, "from custom import *\n" + _BASE),
     EvaluationCase("builtins-mutated", Language.PYTHON, "import builtins\nbuiltins.dict = custom_container\n" + _BASE),
     EvaluationCase("typing-mutated", Language.PYTHON, "import typing\ntyping.TypeGuard = custom_guard\n" + _BASE),

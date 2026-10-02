@@ -235,15 +235,17 @@ def test_ignores_shadowed_or_rebound_imports(source: str) -> None:
     assert _check(source) == []
 
 
-def test_reports_use_before_later_rebinding() -> None:
-    diagnostics = _check("""
+def test_ignores_statically_local_name_before_later_assignment() -> None:
+    assert (
+        _check("""
         import sys
 
         def helper():
             sys.modules["optional"] = fake
             sys = registry
     """)
-    assert len(diagnostics) == 1
+        == []
+    )
 
 
 def test_nested_helper_is_analyzed_once() -> None:
@@ -369,3 +371,70 @@ _TEARDOWN_CASES = (
 @pytest.mark.parametrize("case", _TEARDOWN_CASES, ids=tuple(case.case_id for case in _TEARDOWN_CASES))
 def test_yield_does_not_establish_cleanup_ownership(case: EvaluationCase) -> None:
     assert len(_check(case.source)) == (2 if case.case_id == "setup-still-reports" else 1)
+
+
+_IMPORT_PROVENANCE_CASES = (
+    EvaluationCase(
+        "conflicting-local-imports",
+        Language.PYTHON,
+        "import sys\ndef test_registry():\n    import custom_registry as sys\n    import other_registry as sys\n    sys.modules['entry'] = object()\n",
+    ),
+    EvaluationCase(
+        "conditional-local-import",
+        Language.PYTHON,
+        "import sys\ndef test_registry():\n    if enabled:\n        import custom_registry as sys\n    sys.modules['entry'] = object()\n",
+    ),
+    EvaluationCase(
+        "nested-fixture-shadow",
+        Language.PYTHON,
+        "import sys\ndef test_registry(sys):\n    def mutate():\n        sys.modules['entry'] = object()\n    mutate()\n",
+    ),
+    EvaluationCase(
+        "nested-import-shadow",
+        Language.PYTHON,
+        "import sys\ndef test_registry():\n    import custom_registry as sys\n    def mutate():\n        sys.modules['entry'] = object()\n    mutate()\n",
+    ),
+    EvaluationCase(
+        "nested-standard-import",
+        Language.PYTHON,
+        "def test_registry():\n    import sys\n    def mutate():\n        sys.modules['entry'] = object()\n    mutate()\n",
+        ExpectedOutcome.MATCH,
+    ),
+    EvaluationCase(
+        "local-replacement-import",
+        Language.PYTHON,
+        "import sys\ndef test_registry():\n    import custom_registry as sys\n    sys.modules['entry'] = object()\n",
+    ),
+    EvaluationCase(
+        "local-pattern-capture",
+        Language.PYTHON,
+        "import sys\ndef test_registry(source):\n    match source:\n        case sys:\n            sys.modules['entry'] = object()\n",
+    ),
+    EvaluationCase(
+        "local-exception-capture",
+        Language.PYTHON,
+        "import sys\ndef test_registry():\n    try:\n        action()\n    except Exception as sys:\n        sys.modules['entry'] = object()\n",
+    ),
+    EvaluationCase(
+        "module-pattern-capture",
+        Language.PYTHON,
+        "import sys\nmatch source:\n    case sys:\n        pass\ndef test_registry():\n    sys.modules['entry'] = object()\n",
+    ),
+    EvaluationCase(
+        "local-standard-import",
+        Language.PYTHON,
+        "import sys\ndef test_registry():\n    import sys\n    sys.modules['entry'] = object()\n",
+        ExpectedOutcome.MATCH,
+    ),
+    EvaluationCase(
+        "unrelated-capture",
+        Language.PYTHON,
+        "import sys\ndef test_registry(source):\n    match source:\n        case other:\n            sys.modules['entry'] = object()\n",
+        ExpectedOutcome.MATCH,
+    ),
+)
+
+
+@pytest.mark.parametrize("case", _IMPORT_PROVENANCE_CASES, ids=tuple(case.case_id for case in _IMPORT_PROVENANCE_CASES))
+def test_process_mutation_requires_standard_import_provenance(case: EvaluationCase) -> None:
+    assert bool(_check(case.source)) is (case.expected is ExpectedOutcome.MATCH)

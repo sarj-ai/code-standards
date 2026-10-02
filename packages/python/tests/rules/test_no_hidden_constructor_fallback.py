@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from sarj_python_lint.__main__ import main
+from sarj_python_lint.__main__ import analyze, main
 from sarj_python_lint.rule_base import Diagnostic, RuleExample, Severity
 from sarj_python_lint.rules.no_hidden_constructor_fallback import (
     NoHiddenConstructorFallback,
@@ -91,6 +91,98 @@ def test_reused_rule_observes_dependency_edits_without_a_prepared_session(tmp_pa
     assert rule.check(service, service_source) == []
     config.write_text(settings_source)
     assert len(rule.check(service, service_source)) == 1
+
+
+@pytest.mark.parametrize(
+    "provider",
+    [
+        "from pydantic_settings import BaseSettings\nclass Settings(BaseSettings):\n    MODEL: str='ambient'\nsettings=Settings()\nclass State:\n    MODEL='explicit'\nsettings=State()\n",
+        "from pydantic_settings import BaseSettings\nclass Settings(BaseSettings):\n    MODEL: str='ambient'\nclass Settings:\n    MODEL='explicit'\nsettings=Settings()\n",
+        "from pydantic_settings import BaseSettings\nclass Settings(BaseSettings):\n    MODEL: str='ambient'\nsettings=Settings()\nif enabled:\n    settings=explicit_state\n",
+        "from pydantic_settings import BaseSettings\nclass Settings(BaseSettings):\n    MODEL: str='ambient'\nsettings=Settings()\nmatch explicit_state:\n    case settings:\n        pass\n",
+        "from pydantic_settings import BaseSettings\nclass Settings(BaseSettings):\n    MODEL: str='ambient'\nsettings=Settings()\ndef replace():\n    global settings\n    settings=explicit_state\n",
+        "from pydantic_settings import BaseSettings\nif enabled:\n    from application import State as BaseSettings\nclass Settings(BaseSettings):\n    MODEL: str='ambient'\nsettings=Settings()\n",
+        "from pydantic_settings import BaseSettings\nclass Settings(BaseSettings):\n    MODEL: str='ambient'\nSettings=ExplicitState\nclass Derived(Settings):\n    pass\nsettings=Derived()\n",
+        "from pydantic_settings import BaseSettings\nclass Settings(BaseSettings):\n    MODEL: str='ambient'\nsettings=Settings()\ndef configure(unused=(settings := explicit_state)):\n    pass\n",
+        "from pydantic_settings import BaseSettings\nclass Settings(BaseSettings):\n    MODEL: str='ambient'\nsettings=Settings()\nreplacements=[(settings := explicit_state) for _ in range(1)]\n",
+        "from pydantic_settings import BaseSettings\nclass Settings(BaseSettings):\n    MODEL: str='ambient'\nsettings=Settings()\nfrom application import *\n",
+        "from pydantic_settings import BaseSettings\ndef replace(cls):\n    return ExplicitState\n@replace\nclass Settings(BaseSettings):\n    MODEL: str='ambient'\nsettings=Settings()\n",
+        "from pydantic_settings import BaseSettings\nclass ParentSettings(BaseSettings):\n    MODEL: str='ambient'\ndef replace(cls):\n    return ExplicitState\n@replace\nclass Settings(ParentSettings):\n    pass\nsettings=Settings()\n",
+    ],
+    ids=(
+        "instance-replaced",
+        "class-replaced",
+        "conditional-state",
+        "pattern-state",
+        "global-writer",
+        "settings-base-replaced",
+        "inherited-base-rebound",
+        "default-walrus-replaces-instance",
+        "comprehension-walrus-replaces-instance",
+        "wildcard-replaces-instance",
+        "decorator-replaces-class",
+        "decorator-replaces-derived-class",
+    ),
+)
+def test_unstable_provider_keeps_constructor_warning_ownership(tmp_path: Path, provider: str) -> None:
+    service = _settings_project(
+        tmp_path,
+        "from app.config import settings\n"
+        "class Generator:\n"
+        "    def __init__(self, *, model: str | None = None):\n"
+        "        self.model=model or settings.MODEL\n"
+        "def run(model=None):\n"
+        "    return model or settings.MODEL\n",
+    )
+    service.with_name("config.py").write_text(
+        f"class ExplicitState:\n    MODEL='explicit'\nexplicit_state=ExplicitState()\nenabled=True\n{provider}"
+    )
+    (tmp_path / "application.py").write_text("State=type('State', (), {'MODEL': 'explicit'})\nsettings=State()\n")
+    findings = analyze(
+        [
+            "no-hidden-constructor-fallback",
+            "discourage-nullable-constructor-parameters",
+            "no-nullable-dependency-fallback",
+        ],
+        [service],
+    )
+    assert [finding.code for finding in findings] == ["SARJ468"]
+
+
+@pytest.mark.parametrize(
+    "decorator",
+    [
+        "",
+        "from typing import final\n@final\n",
+        "import typing as hints\n@hints.final\n",
+        "from typing_extensions import final as keep_class\n@keep_class\n",
+    ],
+    ids=("undecorated", "final", "qualified-final", "extensions-final"),
+)
+def test_stable_provider_preserves_existing_diagnostics(tmp_path: Path, decorator: str) -> None:
+    service = _settings_project(
+        tmp_path,
+        "from app.config import settings\n"
+        "class Generator:\n"
+        "    def __init__(self, *, model: str | None = None):\n"
+        "        self.model=model or settings.MODEL\n"
+        "def run(model=None):\n"
+        "    return model or settings.MODEL\n",
+    )
+    config = service.with_name("config.py")
+    config.write_text(
+        config.read_text().replace("class Settings(BaseSettings):", f"{decorator}class Settings(BaseSettings):")
+        + "settings: Settings\ndef observe():\n    global settings\n    return settings.MODEL\n"
+    )
+    findings = analyze(
+        [
+            "no-hidden-constructor-fallback",
+            "discourage-nullable-constructor-parameters",
+            "no-nullable-dependency-fallback",
+        ],
+        [service],
+    )
+    assert [finding.code for finding in findings] == ["SARJ095", "SARJ468", "SARJ469"]
 
 
 @pytest.mark.parametrize(
@@ -880,3 +972,37 @@ def test_class_local_settings_default_is_not_ambient_config(tmp_path: Path) -> N
         "    settings = custom\n    def __init__(self, *, model=settings.MODEL):\n        self.model = model\n",
     )
     assert NoHiddenConstructorFallback().check(service, service.read_text()) == []
+
+
+@pytest.mark.parametrize("preserved", [False, True], ids=("replacement-decorator", "class-preserving-final"))
+def test_imported_settings_subclass_decorator_preserves_provenance(tmp_path: Path, preserved: bool) -> None:
+    service = _settings_project(
+        tmp_path,
+        "from app.public_config import settings\n"
+        "class Generator:\n"
+        "    def __init__(self, *, model: str | None = None):\n"
+        "        self.model=model or settings.MODEL\n"
+        "def run(model=None):\n"
+        "    return model or settings.MODEL\n",
+    )
+    service.with_name("base_settings.py").write_text(
+        "from pydantic_settings import BaseSettings\nclass ParentSettings(BaseSettings):\n    MODEL: str='ambient'\n"
+    )
+    decorators = (
+        "from typing import final\n@final\n"
+        if preserved
+        else "class ExplicitState:\n    MODEL='explicit'\ndef replace(cls):\n    return ExplicitState\n@replace\n"
+    )
+    service.with_name("config.py").write_text(
+        "from app.base_settings import ParentSettings\n" + decorators + "class Settings(ParentSettings):\n    pass\n"
+    )
+    service.with_name("public_config.py").write_text("from app.config import Settings\nsettings=Settings()\n")
+    findings = analyze(
+        [
+            "no-hidden-constructor-fallback",
+            "discourage-nullable-constructor-parameters",
+            "no-nullable-dependency-fallback",
+        ],
+        [service],
+    )
+    assert [finding.code for finding in findings] == (["SARJ095", "SARJ468", "SARJ469"] if preserved else ["SARJ468"])

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ast
 from pathlib import PurePosixPath
+from types import MappingProxyType
 from typing import TYPE_CHECKING, ClassVar, NamedTuple, final, override
 
 from sarj_python_lint.rule_base import (
@@ -112,11 +113,10 @@ class PreferMonkeypatchForProcessStateInTest(Rule):
         if tree is None:
             return []
 
-        module_imports = context.module_imports
         mutations = [
             mutation
             for function in _functions(tree, node_index=context.node_index)
-            for mutation in _function_mutations(function, module_imports)
+            for mutation in _function_mutations(function, _enclosing_imports(function, context))
         ]
         diagnostics = [
             Diagnostic(
@@ -137,6 +137,30 @@ class PreferMonkeypatchForProcessStateInTest(Rule):
         return diagnostics
 
 
+def _enclosing_imports(function: ast.FunctionDef | ast.AsyncFunctionDef, context: PythonFileContext) -> ImportIndex:
+    scopes: list[ast.FunctionDef | ast.AsyncFunctionDef] = []
+    parent = context.parents.get(function)
+    while parent is not None:
+        if isinstance(parent, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            scopes.append(parent)
+        parent = context.parents.get(parent)
+    imports = context.module_imports
+    for scope in reversed(scopes):
+        local = _local_imports(scope)
+        bindings = {name: target for name, target in imports.bindings.items() if name not in local.shadowed_names}
+        bindings.update(local.bindings)
+        imports = ImportIndex(MappingProxyType(bindings), imports.shadowed_names | local.shadowed_names)
+    return imports
+
+
+def _local_imports(function: ast.FunctionDef | ast.AsyncFunctionDef) -> ImportIndex:
+    imports = ImportIndex.from_tree(ast.Module(body=[function, *function.body], type_ignores=[]))
+    imported_names = {
+        node.asname or node.name.partition(".")[0] for node in _lexical_nodes(function) if isinstance(node, ast.alias)
+    }
+    return ImportIndex(imports.bindings, imports.shadowed_names | (imported_names - imports.bindings.keys()))
+
+
 def _functions(
     tree: ast.Module, *, node_index: NodeIndex | None = None
 ) -> Iterator[ast.FunctionDef | ast.AsyncFunctionDef]:
@@ -149,8 +173,7 @@ def _function_mutations(
     function: ast.FunctionDef | ast.AsyncFunctionDef,
     module_imports: ImportIndex,
 ) -> list[_Mutation]:
-    local_tree = ast.Module(body=function.body, type_ignores=[])
-    local_imports = ImportIndex.from_tree(local_tree)
+    local_imports = _local_imports(function)
     nodes = tuple(_lexical_nodes(function))
     parents = {child: parent for parent in nodes for child in ast.iter_child_nodes(parent)}
     mutations: list[_Mutation] = []
@@ -270,11 +293,12 @@ def _resolves(
     sources: frozenset[str],
     symbol: str,
 ) -> bool:
-    return module_imports.resolves(node, sources=sources, symbol=symbol) or local_imports.resolves(
-        node,
-        sources=sources,
-        symbol=symbol,
-    )
+    root = node
+    while isinstance(root, ast.Attribute):
+        root = root.value
+    if isinstance(root, ast.Name) and (root.id in local_imports.bindings or root.id in local_imports.shadowed_names):
+        return local_imports.resolves(node, sources=sources, symbol=symbol)
+    return module_imports.resolves(node, sources=sources, symbol=symbol)
 
 
 def _import_root_rebound_before(

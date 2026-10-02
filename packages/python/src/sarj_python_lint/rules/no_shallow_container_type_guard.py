@@ -54,6 +54,7 @@ class NoShallowContainerTypeGuard(Rule):
             "The TypeGuard or TypeIs target must be a matching builtin dict, list, or set whose slots all resolve to object, str, int, bool, float, or bytes; at least one slot must be narrower than object.",
             "Includes authored tests; generated and vendor source is excluded. String annotations, constrained input types, unions, Any, TypeVars, Protocols, assignment aliases, nested definitions, and content validators are not inferred.",
             "Annotation imports include TYPE_CHECKING imports. Runtime imports use conservative file-wide shadow facts, so unrelated local rebinding can cause false negatives. Wildcard imports, explicit writes to relevant builtin or typing attributes, and exception, pattern or walrus bindings that shadow relevant names or imported aliases exclude the file; dynamic namespace mutation is not inferred.",
+            "Relative or conditional imports that replace relevant builtin or typing names exclude the file unless the import proves the same canonical symbol. Unrelated relative imports remain in scope.",
             "No autofix: widening the return contract can require caller changes, while adding content validation changes behavior and cost.",
         ),
         examples=(
@@ -182,11 +183,18 @@ def _ambiguous_symbols(context: PythonFileContext) -> bool:
         and (target.symbol is None or target.symbol in _BUILTINS | {"TypeGuard", "TypeIs"})
     }
     for node in context.nodes(
-        ast.ImportFrom, ast.Attribute, ast.ExceptHandler, ast.MatchAs, ast.MatchStar, ast.MatchMapping, ast.NamedExpr
+        ast.Import,
+        ast.ImportFrom,
+        ast.Attribute,
+        ast.ExceptHandler,
+        ast.MatchAs,
+        ast.MatchStar,
+        ast.MatchMapping,
+        ast.NamedExpr,
     ):
         match node:
-            case ast.ImportFrom(names=aliases):
-                if any(alias.name == "*" for alias in aliases):
+            case ast.Import() | ast.ImportFrom():
+                if _ambiguous_import(node, context.module_imports, sensitive_names):
                     return True
             case ast.Attribute(ctx=(ast.Store() | ast.Del())):
                 if context.module_imports.resolved_qualified_name(node) in _MUTATION_TARGETS:
@@ -203,3 +211,29 @@ def _ambiguous_symbols(context: PythonFileContext) -> bool:
             case _:
                 pass
     return False
+
+
+def _ambiguous_import(node: ast.Import | ast.ImportFrom, imports: ImportIndex, sensitive_names: frozenset[str]) -> bool:
+    if isinstance(node, ast.ImportFrom) and any(alias.name == "*" for alias in node.names):
+        return True
+    for alias in node.names:
+        name = alias.asname or alias.name.partition(".")[0]
+        if name not in sensitive_names:
+            continue
+        if not _preserves_canonical_import(node, alias, imports):
+            return True
+    return False
+
+
+def _preserves_canonical_import(node: ast.Import | ast.ImportFrom, alias: ast.alias, imports: ImportIndex) -> bool:
+    if isinstance(node, ast.ImportFrom):
+        if node.level:
+            return False
+        module, symbol = node.module, alias.name
+    else:
+        module, symbol = alias.name, None
+    name = alias.asname or alias.name.partition(".")[0]
+    target = imports.bindings.get(name)
+    if target is None:
+        return module == "builtins" and symbol == name
+    return target.module == module and target.symbol == symbol

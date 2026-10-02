@@ -476,8 +476,19 @@ def _invalidates_reference(node: ast.AST, reference: _Reference, binding: ast.Na
     match node:
         case ast.Name(id=name, ctx=ast.Store() | ast.Del()):
             return node is not binding and name == reference[0]
-        case ast.arg(arg=name):
+        case (
+            ast.arg(arg=name)
+            | ast.FunctionDef(name=name)
+            | ast.AsyncFunctionDef(name=name)
+            | ast.ClassDef(name=name)
+            | ast.ExceptHandler(name=str() as name)
+            | ast.MatchAs(name=str() as name)
+            | ast.MatchStar(name=str() as name)
+            | ast.MatchMapping(rest=str() as name)
+        ):
             return name == reference[0]
+        case ast.alias(name=imported, asname=alias):
+            return (alias or imported.partition(".")[0]) == reference[0]
         case ast.Global(names=names) | ast.Nonlocal(names=names):
             return reference[0] in names
         case ast.Attribute(ctx=ast.Store() | ast.Del()):

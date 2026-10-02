@@ -220,10 +220,28 @@ def _stable_class(tree: ast.Module, name: str) -> bool:
 
 
 def _captured_import_root(name: str, context: PythonFileContext) -> bool:
-    return any(
-        _binds_name(node, name)
-        for node in context.nodes(ast.MatchAs, ast.MatchStar, ast.MatchMapping, ast.ExceptHandler)
-    ) or any(node.target.id == name for node in context.nodes(ast.NamedExpr))
+    return (
+        any(
+            _binds_name(node, name)
+            for node in context.nodes(ast.MatchAs, ast.MatchStar, ast.MatchMapping, ast.ExceptHandler)
+        )
+        or any(node.target.id == name for node in context.nodes(ast.NamedExpr))
+        or _global_import_writer(name, context)
+    )
+
+
+def _global_import_writer(name: str, context: PythonFileContext) -> bool:
+    for declaration in context.nodes(ast.Global):
+        if name not in declaration.names:
+            continue
+        scope = context.parents.get(declaration)
+        while scope is not None and not isinstance(scope, (ast.Module, ast.FunctionDef, ast.AsyncFunctionDef)):
+            scope = context.parents.get(scope)
+        if isinstance(scope, (ast.FunctionDef, ast.AsyncFunctionDef)) and any(
+            _binds_name(node, name) for node in walk(scope)
+        ):
+            return True
+    return False
 
 
 def _binds_name(node: ast.AST, name: str) -> bool:
