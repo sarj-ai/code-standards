@@ -324,18 +324,19 @@ def _module_rebound_names(tree: ast.Module) -> frozenset[str]:
 def _suite_rebound_names(statements: list[ast.stmt]) -> frozenset[str]:
     names: set[str] = set()
     for statement in statements:
-        if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            continue
-        if isinstance(statement, ast.ClassDef):
-            names.add(statement.name)
-        elif isinstance(statement, ast.Import | ast.ImportFrom):
-            names.update(alias.asname or alias.name.partition(".")[0] for alias in statement.names)
-        else:
-            names.update(
-                node.id
-                for node in walk_ast(statement)
-                if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store)
-            )
+        match statement:
+            case ast.FunctionDef() | ast.AsyncFunctionDef():
+                continue
+            case ast.ClassDef():
+                names.add(statement.name)
+            case ast.Import() | ast.ImportFrom():
+                names.update(alias.asname or alias.name.partition(".")[0] for alias in statement.names)
+            case _:
+                names.update(
+                    node.id
+                    for node in walk_ast(statement)
+                    if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store)
+                )
     return frozenset(names)
 
 

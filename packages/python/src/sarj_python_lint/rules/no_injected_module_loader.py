@@ -185,17 +185,21 @@ def _shadowed(default: ast.expr, function: ast.AST, context: PythonFileContext) 
     parent = context.parents.get(child)
     class_scope_visible = True
     while parent is not None:
-        if isinstance(parent, (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)):
-            return True
-        if isinstance(parent, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
-            if _in_scope_body(parent, child):
-                if root.id in scope_bindings(parent):
-                    return True
-                class_scope_visible = False
-        elif isinstance(parent, ast.ClassDef) and _in_scope_body(parent, child):
-            if class_scope_visible and _class_prefix_shadows(parent, child, root.id):
+        match parent:
+            case ast.ListComp() | ast.SetComp() | ast.DictComp() | ast.GeneratorExp():
                 return True
-            class_scope_visible = False
+            case ast.FunctionDef() | ast.AsyncFunctionDef() | ast.Lambda():
+                if _in_scope_body(parent, child):
+                    if root.id in scope_bindings(parent):
+                        return True
+                    class_scope_visible = False
+            case ast.ClassDef():
+                if _in_scope_body(parent, child):
+                    if class_scope_visible and _class_prefix_shadows(parent, child, root.id):
+                        return True
+                    class_scope_visible = False
+            case _:
+                pass
         child = parent
         parent = context.parents.get(parent)
     return False
