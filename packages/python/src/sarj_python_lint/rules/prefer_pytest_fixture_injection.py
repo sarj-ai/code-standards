@@ -118,13 +118,15 @@ class PreferPytestFixtureInjection(Rule):
         ):
             return []
         tree = context.tree
+        helpers = _resource_helpers(context)
+        if not helpers:
+            return []
         module_bindings = _scope_bindings(tree)
         if "__test__" in module_bindings or any(
             isinstance(node, ast.Attribute) and node.attr == "__test__" and isinstance(node.ctx, (ast.Store, ast.Del))
             for node in ast.walk(tree)
         ):
             return []
-        helpers = _resource_helpers(context)
         diagnostics: list[Diagnostic] = []
         for statement in tree.body:
             if (
@@ -156,9 +158,12 @@ def _resource_helpers(context: PythonFileContext) -> frozenset[str]:
     tree = context.tree
     if tree is None:
         return frozenset()
+    references = tuple(_helper_imports(tree))
+    if not references:
+        return frozenset()
     bindings = _scope_bindings(tree)
     helpers: set[str] = set()
-    for reference in _helper_imports(tree):
+    for reference in references:
         if bindings[reference.local] != 1 or _root_mutated(tree, reference.local):
             continue
         target = context.session.local_source.resolve_module(
@@ -175,15 +180,19 @@ def _resource_helpers(context: PythonFileContext) -> frozenset[str]:
 
 
 def _helper_imports(tree: ast.Module) -> Iterator[_HelperImport]:
-    if any(isinstance(node, ast.ImportFrom) and any(alias.name == "*" for alias in node.names) for node in tree.body):
-        return
+    candidates: list[_HelperImport] = []
     for statement in tree.body:
-        if not isinstance(statement, ast.ImportFrom) or not statement.module:
+        if not isinstance(statement, ast.ImportFrom):
             continue
-        if statement.module.rsplit(".", 1)[-1] != "conftest":
+        module = statement.module
+        if module is None or module.rsplit(".", 1)[-1] != "conftest":
             continue
-        for alias in statement.names:
-            yield _HelperImport(alias.asname or alias.name, alias.name, statement.module, statement.level)
+        candidates.extend(
+            _HelperImport(alias.asname or alias.name, alias.name, module, statement.level) for alias in statement.names
+        )
+    if not candidates or _has_wildcard(tree):
+        return
+    yield from candidates
 
 
 def _is_resource_helper(module: LocalModule, symbol: str) -> bool:
@@ -261,7 +270,25 @@ def _assigned_dependency_call(
 def _pytest_mark(context: PythonFileContext, decorator: ast.expr) -> bool:
     target = decorator.func if isinstance(decorator, ast.Call) else decorator
     qualified = context.module_imports.resolved_qualified_name(target)
-    return qualified is not None and qualified.startswith("pytest.mark.")
+    tree = context.tree
+    root = _root_name(target)
+    if (
+        qualified is None
+        or not qualified.startswith("pytest.mark.")
+        or tree is None
+        or root is None
+        or _scope_bindings(tree)[root] != 1
+    ):
+        return False
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.Attribute, ast.Subscript)) or not isinstance(node.ctx, (ast.Store, ast.Del)):
+            continue
+        if isinstance(node, ast.Subscript) and _root_name(node.value) == root:
+            return False
+        changed = context.module_imports.resolved_qualified_name(node)
+        if changed is not None and (qualified == changed or qualified.startswith(f"{changed}.")):
+            return False
+    return True
 
 
 def _unshadowed_consumer(context: PythonFileContext, call: ast.Call, bindings: Counter[str]) -> bool:
@@ -338,15 +365,46 @@ def _scope_bindings(scope: ast.Module | Function) -> Counter[str]:
         names.update(arg.arg for arg in (arguments.vararg, arguments.kwarg) if arg is not None)
     for statement in scope.body:
         _collect_bindings(statement, names)
+    if isinstance(scope, ast.Module):
+        names.update(_global_writes(scope))
     return names
+
+
+def _global_writes(tree: ast.Module) -> Counter[str]:
+    if not any(isinstance(node, ast.Global) for node in ast.walk(tree)):
+        return Counter()
+    writes: Counter[str] = Counter()
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            continue
+        names: Counter[str] = Counter()
+        declarations: set[str] = set()
+        for statement in node.body:
+            _collect_bindings(statement, names)
+            declarations.update(_global_names(statement))
+        writes.update(dict.fromkeys(declarations & names.keys(), 2))
+    return writes
+
+
+def _global_names(node: ast.AST) -> Iterator[str]:
+    if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)):
+        return
+    if isinstance(node, ast.Global):
+        yield from node.names
+    for child in ast.iter_child_nodes(node):
+        yield from _global_names(child)
 
 
 def _collect_bindings(node: ast.AST, names: Counter[str]) -> None:
     match node:
         case ast.FunctionDef(name=name) | ast.AsyncFunctionDef(name=name) | ast.ClassDef(name=name):
             names[name] += 1
+            for expression in _definition_expressions(node):
+                _collect_bindings(expression, names)
             return
         case ast.Lambda():
+            for expression in _definition_expressions(node):
+                _collect_bindings(expression, names)
             return
         case ast.Import(names=aliases) | ast.ImportFrom(names=aliases):
             names.update(alias.asname or alias.name.partition(".")[0] for alias in aliases)
@@ -367,6 +425,16 @@ def _collect_bindings(node: ast.AST, names: Counter[str]) -> None:
             pass
     for child in ast.iter_child_nodes(node):
         _collect_bindings(child, names)
+
+
+def _definition_expressions(node: ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef | ast.Lambda) -> list[ast.AST]:
+    if isinstance(node, ast.ClassDef):
+        return [*node.decorator_list, *node.bases, *node.keywords]
+    defaults: list[ast.AST] = [
+        *node.args.defaults,
+        *(default for default in node.args.kw_defaults if default is not None),
+    ]
+    return defaults if isinstance(node, ast.Lambda) else [*node.decorator_list, *defaults]
 
 
 def _has_wildcard(tree: ast.Module) -> bool:
