@@ -44,6 +44,109 @@ _CASES = (
         "async def run(factory: Factory | None = None):\n    if factory is None:\n        factory = DefaultFactory\n    return await factory()\n",
         ExpectedOutcome.MATCH,
     ),
+    EvaluationCase(
+        "stable-factory-alias",
+        Language.PYTHON,
+        "def run(factory: Factory | None = None):\n    selected = factory or DefaultFactory\n    return selected()\n",
+        ExpectedOutcome.MATCH,
+    ),
+    EvaluationCase(
+        "stable-annotated-factory-alias",
+        Language.PYTHON,
+        "def run(factory: Factory | None = None):\n    selected: Factory = factory or DefaultFactory\n    return selected()\n",
+        ExpectedOutcome.MATCH,
+    ),
+    EvaluationCase(
+        "data-alias-called-after-rebinding",
+        Language.PYTHON,
+        "def run(value: int | None = None) -> tuple[int, str]:\n    selected = value or 10\n    observed = selected\n    selected = str\n    return observed, selected(observed)\n",
+    ),
+    EvaluationCase(
+        "data-alias-called-before-rebinding",
+        Language.PYTHON,
+        "def run(value: int | None = None) -> tuple[int, str]:\n    selected = str\n    text = selected(5)\n    selected = value or 10\n    return selected, text\n",
+    ),
+    EvaluationCase(
+        "callable-parameter-called-before-data-assignment",
+        Language.PYTHON,
+        "from collections.abc import Callable\ndef run(value: int | None = None, *, selected: Callable[[], str] | int) -> tuple[int, str]:\n    if isinstance(selected, int):\n        return selected, ''\n    text = selected()\n    selected = value or 10\n    return selected, text\n",
+    ),
+    EvaluationCase(
+        "callable-parameter-called-in-data-assignment-rhs",
+        Language.PYTHON,
+        "from collections.abc import Callable\ndef run(value: int | None = None, *, selected: Callable[[], str] | int) -> int:\n    if isinstance(selected, int):\n        return selected\n    selected = value or len(selected())\n    return selected\n",
+    ),
+    EvaluationCase(
+        "optional-callable-called-before-data-guard",
+        Language.PYTHON,
+        "from collections.abc import Callable\ndef run(value: Callable[[], str] | int | None = None) -> object:\n    if value is not None and not isinstance(value, int):\n        value()\n    if value is None:\n        value = 10\n    return value\n",
+    ),
+    EvaluationCase(
+        "same-line-stable-factory-alias",
+        Language.PYTHON,
+        "def run(factory: Factory | None = None):\n    selected = factory or DefaultFactory; return selected()\n",
+        ExpectedOutcome.MATCH,
+    ),
+    EvaluationCase(
+        "data-alias-rebound-by-definition",
+        Language.PYTHON,
+        "def run(value: int | None = None):\n    selected = value or 10\n    def selected():\n        return 'replacement'\n    return selected()\n",
+    ),
+    EvaluationCase(
+        "data-alias-rebound-by-import",
+        Language.PYTHON,
+        "def run(value: int | None = None):\n    selected = value or 10\n    from helpers import replacement as selected\n    return selected()\n",
+    ),
+    EvaluationCase(
+        "data-alias-rebound-by-pattern",
+        Language.PYTHON,
+        "def run(value: int | None = None):\n    selected = value or 10\n    match source:\n        case {**selected}:\n            pass\n    return selected()\n",
+    ),
+    EvaluationCase(
+        "data-alias-rebound-by-exception",
+        Language.PYTHON,
+        "def run(value: int | None = None):\n    selected = value or 10\n    try:\n        action()\n    except Error as selected:\n        return selected()\n",
+    ),
+    EvaluationCase(
+        "data-alias-rebound-in-branch",
+        Language.PYTHON,
+        "def run(value: int | None = None):\n    selected = value or 10\n    if condition:\n        selected = str\n        return selected(5)\n    return selected\n",
+    ),
+    EvaluationCase(
+        "data-alias-rebound-by-comprehension-walrus",
+        Language.PYTHON,
+        "def run(value: int | None = None):\n    selected = value or 10\n    results = [(selected := str) for item in items]\n    return selected(5), results\n",
+    ),
+    EvaluationCase(
+        "guarded-data-rebound-before-call",
+        Language.PYTHON,
+        "def run(value: object | None = None) -> str:\n    if value is None:\n        value = 10\n    observed = value\n    value = str\n    return value(observed)\n",
+    ),
+    EvaluationCase(
+        "data-annotated-alias-called-after-rebinding",
+        Language.PYTHON,
+        "def run(value: int | None = None):\n    selected: object = value or 10\n    selected = str\n    return selected(5)\n",
+    ),
+    EvaluationCase(
+        "nullable-parameter-rebound-by-pattern",
+        Language.PYTHON,
+        "def run(factory: Factory | None = None):\n    match source:\n        case {'factory': factory}:\n            return (factory or DefaultFactory)()\n",
+    ),
+    EvaluationCase(
+        "nullable-parameter-replaced-by-concrete-pattern",
+        Language.PYTHON,
+        "def concrete():\n    return 7\nsource = concrete\ndef run(factory=None):\n    match source:\n        case factory:\n            return (factory or concrete)()\n",
+    ),
+    EvaluationCase(
+        "nullable-parameter-replaced-by-comprehension-walrus",
+        Language.PYTHON,
+        "def concrete():\n    return 7\ndef run(factory=None):\n    replacements = [(factory := concrete) for item in range(1)]\n    return (factory or concrete)(), replacements\n",
+    ),
+    EvaluationCase(
+        "nullable-parameter-rebound-by-exception",
+        Language.PYTHON,
+        "def run(factory: Factory | None = None):\n    try:\n        action()\n    except Error as factory:\n        return (factory or DefaultFactory)()\n",
+    ),
     EvaluationCase("concrete-factory", Language.PYTHON, "def run(factory: Factory):\n    return factory()\n"),
     EvaluationCase(
         "concrete-default", Language.PYTHON, "def run(factory: Factory = DefaultFactory):\n    return factory()\n"

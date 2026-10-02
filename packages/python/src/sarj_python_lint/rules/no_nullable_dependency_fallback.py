@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+from collections import Counter
 from dataclasses import dataclass
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, ClassVar, final, override
@@ -48,7 +49,7 @@ _FALLBACK_VALUES = 2
 @dataclass(frozen=True, slots=True)
 class _ScopeUsage:
     parents: dict[ast.AST, ast.AST]
-    called: set[str]
+    calls: dict[str, list[ast.Call]]
 
 
 @final
@@ -66,6 +67,7 @@ class NoNullableDependencyFallback(Rule):
         limitations=(
             "Warns for None-defaulted function parameters with a fallback used as a callable or a proven application-settings fallback; genuine absent state is allowed.",
             "Constructors remain owned by SARJ095 and SARJ468. Decorated functions, tests, generated code, nested scope captures, non-callable object fallbacks, and interprocedural forwarding are excluded.",
+            "Callable use through a local assignment, annotation or None guard requires at most one body binding for that name and a call after the binding statement completes. Rebinding, deletion, imports, definitions, pattern or exception captures, global/nonlocal declarations and nested-scope bindings conservatively exclude that inference; direct inline calls and proven settings fallbacks remain independent.",
             "No autofix: removing explicit None acceptance changes the callable contract, and moving a fallback can change initialization timing or error handling.",
         ),
         examples=(
@@ -163,6 +165,8 @@ def _hidden_dependencies(
         guard = _guarded_fallback(statement, candidates)
         bindings = LocalBindingCollector()
         bindings.visit(statement)
+        bindings.names.update(name for node in _scope_nodes(statement) for name in _binding_names(node))
+        bindings.names.update(node.target.id for node in ast.walk(statement) if isinstance(node, ast.NamedExpr))
         # Branch/loop bindings are conservatively local; do not infer data flow.
         if not isinstance(statement, (ast.Assign, ast.AnnAssign)) and guard is None:
             candidates.difference_update(bindings.names)
@@ -177,7 +181,7 @@ def _hidden_dependencies(
         )
         if guard is not None:
             name, value = guard
-            if name in usage.called or _is_settings_fallback(value, resolver, shadowed):
+            if _called_after(name, statement, usage) or _is_settings_fallback(value, resolver, shadowed):
                 hidden.add(name)
         candidates.difference_update(bindings.names)
     return hidden
@@ -186,8 +190,41 @@ def _hidden_dependencies(
 def _scope_usage(function: ast.FunctionDef | ast.AsyncFunctionDef) -> _ScopeUsage:
     nodes = [node for statement in function.body for node in _scope_nodes(statement)]
     parents = {child: node for node in nodes for child in ast.iter_child_nodes(node)}
-    called = {node.func.id for node in nodes if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)}
-    return _ScopeUsage(parents=parents, called=called)
+    bindings = Counter(
+        name for statement in function.body for node in ast.walk(statement) for name in _binding_names(node)
+    )
+    calls: dict[str, list[ast.Call]] = {}
+    for node in nodes:
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and bindings[node.func.id] <= 1:
+            calls.setdefault(node.func.id, []).append(node)
+    return _ScopeUsage(parents=parents, calls=calls)
+
+
+def _called_after(name: str, binding: ast.stmt, usage: _ScopeUsage) -> bool:
+    end = (binding.end_lineno or binding.lineno, binding.end_col_offset or binding.col_offset)
+    return any((call.lineno, call.col_offset) > end for call in usage.calls.get(name, ()))
+
+
+def _binding_names(node: ast.AST) -> Iterator[str]:
+    match node:
+        case (
+            ast.Name(id=name, ctx=(ast.Store() | ast.Del()))
+            | ast.arg(arg=name)
+            | ast.FunctionDef(name=name)
+            | ast.AsyncFunctionDef(name=name)
+            | ast.ClassDef(name=name)
+            | ast.ExceptHandler(name=str() as name)
+            | ast.MatchAs(name=str() as name)
+            | ast.MatchStar(name=str() as name)
+            | ast.MatchMapping(rest=str() as name)
+        ):
+            yield name
+        case ast.alias(name=imported, asname=alias):
+            yield alias or imported.partition(".")[0]
+        case ast.Global(names=names) | ast.Nonlocal(names=names):
+            yield from names
+        case _:
+            return
 
 
 def _expression_dependencies(
@@ -270,7 +307,10 @@ def _used_as_dependency(node: ast.AST, usage: _ScopeUsage) -> bool:
     parent = usage.parents.get(node)
     if isinstance(parent, ast.Call) and parent.func is node:
         return True
-    if isinstance(parent, ast.Assign) and parent.value is node and len(parent.targets) == 1:
-        target = parent.targets[0]
-        return isinstance(target, ast.Name) and target.id in usage.called
-    return False
+    match parent:
+        case (
+            ast.Assign(targets=[ast.Name(id=name)], value=value) | ast.AnnAssign(target=ast.Name(id=name), value=value)
+        ) if value is node:
+            return _called_after(name, parent, usage)
+        case _:
+            return False
