@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import ast
+from dataclasses import replace
 from pathlib import PurePosixPath
+from types import MappingProxyType
 from typing import TYPE_CHECKING, ClassVar, final
 
 from sarj_python_lint.rule_base import (
@@ -18,6 +20,7 @@ from sarj_python_lint.rule_base import (
 )
 from sarj_python_lint.rules._annotation_semantics import AnnotationSemantics, scope_bound_names
 from sarj_python_lint.rules._ast_index import walk
+from sarj_python_lint.rules.no_hidden_constructor_fallback import LocalBindingCollector, scope_bindings
 
 
 if TYPE_CHECKING:
@@ -62,7 +65,7 @@ class NoBroadKeywordCapture(Rule):
             "Reports missing, Any- or object-valued keyword captures whether discarded, read or forwarded.",
             "Precise or unresolved decorated signature-declaration families and functions with unresolved decorator effects are excluded; known classmethod/staticmethod/abstractmethod/final/override declarations remain eligible.",
             "Homogeneous keyword types constrain values but allow arbitrary names; ParamSpec preserves only its target's existing contract.",
-            "Generated/vendor source and stubs are excluded. Unresolved imports, wildcard imports and shadowed annotation provenance are conservative.",
+            "Generated/vendor source and stubs are excluded. Unresolved imports, wildcard imports, conflicting imports, actual global or definition-time writes and shadowed annotation provenance are conservative. Identical imports and read-only global declarations remain eligible.",
             "Cross-file aliases, external stubs, generated signatures and runtime reflection are not resolved; transparent annotation metadata and ambiguous decorated declaration families can cause conservative false negatives.",
             "No autofix can infer the intended contract. Dynamic payload/formatting APIs can intentionally need an exact-code exception.",
         ),
@@ -165,7 +168,8 @@ class NoBroadKeywordCapture(Rule):
         tree = context.tree
         if tree is None:
             return []
-        semantics = AnnotationSemantics.from_tree(tree)
+        semantics = _stable_annotation_semantics(context, tree)
+        mutated_members = _mutated_annotation_members(context, semantics)
         overloads: set[ast.FunctionDef | ast.AsyncFunctionDef] | None = None
         findings: list[Diagnostic] = []
         for function in context.nodes(ast.FunctionDef, ast.AsyncFunctionDef):
@@ -174,12 +178,12 @@ class NoBroadKeywordCapture(Rule):
                 continue
             if not _is_broad(argument.annotation, semantics):
                 continue
-            if _uncertain_annotation(argument.annotation, function, context, semantics):
+            if _uncertain_annotation(argument.annotation, function, context, semantics, mutated_members):
                 continue
-            if _unknown_decorator(function, context, semantics):
+            if _unknown_decorator(function, context, semantics, mutated_members):
                 continue
             if overloads is None:
-                overloads = _overload_implementations(context, semantics)
+                overloads = _overload_implementations(context, semantics, mutated_members)
             if function in overloads:
                 continue
             if is_suppressed(context.source_lines, argument.lineno, self.code) or is_suppressed(
@@ -202,6 +206,90 @@ class NoBroadKeywordCapture(Rule):
         return sorted(findings, key=lambda finding: (finding.line, finding.col))
 
 
+def _stable_annotation_semantics(context: PythonFileContext, tree: ast.Module) -> AnnotationSemantics:
+    semantics = AnnotationSemantics.from_tree(tree)
+    unstable = _conflicting_annotation_imports(context, semantics) | _annotation_binding_writes(context)
+    if not unstable:
+        return semantics
+    imports = replace(
+        semantics.imports,
+        bindings=MappingProxyType(
+            {name: target for name, target in semantics.imports.bindings.items() if name not in unstable}
+        ),
+        shadowed_names=semantics.imports.shadowed_names | unstable,
+    )
+    return replace(
+        semantics,
+        imports=imports,
+        aliases=MappingProxyType({name: value for name, value in semantics.aliases.items() if name not in unstable}),
+    )
+
+
+def _conflicting_annotation_imports(context: PythonFileContext, semantics: AnnotationSemantics) -> set[str]:
+    conflicts: set[str] = set()
+    for statement in context.nodes(ast.Import, ast.ImportFrom):
+        if not isinstance(_lexical_scope(statement, context), ast.Module):
+            continue
+        for alias in statement.names:
+            name = alias.asname or alias.name.partition(".")[0]
+            binding = semantics.imports.bindings.get(name)
+            if binding is not None and _import_reference(statement, alias) != (binding.module, binding.symbol):
+                conflicts.add(name)
+    return conflicts
+
+
+def _import_reference(statement: ast.Import | ast.ImportFrom, alias: ast.alias) -> tuple[str, str | None] | None:
+    if isinstance(statement, ast.ImportFrom):
+        return (statement.module, alias.name) if not statement.level and statement.module is not None else None
+    return (alias.name if alias.asname else alias.name.partition(".")[0], None)
+
+
+def _annotation_binding_writes(context: PythonFileContext) -> set[str]:
+    writes: set[str] = set()
+    for owner in context.nodes(ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda):
+        if isinstance(_lexical_scope(owner, context), ast.Module):
+            header = LocalBindingCollector()
+            header.visit(owner)
+            if not isinstance(owner, ast.Lambda):
+                header.names.discard(owner.name)
+            writes.update(header.names)
+        if not isinstance(owner, ast.Lambda):
+            body = LocalBindingCollector()
+            for statement in owner.body:
+                body.visit(statement)
+            writes.update(body.names & body.globals)
+    return writes
+
+
+def _mutated_annotation_members(context: PythonFileContext, semantics: AnnotationSemantics) -> frozenset[str]:
+    members: set[str] = set()
+    for node in context.nodes(ast.Attribute):
+        if not isinstance(node.ctx, (ast.Store, ast.Del)) or _shadowed_annotation(node, node, context, semantics):
+            continue
+        qualified = semantics.imports.resolved_qualified_name(node)
+        if qualified is not None:
+            members.add(qualified)
+    return frozenset(members)
+
+
+def _uses_mutated_member(annotation: ast.expr, semantics: AnnotationSemantics, mutated_members: frozenset[str]) -> bool:
+    if not mutated_members:
+        return False
+    pending = [annotation]
+    seen: set[str] = set()
+    while pending:
+        parsed = semantics.parse(pending.pop())
+        if parsed is None:
+            continue
+        for node in walk(parsed):
+            if isinstance(node, ast.Attribute) and semantics.imports.resolved_qualified_name(node) in mutated_members:
+                return True
+            if isinstance(node, ast.Name) and node.id in semantics.aliases and node.id not in seen:
+                seen.add(node.id)
+                pending.append(semantics.aliases[node.id])
+    return False
+
+
 def _is_broad(annotation: ast.expr | None, semantics: AnnotationSemantics) -> bool:
     if annotation is None:
         return True
@@ -215,29 +303,35 @@ def _is_broad(annotation: ast.expr | None, semantics: AnnotationSemantics) -> bo
 
 def _shadowed_annotation(
     annotation: ast.expr | None,
-    function: ast.FunctionDef | ast.AsyncFunctionDef,
+    function: ast.AST,
     context: PythonFileContext,
     semantics: AnnotationSemantics,
 ) -> bool:
     names = _uses_names(annotation, semantics)
-    if names & _type_parameter_names(function):
+    if isinstance(function, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)) and names & _type_parameter_names(
+        function
+    ):
         return True
     parent = context.parents.get(function)
     while parent is not None:
-        if isinstance(parent, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)) and names & _scope_bindings(
-            parent
-        ):
+        if isinstance(
+            parent, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)
+        ) and names & _scope_bindings(parent):
             return True
         parent = context.parents.get(parent)
     return False
 
 
-def _scope_bindings(owner: ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef) -> set[str]:
-    bound = scope_bound_names(owner.body) | _type_parameter_names(owner)
-    if isinstance(owner, (ast.FunctionDef, ast.AsyncFunctionDef)):
-        args = owner.args
-        bound.update(arg.arg for arg in [*args.posonlyargs, *args.args, *args.kwonlyargs])
-        bound.update(arg.arg for arg in (args.vararg, args.kwarg) if arg is not None)
+def _scope_bindings(owner: ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef | ast.Lambda) -> set[str]:
+    if isinstance(owner, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
+        bound = set(scope_bindings(owner))
+    else:
+        collector = LocalBindingCollector()
+        for statement in owner.body:
+            collector.visit(statement)
+        bound = collector.names - collector.globals
+    if not isinstance(owner, ast.Lambda):
+        bound.update(_type_parameter_names(owner))
     return bound
 
 
@@ -250,10 +344,11 @@ def _uncertain_annotation(
     function: ast.FunctionDef | ast.AsyncFunctionDef,
     context: PythonFileContext,
     semantics: AnnotationSemantics,
+    mutated_members: frozenset[str],
 ) -> bool:
     if annotation is None:
         return False
-    if _has_wildcard_import(context):
+    if _has_wildcard_import(context) or _uses_mutated_member(annotation, semantics, mutated_members):
         return True
     if context.tree is not None:
         unknown = scope_bound_names(context.tree.body) - set(semantics.imports.bindings) - set(semantics.aliases)
@@ -280,8 +375,9 @@ def _known_decorator(
     function: ast.FunctionDef | ast.AsyncFunctionDef,
     context: PythonFileContext,
     semantics: AnnotationSemantics,
+    mutated_members: frozenset[str],
 ) -> str | None:
-    if _has_wildcard_import(context):
+    if _has_wildcard_import(context) or _uses_mutated_member(decorator, semantics, mutated_members):
         return None
     if _shadowed_annotation(decorator, function, context, semantics):
         return None
@@ -297,9 +393,10 @@ def _unknown_decorator(
     function: ast.FunctionDef | ast.AsyncFunctionDef,
     context: PythonFileContext,
     semantics: AnnotationSemantics,
+    mutated_members: frozenset[str],
 ) -> bool:
     return any(
-        _known_decorator(decorator, function, context, semantics) not in _KNOWN_DECORATORS
+        _known_decorator(decorator, function, context, semantics, mutated_members) not in _KNOWN_DECORATORS
         for decorator in function.decorator_list
     )
 
@@ -307,6 +404,7 @@ def _unknown_decorator(
 def _overload_implementations(
     context: PythonFileContext,
     semantics: AnnotationSemantics,
+    mutated_members: frozenset[str],
 ) -> set[ast.FunctionDef | ast.AsyncFunctionDef]:
     families: dict[tuple[ast.AST | None, str], list[ast.FunctionDef | ast.AsyncFunctionDef]] = {}
     implementations: set[ast.FunctionDef | ast.AsyncFunctionDef] = set()
@@ -315,7 +413,7 @@ def _overload_implementations(
         scope = _lexical_scope(node, context)
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             key = scope, node.name
-            if _signature_declaration(node, context, semantics):
+            if _signature_declaration(node, context, semantics, mutated_members):
                 families.setdefault(key, []).append(node)
             else:
                 family = families.pop(key, [])
@@ -356,6 +454,10 @@ def _signature_declaration(
     function: ast.FunctionDef | ast.AsyncFunctionDef,
     context: PythonFileContext,
     semantics: AnnotationSemantics,
+    mutated_members: frozenset[str],
 ) -> bool:
-    decorators = {_known_decorator(decorator, function, context, semantics) for decorator in function.decorator_list}
+    decorators = {
+        _known_decorator(decorator, function, context, semantics, mutated_members)
+        for decorator in function.decorator_list
+    }
     return bool(decorators & _OVERLOAD_DECORATORS) or not decorators <= _KNOWN_DECORATORS
