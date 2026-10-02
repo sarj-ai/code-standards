@@ -133,6 +133,7 @@ from sarj_python_lint.rules.prefer_non_nullable_collection import (
 )
 from sarj_python_lint.rules.prefer_or_pattern import PreferOrPattern
 from sarj_python_lint.rules.prefer_pydantic_json_value import PreferPydanticJsonValue
+from sarj_python_lint.rules.prefer_pytest_fixture_injection import PreferPytestFixtureInjection
 from sarj_python_lint.rules.prefer_regex_fullmatch import PreferRegexFullmatch
 from sarj_python_lint.rules.prefer_self_documenting_constant import (
     PreferSelfDocumentingConstant,
@@ -278,6 +279,7 @@ REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
         NoRepeatedTestBody.id: NoRepeatedTestBody,
         UnusedMockSetup.id: UnusedMockSetup,
         UnusedTestFactoryOption.id: UnusedTestFactoryOption,
+        PreferPytestFixtureInjection.id: PreferPytestFixtureInjection,
         PreferFstringOverConcat.id: PreferFstringOverConcat,
         PreferOrPattern.id: PreferOrPattern,
         PreferPydanticJsonValue.id: PreferPydanticJsonValue,

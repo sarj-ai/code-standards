@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "50d30faeb674bc759d4af288c3575d97acb722d156cbbd8b756a16b13b2f2403",
-  "cliSha256": "6cd04f823d38872c65545a2456beca80394093ceba5b8a4b470a510d9122791f",
+  "catalogSha256": "facb9a82dd5388b71e0485b0e765f7996a65e69b78d73b82349204efdd7cf007",
+  "cliSha256": "e40650bd706c46cbf5e4bfaf832409a4ff3ed40fe1219c0d7f883d1b69eb75e9",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -8664,6 +8664,49 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Use Pydantic's canonical recursive JSON value"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:prefer-pytest-fixture-injection": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "tests/conftest.py",
+              "source": "import pytest\nfrom psycopg_pool import ConnectionPool\n\n\n@pytest.fixture\ndef pool() -> ConnectionPool[object]:\n    return ConnectionPool[object](open=False)\n"
+            },
+            {
+              "path": "tests/test_app.py",
+              "source": "def test_app(pool):\n    app = Application(pool)\n    assert app\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_app.py",
+          "id": "injected-generic-pool",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "A test requests its shared resource"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "tests/conftest.py",
+              "source": "from psycopg_pool import ConnectionPool\n\n\ndef pool() -> ConnectionPool[object]:\n    return ConnectionPool[object](open=False)\n"
+            },
+            {
+              "path": "tests/test_app.py",
+              "source": "from tests.conftest import pool\n\n\ndef test_app():\n    resource = pool()\n    app = Application(resource)\n    assert app\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_app.py",
+          "id": "manual-shared-generic-pool",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A test calls shared generic pool setup"
         }
       ],
       "optionsSchemaSource": null

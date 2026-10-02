@@ -113,6 +113,7 @@
       "prefer-non-nullable-collection",
       "prefer-or-pattern",
       "prefer-pydantic-json-value",
+      "prefer-pytest-fixture-injection",
       "prefer-regex-fullmatch",
       "prefer-self-documenting-constant",
       "prefer-self-type-annotation",
@@ -446,7 +447,8 @@
       "SARJ472",
       "SARJ473",
       "SARJ474",
-      "SARJ475"
+      "SARJ475",
+      "SARJ476"
     ],
     "sql": [
       "SARJ101",
