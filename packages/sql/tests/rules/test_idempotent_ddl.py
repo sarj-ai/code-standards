@@ -252,3 +252,15 @@ def test_generated_migration_is_redirected_not_silenced(tmp_path: Path) -> None:
     diags = IdempotentDdl().check(migration, src)
     assert len(diags) == 1
     assert "generator-owned" in diags[0].message
+
+
+@pytest.mark.parametrize(
+    "constraint",
+    [
+        "ADD CONSTRAINT orders_customer_fk FOREIGN KEY (customer_id) REFERENCES customers (id) NOT VALID",
+        "ADD CONSTRAINT orders_total_check CHECK (total >= 0)",
+        "DROP CONSTRAINT orders_customer_fk",
+    ],
+)
+def test_native_constraint_ddl_does_not_require_a_catalog_wrapper(constraint: str) -> None:
+    assert _check(f"-- migrate:up\nALTER TABLE orders {constraint};\n-- migrate:down\n") == []

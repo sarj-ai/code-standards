@@ -5,6 +5,7 @@ Audit schema and migration safety using the shared [audit protocol](../skills/au
 ## Judgment checks
 
 - Destructive or table-rewriting changes without a staged rollout, safe backfill, compatibility window, and rollback plan.
+- Catalog-query `DO` blocks or duplicate-object exception handlers added solely to make versioned transactional DDL replayable. Let the migration runner track applied versions and roll back failed transactions; review nontransactional migrations and genuinely replayed scripts separately.
 - Incorrect or incomplete reversals where the migration system supports down migrations.
 - Missing, redundant, or badly ordered indexes based on actual access paths and selectivity.
 - Soft-delete uniqueness errors, unsafe type conversions, and constraints introduced before existing data is valid.
