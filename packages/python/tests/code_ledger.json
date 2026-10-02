@@ -258,5 +258,6 @@
   "SARJ470": "no-database-programmability",
   "SARJ471": "no-injected-module-loader",
   "SARJ472": "no-shallow-container-type-guard",
-  "SARJ473": "require-precise-factory-signature"
+  "SARJ473": "require-precise-factory-signature",
+  "SARJ474": "prefer-autospec-for-callable-mock"
 }

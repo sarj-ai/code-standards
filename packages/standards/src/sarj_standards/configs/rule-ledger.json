@@ -93,6 +93,7 @@
       "no-whole-request-response-payload-in-log",
       "opaque-parametrize-case-needs-id",
       "over-mocked-test",
+      "prefer-autospec-for-callable-mock",
       "prefer-class-row",
       "prefer-collection-comprehension",
       "prefer-constant-time-secret-compare",
@@ -442,7 +443,8 @@
       "SARJ470",
       "SARJ471",
       "SARJ472",
-      "SARJ473"
+      "SARJ473",
+      "SARJ474"
     ],
     "sql": [
       "SARJ101",
