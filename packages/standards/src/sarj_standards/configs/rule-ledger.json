@@ -43,6 +43,7 @@
       "no-analytical-aggregation-in-postgres-store",
       "no-any-mapping-types",
       "no-bare-test-phase-comments",
+      "no-broad-keyword-capture",
       "no-comment-cruft",
       "no-conftest-test-module-import",
       "no-copied-inherited-docstring",
@@ -448,7 +449,8 @@
       "SARJ473",
       "SARJ474",
       "SARJ475",
-      "SARJ476"
+      "SARJ476",
+      "SARJ477"
     ],
     "sql": [
       "SARJ101",

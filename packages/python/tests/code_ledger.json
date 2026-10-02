@@ -261,5 +261,6 @@
   "SARJ473": "require-precise-factory-signature",
   "SARJ474": "prefer-autospec-for-callable-mock",
   "SARJ475": "no-unused-underscored-keyword-parameter",
-  "SARJ476": "prefer-pytest-fixture-injection"
+  "SARJ476": "prefer-pytest-fixture-injection",
+  "SARJ477": "no-broad-keyword-capture"
 }

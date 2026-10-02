@@ -33,6 +33,7 @@ from sarj_python_lint.rules.no_analytical_aggregation_in_postgres_store import (
     NoAnalyticalAggregationInPostgresStore,
 )
 from sarj_python_lint.rules.no_any_mapping_types import NoAnyMappingTypes
+from sarj_python_lint.rules.no_broad_keyword_capture import NoBroadKeywordCapture
 from sarj_python_lint.rules.no_comment_cruft import NoCommentCruft
 from sarj_python_lint.rules.no_conftest_test_module_import import NoConftestTestModuleImport
 from sarj_python_lint.rules.no_copied_inherited_docstring import NoCopiedInheritedDocstring
@@ -297,6 +298,7 @@ REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
         NoDuplicateDunderAllEntry.id: NoDuplicateDunderAllEntry,
         NoDunderAll.id: NoDunderAll,
         NoDeleteStatement.id: NoDeleteStatement,
+        NoBroadKeywordCapture.id: NoBroadKeywordCapture,
         NoCopiedInheritedDocstring.id: NoCopiedInheritedDocstring,
         RedundantClassDocstring.id: RedundantClassDocstring,
         RedundantModuleDocstring.id: RedundantModuleDocstring,
