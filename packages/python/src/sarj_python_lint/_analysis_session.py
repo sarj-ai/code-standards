@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING, final
 
 from sarj_python_lint._python_target import PythonTargetFacts
 from sarj_python_lint.rules._first_party import FirstPartyFacts
+from sarj_python_lint.rules._local_source import LocalSourceFacts
 from sarj_python_lint.rules._nominal_project import NominalProjectFacts
 
 
@@ -16,5 +17,6 @@ class AnalysisSession:
     def __init__(self) -> None:
         self.project: ProjectIndexSet | None = None
         self.first_party = FirstPartyFacts()
+        self.local_source = LocalSourceFacts()
         self.python_target = PythonTargetFacts()
         self.nominal_project = NominalProjectFacts()
