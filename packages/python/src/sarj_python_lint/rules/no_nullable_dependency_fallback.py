@@ -67,7 +67,7 @@ class NoNullableDependencyFallback(Rule):
         limitations=(
             "Warns for None-defaulted function parameters with a fallback used as a callable or a proven application-settings fallback; genuine absent state is allowed.",
             "Constructors remain owned by SARJ095 and SARJ468. Decorated functions, tests, generated code, nested scope captures, non-callable object fallbacks, and interprocedural forwarding are excluded.",
-            "Callable use through a local assignment, annotation or None guard requires at most one body binding for that name and a call after the binding statement completes. Rebinding, deletion, imports, definitions, pattern or exception captures, global/nonlocal declarations and nested-scope bindings conservatively exclude that inference; direct inline calls and proven settings fallbacks remain independent.",
+            "Callable use through a local assignment, annotation or None guard requires at most one body binding for that name and a call after the binding statement completes. Rebinding, deletion, imports, definitions, pattern or exception captures, global/nonlocal declarations and nested-scope bindings conservatively exclude that inference; direct inline calls remain independent. Settings provenance also excludes enclosing bindings and names written by a function declaring them global, while read-only global declarations remain valid.",
             "No autofix: removing explicit None acceptance changes the callable contract, and moving a fallback can change initialization timing or error handling.",
         ),
         examples=(
@@ -123,7 +123,7 @@ class NoNullableDependencyFallback(Rule):
             parameters = _none_default_parameters(function.args)
             if not parameters:
                 continue
-            hidden = _hidden_dependencies(function, parameters, resolver)
+            hidden = _hidden_dependencies(function, parameters, resolver, _settings_shadowed(function, context))
             findings.extend(
                 Diagnostic(
                     path=context.path,
@@ -156,11 +156,11 @@ def _hidden_dependencies(
     function: ast.FunctionDef | ast.AsyncFunctionDef,
     parameters: dict[str, ast.arg],
     resolver: RuntimeConfigResolver,
+    shadowed: set[str],
 ) -> set[str]:
     usage = _scope_usage(function)
     candidates = set(parameters)
     hidden: set[str] = set()
-    shadowed = set(scope_bindings(function))
     for statement in function.body:
         guard = _guarded_fallback(statement, candidates)
         bindings = LocalBindingCollector()
@@ -185,6 +185,19 @@ def _hidden_dependencies(
                 hidden.add(name)
         candidates.difference_update(bindings.names)
     return hidden
+
+
+def _settings_shadowed(
+    function: ast.FunctionDef | ast.AsyncFunctionDef,
+    context: PythonFileContext,
+) -> set[str]:
+    shadowed: set[str] = set()
+    current: ast.AST | None = function
+    while current is not None:
+        if isinstance(current, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
+            shadowed.update(scope_bindings(current))
+        current = context.parents.get(current)
+    return shadowed
 
 
 def _scope_usage(function: ast.FunctionDef | ast.AsyncFunctionDef) -> _ScopeUsage:

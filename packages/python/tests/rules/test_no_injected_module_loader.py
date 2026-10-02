@@ -21,6 +21,49 @@ _CASES = (
         ExpectedOutcome.MATCH,
     ),
     EvaluationCase(
+        "conditional-domain-import-replaces-module",
+        Language.PYTHON,
+        "import importlib\nif enabled:\n    from application import importer as importlib\ndef run(loader=importlib.import_module):\n    return loader\n",
+    ),
+    EvaluationCase(
+        "type-checking-import-runtime-domain-loader",
+        Language.PYTHON,
+        "from typing import TYPE_CHECKING\nif TYPE_CHECKING:\n    import importlib\nelse:\n    from application import importer as importlib\ndef run(loader=importlib.import_module):\n    return loader\n",
+    ),
+    EvaluationCase(
+        "relative-import-replaces-module",
+        Language.PYTHON,
+        "import importlib\nfrom . import importer as importlib\ndef run(loader=importlib.import_module):\n    return loader\n",
+    ),
+    EvaluationCase(
+        "conditional-import-replaces-builtin",
+        Language.PYTHON,
+        "if enabled:\n    from application import loader as __import__\ndef run(loader=__import__):\n    return loader\n",
+    ),
+    EvaluationCase(
+        "relative-import-replaces-builtin",
+        Language.PYTHON,
+        "from . import loader as __import__\ndef run(loader=__import__):\n    return loader\n",
+    ),
+    EvaluationCase(
+        "identical-conditional-module-import",
+        Language.PYTHON,
+        "import importlib\nif enabled:\n    import importlib\ndef run(loader=importlib.import_module):\n    return loader\n",
+        ExpectedOutcome.MATCH,
+    ),
+    EvaluationCase(
+        "identical-conditional-symbol-import",
+        Language.PYTHON,
+        "from importlib import import_module as load\nif enabled:\n    from importlib import import_module as load\ndef run(loader=load):\n    return loader\n",
+        ExpectedOutcome.MATCH,
+    ),
+    EvaluationCase(
+        "conditional-builtin-import-stays-loader",
+        Language.PYTHON,
+        "if enabled:\n    from builtins import __import__\ndef run(loader=__import__):\n    return loader\n",
+        ExpectedOutcome.MATCH,
+    ),
+    EvaluationCase(
         "enclosing-global-rebinding",
         Language.PYTHON,
         "from importlib import import_module as load\ndef outer():\n    global load\n    load = domain_loader\n    def run(loader=load):\n        pass\n",

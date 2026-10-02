@@ -149,6 +149,33 @@ def test_mixed_dispatch_cases(case: EvaluationCase) -> None:
     assert len(diagnostics) <= 1
 
 
+_AST_CLASS_MUTATION_CASES = tuple(
+    EvaluationCase(
+        case_id,
+        Language.PYTHON,
+        "import ast as nodes\n"
+        + mutation
+        + "def parse(value):\n    if isinstance(value, nodes.Name):\n        return True\n"
+        "    if isinstance(value, nodes.Attribute):\n        consume(value)\n"
+        "    elif isinstance(value, nodes.Constant):\n        consume(value)\n",
+        expected,
+    )
+    for case_id, mutation, expected in (
+        ("assigned-ast-class", "nodes.Name = (str, int)\n", ExpectedOutcome.NO_MATCH),
+        ("deleted-ast-class", "del nodes.Name\n", ExpectedOutcome.NO_MATCH),
+        ("unrelated-ast-attribute", "nodes.custom = True\n", ExpectedOutcome.MATCH),
+        ("unchanged-ast-classes", "", ExpectedOutcome.MATCH),
+    )
+)
+
+
+@pytest.mark.parametrize(
+    "case", _AST_CLASS_MUTATION_CASES, ids=tuple(case.case_id for case in _AST_CLASS_MUTATION_CASES)
+)
+def test_mixed_dispatch_requires_stable_ast_class_attributes(case: EvaluationCase) -> None:
+    assert bool(_check(case.source)) is (case.expected is ExpectedOutcome.MATCH)
+
+
 @pytest.mark.parametrize(
     "value", ["text", True, False, 1, [], None], ids=("text", "true", "false", "int", "list", "none")
 )

@@ -222,6 +222,26 @@ _CASES = (
         "from collections.abc import Callable\ndef build(factory: Callable[..., Result]):\n    return factory(size=4)\nclass Result: pass\n",
     ),
     EvaluationCase("malformed", Language.PYTHON, "def build(:\n"),
+    EvaluationCase(
+        "global-callable-writer",
+        Language.PYTHON,
+        _PREFIX
+        + "class Marker:\n    @classmethod\n    def __class_getitem__(cls, item):\n        return object\ndef configure():\n    global Callable\n    Callable = Marker\nconfigure()\ndef build(factory: Callable[..., Result]):\n    return factory(size=4)\n",
+    ),
+    EvaluationCase(
+        "global-callable-read-only",
+        Language.PYTHON,
+        _PREFIX
+        + "def configure():\n    global Callable\n    return Callable\ndef build(factory: Callable[..., Result]):\n    return factory(size=4)\n",
+        ExpectedOutcome.MATCH,
+    ),
+    EvaluationCase(
+        "unrelated-global-writer",
+        Language.PYTHON,
+        _PREFIX
+        + "def configure():\n    global other\n    other = None\ndef build(factory: Callable[..., Result]):\n    return factory(size=4)\n",
+        ExpectedOutcome.MATCH,
+    ),
 )
 
 

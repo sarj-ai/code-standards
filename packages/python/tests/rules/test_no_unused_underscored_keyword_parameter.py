@@ -166,6 +166,32 @@ def _case_id(case: EvaluationCase) -> str:
             Language.PYTHON,
             "from builtins import locals as arguments\ndef emit(*, _email=None):\n    return arguments()\n",
         ),
+        EvaluationCase(
+            "function-local-locals-alias",
+            Language.PYTHON,
+            "def emit(*, _email=None):\n    from builtins import locals as arguments\n    return arguments()\n",
+        ),
+        EvaluationCase(
+            "function-local-builtins-module",
+            Language.PYTHON,
+            "def emit(*, _email=None):\n    import builtins as namespace\n    return namespace.locals()\n",
+        ),
+        EvaluationCase(
+            "function-local-vars-alias",
+            Language.PYTHON,
+            "def emit(*, _email=None):\n    from builtins import vars as arguments\n    return arguments()\n",
+        ),
+        EvaluationCase(
+            "function-local-eval-alias",
+            Language.PYTHON,
+            "def emit(*, _email=None):\n    from builtins import eval as evaluate\n    return evaluate('_email')\n",
+        ),
+        EvaluationCase(
+            "function-local-domain-import-is-not-reflection",
+            Language.PYTHON,
+            "def emit(*, _email=None):\n    from domain import locals as arguments\n    return arguments()\n",
+            ExpectedOutcome.MATCH,
+        ),
         EvaluationCase("dynamic-eval", Language.PYTHON, "def emit(*, _email=None):\n    return eval('_email')\n"),
         EvaluationCase("sdk-keyword-call", Language.PYTHON, "Settings(_env_file='config.env')\n"),
         EvaluationCase(

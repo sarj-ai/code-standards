@@ -53,7 +53,7 @@ class NoInjectedModuleLoader(Rule):
         limitations=(
             "Flags defaults resolving to importlib.import_module, importlib.__import__, or builtins.__import__, including stable module-level import and single-assignment aliases and unshadowed __import__.",
             "Tests, test support, and generated code are excluded. Required loader parameters, application loaders, wrapper lambdas, alias chains, comprehensions, and imports local to enclosing scopes are not inferred.",
-            "Conservatively skips shadowed or rebound names, wildcard-import files, reassigned loader attributes, and exception or pattern captures of importer roots, symbols or assignment aliases. A relevant-name capture in an unrelated local scope can cause a false negative because capture checks are file-wide.",
+            "Conservatively skips shadowed or rebound names, wildcard-import files, reassigned loader attributes, conflicting conditional or relative imports, and exception or pattern captures of importer roots, symbols or assignment aliases. Identical repeated importer imports remain valid. A relevant-name capture in an unrelated local scope can cause a false negative because capture checks are file-wide.",
             "Assignment aliases require one module binding and precede use by line and column. Defaults use their enclosing evaluation scope: earlier statements in the nearest executing class body can shadow loaders; methods and nested classes do not close over class attributes. Enclosing function body bindings remain conservative exclusions, but a function's parameters do not shadow its own defaults. Relevant global declarations and walrus writes exclude sensitive importer names. Compound class statements can cause conservative omissions. Dynamic namespace mutation is not inferred. No autofix: changing arguments or import placement can alter API and initialization behavior.",
         ),
         examples=(
@@ -134,6 +134,8 @@ def _ambiguous_loader_bindings(context: PythonFileContext, aliases: Mapping[str,
         if (target.module in {"importlib", "builtins"} and target.symbol is None)
         or f"{target.module}.{target.symbol}" in _LOADER_TARGETS
     }
+    if _conflicting_loader_imports(context, sensitive_names):
+        return True
     if any(sensitive_names.intersection(node.names) for node in context.nodes(ast.Global)):
         return True
     for node in context.nodes(ast.ExceptHandler, ast.MatchAs, ast.MatchStar, ast.MatchMapping, ast.NamedExpr):
@@ -152,6 +154,35 @@ def _ambiguous_loader_bindings(context: PythonFileContext, aliases: Mapping[str,
         and context.module_imports.resolved_qualified_name(node) in _LOADER_TARGETS
         for node in context.nodes(ast.Attribute)
     )
+
+
+def _conflicting_loader_imports(context: PythonFileContext, sensitive_names: set[str]) -> bool:
+    for statement in context.nodes(ast.Import, ast.ImportFrom):
+        if not _is_module_binding(statement, context):
+            continue
+        for alias in statement.names:
+            name = alias.asname or alias.name.partition(".")[0]
+            if name in sensitive_names and _loader_import_conflicts(statement, alias, name, context):
+                return True
+    return False
+
+
+def _loader_import_conflicts(
+    statement: ast.Import | ast.ImportFrom,
+    alias: ast.alias,
+    name: str,
+    context: PythonFileContext,
+) -> bool:
+    if isinstance(statement, ast.ImportFrom):
+        if statement.level or statement.module is None:
+            return True
+        imported = (statement.module, alias.name)
+    else:
+        imported = (alias.name if alias.asname else alias.name.partition(".")[0], None)
+    binding = context.module_imports.bindings.get(name)
+    if binding is not None:
+        return imported != (binding.module, binding.symbol)
+    return name == "__import__" and ".".join(part for part in imported if part is not None) not in _LOADER_TARGETS
 
 
 def _defaults(arguments: ast.arguments) -> Iterator[tuple[ast.arg, ast.expr]]:

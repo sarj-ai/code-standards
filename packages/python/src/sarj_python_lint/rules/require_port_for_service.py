@@ -221,6 +221,8 @@ class RequirePortForService(ProjectRule):
             "Only direct module classes are checked; tests, generated code, scripts, framework callbacks, Store/Repository persistence dependencies, and external or interface-like bases are excluded.",
             "A suffixless class can also qualify when it retains a locally typed factory-created collaborator driving multiple public operations and production code constructs it directly to call at least two distinct operations. Constructor aliases and explicit module imports are resolved within the bounded project index; package-export indirection, wildcard imports, duplicate module identities, variable-held instances, factory indirection, and ambiguous control flow are not inferred. Top-level functions are analyzed in indexed modules; ordinary function-only modules may be excluded by the shared type index's lexical admission.",
             "Otherwise, a one-method, suffixless, or store-backed class requires a concrete production type dependency and a test subclass or typed mock, or at least two production consumers for a multi-method class. A port owned in another module may require an exact suppression on the implementation.",
+            "The factory-created path requires stable local runtime classes. Unknown class decorators are not inferred; proven typing final and runtime_checkable decorators preserve class identity. Definition-time defaults and decorator expressions count as enclosing runtime bindings, while nested function bodies do not.",
+            "Factory-created collaborator storage and public operations also require original method bodies; unknown method decorators are excluded while canonical typing final and override aliases remain in scope. An unrelated decorated operation does not hide two proven consumed operations.",
         ),
         examples=(
             RuleExample(
@@ -416,7 +418,9 @@ class RequirePortForService(ProjectRule):
         test_mock_count = self._test_mock_count(path, node, indexes=indexes) if typed_consumer_count else 0
         substituted_boundary = typed_consumer_count >= 1 and (test_subclass_count + test_mock_count) >= 1
         factory_boundary = (
-            self._factory_boundary(path, node, local_class_names, local_port_names, factory_facts, indexes=indexes)
+            self._factory_boundary(
+                path, node, local_class_names, local_port_names, factory_facts, imports=imports, indexes=indexes
+            )
             if collaborator is None
             else None
         )
@@ -459,6 +463,7 @@ class RequirePortForService(ProjectRule):
         local_port_names: set[str],
         factory_facts: _FactoryClassFacts,
         *,
+        imports: ImportIndex,
         indexes: ProjectIndexSet | None,
     ) -> str | None:
         if (
@@ -468,7 +473,7 @@ class RequirePortForService(ProjectRule):
             or not _project_boundary_candidate(node, local_class_names, local_port_names)
         ):
             return None
-        collaborator = _factory_collaborator(node, factory_facts)
+        collaborator = _factory_collaborator(node, factory_facts, imports)
         if collaborator is None:
             return None
         unit = indexes.unit(path)
@@ -477,8 +482,7 @@ class RequirePortForService(ProjectRule):
         public_methods = {
             method.name
             for method in class_methods(node)
-            if not method.name.startswith("_")
-            and not any(_dotted_tail(decorator) in _NON_METHOD_DECORATORS for decorator in method.decorator_list)
+            if not method.name.startswith("_") and _factory_method_identity(method, imports)
         }
         operations = {
             operation
@@ -788,20 +792,33 @@ def _injected_collaborator(
 
 def _factory_class_facts(tree: ast.Module, classes: list[ast.ClassDef], imports: ImportIndex) -> _FactoryClassFacts:
     local_names = {node.name for node in classes}
-    declarations: dict[str, int] = {}
-    for statement in tree.body:
-        for name in _factory_statement_bindings(statement):
-            declarations[name] = declarations.get(name, 0) + 1
-    owned_names: frozenset[str] = frozenset(name for name in local_names if declarations.get(name) == 1)
-    if any(
-        isinstance(item, ast.ImportFrom) and any(alias.name == "*" for alias in item.names) for item in walk_ast(tree)
-    ):
-        owned_names = frozenset()
+    owned_names = _factory_owned_class_names(tree, classes, imports)
     interfaces = {node.name for node in classes if _factory_interface(node, imports)}
     values = {node.name for node in classes if _factory_value_class(node, imports, local_names)}
     _inherit_factory_exclusions(classes, interfaces)
     _inherit_factory_exclusions(classes, values)
     return _FactoryClassFacts(owned_names, frozenset(interfaces | values), frozenset(values))
+
+
+def _factory_owned_class_names(tree: ast.Module, classes: list[ast.ClassDef], imports: ImportIndex) -> frozenset[str]:
+    if any(
+        isinstance(item, ast.ImportFrom) and any(alias.name == "*" for alias in item.names) for item in walk_ast(tree)
+    ):
+        return frozenset()
+    declarations: dict[str, int] = {}
+    for statement in tree.body:
+        for name in _factory_statement_bindings(statement):
+            declarations[name] = declarations.get(name, 0) + 1
+    return frozenset(
+        node.name for node in classes if declarations.get(node.name) == 1 and _factory_class_identity(node, imports)
+    )
+
+
+def _factory_class_identity(node: ast.ClassDef, imports: ImportIndex) -> bool:
+    return all(
+        imports.resolved_symbol(decorator, sources=TYPING_SOURCES) in {"final", "runtime_checkable"}
+        for decorator in node.decorator_list
+    )
 
 
 def _factory_interface(node: ast.ClassDef, imports: ImportIndex) -> bool:
@@ -861,8 +878,12 @@ def _factory_statement_bindings(statement: ast.stmt) -> frozenset[str]:
     while stack:
         node = stack.pop()
         match node:
-            case ast.FunctionDef(name=name) | ast.AsyncFunctionDef(name=name) | ast.ClassDef(name=name):
-                names.add(name)
+            case ast.FunctionDef() | ast.AsyncFunctionDef() | ast.ClassDef():
+                names.add(node.name)
+                stack.extend(_factory_definition_expressions(node))
+                continue
+            case ast.Lambda():
+                stack.extend(_factory_definition_expressions(node))
                 continue
             case ast.AnnAssign(value=None):
                 continue
@@ -882,9 +903,19 @@ def _factory_statement_bindings(statement: ast.stmt) -> frozenset[str]:
     return frozenset(names)
 
 
-def _factory_collaborator(node: ast.ClassDef, facts: _FactoryClassFacts) -> str | None:
+def _factory_definition_expressions(
+    node: ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef | ast.Lambda,
+) -> list[ast.AST]:
+    if isinstance(node, ast.ClassDef):
+        return [*node.decorator_list, *node.bases, *node.keywords]
+    defaults: list[ast.AST] = list(node.args.defaults)
+    defaults.extend(default for default in node.args.kw_defaults if default is not None)
+    return defaults if isinstance(node, ast.Lambda) else [*node.decorator_list, *defaults]
+
+
+def _factory_collaborator(node: ast.ClassDef, facts: _FactoryClassFacts, imports: ImportIndex) -> str | None:
     init = next((method for method in class_methods(node) if method.name == "__init__"), None)
-    if init is None:
+    if init is None or not _factory_method_identity(init, imports):
         return None
     origins: dict[str, ast.expr | None] = {}
     candidates: list[tuple[str, frozenset[str]]] = []
@@ -906,7 +937,29 @@ def _factory_collaborator(node: ast.ClassDef, facts: _FactoryClassFacts) -> str 
         candidate = _factory_field_candidate(statement, origins, writes, facts.excluded_collaborators, available_names)
         if candidate is not None:
             candidates.append(candidate)
-    return _behavioral_collaborator(node, candidates)
+    return _factory_behavioral_collaborator(node, candidates, imports)
+
+
+def _factory_behavioral_collaborator(
+    node: ast.ClassDef, candidates: list[tuple[str, frozenset[str]]], imports: ImportIndex
+) -> str | None:
+    public_methods = [
+        method
+        for method in class_methods(node)
+        if not method.name.startswith("_") and _factory_method_identity(method, imports)
+    ]
+    for annotation, fields in candidates:
+        operations = sum(_method_invokes_field(method, fields) for method in public_methods)
+        if operations >= _MIN_COLLABORATOR_METHODS:
+            return annotation
+    return None
+
+
+def _factory_method_identity(method: ast.FunctionDef | ast.AsyncFunctionDef, imports: ImportIndex) -> bool:
+    return all(
+        imports.resolved_symbol(decorator, sources=TYPING_SOURCES) in {"final", "override"}
+        for decorator in method.decorator_list
+    )
 
 
 def _factory_falls_through(statement: ast.stmt) -> bool:

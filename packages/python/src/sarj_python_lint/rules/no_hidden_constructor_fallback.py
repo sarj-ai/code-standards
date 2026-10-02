@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+from collections import Counter
 from dataclasses import dataclass, field
 import os
 from pathlib import Path, PurePosixPath
@@ -29,6 +30,14 @@ if TYPE_CHECKING:
 
 _MIGRATION_PARTS = frozenset({"alembic", "migration", "migrations", "versions"})
 _DESCRIPTOR_DECORATORS = frozenset({"classmethod", "staticmethod"})
+_CLASS_PRESERVING_DECORATORS = frozenset(
+    {
+        ("typing", "final"),
+        ("typing", "runtime_checkable"),
+        ("typing_extensions", "final"),
+        ("typing_extensions", "runtime_checkable"),
+    }
+)
 _QUALIFIED_NAME_PARTS = 2
 _SCAN_SKIP_PARTS = frozenset(
     {
@@ -76,6 +85,7 @@ class _CanonicalSymbol(NamedTuple):
 @dataclass(slots=True)
 class RuntimeConfigFacts:
     modules: dict[Path, ast.Module] = field(default_factory=dict)
+    stable_symbols: dict[Path, frozenset[str]] = field(default_factory=dict)
     composition_calls: dict[tuple[Path, str, str], bool] = field(default_factory=dict)
     canonical_symbols: dict[tuple[Path, str, str], _CanonicalSymbol] = field(default_factory=dict)
 
@@ -92,6 +102,7 @@ class NoHiddenConstructorFallback(Rule):
         category=RuleCategory.ARCHITECTURE,
         limitations=(
             "Detection requires a proven local settings provider and a first-party composition call; covers None fallbacks and settings attributes captured directly in module-level class constructor defaults.",
+            "Provider instance, class, import and reexport names require one stable module binding. Reassignments, captures, global writers, wildcard imports and unknown class decorators conservatively exclude settings provenance; annotation-only declarations, read-only globals and stable typing final/runtime_checkable decorators remain valid.",
             "Tests, generated files, migrations, descriptors, library environment fallbacks, and unconstructed classes are excluded.",
         ),
         examples=(
@@ -412,6 +423,8 @@ class RuntimeConfigResolver:
             return False
         if parts[0] in shadowed:
             return False
+        if parts[0] not in self._stable_symbols(_LoadedModule(self._tree, self._path)):
+            return False
         resolved = _resolve_expression(expression, self._imports)
         if resolved is None:
             if self._module is None:
@@ -437,8 +450,12 @@ class RuntimeConfigResolver:
             return False
         tree = loaded.tree
         module_path = loaded.path
+        stable = self._stable_symbols(loaded)
+        if symbol not in stable:
+            self._settings_cache[key] = False
+            return False
         imports = _imports(tree, module, is_package=module_path.name == "__init__.py")
-        classes = _base_settings_classes(tree, imports)
+        classes = _base_settings_classes(tree, imports, stable)
         factory = _assigned_factory(tree, symbol)
         if factory is not None:
             resolved_factory = _resolve_expression(factory, imports)
@@ -477,26 +494,46 @@ class RuntimeConfigResolver:
             return False
         tree = loaded.tree
         module_path = loaded.path
+        stable = self._stable_symbols(loaded)
+        if symbol not in stable:
+            self._settings_class_cache[key] = False
+            return False
         imports = _imports(tree, module, is_package=module_path.name == "__init__.py")
-        if symbol in _base_settings_classes(tree, imports):
+        if symbol in _base_settings_classes(tree, imports, stable):
             self._settings_class_cache[key] = True
             return True
         class_node = next(
             (node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == symbol),
             None,
         )
-        result = False
-        if class_node is not None:
-            for base in class_node.bases:
-                resolved = _resolve_expression(base, imports)
-                if resolved is None or len(resolved) < _QUALIFIED_NAME_PARTS:
-                    continue
-                base_module, base_symbol = ".".join(resolved[:-1]), resolved[-1]
-                if self._is_settings_class(base_module, base_symbol, seen | {key}):
-                    result = True
-                    break
+        result = class_node is not None and self._inherits_settings_class(class_node, imports, stable, seen | {key})
         self._settings_class_cache[key] = result
         return result
+
+    def _inherits_settings_class(
+        self,
+        node: ast.ClassDef,
+        imports: dict[str, _Binding],
+        stable: frozenset[str],
+        seen: frozenset[tuple[str, str]],
+    ) -> bool:
+        if not _class_decorators_preserve_type(node, imports, stable):
+            return False
+        for base in node.bases:
+            resolved = _stable_import_reference(base, imports, stable)
+            if resolved is None or len(resolved) < _QUALIFIED_NAME_PARTS:
+                continue
+            base_module, base_symbol = ".".join(resolved[:-1]), resolved[-1]
+            if self._is_settings_class(base_module, base_symbol, seen):
+                return True
+        return False
+
+    def _stable_symbols(self, loaded: _LoadedModule) -> frozenset[str]:
+        cached = self._facts.stable_symbols.get(loaded.path)
+        if cached is None:
+            cached = _stable_module_symbols(loaded.tree)
+            self._facts.stable_symbols[loaded.path] = cached
+        return cached
 
     def _load_module(self, module: str) -> _LoadedModule | None:
         if module == self._module:
@@ -558,12 +595,21 @@ def _attribute_parts(expression: ast.expr) -> tuple[str, ...] | None:
     return None
 
 
-def _base_settings_classes(tree: ast.Module, imports: dict[str, _Binding]) -> set[str]:
-    classes = [statement for statement in tree.body if isinstance(statement, ast.ClassDef)]
+def _base_settings_classes(tree: ast.Module, imports: dict[str, _Binding], stable: frozenset[str]) -> set[str]:
+    classes = [
+        statement
+        for statement in tree.body
+        if isinstance(statement, ast.ClassDef)
+        and statement.name in stable
+        and _class_decorators_preserve_type(statement, imports, stable)
+    ]
     found = {
         node.name
         for node in classes
-        if any(_resolve_expression(base, imports) == ("pydantic_settings", "BaseSettings") for base in node.bases)
+        if any(
+            _stable_import_reference(base, imports, stable) == ("pydantic_settings", "BaseSettings")
+            for base in node.bases
+        )
     }
     changed = True
     while changed:
@@ -573,6 +619,44 @@ def _base_settings_classes(tree: ast.Module, imports: dict[str, _Binding]) -> se
                 found.add(node.name)
                 changed = True
     return found
+
+
+def _class_decorators_preserve_type(node: ast.ClassDef, imports: dict[str, _Binding], stable: frozenset[str]) -> bool:
+    return all(
+        _stable_import_reference(decorator, imports, stable) in _CLASS_PRESERVING_DECORATORS
+        for decorator in node.decorator_list
+    )
+
+
+def _stable_import_reference(
+    expression: ast.expr, imports: dict[str, _Binding], stable: frozenset[str]
+) -> tuple[str, ...] | None:
+    parts = _attribute_parts(expression)
+    if parts is None or parts[0] not in stable:
+        return None
+    return _resolve_expression(expression, imports)
+
+
+def _stable_module_symbols(tree: ast.Module) -> frozenset[str]:
+    if any(
+        isinstance(node, ast.ImportFrom) and any(alias.name == "*" for alias in node.names) for node in ast.walk(tree)
+    ):
+        return frozenset()
+    bindings: Counter[str] = Counter()
+    for statement in tree.body:
+        if isinstance(statement, ast.AnnAssign) and statement.value is None:
+            continue
+        collector = LocalBindingCollector()
+        collector.visit(statement)
+        bindings.update(collector.names)
+    global_writes: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            collector = LocalBindingCollector()
+            for statement in node.body:
+                collector.visit(statement)
+            global_writes.update(collector.names & collector.globals)
+    return frozenset(name for name, count in bindings.items() if count == 1 and name not in global_writes)
 
 
 def _assigned_factory(tree: ast.Module, symbol: str) -> ast.expr | None:
@@ -842,8 +926,31 @@ class LocalBindingCollector(ast.NodeVisitor):
 
     @override
     def visit_Name(self, node: ast.Name) -> None:
-        if isinstance(node.ctx, ast.Store):
+        if isinstance(node.ctx, (ast.Store, ast.Del)):
             self.names.add(node.id)
+
+    @override
+    def visit_ExceptHandler(self, node: ast.ExceptHandler) -> None:
+        if node.name is not None:
+            self.names.add(node.name)
+        self.generic_visit(node)
+
+    @override
+    def visit_MatchAs(self, node: ast.MatchAs) -> None:
+        if node.name is not None:
+            self.names.add(node.name)
+        self.generic_visit(node)
+
+    @override
+    def visit_MatchStar(self, node: ast.MatchStar) -> None:
+        if node.name is not None:
+            self.names.add(node.name)
+
+    @override
+    def visit_MatchMapping(self, node: ast.MatchMapping) -> None:
+        if node.rest is not None:
+            self.names.add(node.rest)
+        self.generic_visit(node)
 
     @override
     def visit_Import(self, node: ast.Import) -> None:
@@ -860,34 +967,60 @@ class LocalBindingCollector(ast.NodeVisitor):
     @override
     def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
         self.names.add(node.name)
+        for outer in (
+            *node.decorator_list,
+            *node.args.defaults,
+            *(default for default in node.args.kw_defaults if default is not None),
+        ):
+            self.visit(outer)
 
     @override
     def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
         self.names.add(node.name)
+        for outer in (
+            *node.decorator_list,
+            *node.args.defaults,
+            *(default for default in node.args.kw_defaults if default is not None),
+        ):
+            self.visit(outer)
 
     @override
     def visit_ClassDef(self, node: ast.ClassDef) -> None:
         self.names.add(node.name)
+        for outer in (*node.decorator_list, *node.bases, *node.keywords):
+            self.visit(outer)
 
     @override
     def visit_Lambda(self, node: ast.Lambda) -> None:
-        return None
+        for default in (*node.args.defaults, *(value for value in node.args.kw_defaults if value is not None)):
+            self.visit(default)
 
     @override
     def visit_ListComp(self, node: ast.ListComp) -> None:
-        return None
+        self.visit(node.elt)
+        self._visit_generators(node.generators)
 
     @override
     def visit_SetComp(self, node: ast.SetComp) -> None:
-        return None
+        self.visit(node.elt)
+        self._visit_generators(node.generators)
 
     @override
     def visit_DictComp(self, node: ast.DictComp) -> None:
-        return None
+        self.visit(node.key)
+        self.visit(node.value)
+        self._visit_generators(node.generators)
 
     @override
     def visit_GeneratorExp(self, node: ast.GeneratorExp) -> None:
-        return None
+        self.visit(node.elt)
+        self._visit_generators(node.generators)
+
+    def _visit_generators(self, generators: list[ast.comprehension]) -> None:
+        for generator in generators:
+            self.visit(generator.iter)
+            for condition in generator.ifs:
+                self.visit(condition)
 
 
 def _bind_import_modules(statement: ast.Import, bindings: dict[str, _Binding]) -> None:

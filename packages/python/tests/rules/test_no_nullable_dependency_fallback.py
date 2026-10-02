@@ -315,3 +315,44 @@ def test_combined_runner_constructor_ownership_and_suppression(tmp_path: Path) -
     path.write_text(source.replace("= None):", "= None):  # sarj-noqa: SARJ469 -- library compatibility") + constructor)
     assert [finding.code for finding in analyze(rules, [path])] == ["SARJ468"]
     assert [finding.code for finding in analyze(rules, [path])] == ["SARJ468"]
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "class StateError(Exception):\n    token = 'temporary'\ndef run(token=None):\n    try:\n        raise StateError()\n    except StateError as settings:\n        return settings.token if token is None else token\n",
+        "class State:\n    token = 'temporary'\ndef run(token=None):\n    match State():\n        case settings:\n            return settings.token if token is None else token\n",
+        "class State:\n    token = 'temporary'\ndef run(token=None):\n    global settings\n    settings = State()\n    return settings.token if token is None else token\n",
+        "def outer(settings):\n    def run(token=None):\n        return settings.token if token is None else token\n    return run\n",
+        "def outer(value):\n    match value:\n        case settings:\n            def run(token=None):\n                return settings.token if token is None else token\n            return run\n",
+        "class State:\n    token = 'temporary'\ndef replace():\n    global settings\n    settings = State()\nreplace()\ndef run(token=None):\n    return settings.token if token is None else token\n",
+    ],
+    ids=(
+        "exception-state",
+        "pattern-state",
+        "global-state",
+        "enclosing-parameter",
+        "enclosing-pattern",
+        "module-global-writer",
+    ),
+)
+def test_settings_runtime_provenance_is_required(tmp_path: Path, body: str) -> None:
+    (tmp_path / "pyproject.toml").write_text("[project]\nname='example'\nversion='0.1.0'\n")
+    (tmp_path / "settings_provider.py").write_text(
+        "from pydantic_settings import BaseSettings\nclass Settings(BaseSettings):\n    token: str='ambient'\nsettings = Settings()\n"
+    )
+    source = f"from settings_provider import settings\n{body}"
+    path = tmp_path / "service.py"
+    path.write_text(source)
+    assert _check(source, path) == []
+
+
+def test_read_only_global_settings_stays_proven(tmp_path: Path) -> None:
+    (tmp_path / "pyproject.toml").write_text("[project]\nname='example'\nversion='0.1.0'\n")
+    (tmp_path / "settings_provider.py").write_text(
+        "from pydantic_settings import BaseSettings\nclass Settings(BaseSettings):\n    token: str='ambient'\nsettings = Settings()\n"
+    )
+    source = "from settings_provider import settings\ndef observe():\n    global settings\n    return settings.token\ndef run(token=None):\n    return settings.token if token is None else token\n"
+    path = tmp_path / "service.py"
+    path.write_text(source)
+    assert len(_check(source, path)) == 1

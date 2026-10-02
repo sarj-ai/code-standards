@@ -3,6 +3,7 @@ from __future__ import annotations
 import ast
 from itertools import chain
 from pathlib import PurePosixPath
+from types import MappingProxyType
 from typing import TYPE_CHECKING, ClassVar, final, override
 
 from sarj_python_lint.rule_base import (
@@ -17,6 +18,7 @@ from sarj_python_lint.rule_base import (
     Severity,
     is_suppressed,
 )
+from sarj_python_lint.rules._imports import ImportIndex
 
 
 if TYPE_CHECKING:
@@ -104,7 +106,7 @@ def _unused_parameters(
     if not candidates or _has_contract(context, function) or _is_stub(function):
         return ()
     body = list(chain.from_iterable(ast.walk(statement) for statement in function.body))
-    if _reads_dynamic_locals(context, body):
+    if _reads_dynamic_locals(context, function, body):
         return ()
     references = {node.id for node in body if isinstance(node, ast.Name)}
     return tuple(argument for argument in candidates if argument.arg not in references)
@@ -152,17 +154,23 @@ def _is_stub(function: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
             return False
 
 
-def _reads_dynamic_locals(context: PythonFileContext, body: list[ast.AST]) -> bool:
+def _reads_dynamic_locals(
+    context: PythonFileContext, function: ast.FunctionDef | ast.AsyncFunctionDef, body: list[ast.AST]
+) -> bool:
+    local = ImportIndex.from_tree(ast.Module(body=[function, *function.body], type_ignores=[]))
+    module = context.module_imports
+    bindings = {name: target for name, target in module.bindings.items() if name not in local.shadowed_names}
+    bindings.update(local.bindings)
+    imports = ImportIndex(MappingProxyType(bindings), module.shadowed_names | local.shadowed_names)
     return any(
         isinstance(node, ast.expr)
         and (
             (
                 isinstance(node, ast.Name)
                 and node.id in {"locals", "vars", "eval", "exec"}
-                and context.module_imports.builtin_is_unshadowed(node.id)
+                and imports.builtin_is_unshadowed(node.id)
             )
-            or context.module_imports.resolved_symbol(node, sources=frozenset({"builtins"}))
-            in {"locals", "vars", "eval", "exec"}
+            or imports.resolved_symbol(node, sources=frozenset({"builtins"})) in {"locals", "vars", "eval", "exec"}
         )
         for node in body
     )

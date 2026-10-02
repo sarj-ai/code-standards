@@ -89,6 +89,7 @@ class _TextFlow:
     ephemeral_path_names: set[str]
     sources: _SourceKinds
     api: _ApiProvenance
+    byte_writes: set[tuple[str, str]]
 
 
 @dataclass(frozen=True, slots=True)
@@ -98,6 +99,7 @@ class _FlowState:
     paths: set[str]
     raw: set[str]
     raw_origins: dict[str, set[int]]
+    byte_writes: set[tuple[str, str]]
 
 
 _TEXT_TRANSFORMS = frozenset(
@@ -152,6 +154,8 @@ class NoRawSourceTextTestOracle(Rule):
             "Files produced beneath recognized temporary-directory fixtures are generated artifacts, not repository source, and remain unreported.",
             "Paths beneath fixture, golden, and snapshot directories are treated as deliberate representation contracts and remain unreported.",
             "When raw representation is genuinely the contract (for example a golden or compatibility sentinel), use an exact line suppression with the reason.",
+            "Lambda bodies and unconsumed generators are separate scopes. Proven builtin all/any consumption follows generator and comprehension bindings; pattern captures clear prior source provenance. Empty literal iterations and literal false filters are not treated as source oracles.",
+            "Exact byte-copy checks against proven temporary outputs, and same-path byte preservation after a visible named write_bytes value, are representation contracts. Local value/path rebinding, intervening path writes, and conditional writes invalidate that proof; equality to fixed repository-source bytes still requires an exact suppression.",
         ),
         examples=(
             RuleExample(
@@ -420,6 +424,7 @@ class FunctionAnalyzer(ast.NodeVisitor):
         self._paths: set[str] = set()
         self._raw: set[str] = set()
         self._raw_origins: dict[str, set[int]] = {}
+        self._byte_writes: set[tuple[str, str]] = set()
         self._reported_origins: set[int] = set()
         self._assertions: list[ast.Assert | ast.Call] = []
 
@@ -433,20 +438,18 @@ class FunctionAnalyzer(ast.NodeVisitor):
         return self._assertions
 
     @override
-    def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
-        return None  # A nested helper owns a separate scope and is intentionally not inferred.
+    def generic_visit(self, node: ast.AST) -> None:
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef | ast.Lambda):
+            return
+        if isinstance(node, ast.ListComp | ast.SetComp | ast.DictComp | ast.GeneratorExp):
+            self._invalidate_comprehension_writes(node)
+            return
+        super().generic_visit(node)
 
-    @override
-    def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
-        return None
-
-    @override
-    def visit_ClassDef(self, node: ast.ClassDef) -> None:
-        return None
-
-    @override
-    def visit_Lambda(self, node: ast.Lambda) -> None:
-        return None
+    def _invalidate_comprehension_writes(self, node: ast.expr) -> None:
+        for child in walk_ast(node):
+            if isinstance(child, ast.NamedExpr):
+                self._clear_target(child.target)
 
     @override
     def visit_Assign(self, node: ast.Assign) -> None:
@@ -495,6 +498,7 @@ class FunctionAnalyzer(ast.NodeVisitor):
 
     @override
     def visit_Call(self, node: ast.Call) -> None:
+        self._remember_byte_write(node)
         if (
             self._unittest_style
             and not self._suppressed(node)
@@ -508,6 +512,18 @@ class FunctionAnalyzer(ast.NodeVisitor):
                 self._assertions.append(node)
                 self._reported_origins.update(origins)
         self.generic_visit(node)
+
+    def _remember_byte_write(self, node: ast.Call) -> None:
+        if not isinstance(node.func, ast.Attribute) or not isinstance(node.func.value, ast.Name):
+            return
+        path = node.func.value.id
+        if path not in self._paths | self._ephemeral_paths or node.func.attr in {"read_bytes", "read_text"}:
+            return
+        self._byte_writes = {write for write in self._byte_writes if write[1] != path}
+        if node.func.attr == "write_bytes" and not node.keywords and len(node.args) == 1:
+            value = node.args[0]
+            if isinstance(value, ast.Name) and value.id != path:
+                self._byte_writes.add((value.id, path))
 
     @override
     def visit_If(self, node: ast.If) -> None:
@@ -591,6 +607,8 @@ class FunctionAnalyzer(ast.NodeVisitor):
         exits = [initial]
         for case in node.cases:
             self._restore(initial)
+            for name in _pattern_bound_names(case.pattern):
+                self._clear_name(name)
             if case.guard is not None:
                 self.visit(case.guard)
             for statement in case.body:
@@ -643,6 +661,7 @@ class FunctionAnalyzer(ast.NodeVisitor):
             self._ephemeral_paths - {generator.target.id},
             self._sources,
             _ApiProvenance(self._provenance.imports, self._provenance.shadowed | {generator.target.id}),
+            self._byte_writes,
         )
         if not _raw_text_expression(value.elt, flow):
             return
@@ -659,6 +678,7 @@ class FunctionAnalyzer(ast.NodeVisitor):
                 self._clear_name(child.id)
 
     def _clear_name(self, name: str) -> None:
+        self._byte_writes = {write for write in self._byte_writes if name not in write}
         self._paths.discard(name)
         self._raw.discard(name)
         self._raw_origins.pop(name, None)
@@ -672,6 +692,7 @@ class FunctionAnalyzer(ast.NodeVisitor):
             set(self._paths),
             set(self._raw),
             {name: set(origins) for name, origins in self._raw_origins.items()},
+            set(self._byte_writes),
         )
 
     def _restore(self, state: _FlowState) -> None:
@@ -680,6 +701,7 @@ class FunctionAnalyzer(ast.NodeVisitor):
         self._paths = set(state.paths)
         self._raw = set(state.raw)
         self._raw_origins = {name: set(origins) for name, origins in state.raw_origins.items()}
+        self._byte_writes = set(state.byte_writes)
 
     def _suppressed(self, node: ast.AST) -> bool:
         return (
@@ -703,6 +725,7 @@ class FunctionAnalyzer(ast.NodeVisitor):
             self._ephemeral_paths,
             self._sources,
             self._provenance,
+            self._byte_writes,
         )
 
 
@@ -714,6 +737,7 @@ def _intersect_flow_states(left: _FlowState, right: _FlowState) -> _FlowState:
         left.paths & right.paths,
         raw,
         {name: left.raw_origins.get(name, set()) | right.raw_origins.get(name, set()) for name in raw},
+        left.byte_writes & right.byte_writes,
     )
 
 
@@ -961,9 +985,13 @@ def _raw_text_oracle(
     node: ast.expr,
     flow: _TextFlow,
 ) -> bool:
+    if isinstance(node, ast.Lambda | ast.GeneratorExp):
+        return False
+    if isinstance(node, ast.ListComp | ast.SetComp | ast.DictComp):
+        return _comprehension_oracle(node, flow)
     if isinstance(node, ast.Compare) and _raw_text_comparison(node, flow):
         return True
-    if _is_raw_text_iteration_call(node, flow):
+    if _consumed_generator_oracle(node, flow):
         return True
     if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
         if (
@@ -1003,23 +1031,81 @@ def _raw_text_measurement(
     )
 
 
-def _is_raw_text_iteration_call(node: ast.expr, flow: _TextFlow) -> bool:
-    return (
-        isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Name)
-        and node.func.id in {"all", "any"}
-        and any(
-            isinstance(argument, ast.GeneratorExp)
-            and any(_raw_text_line_iteration(item.iter, flow) for item in argument.generators)
-            for argument in node.args
-        )
+def _consumed_generator_oracle(node: ast.expr, flow: _TextFlow) -> bool:
+    if not isinstance(node, ast.Call) or node.keywords or len(node.args) != 1:
+        return False
+    function = node.func
+    if (
+        not isinstance(function, ast.Name)
+        or function.id not in {"all", "any"}
+        or function.id in flow.api.shadowed
+        or not flow.api.imports.builtin_is_unshadowed(function.id)
+    ):
+        return False
+    argument = node.args[0]
+    return isinstance(argument, ast.GeneratorExp) and _comprehension_oracle(argument, flow, consumes_values=True)
+
+
+def _comprehension_oracle(
+    node: ast.ListComp | ast.SetComp | ast.DictComp | ast.GeneratorExp,
+    flow: _TextFlow,
+    *,
+    consumes_values: bool = False,
+) -> bool:
+    if _comprehension_is_statically_empty(node.generators):
+        return False
+    for generator in node.generators:
+        if _raw_text_oracle(generator.iter, flow):
+            return True
+        flow = _bind_comprehension_target(generator, flow)
+        if any(_raw_text_oracle(condition, flow) for condition in generator.ifs):
+            return True
+    values = [node.key, node.value] if isinstance(node, ast.DictComp) else [node.elt]
+    return any(
+        _raw_text_oracle(value, flow) or (consumes_values and _raw_text_expression(value, flow)) for value in values
     )
+
+
+def _comprehension_is_statically_empty(generators: list[ast.comprehension]) -> bool:
+    return any(
+        (isinstance(generator.iter, ast.List | ast.Tuple | ast.Set) and not generator.iter.elts)
+        or (isinstance(generator.iter, ast.Dict) and not generator.iter.keys)
+        or any(isinstance(condition, ast.Constant) and not condition.value for condition in generator.ifs)
+        for generator in generators
+    )
+
+
+def _bind_comprehension_target(generator: ast.comprehension, flow: _TextFlow) -> _TextFlow:
+    raw_lines = _raw_text_line_iteration(generator.iter, flow)
+    names = {child.id for child in walk_ast(generator.target) if isinstance(child, ast.Name)}
+    scoped = _TextFlow(
+        flow.raw_names - names,
+        flow.path_names - names,
+        flow.ephemeral_path_names - names,
+        flow.sources,
+        _ApiProvenance(flow.api.imports, flow.api.shadowed | names),
+        {write for write in flow.byte_writes if names.isdisjoint(write)},
+    )
+    if raw_lines and isinstance(generator.target, ast.Name):
+        scoped.raw_names.add(generator.target.id)
+    return scoped
+
+
+def _pattern_bound_names(pattern: ast.pattern) -> Iterator[str]:
+    for child in walk_ast(pattern):
+        match child:
+            case ast.MatchAs(name=str(name)) | ast.MatchStar(name=str(name)) | ast.MatchMapping(rest=str(name)):
+                yield name
+            case _:
+                pass
 
 
 def _raw_text_line_iteration(
     node: ast.expr,
     flow: _TextFlow,
 ) -> bool:
+    if isinstance(node, ast.List | ast.Tuple):
+        return bool(node.elts) and all(_raw_text_expression(item, flow) for item in node.elts)
     return (
         isinstance(node, ast.Call)
         and isinstance(node.func, ast.Attribute)
@@ -1032,6 +1118,12 @@ def _unittest_raw_text_oracle(
     node: ast.Call,
     flow: _TextFlow,
 ) -> bool:
+    if (
+        isinstance(node.func, ast.Attribute)
+        and node.func.attr in {"assertEqual", "assertNotEqual"}
+        and _byte_preservation_operands(node.args, flow)
+    ):
+        return False
     return (
         isinstance(node.func, ast.Attribute)
         and isinstance(node.func.value, ast.Name)
@@ -1064,6 +1156,12 @@ def _expression_origins(
 
 def _raw_text_comparison(node: ast.Compare, flow: _TextFlow) -> bool:
     operands = [node.left, *node.comparators]
+    if (
+        len(node.ops) == 1
+        and isinstance(node.ops[0], ast.Eq | ast.NotEq)
+        and _byte_preservation_operands(operands, flow)
+    ):
+        return False
     if any(_raw_text_measurement(operand, flow) for operand in operands) and any(
         isinstance(operator, (ast.Eq, ast.NotEq, ast.Lt, ast.LtE, ast.Gt, ast.GtE)) for operator in node.ops
     ):
@@ -1072,3 +1170,33 @@ def _raw_text_comparison(node: ast.Compare, flow: _TextFlow) -> bool:
         any(_raw_text_expression(operand, flow) for operand in operands)
         and any(isinstance(operator, (ast.In, ast.NotIn, ast.Eq, ast.NotEq)) for operator in node.ops)
     )
+
+
+def _byte_preservation_operands(operands: list[ast.expr], flow: _TextFlow) -> bool:
+    match operands:
+        case [left, right]:
+            pairs = ((left, right), (right, left))
+        case _:
+            return False
+    for read, expected in pairs:
+        if not (
+            isinstance(read, ast.Call)
+            and isinstance(read.func, ast.Attribute)
+            and read.func.attr == "read_bytes"
+            and _raw_source_read(read, flow.path_names, flow.ephemeral_path_names, flow.sources, flow.api)
+        ):
+            continue
+        if (
+            isinstance(read.func.value, ast.Name)
+            and isinstance(expected, ast.Name)
+            and (expected.id, read.func.value.id) in flow.byte_writes
+        ):
+            return True
+        if (
+            isinstance(expected, ast.Call)
+            and isinstance(expected.func, ast.Attribute)
+            and expected.func.attr == "read_bytes"
+            and _ephemeral_path_expression(expected.func.value, flow.ephemeral_path_names)
+        ):
+            return True
+    return False

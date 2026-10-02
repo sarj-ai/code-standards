@@ -125,6 +125,43 @@ def test_ignores_shadowed_constructor(shadow: str) -> None:
     assert _check(source) == []
 
 
+_CAPTURE_PROVENANCE_CASES = (
+    EvaluationCase(
+        "module-constructor-capture",
+        Language.PYTHON,
+        "from unittest.mock import AsyncMock\nmatch provider:\n    case AsyncMock:\n        pass\nasync def test_delivery():\n    send = AsyncMock()\n    send.assert_called_once()\n",
+    ),
+    EvaluationCase(
+        "local-constructor-capture",
+        Language.PYTHON,
+        "from unittest.mock import AsyncMock\nasync def test_delivery(provider):\n    match provider:\n        case AsyncMock:\n            pass\n    send = AsyncMock()\n    send.assert_called_once()\n",
+    ),
+    EvaluationCase(
+        "mock-instance-capture",
+        Language.PYTHON,
+        "from unittest.mock import AsyncMock\nasync def test_delivery(provider):\n    send = AsyncMock()\n    match provider:\n        case send:\n            pass\n    send.assert_called_once()\n",
+    ),
+    EvaluationCase(
+        "mock-instance-definition",
+        Language.PYTHON,
+        "from unittest.mock import AsyncMock\nasync def test_delivery():\n    send = AsyncMock()\n    @custom_double\n    def send():\n        pass\n    send.assert_called_once()\n",
+    ),
+    EvaluationCase(
+        "unrelated-capture-keeps-warning",
+        Language.PYTHON,
+        "from unittest.mock import AsyncMock\nasync def test_delivery(provider):\n    send = AsyncMock()\n    match provider:\n        case other:\n            pass\n    send.assert_called_once()\n",
+        ExpectedOutcome.MATCH,
+    ),
+)
+
+
+@pytest.mark.parametrize(
+    "case", _CAPTURE_PROVENANCE_CASES, ids=tuple(case.case_id for case in _CAPTURE_PROVENANCE_CASES)
+)
+def test_async_mock_assertion_requires_unchanged_provenance(case: EvaluationCase) -> None:
+    assert bool(_check(case.source)) is (case.expected is ExpectedOutcome.MATCH)
+
+
 def test_ignores_rebound_module_constructor() -> None:
     source = """
         import unittest.mock as mocks
