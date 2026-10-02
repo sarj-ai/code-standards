@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "bef9ca2227c0a756756f9d1056dbb489a1a75f8b7fe3bb6638b87a6fe940bbd9",
-  "cliSha256": "1802b8ee6c7690298f5d02b603a61507ebd8af33e3cdd9dce39983bf10ebdc90",
+  "catalogSha256": "b3e609b19682da2f62ffa7932ec599f2d24e1088cf4ebb65680a6c97e2a8e0a7",
+  "cliSha256": "510a66a7be3dcd8ebc60b1dc6929f17efba22b346c393bff4cdfb294b27330b6",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -7545,6 +7545,41 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Human-only module, class, and function prose"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:no-unused-underscored-keyword-parameter": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/sink.py",
+              "source": "def emit(*, _email=None):\n    return \"ready\"\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/sink.py",
+          "id": "discarded-keyword-input",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "An ignored keyword input is kept just to silence unused-argument lint"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/sink.py",
+              "source": "def emit():\n    return \"ready\"\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/sink.py",
+          "id": "removed-keyword-input",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "The callable exposes only inputs it uses"
         }
       ],
       "optionsSchemaSource": null
