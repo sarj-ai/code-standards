@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "5038415f38585ae5a0827d348da3b37b3b544150c1ca2c1d1174f00386ea8f5b",
-  "cliSha256": "ae510a255a2a0d82a6260888e08339713d89c06df30016b827dcd8d37dbd78c4",
+  "catalogSha256": "0927c19c49a677cf13ab3ad7fdd35ff27fd389b291c0fc9689919b67e9b8f2c0",
+  "cliSha256": "feb377072a19d0047c00d30de2de3dc65b55cb0c97c045d707e025f04aca4fd5",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -9637,6 +9637,41 @@
           "outcome": "accept",
           "scenarioId": "factory-created-boundary",
           "title": "A typed factory exposes the consumer's public Protocol"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:require-precise-factory-signature": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/service.py",
+              "source": "from collections.abc import Callable\n\n\nclass Result:\n    pass\n\n\ndef build(factory: Callable[..., Result]):\n    return factory(size=4)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/service.py",
+          "id": "erased-factory",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Keyword arguments escape checking"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/service.py",
+              "source": "from typing import Protocol\n\n\nclass Result:\n    pass\n\n\nclass Factory(Protocol):\n    def __call__(self, *, size: int) -> Result: ...\n\n\ndef build(factory: Factory):\n    return factory(size=4)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/service.py",
+          "id": "exact-factory",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Factory declares its keyword contract"
         }
       ],
       "optionsSchemaSource": null

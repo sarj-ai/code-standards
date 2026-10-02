@@ -165,6 +165,7 @@ from sarj_python_lint.rules.require_nodecode_for_splitting_settings_field import
     RequireNoDecodeForSplittingSettingsField,
 )
 from sarj_python_lint.rules.require_port_for_service import RequirePortForService
+from sarj_python_lint.rules.require_precise_factory_signature import RequirePreciseFactorySignature
 from sarj_python_lint.rules.require_public_dependency_contract import RequirePublicDependencyContract
 from sarj_python_lint.rules.require_pydantic_for_external_json import (
     RequirePydanticForExternalJson,
@@ -200,6 +201,7 @@ REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
         RequireExplicitContractImplementation.id: RequireExplicitContractImplementation,
         DiscourageNullableConstructorParameters.id: DiscourageNullableConstructorParameters,
         RequirePublicDependencyContract.id: RequirePublicDependencyContract,
+        RequirePreciseFactorySignature.id: RequirePreciseFactorySignature,
         RequireExplicitServiceContract.id: RequireExplicitServiceContract,
         AsyncCleanupRegisteredSynchronously.id: AsyncCleanupRegisteredSynchronously,
         SubprocessKillWithoutReap.id: SubprocessKillWithoutReap,

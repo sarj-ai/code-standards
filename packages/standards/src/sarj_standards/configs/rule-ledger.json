@@ -136,6 +136,7 @@
       "require-keyword-only-swap-prone-params",
       "require-nodecode-for-splitting-settings-field",
       "require-port-for-service",
+      "require-precise-factory-signature",
       "require-public-dependency-contract",
       "require-pydantic-for-external-json",
       "require-pydantic-for-structured-payload",
@@ -440,7 +441,8 @@
       "SARJ469",
       "SARJ470",
       "SARJ471",
-      "SARJ472"
+      "SARJ472",
+      "SARJ473"
     ],
     "sql": [
       "SARJ101",

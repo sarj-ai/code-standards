@@ -257,5 +257,6 @@
   "SARJ469": "no-nullable-dependency-fallback",
   "SARJ470": "no-database-programmability",
   "SARJ471": "no-injected-module-loader",
-  "SARJ472": "no-shallow-container-type-guard"
+  "SARJ472": "no-shallow-container-type-guard",
+  "SARJ473": "require-precise-factory-signature"
 }
