@@ -38,14 +38,15 @@ class UnusedTestFactoryOption(Rule):
     code = "SARJ443"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
         default_level=Severity.WARNING,
-        summary="A private test factory exposes a literal option that visible callers never vary.",
+        summary="A private test factory exposes an option that visible callers never vary.",
         rationale="Unused customization obscures the values that actually distinguish test scenarios.",
         remediation="Keep the value in the factory's construction instead of exposing an unused option; retain it if external callers need it.",
         category=RuleCategory.TESTING,
         autofix=AutofixPolicy.NONE,
         limitations=(
             "Only module-level private _make_ and _build_ helpers with straight-line local assignments ending in a construction return are considered; control flow and standalone side effects are excluded.",
-            "Only literal defaults with direct, unambiguous calls in this file are reported. Explicit options require at least two calls with the same effective literal value. Decorators, rebinding, callable escapes, reflection, and argument unpacking exclude the helper.",
+            "Literal defaults and stable earlier module-local function defaults are considered. Callable options are reported only when every direct caller omits them; explicit literal options require at least two calls with the same effective value.",
+            "Decorators, rebinding, shadowing, callable escapes, reflection, argument unpacking, and ambiguous provider mutation or patch targets exclude the affected helper or callable option.",
             "Cross-module callers cannot be proven absent. Shared helpers require an exact suppression; this advisory never autofixes signatures or changes default evaluation timing.",
         ),
         examples=(
@@ -71,6 +72,36 @@ class UnusedTestFactoryOption(Rule):
                     ExampleFile.python(
                         "tests/test_widget.py",
                         "def _make_widget(*, size=3):\n    return Widget(size=size)\n\ndef test_widget():\n    assert _make_widget(size=4)\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("tests/test_widget.py"),
+                expected_count=0,
+                public=True,
+            ),
+            RuleExample(
+                example_id="unused-callable-option",
+                scenario="callable-default",
+                title="Use an unexercised local dependency directly",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "tests/test_widget.py",
+                        "def _read():\n    return 'value'\n\ndef _make_widget(*, read=_read):\n    return Widget(read=read)\n\n_make_widget()\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("tests/test_widget.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="exercised-callable-option",
+                scenario="callable-default",
+                title="Keep a dependency that a caller replaces",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "tests/test_widget.py",
+                        "def _read():\n    return 'value'\n\ndef _make_widget(*, read=_read):\n    return Widget(read=read)\n\n_make_widget(read=other)\n",
                     ),
                 ),
                 focus_path=PurePosixPath("tests/test_widget.py"),
@@ -173,6 +204,27 @@ def _factory_findings(
                 ),
             )
         )
+    for argument, default in _factory_options(function):
+        if (
+            argument.arg in supplied
+            or not isinstance(default, ast.Name)
+            or not _is_stable_local_callable(tree, function, default.id, node_index=node_index)
+            or is_suppressed(lines, argument.lineno, code)
+        ):
+            continue
+        findings.append(
+            Diagnostic(
+                path=path,
+                line=argument.lineno,
+                col=argument.col_offset + 1,
+                code=code,
+                severity=Severity.WARNING,
+                message=(
+                    f"No direct caller in this file supplies `{function.name}.{argument.arg}`; use the stable local "
+                    f"callable `{default.id}` in the factory instead of exposing an unused option. Retain it if external callers need it."
+                ),
+            )
+        )
     return findings
 
 
@@ -258,18 +310,49 @@ def _factory_argument_is_invariant(argument: ast.arg, default: ast.Constant, bou
     )
 
 
-def _literal_factory_options(function: ast.FunctionDef) -> list[tuple[ast.arg, ast.Constant]]:
-    options: list[tuple[ast.arg, ast.Constant]] = []
+def _factory_options(function: ast.FunctionDef) -> list[tuple[ast.arg, ast.expr]]:
     positional = [*function.args.posonlyargs, *function.args.args]
     defaults = [
         *zip(positional[len(positional) - len(function.args.defaults) :], function.args.defaults, strict=True),
         *zip(function.args.kwonlyargs, function.args.kw_defaults, strict=True),
     ]
     used = {node.id for node in nodes(function, ast.Name) if isinstance(node.ctx, ast.Load)}
-    for argument, default in defaults:
-        if argument.arg not in used or not isinstance(default, ast.Constant):
-            continue
-        if default.value is not None and not isinstance(default.value, (str, bytes, int, float)):
-            continue
-        options.append((argument, default))
-    return options
+    return [(argument, default) for argument, default in defaults if argument.arg in used and default is not None]
+
+
+def _literal_factory_options(function: ast.FunctionDef) -> list[tuple[ast.arg, ast.Constant]]:
+    return [
+        (argument, default)
+        for argument, default in _factory_options(function)
+        if isinstance(default, ast.Constant)
+        and (default.value is None or isinstance(default.value, (str, bytes, int, float)))
+    ]
+
+
+def _is_stable_local_callable(
+    tree: ast.Module,
+    factory: ast.FunctionDef,
+    name: str,
+    *,
+    node_index: NodeIndex | None = None,
+) -> bool:
+    if not any(
+        isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and node.name == name
+        and node.lineno < factory.lineno
+        and not node.decorator_list
+        for node in tree.body
+    ) or not _has_unambiguous_factory_name(tree, name, node_index=node_index):
+        return False
+    return not (
+        any(node.id == name and not isinstance(node.ctx, ast.Load) for node in nodes(tree, ast.Name, index=node_index))
+        or any(
+            not isinstance(node.ctx, ast.Load) and any(child.id == name for child in nodes(node.value, ast.Name))
+            for node in nodes(tree, ast.Attribute, index=node_index)
+        )
+        or any(
+            isinstance(node.value, str)
+            and (node.value.rsplit(".", 1)[-1] == name or factory.name in node.value.split("."))
+            for node in nodes(tree, ast.Constant, index=node_index)
+        )
+    )
