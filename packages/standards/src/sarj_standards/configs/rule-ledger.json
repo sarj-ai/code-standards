@@ -88,6 +88,7 @@
       "no-trailing-numeric-unit-assignment-comment",
       "no-unique-violation-message-match",
       "no-unnecessary-docstring",
+      "no-unused-underscored-keyword-parameter",
       "no-unused-value-marker",
       "no-vague-suppression-description",
       "no-whole-request-response-payload-in-log",
@@ -444,7 +445,8 @@
       "SARJ471",
       "SARJ472",
       "SARJ473",
-      "SARJ474"
+      "SARJ474",
+      "SARJ475"
     ],
     "sql": [
       "SARJ101",

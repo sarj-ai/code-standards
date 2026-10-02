@@ -88,6 +88,7 @@ from sarj_python_lint.rules.no_unique_violation_message_match import (
     NoUniqueViolationMessageMatch,
 )
 from sarj_python_lint.rules.no_unnecessary_docstring import NoUnnecessaryDocstring
+from sarj_python_lint.rules.no_unused_underscored_keyword_parameter import NoUnusedUnderscoredKeywordParameter
 from sarj_python_lint.rules.no_unused_value_marker import NoUnusedValueMarker
 from sarj_python_lint.rules.no_vague_suppression_description import (
     NoVagueSuppressionDescription,
@@ -306,6 +307,7 @@ REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
         NoTypedDocSections.id: NoTypedDocSections,
         NoUnnecessaryDocstring.id: NoUnnecessaryDocstring,
         NoUnusedValueMarker.id: NoUnusedValueMarker,
+        NoUnusedUnderscoredKeywordParameter.id: NoUnusedUnderscoredKeywordParameter,
         PreferNominalIdTypes.id: PreferNominalIdTypes,
         NoAnyMappingTypes.id: NoAnyMappingTypes,
         NoUniqueViolationMessageMatch.id: NoUniqueViolationMessageMatch,
