@@ -20,12 +20,23 @@ from sarj_python_lint.rules.no_hidden_constructor_fallback import LocalBindingCo
 
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Iterator, Mapping
 
     from sarj_python_lint._file_context import PythonFileContext
 
 
 _LOADER_TARGETS = frozenset({"importlib.import_module", "importlib.__import__", "builtins.__import__"})
+_LEXICAL_SCOPES = (
+    ast.Module,
+    ast.FunctionDef,
+    ast.AsyncFunctionDef,
+    ast.ClassDef,
+    ast.Lambda,
+    ast.ListComp,
+    ast.SetComp,
+    ast.DictComp,
+    ast.GeneratorExp,
+)
 
 
 @final
@@ -42,7 +53,8 @@ class NoInjectedModuleLoader(Rule):
         limitations=(
             "Flags defaults resolving to importlib.import_module, importlib.__import__, or builtins.__import__, including stable module-level import and single-assignment aliases and unshadowed __import__.",
             "Tests, test support, and generated code are excluded. Required loader parameters, application loaders, wrapper lambdas, alias chains, comprehensions, and imports local to enclosing scopes are not inferred.",
-            "Conservatively skips shadowed or rebound names, wildcard-import files, and files that reassign loader attributes. No autofix: removing an argument changes the callable contract and moving imports can change initialization timing.",
+            "Conservatively skips shadowed or rebound names, wildcard-import files, reassigned loader attributes, and exception or pattern captures of importer roots, symbols or assignment aliases. A relevant-name capture in an unrelated local scope can cause a false negative because capture checks are file-wide.",
+            "Assignment aliases require one module binding and precede use by line and column. Defaults use their enclosing evaluation scope: earlier statements in the nearest executing class body can shadow loaders; methods and nested classes do not close over class attributes. Enclosing function body bindings remain conservative exclusions, but a function's parameters do not shadow its own defaults. Relevant global declarations and walrus writes exclude sensitive importer names. Compound class statements can cause conservative omissions. Dynamic namespace mutation is not inferred. No autofix: changing arguments or import placement can alter API and initialization behavior.",
         ),
         examples=(
             RuleExample(
@@ -83,15 +95,21 @@ class NoInjectedModuleLoader(Rule):
             or context.generated
             or is_test_path(context.path)
             or is_test_support_path(context.path)
-            or _ambiguous_loader_bindings(context)
         ):
             return []
         aliases = _stable_loader_aliases(context)
+        if _ambiguous_loader_bindings(context, aliases):
+            return []
         findings: list[Diagnostic] = []
         for function in context.nodes(ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda):
             for argument, default in _defaults(function.args):
                 direct = _is_loader(default, context)
-                aliased = isinstance(default, ast.Name) and aliases.get(default.id, function.lineno) < function.lineno
+                aliased = (
+                    isinstance(default, ast.Name)
+                    and default.id in aliases
+                    and (aliases[default.id].lineno, aliases[default.id].col_offset)
+                    < (function.lineno, function.col_offset)
+                )
                 if not (direct or aliased) or _shadowed(default, function, context):
                     continue
                 findings.append(
@@ -107,9 +125,28 @@ class NoInjectedModuleLoader(Rule):
         return sorted(findings, key=lambda finding: (finding.line, finding.col))
 
 
-def _ambiguous_loader_bindings(context: PythonFileContext) -> bool:
+def _ambiguous_loader_bindings(context: PythonFileContext, aliases: Mapping[str, ast.stmt]) -> bool:
     if any(alias.name == "*" for node in context.nodes(ast.ImportFrom) for alias in node.names):
         return True
+    sensitive_names = {"__import__", *aliases} | {
+        name
+        for name, target in context.module_imports.bindings.items()
+        if (target.module in {"importlib", "builtins"} and target.symbol is None)
+        or f"{target.module}.{target.symbol}" in _LOADER_TARGETS
+    }
+    if any(sensitive_names.intersection(node.names) for node in context.nodes(ast.Global)):
+        return True
+    for node in context.nodes(ast.ExceptHandler, ast.MatchAs, ast.MatchStar, ast.MatchMapping, ast.NamedExpr):
+        match node:
+            case (
+                ast.ExceptHandler(name=name)
+                | ast.MatchAs(name=name)
+                | ast.MatchStar(name=name)
+                | ast.MatchMapping(rest=name)
+                | ast.NamedExpr(target=ast.Name(id=name))
+            ):
+                if name in sensitive_names:
+                    return True
     return any(
         isinstance(node.ctx, (ast.Store, ast.Del))
         and context.module_imports.resolved_qualified_name(node) in _LOADER_TARGETS
@@ -144,27 +181,51 @@ def _shadowed(default: ast.expr, function: ast.AST, context: PythonFileContext) 
         root = root.value
     if not isinstance(root, ast.Name):
         return True
-    parent = context.parents.get(function)
+    child = function
+    parent = context.parents.get(child)
+    class_scope_visible = True
     while parent is not None:
         if isinstance(parent, (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)):
             return True
         if isinstance(parent, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
-            if root.id in scope_bindings(parent):
+            if _in_scope_body(parent, child):
+                if root.id in scope_bindings(parent):
+                    return True
+                class_scope_visible = False
+        elif isinstance(parent, ast.ClassDef) and _in_scope_body(parent, child):
+            if class_scope_visible and _class_prefix_shadows(parent, child, root.id):
                 return True
-        elif isinstance(parent, ast.ClassDef):
-            collector = LocalBindingCollector()
-            for statement in parent.body:
-                collector.visit(statement)
-            if root.id in collector.names:
-                return True
+            class_scope_visible = False
+        child = parent
         parent = context.parents.get(parent)
     return False
 
 
-def _stable_loader_aliases(context: PythonFileContext) -> dict[str, int]:
+def _in_scope_body(scope: ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef | ast.Lambda, child: ast.AST) -> bool:
+    # Defaults and class headers execute outside the scope being defined.
+    return scope.body is child if isinstance(scope, ast.Lambda) else child in scope.body
+
+
+def _class_prefix_shadows(owner: ast.ClassDef, containing: ast.AST, name: str) -> bool:
+    collector = LocalBindingCollector()
+    for statement in owner.body:
+        if statement is containing:
+            match statement:
+                case ast.Assign(value=value) | ast.AnnAssign(value=ast.expr() as value):
+                    collector.visit(value)
+                case ast.FunctionDef() | ast.AsyncFunctionDef() | ast.ClassDef():
+                    pass
+                case _:
+                    collector.visit(statement)
+            break
+        collector.visit(statement)
+    return name in collector.names
+
+
+def _stable_loader_aliases(context: PythonFileContext) -> dict[str, ast.stmt]:
     if context.tree is None:
         return {}
-    aliases: dict[str, int] = {}
+    aliases: dict[str, ast.stmt] = {}
     for statement in context.tree.body:
         match statement:
             case (
@@ -173,16 +234,16 @@ def _stable_loader_aliases(context: PythonFileContext) -> dict[str, int]:
             ):
                 if (
                     _is_loader(value, context)
-                    and _loader_import_precedes(value, statement.lineno, context)
+                    and _loader_import_precedes(value, statement, context)
                     and _binding_count(name, context) == 1
                 ):
-                    aliases[name] = statement.lineno
+                    aliases[name] = statement
             case _:
                 pass
     return aliases
 
 
-def _loader_import_precedes(value: ast.expr, line: int, context: PythonFileContext) -> bool:
+def _loader_import_precedes(value: ast.expr, assignment: ast.stmt, context: PythonFileContext) -> bool:
     root = value
     while isinstance(root, ast.Attribute):
         root = root.value
@@ -191,7 +252,7 @@ def _loader_import_precedes(value: ast.expr, line: int, context: PythonFileConte
     if root.id == "__import__" and context.module_imports.builtin_is_unshadowed(root.id):
         return True
     return any(
-        statement.lineno < line
+        (statement.lineno, statement.col_offset) < (assignment.lineno, assignment.col_offset)
         and any((alias.asname or alias.name.split(".")[0]) == root.id for alias in statement.names)
         for statement in context.tree.body
         if isinstance(statement, (ast.Import, ast.ImportFrom))
@@ -200,14 +261,47 @@ def _loader_import_precedes(value: ast.expr, line: int, context: PythonFileConte
 
 def _binding_count(name: str, context: PythonFileContext) -> int:
     return (
-        sum(node.id == name and isinstance(node.ctx, (ast.Store, ast.Del)) for node in context.nodes(ast.Name))
-        + sum(node.arg == name for node in context.nodes(ast.arg))
-        + sum((node.asname or node.name.split(".")[0]) == name for node in context.nodes(ast.alias))
-        + sum(
-            node.name == name
+        sum(
+            _binds_name(node, name) and _is_module_binding(node, context)
             for node in context.nodes(
-                ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.ExceptHandler, ast.MatchAs, ast.MatchStar
+                ast.Name,
+                ast.alias,
+                ast.FunctionDef,
+                ast.AsyncFunctionDef,
+                ast.ClassDef,
+                ast.ExceptHandler,
+                ast.MatchAs,
+                ast.MatchStar,
+                ast.MatchMapping,
             )
         )
-        + sum(node.rest == name for node in context.nodes(ast.MatchMapping))
+        + sum(name in node.names for node in context.nodes(ast.Global))
+        + sum(node.target.id == name for node in context.nodes(ast.NamedExpr))
     )
+
+
+def _binds_name(node: ast.AST, name: str) -> bool:
+    match node:
+        case (
+            ast.Name(id=bound, ctx=(ast.Store() | ast.Del()))
+            | ast.FunctionDef(name=bound)
+            | ast.AsyncFunctionDef(name=bound)
+            | ast.ClassDef(name=bound)
+            | ast.ExceptHandler(name=bound)
+            | ast.MatchAs(name=bound)
+            | ast.MatchStar(name=bound)
+            | ast.MatchMapping(rest=bound)
+        ):
+            return bound == name
+        case ast.alias(name=imported, asname=alias):
+            return (alias or imported.partition(".")[0]) == name
+        case _:
+            return False
+
+
+def _is_module_binding(node: ast.AST, context: PythonFileContext) -> bool:
+    while node in context.parents:
+        node = context.parents[node]
+        if isinstance(node, _LEXICAL_SCOPES):
+            return isinstance(node, ast.Module)
+    return False
