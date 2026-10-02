@@ -906,6 +906,30 @@ def test_declarative_deployment_boundary_reports_once_per_file(tmp_path: Path) -
     assert _codes(path, root=tmp_path).count("SARJ309") == 1
 
 
+@pytest.mark.parametrize("context", ["terraform", "workflow", "shell"])
+@pytest.mark.parametrize(
+    ("command", "expected"),
+    [
+        ("kubectl set image deployment/app app=registry/app@sha256:abc --namespace=app", False),
+        ("kubectl -n app set image deployment/app app=registry/app@sha256:abc", False),
+        ("kubectl set env deployment/app ENABLE_FEATURE=true", True),
+        ("kubectl set resources deployment/app --limits=cpu=200m", True),
+        ("kubectl annotate deployment/app configuration=changed", True),
+        ("kubectl scale deployment/app --replicas=3", True),
+        (
+            "kubectl set image deployment/app app=registry/app@sha256:abc; kubectl scale deployment/app --replicas=3",
+            True,
+        ),
+    ],
+)
+def test_kubernetes_artifact_publication_keeps_infrastructure_mutations_reportable(
+    tmp_path: Path, context: str, command: str, expected: bool
+) -> None:
+    path = _deployment_script_fixture(tmp_path, context, command + "\n")
+    findings = textlint.check_paths([str(path)], root=tmp_path, rule_ids=frozenset({"declarative-deployment-boundary"}))
+    assert bool(findings) is expected
+
+
 @pytest.mark.parametrize(
     ("command", "expected_line"),
     [
