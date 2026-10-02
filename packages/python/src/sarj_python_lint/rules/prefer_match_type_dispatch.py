@@ -100,6 +100,7 @@ class PreferMatchTypeDispatch(Rule):
         autofix=AutofixPolicy.NONE,
         limitations=(
             "General dispatch requires three or more adjacent, unguarded `isinstance` branches over the same simple name. Two arms are checked only for an exact `ast.Name.id` / `ast.Attribute.attr` projection followed by a None-returning fallback.",
+            "A terminating sibling prefix may precede a two-arm if/elif tail whose bodies can fall through. Preserve nested checks inside case bodies rather than moving them into case guards.",
             "The checked types must be unshadowed builtins, unshadowed module-local classes, or proven stdlib ast classes; unresolved imports, runtime type groups, repeated type references, generated files, and non-terminating sibling checks are excluded.",
             "Nested attribute-validation guards are excluded: converting them to keyword class patterns can turn attribute errors into match fallthrough, and an imported isinstance operand may be a runtime tuple rather than a class.",
             "A terminal-looking context-manager body does not prove a sibling branch terminates: exceptions can be suppressed. An unconditional return or raise after the context manager remains eligible.",
@@ -191,6 +192,36 @@ class PreferMatchTypeDispatch(Rule):
                     ),
                 ),
                 focus_path=PurePosixPath("app/ast_names.py"),
+                expected_count=0,
+                public=True,
+            ),
+            RuleExample(
+                example_id="terminal-prefix-with-conditional-tail",
+                title="A terminating prefix and conditional if/elif tail dispatch on the same AST node",
+                outcome=ExampleOutcome.MATCH,
+                scenario="mixed-type-dispatch",
+                files=(
+                    ExampleFile.python(
+                        "app/bindings.py",
+                        "import ast\ndef has_binding(node, name):\n    if isinstance(node, ast.ListComp):\n        return True\n    if isinstance(node, ast.FunctionDef):\n        if name in bindings(node):\n            return True\n    elif isinstance(node, ast.ClassDef):\n        if name in bindings(node):\n            return True\n    return False\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/bindings.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="class-patterns-with-nested-checks",
+                title="Class patterns preserve the nested checks within their case bodies",
+                outcome=ExampleOutcome.NO_MATCH,
+                scenario="mixed-type-dispatch",
+                files=(
+                    ExampleFile.python(
+                        "app/bindings.py",
+                        "import ast\ndef has_binding(node, name):\n    match node:\n        case ast.ListComp():\n            return True\n        case ast.FunctionDef():\n            if name in bindings(node):\n                return True\n        case ast.ClassDef():\n            if name in bindings(node):\n                return True\n    return False\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/bindings.py"),
                 expected_count=0,
                 public=True,
             ),
@@ -330,30 +361,61 @@ def _sibling_findings(
     def collect_block(statements: list[ast.stmt]) -> None:
         index = 0
         while index < len(statements):
-            run: list[ast.If] = []
-            cursor = index
-            subject: str | None = None
-            seen: set[str] = set()
-            while cursor < len(statements):
-                statement = statements[cursor]
-                if not isinstance(statement, ast.If) or statement.orelse or not _body_terminates(statement.body):
-                    break
-                branch = _type_branch(statement.test, imports, local_classes, unsafe_bindings)
-                if branch is None or (subject is not None and branch.subject != subject) or bool(seen & branch.types):
-                    break
-                run.append(statement)
-                subject = branch.subject
-                seen.update(branch.types)
-                cursor += 1
+            run = _terminal_prefix(statements, index, imports, local_classes, unsafe_bindings)
+            cursor = index + len(run)
+            if run and cursor < len(statements):
+                tail_statement = statements[cursor]
+                if isinstance(tail_statement, ast.If):
+                    tail = _two_arm_ladder(tail_statement)
+                    if tail and _dispatch([*run, *tail], imports, local_classes, unsafe_bindings) is not None:
+                        run.extend(tail)
+                        cursor += 1
             dispatch = _dispatch(run, imports, local_classes, unsafe_bindings)
             if dispatch is not None:
-                findings.append(_diagnostic(path, code, run[0], dispatch, "terminating isinstance sequence"))
+                shape = (
+                    "terminating isinstance prefix with if/elif tail"
+                    if run[-2].orelse
+                    else "terminating isinstance sequence"
+                )
+                findings.append(_diagnostic(path, code, run[0], dispatch, shape))
             index = max(cursor, index + 1)
 
     for owner in all_nodes:
         for statements in _statement_blocks(owner):
             collect_block(statements)
     return findings
+
+
+def _terminal_prefix(
+    statements: list[ast.stmt],
+    index: int,
+    imports: ImportIndex,
+    local_classes: frozenset[str],
+    unsafe_bindings: frozenset[str],
+) -> list[ast.If]:
+    run: list[ast.If] = []
+    subject: str | None = None
+    seen: set[str] = set()
+    for cursor in range(index, len(statements)):
+        statement = statements[cursor]
+        if not isinstance(statement, ast.If) or statement.orelse or not _body_terminates(statement.body):
+            break
+        branch = _type_branch(statement.test, imports, local_classes, unsafe_bindings)
+        if branch is None or (subject is not None and branch.subject != subject) or bool(seen & branch.types):
+            break
+        run.append(statement)
+        subject = branch.subject
+        seen.update(branch.types)
+    return run
+
+
+def _two_arm_ladder(statement: ast.If) -> tuple[ast.If, ast.If] | None:
+    if len(statement.orelse) != 1 or not isinstance(statement.orelse[0], ast.If):
+        return None
+    second = statement.orelse[0]
+    if len(second.orelse) == 1 and isinstance(second.orelse[0], ast.If):
+        return None
+    return statement, second
 
 
 def _dispatch(

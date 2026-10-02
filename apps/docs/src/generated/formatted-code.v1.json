@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "b3e609b19682da2f62ffa7932ec599f2d24e1088cf4ebb65680a6c97e2a8e0a7",
-  "cliSha256": "510a66a7be3dcd8ebc60b1dc6929f17efba22b346c393bff4cdfb294b27330b6",
+  "catalogSha256": "9f7499e901f2c0da8a4523537b115ed5577a6412c3303db26431a9f59e3c4f4c",
+  "cliSha256": "92fbefa51cc864be57e75b5cb055d0c1b8a2ab08e016444ac99d2de3493fe68f",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -8265,6 +8265,21 @@
           "expectedCount": 0,
           "files": [
             {
+              "path": "app/bindings.py",
+              "source": "import ast\n\n\ndef has_binding(node, name):\n    match node:\n        case ast.ListComp():\n            return True\n        case ast.FunctionDef():\n            if name in bindings(node):\n                return True\n        case ast.ClassDef():\n            if name in bindings(node):\n                return True\n    return False\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/bindings.py",
+          "id": "class-patterns-with-nested-checks",
+          "outcome": "accept",
+          "scenarioId": "mixed-type-dispatch",
+          "title": "Class patterns preserve the nested checks within their case bodies"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
               "path": "app/parser.py",
               "source": "def parse(value: object):\n    match value:\n        case str():\n            return parse_text(value)\n        case bytes():\n            return parse_bytes(value)\n        case dict():\n            return parse_mapping(value)\n        case _:\n            raise TypeError(type(value))\n"
             }
@@ -8275,6 +8290,21 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Class patterns make the type dispatch explicit"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/bindings.py",
+              "source": "import ast\n\n\ndef has_binding(node, name):\n    if isinstance(node, ast.ListComp):\n        return True\n    if isinstance(node, ast.FunctionDef):\n        if name in bindings(node):\n            return True\n    elif isinstance(node, ast.ClassDef):\n        if name in bindings(node):\n            return True\n    return False\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/bindings.py",
+          "id": "terminal-prefix-with-conditional-tail",
+          "outcome": "reject",
+          "scenarioId": "mixed-type-dispatch",
+          "title": "A terminating prefix and conditional if/elif tail dispatch on the same AST node"
         },
         {
           "expectedCount": 1,
