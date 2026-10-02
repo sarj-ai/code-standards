@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "58893d0b9a0062eaa56fb01197762c654cda49fb6ed98e588cc5407dd80482b4",
-  "cliSha256": "8ffd87ab67dd371e720f9544a68bc983b2080e5583dc30ddce264d4d9245016b",
+  "catalogSha256": "f3ceb227d72194354c81dbfeb1907c53c3bf0ff7146d452e30876268eb53970d",
+  "cliSha256": "5882d29777e6eb850f66574af6941822b10d3517225175fc6719dd35fa63b547",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -6505,6 +6505,41 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Constructor requires its dependency"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:no-injected-module-loader": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/service.py",
+              "source": "import importlib\n\n\ndef run(*, loader=importlib.import_module):\n    return loader(\"plugin\").create()\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/service.py",
+          "id": "injected-loader",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Import machinery becomes a configurable parameter"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/service.py",
+              "source": "def run():\n    from plugin import create\n\n    return create()\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/service.py",
+          "id": "lazy-import",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Implementation owns its lazy import"
         }
       ],
       "optionsSchemaSource": null
