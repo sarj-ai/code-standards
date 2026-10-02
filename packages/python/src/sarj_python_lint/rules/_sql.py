@@ -64,8 +64,17 @@ def strip_sql_noise(
 
 def _quoted_sql_end(text: str, start: int) -> int:
     quote = text[start]
+    escape_string = (
+        quote == "'"
+        and start > 0
+        and text[start - 1] in {"E", "e"}
+        and (start == 1 or not (text[start - 2].isalnum() or text[start - 2] in {"_", "$"}))
+    )
     i = start + 1
     while i < len(text):
+        if escape_string and text[i] == "\\" and i + 1 < len(text):
+            i += 2
+            continue
         if text[i] != quote:
             i += 1
             continue
@@ -107,6 +116,8 @@ def _block_comment_end(text: str, start: int) -> int:
 
 
 def _dollar_quote_end(text: str, start: int) -> int | None:
+    if start > 0 and (text[start - 1].isalnum() or text[start - 1] in {"_", "$"}):
+        return None
     delimiter_end = text.find("$", start + 1)
     if delimiter_end == -1:
         return None

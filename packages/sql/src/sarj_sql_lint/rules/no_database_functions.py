@@ -44,7 +44,7 @@ class NoDatabaseFunctions(Rule):
         autofix=AutofixPolicy.NONE,
         limitations=(
             "Reports PostgreSQL CREATE FUNCTION and CREATE OR REPLACE FUNCTION, including temporary-schema functions. Calls to built-in or existing functions and DROP FUNCTION remain valid.",
-            "This is an organization-specific architecture policy. Comments, quoted values, function bodies, dumps, and non-PostgreSQL dialects are excluded.",
+            "This is an organization-specific architecture policy. Comments, quoted values (including scalar and nested dollar-quoted strings), dumps, and non-PostgreSQL dialects are excluded. Executable DO and routine bodies remain visible.",
             "Generated migrations report against their owning model when one can be identified. Triggers are covered separately by SARJ114.",
             "Dynamically generated DDL inside procedural bodies is not inferred.",
         ),
@@ -86,7 +86,7 @@ class NoDatabaseFunctions(Rule):
         if is_dump_file(source, path) or not is_postgres_source(path, source):
             return []
         diagnostics: list[Diagnostic] = []
-        for statement in split_statements(mask_sql(source)):
+        for statement in split_statements(mask_sql(source, mask_dollar_literals=True)):
             text = "\n".join(fragment for _, fragment in statement)
             match = _CREATE_FUNCTION.match(text)
             if match is None:

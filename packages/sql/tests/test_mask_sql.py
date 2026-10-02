@@ -31,6 +31,29 @@ def test_bare_dollar_body_is_kept_as_sql() -> None:
     assert "$" not in masked
 
 
+def test_opt_in_masks_scalar_dollar_strings_and_preserves_shape() -> None:
+    source = "SELECT $doc$; CREATE FUNCTION example()\n$doc$;\nSELECT 1;"
+    masked = mask_sql(source, mask_dollar_literals=True)
+    _assert_shape(source, masked)
+    assert "CREATE FUNCTION" not in masked
+    assert "SELECT 1;" in masked
+
+
+def test_opt_in_keeps_executable_do_but_masks_nested_dollar_values() -> None:
+    source = "DO $$ BEGIN RAISE NOTICE $doc$CREATE TRIGGER example$doc$; CREATE TRIGGER audit AFTER INSERT ON batch EXECUTE FUNCTION audit(); END $$;"
+    masked = mask_sql(source, mask_dollar_literals=True)
+    _assert_shape(source, masked)
+    assert "CREATE TRIGGER example" not in masked
+    assert "CREATE TRIGGER audit" in masked
+
+
+def test_opt_in_does_not_change_the_legacy_masking_mode() -> None:
+    source = "SELECT $$CREATE TRIGGER example$$;"
+    assert "CREATE TRIGGER example" in mask_sql(source)
+    assert "CREATE TRIGGER example" not in mask_sql(source, mask_dollar_literals=True)
+    assert "CREATE TRIGGER example" in mask_sql(source)
+
+
 def test_tagged_dollar_body_is_kept_as_sql() -> None:
     source = "CREATE FUNCTION f() RETURNS void AS $func$\nDELETE FROM call;\n$func$ LANGUAGE sql;"
     masked = _mask(source)

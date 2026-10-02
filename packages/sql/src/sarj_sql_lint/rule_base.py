@@ -5,7 +5,7 @@ from dataclasses import dataclass, replace
 from functools import lru_cache
 from pathlib import Path
 import re
-from typing import ClassVar, NamedTuple
+from typing import ClassVar, NamedTuple, final
 
 from sarj_rule_contracts import (
     AutofixPolicy as AutofixPolicy,
@@ -61,6 +61,7 @@ _NON_NEWLINE = re.compile(r"[^\n]")
 # A dollar-quote delimiter (`$$` or `$tag$`) where `tag` cannot start with a digit, preventing match with `$1`/`$2` positional parameters.
 _DOLLAR_DELIM_RE = re.compile(r"\$(?:[A-Za-z_][A-Za-z0-9_]*)?\$")
 _IDENT_CHAR_RE = re.compile(r"[A-Za-z0-9_]")
+_STATEMENT_HEAD_SIZE = 4
 
 
 def is_dump_file(source: str, path: Path | None = None) -> bool:
@@ -320,66 +321,126 @@ def _closing_depth(  # sarj-noqa: SARJ023 — scanner primitive stays above the 
     return depths[0] if depths else None
 
 
-@lru_cache(maxsize=32)
-def _scan(source: str, *, preserve_quoted_identifiers: bool = False) -> _ScanResult:
-    # Preserve offsets while recursively masking comments and literals inside executable dollar-quoted bodies.
-    out: list[str] = []
-    bodies = _DollarBodies()
-    comments: list[SourceComment] = []
-    i = 0
-    chunk_start = 0
-    n = len(source)
+@final
+class _StatementContext:
+    def __init__(self) -> None:
+        self.head: list[str] = []
+        self.tail = ""
 
-    while i < n:
-        ch = source[i]
-        template_end = _template_end(source, i)
+    def record(self, token: str) -> None:
+        self.tail = token
+        if len(self.head) < _STATEMENT_HEAD_SIZE:
+            self.head.append(token)
+
+    def consume(self, source: str, offset: int) -> int:
+        ch = source[offset]
+        if ch.isalpha() or ch == "_":
+            end = offset + 1
+            while end < len(source) and (source[end].isalnum() or source[end] in {"_", "$"}):
+                end += 1
+            self.record(source[offset:end].upper())
+            return end
+        if ch == ";":
+            self.head.clear()
+            self.tail = ""
+        elif not ch.isspace():
+            self.record(ch)
+        return offset + 1
+
+    def is_executable_body(self) -> bool:
+        match self.head:
+            case ["DO"] | ["DO", "LANGUAGE", _]:
+                return True
+            case ["CREATE", "FUNCTION" | "PROCEDURE", *_] | ["CREATE", "OR", "REPLACE", "FUNCTION" | "PROCEDURE"]:
+                return self.tail == "AS"
+            case _:
+                return False
+
+
+@final
+class _SqlMasker:
+    def __init__(self, source: str, *, preserve_quoted_identifiers: bool, mask_dollar_literals: bool) -> None:
+        self.source = source
+        self.preserve_quoted_identifiers = preserve_quoted_identifiers
+        self.mask_dollar_literals = mask_dollar_literals
+        self.out: list[str] = []
+        self.bodies = _DollarBodies()
+        self.comments: list[SourceComment] = []
+        self.statement = _StatementContext()
+        self.offset = 0
+        self.chunk_start = 0
+
+    def scan(self) -> _ScanResult:
+        while self.offset < len(self.source):
+            self._scan_token()
+        if self.chunk_start < len(self.source):
+            self.out.append(self.source[self.chunk_start :])
+        return _ScanResult("".join(self.out), self.bodies.finish(len(self.source)), self.comments)
+
+    def _scan_token(self) -> None:
+        template_end = _template_end(self.source, self.offset)
         if template_end is not None:
-            _append_masked_chunk(out, source, chunk_start, i, template_end)
-            i = template_end
-            chunk_start = i
-            continue
-        closed = bodies.close(source, i) if ch == "$" else None
-        if closed is not None:
-            _append_masked_chunk(out, source, chunk_start, i, closed)
-            i = closed
-            chunk_start = i
-            continue
-        pair = source[i : i + 2]
+            self._mask(template_end)
+            return
+        ch = self.source[self.offset]
+        if ch == "$":
+            self._scan_dollar()
+            return
+        pair = self.source[self.offset : self.offset + 2]
         if pair in {"--", "/*"}:
-            scanned = _scan_source_comment(source, i, pair)
-            end = scanned.end
-            comments.append(scanned.comment)
-        elif ch == '"' and preserve_quoted_identifiers:
-            i = _scan_quoted(source, i, ch)
-            continue
-        elif ch in {"'", '"'}:
-            end = _scan_literal(source, i, ch)
-        elif ch == "$":
-            tag = _dollar_open_tag(source, i)
-            if tag is None:
-                i += 1
-                continue
-            end = bodies.open(tag, i)
-            _append_masked_chunk(out, source, chunk_start, i, end)
-            i = end
-            chunk_start = i
-            continue
+            scanned = _scan_source_comment(self.source, self.offset, pair)
+            self.comments.append(scanned.comment)
+            self._mask(scanned.end)
+            return
+        if ch in {"'", '"'}:
+            self._scan_literal(ch)
+            return
+        if self.mask_dollar_literals and not self.bodies.tags:
+            self.offset = self.statement.consume(self.source, self.offset)
         else:
-            i += 1
-            continue
+            self.offset += 1
 
-        _append_masked_chunk(out, source, chunk_start, i, end)
-        i = end
-        chunk_start = i
+    def _scan_literal(self, quote: str) -> None:
+        if quote == '"' and self.preserve_quoted_identifiers:
+            self.offset = _scan_quoted(self.source, self.offset, quote)
+            return
+        self._mask(_scan_literal(self.source, self.offset, quote))
+        if self.mask_dollar_literals and not self.bodies.tags:
+            self.statement.record("<quoted>")
 
-    if chunk_start < n:
-        out.append(source[chunk_start:n])
+    def _scan_dollar(self) -> None:
+        closed = self.bodies.close(self.source, self.offset)
+        if closed is not None:
+            self._mask(closed)
+            self.statement.tail = "<body>"
+            return
+        tag = _dollar_open_tag(self.source, self.offset)
+        if tag is None:
+            self.offset += 1
+            return
+        if self.mask_dollar_literals and (self.bodies.tags or not self.statement.is_executable_body()):
+            close = self.source.find(tag, self.offset + len(tag))
+            self._mask(len(self.source) if close < 0 else close + len(tag))
+            self.statement.tail = "<literal>"
+        else:
+            self._mask(self.bodies.open(tag, self.offset))
 
-    return _ScanResult("".join(out), bodies.finish(n), comments)
+    def _mask(self, end: int) -> None:
+        _append_masked_chunk(self.out, self.source, self.chunk_start, self.offset, end)
+        self.offset = end
+        self.chunk_start = end
 
 
-def mask_sql(source: str) -> str:
-    return _scan(source).masked_source
+@lru_cache(maxsize=32)
+def _scan(source: str, *, preserve_quoted_identifiers: bool = False, mask_dollar_literals: bool = False) -> _ScanResult:
+    # Preserve offsets while masking noise inside executable dollar-quoted bodies.
+    return _SqlMasker(
+        source, preserve_quoted_identifiers=preserve_quoted_identifiers, mask_dollar_literals=mask_dollar_literals
+    ).scan()
+
+
+def mask_sql(source: str, *, mask_dollar_literals: bool = False) -> str:
+    return (_scan(source, mask_dollar_literals=True) if mask_dollar_literals else _scan(source)).masked_source
 
 
 def mask_sql_literals_and_comments(source: str) -> str:
