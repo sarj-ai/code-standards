@@ -34,8 +34,8 @@ def test_mocked_terraform_test_can_be_excluded_by_path_rule_or_override(tmp_path
     source = tmp_path / "vendor" / "routing.tftest.hcl"
     source.parent.mkdir()
     source.write_text(
-        'override_resource {\n  target = aws_s3_bucket.main\n  values = { arn = "fixture-arn" }\n}\n'
-        'run "routing" {\n  assert {\n    condition = aws_s3_bucket.main.arn == "fixture-arn"\n'
+        'override_module {\n  target = module.fixture\n  outputs = { arn = "fixture-arn" }\n}\n'
+        'run "routing" {\n  assert {\n    condition = module.fixture.arn == "fixture-arn"\n'
         '    error_message = "ARN mismatch"\n  }\n}\n',
         encoding="utf-8",
     )
@@ -51,7 +51,7 @@ def test_mocked_terraform_test_can_be_excluded_by_path_rule_or_override(tmp_path
             manifest.ExclusionOverride(
                 ("vendor/**",),
                 ("iac:no-mocked-terraform-test-oracle",),
-                "Document a reviewed provider-fixture exception.",
+                "Document a reviewed module-fixture exception.",
             ),
         ),
     )
@@ -70,8 +70,8 @@ def test_tracked_terraform_test_is_checked_outside_verify_paths(tmp_path: Path) 
     source = tmp_path / "outside" / "ROUTING.TFTEST.HCL"
     source.parent.mkdir()
     source.write_text(
-        'override_resource {\n  target = aws_s3_bucket.main\n  values = { arn = "fixture-arn" }\n}\n'
-        'run "routing" {\n  assert {\n    condition = aws_s3_bucket.main.arn == "fixture-arn"\n'
+        'override_module {\n  target = module.fixture\n  outputs = { arn = "fixture-arn" }\n}\n'
+        'run "routing" {\n  assert {\n    condition = module.fixture.arn == "fixture-arn"\n'
         '    error_message = "ARN mismatch"\n  }\n}\n',
         encoding="utf-8",
     )
