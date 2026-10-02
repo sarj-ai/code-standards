@@ -2098,7 +2098,7 @@ _FACTORY_CASES = (
     EvaluationCase(
         "wrong-suppression",
         Language.PYTHON,
-        _FACTORY_BOUNDARY.replace("class Coordinator:", "class Coordinator:  # sarj-noqa: SARJ465"),
+        _FACTORY_BOUNDARY.replace("class Coordinator:", "class Coordinator:  # sarj-noqa: SARJ095"),
         ExpectedOutcome.MATCH,
     ),
     EvaluationCase(

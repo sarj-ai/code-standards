@@ -1,5 +1,7 @@
 from itertools import count
 from pathlib import Path, PurePosixPath
+import subprocess
+import sys
 from textwrap import indent
 from typing import TYPE_CHECKING
 
@@ -69,6 +71,7 @@ _CASES = (
     ),
     _case("async-test", _BASE.replace("def test_service", "async def test_service"), ExpectedOutcome.MATCH),
     _case("async-pool", _BASE, ExpectedOutcome.MATCH),
+    _case("async-constructor-alias", _BASE, ExpectedOutcome.MATCH),
     _case("generic-pool", _BASE, ExpectedOutcome.MATCH),
     _case("constructor-alias", _BASE, ExpectedOutcome.MATCH),
     _case("constructor-module-alias", _BASE, ExpectedOutcome.MATCH),
@@ -150,6 +153,13 @@ _CASES = (
     _case("variadic-helper", _BASE),
     _case("keyword-only-helper", _BASE),
     _case("async-helper", _BASE),
+    _case("async-pool-implicit-open", _BASE),
+    _case("async-pool-open-true", _BASE),
+    _case("async-pool-open-none", _BASE),
+    _case("async-pool-dynamic-open", _BASE),
+    _case("async-pool-unpacked-keywords", _BASE),
+    _case("async-pool-unpacked-positionals", _BASE),
+    _case("async-pool-constructor-argument-call", _BASE),
     _case("type-only-constructor", _BASE),
     _case("decorated-helper", _BASE),
     _case("yield-helper", _BASE),
@@ -201,6 +211,25 @@ _CASES = (
 )
 _SUPPORT = {
     "async-pool": _HELPER.replace("ConnectionPool", "AsyncConnectionPool"),
+    "async-constructor-alias": _HELPER.replace("ConnectionPool", "AsyncConnectionPool")
+    .replace("import AsyncConnectionPool", "import AsyncConnectionPool as Pool")
+    .replace("-> AsyncConnectionPool", "-> Pool")
+    .replace("return AsyncConnectionPool(", "return Pool("),
+    "async-pool-implicit-open": _HELPER.replace("ConnectionPool", "AsyncConnectionPool").replace(", open=False", ""),
+    "async-pool-open-true": _HELPER.replace("ConnectionPool", "AsyncConnectionPool").replace("open=False", "open=True"),
+    "async-pool-open-none": _HELPER.replace("ConnectionPool", "AsyncConnectionPool").replace("open=False", "open=None"),
+    "async-pool-dynamic-open": _HELPER.replace("ConnectionPool", "AsyncConnectionPool").replace(
+        "open=False", "open=OPEN_POOL"
+    ),
+    "async-pool-unpacked-keywords": _HELPER.replace("ConnectionPool", "AsyncConnectionPool").replace(
+        "open=False", "open=False, **POOL_OPTIONS"
+    ),
+    "async-pool-unpacked-positionals": _HELPER.replace("ConnectionPool", "AsyncConnectionPool").replace(
+        "conninfo=DATABASE_URI", "*POOL_ARGUMENTS"
+    ),
+    "async-pool-constructor-argument-call": _HELPER.replace("ConnectionPool", "AsyncConnectionPool").replace(
+        "conninfo=DATABASE_URI", "conninfo=database_uri()"
+    ),
     "generic-pool": _HELPER.replace("ConnectionPool(conninfo", "ConnectionPool[object](conninfo"),
     "constructor-alias": _HELPER.replace("import ConnectionPool", "import ConnectionPool as Pool")
     .replace("-> ConnectionPool", "-> Pool")
@@ -376,6 +405,43 @@ def test_metadata_anchor_and_no_autofix(project: Callable[[str, Mapping[str, str
     finding = PreferPytestFixtureInjection().check(path, _BASE)[0]
     assert (finding.code, finding.line, finding.col) == ("SARJ476", 4, 16)
     assert "fixture" in finding.message.lower()
+    assert "caching" in finding.message
+    assert "setup dependencies" in finding.message
+    assert "application lifespan" in finding.message
+
+
+def test_allocation_fixture_caches_without_taking_application_lifecycle(
+    project: Callable[[str, Mapping[str, str]], Path],
+) -> None:
+    source = (
+        "from contextlib import contextmanager\nimport pytest\n\n"
+        "class Pool:\n"
+        "    def __init__(self):\n"
+        "        self.closed = True\n        self.opens = 0\n        self.closes = 0\n\n"
+        "class Application:\n"
+        "    def __init__(self, pool):\n        self.pool = pool\n\n"
+        "    @contextmanager\n    def lifespan(self):\n"
+        "        self.pool.opens += 1\n        self.pool.closed = False\n"
+        "        try:\n            yield\n"
+        "        finally:\n            self.pool.closes += 1\n            self.pool.closed = True\n\n"
+        "@pytest.fixture\ndef pool():\n    return Pool()\n\n"
+        "@pytest.fixture\ndef app(pool):\n    return Application(pool)\n\n"
+        "def test_application_owns_lifecycle(app, pool, request):\n"
+        "    assert app.pool is pool\n    assert request.getfixturevalue('pool') is pool\n"
+        "    assert pool.closed\n    assert (pool.opens, pool.closes) == (0, 0)\n"
+        "    with app.lifespan():\n        assert not pool.closed\n"
+        "    assert pool.closed\n    assert (pool.opens, pool.closes) == (1, 1)\n"
+    )
+    path = project("test_fixture_lifecycle.py", {"test_fixture_lifecycle.py": source})
+    result = subprocess.run(
+        [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", str(path)],
+        cwd=path.parent,
+        text=True,
+        capture_output=True,
+        check=False,
+        timeout=30,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
 
 
 def test_warning_cli_and_exact_suppression(
@@ -446,7 +512,9 @@ def test_symlinked_helper_stays_quiet(project: Callable[[str, Mapping[str, str]]
     assert PreferPytestFixtureInjection().check(path, _BASE) == []
 
 
-def test_src_layout_resolves_imported_support(project: Callable[[str, Mapping[str, str]], Path]) -> None:
+def test_src_layout_provider_outside_test_ancestors_stays_quiet(
+    project: Callable[[str, Mapping[str, str]], Path],
+) -> None:
     source = _BASE.replace("from tests.conftest", "from sample.conftest")
     files = {
         "tests/test_service.py": source,
@@ -456,7 +524,29 @@ def test_src_layout_resolves_imported_support(project: Callable[[str, Mapping[st
         "src/sample/factory.py": _FILES["sample/factory.py"],
     }
     path = project("tests/test_service.py", files)
+    assert PreferPytestFixtureInjection().check(path, source) == []
+
+
+def test_src_layout_ancestor_conftest_is_visible(project: Callable[[str, Mapping[str, str]], Path]) -> None:
+    source = _BASE.replace("from tests.conftest", "from sample.conftest")
+    files = {
+        "src/sample/test_service.py": source,
+        "src/sample/__init__.py": "",
+        "src/sample/conftest.py": _HELPER,
+        "src/sample/config.py": _FILES["sample/config.py"],
+        "src/sample/factory.py": _FILES["sample/factory.py"],
+    }
+    path = project("src/sample/test_service.py", files)
     assert len(PreferPytestFixtureInjection().check(path, source)) == 1
+
+
+def test_sibling_conftest_is_not_visible_to_test(project: Callable[[str, Mapping[str, str]], Path]) -> None:
+    source = _BASE.replace("from tests.conftest", "from tests.provider.conftest")
+    path = project(
+        "tests/test_service.py",
+        {**_FILES, "tests/test_service.py": source, "tests/provider/conftest.py": _HELPER},
+    )
+    assert PreferPytestFixtureInjection().check(path, source) == []
 
 
 def test_relative_parent_import_stays_in_project(project: Callable[[str, Mapping[str, str]], Path]) -> None:
@@ -483,12 +573,13 @@ def test_package_named_conftest_is_not_a_pytest_support_file(
 def test_local_source_boundaries_stay_quiet(project: Callable[[str, Mapping[str, str]], Path], boundary: str) -> None:
     nested = boundary in {"nested-checkout", "symlink-directory"}
     source = _BASE.replace("from tests.conftest", "from tests.provider.conftest") if nested else _BASE
-    files = {**_FILES, "tests/test_service.py": source}
+    focus = "tests/provider/test_service.py" if nested else "tests/test_service.py"
+    files = {**_FILES, focus: source}
     if nested:
         files["tests/provider/conftest.py"] = _HELPER
-    path = project("tests/test_service.py", files)
-    root = path.parent.parent
-    helper = path.parent / "provider/conftest.py" if nested else path.with_name("conftest.py")
+    path = project(focus, files)
+    root = path.parents[2] if nested else path.parent.parent
+    helper = path.with_name("conftest.py")
     assert len(PreferPytestFixtureInjection().check(path, source)) == 1
 
     match boundary:
@@ -499,6 +590,7 @@ def test_local_source_boundaries_stay_quiet(project: Callable[[str, Mapping[str,
         case "symlink-directory":
             outside = project("tests/test_service.py", {**_FILES, "tests/test_service.py": _BASE})
             helper.unlink()
+            path.unlink()
             helper.parent.rmdir()
             helper.parent.symlink_to(outside.parent, target_is_directory=True)
         case "module-and-package":

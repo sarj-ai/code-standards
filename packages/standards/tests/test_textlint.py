@@ -765,10 +765,6 @@ def _codes(path: Path, *, root: Path | None = None) -> list[str]:
         ("cloudbuild/database.yml", "gcloud sql instances patch main --activation-policy=ALWAYS\n"),
         ("deploy/scheduler.sh", "gcloud scheduler jobs create http cleanup --uri=https://example.test\n"),
         ("iac/state.sh", "terraform -chdir=stack state replace-provider old/provider new/provider\n"),
-        (
-            "iac/example/envs.json",
-            '{"dev":{"safety_boundary":{"allowed_change_addresses":["module.service"]}}}\n',
-        ),
         ("k8s/cluster.sh", "if ! kubectl -n agent annotate deployment/api owner=terraform; then exit 1; fi\n"),
         ("scripts/secrets.sh", "gcloud secrets versions add api-key --data-file=-\n"),
         ("tools/state.sh", "tofu state rm module.legacy\n"),
@@ -1236,16 +1232,16 @@ def test_workflow_embedded_program_is_warning_only(
     assert "SARJ310 warning:" in capsys.readouterr().out
 
 
-def test_declarative_deployment_boundary_reads_real_plan_allowlist_fixture(tmp_path: Path) -> None:
+def test_declarative_deployment_boundary_preserves_plan_authorization_fixture(tmp_path: Path) -> None:
     fixture = Path(__file__).parent / "fixtures" / "textlint" / "envs.json"
     path = tmp_path / "iac" / "example" / "envs.json"
     path.parent.mkdir(parents=True)
     path.write_bytes(fixture.read_bytes())
 
-    assert _codes(path, root=tmp_path) == ["SARJ309"]
+    assert "SARJ309" not in _codes(path, root=tmp_path)
 
 
-def test_plan_allowlist_matches_structured_camel_case_key_without_matching_prose(tmp_path: Path) -> None:
+def test_plan_authorization_key_is_not_an_infrastructure_mutation(tmp_path: Path) -> None:
     prose = tmp_path / "iac" / "prose.json"
     prose.parent.mkdir()
     prose.write_text('{"note":"allowed_change_addresses explains the retired design"}\n', encoding="utf-8")
@@ -1253,7 +1249,42 @@ def test_plan_allowlist_matches_structured_camel_case_key_without_matching_prose
     config.write_text('{"dev":{"allowedChangeAddresses":[]}}\n', encoding="utf-8")
 
     assert "SARJ309" not in _codes(prose, root=tmp_path)
-    assert _codes(config, root=tmp_path) == ["SARJ309"]
+    assert "SARJ309" not in _codes(config, root=tmp_path)
+
+
+@pytest.mark.parametrize(
+    ("name", "source"),
+    [
+        ("authorization.json", '{"deployment":{"allowed_change_addresses":["module.api"]}}\n'),
+        ("authorization.jsonc", '// Deployment approval boundary\n{"allowedChangeAddresses":["module.api"]}\n'),
+        ("authorization.toml", '[deployment]\nallowed_change_addresses = ["module.api"]\n'),
+        ("authorization.yaml", "deployment:\n  allowed_change_addresses: [module.api]\n"),
+        ("authorization.yml", "deployment:\n  allowedChangeAddresses: [module.api]\n"),
+    ],
+)
+def test_deployment_authorization_policy_is_not_a_mutation(tmp_path: Path, name: str, source: str) -> None:
+    path = tmp_path / "iac" / name
+    path.parent.mkdir()
+    path.write_text(source, encoding="utf-8")
+
+    findings = textlint.check_paths([str(path)], root=tmp_path, rule_ids=frozenset({"declarative-deployment-boundary"}))
+
+    assert findings == []
+
+
+def test_plan_authorization_policy_does_not_hide_an_infrastructure_mutation(tmp_path: Path) -> None:
+    path = tmp_path / ".github" / "workflows" / "deploy.yml"
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        "jobs:\n  deploy:\n    steps:\n"
+        "      - run: gcloud services enable example.googleapis.com\n"
+        "        env:\n          allowed_change_addresses: module.api\n",
+        encoding="utf-8",
+    )
+
+    findings = textlint.check_paths([str(path)], root=tmp_path, rule_ids=frozenset({"declarative-deployment-boundary"}))
+
+    assert [(finding.code, finding.line) for finding in findings] == [("SARJ309", 4)]
 
 
 def test_declarative_deployment_boundary_does_not_resolve_wrappers(tmp_path: Path) -> None:

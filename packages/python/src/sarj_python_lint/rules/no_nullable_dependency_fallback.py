@@ -66,7 +66,7 @@ class NoNullableDependencyFallback(Rule):
         autofix=AutofixPolicy.NONE,
         limitations=(
             "Warns for None-defaulted function parameters with a fallback used as a callable or a proven application-settings fallback; genuine absent state is allowed.",
-            "Constructors remain owned by SARJ095 and SARJ468. Decorated functions, tests, generated code, nested scope captures, non-callable object fallbacks, and interprocedural forwarding are excluded.",
+            "Constructor settings fallbacks remain owned by SARJ095; constructor nullability alone is not a defect. Decorated functions, tests, generated code, nested scope captures, non-callable object fallbacks, and interprocedural forwarding are excluded.",
             "Callable use through a local assignment, annotation or None guard requires at most one body binding for that name and a call after the binding statement completes. Rebinding, deletion, imports, definitions, pattern or exception captures, global/nonlocal declarations and nested-scope bindings conservatively exclude that inference; direct inline calls remain independent. Settings provenance also excludes enclosing bindings and names written by a function declaring them global, while read-only global declarations remain valid.",
             "No autofix: removing explicit None acceptance changes the callable contract, and moving a fallback can change initialization timing or error handling.",
         ),

@@ -326,7 +326,11 @@ def test_imported_owned_result_capture(
 def test_cli_and_interactions_are_stable(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     path = tmp_path / "service.py"
     path.write_text(_CASES[0].source)
-    rules = [RequirePreciseFactorySignature.id, "require-public-dependency-contract", "no-nullable-dependency-fallback"]
+    rules = [
+        RequirePreciseFactorySignature.id,
+        "no-unused-underscored-keyword-parameter",
+        "no-nullable-dependency-fallback",
+    ]
     assert analyze(rules, [path]) == analyze(list(reversed(rules)), [path])
     assert [finding.code for finding in analyze(rules, [path])] == ["SARJ473"]
     assert main(["check", "--rule", RequirePreciseFactorySignature.id, str(path)]) == 0

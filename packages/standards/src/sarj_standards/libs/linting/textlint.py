@@ -34,7 +34,6 @@ from sarj_standards.libs.rules.contracts import (
     RuleCategory,
     RuleExample,
 )
-from sarj_standards.libs.typed_containers import is_object_list, is_object_mapping
 from sarj_standards.libs.yaml_boundary import mapping_items, sequence_items
 
 
@@ -266,7 +265,6 @@ _WRANGLER_MUTATIONS: Final = frozenset({("d1", "create")})
 _PACKAGE_EXEC_VALUE_OPTIONS: Final = frozenset(
     {"--cache", "--prefix", "--userconfig", "--workspace", "--workspace-root", "-C", "-w"}
 )
-_CONFIG_KEY_RE: Final = re.compile(r"[\"']?(?P<key>[A-Za-z_][\w.-]*)[\"']?\s*[:=]")
 _MIN_EPHEMERAL_HEADINGS: Final = 2
 _MIN_NUMBERED_FINDINGS: Final = 2
 _LARGE_ARTIFACT_MIN_LINES: Final = 200
@@ -609,7 +607,7 @@ REGISTRY: Final[Mapping[str, RuleMeta]] = MappingProxyType(
             default_level=DefaultLevel.WARNING,
             summary="recognized control-plane commands bypass Terraform resource ownership",
             rationale=(
-                "Imperative control-plane commands and plan-address allowlists split deployment ownership between "
+                "Imperative control-plane commands split deployment ownership between "
                 "Terraform and repository-specific orchestration, so drift and safety depend on execution order. "
                 "Publishing an application artifact is a release operation and remains outside this rule."
             ),
@@ -716,6 +714,7 @@ REGISTRY: Final[Mapping[str, RuleMeta]] = MappingProxyType(
                 "Cloud Run image/source-only deploys and updates publish application artifacts; configuration, identity, scaling, networking, secret, and other infrastructure flags remain reportable.",
                 "kubectl set image publishes application artifacts; other set commands and infrastructure mutations remain reportable.",
                 "Read-only diagnostics such as terraform show, gcloud describe/list, and kubectl get are allowed.",
+                "Structured configuration keys are not mutation evidence; deployment authorization policies such as plan-address allowlists remain allowed.",
             ),
         ),
         "workflow-embedded-program": RuleMeta(
@@ -1149,17 +1148,6 @@ def _declarative_deployment_findings(path: Path, relative: str, source: str) -> 
                     "Deployment Action mutates infrastructure outside Terraform — model it in Terraform and keep CI to plan/apply orchestration.",
                 )
             ]
-    if path.suffix.casefold() in {".json", ".jsonc", ".toml", ".yaml", ".yml"}:
-        number = _plan_address_allowlist_line(path, source)
-        if number is not None:
-            return [
-                Finding(
-                    path,
-                    number,
-                    "SARJ309",
-                    "Plan-address allowlist duplicates Terraform intent — remove the guard and make the plan authoritative.",
-                )
-            ]
     return []
 
 
@@ -1517,16 +1505,6 @@ def _workflow_action_mutates(action: _WorkflowAction) -> bool:
     )
 
 
-def _plan_address_allowlist_line(path: Path, source: str) -> int | None:
-    suffix = path.suffix.casefold()
-    if suffix in {".yaml", ".yml"}:
-        return _yaml_plan_address_allowlist_line(_workflow_document(source))
-    document = _structured_config_document(suffix, source)
-    if document is None or not _contains_plan_address_allowlist_key(document):
-        return None
-    return _config_key_line(source)
-
-
 def _structured_config_document(suffix: str, source: str) -> object | None:
     try:
         if suffix in {".json", ".jsonc"}:
@@ -1560,49 +1538,6 @@ def _strip_jsonc_comments(source: str) -> str:
                 result[offset] = " "
         index = end
     return "".join(result)
-
-
-def _yaml_plan_address_allowlist_line(node: Node | None) -> int | None:
-    match node:
-        case MappingNode():
-            for key, value in mapping_items(node):
-                if isinstance(key, ScalarNode) and _is_plan_address_allowlist_key(_scalar_value(key)):
-                    return key.start_mark.line + 1
-                if (nested := _yaml_plan_address_allowlist_line(value)) is not None:
-                    return nested
-        case SequenceNode():
-            for value in sequence_items(node):
-                if (nested := _yaml_plan_address_allowlist_line(value)) is not None:
-                    return nested
-        case _:
-            pass
-    return None
-
-
-def _contains_plan_address_allowlist_key(value: object) -> bool:
-    if is_object_mapping(value):
-        return any(
-            (isinstance(key, str) and _is_plan_address_allowlist_key(key)) or _contains_plan_address_allowlist_key(item)
-            for key, item in value.items()
-        )
-    if is_object_list(value):
-        return any(_contains_plan_address_allowlist_key(item) for item in value)
-    return False
-
-
-def _is_plan_address_allowlist_key(value: str) -> bool:
-    return _config_words(value) == ("allowed", "change", "addresses")
-
-
-def _config_key_line(source: str) -> int:
-    return next(
-        (
-            number
-            for number, line in enumerate(source.splitlines(), start=1)
-            if any(_is_plan_address_allowlist_key(match.group("key")) for match in _CONFIG_KEY_RE.finditer(line))
-        ),
-        1,
-    )
 
 
 def _offset_shell_lines(source: str, first_line: int) -> list[_ShellLogicalLine]:

@@ -74,7 +74,6 @@ def _case_id(case: EvaluationCase) -> str:
             "nested-function",
             Language.PYTHON,
             "def outer():\n    def emit(*, _email=None):\n        return 'ready'\n    return emit\n",
-            ExpectedOutcome.MATCH,
         ),
         EvaluationCase(
             "same-spelling-elsewhere",
@@ -257,3 +256,23 @@ def test_discard_binding_is_owned_by_existing_marker_rule() -> None:
 
     assert NoUnusedUnderscoredKeywordParameter().check(Path("app.py"), source) == []
     assert len(NoUnusedValueMarker().check(Path("app.py"), source)) == 1
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "def callback(*, _event=None):\n    return 'ready'\nregister(callback)\n",
+        "def callback(*, _event=None):\n    return 'ready'\nalias = callback\n",
+        "def callback(*, _event=None):\n    return 'ready'\ncallbacks = {'ready': callback}\n",
+        "def callback(*, _event=None):\n    return 'ready'\ncallback()\nregister(callback)\n",
+        "class Sink:\n    def callback(self, *, _event=None):\n        self.called = True\nregister(Sink().callback)\n",
+    ],
+)
+def test_preserves_callbacks_with_an_unknown_external_keyword_contract(source: str) -> None:
+    assert NoUnusedUnderscoredKeywordParameter().check(Path("app.py"), source) == []
+
+
+def test_still_reports_a_directly_called_dead_keyword() -> None:
+    source = "def emit(*, _event=None):\n    return 'ready'\nemit(_event='event')\n"
+
+    assert len(NoUnusedUnderscoredKeywordParameter().check(Path("app.py"), source)) == 1

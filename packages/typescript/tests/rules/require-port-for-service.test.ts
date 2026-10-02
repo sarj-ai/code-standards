@@ -21,6 +21,10 @@ const SRC = "/repo/src/domain/record-normalizer/service.ts";
 
 RULE_TESTER.run("require-port-for-service", rule, {
   valid: [
+    { name: "qualified imported port aliases remain unresolved rather than empty", code: "import type * as contracts from './contracts'; type Handler = contracts.Handler; export class RequestHandler implements Handler { constructor(private readonly store: TaskStore) {} handle() { this.store.handle(); } }" },
+    { name: "callable port aliases retain their capability across local aliases", code: "type Run = Fn; type Fn = () => void; interface Handler { handle: Run } export class RequestHandler implements Handler { constructor(private readonly store: TaskStore) {} handle() { this.store.handle(); } }" },
+    { name: "locally shadowed constructor names do not prove retained injection", code: "export class RequestHandler { private store: TaskStore; constructor(store: TaskStore) { { const store = new TaskStore(); this.store = store; } } handle() { this.store.handle(); } }" },
+    { name: "a parameter property replaced with a constructed value is not injection", code: "export class RequestHandler { constructor(private readonly store: TaskStore) { this.store = new TaskStore(); } handle() { this.store.handle(); } }" },
     { name: "quoted callable keys match equivalent interface keys", code: 'interface Handler { "handle"(): void } export class RequestHandler implements Handler { constructor(private readonly store: TaskStore) {} "handle"(): void { this.store.handle(); } }' },
     { name: "quoted function properties match equivalent port properties", code: 'interface Handler { "handle": () => void } export class RequestHandler implements Handler { constructor(private readonly store: TaskStore) {} "handle" = () => { this.store.handle(); }; }' },
     { name: "accepts the documented service port", filename: REQUIRE_PORT_FOR_SERVICE_DOCUMENTATION.examples[0].focusPath, code: REQUIRE_PORT_FOR_SERVICE_DOCUMENTATION.examples[0].files[0].source },

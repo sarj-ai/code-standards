@@ -41,7 +41,7 @@ class NoDatabaseProgrammability(Rule):
         default_level=Severity.ERROR,
         summary="Keep stored SQL functions and triggers out of embedded SQL.",
         rationale="SQL hidden in Python can bypass migration-only architecture rules. Procedural fault fixtures require extra database objects and cleanup when a declarative constraint suffices.",
-        remediation="Use declarative constraints or explicit transactional application behavior, including in test fixtures. Use an exact SARJ470 suppression for an approved compatibility exception.",
+        remediation="Prefer declarative constraints or explicit transactional application behavior where equivalent, including in test fixtures. Preserve transaction atomicity and database-enforced integrity; use an exact SARJ470 suppression for an approved database-owned invariant or compatibility exception.",
         category=RuleCategory.ARCHITECTURE,
         autofix=AutofixPolicy.NONE,
         limitations=(
@@ -92,7 +92,7 @@ class NoDatabaseProgrammability(Rule):
                     col=node.col_offset + 1,
                     code=self.code,
                     severity=Severity.ERROR,
-                    message="Stored SQL functions and triggers are prohibited by project architecture, including in test fixtures; use a declarative constraint or explicit transactional application code.",
+                    message="Project architecture prefers declarative constraints or explicit transactional application behavior, including in test fixtures. Preserve atomicity and database-enforced integrity; use an exact SARJ470 suppression for an approved database-owned invariant or compatibility exception.",
                 )
             )
         return sorted(diagnostics, key=lambda item: (item.line, item.col))

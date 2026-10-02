@@ -1,5 +1,5 @@
 /**
- * @fileoverview require-explicit-contract-implementation — Require owned substitutes to name their injected contract.
+ * @fileoverview require-explicit-contract-implementation — Detect structural substitutes rejected by nominal runtime guards.
  *
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/require-explicit-contract-implementation.test.ts
  */
@@ -15,69 +15,34 @@ type Options = readonly [];
 
 export const REQUIRE_EXPLICIT_CONTRACT_IMPLEMENTATION_DOCUMENTATION = {
   defaultLevel: "warning",
-  summary: "Require owned classes supplied as typed collaborators to explicitly implement their contract.",
-  rationale: "Structural assignment checks a fake only at the use site; an implements clause keeps its obligations visible at the class declaration.",
-  remediation: "Add an implements clause for the actual injected interface, or inherit an abstract class that declares it.",
+  summary: "Require nominal inheritance when an injected abstract class is rejected by an instanceof guard.",
+  rationale: "A structurally assignable fake can still fail a constructor's nominal runtime guard. Pure structural interfaces do not require an implements clause.",
+  remediation: "Use an implementation inheriting the existing abstract class, or remove the nominal guard if the boundary is intentionally structural.",
   category: "architecture",
   autofix: "none",
   limitations: [
-    "Only class instances whose concrete class and selected constructor parameter resolve through the TypeScript checker are checked.",
-    "Object literals, casts, any, callback-valued data properties, unresolved heritage, dynamic factories, and third-party classes are excluded.",
+    "Requires direct construction of both owned consumer and collaborator classes, with a first-statement consumer constructor guard rejecting the exact parameter with if (!(parameter instanceof Contract)) throw.",
+    "The contract must resolve to an abstract class without decorators, unresolved ancestors, or custom computed static members in its resolved hierarchy.",
+    "Structural interfaces, non-rejecting branches, reassignment before the guard, casts, unresolved heritage, dynamic factories, explicit implementation constructors or initializers, modules referencing prototype-mutator members or assigning prototypes, and third-party classes are excluded.",
   ],
   examples: [
     {
-      id: "structural-fake-at-injection",
-      title: "A fake reaches a typed collaborator without implementing its interface",
+      id: "runtime-nominal-guard-with-structural-fake",
+      title: "A structurally compatible fake fails the constructor's runtime guard",
       outcome: "match",
-      files: [{ path: "src/service.ts", source: "interface Publisher { publish(): void } class Consumer { constructor(readonly publisher: Publisher) {} } class FakePublisher { publish() {} } new Consumer(new FakePublisher());" }],
+      files: [{ path: "src/service.ts", source: "abstract class Publisher { abstract publish(): void } class Consumer { constructor(readonly publisher: Publisher) { if (!(publisher instanceof Publisher)) throw new TypeError('Nominal publisher required'); } } class FakePublisher { publish() {} } new Consumer(new FakePublisher());" }],
       focusPath: "src/service.ts",
       expectedCount: 1,
       public: true,
     },
     {
-      id: "explicit-fake-at-injection",
-      title: "The fake names its actual interface",
+      id: "runtime-nominal-guard-with-inherited-fake",
+      title: "The fake satisfies the existing nominal runtime contract",
       outcome: "no-match",
-      files: [{ path: "src/service.ts", source: "interface Publisher { publish(): void } class Consumer { constructor(readonly publisher: Publisher) {} } class FakePublisher implements Publisher { publish() {} } new Consumer(new FakePublisher());" }],
+      files: [{ path: "src/service.ts", source: "abstract class Publisher { abstract publish(): void } class Consumer { constructor(readonly publisher: Publisher) { if (!(publisher instanceof Publisher)) throw new TypeError('Nominal publisher required'); } } class FakePublisher extends Publisher { publish() {} } new Consumer(new FakePublisher());" }],
       focusPath: "src/service.ts",
       expectedCount: 0,
       public: true,
-    },
-    {
-      id: "inherited-implementation",
-      title: "The fake inherits an implementation of the port",
-      outcome: "no-match",
-      files: [{ path: "src/service.ts", source: "interface Publisher { publish(): void } class Consumer { constructor(readonly publisher: Publisher) {} } class BasePublisher implements Publisher { publish() {} } class FakePublisher extends BasePublisher {} new Consumer(new FakePublisher());" }],
-      focusPath: "src/service.ts",
-      expectedCount: 0,
-      public: false,
-    },
-    {
-      id: "non-contract-data-argument",
-      title: "A data object is not a service port",
-      outcome: "no-match",
-      files: [{ path: "src/service.ts", source: "interface Options { name: string } class Consumer { constructor(readonly options: Options) {} } class FakeOptions { name = 'test' } new Consumer(new FakeOptions());" }],
-      focusPath: "src/service.ts",
-      expectedCount: 0,
-      public: false,
-    },
-    {
-      id: "explicit-cast-origin-unknown",
-      title: "A cast hides the concrete source",
-      outcome: "no-match",
-      files: [{ path: "src/service.ts", source: "interface Publisher { publish(): void } class Consumer { constructor(readonly publisher: Publisher) {} } class FakePublisher { publish() {} } new Consumer(new FakePublisher() as Publisher);" }],
-      focusPath: "src/service.ts",
-      expectedCount: 0,
-      public: false,
-    },
-    {
-      id: "unrelated-interface",
-      title: "Implementing another interface does not declare the supplied port",
-      outcome: "match",
-      files: [{ path: "src/service.ts", source: "interface Publisher { publish(): void } interface Other { publish(): void } class Consumer { constructor(readonly publisher: Publisher) {} } class FakePublisher implements Other { publish() {} } new Consumer(new FakePublisher());" }],
-      focusPath: "src/service.ts",
-      expectedCount: 1,
-      public: false,
     },
   ],
 } as const satisfies RuleDocumentation;
@@ -91,8 +56,7 @@ function behavioralContract(checker: ts.TypeChecker, type: ts.Type): ts.Type | n
   }
   if ((type.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) !== 0) return null;
   const declaration = type.getSymbol()?.declarations?.find((item) =>
-    ts.isInterfaceDeclaration(item) || ts.isTypeAliasDeclaration(item) ||
-    (ts.isClassDeclaration(item) && item.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.AbstractKeyword)));
+    ts.isClassDeclaration(item) && item.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.AbstractKeyword));
   if (declaration === undefined) return null;
   return checker.getPropertiesOfType(type).some((property) => {
     if (!property.declarations?.some((member) => ts.isMethodSignature(member) || ts.isMethodDeclaration(member))) return false;
@@ -101,52 +65,109 @@ function behavioralContract(checker: ts.TypeChecker, type: ts.Type): ts.Type | n
   }) ? type : null;
 }
 
-function ownedClass(type: ts.Type): ts.ClassDeclaration | null {
+function ownedClass(checker: ts.TypeChecker, expression: ts.Node): ts.ClassDeclaration | null {
+  if (!ts.isNewExpression(expression)) return null;
+  const type = checker.getTypeAtLocation(expression);
   if ((type.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) !== 0) return null;
   const declaration = type.getSymbol()?.declarations?.find(ts.isClassDeclaration);
-  if (declaration === undefined || declaration.getSourceFile().isDeclarationFile ||
+  const constructed = canonicalSymbol(checker, expression.expression)?.declarations?.find(ts.isClassDeclaration);
+  if (declaration === undefined || declaration !== constructed || declaration.getSourceFile().isDeclarationFile ||
       /(?:^|[/\\])(?:node_modules|vendor|generated)(?:[/\\])/u.test(declaration.getSourceFile().fileName)) return null;
   return declaration;
 }
 
-function explicitlyImplements(
+function memberName(node: ts.Node): string | null {
+  if (ts.isPropertyAccessExpression(node)) return node.name.text;
+  if (ts.isElementAccessExpression(node) && ts.isStringLiteralLike(node.argumentExpression)) return node.argumentExpression.text;
+  return null;
+}
+
+function hasPrototypeMutation(source: ts.SourceFile): boolean {
+  function visit(node: ts.Node): boolean | undefined {
+    const member = memberName(node);
+    if (member === "setPrototypeOf" || member === "__proto__" || member === "hasInstance") return true;
+    if (ts.isBinaryExpression(node) && node.operatorToken.kind >= ts.SyntaxKind.FirstAssignment &&
+        node.operatorToken.kind <= ts.SyntaxKind.LastAssignment && memberName(node.left) === "prototype") return true;
+    return ts.forEachChild(node, visit);
+  }
+  return visit(source) === true;
+}
+
+function nominallyInherits(
   checker: ts.TypeChecker,
-  declaration: ts.ClassDeclaration | ts.InterfaceDeclaration,
+  declaration: ts.ClassDeclaration,
   target: ts.Symbol,
   seen: Set<ts.Symbol>,
 ): boolean | null {
+  if (ts.canHaveDecorators(declaration) && ts.getDecorators(declaration)?.length) return null;
+  if (hasPrototypeMutation(declaration.getSourceFile()) || declaration.members.some((member) =>
+    ts.isConstructorDeclaration(member) || (ts.isPropertyDeclaration(member) && member.initializer !== undefined))) return null;
   const symbol = declaration.name === undefined ? undefined : canonicalSymbol(checker, declaration.name);
   if (symbol !== undefined) {
     if (seen.has(symbol)) return null;
     seen.add(symbol);
   }
-  let unknown = false;
-  for (const clause of declaration.heritageClauses ?? []) {
-    for (const parent of clause.types) {
-      const parentSymbol = canonicalSymbol(checker, parent.expression);
-      if (parentSymbol === undefined) {
-        unknown = true;
-        continue;
-      }
-      if (parentSymbol === target) return true;
-      const inherited = parentSymbol.declarations?.find((item): item is ts.ClassDeclaration | ts.InterfaceDeclaration =>
-        ts.isClassDeclaration(item) || ts.isInterfaceDeclaration(item));
-      if (inherited === undefined) {
-        unknown = true;
-        continue;
-      }
-      const relationship = explicitlyImplements(checker, inherited, target, new Set(seen));
-      if (relationship === true) return true;
-      unknown ||= relationship === null;
-    }
-  }
-  return unknown ? null : false;
+  const parents = declaration.heritageClauses?.find((clause) => clause.token === ts.SyntaxKind.ExtendsKeyword)?.types;
+  if (parents === undefined) return false;
+  if (parents.length !== 1) return null;
+  const parentSymbol = canonicalSymbol(checker, parents[0]!.expression);
+  if (parentSymbol === undefined) return null;
+  if (parentSymbol === target) return true;
+  const inherited = parentSymbol.declarations?.find(ts.isClassDeclaration);
+  return inherited === undefined ? null : nominallyInherits(checker, inherited, target, new Set(seen));
 }
 
 function canonicalSymbol(checker: ts.TypeChecker, node: ts.Node): ts.Symbol | undefined {
   const symbol = checker.getSymbolAtLocation(node);
   return symbol === undefined ? undefined : (symbol.flags & ts.SymbolFlags.Alias) !== 0
     ? checker.getAliasedSymbol(symbol) : symbol;
+}
+
+function hasNominalRejectionGuard(
+  checker: ts.TypeChecker,
+  signature: ts.Signature,
+  parameter: ts.Symbol,
+  contract: ts.Symbol,
+): boolean {
+  const declaration = signature.getDeclaration();
+  if (declaration === undefined || !ts.isConstructorDeclaration(declaration)) return false;
+  if (ts.canHaveDecorators(declaration.parent) && ts.getDecorators(declaration.parent)?.length) return false;
+  if (hasPrototypeMutation(declaration.getSourceFile())) return false;
+  const first = declaration.body?.statements[0];
+  if (first === undefined || !ts.isIfStatement(first) || !alwaysThrows(first.thenStatement)) return false;
+  const condition = unparenthesized(first.expression);
+  if (!ts.isPrefixUnaryExpression(condition) || condition.operator !== ts.SyntaxKind.ExclamationToken) return false;
+  const comparison = unparenthesized(condition.operand);
+  if (!ts.isBinaryExpression(comparison) || comparison.operatorToken.kind !== ts.SyntaxKind.InstanceOfKeyword) return false;
+  if (canonicalSymbol(checker, comparison.left) !== parameter || canonicalSymbol(checker, comparison.right) !== contract) return false;
+  const target = contract.declarations?.find(ts.isClassDeclaration);
+  return target !== undefined && hasOrdinaryInstanceCheck(checker, target, new Set());
+}
+
+function unparenthesized(expression: ts.Expression): ts.Expression {
+  let current = expression;
+  while (ts.isParenthesizedExpression(current)) current = current.expression;
+  return current;
+}
+
+function alwaysThrows(statement: ts.Statement): boolean {
+  return ts.isThrowStatement(statement) ||
+    (ts.isBlock(statement) && statement.statements.length === 1 && ts.isThrowStatement(statement.statements[0]!));
+}
+
+function hasOrdinaryInstanceCheck(checker: ts.TypeChecker, declaration: ts.ClassDeclaration, seen: Set<ts.ClassDeclaration>): boolean {
+  if (seen.has(declaration) || ts.getDecorators(declaration)?.length || hasPrototypeMutation(declaration.getSourceFile())) return false;
+  seen.add(declaration);
+  if (declaration.members.some((member) => member.name !== undefined && ts.isComputedPropertyName(member.name) &&
+      ts.canHaveModifiers(member) && ts.getModifiers(member)?.some((modifier) => modifier.kind === ts.SyntaxKind.StaticKeyword))) return false;
+  for (const clause of declaration.heritageClauses ?? []) {
+    if (clause.token !== ts.SyntaxKind.ExtendsKeyword) continue;
+    for (const parent of clause.types) {
+      const ancestor = canonicalSymbol(checker, parent.expression)?.declarations?.find(ts.isClassDeclaration);
+      if (ancestor === undefined || !hasOrdinaryInstanceCheck(checker, ancestor, seen)) return false;
+    }
+  }
+  return true;
 }
 
 export default createRule<Options, MessageIds>({
@@ -157,7 +178,7 @@ export default createRule<Options, MessageIds>({
     docs: { description: REQUIRE_EXPLICIT_CONTRACT_IMPLEMENTATION_DOCUMENTATION.summary },
     schema: [],
     messages: {
-      declareActualContract: "`{{implementation}}` is supplied as `{{contract}}` without explicitly implementing that contract.",
+      declareActualContract: "`{{implementation}}` structurally matches `{{contract}}` but fails the rejecting instanceof guard; use nominal inheritance or make the boundary structural.",
     },
   },
   defaultOptions: [],
@@ -166,28 +187,29 @@ export default createRule<Options, MessageIds>({
     if (!context.sourceCode.parserServices?.program || !context.sourceCode.parserServices.esTreeNodeToTSNodeMap) return {};
     const services = ESLintUtils.getParserServices(context);
     const checker = services.program.getTypeChecker();
-    function inspect(node: TSESTree.CallExpression | TSESTree.NewExpression): void {
+    function inspect(node: TSESTree.NewExpression): void {
       const tsNode = services.esTreeNodeToTSNodeMap.get(node);
-      if (!ts.isCallExpression(tsNode) && !ts.isNewExpression(tsNode)) return;
+      if (!ts.isNewExpression(tsNode)) return;
+      const consumer = canonicalSymbol(checker, tsNode.expression)?.declarations?.find(ts.isClassDeclaration);
+      if (consumer === undefined) return;
       const signature = checker.getResolvedSignature(tsNode);
-      if (signature === undefined) return;
+      if (signature === undefined || signature.getDeclaration()?.parent !== consumer) return;
       const parameters = signature.getParameters();
       for (const [index, argument] of node.arguments.entries()) {
-        if (argument.type === AST_NODE_TYPES.SpreadElement || argument.type === AST_NODE_TYPES.TSAsExpression ||
-            argument.type === AST_NODE_TYPES.TSTypeAssertion || argument.type === AST_NODE_TYPES.TSSatisfiesExpression) continue;
+        if (argument.type !== AST_NODE_TYPES.NewExpression) continue;
         const parameter = parameters[index];
         if (parameter === undefined) continue;
         const parameterType = checker.getTypeOfSymbolAtLocation(parameter, tsNode);
         const contractType = behavioralContract(checker, parameterType);
         if (contractType === null) continue;
         const contractSymbol = contractType.getSymbol();
-        if (contractSymbol === undefined) continue;
+        if (contractSymbol === undefined || !hasNominalRejectionGuard(checker, signature, parameter, contractSymbol)) continue;
         const tsArgument = services.esTreeNodeToTSNodeMap.get(argument);
         const actualType = checker.getTypeAtLocation(tsArgument);
         if (!checker.isTypeAssignableTo(actualType, contractType)) continue;
-        const implementation = ownedClass(actualType);
+        const implementation = ownedClass(checker, tsArgument);
         if (implementation === null) continue;
-        const relationship = explicitlyImplements(checker, implementation, contractSymbol, new Set());
+        const relationship = nominallyInherits(checker, implementation, contractSymbol, new Set());
         if (relationship !== false) continue;
         context.report({
           node: argument,
@@ -197,7 +219,6 @@ export default createRule<Options, MessageIds>({
       }
     }
     return {
-      CallExpression: inspect,
       NewExpression: inspect,
     };
   },

@@ -308,13 +308,77 @@ def test_combined_runner_constructor_ownership_and_suppression(tmp_path: Path) -
     rules = [
         "no-nullable-dependency-fallback",
         "no-hidden-constructor-fallback",
-        "discourage-nullable-constructor-parameters",
     ]
     findings = analyze(rules, [path])
-    assert [finding.code for finding in findings] == ["SARJ469", "SARJ468"]
+    assert [finding.code for finding in findings] == ["SARJ469"]
     path.write_text(source.replace("= None):", "= None):  # sarj-noqa: SARJ469 -- library compatibility") + constructor)
-    assert [finding.code for finding in analyze(rules, [path])] == ["SARJ468"]
-    assert [finding.code for finding in analyze(rules, [path])] == ["SARJ468"]
+    assert analyze(rules, [path]) == []
+    assert analyze(rules, [path]) == []
+
+
+_NULLABLE_CONSTRUCTOR_CASES = (
+    EvaluationCase(
+        "voice-prewarm-without-participant",
+        Language.PYTHON,
+        "class Agent:\n"
+        "    def __init__(self, participant: RemoteParticipant | None = None):\n"
+        "        self.participant = participant\n"
+        "agent = Agent()\n",
+    ),
+    EvaluationCase(
+        "chat-without-audio-session",
+        Language.PYTHON,
+        "class Agent:\n"
+        "    def __init__(self, *, session: AgentSession | None = None, llm: LLM | None = None):\n"
+        "        self.session = session\n"
+        "        self.llm = llm\n"
+        "agent = Agent()\n",
+    ),
+    EvaluationCase(
+        "required-nullable-domain-state",
+        Language.PYTHON,
+        "class Node:\n    def __init__(self, parent: Node | None):\n        self.parent = parent\nroot = Node(None)\n",
+    ),
+    EvaluationCase(
+        "optional-callback",
+        Language.PYTHON,
+        "class Controller:\n"
+        "    def __init__(self, on_ready: Callback | None = None):\n"
+        "        if on_ready is not None:\n"
+        "            on_ready()\n"
+        "controller = Controller()\n",
+    ),
+    EvaluationCase(
+        "optional-typing-annotation",
+        Language.PYTHON,
+        "from typing import Optional\n"
+        "class Agent:\n"
+        "    def __init__(self, participant: Optional[RemoteParticipant] = None):\n"
+        "        self.participant = participant\n"
+        "agent = Agent()\n",
+    ),
+    EvaluationCase(
+        "nullable-library-configuration",
+        Language.PYTHON,
+        "import os\n"
+        "class Client:\n"
+        "    def __init__(self, token: str | None = None):\n"
+        "        self.token = token or os.getenv('TOKEN')\n"
+        "client = Client()\n",
+    ),
+)
+
+
+@pytest.mark.parametrize(
+    "case", _NULLABLE_CONSTRUCTOR_CASES, ids=tuple(case.case_id for case in _NULLABLE_CONSTRUCTOR_CASES)
+)
+def test_constructor_nullability_does_not_require_wrappers_or_sentinels(tmp_path: Path, case: EvaluationCase) -> None:
+    path = tmp_path / "service.py"
+    path.write_text(case.source)
+    rules = ["no-hidden-constructor-fallback", "no-nullable-dependency-fallback"]
+
+    assert analyze(rules, [path]) == []
+    assert analyze(rules, [path]) == []
 
 
 @pytest.mark.parametrize(
