@@ -762,14 +762,49 @@ def parse(value: object):
     assert len(_check(source)) == 1
 
 
+_INHERITED_TYPE_GROUP = """
+class TypeGroup(type):
+    def __new__(mcls, name, bases, namespace):
+        if name == "Text":
+            return (str, bytes)
+        return super().__new__(mcls, name, bases, namespace)
+class Base(metaclass=TypeGroup): ...
+"""
+
+
 @pytest.mark.parametrize(
     "declaration",
     [
         "def type_group(cls):\n    return (cls, bytes)\n\n@type_group\nclass Text: ...",
         "class TypeGroup(type):\n    def __new__(mcls, name, bases, namespace):\n        return (str, bytes)\n\nclass Text(metaclass=TypeGroup): ...",
         'class TypeGroup(type):\n    def __new__(mcls, name, bases, namespace):\n        return (str, bytes)\n\nclass Text(**{"metaclass": TypeGroup}): ...',
+        _INHERITED_TYPE_GROUP + "class Text(Base): ...",
+        _INHERITED_TYPE_GROUP + "class Intermediate(Base): ...\nclass Text(Intermediate): ...",
+        _INHERITED_TYPE_GROUP.replace("metaclass=TypeGroup", '**{"metaclass": TypeGroup}') + "class Text(Base): ...",
+        _INHERITED_TYPE_GROUP.replace("class Base(", "class Base[T](") + "class Text(Base[int]): ...",
+        _INHERITED_TYPE_GROUP.replace("class Base(metaclass=TypeGroup)", "type = TypeGroup\nclass Base(metaclass=type)")
+        + "class Text(Base): ...",
+        _INHERITED_TYPE_GROUP.replace(
+            "class Base(metaclass=TypeGroup): ...",
+            "class Replacement(metaclass=TypeGroup): ...\ndef expose(cls): return Replacement\n@expose\nclass Base: ...",
+        )
+        + "class Text(Base): ...",
+        "from app.parents import Base\nclass Text(Base): ...",
+        _INHERITED_TYPE_GROUP + "Alias = Base\nclass Text(Alias): ...",
     ],
-    ids=("decorated-type-group", "metaclass-type-group", "unpacked-metaclass-type-group"),
+    ids=(
+        "decorated-type-group",
+        "metaclass-type-group",
+        "unpacked-metaclass-type-group",
+        "inherited-metaclass-type-group",
+        "indirect-inherited-metaclass-type-group",
+        "inherited-unpacked-metaclass-type-group",
+        "parameterized-inherited-metaclass-type-group",
+        "shadowed-builtin-inherited-metaclass-type-group",
+        "decorated-base-changes-metaclass",
+        "external-base-metaclass-unknown",
+        "runtime-base-alias-metaclass-unknown",
+    ),
 )
 def test_allows_class_definitions_with_unproven_runtime_type(declaration: str) -> None:
     source = f"""
@@ -787,6 +822,136 @@ def parse(value: object):
     return None
 """
 
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    "declaration",
+    [
+        "class Base: ...\nclass Text(Base): ...",
+        "class Base: ...\nclass Intermediate(Base): ...\nclass Text(Intermediate): ...",
+        "class Base(metaclass=type): ...\nclass Text(Base): ...",
+        "from builtins import type as nominal\nclass Base(metaclass=nominal): ...\nclass Text(Base): ...",
+        "class Base[T]: ...\nclass Text(Base): ...",
+        "from builtins import object as Base\nclass Text(Base): ...",
+        "import builtins as runtime\nclass Text(runtime.object): ...",
+        "import ast\nclass Text(ast.Name): ...",
+        "from ast import Name as Base\nclass Text(Base): ...",
+    ],
+    ids=(
+        "nominal-base",
+        "indirect-nominal-base",
+        "builtin-metaclass",
+        "aliased-builtin-metaclass",
+        "generic-class",
+        "aliased-builtin-base",
+        "qualified-builtin-base",
+        "qualified-stdlib-ast-base",
+        "aliased-stdlib-ast-base",
+    ),
+)
+def test_flags_stable_local_nominal_ancestry(declaration: str) -> None:
+    source = (
+        declaration
+        + """
+class Binary: ...
+class Mapping: ...
+def parse(value: object):
+    if isinstance(value, Text): return "text"
+    elif isinstance(value, Binary): return "binary"
+    elif isinstance(value, Mapping): return "mapping"
+    return None
+"""
+    )
+
+    assert len(_check(source)) == 1
+
+
+@pytest.mark.parametrize(
+    ("rebinding", "expected"),
+    [
+        ("", 1),
+        ("if configured:\n from builtins import type as nominal\n", 1),
+        ("if configured:\n from app.metas import Group as nominal\n", 0),
+        ("if configured:\n from .metas import Group as nominal\n", 0),
+        ("from .metas import Group as nominal\n", 0),
+    ],
+    ids=("stable-alias", "identical-conditional-import", "conflicting-import", "conditional-relative", "relative"),
+)
+def test_builtin_metaclass_alias_requires_stable_import_binding(rebinding: str, expected: int) -> None:
+    source = (
+        "from builtins import type as nominal\n"
+        + rebinding
+        + """
+class Base(metaclass=nominal): ...
+class Text(Base): ...
+class Binary: ...
+class Mapping: ...
+def parse(value: object):
+    if isinstance(value, Text): return "text"
+    elif isinstance(value, Binary): return "binary"
+    elif isinstance(value, Mapping): return "mapping"
+    return None
+"""
+    )
+
+    assert len(_check(source)) == expected
+
+
+@pytest.mark.parametrize(
+    "declaration",
+    [
+        "class Base[T]: ...\nclass Text(Base[int]): ...",
+        "class Base:\n @classmethod\n def __class_getitem__(cls, key): return external_base\nclass Text(Base[int]): ...",
+    ],
+    ids=("generic-base-expression", "custom-base-expression"),
+)
+def test_parameterized_bases_with_unproven_class_getitem_effects_are_excluded(declaration: str) -> None:
+    source = (
+        declaration
+        + """
+class Binary: ...
+class Mapping: ...
+def parse(value: object):
+    if isinstance(value, Text): return "text"
+    elif isinstance(value, Binary): return "binary"
+    elif isinstance(value, Mapping): return "mapping"
+    return None
+"""
+    )
+
+    assert _check(source) == []
+
+
+def test_inherited_metaclass_type_group_breaks_class_pattern_equivalence() -> None:
+    source = (
+        _INHERITED_TYPE_GROUP
+        + """
+class Text(Base): ...
+class Binary: ...
+class Mapping: ...
+def parse(value: object):
+    if isinstance(value, Text): return "text"
+    elif isinstance(value, Binary): return "binary"
+    elif isinstance(value, Mapping): return "mapping"
+    return None
+def replacement(value: object):
+    match value:
+        case Text(): return "text"
+        case Binary(): return "binary"
+        case Mapping(): return "mapping"
+    return None
+assert parse("value") == "text"
+try:
+    replacement("value")
+except TypeError as error:
+    assert "must be a class" in str(error)
+else:
+    raise AssertionError("A runtime type tuple cannot be a class pattern")
+"""
+    )
+
+    exec(compile(source, "<reviewed-metaclass-example>", "exec"), {})  # ruff: ignore[exec-builtin] -- execute the authored runtime-contract proof without external inputs.
     assert _check(source) == []
 
 
