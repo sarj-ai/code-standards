@@ -526,6 +526,34 @@ def test_nested_metadata_does_not_own_generic_yaml(tmp_path: Path) -> None:
     assert security_tools.select_inputs([str(path)], root=tmp_path).kubernetes == ()
 
 
+@pytest.mark.parametrize(
+    "source",
+    [
+        "{apiVersion: v1, kind: Pod, metadata: {name: app}}\n",
+        '{"apiVersion": "v1", "kind": "Pod", "metadata": {"name": "app"}}\n',
+        "{apiVersion: v1,\n kind: Pod, metadata: {name: app}}\n",
+    ],
+)
+def test_kubernetes_discovery_does_not_depend_on_block_key_spelling(tmp_path: Path, source: str) -> None:
+    path = tmp_path / "manifest.yml"
+    path.write_text(source, encoding="utf-8")
+    assert security_tools.select_inputs([str(path)], root=tmp_path).kubernetes == (str(path),)
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "fields: {apiVersion: text, kind: text}\n",
+        'description: \'{"apiVersion": "v1", "kind": "Pod"}\'\n',
+        "description: |\n  {apiVersion: v1, kind: Pod}\n",
+    ],
+)
+def test_nested_or_quoted_flow_keys_do_not_own_generic_yaml(tmp_path: Path, source: str) -> None:
+    path = tmp_path / "dataset.yml"
+    path.write_text(source, encoding="utf-8")
+    assert security_tools.select_inputs([str(path)], root=tmp_path).kubernetes == ()
+
+
 def test_discovery_ignores_large_unrelated_dataset_but_limits_owned_sources(tmp_path: Path) -> None:
     dataset = tmp_path / "dataset.yml"
     dataset.write_text("rows:\n" + "  - value\n" * 250_000, encoding="utf-8")

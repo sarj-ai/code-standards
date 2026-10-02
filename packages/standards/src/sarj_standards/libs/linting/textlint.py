@@ -714,6 +714,7 @@ REGISTRY: Final[Mapping[str, RuleMeta]] = MappingProxyType(
                 "Wrapper-indirected commands are intentionally unreported; full-tree CI scans wrapper files directly only when they live in an operational root.",
                 "Wrangler deploy and versions deploy publish application artifacts and are intentionally not treated as infrastructure mutation; Wrangler resource-creation commands remain reportable.",
                 "Cloud Run image/source-only deploys and updates publish application artifacts; configuration, identity, scaling, networking, secret, and other infrastructure flags remain reportable.",
+                "kubectl set image publishes application artifacts; other set commands and infrastructure mutations remain reportable.",
                 "Read-only diagnostics such as terraform show, gcloud describe/list, and kubectl get are allowed.",
             ),
         ),
@@ -1788,6 +1789,8 @@ def _collapse_github_expressions(arguments: Sequence[str]) -> list[str]:
 def _kubectl_mutates(arguments: Sequence[str]) -> bool:
     command = _drop_cli_options(arguments, _KUBECTL_GLOBAL_VALUE_OPTIONS)
     if not command:
+        return False
+    if command[:2] == ["set", "image"]:
         return False
     if command[0] in _KUBECTL_MUTATIONS:
         return True

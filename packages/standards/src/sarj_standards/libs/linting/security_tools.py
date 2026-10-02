@@ -77,7 +77,7 @@ ZIZMOR_ONLINE_ONLY: Final = frozenset(
 _MAX_SOURCE_BYTES: Final = 2 * 1024 * 1024
 _PLACEHOLDER: Final = re.compile(r"\$\{|\{\{")
 _KUBERNETES_OWNERSHIP: Final = tuple(
-    re.compile(rf"^\s*['\"]?{key}['\"]?\s*:".encode()) for key in ("apiVersion", "kind")
+    re.compile(rf"(?:^\s*|[{{,]\s*)['\"]?{key}['\"]?\s*:".encode()) for key in ("apiVersion", "kind")
 )
 _CONTAINER_SPEC_PATHS: Final = MappingProxyType(
     {
