@@ -116,7 +116,7 @@ class RequirePublicDependencyContract(ProjectRule):
         if implementation is None:
             return None
         contract = _existing_substitutable_contract(implementation, project)
-        members = _dependency_members(node, fields)
+        members = _dependency_members(node, fields, context)
         if contract is None or members is None or not members <= _public_operations(contract):
             return None
         return Diagnostic(
@@ -230,11 +230,15 @@ def _declaration(unit: SourceUnit, name: str) -> ast.ClassDef | None:
     return next((node for node in unit.tree.body if isinstance(node, ast.ClassDef) and node.name == name), None)
 
 
-def _dependency_members(node: ast.ClassDef, fields: frozenset[str]) -> frozenset[str] | None:
+def _dependency_members(
+    node: ast.ClassDef, fields: frozenset[str], context: PythonFileContext
+) -> frozenset[str] | None:
     members: set[str] = set()
     called = False
     for method in class_methods(node):
         for child in ast.walk(method):
+            if _dependency_field_escapes(child, fields, context):
+                return None
             target = child.func if isinstance(child, ast.Call) else child
             if (
                 isinstance(target, ast.Attribute)
@@ -246,3 +250,16 @@ def _dependency_members(node: ast.ClassDef, fields: frozenset[str]) -> frozenset
                 members.add(target.attr)
                 called |= isinstance(child, ast.Call) and not method.name.startswith("_")
     return frozenset(members) if called else None
+
+
+def _dependency_field_escapes(node: ast.AST, fields: frozenset[str], context: PythonFileContext) -> bool:
+    if not (
+        isinstance(node, ast.Attribute)
+        and isinstance(node.ctx, ast.Load)
+        and isinstance(node.value, ast.Name)
+        and node.value.id == "self"
+        and node.attr in fields
+    ):
+        return False
+    parent = context.parents.get(node)
+    return not (isinstance(parent, ast.Attribute) and parent.value is node)

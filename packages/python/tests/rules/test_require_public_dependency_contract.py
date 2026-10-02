@@ -33,6 +33,12 @@ def test_documented_examples() -> None:
         ("abc", "concrete", "HttpPublisher", "constructor_alias", []),
         ("abc", "concrete", "HttpPublisher", "constructor_nominal", []),
         ("abc", "concrete", "HttpPublisher", "extra", []),
+        ("abc", "concrete", "HttpPublisher", "return_nominal", []),
+        ("abc", "concrete", "HttpPublisher", "alias_extra", []),
+        ("abc", "concrete", "HttpPublisher", "async_alias_extra", []),
+        ("abc", "concrete", "HttpPublisher", "private_alias_extra", []),
+        ("abc", "concrete", "HttpPublisher", "legacy_concrete", []),
+        ("abc", "concrete", "HttpPublisher", "member_callback", ["SARJ466"]),
         ("private", "concrete", "HttpPublisher", "publish", []),
         ("plain", "concrete", "HttpPublisher", "publish", []),
         ("abc", "concrete", "HttpPublisher | None", "publish", ["SARJ466"]),
@@ -77,6 +83,20 @@ def test_only_existing_substitutable_contracts_are_recommended(
             "    def run(self) -> None:\n        self.publisher.publish()\n        self._helper()\n"
             "    def _helper(self) -> None: self.publisher.extra()\n"
         )
+    retained_field_uses = {
+        "return_nominal": "    def backend(self) -> HttpPublisher: return self.publisher\n",
+        "alias_extra": "    def special(self) -> None:\n        backend = self.publisher\n        backend.extra()\n",
+        "async_alias_extra": (
+            "    async def special(self) -> None:\n        backend = self.publisher\n        backend.extra()\n"
+        ),
+        "private_alias_extra": (
+            "    def _special(self) -> None:\n        backend = self.publisher\n        backend.extra()\n"
+        ),
+        "legacy_concrete": "    def special(self) -> None: legacy(self.publisher)\n",
+        "member_callback": "    def callback(self): return self.publisher.publish\n",
+    }
+    if operation in retained_field_uses:
+        operation_body = "    def run(self) -> None: self.publisher.publish()\n" + retained_field_uses[operation]
     constructor_body = "self.publisher = publisher"
     if operation.startswith("constructor_"):
         operation_body = "    def run(self) -> None: self.publisher.publish()\n"
@@ -87,8 +107,11 @@ def test_only_existing_substitutable_contracts_are_recommended(
         }[operation]
         constructor_body += f"; {additional}"
     consumer.write_text(
-        "from app.implementations import HttpPublisher\nfrom app.contracts import " + contract_name + "\n"
-        "class Consumer:\n"
+        "from app.implementations import HttpPublisher\nfrom app.contracts import "
+        + contract_name
+        + "\n"
+        + ("def legacy(backend: HttpPublisher) -> None: backend.extra()\n" if operation == "legacy_concrete" else "")
+        + "class Consumer:\n"
         f"    def __init__(self, publisher: {annotation}) -> None: {constructor_body}\n" + operation_body
     )
     sources = {path: path.read_text() for path in (contracts, implementations, consumer)}
