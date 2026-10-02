@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "7bca078931de9c2a3593b2fb6e5380a0efce436dc666d219f7f2b30c85c871a6",
-  "cliSha256": "189c30494c583cdddd66c1916b60062787ec4a825ca82b0d0a39d52d81539d9d",
+  "catalogSha256": "5038415f38585ae5a0827d348da3b37b3b544150c1ca2c1d1174f00386ea8f5b",
+  "cliSha256": "ae510a255a2a0d82a6260888e08339713d89c06df30016b827dcd8d37dbd78c4",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -7300,6 +7300,41 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "A settings-named class calls injected persistence"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:no-shallow-container-type-guard": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/values.py",
+              "source": "from typing import TypeGuard\n\n\ndef is_mapping(value: object) -> TypeGuard[dict[object, object]]:\n    return isinstance(value, dict)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/values.py",
+          "id": "honest-dictionary-keys",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Unchecked keys retain their object type"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/values.py",
+              "source": "from typing import TypeGuard\n\n\ndef is_mapping(value: object) -> TypeGuard[dict[str, object]]:\n    return isinstance(value, dict)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/values.py",
+          "id": "unchecked-dictionary-keys",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A container check does not prove string keys"
         }
       ],
       "optionsSchemaSource": null

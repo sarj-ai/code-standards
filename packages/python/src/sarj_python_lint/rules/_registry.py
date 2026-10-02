@@ -79,6 +79,7 @@ from sarj_python_lint.rules.no_restated_comment import NoRestatedComment
 from sarj_python_lint.rules.no_secret_in_log import NoSecretInLog
 from sarj_python_lint.rules.no_select_star import NoSelectStar
 from sarj_python_lint.rules.no_service_behavior_in_settings import NoServiceBehaviorInSettings
+from sarj_python_lint.rules.no_shallow_container_type_guard import NoShallowContainerTypeGuard
 from sarj_python_lint.rules.no_string_concat_in_loop import NoStringConcatInLoop
 from sarj_python_lint.rules.no_swallowed_asyncio_cancellation import NoSwallowedAsyncioCancellation
 from sarj_python_lint.rules.no_tautological_expect import NoTautologicalExpect
@@ -260,6 +261,7 @@ REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
         NoHiddenConstructorFallback.id: NoHiddenConstructorFallback,
         NoInjectedModuleLoader.id: NoInjectedModuleLoader,
         NoNullableDependencyFallback.id: NoNullableDependencyFallback,
+        NoShallowContainerTypeGuard.id: NoShallowContainerTypeGuard,
         NoFileLevelEscapeHatchSuppression.id: NoFileLevelEscapeHatchSuppression,
         NoInvalidArgumentNameSuppression.id: NoInvalidArgumentNameSuppression,
         NoFastapiOnEvent.id: NoFastapiOnEvent,

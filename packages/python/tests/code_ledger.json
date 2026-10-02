@@ -256,5 +256,6 @@
   "SARJ468": "discourage-nullable-constructor-parameters",
   "SARJ469": "no-nullable-dependency-fallback",
   "SARJ470": "no-database-programmability",
-  "SARJ471": "no-injected-module-loader"
+  "SARJ471": "no-injected-module-loader",
+  "SARJ472": "no-shallow-container-type-guard"
 }

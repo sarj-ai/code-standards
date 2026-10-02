@@ -81,6 +81,7 @@
       "no-secret-in-log",
       "no-select-star",
       "no-service-behavior-in-settings",
+      "no-shallow-container-type-guard",
       "no-statically-truthy-assertion",
       "no-string-concat-in-loop",
       "no-swallowed-asyncio-cancellation",
@@ -438,7 +439,8 @@
       "SARJ468",
       "SARJ469",
       "SARJ470",
-      "SARJ471"
+      "SARJ471",
+      "SARJ472"
     ],
     "sql": [
       "SARJ101",
