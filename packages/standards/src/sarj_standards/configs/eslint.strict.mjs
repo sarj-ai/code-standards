@@ -646,10 +646,6 @@ export function createConfig(options = {}) {
     },
     settings: { react: { version: "detect" } },
     rules: {
-      "no-restricted-properties": [
-        "error",
-        { property: "then", message: "Use async/await instead of .then()." },
-      ],
       "@typescript-eslint/no-explicit-any": "error",
       "@typescript-eslint/no-non-null-assertion": "error",
       "@typescript-eslint/no-deprecated": "error",
@@ -681,8 +677,8 @@ export function createConfig(options = {}) {
       "@typescript-eslint/no-misused-promises": "error",
       // The upstream rule flags every nested then/catch/finally call, including
       // deliberate fire-and-forget work and synchronous framework callbacks.
-      // Core no-restricted-properties bans only then; catch/finally stay available.
-      // The typed @sarj rule below owns only semantics-preserving async returns.
+      // The typed @sarj rule below bans proven Promise.then calls while retaining
+      // ordinary schema data and synchronous methods named then. Catch/finally stay available.
       "promise/prefer-await-to-then": "off",
       "@typescript-eslint/require-await": "error",
       // `isolatedDeclarations` requires annotations on exported values that
@@ -1330,7 +1326,7 @@ export function createConfig(options = {}) {
       "@sarj/prefer-module-level-schema": "error",
       "@sarj/prefer-non-nullable-collection": "error",
       "@sarj/prefer-nullish-filter-predicate": "error",
-      "@sarj/prefer-await-in-async-return": "error",
+      "@sarj/prefer-await-in-async-return": ["error", { scope: "all-promise-calls" }],
       "@sarj/no-sleep-in-test-body": "error",
       "@sarj/iac-source-coupled-test": "error",
       "@sarj/repeated-static-call-cases": "error",
