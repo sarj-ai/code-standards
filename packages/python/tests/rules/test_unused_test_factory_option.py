@@ -240,3 +240,181 @@ def test_metadata_retains_warning_without_autofix() -> None:
     assert documentation is not None
     assert documentation.default_level is Severity.WARNING
     assert documentation.autofix is AutofixPolicy.NONE
+
+
+_CALLABLE_FACTORY = "def _read():\n    return 'ready'\ndef _make_widget(*, read=_read):\n    return Widget(read=read)\n"
+_CALLABLE_BASE = _CALLABLE_FACTORY + "_make_widget()\n_make_widget()\n"
+_CALLABLE_CASES = (
+    EvaluationCase("unused-module-local-callable", Language.PYTHON, _CALLABLE_BASE, ExpectedOutcome.MATCH),
+    EvaluationCase(
+        "unused-async-provider",
+        Language.PYTHON,
+        _CALLABLE_BASE.replace("def _read", "async def _read"),
+        ExpectedOutcome.MATCH,
+    ),
+    EvaluationCase(
+        "unused-positional-callable",
+        Language.PYTHON,
+        _CALLABLE_BASE.replace("(*, read=", "(read="),
+        ExpectedOutcome.MATCH,
+    ),
+    EvaluationCase(
+        "unused-positional-only-callable",
+        Language.PYTHON,
+        _CALLABLE_BASE.replace("(*, read=_read)", "(read=_read, /)"),
+        ExpectedOutcome.MATCH,
+    ),
+    EvaluationCase(
+        "thirty-eight-known-omissions",
+        Language.PYTHON,
+        _CALLABLE_FACTORY + "def test_widgets():\n" + "    _make_widget()\n" * 38,
+        ExpectedOutcome.MATCH,
+    ),
+    EvaluationCase(
+        "read-only-global-provider",
+        Language.PYTHON,
+        _CALLABLE_BASE + "def observe():\n    global _read\n    return _read()\n",
+        ExpectedOutcome.MATCH,
+    ),
+    EvaluationCase(
+        "unrelated-default-binding",
+        Language.PYTHON,
+        _CALLABLE_BASE + "def configure(unused=(setting := 1)):\n    pass\n",
+        ExpectedOutcome.MATCH,
+    ),
+    EvaluationCase("one-call", Language.PYTHON, _CALLABLE_FACTORY + "_make_widget()\n"),
+    EvaluationCase("no-callers", Language.PYTHON, _CALLABLE_FACTORY),
+    EvaluationCase("explicit-default-is-intentional", Language.PYTHON, _CALLABLE_BASE + "_make_widget(read=_read)\n"),
+    EvaluationCase("exercised-callback", Language.PYTHON, _CALLABLE_BASE + "_make_widget(read=other)\n"),
+    EvaluationCase(
+        "positional-callback", Language.PYTHON, _CALLABLE_BASE.replace("(*, read=", "(read=") + "_make_widget(other)\n"
+    ),
+    EvaluationCase("escaped-factory", Language.PYTHON, _CALLABLE_BASE + "register(_make_widget)\n"),
+    EvaluationCase("escaped-provider", Language.PYTHON, _CALLABLE_BASE + "register(_read)\n"),
+    EvaluationCase("rebound-factory", Language.PYTHON, _CALLABLE_BASE + "_make_widget = other\n"),
+    EvaluationCase(
+        "factory-global-writer",
+        Language.PYTHON,
+        _CALLABLE_BASE + "def configure():\n    global _make_widget\n    _make_widget = other\n",
+    ),
+    EvaluationCase(
+        "factory-default-binding",
+        Language.PYTHON,
+        _CALLABLE_BASE + "def configure(unused=(_make_widget := other)):\n    pass\n",
+    ),
+    EvaluationCase(
+        "factory-default-mutation", Language.PYTHON, _CALLABLE_BASE + "_make_widget.__kwdefaults__['read'] = other\n"
+    ),
+    EvaluationCase("rebound-provider", Language.PYTHON, _CALLABLE_BASE + "_read = other\n"),
+    EvaluationCase("deleted-provider", Language.PYTHON, _CALLABLE_BASE + "del _read\n"),
+    EvaluationCase(
+        "provider-global-writer",
+        Language.PYTHON,
+        _CALLABLE_BASE + "def configure():\n    global _read\n    _read = other\n",
+    ),
+    EvaluationCase(
+        "provider-default-binding",
+        Language.PYTHON,
+        _CALLABLE_BASE + "def configure(unused=(_read := other)):\n    pass\n",
+    ),
+    EvaluationCase(
+        "provider-attribute-mutation", Language.PYTHON, _CALLABLE_BASE + "_read.__code__ = other.__code__\n"
+    ),
+    EvaluationCase(
+        "provider-subscript-mutation", Language.PYTHON, _CALLABLE_BASE + "_read.__kwdefaults__['option'] = other\n"
+    ),
+    EvaluationCase("provider-patch-string", Language.PYTHON, _CALLABLE_BASE + "patch('sample.tests._read', other)\n"),
+    EvaluationCase(
+        "provider-member-patch-string",
+        Language.PYTHON,
+        _CALLABLE_BASE + "patch('sample.tests._read.__code__', other)\n",
+    ),
+    EvaluationCase(
+        "factory-patch-string",
+        Language.PYTHON,
+        _CALLABLE_BASE + "patch('sample.tests._make_widget.__kwdefaults__', other)\n",
+    ),
+    EvaluationCase(
+        "provider-patch-attribute", Language.PYTHON, _CALLABLE_BASE + "monkeypatch.setattr(module, '_read', other)\n"
+    ),
+    EvaluationCase("duplicate-provider", Language.PYTHON, _CALLABLE_BASE + "def _read():\n    return 'changed'\n"),
+    EvaluationCase(
+        "imported-provider",
+        Language.PYTHON,
+        _CALLABLE_BASE.replace("def _read():\n    return 'ready'\n", "from dependency import _read\n"),
+    ),
+    EvaluationCase(
+        "late-provider",
+        Language.PYTHON,
+        "def _make_widget(*, read=_read):\n    return Widget(read=read)\ndef _read():\n    return 'ready'\n_make_widget()\n_make_widget()\n",
+    ),
+    EvaluationCase("decorated-provider", Language.PYTHON, "@decorate\n" + _CALLABLE_BASE),
+    EvaluationCase(
+        "decorated-factory", Language.PYTHON, _CALLABLE_BASE.replace("def _make_widget", "@decorate\ndef _make_widget")
+    ),
+    EvaluationCase(
+        "provider-shadowed-by-argument", Language.PYTHON, _CALLABLE_BASE + "def another(_read):\n    return _read\n"
+    ),
+    EvaluationCase(
+        "provider-pattern-capture", Language.PYTHON, _CALLABLE_BASE + "match value:\n    case _read:\n        pass\n"
+    ),
+    EvaluationCase(
+        "provider-exception-capture",
+        Language.PYTHON,
+        _CALLABLE_BASE + "try:\n    act()\nexcept Exception as _read:\n    pass\n",
+    ),
+    EvaluationCase(
+        "factory-argument-rebound",
+        Language.PYTHON,
+        _CALLABLE_BASE.replace("    return Widget", "    read = other\n    return Widget"),
+    ),
+    EvaluationCase("unpacked-caller", Language.PYTHON, _CALLABLE_BASE + "_make_widget(**options)\n"),
+    EvaluationCase("wildcard-import", Language.PYTHON, "from dependency import *\n" + _CALLABLE_BASE),
+    EvaluationCase("reflection", Language.PYTHON, _CALLABLE_BASE + "globals()['_read'] = other\n"),
+    EvaluationCase("exported-factory", Language.PYTHON, _CALLABLE_BASE + "__all__ = ['_make_widget']\n"),
+    EvaluationCase("conftest-shared-factory", Language.PYTHON, _CALLABLE_BASE, path=PurePosixPath("tests/conftest.py")),
+    EvaluationCase("shared-export-alias", Language.PYTHON, _CALLABLE_BASE + "make_widget = _make_widget\n"),
+    EvaluationCase(
+        "suppressed-callable",
+        Language.PYTHON,
+        _CALLABLE_BASE.replace("read=_read):", "read=_read):  # sarj-noqa: SARJ443 -- preserve extension contract"),
+    ),
+    EvaluationCase(
+        "other-suppression-keeps-signal",
+        Language.PYTHON,
+        _CALLABLE_BASE.replace("read=_read):", "read=_read):  # sarj-noqa: SARJ040 -- separate policy"),
+        ExpectedOutcome.MATCH,
+    ),
+    EvaluationCase("generated-callable", Language.PYTHON, "# @generated\n" + _CALLABLE_BASE),
+    EvaluationCase("malformed-callable", Language.PYTHON, "def _make_widget(:\n"),
+)
+
+
+@pytest.mark.parametrize("case", _CALLABLE_CASES, ids=tuple(case.case_id for case in _CALLABLE_CASES))
+def test_module_callable_default_cases(case: EvaluationCase) -> None:
+    path = Path("tests/test_widgets.py") if case.path == PurePosixPath("case.txt") else Path(case.path)
+    diagnostics = UnusedTestFactoryOption().check(path, case.source)
+
+    assert bool(diagnostics) is (case.expected is ExpectedOutcome.MATCH)
+    assert len(diagnostics) <= 1
+    assert all(item.severity is Severity.WARNING for item in diagnostics)
+
+
+def test_callable_remediation_leaves_module_literals_and_exercised_callbacks_alone() -> None:
+    source = (
+        "def _read():\n    return 'ready'\n"
+        "def _make_widget(*, width=3, read=_read):\n    return Widget(width=width, read=read)\n"
+        "_make_widget()\n_make_widget()\n"
+    )
+    diagnostics = UnusedTestFactoryOption().check(Path("tests/test_widgets.py"), source)
+
+    assert len(diagnostics) == 1
+    assert "known direct caller" in diagnostics[0].message
+    assert "read" in diagnostics[0].message
+    assert (
+        UnusedTestFactoryOption().check(
+            Path("tests/test_widgets.py"),
+            source.replace("*, width=3, read=_read", "*, width=3").replace("read=read", "read=_read"),
+        )
+        == []
+    )

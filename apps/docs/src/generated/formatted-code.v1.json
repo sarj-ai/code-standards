@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "65181391a3577f6a266e8a3100bfc783cbf15311b5b5a4944423ae798135e92e",
-  "cliSha256": "3e1cfa53f46c695835104e99b92ed3f2dd3a048fe0ec3150dd4a05ffba111244",
+  "catalogSha256": "2518788ab204b8309b0e57f82671e5b22560fa452445832c7a5e7c5bbf24225a",
+  "cliSha256": "78ebe6245692aa4ca1021f8ead99c576a5e95ea392949d3101fa904e68fadf5c",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -10450,6 +10450,21 @@
           "files": [
             {
               "path": "tests/test_widget.py",
+              "source": "def _read():\n    return \"ready\"\n\n\ndef _make_widget(*, read=_read):\n    return Widget(read=read)\n\n\n_make_widget()\n_make_widget(read=_read)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_widget.py",
+          "id": "exercised-local-callable-option",
+          "outcome": "accept",
+          "scenarioId": "callable-default",
+          "title": "An explicit callback preserves the dependency contract"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "tests/test_widget.py",
               "source": "def test_widgets():\n    def _make_widget(*, size=3):\n        return Widget(size=size)\n\n    _make_widget()\n    _make_widget(size=4)\n"
             }
           ],
@@ -10474,6 +10489,21 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Repeated calls never vary the option"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "tests/test_widget.py",
+              "source": "def _read():\n    return \"ready\"\n\n\ndef _make_widget(*, read=_read):\n    return Widget(read=read)\n\n\n_make_widget()\n_make_widget()\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_widget.py",
+          "id": "unused-local-callable-option",
+          "outcome": "reject",
+          "scenarioId": "callable-default",
+          "title": "Known callers do not replace a stable local dependency"
         }
       ],
       "optionsSchemaSource": null
