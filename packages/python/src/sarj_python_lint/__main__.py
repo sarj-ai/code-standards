@@ -84,7 +84,18 @@ def _python_files(p: Path) -> list[Path]:
     return sorted(out)
 
 
+def _canonical_rule_ids(rule_ids: list[str]) -> list[str]:
+    aliases = {
+        alias: rule_id
+        for rule_id, cls in REGISTRY.items()
+        if (documentation := cls.documentation) is not None
+        for alias in documentation.aliases
+    }
+    return list(dict.fromkeys(rid if rid in REGISTRY else aliases.get(rid, rid) for rid in rule_ids))
+
+
 def _check(rule_ids: list[str], paths: list[Path]) -> list[Diagnostic]:
+    rule_ids = _canonical_rule_ids(rule_ids)
     unknown = [rid for rid in rule_ids if rid not in REGISTRY]
     if unknown:
         sys.stderr.write(f"unknown rule(s): {', '.join(unknown)}\n")
@@ -155,6 +166,7 @@ _DIAGNOSTIC_PRECEDENCE = MappingProxyType(
         # Keep the annotation diagnostics when SARJ094 is absent, including
         # when a concrete response_model makes the route contract complete.
         "SARJ094": frozenset({"SARJ008", "SARJ447"}),
+        "SARJ095": frozenset({"SARJ468"}),
         "SARJ099": frozenset({"SARJ420"}),
         # Any-valued mappings are the stronger correctness failure. SARJ008
         # still owns every fixed dictionary return when selected alone, while

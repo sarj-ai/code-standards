@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "9f9191ec9288a0439dad813b3a0e50b1a6ad4c79749f9de5104641ea5197ae59",
-  "cliSha256": "657ea4a5a3045f3155c7e2fcb4c6500cc39a410601720847dde4d7c34975da25",
+  "catalogSha256": "bcdf7b76b7dcf95d970bd802f4e4f3a8211ce4ec131c526d7bc101ccf7974fed",
+  "cliSha256": "c7ec969ce03b5afcfbdf0f27dfde7bd9bb015719de9fa1e19a7a1b4c1f146709",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -5137,41 +5137,6 @@
       ],
       "optionsSchemaSource": null
     },
-    "python:discourage-nullable-constructor-parameters": {
-      "examples": [
-        {
-          "expectedCount": 1,
-          "files": [
-            {
-              "path": "app/service.py",
-              "source": "class Service:\n    def __init__(self, store: Store | None = None) -> None:\n        if store is None:\n            raise ValueError(\"store is required\")\n        self.store = store\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "app/service.py",
-          "id": "rejected-constructor-default",
-          "outcome": "reject",
-          "scenarioId": "primary",
-          "title": "The constructor immediately rejects its advertised default"
-        },
-        {
-          "expectedCount": 0,
-          "files": [
-            {
-              "path": "app/service.py",
-              "source": "class Service:\n    def __init__(self, store: Store) -> None:\n        if store is None:\n            raise ValueError(\"store is required\")\n        self.store = store\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "app/service.py",
-          "id": "required-constructor-input",
-          "outcome": "accept",
-          "scenarioId": "primary",
-          "title": "The signature requires the input that construction needs"
-        }
-      ],
-      "optionsSchemaSource": null
-    },
     "python:docstring-args-restate-signature": {
       "examples": [
         {
@@ -8875,6 +8840,41 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Validate the entire value"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:prefer-required-constructor-parameters": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/service.py",
+              "source": "class Service:\n    def __init__(self, agent_name: str = \"\") -> None:\n        self.agent_name = agent_name\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/service.py",
+          "id": "defaulted-choice",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Constructor silently selects an empty configuration"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/service.py",
+              "source": "class Service:\n    def __init__(self, agent_name: str | None) -> None:\n        self.agent_name = agent_name\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/service.py",
+          "id": "explicit-absent-choice",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Caller explicitly chooses an absent configuration"
         }
       ],
       "optionsSchemaSource": null

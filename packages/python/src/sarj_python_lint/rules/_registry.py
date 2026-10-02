@@ -9,7 +9,6 @@ from sarj_python_lint.rules.complex_postgres_query_requires_architecture_review 
     ComplexPostgresQueryRequiresArchitectureReview,
 )
 from sarj_python_lint.rules.defect_xfail_requires_explicit_strict import DefectXfailRequiresExplicitStrict
-from sarj_python_lint.rules.discourage_nullable_constructor_parameters import DiscourageNullableConstructorParameters
 from sarj_python_lint.rules.docstring_args_restate_signature import (
     DocstringArgsRestateSignature,
 )
@@ -136,6 +135,7 @@ from sarj_python_lint.rules.prefer_or_pattern import PreferOrPattern
 from sarj_python_lint.rules.prefer_pydantic_json_value import PreferPydanticJsonValue
 from sarj_python_lint.rules.prefer_pytest_fixture_injection import PreferPytestFixtureInjection
 from sarj_python_lint.rules.prefer_regex_fullmatch import PreferRegexFullmatch
+from sarj_python_lint.rules.prefer_required_constructor_parameters import PreferRequiredConstructorParameters
 from sarj_python_lint.rules.prefer_self_documenting_constant import (
     PreferSelfDocumentingConstant,
 )
@@ -203,7 +203,7 @@ REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
     {
         NoDatabaseProgrammability.id: NoDatabaseProgrammability,
         RequireExplicitContractImplementation.id: RequireExplicitContractImplementation,
-        DiscourageNullableConstructorParameters.id: DiscourageNullableConstructorParameters,
+        PreferRequiredConstructorParameters.id: PreferRequiredConstructorParameters,
         RequirePublicDependencyContract.id: RequirePublicDependencyContract,
         RequirePreciseFactorySignature.id: RequirePreciseFactorySignature,
         RequireExplicitServiceContract.id: RequireExplicitServiceContract,

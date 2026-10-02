@@ -28,7 +28,6 @@
       "async-mock-call-without-await-assertion",
       "complex-postgres-query-requires-architecture-review",
       "defect-xfail-requires-explicit-strict",
-      "discourage-nullable-constructor-parameters",
       "docstring-args-restate-signature",
       "docstring-returns-restate-signature",
       "excessive-commentary",
@@ -116,6 +115,7 @@
       "prefer-pydantic-json-value",
       "prefer-pytest-fixture-injection",
       "prefer-regex-fullmatch",
+      "prefer-required-constructor-parameters",
       "prefer-self-documenting-constant",
       "prefer-self-type-annotation",
       "prefer-set-isdisjoint",
@@ -940,6 +940,13 @@
       "status": "renamed",
       "replacement": "defect-xfail-requires-explicit-strict",
       "note": "Replace sarj-defect-xfail-requires-strict with sarj-defect-xfail-requires-explicit-strict before upgrading."
+    },
+    {
+      "id": "discourage-nullable-constructor-parameters",
+      "kind": "python",
+      "status": "renamed",
+      "replacement": "prefer-required-constructor-parameters",
+      "note": "Replace sarj-discourage-nullable-constructor-parameters with sarj-prefer-required-constructor-parameters before upgrading."
     },
     {
       "id": "duplicate-test-body",

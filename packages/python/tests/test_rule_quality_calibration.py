@@ -7,6 +7,7 @@ import pytest
 from sarj_rule_contracts import EvaluationCase, ExpectedOutcome, Language
 
 from sarj_python_lint.__main__ import analyze
+from sarj_python_lint.rule_base import Severity
 
 
 if TYPE_CHECKING:
@@ -81,8 +82,11 @@ def test_valid_apis_remain_valid_in_combined_runner(tmp_path: Path, case: Evalua
     path = tmp_path / "service.py"
     path.write_text(case.source)
 
-    assert analyze(_NEARBY_RULES, [path]) == []
-    assert analyze(_NEARBY_RULES[::-1], [path]) == []
+    findings = analyze(_NEARBY_RULES, [path])
+    assert findings == analyze(_NEARBY_RULES[::-1], [path])
+    expected = ["SARJ468"] if case.case_id == "optional-lifecycle-state" else []
+    assert [finding.code for finding in findings] == expected
+    assert all(finding.severity is Severity.WARNING for finding in findings)
 
 
 @pytest.mark.parametrize("contract_base", ["Protocol", "ABC"])
