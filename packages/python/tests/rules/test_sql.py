@@ -98,3 +98,23 @@ def test_masking_preserves_line_offsets() -> None:
     assert len(stripped) == len(text)
     assert stripped.count("\n") == text.count("\n")
     assert stripped.splitlines()[3] == "FROM t"
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        r"SELECT E'escaped \' ; CREATE FUNCTION example()'",
+        r"SELECT e'escaped \' ; CREATE TRIGGER example'",
+    ],
+)
+def test_escape_string_contents_remain_masked(source: str) -> None:
+    assert "CREATE" not in strip_sql_noise(source)
+
+
+def test_standard_string_backslash_does_not_escape_a_quote() -> None:
+    assert "CREATE FUNCTION" in strip_sql_noise(r"SELECT 'backslash \' ; CREATE FUNCTION example()")
+
+
+def test_dollar_in_identifier_does_not_swallow_following_ddl() -> None:
+    source = "SELECT foo$body$ FROM docs; CREATE FUNCTION example() RETURNS int AS $body$ SELECT 1 $body$ LANGUAGE SQL"
+    assert "CREATE FUNCTION" in strip_sql_noise(source)

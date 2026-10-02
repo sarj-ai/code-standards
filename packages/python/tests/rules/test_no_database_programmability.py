@@ -84,6 +84,38 @@ _CASES = (
     EvaluationCase("sql-comment", Language.PYTHON, _BAD.replace(_FUNCTION, "-- CREATE FUNCTION example()")),
     EvaluationCase("quoted-value", Language.PYTHON, "conn.execute(\"SELECT 'CREATE TRIGGER example'\")"),
     EvaluationCase("dollar-value", Language.PYTHON, 'conn.execute("SELECT $$CREATE FUNCTION example()$$")'),
+    EvaluationCase(
+        "escape-string-value", Language.PYTHON, "conn.execute(\"SELECT E'escaped \\\\' ; CREATE FUNCTION example()'\")"
+    ),
+    EvaluationCase(
+        "escape-string-trigger-value",
+        Language.PYTHON,
+        "conn.execute(\"SELECT e'escaped \\\\' ; CREATE TRIGGER example'\")",
+    ),
+    EvaluationCase(
+        "escape-string-followed-by-ddl",
+        Language.PYTHON,
+        f"conn.execute({("SELECT E'escaped \\' value'; " + _FUNCTION)!r})",
+        ExpectedOutcome.MATCH,
+    ),
+    EvaluationCase(
+        "dollar-in-identifier-followed-by-ddl",
+        Language.PYTHON,
+        'conn.execute("SELECT foo$tag$ FROM docs; CREATE FUNCTION forbidden() RETURNS int LANGUAGE SQL AS $$ SELECT 1 $$")',
+        ExpectedOutcome.MATCH,
+    ),
+    EvaluationCase(
+        "dollar-in-identifier-before-matching-body-tag",
+        Language.PYTHON,
+        'conn.execute("SELECT foo$body$ FROM docs; CREATE FUNCTION forbidden() RETURNS int AS $body$ SELECT 1 $body$ LANGUAGE SQL")',
+        ExpectedOutcome.MATCH,
+    ),
+    EvaluationCase(
+        "standard-string-backslash-before-ddl",
+        Language.PYTHON,
+        f"conn.execute({("SELECT 'backslash \\' ; " + _FUNCTION)!r})",
+        ExpectedOutcome.MATCH,
+    ),
     EvaluationCase("prose", Language.PYTHON, 'conn.execute("Explain why CREATE TRIGGER is banned")'),
     EvaluationCase(
         "nested-sql-comment", Language.PYTHON, f"conn.execute({'/* outer /* inner */ ' + _FUNCTION + ' */'!r})"

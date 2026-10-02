@@ -55,6 +55,7 @@ class NoCreateTrigger(Rule):
             "PostgreSQL CREATE TRIGGER, CREATE CONSTRAINT TRIGGER, and ALTER TABLE ENABLE TRIGGER statements are reported.",
             "This is an organization-specific single-writer architecture policy, not a claim that triggers are invalid.",
             "Dump files and non-PostgreSQL dialects are excluded.",
+            "Scalar and nested dollar-quoted values are excluded; executable DO and routine bodies remain visible.",
             "Generated migrations report against their owning model when one can be identified.",
         ),
         aliases=("no-create-trigger",),
@@ -98,7 +99,7 @@ class NoCreateTrigger(Rule):
             return []
         model_owned = is_generated_migration(path, source)
         diagnostics: list[Diagnostic] = []
-        for statement in split_statements(mask_sql(source)):
+        for statement in split_statements(mask_sql(source, mask_dollar_literals=True)):
             text = "\n".join(fragment for _, fragment in statement)
             match = _INTRODUCE_TRIGGER.search(text)
             if match is None:

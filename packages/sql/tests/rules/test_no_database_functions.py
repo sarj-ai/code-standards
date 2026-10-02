@@ -37,6 +37,17 @@ _CASES = (
     EvaluationCase("nested-comment", Language.SQL, "/* outer /* inner */ " + _BAD + " */"),
     EvaluationCase("quoted-value", Language.SQL, "SELECT 'CREATE FUNCTION example()';"),
     EvaluationCase("dollar-value", Language.SQL, "SELECT $doc$CREATE FUNCTION example()$doc$;"),
+    EvaluationCase("dollar-value-with-statement", Language.SQL, "SELECT $doc$; CREATE FUNCTION example()$doc$;"),
+    EvaluationCase(
+        "dollar-insert-value", Language.SQL, "INSERT INTO docs VALUES ($doc$; CREATE FUNCTION example()$doc$);"
+    ),
+    EvaluationCase("dollar-comment-value", Language.SQL, "COMMENT ON TABLE docs IS $$; CREATE FUNCTION example()$$;"),
+    EvaluationCase(
+        "dollar-followed-by-function",
+        Language.SQL,
+        "SELECT $$; CREATE FUNCTION example()$$;\n" + _BAD,
+        ExpectedOutcome.MATCH,
+    ),
     EvaluationCase("quoted-identifier", Language.SQL, 'SELECT "CREATE FUNCTION example";'),
     EvaluationCase("prose", Language.SQL, "-- Keep CREATE FUNCTION out of application migrations."),
     EvaluationCase("non-postgres", Language.SQL, "-- dialect: mysql\n" + _BAD),
@@ -58,6 +69,11 @@ def test_each_statement_has_one_diagnostic_without_trigger_overlap() -> None:
     findings = NoDatabaseFunctions().check(Path("supabase/migrations/001.sql"), source)
     assert [(item.code, item.line) for item in findings] == [("SARJ120", 1), ("SARJ120", 2)]
     assert len(NoCreateTrigger().check(Path("supabase/migrations/001.sql"), source)) == 1
+
+
+def test_function_body_documentation_does_not_create_extra_findings() -> None:
+    source = "CREATE FUNCTION docs() RETURNS text AS $body$ SELECT $doc$; CREATE FUNCTION example()$doc$; $body$ LANGUAGE SQL;"
+    assert len(NoDatabaseFunctions().check(Path("supabase/migrations/001.sql"), source)) == 1
 
 
 def test_dump_is_excluded() -> None:
