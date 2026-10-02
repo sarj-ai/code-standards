@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "f8c1e46aefb1afd618e064ee4b6538a0e3585b36d01e915307f72218d7baec0e",
-  "cliSha256": "1aa5f138821354c90ebfd9f752efa61d731acd282d5781f8f7706ffcebc112f8",
+  "catalogSha256": "961d168e5c9c101ec2be71fd0385fdbb91c68709c733575b05a1bf4fd3a023cd",
+  "cliSha256": "e40650bd706c46cbf5e4bfaf832409a4ff3ed40fe1219c0d7f883d1b69eb75e9",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -5133,6 +5133,41 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Unexpected pass fails the suite"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:discourage-backing-field-properties": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/service.py",
+              "source": "class Service:\n    def __init__(self, store: Store) -> None:\n        self._store = store\n\n    @property\n    def store(self) -> Store:\n        return self._store\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/service.py",
+          "id": "forwarding-getter",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Accessor duplicates ordinary dependency storage"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/service.py",
+              "source": "class Service:\n    def __init__(self, store: Store) -> None:\n        self.store: Store = store\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/service.py",
+          "id": "public-attribute",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Dependency has one typed public name"
         }
       ],
       "optionsSchemaSource": null

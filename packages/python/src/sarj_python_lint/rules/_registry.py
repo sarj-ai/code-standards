@@ -9,6 +9,7 @@ from sarj_python_lint.rules.complex_postgres_query_requires_architecture_review 
     ComplexPostgresQueryRequiresArchitectureReview,
 )
 from sarj_python_lint.rules.defect_xfail_requires_explicit_strict import DefectXfailRequiresExplicitStrict
+from sarj_python_lint.rules.discourage_backing_field_properties import DiscourageBackingFieldProperties
 from sarj_python_lint.rules.discourage_nullable_constructor_parameters import DiscourageNullableConstructorParameters
 from sarj_python_lint.rules.docstring_args_restate_signature import (
     DocstringArgsRestateSignature,
@@ -202,6 +203,7 @@ REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
         NoDatabaseProgrammability.id: NoDatabaseProgrammability,
         RequireExplicitContractImplementation.id: RequireExplicitContractImplementation,
         DiscourageNullableConstructorParameters.id: DiscourageNullableConstructorParameters,
+        DiscourageBackingFieldProperties.id: DiscourageBackingFieldProperties,
         RequirePublicDependencyContract.id: RequirePublicDependencyContract,
         RequirePreciseFactorySignature.id: RequirePreciseFactorySignature,
         RequireExplicitServiceContract.id: RequireExplicitServiceContract,
