@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "bcdf7b76b7dcf95d970bd802f4e4f3a8211ce4ec131c526d7bc101ccf7974fed",
-  "cliSha256": "c7ec969ce03b5afcfbdf0f27dfde7bd9bb015719de9fa1e19a7a1b4c1f146709",
+  "catalogSha256": "2fd6d41ac0d35e2cf69666454fc7e1d7680e0d2d5bc44eac87e6c042f217421d",
+  "cliSha256": "b7e9f495ae062fe674c72e3c8783355b974aa0c01318f569a5ea121f5771c5b8",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -8106,7 +8106,7 @@
           "files": [
             {
               "path": "settings.py",
-              "source": "from collections.abc import Mapping\nfrom types import MappingProxyType\n\nROLE_LABELS: Mapping[str, str] = MappingProxyType({\"admin\": \"Administrator\"})\n"
+              "source": "from typing import Final\n\nROLE_LABELS: Final[dict[str, str]] = {\"admin\": \"Administrator\"}\n"
             }
           ],
           "fixedFiles": [],
@@ -8114,7 +8114,7 @@
           "id": "immutable-module-mapping",
           "outcome": "accept",
           "scenarioId": "keyed-values",
-          "title": "Read-only mapping used for keyed values"
+          "title": "Final dictionary binding used for keyed values"
         },
         {
           "expectedCount": 1,

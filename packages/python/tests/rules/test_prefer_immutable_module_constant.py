@@ -3,7 +3,7 @@ from textwrap import dedent
 
 import pytest
 
-from sarj_python_lint.rule_base import RuleExample, Severity
+from sarj_python_lint.rule_base import AutofixPolicy, RuleExample, Severity
 from sarj_python_lint.rules.prefer_immutable_module_constant import PreferImmutableModuleConstant
 from tests.illustrative_examples import illustrative_examples
 
@@ -15,16 +15,16 @@ from tests.illustrative_examples import illustrative_examples
         pytest.param("KINDS = {'a', 'b'}", "frozenset", id="set"),
         pytest.param("VALUES = list(runtime_values)", "tuple", id="populated-list-constructor"),
         pytest.param("KINDS = set(runtime_values)", "frozenset", id="populated-set-constructor"),
-        pytest.param("LABELS = dict(runtime_items)", "immutable mapping", id="populated-dict-constructor"),
+        pytest.param("LABELS = dict(runtime_items)", "Final", id="populated-dict-constructor"),
         pytest.param("_VALUES = [1, 2, 3]", "tuple", id="private-constant"),
         pytest.param("X = [1, 2, 3]", "tuple", id="single-letter-constant"),
         pytest.param("VALUES = [runtime_value]", "tuple", id="dynamic-list-element"),
-        pytest.param("LABELS = {'value': runtime_value}", "immutable mapping", id="dynamic-dict-value"),
+        pytest.param("LABELS = {'value': runtime_value}", "Final", id="dynamic-dict-value"),
         pytest.param("VALUES = [value for value in runtime_values]", "tuple", id="list-comprehension"),
         pytest.param("KINDS = {value for value in runtime_values}", "frozenset", id="set-comprehension"),
         pytest.param(
             "LABELS = {value.code: value for value in runtime_values}",
-            "immutable mapping",
+            "Final",
             id="dict-comprehension",
         ),
         pytest.param("VALUES = [*runtime_values]", "tuple", id="dynamic-list-spread"),
@@ -47,6 +47,107 @@ def test_warns_for_literal_mutable_module_constants(source: str, replacement: st
     assert findings[0].code == "SARJ096"
     assert findings[0].severity is Severity.WARNING
     assert replacement in findings[0].message
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        pytest.param("from typing import Final\nLABELS: Final = {'a': 'A'}", id="bare"),
+        pytest.param("from typing import Final\nLABELS: Final[dict[str, str]] = {'a': 'A'}", id="typed"),
+        pytest.param("from typing import Final as F\nLABELS: F[dict[str, str]] = {'a': 'A'}", id="alias"),
+        pytest.param("import typing\nLABELS: typing.Final = {'a': 'A'}", id="qualified"),
+        pytest.param("import typing as t\nLABELS: t.Final[dict[str, str]] = {'a': 'A'}", id="module-alias"),
+        pytest.param("from typing_extensions import Final\nLABELS: Final = {'a': 'A'}", id="extensions"),
+        pytest.param("import typing_extensions as t\nLABELS: t.Final = {'a': 'A'}", id="extensions-module-alias"),
+        pytest.param("from typing import Final\nLABELS: 'Final[dict[str, str]]' = {'a': 'A'}", id="quoted"),
+        pytest.param("import typing as t\nLABELS: 't.Final' = {'a': 'A'}", id="quoted-module-alias"),
+        pytest.param("from typing import Final, Mapping\nLABELS: Final[Mapping[str, str]] = {'a': 'A'}", id="mapping"),
+        pytest.param(
+            "from typing import TYPE_CHECKING\nif TYPE_CHECKING:\n    from typing import Final\n"
+            "LABELS: Final = {'a': 'A'}",
+            id="type-only-import",
+        ),
+        pytest.param(
+            "from typing import Final\ndef unrelated(Final):\n    return Final\nLABELS: Final = {'a': 'A'}",
+            id="parameter-shadow",
+        ),
+        pytest.param(
+            "from typing import Final\ndef unrelated():\n    Final = object()\nLABELS: Final = {'a': 'A'}",
+            id="local-shadow",
+        ),
+    ],
+)
+def test_accepts_final_dictionary_bindings(source: str) -> None:
+    assert PreferImmutableModuleConstant().check(Path("service.py"), source) == []
+
+
+@pytest.mark.parametrize("value", ["{'a': 'A'}", "dict(runtime_items)", "{key: value for key, value in runtime_items}"])
+def test_final_dictionary_expressions_are_accepted(value: str) -> None:
+    source = f"from typing import Final\nLABELS: Final[dict[str, str]] = {value}"
+    assert PreferImmutableModuleConstant().check(Path("service.py"), source) == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        pytest.param("LABELS: Final = {'a': 'A'}", id="unimported"),
+        pytest.param("from custom import Final\nLABELS: Final = {'a': 'A'}", id="unrelated-import"),
+        pytest.param("from typing import Final\nFinal = Custom\nLABELS: Final = {'a': 'A'}", id="rebound"),
+        pytest.param("import typing as t\nt = Custom\nLABELS: t.Final = {'a': 'A'}", id="rebound-module"),
+        pytest.param("def unrelated():\n    from typing import Final\nLABELS: Final = {'a': 'A'}", id="nested-import"),
+        pytest.param("from typing import final\nLABELS: final = {'a': 'A'}", id="decorator"),
+        pytest.param("from typing import Final\nLABELS: dict[str, Final[str]] = {'a': 'A'}", id="nested-final"),
+        pytest.param("from typing import Final\nLABELS: Final[str, str] = {'a': 'A'}", id="multiple-arguments"),
+        pytest.param("from typing import Final\nLABELS: 'Final[' = {'a': 'A'}", id="malformed-string"),
+        pytest.param("from typing import Final\nLABELS: Final[dict] | None = {'a': 'A'}", id="union"),
+        pytest.param(
+            "from typing import Annotated, Final\nLABELS: Annotated[dict, Final] = {'a': 'A'}",
+            id="metadata",
+        ),
+        pytest.param(
+            "from typing import Final\nOTHER = (Final := Custom)\nLABELS: Final = {'a': 'A'}",
+            id="walrus-shadow",
+        ),
+        pytest.param(
+            "from typing import Final\ntry:\n    run()\nexcept Exception as Final:\n    pass\n"
+            "LABELS: Final = {'a': 'A'}",
+            id="exception-shadow",
+        ),
+        pytest.param(
+            "from typing import Final\nmatch value:\n    case {'value': Final}:\n        pass\n"
+            "LABELS: Final = {'a': 'A'}",
+            id="pattern-shadow",
+        ),
+        pytest.param("LABELS: dict[str, str] = {'a': 'A'}", id="plain-dict-annotation"),
+        pytest.param("from typing import Mapping\nLABELS: Mapping[str, str] = {'a': 'A'}", id="plain-mapping"),
+    ],
+)
+def test_final_lookalikes_do_not_hide_dictionary_findings(source: str) -> None:
+    findings = PreferImmutableModuleConstant().check(Path("service.py"), source)
+    assert len(findings) == 1
+    assert findings[0].severity is Severity.WARNING
+    assert "Final[dict" in findings[0].message
+    assert "does not freeze" in findings[0].message
+
+
+@pytest.mark.parametrize(("value", "replacement"), [("[1, 2]", "tuple"), ("{1, 2}", "frozenset")])
+def test_final_does_not_replace_native_immutable_collections(value: str, replacement: str) -> None:
+    source = f"from typing import Final\nVALUES: Final = {value}"
+    findings = PreferImmutableModuleConstant().check(Path("service.py"), source)
+    assert len(findings) == 1
+    assert replacement in findings[0].message
+
+
+def test_runtime_immutable_mapping_remains_accepted() -> None:
+    source = "from types import MappingProxyType\nLABELS = MappingProxyType({'a': 'A'})"
+    assert PreferImmutableModuleConstant().check(Path("service.py"), source) == []
+
+
+def test_rule_retains_warning_and_no_autofix_policy() -> None:
+    documentation = PreferImmutableModuleConstant.documentation
+    assert documentation is not None
+    assert documentation.default_level is Severity.WARNING
+    assert documentation.autofix is AutofixPolicy.NONE
 
 
 @illustrative_examples(PreferImmutableModuleConstant)
