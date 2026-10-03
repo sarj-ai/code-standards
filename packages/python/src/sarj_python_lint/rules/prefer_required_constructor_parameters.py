@@ -96,7 +96,7 @@ class PreferRequiredConstructorParameters(Rule):
                 continue
             if method.decorator_list:
                 if provenance is None:
-                    provenance = ResourceProvenance(context)
+                    provenance = _overload_provenance(context)
                 if _is_overload(context, provenance, method):
                     continue
             findings.extend(
@@ -134,22 +134,112 @@ def _scope(context: PythonFileContext, node: ast.AST) -> ast.AST | None:
     return parent
 
 
+def _overload_provenance(context: PythonFileContext) -> ResourceProvenance:
+    provenance = ResourceProvenance(context)
+    comprehensions = (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)
+    for expression in context.nodes(ast.NamedExpr):
+        target = expression.target
+        original = provenance.scope(target)
+        if not isinstance(original, comprehensions):
+            continue
+        # Assignment expressions in comprehensions bind in the containing
+        # scope, unlike iteration targets, which stay comprehension-local.
+        containing = original
+        while isinstance(containing, comprehensions):
+            containing = provenance.scope(containing)
+        provenance.bindings[original][target.id].remove(target)
+        provenance.bindings[containing][target.id].append(target)
+    return provenance
+
+
 def _binding(provenance: ResourceProvenance, name: str, at: ast.AST) -> ast.AST | None:
     scope = provenance.scope(at)
     deferred = False
     while scope is not None:
-        bindings = provenance.bindings.get(scope, {}).get(name)
+        bindings = provenance.bindings.get(scope, {}).get(name, [])
+        directives = [binding for binding in bindings if isinstance(binding, ast.Global | ast.Nonlocal)]
+        if directives and not isinstance(scope, ast.Module):
+            return _declared_binding(provenance, name, at, scope, bindings)
+        bindings = _value_bindings(bindings)
+        bindings = _visible_bindings(bindings, scope, at, deferred=deferred)
         if bindings:
-            bindings = _visible_bindings(bindings, scope, at, deferred=deferred)
-            if bindings:
-                return bindings[0] if len(bindings) == 1 else None
+            return bindings[0] if len(bindings) == 1 and not _directed_write(provenance, scope, name, at) else None
         deferred |= isinstance(scope, ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda)
-        scope = provenance.scope(scope)
-        # A class body can see its own namespace, but enclosing classes do not
-        # become lexical closures for nested classes or functions.
-        while isinstance(scope, ast.ClassDef):
-            scope = provenance.scope(scope)
+        scope = _enclosing_scope(provenance, scope)
     return None
+
+
+def _enclosing_scope(provenance: ResourceProvenance, scope: ast.AST) -> ast.AST | None:
+    # A class body can see its own namespace, but enclosing classes do not
+    # become lexical closures for nested classes or functions.
+    outer = provenance.scope(scope)
+    while isinstance(outer, ast.ClassDef):
+        outer = provenance.scope(outer)
+    return outer
+
+
+def _declared_binding(
+    provenance: ResourceProvenance,
+    name: str,
+    at: ast.AST,
+    scope: ast.AST,
+    bindings: list[ast.AST],
+) -> ast.AST | None:
+    # A declaration redirects lookup; it does not replace the value. Writes
+    # through that declaration retain the conservative warning in every scope.
+    bindings = _evaluated_bindings(provenance.context, bindings, at)
+    if any(not isinstance(binding, ast.Global | ast.Nonlocal) for binding in bindings):
+        return None
+    destination = (
+        provenance.context.tree
+        if any(isinstance(binding, ast.Global) for binding in bindings)
+        else _nonlocal_scope(provenance, scope, name)
+    )
+    if destination is None or _directed_write(provenance, destination, name, at):
+        return None
+    bindings = _value_bindings(provenance.bindings.get(destination, {}).get(name, []))
+    bindings = _visible_bindings(bindings, destination, at, deferred=_deferred(provenance.context, at))
+    return bindings[0] if len(bindings) == 1 else None
+
+
+def _nonlocal_scope(provenance: ResourceProvenance, scope: ast.AST, name: str) -> ast.AST | None:
+    outer = _enclosing_scope(provenance, scope)
+    while outer is not None:
+        if isinstance(outer, ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda):
+            bindings = provenance.bindings.get(outer, {}).get(name, [])
+            if bindings and not any(isinstance(binding, ast.Global | ast.Nonlocal) for binding in bindings):
+                return outer
+        outer = _enclosing_scope(provenance, outer)
+    return None
+
+
+def _directed_write(provenance: ResourceProvenance, destination: ast.AST, name: str, at: ast.AST) -> bool:
+    for scope, names in provenance.bindings.items():
+        if scope is None or isinstance(scope, ast.Module):
+            continue
+        bindings = names.get(name, [])
+        directives = [binding for binding in bindings if isinstance(binding, ast.Global | ast.Nonlocal)]
+        writes = _value_bindings(bindings)
+        if not directives or not writes or not _evaluated_bindings(provenance.context, writes, at):
+            continue
+        target = (
+            provenance.context.tree
+            if any(isinstance(directive, ast.Global) for directive in directives)
+            else _nonlocal_scope(provenance, scope, name)
+        )
+        if target is destination:
+            return True
+    return False
+
+
+def _evaluated_bindings(context: PythonFileContext, bindings: list[ast.AST], at: ast.AST) -> list[ast.AST]:
+    if _deferred(context, at):
+        return bindings
+    return [binding for binding in bindings if _position(binding) <= _position(at)]
+
+
+def _value_bindings(bindings: list[ast.AST]) -> list[ast.AST]:
+    return [binding for binding in bindings if not isinstance(binding, ast.Global | ast.Nonlocal)]
 
 
 def _visible_bindings(bindings: list[ast.AST], scope: ast.AST, at: ast.AST, *, deferred: bool) -> list[ast.AST]:
