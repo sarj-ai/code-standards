@@ -379,3 +379,84 @@ def test_nested_local_shadow_does_not_hide_module_finding(compound: str) -> None
 )
 def test_ignores_constructor_calls_when_builtin_name_is_shadowed(source: str) -> None:
     assert PreferImmutableModuleConstant().check(Path("service.py"), source) == []
+
+
+@pytest.mark.parametrize(
+    ("source", "line"),
+    [
+        pytest.param("if enabled:\n    LABELS = {'a': 'A'}", 2, id="if"),
+        pytest.param("if enabled:\n    pass\nelse:\n    LABELS = {'a': 'A'}", 4, id="else"),
+        pytest.param("try:\n    LABELS = {'a': 'A'}\nexcept RuntimeError:\n    pass", 2, id="try"),
+        pytest.param("try:\n    run()\nexcept RuntimeError:\n    LABELS = {'a': 'A'}", 4, id="except"),
+        pytest.param("try:\n    run()\nexcept* RuntimeError:\n    LABELS = {'a': 'A'}", 4, id="except-star"),
+        pytest.param(
+            "try:\n    run()\nexcept RuntimeError:\n    pass\nelse:\n    LABELS = {'a': 'A'}", 6, id="try-else"
+        ),
+        pytest.param("try:\n    run()\nfinally:\n    LABELS = {'a': 'A'}", 4, id="finally"),
+        pytest.param("if enabled:\n    try:\n        LABELS = {'a': 'A'}\n    finally:\n        pass", 3, id="nested"),
+        pytest.param("if enabled:\n    VALUES = [1, 2]", 2, id="list"),
+        pytest.param("if enabled:\n    KINDS = {'a', 'b'}", 2, id="set"),
+    ],
+)
+def test_reports_collection_constants_in_module_conditionals(source: str, line: int) -> None:
+    findings = PreferImmutableModuleConstant().check(Path("service.py"), source)
+    assert len(findings) == 1
+    assert findings[0].line == line
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        pytest.param("if enabled:\n    LABELS: Final[dict[str, str]] = {'a': 'A'}", id="annotated-branch"),
+        pytest.param("LABELS: Final[dict[str, str]]\nif enabled:\n    LABELS = {'a': 'A'}", id="prior-annotation"),
+        pytest.param("if enabled:\n    LABELS: Final[dict[str, str]]\n    LABELS = {'a': 'A'}", id="branch-annotation"),
+        pytest.param(
+            "try:\n    LABELS: Final = dict.fromkeys(keys)\nexcept RuntimeError:\n    pass", id="factory-final"
+        ),
+        pytest.param("if enabled:\n    VALUES = [1]\n    VALUES.append(2)", id="mutation"),
+        pytest.param("if enabled:\n    LABELS = {'a': 'A'}\n    consume(LABELS)", id="escape"),
+        pytest.param("if enabled:\n    VALUES = [1]\nelse:\n    VALUES = [2]", id="alternative-bindings"),
+        pytest.param("VALUES = [1]\nif enabled:\n    VALUES = [2]", id="reassignment"),
+        pytest.param("if enabled:\n    A = B = [1]\nB.append(2)", id="chained-alias"),
+        pytest.param("if enabled:\n    def build():\n        VALUES = [1]", id="function-scope"),
+        pytest.param("if enabled:\n    class Config:\n        VALUES = [1]", id="class-scope"),
+        pytest.param("if enabled:\n    for item in items:\n        VALUES = [1]", id="loop-out-of-scope"),
+    ],
+)
+def test_module_conditionals_preserve_final_and_mutation_exclusions(source: str) -> None:
+    assert PreferImmutableModuleConstant().check(Path("service.py"), "from typing import Final\n" + source) == []
+
+
+@pytest.mark.parametrize("value", ["dict.fromkeys(keys)", "dict.fromkeys(('a', 'b'), 'A')"])
+def test_reports_nonempty_fromkeys_dictionary_constants(value: str) -> None:
+    findings = PreferImmutableModuleConstant().check(Path("service.py"), f"LABELS = {value}")
+    assert len(findings) == 1
+    assert "Final[dict" in findings[0].message
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "LABELS = dict.fromkeys(())",
+        "LABELS = dict.fromkeys([], 'A')",
+        "LABELS = dict.fromkeys({})",
+        "LABELS = dict.fromkeys('')",
+        "LABELS = dict.fromkeys(b'')",
+        "LABELS = dict.fromkeys()",
+        "LABELS = dict.fromkeys(*keys)",
+        "LABELS = dict.fromkeys(keys=keys)",
+        "from custom import dict\nLABELS = dict.fromkeys(keys)",
+        "from custom import *\nLABELS = dict.fromkeys(keys)",
+        "if enabled:\n    dict = custom\nLABELS = dict.fromkeys(keys)",
+        "LABELS = dict.fromkeys(keys)\nLABELS.update(extra)",
+        "LABELS = dict.fromkeys(keys)\nconsume(LABELS)",
+        "from typing import Final\nLABELS: Final = dict.fromkeys(keys)",
+    ],
+)
+def test_fromkeys_preserves_empty_shadowed_mutated_and_final_exclusions(source: str) -> None:
+    assert PreferImmutableModuleConstant().check(Path("service.py"), source) == []
+
+
+def test_conditional_final_lookalike_still_warns() -> None:
+    source = "from custom import Final\nif enabled:\n    LABELS: Final = {'a': 'A'}"
+    assert len(PreferImmutableModuleConstant().check(Path("service.py"), source)) == 1

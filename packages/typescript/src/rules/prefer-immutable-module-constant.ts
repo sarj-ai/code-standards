@@ -22,6 +22,7 @@ export const PREFER_IMMUTABLE_MODULE_CONSTANT_DOCUMENTATION = {
   category: "correctness",
   limitations: [
     "Generated, test and JavaScript files are skipped. Private constants with observed direct or alias mutation are excluded; exported mutable collections remain advisory candidates. Reassigned aliases are conservatively followed, not flow-proven.",
+    "Local type aliases are resolved before recognizing standard readonly types; imported or otherwise unknown type declarations are not inferred from their names. Readonly types have no runtime enforcement.",
   ],
   examples: [
     {
@@ -40,6 +41,26 @@ export const PREFER_IMMUTABLE_MODULE_CONSTANT_DOCUMENTATION = {
       files: [{ path: "src/constants.ts", source: "const VALUES = [1, 2, 3];" }],
       focusPath: "src/constants.ts",
       expectedCount: 1,
+      public: true,
+    },
+    {
+      id: "shadowed-readonly-alias",
+      scenarioId: "type-binding",
+      title: "A type named Readonly still exposes mutable properties",
+      outcome: "match",
+      files: [{ path: "src/constants.ts", source: "type Readonly = { voice: boolean };\nexport const TOOL_SUPPORT: Readonly = { voice: true };" }],
+      focusPath: "src/constants.ts",
+      expectedCount: 1,
+      public: true,
+    },
+    {
+      id: "resolved-readonly-alias",
+      scenarioId: "type-binding",
+      title: "A local alias resolves to readonly properties",
+      outcome: "no-match",
+      files: [{ path: "src/constants.ts", source: "type ToolSupport = Readonly<{ voice: boolean }>;\nexport const TOOL_SUPPORT: ToolSupport = { voice: true };" }],
+      focusPath: "src/constants.ts",
+      expectedCount: 0,
       public: true,
     },
   ],
@@ -84,6 +105,15 @@ function unwrapExpression(node: TSESTree.Node): TSESTree.Node {
 }
 
 type GlobalResolver = (identifier: TSESTree.Identifier) => boolean;
+type LocalType = TSESTree.TSTypeAliasDeclaration | TSESTree.TSTypeParameter;
+type LocalTypeResolver = (identifier: TSESTree.Identifier) => LocalType | undefined;
+type TypeArguments = ReadonlyMap<TSESTree.TSTypeParameter, TypeArgument>;
+type ReadonlyState = "readonly" | "mutable" | "unknown";
+type TypeArgument = {
+  readonly node: TSESTree.Node;
+  readonly arguments: TypeArguments;
+  readonly seen: ReadonlySet<TSESTree.Node>;
+};
 
 function isObjectFreeze(node: TSESTree.Node, isUnshadowedGlobal: GlobalResolver): boolean {
   const inner = unwrapExpression(node);
@@ -138,58 +168,107 @@ function collectionKind(node: TSESTree.Node, isUnshadowedGlobal: GlobalResolver)
 function declaredReadonlyType(
   node: TSESTree.VariableDeclarator,
   kind: "literal" | "Set" | "Map",
-  aliases: ReadonlyMap<string, TSESTree.Node>,
+  resolveLocalType: LocalTypeResolver,
+  isUnshadowedType: GlobalResolver,
 ): boolean {
   const annotation = node.id.type === AST_NODE_TYPES.Identifier ? node.id.typeAnnotation : undefined;
-  if (annotation !== undefined && isReadonlyTypeResolved(annotation.typeAnnotation, kind, aliases)) {
+  if (annotation !== undefined && readonlyTypeState(annotation.typeAnnotation, kind, resolveLocalType, isUnshadowedType) === "readonly") {
     return true;
   }
   return node.init?.type === AST_NODE_TYPES.TSAsExpression &&
-    isReadonlyTypeResolved(node.init.typeAnnotation, kind, aliases);
+    readonlyTypeState(node.init.typeAnnotation, kind, resolveLocalType, isUnshadowedType) === "readonly";
 }
 
-function isReadonlyTypeResolved(
+function readonlyTypeState(
   node: TSESTree.Node,
   kind: "literal" | "Set" | "Map",
-  aliases: ReadonlyMap<string, TSESTree.Node>,
-  seen: ReadonlySet<string> = new Set(),
-): boolean {
-  if (isReadonlyType(node, kind)) return true;
-  if (node.type !== AST_NODE_TYPES.TSTypeReference || node.typeName.type !== AST_NODE_TYPES.Identifier) return false;
-  const name = node.typeName.name;
-  const target = aliases.get(name);
-  if (target === undefined || seen.has(name)) return false;
-  return isReadonlyTypeResolved(target, kind, aliases, new Set([...seen, name]));
+  resolveLocalType: LocalTypeResolver,
+  isUnshadowedType: GlobalResolver,
+  arguments_: TypeArguments = new Map(),
+  seen: ReadonlySet<TSESTree.Node> = new Set(),
+): ReadonlyState {
+  if (seen.has(node)) return "unknown";
+  if (node.type !== AST_NODE_TYPES.TSTypeReference || node.typeName.type !== AST_NODE_TYPES.Identifier) {
+    return directReadonlyState(node, kind, isUnshadowedType);
+  }
+  const declaration = resolveLocalType(node.typeName);
+  if (declaration === undefined) return directReadonlyState(node, kind, isUnshadowedType);
+  if (declaration.type === AST_NODE_TYPES.TSTypeParameter) {
+    const argument = arguments_.get(declaration);
+    return argument === undefined ? "unknown" : readonlyTypeState(
+      argument.node, kind, resolveLocalType, isUnshadowedType, argument.arguments, argument.seen,
+    );
+  }
+  const expanded = new Set([...seen, node]);
+  return readonlyTypeState(
+    declaration.typeAnnotation, kind, resolveLocalType, isUnshadowedType,
+    bindTypeArguments(declaration, node, arguments_, expanded), expanded,
+  );
 }
 
-function isReadonlyType(node: TSESTree.Node, kind: "literal" | "Set" | "Map"): boolean {
-  if (node.type === AST_NODE_TYPES.TSTypeOperator && node.operator === "readonly") {
-    return true;
+function bindTypeArguments(
+  declaration: TSESTree.TSTypeAliasDeclaration,
+  reference: TSESTree.TSTypeReference,
+  arguments_: TypeArguments,
+  seen: ReadonlySet<TSESTree.Node>,
+): TypeArguments {
+  const bindings = new Map(arguments_);
+  for (const [index, parameter] of (declaration.typeParameters?.params ?? []).entries()) {
+    const argument = reference.typeArguments?.params[index];
+    const node = argument ?? parameter.default;
+    if (node !== undefined) {
+      bindings.set(parameter, { node, arguments: argument === undefined ? new Map(bindings) : arguments_, seen });
+    }
   }
+  return bindings;
+}
+
+function directReadonlyState(node: TSESTree.Node, kind: "literal" | "Set" | "Map", isUnshadowedType: GlobalResolver): ReadonlyState {
+  if (node.type === AST_NODE_TYPES.TSTypeOperator && node.operator === "readonly") {
+    return "readonly";
+  }
+  if (node.type === AST_NODE_TYPES.TSTypeLiteral) {
+    if (node.members.length === 0) return "unknown";
+    const readonly = kind === "literal" && node.members.length > 0 && node.members.every((member) =>
+      (member.type === AST_NODE_TYPES.TSPropertySignature || member.type === AST_NODE_TYPES.TSIndexSignature) && member.readonly,
+    );
+    return readonly ? "readonly" : "mutable";
+  }
+  if (node.type === AST_NODE_TYPES.TSArrayType || node.type === AST_NODE_TYPES.TSTupleType) return "mutable";
   if (
     node.type !== AST_NODE_TYPES.TSTypeReference ||
-    node.typeName.type !== AST_NODE_TYPES.Identifier
+    node.typeName.type !== AST_NODE_TYPES.Identifier ||
+    !isUnshadowedType(node.typeName)
   ) {
-    return false;
+    return "unknown";
   }
   if (node.typeName.name === "Readonly") {
-    return kind === "literal";
+    return kind === "literal" ? "readonly" : "mutable";
   }
-  return kind === "literal"
-    ? node.typeName.name === "ReadonlyArray"
-    : node.typeName.name === `Readonly${kind}`;
+  if (["Array", "Map", "Set"].includes(node.typeName.name)) return "mutable";
+  if (!["ReadonlyArray", "ReadonlyMap", "ReadonlySet"].includes(node.typeName.name)) return "unknown";
+  const readonly = kind === "literal" ? node.typeName.name === "ReadonlyArray" : node.typeName.name === `Readonly${kind}`;
+  return readonly ? "readonly" : "mutable";
 }
 
 function hasUnknownExplicitType(
   node: TSESTree.VariableDeclarator,
-  aliases: ReadonlyMap<string, TSESTree.Node>,
+  kind: "literal" | "Set" | "Map",
+  resolveLocalType: LocalTypeResolver,
+  isUnshadowedType: GlobalResolver,
 ): boolean {
-  const annotation = node.id.type === AST_NODE_TYPES.Identifier ? node.id.typeAnnotation?.typeAnnotation : undefined;
+  const annotation = (node.id.type === AST_NODE_TYPES.Identifier ? node.id.typeAnnotation?.typeAnnotation : undefined) ??
+    (node.init?.type === AST_NODE_TYPES.TSAsExpression ? node.init.typeAnnotation : undefined);
   if (annotation === undefined) return false;
   if (annotation.type === AST_NODE_TYPES.TSArrayType || annotation.type === AST_NODE_TYPES.TSTypeOperator) return false;
   if (annotation.type !== AST_NODE_TYPES.TSTypeReference || annotation.typeName.type !== AST_NODE_TYPES.Identifier) return true;
-  return !aliases.has(annotation.typeName.name) &&
-    !["Array", "Map", "Readonly", "ReadonlyArray", "ReadonlyMap", "ReadonlySet", "Set"].includes(annotation.typeName.name);
+  if (resolveLocalType(annotation.typeName) !== undefined) {
+    return readonlyTypeState(annotation, kind, resolveLocalType, isUnshadowedType) === "unknown";
+  }
+  return resolveLocalType(annotation.typeName) === undefined && (
+    !isUnshadowedType(annotation.typeName) ||
+    !["Array", "Map", "Readonly", "ReadonlyArray", "ReadonlyMap", "ReadonlySet", "Set"].includes(annotation.typeName.name)
+  );
 }
 
 function referenceMutates(identifier: TSESTree.Identifier, isUnshadowedGlobal: GlobalResolver): boolean {
@@ -259,6 +338,17 @@ export default createRule<Options, MessageIds>({
       const variable = ASTUtils.findVariable(sourceCode.getScope(identifier), identifier.name);
       return variable === null || variable.defs.length === 0;
     };
+    const isUnshadowedType: GlobalResolver = (identifier) => {
+      const variable = ASTUtils.findVariable(sourceCode.getScope(identifier), identifier.name);
+      return variable === null || !variable.defs.some((definition) => definition.isTypeDefinition);
+    };
+    const resolveLocalType: LocalTypeResolver = (identifier) => {
+      const variable = ASTUtils.findVariable(sourceCode.getScope(identifier), identifier.name);
+      const definitions = variable?.defs.filter((definition) => definition.isTypeDefinition) ?? [];
+      const declaration = definitions.length === 1 ? definitions[0]?.node : undefined;
+      return declaration?.type === AST_NODE_TYPES.TSTypeAliasDeclaration || declaration?.type === AST_NODE_TYPES.TSTypeParameter
+        ? declaration : undefined;
+    };
     if (
       JAVASCRIPT_FILE_RE.test(context.filename) ||
       isTestFile(context.filename) ||
@@ -267,7 +357,6 @@ export default createRule<Options, MessageIds>({
       return {};
     }
     const exportedNames = new Set<string>();
-    const typeAliases = new Map<string, TSESTree.Node>();
     const mutatesThroughAlias = (root: Scope.Variable): boolean => {
       const pending = [root];
       const seen = new Set<Scope.Variable>();
@@ -297,10 +386,6 @@ export default createRule<Options, MessageIds>({
     return {
       Program(node): void {
         function collectModuleBindings(statement: TSESTree.ProgramStatement): void {
-          const declaration = statement.type === AST_NODE_TYPES.ExportNamedDeclaration ? statement.declaration : statement;
-          if (declaration?.type === AST_NODE_TYPES.TSTypeAliasDeclaration) {
-            typeAliases.set(declaration.id.name, declaration.typeAnnotation);
-          }
           if (statement.type === AST_NODE_TYPES.ExportNamedDeclaration) {
             if (statement.source !== null || statement.exportKind === "type") return;
             for (const specifier of statement.specifiers) {
@@ -349,7 +434,7 @@ export default createRule<Options, MessageIds>({
           return;
         }
         const kind = collectionKind(node.init, isUnshadowedGlobal);
-        if (kind === null || declaredReadonlyType(node, kind, typeAliases) || hasUnknownExplicitType(node, typeAliases)) {
+        if (kind === null || declaredReadonlyType(node, kind, resolveLocalType, isUnshadowedType) || hasUnknownExplicitType(node, kind, resolveLocalType, isUnshadowedType)) {
           return;
         }
         const variable = sourceCode.getDeclaredVariables(node)[0];

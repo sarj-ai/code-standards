@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "2fd6d41ac0d35e2cf69666454fc7e1d7680e0d2d5bc44eac87e6c042f217421d",
-  "cliSha256": "d0252193dc7fb578d1f99186dc90fa552e9fe7758cd809b27c444dcf01ebdcde",
+  "catalogSha256": "645262c5120de4f6b3ba7cf5907a76368ec3640e0cc908c8873207bf60cbb70a",
+  "cliSha256": "f23c0ef66e659b5668d26c9fde469008908c22935f307fa377cb150dfaea8a06",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -2582,6 +2582,36 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "A module constant exposes a readonly literal"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/constants.ts",
+              "source": "type ToolSupport = Readonly<{ voice: boolean }>;\nexport const TOOL_SUPPORT: ToolSupport = { voice: true };\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/constants.ts",
+          "id": "resolved-readonly-alias",
+          "outcome": "accept",
+          "scenarioId": "type-binding",
+          "title": "A local alias resolves to readonly properties"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/constants.ts",
+              "source": "type Readonly = { voice: boolean };\nexport const TOOL_SUPPORT: Readonly = { voice: true };\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/constants.ts",
+          "id": "shadowed-readonly-alias",
+          "outcome": "reject",
+          "scenarioId": "type-binding",
+          "title": "A type named Readonly still exposes mutable properties"
         }
       ],
       "optionsSchemaSource": null
@@ -8087,6 +8117,36 @@
     "python:prefer-immutable-module-constant": {
       "examples": [
         {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "settings.py",
+              "source": "if voice_enabled:\n    TOOL_LABELS = dict.fromkeys((\"call\", \"transfer\"), \"Voice\")\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "settings.py",
+          "id": "conditional-module-mapping",
+          "outcome": "reject",
+          "scenarioId": "conditional-factory",
+          "title": "Conditional dictionary factory needs constant intent"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "settings.py",
+              "source": "from typing import Final\n\nif voice_enabled:\n    TOOL_LABELS: Final[dict[str, str]] = dict.fromkeys((\"call\", \"transfer\"), \"Voice\")\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "settings.py",
+          "id": "final-conditional-module-mapping",
+          "outcome": "accept",
+          "scenarioId": "conditional-factory",
+          "title": "Conditional dictionary factory declares a Final binding"
+        },
+        {
           "expectedCount": 0,
           "files": [
             {
@@ -8486,6 +8546,21 @@
           "files": [
             {
               "path": "service.py",
+              "source": "from typing import Final\n\nLABELS: Final[dict[str, int]] = {\n    \"a\": 1,\n    \"b\": 2,\n    \"c\": 3,\n    \"d\": 4,\n    \"e\": 5,\n    \"f\": 6,\n    \"g\": 7,\n    \"h\": 8,\n}\n\n\ndef handle(key):\n    return LABELS.get(key)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "service.py",
+          "id": "final-module-lookup",
+          "outcome": "accept",
+          "scenarioId": "keyed-values",
+          "title": "Final lookup dictionary defined once"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "service.py",
               "source": "ALLOWED = (\"a\", \"b\", \"c\", \"d\", \"e\", \"f\", \"g\", \"h\")\n\n\ndef handle(value):\n    return value in ALLOWED\n"
             }
           ],
@@ -8495,6 +8570,21 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Immutable membership table defined once"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "service.py",
+              "source": "def handle(key):\n    labels = {\"a\": 1, \"b\": 2, \"c\": 3, \"d\": 4, \"e\": 5, \"f\": 6, \"g\": 7, \"h\": 8}\n    return labels.get(key)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "service.py",
+          "id": "static-lookup-built-per-call",
+          "outcome": "reject",
+          "scenarioId": "keyed-values",
+          "title": "Static lookup dictionary rebuilt per call"
         },
         {
           "expectedCount": 1,

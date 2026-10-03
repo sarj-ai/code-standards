@@ -20,6 +20,8 @@ from sarj_python_lint.rules._paths import is_test_path, is_test_support_path
 
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
+
     from sarj_python_lint._file_context import PythonFileContext
 
 
@@ -90,6 +92,7 @@ class PreferImmutableModuleConstant(Rule):
         autofix=AutofixPolicy.NONE,
         limitations=(
             "Empty collections and collections intentionally mutated or passed to unknown calls are not reported.",
+            "Direct declarations and declarations in module-level if/try suites are checked; repeated bindings, loops, functions, and class bodies are excluded.",
             "Final has no runtime enforcement and permits item mutation on dictionaries; tuple and frozenset are shallow.",
             "Changing a list or set to an immutable type can affect consumers, serialization, and concrete API methods.",
             "Test, test-support, and generated files are excluded.",
@@ -138,6 +141,36 @@ class PreferImmutableModuleConstant(Rule):
                 expected_count=0,
                 public=True,
             ),
+            RuleExample(
+                example_id="conditional-module-mapping",
+                scenario="conditional-factory",
+                title="Conditional dictionary factory needs constant intent",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "settings.py",
+                        'if voice_enabled:\n    TOOL_LABELS = dict.fromkeys(("call", "transfer"), "Voice")\n',
+                    ),
+                ),
+                focus_path=PurePosixPath("settings.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="final-conditional-module-mapping",
+                scenario="conditional-factory",
+                title="Conditional dictionary factory declares a Final binding",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "settings.py",
+                        'from typing import Final\n\nif voice_enabled:\n    TOOL_LABELS: Final[dict[str, str]] = dict.fromkeys(("call", "transfer"), "Voice")\n',
+                    ),
+                ),
+                focus_path=PurePosixPath("settings.py"),
+                expected_count=0,
+                public=True,
+            ),
         ),
     )
     description: str = documentation.summary
@@ -151,22 +184,17 @@ class PreferImmutableModuleConstant(Rule):
         if tree is None:
             return []
         mutated = _mutated_names(tree)
-        shadowed_builtins = _module_bound_names(tree) & {"dict", "list", "set"}
-        non_import_bindings: set[str] | None = None
+        module_names = _module_bound_names(tree)
+        shadowed_builtins = {"dict", "list", "set"} if "*" in module_names else module_names & {"dict", "list", "set"}
+        statements = tuple(_module_statements(tree.body))
+        final_names = _final_names(statements, context)
         findings: list[Diagnostic] = []
-        for statement in tree.body:
-            if (
-                isinstance(statement, ast.AnnAssign)
-                and statement.value is not None
-                and _mutable_literal_kind(statement.value, shadowed_builtins=shadowed_builtins) == "dict"
-            ):
-                if non_import_bindings is None:
-                    non_import_bindings = _scope_bound_names(tree.body, include_imports=False)
-                if _is_final_annotation(statement.annotation, context, non_import_bindings):
-                    continue
+        for statement in statements:
             for name, value in _bindings(statement):
                 kind = _mutable_literal_kind(value, shadowed_builtins=shadowed_builtins)
                 if kind is None or name in mutated or not _CONSTANT_NAME.fullmatch(name) or name.startswith("__"):
+                    continue
+                if kind == "dict" and name in final_names:
                     continue
                 findings.append(
                     Diagnostic(
@@ -179,6 +207,41 @@ class PreferImmutableModuleConstant(Rule):
                     )
                 )
         return findings
+
+
+def _module_statements(body: list[ast.stmt]) -> Iterator[ast.stmt]:
+    for statement in body:
+        yield statement
+        match statement:
+            case ast.If():
+                yield from _module_statements(statement.body)
+                yield from _module_statements(statement.orelse)
+            case ast.Try() | ast.TryStar():
+                yield from _module_statements(statement.body)
+                for handler in statement.handlers:
+                    yield from _module_statements(handler.body)
+                yield from _module_statements(statement.orelse)
+                yield from _module_statements(statement.finalbody)
+            case _:
+                pass
+
+
+def _final_names(statements: tuple[ast.stmt, ...], context: PythonFileContext) -> frozenset[str]:
+    annotations = [
+        statement
+        for statement in statements
+        if isinstance(statement, ast.AnnAssign) and isinstance(statement.target, ast.Name)
+    ]
+    tree = context.tree
+    if not annotations or tree is None:
+        return frozenset()
+    non_import_bindings = _scope_bound_names(tree.body, include_imports=False)
+    return frozenset(
+        statement.target.id
+        for statement in annotations
+        if isinstance(statement.target, ast.Name)
+        and _is_final_annotation(statement.annotation, context, non_import_bindings)
+    )
 
 
 def _is_final_annotation(annotation: ast.expr, context: PythonFileContext, non_import_bindings: set[str]) -> bool:
@@ -225,14 +288,30 @@ def _mutable_literal_kind(value: ast.expr, *, shadowed_builtins: set[str]) -> st
             return None
         case ast.Call(func=ast.Name(id=kind)) if kind in {"set", "dict", "list"} and kind not in shadowed_builtins:
             return kind
+        case ast.Call(func=ast.Attribute(value=ast.Name(id="dict"), attr="fromkeys"), args=args, keywords=[]) if (
+            "dict" not in shadowed_builtins
+            and len(args) in {1, 2}
+            and not any(isinstance(argument, ast.Starred) for argument in args)
+        ):
+            return None if _empty_literal(args[0]) else "dict"
         case _:
             return None
+
+
+def _empty_literal(value: ast.expr) -> bool:
+    match value:
+        case (
+            ast.List(elts=[]) | ast.Tuple(elts=[]) | ast.Set(elts=[]) | ast.Dict(keys=[]) | ast.Constant(value="" | b"")
+        ):
+            return True
+        case _:
+            return False
 
 
 def _mutated_names(tree: ast.Module) -> frozenset[str]:
     mutated: set[str] = set()
     module_bindings: dict[str, int] = {}
-    for statement in tree.body:
+    for statement in _module_statements(tree.body):
         if isinstance(statement, ast.Assign) and len(statement.targets) > 1:
             # Skip every chained alias because mutation or escape through one name changes them all.
             mutated.update(target.id for target in statement.targets if isinstance(target, ast.Name))
