@@ -124,6 +124,29 @@ def test_message_points_at_module_scope():
     assert "module scope" in diags[0].message
 
 
+def test_dictionary_hoisting_recommends_final_without_claiming_frozen_contents() -> None:
+    source = _fn(
+        "labels = {'a': 1, 'b': 2, 'c': 3, 'd': 4, 'e': 5, 'f': 6, 'g': 7, 'h': 8}\nreturn labels.get(payload)"
+    )
+    findings = _check(source)
+    assert len(findings) == 1
+    assert "Final[dict" in findings[0].message
+    assert "does not freeze" in findings[0].message
+
+
+def test_public_final_dictionary_example_preserves_lookup_and_satisfies_both_rules() -> None:
+    example = next(example for example in _PUBLIC_EXAMPLES if example.example_id == "final-module-lookup")
+    focus = example.focus_file
+    namespace: dict[str, object] = {}
+    exec(compile(focus.source, str(focus.path), "exec"), namespace)  # ruff: ignore[exec-builtin] - executable rule fixture
+    handle = namespace["handle"]
+    assert callable(handle)
+    assert handle("a") == 1
+    assert handle("missing") is None
+    assert _check(focus.source) == []
+    assert PreferImmutableModuleConstant().check(Path(focus.path), focus.source) == []
+
+
 def test_line_and_col():
     diags = _check(_fn(f"allowed = {EIGHT_LIST}\nreturn len(allowed)"))
     assert (diags[0].line, diags[0].col) == (2, 5)
