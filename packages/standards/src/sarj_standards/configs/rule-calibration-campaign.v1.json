@@ -2155,12 +2155,12 @@
       "outcome": "Require nominal inheritance only where direct construction of owned consumer and collaborator classes encounters a rejecting instanceof guard. Preserve ordinary structural typing; skip factories, proxies, explicit implementation constructors, instance initializers and modules with reflective prototype customization. Module-wide exclusions are conservative and deliberately miss some otherwise valid positives. No invented interfaces or autofix."
     },
     {
-      "task": "rule-audit/python/discourage-nullable-constructor-parameters",
+      "task": "rule-audit/python/prefer-required-constructor-parameters",
       "family": "python",
-      "ruleId": "discourage-nullable-constructor-parameters",
+      "ruleId": "prefer-required-constructor-parameters",
       "state": "complete",
-      "evidence": "201 focused nullable/hidden-settings/function-fallback cases passed. Thirty-two focused cases cover rejected None defaults, valid optional state, public examples, suppression and exactly one CLI diagnostic.",
-      "outcome": "Preserve only the contradiction where a literal None default is immediately explicitly rejected. Make that input required; no wrapper, interface or alternate constructor is needed. Valid nullable inputs are supported. Assert rejection describes normal assertions-enabled execution; -O is documented."
+      "evidence": "Ten independent reviews drove class-suite and descriptor coverage plus scoped, definition-order-aware overload provenance. All 70 labeled fixtures (40 matching, 30 nonmatching) pass without duplicate locations; 139 focused interaction tests cover exclusions, required nullable choices, exact suppression, alias selection, diagnostic precedence, and mutations during default evaluation. Final pinned evaluation scans 2,571 files / 24,865,646 bytes in 13 isolated batches: all four candidate and combined runs retain exactly the previous 403 advisory locations with zero duplicates. A fresh corpus pass after the final scope correction and rebase confirms identical locations and reverified pins. The earlier deterministic inspection of 46 unchanged matches remains applicable: at least 36 were deliberate valid defaults and no correctness defect was established. Fresh-process first-run/warm-median seconds are baseline 4.294/3.138, candidate 5.737/6.001, nearby 6.839/6.865, and combined 7.507/7.152; maximum worker RSS is 87,031,808 bytes. OS caches were not flushed. These selected-rule measurements do not establish a full-runner speedup. Authored __init__ definitions are the supported scope; assigned/generated signatures and arbitrary interprocedural mutation are not inferred, while ambiguous or escaped overload provenance conservatively retains the warning.",
+      "outcome": "Ship as an architectural warning only: require explicit constructor choices while allowing required nullable domain values. Intentional framework and public-library defaults remain suppressible with a reason. No autofix or general error promotion is justified by this evaluation."
     },
     {
       "task": "rule-audit/python/no-nullable-dependency-fallback",
