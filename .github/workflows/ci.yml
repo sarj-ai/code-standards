@@ -962,7 +962,7 @@ jobs:
           cache: npm
           cache-dependency-path: apps/docs/package-lock.json
       - run: npm ci --ignore-scripts --no-audit --no-fund
-      - run: npm audit --audit-level=moderate
+      - run: npm run audit:dependencies
 
   codeql:
     needs: changes
