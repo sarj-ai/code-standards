@@ -16,6 +16,7 @@ from sarj_standards.libs.diagnostics import (
     Diagnostic,
     Location,
     Position,
+    Region,
     Severity,
     ToolReport,
     baseline,
@@ -286,6 +287,87 @@ def test_staged_changed_lines_cannot_consume_baseline_allowance(tmp_path: Path) 
 
     assert not baseline.touches_changed_lines(old, scope)
     assert baseline.touches_changed_lines(new, scope)
+
+
+@pytest.mark.parametrize(
+    ("before", "after", "boundaries"),
+    [
+        ("first\nsecond\nremove\nfourth\nfifth\n", "first\nsecond\nfourth\nfifth\n", {2, 3}),
+        ("remove\nsecond\nthird\nfourth\n", "second\nthird\nfourth\n", {1}),
+        ("first\nsecond\nthird\nremove\n", "first\nsecond\nthird\n", {3, 4}),
+        (
+            "first\nremove-one\nsecond\nthird\nfourth\nremove-two\nfifth\n",
+            "first\nsecond\nthird\nfourth\nfifth\n",
+            {1, 2, 4, 5},
+        ),
+    ],
+    ids=("middle", "start", "end", "multiple"),
+)
+def test_deletion_hunks_preserve_baselines_away_from_surviving_boundaries(
+    before: str, after: str, boundaries: set[int], tmp_path: Path
+) -> None:
+    subprocess.run(("git", "init", "-q"), cwd=tmp_path, check=True)
+    subprocess.run(("git", "config", "user.name", "Standards Test"), cwd=tmp_path, check=True)
+    subprocess.run(("git", "config", "user.email", "standards@example.com"), cwd=tmp_path, check=True)
+    source = tmp_path / "app.py"
+    source.write_text(before, encoding="utf-8")
+    subprocess.run(("git", "add", "app.py"), cwd=tmp_path, check=True)
+    subprocess.run(("git", "commit", "-qm", "base"), cwd=tmp_path, check=True)
+    source.write_text(after, encoding="utf-8")
+    subprocess.run(("git", "add", "app.py"), cwd=tmp_path, check=True)
+
+    scope = baseline.changed_line_scope(tmp_path, staged=True)
+    findings = tuple(
+        Diagnostic(
+            "X",
+            "existing",
+            Severity.ERROR,
+            "ruff",
+            Location("app.py", position=Position(index, 0, index)),
+            fingerprint=f"{index:064x}",
+        )
+        for index in range(len(after.splitlines()))
+    )
+    report = report_from_tools(tmp_path, (ToolReport("ruff", Completion.COMPLETE, findings),))
+    visible = api._without_baselined_diagnostics(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+        report,
+        {finding.fingerprint: 1 for finding in findings if finding.fingerprint is not None},
+        changed_scope=scope,
+    )
+
+    assert scope is not None
+    assert scope.lines == {"app.py": frozenset(boundaries)}
+    assert tuple(
+        finding.location.position.line + 1 for finding in visible.diagnostics if finding.location.position
+    ) == tuple(line for line in range(1, len(after.splitlines()) + 1) if line in boundaries)
+
+
+def test_deletion_boundaries_affect_spanning_regions_and_file_level_findings() -> None:
+    scope = baseline.ChangedLineScope(frozenset({"app.py"}), {"app.py": frozenset({3, 4})})
+    distant = Diagnostic(
+        "X", "old", Severity.ERROR, "ruff", Location("app.py", region=Region(Position(0, 0, 0), Position(1, 0, 1)))
+    )
+    spanning = replace(distant, location=Location("app.py", region=Region(Position(0, 0, 0), Position(4, 0, 4))))
+    whole_file = replace(distant, location=Location("app.py"))
+
+    assert not baseline.touches_changed_lines(distant, scope)
+    assert baseline.touches_changed_lines(spanning, scope)
+    assert baseline.touches_changed_lines(whole_file, scope)
+
+
+@pytest.mark.parametrize(
+    "scope",
+    [
+        baseline.ChangedLineScope(frozenset(), {}, failed=True),
+        baseline.ChangedLineScope(frozenset({"app.py"}), {}),
+        baseline.ChangedLineScope(frozenset({"app.py"}), {"app.py": frozenset()}),
+    ],
+    ids=("failed-diff", "missing-hunks", "empty-hunks"),
+)
+def test_missing_or_failed_diff_information_stays_conservative(scope: baseline.ChangedLineScope) -> None:
+    finding = Diagnostic("X", "existing", Severity.ERROR, "ruff", Location("app.py", position=Position(100, 0, 100)))
+
+    assert baseline.touches_changed_lines(finding, scope)
 
 
 def test_react_doctor_findings_are_baselineable_by_fingerprint() -> None:

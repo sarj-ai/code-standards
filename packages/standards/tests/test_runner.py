@@ -49,6 +49,17 @@ def test_terraform_test_files_route_to_iac(name: str, tmp_path: Path) -> None:
     assert runner.group_paths([str(tmp_path)]).iac == [str(source)]
 
 
+def test_json_variable_files_route_to_iac_without_routing_other_json(tmp_path: Path) -> None:
+    variables = tmp_path / "dev.tfvars.json"
+    variables.write_text('{"enabled": true}\n', encoding="utf-8")
+    unrelated = tmp_path / "settings.json"
+    unrelated.write_text('{"enabled": true}\n', encoding="utf-8")
+
+    assert runner.group_paths([str(variables)]).iac == [str(variables)]
+    assert runner.group_paths([str(tmp_path)]).iac == [str(variables)]
+    assert runner.accepts_hook_path(variables, root=tmp_path)
+
+
 def test_shell_files_route_to_shellcheck_and_text(tmp_path: Path) -> None:
     shell = tmp_path / "release"
     shell.write_text("#!/usr/bin/env bash\necho ok\n", encoding="utf-8")
