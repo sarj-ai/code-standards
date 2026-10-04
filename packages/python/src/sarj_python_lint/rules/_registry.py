@@ -61,6 +61,7 @@ from sarj_python_lint.rules.no_hidden_constructor_fallback import (
 )
 from sarj_python_lint.rules.no_injected_module_loader import NoInjectedModuleLoader
 from sarj_python_lint.rules.no_invalid_argument_name_suppression import NoInvalidArgumentNameSuppression
+from sarj_python_lint.rules.no_mocked_pydantic_value_object import NoMockedPydanticValueObject
 from sarj_python_lint.rules.no_nested_pydantic_field_validator import NoNestedPydanticFieldValidator
 from sarj_python_lint.rules.no_nullable_dependency_fallback import NoNullableDependencyFallback
 from sarj_python_lint.rules.no_offset_pagination import NoOffsetPagination
@@ -83,6 +84,7 @@ from sarj_python_lint.rules.no_shallow_container_type_guard import NoShallowCont
 from sarj_python_lint.rules.no_string_concat_in_loop import NoStringConcatInLoop
 from sarj_python_lint.rules.no_swallowed_asyncio_cancellation import NoSwallowedAsyncioCancellation
 from sarj_python_lint.rules.no_tautological_expect import NoTautologicalExpect
+from sarj_python_lint.rules.no_test_method_grafting import NoTestMethodGrafting
 from sarj_python_lint.rules.no_typed_doc_sections import NoTypedDocSections
 from sarj_python_lint.rules.no_unique_violation_message_match import (
     NoUniqueViolationMessageMatch,
@@ -252,6 +254,8 @@ REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
         PreferInjectedDependencyOverMonkeypatch.id: PreferInjectedDependencyOverMonkeypatch,
         PreferMonkeypatchForProcessStateInTest.id: PreferMonkeypatchForProcessStateInTest,
         MockWithoutSpec.id: MockWithoutSpec,
+        NoMockedPydanticValueObject.id: NoMockedPydanticValueObject,
+        NoTestMethodGrafting.id: NoTestMethodGrafting,
         PreferAutospecForCallableMock.id: PreferAutospecForCallableMock,
         OpaqueParametrizeCaseNeedsId.id: OpaqueParametrizeCaseNeedsId,
         PytestFixtureReturnsBareTuple.id: PytestFixtureReturnsBareTuple,

@@ -265,5 +265,7 @@
   "SARJ474": "prefer-autospec-for-callable-mock",
   "SARJ475": "no-unused-underscored-keyword-parameter",
   "SARJ476": "prefer-pytest-fixture-injection",
-  "SARJ477": "no-broad-keyword-capture"
+  "SARJ477": "no-broad-keyword-capture",
+  "SARJ478": "no-test-method-grafting",
+  "SARJ479": "no-mocked-pydantic-value-object"
 }

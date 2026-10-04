@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "77b6055e6222cf8ab7ac2863ff396581facb7c40154789d31fc97aec23801fbb",
-  "cliSha256": "ee94514a5398a3e748e043d3ea259b18bb38a175cfc833e1b0ac2a69001acb4f",
+  "catalogSha256": "49747101368503238b7354e3d1b346794befae687bf259edc2adee1e44ada8cc",
+  "cliSha256": "226553e431d286a6fd6bafe658bdb24365930e74343002230e50de11f67bf35a",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -6711,6 +6711,41 @@
       ],
       "optionsSchemaSource": null
     },
+    "python:no-mocked-pydantic-value-object": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "tests/test_profile.py",
+              "source": "from unittest.mock import Mock\nfrom pydantic import BaseModel\n\n\nclass Profile(BaseModel):\n    language: str\n\n\ndef test_profile():\n    profile = Mock(spec=Profile)\n    profile.language = \"ar\"\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_profile.py",
+          "id": "mocked-model-field-data",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A mock bypasses the model's validated data contract"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "tests/test_profile.py",
+              "source": "from pydantic import BaseModel\n\n\nclass Profile(BaseModel):\n    language: str\n\n\ndef make_profile(*, language: str = \"en\") -> Profile:\n    return Profile(language=language)\n\n\ndef test_profile():\n    profile = make_profile(language=\"ar\")\n    assert profile.language == \"ar\"\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_profile.py",
+          "id": "real-model-field-data",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Real model fixtures retain validation and defaults"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "python:no-nested-pydantic-field-validator": {
       "examples": [
         {
@@ -7572,6 +7607,41 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Cancellation becomes a successful return"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:no-test-method-grafting": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "tests/test_delivery.py",
+              "source": "from unittest.mock import Mock\n\n\nclass Sender:\n    def send(self, text: str) -> None:\n        pass\n\n\ndef test_delivery():\n    sender = Mock(spec=Sender)\n    messages = []\n\n    def record(text: str) -> None:\n        messages.append(text)\n\n    sender.send = record\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_delivery.py",
+          "id": "method-implementation-assignment",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A test replaces a mock's resolved collaborator method"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "tests/test_delivery.py",
+              "source": "from unittest.mock import create_autospec\n\n\nclass Sender:\n    def send(self, text: str) -> None:\n        pass\n\n\ndef test_delivery():\n    sender = create_autospec(Sender, instance=True, spec_set=True)\n    messages = []\n    sender.send.side_effect = messages.append\n    sender.send(\"hello\")\n    sender.send.assert_called_once_with(\"hello\")\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_delivery.py",
+          "id": "mock-method-side-effect",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Configure behavior through an existing mock method"
         }
       ],
       "optionsSchemaSource": null

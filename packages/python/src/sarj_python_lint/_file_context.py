@@ -15,6 +15,8 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
     from pathlib import Path
 
+    from sarj_python_lint.rules._test_provenance import TestProvenance
+
 
 @final
 class PythonFileContext:
@@ -64,6 +66,12 @@ class PythonFileContext:
     @cached_property
     def fastapi(self) -> FastapiIndex:
         return FastapiIndex(self._valid_tree(), path=self.path)
+
+    @cached_property
+    def test_provenance(self) -> TestProvenance:
+        from sarj_python_lint.rules._test_provenance import TestProvenance  # ruff: ignore[import-outside-top-level] — defer test analysis until requested
+
+        return TestProvenance(self)
 
     def _valid_tree(self) -> ast.Module:
         tree = self.tree
