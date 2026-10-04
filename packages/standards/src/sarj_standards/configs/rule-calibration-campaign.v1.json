@@ -3,6 +3,14 @@
   "precisionGate": "Review every finding up to 200; above 200, review every major cluster and a deterministic stratified sample of at least 50. Treat ambiguous findings as false positives for error-level rules.",
   "tasks": [
     {
+      "task": "rule-audit/python/prefer-native-string-check",
+      "family": "python",
+      "ruleId": "prefer-native-string-check",
+      "state": "complete",
+      "evidence": "39 focused tests pass. Labeled EvaluationCase evaluation has eight true positives, 26 true negatives, zero mismatches and no duplicate locations. Pinned local corpus evaluation selects 2,463 tracked Python files / 22,927,920 bytes across the public authoring repository and one private consumer, using fresh-process batches capped at 250 files. Both retained assertion matches were inspected as unnecessary schema validation. An earlier broader candidate found five legitimate parsing uses; assertion-only scope excludes them. Private source identities, revisions and digests remain outside the published artifact. Candidate cold wall time is 4.204 seconds and rule runtime 0.916 seconds. Against two adjacent JSON-validation rules, baseline runtime is 5.397 seconds and the median of three combined runs is 5.457 seconds (1.1 percent overhead); wall times are 8.447 / 8.705 seconds (3.1 percent overhead). The baseline was measured once, OS caches were not flushed, and concurrent work limits timing precision. These timings do not establish whole-registry overhead. Reproduce focused fixtures with uv run --project packages/python pytest -q packages/python/tests/rules/test_prefer_native_string_check.py; run make verify for repository qualification.",
+      "outcome": "Ship SARJ480 as a warning without autofix. Report only plain built-in str TypeAdapter.validate_python calls inside assertions without validation options, resolving import aliases and uniquely bound unconditional module adapters. Prefer a native isinstance assertion. Preserve parsing outside assertions, JSON/schema/serialization operations, constrained and structured types, configured adapters and uncertain or shadowed bindings. Intentional byte decoding or ValidationError contracts require an exact-code reasoned suppression. The rule enforces a requested assertion style; finite calibration is not a claim of universal zero false positives or negatives."
+    },
+    {
       "task": "rule-audit/python/no-test-method-grafting",
       "family": "python",
       "ruleId": "no-test-method-grafting",

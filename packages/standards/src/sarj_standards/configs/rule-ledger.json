@@ -111,6 +111,7 @@
       "prefer-module-level-constant",
       "prefer-monkeypatch-for-process-state-in-test",
       "prefer-monotonic-for-elapsed-time",
+      "prefer-native-string-check",
       "prefer-nominal-id-types",
       "prefer-non-nullable-collection",
       "prefer-or-pattern",
@@ -454,7 +455,8 @@
       "SARJ476",
       "SARJ477",
       "SARJ478",
-      "SARJ479"
+      "SARJ479",
+      "SARJ480"
     ],
     "sql": [
       "SARJ101",

@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "49747101368503238b7354e3d1b346794befae687bf259edc2adee1e44ada8cc",
-  "cliSha256": "a260de2c397c969d6280419dca94f3ccc8285f3f2f9e9fbbe8b5317d1aeca09d",
+  "catalogSha256": "8112e6e5b6800de301fc97d407a3239db3b11cf375e4f59a218cd7bc0d7d3442",
+  "cliSha256": "1c0ba0357a69bfb3bc2aea0817c9c5b82ea3bfb4d197d3f5c309909172286de3",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -8782,6 +8782,41 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "A local wall clock measures duration"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:prefer-native-string-check": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "tests/test_receipt.py",
+              "source": "from pydantic import TypeAdapter\n\n\ndef test_receipt():\n    assert TypeAdapter(str).validate_python(receipt[\"id\"]) == \"abc\"\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_receipt.py",
+          "id": "adapter-for-string-check",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A string assertion unnecessarily constructs a schema validator"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "tests/test_receipt.py",
+              "source": "def test_receipt():\n    value = receipt[\"id\"]\n    assert isinstance(value, str)\n    assert value == \"abc\"\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_receipt.py",
+          "id": "native-string-assertion",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "A native assertion rejects unexpected types and narrows the value"
         }
       ],
       "optionsSchemaSource": null
