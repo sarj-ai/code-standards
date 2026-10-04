@@ -129,6 +129,7 @@ from sarj_python_lint.rules.prefer_monotonic_for_elapsed_time import PreferMonot
 from sarj_python_lint.rules.prefer_namedtuple_over_tuple_return import (
     PreferNamedtupleOverTupleReturn,
 )
+from sarj_python_lint.rules.prefer_native_string_check import PreferNativeStringCheck
 from sarj_python_lint.rules.prefer_nominal_id_types import PreferNominalIdTypes
 from sarj_python_lint.rules.prefer_non_nullable_collection import (
     PreferNonNullableCollection,
@@ -298,6 +299,7 @@ REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
         PreferWalrusStreamLoop.id: PreferWalrusStreamLoop,
         PreferSelfTypeAnnotation.id: PreferSelfTypeAnnotation,
         PreferSetIsdisjoint.id: PreferSetIsdisjoint,
+        PreferNativeStringCheck.id: PreferNativeStringCheck,
         PreferSelfDocumentingConstant.id: PreferSelfDocumentingConstant,
         NoDuplicateDunderAllEntry.id: NoDuplicateDunderAllEntry,
         NoDunderAll.id: NoDunderAll,
