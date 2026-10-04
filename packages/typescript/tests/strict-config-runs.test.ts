@@ -105,6 +105,43 @@ describe("the shipped eslint.strict.mjs can actually lint", () => {
     },
   );
 
+  it.each(CONFIG_FACTORIES)(
+    "%s allows async JSX handlers without weakening other promise boundaries",
+    async (_name, createConfig) => {
+      const promiseRules = new Set([
+        "@typescript-eslint/no-floating-promises",
+        "@typescript-eslint/no-misused-promises",
+        "@typescript-eslint/strict-void-return",
+      ]);
+      const eslint = new ESLint({
+        cwd: FIXTURE_DIR,
+        overrideConfigFile: true,
+        overrideConfig: createConfig({ tsconfigRootDir: FIXTURE_DIR }),
+      });
+      const [result] = await eslint.lintText([
+        "declare function Button(props: { onClick: () => void }): null;",
+        "declare function save(): Promise<void>;",
+        "declare function report(error: unknown): void;",
+        "async function handleClick() { try { await save(); } catch (error) { report(error); } }",
+        "const named = <Button onClick={handleClick} />;",
+        "const inline = <Button onClick={async () => { try { await save(); } catch (error) { report(error); } }} />;",
+        "save();",
+        "void save();",
+        "[1].forEach(async () => { await save(); });",
+        "const ignored: () => void = handleClick;",
+        "if (save()) { report('not a boolean'); }",
+      ].join("\n"), { filePath: resolve(FIXTURE_DIR, "widget.tsx") });
+      expect(result?.messages.filter(({ ruleId }) => promiseRules.has(ruleId ?? ""))
+        .map(({ ruleId, line }) => ({ ruleId, line }))).toEqual([
+        { ruleId: "@typescript-eslint/no-floating-promises", line: 7 },
+        { ruleId: "@typescript-eslint/no-floating-promises", line: 8 },
+        { ruleId: "@typescript-eslint/no-misused-promises", line: 9 },
+        { ruleId: "@typescript-eslint/no-misused-promises", line: 10 },
+        { ruleId: "@typescript-eslint/no-misused-promises", line: 11 },
+      ]);
+    },
+  );
+
   it("keeps quoted snake_case wire access compatible with camelCase policy", async () => {
     const eslint = new ESLint({
       cwd: FIXTURE_DIR,

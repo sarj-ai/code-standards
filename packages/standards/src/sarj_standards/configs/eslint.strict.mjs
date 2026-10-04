@@ -674,7 +674,12 @@ export function createConfig(options = {}) {
       "@typescript-eslint/no-unsafe-return": "error",
       "@typescript-eslint/no-floating-promises": ["error", { ignoreVoid: false }],
       "@typescript-eslint/await-thenable": "error",
-      "@typescript-eslint/no-misused-promises": "error",
+      // JSX event handlers own their errors with async/await and try/catch.
+      // Requiring a synchronous prop wrapper adds no protection to a handled callback.
+      "@typescript-eslint/no-misused-promises": [
+        "error",
+        { checksVoidReturn: { attributes: false } },
+      ],
       // The upstream rule flags every nested then/catch/finally call, including
       // deliberate fire-and-forget work and synchronous framework callbacks.
       // The typed @sarj rule below bans proven Promise.then calls while retaining
@@ -1479,6 +1484,14 @@ export function createConfig(options = {}) {
       "better-tailwindcss/no-unnecessary-whitespace": "error",
       "better-tailwindcss/enforce-shorthand-classes": "error",
       "better-tailwindcss/enforce-consistent-variable-syntax": ["warn", { syntax: "shorthand" }],
+    },
+  },
+  {
+    files: ["**/*.{jsx,tsx}"],
+    rules: {
+      // This rule has no JSX exception and would undo the async-handler policy.
+      // no-misused-promises still checks non-JSX promise callback boundaries.
+      "@typescript-eslint/strict-void-return": "off",
     },
   },
   // React component IDENTIFIERS must be PascalCase for JSX to distinguish them
