@@ -67,9 +67,13 @@ def changed_line_scope(root: Path, *, staged: bool) -> ChangedLineScope | None:
     if names.returncode != 0 or patch.returncode != 0:
         return ChangedLineScope(frozenset(), {}, failed=True)
     paths = frozenset(item for item in names.stdout.split("\0") if item)
+    return ChangedLineScope(paths, _changed_lines_from_patch(patch.stdout))
+
+
+def _changed_lines_from_patch(patch: str) -> dict[str, frozenset[int]]:
     parsed: dict[str, set[int]] = {}
     current = ""
-    for line in patch.stdout.splitlines():
+    for line in patch.splitlines():
         if line.startswith("+++ b/"):
             current = line[6:]
             parsed.setdefault(current, set())
@@ -79,8 +83,11 @@ def changed_line_scope(root: Path, *, staged: bool) -> ChangedLineScope | None:
             continue
         start = int(match.group(1))
         count = 1 if match.group(2) is None else int(match.group(2))
-        parsed[current].update(range(start, start + count))
-    return ChangedLineScope(paths, {path: frozenset(lines) for path, lines in parsed.items()})
+        # A deletion hunk names the gap after `start`; its two boundaries
+        # remain affected even though the new-side hunk contains no lines.
+        affected = range(start, start + count) if count else (max(1, start), start + 1)
+        parsed[current].update(affected)
+    return {path: frozenset(lines) for path, lines in parsed.items()}
 
 
 def touches_changed_lines(diagnostic: Diagnostic, scope: ChangedLineScope | None) -> bool:

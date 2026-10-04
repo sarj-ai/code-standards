@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "645262c5120de4f6b3ba7cf5907a76368ec3640e0cc908c8873207bf60cbb70a",
-  "cliSha256": "f23c0ef66e659b5668d26c9fde469008908c22935f307fa377cb150dfaea8a06",
+  "catalogSha256": "77b6055e6222cf8ab7ac2863ff396581facb7c40154789d31fc97aec23801fbb",
+  "cliSha256": "22c1f2a655db9a622a5149e05c5f9e65babc4647fd9eb2617ca3ee086cb4e4ed",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -4443,6 +4443,48 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Data input carrying a real per-environment difference"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "dev.tfvars.json",
+              "source": "{ \"region\": \"west\" }\n"
+            },
+            {
+              "path": "prod.tfvars.json",
+              "source": "{ \"region\": \"east\" }\n"
+            },
+            {
+              "path": "variables.tf",
+              "source": "variable \"region\" {\n  type = string\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "dev.tfvars.json",
+          "id": "json-input-varies",
+          "outcome": "accept",
+          "scenarioId": "json-input",
+          "title": "JSON scalar values retain environment differences"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "dev.tfvars.json",
+              "source": "{ \"region\": \"west\", \"ghost\": true }\n"
+            },
+            {
+              "path": "variables.tf",
+              "source": "variable \"region\" {\n  type = string\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "dev.tfvars.json",
+          "id": "json-orphaned-assignment",
+          "outcome": "reject",
+          "scenarioId": "json-input",
+          "title": "JSON variable files receive the same declaration checks"
         },
         {
           "expectedCount": 1,
