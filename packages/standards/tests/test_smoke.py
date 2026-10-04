@@ -459,6 +459,79 @@ def test_basedpyright_profiles_load_their_complete_inheritance_chain(config: Pat
     assert "unrecognized setting" not in proc.stderr.casefold()
 
 
+@pytest.mark.parametrize(
+    ("source", "expected_rules"),
+    [
+        pytest.param(
+            "from typing import assert_type\n\n"
+            "class _Store:\n"
+            "    def read(self) -> int:\n"
+            "        return 1\n\n"
+            "class Service:\n"
+            "    def __init__(self, store: _Store) -> None:\n"
+            "        self.store = store\n\n"
+            "class _StubClient:\n"
+            "    def __init__(self) -> None:\n"
+            "        self.store = _Store()\n\n"
+            "assert_type(Service(_Store()).store, _Store)\n"
+            "assert_type(_StubClient().store.read(), int)\n",
+            (),
+            id="inferred-dependency-and-local-private-helper",
+        ),
+        pytest.param(
+            "class Service:\n"
+            "    def __init__(self, value: int) -> None:\n"
+            "        self.value = value\n\n"
+            "service = Service(1)\n"
+            "service.value = 'invalid'\n",
+            ("reportAttributeAccessIssue",),
+            id="inferred-member-rejects-external-wrong-type",
+        ),
+        pytest.param(
+            "class Service:\n"
+            "    def __init__(self, value: int) -> None:\n"
+            "        self.value: int = value\n\n"
+            "    def update(self) -> None:\n"
+            "        self.value = 'invalid'\n",
+            ("reportAttributeAccessIssue",),
+            id="declared-invariant-rejects-same-class-widening",
+        ),
+        pytest.param(
+            "class Base:\n    value = 1\n\nclass Derived(Base):\n    value = 'invalid'\n",
+            ("reportIncompatibleUnannotatedOverride",),
+            id="incompatible-inferred-override",
+        ),
+        pytest.param(
+            "class Service:\n"
+            "    def __init__(self) -> None:\n"
+            "        self.values = []\n\n"
+            "def values(service: Service) -> object:\n"
+            "    return service.values\n",
+            ("reportUnknownMemberType", "reportUnknownVariableType"),
+            id="empty-container-still-needs-element-type",
+        ),
+    ],
+)
+def test_basedpyright_inference_and_explicit_contracts(
+    tmp_path: Path, source: str, expected_rules: tuple[str, ...]
+) -> None:
+    fixture = tmp_path / "members.py"
+    fixture.write_text(source, encoding="utf-8")
+
+    proc = subprocess.run(
+        [sys.executable, "-m", "basedpyright", "--project", str(BASEDPYRIGHT_STRICT), "--outputjson", str(fixture)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    payload: object = json.loads(proc.stdout)  # pyright: ignore[reportAny] -- analyzer JSON boundary
+    diagnostics = manifest.list_field(manifest.as_table(payload), "generalDiagnostics")
+    rules = tuple(manifest.text_field(manifest.as_table(item), "rule") for item in diagnostics)
+    assert rules == expected_rules, proc.stdout + proc.stderr
+    assert proc.returncode == bool(expected_rules), proc.stdout + proc.stderr
+
+
 def test_python_visibility_contract_is_explicitly_strict() -> None:
     ruff = tomllib.loads(RUFF_STRICT.read_text())
     lint = manifest.table_field(manifest.as_table(ruff), "lint")
