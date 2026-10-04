@@ -91,6 +91,124 @@ mere presence of mocks/private calls as evidence of low value. Prefer the
 cheapest test level that exercises the real contract, and justify containers or
 integration dependencies by the fidelity they add.
 
+## Writing pytest tests
+
+Keep setup compact while leaving the action and the observations visible in the
+test. These defaults complement the judgment checks above:
+
+- Construct the subject through its real constructor or production factory.
+  Inject collaborators there; do not graft replacement methods onto the subject
+  or a real collaborator. `no-test-method-grafting` targets those replacements,
+  not ordinary domain-state assignments or configuration of a test double.
+- Build real Pydantic value objects. A mock with a model's spec still skips its
+  validation and defaults; `no-mocked-pydantic-value-object` targets that gap.
+  Boundary mocks remain useful when their interface and assertions are precise.
+- Use ordinary typed factories for data that varies by case. Use fixtures for
+  dependency reuse and lifecycle ownership; use a factory fixture when it needs
+  pytest-managed resources or must create several instances in one test.
+- Give mutable fakes function scope. Configure their documented result/error
+  hooks before invoking the subject, and fail clearly on unsupported calls.
+- Keep closely coupled collaborators in a small typed harness with named fields.
+  Share one session/state object across them; separate session copies can make a
+  language-switch test pass while the live state remains wrong.
+- Keep factories local until reused, and keep behavior-relevant overrides in the
+  test. Helpers construct valid inputs and wire dependencies; they do not run
+  the tested action, duplicate its decision logic, or hide its assertions.
+- Parameterize cases sharing the same action and assertion contract. Separate
+  behaviors whose setup or assertions need branches; name table rows when their
+  distinction is not obvious from the values.
+- Use scoped monkeypatching for process boundaries such as environment, clocks,
+  or unavoidable third-party globals. Prefer constructor injection for service
+  dependencies; replacing `subject.method` with `monkeypatch.setattr` still
+  replaces the implementation the test claims to exercise.
+
+### A small language switch harness
+
+This illustrative application exposes a real Pydantic `SwitchParameters` model,
+a dispatcher interface with `switch_to(language)`, and a tool with
+`switch_language()`. Adapt those names to the production interfaces. The session
+contract queues speech synchronously and returns an awaitable handle: queueing
+and waiting for speech are separate observations.
+
+```python
+from collections.abc import Generator
+from dataclasses import dataclass, field
+
+import pytest
+
+from app.language_switch import Dispatcher, LanguageSwitchTool, SwitchParameters
+
+
+@dataclass
+class RecordedSpeech:
+    text: str
+    awaited: list[str]
+
+    def __await__(self) -> Generator[None, None, None]:
+        self.awaited.append(self.text)
+        yield from ()
+
+
+@dataclass
+class RecordingSession:
+    current_language: str = "en"
+    queued: list[str] = field(default_factory=list)
+    awaited: list[str] = field(default_factory=list)
+
+    def say(self, text: str) -> RecordedSpeech:
+        self.queued.append(text)
+        return RecordedSpeech(text, self.awaited)
+
+
+class RecordingDispatcher(Dispatcher):
+    def __init__(self, session: RecordingSession) -> None:
+        self.session = session
+        self.switches: list[str] = []
+
+    async def switch_to(self, language: str) -> None:
+        self.switches.append(language)
+        self.session.current_language = language
+
+
+@dataclass
+class SwitchHarness:
+    tool: LanguageSwitchTool
+    session: RecordingSession
+    dispatcher: RecordingDispatcher
+
+
+def make_switch_harness(parameters: SwitchParameters) -> SwitchHarness:
+    session = RecordingSession()
+    dispatcher = RecordingDispatcher(session)
+    tool = LanguageSwitchTool(
+        parameters=parameters, session=session, dispatcher=dispatcher
+    )
+    return SwitchHarness(tool, session, dispatcher)
+
+
+@pytest.mark.asyncio
+async def test_switch_waits_for_the_transition_phrase() -> None:
+    harness = make_switch_harness(
+        SwitchParameters(target_language="ar", transition_phrase="Next language")
+    )
+
+    await harness.tool.switch_language()
+
+    assert harness.dispatcher.switches == ["ar"]
+    assert harness.session.current_language == "ar"
+    assert harness.session.queued == ["Next language"]
+    assert harness.session.awaited == ["Next language"]
+```
+
+The fake dispatcher records the requested switch and applies a configured state
+change; it does not implement target selection. This unit test covers the tool's
+request and speech behavior. A separate regression test must construct the real
+dispatcher, invoke its assignment operation, and assert the actual target/profile
+and shared session state. The fake's assignment cannot prove the real assignment
+works. Keep `say` synchronous here: an `AsyncMock` would change when speech is
+queued and test a different contract. If relative ordering is the contract, add
+one shared event log rather than inferring ordering from separate lists.
+
 ## Report
 
 For every finding include the test location, the behavior it claims, the

@@ -62,6 +62,7 @@
       "no-hidden-constructor-fallback",
       "no-injected-module-loader",
       "no-invalid-argument-name-suppression",
+      "no-mocked-pydantic-value-object",
       "no-nested-pydantic-field-validator",
       "no-nullable-dependency-fallback",
       "no-offset-pagination",
@@ -85,6 +86,7 @@
       "no-statically-truthy-assertion",
       "no-string-concat-in-loop",
       "no-swallowed-asyncio-cancellation",
+      "no-test-method-grafting",
       "no-trailing-numeric-unit-assignment-comment",
       "no-unique-violation-message-match",
       "no-unnecessary-docstring",
@@ -450,7 +452,9 @@
       "SARJ474",
       "SARJ475",
       "SARJ476",
-      "SARJ477"
+      "SARJ477",
+      "SARJ478",
+      "SARJ479"
     ],
     "sql": [
       "SARJ101",
