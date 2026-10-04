@@ -75,7 +75,7 @@ _SUFFIX_TO_TOOL = MappingProxyType(
     }
 )
 _TERRAFORM_TEST_SUFFIXES = (".tftest.hcl", ".tftest.json")
-_TERRAFORM_SOURCE_SUFFIXES = (*_TERRAFORM_TEST_SUFFIXES, ".tf.json")
+_TERRAFORM_SOURCE_SUFFIXES = (*_TERRAFORM_TEST_SUFFIXES, ".tf.json", ".tfvars.json")
 _IGNORED_DIRS = frozenset(
     {
         ".build",
