@@ -12,7 +12,9 @@
   "reportIgnoreCommentWithoutRule": "error",
   "reportPrivateLocalImportUsage": "error",
   "reportAny": "error",
-  "reportUnannotatedClassAttribute": "error",
+  // Infer ordinary attributes; keep explicit annotations for mutation
+  // invariants, public-library contracts, or deliberately wider types.
+  "reportUnannotatedClassAttribute": "none",
 
   "reportImplicitAbstractClass": "error",
   "reportEmptyAbstractUsage": "error",
