@@ -63,7 +63,11 @@ running or reporting a corpus evaluation.
    only when two interpretations would produce materially different findings.
 2. Search the owning upstream linter and the Sarj catalog. Record candidates,
    why configuration cannot express the request, and any overlapping rule IDs.
-   Prefer augmenting a maintained upstream rule or preset.
+   Prefer augmenting a maintained upstream rule or preset. Before adding a rule
+   against lint-induced boilerplate, inspect the control that required it. Correct
+   a conflicting preset rather than mandate and forbid the same annotation or
+   alias. Preserve explicit mutation contracts and captured snapshots; matching
+   type names or adjacent assignments alone do not prove redundancy.
 3. Select syntax-aware analysis whenever comments, strings, scopes, aliases, or
    nesting can make regex ambiguous. Never infer intent from names alone.
 4. Write labeled `EvaluationCase` values before implementation. Cover exact
