@@ -23,6 +23,7 @@ import typer
 import yaml
 
 from sarj_standards.libs.adoption import (
+    configs as adoption_configs,
     doctor as adoption_doctor,
     hooks as adoption_hooks,
     launcher,
@@ -55,7 +56,7 @@ DESIRED_MARKER_PREFIX = "<!-- sarj-standards-rollout:desired"
 REPOSITORY_VERSION_PIN = re.compile(r"^(STANDARDS_VERSION[ \t]*:?=[ \t]*)\S+[ \t]*$", re.MULTILINE)
 PYRIGHT_COMMAND = re.compile(r"(?m)^(?P<indent>[ \t]*)cd python && uv run pyright[ \t]*$")
 VERIFICATION_FAILED_MARKER = "<!-- sarj-standards-rollout:verification-failed -->"
-RETIRED_ESLINT_SELECTORS = ("@sarj/prefer-single-sentence-comment", "@sarj/prefer-string-literal-union")
+RETIRED_OXLINT_SELECTORS = ("@sarj/prefer-single-sentence-comment", "@sarj/prefer-string-literal-union")
 SOURCE_SUFFIXES = frozenset(
     {".py", ".pyi", ".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs", ".go", ".rs", ".sql"}
 )
@@ -88,6 +89,8 @@ COMMIT_POLICY_WORKFLOW_PATH = ".github/workflows/commit-policy.yml"
 MANAGED_ROLLOUT_NAMES = frozenset(
     {
         *adoption_packagemanager.AGE_GATE_POLICY_NAMES,
+        *adoption_configs.OXFMT_CONFIG_NAMES,
+        *adoption_configs.OXLINT_CONFIG_NAMES,
         ".basedpyright-strict.json",
         ".lefthook.yml",
         ".lefthook.yaml",
@@ -101,9 +104,9 @@ MANAGED_ROLLOUT_NAMES = frozenset(
         ".yamllint.yaml",
         "bun.lock",
         "doctor.config.json",
-        "eslint.config.js",
-        "eslint.config.mjs",
-        "eslint.strict.mjs",
+        "oxlint.config.js",
+        "oxlint.config.mjs",
+        "oxlint.strict.mjs",
         "package-lock.json",
         "package.json",
         "pnpm-lock.yaml",
@@ -115,7 +118,7 @@ MANAGED_ROLLOUT_NAMES = frozenset(
     }
 )
 DEFAULT_ALLOWED_ROLLOUT_PATHS = frozenset(
-    {MANIFEST, ".shellcheckrc", "uv.lock", "eslint.config.mjs", *MANAGED_WORKFLOW_PATHS}
+    {MANIFEST, ".shellcheckrc", "uv.lock", "oxlint.config.mjs", *MANAGED_WORKFLOW_PATHS}
 )
 MAX_VERIFICATION_ATTEMPTS = 2
 BASE_MANIFEST_READ_ATTEMPTS = 3
@@ -1047,14 +1050,14 @@ def synchronize_repository_checker(repo: Path) -> bool:
     return True
 
 
-def remove_retired_eslint_suppressions(repo: Path, runner: CommandRunner) -> frozenset[str]:
+def remove_retired_oxlint_suppressions(repo: Path, runner: CommandRunner) -> frozenset[str]:
     matched = runner.run(
-        ("git", "grep", "-lz", "eslint-disable", "--", "*.js", "*.jsx", "*.ts", "*.tsx"),
+        ("git", "grep", "-lz", "oxlint-disable", "--", "*.js", "*.jsx", "*.ts", "*.tsx"),
         cwd=repo,
         check=False,
     )
     if matched.returncode not in {0, 1}:
-        msg = "could not enumerate retired ESLint suppressions"
+        msg = "could not enumerate retired Oxlint suppressions"
         raise RolloutError(msg)
     changed: set[str] = set()
     for relative in (item for item in (matched.stdout or "").split("\0") if item):
@@ -1063,8 +1066,8 @@ def remove_retired_eslint_suppressions(repo: Path, runner: CommandRunner) -> fro
         lines: list[str] = []
         for line in original.splitlines(keepends=True):
             updated = line
-            if "eslint-disable" in updated:
-                for selector in RETIRED_ESLINT_SELECTORS:
+            if "oxlint-disable" in updated:
+                for selector in RETIRED_OXLINT_SELECTORS:
                     updated = updated.replace(f", {selector}", "").replace(f"{selector}, ", "").replace(selector, "")
             lines.append(updated)
         rendered = "".join(lines)

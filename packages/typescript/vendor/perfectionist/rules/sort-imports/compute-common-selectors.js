@@ -1,0 +1,201 @@
+import { matches } from '../../utils/matches.js'
+import { getTypescriptImport } from '../../utils/tsconfig/get-typescript-import.js'
+import { matchesTsconfigPaths } from './matches-tsconfig-paths.js'
+import { builtinModules } from 'node:module'
+/**
+ * Computes all applicable selectors for an import based on its module path.
+ *
+ * Analyzes an import's module specifier to determine which categories it
+ * belongs to, such as external package, internal module, relative import, or
+ * Node.js builtin. These selectors are used for grouping and sorting imports
+ * according to user configuration.
+ *
+ * @param options - Configuration options.
+ * @param options.tsConfigOutput - TypeScript configuration for path resolution.
+ * @param options.filename - Current file path for relative import resolution.
+ * @param options.options - Rule options including internal patterns and
+ *   environment.
+ * @param options.name - Import module specifier to analyze.
+ * @returns Array of matching selectors for the import.
+ */
+function computeCommonSelectors({ tsConfigOutput, filename, options, name }) {
+  function matchesInternalPattern(value) {
+    return options.internalPattern.some(pattern => matches(value, pattern))
+  }
+  let internalExternalGroup =
+    matchesInternalPattern(name) ? 'internal' : (
+      getInternalOrExternalGroup({
+        tsConfigOutput,
+        filename,
+        name,
+      })
+    )
+  let commonSelectors = []
+  if (
+    tsConfigOutput &&
+    matchesTsconfigPaths({
+      tsConfigOutput,
+      name,
+    })
+  ) {
+    commonSelectors.push('tsconfig-path')
+  }
+  if (indexModules.has(name)) {
+    commonSelectors.push('index')
+  }
+  if (isSibling(name)) {
+    commonSelectors.push('sibling')
+  }
+  if (isParent(name)) {
+    commonSelectors.push('parent')
+  }
+  if (isSubpath(name)) {
+    commonSelectors.push('subpath')
+  }
+  if (internalExternalGroup === 'internal') {
+    commonSelectors.push('internal')
+  }
+  if (isCoreModule(name, options.environment)) {
+    commonSelectors.push('builtin')
+  }
+  if (internalExternalGroup === 'external') {
+    commonSelectors.push('external')
+  }
+  return commonSelectors
+}
+let bunModules = /* @__PURE__ */ new Set([
+  'detect-libc',
+  'bun:sqlite',
+  'bun:test',
+  'bun:wrap',
+  'bun:ffi',
+  'bun:jsc',
+  'undici',
+  'bun',
+  'ws',
+])
+let nodeBuiltinModules = new Set(builtinModules)
+/**
+ * Import paths that resolve to an index file.
+ */
+let indexModules = /* @__PURE__ */ new Set([
+  './index.d.js',
+  './index.d.ts',
+  './index.js',
+  './index.ts',
+  './index',
+  './',
+  '.',
+])
+/**
+ * Node.js builtin modules that can only be imported with the `node:` prefix.
+ * Since Node.js 23.5.0, `builtinModules` lists them with the prefix. The
+ * explicit entries cover older versions.
+ */
+let builtinPrefixOnlyModules = /* @__PURE__ */ new Set([
+  ...builtinModules.filter(name => name.startsWith('node:')),
+  'node:sqlite',
+  'node:test',
+  'node:sea',
+])
+/**
+ * Determines whether an import is internal or external to the project.
+ *
+ * Uses TypeScript's module resolution to accurately classify imports based on
+ * whether they resolve to external libraries (node_modules) or internal project
+ * files. Falls back to path-based heuristics when TypeScript is unavailable.
+ *
+ * @param options - Options for determining the group.
+ * @param options.tsConfigOutput - TypeScript configuration for module
+ *   resolution.
+ * @param options.filename - Current file path for resolution context.
+ * @param options.name - Import module specifier to classify.
+ * @returns 'internal' for project modules, 'external' for dependencies, null
+ *   for relative imports.
+ */
+function getInternalOrExternalGroup({ tsConfigOutput, filename, name }) {
+  let typescriptImport = getTypescriptImport()
+  if (!typescriptImport) {
+    return !name.startsWith('.') && !name.startsWith('/') ? 'external' : null
+  }
+  if (typescriptImport.isExternalModuleNameRelative(name)) {
+    return null
+  }
+  if (!tsConfigOutput) {
+    return 'external'
+  }
+  let resolution = typescriptImport.resolveModuleName(
+    name,
+    filename,
+    tsConfigOutput.compilerOptions,
+    typescriptImport.sys,
+    tsConfigOutput.cache,
+  )
+  if (typeof resolution.resolvedModule?.isExternalLibraryImport !== 'boolean') {
+    return 'external'
+  }
+  return resolution.resolvedModule.isExternalLibraryImport ?
+      'external'
+    : 'internal'
+}
+/**
+ * Checks if a module is a Node.js or Bun builtin module.
+ *
+ * Handles various formats including 'node:' prefixed modules and subpath
+ * imports (e.g., 'fs/promises'). Also supports Bun-specific modules when in Bun
+ * environment.
+ *
+ * @param value - Module specifier to check.
+ * @param environment - Runtime environment ('node' or 'bun').
+ * @returns True if the module is a builtin module.
+ */
+function isCoreModule(value, environment) {
+  function clean(string_) {
+    return string_.replace(/^(?:node:){1,2}/u, '')
+  }
+  let [basePath] = value.split('/', 1)
+  let cleanValue = clean(value)
+  let cleanBase = clean(basePath)
+  if (nodeBuiltinModules.has(cleanValue) || nodeBuiltinModules.has(cleanBase)) {
+    return true
+  }
+  if (
+    builtinPrefixOnlyModules.has(value) ||
+    builtinPrefixOnlyModules.has(`node:${cleanValue}`) ||
+    builtinPrefixOnlyModules.has(basePath) ||
+    builtinPrefixOnlyModules.has(`node:${cleanBase}`)
+  ) {
+    return true
+  }
+  return environment === 'bun' && bunModules.has(value)
+}
+/**
+ * Checks if an import is a sibling module (same directory).
+ *
+ * @param value - Import path to check.
+ * @returns True if importing from the same directory.
+ */
+function isSibling(value) {
+  return value.startsWith('./')
+}
+/**
+ * Checks if an import is from a parent directory.
+ *
+ * @param value - Import path to check.
+ * @returns True if importing from a parent directory.
+ */
+function isParent(value) {
+  return value.startsWith('..')
+}
+/**
+ * Checks if an import is a Node.js subpath import.
+ *
+ * Subpath imports start with '#' and are defined in package.json imports field.
+ *
+ * @param value - Import path to check.
+ * @returns True if using subpath import syntax.
+ */
+function isSubpath(value) {
+  return value.startsWith('#')
+}
+export { computeCommonSelectors }

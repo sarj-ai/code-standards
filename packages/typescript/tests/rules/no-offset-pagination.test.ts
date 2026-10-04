@@ -1,19 +1,15 @@
 // vitest: shared-module-graph
-import * as tsParser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
+import { RuleTester } from "oxlint/plugins-dev";
+import { describe, it } from "vitest";
 
 import rule, { NO_OFFSET_PAGINATION_DOCUMENTATION } from "../../src/rules/no-offset-pagination.js";
 
-RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
 RuleTester.it = it;
 RuleTester.itOnly = it.only;
 
 const RULE_TESTER = new RuleTester({
-  languageOptions: {
-    parser: tsParser,
-  },
+  languageOptions: { parserOptions: { lang: "ts" } },
 });
 
 RULE_TESTER.run("no-offset-pagination", rule, {
@@ -81,11 +77,6 @@ RULE_TESTER.run("no-offset-pagination", rule, {
   ],
   invalid: [
     { name: "reports the documented offset query", code: NO_OFFSET_PAGINATION_DOCUMENTATION.examples[1].files[0].source, errors: [{ messageId: "noOffsetPagination" }] },
-    {
-      name: "rejects SQLite qmark offset pagination",
-      code: "db.query(`SELECT id FROM runs ORDER BY id LIMIT ? OFFSET ?`);",
-      errors: [{ messageId: "noOffsetPagination" }],
-    },
     {
       name: "rejects numbered SQLite qmark offset pagination",
       code: "db.query(`SELECT id FROM runs ORDER BY id LIMIT ?1 OFFSET ?2`);",

@@ -70,8 +70,8 @@
         "examples"
       ],
       "properties": {
-        "key": { "type": "string", "pattern": "^(eslint|iac|python|sql|text):[a-z0-9]+(?:-[a-z0-9]+)*$" },
-        "engine": { "enum": ["eslint", "iac", "python", "sql", "text"] },
+        "key": { "type": "string", "pattern": "^(oxlint|iac|python|sql|text):[a-z0-9]+(?:-[a-z0-9]+)*$" },
+        "engine": { "enum": ["oxlint", "iac", "python", "sql", "text"] },
         "id": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" },
         "code": { "type": ["string", "null"], "minLength": 1 },
         "summary": { "type": "string", "minLength": 1, "maxLength": 160 },

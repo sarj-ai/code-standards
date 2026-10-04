@@ -3,7 +3,9 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-long-comment.test.ts
  */
 
-import { AST_NODE_TYPES, type TSESTree, type TSESLint } from "@typescript-eslint/utils";
+import { sourceOrigin } from "./_source-origin.js";
+import type { ESTree, SourceCode } from "@oxlint/plugins";
+
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import {
@@ -79,20 +81,20 @@ const VERSIONED_DEPENDENCY_TREE_RE =
   /(?:^|\/)lib\/[^/]*-?v?\d+\.\d+(?:\.\d+)?[^/]*\//iu;
 
 function documentsTypeOrMember(
-  sourceCode: Readonly<TSESLint.SourceCode>,
-  comment: TSESTree.Comment,
+  sourceCode: Readonly<SourceCode>,
+  comment: ESTree.Comment,
 ): boolean {
   const token = sourceCode.getTokenAfter(comment, { includeComments: false });
   if (token === null || token.loc.start.line !== comment.loc.end.line + 1) return false;
-  let node: TSESTree.Node | null | undefined = sourceCode.getNodeByRangeIndex(token.range[0]);
-  while (node != null && node.type !== AST_NODE_TYPES.Program) {
+  let node: ESTree.Node | null | undefined = sourceCode.getNodeByRangeIndex(token.range[0]);
+  while (node != null && node.type !== "Program") {
     if (
-      node.type === AST_NODE_TYPES.TSInterfaceDeclaration ||
-      node.type === AST_NODE_TYPES.TSTypeAliasDeclaration ||
-      node.type === AST_NODE_TYPES.ClassDeclaration ||
-      node.type === AST_NODE_TYPES.MethodDefinition ||
-      node.type === AST_NODE_TYPES.TSMethodSignature ||
-      node.type === AST_NODE_TYPES.TSPropertySignature
+      node.type === "TSInterfaceDeclaration" ||
+      node.type === "TSTypeAliasDeclaration" ||
+      node.type === "ClassDeclaration" ||
+      node.type === "MethodDefinition" ||
+      node.type === "TSMethodSignature" ||
+      node.type === "TSPropertySignature"
     ) return true;
     node = node.parent;
   }
@@ -116,11 +118,11 @@ export default createRule<Options, MessageIds>({
   },
   defaultOptions: [],
   create(context) {
-    const normalizedFilename = context.filename.replaceAll("\\", "/");
+    const normalizedFilename = sourceOrigin(context).filename.replaceAll("\\", "/");
     if (VERSIONED_DEPENDENCY_TREE_RE.test(normalizedFilename)) return {};
     return {
       Program(): void {
-        for (const group of proseGroups(context.filename, context.sourceCode)) {
+        for (const group of proseGroups(sourceOrigin(context).filename, context.sourceCode)) {
           if (
             group.comment.type !== "Block" ||
             !group.comment.value.startsWith("*") ||

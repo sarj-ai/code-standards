@@ -1,0 +1,19 @@
+{
+  "package": "eslint-plugin-react-hooks",
+  "version": "7.1.1",
+  "repository": "https://github.com/facebook/react",
+  "commit": "1ddff43c41147b880c22eb363e07aade5a71c5d9",
+  "tarball": "https://registry.npmjs.org/eslint-plugin-react-hooks/-/eslint-plugin-react-hooks-7.1.1.tgz",
+  "integrity": "sha512-f2I7Gw6JbvCexzIInuSbZpfdQ44D7iqdWX01FKLvrPgqxoE7oMj8clOfto8U6vYiz4yd5oKu39rRSVOe1zRu0g==",
+  "files": {
+    "vendor/react-hooks.cjs": {
+      "upstream": "cjs/eslint-plugin-react-hooks.production.js",
+      "sha256": "0804a982675cb73e81b870e29ec3ddcbba959ed722afc2cc42ad14d4a99cd27a"
+    }
+  },
+  "changes": [
+    "Upstream rule implementation is unchanged.",
+    "Entry exports native plugin rules and metadata, omitting flat configurations.",
+    "Runtime dependencies are pinned; the unused ESLint peer is replaced with an Oxlint peer."
+  ]
+}

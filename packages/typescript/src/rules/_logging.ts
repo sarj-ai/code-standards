@@ -2,7 +2,8 @@
  * @fileoverview _logging — shared recognition of logging / error-reporting calls, so the catch rules and the secret rule cannot disagree.
  */
 
-import { type TSESTree } from "@typescript-eslint/utils";
+import type { ESTree } from "@oxlint/plugins";
+
 
 export const LOG_METHODS: ReadonlySet<string> = new Set([
   "debug",
@@ -50,7 +51,7 @@ export const LOGGING_OPTION_PROPERTIES = {
 } as const;
 
 /** The static callee name of a call (free function or method), or null. */
-export function calleeName(callee: TSESTree.Node): string | null {
+export function calleeName(callee: ESTree.Node): string | null {
   if (callee.type === "Identifier") {
     return callee.name;
   }
@@ -66,11 +67,11 @@ export function calleeName(callee: TSESTree.Node): string | null {
 
 export interface LogMatcher {
   /** Is `expr` a logger receiver (bare name, member chain, or factory call)? */
-  isLoggerReceiver(expr: TSESTree.Expression | TSESTree.PrivateIdentifier): boolean;
+  isLoggerReceiver(expr: ESTree.Expression | ESTree.PrivateIdentifier): boolean;
   /** Is `expr` a project-declared free logging function call (`logEvent(...)`)? */
-  isLogFunctionCall(expr: TSESTree.Node): boolean;
+  isLogFunctionCall(expr: ESTree.Node): boolean;
   /** Is `expr` a logging call of either shape? */
-  isLoggingCall(expr: TSESTree.Node): boolean;
+  isLoggingCall(expr: ESTree.Node): boolean;
 }
 
 /** Builds a matcher with the project's declared receivers and functions. */
@@ -82,7 +83,7 @@ export function createLogMatcher(options: LoggingOptions = {}): LogMatcher {
   const logFunctions: ReadonlySet<string> = new Set(options.logFunctions ?? []);
 
   function isLoggerReceiver(
-    expr: TSESTree.Expression | TSESTree.PrivateIdentifier,
+    expr: ESTree.Expression | ESTree.PrivateIdentifier,
   ): boolean {
     switch (expr.type) {
       case "Identifier":
@@ -117,7 +118,7 @@ export function createLogMatcher(options: LoggingOptions = {}): LogMatcher {
     }
   }
 
-  function isLogFunctionCall(expr: TSESTree.Node): boolean {
+  function isLogFunctionCall(expr: ESTree.Node): boolean {
     if (expr.type !== "CallExpression" || logFunctions.size === 0) {
       return false;
     }
@@ -125,7 +126,7 @@ export function createLogMatcher(options: LoggingOptions = {}): LogMatcher {
     return name !== null && logFunctions.has(name);
   }
 
-  function isLoggingCall(expr: TSESTree.Node): boolean {
+  function isLoggingCall(expr: ESTree.Node): boolean {
     if (expr.type !== "CallExpression") {
       return false;
     }

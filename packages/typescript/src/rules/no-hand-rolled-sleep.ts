@@ -4,7 +4,10 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-hand-rolled-sleep.test.ts
  */
 
-import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
+import type { ESTree } from "@oxlint/plugins";
+import { findVariable } from "./_scope.js";
+import { sourceOrigin } from "./_source-origin.js";
+
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile, isScriptFile, isTestFile } from "./_paths.js";
@@ -80,53 +83,54 @@ function matchesAnyPattern(filename: string, patterns: readonly string[]): boole
   return false;
 }
 
-function isSetTimeoutCallee(callee: TSESTree.Node): boolean {
-  if (callee.type === AST_NODE_TYPES.Identifier) {
+function isSetTimeoutCallee(callee: ESTree.Node): boolean {
+  if (callee.type === "Identifier") {
     return callee.name === "setTimeout";
   }
   return (
-    callee.type === AST_NODE_TYPES.MemberExpression &&
+    callee.type === "MemberExpression" &&
     !callee.computed &&
-    callee.property.type === AST_NODE_TYPES.Identifier &&
+    callee.property.type === "Identifier" &&
     callee.property.name === "setTimeout" &&
-    callee.object.type === AST_NODE_TYPES.Identifier &&
+    callee.object.type === "Identifier" &&
     GLOBAL_OBJECTS.has(callee.object.name)
   );
 }
 
-function soleCall(fn: TSESTree.ArrowFunctionExpression | TSESTree.FunctionExpression):
-  | TSESTree.CallExpression
+function soleCall(fn: ESTree.ArrowFunctionExpression | ESTree.Function):
+  | ESTree.CallExpression
   | null {
-  if (fn.body.type !== AST_NODE_TYPES.BlockStatement) {
-    return fn.body.type === AST_NODE_TYPES.CallExpression ? fn.body : null;
+  if (fn.body === null) return null;
+  if (fn.body.type !== "BlockStatement") {
+    return fn.body.type === "CallExpression" ? fn.body : null;
   }
   if (fn.body.body.length !== 1) {
     return null;
   }
   const [only] = fn.body.body;
-  if (only?.type !== AST_NODE_TYPES.ExpressionStatement) {
+  if (only?.type !== "ExpressionStatement") {
     return null;
   }
-  return only.expression.type === AST_NODE_TYPES.CallExpression ? only.expression : null;
+  return only.expression.type === "CallExpression" ? only.expression : null;
 }
 
-function isTimedDelay(delay: TSESTree.Node | undefined): boolean {
+function isTimedDelay(delay: ESTree.Node | undefined): boolean {
   if (delay === undefined) {
     return false;
   }
-  if (delay.type === AST_NODE_TYPES.Literal && typeof delay.value === "number") {
+  if (delay.type === "Literal" && typeof delay.value === "number") {
     return delay.value !== 0;
   }
   return true;
 }
 
-function settlesWithoutValue(callback: TSESTree.Node, name: string): boolean {
-  if (callback.type === AST_NODE_TYPES.Identifier) {
+function settlesWithoutValue(callback: ESTree.Node, name: string): boolean {
+  if (callback.type === "Identifier") {
     return callback.name === name;
   }
   if (
-    callback.type !== AST_NODE_TYPES.ArrowFunctionExpression &&
-    callback.type !== AST_NODE_TYPES.FunctionExpression
+    callback.type !== "ArrowFunctionExpression" &&
+    callback.type !== "FunctionExpression"
   ) {
     return false;
   }
@@ -134,51 +138,51 @@ function settlesWithoutValue(callback: TSESTree.Node, name: string): boolean {
   return (
     call !== null &&
     call.arguments.length === 0 &&
-    call.callee.type === AST_NODE_TYPES.Identifier &&
+    call.callee.type === "Identifier" &&
     call.callee.name === name
   );
 }
 
-function rejectsInCallback(callback: TSESTree.Node, name: string): boolean {
-  if (callback.type === AST_NODE_TYPES.Identifier) {
+function rejectsInCallback(callback: ESTree.Node, name: string): boolean {
+  if (callback.type === "Identifier") {
     return callback.name === name;
   }
   if (
-    callback.type !== AST_NODE_TYPES.ArrowFunctionExpression &&
-    callback.type !== AST_NODE_TYPES.FunctionExpression
+    callback.type !== "ArrowFunctionExpression" &&
+    callback.type !== "FunctionExpression"
   ) {
     return false;
   }
   const call = soleCall(callback);
   return (
     call !== null &&
-    call.callee.type === AST_NODE_TYPES.Identifier &&
+    call.callee.type === "Identifier" &&
     call.callee.name === name
   );
 }
 
 function parameterName(
-  fn: TSESTree.ArrowFunctionExpression | TSESTree.FunctionExpression,
+  fn: ESTree.ArrowFunctionExpression | ESTree.Function,
   index: number,
 ): string | null {
   const parameter = fn.params[index];
-  return parameter?.type === AST_NODE_TYPES.Identifier ? parameter.name : null;
+  return parameter?.type === "Identifier" ? parameter.name : null;
 }
 
-function isRaceArm(node: TSESTree.NewExpression): boolean {
+function isRaceArm(node: ESTree.NewExpression): boolean {
   const array = node.parent;
-  if (array?.type !== AST_NODE_TYPES.ArrayExpression) {
+  if (array?.type !== "ArrayExpression") {
     return false;
   }
   const call = array.parent;
   return (
-    call?.type === AST_NODE_TYPES.CallExpression &&
+    call?.type === "CallExpression" &&
     call.arguments[0] === array &&
-    call.callee.type === AST_NODE_TYPES.MemberExpression &&
+    call.callee.type === "MemberExpression" &&
     !call.callee.computed &&
-    call.callee.object.type === AST_NODE_TYPES.Identifier &&
+    call.callee.object.type === "Identifier" &&
     call.callee.object.name === "Promise" &&
-    call.callee.property.type === AST_NODE_TYPES.Identifier &&
+    call.callee.property.type === "Identifier" &&
     RACE_METHODS.has(call.callee.property.name)
   );
 }
@@ -219,11 +223,12 @@ export default createRule<Options, MessageIds>({
   },
   defaultOptions: [{}],
   create(context, [optionsArg]) {
-    const { filename, sourceCode } = context;
+    const { sourceCode } = context;
+    const { filename, text } = sourceOrigin(context);
     if (
       isTestFile(filename) ||
       isScriptFile(filename) ||
-      isGeneratedFile(filename, sourceCode.getText())
+      isGeneratedFile(filename, text)
     ) {
       return {};
     }
@@ -235,25 +240,25 @@ export default createRule<Options, MessageIds>({
 
     const checkClientModules = optionsArg?.checkClientModules ?? false;
 
-    const bindingOf = (identifier: TSESTree.Identifier) => ASTUtils.findVariable(sourceCode.getScope(identifier), identifier.name);
-    const isGlobal = (identifier: TSESTree.Identifier): boolean => (bindingOf(identifier)?.defs.length ?? 0) === 0;
-    const isBuiltinTimer = (callee: TSESTree.Node): boolean => {
+    const bindingOf = (identifier: ESTree.BindingIdentifier) => findVariable(sourceCode.getScope(identifier), identifier.name);
+    const isGlobal = (identifier: ESTree.BindingIdentifier): boolean => (bindingOf(identifier)?.defs.length ?? 0) === 0;
+    const isBuiltinTimer = (callee: ESTree.Node): boolean => {
       if (!isSetTimeoutCallee(callee)) return false;
-      if (callee.type === AST_NODE_TYPES.MemberExpression && callee.object.type === AST_NODE_TYPES.Identifier) return isGlobal(callee.object);
-      if (callee.type !== AST_NODE_TYPES.Identifier) return false;
+      if (callee.type === "MemberExpression" && callee.object.type === "Identifier") return isGlobal(callee.object);
+      if (callee.type !== "Identifier") return false;
       const binding = bindingOf(callee);
       return binding === null || binding.defs.length === 0 || binding.defs.every((definition) =>
-        definition.node.type === AST_NODE_TYPES.ImportSpecifier &&
-        definition.node.imported.type === AST_NODE_TYPES.Identifier && definition.node.imported.name === "setTimeout" &&
-        definition.node.parent.type === AST_NODE_TYPES.ImportDeclaration &&
+        definition.node.type === "ImportSpecifier" &&
+        definition.node.imported.type === "Identifier" && definition.node.imported.name === "setTimeout" &&
+        definition.node.parent?.type === "ImportDeclaration" &&
         ["node:timers", "timers"].includes(String(definition.node.parent.source.value)));
     };
-    const settlesParameter = (callback: TSESTree.Node, executor: TSESTree.ArrowFunctionExpression | TSESTree.FunctionExpression, index: number): boolean => {
+    const settlesParameter = (callback: ESTree.Node, executor: ESTree.ArrowFunctionExpression | ESTree.Function, index: number): boolean => {
       const parameter = executor.params[index];
-      if (parameter?.type !== AST_NODE_TYPES.Identifier) return false;
-      const callee = callback.type === AST_NODE_TYPES.Identifier ? callback :
-        callback.type === AST_NODE_TYPES.ArrowFunctionExpression || callback.type === AST_NODE_TYPES.FunctionExpression ? soleCall(callback)?.callee : null;
-      return callee?.type === AST_NODE_TYPES.Identifier && bindingOf(callee) === bindingOf(parameter);
+      if (parameter?.type !== "Identifier") return false;
+      const callee = callback.type === "Identifier" ? callback :
+        callback.type === "ArrowFunctionExpression" || callback.type === "FunctionExpression" ? soleCall(callback)?.callee : null;
+      return callee?.type === "Identifier" && bindingOf(callee) === bindingOf(parameter);
     };
 
     let clientModule: boolean | null = null;
@@ -272,14 +277,14 @@ export default createRule<Options, MessageIds>({
       const program = sourceCode.ast;
       for (const statement of program.body) {
         if (
-          statement.type === AST_NODE_TYPES.ExpressionStatement &&
-          statement.expression.type === AST_NODE_TYPES.Literal &&
+          statement.type === "ExpressionStatement" &&
+          statement.expression.type === "Literal" &&
           statement.expression.value === "use client"
         ) {
           return true;
         }
         if (
-          statement.type === AST_NODE_TYPES.ImportDeclaration &&
+          statement.type === "ImportDeclaration" &&
           typeof statement.source.value === "string" &&
           CLIENT_ONLY_MODULES.test(statement.source.value)
         ) {
@@ -290,14 +295,14 @@ export default createRule<Options, MessageIds>({
     }
 
     return {
-      NewExpression(node: TSESTree.NewExpression): void {
-        if (node.callee.type !== AST_NODE_TYPES.Identifier || node.callee.name !== "Promise" || !isGlobal(node.callee)) {
+      NewExpression(node: ESTree.NewExpression): void {
+        if (node.callee.type !== "Identifier" || node.callee.name !== "Promise" || !isGlobal(node.callee)) {
           return;
         }
         const executor = node.arguments[0];
         if (
-          executor?.type !== AST_NODE_TYPES.ArrowFunctionExpression &&
-          executor?.type !== AST_NODE_TYPES.FunctionExpression
+          executor?.type !== "ArrowFunctionExpression" &&
+          executor?.type !== "FunctionExpression"
         ) {
           return;
         }

@@ -16,7 +16,6 @@ from sarj_standards.libs.filesystem import is_link_like
 from sarj_standards.libs.repository import ledger
 
 from . import (
-    age_transition,
     doctor,
     hooks,
     lifecycle,
@@ -37,14 +36,14 @@ if TYPE_CHECKING:
 _BUNDLE_LINE = re.compile(r'(?m)^bundle\s*=\s*"[^"]*"\s*$')
 _INSTALL_REMEDIABLE_FINDING_IDS = frozenset(
     {
-        "doctor.eslint.override",
-        "doctor.eslint.peer",
+        "doctor.oxlint.override",
+        "doctor.oxlint.peer",
         "doctor.python.legacy-in-project-tool",
     }
 )
 _MANUAL_POSTFLIGHT_FINDING_IDS = frozenset(
     {
-        "doctor.eslint.shadowed-config",
+        "doctor.oxlint.shadowed-config",
         "doctor.ci.gate",
         "doctor.precommit.rev",
         "doctor.pyright.deprecated",
@@ -67,20 +66,20 @@ _INSTALL_MUTATED_NAMES: Final = frozenset(
 )
 _CONFIG_SOURCES = MappingProxyType(
     {
-        "ruff": ("ruff.strict.toml", "ruff.application.toml", ".ruff-strict.toml", "python"),
-        "pyright": ("pyright.strict.json", "pyright.strict.json", ".pyright-strict.json", "python"),
-        "eslint": ("eslint.strict.mjs", "eslint.application.mjs", "eslint.strict.mjs", "typescript"),
-        "swiftformat": ("swiftformat.strict", "swiftformat.strict", ".swiftformat", "swift"),
-        "swiftlint": ("swiftlint.strict.yml", "swiftlint.strict.yml", ".swiftlint.yml", "swift"),
-        "ktlint": ("ktlint.strict.editorconfig", "ktlint.strict.editorconfig", ".editorconfig", "kotlin"),
-        "detekt": ("detekt.strict.yml", "detekt.strict.yml", "config/detekt/detekt.yml", "kotlin"),
-        "mobile-security": ("mobsf.strict.yml", "mobsf.strict.yml", ".mobsf", "root"),
-        "markdownlint": ("markdownlint.strict.yaml", "markdownlint.strict.yaml", ".markdownlint.yaml", "root"),
-        "shellcheck": ("shellcheck.strict.rc", "shellcheck.strict.rc", ".shellcheckrc", "root"),
-        "taplo": ("taplo.strict.toml", "taplo.strict.toml", ".taplo.toml", "root"),
-        "yamllint": ("yamllint.strict.yaml", "yamllint.strict.yaml", ".yamllint.yaml", "root"),
-        "zizmor": ("zizmor.strict.yml", "zizmor.strict.yml", "zizmor.yml", "root"),
-        "checkov": ("checkov.strict.yml", "checkov.strict.yml", ".checkov.yml", "root"),
+        "ruff": ("ruff.strict.toml", ".ruff-strict.toml", "python"),
+        "pyright": ("pyright.strict.json", ".pyright-strict.json", "python"),
+        "oxlint": ("oxlint.strict.mjs", "oxlint.strict.mjs", "typescript"),
+        "swiftformat": ("swiftformat.strict", ".swiftformat", "swift"),
+        "swiftlint": ("swiftlint.strict.yml", ".swiftlint.yml", "swift"),
+        "ktlint": ("ktlint.strict.editorconfig", ".editorconfig", "kotlin"),
+        "detekt": ("detekt.strict.yml", "config/detekt/detekt.yml", "kotlin"),
+        "mobile-security": ("mobsf.strict.yml", ".mobsf", "root"),
+        "markdownlint": ("markdownlint.strict.yaml", ".markdownlint.yaml", "root"),
+        "shellcheck": ("shellcheck.strict.rc", ".shellcheckrc", "root"),
+        "taplo": ("taplo.strict.toml", ".taplo.toml", "root"),
+        "yamllint": ("yamllint.strict.yaml", ".yamllint.yaml", "root"),
+        "zizmor": ("zizmor.strict.yml", "zizmor.yml", "root"),
+        "checkov": ("checkov.strict.yml", ".checkov.yml", "root"),
     }
 )
 _MIRROR_EXCLUDED_PARTS: Final = frozenset({"example", "examples", "fixture", "fixtures", "test", "tests"})
@@ -254,7 +253,7 @@ def _upgrade_scaffold(
         kotlin_dest=adopted.kotlin_dest if detected_ecosystems.kotlin else None,
         profile=adopted.profile,
         hook_manager=adopted.hook_manager,
-        allow_existing_nested_eslint=True,
+        allow_existing_nested_oxlint=True,
     )
     if scaffold_plan.errors:
         raise ValueError("; ".join(scaffold_plan.errors))
@@ -303,7 +302,7 @@ def _upgrade_config_writes(root: Path, adopted: manifest.Manifest, changes: list
         if spec is None:
             msg = f"manifest declares unknown config {name!r}"
             raise ValueError(msg)
-        standard, _application, target_name, kind = spec
+        standard, target_name, kind = spec
         destination = destinations[kind]
         try:
             destination.relative_to(root.resolve())
@@ -320,7 +319,7 @@ def _upgrade_config_writes(root: Path, adopted: manifest.Manifest, changes: list
         companions: Mapping[str, tuple[str, str]] = {}
         if name == "pyright":
             companions = PYTHON_COMPANION_CONFIGS
-        elif name == "eslint":
+        elif name == "oxlint":
             companions = TYPESCRIPT_COMPANION_CONFIGS
         _append_companion_writes(destination, companions, changes, config_writes)
 
@@ -357,7 +356,7 @@ def _diagnostic_baseline_writes(root: Path, adopted: manifest.Manifest) -> list[
             selectors = {
                 f"sarj-{entry.kind}-lint:{entry.id}"
                 for entry in ledger.load().retired
-                if entry.kind not in {ledger.ESLINT, ledger.CODE}
+                if entry.kind not in {ledger.OXLINT, ledger.CODE}
             }
             removal = baseline.remove_rules(
                 baseline_target,
@@ -542,15 +541,10 @@ def _apply_and_validate(
 ) -> int:
     _write_plan(plan, file_transaction)
     if install:
-        # PNPM validates the existing lockfile before resolving replacements.
-        # Retain its previously approved exact versions only until installation finishes.
-        policies = age_transition.retain_previous_approvals(file_transaction, plan.preconditions)
         status = lifecycle.execute(_upgrade_install_commands(plan))
         _mark_installer_writes(file_transaction)
         if status:
             return status
-        for path, canonical in policies:
-            file_transaction.write_text(path, canonical)
     return _validate_applied_upgrade(plan, install=install, allow_retired_debt=allow_retired_debt)
 
 

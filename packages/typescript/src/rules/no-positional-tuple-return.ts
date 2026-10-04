@@ -4,7 +4,10 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-positional-tuple-return.test.ts
  */
 
-import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
+import { sourceOrigin } from "./_source-origin.js";
+import type { ESTree, SourceCode } from "@oxlint/plugins";
+import { findVariable } from "./_scope.js";
+
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile } from "./_paths.js";
@@ -12,34 +15,68 @@ import { isGeneratedFile } from "./_paths.js";
 type MessageIds = "noPositionalTupleReturn";
 type Options = readonly [];
 interface TypeAliases {
-  get(identifier: TSESTree.Identifier): TSESTree.TypeNode | undefined;
+  get(identifier: ESTree.BindingIdentifier): ESTree.TSType | undefined;
 }
 type FunctionNode =
-  | TSESTree.FunctionDeclaration
-  | TSESTree.FunctionExpression
-  | TSESTree.ArrowFunctionExpression
-  | TSESTree.TSEmptyBodyFunctionExpression;
+  | ESTree.Function | ESTree.ArrowFunctionExpression;
 
 export const NO_POSITIONAL_TUPLE_RETURN_DOCUMENTATION = {
-  summary: "Disallow returning a multi-field tuple from a named function; return a named object so call sites cannot mismatch slots.",
-  rationale: "Tuple fields are identified only by position, so reordering can preserve types while changing meaning.",
+  summary:
+    "Disallow returning a multi-field tuple from a named function; return a named object so call sites cannot mismatch slots.",
+  rationale:
+    "Tuple fields are identified only by position, so reordering can preserve types while changing meaning.",
   remediation: "Return an object whose property names describe each value.",
   category: "maintainability",
-  limitations: ["Declared or syntax-proven multi-field tuple returns on named functions and public type surfaces are inspected; anonymous inline callbacks and syntax-proven TanStack Query key factories are excluded."],
+  limitations: [
+    "Declared or syntax-proven multi-field tuple returns on named functions and public type surfaces are inspected; anonymous inline callbacks and syntax-proven TanStack Query key factories are excluded.",
+  ],
   examples: [
-    { id: "named-object-return", title: "Return named fields", outcome: "no-match", files: [{ path: "src/download.ts", source: "export function download(): { body: string; status: number } { return impl(); }" }], focusPath: "src/download.ts", expectedCount: 0, public: true },
-    { id: "tuple-return", title: "Do not expose positional fields", outcome: "match", files: [{ path: "src/download.ts", source: "export function download(): [string, number] { return impl(); }" }], focusPath: "src/download.ts", expectedCount: 1, public: true },
+    {
+      id: "named-object-return",
+      title: "Return named fields",
+      outcome: "no-match",
+      files: [
+        {
+          path: "src/download.ts",
+          source:
+            "export function download(): { body: string; status: number } { return impl(); }",
+        },
+      ],
+      focusPath: "src/download.ts",
+      expectedCount: 0,
+      public: true,
+    },
+    {
+      id: "tuple-return",
+      title: "Do not expose positional fields",
+      outcome: "match",
+      files: [
+        {
+          path: "src/download.ts",
+          source:
+            "export function download(): [string, number] { return impl(); }",
+        },
+      ],
+      focusPath: "src/download.ts",
+      expectedCount: 1,
+      public: true,
+    },
   ],
 } as const satisfies RuleDocumentation;
 
 const MIN_ELEMENTS = 2;
 
 /** Type wrappers whose single type argument is the value actually returned. */
-const AWAITABLE_TYPES: ReadonlySet<string> = new Set(["Promise", "PromiseLike", "Awaited", "Readonly"]);
+const AWAITABLE_TYPES: ReadonlySet<string> = new Set([
+  "Promise",
+  "PromiseLike",
+  "Awaited",
+  "Readonly",
+]);
 
-function staticMemberName(key: TSESTree.PropertyName): string | null {
-  if (key.type === AST_NODE_TYPES.Identifier) return key.name;
-  if (key.type === AST_NODE_TYPES.Literal && typeof key.value === "string") {
+function staticMemberName(key: ESTree.PropertyKey): string | null {
+  if (key.type === "Identifier") return key.name;
+  if (key.type === "Literal" && typeof key.value === "string") {
     return key.value;
   }
   return null;
@@ -47,33 +84,42 @@ function staticMemberName(key: TSESTree.PropertyName): string | null {
 
 /** The first boundary tuple in a return annotation, unwrapping transparent wrappers and unions. */
 function tupleReturnType(
-  node: TSESTree.TypeNode,
+  node: ESTree.TSType,
   aliases: TypeAliases,
   resolving: ReadonlySet<string> = new Set(),
-): TSESTree.TSTupleType | null {
-  if (node.type === AST_NODE_TYPES.TSTupleType) {
+): ESTree.TSTupleType | null {
+  if (node.type === "TSTupleType") {
     return node;
   }
   if (
-    node.type === AST_NODE_TYPES.TSTypeReference &&
-    node.typeName.type === AST_NODE_TYPES.Identifier &&
+    node.type === "TSTypeReference" &&
+    node.typeName.type === "Identifier" &&
     AWAITABLE_TYPES.has(node.typeName.name)
   ) {
     const argument = node.typeArguments?.params.at(0);
-    return argument === undefined ? null : tupleReturnType(argument, aliases, resolving);
+    return argument === undefined
+      ? null
+      : tupleReturnType(argument, aliases, resolving);
   }
   if (
-    node.type === AST_NODE_TYPES.TSTypeReference &&
-    node.typeName.type === AST_NODE_TYPES.Identifier &&
+    node.type === "TSTypeReference" &&
+    node.typeName.type === "Identifier" &&
     !resolving.has(node.typeName.name)
   ) {
     const target = aliases.get(node.typeName);
-    if (target !== undefined) return tupleReturnType(target, aliases, new Set([...resolving, node.typeName.name]));
+    if (target !== undefined)
+      return tupleReturnType(
+        target,
+        aliases,
+        new Set([...resolving, node.typeName.name]),
+      );
   }
-  if (node.type === AST_NODE_TYPES.TSTypeOperator && node.operator === "readonly") {
-    return node.typeAnnotation === undefined ? null : tupleReturnType(node.typeAnnotation, aliases, resolving);
+  if (node.type === "TSTypeOperator" && node.operator === "readonly") {
+    return node.typeAnnotation === undefined
+      ? null
+      : tupleReturnType(node.typeAnnotation, aliases, resolving);
   }
-  if (node.type === AST_NODE_TYPES.TSUnionType || node.type === AST_NODE_TYPES.TSIntersectionType) {
+  if (node.type === "TSUnionType" || node.type === "TSIntersectionType") {
     for (const member of node.types) {
       const tuple = tupleReturnType(member, aliases, resolving);
       if (tuple !== null) return tuple;
@@ -83,50 +129,59 @@ function tupleReturnType(
 }
 
 function tupleExpression(
-  node: TSESTree.Expression,
+  node: ESTree.Expression,
   aliases: TypeAliases,
-): TSESTree.ArrayExpression | null {
-  if (node.type !== AST_NODE_TYPES.TSAsExpression && node.type !== AST_NODE_TYPES.TSSatisfiesExpression) {
-    return null;
-  }
-  if (node.expression.type !== AST_NODE_TYPES.ArrayExpression || node.expression.elements.length < MIN_ELEMENTS) {
+): ESTree.ArrayExpression | null {
+  if (node.type !== "TSAsExpression" && node.type !== "TSSatisfiesExpression") {
     return null;
   }
   if (
-    node.type === AST_NODE_TYPES.TSAsExpression &&
-    node.typeAnnotation.type === AST_NODE_TYPES.TSTypeReference &&
-    node.typeAnnotation.typeName.type === AST_NODE_TYPES.Identifier &&
+    node.expression.type !== "ArrayExpression" ||
+    node.expression.elements.length < MIN_ELEMENTS
+  ) {
+    return null;
+  }
+  if (
+    node.type === "TSAsExpression" &&
+    node.typeAnnotation.type === "TSTypeReference" &&
+    node.typeAnnotation.typeName.type === "Identifier" &&
     node.typeAnnotation.typeName.name === "const"
-  ) return node.expression;
-  return tupleReturnType(node.typeAnnotation, aliases) === null ? null : node.expression;
+  )
+    return node.expression;
+  return tupleReturnType(node.typeAnnotation, aliases) === null
+    ? null
+    : node.expression;
 }
 
 /** The declared name of a function-ish node, or null for an anonymous one. */
-function functionName(node: TSESTree.Node): string | null {
-  if (node.type === AST_NODE_TYPES.FunctionDeclaration) {
+function functionName(node: ESTree.Node): string | null {
+  if (node.type === "FunctionDeclaration") {
     if (node.id !== null) return node.id.name;
-    return node.parent?.type === AST_NODE_TYPES.ExportDefaultDeclaration ? "default" : null;
+    return node.parent?.type === "ExportDefaultDeclaration" ? "default" : null;
   }
   let wrapped = node;
   while (
-    (wrapped.parent?.type === AST_NODE_TYPES.TSAsExpression ||
-      wrapped.parent?.type === AST_NODE_TYPES.TSSatisfiesExpression ||
-      wrapped.parent?.type === AST_NODE_TYPES.TSNonNullExpression) &&
+    (wrapped.parent?.type === "TSAsExpression" ||
+      wrapped.parent?.type === "TSSatisfiesExpression" ||
+      wrapped.parent?.type === "TSNonNullExpression") &&
     wrapped.parent.expression === wrapped
   ) {
     wrapped = wrapped.parent;
   }
   const parent = wrapped.parent;
-  if (parent?.type === AST_NODE_TYPES.ExportDefaultDeclaration) return "default";
-  if (parent?.type === AST_NODE_TYPES.VariableDeclarator && parent.id.type === AST_NODE_TYPES.Identifier) {
+  if (parent?.type === "ExportDefaultDeclaration") return "default";
+  if (
+    parent?.type === "VariableDeclarator" &&
+    parent.id.type === "Identifier"
+  ) {
     return parent.id.name;
   }
   if (
-    (parent?.type === AST_NODE_TYPES.MethodDefinition ||
-      parent?.type === AST_NODE_TYPES.TSAbstractMethodDefinition ||
-      parent?.type === AST_NODE_TYPES.PropertyDefinition ||
-      parent?.type === AST_NODE_TYPES.Property) &&
-    parent.key.type === AST_NODE_TYPES.Identifier
+    (parent?.type === "MethodDefinition" ||
+      parent?.type === "TSAbstractMethodDefinition" ||
+      parent?.type === "PropertyDefinition" ||
+      parent?.type === "Property") &&
+    parent.key.type === "Identifier"
   ) {
     return parent.key.name;
   }
@@ -140,69 +195,81 @@ function functionName(node: TSESTree.Node): string | null {
  * `as const`, and anchored by an `all: [...] as const` key.
  */
 function isQueryKeyFactory(node: FunctionNode): boolean {
-  let wrapped: TSESTree.Node = node;
+  let wrapped: ESTree.Node = node;
   while (
-    (wrapped.parent?.type === AST_NODE_TYPES.TSAsExpression ||
-      wrapped.parent?.type === AST_NODE_TYPES.TSSatisfiesExpression ||
-      wrapped.parent?.type === AST_NODE_TYPES.TSNonNullExpression) &&
+    (wrapped.parent?.type === "TSAsExpression" ||
+      wrapped.parent?.type === "TSSatisfiesExpression" ||
+      wrapped.parent?.type === "TSNonNullExpression") &&
     wrapped.parent.expression === wrapped
-  ) wrapped = wrapped.parent;
+  )
+    wrapped = wrapped.parent;
   const property = wrapped.parent;
-  if (property?.type !== AST_NODE_TYPES.Property || property.value !== wrapped) return false;
+  if (property?.type !== "Property" || property.value !== wrapped) return false;
   const object = property.parent;
-  if (object.type !== AST_NODE_TYPES.ObjectExpression) return false;
+  if (object.type !== "ObjectExpression") return false;
   const assertion = object.parent;
   if (
-    assertion.type !== AST_NODE_TYPES.TSAsExpression ||
+    assertion.type !== "TSAsExpression" ||
     assertion.expression !== object ||
-    assertion.typeAnnotation.type !== AST_NODE_TYPES.TSTypeReference ||
-    assertion.typeAnnotation.typeName.type !== AST_NODE_TYPES.Identifier ||
+    assertion.typeAnnotation.type !== "TSTypeReference" ||
+    assertion.typeAnnotation.typeName.type !== "Identifier" ||
     assertion.typeAnnotation.typeName.name !== "const"
-  ) return false;
+  )
+    return false;
   const declarator = assertion.parent;
   if (
-    declarator.type !== AST_NODE_TYPES.VariableDeclarator ||
-    declarator.id.type !== AST_NODE_TYPES.Identifier ||
+    declarator.type !== "VariableDeclarator" ||
+    declarator.id.type !== "Identifier" ||
     !/Keys$/i.test(declarator.id.name) ||
-    declarator.parent.type !== AST_NODE_TYPES.VariableDeclaration ||
+    declarator.parent?.type !== "VariableDeclaration" ||
     declarator.parent.kind !== "const"
-  ) return false;
+  )
+    return false;
   return object.properties.some((candidate) => {
-    if (candidate.type !== AST_NODE_TYPES.Property || staticMemberName(candidate.key) !== "all") return false;
-    return candidate.value.type === AST_NODE_TYPES.TSAsExpression &&
-      candidate.value.expression.type === AST_NODE_TYPES.ArrayExpression &&
-      candidate.value.typeAnnotation.type === AST_NODE_TYPES.TSTypeReference &&
-      candidate.value.typeAnnotation.typeName.type === AST_NODE_TYPES.Identifier &&
-      candidate.value.typeAnnotation.typeName.name === "const";
+    if (
+      candidate.type !== "Property" ||
+      staticMemberName(candidate.key) !== "all"
+    )
+      return false;
+    return (
+      candidate.value.type === "TSAsExpression" &&
+      candidate.value.expression.type === "ArrayExpression" &&
+      candidate.value.typeAnnotation.type === "TSTypeReference" &&
+      candidate.value.typeAnnotation.typeName.type === "Identifier" &&
+      candidate.value.typeAnnotation.typeName.name === "const"
+    );
   });
 }
 
-function specifierExportedNames(program: TSESTree.Program): ReadonlySet<string> {
+function specifierExportedNames(program: ESTree.Program): ReadonlySet<string> {
   const names = new Set<string>();
   for (const statement of program.body) {
     if (
-      statement.type === AST_NODE_TYPES.ExportNamedDeclaration &&
+      statement.type === "ExportNamedDeclaration" &&
       statement.declaration == null &&
       statement.source == null &&
       statement.exportKind !== "type"
     ) {
       for (const specifier of statement.specifiers) {
-        if (specifier.exportKind !== "type" && specifier.local.type === AST_NODE_TYPES.Identifier) {
+        if (
+          specifier.exportKind !== "type" &&
+          specifier.local.type === "Identifier"
+        ) {
           names.add(specifier.local.name);
         }
       }
       continue;
     }
     if (
-      statement.type === AST_NODE_TYPES.ExportDefaultDeclaration &&
-      statement.declaration.type === AST_NODE_TYPES.Identifier
+      statement.type === "ExportDefaultDeclaration" &&
+      statement.declaration.type === "Identifier"
     ) {
       names.add(statement.declaration.name);
       continue;
     }
     if (
-      statement.type === AST_NODE_TYPES.TSExportAssignment &&
-      statement.expression.type === AST_NODE_TYPES.Identifier
+      statement.type === "TSExportAssignment" &&
+      statement.expression.type === "Identifier"
     ) {
       names.add(statement.expression.name);
     }
@@ -210,41 +277,53 @@ function specifierExportedNames(program: TSESTree.Program): ReadonlySet<string> 
   return names;
 }
 
-function exportedTypeNames(program: TSESTree.Program): ReadonlySet<string> {
+function exportedTypeNames(program: ESTree.Program): ReadonlySet<string> {
   const names = new Set<string>();
   for (const statement of program.body) {
-    if (statement.type !== AST_NODE_TYPES.ExportNamedDeclaration || statement.source !== null) continue;
     if (
-      statement.declaration?.type === AST_NODE_TYPES.TSInterfaceDeclaration ||
-      statement.declaration?.type === AST_NODE_TYPES.TSTypeAliasDeclaration
-    ) names.add(statement.declaration.id.name);
-    for (const specifier of statement.specifiers) names.add(specifier.local.name);
+      statement.type !== "ExportNamedDeclaration" ||
+      statement.source !== null
+    )
+      continue;
+    if (
+      statement.declaration?.type === "TSInterfaceDeclaration" ||
+      statement.declaration?.type === "TSTypeAliasDeclaration"
+    )
+      names.add(statement.declaration.id.name);
+    for (const specifier of statement.specifiers) {
+      if (specifier.local.type === "Identifier")
+        names.add(specifier.local.name);
+    }
   }
   for (const statement of program.body) {
     if (
-      statement.type === AST_NODE_TYPES.ExportDefaultDeclaration &&
-      (statement.declaration.type === AST_NODE_TYPES.TSInterfaceDeclaration ||
-        statement.declaration.type === AST_NODE_TYPES.TSTypeAliasDeclaration)
-    ) names.add(statement.declaration.id.name);
+      statement.type === "ExportDefaultDeclaration" &&
+      statement.declaration.type === "TSInterfaceDeclaration"
+    )
+      names.add(statement.declaration.id.name);
   }
   return names;
 }
 
-function typeAliases(sourceCode: TSESLint.SourceCode): TypeAliases {
-  const aliases = new Map<string, TSESTree.TSTypeAliasDeclaration>();
+function typeAliases(sourceCode: SourceCode): TypeAliases {
+  const aliases = new Map<string, ESTree.TSTypeAliasDeclaration>();
   for (const statement of sourceCode.ast.body) {
-    const declaration = statement.type === AST_NODE_TYPES.ExportNamedDeclaration
-      ? statement.declaration
-      : statement;
-    if (declaration?.type === AST_NODE_TYPES.TSTypeAliasDeclaration) {
+    const declaration =
+      statement.type === "ExportNamedDeclaration"
+        ? statement.declaration
+        : statement;
+    if (declaration?.type === "TSTypeAliasDeclaration") {
       aliases.set(declaration.id.name, declaration);
     }
   }
   return {
     get(identifier) {
       const declaration = aliases.get(identifier.name);
-      if (declaration === undefined) return undefined;
-      const binding = ASTUtils.findVariable(sourceCode.getScope(identifier), identifier.name);
+      if (declaration == null) return undefined;
+      const binding = findVariable(
+        sourceCode.getScope(identifier),
+        identifier.name,
+      );
       return binding?.defs.length === 1 && binding.defs[0]?.node === declaration
         ? declaration.typeAnnotation
         : undefined;
@@ -253,43 +332,52 @@ function typeAliases(sourceCode: TSESLint.SourceCode): TypeAliases {
 }
 
 function callableReturnType(
-  node: TSESTree.TypeNode,
+  node: ESTree.TSType,
   aliases: TypeAliases,
   resolving: ReadonlySet<string> = new Set(),
-): TSESTree.TypeNode | null {
-  if (node.type === AST_NODE_TYPES.TSFunctionType) return node.returnType?.typeAnnotation ?? null;
+): ESTree.TSType | null {
+  if (node.type === "TSFunctionType")
+    return node.returnType?.typeAnnotation ?? null;
   if (
-    node.type === AST_NODE_TYPES.TSTypeReference &&
-    node.typeName.type === AST_NODE_TYPES.Identifier &&
+    node.type === "TSTypeReference" &&
+    node.typeName.type === "Identifier" &&
     !resolving.has(node.typeName.name)
   ) {
     const target = aliases.get(node.typeName);
     if (target !== undefined) {
-      return callableReturnType(target, aliases, new Set([...resolving, node.typeName.name]));
+      return callableReturnType(
+        target,
+        aliases,
+        new Set([...resolving, node.typeName.name]),
+      );
     }
   }
   return null;
 }
 
 function publiclyReachableTypeNames(
-  program: TSESTree.Program,
+  program: ESTree.Program,
   exported: ReadonlySet<string>,
 ): ReadonlySet<string> {
   const names = new Set(exported);
-  const interfaces = new Map<string, readonly TSESTree.TSInterfaceHeritage[]>();
+  const interfaces = new Map<string, readonly ESTree.TSInterfaceHeritage[]>();
   for (const statement of program.body) {
-    const declaration = statement.type === AST_NODE_TYPES.ExportNamedDeclaration
-      ? statement.declaration
-      : statement;
-    if (declaration?.type === AST_NODE_TYPES.TSInterfaceDeclaration) {
+    const declaration =
+      statement.type === "ExportNamedDeclaration"
+        ? statement.declaration
+        : statement;
+    if (declaration?.type === "TSInterfaceDeclaration") {
       interfaces.set(declaration.id.name, declaration.extends);
     }
   }
-  for (let pass = 0;pass < interfaces.size;pass += 1) {
+  for (let pass = 0; pass < interfaces.size; pass += 1) {
     let changed = false;
     for (const name of [...names]) {
       for (const heritage of interfaces.get(name) ?? []) {
-        if (heritage.expression.type === AST_NODE_TYPES.Identifier && !names.has(heritage.expression.name)) {
+        if (
+          heritage.expression.type === "Identifier" &&
+          !names.has(heritage.expression.name)
+        ) {
           names.add(heritage.expression.name);
           changed = true;
         }
@@ -300,49 +388,60 @@ function publiclyReachableTypeNames(
   return names;
 }
 
-function owningInterface(node: TSESTree.Node): TSESTree.TSInterfaceDeclaration | null {
-  for (let current = node.parent;current !== undefined;current = current.parent) {
-    if (current.type === AST_NODE_TYPES.TSInterfaceDeclaration) return current;
-    if (current.type === AST_NODE_TYPES.Program) return null;
+function owningInterface(
+  node: ESTree.Node,
+): ESTree.TSInterfaceDeclaration | null {
+  for (let current = node.parent; current != null; current = current.parent) {
+    if (current.type === "TSInterfaceDeclaration") return current;
+    if (current.type === "Program") return null;
   }
   return null;
 }
 
-function owningTypeAlias(node: TSESTree.Node): TSESTree.TSTypeAliasDeclaration | null {
-  for (let current = node.parent;current !== undefined;current = current.parent) {
-    if (current.type === AST_NODE_TYPES.TSTypeAliasDeclaration) return current;
-    if (current.type === AST_NODE_TYPES.Program) return null;
+function owningTypeAlias(
+  node: ESTree.Node,
+): ESTree.TSTypeAliasDeclaration | null {
+  for (let current = node.parent; current != null; current = current.parent) {
+    if (current.type === "TSTypeAliasDeclaration") return current;
+    if (current.type === "Program") return null;
   }
   return null;
 }
 
-function owningClass(
-  node: TSESTree.Node,
-): TSESTree.ClassDeclaration | TSESTree.ClassExpression | null {
-  for (let current = node.parent;current !== undefined;current = current.parent) {
-    if (current.type === AST_NODE_TYPES.ClassDeclaration || current.type === AST_NODE_TYPES.ClassExpression) {
+function owningClass(node: ESTree.Node): ESTree.Class | null {
+  for (let current = node.parent; current != null; current = current.parent) {
+    if (
+      current.type === "ClassDeclaration" ||
+      current.type === "ClassExpression"
+    ) {
       return current;
     }
-    if (current.type === AST_NODE_TYPES.Program) return null;
+    if (current.type === "Program") return null;
   }
   return null;
 }
 
 function isExportedClass(
-  node: TSESTree.ClassDeclaration | TSESTree.ClassExpression,
+  node: ESTree.Class,
   specifierExports: ReadonlySet<string>,
 ): boolean {
   if (
-    node.parent.type === AST_NODE_TYPES.ExportNamedDeclaration ||
-    node.parent.type === AST_NODE_TYPES.ExportDefaultDeclaration
-  ) return true;
-  if (node.type === AST_NODE_TYPES.ClassDeclaration) {
-    return node.id !== null && node.parent.type === AST_NODE_TYPES.Program && specifierExports.has(node.id.name);
+    node.parent?.type === "ExportNamedDeclaration" ||
+    node.parent?.type === "ExportDefaultDeclaration"
+  )
+    return true;
+  if (node.type === "ClassDeclaration") {
+    return (
+      node.id !== null &&
+      node.parent?.type === "Program" &&
+      specifierExports.has(node.id.name)
+    );
   }
   if (
-    node.parent.type === AST_NODE_TYPES.VariableDeclarator &&
-    node.parent.id.type === AST_NODE_TYPES.Identifier
-  ) return specifierExports.has(node.parent.id.name) || isInlineExported(node);
+    node.parent?.type === "VariableDeclarator" &&
+    node.parent.id.type === "Identifier"
+  )
+    return specifierExports.has(node.parent.id.name) || isInlineExported(node);
   return false;
 }
 
@@ -350,13 +449,17 @@ function isExportedClass(
  * True when an ancestor statement carries the `export` keyword inline —
  * `export function f`, `export const f =`, `export default function f`.
  */
-function isInlineExported(node: TSESTree.Node): boolean {
+function isInlineExported(node: ESTree.Node): boolean {
   if (moduleScopeBindingName(node) === null) return false;
-  for (let current: TSESTree.Node | undefined | null = node;current != null;current = current.parent) {
+  for (
+    let current: ESTree.Node | null | undefined = node;
+    current != null;
+    current = current.parent
+  ) {
     const parent = current.parent;
     if (
-      parent?.type === AST_NODE_TYPES.ExportNamedDeclaration ||
-      parent?.type === AST_NODE_TYPES.ExportDefaultDeclaration
+      parent?.type === "ExportNamedDeclaration" ||
+      parent?.type === "ExportDefaultDeclaration"
     ) {
       return true;
     }
@@ -364,44 +467,55 @@ function isInlineExported(node: TSESTree.Node): boolean {
   return false;
 }
 
-function moduleScopeBindingName(node: TSESTree.Node): string | null {
-  let current: TSESTree.Node = node;
-  while (current.parent != null && current.parent.type !== AST_NODE_TYPES.Program) {
+function moduleScopeBindingName(node: ESTree.Node): string | null {
+  let current: ESTree.Node = node;
+  while (current.parent != null && current.parent?.type !== "Program") {
     current = current.parent;
   }
-  if (current.parent?.type !== AST_NODE_TYPES.Program) return null;
-  let topLevel: TSESTree.Node | null = current;
+  if (current.parent?.type !== "Program") return null;
+  let topLevel: ESTree.Node | null = current;
   if (
-    current.type === AST_NODE_TYPES.ExportNamedDeclaration ||
-    current.type === AST_NODE_TYPES.ExportDefaultDeclaration
-  ) topLevel = current.declaration;
+    current.type === "ExportNamedDeclaration" ||
+    current.type === "ExportDefaultDeclaration"
+  )
+    topLevel = current.declaration;
   if (topLevel === null) return null;
-  if (topLevel.type === AST_NODE_TYPES.FunctionDeclaration) {
+  if (topLevel.type === "FunctionDeclaration") {
     if (topLevel !== node) return null;
-    return topLevel.id?.name ?? (current.type === AST_NODE_TYPES.ExportDefaultDeclaration ? "default" : null);
+    return (
+      topLevel.id?.name ??
+      (current.type === "ExportDefaultDeclaration" ? "default" : null)
+    );
   }
   if (
-    (topLevel.type === AST_NODE_TYPES.ArrowFunctionExpression ||
-      topLevel.type === AST_NODE_TYPES.FunctionExpression) &&
+    (topLevel.type === "ArrowFunctionExpression" ||
+      topLevel.type === "FunctionExpression") &&
     topLevel === node &&
-    current.type === AST_NODE_TYPES.ExportDefaultDeclaration
-  ) return "default";
-  if (topLevel.type === AST_NODE_TYPES.ClassDeclaration) {
-    return classBindingName(topLevel, node, current.type === AST_NODE_TYPES.ExportDefaultDeclaration);
+    current.type === "ExportDefaultDeclaration"
+  )
+    return "default";
+  if (topLevel.type === "ClassDeclaration") {
+    return classBindingName(
+      topLevel,
+      node,
+      current.type === "ExportDefaultDeclaration",
+    );
   }
-  if (topLevel.type === AST_NODE_TYPES.VariableDeclaration) {
+  if (topLevel.type === "VariableDeclaration") {
     return variableBindingName(topLevel, node);
   }
   return null;
 }
 
 function isExportedInterface(
-  node: TSESTree.TSInterfaceDeclaration,
+  node: ESTree.TSInterfaceDeclaration,
   exports: ReadonlySet<string>,
 ): boolean {
-  return node.parent.type === AST_NODE_TYPES.ExportNamedDeclaration ||
-    node.parent.type === AST_NODE_TYPES.ExportDefaultDeclaration ||
-    (node.parent.type === AST_NODE_TYPES.Program && exports.has(node.id.name));
+  return (
+    node.parent?.type === "ExportNamedDeclaration" ||
+    node.parent?.type === "ExportDefaultDeclaration" ||
+    (node.parent?.type === "Program" && exports.has(node.id.name))
+  );
 }
 
 export default createRule<Options, MessageIds>({
@@ -421,7 +535,7 @@ export default createRule<Options, MessageIds>({
   },
   defaultOptions: [],
   create(context) {
-    if (isGeneratedFile(context.filename, context.sourceCode.text)) return {};
+    if (isGeneratedFile(sourceOrigin(context).filename, sourceOrigin(context).text)) return {};
     const specifierExports = specifierExportedNames(context.sourceCode.ast);
     const typeExports = publiclyReachableTypeNames(
       context.sourceCode.ast,
@@ -430,7 +544,7 @@ export default createRule<Options, MessageIds>({
     const aliases = typeAliases(context.sourceCode);
     const reportedFunctions = new WeakSet<FunctionNode>();
     const functionStack: FunctionNode[] = [];
-    const report = (annotation: TSESTree.TypeNode, name: string): void => {
+    const report = (annotation: ESTree.TSType, name: string): void => {
       const tuple = tupleReturnType(annotation, aliases);
       if (tuple === null || tuple.elementTypes.length < MIN_ELEMENTS) return;
       context.report({
@@ -439,7 +553,10 @@ export default createRule<Options, MessageIds>({
         data: { name, count: String(tuple.elementTypes.length) },
       });
     };
-    const reportExpression = (node: FunctionNode, expression: TSESTree.Expression): void => {
+    const reportExpression = (
+      node: FunctionNode,
+      expression: ESTree.Expression,
+    ): void => {
       if (reportedFunctions.has(node)) return;
       const tuple = tupleExpression(expression, aliases);
       const name = functionName(node);
@@ -459,8 +576,11 @@ export default createRule<Options, MessageIds>({
     const check = (node: FunctionNode): void => {
       if (isQueryKeyFactory(node)) return;
       const annotation = node.returnType?.typeAnnotation;
-      if (annotation === undefined) {
-        if (node.type === AST_NODE_TYPES.ArrowFunctionExpression && node.expression) {
+      if (annotation == null) {
+        if (
+          node.type === "ArrowFunctionExpression" &&
+          node.body.type !== "BlockStatement"
+        ) {
           reportExpression(node, node.body);
         }
         return;
@@ -485,22 +605,33 @@ export default createRule<Options, MessageIds>({
       "TSEmptyBodyFunctionExpression:exit": exitFunction,
       ReturnStatement(node): void {
         const owner = functionStack.at(-1);
-        if (owner === undefined || owner.returnType !== undefined || node.argument === null) return;
+        if (
+          owner === undefined ||
+          owner.returnType != null ||
+          node.argument === null
+        )
+          return;
         reportExpression(owner, node.argument);
       },
       TSDeclareFunction(node): void {
         if (
           node.id === null ||
-          node.returnType === undefined ||
-          (node.parent.type !== AST_NODE_TYPES.ExportNamedDeclaration &&
-            node.parent.type !== AST_NODE_TYPES.ExportDefaultDeclaration &&
+          node.returnType == null ||
+          (node.parent?.type !== "ExportNamedDeclaration" &&
+            node.parent?.type !== "ExportDefaultDeclaration" &&
             !specifierExports.has(node.id.name))
-        ) return;
+        )
+          return;
         report(node.returnType.typeAnnotation, node.id.name);
       },
       TSCallSignatureDeclaration(node): void {
         const owner = owningInterface(node);
-        if (owner === null || !isExportedInterface(owner, typeExports) || node.returnType === undefined) return;
+        if (
+          owner === null ||
+          !isExportedInterface(owner, typeExports) ||
+          node.returnType == null
+        )
+          return;
         report(node.returnType.typeAnnotation, `${owner.id.name}.call`);
       },
       TSMethodSignature(node): void {
@@ -508,12 +639,16 @@ export default createRule<Options, MessageIds>({
         const alias = owningTypeAlias(node);
         const memberName = staticMemberName(node.key);
         if (
-          (owner === null || !isExportedInterface(owner, typeExports)) &&
-          (alias === null || !typeExports.has(alias.id.name)) ||
-          node.returnType === undefined ||
+          ((owner === null || !isExportedInterface(owner, typeExports)) &&
+            (alias === null || !typeExports.has(alias.id.name))) ||
+          node.returnType == null ||
           memberName === null
-        ) return;
-        report(node.returnType.typeAnnotation, `${owner?.id.name ?? alias?.id.name ?? "type"}.${memberName}`);
+        )
+          return;
+        report(
+          node.returnType.typeAnnotation,
+          `${owner?.id.name ?? alias?.id.name ?? "type"}.${memberName}`,
+        );
       },
       TSTypeAliasDeclaration(node): void {
         if (!typeExports.has(node.id.name)) return;
@@ -529,21 +664,35 @@ export default createRule<Options, MessageIds>({
           ((owner === null || !isExportedInterface(owner, typeExports)) &&
             (alias === null || !typeExports.has(alias.id.name))) ||
           memberName === null ||
-          annotation === undefined
-        ) return;
+          annotation == null
+        )
+          return;
         const returnType = callableReturnType(annotation, aliases);
         if (returnType !== null) {
-          report(returnType, `${owner?.id.name ?? alias?.id.name ?? "type"}.${memberName}`);
+          report(
+            returnType,
+            `${owner?.id.name ?? alias?.id.name ?? "type"}.${memberName}`,
+          );
         }
       },
       PropertyDefinition(node): void {
-        if (node.accessibility === "private" || node.accessibility === "protected") return;
+        if (
+          node.accessibility === "private" ||
+          node.accessibility === "protected"
+        )
+          return;
         const owner = owningClass(node);
         const annotation = node.typeAnnotation?.typeAnnotation;
-        if (owner === null || !isExportedClass(owner, specifierExports) || annotation === undefined) return;
+        if (
+          owner === null ||
+          !isExportedClass(owner, specifierExports) ||
+          annotation == null
+        )
+          return;
         const returnType = callableReturnType(annotation, aliases);
         if (returnType !== null) {
-          const name = node.key.type === AST_NODE_TYPES.Identifier ? node.key.name : "property";
+          const name =
+            node.key.type === "Identifier" ? node.key.name : "property";
           report(returnType, name);
         }
       },
@@ -551,19 +700,24 @@ export default createRule<Options, MessageIds>({
   },
 });
 
-function variableBindingName(topLevel: TSESTree.VariableDeclaration, node: TSESTree.Node): string | null {
+function variableBindingName(
+  topLevel: ESTree.VariableDeclaration,
+  node: ESTree.Node,
+): string | null {
   for (const declarator of topLevel.declarations) {
     let initializer = declarator.init;
     while (
-      initializer?.type === AST_NODE_TYPES.TSAsExpression ||
-      initializer?.type === AST_NODE_TYPES.TSSatisfiesExpression ||
-      initializer?.type === AST_NODE_TYPES.TSNonNullExpression
-    ) initializer = initializer.expression;
-    if (declarator.id.type === AST_NODE_TYPES.Identifier && initializer === node) return declarator.id.name;
+      initializer?.type === "TSAsExpression" ||
+      initializer?.type === "TSSatisfiesExpression" ||
+      initializer?.type === "TSNonNullExpression"
+    )
+      initializer = initializer.expression;
+    if (declarator.id.type === "Identifier" && initializer === node)
+      return declarator.id.name;
     if (
-      declarator.id.type === AST_NODE_TYPES.Identifier &&
-      (initializer?.type === AST_NODE_TYPES.ClassExpression ||
-        initializer?.type === AST_NODE_TYPES.ObjectExpression)
+      declarator.id.type === "Identifier" &&
+      (initializer?.type === "ClassExpression" ||
+        initializer?.type === "ObjectExpression")
     ) {
       if (ownsMemberValue(initializer, node)) return declarator.id.name;
     }
@@ -571,23 +725,33 @@ function variableBindingName(topLevel: TSESTree.VariableDeclaration, node: TSEST
   return null;
 }
 
-function classBindingName(topLevel: TSESTree.ClassDeclaration, node: TSESTree.Node, defaultExport: boolean): string | null {
-  let owner: TSESTree.Node | undefined = node.parent;
+function classBindingName(
+  topLevel: ESTree.Class,
+  node: ESTree.Node,
+  defaultExport: boolean,
+): string | null {
+  let owner: ESTree.Node | null = node.parent;
   while (owner != null && owner.parent !== topLevel.body) owner = owner.parent;
-  return (owner?.type === AST_NODE_TYPES.MethodDefinition ||
-    owner?.type === AST_NODE_TYPES.TSAbstractMethodDefinition ||
-    owner?.type === AST_NODE_TYPES.PropertyDefinition) && owner.value === node
-    ? topLevel.id?.name ?? (defaultExport ? "default" : null)
+  return (owner?.type === "MethodDefinition" ||
+    owner?.type === "TSAbstractMethodDefinition" ||
+    owner?.type === "PropertyDefinition") &&
+    owner.value === node
+    ? (topLevel.id?.name ?? (defaultExport ? "default" : null))
     : null;
 }
 
-function ownsMemberValue(initializer: TSESTree.ClassExpression | TSESTree.ObjectExpression, node: TSESTree.Node): boolean {
-  let owner: TSESTree.Node | undefined = node.parent;
-  const container = initializer.type === AST_NODE_TYPES.ClassExpression ? initializer.body : initializer;
+function ownsMemberValue(
+  initializer: ESTree.Class | ESTree.ObjectExpression,
+  node: ESTree.Node,
+): boolean {
+  let owner: ESTree.Node | null = node.parent;
+  const container =
+    initializer.type === "ClassExpression" ? initializer.body : initializer;
   while (owner != null && owner.parent !== container) owner = owner.parent;
   return (
-    (owner?.type === AST_NODE_TYPES.MethodDefinition ||
-      owner?.type === AST_NODE_TYPES.PropertyDefinition ||
-      owner?.type === AST_NODE_TYPES.Property) && owner.value === node
+    (owner?.type === "MethodDefinition" ||
+      owner?.type === "PropertyDefinition" ||
+      owner?.type === "Property") &&
+    owner.value === node
   );
 }

@@ -4,7 +4,9 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-restated-comment.test.ts
  */
 
-import { AST_NODE_TYPES, AST_TOKEN_TYPES, type TSESTree } from "@typescript-eslint/utils";
+import { sourceOrigin } from "./_source-origin.js";
+import type { ESTree } from "@oxlint/plugins";
+
 
 import {
   codeTokens,
@@ -66,9 +68,9 @@ export const NO_RESTATED_COMMENT_DOCUMENTATION = {
 
 /** True when `a` and `b` are `//` comments on consecutive lines. */
 function areAdjacentLineComments(
-  a: TSESTree.Comment | undefined,
-  b: TSESTree.Comment | undefined,
-  isStandalone: (comment: TSESTree.Comment) => boolean,
+  a: ESTree.Comment | undefined,
+  b: ESTree.Comment | undefined,
+  isStandalone: (comment: ESTree.Comment) => boolean,
 ): boolean {
   return (
     a !== undefined &&
@@ -81,14 +83,14 @@ function areAdjacentLineComments(
   );
 }
 
-function headsSiblingRun(node: TSESTree.Node): boolean {
+function headsSiblingRun(node: ESTree.Node): boolean {
   const parent = node.parent;
-  if (parent === undefined) return false;
-  const body: readonly TSESTree.Node[] | undefined =
+  if (parent == null) return false;
+  const body: readonly ESTree.Node[] | undefined =
     "body" in parent && Array.isArray(parent.body)
       ? parent.body
       : undefined;
-  if (body === undefined) return false;
+  if (body == null) return false;
   const index = body.indexOf(node);
   const next = index >= 0 ? body[index + 1] : undefined;
   return next !== undefined && next.type === node.type;
@@ -112,20 +114,20 @@ export default createRule<Options, MessageIds>({
   },
   defaultOptions: [],
   create(context) {
-    if (isGeneratedFile(context.filename, context.sourceCode.text)) {
+    if (isGeneratedFile(sourceOrigin(context).filename, sourceOrigin(context).text)) {
       return {};
     }
     const sourceCode = context.sourceCode;
 
-    function isStandalone(comment: TSESTree.Comment): boolean {
+    function isStandalone(comment: ESTree.Comment): boolean {
       const before = sourceCode.getTokenBefore(comment, { includeComments: false });
       return !before || before.loc.end.line < comment.loc.start.line;
     }
 
-    function labelsASiblingRun(statement: TSESTree.Node): boolean {
+    function labelsASiblingRun(statement: ESTree.Node): boolean {
       for (
-        let node: TSESTree.Node | undefined = statement;
-        node !== undefined && node.type !== AST_NODE_TYPES.Program;
+        let node: ESTree.Node | undefined = statement;
+        node !== undefined && node.type !== "Program";
         node = node.parent
       ) {
         if (headsSiblingRun(node)) return true;
@@ -133,19 +135,19 @@ export default createRule<Options, MessageIds>({
       return false;
     }
 
-    function headsValueTypeGroup(statement: TSESTree.Node): boolean {
-      if (statement.type !== AST_NODE_TYPES.VariableDeclaration) return false;
+    function headsValueTypeGroup(statement: ESTree.Node): boolean {
+      if (statement.type !== "VariableDeclaration") return false;
       const parent = statement.parent;
       if (!("body" in parent) || !Array.isArray(parent.body)) return false;
-      const body: readonly TSESTree.Node[] = parent.body;
+      const body: readonly ESTree.Node[] = parent.body;
       const next = body[body.indexOf(statement) + 1];
-      if (next?.type !== AST_NODE_TYPES.TSTypeAliasDeclaration) return false;
+      if (next?.type !== "TSTypeAliasDeclaration") return false;
       const names = new Set(statement.declarations.flatMap(({ id }) =>
-        id.type === AST_NODE_TYPES.Identifier ? [id.name] : []));
+        id.type === "Identifier" ? [id.name] : []));
       const tokens = sourceCode.getTokens(next);
       return tokens.some((token, index) => {
         const nextToken = tokens[index + 1];
-        return token.value === "typeof" && nextToken?.type === AST_TOKEN_TYPES.Identifier &&
+        return token.value === "typeof" && nextToken?.type === "Identifier" &&
           names.has(nextToken.value);
       });
     }
@@ -153,8 +155,8 @@ export default createRule<Options, MessageIds>({
     return {
       Program(): void {
         const comments = sourceCode.getAllComments();
-        const wallMembers = new Set<TSESTree.Comment>();
-        let cluster: TSESTree.Comment[] = [];
+        const wallMembers = new Set<ESTree.Comment>();
+        let cluster: ESTree.Comment[] = [];
         for (const candidate of comments) {
           const body = candidate.value.replace(/^\/*/, "").trim();
           if (
@@ -207,7 +209,7 @@ export default createRule<Options, MessageIds>({
           if (labelsASiblingRun(statementNode) || headsValueTypeGroup(statementNode)) return;
 
           const identifiers = sourceCode.getTokens(statementNode)
-            .filter((token) => token.type === AST_TOKEN_TYPES.Identifier)
+            .filter((token) => token.type === "Identifier")
             .map((token) => token.value)
             .join(" ");
           if (restates(tokens, codeTokens(identifiers))) {
@@ -220,7 +222,7 @@ export default createRule<Options, MessageIds>({
                 : [
                   {
                     messageId: "deleteComment",
-                    fix: (fixer) => fixer.removeRange(removal.range),
+                    fix: (fixer) => fixer.removeRange([...removal.range]),
                   },
                 ],
             });

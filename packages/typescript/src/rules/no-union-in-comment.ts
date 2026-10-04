@@ -4,7 +4,9 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-union-in-comment.test.ts
  */
 
-import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
+import { sourceOrigin } from "./_source-origin.js";
+import type { ESTree } from "@oxlint/plugins";
+
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile } from "./_paths.js";
@@ -52,33 +54,33 @@ const UNION_BODY_RE = new RegExp(String.raw`^${LITERAL}(?:\s*[|,/]\s*${LITERAL})
 const LITERAL_G = new RegExp(LITERAL, "g");
 
 /** True when a type annotation is an unconstrained `string` after all. */
-function isBareString(node: TSESTree.TypeNode | undefined): boolean {
-  if (node === undefined) return false;
+function isBareString(node: ESTree.TSType | undefined): boolean {
+  if (node == null) return false;
   switch (node.type) {
-    case AST_NODE_TYPES.TSStringKeyword:
+    case "TSStringKeyword":
       return true;
     // `string[]` holds members of the same closed set, one element at a time.
-    case AST_NODE_TYPES.TSArrayType:
+    case "TSArrayType":
       return isBareString(node.elementType);
     // `string | null` is still an unconstrained string, and so is `string | "a"`
     // — the checker collapses that one to `string`.
-    case AST_NODE_TYPES.TSUnionType:
+    case "TSUnionType":
       return node.types.some((member) => isBareString(member));
     default:
       return false;
   }
 }
 
-function targetOf(node: TSESTree.Node): Target | null {
+function targetOf(node: ESTree.Node): Target | null {
   switch (node.type) {
-    case AST_NODE_TYPES.TSPropertySignature:
-    case AST_NODE_TYPES.PropertyDefinition: {
+    case "TSPropertySignature":
+    case "PropertyDefinition": {
       const name = node.computed ? null : nameOf(node.key);
       if (name === null || !isBareString(node.typeAnnotation?.typeAnnotation)) return null;
       return { node, name };
     }
-    case AST_NODE_TYPES.VariableDeclarator: {
-      if (node.id.type !== AST_NODE_TYPES.Identifier) return null;
+    case "VariableDeclarator": {
+      if (node.id.type !== "Identifier") return null;
       if (!isBareString(node.id.typeAnnotation?.typeAnnotation)) return null;
       return { node, name: node.id.name };
     }
@@ -89,13 +91,13 @@ function targetOf(node: TSESTree.Node): Target | null {
 
 /** A declaration this rule can judge: a named one that holds a bare string. */
 interface Target {
-  readonly node: TSESTree.Node;
+  readonly node: ESTree.Node;
   readonly name: string;
 }
 
-function nameOf(key: TSESTree.Node): string | null {
-  if (key.type === AST_NODE_TYPES.Identifier) return key.name;
-  if (key.type === AST_NODE_TYPES.Literal && typeof key.value === "string") return key.value;
+function nameOf(key: ESTree.Node): string | null {
+  if (key.type === "Identifier") return key.name;
+  if (key.type === "Literal" && typeof key.value === "string") return key.value;
   return null;
 }
 
@@ -128,15 +130,15 @@ export default createRule<Options, MessageIds>({
   defaultOptions: [],
   create(context) {
     const sourceCode = context.sourceCode;
-    if (isGeneratedFile(context.filename, sourceCode.text)) {
+    if (isGeneratedFile(sourceOrigin(context).filename, sourceOrigin(context).text)) {
       return {};
     }
 
-    function annotated(comment: TSESTree.Comment): Target | null {
+    function annotated(comment: ESTree.Comment): Target | null {
       const anchor = commentAnchor(comment);
       for (
-        let node: TSESTree.Node | undefined | null = anchor;
-        node != null && node.type !== AST_NODE_TYPES.Program;
+        let node: ESTree.Node | undefined | null = anchor;
+        node != null && node.type !== "Program";
         node = node.parent
       ) {
         const target = targetOf(node);
@@ -149,13 +151,13 @@ export default createRule<Options, MessageIds>({
       return null;
     }
 
-    function commentAnchor(comment: TSESTree.Comment): TSESTree.Node | null {
+    function commentAnchor(comment: ESTree.Comment): ESTree.Node | null {
       const before = sourceCode.getTokenBefore(comment, { includeComments: false });
-      let anchor: TSESTree.Node | null;
+      let anchor: ESTree.Node | null;
       if (before !== null && before.loc.end.line === comment.loc.start.line) {
         // The separator a member ends on belongs to the CONTAINER, so resolving
         // `,` or `;` lands on the object and never reaches the member itself.
-        let token: TSESTree.Token | null = before;
+        let token: ESTree.Token | null = before;
         while (token !== null && (token.value === "," || token.value === ";")) {
           token = sourceCode.getTokenBefore(token, { includeComments: false });
         }

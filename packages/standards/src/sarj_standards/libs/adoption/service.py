@@ -159,7 +159,7 @@ def plan_sync(
     def append_target(name: str) -> None:
         standard_source, target_name = CONFIG_NAMES[name]
         source_name = standard_source
-        if name == "eslint":
+        if name == "oxlint":
             base = destination(_DestinationKind.TYPESCRIPT, typescript_dest)
         elif name in PYTHON_CONFIGS:
             base = destination(_DestinationKind.PYTHON, python_dest)
@@ -181,7 +181,7 @@ def plan_sync(
                         base / companion_target,
                     )
                 )
-        if name == "eslint":
+        if name == "oxlint":
             for companion, (companion_source, companion_target) in TYPESCRIPT_COMPANION_CONFIGS.items():
                 targets.append(
                     SyncTarget(
@@ -224,7 +224,7 @@ def plan_init(  # ruff: ignore[too-many-locals] -- one adoption boundary resolve
     kotlin_dest: str | None = None,
     profile: manifest.Profile | None = None,
     hook_manager: manifest.HookManager | None = None,
-    allow_existing_nested_eslint: bool = False,
+    allow_existing_nested_oxlint: bool = False,
 ) -> InitPlan:
     if profile is not None and profile not in manifest.PROFILES:
         msg = f"profile must be one of: {', '.join(manifest.PROFILES)}"
@@ -255,7 +255,7 @@ def plan_init(  # ruff: ignore[too-many-locals] -- one adoption boundary resolve
         kotlin_dest=selected_kotlin_dest,
         profile=selected_profile,
         hook_manager=selected_hook_manager,
-        allow_existing_nested_eslint=allow_existing_nested_eslint,
+        allow_existing_nested_oxlint=allow_existing_nested_oxlint,
     )
     if scaffold_plan.errors:
         return InitPlan(scaffold_plan, None, ())
@@ -492,7 +492,7 @@ def init_destination(
     swift_dest: str = ".",
     kotlin_dest: str = ".",
 ) -> Path:
-    if name == "eslint":
+    if name == "oxlint":
         base = root / typescript_dest
     elif name in PYTHON_CONFIGS:
         base = root / python_dest

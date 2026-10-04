@@ -17,9 +17,9 @@ if TYPE_CHECKING:
 
 LEDGER_JSON: Final = CONFIGS_DIR / "rule-ledger.json"
 
-#: The `kind` values that name an ESLint rule and a bare `SARJnnn` code; the rest
+#: The `kind` values that name an Oxlint rule and a bare `SARJnnn` code; the rest
 #: (`python`, `sql`, `iac`) are rule ids, which double as pre-commit hook ids.
-ESLINT: Final = "eslint"
+OXLINT: Final = "oxlint"
 CODE: Final = "code"
 
 
@@ -38,7 +38,7 @@ class Retired:
 
     @property
     def pattern(self) -> re.Pattern[str]:
-        if self.kind == ESLINT:
+        if self.kind == OXLINT:
             return re.compile(rf"(?<![\w/-]){re.escape(self.id)}(?![\w-])")
         if self.kind == CODE:
             return re.compile(rf"\b{re.escape(self.id)}\b")
@@ -62,7 +62,7 @@ class Ledger:
     def active_ids(self) -> frozenset[str]:
         live = {code for family in self.codes.values() for code in family}
         for family, names in self.rules.items():
-            prefix = "@sarj/" if family == ESLINT else ""
+            prefix = "@sarj/" if family == OXLINT else ""
             live.update(f"{prefix}{name}" for name in names)
         return frozenset(live)
 

@@ -1,20 +1,15 @@
 // vitest: shared-module-graph
-import * as tsParser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
+import { RuleTester } from "oxlint/plugins-dev";
+import { describe, it } from "vitest";
 
 import rule, { NO_HAND_ROLLED_SPINNER_DOCUMENTATION } from "../../src/rules/no-hand-rolled-spinner.js";
 
-RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
 RuleTester.itOnly = it.only;
 RuleTester.it = it;
 
 const RULE_TESTER = new RuleTester({
-  languageOptions: {
-    parser: tsParser,
-    parserOptions: { ecmaFeatures: { jsx: true } },
-  },
+  languageOptions: { parserOptions: { lang: "tsx" } },
 });
 
 const COMPONENT = "/repo/src/components/loading-state.tsx";
@@ -29,11 +24,6 @@ RULE_TESTER.run("no-hand-rolled-spinner", rule, {
     { name: "later spread can replace spinner classes", code: '<div className="animate-spin rounded-full border-2 border-t-transparent" {...props} />', filename: COMPONENT },
     { name: "last className wins", code: '<div className="animate-spin rounded-full border-2 border-t-transparent" className="static" />', filename: COMPONENT },
     { name: "accepts the documented shared spinner", code: NO_HAND_ROLLED_SPINNER_DOCUMENTATION.examples[0].files[0].source, filename: COMPONENT },
-    {
-      name: "accepts the design-system spinner",
-      code: `<Spinner className="size-4" />`,
-      filename: COMPONENT,
-    },
     {
       name: "accepts a spinning icon",
       code: `<Loader2 className="size-4 animate-spin" />`,

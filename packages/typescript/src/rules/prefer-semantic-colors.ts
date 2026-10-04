@@ -4,7 +4,10 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/prefer-semantic-colors.test.ts
  */
 
-import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
+import { sourceOrigin } from "./_source-origin.js";
+import type { ESTree } from "@oxlint/plugins";
+
+
 import { existsSync, lstatSync, readdirSync, readFileSync } from "fs";
 import { dirname, join, parse } from "path";
 
@@ -162,10 +165,10 @@ const SVG_EXEMPT_COLOR_VALUES: ReadonlySet<string> = new Set([
   "inherit",
 ]);
 
-const isInsideSvg = (node: TSESTree.Node): boolean => {
-  let current: TSESTree.Node | null | undefined = node.parent;
+const isInsideSvg = (node: ESTree.Node): boolean => {
+  let current: ESTree.Node | null | undefined = node.parent;
   while (current !== undefined && current !== null) {
-    if (current.type === AST_NODE_TYPES.JSXElement) {
+    if (current.type === "JSXElement") {
       const name = jsxElementName(current);
       if (name !== null && isSvgLikeElementName(name)) return true;
     }
@@ -175,10 +178,10 @@ const isInsideSvg = (node: TSESTree.Node): boolean => {
 };
 
 // SVG subtree colors are artwork data rather than reusable UI tokens.
-function jsxElementName(node: TSESTree.JSXElement): string | null {
+function jsxElementName(node: ESTree.JSXElement): string | null {
   const name = node.openingElement.name;
-  if (name.type === AST_NODE_TYPES.JSXIdentifier) return name.name;
-  if (name.type === AST_NODE_TYPES.JSXMemberExpression && name.property.type === AST_NODE_TYPES.JSXIdentifier) {
+  if (name.type === "JSXIdentifier") return name.name;
+  if (name.type === "JSXMemberExpression" && name.property.type === "JSXIdentifier") {
     return name.property.name;
   }
   return null;
@@ -220,15 +223,15 @@ function isSvgLikeElementName(name: string): boolean {
   return name === "svg" || SVG_DEFS_CONTAINERS.has(name) || /svg$/i.test(name);
 }
 
-const isInsideIconFactoryPath = (node: TSESTree.Node): boolean => {
-  let current: TSESTree.Node | null | undefined = node.parent;
+const isInsideIconFactoryPath = (node: ESTree.Node): boolean => {
+  let current: ESTree.Node | null | undefined = node.parent;
   while (current !== undefined && current !== null) {
     if (
-      current.type === AST_NODE_TYPES.Property &&
+      current.type === "Property" &&
       propName(current.key) === "path" &&
-      current.parent.type === AST_NODE_TYPES.ObjectExpression &&
-      current.parent.parent.type === AST_NODE_TYPES.CallExpression &&
-      current.parent.parent.callee.type === AST_NODE_TYPES.Identifier &&
+      current.parent?.type === "ObjectExpression" &&
+      current.parent.parent?.type === "CallExpression" &&
+      current.parent.parent.callee.type === "Identifier" &&
       current.parent.parent.callee.name === "createIcon"
     ) {
       return true;
@@ -395,18 +398,18 @@ const expandWorkspaceGlob = (root: string, glob: string): string[] => {
     .map((entry) => join(parent, entry.name));
 };
 
-const propName = (key: TSESTree.Property["key"]): string | null => {
-  if (key.type === AST_NODE_TYPES.Identifier) return key.name;
-  if (key.type === AST_NODE_TYPES.Literal && typeof key.value === "string") return key.value;
+const propName = (key: ESTree.ObjectProperty["key"]): string | null => {
+  if (key.type === "Identifier") return key.name;
+  if (key.type === "Literal" && typeof key.value === "string") return key.value;
   return null;
 };
 
-const staticallyImportsExternalRenderer = (program: TSESTree.Program): boolean =>
+const staticallyImportsExternalRenderer = (program: ESTree.Program): boolean =>
   program.body.some((statement) => {
     if (
-      statement.type !== AST_NODE_TYPES.ImportDeclaration &&
-      statement.type !== AST_NODE_TYPES.ExportNamedDeclaration &&
-      statement.type !== AST_NODE_TYPES.ExportAllDeclaration
+      statement.type !== "ImportDeclaration" &&
+      statement.type !== "ExportNamedDeclaration" &&
+      statement.type !== "ExportAllDeclaration"
     ) {
       return false;
     }
@@ -503,25 +506,25 @@ export default createRule<Options, MessageIds>({
   },
   defaultOptions: [{}],
   create(context, [options]) {
-    if (STORIES_FILE_RE.test(context.filename)) return {};
+    if (STORIES_FILE_RE.test(sourceOrigin(context).filename)) return {};
     if (staticallyImportsExternalRenderer(context.sourceCode.ast)) return {};
     if (
       options?.requireSemanticTokens === true &&
-      !hasSemanticTokenSystem(context.filename)
+      !hasSemanticTokenSystem(sourceOrigin(context).filename)
     ) return {};
     const foregroundRoles = options?.opaqueForegroundPairs === true
-      ? semanticForegroundRoles(context.filename)
+      ? semanticForegroundRoles(sourceOrigin(context).filename)
       : new Set<string>();
     const checkOpaqueForegroundPairs = foregroundRoles.size > 0;
 
     let importsExternalRenderer = false;
     const pendingReports = new Map<string, {
-      node: TSESTree.Node;
+      node: ESTree.Node;
       messageId: MessageIds;
       data: Record<string, string>;
     }>();
     const report = (
-      node: TSESTree.Node,
+      node: ESTree.Node,
       messageId: MessageIds,
       data: Record<string, string>,
     ): void => {
@@ -531,28 +534,28 @@ export default createRule<Options, MessageIds>({
 
 
     // Recurse through class fragments but leave calls to the CallExpression visitor.
-    const checkClassNode = (node: TSESTree.Node | null, objectKeys = false): void => {
+    const checkClassNode = (node: ESTree.Node | null, objectKeys = false): void => {
       if (node === null) return;
       switch (node.type) {
-        case AST_NODE_TYPES.Literal:
+        case "Literal":
           if (typeof node.value === "string") reportClasses(node.value, node);
           break;
-        case AST_NODE_TYPES.TemplateLiteral:
+        case "TemplateLiteral":
           for (const quasi of node.quasis) reportClasses(quasi.value.cooked ?? "", quasi);
           break;
-        case AST_NODE_TYPES.ArrayExpression:
+        case "ArrayExpression":
           for (const element of node.elements) {
-            if (element !== null && element.type !== AST_NODE_TYPES.SpreadElement) checkClassNode(element, objectKeys);
+            if (element !== null && element.type !== "SpreadElement") checkClassNode(element, objectKeys);
           }
           break;
-        case AST_NODE_TYPES.ObjectExpression:
+        case "ObjectExpression":
           checkClassProperties(node, objectKeys);
           break;
-        case AST_NODE_TYPES.ConditionalExpression:
+        case "ConditionalExpression":
           checkClassNode(node.consequent, objectKeys);
           checkClassNode(node.alternate, objectKeys);
           break;
-        case AST_NODE_TYPES.LogicalExpression:
+        case "LogicalExpression":
           checkClassNode(node.right, objectKeys);
           break;
         default:
@@ -560,7 +563,7 @@ export default createRule<Options, MessageIds>({
       }
     };
 
-    const reportClasses = (value: string, node: TSESTree.Node): void => {
+    const reportClasses = (value: string, node: ESTree.Node): void => {
       const tokens = classTokens(value);
       for (const token of tokens) {
         const base = tailwindBase(token);
@@ -594,12 +597,12 @@ export default createRule<Options, MessageIds>({
       }
     };
 
-    function checkClassProperties(node: TSESTree.ObjectExpression, objectKeys: boolean): void {
+    function checkClassProperties(node: ESTree.ObjectExpression, objectKeys: boolean): void {
       for (const property of node.properties) {
-        if (property.type !== AST_NODE_TYPES.Property) continue;
+        if (property.type !== "Property") continue;
         if (objectKeys) {
-          if (property.value.type === AST_NODE_TYPES.Literal && !property.value.value && !("regex" in property.value)) continue;
-          if (!property.computed && property.key.type === AST_NODE_TYPES.Literal) {
+          if (property.value.type === "Literal" && !property.value.value && !("regex" in property.value)) continue;
+          if (!property.computed && property.key.type === "Literal") {
             checkClassNode(property.key);
           }
         } else {
@@ -608,9 +611,9 @@ export default createRule<Options, MessageIds>({
       }
     }
 
-    const checkColorValueNode = (node: TSESTree.Node): void => {
+    const checkColorValueNode = (node: ESTree.Node): void => {
       if (
-        node.type === AST_NODE_TYPES.Literal &&
+        node.type === "Literal" &&
         typeof node.value === "string" &&
         RAW_COLOR_VALUE_RE.test(node.value.replace(/url\(\s*(?:"[^"]*"|'[^']*'|[^)]*)\s*\)/giu, "")) &&
         !CSS_VAR_REFERENCE_RE.test(node.value)
@@ -620,47 +623,48 @@ export default createRule<Options, MessageIds>({
     };
 
     return {
-      "JSXAttribute[name.name='className']"(node: TSESTree.JSXAttribute): void {
+      "JSXAttribute[name.name='className']"(node: ESTree.JSXAttribute): void {
         if (node.value === null) return;
-        if (node.value.type === AST_NODE_TYPES.Literal) checkClassNode(node.value);
-        else if (node.value.type === AST_NODE_TYPES.JSXExpressionContainer) {
-          if (node.value.expression.type !== AST_NODE_TYPES.JSXEmptyExpression) {
+        if (node.value.type === "Literal") checkClassNode(node.value);
+        else if (node.value.type === "JSXExpressionContainer") {
+          if (node.value.expression.type !== "JSXEmptyExpression") {
             checkClassNode(node.value.expression);
           }
         }
       },
-      CallExpression(node: TSESTree.CallExpression): void {
+      CallExpression(node: ESTree.CallExpression): void {
         if (
-          node.callee.type === AST_NODE_TYPES.Identifier &&
+          node.callee.type === "Identifier" &&
           node.callee.name === "require" &&
-          node.arguments[0]?.type === AST_NODE_TYPES.Literal &&
+          node.arguments[0]?.type === "Literal" &&
           typeof node.arguments[0].value === "string" &&
           EXTERNAL_RENDERER_MODULE_RE.test(node.arguments[0].value)
         ) {
           importsExternalRenderer = true;
         }
-        if (node.callee.type === AST_NODE_TYPES.Identifier && CLASS_FNS.has(node.callee.name)) {
+        if (node.callee.type === "Identifier" && CLASS_FNS.has(node.callee.name)) {
           for (const arg of node.arguments) {
-            if (arg.type !== AST_NODE_TYPES.SpreadElement) {
+            if (arg.type !== "SpreadElement") {
               checkClassNode(arg, node.callee.name !== "cva" && node.callee.name !== "tv");
             }
           }
         }
       },
-      VariableDeclarator(node: TSESTree.VariableDeclarator): void {
-        if (node.id.type === AST_NODE_TYPES.Identifier && CLASS_NAME_RE.test(node.id.name)) {
+      VariableDeclarator(node: ESTree.VariableDeclarator): void {
+        if (node.id.type === "Identifier" && CLASS_NAME_RE.test(node.id.name)) {
           checkClassNode(node.init);
         }
       },
-      Property(node: TSESTree.Property): void {
+      Property(node: ESTree.ObjectProperty): void {
         const name = propName(node.key);
         if (name !== null && CLASS_NAME_RE.test(name)) checkClassNode(node.value);
       },
       // SVG artwork colors are exempt; component presentation colors still report.
-      "JSXAttribute[name.name=/^(fill|stroke|color)$/]"(node: TSESTree.JSXAttribute): void {
-        if (node.value?.type !== AST_NODE_TYPES.Literal) return;
+      "JSXAttribute[name.name=/^(fill|stroke|color)$/]"(node: ESTree.JSXAttribute): void {
+        if (node.value?.type !== "Literal") return;
+        if (node.parent?.type !== "JSXOpeningElement") return;
         const owner = node.parent.name;
-        if (owner.type === AST_NODE_TYPES.JSXIdentifier && SVG_SHAPE_PRIMITIVES.has(owner.name)) {
+        if (owner.type === "JSXIdentifier" && SVG_SHAPE_PRIMITIVES.has(owner.name)) {
           return;
         }
         if (
@@ -672,13 +676,13 @@ export default createRule<Options, MessageIds>({
         if (isInsideSvg(node) || isInsideIconFactoryPath(node)) return;
         checkColorValueNode(node.value);
       },
-      "JSXAttribute[name.name='style'] ObjectExpression > Property"(node: TSESTree.Property): void {
+      "JSXAttribute[name.name='style'] ObjectExpression > Property"(node: ESTree.ObjectProperty): void {
         const name = propName(node.key);
         if (name !== null && STYLE_COLOR_PROPS.has(name)) checkColorValueNode(node.value);
       },
-      ImportExpression(node: TSESTree.ImportExpression): void {
+      ImportExpression(node: ESTree.ImportExpression): void {
         if (
-          node.source.type === AST_NODE_TYPES.Literal &&
+          node.source.type === "Literal" &&
           typeof node.source.value === "string" &&
           EXTERNAL_RENDERER_MODULE_RE.test(node.source.value)
         ) {

@@ -3,7 +3,8 @@
  *
  */
 
-import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
+import type { ESTree } from "@oxlint/plugins";
+
 
 const REF_RE =
   /https?:\/\/|\bRFC[- ]?\d+|\bPEP[- ]?\d+|\bCVE-\d{4}|\b(?!UTF-|SHA-|ISO-|AES-|CRC-|MD-|PCM-|EOF-|API-|BASE-)[A-Z][A-Z0-9]{1,9}-\d[A-Z0-9]{0,5}\b|(?<![&\w])#\d{2,6}\b|@[a-z][\w.-]*\.(?:us|com|ai|io|net|org|dev)\b/;
@@ -130,10 +131,10 @@ const NARRATION_MIN_CONTENT = 1;
 const TOKEN_PLURAL_MIN = 4;
 
 const RESTATABLE_STATEMENTS: ReadonlySet<string> = new Set([
-  AST_NODE_TYPES.ExpressionStatement,
-  AST_NODE_TYPES.ReturnStatement,
-  AST_NODE_TYPES.ThrowStatement,
-  AST_NODE_TYPES.VariableDeclaration,
+  "ExpressionStatement",
+  "ReturnStatement",
+  "ThrowStatement",
+  "VariableDeclaration",
 ]);
 
 const NARRATION_VERB_RE =
@@ -161,24 +162,24 @@ export function normalizeToken(word: string): string {
  * when what follows is a block, a declaration, a type member or anything else
  * the comment could be *labelling* rather than restating.
  */
-export function restatableStatementBelow(comment: TSESTree.Comment, sourceCode: StatementReader): string | null {
+export function restatableStatementBelow(comment: ESTree.Comment, sourceCode: StatementReader): string | null {
   const node = restatableStatementNodeBelow(comment, sourceCode);
   return node === null ? null : sourceCode.getText(node);
 }
 
-export function restatableStatementNodeBelow(comment: TSESTree.Comment, sourceCode: StatementReader): TSESTree.Node | null {
+export function restatableStatementNodeBelow(comment: ESTree.Comment, sourceCode: StatementReader): ESTree.Node | null {
   const token = sourceCode.getTokenAfter(comment, { includeComments: false });
   if (token === null || token.loc.start.line !== comment.loc.end.line + 1) return null;
   for (
-    let node: TSESTree.Node | undefined | null = sourceCode.getNodeByRangeIndex(token.range[0]);
-    node != null && node.type !== AST_NODE_TYPES.Program;
+    let node: ESTree.Node | undefined | null = sourceCode.getNodeByRangeIndex(token.range[0]);
+    node != null && node.type !== "Program";
     node = node.parent
   ) {
     if (!RESTATABLE_STATEMENTS.has(node.type)) continue;
     if (node.loc.start.line !== token.loc.start.line || node.loc.end.line !== node.loc.start.line) {
       return null;
     }
-    if (node.type === AST_NODE_TYPES.VariableDeclaration && isTrivialInitializer(node)) {
+    if (node.type === "VariableDeclaration" && isTrivialInitializer(node)) {
       return null;
     }
     return node;
@@ -186,24 +187,24 @@ export function restatableStatementNodeBelow(comment: TSESTree.Comment, sourceCo
   return null;
 }
 
-/** The slice of ESLint's `SourceCode` these shapes read. */
+/** The slice of Oxlint's `SourceCode` these shapes read. */
 export interface StatementReader {
   getTokenAfter: (
-    node: TSESTree.Comment,
+    node: ESTree.Comment,
     options: { includeComments: boolean },
-  ) => TSESTree.Token | null;
-  getNodeByRangeIndex: (index: number) => TSESTree.Node | null;
-  getText: (node: TSESTree.Node) => string;
+  ) => ESTree.Token | ESTree.Comment | null;
+  getNodeByRangeIndex: (index: number) => ESTree.Node | null;
+  getText: (node: ESTree.Node) => string;
 }
 
 /** A declaration with nothing but a zero/empty seed computes nothing to restate. */
-function isTrivialInitializer(node: TSESTree.VariableDeclaration): boolean {
+function isTrivialInitializer(node: ESTree.VariableDeclaration): boolean {
   return node.declarations.every((declarator) => {
     const init = declarator.init;
-    if (init == null || init.type === AST_NODE_TYPES.Literal) return true;
+    if (init == null || init.type === "Literal") return true;
     return (
-      (init.type === AST_NODE_TYPES.ArrayExpression && init.elements.length === 0) ||
-      (init.type === AST_NODE_TYPES.ObjectExpression && init.properties.length === 0)
+      (init.type === "ArrayExpression" && init.elements.length === 0) ||
+      (init.type === "ObjectExpression" && init.properties.length === 0)
     );
   });
 }

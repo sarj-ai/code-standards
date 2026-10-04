@@ -1,15 +1,13 @@
-import * as tsParser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
+import { RuleTester } from "oxlint/plugins-dev";
+import { describe, it } from "vitest";
 
 import rule, { PREFER_NODE_FS_PROMISES_DOCUMENTATION } from "../../src/rules/prefer-node-fs-promises.js";
 
-RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
 RuleTester.it = it;
 RuleTester.itOnly = it.only;
 
-const RULE_TESTER = new RuleTester({ languageOptions: { parser: tsParser, sourceType: "module" } });
+const RULE_TESTER = new RuleTester({ languageOptions: { parserOptions: { lang: "ts" } } });
 
 RULE_TESTER.run("prefer-node-fs-promises", rule, {
   valid: [
@@ -30,7 +28,6 @@ RULE_TESTER.run("prefer-node-fs-promises", rule, {
     { filename: "src/generated/store.ts", code: "import { readFileSync } from 'node:fs'; readFileSync('x');" },
     { filename: "src/generated/store.ts", code: "(await import('node:fs')).readFileSync('x');" },
     { filename: "src/rules/check-files.ts", code: "import { readFileSync } from 'node:fs'; readFileSync('x');" },
-    "// eslint-disable-next-line @rule-tester/prefer-node-fs-promises -- synchronous transaction boundary\nimport { readFileSync, writeFileSync } from 'node:fs';",
   ],
   invalid: [
     {

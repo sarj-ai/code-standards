@@ -1,27 +1,37 @@
 // vitest: shared-module-graph
-import * as tsParser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
+import { RuleTester } from "oxlint/plugins-dev";
+import { describe, it } from "vitest";
 
 import rule, {
   REQUIRE_INTERFACE_FOR_EXPORTED_CLASS_DOCUMENTATION,
 } from "../../src/rules/require-interface-for-exported-class.js";
 
-RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
 RuleTester.it = it;
 RuleTester.itOnly = it.only;
 
 const RULE_TESTER = new RuleTester({
-  languageOptions: { parser: tsParser, sourceType: "module" },
+  languageOptions: { parserOptions: { lang: "ts" } },
 });
 
 RULE_TESTER.run("require-interface-for-exported-class", rule, {
   valid: [
-    { filename: "src/store.js", code: "export class Store { read() { return 1; } }" },
-    { filename: "src/store.jsx", code: "export class Store { read() { return 1; } }" },
-    { filename: "src/store.mjs", code: "export class Store { read() { return 1; } }" },
-    { filename: "src/store.cjs", code: "export class Store { read() { return 1; } }" },
+    {
+      filename: "src/store.js",
+      code: "export class Store { read() { return 1; } }",
+    },
+    {
+      filename: "src/store.jsx",
+      code: "export class Store { read() { return 1; } }",
+    },
+    {
+      filename: "src/store.mjs",
+      code: "export class Store { read() { return 1; } }",
+    },
+    {
+      filename: "src/store.cjs",
+      code: "module.exports = class Store { read() { return 1; } };",
+    },
     REQUIRE_INTERFACE_FOR_EXPORTED_CLASS_DOCUMENTATION.examples[0].files[0]
       .source,
     "export abstract class ArtifactStore { abstract read(id: string): Promise<Uint8Array>; }",
@@ -38,7 +48,9 @@ RULE_TESTER.run("require-interface-for-exported-class", rule, {
     {
       code: REQUIRE_INTERFACE_FOR_EXPORTED_CLASS_DOCUMENTATION.examples[1]
         .files[0].source,
-      errors: [{ messageId: "requireContract", data: { name: "ArtifactStore" } }],
+      errors: [
+        { messageId: "requireContract", data: { name: "ArtifactStore" } },
+      ],
     },
     {
       code: "export default class { run = () => undefined; }",
@@ -46,31 +58,45 @@ RULE_TESTER.run("require-interface-for-exported-class", rule, {
     },
     {
       code: "class InternalStore { read() {} } export { InternalStore };",
-      errors: [{ messageId: "requireContract", data: { name: "InternalStore" } }],
+      errors: [
+        { messageId: "requireContract", data: { name: "InternalStore" } },
+      ],
     },
     {
       code: "class ArtifactStore { read() {} } export default ArtifactStore;",
-      errors: [{ messageId: "requireContract", data: { name: "ArtifactStore" } }],
+      errors: [
+        { messageId: "requireContract", data: { name: "ArtifactStore" } },
+      ],
     },
     {
       code: "class BaseStore { read() {} } export class ArtifactStore extends BaseStore { read() {} }",
-      errors: [{ messageId: "requireContract", data: { name: "ArtifactStore" } }],
+      errors: [
+        { messageId: "requireContract", data: { name: "ArtifactStore" } },
+      ],
     },
     {
       code: "export class ArtifactStore { get current() { return 'value'; } }",
-      errors: [{ messageId: "requireContract", data: { name: "ArtifactStore" } }],
+      errors: [
+        { messageId: "requireContract", data: { name: "ArtifactStore" } },
+      ],
     },
     {
       code: "export const ArtifactStore = class { read() {} };",
-      errors: [{ messageId: "requireContract", data: { name: "ArtifactStore" } }],
+      errors: [
+        { messageId: "requireContract", data: { name: "ArtifactStore" } },
+      ],
     },
     {
       code: "const InternalStore = class { read() {} }; export { InternalStore as ArtifactStore };",
-      errors: [{ messageId: "requireContract", data: { name: "ArtifactStore" } }],
+      errors: [
+        { messageId: "requireContract", data: { name: "ArtifactStore" } },
+      ],
     },
     {
       code: "const ArtifactStore = class { read() {} }; export default ArtifactStore;",
-      errors: [{ messageId: "requireContract", data: { name: "ArtifactStore" } }],
+      errors: [
+        { messageId: "requireContract", data: { name: "ArtifactStore" } },
+      ],
     },
     {
       code: "export default class { get current() { return 'value'; } }",

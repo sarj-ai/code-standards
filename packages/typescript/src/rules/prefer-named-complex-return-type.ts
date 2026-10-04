@@ -4,7 +4,9 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/prefer-named-complex-return-type.test.ts
  */
 
-import { AST_NODE_TYPES, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
+import { sourceOrigin } from "./_source-origin.js";
+import type { ESTree, Context } from "@oxlint/plugins";
+
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile, isTestFile } from "./_paths.js";
@@ -28,9 +30,9 @@ export const PREFER_NAMED_COMPLEX_RETURN_TYPE_DOCUMENTATION = {
   ],
 } as const satisfies RuleDocumentation;
 
-function unwrap(node: TSESTree.TypeNode): TSESTree.TypeNode {
+function unwrap(node: ESTree.TSType): ESTree.TSType {
   if (
-    node.type === AST_NODE_TYPES.TSTypeReference &&
+    node.type === "TSTypeReference" &&
     node.typeArguments?.params.length === 1
   ) {
     const [inner] = node.typeArguments.params;
@@ -40,8 +42,8 @@ function unwrap(node: TSESTree.TypeNode): TSESTree.TypeNode {
 }
 
 function report(
-  context: Readonly<TSESLint.RuleContext<MessageIds, Options>>,
-  node: TSESTree.Node & { readonly returnType: TSESTree.TSTypeAnnotation | undefined },
+  context: Readonly<Context>,
+  node: ESTree.Node & { readonly returnType?: ESTree.TSTypeAnnotation | null | undefined },
 ): void {
   const annotation = node.returnType?.typeAnnotation;
   if (annotation !== undefined && isComplex(annotation)) {
@@ -49,11 +51,11 @@ function report(
   }
 }
 
-function isComplex(node: TSESTree.TypeNode): boolean {
+function isComplex(node: ESTree.TSType): boolean {
   const type = unwrap(node);
-  if (type.type === AST_NODE_TYPES.TSTypeLiteral) return type.members.length >= 3;
-  if (type.type !== AST_NODE_TYPES.TSUnionType || type.types.length < 3) return false;
-  return type.types.every((member) => unwrap(member).type === AST_NODE_TYPES.TSTypeLiteral);
+  if (type.type === "TSTypeLiteral") return type.members.length >= 3;
+  if (type.type !== "TSUnionType" || type.types.length < 3) return false;
+  return type.types.every((member) => unwrap(member).type === "TSTypeLiteral");
 }
 
 export default createRule<Options, MessageIds>({
@@ -69,7 +71,7 @@ export default createRule<Options, MessageIds>({
   },
   defaultOptions: [],
   create(context) {
-    if (isTestFile(context.filename) || isGeneratedFile(context.filename, context.sourceCode.text)) return {};
+    if (isTestFile(sourceOrigin(context).filename) || isGeneratedFile(sourceOrigin(context).filename, sourceOrigin(context).text)) return {};
     return {
       ArrowFunctionExpression: (node): void => report(context, node),
       FunctionDeclaration: (node): void => report(context, node),

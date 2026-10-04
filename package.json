@@ -1,0 +1,29 @@
+{
+  "name": "sarj-code-standards-workspace",
+  "private": true,
+  "packageManager": "npm@12.1.0",
+  "workspaces": [
+    "packages/typescript",
+    "packages/react-hooks",
+    "apps/docs"
+  ],
+  "engines": {
+    "node": ">=22.22.2"
+  },
+  "overrides": {
+    "sharp": "0.35.4",
+    "miniflare": {
+      "undici": "7.29.1"
+    },
+    "eslint-plugin-react-hooks": "file:./packages/react-hooks",
+    "brace-expansion@^5.0.0": "5.0.12",
+    "esbuild": "0.28.2",
+    "nanoid@<3.3.18": "3.3.18",
+    "http-cache-semantics": "4.3.0"
+  },
+  "allowScripts": {
+    "esbuild@0.28.2": true,
+    "fsevents@2.3.3": true,
+    "workerd@1.20260921.1": true
+  }
+}

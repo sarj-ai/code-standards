@@ -67,7 +67,7 @@ def verify(root: Path, selector: RuleSelector, *, run_tests: bool = False) -> Ve
         return VerificationResult(1, f"incomplete: {selector}: {exc}")
     typescript = (
         rule_catalog_artifact.typescript_specs(root.resolve(), already_built=True)
-        if selector.engine is RuleEngine.ESLINT
+        if selector.engine is RuleEngine.OXLINT
         else None
     )
     detail = " and focused tests" if run_tests else ""
@@ -81,12 +81,12 @@ def plan_new(root: Path, selector: RuleSelector, *, category: str, summary: str)
     slug = str(selector.rule_id)
     snake = slug.replace("-", "_")
     class_name = "".join(part.capitalize() for part in slug.split("-"))
-    if selector.engine is RuleEngine.ESLINT:
+    if selector.engine is RuleEngine.OXLINT:
         implementation = root / "packages/typescript/src/rules" / f"{slug}.ts"
         test = root / "packages/typescript/tests/rules" / f"{slug}.test.ts"
         files = (
-            (implementation, _eslint_implementation(slug, class_name, category, summary)),
-            (test, _eslint_test(slug)),
+            (implementation, _oxlint_implementation(slug, class_name, category, summary)),
+            (test, _oxlint_test(slug)),
         )
     elif selector.engine is RuleEngine.TEXT:
         base = root / "packages/standards"
@@ -223,7 +223,7 @@ def test_documented_examples() -> None:
 """
 
 
-def _eslint_implementation(slug: str, name: str, category: str, summary: str) -> str:
+def _oxlint_implementation(slug: str, name: str, category: str, summary: str) -> str:
     message = name[0].lower() + name[1:]
     documentation = f"{slug.upper().replace('-', '_')}_DOCUMENTATION"
     return f"""import {{ createRule, type RuleDocumentation }} from "./_docs.js";
@@ -254,7 +254,7 @@ export default createRule<Options, MessageIds>({{
 """
 
 
-def _eslint_test(slug: str) -> str:
+def _oxlint_test(slug: str) -> str:
     return f"""import {{ it }} from "vitest";
 import {{ verifyRuleExamples }} from "../../src/verify-rule-examples.js";
 import rule from "../../src/rules/{slug}.js";

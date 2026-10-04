@@ -30,7 +30,7 @@ _SOURCE_ENGINES: Final[Mapping[str, str]] = MappingProxyType(
         "sarj-library-policy": "python",
         "ruff": "ruff",
         "basedpyright": "basedpyright",
-        "eslint": "eslint",
+        "oxlint": "oxlint",
     }
 )
 

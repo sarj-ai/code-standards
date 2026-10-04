@@ -1,0 +1,335 @@
+import {isCommentToken} from '../../eslint-utils/index.mjs';
+import {removeStatement} from './fix/index.js';
+import {unwrapTypeScriptExpression} from './utils/index.js';
+
+const MESSAGE_ID = 'prefer-smaller-scope';
+const messages = {
+	[MESSAGE_ID]: 'Move `{{name}}` into the block where it is used.',
+};
+
+const scopeBoundaryTypes = new Set([
+	'ArrowFunctionExpression',
+	'ClassDeclaration',
+	'ClassExpression',
+	'FunctionDeclaration',
+	'FunctionExpression',
+	'StaticBlock',
+	'WithStatement',
+]);
+
+const isDeclarationCandidate = node =>
+	Boolean(node.parent)
+	&& (node.parent.type === 'Program' || node.parent.type === 'BlockStatement')
+	&& (node.kind === 'let' || node.kind === 'const')
+	&& !node.declare
+	&& node.declarations.length === 1
+	&& node.declarations[0].id.type === 'Identifier';
+
+const isExported = (declaration, name) =>
+	declaration.parent.type === 'Program'
+	&& declaration.parent.body.some(statement =>
+		statement.type === 'ExportNamedDeclaration'
+		&& !statement.source
+		&& statement.specifiers.some(specifier => specifier.local.name === name),
+	);
+
+function isDescendantWithoutScopeBoundary(node, ancestor) {
+	let current = node.parent;
+	while (current && current !== ancestor) {
+		if (scopeBoundaryTypes.has(current.type)) {
+			return false;
+		}
+
+		current = current.parent;
+	}
+
+	return current === ancestor;
+}
+
+function hasDynamicScope(node, visitorKeys) {
+	if (node.type === 'WithStatement') {
+		return true;
+	}
+
+	let callee = node.type === 'CallExpression'
+		? unwrapTypeScriptExpression(node.callee)
+		: undefined;
+	while (callee?.type === 'TSInstantiationExpression') {
+		callee = unwrapTypeScriptExpression(callee.expression);
+	}
+
+	if (
+		callee?.type === 'Identifier'
+		&& callee.name === 'eval'
+	) {
+		return true;
+	}
+
+	for (const key of visitorKeys[node.type] ?? []) {
+		const value = node[key];
+		if (Array.isArray(value)) {
+			if (value.some(childNode => childNode && hasDynamicScope(childNode, visitorKeys))) {
+				return true;
+			}
+		} else if (value && hasDynamicScope(value, visitorKeys)) {
+			return true;
+		}
+	}
+
+	return false;
+}
+
+function getAssignment(writeReference) {
+	const {identifier} = writeReference;
+	const assignmentExpression = identifier.parent;
+
+	if (
+		assignmentExpression.type !== 'AssignmentExpression'
+		|| assignmentExpression.operator !== '='
+		|| assignmentExpression.left !== identifier
+		|| assignmentExpression.parent.type !== 'ExpressionStatement'
+	) {
+		return;
+	}
+
+	const assignmentStatement = assignmentExpression.parent;
+	const block = assignmentStatement.parent;
+	if (block.type !== 'BlockStatement') {
+		return;
+	}
+
+	return {
+		assignmentExpression,
+		assignmentStatement,
+		block,
+	};
+}
+
+function hasCommentNextTo(sourceCode, node, direction) {
+	const token = direction === 'before'
+		? sourceCode.getTokenBefore(node, {includeComments: true})
+		: sourceCode.getTokenAfter(node, {includeComments: true});
+
+	return Boolean(token && isCommentToken(token));
+}
+
+function isParenthesizedAssignmentExpression(sourceCode, assignmentExpression) {
+	const tokenBefore = sourceCode.getTokenBefore(assignmentExpression);
+	const tokenAfter = sourceCode.getTokenAfter(assignmentExpression);
+
+	return tokenBefore?.value === '(' && tokenAfter?.value === ')';
+}
+
+const hasCommentsThatBlockUninitializedDeclarationFix = (sourceCode, declaration, assignmentStatement) =>
+	sourceCode.getCommentsInside(declaration).length > 0
+	|| sourceCode.getCommentsInside(assignmentStatement).length > 0
+	|| hasCommentNextTo(sourceCode, declaration, 'before')
+	|| hasCommentNextTo(sourceCode, declaration, 'after')
+	|| hasCommentNextTo(sourceCode, assignmentStatement, 'before')
+	|| hasCommentNextTo(sourceCode, assignmentStatement, 'after');
+
+const hasCommentsThatBlockInitializedDeclarationFix = (sourceCode, declaration, firstStatement) =>
+	sourceCode.getCommentsInside(declaration).length > 0
+	|| hasCommentNextTo(sourceCode, declaration, 'before')
+	|| hasCommentNextTo(sourceCode, declaration, 'after')
+	|| hasCommentNextTo(sourceCode, firstStatement, 'before');
+
+function getUninitializedDeclarationFix({
+	sourceCode,
+	declaration,
+	assignmentExpression,
+	assignmentStatement,
+	name,
+}) {
+	return function * (fixer) {
+		yield removeStatement(declaration, {sourceCode}, fixer);
+
+		const declarationText = `const ${name} = `;
+
+		if (isParenthesizedAssignmentExpression(sourceCode, assignmentExpression)) {
+			yield fixer.replaceText(assignmentStatement, `${declarationText}${sourceCode.getText(assignmentExpression.right)};`);
+			return;
+		}
+
+		const [assignmentStart] = sourceCode.getRange(assignmentExpression);
+		const [rightStart] = sourceCode.getRange(assignmentExpression.right);
+		yield fixer.replaceTextRange([assignmentStart, rightStart], declarationText);
+	};
+}
+
+function getInitializedDeclarationProblem(declaration, sourceCode, references) {
+	const [declarator] = declaration.declarations;
+	const {init} = declarator;
+	if (
+		!(init.type === 'Literal' && !init.regex)
+		&& !(init.type === 'TemplateLiteral' && init.expressions.length === 0)
+	) {
+		return;
+	}
+
+	const statements = declaration.parent.body;
+	const nextStatement = statements[statements.indexOf(declaration) + 1];
+	if (nextStatement?.type !== 'IfStatement') {
+		return;
+	}
+
+	if (references.length === 0) {
+		return;
+	}
+
+	const block = [nextStatement.consequent, nextStatement.alternate].find(branch =>
+		branch?.type === 'BlockStatement'
+		&& references.every(reference => isDescendantWithoutScopeBoundary(reference.identifier, branch)),
+	);
+	if (!block || hasDynamicScope(declaration.parent, sourceCode.visitorKeys)) {
+		return;
+	}
+
+	const problem = {
+		node: declarator.id,
+		messageId: MESSAGE_ID,
+		data: {name: declarator.id.name},
+	};
+
+	const [firstStatement] = block.body;
+	if (
+		!declarator.id.typeAnnotation
+		&& !hasCommentsThatBlockInitializedDeclarationFix(sourceCode, declaration, firstStatement)
+	) {
+		problem.fix = function * (fixer) {
+			const openingBrace = sourceCode.getFirstToken(block);
+			const [, openingBraceEnd] = sourceCode.getRange(openingBrace);
+			const [firstStatementStart] = sourceCode.getRange(firstStatement);
+			const separator = sourceCode.text.slice(openingBraceEnd, firstStatementStart) || ' ';
+			const declarationText = sourceCode.getText(declaration);
+			const semicolon = declarationText.endsWith(';') ? '' : ';';
+			const [declarationStart] = sourceCode.getRange(declaration);
+			const [nextStatementStart] = sourceCode.getRange(nextStatement);
+
+			yield fixer.removeRange([declarationStart, nextStatementStart]);
+			yield fixer.insertTextBefore(firstStatement, `${declarationText}${semicolon}${separator}`);
+		};
+	}
+
+	return problem;
+}
+
+function getProblem(node, sourceCode) {
+	if (!isDeclarationCandidate(node)) {
+		return;
+	}
+
+	const [declarator] = node.declarations;
+	const [variable] = sourceCode.getDeclaredVariables(declarator);
+	if (
+		variable.eslintUsed
+		|| isExported(node, declarator.id.name)
+	) {
+		return;
+	}
+
+	const references = variable.references.filter(reference => !reference.init);
+	if (declarator.init) {
+		return getInitializedDeclarationProblem(node, sourceCode, references);
+	}
+
+	if (node.kind !== 'let') {
+		return;
+	}
+
+	const writeReferences = references.filter(reference => reference.isWrite());
+	if (
+		writeReferences.length !== 1
+		|| references.every(reference => !reference.isRead())
+	) {
+		return;
+	}
+
+	const assignment = getAssignment(writeReferences[0]);
+	if (!assignment) {
+		return;
+	}
+
+	const {
+		assignmentExpression,
+		assignmentStatement,
+		block,
+	} = assignment;
+	const [, declarationEnd] = sourceCode.getRange(node);
+	const [assignmentStatementStart, assignmentStatementEnd] = sourceCode.getRange(assignmentStatement);
+
+	if (
+		!isDescendantWithoutScopeBoundary(block, node.parent)
+		|| hasDynamicScope(node.parent, sourceCode.visitorKeys)
+	) {
+		return;
+	}
+
+	if (assignmentStatementStart < declarationEnd) {
+		return;
+	}
+
+	if (references.some(reference => !isDescendantWithoutScopeBoundary(reference.identifier, block))) {
+		return;
+	}
+
+	if (references.some(reference => reference.isRead() && sourceCode.getRange(reference.identifier)[0] < assignmentStatementEnd)) {
+		return;
+	}
+
+	const problem = {
+		node: declarator.id,
+		messageId: MESSAGE_ID,
+		data: {name: declarator.id.name},
+	};
+
+	if (
+		!declarator.id.typeAnnotation
+		&& !(
+			isParenthesizedAssignmentExpression(sourceCode, assignmentExpression)
+			&& assignmentExpression.right.type === 'SequenceExpression'
+		)
+		&& !hasCommentsThatBlockUninitializedDeclarationFix(sourceCode, node, assignmentStatement)
+	) {
+		problem.fix = getUninitializedDeclarationFix({
+			sourceCode,
+			declaration: node,
+			assignmentExpression,
+			assignmentStatement,
+			name: declarator.id.name,
+		});
+	}
+
+	return problem;
+}
+
+/**
+@param {import('eslint').Rule.RuleContext} context
+*/
+const create = context => {
+	const {sourceCode} = context;
+
+	context.on('VariableDeclaration', node => getProblem(node, sourceCode));
+};
+
+/**
+@type {import('eslint').Rule.RuleModule}
+*/
+const config = {
+	create,
+	meta: {
+		type: 'suggestion',
+		docs: {
+			description: 'Prefer declaring variables in the smallest possible scope.',
+			recommended: true,
+		},
+		fixable: 'code',
+		schema: [],
+		messages,
+		languages: [
+			'js/js',
+		],
+	},
+};
+
+export default config;

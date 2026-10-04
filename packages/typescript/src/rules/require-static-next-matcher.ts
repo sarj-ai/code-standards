@@ -4,7 +4,9 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/require-static-next-matcher.test.ts
  */
 
-import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
+import { sourceOrigin } from "./_source-origin.js";
+import type { ESTree } from "@oxlint/plugins";
+
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 
@@ -26,50 +28,49 @@ export const REQUIRE_STATIC_NEXT_MATCHER_DOCUMENTATION = {
 
 const NEXT_ENTRY_FILE = /(?:^|[/\\])(?:middleware|proxy)\.[cm]?[jt]sx?$/u;
 
-function unwrapExpression(node: TSESTree.Node): TSESTree.Node {
+function unwrapExpression(node: ESTree.Node): ESTree.Node {
   if (
-    node.type === AST_NODE_TYPES.TSAsExpression ||
-    node.type === AST_NODE_TYPES.TSSatisfiesExpression ||
-    node.type === AST_NODE_TYPES.TSNonNullExpression ||
-    node.type === AST_NODE_TYPES.TSTypeAssertion
+    node.type === "TSAsExpression" ||
+    node.type === "TSSatisfiesExpression" ||
+    node.type === "TSNonNullExpression" ||
+    node.type === "TSTypeAssertion"
   ) {
     return unwrapExpression(node.expression);
   }
   return node;
 }
 
-function isStaticValue(node: TSESTree.Node): boolean {
+function isStaticValue(node: ESTree.Node): boolean {
   const value = unwrapExpression(node);
-  if (value.type === AST_NODE_TYPES.Literal) {
+  if (value.type === "Literal") {
     return true;
   }
-  if (value.type === AST_NODE_TYPES.TemplateLiteral) {
+  if (value.type === "TemplateLiteral") {
     return value.expressions.length === 0;
   }
-  if (value.type === AST_NODE_TYPES.ArrayExpression) {
+  if (value.type === "ArrayExpression") {
     return value.elements.every(
       (element) =>
         element !== null &&
-        element.type !== AST_NODE_TYPES.SpreadElement &&
+        element.type !== "SpreadElement" &&
         isStaticValue(element),
     );
   }
-  if (value.type === AST_NODE_TYPES.ObjectExpression) {
+  if (value.type === "ObjectExpression") {
     return value.properties.every(
       (property) =>
-        property.type === AST_NODE_TYPES.Property &&
+        property.type === "Property" &&
         property.kind === "init" &&
         !property.computed &&
-        property.value.type !== AST_NODE_TYPES.AssignmentPattern &&
         isStaticValue(property.value),
     );
   }
   return false;
 }
 
-function propertyName(property: TSESTree.Property): string | null {
-  if (!property.computed && property.key.type === AST_NODE_TYPES.Identifier) return property.key.name;
-  return property.key.type === AST_NODE_TYPES.Literal && typeof property.key.value === "string"
+function propertyName(property: ESTree.ObjectProperty): string | null {
+  if (!property.computed && property.key.type === "Identifier") return property.key.name;
+  return property.key.type === "Literal" && typeof property.key.value === "string"
     ? property.key.value
     : null;
 }
@@ -91,32 +92,31 @@ export default createRule<Options, MessageIds>({
   },
   defaultOptions: [],
   create(context) {
-    if (!NEXT_ENTRY_FILE.test(context.filename)) {
+    if (!NEXT_ENTRY_FILE.test(sourceOrigin(context).filename)) {
       return {};
     }
 
     return {
       ExportNamedDeclaration(node): void {
-        if (node.declaration?.type !== AST_NODE_TYPES.VariableDeclaration) {
+        if (node.declaration?.type !== "VariableDeclaration") {
           return;
         }
         for (const declaration of node.declaration.declarations) {
           if (
-            declaration.id.type !== AST_NODE_TYPES.Identifier ||
+            declaration.id.type !== "Identifier" ||
             declaration.id.name !== "config" ||
             declaration.init === null
           ) {
             continue;
           }
           const config = unwrapExpression(declaration.init);
-          if (config.type !== AST_NODE_TYPES.ObjectExpression) {
+          if (config.type !== "ObjectExpression") {
             continue;
           }
           for (const property of config.properties) {
             if (
-              property.type !== AST_NODE_TYPES.Property ||
-              propertyName(property) !== "matcher" ||
-              property.value.type === AST_NODE_TYPES.AssignmentPattern
+              property.type !== "Property" ||
+              propertyName(property) !== "matcher"
             ) {
               continue;
             }

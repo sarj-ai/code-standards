@@ -19,23 +19,13 @@ if TYPE_CHECKING:
 SCHEMA_VERSION: Final = 1
 _INVENTORY_PATH: Final = "packages/standards/src/sarj_standards/configs/rule-inventory.v1.json"
 _CATALOG_PATH: Final = "packages/standards/src/sarj_standards/schemas/rule-catalog.v1.json"
-_ENGINE_BY_FAMILY: Final = MappingProxyType(
-    {
-        "typescript": "eslint",
-        "iac": "iac",
-        "python": "python",
-        "sql": "sql",
-        "text": "text",
-    }
+# Catalog engines are revision-owned metadata. Both historical and current
+# engines can describe the same stable inventory family.
+_FAMILY_BY_ENGINE: Final = MappingProxyType(
+    {"eslint": "typescript", "oxlint": "typescript", "iac": "iac", "python": "python", "sql": "sql", "text": "text"}
 )
-_RELEASE_TARGET_BY_ENGINE: Final = MappingProxyType(
-    {
-        "eslint": "typescript",
-        "iac": "iac",
-        "python": "python",
-        "sql": "sql",
-        "text": "standards",
-    }
+_RELEASE_TARGET_BY_FAMILY: Final = MappingProxyType(
+    {"typescript": "typescript", "iac": "iac", "python": "python", "sql": "sql", "text": "standards"}
 )
 _POLICY_FIELDS: Final = frozenset({"defaultLevel", "optionsSchema"})
 _INVENTORY_ENTRY_FIELDS: Final = frozenset({"code", "family", "id", "source", "test"})
@@ -45,12 +35,12 @@ _GIT_SHA_LENGTH: Final = 40
 _ERROR_FIRST_APPROVALS: Final = frozenset(
     {
         "python:no-excessive-cognitive-complexity",
-        "eslint:no-excessive-cognitive-complexity",
-        "eslint:no-known-value-widening",
-        "eslint:no-broad-return-type",
-        "eslint:prefer-typed-reflection",
-        "eslint:no-conditional-empty-object-spread",
-        "eslint:no-reduce-accumulator-copy",
+        "oxlint:no-excessive-cognitive-complexity",
+        "oxlint:no-known-value-widening",
+        "oxlint:no-broad-return-type",
+        "oxlint:prefer-typed-reflection",
+        "oxlint:no-conditional-empty-object-spread",
+        "oxlint:no-reduce-accumulator-copy",
     }
 )
 
@@ -111,20 +101,20 @@ def compare(
         old_descriptor = old["descriptors"].get(key)
         new_descriptor = new["descriptors"].get(key)
         if old_descriptor is None:
-            changes.append(_change("added", key, None, new_descriptor))
+            changes.append(_change("added", None, new_descriptor))
             continue
         if new_descriptor is None:
-            changes.append(_change("removed", key, old_descriptor, None))
+            changes.append(_change("removed", old_descriptor, None))
             continue
         old_catalog = old["catalog"][key]
         new_catalog = new["catalog"][key]
         if any(old_catalog.get(field) != new_catalog.get(field) for field in _POLICY_FIELDS):
-            changes.append(_change("policy-changed", key, old_descriptor, new_descriptor))
+            changes.append(_change("policy-changed", old_descriptor, new_descriptor))
         if (
             _implementation_projection(old_catalog) != _implementation_projection(new_catalog)
             or old["implementation_blobs"][key] != new["implementation_blobs"][key]
         ):
-            changes.append(_change("implementation-changed", key, old_descriptor, new_descriptor))
+            changes.append(_change("implementation-changed", old_descriptor, new_descriptor))
     changes.sort(key=itemgetter("key", "kind"))
     changed_selectors = sorted({change["key"] for change in changes})
     identity: dict[str, object] = {
@@ -164,7 +154,6 @@ def added_rules_at_other_levels(comparison: RuleChangeSetV1, *, required: RuleLe
 
 def _change(
     kind: ChangeKind,
-    key: str,
     before: RuleDescriptorV1 | None,
     after: RuleDescriptorV1 | None,
 ) -> RuleChangeV1:
@@ -174,7 +163,7 @@ def _change(
         raise ValueError(msg)
     return {
         "kind": kind,
-        "key": key,
+        "key": current["key"],
         "releaseTarget": current["releaseTarget"],
         "before": before,
         "after": after,
@@ -216,13 +205,14 @@ def _load_revision(  # ruff: ignore[too-many-locals] -- validates and joins two 
         key = _string(entry, "key")
         engine = _string(entry, "engine")
         rule_id = _string(entry, "id")
-        if key != f"{engine}:{rule_id}" or engine not in _RELEASE_TARGET_BY_ENGINE:
+        if key != f"{engine}:{rule_id}" or engine not in _FAMILY_BY_ENGINE:
             msg = f"rule catalog entry {index} has inconsistent key/engine/id"
             raise ValueError(msg)
-        if key in catalog_by_key:
-            msg = f"rule catalog repeats {key}"
+        identity = f"{_FAMILY_BY_ENGINE[engine]}:{rule_id}"
+        if identity in catalog_by_key:
+            msg = f"rule catalog repeats {identity}"
             raise ValueError(msg)
-        catalog_by_key[key] = entry
+        catalog_by_key[identity] = entry
 
     if inventory_by_key.keys() != catalog_by_key.keys():
         missing_catalog = sorted(inventory_by_key.keys() - catalog_by_key.keys())
@@ -240,7 +230,7 @@ def _load_revision(  # ruff: ignore[too-many-locals] -- validates and joins two 
         inventory_entry = inventory_by_key[key]
         catalog_entry = catalog_by_key[key]
         family = _string(inventory_entry, "family")
-        engine = _ENGINE_BY_FAMILY[family]
+        engine = _string(catalog_entry, "engine")
         catalog_code = catalog_entry.get("code")
         if catalog_code is not None and not isinstance(catalog_code, str):
             msg = f"rule catalog {key} has invalid code"
@@ -250,13 +240,13 @@ def _load_revision(  # ruff: ignore[too-many-locals] -- validates and joins two 
             msg = f"rule inventory/catalog disagreement for {key}: code differs"
             raise ValueError(msg)
         descriptors[key] = {
-            "key": key,
+            "key": _string(catalog_entry, "key"),
             "engine": engine,
             "family": family,
             "id": _string(inventory_entry, "id"),
             "code": catalog_code,
             "defaultLevel": _default_level(catalog_entry, key=key),
-            "releaseTarget": _RELEASE_TARGET_BY_ENGINE[engine],
+            "releaseTarget": _RELEASE_TARGET_BY_FAMILY[family],
             "source": _string(inventory_entry, "source"),
             "test": _string(inventory_entry, "test"),
         }
@@ -279,13 +269,11 @@ def _inventory_by_key(inventory_entries: list[object]) -> dict[str, dict[str, ob
             msg = f"rule inventory entry {index} has unexpected or missing fields"
             raise ValueError(msg)
         family = _string(entry, "family")
-        try:
-            engine = _ENGINE_BY_FAMILY[family]
-        except KeyError as exc:
+        if family not in _RELEASE_TARGET_BY_FAMILY:
             msg = f"rule inventory entry {index} has unknown family {family!r}"
-            raise ValueError(msg) from exc
+            raise ValueError(msg)
         rule_id = _string(entry, "id")
-        key = f"{engine}:{rule_id}"
+        key = f"{family}:{rule_id}"
         if key in inventory_by_key:
             msg = f"rule inventory repeats {key}"
             raise ValueError(msg)

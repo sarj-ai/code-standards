@@ -3,7 +3,8 @@
  *
  */
 
-import { AST_NODE_TYPES, AST_TOKEN_TYPES, type TSESTree } from "@typescript-eslint/utils";
+import type { ESTree } from "@oxlint/plugins";
+
 
 import { isProtected, splitIdentifier, stem } from "./_comments.js";
 
@@ -101,16 +102,16 @@ export function labelStems(body: string): string {
 }
 
 /** Strip the `*` decoration off a block comment so JSDoc and `//` read alike. */
-export function commentBody(comment: TSESTree.Comment): string {
+export function commentBody(comment: ESTree.Comment): string {
   return comment.value
     .replace(/^\*+/, "")
     .replace(/^[ \t]*\*[ \t]?/gm, "")
     .trim();
 }
 
-export function hasJsDocTag(comment: TSESTree.Comment): boolean {
+export function hasJsDocTag(comment: ESTree.Comment): boolean {
   return (
-    comment.type === AST_TOKEN_TYPES.Block &&
+    comment.type === "Block" &&
     comment.value.startsWith("*") &&
     /(?:^|\s)@[A-Za-z][\w-]*\b/u.test(commentBody(comment))
   );
@@ -182,11 +183,11 @@ export function isWall(
   );
 }
 
-const OPAQUE_VALUE_TYPES: ReadonlySet<AST_NODE_TYPES> = new Set([
-  AST_NODE_TYPES.FunctionExpression,
-  AST_NODE_TYPES.ArrowFunctionExpression,
-  AST_NODE_TYPES.ObjectExpression,
-  AST_NODE_TYPES.ArrayExpression,
+const OPAQUE_VALUE_TYPES: ReadonlySet<ESTree.Node["type"]> = new Set([
+  "FunctionExpression",
+  "ArrowFunctionExpression",
+  "ObjectExpression",
+  "ArrayExpression",
 ]);
 
 export interface DeclarationRange {
@@ -194,7 +195,7 @@ export interface DeclarationRange {
   readonly start: number;
 }
 
-export function declarationRange(member: TSESTree.Node): DeclarationRange {
+export function declarationRange(member: ESTree.Node): DeclarationRange {
   const body = bodyOf(member);
   return {
     end: body?.range[0] ?? member.range[1],
@@ -202,14 +203,14 @@ export function declarationRange(member: TSESTree.Node): DeclarationRange {
   };
 }
 
-function bodyOf(member: TSESTree.Node): TSESTree.Node | undefined {
+function bodyOf(member: ESTree.Node): ESTree.Node | undefined {
   if (
-    member.type === AST_NODE_TYPES.MethodDefinition ||
-    member.type === AST_NODE_TYPES.TSAbstractMethodDefinition
+    member.type === "MethodDefinition" ||
+    member.type === "TSAbstractMethodDefinition"
   ) {
     return member.value.body ?? undefined;
   }
-  if (member.type === AST_NODE_TYPES.Property || member.type === AST_NODE_TYPES.PropertyDefinition) {
+  if (member.type === "Property" || member.type === "PropertyDefinition") {
     const value = member.value;
     if (value !== null && OPAQUE_VALUE_TYPES.has(value.type)) return value;
   }

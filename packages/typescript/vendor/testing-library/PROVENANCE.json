@@ -1,0 +1,45 @@
+{
+  "package": "eslint-plugin-testing-library",
+  "version": "7.16.2",
+  "source": "https://github.com/testing-library/eslint-plugin-testing-library",
+  "license": "LICENSE",
+  "changes": [
+    "Export the 22 recommended React syntax/scope rules through the native plugin, retaining the original five-rule central defaults; expose the original React profile separately with original options/severities.",
+    "Replace utility barrel imports with direct licensed standalone utility source and copied AST predicate helpers; retain semantics.",
+    "Omit ESLint config assembly and use native context.filename/sourceCode/getScope/getDeclaredVariables directly; no compatibility fallbacks or engine dependency.",
+    "Use native lexical import/render-result bindings when aggressive module reporting is off, preventing shadowed/import-unrelated names from being treated as Testing Library utilities. Preserve explicit aggressive-reporting options.",
+    "Two waitFor fixes remove exact AST statement ranges and use their source text instead of assuming standalone whole-line statements or an extra line past EOF; this preserves minified/single-line files and fix idempotence.",
+    "Remove seven unconfigured rule initializers; retain licensed shared helper code needed by the 22 exposed rules.",
+    "Native await-async-events/queries/utils and prefer-screen-queries accept an optional first-rule-options utilsModule string. Helpers read actual defaulted rule options and pass the module directly to genuine lexical import resolution; absent options preserve original global settings. This allows a narrow native override to recognize a project test-helper module without globally recognizing it in helper/e2e scopes. No override.settings, fabricated context, runner or checker service is used. Existing eventModule options and all other rules remain available.",
+    "User-event methods and setup instances follow native import and variable binding identities, preserving official/custom aliases and same-file setup wrappers while avoiding locally shadowed actors."
+  ],
+  "helpers": {
+    "@typescript-eslint/utils": "8.71.0",
+    "@typescript-eslint/scope-manager": "8.71.0"
+  },
+  "integrity": "sha512-8gleGnQXK2ZA3hHwjCwpYTZvM+9VsrJ+/9kDI8CjqAQGAdMQOdn/rJNu7ZySENuiWlGKQWyZJ4ZjEg2zamaRHw==",
+  "rules": [
+    "await-async-events",
+    "await-async-queries",
+    "await-async-utils",
+    "no-await-sync-events",
+    "no-await-sync-queries",
+    "no-container",
+    "no-debugging-utils",
+    "no-dom-import",
+    "no-global-regexp-flag-in-query",
+    "no-manual-cleanup",
+    "no-node-access",
+    "no-promise-in-fire-event",
+    "no-render-in-lifecycle",
+    "no-unnecessary-act",
+    "no-wait-for-multiple-assertions",
+    "no-wait-for-side-effects",
+    "no-wait-for-snapshot",
+    "prefer-find-by",
+    "prefer-presence-queries",
+    "prefer-query-by-disappearance",
+    "prefer-screen-queries",
+    "render-result-naming-convention"
+  ]
+}

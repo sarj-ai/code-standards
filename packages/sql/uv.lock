@@ -187,7 +187,7 @@ wheels = [
 
 [[package]]
 name = "sarj-rule-contracts"
-version = "0.2.0"
+version = "0.3.0"
 source = { editable = "../contracts" }
 
 [package.metadata]
@@ -201,7 +201,7 @@ dev = [
 
 [[package]]
 name = "sarj-sql-lint"
-version = "0.18.9"
+version = "0.18.10"
 source = { editable = "." }
 dependencies = [
     { name = "sarj-rule-contracts" },

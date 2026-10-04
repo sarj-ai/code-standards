@@ -4,12 +4,10 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/prefer-millisecond-control-duration-schema.test.ts
  */
 
-import {
-  ASTUtils,
-  AST_NODE_TYPES,
-  type TSESLint,
-  type TSESTree,
-} from "@typescript-eslint/utils";
+import { sourceOrigin } from "./_source-origin.js";
+import type { ESTree, Variable } from "@oxlint/plugins";
+import { findVariable } from "./_scope.js";
+
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile, isTestFile } from "./_paths.js";
@@ -69,8 +67,8 @@ const CONTROL_SECONDS_RE =
 const CONTROL_SECONDS_CAMEL_RE =
   /(?:timeout|delay|interval|backoff|ttl|lease|heartbeat|debounce|throttle)Seconds$/i;
 
-function directIdentifierKey(node: TSESTree.Property): TSESTree.Identifier | null {
-  return !node.computed && node.key.type === AST_NODE_TYPES.Identifier ? node.key : null;
+function directIdentifierKey(node: ESTree.ObjectProperty): ESTree.BindingIdentifier | null {
+  return !node.computed && node.key.type === "Identifier" ? node.key : null;
 }
 
 export default createRule<Options, MessageIds>({
@@ -88,36 +86,36 @@ export default createRule<Options, MessageIds>({
   defaultOptions: [],
   create(context) {
     if (
-      isGeneratedFile(context.filename, context.sourceCode.text) ||
-      isTestFile(context.filename, ["fixtureTree"])
+      isGeneratedFile(sourceOrigin(context).filename, sourceOrigin(context).text) ||
+      isTestFile(sourceOrigin(context).filename, ["fixtureTree"])
     ) {
       return {};
     }
 
-    const zodNamespaces = new Set<TSESLint.Scope.Variable>();
-    const objectFactories = new Set<TSESLint.Scope.Variable>();
-    const numberFactories = new Set<TSESLint.Scope.Variable>();
+    const zodNamespaces = new Set<Variable>();
+    const objectFactories = new Set<Variable>();
+    const numberFactories = new Set<Variable>();
 
-    function binding(identifier: TSESTree.Identifier): TSESLint.Scope.Variable | null {
-      return ASTUtils.findVariable(context.sourceCode.getScope(identifier), identifier.name);
+    function binding(identifier: ESTree.BindingIdentifier): Variable | null {
+      return findVariable(context.sourceCode.getScope(identifier), identifier.name);
     }
 
-    function record(target: Set<TSESLint.Scope.Variable>, identifier: TSESTree.Identifier): void {
+    function record(target: Set<Variable>, identifier: ESTree.BindingIdentifier): void {
       const variable = binding(identifier);
       if (variable !== null) target.add(variable);
     }
 
-    function isZodObjectCall(node: TSESTree.CallExpression): boolean {
+    function isZodObjectCall(node: ESTree.CallExpression): boolean {
       const callee = node.callee;
-      if (callee.type === AST_NODE_TYPES.Identifier) {
+      if (callee.type === "Identifier") {
         const variable = binding(callee);
         return variable !== null && objectFactories.has(variable);
       }
       if (
-        callee.type !== AST_NODE_TYPES.MemberExpression ||
+        callee.type !== "MemberExpression" ||
         callee.computed ||
-        callee.object.type !== AST_NODE_TYPES.Identifier ||
-        callee.property.type !== AST_NODE_TYPES.Identifier ||
+        callee.object.type !== "Identifier" ||
+        callee.property.type !== "Identifier" ||
         (callee.property.name !== "object" && callee.property.name !== "strictObject")
       ) {
         return false;
@@ -126,16 +124,16 @@ export default createRule<Options, MessageIds>({
       return variable !== null && zodNamespaces.has(variable);
     }
 
-    function isNumericSchema(node: TSESTree.Node): boolean {
-      if (node.type !== AST_NODE_TYPES.CallExpression) return false;
+    function isNumericSchema(node: ESTree.Node): boolean {
+      if (node.type !== "CallExpression") return false;
       const callee = node.callee;
-      if (callee.type === AST_NODE_TYPES.Identifier) {
+      if (callee.type === "Identifier") {
         const variable = binding(callee);
         return variable !== null && numberFactories.has(variable);
       }
-      if (callee.type !== AST_NODE_TYPES.MemberExpression || callee.computed ||
-          callee.property.type !== AST_NODE_TYPES.Identifier) return false;
-      if (callee.object.type === AST_NODE_TYPES.Identifier) {
+      if (callee.type !== "MemberExpression" || callee.computed ||
+          callee.property.type !== "Identifier") return false;
+      if (callee.object.type === "Identifier") {
         const variable = binding(callee.object);
         return callee.property.name === "number" && variable !== null && zodNamespaces.has(variable);
       }
@@ -144,35 +142,35 @@ export default createRule<Options, MessageIds>({
     }
 
     return {
-      ImportDeclaration(node: TSESTree.ImportDeclaration): void {
+      ImportDeclaration(node: ESTree.ImportDeclaration): void {
         if (!isZodModule(node.source.value)) return;
         for (const specifier of node.specifiers) {
-          if (specifier.type === AST_NODE_TYPES.ImportSpecifier && specifier.imported.type === AST_NODE_TYPES.Identifier && specifier.imported.name === "number") {
+          if (specifier.type === "ImportSpecifier" && specifier.imported.type === "Identifier" && specifier.imported.name === "number") {
             record(numberFactories, specifier.local);
           }
           if (
-            specifier.type === AST_NODE_TYPES.ImportNamespaceSpecifier ||
-            specifier.type === AST_NODE_TYPES.ImportDefaultSpecifier ||
-            (specifier.type === AST_NODE_TYPES.ImportSpecifier &&
-              specifier.imported.type === AST_NODE_TYPES.Identifier &&
+            specifier.type === "ImportNamespaceSpecifier" ||
+            specifier.type === "ImportDefaultSpecifier" ||
+            (specifier.type === "ImportSpecifier" &&
+              specifier.imported.type === "Identifier" &&
               specifier.imported.name === "z")
           ) {
             record(zodNamespaces, specifier.local);
           } else if (
-            specifier.type === AST_NODE_TYPES.ImportSpecifier &&
-            specifier.imported.type === AST_NODE_TYPES.Identifier &&
+            specifier.type === "ImportSpecifier" &&
+            specifier.imported.type === "Identifier" &&
             (specifier.imported.name === "object" || specifier.imported.name === "strictObject")
           ) {
             record(objectFactories, specifier.local);
           }
         }
       },
-      CallExpression(node: TSESTree.CallExpression): void {
+      CallExpression(node: ESTree.CallExpression): void {
         if (!isZodObjectCall(node)) return;
         const shape = node.arguments[0];
-        if (shape?.type !== AST_NODE_TYPES.ObjectExpression) return;
+        if (shape?.type !== "ObjectExpression") return;
         for (const member of shape.properties) {
-          if (member.type !== AST_NODE_TYPES.Property || !isNumericSchema(member.value)) continue;
+          if (member.type !== "Property" || !isNumericSchema(member.value)) continue;
           const key = directIdentifierKey(member);
           if (
             key === null ||

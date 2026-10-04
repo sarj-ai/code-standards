@@ -1,0 +1,695 @@
+import path from 'node:path';
+import {isRegExp} from 'node:util/types';
+import {
+	getAvailableVariableName,
+	cartesianProductSamples,
+	isShorthandPropertyValue,
+	getScopes,
+	upperFirst,
+	lowerFirst,
+	isVirtualFilename,
+	isIdentifierName,
+} from './utils/index.js';
+import {defaultReplacements, defaultAllowList, defaultIgnore} from './shared/name-replacements.js';
+import {
+	isClassVariable,
+	shouldCheckDefaultOrNamespaceImportName,
+	shouldCheckShorthandImportName,
+	shouldRenameVariable,
+	shouldReportIdentifierAsProperty,
+} from './shared/identifier-checks.js';
+import {renameVariable} from './fix/index.js';
+import {functionTypes} from './ast/index.js';
+
+const MESSAGE_ID_REPLACE = 'replace';
+const MESSAGE_ID_SUGGESTION = 'suggestion';
+const MESSAGE_ID_RENAME = 'rename';
+const anotherNameMessage = 'A more descriptive name will do too.';
+const messages = {
+	[MESSAGE_ID_REPLACE]: `The {{nameTypeText}} \`{{discouragedName}}\` should be named \`{{replacement}}\`. ${anotherNameMessage}`,
+	[MESSAGE_ID_SUGGESTION]: `Please rename the {{nameTypeText}} \`{{discouragedName}}\`. Suggested names are: {{replacementsText}}. ${anotherNameMessage}`,
+	[MESSAGE_ID_RENAME]: 'Rename to `{{replacement}}`.',
+};
+
+const isUpperCase = string => string === string.toUpperCase();
+const isUpperFirst = string => isUpperCase(string[0]);
+
+const prepareOptions = ({
+	checkProperties = false,
+	checkVariables = true,
+
+	checkDefaultAndNamespaceImports = 'internal',
+	checkShorthandImports = 'internal',
+	checkShorthandProperties = false,
+
+	checkFilenames = true,
+
+	extendDefaultReplacements = true,
+	replacements = {},
+
+	extendDefaultAllowList = true,
+	allowList = {},
+
+	ignore = [],
+} = {}) => {
+	const mergedReplacements = extendDefaultReplacements
+		? Object.fromEntries([...Object.keys(defaultReplacements), ...Object.keys(replacements)]
+			.map(name => [name, replacements[name] === false ? {} : {...defaultReplacements[name], ...replacements[name]}]))
+		: replacements;
+
+	const mergedAllowList = extendDefaultAllowList
+		? {...defaultAllowList, ...allowList}
+		: allowList;
+
+	ignore = [...defaultIgnore, ...ignore];
+
+	ignore = ignore.map(pattern => isRegExp(pattern) ? pattern : new RegExp(pattern, 'u'));
+
+	return {
+		checkProperties,
+		checkVariables,
+
+		checkDefaultAndNamespaceImports,
+		checkShorthandImports,
+		checkShorthandProperties,
+
+		checkFilenames,
+
+		replacements: new Map(Object.entries(mergedReplacements).map(([discouragedName, replacements]) =>
+			[discouragedName, new Map(Object.entries(replacements))])),
+		allowList: new Map(Object.entries(mergedAllowList)),
+
+		ignore,
+	};
+};
+
+/*
+Preparing the options builds around a hundred maps and regexes, and `create` runs once per linted file. ESLint hands the same options object to every file, so the prepared result can be cached on it. The prepared options are only ever read, never mutated.
+*/
+const preparedOptionsCache = new WeakMap();
+
+const getPreparedOptions = options => {
+	if (!options) {
+		return prepareOptions(options);
+	}
+
+	let preparedOptions = preparedOptionsCache.get(options);
+	if (!preparedOptions) {
+		preparedOptions = prepareOptions(options);
+		preparedOptionsCache.set(options, preparedOptions);
+	}
+
+	return preparedOptions;
+};
+
+const getWordReplacements = (word, {replacements, allowList}) => {
+	// Skip constants and allowList
+	if (isUpperCase(word) || allowList.get(word)) {
+		return [];
+	}
+
+	const replacement = replacements.get(lowerFirst(word))
+		|| replacements.get(word)
+		|| replacements.get(upperFirst(word));
+
+	let wordReplacement = [];
+	if (replacement) {
+		const transform = isUpperFirst(word) ? upperFirst : lowerFirst;
+		wordReplacement = replacement.keys()
+			.filter(name => replacement.get(name))
+			.map(name => transform(name))
+			.toArray();
+	}
+
+	return wordReplacement.toSorted((first, second) => first.localeCompare(second));
+};
+
+const getNameReplacements = (name, options, limit = 3) => {
+	const {allowList, ignore} = options;
+
+	// Skip constants and allowList
+	if (isUpperCase(name) || allowList.get(name) || ignore.some(regexp => regexp.test(name))) {
+		return {total: 0};
+	}
+
+	// Find exact replacements
+	const exactReplacements = getWordReplacements(name, options);
+
+	if (exactReplacements.length > 0) {
+		return {
+			total: exactReplacements.length,
+			samples: exactReplacements.slice(0, limit),
+		};
+	}
+
+	// An all-lowercase ASCII name has no case or symbol boundaries, so the split below yields a
+	// single word identical to `name`. The exact-match check above already covered that word, so
+	// no word-level replacement is possible and the expensive Unicode split can be skipped.
+	if (/^[a-z]+$/.test(name)) {
+		return {total: 0};
+	}
+
+	// Split words
+	const words = name.split(/(?=\P{Lowercase_Letter})|(?<=\P{Letter})/u).filter(Boolean);
+
+	let hasReplacements = false;
+	const combinations = [];
+	for (const word of words) {
+		const wordReplacements = getWordReplacements(word, options);
+
+		if (wordReplacements.length > 0) {
+			hasReplacements = true;
+			combinations.push(wordReplacements);
+			continue;
+		}
+
+		combinations.push([word]);
+	}
+
+	// No replacements for any word
+	if (!hasReplacements) {
+		return {total: 0};
+	}
+
+	const {
+		total,
+		samples,
+	} = cartesianProductSamples(combinations, limit);
+
+	// `retVal` -> `['returnValue', 'Value']` -> `['returnValue']`
+	for (const parts of samples) {
+		for (let index = parts.length - 1; index > 0; index--) {
+			const word = parts[index];
+			if (/^[a-z]+$/i.test(word) && parts[index - 1].endsWith(parts[index])) {
+				parts.splice(index, 1);
+			}
+		}
+	}
+
+	return {
+		total,
+		samples: samples.map(words => words.join('')),
+	};
+};
+
+const getMessage = (discouragedName, replacements, nameTypeText) => {
+	const {total, samples = []} = replacements;
+
+	if (total === 1) {
+		return {
+			messageId: MESSAGE_ID_REPLACE,
+			data: {
+				nameTypeText,
+				discouragedName,
+				replacement: samples[0],
+			},
+		};
+	}
+
+	let replacementsText = samples
+		.map(replacement => `\`${replacement}\``)
+		.join(', ');
+
+	const omittedReplacementsCount = total - samples.length;
+	if (omittedReplacementsCount > 0) {
+		replacementsText += `, ... (${omittedReplacementsCount > 99 ? '99+' : omittedReplacementsCount} more omitted)`;
+	}
+
+	return {
+		messageId: MESSAGE_ID_SUGGESTION,
+		data: {
+			nameTypeText,
+			discouragedName,
+			replacementsText,
+		},
+	};
+};
+
+const getSuggestions = (replacements, fix) => {
+	if (replacements.total <= 1) {
+		return;
+	}
+
+	const samples = replacements.samples.filter(replacement => typeof replacement === 'string' && isIdentifierName(replacement));
+	if (samples.length === 0) {
+		return;
+	}
+
+	return samples.map(replacement => ({
+		messageId: MESSAGE_ID_RENAME,
+		data: {replacement},
+		fix: fixer => fix(fixer, replacement),
+	}));
+};
+
+const isComment = token => token?.type === 'Block' || token?.type === 'Line';
+
+const commentAttachmentParentTypes = new Set([
+	'AssignmentExpression',
+	'ExportDefaultDeclaration',
+	'ExportNamedDeclaration',
+	'ExpressionStatement',
+	'MethodDefinition',
+	'Property',
+	'PropertyDefinition',
+	'TSAbstractMethodDefinition',
+	'TSAbstractPropertyDefinition',
+	'TSPropertySignature',
+	'TSTypeAliasDeclaration',
+	'TSTypeAnnotation',
+	'VariableDeclaration',
+	'VariableDeclarator',
+]);
+
+const functionLikeTypesWithReturnType = new Set([
+	...functionTypes,
+	'TSCallSignatureDeclaration',
+	'TSConstructSignatureDeclaration',
+	'TSConstructorType',
+	'TSDeclareFunction',
+	'TSEmptyBodyFunctionExpression',
+	'TSFunctionType',
+	'TSMethodSignature',
+]);
+
+const findAttachedComment = (node, sourceCode) => {
+	let previousToken = sourceCode.getTokenBefore(node, {includeComments: true});
+	let commentableNode = node;
+
+	while (
+		!isComment(previousToken)
+		&& commentAttachmentParentTypes.has(commentableNode.parent.type)
+	) {
+		commentableNode = commentableNode.parent;
+		previousToken = sourceCode.getTokenBefore(commentableNode, {includeComments: true});
+	}
+
+	if (!isComment(previousToken)) {
+		return;
+	}
+
+	const commentEnd = sourceCode.getLoc(previousToken).end;
+	const nodeStart = sourceCode.getLoc(commentableNode).start;
+
+	if (commentEnd.line < nodeStart.line - 1) {
+		return;
+	}
+
+	return previousToken;
+};
+
+const hasAttachedJSDocumentParameterComment = (node, sourceCode) => {
+	const comment = findAttachedComment(node, sourceCode);
+
+	return Boolean(
+		comment?.type === 'Block'
+		&& comment.value.trimStart().startsWith('*')
+		&& /@param\b/u.test(comment.value),
+	);
+};
+
+const getParentFunctionLikeNode = identifier => {
+	let {parent} = identifier;
+
+	while (parent) {
+		if (functionLikeTypesWithReturnType.has(parent.type)) {
+			return parent;
+		}
+
+		parent = parent.parent;
+	}
+};
+
+const isTSParameterPropertyName = node => {
+	if (node.parent.type === 'TSParameterProperty') {
+		return node.parent.parameter === node;
+	}
+
+	return (
+		node.parent.type === 'AssignmentPattern'
+		&& node.parent.left === node
+		&& node.parent.parent.type === 'TSParameterProperty'
+		&& node.parent.parent.parameter === node.parent
+	);
+};
+
+const shouldFixParameter = (definition, context) => {
+	if (definition.type !== 'Parameter') {
+		return true;
+	}
+
+	if (isTSParameterPropertyName(definition.name)) {
+		return false;
+	}
+
+	const functionNode = getParentFunctionLikeNode(definition.name);
+
+	if (!functionNode) {
+		return true;
+	}
+
+	return !hasAttachedJSDocumentParameterComment(functionNode, context.sourceCode);
+};
+
+const shouldAutofix = (variable, context) =>
+	shouldRenameVariable(variable) && shouldFixParameter(variable.defs[0], context);
+
+/**
+@param {import('eslint').Rule.RuleContext} context
+*/
+const create = context => {
+	const options = getPreparedOptions(context.options[0]);
+	const filenameWithExtension = context.physicalFilename;
+
+	// A `class` declaration produces two variables in two scopes:
+	// the inner class scope, and the outer one (wherever the class is declared).
+	// This map holds the outer ones to be later processed when the inner one is encountered.
+	// For why this is not an ESLint issue see https://github.com/eslint/eslint-scope/issues/48#issuecomment-464358754
+	const identifierToOuterClassVariable = new WeakMap();
+
+	const reportVariableWithClassReferences = variable => {
+		if (isClassVariable(variable)) {
+			if (variable.scope.type === 'class') { // The inner class variable
+				const [definition] = variable.defs;
+				const outerClassVariable = identifierToOuterClassVariable.get(definition.name);
+
+				if (!outerClassVariable) {
+					return reportVariable(variable);
+				}
+
+				// Create a normal-looking variable (like a `var` or a `function`)
+				// For which a single `variable` holds all references, unlike with a `class`
+				const combinedReferencesVariable = {
+					name: variable.name,
+					scope: variable.scope,
+					defs: variable.defs,
+					identifiers: variable.identifiers,
+					references: [...variable.references, ...outerClassVariable.references],
+				};
+
+				// Call the common checker with the newly forged normalized class variable
+				return reportVariable(combinedReferencesVariable);
+			}
+
+			// The outer class variable, we save it for later, when it's inner counterpart is encountered
+			const [definition] = variable.defs;
+			identifierToOuterClassVariable.set(definition.name, variable);
+
+			return;
+		}
+
+		return reportVariable(variable);
+	};
+
+	// Holds a map from a `Scope` to a `Set` of new variable names generated by our fixer.
+	// Used to avoid generating duplicate names, see for instance `let errCb, errorCb` test.
+	const scopeToNamesGeneratedByFixer = new WeakMap();
+	const isSafeName = (name, scopes) => scopes.every(scope => {
+		const generatedNames = scopeToNamesGeneratedByFixer.get(scope);
+		return !generatedNames || !generatedNames.has(name);
+	});
+
+	const reportVariable = variable => {
+		if (variable.defs.length === 0) {
+			return;
+		}
+
+		const [definition] = variable.defs;
+
+		if (!shouldCheckDefaultOrNamespaceImportName(definition, options)) {
+			return;
+		}
+
+		if (!shouldCheckShorthandImportName(definition, options, context)) {
+			return;
+		}
+
+		if (
+			!options.checkShorthandProperties
+			&& isShorthandPropertyValue(definition.name)
+		) {
+			return;
+		}
+
+		const variableReplacements = getNameReplacements(variable.name, options);
+
+		if (variableReplacements.total === 0) {
+			return;
+		}
+
+		const scopes = [
+			...variable.references.map(reference => reference.from),
+			variable.scope,
+		];
+		variableReplacements.samples = variableReplacements.samples.map(name => getAvailableVariableName(name, scopes, isSafeName));
+
+		const problem = {
+			...getMessage(definition.name.name, variableReplacements, 'variable'),
+			node: definition.name,
+		};
+
+		if (
+			variableReplacements.total === 1
+			&& shouldAutofix(variable, context)
+			&& variableReplacements.samples[0]
+			&& variable.references.every(reference => !reference.vueUsedInTemplate)
+		) {
+			const [replacement] = variableReplacements.samples;
+
+			for (const scope of scopes) {
+				if (!scopeToNamesGeneratedByFixer.has(scope)) {
+					scopeToNamesGeneratedByFixer.set(scope, new Set());
+				}
+
+				const generatedNames = scopeToNamesGeneratedByFixer.get(scope);
+				generatedNames.add(replacement);
+			}
+
+			problem.fix = fixer => renameVariable(variable, replacement, context, fixer);
+		}
+
+		if (
+			!problem.fix
+			&& shouldRenameVariable(variable)
+			&& shouldFixParameter(variable.defs[0], context)
+			&& variable.references.every(reference => !reference.vueUsedInTemplate)
+		) {
+			const suggestions = getSuggestions(
+				variableReplacements,
+				(fixer, replacement) => renameVariable(variable, replacement, context, fixer),
+			);
+
+			if (suggestions) {
+				problem.suggest = suggestions;
+			}
+		}
+
+		context.report(problem);
+	};
+
+	const reportVariables = scope => {
+		for (const variable of scope.variables) {
+			reportVariableWithClassReferences(variable);
+		}
+	};
+
+	const reportScopeVariables = scope => {
+		const scopes = getScopes(scope);
+		for (const scope of scopes) {
+			reportVariables(scope);
+		}
+	};
+
+	context.on('Identifier', node => {
+		if (!options.checkProperties) {
+			return;
+		}
+
+		if (node.name === '__proto__') {
+			return;
+		}
+
+		// The cheap AST check filters out non-property identifiers before the more
+		// expensive name analysis in `getNameReplacements`.
+		if (!shouldReportIdentifierAsProperty(node)) {
+			return;
+		}
+
+		const identifierReplacements = getNameReplacements(node.name, options);
+
+		if (identifierReplacements.total === 0) {
+			return;
+		}
+
+		const problem = {
+			...getMessage(node.name, identifierReplacements, 'property'),
+			node,
+		};
+
+		if (node.parent.type !== 'ExportSpecifier') {
+			const suggestions = getSuggestions(
+				identifierReplacements,
+				(fixer, replacement) => fixer.replaceText(node, replacement),
+			);
+
+			if (suggestions) {
+				problem.suggest = suggestions;
+			}
+		}
+
+		context.report(problem);
+	});
+
+	context.on('Program', node => {
+		if (!options.checkFilenames) {
+			return;
+		}
+
+		if (isVirtualFilename(filenameWithExtension)) {
+			return;
+		}
+
+		const filename = path.basename(filenameWithExtension);
+		const extension = path.extname(filename);
+		const filenameReplacements = getNameReplacements(path.basename(filename, extension), options);
+
+		if (filenameReplacements.total === 0) {
+			return;
+		}
+
+		filenameReplacements.samples = filenameReplacements.samples.map(replacement => `${replacement}${extension}`);
+
+		context.report({
+			...getMessage(filename, filenameReplacements, 'filename'),
+			node,
+		});
+	});
+
+	context.on('Program:exit', program => {
+		if (!options.checkVariables) {
+			return;
+		}
+
+		reportScopeVariables(context.sourceCode.getScope(program));
+	});
+};
+
+const schema = {
+	type: 'array',
+	additionalItems: false,
+	items: [
+		{
+			type: 'object',
+			additionalProperties: false,
+			properties: {
+				checkProperties: {
+					type: 'boolean',
+					description: 'Whether to check property names.',
+				},
+				checkVariables: {
+					type: 'boolean',
+					description: 'Whether to check variable names.',
+				},
+				checkDefaultAndNamespaceImports: {
+					type: [
+						'boolean',
+						'string',
+					],
+					pattern: 'internal',
+					description: 'Whether to check default and namespace import names.',
+				},
+				checkShorthandImports: {
+					type: [
+						'boolean',
+						'string',
+					],
+					pattern: 'internal',
+					description: 'Whether to check shorthand import names.',
+				},
+				checkShorthandProperties: {
+					type: 'boolean',
+					description: 'Whether to check shorthand property names.',
+				},
+				checkFilenames: {
+					type: 'boolean',
+					description: 'Whether to check filenames.',
+				},
+				extendDefaultReplacements: {
+					type: 'boolean',
+					description: 'Whether to extend the default replacements.',
+				},
+				replacements: {
+					$ref: '#/definitions/nameReplacements',
+					description: 'Custom name replacements.',
+				},
+				extendDefaultAllowList: {
+					type: 'boolean',
+					description: 'Whether to extend the default allow list.',
+				},
+				allowList: {
+					$ref: '#/definitions/booleanObject',
+					description: 'Custom allow list of names.',
+				},
+				ignore: {
+					type: 'array',
+					items: {
+						type: ['string', 'object'],
+						additionalProperties: true,
+					},
+					uniqueItems: true,
+					description: 'Patterns to ignore.',
+				},
+			},
+		},
+	],
+	definitions: {
+		nameReplacements: {
+			type: 'object',
+			additionalProperties: {
+				$ref: '#/definitions/replacements',
+			},
+		},
+		replacements: {
+			anyOf: [
+				{
+					enum: [
+						false,
+					],
+				},
+				{
+					$ref: '#/definitions/booleanObject',
+				},
+			],
+		},
+		booleanObject: {
+			type: 'object',
+			additionalProperties: {
+				type: 'boolean',
+			},
+		},
+	},
+};
+
+/**
+@type {import('eslint').Rule.RuleModule}
+*/
+const config = {
+	create,
+	meta: {
+		type: 'suggestion',
+		docs: {
+			description: 'Enforce replacements for variable, property, and filenames.',
+			recommended: true,
+		},
+		fixable: 'code',
+		hasSuggestions: true,
+		schema,
+		defaultOptions: [{}],
+		messages,
+		languages: [
+			'js/js',
+		],
+	},
+};
+
+export default config;

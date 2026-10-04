@@ -189,3 +189,70 @@ def test_check_lockfile_release_age_rejects_naive_clock(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="timezone-aware"):
         check_lockfile_release_age(lockfile, clock=lambda: naive)
+
+
+def _workspace_lockfile(tmp_path: Path, *, include_external: bool = False) -> Path:
+    native: dict[str, object] = {
+        "name": "@control/native",
+        "version": "1.0.0",
+        "dependencies": {"runtime": "1.0.0"},
+        "devDependencies": {"build": "1.0.0"},
+        "optionalDependencies": {"optional": "1.0.0"},
+        "peerDependencies": {"peer": "1.0.0"},
+    }
+    if include_external:
+        native["dependencies"] = {"runtime": "1.0.0", "docs-source": "1.0.0"}
+    docs: dict[str, object] = {"name": "docs", "version": "1.0.0", "dependencies": {"docs-source": "1.0.0"}}
+    root = {"name": "control", "version": "1.0.0", "private": True, "workspaces": ["packages/native", "apps/docs"]}
+    (tmp_path / "package.json").write_text(json.dumps(root), encoding="utf-8")
+    for location, metadata in (("packages/native", native), ("apps/docs", docs)):
+        directory = tmp_path / location
+        directory.mkdir(parents=True)
+        (directory / "package.json").write_text(json.dumps(metadata), encoding="utf-8")
+    packages: dict[str, object] = {
+        "": root,
+        "packages/native": native,
+        "apps/docs": docs,
+        "node_modules/@control/native": {"resolved": "packages/native", "link": True},
+        "node_modules/docs": {"resolved": "apps/docs", "link": True},
+        "node_modules/docs-source": {
+            "version": "1.0.0",
+            "resolved": "https://codeload.github.com/control/docs/tar.gz/exact",
+        },
+    }
+    for name in ("runtime", "transitive", "build", "optional", "peer"):
+        metadata: dict[str, object] = {
+            "version": "1.0.0",
+            "resolved": f"https://registry.npmjs.org/{name}/-/{name}-1.0.0.tgz",
+        }
+        if name == "runtime":
+            metadata["dependencies"] = {"transitive": "1.0.0"}
+        packages[f"node_modules/{name}"] = metadata
+    lockfile = tmp_path / "package-lock.json"
+    lockfile.write_text(
+        json.dumps({"name": "control", "version": "1.0.0", "lockfileVersion": 3, "packages": packages}),
+        encoding="utf-8",
+    )
+    return lockfile
+
+
+def test_real_npm_workspace_closure_checks_runtime_build_peer_optional_and_transitive_age(tmp_path: Path) -> None:
+    lockfile = _workspace_lockfile(tmp_path)
+    report = check_lockfile_release_age(
+        lockfile,
+        workspace="packages/native",
+        fetcher=lambda name: {
+            "time": {"1.0.0": "2025-01-25T12:00:00Z" if name == "transitive" else "2025-01-01T00:00:00Z"}
+        },
+        clock=lambda: datetime(2025, 2, 1, tzinfo=UTC),
+    )
+    assert {identity.name for identity in report.checked} == {"runtime", "build", "peer", "optional", "transitive"}
+    assert [str(failure) for failure in report.failures] == ["transitive@1.0.0: 6.5 days old"]
+    with pytest.raises(ValueError, match=r"resolves outside registry\.npmjs\.org"):
+        locked_registry_packages(lockfile, ReleaseAgePolicy())
+
+
+def test_real_npm_workspace_closure_rejects_reachable_nonregistry_source(tmp_path: Path) -> None:
+    lockfile = _workspace_lockfile(tmp_path, include_external=True)
+    with pytest.raises(ValueError, match=r"docs-source@1.0.0 resolves outside registry\.npmjs\.org"):
+        locked_registry_packages(lockfile, ReleaseAgePolicy(), workspace="packages/native")

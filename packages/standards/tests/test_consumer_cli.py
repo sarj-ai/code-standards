@@ -99,7 +99,7 @@ def test_global_root_equals_form_is_valid_after_the_command(tmp_path: Path) -> N
     assert cli.main(["exclude", "list", f"--root={tmp_path}"]) == 0
 
 
-def test_yarn_workspace_setup_doctor_and_check_share_an_executable_eslint_environment(
+def test_yarn_workspace_setup_doctor_and_check_share_an_executable_oxc_environment(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -133,9 +133,20 @@ def test_yarn_workspace_setup_doctor_and_check_share_an_executable_eslint_enviro
         "if arguments[:1] == ['install']:\n"
         "    Path('.pnp.cjs').touch()\n"
         "    raise SystemExit(0)\n"
-        "if arguments[:2] == ['exec', 'eslint'] and '\"eslint\"' in Path('package.json').read_text():\n"
+        "if arguments[:2] == ['exec', 'node']:\n"
+        "    request = json.loads(arguments[-1])\n"
+        "    Path(request['target']).write_text('{}')\n"
+        "    print(json.dumps({'config': request['target'], 'ruleIds': {}, 'inlineDirectives': []}))\n"
+        "    raise SystemExit(0)\n"
+        "if arguments[:2] == ['exec', 'oxfmt']:\n"
+        "    raise SystemExit(0)\n"
+        "if arguments[:2] == ['exec', 'oxlint'] and '\"oxlint\"' in Path('package.json').read_text():\n"
         "    boundary = max(index for index, value in enumerate(arguments) if value == '--') + 1\n"
-        "    print(json.dumps([{'filePath': str(Path(value).resolve()), 'messages': []} for value in arguments[boundary:]]))\n"
+        "    files = arguments[boundary:]\n"
+        "    if '--debug' in arguments:\n"
+        "        print('\\n'.join(str(Path(value).resolve()) for value in files))\n"
+        "    else:\n"
+        "        print(json.dumps({'number_of_files': len(files), 'diagnostics': []}))\n"
         "    raise SystemExit(0)\n"
         "raise SystemExit(127)\n",
         encoding="utf-8",
@@ -176,7 +187,7 @@ def test_yarn_workspace_setup_doctor_and_check_share_an_executable_eslint_enviro
     root_package: object = json.loads((tmp_path / "package.json").read_text(encoding="utf-8"))  # pyright: ignore[reportAny]
     web_package: object = json.loads((web / "package.json").read_text(encoding="utf-8"))  # pyright: ignore[reportAny]
     assert "resolutions" in as_table(root_package)
-    assert manifest.eslint_peers().items() <= manifest.table_field(as_table(web_package), "devDependencies").items()
+    assert manifest.oxlint_peers().items() <= manifest.table_field(as_table(web_package), "devDependencies").items()
 
 
 def test_unified_ratchet_initializes_and_checks_a_suppression_budget(tmp_path: Path) -> None:

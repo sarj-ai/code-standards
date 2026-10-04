@@ -20,7 +20,7 @@
   --sidebar-engine-mark: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 28 28'%3E%3Crect x='.5' y='.5' width='27' height='27' rx='5' fill='%233776ab' stroke='%233776ab'/%3E%3Cpath fill='%23ffd343' d='M1 22h26v5H1z'/%3E%3Ctext x='14' y='17.5' fill='white' font-family='ui-monospace,monospace' font-size='10' font-weight='800' text-anchor='middle'%3EPy%3C/text%3E%3C/svg%3E");
 }
 
-.sidebar-content a[data-sidebar-engine='eslint'] {
+.sidebar-content a[data-sidebar-engine='oxlint'] {
   --sidebar-engine-mark: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 28 28'%3E%3Crect x='.5' y='.5' width='27' height='27' rx='5' fill='%233178c6' stroke='%233178c6'/%3E%3Ctext x='14' y='18' fill='white' font-family='ui-monospace,monospace' font-size='10' font-weight='800' text-anchor='middle'%3ETS%3C/text%3E%3C/svg%3E");
 }
 
@@ -345,7 +345,7 @@ starlight-menu-button button {
   letter-spacing: -0.04em;
 }
 
-.engine-mark--eslint {
+.engine-mark--oxlint {
   border-color: #3178c6;
   background: #3178c6;
   color: #fff;
@@ -718,9 +718,8 @@ starlight-menu-button button {
 .provider-icon--react,
 .provider-icon--react-hooks,
 .provider-icon--react-doctor { color: #4edeff; }
-.provider-icon--eslint,
-.provider-icon--eslint-comments { color: #a0a0ff; }
-.provider-icon--typescript-eslint { color: #5da9e9; }
+.provider-icon--oxlint { color: #a0a0ff; }
+.provider-icon--typescript { color: #5da9e9; }
 .provider-icon--ruff { color: #d9ef78; }
 .provider-icon--better-tailwindcss { color: #38bdf8; }
 .provider-icon--perfectionist { color: #d2a8ff; }

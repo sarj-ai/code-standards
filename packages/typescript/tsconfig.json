@@ -3,9 +3,9 @@
   "compilerOptions": {
     "outDir": "./dist",
     "rootDir": "./src",
-    // ESLint rule modules are `export default createRule(...)`. isolatedDeclarations
+    // Native rule modules are `export default createRule(...)`. isolatedDeclarations
     // (a d.ts-emit-parallelism constraint, not a type-safety one) would force an
-    // explicit RuleModule<...> annotation on every default export for zero safety
+    // explicit Rule<...> annotation on every default export for zero safety
     // gain — tsup emits the declarations fine. Every other strict flag stays on.
     "isolatedDeclarations": false,
     "types": ["node"],

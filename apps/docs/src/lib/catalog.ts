@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 
 import { sourceRevision } from "./source-revision";
 
-export const ENGINES = ["python", "eslint", "iac", "sql", "text"] as const;
+export const ENGINES = ["python", "oxlint", "iac", "sql", "text"] as const;
 export type Engine = (typeof ENGINES)[number];
 export type DefaultLevel = "error" | "off" | "warning";
 export type Autofix = "none" | "safe" | "suggestion";
@@ -327,7 +327,7 @@ export const catalogSchema = await readGeneratedJson(
 
 export function engineLabel(engine: Engine): string {
   return {
-    eslint: "TypeScript",
+    oxlint: "TypeScript",
     iac: "IaC",
     python: "Python",
     sql: "SQL",

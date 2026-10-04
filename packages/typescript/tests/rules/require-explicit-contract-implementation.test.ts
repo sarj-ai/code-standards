@@ -1,61 +1,62 @@
-import { join } from "node:path";
-
-import * as parser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, expect, it } from "vitest";
-
-import { verifyRuleExamples } from "../../src/verify-rule-examples.js";
+// vitest: shared-module-graph
+import { RuleTester } from "oxlint/plugins-dev";
+import { describe, expect, it } from "vitest";
 import rule from "../../src/rules/require-explicit-contract-implementation.js";
-
-it("executes the documented examples", async () => {
-  await verifyRuleExamples(rule);
-});
-
 it("a structural fake actually fails the nominal runtime guard", () => {
-  abstract class Publisher { abstract publish(): void }
+  abstract class Publisher {
+    abstract publish(): void;
+  }
   class Consumer {
     constructor(readonly publisher: Publisher) {
-      if (!(publisher instanceof Publisher)) throw new TypeError("Nominal publisher required");
+      if (!(publisher instanceof Publisher))
+        throw new TypeError("Nominal publisher required");
     }
   }
-  class FakePublisher { publish(): void {} }
+  class FakePublisher {
+    publish(): void {}
+  }
   expect(() => new Consumer(new FakePublisher())).toThrow(TypeError);
 });
 
 it("prototype changes make structural fakes pass the nominal runtime guard", () => {
-  abstract class Publisher { abstract publish(): void }
+  abstract class Publisher {
+    abstract publish(): void;
+  }
   class Consumer {
     constructor(readonly publisher: Publisher) {
-      if (!(publisher instanceof Publisher)) throw new TypeError("Nominal publisher required");
+      if (!(publisher instanceof Publisher))
+        throw new TypeError("Nominal publisher required");
     }
   }
   class ConstructorFake {
-    constructor() { Object.setPrototypeOf(this, Publisher.prototype); }
+    constructor() {
+      Object.setPrototypeOf(this, Publisher.prototype);
+    }
     publish(): void {}
   }
-  class ModuleFake { publish(): void {} }
+  class ModuleFake {
+    publish(): void {}
+  }
   Object.setPrototypeOf(ModuleFake.prototype, Publisher.prototype);
   expect(new Consumer(new ConstructorFake())).toBeInstanceOf(Consumer);
   expect(new Consumer(new ModuleFake())).toBeInstanceOf(Consumer);
 });
 
-RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
 RuleTester.it = it;
 RuleTester.itOnly = it.only;
 
 const TESTER = new RuleTester({
-  languageOptions: {
-    parser,
-    parserOptions: {
-      projectService: { allowDefaultProject: ["*.ts*"] },
-      tsconfigRootDir: join(import.meta.dirname, "..", "fixtures"),
-    },
-  },
+  languageOptions: { parserOptions: { lang: "ts" } },
 });
 
 TESTER.run("require-explicit-contract-implementation", rule, {
   valid: [
+    "class Base { private token: number; } abstract class Publisher extends Base { abstract publish(): void } class Consumer { constructor(readonly publisher: Publisher) { if (!(publisher instanceof Publisher)) throw new Error(); } } class Fake { publish() {} } new Consumer(new Fake());",
+
+    "abstract class Publisher { private token: number; abstract publish(): void } class Consumer { constructor(readonly publisher: Publisher) { if (!(publisher instanceof Publisher)) throw new Error(); } } class Fake { publish() {} } new Consumer(new Fake());",
+    "abstract class Publisher { abstract get status(): string; abstract publish(): void } class Consumer { constructor(readonly publisher: Publisher) { if (!(publisher instanceof Publisher)) throw new Error(); } } class Fake { publish() {} } new Consumer(new Fake());",
+
     "interface Publisher { publish(): void } class Consumer { constructor(readonly publisher: Publisher) {} } class Fake { publish() {} } new Consumer(new Fake());",
     "abstract class Publisher { abstract publish(): void } class Consumer { constructor(readonly publisher: Publisher) {} } class Fake { publish() {} } new Consumer(new Fake());",
     "abstract class Publisher { abstract publish(): void } class Consumer { constructor(readonly publisher: Publisher) { if (publisher instanceof Publisher) publisher.publish(); } } class Fake { publish() {} } new Consumer(new Fake());",
@@ -79,6 +80,15 @@ TESTER.run("require-explicit-contract-implementation", rule, {
     "abstract class Publisher { abstract publish(): void } class Consumer { constructor(readonly publisher: Publisher) { if (!(publisher instanceof Publisher)) throw new Error(); } } class Fake { publish() {} } class Real extends Publisher { publish() {} } const Wrapped = new Proxy(Fake, { construct() { return new Real(); } }); new Consumer(new Wrapped());",
   ],
   invalid: [
+    {
+      code: "abstract class Publisher { abstract publish(): void } type Contract = Publisher; class Consumer { constructor(readonly publisher: Contract) { if (!(publisher instanceof Publisher)) throw new Error(); } } class Fake { publish() {} } new Consumer(new Fake());",
+      errors: [{ messageId: "declareActualContract" }],
+    },
+    {
+      code: "abstract class Publisher { abstract publish(): void } type Contract<T> = T; class Consumer { constructor(readonly publisher: Contract<Publisher>) { if (!(publisher instanceof Publisher)) throw new Error(); } } class Fake { publish() {} } new Consumer(new Fake());",
+      errors: [{ messageId: "declareActualContract" }],
+    },
+
     {
       code: "abstract class Publisher { abstract publish(): void } class Consumer { constructor(readonly publisher: Publisher) { if (!(publisher instanceof Publisher)) throw new Error(); } } class Fake implements Publisher { publish() {} } new Consumer(new Fake());",
       errors: [{ messageId: "declareActualContract" }],

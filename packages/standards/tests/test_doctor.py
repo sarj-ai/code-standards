@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 import sarj_standards.cli.main as cli
-from sarj_standards.libs.adoption import doctor, manifest, scaffold
+from sarj_standards.libs.adoption import doctor, lifecycle, manifest, scaffold
 from sarj_standards.libs.adoption.doctor import Level, check_pyright_deprecated, check_ruff_policy_authority
 
 
@@ -18,11 +18,41 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
+@pytest.mark.parametrize("config_name", [".oxlintrc.json", ".oxlintrc.jsonc"])
+def test_doctor_rejects_nested_json_policy_selected_instead_of_shared_rules(tmp_path: Path, config_name: str) -> None:
+    adopted = manifest.Manifest(
+        version=manifest.adopted_version(),
+        configs=("oxlint",),
+        python_dest=".",
+        typescript_dest=".",
+        hook_manager="none",
+    )
+    (tmp_path / manifest.MANIFEST_NAME).write_text(adopted.render(), encoding="utf-8")
+    (tmp_path / "oxlint.strict.mjs").write_text("export default {};\n", encoding="utf-8")
+    (tmp_path / "oxlint.config.mjs").write_text('export { default } from "./oxlint.strict.mjs";\n', encoding="utf-8")
+    nested = tmp_path / "apps" / "web"
+    nested.mkdir(parents=True)
+    (nested / config_name).write_text('{"rules":{"no-debugger":"off"}}\n', encoding="utf-8")
+    (nested / "source.ts").write_text("debugger;\n", encoding="utf-8")
+
+    [command] = lifecycle.select_oxlint_commands(tmp_path, ["apps/web/source.ts"]).commands
+    findings = doctor.diagnose_adoption_health(tmp_path)
+
+    assert command.cwd == nested
+    assert command.argv[command.argv.index("--config") + 1] == config_name
+    assert any(
+        finding.id == "doctor.oxlint.shadowed-config"
+        and finding.level is Level.DRIFT
+        and f"apps/web/{config_name}" in finding.detail
+        for finding in findings
+    )
+
+
 @pytest.mark.parametrize("profile", ["standard", "application"])
 def test_doctor_has_no_legacy_profile_library_policy_exclusions(tmp_path: Path, profile: manifest.Profile) -> None:
     adopted = manifest.Manifest(
         version=manifest.adopted_version(),
-        configs=("ruff", "eslint"),
+        configs=("ruff", "oxlint"),
         python_dest=".",
         typescript_dest=".",
         hook_manager="none",
@@ -355,7 +385,7 @@ def test_doctor_rejects_consumer_config_that_reenables_conflicting_docstring_rul
 def test_doctor_honors_explicit_fixture_exclusions(tmp_path: Path) -> None:
     retired = tmp_path / "tests" / "fixtures" / "retired.ts"
     retired.parent.mkdir(parents=True)
-    retired.write_text("// eslint-disable-next-line @sarj/no-implicit-attribute-access\n", encoding="utf-8")
+    retired.write_text("// oxlint-disable-next-line @sarj/no-implicit-attribute-access\n", encoding="utf-8")
     adopted = manifest.Manifest(
         version=manifest.adopted_version(),
         configs=(),
@@ -425,7 +455,7 @@ def test_doctor_ignores_malformed_unrelated_nested_package_json(tmp_path: Path) 
 def test_doctor_reports_malformed_nested_package_json_that_names_the_plugin(tmp_path: Path) -> None:
     package = tmp_path / "packages" / "broken" / "package.json"
     package.parent.mkdir(parents=True)
-    package.write_text('{"devDependencies":{"@sarj/eslint-plugin":\n', encoding="utf-8")
+    package.write_text('{"devDependencies":{"@sarj/oxlint-plugin":\n', encoding="utf-8")
 
     findings = doctor.diagnose(tmp_path)
 
@@ -437,7 +467,7 @@ def test_doctor_reports_excessively_nested_package_json_without_recursing(
 ) -> None:
     package = tmp_path / "packages" / "broken" / "package.json"
     package.parent.mkdir(parents=True)
-    package.write_text('{"devDependencies":{"@sarj/eslint-plugin":"1"}}', encoding="utf-8")
+    package.write_text('{"devDependencies":{"@sarj/oxlint-plugin":"1"}}', encoding="utf-8")
 
     def too_deep(_text: str) -> str | None:
         raise RecursionError

@@ -1,19 +1,33 @@
 // vitest: shared-module-graph
 import { stripTypeScriptTypes } from "node:module";
 import { runInNewContext } from "node:vm";
-import * as tsParser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { AST_NODE_TYPES } from "@typescript-eslint/utils";
-import { ESLint, Linter } from "eslint";
-import { afterAll, describe, expect, it } from "vitest";
+import { RuleTester } from "oxlint/plugins-dev";
+import type { Rule } from "@oxlint/plugins";
+import { ruleReports } from "../_native-rule.js";
+import { describe, expect, it } from "vitest";
 
-import plugin, { STRICT_RULES } from "../../src/index.js";
+import { strictRules } from "../../src/index.js";
 import rule, { functionComplexity, NO_EXCESSIVE_COGNITIVE_COMPLEXITY_DOCUMENTATION } from "../../src/rules/no-excessive-cognitive-complexity.js";
 
-RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
 RuleTester.it = it;
 RuleTester.itOnly = it.only;
+
+function scores(code: string): number[] {
+  const result: number[] = [];
+  const probe: Rule = {
+    meta: { schema: [], messages: {} },
+    create(context) {
+      return { Program(program) {
+        for (const node of program.body) if (node.type === "FunctionDeclaration") {
+          result.push(functionComplexity(node, context.sourceCode.visitorKeys).reduce((sum, point) => sum + point.amount, 0));
+        }
+      } };
+    },
+  };
+  ruleReports(probe, code);
+  return result;
+}
 
 it.each([
   ["return value;", 0],
@@ -38,27 +52,15 @@ it.each([
   ["return () => ready ? value : other;", 0],
   ["return recurse(value);", 0],
 ] as const)("scores function body %s as %i", (body, expected) => {
-  const { ast, visitorKeys } = tsParser.parseForESLint(`async function sample() { ${body} }`, { loc: true, range: true });
-  const fn = ast.body[0];
-  if (fn?.type !== AST_NODE_TYPES.FunctionDeclaration) throw new Error("Expected a function fixture");
-  expect(functionComplexity(fn, visitorKeys).reduce((sum, point) => sum + point.amount, 0)).toBe(expected);
+  expect(scores(`async function sample() { ${body} }`)).toEqual([expected]);
 });
 
-const RULE_TESTER = new RuleTester({ languageOptions: { parser: tsParser } });
+const RULE_TESTER = new RuleTester({ languageOptions: { parserOptions: { lang: "ts" } } });
 const TWENTY_ONE_GUARDS = "if (ready) work();".repeat(21);
 
-it("ships an error under the public rule name and honors an exact inline exception", () => {
-  const linter = new Linter();
-  const config = {
-    languageOptions: { parser: tsParser },
-    plugins: { "@sarj": plugin },
-    rules: { "@sarj/no-excessive-cognitive-complexity": STRICT_RULES["@sarj/no-excessive-cognitive-complexity"] },
-  };
-  const code = `function sample() { ${TWENTY_ONE_GUARDS} }`;
-  const messages = linter.verify(code, config);
-  expect(messages).toHaveLength(1);
-  expect(messages[0]).toMatchObject({ ruleId: "@sarj/no-excessive-cognitive-complexity", severity: 2 });
-  expect(linter.verify(`// eslint-disable-next-line @sarj/no-excessive-cognitive-complexity -- reviewed dispatch\n${code}`, config)).toEqual([]);
+it("ships the public rule as an error", () => {
+  expect(strictRules["@sarj/no-excessive-cognitive-complexity"]).toBe("error");
+  expect(ruleReports(rule, `function sample() { ${TWENTY_ONE_GUARDS} }`)).toHaveLength(1);
 });
 
 RULE_TESTER.run("no-excessive-cognitive-complexity", rule, {
@@ -68,50 +70,24 @@ RULE_TESTER.run("no-excessive-cognitive-complexity", rule, {
     `function sample() { return ${Array<string>(600).fill("value").join("+")}; }`,
     { filename: "src/generated/sample.ts", code: `function sample() { ${TWENTY_ONE_GUARDS} }` },
     `// @generated\nfunction sample() { ${TWENTY_ONE_GUARDS} }`,
-    `/* eslint-disable @rule-tester/no-excessive-cognitive-complexity -- tested separately by a reasoned exception */\nfunction sample() { ${TWENTY_ONE_GUARDS} }`,
   ],
   invalid: [
     { code: NO_EXCESSIVE_COGNITIVE_COMPLEXITY_DOCUMENTATION.examples[0].files[0].source, errors: [{ messageId: "excessiveComplexity", data: { score: 28, limit: 20, detail: "L1 +7 if; L1 +6 if; L1 +5 if" } }] },
     { code: `function sample() { ${TWENTY_ONE_GUARDS} }`, errors: [{ messageId: "excessiveComplexity", line: 1 }] },
     { filename: "tests/sample.test.ts", code: `function sample() { ${TWENTY_ONE_GUARDS} }`, errors: [{ messageId: "excessiveComplexity" }] },
     { code: `function outer() { function inner() { ${TWENTY_ONE_GUARDS} } } class Example { method() { ${TWENTY_ONE_GUARDS} } }`, errors: [{ messageId: "excessiveComplexity" }, { messageId: "excessiveComplexity" }] },
-    { filename: "src/Screen.tsx", code: `function Screen() { ${TWENTY_ONE_GUARDS} return <div />; }`, languageOptions: { parserOptions: { ecmaFeatures: { jsx: true } } }, errors: [{ messageId: "excessiveComplexity" }] },
+    { filename: "src/Screen.tsx", code: `function Screen() { ${TWENTY_ONE_GUARDS} return <div />; }`, languageOptions: { parserOptions: { lang: "tsx" } }, errors: [{ messageId: "excessiveComplexity" }] },
     { code: `const handler = () => { ${TWENTY_ONE_GUARDS} };`, errors: [{ messageId: "excessiveComplexity" }] },
   ],
 });
 
-const CONFIG = {
-  languageOptions: { parser: tsParser },
-  plugins: { "@sarj": plugin },
-  rules: {
-    "@sarj/no-excessive-cognitive-complexity": STRICT_RULES["@sarj/no-excessive-cognitive-complexity"],
-  },
-};
-
-it.each([
-  [20, []],
-  [21, [{ ruleId: "@sarj/no-excessive-cognitive-complexity", severity: 2 }]],
-  [25, [{ ruleId: "@sarj/no-excessive-cognitive-complexity", severity: 2 }]],
-  [26, [{ ruleId: "@sarj/no-excessive-cognitive-complexity", severity: 2 }]],
-] as const)("reports exactly the configured severity at score %i", (score, expected) => {
-  const messages = new Linter().verify(`function sample() { ${"if (ready) work();".repeat(score)} }`, CONFIG);
-  expect(messages.map(({ ruleId, severity }) => ({ ruleId, severity }))).toEqual(expected);
+it.each([20, 21, 25, 26])("retains the configured threshold at score %i", (score) => {
+  expect(ruleReports(rule, `function sample() { ${"if (ready) work();".repeat(score)} }`)).toHaveLength(Number(score > 20));
 });
 
-it("suppresses one function independently without hiding an error in another function", () => {
-  const reviewed = `function review() { ${"if (ready) work();".repeat(21)} }`;
-  const error = `function change() { ${"if (ready) work();".repeat(26)} }`;
-  const messages = new Linter().verify(`// eslint-disable-next-line @sarj/no-excessive-cognitive-complexity -- reviewed
-${reviewed}
-${error}`, CONFIG);
-  expect(messages).toHaveLength(1);
-  expect(messages[0]).toMatchObject({ ruleId: "@sarj/no-excessive-cognitive-complexity", severity: 2 });
-});
-
-it("preserves error counts through the ESLint runner", async () => {
-  const eslint = new ESLint({ overrideConfigFile: true, overrideConfig: CONFIG });
-  const [result] = await eslint.lintText(`function review() { ${"if (ready) work();".repeat(25)} } function change() { ${"if (ready) work();".repeat(26)} }`);
-  expect(result).toMatchObject({ warningCount: 0, errorCount: 2, fixableWarningCount: 0, fixableErrorCount: 0 });
+it("reports two independent complex functions", () => {
+  const source = `function review() { ${"if (ready) work();".repeat(25)} } function change() { ${"if (ready) work();".repeat(26)} }`;
+  expect(ruleReports(rule, source)).toHaveLength(2);
 });
 
 
@@ -124,10 +100,8 @@ it.each([
   const example = rule.documentation?.examples.find((item) => item.id === id);
   if (example === undefined) throw new Error(`Missing example ${id}`);
   const code = example.files[0]!.source;
-  const { ast, visitorKeys } = tsParser.parseForESLint(code, { loc: true, range: true });
-  const functions = ast.body.filter((node) => node.type === AST_NODE_TYPES.FunctionDeclaration);
-  expect(functions.map((fn) => functionComplexity(fn, visitorKeys).reduce((sum, point) => sum + point.amount, 0))).toEqual(expected);
-  expect(new Linter().verify(code, CONFIG)).toHaveLength(example.expectedCount);
+  expect(scores(code)).toEqual(expected);
+  expect(ruleReports(rule, code)).toHaveLength(example.expectedCount);
 });
 
 

@@ -13,7 +13,9 @@ from pydantic import ValidationError
 import pytest
 
 from sarj_standards.libs.adoption import manifest
+from sarj_standards.libs.adoption.manifest import as_table
 from sarj_standards.libs.diagnostics import Completion, Severity, TrustMode
+from sarj_standards.libs.json_boundary import parse_json
 from sarj_standards.libs.linting import external as external_module
 from sarj_standards.libs.linting.analysis import report_from_tools
 from sarj_standards.libs.linting.external import (
@@ -21,7 +23,6 @@ from sarj_standards.libs.linting.external import (
     analyze_external,
     parse_basedpyright,
     parse_deptry,
-    parse_eslint,
     parse_ktlint,
     parse_mobsfscan,
     parse_react_doctor,
@@ -48,42 +49,38 @@ def _write_detekt_report(command: Sequence[str], payload: str = '{"runs":[]}') -
     return path
 
 
-def _eslint_clean_payload(argv: Sequence[str], cwd: Path) -> str:
+def _oxlint_clean_payload(argv: Sequence[str], cwd: Path) -> str:
+    files = _oxlint_argv_files(argv)
+    if "--debug" in argv:
+        return "".join(f"{(cwd / value).resolve()}\n" for value in files)
+    return json.dumps({"diagnostics": [], "number_of_files": len(files)})
+
+
+def _oxlint_argv_files(argv: Sequence[str]) -> tuple[str, ...]:
     boundary = max(index for index, value in enumerate(argv) if value == "--") + 1
-    return json.dumps([{"filePath": str((cwd / value).resolve()), "messages": []} for value in argv[boundary:]])
+    return tuple(argv[boundary:])
 
 
-def test_eslint_passes_on_unpruned_suppressions_only_when_requested() -> None:
-    command = ("npx", "eslint", "--", "app.ts")
-
-    strict = external_module._eslint_json_argv(command)  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
-    scoped_baseline = external_module._eslint_json_argv(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
-        command, pass_on_unpruned_suppressions=True
-    )
-
-    assert "--pass-on-unpruned-suppressions" not in strict
-    assert scoped_baseline.count("--pass-on-unpruned-suppressions") == 1
-    assert scoped_baseline.index("--pass-on-unpruned-suppressions") < scoped_baseline.index("--")
-
-
-def test_eslint_ignored_selected_file_is_incomplete_coverage(tmp_path: Path) -> None:
+def test_oxlint_ignored_selected_file_is_incomplete_coverage(tmp_path: Path) -> None:
     source = tmp_path / "src" / "ignored.ts"
     source.parent.mkdir()
     source.write_text("export const ignored = true;\n", encoding="utf-8")
     (tmp_path / "package.json").write_text('{"name":"fixture"}\n', encoding="utf-8")
-    (tmp_path / "eslint.config.mjs").write_text('export default [{ ignores: ["src/ignored.ts"] }];\n', encoding="utf-8")
+    (tmp_path / "oxlint.config.mjs").write_text(
+        'export default { ignorePatterns: ["src/ignored.ts"] };\n', encoding="utf-8"
+    )
 
     def ignored(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
-        assert "--no-warn-ignored" in argv
+        assert "--debug" in argv
         assert cwd == tmp_path
-        return ProcessOutput(0, "[]", "")
+        return ProcessOutput(0, "", "")
 
     reports = analyze_external(
         [str(source)],
         root=tmp_path,
         trust=TrustMode.TRUSTED,
         runner=ignored,
-        capabilities=frozenset({"eslint"}),
+        capabilities=frozenset({"oxlint"}),
     )
 
     assert len(reports) == 1
@@ -229,21 +226,22 @@ def test_deptry_skips_python_without_dependency_metadata(tmp_path: Path) -> None
 
 
 @pytest.mark.parametrize("select_directories", [False, True])
-def test_eslint_batches_preserve_every_file_and_project_boundary(tmp_path: Path, select_directories: bool) -> None:
+def test_oxlint_batches_preserve_every_file_and_project_boundary(tmp_path: Path, select_directories: bool) -> None:
     for project in ("apps/alpha", "apps/beta"):
         directory = tmp_path / project
         directory.mkdir(parents=True)
         (directory / "tsconfig.json").write_text("{}\n", encoding="utf-8")
-    (tmp_path / "eslint.config.mjs").write_text("export default [];\n", encoding="utf-8")
+    (tmp_path / "oxlint.config.mjs").write_text("export default {};\n", encoding="utf-8")
     paths = [*(f"apps/alpha/item-{index:03}.ts" for index in range(251)), "apps/beta/item.ts"]
     for relative in paths:
         (tmp_path / relative).write_text("export const value = 1;\n", encoding="utf-8")
-    calls: list[tuple[str, ...]] = []
+    batches: list[tuple[str, ...]] = []
 
     def run(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
         assert cwd == tmp_path
-        calls.append(tuple(argv))
-        return ProcessOutput(0, _eslint_clean_payload(argv, cwd), "")
+        if "--debug" not in argv:
+            batches.append(_oxlint_argv_files(argv))
+        return ProcessOutput(0, _oxlint_clean_payload(argv, cwd), "")
 
     selection = ["apps/alpha", "apps/beta"] if select_directories else paths
     reports = analyze_external(
@@ -251,41 +249,46 @@ def test_eslint_batches_preserve_every_file_and_project_boundary(tmp_path: Path,
         root=tmp_path,
         trust=TrustMode.TRUSTED,
         runner=run,
-        capabilities=frozenset({"eslint"}),
+        capabilities=frozenset({"oxlint"}),
         grouped=GroupedPaths(typescript=selection),
     )
 
-    selected = [list(argv[max(index for index, value in enumerate(argv) if value == "--") + 1 :]) for argv in calls]
-    assert sorted(file for batch in selected for file in batch) == sorted(paths)
-    assert sorted(map(len, selected)) == [1, 1, 250]
-    assert all(len({Path(file).parts[1] for file in batch}) == 1 for batch in selected)
+    assert sorted(file for batch in batches for file in batch) == sorted(paths)
+    assert sorted(map(len, batches)) == [1, 1, 250]
+    assert all(len({Path(file).parts[1] for file in batch}) == 1 for batch in batches)
     assert len({report.invocation_id for report in reports}) == 3
     assert [report.file_count for report in reports] == [250, 1, 1]
     assert all(report.completion is Completion.COMPLETE for report in reports)
 
 
-def test_eslint_batch_failure_keeps_partial_findings_and_fails_closed(tmp_path: Path) -> None:
-    (tmp_path / "eslint.config.mjs").write_text("export default [];\n", encoding="utf-8")
+def test_oxlint_batch_failure_keeps_partial_findings_and_fails_closed(tmp_path: Path) -> None:
+    (tmp_path / "oxlint.config.mjs").write_text("export default {};\n", encoding="utf-8")
     paths = [f"item-{index:03}.ts" for index in range(251)]
     for relative in paths:
         (tmp_path / relative).write_text("export const value = 1;\n", encoding="utf-8")
 
     def run(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
+        if "--debug" in argv:
+            return ProcessOutput(0, _oxlint_clean_payload(argv, cwd), "")
         files = argv[max(index for index, value in enumerate(argv) if value == "--") + 1 :]
         if len(files) == 1:
             return ProcessOutput(2, "", "FATAL ERROR: Reached heap limit")
-        payload = [
-            {
-                "filePath": str(cwd / files[0]),
-                "messages": [
-                    {"ruleId": "no-alert", "severity": 2, "message": "Unexpected alert.", "line": 1, "column": 1}
-                ],
-            }
-        ]
+        payload: dict[str, object] = {
+            "number_of_files": len(files),
+            "diagnostics": [
+                {
+                    "filename": str(cwd / files[0]),
+                    "code": "oxlint(no-alert)",
+                    "severity": "error",
+                    "message": "Unexpected alert.",
+                    "labels": [],
+                }
+            ],
+        }
         return ProcessOutput(1, json.dumps(payload), "")
 
     reports = analyze_external(
-        paths, root=tmp_path, trust=TrustMode.TRUSTED, runner=run, capabilities=frozenset({"eslint"})
+        paths, root=tmp_path, trust=TrustMode.TRUSTED, runner=run, capabilities=frozenset({"oxlint"})
     )
 
     assert len(reports) == 2
@@ -294,8 +297,8 @@ def test_eslint_batch_failure_keeps_partial_findings_and_fails_closed(tmp_path: 
     assert reports[1].issues
 
 
-def test_eslint_batches_do_not_reset_the_aggregate_deadline(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    (tmp_path / "eslint.config.mjs").write_text("export default [];\n", encoding="utf-8")
+def test_oxlint_batches_do_not_reset_the_aggregate_deadline(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    (tmp_path / "oxlint.config.mjs").write_text("export default {};\n", encoding="utf-8")
     paths = [f"item-{index:03}.ts" for index in range(251)]
     for relative in paths:
         (tmp_path / relative).write_text("export const value = 1;\n", encoding="utf-8")
@@ -305,14 +308,16 @@ def test_eslint_batches_do_not_reset_the_aggregate_deadline(monkeypatch: pytest.
 
     def run(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
         nonlocal calls, elapsed
-        assert "eslint" in argv
+        assert "oxlint" in argv
         assert cwd == tmp_path
+        if "--debug" in argv:
+            return ProcessOutput(0, _oxlint_clean_payload(argv, cwd), "")
         calls += 1
         elapsed = 301.0
-        return ProcessOutput(0, _eslint_clean_payload(argv, cwd), "")
+        return ProcessOutput(0, _oxlint_clean_payload(argv, cwd), "")
 
     reports = analyze_external(
-        paths, root=tmp_path, trust=TrustMode.TRUSTED, runner=run, capabilities=frozenset({"eslint"})
+        paths, root=tmp_path, trust=TrustMode.TRUSTED, runner=run, capabilities=frozenset({"oxlint"})
     )
 
     assert calls == 1
@@ -321,32 +326,43 @@ def test_eslint_batches_do_not_reset_the_aggregate_deadline(monkeypatch: pytest.
 
 
 @pytest.mark.parametrize("finding_count", [0, 1])
-def test_eslint_final_batch_over_deadline_keeps_findings_and_fails(
+def test_oxlint_final_batch_over_deadline_keeps_findings_and_fails(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, finding_count: int
 ) -> None:
     source = tmp_path / "app.ts"
     source.write_text("alert('hello');\n", encoding="utf-8")
-    (tmp_path / "eslint.config.mjs").write_text("export default [];\n", encoding="utf-8")
+    (tmp_path / "oxlint.config.mjs").write_text("export default {};\n", encoding="utf-8")
     elapsed = 0.0
     monkeypatch.setattr(time, "monotonic", lambda: elapsed)  # sarj-noqa: SARJ445 -- intercepts external tool routing
 
     def run(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
         nonlocal elapsed
-        assert "eslint" in argv
+        assert "oxlint" in argv
         assert cwd == tmp_path
+        if "--debug" in argv:
+            return ProcessOutput(0, _oxlint_clean_payload(argv, cwd), "")
         elapsed = 301.0
-        payload = [
-            {
-                "filePath": str(source),
-                "messages": [
-                    {"ruleId": "no-alert", "severity": 2, "message": "Unexpected alert.", "line": 1, "column": 1}
-                ][:finding_count],
-            }
-        ]
-        return ProcessOutput(finding_count, json.dumps(payload), "")
+        return ProcessOutput(
+            finding_count,
+            json.dumps(
+                {
+                    "number_of_files": 1,
+                    "diagnostics": [
+                        {
+                            "filename": str(source),
+                            "code": "oxlint(no-alert)",
+                            "severity": "error",
+                            "message": "Unexpected alert.",
+                            "labels": [],
+                        }
+                    ][:finding_count],
+                }
+            ),
+            "",
+        )
 
     reports = analyze_external(
-        [str(source)], root=tmp_path, trust=TrustMode.TRUSTED, runner=run, capabilities=frozenset({"eslint"})
+        [str(source)], root=tmp_path, trust=TrustMode.TRUSTED, runner=run, capabilities=frozenset({"oxlint"})
     )
 
     assert len(reports[0].diagnostics) == finding_count
@@ -354,9 +370,9 @@ def test_eslint_final_batch_over_deadline_keeps_findings_and_fails(
     assert [issue.kind for issue in reports[-1].issues] == ["aggregate-timeout"]
 
 
-def test_eslint_batches_pass_only_remaining_time_to_subprocess(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    (tmp_path / "eslint.config.mjs").write_text("export default [];\n", encoding="utf-8")
-    binary = tmp_path / "node_modules" / ".bin" / "eslint"
+def test_oxlint_batches_pass_only_remaining_time_to_subprocess(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    (tmp_path / "oxlint.config.mjs").write_text("export default {};\n", encoding="utf-8")
+    binary = tmp_path / "node_modules" / ".bin" / "oxlint"
     binary.parent.mkdir(parents=True)
     binary.touch()
     paths = [f"item-{index:03}.ts" for index in range(251)]
@@ -368,23 +384,28 @@ def test_eslint_batches_pass_only_remaining_time_to_subprocess(monkeypatch: pyte
 
     def run(argv: Sequence[str], *, cwd: Path, environment: dict[str, str], timeout_seconds: float) -> ProcessOutput:
         nonlocal elapsed
+        if "oxlint-selected-rules.mjs" in argv[1]:
+            request = as_table(parse_json(argv[2]))
+            return ProcessOutput(
+                0, json.dumps({"config": request["target"], "inlineDirectives": [], "ruleIds": {}}), ""
+            )
         assert argv[0] == str(binary)
         assert cwd == tmp_path
         assert environment["NODE_OPTIONS"] == "--max-old-space-size=4096"
         timeouts.append(timeout_seconds)
-        elapsed += 125.0
-        return ProcessOutput(0, _eslint_clean_payload(argv, cwd), "")
+        elapsed += 50.0
+        return ProcessOutput(0, _oxlint_clean_payload(argv, cwd), "")
 
     monkeypatch.setattr(external_module, "_run_process", run)  # sarj-noqa: SARJ445 -- intercepts external tool routing
-    reports = analyze_external(paths, root=tmp_path, trust=TrustMode.TRUSTED, capabilities=frozenset({"eslint"}))
+    reports = analyze_external(paths, root=tmp_path, trust=TrustMode.TRUSTED, capabilities=frozenset({"oxlint"}))
 
-    assert timeouts == [300.0, 175.0]
+    assert timeouts == [300.0, 250.0, 200.0, 150.0]
     assert all(report.completion is Completion.COMPLETE for report in reports)
 
 
-def test_eslint_subprocess_obeys_remaining_timeout(tmp_path: Path) -> None:
+def test_oxlint_subprocess_obeys_remaining_timeout(tmp_path: Path) -> None:
     with pytest.raises(subprocess.TimeoutExpired) as caught:
-        external_module._run_eslint_process(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+        external_module._run_oxlint_process(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
             (sys.executable, "-c", "import time; time.sleep(10)"), cwd=tmp_path, timeout_seconds=0.05
         )
     assert caught.value.timeout == pytest.approx(0.05)
@@ -1093,7 +1114,7 @@ def test_react_doctor_v3_json_becomes_a_blocking_canonical_region(tmp_path: Path
             "schemaVersion": 3,
             "mode": "full",
             "reactDetected": True,
-            "version": manifest.eslint_peers()["react-doctor"],
+            "version": manifest.oxlint_peers()["react-doctor"],
             "ok": True,
             "directory": str(tmp_path),
             "diff": None,
@@ -1141,7 +1162,7 @@ def test_react_doctor_rejects_empty_project_coverage(tmp_path: Path) -> None:
     payload = json.dumps(
         {
             "schemaVersion": 3,
-            "version": manifest.eslint_peers()["react-doctor"],
+            "version": manifest.oxlint_peers()["react-doctor"],
             "ok": True,
             "projects": [],
             "error": None,
@@ -1156,7 +1177,7 @@ def test_react_doctor_accepts_empty_staged_report_without_analyzable_sources(tmp
     payload = json.dumps(
         {
             "schemaVersion": 3,
-            "version": manifest.eslint_peers()["react-doctor"],
+            "version": manifest.oxlint_peers()["react-doctor"],
             "ok": True,
             "projects": [],
             "diagnostics": [],
@@ -1179,7 +1200,7 @@ def test_react_doctor_rejects_empty_report_with_top_level_diagnostics(tmp_path: 
     payload = json.dumps(
         {
             "schemaVersion": 3,
-            "version": manifest.eslint_peers()["react-doctor"],
+            "version": manifest.oxlint_peers()["react-doctor"],
             "ok": True,
             "projects": [],
             "diagnostics": [
@@ -1207,7 +1228,7 @@ def test_react_doctor_zero_coordinates_become_a_path_only_location(tmp_path: Pat
     payload = json.dumps(
         {
             "schemaVersion": 3,
-            "version": manifest.eslint_peers()["react-doctor"],
+            "version": manifest.oxlint_peers()["react-doctor"],
             "ok": True,
             "reactDetected": True,
             "baselineDegraded": False,
@@ -1249,7 +1270,7 @@ def test_react_doctor_accepts_omitted_false_baseline_degraded_metadata(tmp_path:
     payload = json.dumps(
         {
             "schemaVersion": 3,
-            "version": manifest.eslint_peers()["react-doctor"],
+            "version": manifest.oxlint_peers()["react-doctor"],
             "ok": True,
             "reactDetected": True,
             "projects": [
@@ -1273,7 +1294,7 @@ def test_react_doctor_rejects_incomplete_projects(tmp_path: Path) -> None:
     payload = json.dumps(
         {
             "schemaVersion": 3,
-            "version": manifest.eslint_peers()["react-doctor"],
+            "version": manifest.oxlint_peers()["react-doctor"],
             "ok": True,
             "projects": [{"directory": str(tmp_path), "complete": False}],
             "skippedProjects": [],
@@ -1295,7 +1316,7 @@ def test_react_doctor_rejects_incomplete_projects(tmp_path: Path) -> None:
 def test_react_doctor_fails_closed_on_degraded_coverage(tmp_path: Path, extra: dict[str, object], message: str) -> None:
     payload = {
         "schemaVersion": 3,
-        "version": manifest.eslint_peers()["react-doctor"],
+        "version": manifest.oxlint_peers()["react-doctor"],
         "ok": True,
         "projects": [{"directory": str(tmp_path), "complete": True}],
         "skippedProjects": [],
@@ -1311,7 +1332,7 @@ def test_react_doctor_protocol_rejects_coerced_schema_types(tmp_path: Path) -> N
     payload = json.dumps(
         {
             "schemaVersion": "3",
-            "version": manifest.eslint_peers()["react-doctor"],
+            "version": manifest.oxlint_peers()["react-doctor"],
             "ok": True,
             "projects": [],
             "skippedProjects": [],
@@ -1327,7 +1348,7 @@ def test_react_doctor_protocol_rejects_boolean_coordinates(tmp_path: Path) -> No
     payload = json.dumps(
         {
             "schemaVersion": 3,
-            "version": manifest.eslint_peers()["react-doctor"],
+            "version": manifest.oxlint_peers()["react-doctor"],
             "ok": True,
             "projects": [
                 {
@@ -1386,7 +1407,7 @@ def test_react_doctor_honors_manifest_doctor_project_exclusions(tmp_path: Path) 
         (project / "package.json").write_text('{"dependencies":{"react":"19.0.0"}}\n', encoding="utf-8")
     adopted = manifest.Manifest(
         "5.13.5",
-        ("eslint",),
+        ("oxlint",),
         ".",
         ".",
         doctor_excluded_paths=("demos/**",),
@@ -1397,13 +1418,16 @@ def test_react_doctor_honors_manifest_doctor_project_exclusions(tmp_path: Path) 
         tmp_path,
         enabled=True,
         has_typescript=True,
-        capabilities=frozenset({"eslint"}),
+        capabilities=frozenset({"oxlint"}),
     )
 
     assert selection == (tmp_path, (included.resolve(),))
 
 
-@pytest.mark.parametrize("metadata_name", ["package.json", "tsconfig.base.json", "vite.config.ts"])
+@pytest.mark.parametrize(
+    "metadata_name",
+    ["package.json", "tsconfig.base.json", "vite.config.ts", ".oxlintrc.json", ".oxlintrc.jsonc"],
+)
 def test_react_metadata_only_scope_still_runs_doctor(tmp_path: Path, metadata_name: str) -> None:
     package = tmp_path / "package.json"
     package.write_text('{"dependencies":{"react":"19.0.0"}}\n', encoding="utf-8")
@@ -1419,7 +1443,7 @@ def test_react_metadata_only_scope_still_runs_doctor(tmp_path: Path, metadata_na
             json.dumps(
                 {
                     "schemaVersion": 3,
-                    "version": manifest.eslint_peers()["react-doctor"],
+                    "version": manifest.oxlint_peers()["react-doctor"],
                     "ok": True,
                     "reactDetected": True,
                     "baselineDegraded": False,
@@ -1495,7 +1519,7 @@ def test_react_doctor_only_accepts_empty_degraded_changed_scope_without_project_
                 {
                     "schemaVersion": 3,
                     "mode": "diff",
-                    "version": manifest.eslint_peers()["react-doctor"],
+                    "version": manifest.oxlint_peers()["react-doctor"],
                     "ok": True,
                     "baselineDegraded": True,
                     "diff": {
@@ -1604,7 +1628,7 @@ def _degraded_react_doctor_output(base: str) -> ProcessOutput:
             {
                 "schemaVersion": 3,
                 "mode": "diff",
-                "version": manifest.eslint_peers()["react-doctor"],
+                "version": manifest.oxlint_peers()["react-doctor"],
                 "ok": True,
                 "baselineDegraded": True,
                 "diff": {"baseBranch": base, "changedFileCount": 1},
@@ -1760,7 +1784,9 @@ def test_react_doctor_disjoint_preflight_fails_closed_for_dirty_deleted_or_renam
         "package.json\0",
         "tsconfig.base.json\0",
         "apps/tsconfig.base.json\0",
-        "eslint.config.ts\0",
+        "oxlint.config.ts\0",
+        ".oxlintrc.json\0",
+        "apps/.oxlintrc.jsonc\0",
     ],
 )
 def test_react_doctor_changed_scope_runs_for_project_or_ancestor_metadata(
@@ -1796,7 +1822,7 @@ def test_react_doctor_changed_scope_runs_for_project_or_ancestor_metadata(
             json.dumps(
                 {
                     "schemaVersion": 3,
-                    "version": manifest.eslint_peers()["react-doctor"],
+                    "version": manifest.oxlint_peers()["react-doctor"],
                     "ok": True,
                     "reactDetected": True,
                     "baselineDegraded": False,
@@ -1983,7 +2009,7 @@ def test_react_doctor_validates_reported_degraded_changed_scope_before_allowing_
                 {
                     "schemaVersion": 3,
                     "mode": "diff",
-                    "version": manifest.eslint_peers()["react-doctor"],
+                    "version": manifest.oxlint_peers()["react-doctor"],
                     "ok": True,
                     "baselineDegraded": True,
                     "diff": {"baseBranch": reported_base, "changedFileCount": reported_count},
@@ -2025,7 +2051,7 @@ def test_react_doctor_accepts_empty_staged_scope_without_selected_project_source
         if argv[0] == "git":
             return ProcessOutput(
                 0,
-                "typescript/eslint.strict.mjs\0typescript/packages/app/package.json\0diagnostic-baseline.json\0",
+                "typescript/oxlint.strict.mjs\0typescript/packages/app/package.json\0diagnostic-baseline.json\0",
                 "",
             )
         return ProcessOutput(
@@ -2034,7 +2060,7 @@ def test_react_doctor_accepts_empty_staged_scope_without_selected_project_source
                 {
                     "schemaVersion": 3,
                     "mode": "staged",
-                    "version": manifest.eslint_peers()["react-doctor"],
+                    "version": manifest.oxlint_peers()["react-doctor"],
                     "ok": True,
                     "projects": [],
                     "diagnostics": [],
@@ -2088,7 +2114,7 @@ def test_react_doctor_rejects_empty_staged_scope_with_candidate_or_unsafe_path(
                 {
                     "schemaVersion": 3,
                     "mode": "staged",
-                    "version": manifest.eslint_peers()["react-doctor"],
+                    "version": manifest.oxlint_peers()["react-doctor"],
                     "ok": True,
                     "projects": [],
                     "diagnostics": [],
@@ -2126,7 +2152,7 @@ def test_react_doctor_empty_staged_scope_fails_closed_when_git_diff_fails(tmp_pa
                 {
                     "schemaVersion": 3,
                     "mode": "staged",
-                    "version": manifest.eslint_peers()["react-doctor"],
+                    "version": manifest.oxlint_peers()["react-doctor"],
                     "ok": True,
                     "projects": [],
                     "diagnostics": [],
@@ -2167,7 +2193,7 @@ def test_react_doctor_empty_degraded_scope_fails_closed_when_git_diff_fails(
             json.dumps(
                 {
                     "schemaVersion": 3,
-                    "version": manifest.eslint_peers()["react-doctor"],
+                    "version": manifest.oxlint_peers()["react-doctor"],
                     "ok": True,
                     "baselineDegraded": True,
                     "projects": [],
@@ -2224,7 +2250,7 @@ def test_react_doctor_staged_non_detection_falls_back_to_full_and_filters_exact_
             json.dumps(
                 {
                     "schemaVersion": 3,
-                    "version": manifest.eslint_peers()["react-doctor"],
+                    "version": manifest.oxlint_peers()["react-doctor"],
                     "ok": True,
                     "reactDetected": is_full,
                     "projects": [
@@ -2281,7 +2307,7 @@ def test_react_doctor_full_scan_still_rejects_non_detection(tmp_path: Path) -> N
             json.dumps(
                 {
                     "schemaVersion": 3,
-                    "version": manifest.eslint_peers()["react-doctor"],
+                    "version": manifest.oxlint_peers()["react-doctor"],
                     "ok": True,
                     "reactDetected": False,
                     "projects": [{"directory": str(project), "complete": True}],
@@ -2320,7 +2346,7 @@ def test_react_doctor_staged_fallback_rejects_malformed_scoped_coverage(tmp_path
             json.dumps(
                 {
                     "schemaVersion": 3,
-                    "version": manifest.eslint_peers()["react-doctor"],
+                    "version": manifest.oxlint_peers()["react-doctor"],
                     "ok": True,
                     "reactDetected": False,
                     "projects": [{"directory": str(project), "complete": False}],
@@ -2377,7 +2403,7 @@ def test_react_doctor_staged_fallback_failures_remain_blocking(
             json.dumps(
                 {
                     "schemaVersion": 3,
-                    "version": manifest.eslint_peers()["react-doctor"],
+                    "version": manifest.oxlint_peers()["react-doctor"],
                     "ok": True,
                     "reactDetected": False,
                     "projects": [
@@ -2436,7 +2462,7 @@ def test_react_doctor_uses_native_staged_scope_for_precommit(monkeypatch: pytest
             json.dumps(
                 {
                     "schemaVersion": 3,
-                    "version": manifest.eslint_peers()["react-doctor"],
+                    "version": manifest.oxlint_peers()["react-doctor"],
                     "ok": True,
                     "reactDetected": True,
                     "baselineDegraded": False,
@@ -2619,7 +2645,7 @@ def test_external_analyzers_do_not_inherit_caller_credentials(monkeypatch: pytes
     assert environment["LC_ALL"] == "C"
 
 
-def test_only_eslint_receives_the_fixed_node_heap_limit(
+def test_only_oxlint_receives_the_fixed_node_heap_limit(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -2631,13 +2657,13 @@ def test_only_eslint_receives_the_fixed_node_heap_limit(
     )
 
     generic = external_module.run_process(command, cwd=tmp_path)
-    eslint = external_module._run_eslint_process(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+    oxlint = external_module._run_oxlint_process(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
         command,
         cwd=tmp_path,
     )
 
     assert generic.stdout.strip() == "missing"
-    assert eslint.stdout.strip() == "--max-old-space-size=4096"
+    assert oxlint.stdout.strip() == "--max-old-space-size=4096"
 
 
 def test_external_analyzers_prefer_the_isolated_python_environment(
@@ -2659,77 +2685,46 @@ def test_external_analyzers_prefer_the_isolated_python_environment(
 
 
 @pytest.mark.parametrize(
-    ("argv", "expected"),
+    "prefix",
     [
-        pytest.param(
-            ("npm", "exec", "--offline", "--", "eslint", "--", "app.ts"),
-            (
-                "npm",
-                "exec",
-                "--offline",
-                "--",
-                "eslint",
-                "--format",
-                str(external_module._ESLINT_FORMATTER),  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
-                "--no-warn-ignored",
-                "--no-cache",
-                "--",
-                "app.ts",
-            ),
-            id="npm-package-manager-delimiter",
-        ),
-        pytest.param(
-            ("pnpm", "exec", "eslint", "--", "app.ts"),
-            (
-                "pnpm",
-                "exec",
-                "eslint",
-                "--format",
-                str(external_module._ESLINT_FORMATTER),  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
-                "--no-warn-ignored",
-                "--no-cache",
-                "--",
-                "app.ts",
-            ),
-            id="pnpm-local-exec",
-        ),
+        pytest.param(("npm", "exec", "--offline", "--"), id="npm-offline"),
+        pytest.param(("pnpm", "exec"), id="pnpm-exec"),
     ],
 )
-def test_eslint_json_flags_follow_the_executable_not_the_package_manager_delimiter(
-    argv: tuple[str, ...], expected: tuple[str, ...]
-) -> None:
-    assert external_module._eslint_json_argv(argv) == expected  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+def test_oxlint_json_flags_follow_the_executable_not_the_package_manager_delimiter(prefix: tuple[str, ...]) -> None:
+    argv = (*prefix, "oxlint", "--", "app.ts")
+    assert external_module._oxlint_json_argv(argv) == (*prefix, "oxlint", "--format", "json", "--", "app.ts")  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
     assert external_module._argv_file_count(argv) == 1  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
 
 
-def test_eslint_fatal_message_is_an_execution_failure(tmp_path: Path) -> None:
+def test_oxlint_fatal_message_is_an_execution_failure(tmp_path: Path) -> None:
     source = tmp_path / "app.ts"
     source.write_text("export const value = 1;\n", encoding="utf-8")
     (tmp_path / "package.json").write_text('{"name":"fixture"}\n', encoding="utf-8")
-    (tmp_path / "eslint.config.mjs").write_text("export default [];\n", encoding="utf-8")
+    (tmp_path / "oxlint.config.mjs").write_text("export default {};\n", encoding="utf-8")
     payload = json.dumps(
-        [
-            {
-                "filePath": str(source),
-                "messages": [
-                    {
-                        "fatal": True,
-                        "severity": 2,
-                        "message": "parser could not load",
-                        "line": 1,
-                        "column": 1,
-                    }
-                ],
-            }
-        ]
+        {
+            "number_of_files": 1,
+            "diagnostics": [
+                {
+                    "filename": str(source),
+                    "message": "parser could not load",
+                    "severity": "error",
+                    "code": "oxc/parser",
+                    "labels": [],
+                }
+            ],
+        }
     )
 
     def fatal(
-        argv: Sequence[str],  # ruff: ignore[unused-function-argument] -- ProcessRunner fixes this keyword.
+        argv: Sequence[str],
         *,
-        cwd: Path,  # ruff: ignore[unused-function-argument] -- ProcessRunner fixes this keyword.
+        cwd: Path,
     ) -> ProcessOutput:
-        return ProcessOutput(1, payload, "")
+        if "--debug" in argv:
+            return ProcessOutput(0, _oxlint_clean_payload(argv, cwd), "")
+        return ProcessOutput(2, payload, "parser could not load")
 
     reports = analyze_external([str(source)], root=tmp_path, trust=TrustMode.TRUSTED, runner=fatal)
 
@@ -2739,7 +2734,7 @@ def test_eslint_fatal_message_is_an_execution_failure(tmp_path: Path) -> None:
     assert not reports[0].diagnostics
 
 
-def test_missing_local_eslint_fails_before_package_manager_execution(
+def test_missing_local_oxlint_fails_before_package_manager_execution(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -2747,14 +2742,14 @@ def test_missing_local_eslint_fails_before_package_manager_execution(
     source.write_text("export const value = 1;\n", encoding="utf-8")
     (tmp_path / "package.json").write_text('{"name":"fixture"}\n', encoding="utf-8")
     (tmp_path / "package-lock.json").write_text('{"lockfileVersion":3}\n', encoding="utf-8")
-    (tmp_path / "eslint.config.mjs").write_text("export default [];\n", encoding="utf-8")
+    (tmp_path / "oxlint.config.mjs").write_text("export default {};\n", encoding="utf-8")
 
     def forbidden(
         argv: Sequence[str],  # ruff: ignore[unused-function-argument] -- ProcessRunner fixes this keyword.
         *,
         cwd: Path,  # ruff: ignore[unused-function-argument] -- ProcessRunner fixes this keyword.
     ) -> ProcessOutput:
-        pytest.fail("the package manager ran without a local ESLint installation")
+        pytest.fail("the package manager ran without a local Oxlint installation")
 
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- intercepts external tool routing
         external_module, "run_process", forbidden
@@ -2765,57 +2760,59 @@ def test_missing_local_eslint_fails_before_package_manager_execution(
     assert len(reports) == 1
     assert reports[0].completion is Completion.FAILED
     assert reports[0].issues[0].kind == "missing-dependency"
-    assert "node_modules/.bin/eslint is missing" in reports[0].issues[0].message
+    assert "node_modules/.bin/oxlint is missing" in reports[0].issues[0].message
     assert "code-standards setup" in reports[0].issues[0].message
 
 
-def test_hoisted_eslint_above_analysis_root_is_accepted(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_hoisted_oxlint_above_analysis_root_is_accepted(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     root = tmp_path / "workspace" / "app"
     root.mkdir(parents=True)
     source = root / "app.ts"
     source.write_text("export const value = 1;\n", encoding="utf-8")
     (root / "package.json").write_text('{"name":"fixture"}\n', encoding="utf-8")
     (root / "package-lock.json").write_text('{"lockfileVersion":3}\n', encoding="utf-8")
-    (root / "eslint.config.mjs").write_text("export default [];\n", encoding="utf-8")
-    binary = tmp_path / "node_modules" / ".bin" / "eslint"
+    (root / "oxlint.config.mjs").write_text("export default {};\n", encoding="utf-8")
+    binary = tmp_path / "node_modules" / ".bin" / "oxlint"
     binary.parent.mkdir(parents=True)
     binary.write_text("", encoding="utf-8")
     called: list[tuple[str, ...]] = []
 
     def successful(argv: Sequence[str], *, cwd: Path, timeout_seconds: float) -> ProcessOutput:
         assert 0 < timeout_seconds <= 300
+        if "oxlint-selected-rules.mjs" in argv[1]:
+            request = as_table(parse_json(argv[2]))
+            return ProcessOutput(
+                0, json.dumps({"config": request["target"], "inlineDirectives": [], "ruleIds": {}}), ""
+            )
         called.append(tuple(argv))
-        return ProcessOutput(0, _eslint_clean_payload(argv, cwd), "")
+        return ProcessOutput(0, _oxlint_clean_payload(argv, cwd), "")
 
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- intercepts external tool routing
-        external_module, "_run_eslint_process", successful
+        external_module, "_run_oxlint_process", successful
     )
 
     reports = analyze_external([str(source)], root=root, trust=TrustMode.TRUSTED)
 
     assert called
     assert called[0][0] == str(binary)
-    assert called[0][1:5] == (
-        "--format",
-        str(external_module._ESLINT_FORMATTER),  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
-        "--no-warn-ignored",
-        "--no-cache",
-    )
+    assert called[0][1:3] == ("--format", "json")
     assert reports[0].completion is Completion.COMPLETE
 
 
-def test_eslint_empty_output_preserves_package_manager_stderr(tmp_path: Path) -> None:
+def test_oxlint_empty_output_preserves_package_manager_stderr(tmp_path: Path) -> None:
     source = tmp_path / "app.ts"
     source.write_text("export const value = 1;\n", encoding="utf-8")
     (tmp_path / "package.json").write_text('{"name":"fixture"}\n', encoding="utf-8")
-    (tmp_path / "eslint.config.mjs").write_text("export default [];\n", encoding="utf-8")
+    (tmp_path / "oxlint.config.mjs").write_text("export default {};\n", encoding="utf-8")
 
     def missing(
-        argv: Sequence[str],  # ruff: ignore[unused-function-argument] -- ProcessRunner fixes this keyword.
+        argv: Sequence[str],
         *,
-        cwd: Path,  # ruff: ignore[unused-function-argument] -- ProcessRunner fixes this keyword.
+        cwd: Path,
     ) -> ProcessOutput:
-        return ProcessOutput(1, "", "ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL Command 'eslint' not found")
+        if "--debug" in argv:
+            return ProcessOutput(0, _oxlint_clean_payload(argv, cwd), "")
+        return ProcessOutput(1, "", "ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL Command 'oxlint' not found")
 
     reports = analyze_external([str(source)], root=tmp_path, trust=TrustMode.TRUSTED, runner=missing)
 
@@ -2823,28 +2820,30 @@ def test_eslint_empty_output_preserves_package_manager_stderr(tmp_path: Path) ->
     issue = reports[0].issues[0]
     assert issue.kind == "tool-failure"
     assert issue.exit_code == 1
-    assert issue.message == "ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL Command 'eslint' not found"
+    assert issue.message == "ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL Command 'oxlint' not found"
     assert "JSONDecodeError" not in issue.message
 
 
-def test_eslint_malformed_output_preserves_stderr_without_json_exception_name(tmp_path: Path) -> None:
+def test_oxlint_malformed_output_preserves_stderr_without_json_exception_name(tmp_path: Path) -> None:
     source = tmp_path / "app.ts"
     source.write_text("export const value = 1;\n", encoding="utf-8")
     (tmp_path / "package.json").write_text('{"name":"fixture"}\n', encoding="utf-8")
-    (tmp_path / "eslint.config.mjs").write_text("export default [];\n", encoding="utf-8")
+    (tmp_path / "oxlint.config.mjs").write_text("export default {};\n", encoding="utf-8")
 
     def broken(
-        argv: Sequence[str],  # ruff: ignore[unused-function-argument] -- ProcessRunner fixes this keyword.
+        argv: Sequence[str],
         *,
-        cwd: Path,  # ruff: ignore[unused-function-argument] -- ProcessRunner fixes this keyword.
+        cwd: Path,
     ) -> ProcessOutput:
-        return ProcessOutput(1, "not-json", "eslint could not load its local configuration")
+        if "--debug" in argv:
+            return ProcessOutput(0, _oxlint_clean_payload(argv, cwd), "")
+        return ProcessOutput(1, "not-json", "oxlint could not load its local configuration")
 
     reports = analyze_external([str(source)], root=tmp_path, trust=TrustMode.TRUSTED, runner=broken)
 
     issue = reports[0].issues[0]
     assert issue.kind == "protocol-mismatch"
-    assert issue.message == "eslint could not load its local configuration"
+    assert issue.message == "oxlint could not load its local configuration"
     assert "JSONDecodeError" not in issue.message
 
 
@@ -2926,92 +2925,10 @@ def test_basedpyright_accepts_range_ending_at_trailing_newline_eof(tmp_path: Pat
     assert finding.location.region.end.byte_offset == len("value = 1\n")
 
 
-def test_eslint_without_end_location_keeps_a_truthful_point(tmp_path: Path) -> None:
-    source = tmp_path / "example.ts"
-    source.write_text("const value = 1;\n", encoding="utf-8")
-    payload = json.dumps(
-        [
-            {
-                "filePath": str(source),
-                "messages": [
-                    {
-                        "ruleId": "prefer-const",
-                        "severity": 2,
-                        "message": "use const",
-                        "line": 1,
-                        "column": 1,
-                    }
-                ],
-            }
-        ]
-    )
-
-    finding = parse_eslint(payload, root=tmp_path)[0]
-
-    assert finding.location.position is not None
-    assert finding.location.region is None
-    assert finding.severity is Severity.ERROR
-
-
-def test_eslint_line_zero_keeps_a_truthful_path_level_diagnostic(tmp_path: Path) -> None:
-    source = tmp_path / "example.ts"
-    source.write_text("export const value = 1;\n", encoding="utf-8")
-    payload = json.dumps(
-        [
-            {
-                "filePath": str(source),
-                "messages": [
-                    {
-                        "ruleId": "configuration-rule",
-                        "severity": 2,
-                        "message": "project-level diagnostic",
-                        "line": 0,
-                        "column": 1,
-                        "endLine": 0,
-                        "endColumn": 1,
-                    }
-                ],
-            }
-        ]
-    )
-
-    finding = parse_eslint(payload, root=tmp_path)[0]
-
-    assert finding.location.path == "example.ts"
-    assert finding.location.position is None
-    assert finding.location.region is None
-
-
-def test_eslint_ignored_file_warning_without_position_is_path_level(tmp_path: Path) -> None:
-    source = tmp_path / "next-env.d.ts"
-    source.write_text("// generated\n", encoding="utf-8")
-    payload = json.dumps(
-        [
-            {
-                "filePath": str(source),
-                "messages": [
-                    {
-                        "ruleId": None,
-                        "fatal": False,
-                        "severity": 1,
-                        "message": "File ignored because of a matching ignore pattern.",
-                    }
-                ],
-            }
-        ]
-    )
-
-    finding = parse_eslint(payload, root=tmp_path)[0]
-
-    assert finding.code == "eslint/file"
-    assert finding.location.path == "next-env.d.ts"
-    assert finding.location.position is None
-
-
-def test_safe_mode_never_executes_repository_eslint_config(tmp_path: Path) -> None:
+def test_safe_mode_never_executes_repository_oxlint_config(tmp_path: Path) -> None:
     (tmp_path / "package.json").write_text('{"name":"fixture"}\n', encoding="utf-8")
     (tmp_path / "package-lock.json").write_text('{"lockfileVersion":3}\n', encoding="utf-8")
-    (tmp_path / "eslint.config.mjs").write_text("throw new Error('must not execute');\n", encoding="utf-8")
+    (tmp_path / "oxlint.config.mjs").write_text("throw new Error('must not execute');\n", encoding="utf-8")
     source = tmp_path / "example.ts"
     source.write_text("export const value = 1;\n", encoding="utf-8")
 
@@ -3029,10 +2946,10 @@ def test_safe_mode_never_executes_repository_eslint_config(tmp_path: Path) -> No
     assert reports[0].issues[0].kind == "trust-required"
 
 
-def test_string_safe_mode_never_executes_repository_eslint_config(tmp_path: Path) -> None:
+def test_string_safe_mode_never_executes_repository_oxlint_config(tmp_path: Path) -> None:
     (tmp_path / "package.json").write_text('{"name":"fixture"}\n', encoding="utf-8")
     (tmp_path / "package-lock.json").write_text('{"lockfileVersion":3}\n', encoding="utf-8")
-    (tmp_path / "eslint.config.mjs").write_text("throw new Error('must not execute');\n", encoding="utf-8")
+    (tmp_path / "oxlint.config.mjs").write_text("throw new Error('must not execute');\n", encoding="utf-8")
     source = tmp_path / "example.ts"
     source.write_text("export const value = 1;\n", encoding="utf-8")
 
@@ -3106,23 +3023,6 @@ def test_basedpyright_parser_rejects_unknown_severity(tmp_path: Path) -> None:
         parse_basedpyright(payload, root=tmp_path)
 
 
-@pytest.mark.parametrize(("severity", "message"), [(99, "bad severity"), (True, "bad")], ids=("unknown", "boolean"))
-def test_eslint_parser_rejects_invalid_severity(tmp_path: Path, severity: int | bool, message: str) -> None:
-    source = tmp_path / "example.ts"
-    source.write_text("export const value = 1;\n", encoding="utf-8")
-    payload = json.dumps(
-        [
-            {
-                "filePath": str(source),
-                "messages": [{"severity": severity, "message": message, "line": 1, "column": 1}],
-            }
-        ]
-    )
-
-    with pytest.raises(ValueError, match="severity"):
-        parse_eslint(payload, root=tmp_path)
-
-
 def test_external_process_output_is_bounded(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -3181,22 +3081,6 @@ def test_external_failure_redacts_secrets_and_absolute_paths(tmp_path: Path) -> 
     assert "<redacted>" in messages
     assert "./src/config" in messages
     assert "https://docs.example.com/remediation" in messages
-
-
-def test_eslint_rejects_boolean_coordinates(tmp_path: Path) -> None:
-    source = tmp_path / "example.ts"
-    source.write_text("export const value = 1;\n", encoding="utf-8")
-    payload = json.dumps(
-        [
-            {
-                "filePath": str(source),
-                "messages": [{"severity": 2, "message": "bad", "line": True, "column": True}],
-            }
-        ]
-    )
-
-    with pytest.raises(TypeError, match="invalid boolean coordinates"):
-        parse_eslint(payload, root=tmp_path)
 
 
 @pytest.mark.parametrize("filename", ["example.py", "example.pyi"], ids=("implementation", "stub"))
@@ -3451,3 +3335,117 @@ def test_external_analyzer_cannot_leak_a_path_outside_repository(tmp_path: Path)
     assert ruff.completion is Completion.FAILED
     assert ruff.issues[0].message == "ValueError: analyzer reported a path outside the repository root"
     assert str(tmp_path.parent) not in ruff.issues[0].message
+
+
+@pytest.mark.parametrize("mixed", [False, True])
+def test_astro_checks_use_framework_cli_after_stock_discovery(tmp_path: Path, mixed: bool) -> None:
+    (tmp_path / "oxlint.config.mjs").write_text("export default {};\n", encoding="utf-8")
+    paths = ["page.astro", *(("service.ts",) if mixed else ())]
+    for relative in paths:
+        (tmp_path / relative).write_text("<div />" if relative.endswith(".astro") else "export {};", encoding="utf-8")
+    checks: list[tuple[str, ...]] = []
+    discoveries: list[tuple[str, ...]] = []
+
+    def run(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
+        files = _oxlint_argv_files(argv)
+        if "--debug" in argv:
+            assert "oxlint" in argv
+            assert "sarj-astro-lint" not in argv
+            discoveries.append(files)
+        else:
+            assert ("sarj-astro-lint" in argv) == all(value.endswith(".astro") for value in files)
+            assert len({Path(value).suffix == ".astro" for value in files}) == 1
+            assert "--type-aware" in argv
+            checks.append(tuple(argv))
+        return ProcessOutput(0, _oxlint_clean_payload(argv, cwd), "")
+
+    reports = analyze_external(
+        paths, root=tmp_path, trust=TrustMode.TRUSTED, runner=run, capabilities=frozenset({"oxlint"})
+    )
+
+    assert sorted(path for files in discoveries for path in files) == sorted(paths)
+    assert sorted(path for argv in checks for path in _oxlint_argv_files(argv)) == sorted(paths)
+    assert sum(report.file_count or 0 for report in reports) == len(paths)
+    assert len(checks) == (2 if mixed else 1)
+    assert all(report.completion is Completion.COMPLETE for report in reports)
+
+
+def test_astro_framework_coverage_mismatch_fails_closed(tmp_path: Path) -> None:
+    (tmp_path / "oxlint.config.mjs").write_text("export default {};\n", encoding="utf-8")
+    (tmp_path / "page.astro").write_text("<div />", encoding="utf-8")
+
+    def run(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
+        if "--debug" in argv:
+            return ProcessOutput(0, _oxlint_clean_payload(argv, cwd), "")
+        assert "sarj-astro-lint" in argv
+        return ProcessOutput(0, '{"diagnostics":[],"number_of_files":0}', "")
+
+    reports = analyze_external(
+        ["page.astro"], root=tmp_path, trust=TrustMode.TRUSTED, runner=run, capabilities=frozenset({"oxlint"})
+    )
+
+    assert len(reports) == 1
+    assert reports[0].completion is Completion.FAILED
+    assert reports[0].issues[0].kind == "coverage-missing"
+
+
+def test_missing_astro_framework_binary_fails_without_stock_loader_fallback(tmp_path: Path) -> None:
+    (tmp_path / "oxlint.config.mjs").write_text("export default {};\n", encoding="utf-8")
+    (tmp_path / "page.astro").write_text("<div />", encoding="utf-8")
+    binaries = tmp_path / "node_modules" / ".bin"
+    binaries.mkdir(parents=True)
+    (binaries / "oxlint").write_text("", encoding="utf-8")
+
+    reports = analyze_external(
+        ["page.astro"], root=tmp_path, trust=TrustMode.TRUSTED, capabilities=frozenset({"oxlint"})
+    )
+
+    assert len(reports) == 1
+    assert reports[0].completion is Completion.FAILED
+    assert reports[0].issues[0].kind == "missing-dependency"
+    assert "node_modules/.bin/sarj-astro-lint is missing" in reports[0].issues[0].message
+
+
+def test_selected_astro_rule_keeps_native_configuration_errors(tmp_path: Path) -> None:
+    (tmp_path / "oxlint.config.mjs").write_text("export default {};\n", encoding="utf-8")
+    source = tmp_path / "page.astro"
+    source.write_text("<div />", encoding="utf-8")
+
+    def run(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
+        if "--debug" in argv:
+            return ProcessOutput(0, _oxlint_clean_payload(argv, cwd), "")
+        assert "sarj-astro-lint" in argv
+        return ProcessOutput(
+            1,
+            json.dumps(
+                {
+                    "number_of_files": 1,
+                    "diagnostics": [
+                        {
+                            "filename": str(source),
+                            "code": "typescript(tsconfig-error)",
+                            "message": "Invalid tsconfig",
+                            "severity": "error",
+                            "labels": [],
+                        }
+                    ],
+                }
+            ),
+            "",
+        )
+
+    reports = analyze_external(
+        ["page.astro"],
+        root=tmp_path,
+        trust=TrustMode.TRUSTED,
+        runner=run,
+        capabilities=frozenset({"oxlint"}),
+        rule_ids=frozenset({"no-debugger"}),
+    )
+
+    assert len(reports) == 1
+    assert [(diagnostic.rule_id, diagnostic.severity) for diagnostic in reports[0].diagnostics] == [
+        ("oxlint/configuration", Severity.ERROR),
+    ]
+    assert reports[0].completion is Completion.FAILED
+    assert reports[0].issues[0].kind == "configuration-failure"

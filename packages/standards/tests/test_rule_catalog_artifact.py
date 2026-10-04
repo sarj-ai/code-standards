@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 
 def _typescript_rule() -> dict[str, object]:
     return {
-        "engine": "eslint",
+        "engine": "oxlint",
         "ruleId": "sample-rule",
         "code": None,
         "summary": "Report a representative problem.",
@@ -70,7 +70,7 @@ def _object_list(value: object) -> list[object]:
 def test_typescript_projection_accepts_the_closed_public_shape() -> None:
     (spec,) = rule_catalog_artifact.parse_typescript_projection([_typescript_rule()])
 
-    assert spec.key == "eslint:sample-rule"
+    assert spec.key == "oxlint:sample-rule"
     assert spec.default_level.value == "warning"
     assert tuple(example.example_id for example in spec.examples) == (
         "rejected",
@@ -150,7 +150,7 @@ def test_selector_index_derives_historical_aliases_from_the_shipped_shape(tmp_pa
     )
 
 
-def test_selector_index_derives_plugin_qualified_eslint_aliases(tmp_path: Path) -> None:
+def test_selector_index_derives_plugin_qualified_oxlint_aliases(tmp_path: Path) -> None:
     path = tmp_path / "catalog.json"
     path.write_text(
         json.dumps(
@@ -158,8 +158,8 @@ def test_selector_index_derives_plugin_qualified_eslint_aliases(tmp_path: Path) 
                 "schemaVersion": 1,
                 "rules": [
                     {
-                        "engine": "eslint",
-                        "key": "eslint:canonical-rule",
+                        "engine": "oxlint",
+                        "key": "oxlint:canonical-rule",
                         "aliases": ["historical-rule"],
                     }
                 ],
@@ -170,11 +170,11 @@ def test_selector_index_derives_plugin_qualified_eslint_aliases(tmp_path: Path) 
 
     index = rule_catalog_artifact.selector_index(path)
 
-    assert index.resolve("eslint:@sarj/historical-rule") == "eslint:canonical-rule"
-    assert index.equivalents("eslint:canonical-rule") == (
-        "eslint:canonical-rule",
-        "eslint:historical-rule",
-        "eslint:@sarj/historical-rule",
+    assert index.resolve("oxlint:@sarj/historical-rule") == "oxlint:canonical-rule"
+    assert index.equivalents("oxlint:canonical-rule") == (
+        "oxlint:canonical-rule",
+        "oxlint:historical-rule",
+        "oxlint:@sarj/historical-rule",
     )
 
 
@@ -214,12 +214,12 @@ def test_selector_index_rejects_aliases_that_resolve_to_multiple_rules(tmp_path:
         pytest.param(
             [
                 {
-                    "engine": "eslint",
-                    "key": "eslint:one",
+                    "engine": "oxlint",
+                    "key": "oxlint:one",
                     "aliases": ["old", "@sarj/old"],
                 }
             ],
-            id="duplicate-derived-eslint-alias",
+            id="duplicate-derived-oxlint-alias",
         ),
         pytest.param(
             [{"engine": "iac", "key": "iac:one", "aliases": ["one"]}],

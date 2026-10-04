@@ -1,35 +1,21 @@
-import { join } from "node:path";
-
-import * as tsParser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
-
+// vitest: shared-module-graph
+import { RuleTester } from "oxlint/plugins-dev";
+import { describe, it } from "vitest";
 import rule, {
   PREFER_AWAIT_IN_ASYNC_RETURN_DOCUMENTATION,
 } from "../../src/rules/prefer-await-in-async-return.js";
-
-RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
 RuleTester.it = it;
 RuleTester.itOnly = it.only;
-
-const TYPED_RULE_TESTER = new RuleTester({
-  languageOptions: {
-    parser: tsParser,
-    parserOptions: {
-      projectService: {
-        allowDefaultProject: ["*.ts*", "*/*.ts*", "*/*/*.ts*"],
-      },
-      tsconfigRootDir: join(import.meta.dirname, "..", "fixtures"),
-    },
-  },
+const RULE_TESTER = new RuleTester({
+  languageOptions: { parserOptions: { lang: "ts" } },
 });
-
-TYPED_RULE_TESTER.run("prefer-await-in-async-return", rule, {
+RULE_TESTER.run("prefer-await-in-async-return", rule, {
   valid: [
     {
       name: "accepts the documented explicit await",
-      code: PREFER_AWAIT_IN_ASYNC_RETURN_DOCUMENTATION.examples[0].files[0].source,
+      code: PREFER_AWAIT_IN_ASYNC_RETURN_DOCUMENTATION.examples[0].files[0]
+        .source,
     },
     {
       name: "allows a dynamic import adapter in a non-async function",
@@ -119,7 +105,8 @@ TYPED_RULE_TESTER.run("prefer-await-in-async-return", rule, {
   invalid: [
     {
       name: "reports the documented direct async return",
-      code: PREFER_AWAIT_IN_ASYNC_RETURN_DOCUMENTATION.examples[1].files[0].source,
+      code: PREFER_AWAIT_IN_ASYNC_RETURN_DOCUMENTATION.examples[1].files[0]
+        .source,
       errors: [{ messageId: "preferAwait" }],
     },
     {
@@ -164,12 +151,29 @@ TYPED_RULE_TESTER.run("prefer-await-in-async-return", rule, {
   ],
 });
 
-const UNTYPED_RULE_TESTER = new RuleTester({
-  languageOptions: { parser: tsParser },
-});
-
-TYPED_RULE_TESTER.run("prefer-await-in-async-return with all Promise calls", rule, {
+RULE_TESTER.run("prefer-await-in-async-return with all Promise calls", rule, {
   valid: [
+    {
+      name: "does not treat an async generator result as a Promise",
+      code: "async function* values() { yield 1; } values().then(handle);",
+      options: [{ scope: "all-promise-calls" }],
+    },
+    {
+      name: "does not trust a reassigned inferred async function",
+      code: "let load = async () => 1; load = () => ({then(callback) {return callback(1)}}); load().then(handle);",
+      options: [{ scope: "all-promise-calls" }],
+    },
+    {
+      name: "does not trust a reassigned inferred Promise binding",
+      code: "let value = Promise.resolve(1); value = {then(callback) {return callback(1)}}; value.then(handle);",
+      options: [{ scope: "all-promise-calls" }],
+    },
+    {
+      name: "does not invent the return type of an imported function",
+      code: "import {load} from './external'; load().then(handle);",
+      options: [{ scope: "all-promise-calls" }],
+    },
+
     {
       name: "reads JSON Schema conditional data",
       code: `const schema = { then: { type: "string" } }; const type = schema.then.type;`,
@@ -233,6 +237,28 @@ TYPED_RULE_TESTER.run("prefer-await-in-async-return with all Promise calls", rul
     },
   ],
   invalid: [
+    {
+      name: "keeps explicitly annotated mutable Promise owners",
+      code: "let value: Promise<number> = Promise.resolve(1); value = Promise.resolve(2); value.then(handle);",
+      options: [{ scope: "all-promise-calls" }],
+      errors: [{ messageId: "preferAwaitCall" }],
+    },
+    {
+      name: "proves a Promise parameter without a fabricated checker",
+      code: "function load(value: Promise<number>) {value.then(handle)}",
+      options: [{ scope: "all-promise-calls" }],
+      errors: [{ messageId: "preferAwaitCall" }],
+    },
+    {
+      name: "keeps static template-computed chains proven",
+      code: "Promise.resolve(1)[`then`](handle)[`then`](handle)",
+      options: [{ scope: "all-promise-calls" }],
+      errors: [
+        { messageId: "preferAwaitCall" },
+        { messageId: "preferAwaitCall" },
+      ],
+    },
+
     {
       code: `Promise.resolve(1).then((value) => value + 1);`,
       options: [{ scope: "all-promise-calls" }],
@@ -304,24 +330,10 @@ TYPED_RULE_TESTER.run("prefer-await-in-async-return with all Promise calls", rul
       name: "reports each Promise call exactly once in a chain",
       code: `Promise.resolve(1).then((value) => value + 1).then((value) => value * 2);`,
       options: [{ scope: "all-promise-calls" }],
-      errors: [{ messageId: "preferAwaitCall" }, { messageId: "preferAwaitCall" }],
+      errors: [
+        { messageId: "preferAwaitCall" },
+        { messageId: "preferAwaitCall" },
+      ],
     },
   ],
-});
-
-UNTYPED_RULE_TESTER.run("prefer-await-in-async-return without type services", rule, {
-  valid: [
-    {
-      name: "stays silent when the parser has no type information",
-      code: `async function load() {
-        return Promise.resolve(1).then((value) => value + 1);
-      }`,
-    },
-    {
-      name: "broad policy also requires type information",
-      code: `Promise.resolve(1).then((value) => value + 1);`,
-      options: [{ scope: "all-promise-calls" }],
-    },
-  ],
-  invalid: [],
 });

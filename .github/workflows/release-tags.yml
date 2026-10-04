@@ -32,7 +32,7 @@ jobs:
           ref: ${{ github.event.workflow_run.head_sha }}
       - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
-          version: '0.12.18'
+          version: "0.12.18"
       - id: recovery
         name: Detect tag or GitHub Release recovery
         env:
@@ -188,13 +188,13 @@ jobs:
           ref: ${{ github.event.workflow_run.head_sha }}
       - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
-          version: '0.12.18'
+          version: "0.12.18"
       - name: Create immutable tags for registry-visible releases
         env:
           PUBLISHED_SHA: ${{ github.event.workflow_run.head_sha }}
         run: >-
           uv run --project packages/standards --frozen code-standards --root .
-          maintain release create-tags typescript bootstrap contracts python sql iac standards tsconfig
+          maintain release create-tags typescript react-hooks bootstrap contracts python sql iac standards tsconfig
           --commit "$PUBLISHED_SHA"
       - name: Publish the Standards GitHub Release
         env:

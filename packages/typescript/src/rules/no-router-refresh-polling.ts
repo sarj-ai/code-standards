@@ -4,7 +4,11 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-router-refresh-polling.test.ts
  */
 
-import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
+import { sourceOrigin } from "./_source-origin.js";
+import { nodeAncestors } from "./_scope.js";
+import type { ESTree, Scope, Variable } from "@oxlint/plugins";
+import { findVariable } from "./_scope.js";
+
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile, isTestFile } from "./_paths.js";
@@ -24,52 +28,51 @@ export const NO_ROUTER_REFRESH_POLLING_DOCUMENTATION = {
   ],
 } as const satisfies RuleDocumentation;
 
-function importedName(node: TSESTree.ImportSpecifier): string | null {
-  return node.imported.type === AST_NODE_TYPES.Identifier ? node.imported.name : String(node.imported.value);
+function importedName(node: ESTree.ImportSpecifier): string | null {
+  return node.imported.type === "Identifier" ? node.imported.name : String(node.imported.value);
 }
 
 function enclosingIntervalCallback(
   sourceCode: Readonly<{
-    getAncestors(node: TSESTree.Node): readonly TSESTree.Node[];
-    getScope(node: TSESTree.Node): TSESLint.Scope.Scope;
+    getScope(node: ESTree.Node): Scope;
   }>,
-  node: TSESTree.Node,
-): TSESTree.ArrowFunctionExpression | TSESTree.FunctionExpression | null {
-  const ancestors = sourceCode.getAncestors(node);
+  node: ESTree.Node,
+): ESTree.ArrowFunctionExpression | ESTree.Function | null {
+  const ancestors = nodeAncestors(node);
   for (let index = ancestors.length - 1; index >= 0; index -= 1) {
     const ancestor = ancestors[index];
-    if (ancestor?.type === AST_NODE_TYPES.FunctionDeclaration) return null;
+    if (ancestor?.type === "FunctionDeclaration") return null;
     if (
-      ancestor?.type !== AST_NODE_TYPES.ArrowFunctionExpression &&
-      ancestor?.type !== AST_NODE_TYPES.FunctionExpression
+      ancestor?.type !== "ArrowFunctionExpression" &&
+      ancestor?.type !== "FunctionExpression"
     ) continue;
     const parent = ancestor.parent;
-    return parent.type === AST_NODE_TYPES.CallExpression && parent.arguments[0] === ancestor &&
+    return parent.type === "CallExpression" && parent.arguments[0] === ancestor &&
       isIntervalCallee(sourceCode, parent.callee) ? ancestor : null;
   }
   return null;
 }
 
 function isIntervalCallee(
-  sourceCode: Readonly<{ getScope(node: TSESTree.Node): TSESLint.Scope.Scope }>,
-  node: TSESTree.Expression,
+  sourceCode: Readonly<{ getScope(node: ESTree.Node): Scope }>,
+  node: ESTree.Expression,
 ): boolean {
-  return node.type === AST_NODE_TYPES.Identifier && node.name === "setInterval" &&
+  return node.type === "Identifier" && node.name === "setInterval" &&
       isUnshadowedGlobal(sourceCode, node) ||
-    node.type === AST_NODE_TYPES.MemberExpression &&
+    node.type === "MemberExpression" &&
       !node.computed &&
-      node.object.type === AST_NODE_TYPES.Identifier &&
+      node.object.type === "Identifier" &&
       (node.object.name === "window" || node.object.name === "globalThis") &&
       isUnshadowedGlobal(sourceCode, node.object) &&
-      node.property.type === AST_NODE_TYPES.Identifier &&
+      node.property.type === "Identifier" &&
       node.property.name === "setInterval";
 }
 
 function isUnshadowedGlobal(
-  sourceCode: Readonly<{ getScope(node: TSESTree.Node): TSESLint.Scope.Scope }>,
-  node: TSESTree.Identifier,
+  sourceCode: Readonly<{ getScope(node: ESTree.Node): Scope }>,
+  node: ESTree.BindingIdentifier,
 ): boolean {
-  const variable = ASTUtils.findVariable(sourceCode.getScope(node), node.name);
+  const variable = findVariable(sourceCode.getScope(node), node.name);
   return variable === null || variable.defs.length === 0;
 }
 
@@ -84,39 +87,39 @@ export default createRule<Options, MessageIds>({
   },
   defaultOptions: [],
   create(context) {
-    if (isTestFile(context.filename) || isGeneratedFile(context.filename, context.sourceCode.text)) return {};
-    const routerHooks = new Set<TSESLint.Scope.Variable>();
-    const routers = new Set<TSESLint.Scope.Variable>();
-    const reportedCallbacks = new WeakSet<TSESTree.ArrowFunctionExpression | TSESTree.FunctionExpression>();
+    if (isTestFile(sourceOrigin(context).filename) || isGeneratedFile(sourceOrigin(context).filename, sourceOrigin(context).text)) return {};
+    const routerHooks = new Set<Variable>();
+    const routers = new Set<Variable>();
+    const reportedCallbacks = new WeakSet<ESTree.ArrowFunctionExpression | ESTree.Function>();
 
     return {
       ImportDeclaration(node): void {
         if (node.source.value !== "next/navigation") return;
         for (const specifier of node.specifiers) {
-          if (specifier.type === AST_NODE_TYPES.ImportSpecifier && importedName(specifier) === "useRouter") {
-            const variable = ASTUtils.findVariable(context.sourceCode.getScope(specifier.local), specifier.local.name);
+          if (specifier.type === "ImportSpecifier" && importedName(specifier) === "useRouter") {
+            const variable = findVariable(context.sourceCode.getScope(specifier.local), specifier.local.name);
             if (variable !== null) routerHooks.add(variable);
           }
         }
       },
       VariableDeclarator(node): void {
         if (
-          node.id.type === AST_NODE_TYPES.Identifier &&
-          node.init?.type === AST_NODE_TYPES.CallExpression &&
-          node.init.callee.type === AST_NODE_TYPES.Identifier
+          node.id.type === "Identifier" &&
+          node.init?.type === "CallExpression" &&
+          node.init.callee.type === "Identifier"
         ) {
-          const hook = ASTUtils.findVariable(context.sourceCode.getScope(node.init.callee), node.init.callee.name);
-          const router = ASTUtils.findVariable(context.sourceCode.getScope(node.id), node.id.name);
+          const hook = findVariable(context.sourceCode.getScope(node.init.callee), node.init.callee.name);
+          const router = findVariable(context.sourceCode.getScope(node.id), node.id.name);
           if (hook !== null && router !== null && routerHooks.has(hook)) routers.add(router);
         }
       },
       CallExpression(node): void {
         if (
-          node.callee.type !== AST_NODE_TYPES.MemberExpression || node.callee.computed ||
-          node.callee.object.type !== AST_NODE_TYPES.Identifier ||
-          node.callee.property.type !== AST_NODE_TYPES.Identifier || node.callee.property.name !== "refresh"
+          node.callee.type !== "MemberExpression" || node.callee.computed ||
+          node.callee.object.type !== "Identifier" ||
+          node.callee.property.type !== "Identifier" || node.callee.property.name !== "refresh"
         ) return;
-        const router = ASTUtils.findVariable(
+        const router = findVariable(
           context.sourceCode.getScope(node.callee.object),
           node.callee.object.name,
         );

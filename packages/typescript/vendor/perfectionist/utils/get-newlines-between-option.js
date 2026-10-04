@@ -1,0 +1,145 @@
+import { isGroupWithOverridesOption } from './is-group-with-overrides-option.js'
+import { isNewlinesBetweenOption } from './is-newlines-between-option.js'
+import { computeGroupName } from './compute-group-name.js'
+/**
+ * Get the `newlinesBetween` option to use between two consecutive nodes. The
+ * result is based on the global `newlinesBetween` option and the custom groups,
+ * which can override the global option.
+ *
+ * - If the two nodes are in the same custom group, the `newlinesInside` option of
+ *   the group is used.
+ *
+ * @param props - The function arguments.
+ * @param props.nextNodeGroupIndex - The next node index to sort.
+ * @param props.nodeGroupIndex - The current node index to sort.
+ * @param props.options - Newlines between related options.
+ * @returns - The `newlinesBetween` option to use.
+ */
+function getNewlinesBetweenOption({
+  nextNodeGroupIndex,
+  nodeGroupIndex,
+  options,
+}) {
+  if (nodeGroupIndex === nextNodeGroupIndex) {
+    return computeNewlinesInsideOption({
+      groupIndex: nodeGroupIndex,
+      options,
+    })
+  }
+  if (nextNodeGroupIndex >= nodeGroupIndex + 2) {
+    return computeNewlinesBetweenOptionForDifferentGroups({
+      nextNodeGroupIndex,
+      nodeGroupIndex,
+      options,
+    })
+  }
+  return options.newlinesBetween
+}
+function computeNewlinesBetweenOptionForDifferentGroups({
+  nextNodeGroupIndex,
+  nodeGroupIndex,
+  options,
+}) {
+  if (nextNodeGroupIndex === nodeGroupIndex + 2) {
+    let groupBetween = options.groups[nodeGroupIndex + 1]
+    if (isNewlinesBetweenOption(groupBetween)) {
+      return groupBetween.newlinesBetween
+    }
+    return options.newlinesBetween
+  }
+  let groupsWithAllNewlinesBetween = buildGroupsWithAllNewlinesBetween(
+    options.groups.slice(nodeGroupIndex, nextNodeGroupIndex + 1),
+    options.newlinesBetween,
+  )
+  let newlinesBetweenOptions = new Set(
+    groupsWithAllNewlinesBetween
+      .filter(isNewlinesBetweenOption)
+      .map(group => group.newlinesBetween),
+  )
+  let numberNewlinesBetween = [...newlinesBetweenOptions].filter(
+    option => typeof option === 'number',
+  )
+  let maxNewlinesBetween =
+    numberNewlinesBetween.length > 0 ? Math.max(...numberNewlinesBetween) : null
+  if (maxNewlinesBetween !== null && maxNewlinesBetween >= 1) {
+    return maxNewlinesBetween
+  }
+  if (newlinesBetweenOptions.has('ignore')) {
+    return 'ignore'
+  }
+  return 0
+}
+function computeNewlinesInsideOption({ groupIndex, options }) {
+  let globalNewlinesInsideOption = computeGlobalNewlinesInsideOption()
+  let group = options.groups[groupIndex]
+  if (!group) {
+    return globalNewlinesInsideOption
+  }
+  let groupName = computeGroupName(group)
+  let nodeCustomGroup = options.customGroups.find(
+    customGroup => customGroup.groupName === groupName,
+  )
+  let groupOverrideNewlinesInside =
+    isGroupWithOverridesOption(group) ? group.newlinesInside : null
+  return (
+    nodeCustomGroup?.newlinesInside ??
+    groupOverrideNewlinesInside ??
+    globalNewlinesInsideOption
+  )
+  function computeGlobalNewlinesInsideOption() {
+    switch (options.newlinesInside) {
+      case 'newlinesBetween':
+        return options.newlinesBetween === 'ignore' ? 'ignore' : 0
+      case 'ignore':
+        return 'ignore'
+      default:
+        return options.newlinesInside
+    }
+  }
+}
+/**
+ * Inserts newlines settings between groups that don't already have them.
+ *
+ * Fills in missing newlines settings between adjacent groups using the global
+ * newlines option. This ensures every transition between groups has an explicit
+ * newlines setting for consistent calculation.
+ *
+ * @example
+ *
+ * ```ts
+ * buildGroupsWithAllNewlinesBetween(
+ *   ['imports', 'types', { newlinesBetween: 2 }, 'functions'],
+ *   1,
+ * )
+ * // Returns: [
+ * //   'imports',
+ * //   { newlinesBetween: 1 },  // Added
+ * //   'types',
+ * //   { newlinesBetween: 2 },  // Already existed
+ * //   'functions'
+ * // ]
+ * ```
+ *
+ * @param groups - Array of groups with optional inline newlines settings.
+ * @param globalNewlinesBetweenOption - Default newlines to use for missing
+ *   settings.
+ * @returns Groups array with newlines settings filled in between all groups.
+ */
+function buildGroupsWithAllNewlinesBetween(
+  groups,
+  globalNewlinesBetweenOption,
+) {
+  let returnValue = []
+  for (let i = 0; i < groups.length; i++) {
+    let group = groups[i]
+    if (!isNewlinesBetweenOption(group)) {
+      let previousGroup = groups[i - 1]
+      if (previousGroup && !isNewlinesBetweenOption(previousGroup)) {
+        returnValue.push({ newlinesBetween: globalNewlinesBetweenOption })
+      }
+    }
+    returnValue.push(group)
+  }
+  return returnValue
+}
+export { getNewlinesBetweenOption }

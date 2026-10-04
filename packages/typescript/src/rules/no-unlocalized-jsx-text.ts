@@ -4,8 +4,9 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-unlocalized-jsx-text.test.ts
  */
 
-import { AST_NODE_TYPES } from "@typescript-eslint/utils";
 
+
+import { sourceOrigin } from "./_source-origin.js";
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { staticText } from "./_jsx-accessibility.js";
 import {
@@ -72,7 +73,7 @@ export default createRule<Options, "unlocalized">({
   defaultOptions: [{ enabled: true }],
   create(context, [options]) {
     if (
-      localizationExcluded(context.filename, context.sourceCode.text, options)
+      localizationExcluded(sourceOrigin(context).filename, context.sourceCode.text, options)
     )
       return {};
     return {
@@ -85,8 +86,8 @@ export default createRule<Options, "unlocalized">({
       },
       JSXExpressionContainer(node): void {
         if (
-          node.parent.type !== AST_NODE_TYPES.JSXElement &&
-          node.parent.type !== AST_NODE_TYPES.JSXFragment
+          node.parent?.type !== "JSXElement" &&
+          node.parent?.type !== "JSXFragment"
         )
           return;
         const text = staticText(node);

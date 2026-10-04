@@ -24,7 +24,7 @@ class _EngineCase:
 
 
 _CASES = (
-    _EngineCase(RuleEngine.ESLINT, "typescript", "typescript", frozenset(("eslint",))),
+    _EngineCase(RuleEngine.OXLINT, "typescript", "typescript", frozenset(("oxlint",))),
     _EngineCase(RuleEngine.IAC, "iac", "iac", frozenset(("iac", "sarj-iac-lint"))),
     _EngineCase(RuleEngine.PYTHON, "python", "python", frozenset(("python", "sarj-python-lint"))),
     _EngineCase(RuleEngine.SQL, "sql", "sql", frozenset(("sql", "sarj-sql-lint"))),
@@ -81,14 +81,17 @@ def test_engine_matrix_exhausts_the_public_contract_and_schema() -> None:
 
 def test_engine_family_and_release_mappings_agree() -> None:
     expected_families = {case.family: case.engine for case in _CASES}
-    expected_release_targets = {case.engine.value: case.release_target for case in _CASES}
+    expected_release_targets = {case.family: case.release_target for case in _CASES}
 
     assert dict(rule_lifecycle._ENGINE_BY_FAMILY) == expected_families  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
-    assert dict(rule_changes._ENGINE_BY_FAMILY) == {  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
-        family: engine.value for family, engine in expected_families.items()
+    assert dict(rule_changes._FAMILY_BY_ENGINE) == {  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+        **{engine.value: family for family, engine in expected_families.items()},
+        "eslint": "typescript",
     }
-    assert dict(rule_changes._RELEASE_TARGET_BY_ENGINE) == expected_release_targets  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+    assert dict(rule_changes._RELEASE_TARGET_BY_FAMILY) == expected_release_targets  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
     assert set(expected_release_targets.values()) <= set(RELEASE_TARGETS)
+    assert "eslint" not in {engine.value for engine in RuleEngine}
+    assert "unknown" not in rule_changes._FAMILY_BY_ENGINE  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
 
 
 def test_diagnostic_sources_resolve_to_the_same_engine_everywhere() -> None:

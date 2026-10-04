@@ -1,17 +1,15 @@
 // vitest: shared-module-graph
-import * as tsParser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
+import { RuleTester } from "oxlint/plugins-dev";
+import { describe, it } from "vitest";
 
 import rule, { NO_RESTRICTED_LIBRARY_LOAD_DOCUMENTATION } from "../../src/rules/no-restricted-library-load.js";
 
-RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
 RuleTester.it = it;
 RuleTester.itOnly = it.only;
 
 const RULE_TESTER = new RuleTester({
-  languageOptions: { parser: tsParser },
+  languageOptions: { parserOptions: { lang: "ts" } },
 });
 
 const OPTIONS = [
@@ -81,7 +79,7 @@ RULE_TESTER.run("no-restricted-library-load", rule, {
     {
       code: 'const client = require("axios");',
       options: OPTIONS,
-      languageOptions: { globals: { require: "readonly" } },
+      languageOptions: { parserOptions: { lang: "ts" } },
       errors: [{ messageId: "restrictedLibraryLoad" }],
     },
     {

@@ -4,7 +4,10 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/require-fetch-timeout.test.ts
  */
 
-import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
+import { sourceOrigin } from "./_source-origin.js";
+import type { ESTree } from "@oxlint/plugins";
+import { findVariable } from "./_scope.js";
+
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isScriptFile, isTestFile } from "./_paths.js";
@@ -54,27 +57,27 @@ function matchesAnyPattern(
 }
 
 function initProvablyLacksSignal(
-  init: TSESTree.CallExpressionArgument,
-  resolvesToGlobal: (identifier: TSESTree.Identifier) => boolean,
+  init: ESTree.Argument,
+  resolvesToGlobal: (identifier: ESTree.BindingIdentifier) => boolean,
 ): boolean {
-  if (init.type !== AST_NODE_TYPES.ObjectExpression) return false;
+  if (init.type !== "ObjectExpression") return false;
   let lacksSignal = true;
   for (const prop of init.properties) {
-    if (prop.type === AST_NODE_TYPES.SpreadElement) {
+    if (prop.type === "SpreadElement") {
       lacksSignal = false;
       continue;
     }
     const isSignal =
-      (!prop.computed && prop.key.type === AST_NODE_TYPES.Identifier && prop.key.name === "signal") ||
-      (prop.key.type === AST_NODE_TYPES.Literal && prop.key.value === "signal");
+      (!prop.computed && prop.key.type === "Identifier" && prop.key.name === "signal") ||
+      (prop.key.type === "Literal" && prop.key.value === "signal");
     if (isSignal) {
       const value = prop.value;
       lacksSignal = prop.kind === "init" && !prop.method && (
-        (value.type === AST_NODE_TYPES.Literal && value.value === null) ||
-        (value.type === AST_NODE_TYPES.Identifier && value.name === "undefined" && resolvesToGlobal(value)) ||
-        (value.type === AST_NODE_TYPES.UnaryExpression && value.operator === "void" && value.argument.type === AST_NODE_TYPES.Literal && value.argument.value === 0)
+        (value.type === "Literal" && value.value === null) ||
+        (value.type === "Identifier" && value.name === "undefined" && resolvesToGlobal(value)) ||
+        (value.type === "UnaryExpression" && value.operator === "void" && value.argument.type === "Literal" && value.argument.value === 0)
       );
-    } else if (prop.computed && prop.key.type !== AST_NODE_TYPES.Literal) {
+    } else if (prop.computed && prop.key.type !== "Literal") {
       lacksSignal = false;
     }
   }
@@ -83,14 +86,14 @@ function initProvablyLacksSignal(
 
 /** True for a URL spelled inline rather than a forwarded Request. */
 function isInlineUrl(
-  node: TSESTree.CallExpressionArgument,
-  resolvesToGlobal: (identifier: TSESTree.Identifier) => boolean,
+  node: ESTree.Argument,
+  resolvesToGlobal: (identifier: ESTree.BindingIdentifier) => boolean,
 ): boolean {
   return (
-    (node.type === AST_NODE_TYPES.Literal && typeof node.value === "string") ||
-    node.type === AST_NODE_TYPES.TemplateLiteral ||
-    (node.type === AST_NODE_TYPES.NewExpression &&
-      node.callee.type === AST_NODE_TYPES.Identifier &&
+    (node.type === "Literal" && typeof node.value === "string") ||
+    node.type === "TemplateLiteral" ||
+    (node.type === "NewExpression" &&
+      node.callee.type === "Identifier" &&
       node.callee.name === "URL" &&
       resolvesToGlobal(node.callee))
   );
@@ -128,33 +131,33 @@ export default createRule<Options, MessageIds>({
   create(context, [optionsArg]) {
     // `isTestFile` knows jscodeshift's `__testfixtures__/` spelling, so the
     // local pattern this rule used to keep for it decided nothing.
-    if (isTestFile(context.filename) || isScriptFile(context.filename)) {
+    if (isTestFile(sourceOrigin(context).filename) || isScriptFile(sourceOrigin(context).filename)) {
       return {};
     }
     const allowIn = optionsArg?.allowIn ?? [];
-    if (allowIn.length > 0 && matchesAnyPattern(context.filename, allowIn)) {
+    if (allowIn.length > 0 && matchesAnyPattern(sourceOrigin(context).filename, allowIn)) {
       return {};
     }
 
     /** True when `identifier` resolves to the global (no local binding shadows it). */
-    function resolvesToGlobal(identifier: TSESTree.Identifier): boolean {
+    function resolvesToGlobal(identifier: ESTree.BindingIdentifier): boolean {
       const scope = context.sourceCode.getScope(identifier);
-      const variable = ASTUtils.findVariable(scope, identifier.name);
+      const variable = findVariable(scope, identifier.name);
       return variable === null || variable.defs.length === 0;
     }
 
     /** True for `fetch(...)` / `globalThis.fetch(...)` / `window.fetch(...)` /
      * `self.fetch(...)` where the receiver resolves to the global scope. */
-    function isGlobalFetchCall(callee: TSESTree.Expression): boolean {
-      if (callee.type === AST_NODE_TYPES.Identifier) {
+    function isGlobalFetchCall(callee: ESTree.Expression): boolean {
+      if (callee.type === "Identifier") {
         return callee.name === "fetch" && resolvesToGlobal(callee);
       }
       return (
-        callee.type === AST_NODE_TYPES.MemberExpression &&
+        callee.type === "MemberExpression" &&
         !callee.computed &&
-        callee.property.type === AST_NODE_TYPES.Identifier &&
+        callee.property.type === "Identifier" &&
         callee.property.name === "fetch" &&
-        callee.object.type === AST_NODE_TYPES.Identifier &&
+        callee.object.type === "Identifier" &&
         GLOBAL_OBJECTS.has(callee.object.name) &&
         resolvesToGlobal(callee.object)
       );
@@ -162,18 +165,18 @@ export default createRule<Options, MessageIds>({
 
     /** Prove a same-scope const object cannot acquire a signal before use. */
     function localConstInitProvablyLacksSignal(
-      identifier: TSESTree.Identifier,
+      identifier: ESTree.BindingIdentifier,
     ): boolean {
-      const variable = ASTUtils.findVariable(
+      const variable = findVariable(
         context.sourceCode.getScope(identifier),
         identifier.name,
       );
       if (variable?.defs.length !== 1) return false;
       const definition = variable.defs[0];
       if (
-        definition?.type !== "Variable" ||
-        definition.parent.kind !== "const" ||
-        definition.node.init?.type !== AST_NODE_TYPES.ObjectExpression ||
+        definition?.type !== "Variable" || definition.node.type !== "VariableDeclarator" ||
+        definition.parent?.type !== "VariableDeclaration" || definition.parent.kind !== "const" ||
+        definition.node.init?.type !== "ObjectExpression" ||
         !initProvablyLacksSignal(definition.node.init, resolvesToGlobal)
       ) {
         return false;
@@ -183,12 +186,12 @@ export default createRule<Options, MessageIds>({
         if (ref === identifier || ref === definition.name) continue;
         const member = ref.parent;
         if (
-          member.type !== AST_NODE_TYPES.MemberExpression ||
+          member.type !== "MemberExpression" ||
           member.object !== ref ||
           member.computed ||
-          member.property.type !== AST_NODE_TYPES.Identifier ||
+          member.property.type !== "Identifier" ||
           member.property.name === "signal" ||
-          member.parent.type !== AST_NODE_TYPES.AssignmentExpression ||
+          member.parent?.type !== "AssignmentExpression" ||
           member.parent.left !== member
         ) {
           return false;
@@ -197,19 +200,19 @@ export default createRule<Options, MessageIds>({
       return true;
     }
 
-    function isForwardedRequest(argument: TSESTree.CallExpressionArgument): boolean {
+    function isForwardedRequest(argument: ESTree.Argument): boolean {
       let value = argument;
-      if (value.type === AST_NODE_TYPES.Identifier) {
-        const binding = ASTUtils.findVariable(context.sourceCode.getScope(value), value.name);
+      if (value.type === "Identifier") {
+        const binding = findVariable(context.sourceCode.getScope(value), value.name);
         const definition = binding?.defs.length === 1 ? binding.defs[0] : undefined;
-        if (definition?.type !== "Variable" || definition.parent.kind !== "const" || definition.node.init === null || binding?.references.some((reference) => reference.isWrite() && reference.init !== true)) return false;
+        if (definition?.type !== "Variable" || definition.node.type !== "VariableDeclarator" || definition.parent?.type !== "VariableDeclaration" || definition.parent.kind !== "const" || definition.node.init === null || binding?.references.some((reference) => reference.isWrite() && reference.init !== true)) return false;
         value = definition.node.init;
       }
-      return value.type === AST_NODE_TYPES.NewExpression && value.callee.type === AST_NODE_TYPES.Identifier && value.callee.name === "Request" && resolvesToGlobal(value.callee);
+      return value.type === "NewExpression" && value.callee.type === "Identifier" && value.callee.name === "Request" && resolvesToGlobal(value.callee);
     }
 
     return {
-      CallExpression(node: TSESTree.CallExpression): void {
+      CallExpression(node: ESTree.CallExpression): void {
         if (!isGlobalFetchCall(node.callee)) {
           return;
         }
@@ -228,7 +231,7 @@ export default createRule<Options, MessageIds>({
         if (
           init === undefined ||
           initProvablyLacksSignal(init, resolvesToGlobal) ||
-          (init.type === AST_NODE_TYPES.Identifier &&
+          (init.type === "Identifier" &&
             localConstInitProvablyLacksSignal(init))
         ) {
           context.report({ node, messageId: "missingSignal" });

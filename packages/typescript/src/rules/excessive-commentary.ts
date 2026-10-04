@@ -3,7 +3,9 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/excessive-commentary.test.ts
  */
 
-import { AST_NODE_TYPES, type TSESTree, type TSESLint } from "@typescript-eslint/utils";
+import { authoredRange, sourceOrigin } from "./_source-origin.js";
+import type { ESTree, SourceCode } from "@oxlint/plugins";
+
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import {
@@ -84,11 +86,11 @@ function wordCount(text: string): number {
   return text.trim().split(/\s+/u).filter(Boolean).length;
 }
 
-function isJSDoc(comment: TSESTree.Comment): boolean {
+function isJSDoc(comment: ESTree.Comment): boolean {
   return comment.type === "Block" && comment.value.startsWith("*");
 }
 
-function isFileHeader(sourceCode: Readonly<TSESLint.SourceCode>, comment: TSESTree.Comment): boolean {
+function isFileHeader(sourceCode: Readonly<SourceCode>, comment: ESTree.Comment): boolean {
   return sourceCode.getTokenBefore(comment, { includeComments: false }) === null;
 }
 
@@ -100,33 +102,33 @@ function narratesFileImplementation(text: string): boolean {
 }
 
 function documentsTypeOrMember(
-  sourceCode: Readonly<TSESLint.SourceCode>,
-  comment: TSESTree.Comment,
+  sourceCode: Readonly<SourceCode>,
+  comment: ESTree.Comment,
 ): boolean {
   const token = sourceCode.getTokenAfter(comment, { includeComments: false });
   if (token === null || token.loc.start.line !== comment.loc.end.line + 1) return false;
-  let node: TSESTree.Node | null | undefined = sourceCode.getNodeByRangeIndex(token.range[0]);
-  while (node != null && node.type !== AST_NODE_TYPES.Program) {
+  let node: ESTree.Node | null | undefined = sourceCode.getNodeByRangeIndex(token.range[0]);
+  while (node != null && node.type !== "Program") {
     if (isTypedDeclaration(node)) return true;
     node = node.parent;
   }
   return false;
 }
 
-function isTypedDeclaration(node: TSESTree.Node): boolean {
+function isTypedDeclaration(node: ESTree.Node): boolean {
   if (
-    node.type === AST_NODE_TYPES.ExportNamedDeclaration ||
-    node.type === AST_NODE_TYPES.ExportDefaultDeclaration
+    node.type === "ExportNamedDeclaration" ||
+    node.type === "ExportDefaultDeclaration"
   ) {
     return node.declaration !== null && isTypedDeclaration(node.declaration);
   }
   return (
-    node.type === AST_NODE_TYPES.TSInterfaceDeclaration ||
-    node.type === AST_NODE_TYPES.TSTypeAliasDeclaration ||
-    node.type === AST_NODE_TYPES.ClassDeclaration ||
-    node.type === AST_NODE_TYPES.MethodDefinition ||
-    node.type === AST_NODE_TYPES.TSMethodSignature ||
-    node.type === AST_NODE_TYPES.TSPropertySignature
+    node.type === "TSInterfaceDeclaration" ||
+    node.type === "TSTypeAliasDeclaration" ||
+    node.type === "ClassDeclaration" ||
+    node.type === "MethodDefinition" ||
+    node.type === "TSMethodSignature" ||
+    node.type === "TSPropertySignature"
   );
 }
 
@@ -147,12 +149,14 @@ export default createRule<Options, MessageIds>({
   create(context) {
     return {
       Program(): void {
-        for (const group of proseGroups(context.filename, context.sourceCode)) {
+        for (const group of proseGroups(sourceOrigin(context).filename, context.sourceCode)) {
           const lines = lineCount(group.text);
           const words = wordCount(group.text);
           if (isJSDoc(group.comment)) {
             if (
               isFileHeader(context.sourceCode, group.comment) &&
+              (sourceOrigin(context).text === context.sourceCode.text ||
+                sourceOrigin(context).text.slice(0, authoredRange(context, group.comment.range)?.start).trim() === "") &&
               lines >= ABSOLUTE_JSDOC_LINES &&
               words >= ABSOLUTE_JSDOC_WORDS &&
               narratesFileImplementation(group.text) &&

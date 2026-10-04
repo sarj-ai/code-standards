@@ -4,6 +4,8 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/iac-source-coupled-test.test.ts
  */
 
+
+
 import { type RuleDocumentation } from "./_docs.js";
 import { createSourceCoupledRule } from "./source-coupled-test.js";
 

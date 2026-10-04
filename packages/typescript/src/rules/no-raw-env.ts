@@ -4,7 +4,10 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-raw-env.test.ts
  */
 
-import { ASTUtils, type TSESTree } from "@typescript-eslint/utils";
+import { sourceOrigin } from "./_source-origin.js";
+import type { ESTree } from "@oxlint/plugins";
+import { findVariable } from "./_scope.js";
+
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isScriptFile, isTestFile } from "./_paths.js";
@@ -32,7 +35,7 @@ const ENV_BOUNDARY_FILE_RE =
   /(^|[\\/])(?:env|client-env|server-env|client-settings|server-settings)\.[cm]?[jt]sx?$/;
 
 /** True for the `process.env` member node (dotted or as the base of `process.env[key]`). */
-function isProcessEnv(node: TSESTree.MemberExpression): boolean {
+function isProcessEnv(node: ESTree.MemberExpression): boolean {
   return (
     !node.computed &&
     node.object.type === "Identifier" &&
@@ -43,7 +46,7 @@ function isProcessEnv(node: TSESTree.MemberExpression): boolean {
 }
 
 /** True for the `import.meta.env` member node (dotted or as the base of `import.meta.env[key]`). */
-function isImportMetaEnv(node: TSESTree.MemberExpression): boolean {
+function isImportMetaEnv(node: ESTree.MemberExpression): boolean {
   return (
     !node.computed &&
     node.property.type === "Identifier" &&
@@ -72,7 +75,7 @@ const PLATFORM_MARKERS: ReadonlySet<string> = new Set([
 ]);
 
 /** Match named bundler constants and host-owned platform markers. */
-function isExemptVariableAccess(node: TSESTree.MemberExpression): boolean {
+function isExemptVariableAccess(node: ESTree.MemberExpression): boolean {
   const parent = node.parent;
   return (
     parent.type === "MemberExpression" &&
@@ -85,8 +88,8 @@ function isExemptVariableAccess(node: TSESTree.MemberExpression): boolean {
 }
 
 /** Match assignment and deletion targets, which do not read configuration. */
-function isWriteTarget(node: TSESTree.MemberExpression): boolean {
-  const access = node.parent.type === "MemberExpression" && node.parent.object === node ? node.parent : node;
+function isWriteTarget(node: ESTree.MemberExpression): boolean {
+  const access = node.parent?.type === "MemberExpression" && node.parent.object === node ? node.parent : node;
   const parent = access.parent;
   if (parent.type === "AssignmentExpression") {
     return parent.left === access;
@@ -98,7 +101,7 @@ function isWriteTarget(node: TSESTree.MemberExpression): boolean {
 }
 
 /** Match whole-environment pass-through such as `{ ...process.env }`. */
-function isWholeEnvSpread(node: TSESTree.MemberExpression): boolean {
+function isWholeEnvSpread(node: ESTree.MemberExpression): boolean {
   const parent = node.parent;
   return parent.type === "SpreadElement" && parent.argument === node;
 }
@@ -120,7 +123,7 @@ export default createRule<Options, MessageIds>({
   },
   defaultOptions: [],
   create(context) {
-    const filename = context.filename;
+    const filename = sourceOrigin(context).filename;
     if (
       isTestFile(filename) ||
       isScriptFile(filename) ||
@@ -128,19 +131,19 @@ export default createRule<Options, MessageIds>({
     ) {
       return {};
     }
-    const reads: TSESTree.MemberExpression[] = [];
+    const reads: ESTree.MemberExpression[] = [];
     const boundaryFile = ENV_BOUNDARY_FILE_RE.test(filename.replaceAll("\\", "/"));
     let hasValidationCall = false;
     return {
-      CallExpression(node: TSESTree.CallExpression): void {
+      CallExpression(node: ESTree.CallExpression): void {
         if (!boundaryFile) return;
         const callee = node.callee;
         if ((callee.type === "Identifier" && callee.name === "createEnv") || (callee.type === "MemberExpression" && !callee.computed && callee.property.type === "Identifier" && (["parse", "safeParse"].includes(callee.property.name) || (callee.property.name === "object" && callee.object.type === "Identifier" && callee.object.name === "z")))) hasValidationCall = true;
       },
-      MemberExpression(node: TSESTree.MemberExpression): void {
+      MemberExpression(node: ESTree.MemberExpression): void {
         if (isProcessEnv(node) && node.object.type === "Identifier") {
-          const binding = ASTUtils.findVariable(context.sourceCode.getScope(node), node.object.name);
-          if (binding !== null && binding.defs.length > 0 && !binding.defs.every((definition) => definition.type === "ImportBinding" && definition.parent.type === "ImportDeclaration" && ["node:process", "process"].includes(definition.parent.source.value) && ["ImportDefaultSpecifier", "ImportNamespaceSpecifier"].includes(definition.node.type))) return;
+          const binding = findVariable(context.sourceCode.getScope(node), node.object.name);
+          if (binding !== null && binding.defs.length > 0 && !binding.defs.every((definition) => definition.type === "ImportBinding" && definition.parent?.type === "ImportDeclaration" && ["node:process", "process"].includes(definition.parent.source.value) && ["ImportDefaultSpecifier", "ImportNamespaceSpecifier"].includes(definition.node.type))) return;
         }
         if (
           (isProcessEnv(node) || isImportMetaEnv(node)) &&

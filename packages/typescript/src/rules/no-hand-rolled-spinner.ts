@@ -4,7 +4,9 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-hand-rolled-spinner.test.ts
  */
 
-import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
+import { sourceOrigin } from "./_source-origin.js";
+import type { ESTree } from "@oxlint/plugins";
+
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile, isStoryFile, isTestFile } from "./_paths.js";
@@ -77,21 +79,21 @@ function hasSpinnerInVariant(classes: readonly TailwindClass[], variant: string)
     effective.some(isContrastingEdge);
 }
 
-function staticClassName(attribute: TSESTree.JSXAttribute): string | null {
+function staticClassName(attribute: ESTree.JSXAttribute): string | null {
   const value = attribute.value;
-  if (value?.type === AST_NODE_TYPES.Literal && typeof value.value === "string") {
+  if (value?.type === "Literal" && typeof value.value === "string") {
     return value.value;
   }
   if (
-    value?.type === AST_NODE_TYPES.JSXExpressionContainer &&
-    value.expression.type === AST_NODE_TYPES.Literal &&
+    value?.type === "JSXExpressionContainer" &&
+    value.expression.type === "Literal" &&
     typeof value.expression.value === "string"
   ) {
     return value.expression.value;
   }
   if (
-    value?.type === AST_NODE_TYPES.JSXExpressionContainer &&
-    value.expression.type === AST_NODE_TYPES.TemplateLiteral &&
+    value?.type === "JSXExpressionContainer" &&
+    value.expression.type === "TemplateLiteral" &&
     value.expression.expressions.length === 0
   ) {
     return value.expression.quasis[0]?.value.cooked ?? null;
@@ -117,10 +119,10 @@ export default createRule<Options, MessageIds>({
   defaultOptions: [],
   create(context) {
     if (
-      DESIGN_SYSTEM_PATH.test(context.filename) ||
-      isTestFile(context.filename) ||
-      isStoryFile(context.filename) ||
-      isGeneratedFile(context.filename, context.sourceCode.text)
+      DESIGN_SYSTEM_PATH.test(sourceOrigin(context).filename) ||
+      isTestFile(sourceOrigin(context).filename) ||
+      isStoryFile(sourceOrigin(context).filename) ||
+      isGeneratedFile(sourceOrigin(context).filename, sourceOrigin(context).text)
     ) {
       return {};
     }
@@ -128,19 +130,19 @@ export default createRule<Options, MessageIds>({
     return {
       JSXOpeningElement(node): void {
         if (
-          node.name.type !== AST_NODE_TYPES.JSXIdentifier ||
+          node.name.type !== "JSXIdentifier" ||
           (node.name.name !== "div" && node.name.name !== "span")
         ) {
           return;
         }
         const classNameAttribute = node.attributes.toReversed().find(
           (attribute) =>
-            attribute.type === AST_NODE_TYPES.JSXSpreadAttribute ||
-            (attribute.type === AST_NODE_TYPES.JSXAttribute &&
-            attribute.name.type === AST_NODE_TYPES.JSXIdentifier &&
+            attribute.type === "JSXSpreadAttribute" ||
+            (attribute.type === "JSXAttribute" &&
+            attribute.name.type === "JSXIdentifier" &&
             attribute.name.name === "className"),
         );
-        if (classNameAttribute?.type !== AST_NODE_TYPES.JSXAttribute) return;
+        if (classNameAttribute?.type !== "JSXAttribute") return;
         const className = staticClassName(classNameAttribute);
         if (className === null) return;
         const classes = className.split(/\s+/u).filter(Boolean).map((token) => ({

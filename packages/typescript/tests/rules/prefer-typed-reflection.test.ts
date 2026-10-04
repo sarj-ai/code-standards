@@ -1,79 +1,54 @@
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import * as parser from "@typescript-eslint/parser";
-import { afterAll, describe, it } from "vitest";
-import { join } from "node:path";
-import rule from "../../src/rules/prefer-typed-reflection.js";
-
-RuleTester.afterAll = afterAll;
+import { RuleTester } from "oxlint/plugins-dev";
+import { describe, it } from "vitest";
+import rule, {
+  PREFER_TYPED_REFLECTION_DOCUMENTATION as DOC,
+} from "../../src/rules/prefer-typed-reflection.js";
 RuleTester.describe = describe;
 RuleTester.it = it;
-RuleTester.itOnly = it.only;
-const TESTER = new RuleTester({
-  languageOptions: {
-    parser,
-    parserOptions: {
-      projectService: { allowDefaultProject: ["*.ts*"] },
-      tsconfigRootDir: join(import.meta.dirname, "..", "fixtures"),
-    },
-  },
+const tester = new RuleTester({
+  languageOptions: { parserOptions: { lang: "ts" } },
 });
-TESTER.run("prefer-typed-reflection", rule, {
+const source = (code: string) => ({ code, filename: "src/example.ts" });
+const error = { messageId: "avoid" };
+tester.run("@sarj/prefer-typed-reflection", rule, {
   valid: [
-    'function read(Reflect: { get(target: object, key: string): unknown }, target: object) { return Reflect.get(target, "id"); }',
-    'declare const target: Record<string, unknown>; Reflect.get(target, "id");',
-    "declare const target: { id: string }; declare const key: string; Reflect.get(target, key);",
-    'declare const target: { id: string }; Reflect.get(target, "id", other);',
-    'declare const target: any; Reflect.get(target, "id");',
-    "declare const args: unknown[]; function run(n: number) {} Reflect.apply(run, undefined, args);",
-    '// @generated\ndeclare const target: { id: string }; Reflect.get(target, "id");',
-    'function read<T extends object>(target: T) { return Reflect.get(target, "id"); }',
-    'Reflect.ownKeys({ id: "a" });',
+    source(
+      DOC.examples.find((example) => example.outcome === "no-match")!.files[0]
+        .source,
+    ),
+    ...[
+      'function readType(value: object): unknown { return Reflect.get(value, "type"); }',
+      'declare const value: unknown; Reflect.get(value, "type");',
+      'declare const value: any; Reflect.get(value, "type");',
+      'declare const value: {}; Reflect.get(value, "type");',
+      'type Boundary = object; function readType(value: Boundary): unknown { return Reflect.get(value, "type"); }',
+      'type Boundary = object; function readType(value: Boundary = read()): unknown { return Reflect.get(value, "type"); }',
+      'Reflect.get(value as object, "type");',
+      'Reflect.get((value as object)!, "type");',
+      'type Boundary = object; type Alias = Readonly<Boundary>; function readType(value: Alias): unknown { return Reflect.get(value, "type"); }',
+      'const Reflect = custom; Reflect.get(target, "id");',
+      "function run(Reflect){return Reflect.apply(target,null,[])}",
+      "Reflect.get(target,key);",
+      'Reflect.get(target,"id",receiver);',
+      "Reflect.apply(target,null,args);",
+      'const reflection=Reflect; reflection.get(target,"id");',
+      'const globalThis={Reflect:custom}; globalThis.Reflect.get(target,"id");',
+      '// @generated\nReflect.get(target,"id");',
+    ].map(source),
   ],
   invalid: [
-    {
-      code: 'declare const target: { id: string }; Reflect.get(target, "id");',
-      errors: [
-        {
-          messageId: "avoid",
-        },
-      ],
-    },
-    {
-      code: 'declare const target: { id: string }; Reflect["get"](target, "missing");',
-      errors: [
-        {
-          messageId: "avoid",
-        },
-      ],
-    },
-    {
-      code: "function send(id: string) {} Reflect.apply(send, undefined, [42]);",
-      errors: [
-        {
-          messageId: "avoid",
-        },
-      ],
-    },
-    {
-      code: 'function send(id: string) {} globalThis.Reflect.apply(send, undefined, ["a"]);',
-      errors: [
-        {
-          messageId: "avoid",
-        },
-      ],
-    },
-    {
-      code: 'declare const target: { id: string }; globalThis.Reflect.get(target, "id");',
-      errors: [
-        {
-          messageId: "avoid",
-        },
-      ],
-    },
-  ],
-});
-const SYNTAX_TESTER = new RuleTester({ languageOptions: { parser } });
-SYNTAX_TESTER.run("without type information", rule, {
-  valid: ['declare const target: { id: string }; Reflect.get(target, "id");'],
-  invalid: [],
+    source(
+      DOC.examples.find((example) => example.outcome === "match")!.files[0]
+        .source,
+    ),
+    ...[
+      'function readType(value: { type: string }): unknown { return Reflect.get(value, "type"); }',
+      'type Boundary = { type: string }; function readType(value: Boundary): unknown { return Reflect.get(value, "type"); }',
+      'type Boundary = object; function readType() { type Boundary = { type: string }; const value: Boundary = read(); return Reflect.get(value, "type"); }',
+      'Reflect.get(target,"id");',
+      'Reflect["get"](target,1);',
+      'globalThis.Reflect.get(target,"id");',
+      "Reflect.apply(fn,undefined,[1]);",
+    ].map(source),
+  ].map((test) => ({ ...test, errors: [error] })),
 });

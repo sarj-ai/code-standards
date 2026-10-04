@@ -1,11 +1,10 @@
 // vitest: shared-module-graph
-import * as tsParser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
+import { RuleTester } from "oxlint/plugins-dev";
+import { describe, it } from "vitest";
 import rule from "../../src/rules/prefer-named-callback-domain.js";
 
-RuleTester.afterAll = afterAll; RuleTester.describe = describe; RuleTester.it = it; RuleTester.itOnly = it.only;
-const RULE_TESTER = new RuleTester({ languageOptions: { parser: tsParser, parserOptions: { ecmaVersion: "latest", sourceType: "module" } } });
+ RuleTester.describe = describe; RuleTester.it = it; RuleTester.itOnly = it.only;
+const RULE_TESTER = new RuleTester({ languageOptions: { parserOptions: { lang: "ts" } } });
 RULE_TESTER.run("prefer-named-callback-domain", rule, {
   valid: [
     { name: "ignores a private local alias inside an exported function", code: "export function run() { type Local = (value: 'a' | 'b') => void; const callback: Local = () => {}; callback('a'); }" },

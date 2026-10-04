@@ -1,0 +1,46 @@
+{
+  "name": "@sarj/oxlint-react-hooks",
+  "version": "0.1.0",
+  "description": "Meta React Hooks rules for stock Oxlint, without an ESLint runtime dependency",
+  "license": "MIT",
+  "author": "sarj-ai",
+  "type": "commonjs",
+  "main": "./index.cjs",
+  "exports": {
+    ".": "./index.cjs",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.cjs",
+    "vendor/react-hooks.cjs",
+    "LICENSE",
+    "PROVENANCE.json"
+  ],
+  "engines": {
+    "node": ">=22.22.2"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sarj-ai/code-standards.git",
+    "directory": "packages/react-hooks"
+  },
+  "scripts": {
+    "test": "node --test tests/*.test.cjs"
+  },
+  "dependencies": {
+    "@babel/core": "7.29.7",
+    "@babel/parser": "7.29.9",
+    "hermes-parser": "0.25.1",
+    "zod": "4.3.6",
+    "zod-validation-error": "4.0.2"
+  },
+  "peerDependencies": {
+    "oxlint": ">=1.81.0"
+  },
+  "devDependencies": {
+    "oxlint": "1.86.0"
+  }
+}

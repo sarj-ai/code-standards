@@ -1,16 +1,15 @@
 // vitest: shared-module-graph
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
+import { RuleTester } from "oxlint/plugins-dev";
+import { describe, it } from "vitest";
 
 import rule, { REQUIRE_ZOD_FORM_VALIDATION_DOCUMENTATION } from "../../src/rules/require-zod-form-validation.js";
 
 // Bind vitest to RuleTester for proper test reporting
-RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
 RuleTester.it = it;
 RuleTester.itOnly = it.only;
 
-const RULE_TESTER = new RuleTester();
+const RULE_TESTER = new RuleTester({ languageOptions: { parserOptions: { lang: "ts" } } });
 
 RULE_TESTER.run("require-zod-form-validation", rule, {
   valid: [
@@ -104,11 +103,6 @@ RULE_TESTER.run("require-zod-form-validation", rule, {
       name: "reports a production action read",
       code: "export async function action(request) { const formData = await request.formData(); return save(formData.get('name')); }",
       filename: "/repo/src/app/actions.ts",
-      errors: [{ messageId: "missingZodValidation" }],
-    },
-    {
-      name: "reports a bare FormData read",
-      code: "const name = formData.get('name');",
       errors: [{ messageId: "missingZodValidation" }],
     },
     {

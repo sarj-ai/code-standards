@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 import subprocess
 import sys
 from typing import TYPE_CHECKING
@@ -8,15 +9,14 @@ import pytest
 
 import sarj_standards
 from sarj_standards import api
-from sarj_standards.libs.adoption.lifecycle import Command
 from sarj_standards.libs.adoption.manifest import Manifest
 from sarj_standards.libs.rules import RuleEngine, RuleId, RuleSelector
 
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
-    from pathlib import Path
 
+    from sarj_standards.libs.adoption.lifecycle import Command
     from sarj_standards.libs.linting.policy import Policy
     from sarj_standards.libs.linting.runner import GroupedPaths
 
@@ -52,12 +52,12 @@ def test_package_import_does_not_eagerly_load_release_automation() -> None:
             RuleSelector(RuleEngine.PYTHON, RuleId("no-global-mutable")),
         ),
         (
-            "eslint",
+            "oxlint",
             "@sarj/no-alert",
-            RuleSelector(RuleEngine.ESLINT, RuleId("no-alert")),
+            RuleSelector(RuleEngine.OXLINT, RuleId("no-alert")),
         ),
         ("unregistered-tool", "no-alert", None),
-        ("eslint", "@upstream/no-alert", None),
+        ("oxlint", "@upstream/no-alert", None),
     ],
 )
 def test_diagnostic_identity_normalizes_only_known_custom_rule_selectors(
@@ -112,10 +112,10 @@ def test_canonical_analysis_routes_the_repository_only_once(
     assert len(routed) == 1
 
 
-def test_external_router_can_intentionally_ignore_managed_eslint_config(
+def test_external_router_can_intentionally_ignore_managed_oxlint_config(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    managed_config = tmp_path / "eslint.strict.mjs"
+    managed_config = tmp_path / "oxlint.strict.mjs"
     managed_config.write_text("export default [];\n", encoding="utf-8")
 
     def native(_paths: Sequence[str], **_kwargs: object) -> api.AnalysisReport:
@@ -127,7 +127,7 @@ def test_external_router_can_intentionally_ignore_managed_eslint_config(
     monkeypatch.setattr(api, "analyze_paths", native)  # sarj-noqa: SARJ445 -- intercepts API orchestration
     monkeypatch.setattr(api, "analyze_external", external)  # sarj-noqa: SARJ445 -- intercepts API orchestration
 
-    report = api.Standards(tmp_path).analyze(["eslint.strict.mjs"], external=True)
+    report = api.Standards(tmp_path).analyze(["oxlint.strict.mjs"], external=True)
 
     assert report.conclusion is api.Conclusion.PASSED
     assert report.issues == ()
@@ -150,7 +150,7 @@ def test_explicit_typescript_ci_scope_still_includes_react_doctor(
                 kwargs["react_doctor_full_scan"] is False,
             )
         )
-        return (api.ToolReport("eslint", api.Completion.COMPLETE),)
+        return (api.ToolReport("oxlint", api.Completion.COMPLETE),)
 
     monkeypatch.setattr(api, "analyze_paths", native)  # sarj-noqa: SARJ445 -- intercepts API orchestration
     monkeypatch.setattr(api, "analyze_external", external)  # sarj-noqa: SARJ445 -- intercepts API orchestration
@@ -170,7 +170,7 @@ def test_repository_wide_analysis_uses_full_react_doctor_scope(monkeypatch: pyte
 
     def external(_paths: Sequence[str], **kwargs: object) -> tuple[api.ToolReport, ...]:
         full_scan.append(kwargs["react_doctor_full_scan"] is True)
-        return (api.ToolReport("eslint", api.Completion.COMPLETE),)
+        return (api.ToolReport("oxlint", api.Completion.COMPLETE),)
 
     monkeypatch.setattr(api, "analyze_paths", native)  # sarj-noqa: SARJ445 -- intercepts API orchestration
     monkeypatch.setattr(api, "analyze_external", external)  # sarj-noqa: SARJ445 -- intercepts API orchestration
@@ -188,7 +188,7 @@ def test_default_analysis_without_verification_paths_uses_full_react_doctor_scop
     (tmp_path / ".sarj-standards.toml").write_text(
         Manifest(
             version=api.__version__,
-            configs=("eslint",),
+            configs=("oxlint",),
             python_dest=".",
             typescript_dest=".",
         ).render(),
@@ -201,7 +201,7 @@ def test_default_analysis_without_verification_paths_uses_full_react_doctor_scop
 
     def external(_paths: Sequence[str], **kwargs: object) -> tuple[api.ToolReport, ...]:
         full_scan.append(kwargs["react_doctor_full_scan"] is True)
-        return (api.ToolReport("eslint", api.Completion.COMPLETE),)
+        return (api.ToolReport("oxlint", api.Completion.COMPLETE),)
 
     monkeypatch.setattr(api, "analyze_paths", native)  # sarj-noqa: SARJ445 -- intercepts API orchestration
     monkeypatch.setattr(api, "analyze_external", external)  # sarj-noqa: SARJ445 -- intercepts API orchestration
@@ -221,7 +221,7 @@ def test_explicit_repository_root_uses_full_react_doctor_scope(monkeypatch: pyte
 
     def external(_paths: Sequence[str], **kwargs: object) -> tuple[api.ToolReport, ...]:
         full_scan.append(kwargs["react_doctor_full_scan"] is True)
-        return (api.ToolReport("eslint", api.Completion.COMPLETE),)
+        return (api.ToolReport("oxlint", api.Completion.COMPLETE),)
 
     monkeypatch.setattr(api, "analyze_paths", native)  # sarj-noqa: SARJ445 -- intercepts API orchestration
     monkeypatch.setattr(api, "analyze_external", external)  # sarj-noqa: SARJ445 -- intercepts API orchestration
@@ -238,7 +238,7 @@ def test_default_analysis_respects_scoped_verification_paths(monkeypatch: pytest
     (tmp_path / ".sarj-standards.toml").write_text(
         Manifest(
             version=api.__version__,
-            configs=("eslint",),
+            configs=("oxlint",),
             python_dest=".",
             typescript_dest=".",
             verify_paths=("src",),
@@ -252,7 +252,7 @@ def test_default_analysis_respects_scoped_verification_paths(monkeypatch: pytest
 
     def external(_paths: Sequence[str], **kwargs: object) -> tuple[api.ToolReport, ...]:
         full_scan.append(kwargs["react_doctor_full_scan"] is True)
-        return (api.ToolReport("eslint", api.Completion.COMPLETE),)
+        return (api.ToolReport("oxlint", api.Completion.COMPLETE),)
 
     monkeypatch.setattr(api, "analyze_paths", native)  # sarj-noqa: SARJ445 -- intercepts API orchestration
     monkeypatch.setattr(api, "analyze_external", external)  # sarj-noqa: SARJ445 -- intercepts API orchestration
@@ -302,6 +302,7 @@ def test_standards_facade_fix_uses_the_adopted_nested_typescript_destination(
 ) -> None:
     web = tmp_path / "apps" / "web"
     web.mkdir(parents=True)
+    (web / ".oxfmtrc.json").write_text("{}\n", encoding="utf-8")
     (tmp_path / "package.json").write_text(
         '{"name":"workspace","private":true,"packageManager":"pnpm@11.0.0"}\n',
         encoding="utf-8",
@@ -311,7 +312,7 @@ def test_standards_facade_fix_uses_the_adopted_nested_typescript_destination(
     (tmp_path / ".sarj-standards.toml").write_text(
         Manifest(
             version=api.__version__,
-            configs=("eslint",),
+            configs=("oxlint",),
             python_dest=".",
             typescript_dest="apps/web",
         ).render(),
@@ -325,6 +326,13 @@ def test_standards_facade_fix_uses_the_adopted_nested_typescript_destination(
 
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- intercepts API orchestration
         "sarj_standards.libs.adoption.lifecycle.execute", capture
+    )
+
+    def clean_formatting(*_args: object, **_kwargs: object) -> api.ToolReport:
+        return api.ToolReport("oxfmt", api.Completion.COMPLETE)
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- captured fix commands do not write files; isolate the post-fix check to verify destination routing.
+        api, "analyze_formatting", clean_formatting
     )
 
     result = api.Standards(tmp_path).fix()
@@ -382,30 +390,20 @@ def test_standards_facade_enforces_selected_application_dependency_policy(
     assert [finding.id for finding in result.findings] == ["LIB102"]
 
 
-def test_standards_facade_runs_eslint_for_selected_typescript(
-    monkeypatch: pytest.MonkeyPatch,
+def test_standards_facade_returns_canonical_lint_findings_for_selected_typescript(
     tmp_path: Path,
 ) -> None:
     source = tmp_path / "component.ts"
-    source.write_text("export const value = 1;\n", encoding="utf-8")
-    command = Command("ESLint", ("true",), tmp_path)
-
-    def clean_check(_paths: Sequence[str], **_kwargs: object) -> int:
-        return 0
-
-    def selected(_root: Path, _paths: Sequence[str]) -> list[Command]:
-        return [command]
-
-    def execute(commands: Sequence[Command]) -> int:
-        return 1 if list(commands) == [command] else 0
-
-    monkeypatch.setattr(api, "check", clean_check)  # sarj-noqa: SARJ445 -- intercepts API orchestration
-    monkeypatch.setattr(api, "selected_eslint_commands", selected)  # sarj-noqa: SARJ445 -- intercepts API orchestration
-    monkeypatch.setattr(api, "execute", execute)  # sarj-noqa: SARJ445 -- intercepts API orchestration
+    source.write_text("debugger;\n", encoding="utf-8")
+    modules = Path(__file__).resolve().parents[3] / "node_modules"
+    (tmp_path / "node_modules").symlink_to(modules, target_is_directory=True)
+    (tmp_path / "oxlint.config.mjs").write_text('export default {rules:{"no-debugger":"error"}};\n', encoding="utf-8")
 
     result = api.Standards(tmp_path).check(["component.ts"])
 
     assert result.status is api.Status.DRIFT
+    assert result.findings[0].id == "no-debugger"
+    assert result.findings[0].path == "component.ts"
 
 
 def test_standards_facade_init_dry_run_never_writes(tmp_path: Path) -> None:

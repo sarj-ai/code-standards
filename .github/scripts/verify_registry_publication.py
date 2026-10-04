@@ -52,10 +52,21 @@ NPM_MAX_RETRY_DELAY = timedelta(seconds=30)
 NPM_SUBPROCESS_TIMEOUT_SECONDS = 120
 NPM_ARTIFACT_PATHS = MappingProxyType(
     {
-        "@sarj/eslint-plugin": (
+        "@sarj/oxlint-plugin": (
             "packages/typescript/LICENSE",
             "packages/typescript/package.json",
+            "packages/typescript/tsup.config.ts",
+            "packages/typescript/scripts/copy-native-assets.mjs",
             "packages/typescript/src",
+            "packages/typescript/types",
+            "packages/typescript/vendor",
+        ),
+        "@sarj/oxlint-react-hooks": (
+            "packages/react-hooks/LICENSE",
+            "packages/react-hooks/PROVENANCE.json",
+            "packages/react-hooks/index.cjs",
+            "packages/react-hooks/package.json",
+            "packages/react-hooks/vendor",
         ),
         "@sarj/tsconfig": (
             "packages/tsconfig/LICENSE",
@@ -572,6 +583,7 @@ def publish_and_verify_npm(tarball: Path, *, commit: str, environment: str) -> N
                     str(tarball),
                     "--access",
                     "public",
+                    "--provenance",
                     "--ignore-scripts",
                 ),
                 check=True,

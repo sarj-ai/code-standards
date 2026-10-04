@@ -4,7 +4,8 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-dynamic-sql.test.ts
  */
 
-import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
+import type { ESTree } from "@oxlint/plugins";
+
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { sqlSingleQuotedRanges, stripSqlNoise } from "./_sql.js";
@@ -80,34 +81,34 @@ const CONSTANT_CASE_RE = /^[A-Z][A-Z0-9_]*$/;
  * than runtime data: a CONSTANT_CASE identifier, a member access whose final
  * property is CONSTANT_CASE (`TABLES.USERS`), or a string literal.
  */
-function isStaticFragment(expression: TSESTree.Expression): boolean {
-  if (expression.type === AST_NODE_TYPES.Identifier) {
+function isStaticFragment(expression: ESTree.Expression): boolean {
+  if (expression.type === "Identifier") {
     return CONSTANT_CASE_RE.test(expression.name);
   }
   if (
-    expression.type === AST_NODE_TYPES.MemberExpression &&
+    expression.type === "MemberExpression" &&
     !expression.computed &&
-    expression.property.type === AST_NODE_TYPES.Identifier
+    expression.property.type === "Identifier"
   ) {
     return CONSTANT_CASE_RE.test(expression.property.name);
   }
-  if (expression.type === AST_NODE_TYPES.Literal) {
+  if (expression.type === "Literal") {
     return typeof expression.value === "string";
   }
-  if (expression.type === AST_NODE_TYPES.TemplateLiteral) {
+  if (expression.type === "TemplateLiteral") {
     return expression.expressions.length === 0;
   }
   return false;
 }
 
 interface SqlInterpolation {
-  readonly expression: TSESTree.Expression;
+  readonly expression: ESTree.Expression;
   readonly messageId: MessageIds;
 }
 
 /** Runtime expressions embedded in a quoted value or an unquoted SQL fragment. */
 function runtimeInterpolations(
-  template: TSESTree.TemplateLiteral,
+  template: ESTree.TemplateLiteral,
 ): SqlInterpolation[] {
   const parts = template.quasis.map((quasi) => quasi.value.cooked ?? quasi.value.raw);
   const statement = parts.join(RUNTIME_MARKER);
@@ -137,12 +138,12 @@ function startsWithSqlQuote(text: string): boolean {
   return /^\s*'/u.test(text);
 }
 
-function staticLiteralText(node: TSESTree.Expression): string | undefined {
-  if (node.type === AST_NODE_TYPES.Literal && typeof node.value === "string") {
+function staticLiteralText(node: ESTree.Expression): string | undefined {
+  if (node.type === "Literal" && typeof node.value === "string") {
     return node.value;
   }
   if (
-    node.type === AST_NODE_TYPES.TemplateLiteral &&
+    node.type === "TemplateLiteral" &&
     node.expressions.length === 0
   ) {
     return node.quasis[0]?.value.raw;
@@ -150,16 +151,16 @@ function staticLiteralText(node: TSESTree.Expression): string | undefined {
   return undefined;
 }
 
-function runtimeConcatOperands(node: TSESTree.Node): SqlInterpolation[] {
-  if (node.type !== AST_NODE_TYPES.BinaryExpression || node.operator !== "+") {
+function runtimeConcatOperands(node: ESTree.Node): SqlInterpolation[] {
+  if (node.type !== "BinaryExpression" || node.operator !== "+") {
     return [];
   }
   const operands = concatOperands(node);
   const hasStringLiteral = operands.some(
     (operand) =>
-      (operand.type === AST_NODE_TYPES.Literal &&
+      (operand.type === "Literal" &&
         typeof operand.value === "string") ||
-      (operand.type === AST_NODE_TYPES.TemplateLiteral &&
+      (operand.type === "TemplateLiteral" &&
         operand.expressions.length === 0),
   );
   if (!hasStringLiteral) {
@@ -188,8 +189,8 @@ function runtimeConcatOperands(node: TSESTree.Node): SqlInterpolation[] {
   });
 }
 
-function concatOperands(node: TSESTree.Expression): TSESTree.Expression[] {
-  if (node.type === AST_NODE_TYPES.BinaryExpression && node.operator === "+") {
+function concatOperands(node: ESTree.Expression): ESTree.Expression[] {
+  if (node.type === "BinaryExpression" && node.operator === "+") {
     return [...concatOperands(node.left), ...concatOperands(node.right)];
   }
   return [node];
@@ -202,18 +203,18 @@ const SQL_STATEMENT_RE =
 const RUNTIME_MARKER = " ? ";
 
 /** True when the statement argument reads as SQL rather than as a shell command line. */
-function looksLikeSql(node: TSESTree.Node): boolean {
+function looksLikeSql(node: ESTree.Node): boolean {
   return SQL_STATEMENT_RE.test(stripSqlNoise(staticStatementText(node)));
 }
 
-function staticStatementText(node: TSESTree.Node): string {
-  if (node.type === AST_NODE_TYPES.TemplateLiteral) {
+function staticStatementText(node: ESTree.Node): string {
+  if (node.type === "TemplateLiteral") {
     return node.quasis.map((quasi) => quasi.value.cooked ?? quasi.value.raw).join(RUNTIME_MARKER);
   }
-  if (node.type === AST_NODE_TYPES.Literal) {
+  if (node.type === "Literal") {
     return typeof node.value === "string" ? node.value : RUNTIME_MARKER;
   }
-  if (node.type === AST_NODE_TYPES.BinaryExpression && node.operator === "+") {
+  if (node.type === "BinaryExpression" && node.operator === "+") {
     return staticStatementText(node.left) + staticStatementText(node.right);
   }
   return RUNTIME_MARKER;
@@ -221,14 +222,14 @@ function staticStatementText(node: TSESTree.Node): string {
 
 /** The inspected method name of `receiver.method(...)`, or null. */
 function statementMethodName(
-  node: TSESTree.CallExpression,
+  node: ESTree.CallExpression,
   methods: ReadonlySet<string>,
 ): string | null {
   const callee = node.callee;
   if (
-    callee.type !== AST_NODE_TYPES.MemberExpression ||
+    callee.type !== "MemberExpression" ||
     callee.computed ||
-    callee.property.type !== AST_NODE_TYPES.Identifier
+    callee.property.type !== "Identifier"
   ) {
     return null;
   }
@@ -270,7 +271,7 @@ export default createRule<Options, MessageIds>({
     const methods = new Set(options?.methods ?? DEFAULT_METHODS);
 
     return {
-      CallExpression(node: TSESTree.CallExpression): void {
+      CallExpression(node: ESTree.CallExpression): void {
         const method = statementMethodName(node, methods);
         if (method === null) {
           return;
@@ -282,7 +283,7 @@ export default createRule<Options, MessageIds>({
         }
 
         const offenders =
-          statement.type === AST_NODE_TYPES.TemplateLiteral
+          statement.type === "TemplateLiteral"
             ? runtimeInterpolations(statement)
             : runtimeConcatOperands(statement);
 

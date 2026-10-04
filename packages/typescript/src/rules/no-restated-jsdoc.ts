@@ -4,7 +4,9 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-restated-jsdoc.test.ts
  */
 
-import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
+import { sourceOrigin } from "./_source-origin.js";
+import type { ESTree } from "@oxlint/plugins";
+
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isProtected, splitIdentifier, stem } from "./_comments.js";
@@ -59,8 +61,13 @@ interface JsDocTag {
   readonly text: string;
 }
 
+interface ParsedJsdoc {
+  readonly description: string;
+  readonly tags: readonly JsDocTag[];
+}
+
 /** Split a JSDoc block into its free description and its tags. */
-function parseJsDoc(value: string): { description: string; tags: JsDocTag[] } {
+function parseJsDoc(value: string): ParsedJsdoc {
   const lines = value.replace(/^\*/, "").split("\n").map((line) => line.replace(/^\s*\*?\s?/, ""));
   const description: string[] = [];
   const tags: { name: string; text: string }[] = [];
@@ -79,12 +86,12 @@ function parseJsDoc(value: string): { description: string; tags: JsDocTag[] } {
   return { description: description.join("\n").trim(), tags };
 }
 
-function paramNames(params: readonly TSESTree.Parameter[]): string[] {
+function paramNames(params: readonly ESTree.ParamPattern[]): string[] {
   const names: string[] = [];
   for (const param of params) {
-    const target = param.type === AST_NODE_TYPES.AssignmentPattern ? param.left : param;
-    if (target.type === AST_NODE_TYPES.Identifier) names.push(target.name);
-    else if (target.type === AST_NODE_TYPES.TSParameterProperty) continue;
+    const target = param.type === "AssignmentPattern" ? param.left : param;
+    if (target.type === "Identifier") names.push(target.name);
+    else if (target.type === "TSParameterProperty") continue;
   }
   return names;
 }
@@ -108,14 +115,14 @@ export default createRule<Options, MessageIds>({
   },
   defaultOptions: [],
   create(context) {
-    if (isGeneratedFile(context.filename, context.sourceCode.text)) {
+    if (isGeneratedFile(sourceOrigin(context).filename, sourceOrigin(context).text)) {
       return {};
     }
     const sourceCode = context.sourceCode;
 
     return {
       Program(): void {
-        function checkJsDoc(comment: TSESTree.Comment): void {
+        function checkJsDoc(comment: ESTree.Comment): void {
           if (comment.type !== "Block" || !comment.value.startsWith("*")) return;
           const { description, tags } = parseJsDoc(comment.value);
           const describedText = [
@@ -168,9 +175,9 @@ export default createRule<Options, MessageIds>({
   },
 });
 
-function enclosingDeclarationNames(node: TSESTree.Node | null): { name: string; params: string[] } | null {
+function enclosingDeclarationNames(node: ESTree.Node | null): { name: string; params: string[] } | null {
   let declaration: { name: string; params: string[] } | null = null;
-  while (node != null && node.type !== AST_NODE_TYPES.Program) {
+  while (node != null && node.type !== "Program") {
     declaration = declarationNames(node);
     if (declaration !== null) break;
     node = node.parent ?? null;
@@ -181,32 +188,32 @@ function enclosingDeclarationNames(node: TSESTree.Node | null): { name: string; 
 
 
 /** The declared name and parameter names of the node a JSDoc block sits above. */
-function declarationNames(node: TSESTree.Node): { name: string; params: string[] } | null {
+function declarationNames(node: ESTree.Node): { name: string; params: string[] } | null {
   switch (node.type) {
     // `export function f()` — the JSDoc sits above the `export`, so the token
     // after it resolves to the wrapper, not to the thing being documented.
-    case AST_NODE_TYPES.ExportNamedDeclaration:
-    case AST_NODE_TYPES.ExportDefaultDeclaration:
+    case "ExportNamedDeclaration":
+    case "ExportDefaultDeclaration":
       return node.declaration == null ? null : declarationNames(node.declaration);
-    case AST_NODE_TYPES.FunctionDeclaration:
-    case AST_NODE_TYPES.TSDeclareFunction:
+    case "FunctionDeclaration":
+    case "TSDeclareFunction":
       return node.id === null ? null : { name: node.id.name, params: paramNames(node.params) };
-    case AST_NODE_TYPES.ClassDeclaration:
-    case AST_NODE_TYPES.TSInterfaceDeclaration:
-    case AST_NODE_TYPES.TSTypeAliasDeclaration:
-    case AST_NODE_TYPES.TSEnumDeclaration:
+    case "ClassDeclaration":
+    case "TSInterfaceDeclaration":
+    case "TSTypeAliasDeclaration":
+    case "TSEnumDeclaration":
       return node.id === null ? null : { name: node.id.name, params: [] };
-    case AST_NODE_TYPES.VariableDeclaration:
+    case "VariableDeclaration":
       return variableDeclarationNames(node);
-    case AST_NODE_TYPES.MethodDefinition:
-    case AST_NODE_TYPES.PropertyDefinition:
-    case AST_NODE_TYPES.TSMethodSignature:
-    case AST_NODE_TYPES.TSPropertySignature: {
-      if (node.key.type !== AST_NODE_TYPES.Identifier) return null;
+    case "MethodDefinition":
+    case "PropertyDefinition":
+    case "TSMethodSignature":
+    case "TSPropertySignature": {
+      if (node.key.type !== "Identifier") return null;
       const params =
-        node.type === AST_NODE_TYPES.MethodDefinition
+        node.type === "MethodDefinition"
           ? paramNames(node.value.params)
-          : node.type === AST_NODE_TYPES.TSMethodSignature
+          : node.type === "TSMethodSignature"
             ? paramNames(node.params)
             : [];
       return { name: node.key.name, params };
@@ -217,15 +224,15 @@ function declarationNames(node: TSESTree.Node): { name: string; params: string[]
 }
 
 
-function variableDeclarationNames(node: TSESTree.VariableDeclaration): { name: string; params: string[] } | null {
+function variableDeclarationNames(node: ESTree.VariableDeclaration): { name: string; params: string[] } | null {
 
   const declarator = node.declarations[0];
-  if (declarator === undefined || declarator.id.type !== AST_NODE_TYPES.Identifier) return null;
+  if (declarator === undefined || declarator.id.type !== "Identifier") return null;
   const init = declarator.init;
   const params =
     init != null &&
-      (init.type === AST_NODE_TYPES.ArrowFunctionExpression ||
-        init.type === AST_NODE_TYPES.FunctionExpression)
+      (init.type === "ArrowFunctionExpression" ||
+        init.type === "FunctionExpression")
       ? paramNames(init.params)
       : [];
   return { name: declarator.id.name, params };

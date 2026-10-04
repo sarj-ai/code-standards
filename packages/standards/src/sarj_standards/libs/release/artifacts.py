@@ -38,21 +38,34 @@ def _json_value(value: object) -> JsonValue:
 
 
 def required_artifact_paths(package_json: Mapping[str, object]) -> tuple[str, ...]:
-    candidates: list[str] = []
+    return tuple(dict.fromkeys(path for path, _declaration in _required_artifact_entries(package_json)))
+
+
+def _required_artifact_entries(package_json: Mapping[str, object]) -> tuple[tuple[str, bool], ...]:
+    candidates: list[tuple[str, bool]] = []
     for field in ("main", "module", "types"):
-        candidates.extend(_exported_paths(_json_value(package_json.get(field))))
-    candidates.extend(_exported_paths(_json_value(package_json.get("exports"))))
-    return tuple(dict.fromkeys(_safe_artifact_path(path) for path in candidates))
+        candidates.extend(_exported_entries(_json_value(package_json.get(field)), declaration=field == "types"))
+    candidates.extend(_exported_entries(_json_value(package_json.get("exports"))))
+    binary = _json_value(package_json.get("bin"))
+    if isinstance(binary, dict):
+        candidates.extend(entry for value in binary.values() for entry in _exported_entries(value))
+    else:
+        candidates.extend(_exported_entries(binary))
+    return tuple((_safe_artifact_path(path), declaration) for path, declaration in candidates)
 
 
-def _exported_paths(value: JsonValue) -> tuple[str, ...]:
+def _exported_entries(value: JsonValue, *, declaration: bool = False) -> tuple[tuple[str, bool], ...]:
     match value:
         case str():
-            return (value,)
+            return ((value, declaration),)
         case list():
-            return tuple(path for item in value for path in _exported_paths(item))
+            return tuple(entry for item in value for entry in _exported_entries(item, declaration=declaration))
         case dict():
-            return tuple(path for item in value.values() for path in _exported_paths(item))
+            return tuple(
+                entry
+                for key, item in value.items()
+                for entry in _exported_entries(item, declaration=declaration or key == "types")
+            )
         case _:
             return ()
 
@@ -81,14 +94,17 @@ def load_package_json(package_root: Path) -> dict[str, JsonValue]:
 
 
 def verify_built_package(package_root: Path) -> tuple[str, ...]:
-    required = required_artifact_paths(load_package_json(package_root))
+    entries = _required_artifact_entries(load_package_json(package_root))
+    required = tuple(dict.fromkeys(path for path, _declaration in entries))
     if not required:
         msg = "package.json declares no publishable entry points"
         raise ValueError(msg)
     resolved_root = package_root.resolve()
-    for relative in required:
-        if PurePosixPath(relative).parts[0] != "dist":
-            msg = f"exported entry point must live under dist/: {relative}"
+    for relative, declaration in entries:
+        directory = PurePosixPath(relative).parts[0]
+        authored_declaration = declaration and directory == "types" and relative.endswith(".d.ts")
+        if directory != "dist" and not authored_declaration:
+            msg = f"runtime entry points must live under dist/; declarations may use types/*.d.ts: {relative}"
             raise ValueError(msg)
         artifact = package_root / relative
         try:

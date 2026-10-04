@@ -8,6 +8,9 @@ import textwrap
 from typing import NamedTuple
 
 import pytest
+import yaml
+
+from sarj_standards.libs.adoption import manifest
 
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
@@ -191,7 +194,8 @@ def test_release_tags_registry_visible_packages_at_the_published_commit() -> Non
         "pending_jobs == 0 && successful_jobs > 0" in workflow
     )  # sarj-noqa: SARJ402 -- workflow text is the release-gate contract
     assert (
-        "maintain release create-tags typescript bootstrap contracts python sql iac standards tsconfig" in workflow
+        "maintain release create-tags typescript react-hooks bootstrap contracts python sql iac standards tsconfig"
+        in workflow
     )  # sarj-noqa: SARJ402 -- workflow text is the release-policy contract
     assert '--commit "$PUBLISHED_SHA"' in workflow  # sarj-noqa: SARJ402 -- workflow text is the release-policy contract
     assert (
@@ -225,14 +229,17 @@ def test_npm_release_reconciles_without_republishing() -> None:
     workflow = (REPO_ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
     typescript_publish = workflow.split("  publish-typescript:", 1)[1].split("  build-bootstrap:", 1)[0]
     tsconfig_publish = workflow.split("  publish-tsconfig:", 1)[1]
+    hooks_publish = workflow.split("  publish-react-hooks:", 1)[1].split("  build-tsconfig:", 1)[0]
 
     assert "schedule:" in workflow  # sarj-noqa: SARJ402 -- workflow text is the release-policy contract
-    assert "cron: '17 * * * *'" in workflow  # sarj-noqa: SARJ402 -- workflow text is the release-policy contract
+    parsed: object = yaml.load(workflow, Loader=yaml.BaseLoader)  # pyright: ignore[reportAny] -- typed mapping boundary below
+    triggers = manifest.table_field(manifest.as_table(parsed), "on")
+    assert triggers["schedule"] == [{"cron": "17 * * * *"}]
     assert (  # sarj-noqa: SARJ402 -- workflow text is the release-policy contract
         "BEFORE: ${{ github.event.before || github.sha }}" in workflow
     )
     assert "run: npm publish" not in workflow  # sarj-noqa: SARJ402 -- workflow text is the release-policy contract
-    for publisher in (typescript_publish, tsconfig_publish):
+    for publisher in (typescript_publish, hooks_publish, tsconfig_publish):
         assert (  # sarj-noqa: SARJ402 -- workflow text is the release-policy contract
             "timeout-minutes: 45" in publisher
         )
@@ -249,7 +256,7 @@ def test_npm_tag_recovery_checks_full_history_against_the_current_commit() -> No
         workflow.count("fetch-depth: 0") >= 9
     )
     assert (  # sarj-noqa: SARJ402 -- workflow text is the release-policy contract
-        workflow.count("EXPECTED_COMMIT: ${{ github.sha }}") == 2
+        workflow.count("EXPECTED_COMMIT: ${{ github.sha }}") == 3
     )
 
 

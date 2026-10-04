@@ -1,0 +1,135 @@
+import {isParenthesized, hasSideEffect} from '../../eslint-utils/index.mjs';
+import {isMethodCall} from './ast/index.js';
+import {
+	getParenthesizedRange,
+	getParenthesizedText,
+	isNodeValueNotDomNode,
+	isSameReference,
+	isValueNotUsable,
+	needsSemicolon,
+	shouldAddParenthesesToMemberExpressionObject,
+} from './utils/index.js';
+
+const ERROR_MESSAGE_ID = 'error';
+const SUGGESTION_MESSAGE_ID = 'suggestion';
+const messages = {
+	[ERROR_MESSAGE_ID]: 'Prefer `childNode.remove()` over `parentNode.removeChild(childNode)`.',
+	[SUGGESTION_MESSAGE_ID]: 'Replace `parentNode.removeChild(childNode)` with `childNode{{dotOrQuestionDot}}remove()`.',
+};
+
+// TODO: Don't check node.type twice
+const isMemberExpressionOptionalObject = node =>
+	node.parent.type === 'MemberExpression'
+	&& node.parent.object === node
+	&& (
+		node.parent.optional
+		|| (node.type === 'MemberExpression' && isMemberExpressionOptionalObject(node.object))
+	);
+
+const isParentNodeMemberExpression = node =>
+	node.type === 'MemberExpression'
+	&& !node.computed
+	&& node.property.type === 'Identifier'
+	&& node.property.name === 'parentNode';
+
+/**
+@param {import('eslint').Rule.RuleContext} context
+*/
+const create = context => {
+	const {sourceCode} = context;
+
+	context.on('CallExpression', node => {
+		if (
+			!isMethodCall(node, {
+				method: 'removeChild',
+				argumentsLength: 1,
+				optionalCall: false,
+			})
+			|| isNodeValueNotDomNode(node.callee.object)
+			|| isNodeValueNotDomNode(node.arguments[0])
+		) {
+			return;
+		}
+
+		const parentNode = node.callee.object;
+		const childNode = node.arguments[0];
+
+		const problem = {
+			node,
+			messageId: ERROR_MESSAGE_ID,
+		};
+
+		const isOptionalParentNode = isMemberExpressionOptionalObject(parentNode);
+		const isSameReferenceParentNode = isParentNodeMemberExpression(parentNode)
+			&& isSameReference(parentNode.object, childNode);
+
+		const createFix = (optional = false) => fixer => {
+			let childNodeText = getParenthesizedText(childNode, context);
+			if (
+				!isParenthesized(childNode, sourceCode)
+				&& shouldAddParenthesesToMemberExpressionObject(childNode, context)
+			) {
+				childNodeText = `(${childNodeText})`;
+			}
+
+			if (needsSemicolon(sourceCode.getTokenBefore(node), context, childNodeText)) {
+				childNodeText = `;${childNodeText}`;
+			}
+
+			return fixer.replaceText(node, `${childNodeText}${optional ? '?' : ''}.remove()`);
+		};
+
+		const createSameReferenceFix = (optional = false) => fixer => {
+			const [, receiverEnd] = getParenthesizedRange(parentNode.object, context);
+			const [, callEnd] = sourceCode.getRange(node);
+
+			return fixer.replaceTextRange([receiverEnd, callEnd], `${optional ? '?' : ''}.remove()`);
+		};
+
+		if (!hasSideEffect(parentNode, sourceCode) && isValueNotUsable(node)) {
+			if (isSameReferenceParentNode) {
+				problem.fix = createSameReferenceFix(parentNode.optional);
+				return problem;
+			}
+
+			if (!isOptionalParentNode) {
+				problem.fix = createFix(false);
+				return problem;
+			}
+		}
+
+		problem.suggest = (
+			isOptionalParentNode ? [true, false] : [false]
+		).map(optional => ({
+			messageId: SUGGESTION_MESSAGE_ID,
+			data: {dotOrQuestionDot: optional ? '?.' : '.'},
+			fix: isSameReferenceParentNode
+				? createSameReferenceFix(optional)
+				: createFix(optional),
+		}));
+
+		return problem;
+	});
+};
+
+/**
+@type {import('eslint').Rule.RuleModule}
+*/
+const config = {
+	create,
+	meta: {
+		type: 'suggestion',
+		docs: {
+			description: 'Prefer `childNode.remove()` over `parentNode.removeChild(childNode)`.',
+			recommended: 'unopinionated',
+		},
+		fixable: 'code',
+		hasSuggestions: true,
+		messages,
+		languages: [
+			'js/js',
+		],
+	},
+};
+
+export default config;

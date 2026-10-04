@@ -3,7 +3,10 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/require-sql-access-class.test.ts
  */
 
-import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
+import { sourceOrigin } from "./_source-origin.js";
+import type { ESTree } from "@oxlint/plugins";
+import { findVariable } from "./_scope.js";
+
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile, isTestFile } from "./_paths.js";
@@ -119,12 +122,12 @@ export const REQUIRE_SQL_ACCESS_CLASS_DOCUMENTATION = {
   ],
 } as const satisfies RuleDocumentation;
 
-function memberName(node: TSESTree.MemberExpression): string | null {
-  if (!node.computed && node.property.type === AST_NODE_TYPES.Identifier)
+function memberName(node: ESTree.MemberExpression): string | null {
+  if (!node.computed && node.property.type === "Identifier")
     return node.property.name;
   if (
     node.computed &&
-    node.property.type === AST_NODE_TYPES.Literal &&
+    node.property.type === "Literal" &&
     typeof node.property.value === "string"
   )
     return node.property.value;
@@ -133,7 +136,7 @@ function memberName(node: TSESTree.MemberExpression): string | null {
 
 function isDatabaseOperation(
   method: string,
-  receiver: TSESTree.Expression,
+  receiver: ESTree.Expression,
 ): boolean {
   if (DIRECT_EXECUTION_METHODS.has(method) && databaseReceiver(receiver))
     return true;
@@ -145,110 +148,110 @@ function isDatabaseOperation(
   return BUILDER_SHORT_TERMINALS.has(method) && expressionCallsBuilder(receiver);
 }
 
-function databaseReceiver(node: TSESTree.Expression): boolean {
-  if (node.type === AST_NODE_TYPES.Identifier)
+function databaseReceiver(node: ESTree.Expression): boolean {
+  if (node.type === "Identifier")
     return DATABASE_NAMES.test(node.name);
-  if (node.type !== AST_NODE_TYPES.MemberExpression) return false;
+  if (node.type !== "MemberExpression") return false;
   const name = memberName(node);
   return name === "DB" || (name !== null && DATABASE_NAMES.test(name));
 }
 
-function databaseRootMember(node: TSESTree.Expression): string | null {
+function databaseRootMember(node: ESTree.Expression): string | null {
   let current = node;
   for (;;) {
-    if (current.type === AST_NODE_TYPES.ChainExpression) {
+    if (current.type === "ChainExpression") {
       current = current.expression;
       continue;
     }
     if (
-      current.type === AST_NODE_TYPES.TSAsExpression ||
-      current.type === AST_NODE_TYPES.TSNonNullExpression ||
-      current.type === AST_NODE_TYPES.TSTypeAssertion
+      current.type === "TSAsExpression" ||
+      current.type === "TSNonNullExpression" ||
+      current.type === "TSTypeAssertion"
     ) {
       current = current.expression;
       continue;
     }
-    if (current.type === AST_NODE_TYPES.CallExpression) {
-      if (current.callee.type !== AST_NODE_TYPES.MemberExpression) return null;
+    if (current.type === "CallExpression") {
+      if (current.callee.type !== "MemberExpression") return null;
       current = current.callee.object;
       continue;
     }
-    if (current.type === AST_NODE_TYPES.MemberExpression) {
-      if (current.object.type === AST_NODE_TYPES.ThisExpression)
+    if (current.type === "MemberExpression") {
+      if (current.object.type === "ThisExpression")
         return memberName(current);
       current = current.object;
       continue;
     }
-    return current.type === AST_NODE_TYPES.Identifier ? current.name : null;
+    return current.type === "Identifier" ? current.name : null;
   }
 }
 
-function expressionHasDatabaseMarker(node: TSESTree.Expression): boolean {
-  let current: TSESTree.Expression = node;
+function expressionHasDatabaseMarker(node: ESTree.Expression): boolean {
+  let current: ESTree.Expression = node;
   for (;;) {
-    if (current.type === AST_NODE_TYPES.ChainExpression) {
+    if (current.type === "ChainExpression") {
       current = current.expression;
       continue;
     }
     if (
-      current.type === AST_NODE_TYPES.TSAsExpression ||
-      current.type === AST_NODE_TYPES.TSNonNullExpression ||
-      current.type === AST_NODE_TYPES.TSTypeAssertion
+      current.type === "TSAsExpression" ||
+      current.type === "TSNonNullExpression" ||
+      current.type === "TSTypeAssertion"
     ) {
       current = current.expression;
       continue;
     }
-    if (current.type === AST_NODE_TYPES.CallExpression) {
-      if (current.callee.type !== AST_NODE_TYPES.MemberExpression) return false;
+    if (current.type === "CallExpression") {
+      if (current.callee.type !== "MemberExpression") return false;
       current = current.callee.object;
       continue;
     }
-    if (current.type === AST_NODE_TYPES.MemberExpression) {
+    if (current.type === "MemberExpression") {
       const name = memberName(current);
       if (name === "DB" || (name !== null && DATABASE_NAMES.test(name)))
         return true;
       current = current.object;
       continue;
     }
-    return current.type === AST_NODE_TYPES.Identifier && DATABASE_NAMES.test(current.name);
+    return current.type === "Identifier" && DATABASE_NAMES.test(current.name);
   }
 }
 
-function expressionCallsBuilder(node: TSESTree.Expression): boolean {
-  let current: TSESTree.Expression = node;
+function expressionCallsBuilder(node: ESTree.Expression): boolean {
+  let current: ESTree.Expression = node;
   for (;;) {
-    if (current.type === AST_NODE_TYPES.ChainExpression) {
+    if (current.type === "ChainExpression") {
       current = current.expression;
       continue;
     }
     if (
-      current.type === AST_NODE_TYPES.TSAsExpression ||
-      current.type === AST_NODE_TYPES.TSNonNullExpression ||
-      current.type === AST_NODE_TYPES.TSTypeAssertion
+      current.type === "TSAsExpression" ||
+      current.type === "TSNonNullExpression" ||
+      current.type === "TSTypeAssertion"
     ) {
       current = current.expression;
       continue;
     }
-    if (current.type === AST_NODE_TYPES.CallExpression) {
-      if (current.callee.type !== AST_NODE_TYPES.MemberExpression) return false;
+    if (current.type === "CallExpression") {
+      if (current.callee.type !== "MemberExpression") return false;
       const name = memberName(current.callee);
       if (name !== null && BUILDER_METHODS.has(name)) return true;
       current = current.callee.object;
       continue;
     }
-    if (current.type !== AST_NODE_TYPES.MemberExpression) return false;
+    if (current.type !== "MemberExpression") return false;
     current = current.object;
   }
 }
 
 function owningClass(
-  node: TSESTree.Node,
-): TSESTree.ClassDeclaration | TSESTree.ClassExpression | null {
+  node: ESTree.Node,
+): ESTree.Class | null {
   let current = node.parent;
   while (current != null) {
     if (
-      current.type === AST_NODE_TYPES.ClassDeclaration ||
-      current.type === AST_NODE_TYPES.ClassExpression
+      current.type === "ClassDeclaration" ||
+      current.type === "ClassExpression"
     )
       return current;
     current = current.parent;
@@ -257,40 +260,40 @@ function owningClass(
 }
 
 function injectedMembers(
-  owner: TSESTree.ClassDeclaration | TSESTree.ClassExpression,
+  owner: ESTree.Class,
 ): ReadonlySet<string> {
   const injected = new Set<string>();
   const constructor = owner.body.body.find(
-    (member): member is TSESTree.MethodDefinition =>
-      member.type === AST_NODE_TYPES.MethodDefinition &&
+    (member): member is ESTree.MethodDefinition =>
+      member.type === "MethodDefinition" &&
       member.kind === "constructor",
   );
   if (constructor === undefined) return injected;
   const parameters = new Set<string>();
   for (const parameter of constructor.value.params) {
     for (const name of parameterNames(parameter)) parameters.add(name);
-    if (parameter.type !== AST_NODE_TYPES.TSParameterProperty) continue;
-    const value = parameter.parameter.type === AST_NODE_TYPES.AssignmentPattern
+    if (parameter.type !== "TSParameterProperty") continue;
+    const value = parameter.parameter.type === "AssignmentPattern"
       ? parameter.parameter.left
       : parameter.parameter;
-    if (value.type === AST_NODE_TYPES.Identifier) injected.add(value.name);
+    if (value.type === "Identifier") injected.add(value.name);
   }
   const body = constructor.value.body;
   if (body === null) return injected;
-  function collectInjectedMember(statement: TSESTree.Statement): void {
+  function collectInjectedMember(statement: ESTree.Statement): void {
     if (
-      statement.type !== AST_NODE_TYPES.ExpressionStatement ||
-      statement.expression.type !== AST_NODE_TYPES.AssignmentExpression ||
+      statement.type !== "ExpressionStatement" ||
+      statement.expression.type !== "AssignmentExpression" ||
       statement.expression.operator !== "="
     ) return;
     const { left, right } = statement.expression;
-    if (left.type !== AST_NODE_TYPES.MemberExpression) return;
+    if (left.type !== "MemberExpression") return;
     const target = thisRootMember(left);
     if (target === null) return;
-    const source = right.type === AST_NODE_TYPES.Identifier
+    const source = right.type === "Identifier"
       ? right.name
-      : right.type === AST_NODE_TYPES.MemberExpression &&
-        right.object.type === AST_NODE_TYPES.Identifier
+      : right.type === "MemberExpression" &&
+        right.object.type === "Identifier"
         ? right.object.name
         : null;
     if (source !== null && parameters.has(source)) injected.add(target);
@@ -300,34 +303,34 @@ function injectedMembers(
   return injected;
 }
 
-function thisRootMember(node: TSESTree.Expression): string | null {
+function thisRootMember(node: ESTree.Expression): string | null {
   let current = node;
   let root: string | null = null;
-  while (current.type === AST_NODE_TYPES.MemberExpression) {
+  while (current.type === "MemberExpression") {
     const name = memberName(current);
     if (name === null) return null;
     root = name;
     current = current.object;
   }
-  return current.type === AST_NODE_TYPES.ThisExpression ? root : null;
+  return current.type === "ThisExpression" ? root : null;
 }
 
-function parameterNames(parameter: TSESTree.Parameter): ReadonlySet<string> {
+function parameterNames(parameter: ESTree.ParamPattern): ReadonlySet<string> {
   let value = parameter;
-  if (value.type === AST_NODE_TYPES.TSParameterProperty) value = value.parameter;
-  if (value.type === AST_NODE_TYPES.AssignmentPattern) value = value.left;
-  if (value.type === AST_NODE_TYPES.Identifier) return new Set([value.name]);
-  if (value.type !== AST_NODE_TYPES.ObjectPattern) return new Set();
+  if (value.type === "TSParameterProperty") value = value.parameter;
+  if (value.type === "AssignmentPattern") value = value.left;
+  if (value.type === "Identifier") return new Set([value.name]);
+  if (value.type !== "ObjectPattern") return new Set();
   return new Set(
     value.properties.flatMap((property) => {
-      if (property.type === AST_NODE_TYPES.RestElement)
-        return property.argument.type === AST_NODE_TYPES.Identifier
+      if (property.type === "RestElement")
+        return property.argument.type === "Identifier"
           ? [property.argument.name]
           : [];
-      const target = property.value.type === AST_NODE_TYPES.AssignmentPattern
+      const target = property.value.type === "AssignmentPattern"
         ? property.value.left
         : property.value;
-      return target.type === AST_NODE_TYPES.Identifier ? [target.name] : [];
+      return target.type === "Identifier" ? [target.name] : [];
     }),
   );
 }
@@ -350,27 +353,27 @@ export default createRule<Options, MessageIds>({
   defaultOptions: [],
   create(context) {
     if (
-      isTestFile(context.filename) ||
-      isGeneratedFile(context.filename, context.sourceCode.text)
+      isTestFile(sourceOrigin(context).filename) ||
+      isGeneratedFile(sourceOrigin(context).filename, sourceOrigin(context).text)
     )
       return {};
-    function knownNonDatabase(node: TSESTree.Node, seen = new Set<TSESTree.Node>()): boolean {
+    function knownNonDatabase(node: ESTree.Node, seen = new Set<ESTree.Node>()): boolean {
       if (seen.has(node)) return false;
       seen.add(node);
-      if (node.type === AST_NODE_TYPES.Identifier) {
-        const binding = ASTUtils.findVariable(context.sourceCode.getScope(node), node.name);
+      if (node.type === "Identifier") {
+        const binding = findVariable(context.sourceCode.getScope(node), node.name);
         if (binding?.defs.length !== 1 || binding.references.some((reference) => reference.isWrite() && reference.init !== true)) return false;
         const definition = binding.defs[0];
-        return definition?.type === "Variable" && definition.node.init !== null && knownNonDatabase(definition.node.init, seen);
+        return definition?.type === "Variable" && definition.node.type === "VariableDeclarator" && definition.node.init !== null && knownNonDatabase(definition.node.init, seen);
       }
-      return node.type === AST_NODE_TYPES.NewExpression && node.callee.type === AST_NODE_TYPES.Identifier &&
+      return node.type === "NewExpression" && node.callee.type === "Identifier" &&
         ["Map", "WeakMap", "URLSearchParams"].includes(node.callee.name) &&
-        (ASTUtils.findVariable(context.sourceCode.getScope(node.callee), node.callee.name)?.defs.length ?? 0) === 0;
+        (findVariable(context.sourceCode.getScope(node.callee), node.callee.name)?.defs.length ?? 0) === 0;
     }
     return {
       CallExpression(node): void {
         if (
-          node.callee.type !== AST_NODE_TYPES.MemberExpression
+          node.callee.type !== "MemberExpression"
         )
           return;
         const method = memberName(node.callee);

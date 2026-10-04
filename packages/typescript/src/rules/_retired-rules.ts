@@ -1,5 +1,7 @@
 /** @fileoverview _retired-rules — burned rule names and their migration action. */
 
+
+
 /** Why a name was withdrawn, and in which release. */
 export interface RetiredRule {
   /** The plugin version whose release removed the rule. */
@@ -8,7 +10,7 @@ export interface RetiredRule {
   readonly reason: string;
 }
 
-export const RETIRED_RULES: Readonly<Record<string, RetiredRule>> = {
+export const RETIRED_RULES = {
   "ban-loose-type-guards-in-tests": {
     removedIn: "5.0.0",
     reason: "Delete the config entry and suppressions; there is no replacement.",
@@ -84,4 +86,4 @@ export const RETIRED_RULES: Readonly<Record<string, RetiredRule>> = {
     removedIn: "3.0.0",
     reason: "Delete the config entry and suppressions; there is no replacement.",
   },
-};
+} as const satisfies Readonly<Record<string, RetiredRule>>;

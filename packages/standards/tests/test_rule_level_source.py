@@ -74,7 +74,7 @@ def test_typescript_levels_edit_only_direct_property(tmp_path: Path, source: str
     root = Path(__file__).resolve().parents[3]
     path = tmp_path / "rule.ts"
     path.write_text(source, encoding="utf-8")
-    selector = RuleSelector.parse("eslint:sample")
+    selector = RuleSelector.parse("oxlint:sample")
 
     staged = rule_level_source.prepare(root, selector, str(path), DefaultLevel.WARNING)
     assert staged.current is DefaultLevel.WARNING
@@ -91,7 +91,7 @@ def test_typescript_inserts_missing_level_without_matching_nested_source(tmp_pat
     source = "const SAMPLE_DOCUMENTATION = { examples: [{source: 'defaultLevel: \"warning\"'}] };\n"
     path = tmp_path / "rule.ts"
     path.write_text(source, encoding="utf-8")
-    selector = RuleSelector.parse("eslint:sample")
+    selector = RuleSelector.parse("oxlint:sample")
 
     staged = rule_level_source.prepare(root, selector, str(path), DefaultLevel.WARNING)
     assert staged.current is DefaultLevel.ERROR
@@ -180,7 +180,7 @@ def test_typescript_promotes_literal_computed_severity(tmp_path: Path, name: str
     source = f'const SAMPLE_DOCUMENTATION = {{ summary: "😀 café", {name}: "warning" }} as const;\n'
     path = tmp_path / "rule.ts"
     path.write_text(source, encoding="utf-8")
-    selector = RuleSelector.parse("eslint:sample")
+    selector = RuleSelector.parse("oxlint:sample")
 
     promoted = rule_level_source.prepare(root, selector, str(path), DefaultLevel.ERROR)
 
@@ -201,7 +201,7 @@ def test_typescript_refuses_ambiguous_severity_ownership(tmp_path: Path, propert
     path.write_text(source, encoding="utf-8")
 
     with pytest.raises(ValueError, match="ambiguous defaultLevel ownership"):
-        rule_level_source.prepare(root, RuleSelector.parse("eslint:sample"), str(path), DefaultLevel.WARNING)
+        rule_level_source.prepare(root, RuleSelector.parse("oxlint:sample"), str(path), DefaultLevel.WARNING)
 
     assert path.read_text(encoding="utf-8") == source
 
@@ -213,7 +213,7 @@ def test_typescript_preserves_metadata_overridden_by_explicit_severity(tmp_path:
     path = tmp_path / "rule.ts"
     path.write_text(source, encoding="utf-8")
 
-    promoted = rule_level_source.prepare(root, RuleSelector.parse("eslint:sample"), str(path), DefaultLevel.ERROR)
+    promoted = rule_level_source.prepare(root, RuleSelector.parse("oxlint:sample"), str(path), DefaultLevel.ERROR)
 
     assert promoted.current is DefaultLevel.WARNING
     assert promoted.after == source.replace("'warning'", "'error'")

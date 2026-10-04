@@ -4,7 +4,9 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-declaration-comment-wall.test.ts
  */
 
-import { AST_NODE_TYPES, AST_TOKEN_TYPES, type TSESTree } from "@typescript-eslint/utils";
+import { sourceOrigin } from "./_source-origin.js";
+import type { ESTree } from "@oxlint/plugins";
+
 
 import {
   BARE_LABEL_RE,
@@ -59,18 +61,18 @@ export const NO_DECLARATION_COMMENT_WALL_DOCUMENTATION = {
 
 /** A member this rule can judge: something with a name and a source range. */
 interface Judged {
-  readonly node: TSESTree.Node;
-  readonly key: TSESTree.Node;
+  readonly node: ESTree.Node;
+  readonly key: ESTree.Node;
 }
 
-function named(node: TSESTree.Node): Judged | undefined {
+function named(node: ESTree.Node): Judged | undefined {
   switch (node.type) {
-    case AST_NODE_TYPES.TSEnumMember:
+    case "TSEnumMember":
       return { node, key: node.id };
-    case AST_NODE_TYPES.PropertyDefinition:
-    case AST_NODE_TYPES.TSAbstractPropertyDefinition:
-    case AST_NODE_TYPES.MethodDefinition:
-    case AST_NODE_TYPES.TSAbstractMethodDefinition:
+    case "PropertyDefinition":
+    case "TSAbstractPropertyDefinition":
+    case "MethodDefinition":
+    case "TSAbstractMethodDefinition":
       return node.computed ? undefined : { node, key: node.key };
     default:
       return undefined;
@@ -99,23 +101,23 @@ export default createRule<Options, MessageIds>({
     // Generated or vendored, a test fixture, or a demo story: three kinds of
     // file whose member comments are output rather than commentary.
     if (
-      isGeneratedFile(context.filename, sourceCode.text) ||
-      isTestFile(context.filename) ||
-      isStoryFile(context.filename)
+      isGeneratedFile(sourceOrigin(context).filename, sourceOrigin(context).text) ||
+      isTestFile(sourceOrigin(context).filename) ||
+      isStoryFile(sourceOrigin(context).filename)
     ) {
       return {};
     }
 
     // One pass over the file's comments, indexed by the line they end on (a
     // leading comment) and the line they start on (a trailing one).
-    const endingOn = new Map<number, TSESTree.Comment>();
-    const startingOn = new Map<number, TSESTree.Comment>();
+    const endingOn = new Map<number, ESTree.Comment>();
+    const startingOn = new Map<number, ESTree.Comment>();
     for (const comment of sourceCode.getAllComments()) {
       endingOn.set(comment.loc.end.line, comment);
       if (!startingOn.has(comment.loc.start.line)) startingOn.set(comment.loc.start.line, comment);
     }
 
-    function documentingComment(member: TSESTree.Node): TSESTree.Comment | undefined {
+    function documentingComment(member: ESTree.Node): ESTree.Comment | undefined {
       const beforeMember = sourceCode.getTokenBefore(member, { includeComments: false });
       const ownsItsLine =
         beforeMember === null || beforeMember.loc.end.line < member.loc.start.line;
@@ -125,8 +127,8 @@ export default createRule<Options, MessageIds>({
         if (before === null || before.loc.end.line < lead.loc.start.line) {
           const previousLine = endingOn.get(lead.loc.start.line - 1);
           if (
-            lead.type === AST_TOKEN_TYPES.Line &&
-            previousLine?.type === AST_TOKEN_TYPES.Line &&
+            lead.type === "Line" &&
+            previousLine?.type === "Line" &&
             previousLine.loc.start.column === lead.loc.start.column
           ) {
             return undefined;
@@ -138,7 +140,7 @@ export default createRule<Options, MessageIds>({
       return trail !== undefined && trail.range[0] > member.range[0] ? trail : undefined;
     }
 
-    function check(node: TSESTree.Node, members: readonly TSESTree.Node[]): void {
+    function check(node: ESTree.Node, members: readonly ESTree.Node[]): void {
       const judged = members.map(named).filter((member): member is Judged => member !== undefined);
       if (judged.length === 0) return;
 
@@ -148,7 +150,7 @@ export default createRule<Options, MessageIds>({
       }));
       let commented = 0;
       let restated = 0;
-      const claimed = new Set<TSESTree.Comment>();
+      const claimed = new Set<ESTree.Comment>();
       for (const [index, { member, comment }] of documented.entries()) {
         if (comment === undefined || claimed.has(comment)) continue;
         const next = documented[index + 1];
@@ -187,7 +189,7 @@ export default createRule<Options, MessageIds>({
       });
     }
 
-    function isGroupLabel(comment: TSESTree.Comment, member: Judged, headsRun: boolean): boolean {
+    function isGroupLabel(comment: ESTree.Comment, member: Judged, headsRun: boolean): boolean {
       if (comment.loc.end.line >= member.node.loc.start.line) return false;
       const body = commentBody(comment);
       if (!BARE_LABEL_RE.test(body)) return false;
@@ -197,10 +199,10 @@ export default createRule<Options, MessageIds>({
     }
 
     return {
-      ClassBody: (node: TSESTree.ClassBody) => {
+      ClassBody: (node: ESTree.ClassBody) => {
         check(node, node.body);
       },
-      TSEnumDeclaration: (node: TSESTree.TSEnumDeclaration) => {
+      TSEnumDeclaration: (node: ESTree.TSEnumDeclaration) => {
         check(node, node.body.members);
       },
     };

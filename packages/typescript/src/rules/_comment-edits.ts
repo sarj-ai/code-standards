@@ -3,7 +3,8 @@
  *
  */
 
-import { type TSESTree } from "@typescript-eslint/utils";
+import type { ESTree } from "@oxlint/plugins";
+
 
 type RemovalRange = readonly [number, number];
 
@@ -24,7 +25,7 @@ function contentLineEnd(text: string, offset: number): number {
 /** Delete an own-line comment, its indentation, and exactly one line ending. */
 export function wholeLineRemovalRange(
   text: string,
-  comment: TSESTree.Comment,
+  comment: ESTree.Comment,
 ): CommentRemoval | null {
   if (comment.loc.start.line !== comment.loc.end.line) return null;
   const lineStart = text.lastIndexOf("\n", Math.max(0, comment.range[0] - 1)) + 1;
@@ -38,7 +39,7 @@ export function wholeLineRemovalRange(
 /** Delete a trailing comment and adjacent horizontal whitespace, preserving EOL. */
 export function trailingCommentRemovalRange(
   text: string,
-  comment: TSESTree.Comment,
+  comment: ESTree.Comment,
 ): CommentRemoval | null {
   if (comment.loc.start.line !== comment.loc.end.line) return null;
   const contentEnd = contentLineEnd(text, comment.range[1]);

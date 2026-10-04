@@ -309,7 +309,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        node: ['22.13.0', '24']
+        node: ["22.22.2", "24"]
     defaults:
       run:
         working-directory: packages/typescript
@@ -336,12 +336,17 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
           cache: 'npm'
-          cache-dependency-path: packages/typescript/package-lock.json
+          cache-dependency-path: package-lock.json
+      # npm/cli#9151: Node 22's bundled npm cannot safely replace its own
+      # loaded dependency tree. Run the pinned installer from its cache package.
+      - name: Use the pinned npm version
+        if: needs.changes.outputs.typescript != 'false'
+        run: npx --yes --ignore-scripts npm@12.1.0 install --global npm@12.1.0 --ignore-scripts
       - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         if: needs.changes.outputs.typescript != 'false'
         with:
           version: '0.12.18'
-      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - run: npm --prefix ../.. ci --ignore-scripts --no-audit --no-fund
         if: needs.changes.outputs.typescript != 'false'
       # Static analysis uses the canonical development runtime. Build, tests,
       # and packed-artifact verification still exercise both supported runtimes.
@@ -351,6 +356,9 @@ jobs:
         if: needs.changes.outputs.typescript != 'false'
       - if: needs.changes.outputs.typescript != 'false' && matrix.node == '24'
         run: npm run typecheck
+      - run: npm --workspace packages/react-hooks test
+        working-directory: .
+        if: needs.changes.outputs.typescript != 'false'
       - run: npm test
         if: needs.changes.outputs.typescript != 'false'
       - name: Pack and verify the publishable artifact
@@ -600,14 +608,16 @@ jobs:
         with:
           node-version: '24'
           cache: 'npm'
-          cache-dependency-path: packages/typescript/package-lock.json
+          cache-dependency-path: package-lock.json
+      - name: Use the pinned npm version
+        run: npm install --global npm@12.1.0 --ignore-scripts
       - run: uv python install 3.14
       - run: uv sync --locked --dev
       - run: uv audit --locked
       # The global root selects the adopted repository for every command.
       # Install the root adoption's locked JS toolchain so this job neither asks
-      # npx to download an unpinned ESLint nor accidentally tests network state.
-      - run: npm --prefix ../typescript ci --ignore-scripts --no-audit --no-fund
+      # npx to download an unpinned Oxlint nor accidentally tests network state.
+      - run: npm --prefix ../.. ci --ignore-scripts --no-audit --no-fund
       - name: Lint + typecheck (dogfood the strict config)
         run: |
           uv run ruff check src/ tests/
@@ -658,15 +668,20 @@ jobs:
         with:
           node-version: '24'
           cache: 'npm'
-          cache-dependency-path: packages/typescript/package-lock.json
+          cache-dependency-path: package-lock.json
+      - name: Use the pinned npm version
+        run: npm install --global npm@12.1.0 --ignore-scripts
       - run: uv python install 3.14
       - run: uv sync --locked --dev
-      - run: npm --prefix ../typescript ci --ignore-scripts --no-audit --no-fund
+      - run: npm --prefix ../.. ci --ignore-scripts --no-audit --no-fund
       - name: Install pinned formatter for generated-manifest integration tests
         run: |
           npm --prefix "$RUNNER_TEMP/taplo" install --ignore-scripts --no-audit --no-fund --no-save @taplo/cli@0.7.0
           test -x "$RUNNER_TEMP/taplo/node_modules/.bin/taplo"
           echo "$RUNNER_TEMP/taplo/node_modules/.bin" >> "$GITHUB_PATH"
+      - name: Build native lint package for integration tests
+        working-directory: .
+        run: npm --workspace packages/typescript run build
       - name: Build wheel
         run: |
           uv build --wheel
@@ -710,6 +725,8 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: '24'
+      - name: Use the pinned npm version
+        run: npm install --global npm@12.1.0 --ignore-scripts
       - run: uv python install 3.14
       - name: Install pinned formatter used by generated manifests
         run: |
@@ -749,23 +766,43 @@ jobs:
           "$cli" --root "$repo" doctor
           UV_FIND_LINKS="$wheelhouse" "$cli" --root "$repo" setup
           "$cli" --root "$repo" doctor
-      - name: Adoption smoke -- a TypeScript repo installs the peer set with no ERESOLVE
-        # The failure this catches: setup used to only PRINT the npm `overrides`,
-        # so every consumer's first `npm install` died with `npm error code
-        # ERESOLVE` (eslint-plugin-react peers eslint <=9.7; the unicorn floor
-        # needs >=10.4). The repo's own package.json carries the same overrides
-        # privately, so nothing here could see it.
+      - name: Adoption smoke -- a TypeScript repo installs the built native packages
+        working-directory: .
         run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm --workspace packages/typescript run build
+          artifacts="$(mktemp -d)"
+          npm --workspace packages/typescript pack --ignore-scripts --pack-destination "$artifacts"
+          npm --workspace packages/react-hooks pack --ignore-scripts --pack-destination "$artifacts"
           repo="$(mktemp -d)"
           printf '{ "name": "smoke", "private": true }\n' > "$repo/package.json"
           cli="$GITHUB_WORKSPACE/packages/standards/.venv/bin/code-standards"
           "$cli" --root "$repo" setup --no-install
-          python -c "import json,sys; d=json.load(open(sys.argv[1])); sys.exit(0 if 'eslint-plugin-react' in d.get('overrides', {}) else 1)" "$repo/package.json"
-          npm --prefix "$repo" pkg delete 'devDependencies.@sarj/eslint-plugin'
-          # Resolution only, and without the unpublished @sarj/eslint-plugin pin:
-          # this asserts the peer set + overrides produce a tree npm accepts.
-          mapfile -t peer_specs < <("$cli" --root "$repo" show peers | sed -n 's/^npm install -D --save-exact //p' | tr ' ' '\n' | grep -v '^@sarj/')
-          (cd "$repo" && npm install --package-lock-only --no-audit --no-fund "${peer_specs[@]}")
+          python - "$repo/package.json" "$artifacts" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          manifest_path, artifacts = map(Path, sys.argv[1:])
+          manifest = json.loads(manifest_path.read_text())
+          peers = manifest["devDependencies"]
+          assert "oxlint" in peers
+          assert not any("eslint" in name for name in peers)
+          assert manifest["overrides"]["eslint-plugin-react-hooks"] == f"npm:@sarj/oxlint-react-hooks@{peers['@sarj/oxlint-react-hooks']}"
+          for package, archive in (("@sarj/oxlint-plugin", "sarj-oxlint-plugin"), ("@sarj/oxlint-react-hooks", "sarj-oxlint-react-hooks")):
+              peers[package] = f"file:{artifacts / f'{archive}-{peers[package]}.tgz'}"
+          manifest["overrides"]["eslint-plugin-react-hooks"] = peers["@sarj/oxlint-react-hooks"]
+          manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
+          PY
+          (cd "$repo" && npm install --no-audit --no-fund && npm ls --all)
+          python - "$repo/package-lock.json" <<'PY'
+          import json
+          import sys
+
+          packages = json.load(open(sys.argv[1]))["packages"]
+          banned = {"eslint", "@typescript-eslint/parser", "@typescript-eslint/utils", "@typescript-eslint/type-utils", "@typescript-eslint/typescript-estree"}
+          assert not any(path.endswith(f"node_modules/{name}") for path in packages for name in banned)
+          PY
 
   standards:
     name: standards package
@@ -807,9 +844,9 @@ jobs:
         with:
           node-version: '24'
           cache: npm
-          cache-dependency-path: |
-            apps/docs/package-lock.json
-            packages/typescript/package-lock.json
+          cache-dependency-path: package-lock.json
+      - name: Use the pinned npm version
+        run: npm install --global npm@12.1.0 --ignore-scripts
       - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
           version: '0.12.18'
@@ -834,8 +871,7 @@ jobs:
         run: |
           uv python install 3.14
           uv sync --project packages/standards --locked --no-dev
-          npm --prefix packages/typescript ci --ignore-scripts --no-audit --no-fund
-          npm --prefix apps/docs ci --ignore-scripts --no-audit --no-fund
+          npm ci --ignore-scripts --no-audit --no-fund
       - name: Verify source artifacts and build site
         working-directory: .
         env:
@@ -879,12 +915,14 @@ jobs:
         with:
           node-version: '24'
           cache: npm
-          cache-dependency-path: apps/docs/package-lock.json
+          cache-dependency-path: package-lock.json
+      - name: Use the pinned npm version
+        run: npm install --global npm@12.1.0 --ignore-scripts
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: code-standards-site
           path: apps/docs/dist
-      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - run: npm --prefix ../.. ci --ignore-scripts --no-audit --no-fund
       - name: Deploy immutable build to Cloudflare Workers
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -960,8 +998,10 @@ jobs:
         with:
           node-version: '24.21.0'
           cache: npm
-          cache-dependency-path: apps/docs/package-lock.json
-      - run: npm ci --ignore-scripts --no-audit --no-fund
+          cache-dependency-path: package-lock.json
+      - name: Use the pinned npm version
+        run: npm install --global npm@12.1.0 --ignore-scripts
+      - run: npm --prefix ../.. ci --ignore-scripts --no-audit --no-fund
       - run: npm run audit:dependencies
 
   codeql:

@@ -3,12 +3,16 @@ from __future__ import annotations
 import json
 from pathlib import Path
 import subprocess
+import sys
 from typing import NamedTuple
 
 import pytest
 
 from sarj_standards._meta import CONFIGS_DIR
 from sarj_standards.libs.repository import config_generation
+
+
+REPO_ROOT = Path(__file__).resolve().parents[3]
 
 
 class _RepositoryFiles(NamedTuple):
@@ -25,10 +29,10 @@ def _repository(root: Path) -> _RepositoryFiles:
     preset.parent.mkdir(parents=True)
     catalog = root / "packages/standards/src/sarj_standards/schemas/rule-catalog.v1.json"
     catalog.parent.mkdir(parents=True)
-    strict = configs / "eslint.strict.mjs"
-    application = configs / "eslint.application.mjs"
+    strict = configs / "oxlint.strict.mjs"
+    application = configs / "oxlint.application.mjs"
     catalog.write_text(
-        json.dumps({"schemaVersion": 1, "rules": [{"key": "eslint:first-rule", "defaultLevel": "warning"}]}),
+        json.dumps({"schemaVersion": 1, "rules": [{"key": "oxlint:first-rule", "defaultLevel": "warning"}]}),
         encoding="utf-8",
     )
     preset.write_text(
@@ -63,32 +67,33 @@ def test_source_catalog_drives_plugin_presets_and_generated_configs(tmp_path: Pa
     assert 'const ADVISORY_RULES = [\n  "@sarj/first-rule",\n] as const;' in preset_text
     assert '"@sarj/first-rule": ["warn", { option: true }]' in preset_text
     assert '"@sarj/second-rule": "error"' in preset_text
-    assert '"@sarj/first-rule": ["warn", { option: true }]' in strict_text
-    assert '"@sarj/second-rule": "error"' in strict_text
-    assert 'export { createConfig, default } from "./eslint.strict.mjs";' in application_text
+    assert "createStrictOxlintConfig" in strict_text
+    assert application_text == "stale\n", "obsolete application aliases are not regenerated"
 
 
 def test_warning_parity_check_detects_drift_in_either_direction(tmp_path: Path) -> None:
-    catalog, _preset, strict, _application = _repository(tmp_path)
+    catalog, preset, _strict, _application = _repository(tmp_path)
     config_generation.sync_warning_levels(tmp_path, check=False)
-    strict.write_text(strict.read_text(encoding="utf-8").replace('"warn"', '"error"', 1), encoding="utf-8")
+    preset.write_text(preset.read_text(encoding="utf-8").replace('"warn"', '"error"', 1), encoding="utf-8")
     assert not config_generation.sync_warning_levels(tmp_path, check=True)
 
     catalog.write_text(
-        json.dumps({"schemaVersion": 1, "rules": [{"key": "eslint:second-rule", "defaultLevel": "warning"}]}),
+        json.dumps({"schemaVersion": 1, "rules": [{"key": "oxlint:second-rule", "defaultLevel": "warning"}]}),
         encoding="utf-8",
     )
     assert not config_generation.sync_warning_levels(tmp_path, check=True)
 
 
 def test_canonical_library_generation_is_idempotent() -> None:
-    assert config_generation.sync(check=True)
-    generated = config_generation.generated_configs()
-    strict = next(text for path, text in generated.items() if path.name == "eslint.strict.mjs")
-    assert config_generation.render_eslint_strict(strict) == strict
-    assert '"@sarj/no-restricted-library-load"' in strict
-    assert '"module": "axios"' in strict
-    assert '"@sarj/prefer-native-random-uuid": "error"' in strict
+    assert config_generation.sync(REPO_ROOT, check=True)
+    generated = config_generation.generated_configs(REPO_ROOT)
+    strict = next(text for path, text in generated.items() if path.name == "oxlint.strict.mjs")
+    assert "createStrictOxlintConfig" in strict
+    policy = next(text for path, text in generated.items() if path.name == "library-policy.ts")
+    assert "export const LIBRARY_POLICY" in policy
+    assert "export const LIBRARY_IMPORT_RESTRICTIONS" in policy
+    assert '"module": "axios"' in policy
+    assert '"name": "axios"' in policy
 
 
 @pytest.mark.parametrize("decorator", ["command", "callback"])
@@ -99,6 +104,8 @@ def test_typer_annotations_remain_available_at_runtime(decorator: str) -> None:
     )
     result = subprocess.run(
         [
+            sys.executable,
+            "-m",
             "ruff",
             "check",
             "--config",

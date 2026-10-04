@@ -3,7 +3,9 @@
  *
  */
 
-import { ESLintUtils } from "@typescript-eslint/utils";
+
+
+import { defineRule, type Context, type Options as NativeOptions, type Rule, type RuleMeta, type Visitor, type VisitorWithHooks } from "@oxlint/plugins";
 
 export const REPO_BLOB = "https://github.com/sarj-ai/code-standards/blob/main";
 export const TESTS_DIR = "packages/typescript/tests/rules";
@@ -45,7 +47,7 @@ export interface RuleExample {
   readonly fixedFiles?: readonly ExampleFile[];
 }
 
-/** Human-authored fields that cannot be derived from the ESLint rule module. */
+/** Human-authored fields that cannot be derived from the Oxlint rule module. */
 export interface RuleDocumentation {
   readonly summary: string;
   readonly rationale: string;
@@ -62,9 +64,9 @@ export interface RuleDocumentation {
   readonly examples?: readonly RuleExample[];
 }
 
-/** Complete native record exposed to catalog generation without changing ESLint metadata. */
+/** Complete native record exposed to catalog generation without changing Oxlint metadata. */
 export interface NativeRuleSpec extends Required<Omit<RuleDocumentation, "since">> {
-  readonly engine: "eslint";
+  readonly engine: "oxlint";
   readonly ruleId: string;
   readonly code: null;
   readonly messageIds: readonly string[];
@@ -76,7 +78,7 @@ export interface NativeRuleSpec extends Required<Omit<RuleDocumentation, "since"
 
 /** The explicit allowlist projection consumed by generated public documentation. */
 export interface PublicRuleSpec {
-  readonly engine: "eslint";
+  readonly engine: "oxlint";
   readonly ruleId: string;
   readonly code: null;
   readonly summary: string;
@@ -98,44 +100,64 @@ export interface PublicRuleSpec {
 
 const KEBAB_CASE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
 const MAX_SUMMARY_LENGTH = 160;
-const eslintCreateRule = ESLintUtils.RuleCreator(examplesUrl);
+type RuleMetadata<MessageIds extends string> = RuleMeta & {
+  readonly messages: Record<MessageIds, string>;
+};
 
-type RuleConfiguration<
-  Options extends readonly unknown[],
-  MessageIds extends string,
-> = Parameters<typeof eslintCreateRule<Options, MessageIds>>[0];
+type RuleConfiguration<Options extends readonly unknown[], MessageIds extends string> = {
+  readonly name: string;
+  readonly meta: RuleMetadata<MessageIds>;
+  readonly defaultOptions: Options;
+};
 
-export type DocumentedRule<
-  Options extends readonly unknown[],
-  MessageIds extends string,
-> = ReturnType<typeof eslintCreateRule<Options, MessageIds>> & {
-  /** Non-enumerable so the public ESLint rule shape remains unchanged. */
+export type DocumentedRule<MessageIds extends string> = Rule & {
+  readonly meta: RuleMetadata<MessageIds>;
   readonly documentation?: NativeRuleSpec;
 };
 
-type SourceRuleConfiguration<
-  Options extends readonly unknown[],
-  MessageIds extends string,
-> = RuleConfiguration<Options, MessageIds> & {
-  readonly documentation?: RuleDocumentation;
-};
+type SourceRuleConfiguration<Options extends readonly unknown[], MessageIds extends string> =
+  RuleConfiguration<Options, MessageIds> & {
+    readonly documentation?: RuleDocumentation;
+  } & (
+    | { readonly create: (context: Context, options: Options) => Visitor; readonly createOnce?: never }
+    | { readonly createOnce: (context: Context) => VisitorWithHooks; readonly create?: never }
+  );
 
-/** Create an ESLint rule and attach validated documentation as a non-enumerable native spec. */
-export function createRule<
-  Options extends readonly unknown[],
-  MessageIds extends string,
->(config: SourceRuleConfiguration<Options, MessageIds>): DocumentedRule<Options, MessageIds> {
-  const { documentation, ...eslintConfig } = config;
-  const rule = eslintCreateRule<Options, MessageIds>(eslintConfig);
-  if (documentation !== undefined) {
+/** Define a native Oxlint rule with validated source-owned documentation. */
+export function createRule<Options extends readonly unknown[], MessageIds extends string>(
+  config: SourceRuleConfiguration<Options, MessageIds>,
+): DocumentedRule<MessageIds> {
+  const meta = {
+    ...config.meta,
+    docs: { ...config.meta.docs, url: config.meta.docs?.url ?? examplesUrl(config.name) },
+    defaultOptions: config.defaultOptions.map(jsonOption),
+  };
+  const rule = config.create !== undefined
+    ? { meta, create: (context: Context): Visitor => config.create(context, context.options as unknown as Options) }
+    : { meta, createOnce: (context: Context): VisitorWithHooks => config.createOnce(context) };
+  defineRule(rule);
+  if (config.documentation !== undefined) {
     Object.defineProperty(rule, "documentation", {
       configurable: false,
       enumerable: false,
-      value: nativeSpec(eslintConfig, documentation),
+      value: nativeSpec(config, config.documentation),
       writable: false,
     });
   }
   return rule;
+}
+
+/** Oxlint options must be JSON values; validate the authored defaults at the boundary. */
+function jsonOption(value: unknown): NativeOptions[number] {
+  if (value === null || typeof value === "string" || typeof value === "boolean") return value;
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (Array.isArray(value)) return value.map(jsonOption);
+  if (typeof value === "object" && value !== null && Object.getPrototypeOf(value) === Object.prototype) {
+    const result: Record<string, NativeOptions[number]> = {};
+    for (const [key, entry] of Object.entries(value)) result[key] = jsonOption(entry);
+    return result;
+  }
+  throw new TypeError("rule default options must contain only JSON values");
 }
 
 /** Non-blocking completeness report used while source-owned docs roll out rule by rule. */
@@ -221,7 +243,7 @@ function nativeSpec<Options extends readonly unknown[], MessageIds extends strin
     throw new TypeError(`rule summary must be one line of at most ${MAX_SUMMARY_LENGTH} characters`);
   }
   if (documentation.summary !== meta.docs?.description) {
-    throw new TypeError(`${name}: ESLint description must equal the authored documentation summary`);
+    throw new TypeError(`${name}: Oxlint description must equal the authored documentation summary`);
   }
   const aliases = [...(documentation.aliases ?? [])];
   assertUnique(aliases, "rule aliases");
@@ -252,10 +274,10 @@ function nativeSpec<Options extends readonly unknown[], MessageIds extends strin
   const messageIds = Object.keys(meta.messages).sort();
   const schema = optionsSchema(meta.schema);
   const spec: NativeRuleSpec = {
-    engine: "eslint",
+    engine: "oxlint",
     ruleId: name,
     code: null,
-    key: `eslint:${name}`,
+    key: `oxlint:${name}`,
     summary: documentation.summary,
     rationale: documentation.rationale,
     remediation: documentation.remediation,

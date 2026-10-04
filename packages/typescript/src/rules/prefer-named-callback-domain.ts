@@ -3,7 +3,9 @@
  *
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/prefer-named-callback-domain.test.ts
  */
-import { AST_NODE_TYPES, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
+
+import { sourceOrigin } from "./_source-origin.js";
+import type { ESTree, Visitor } from "@oxlint/plugins";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile, isTestFile } from "./_paths.js";
@@ -23,19 +25,19 @@ export const PREFER_NAMED_CALLBACK_DOMAIN_DOCUMENTATION = {
   ],
 } as const satisfies RuleDocumentation;
 
-function isLiteralUnion(node: TSESTree.TypeNode): boolean {
-  return node.type === AST_NODE_TYPES.TSUnionType && node.types.length >= 2 &&
-    node.types.every((part) => part.type === AST_NODE_TYPES.TSLiteralType);
+function isLiteralUnion(node: ESTree.TSType): boolean {
+  return node.type === "TSUnionType" && node.types.length >= 2 &&
+    node.types.every((part) => part.type === "TSLiteralType");
 }
 
-function exportedContract(node: TSESTree.Node): boolean {
-  let current: TSESTree.Node | undefined = node;
+function exportedContract(node: ESTree.Node): boolean {
+  let current: ESTree.Node | null | undefined = node;
   while (current !== undefined) {
     if (
-      current.type === AST_NODE_TYPES.TSTypeAliasDeclaration ||
-      current.type === AST_NODE_TYPES.TSInterfaceDeclaration
-    ) return current.parent.type === AST_NODE_TYPES.ExportNamedDeclaration;
-    if (current.type === AST_NODE_TYPES.Program) return false;
+      current.type === "TSTypeAliasDeclaration" ||
+      current.type === "TSInterfaceDeclaration"
+    ) return current.parent?.type === "ExportNamedDeclaration";
+    if (current.type === "Program") return false;
     current = current.parent ?? undefined;
   }
   return false;
@@ -52,16 +54,16 @@ export default createRule<Options, MessageIds>({
   },
   defaultOptions: [],
   create(context) {
-    if (isTestFile(context.filename) || isGeneratedFile(context.filename, context.sourceCode.text)) return {};
+    if (isTestFile(sourceOrigin(context).filename) || isGeneratedFile(sourceOrigin(context).filename, sourceOrigin(context).text)) return {};
     return {
       TSFunctionType(node): void {
         if (!exportedContract(node)) return;
         for (const parameter of node.params) {
-          if (parameter.type !== AST_NODE_TYPES.TSParameterProperty && parameter.typeAnnotation !== undefined && isLiteralUnion(parameter.typeAnnotation.typeAnnotation)) {
+          if (parameter.type !== "TSParameterProperty" && parameter.typeAnnotation != null && isLiteralUnion(parameter.typeAnnotation.typeAnnotation)) {
             context.report({ node: parameter.typeAnnotation.typeAnnotation, messageId: "nameCallbackDomain" });
           }
         }
       },
-    } satisfies TSESLint.RuleListener;
+    } satisfies Visitor;
   },
 });

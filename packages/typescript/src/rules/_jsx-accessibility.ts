@@ -2,20 +2,18 @@
  * @fileoverview _jsx-accessibility — scope-aware JSX names and accessible content are shared across rules.
  */
 
-import {
-  AST_NODE_TYPES,
-  ASTUtils,
-  type JSONSchema,
-  type TSESLint,
-  type TSESTree,
-} from "@typescript-eslint/utils";
+import { nodeAncestors } from "./_scope.js";
+import { decodeHTML } from "entities";
+import type { ESTree, SourceCode } from "@oxlint/plugins";
+import { findVariable } from "./_scope.js";
+
 
 export interface ComponentImport {
   readonly module: string;
   readonly export: string;
 }
 
-export const COMPONENT_IMPORT_SCHEMA: Readonly<JSONSchema.JSONSchema4> = {
+export const COMPONENT_IMPORT_SCHEMA: NonNullable<import("@oxlint/plugins").RuleMeta["schema"]> = {
   type: "array",
   items: {
     type: "object",
@@ -29,51 +27,51 @@ export const COMPONENT_IMPORT_SCHEMA: Readonly<JSONSchema.JSONSchema4> = {
 };
 
 export function importedComponent(
-  name: TSESTree.JSXTagNameExpression | TSESTree.Identifier,
-  source: TSESLint.SourceCode,
+  name: ESTree.JSXElementName | ESTree.BindingIdentifier,
+  source: SourceCode,
 ): ComponentImport | null {
   const local =
-    name.type === AST_NODE_TYPES.JSXIdentifier ||
-      name.type === AST_NODE_TYPES.Identifier
+    name.type === "JSXIdentifier" ||
+      name.type === "Identifier"
       ? name
-      : name.type === AST_NODE_TYPES.JSXMemberExpression &&
-        name.object.type === AST_NODE_TYPES.JSXIdentifier
+      : name.type === "JSXMemberExpression" &&
+        name.object.type === "JSXIdentifier"
         ? name.object
         : null;
   if (local === null) return null;
-  const binding = ASTUtils.findVariable(source.getScope(local), local.name);
+  const binding = findVariable(source.getScope(local), local.name);
   const definition = binding?.defs[0];
   if (
     definition?.type !== "ImportBinding" ||
-    definition.parent.type !== AST_NODE_TYPES.ImportDeclaration ||
+    definition.parent?.type !== "ImportDeclaration" ||
     definition.parent.importKind === "type"
   )
     return null;
   const specifier = definition.node;
   if (
-    specifier.type === AST_NODE_TYPES.ImportSpecifier &&
-    (name.type === AST_NODE_TYPES.JSXIdentifier ||
-      name.type === AST_NODE_TYPES.Identifier) &&
+    specifier.type === "ImportSpecifier" &&
+    (name.type === "JSXIdentifier" ||
+      name.type === "Identifier") &&
     specifier.importKind !== "type"
   ) {
     return {
       module: definition.parent.source.value,
       export:
-        specifier.imported.type === AST_NODE_TYPES.Identifier
+        specifier.imported.type === "Identifier"
           ? specifier.imported.name
           : specifier.imported.value,
     };
   }
   if (
-    specifier.type === AST_NODE_TYPES.ImportDefaultSpecifier &&
-    (name.type === AST_NODE_TYPES.JSXIdentifier ||
-      name.type === AST_NODE_TYPES.Identifier)
+    specifier.type === "ImportDefaultSpecifier" &&
+    (name.type === "JSXIdentifier" ||
+      name.type === "Identifier")
   ) {
     return { module: definition.parent.source.value, export: "default" };
   }
   if (
-    specifier.type === AST_NODE_TYPES.ImportNamespaceSpecifier &&
-    name.type === AST_NODE_TYPES.JSXMemberExpression
+    specifier.type === "ImportNamespaceSpecifier" &&
+    name.type === "JSXMemberExpression"
   ) {
     return {
       module: definition.parent.source.value,
@@ -83,38 +81,38 @@ export function importedComponent(
   return null;
 }
 
-export function staticText(node: TSESTree.Node): string | null {
-  if (node.type === AST_NODE_TYPES.Literal) {
+export function staticText(node: ESTree.Node): string | null {
+  if (node.type === "Literal") {
     if (typeof node.value === "string" || typeof node.value === "number")
       return String(node.value);
     if (node.value === null || typeof node.value === "boolean") return "";
   }
   if (
-    node.type === AST_NODE_TYPES.TemplateLiteral &&
+    node.type === "TemplateLiteral" &&
     node.expressions.length === 0
   )
     return node.quasis[0]?.value.cooked ?? null;
-  if (node.type === AST_NODE_TYPES.JSXExpressionContainer)
+  if (node.type === "JSXExpressionContainer")
     return staticText(node.expression);
-  if (node.type === AST_NODE_TYPES.JSXEmptyExpression) return "";
+  if (node.type === "JSXEmptyExpression") return "";
   return null;
 }
 
 export function attributeText(
-  node: TSESTree.JSXOpeningElement,
+  node: ESTree.JSXOpeningElement,
   name: string,
 ): string | null {
   const attribute = node.attributes.findLast(
     (entry) =>
-      entry.type === AST_NODE_TYPES.JSXSpreadAttribute ||
-      (entry.name.type === AST_NODE_TYPES.JSXIdentifier &&
+      entry.type === "JSXSpreadAttribute" ||
+      (entry.name.type === "JSXIdentifier" &&
         entry.name.name === name),
   );
   if (attribute === undefined) return "";
-  if (attribute.type === AST_NODE_TYPES.JSXSpreadAttribute) return null;
+  if (attribute.type === "JSXSpreadAttribute") return null;
   if (
-    attribute.value?.type === AST_NODE_TYPES.JSXExpressionContainer &&
-    attribute.value.expression.type === AST_NODE_TYPES.Literal &&
+    attribute.value?.type === "JSXExpressionContainer" &&
+    attribute.value.expression.type === "Literal" &&
     typeof attribute.value.expression.value === "boolean"
   ) {
     return String(attribute.value.expression.value);
@@ -122,19 +120,19 @@ export function attributeText(
   return attribute.value === null ? "" : staticText(attribute.value);
 }
 
-export function isHidden(node: TSESTree.JSXOpeningElement): boolean {
+export function isHidden(node: ESTree.JSXOpeningElement): boolean {
   if (attributeText(node, "aria-hidden") === "true") return true;
   const hidden = node.attributes.findLast(
     (attribute) =>
-      attribute.type === AST_NODE_TYPES.JSXSpreadAttribute ||
-      (attribute.name.type === AST_NODE_TYPES.JSXIdentifier &&
+      attribute.type === "JSXSpreadAttribute" ||
+      (attribute.name.type === "JSXIdentifier" &&
         attribute.name.name === "hidden"),
   );
-  if (hidden?.type !== AST_NODE_TYPES.JSXAttribute) return false;
+  if (hidden?.type !== "JSXAttribute") return false;
   if (hidden.value === null) return true;
   if (
-    hidden.value.type === AST_NODE_TYPES.JSXExpressionContainer &&
-    hidden.value.expression.type === AST_NODE_TYPES.Literal
+    hidden.value.type === "JSXExpressionContainer" &&
+    hidden.value.expression.type === "Literal"
   )
     return (
       hidden.value.expression.value !== false &&
@@ -146,7 +144,7 @@ export function isHidden(node: TSESTree.JSXOpeningElement): boolean {
 export type NameStatus = "named" | "empty" | "unknown";
 
 export function attributeNameStatus(
-  node: TSESTree.JSXOpeningElement,
+  node: ESTree.JSXOpeningElement,
   attributes: readonly string[] = [
     "aria-label",
     "aria-labelledby",
@@ -164,25 +162,25 @@ export function attributeNameStatus(
 }
 
 export function childrenNameStatus(
-  children: readonly TSESTree.JSXChild[],
-  source: TSESLint.SourceCode,
+  children: readonly ESTree.JSXChild[],
+  source: SourceCode,
   iconModules: readonly string[],
 ): NameStatus {
   const states = children.map((child): NameStatus => {
-    if (child.type === AST_NODE_TYPES.JSXText)
-      return child.value.trim() === "" ? "empty" : "named";
-    if (child.type === AST_NODE_TYPES.JSXExpressionContainer) {
+    if (child.type === "JSXText")
+      return decodeHTML(source.getText(child)).trim() === "" ? "empty" : "named";
+    if (child.type === "JSXExpressionContainer") {
       const text = staticText(child);
       return textNameStatus(text);
     }
-    if (child.type === AST_NODE_TYPES.JSXFragment)
+    if (child.type === "JSXFragment")
       return childrenNameStatus(child.children, source, iconModules);
-    if (child.type !== AST_NODE_TYPES.JSXElement) return "unknown";
+    if (child.type !== "JSXElement") return "unknown";
     const opening = child.openingElement;
     if (isHidden(opening)) return "empty";
     const imported = importedComponent(opening.name, source);
     const intrinsic =
-      opening.name.type === AST_NODE_TYPES.JSXIdentifier &&
+      opening.name.type === "JSXIdentifier" &&
       /^[a-z]/u.test(opening.name.name);
     if (
       !intrinsic &&
@@ -192,7 +190,7 @@ export function childrenNameStatus(
     const named = attributeNameStatus(opening);
     if (named !== "empty") return named;
     if (
-      opening.name.type === AST_NODE_TYPES.JSXIdentifier &&
+      opening.name.type === "JSXIdentifier" &&
       opening.name.name === "img"
     ) {
       const alt = attributeText(opening, "alt");
@@ -205,14 +203,14 @@ export function childrenNameStatus(
 }
 
 export function isPassedAsProp(
-  node: TSESTree.JSXElement,
-  source: TSESLint.SourceCode,
+  node: ESTree.JSXElement,
+  _source: SourceCode,
 ): boolean {
-  for (const ancestor of source.getAncestors(node).toReversed()) {
-    if (ancestor.type === AST_NODE_TYPES.JSXAttribute) return true;
+  for (const ancestor of nodeAncestors(node).toReversed()) {
+    if (ancestor.type === "JSXAttribute") return true;
     if (
-      ancestor.type === AST_NODE_TYPES.JSXElement ||
-      ancestor.type === AST_NODE_TYPES.JSXFragment
+      ancestor.type === "JSXElement" ||
+      ancestor.type === "JSXFragment"
     )
       return false;
   }
@@ -220,14 +218,13 @@ export function isPassedAsProp(
 }
 
 export function hasHiddenAncestor(
-  node: TSESTree.JSXElement,
-  source: TSESLint.SourceCode,
+  node: ESTree.JSXElement,
+  _source: SourceCode,
 ): boolean {
-  return source
-    .getAncestors(node)
+  return nodeAncestors(node)
     .some(
       (ancestor) =>
-        ancestor.type === AST_NODE_TYPES.JSXElement &&
+        ancestor.type === "JSXElement" &&
         isHidden(ancestor.openingElement),
     );
 }

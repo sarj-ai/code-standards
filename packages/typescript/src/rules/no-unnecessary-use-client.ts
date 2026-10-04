@@ -4,11 +4,11 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-unnecessary-use-client.test.ts
  */
 
-import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
-
+import { sourceOrigin } from "./_source-origin.js";
 import { forEachOwnAstChild } from "./_for-each-own-ast-child.js";
 import { createRule, type RuleDocumentation } from "./_docs.js";
-import type { RuleContext, Scope } from "@typescript-eslint/utils/ts-eslint";
+import type { ESTree, Context, Scope } from "@oxlint/plugins";
+
 
 type MessageIds = "unnecessaryUseClient";
 type Options = readonly [];
@@ -81,52 +81,52 @@ const CLIENT_REQUIRED_MODULES: ReadonlySet<string> = new Set([
 const CLIENT_ONLY_PACKAGES_REGEX =
   /^(?:@radix-ui\/|framer-motion|react-dom|react-day-picker|@floating-ui\/|react-select|react-toastify|react-hook-form|recharts|react-dropzone|react-slick|react-swipeable|react-resizable|react-draggable|react-beautiful-dnd|@hello-pangea\/dnd|react-virtualized|react-window|@tanstack\/react-table|@tanstack\/react-query|react-redux|recoil|jotai|zustand|@tippyjs\/react|react-color|react-datepicker|next-themes|react-helmet|react-helmet-async|styled-components|@emotion\/)/;
 
-type Ctx = Readonly<RuleContext<MessageIds, Options>>;
+type Ctx = Readonly<Context>;
 
 /** True for package specifiers whose implementation this rule cannot inspect. */
 const isBareSpecifier = (source: string): boolean =>
   !source.startsWith(".") && !source.startsWith("/") && !source.startsWith("@/") && !source.startsWith("~");
 
 /** The leftmost identifier of a JSX element name: `Primitive.Tabs` -> `Primitive`. */
-const jsxRootName = (name: TSESTree.JSXTagNameExpression): string => {
-  let current: TSESTree.JSXTagNameExpression = name;
-  while (current.type === AST_NODE_TYPES.JSXMemberExpression) {
+const jsxRootName = (name: ESTree.JSXElementName): string => {
+  let current: ESTree.JSXElementName = name;
+  while (current.type === "JSXMemberExpression") {
     current = current.object;
   }
-  return current.type === AST_NODE_TYPES.JSXIdentifier ? current.name : "";
+  return current.type === "JSXIdentifier" ? current.name : "";
 };
 
 /** True when any identifier in `node`'s subtree names an imported binding. */
 const subtreeReadsImportedBinding = (
-  node: TSESTree.Node,
+  node: ESTree.Node,
   imported: ReadonlySet<string>,
 ): boolean => {
-  if (node.type === AST_NODE_TYPES.Identifier) {
+  if (node.type === "Identifier") {
     return imported.has(node.name);
   }
   return forEachOwnAstChild(node, child => subtreeReadsImportedBinding(child, imported));
 };
 
 const isUseClientDirective = (
-  node: TSESTree.Statement,
-): node is TSESTree.ExpressionStatement => {
+  node: ESTree.Statement,
+): node is ESTree.ExpressionStatement => {
   return (
-    node.type === AST_NODE_TYPES.ExpressionStatement &&
+    node.type === "ExpressionStatement" &&
     node.directive === "use client"
   );
 };
 
 const isGlobalReference = (
-  node: TSESTree.Identifier,
+  node: ESTree.BindingIdentifier,
   context: Ctx,
 ): boolean => {
   if (!BROWSER_GLOBALS.has(node.name)) return false;
 
   const parent = node.parent;
-  if (parent !== undefined) {
+  if (parent != null) {
     // `obj.window` — `window` is a property name, not a global reference.
     if (
-      parent.type === AST_NODE_TYPES.MemberExpression &&
+      parent.type === "MemberExpression" &&
       parent.property === node &&
       !parent.computed
     ) {
@@ -134,7 +134,7 @@ const isGlobalReference = (
     }
     // `{ window: ... }` — property key, not a global reference.
     if (
-      parent.type === AST_NODE_TYPES.Property &&
+      parent.type === "Property" &&
       parent.key === node &&
       !parent.computed
     ) {
@@ -148,7 +148,7 @@ const isGlobalReference = (
 
   // If there's a local binding for this name anywhere up the chain, it's not
   // a reference to the browser global.
-  let scope: Scope.Scope | null = context.sourceCode.getScope(node);
+  let scope: Scope | null = context.sourceCode.getScope(node);
   while (scope !== null) {
     const variable = scope.set.get(node.name);
     if (variable !== undefined && variable.defs.length > 0) {
@@ -177,28 +177,28 @@ export default createRule<Options, MessageIds>({
   },
   defaultOptions: [],
   create(context) {
-    const filename = context.filename;
+    const filename = sourceOrigin(context).filename;
     if (ERROR_FILE_REGEX.test(filename)) {
       return {};
     }
 
-    let directiveNode: TSESTree.ExpressionStatement | null = null;
+    let directiveNode: ESTree.ExpressionStatement | null = null;
     let hasClientIndicator = false;
     const importedLocals = new Set<string>();
     const externalLocals = new Set<string>();
 
     const markIfHookOrContext = (
-      callee: TSESTree.CallExpression["callee"],
+      callee: ESTree.CallExpression["callee"],
     ): void => {
-      if (callee.type === AST_NODE_TYPES.Identifier) {
+      if (callee.type === "Identifier") {
         if (HOOK_REGEX.test(callee.name) || callee.name === "createContext") {
           hasClientIndicator = true;
         }
         return;
       }
       if (
-        callee.type === AST_NODE_TYPES.MemberExpression &&
-        callee.property.type === AST_NODE_TYPES.Identifier
+        callee.type === "MemberExpression" &&
+        callee.property.type === "Identifier"
       ) {
         const name = callee.property.name;
         if (HOOK_REGEX.test(name) || name === "createContext") {
@@ -212,7 +212,7 @@ export default createRule<Options, MessageIds>({
         for (const stmt of node.body) {
           // Directives must be the first statements; once we see a non-
           // ExpressionStatement, stop scanning.
-          if (stmt.type !== AST_NODE_TYPES.ExpressionStatement || stmt.directive === undefined) break;
+          if (stmt.type !== "ExpressionStatement" || stmt.directive === undefined) break;
           if (isUseClientDirective(stmt)) {
             directiveNode = stmt;
             break;
@@ -226,11 +226,11 @@ export default createRule<Options, MessageIds>({
       JSXAttribute(node): void {
         if (directiveNode === null) return;
         if (
-          node.name.type === AST_NODE_TYPES.JSXIdentifier &&
+          node.name.type === "JSXIdentifier" &&
           (EVENT_PROP_REGEX.test(node.name.name) ||
             node.name.name === "ref" ||
             (node.name.name === "jsx" &&
-              node.parent.name.type === AST_NODE_TYPES.JSXIdentifier &&
+              node.parent?.type === "JSXOpeningElement" && node.parent.name.type === "JSXIdentifier" &&
               node.parent.name.name === "style"))
         ) {
           hasClientIndicator = true;
@@ -262,9 +262,9 @@ export default createRule<Options, MessageIds>({
           hasClientIndicator = true;
         }
         if (
-          node.name.type === AST_NODE_TYPES.JSXMemberExpression &&
+          node.name.type === "JSXMemberExpression" &&
           importedLocals.has(jsxRootName(node.name)) &&
-          node.name.property.type === AST_NODE_TYPES.JSXIdentifier &&
+          node.name.property.type === "JSXIdentifier" &&
           (node.name.property.name === "Provider" ||
             node.name.property.name === "Consumer")
         ) {

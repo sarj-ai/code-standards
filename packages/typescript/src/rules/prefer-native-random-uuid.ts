@@ -4,7 +4,9 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/prefer-native-random-uuid.test.ts
  */
 
-import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
+import type { ESTree, Variable } from "@oxlint/plugins";
+import { findVariable } from "./_scope.js";
+
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 
@@ -24,15 +26,15 @@ export const PREFER_NATIVE_RANDOM_UUID_DOCUMENTATION = {
   ],
 } as const satisfies RuleDocumentation;
 
-type ScopeVariable = TSESLint.Scope.Variable;
+type ScopeVariable = Variable;
 
-function requireUuid(node: TSESTree.Node | null): boolean {
+function requireUuid(node: ESTree.Node | null): boolean {
   return (
-    node?.type === AST_NODE_TYPES.CallExpression &&
-    node.callee.type === AST_NODE_TYPES.Identifier &&
+    node?.type === "CallExpression" &&
+    node.callee.type === "Identifier" &&
     node.callee.name === "require" &&
     node.arguments.length === 1 &&
-    node.arguments[0]?.type === AST_NODE_TYPES.Literal &&
+    node.arguments[0]?.type === "Literal" &&
     node.arguments[0].value === "uuid"
   );
 }
@@ -59,17 +61,17 @@ export default createRule<Options, MessageIds>({
     const directBindings = new Set<ScopeVariable>();
     const namespaceBindings = new Set<ScopeVariable>();
 
-    function resolve(identifier: TSESTree.Identifier): ScopeVariable | null {
-      return ASTUtils.findVariable(context.sourceCode.getScope(identifier), identifier.name);
+    function resolve(identifier: ESTree.BindingIdentifier): ScopeVariable | null {
+      return findVariable(context.sourceCode.getScope(identifier), identifier.name);
     }
 
-    function record(identifier: TSESTree.Identifier, destination: Set<ScopeVariable>): void {
+    function record(identifier: ESTree.BindingIdentifier, destination: Set<ScopeVariable>): void {
       const variable = resolve(identifier);
       if (variable !== null) destination.add(variable);
     }
 
-    function report(node: TSESTree.CallExpression): void {
-      const globalBinding = ASTUtils.findVariable(context.sourceCode.getScope(node), "globalThis");
+    function report(node: ESTree.CallExpression): void {
+      const globalBinding = findVariable(context.sourceCode.getScope(node), "globalThis");
       const canSuggest = (globalBinding?.defs.length ?? 0) === 0 && context.sourceCode.getCommentsInside(node).length === 0;
       context.report({
         node,
@@ -84,59 +86,59 @@ export default createRule<Options, MessageIds>({
     }
 
     return {
-      ImportDeclaration(node: TSESTree.ImportDeclaration): void {
+      ImportDeclaration(node: ESTree.ImportDeclaration): void {
         if (node.source.value !== "uuid") return;
         for (const specifier of node.specifiers) {
           if (
-            specifier.type === AST_NODE_TYPES.ImportSpecifier &&
-            (specifier.imported.type === AST_NODE_TYPES.Identifier
+            specifier.type === "ImportSpecifier" &&
+            (specifier.imported.type === "Identifier"
               ? specifier.imported.name === "v4"
               : specifier.imported.value === "v4")
           ) {
             record(specifier.local, directBindings);
-          } else if (specifier.type === AST_NODE_TYPES.ImportNamespaceSpecifier) {
+          } else if (specifier.type === "ImportNamespaceSpecifier") {
             record(specifier.local, namespaceBindings);
           }
         }
       },
-      VariableDeclarator(node: TSESTree.VariableDeclarator): void {
-        if (node.parent.kind !== "const" || !requireUuid(node.init)) return;
+      VariableDeclarator(node: ESTree.VariableDeclarator): void {
+        if (node.parent?.type !== "VariableDeclaration" || node.parent.kind !== "const" || !requireUuid(node.init)) return;
         if (
-          node.init?.type !== AST_NODE_TYPES.CallExpression ||
-          node.init.callee.type !== AST_NODE_TYPES.Identifier ||
+          node.init?.type !== "CallExpression" ||
+          node.init.callee.type !== "Identifier" ||
           (resolve(node.init.callee)?.defs.length ?? 0) > 0
         ) {
           return;
         }
-        if (node.id.type === AST_NODE_TYPES.Identifier) {
+        if (node.id.type === "Identifier") {
           record(node.id, namespaceBindings);
           return;
         }
-        if (node.id.type !== AST_NODE_TYPES.ObjectPattern) return;
+        if (node.id.type !== "ObjectPattern") return;
         for (const property of node.id.properties) {
           if (
-            property.type === AST_NODE_TYPES.Property &&
+            property.type === "Property" &&
             !property.computed &&
-            ((property.key.type === AST_NODE_TYPES.Identifier && property.key.name === "v4") ||
-              (property.key.type === AST_NODE_TYPES.Literal && property.key.value === "v4")) &&
-            property.value.type === AST_NODE_TYPES.Identifier
+            ((property.key.type === "Identifier" && property.key.name === "v4") ||
+              (property.key.type === "Literal" && property.key.value === "v4")) &&
+            property.value.type === "Identifier"
           ) {
             record(property.value, directBindings);
           }
         }
       },
-      "CallExpression:exit"(node: TSESTree.CallExpression): void {
+      "CallExpression:exit"(node: ESTree.CallExpression): void {
         if (node.arguments.length !== 0) return;
-        if (node.callee.type === AST_NODE_TYPES.Identifier) {
+        if (node.callee.type === "Identifier") {
           const variable = resolve(node.callee);
           if (variable !== null && directBindings.has(variable)) report(node);
           return;
         }
         if (
-          node.callee.type !== AST_NODE_TYPES.MemberExpression ||
+          node.callee.type !== "MemberExpression" ||
           node.callee.computed ||
-          node.callee.object.type !== AST_NODE_TYPES.Identifier ||
-          node.callee.property.type !== AST_NODE_TYPES.Identifier ||
+          node.callee.object.type !== "Identifier" ||
+          node.callee.property.type !== "Identifier" ||
           node.callee.property.name !== "v4"
         ) {
           return;

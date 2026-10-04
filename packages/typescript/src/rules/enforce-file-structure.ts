@@ -4,7 +4,9 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/enforce-file-structure.test.ts
  */
 
-import { type TSESTree, AST_NODE_TYPES } from "@typescript-eslint/utils";
+import { sourceOrigin } from "./_source-origin.js";
+import type { ESTree } from "@oxlint/plugins";
+
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile, isTestFile } from "./_paths.js";
@@ -48,14 +50,14 @@ type StatementKind = "import" | "reexport" | "body";
 
 /** Classify declarations by what they introduce; re-exports are neutral. */
 const classifyStatement = (
-  statement: TSESTree.ProgramStatement,
+  statement: ESTree.Statement,
 ): StatementKind => {
   switch (statement.type) {
-    case AST_NODE_TYPES.ImportDeclaration:
+    case "ImportDeclaration":
       return "import";
-    case AST_NODE_TYPES.ExportAllDeclaration:
+    case "ExportAllDeclaration":
       return "reexport";
-    case AST_NODE_TYPES.ExportNamedDeclaration:
+    case "ExportNamedDeclaration":
       // Only `export <declaration>` introduces a body statement.
       return statement.declaration === null ? "reexport" : "body";
     default:
@@ -63,18 +65,18 @@ const classifyStatement = (
   }
 };
 
-const isStringDirective = (statement: TSESTree.ProgramStatement): boolean =>
-  statement.type === AST_NODE_TYPES.ExpressionStatement &&
-  statement.expression.type === AST_NODE_TYPES.Literal &&
+const isStringDirective = (statement: ESTree.Statement): boolean =>
+  statement.type === "ExpressionStatement" &&
+  statement.expression.type === "Literal" &&
   typeof statement.expression.value === "string" &&
   statement.expression.value.startsWith("use ");
 
 const isUseServerDirective = (
-  statement: TSESTree.ProgramStatement,
+  statement: ESTree.Statement,
 ): boolean => {
-  if (statement.type !== AST_NODE_TYPES.ExpressionStatement) return false;
+  if (statement.type !== "ExpressionStatement") return false;
   const expr = statement.expression;
-  if (expr.type !== AST_NODE_TYPES.Literal) return false;
+  if (expr.type !== "Literal") return false;
   return expr.value === "use server";
 };
 
@@ -96,12 +98,12 @@ export default createRule<Options, MessageIds>({
   },
   defaultOptions: [],
   create(context) {
-    if (isTestFile(context.filename) || isGeneratedFile(context.filename, context.sourceCode.text)) {
+    if (isTestFile(sourceOrigin(context).filename) || isGeneratedFile(sourceOrigin(context).filename, sourceOrigin(context).text)) {
       return {};
     }
 
     return {
-      Program(node: TSESTree.Program): void {
+      Program(node: ESTree.Program): void {
         const body = node.body;
 
         const misplacedUseServer = body.find(

@@ -4,14 +4,16 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/require-interface-for-exported-class.test.ts
  */
 
-import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
+import { sourceOrigin } from "./_source-origin.js";
+import type { ESTree } from "@oxlint/plugins";
+
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile, isStoryFile, isTestFile } from "./_paths.js";
 
 type MessageIds = "requireContract";
 type Options = [];
-type ClassLike = TSESTree.ClassDeclaration | TSESTree.ClassExpression;
+type ClassLike = ESTree.Class;
 
 interface ClassBinding {
   readonly declaration: ClassLike;
@@ -20,7 +22,8 @@ interface ClassBinding {
 
 export const REQUIRE_INTERFACE_FOR_EXPORTED_CLASS_DOCUMENTATION = {
   defaultLevel: "warning",
-  summary: "Require exported concrete classes with public behavior to declare a contract.",
+  summary:
+    "Require exported concrete classes with public behavior to declare a contract.",
   rationale:
     "An explicit contract names the intended public capability separately from implementation details. TypeScript already supports structural compatibility; this is an architecture policy, not a prerequisite for substitution.",
   remediation:
@@ -69,45 +72,43 @@ export const REQUIRE_INTERFACE_FOR_EXPORTED_CLASS_DOCUMENTATION = {
 
 function hasPublicInstanceBehavior(node: ClassLike): boolean {
   return node.body.body.some((member) => {
-    if (member.type === AST_NODE_TYPES.MethodDefinition) {
+    if (member.type === "MethodDefinition") {
       return (
         member.kind !== "constructor" &&
         !member.static &&
         member.accessibility !== "private" &&
         member.accessibility !== "protected" &&
-        member.key.type !== AST_NODE_TYPES.PrivateIdentifier
+        member.key.type !== "PrivateIdentifier"
       );
     }
-    if (member.type !== AST_NODE_TYPES.PropertyDefinition || member.static)
-      return false;
+    if (member.type !== "PropertyDefinition" || member.static) return false;
     if (
       member.accessibility === "private" ||
       member.accessibility === "protected" ||
-      member.key.type === AST_NODE_TYPES.PrivateIdentifier
-    ) return false;
+      member.key.type === "PrivateIdentifier"
+    )
+      return false;
     return (
-      member.value?.type === AST_NODE_TYPES.ArrowFunctionExpression ||
-      member.value?.type === AST_NODE_TYPES.FunctionExpression ||
-      member.typeAnnotation?.typeAnnotation.type === AST_NODE_TYPES.TSFunctionType
+      member.value?.type === "ArrowFunctionExpression" ||
+      member.value?.type === "FunctionExpression" ||
+      member.typeAnnotation?.typeAnnotation.type === "TSFunctionType"
     );
   });
 }
 
-function classBindings(
-  statement: TSESTree.ProgramStatement,
-): readonly ClassBinding[] {
-  const declaration = statement.type === AST_NODE_TYPES.ExportNamedDeclaration
-    ? statement.declaration
-    : statement;
-  if (declaration?.type === AST_NODE_TYPES.ClassDeclaration) {
+function classBindings(statement: ESTree.Statement): readonly ClassBinding[] {
+  const declaration =
+    statement.type === "ExportNamedDeclaration"
+      ? statement.declaration
+      : statement;
+  if (declaration?.type === "ClassDeclaration") {
     return declaration.id === null
       ? []
       : [{ declaration, name: declaration.id.name }];
   }
-  if (declaration?.type !== AST_NODE_TYPES.VariableDeclaration) return [];
+  if (declaration?.type !== "VariableDeclaration") return [];
   return declaration.declarations.flatMap((item) =>
-    item.id.type === AST_NODE_TYPES.Identifier &&
-      item.init?.type === AST_NODE_TYPES.ClassExpression
+    item.id.type === "Identifier" && item.init?.type === "ClassExpression"
       ? [{ declaration: item.init, name: item.id.name }]
       : [],
   );
@@ -131,36 +132,40 @@ export default createRule<Options, MessageIds>({
   defaultOptions: [],
   create(context) {
     if (
-      /\.(?:js|jsx|mjs|cjs)$/iu.test(context.filename) ||
-      isTestFile(context.filename) ||
-      isStoryFile(context.filename) ||
-      isGeneratedFile(context.filename, context.sourceCode.text)
-    ) return {};
+      /\.(?:js|jsx|mjs|cjs)$/iu.test(sourceOrigin(context).filename) ||
+      isTestFile(sourceOrigin(context).filename) ||
+      isStoryFile(sourceOrigin(context).filename) ||
+      isGeneratedFile(sourceOrigin(context).filename, sourceOrigin(context).text)
+    )
+      return {};
     return {
       "Program:exit"(program): void {
         const classes = new Map<string, ClassLike>();
         const abstractBases = new Set<string>();
-        function collectClassBindings(statement: TSESTree.ProgramStatement): void {
+        function collectClassBindings(statement: ESTree.Statement): void {
           for (const binding of classBindings(statement)) {
             classes.set(binding.name, binding.declaration);
             if (binding.declaration.abstract) abstractBases.add(binding.name);
           }
         }
 
-        for (const statement of program.body) { collectClassBindings(statement); }
+        for (const statement of program.body) {
+          collectClassBindings(statement);
+        }
 
         const exported = exportedClasses(program, classes);
 
         for (const [declaration, exportedName] of exported) {
           const extendsLocalAbstractBase =
-            declaration.superClass?.type === AST_NODE_TYPES.Identifier &&
+            declaration.superClass?.type === "Identifier" &&
             abstractBases.has(declaration.superClass.name);
           if (
             declaration.abstract ||
-            declaration.implements.length > 0 ||
+            (declaration.implements?.length ?? 0) > 0 ||
             extendsLocalAbstractBase ||
             !hasPublicInstanceBehavior(declaration)
-          ) continue;
+          )
+            continue;
           context.report({
             node: declaration.id ?? declaration,
             messageId: "requireContract",
@@ -172,10 +177,13 @@ export default createRule<Options, MessageIds>({
   },
 });
 
-function exportedClasses(program: TSESTree.Program, classes: ReadonlyMap<string, ClassLike>): Map<ClassLike, string> {
+function exportedClasses(
+  program: ESTree.Program,
+  classes: ReadonlyMap<string, ClassLike>,
+): Map<ClassLike, string> {
   const exported = new Map<ClassLike, string>();
-  function collectExportedClass(statement: TSESTree.ProgramStatement): void {
-    if (statement.type === AST_NODE_TYPES.ExportNamedDeclaration) {
+  function collectExportedClass(statement: ESTree.Statement): void {
+    if (statement.type === "ExportNamedDeclaration") {
       for (const binding of classBindings(statement)) {
         exported.set(binding.declaration, binding.name);
       }
@@ -183,16 +191,16 @@ function exportedClasses(program: TSESTree.Program, classes: ReadonlyMap<string,
       collectClassSpecifiers(statement);
       return;
     }
-    if (statement.type !== AST_NODE_TYPES.ExportDefaultDeclaration) return;
+    if (statement.type !== "ExportDefaultDeclaration") return;
     if (
-      statement.declaration.type === AST_NODE_TYPES.ClassDeclaration ||
-      statement.declaration.type === AST_NODE_TYPES.ClassExpression
+      statement.declaration.type === "ClassDeclaration" ||
+      statement.declaration.type === "ClassExpression"
     ) {
       exported.set(
         statement.declaration,
         statement.declaration.id?.name ?? "default",
       );
-    } else if (statement.declaration.type === AST_NODE_TYPES.Identifier) {
+    } else if (statement.declaration.type === "Identifier") {
       const candidate = classes.get(statement.declaration.name);
       if (candidate !== undefined) {
         exported.set(candidate, statement.declaration.name);
@@ -200,20 +208,28 @@ function exportedClasses(program: TSESTree.Program, classes: ReadonlyMap<string,
     }
   }
 
-  function collectClassSpecifiers(statement: Extract<TSESTree.ExportNamedDeclaration, { source: null }>): void {
+  function collectClassSpecifiers(
+    statement: ESTree.ExportNamedDeclaration,
+  ): void {
     for (const specifier of statement.specifiers) {
-      if (specifier.exportKind === "type") continue;
+      if (
+        specifier.exportKind === "type" ||
+        specifier.local.type !== "Identifier"
+      )
+        continue;
       const candidate = classes.get(specifier.local.name);
       if (candidate === undefined) continue;
-      const exportedName = specifier.exported.type === AST_NODE_TYPES.Identifier
-        ? specifier.exported.name
-        : specifier.exported.value;
+      const exportedName =
+        specifier.exported.type === "Identifier"
+          ? specifier.exported.name
+          : specifier.exported.value;
       exported.set(candidate, exportedName);
     }
-
   }
 
-  for (const statement of program.body) { collectExportedClass(statement); }
+  for (const statement of program.body) {
+    collectExportedClass(statement);
+  }
 
   return exported;
 }

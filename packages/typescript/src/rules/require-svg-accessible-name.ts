@@ -4,8 +4,9 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/require-svg-accessible-name.test.ts
  */
 
-import { AST_NODE_TYPES } from "@typescript-eslint/utils";
 
+
+import { sourceOrigin } from "./_source-origin.js";
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import {
   attributeNameStatus,
@@ -70,16 +71,16 @@ export default createRule<readonly [], "missingName">({
   defaultOptions: [],
   create(context) {
     if (
-      isGeneratedFile(context.filename, context.sourceCode.text) ||
-      isTestFile(context.filename) ||
-      isStoryFile(context.filename)
+      isGeneratedFile(sourceOrigin(context).filename, sourceOrigin(context).text) ||
+      isTestFile(sourceOrigin(context).filename) ||
+      isStoryFile(sourceOrigin(context).filename)
     )
       return {};
     return {
       JSXElement(node): void {
         const opening = node.openingElement;
         if (
-          opening.name.type !== AST_NODE_TYPES.JSXIdentifier ||
+          opening.name.type !== "JSXIdentifier" ||
           opening.name.name !== "svg"
         )
           return;
@@ -102,8 +103,8 @@ export default createRule<readonly [], "missingName">({
           return;
         const namedTitle = node.children.some(
           (child) =>
-            child.type === AST_NODE_TYPES.JSXElement &&
-            child.openingElement.name.type === AST_NODE_TYPES.JSXIdentifier &&
+            child.type === "JSXElement" &&
+            child.openingElement.name.type === "JSXIdentifier" &&
             child.openingElement.name.name === "title" &&
             childrenNameStatus(child.children, context.sourceCode, []) !==
               "empty",

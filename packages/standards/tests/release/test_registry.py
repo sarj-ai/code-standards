@@ -31,9 +31,11 @@ def _bundle(root: Path, *, python_pin: str = "sarj-python-lint==1.2.3", contract
         f'[project]\nname = "code-standards"\nversion = "4.0.0"\ndependencies = {json.dumps(dependencies)}\n',
         encoding="utf-8",
     )
-    peers = root / "packages/standards/src/sarj_standards/configs/eslint.peers.json"
+    peers = root / "packages/standards/src/sarj_standards/configs/oxlint.peers.json"
     peers.parent.mkdir(parents=True)
-    peers.write_text(json.dumps({"peers": {"@sarj/eslint-plugin": "9.8.7"}}), encoding="utf-8")
+    peers.write_text(
+        json.dumps({"peers": {"@sarj/oxlint-plugin": "9.8.7", "@sarj/oxlint-react-hooks": "0.1.0"}}), encoding="utf-8"
+    )
 
 
 def test_registry_cli_preserves_typed_retry_options(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -92,7 +94,8 @@ def test_lint_config_requirements_read_exact_pypi_and_npm_pins(tmp_path: Path) -
     _bundle(tmp_path)
 
     assert lint_config_requirements(tmp_path) == (
-        RegistryRequirement("npm", "@sarj/eslint-plugin", "9.8.7"),
+        RegistryRequirement("npm", "@sarj/oxlint-plugin", "9.8.7"),
+        RegistryRequirement("npm", "@sarj/oxlint-react-hooks", "0.1.0"),
         RegistryRequirement("pypi", "sarj-python-lint", "1.2.3"),
     )
 
@@ -112,6 +115,22 @@ def test_contracts_dependency_must_be_registry_visible_before_standards_publicat
         require_lint_config_dependencies(tmp_path, checker=lambda requirement: requirement != expected)
 
 
+def test_native_doctor_hooks_must_be_published_before_the_standards_bundle(tmp_path: Path) -> None:
+    _bundle(tmp_path)
+    expected = RegistryRequirement("npm", "@sarj/oxlint-react-hooks", "0.1.0")
+    with pytest.raises(ValueError, match=r"npm publication is unavailable: @sarj/oxlint-react-hooks@0\.1\.0"):
+        require_lint_config_dependencies(tmp_path, checker=lambda requirement: requirement != expected)
+
+
+def test_native_hooks_target_reads_its_own_authoritative_version(tmp_path: Path) -> None:
+    package = tmp_path / "packages/react-hooks/package.json"
+    package.parent.mkdir(parents=True)
+    package.write_text('{"name":"@sarj/oxlint-react-hooks","version":"0.1.0"}', encoding="utf-8")
+    assert target_requirement(tmp_path, "react-hooks") == RegistryRequirement(
+        "npm", "@sarj/oxlint-react-hooks", "0.1.0"
+    )
+
+
 def test_contracts_dependency_rejects_an_inexact_pin(tmp_path: Path) -> None:
     _bundle(tmp_path, contracts_pin="sarj-rule-contracts>=1.0.0")
     with pytest.raises(ValueError, match="must use an exact pin"):
@@ -121,7 +140,7 @@ def test_contracts_dependency_rejects_an_inexact_pin(tmp_path: Path) -> None:
 def test_lint_config_preflight_reports_the_first_missing_publication(tmp_path: Path) -> None:
     _bundle(tmp_path)
 
-    with pytest.raises(ValueError, match=r"npm publication is unavailable: @sarj/eslint-plugin@9\.8\.7"):
+    with pytest.raises(ValueError, match=r"npm publication is unavailable: @sarj/oxlint-plugin@9\.8\.7"):
         require_lint_config_dependencies(tmp_path, checker=lambda requirement: requirement.registry == "pypi")
 
 
@@ -225,7 +244,7 @@ def test_lint_config_preflight_retries_transient_errors_and_keeps_successes(tmp_
     )
 
     assert requirements == lint_config_requirements(tmp_path)
-    assert calls["@sarj/eslint-plugin"] == 1
+    assert calls["@sarj/oxlint-plugin"] == 1
     assert calls["sarj-python-lint"] == 2
 
 

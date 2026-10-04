@@ -1,17 +1,16 @@
 // vitest: shared-module-graph
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
+import { RuleTester } from "oxlint/plugins-dev";
+import { describe, it } from "vitest";
 
 import rule, {
   REQUIRE_PASCAL_CASE_ZOD_SCHEMA_NAME_DOCUMENTATION,
 } from "../../src/rules/require-pascal-case-zod-schema-name.js";
 
-RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
 RuleTester.it = it;
 RuleTester.itOnly = it.only;
 
-const RULE_TESTER = new RuleTester();
+const RULE_TESTER = new RuleTester({ languageOptions: { parserOptions: { lang: "ts" } } });
 const zod = (code: string): string => `import { z } from "zod"; ${code}`;
 const ERROR = { messageId: "requirePascalSchema" as const };
 

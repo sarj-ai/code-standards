@@ -4,7 +4,9 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-comment-cruft.test.ts
  */
 
-import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
+import { sourceOrigin } from "./_source-origin.js";
+import type { ESTree } from "@oxlint/plugins";
+
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import {
@@ -107,7 +109,7 @@ function isSectionLabel(text: string): boolean {
 
 // Suppression and tool directives are instructions, not prose.
 const DIRECTIVE_RE =
-  /^(eslint\b|eslint-|sarj-noqa\b|@ts-|prettier-ignore|prettier\b|biome-|c8\b|v8\b|istanbul\b|@type\b|@vite|webpack|<reference|<amd|global\b|noinspection|hack\b|xxx\b)/i;
+  /^(eslint\b|(?:oxlint|eslint)-|sarj-noqa\b|@ts-|prettier-ignore|prettier\b|biome-|c8\b|v8\b|istanbul\b|@type\b|@vite|webpack|<reference|<amd|global\b|noinspection|hack\b|xxx\b)/i;
 
 const LICENSE_RE =
   /copyright|licen[cs]ed?|spdx|permission is hereby granted|all rights reserved/i;
@@ -221,7 +223,7 @@ function hasPseudocode(text: string): boolean {
   return PSEUDOCODE_RE.test(text);
 }
 
-function testCallMatrixStems(comments: readonly TSESTree.Comment[]): ReadonlySet<string> {
+function testCallMatrixStems(comments: readonly ESTree.Comment[]): ReadonlySet<string> {
   const stems = new Set<string>();
   for (const comment of comments) {
     const body = stripCommentMarker(comment.value);
@@ -305,35 +307,35 @@ function restatesWholeStatement(body: string, statement: string | null): boolean
 
 // Outside these containers, a short label groups expression elements.
 const STATEMENT_CONTAINERS: ReadonlySet<string> = new Set([
-  AST_NODE_TYPES.Program,
-  AST_NODE_TYPES.BlockStatement,
-  AST_NODE_TYPES.ClassBody,
-  AST_NODE_TYPES.StaticBlock,
-  AST_NODE_TYPES.SwitchCase,
-  AST_NODE_TYPES.TSModuleBlock,
-  AST_NODE_TYPES.TSInterfaceBody,
+  "Program",
+  "BlockStatement",
+  "ClassBody",
+  "StaticBlock",
+  "SwitchCase",
+  "TSModuleBlock",
+  "TSInterfaceBody",
 ]);
 
 interface CommentWall {
-  readonly leader: TSESTree.Comment;
-  readonly members: ReadonlySet<TSESTree.Comment>;
+  readonly leader: ESTree.Comment;
+  readonly members: ReadonlySet<ESTree.Comment>;
 }
 
 interface WallAttachment {
-  readonly container: TSESTree.Node;
+  readonly container: ESTree.Node;
   readonly index: number;
   readonly statement: string;
 }
 
 function statementAttachmentBelow(
-  comment: TSESTree.Comment,
+  comment: ESTree.Comment,
   sourceCode: Readonly<{
-    getNodeByRangeIndex(index: number): TSESTree.Node | null;
+    getNodeByRangeIndex(index: number): ESTree.Node | null;
     getTokenAfter(
-      node: TSESTree.Comment,
+      node: ESTree.Comment,
       options: { includeComments: boolean },
-    ): TSESTree.Token | null;
-    getText(node: TSESTree.Node): string;
+    ): ESTree.Token | ESTree.Comment | null;
+    getText(node: ESTree.Node): string;
   }>,
 ): WallAttachment | null {
   const token = sourceCode.getTokenAfter(comment, { includeComments: false });
@@ -345,11 +347,11 @@ function statementAttachmentBelow(
     return null;
   }
   for (
-    let node: TSESTree.Node | null | undefined = sourceCode.getNodeByRangeIndex(token.range[0]);
+    let node: ESTree.Node | null | undefined = sourceCode.getNodeByRangeIndex(token.range[0]);
     node?.parent != null;
     node = node.parent
   ) {
-    if (!STATEMENT_CONTAINERS.has(node.parent.type) || !WALL_STATEMENTS.has(node.type)) {
+    if (!STATEMENT_CONTAINERS.has(node.parent?.type) || !WALL_STATEMENTS.has(node.type)) {
       continue;
     }
     const siblings = directStatements(node.parent);
@@ -362,31 +364,31 @@ function statementAttachmentBelow(
 }
 
 const WALL_STATEMENTS: ReadonlySet<string> = new Set([
-  AST_NODE_TYPES.ExpressionStatement,
-  AST_NODE_TYPES.ReturnStatement,
-  AST_NODE_TYPES.ThrowStatement,
-  AST_NODE_TYPES.VariableDeclaration,
-  AST_NODE_TYPES.IfStatement,
-  AST_NODE_TYPES.ForStatement,
-  AST_NODE_TYPES.ForOfStatement,
-  AST_NODE_TYPES.ForInStatement,
-  AST_NODE_TYPES.WhileStatement,
-  AST_NODE_TYPES.DoWhileStatement,
-  AST_NODE_TYPES.SwitchStatement,
-  AST_NODE_TYPES.TryStatement,
+  "ExpressionStatement",
+  "ReturnStatement",
+  "ThrowStatement",
+  "VariableDeclaration",
+  "IfStatement",
+  "ForStatement",
+  "ForOfStatement",
+  "ForInStatement",
+  "WhileStatement",
+  "DoWhileStatement",
+  "SwitchStatement",
+  "TryStatement",
 ]);
 
-function directStatements(container: TSESTree.Node): readonly TSESTree.Node[] {
+function directStatements(container: ESTree.Node): readonly ESTree.Node[] {
   switch (container.type) {
-    case AST_NODE_TYPES.Program:
-    case AST_NODE_TYPES.BlockStatement:
-    case AST_NODE_TYPES.ClassBody:
-    case AST_NODE_TYPES.StaticBlock:
-    case AST_NODE_TYPES.TSModuleBlock:
+    case "Program":
+    case "BlockStatement":
+    case "ClassBody":
+    case "StaticBlock":
+    case "TSModuleBlock":
       return container.body;
-    case AST_NODE_TYPES.SwitchCase:
+    case "SwitchCase":
       return container.consequent;
-    case AST_NODE_TYPES.TSInterfaceBody:
+    case "TSInterfaceBody":
       return container.body;
     default:
       return [];
@@ -418,12 +420,12 @@ function isWeakWalkthroughComment(body: string, statement: string): boolean {
 
 /** Type-member containers cannot contain bare call statements. */
 const TYPE_MEMBER_CONTAINERS: ReadonlySet<string> = new Set([
-  AST_NODE_TYPES.TSInterfaceBody,
-  AST_NODE_TYPES.TSTypeLiteral,
+  "TSInterfaceBody",
+  "TSTypeLiteral",
 ]);
 
 /** Preserve an entire contiguous comment run when any line cites a reference. */
-function runCitesAReference(comments: readonly TSESTree.Comment[], index: number): boolean {
+function runCitesAReference(comments: readonly ESTree.Comment[], index: number): boolean {
   for (let i = index;i >= 0;i--) {
     if (i < index && !areAdjacentLineComments(comments[i], comments[i + 1])) break;
     if (hasExternalReference(stripCommentMarker(comments[i]?.value ?? ""))) return true;
@@ -437,8 +439,8 @@ function runCitesAReference(comments: readonly TSESTree.Comment[], index: number
 
 /** True when `a` and `b` are `//` comments on consecutive lines. */
 function areAdjacentLineComments(
-  a: TSESTree.Comment | undefined,
-  b: TSESTree.Comment | undefined,
+  a: ESTree.Comment | undefined,
+  b: ESTree.Comment | undefined,
 ): boolean {
   return (
     a !== undefined &&
@@ -450,7 +452,7 @@ function areAdjacentLineComments(
 }
 
 /** Index of the first comment in the current contiguous `//` run. */
-function lineRunStart(comments: readonly TSESTree.Comment[], index: number): number {
+function lineRunStart(comments: readonly ESTree.Comment[], index: number): number {
   let start = index;
   while (start > 0 && areAdjacentLineComments(comments[start - 1], comments[start])) {
     start -= 1;
@@ -460,7 +462,7 @@ function lineRunStart(comments: readonly TSESTree.Comment[], index: number): num
 
 /** Preserve request/response examples as a unit, including their arrow lines. */
 function runDocumentsHttpContract(
-  comments: readonly TSESTree.Comment[],
+  comments: readonly ESTree.Comment[],
   index: number,
 ): boolean {
   const start = lineRunStart(comments, index);
@@ -475,7 +477,7 @@ function runDocumentsHttpContract(
  * True when the comment at `index` is one line of a contiguous `//` block rather
  * than a lone annotation.
  */
-function isInsideCommentRun(comments: readonly TSESTree.Comment[], index: number): boolean {
+function isInsideCommentRun(comments: readonly ESTree.Comment[], index: number): boolean {
   const comment = comments[index];
   return (
     areAdjacentLineComments(comments[index - 1], comment) ||
@@ -487,7 +489,7 @@ function isInsideCommentRun(comments: readonly TSESTree.Comment[], index: number
 const LEAD_IN_SCAN_LIMIT = 24;
 
 function hasIllustrationLeadInAbove(
-  comments: readonly TSESTree.Comment[],
+  comments: readonly ESTree.Comment[],
   index: number,
 ): boolean {
   for (let i = index - 1;i >= 0 && index - i <= LEAD_IN_SCAN_LIMIT;i--) {
@@ -544,44 +546,44 @@ export default createRule<Options, MessageIds>({
   },
   defaultOptions: [],
   create(context) {
-    if (isGeneratedFile(context.filename, context.sourceCode.text)) {
+    if (isGeneratedFile(sourceOrigin(context).filename, sourceOrigin(context).text)) {
       return {};
     }
 
     const sourceCode = context.sourceCode;
 
-    function isStandalone(comment: TSESTree.Comment): boolean {
+    function isStandalone(comment: ESTree.Comment): boolean {
       const before = sourceCode.getTokenBefore(comment, {
         includeComments: false,
       });
       return !before || before.loc.end.line < comment.loc.start.line;
     }
 
-    function isJsDoc(comment: TSESTree.Comment): boolean {
+    function isJsDoc(comment: ESTree.Comment): boolean {
       return comment.type === "Block" && /^\*/.test(comment.value);
     }
 
     /** True for a block comment that is the sole JSX expression content. */
-    function isJsxOnlyComment(comment: TSESTree.Comment): boolean {
+    function isJsxOnlyComment(comment: ESTree.Comment): boolean {
       for (
-        let node: TSESTree.Node | null | undefined = sourceCode.getNodeByRangeIndex(
+        let node: ESTree.Node | null | undefined = sourceCode.getNodeByRangeIndex(
           comment.range[0],
         );
         node != null;
         node = node.parent
       ) {
-        if (node.type === AST_NODE_TYPES.JSXExpressionContainer) {
-          return node.expression.type === AST_NODE_TYPES.JSXEmptyExpression;
+        if (node.type === "JSXExpressionContainer") {
+          return node.expression.type === "JSXEmptyExpression";
         }
-        if (node.type === AST_NODE_TYPES.Program) return false;
+        if (node.type === "Program") return false;
       }
       return false;
     }
 
-    function findCommentWalls(comments: readonly TSESTree.Comment[]): CommentWall[] {
+    function findCommentWalls(comments: readonly ESTree.Comment[]): CommentWall[] {
       const attached = new Map<
-        TSESTree.Node,
-        Array<{ comment: TSESTree.Comment; index: number; weak: boolean }>
+        ESTree.Node,
+        Array<{ comment: ESTree.Comment; index: number; weak: boolean }>
       >();
       for (const comment of comments) {
         if (comment.type !== "Line" || !isStandalone(comment)) continue;
@@ -599,7 +601,7 @@ export default createRule<Options, MessageIds>({
 
       const walls: CommentWall[] = [];
       for (const entries of attached.values()) collectWalls(entries);
-      function collectWalls(entries: Array<{ comment: TSESTree.Comment; index: number; weak: boolean }>): void {
+      function collectWalls(entries: Array<{ comment: ESTree.Comment; index: number; weak: boolean }>): void {
         const sorted = entries.toSorted((left, right) => left.index - right.index);
         const clusters: Array<typeof sorted> = [];
         for (const entry of sorted) {
@@ -633,7 +635,7 @@ export default createRule<Options, MessageIds>({
     }
 
     /** True when every content line of a JSDoc block is a banner or a section title. */
-    function isSectionJsDoc(comment: TSESTree.Comment): boolean {
+    function isSectionJsDoc(comment: ESTree.Comment): boolean {
       const texts = comment.value
         .split("\n")
         .map(stripCommentMarker)
@@ -651,10 +653,10 @@ export default createRule<Options, MessageIds>({
     }
 
     function reportLeadingPreamble(
-      comments: readonly TSESTree.Comment[],
+      comments: readonly ESTree.Comment[],
       firstCodeLine: number,
     ): void {
-      const leading: TSESTree.Comment[] = [];
+      const leading: ESTree.Comment[] = [];
       let prevLine: number | null = null;
       for (const comment of comments) {
         if (comment.type !== "Line") break;
@@ -682,7 +684,7 @@ export default createRule<Options, MessageIds>({
     return {
       Program(): void {
         const comments = sourceCode.getAllComments();
-        const callMatrixStems = isTestFile(context.filename)
+        const callMatrixStems = isTestFile(sourceOrigin(context).filename)
           ? testCallMatrixStems(comments)
           : new Set<string>();
         const walls = findCommentWalls(comments);
@@ -742,7 +744,7 @@ export default createRule<Options, MessageIds>({
           checkStandaloneComment(comment, texts, i);
         }
 
-        function checkStandaloneComment(comment: TSESTree.Comment, texts: string[], i: number): void {
+        function checkStandaloneComment(comment: ESTree.Comment, texts: string[], i: number): void {
           const firstText = texts[0];
           const firstTextStem = firstText === undefined
             ? undefined
@@ -802,7 +804,7 @@ export default createRule<Options, MessageIds>({
           checkNarration(comment, texts, i, container);
         }
 
-        function checkNarration(comment: TSESTree.Comment, texts: string[], i: number, container: TSESTree.Node | null): void {
+        function checkNarration(comment: ESTree.Comment, texts: string[], i: number, container: ESTree.Node | null): void {
           // Narration only for single-line comments (a multi-line block is
           // usually a real doc).
           if (comment.type === "Line" && texts.length === 1) {

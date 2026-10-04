@@ -4,8 +4,9 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-unlocalized-toast.test.ts
  */
 
-import { AST_NODE_TYPES } from "@typescript-eslint/utils";
 
+
+import { sourceOrigin } from "./_source-origin.js";
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import {
   COMPONENT_IMPORT_SCHEMA,
@@ -100,7 +101,7 @@ export default createRule<Options, "unlocalized">({
   defaultOptions: [{ enabled: true }],
   create(context, [options]) {
     if (
-      localizationExcluded(context.filename, context.sourceCode.text, options)
+      localizationExcluded(sourceOrigin(context).filename, context.sourceCode.text, options)
     )
       return {};
     const functions = options?.functions ?? [
@@ -119,12 +120,12 @@ export default createRule<Options, "unlocalized">({
       CallExpression(node): void {
         const callee = node.callee;
         const receiver =
-          callee.type === AST_NODE_TYPES.Identifier
+          callee.type === "Identifier"
             ? callee
-            : callee.type === AST_NODE_TYPES.MemberExpression &&
+            : callee.type === "MemberExpression" &&
                 !callee.computed &&
-                callee.object.type === AST_NODE_TYPES.Identifier &&
-                callee.property.type === AST_NODE_TYPES.Identifier &&
+                callee.object.type === "Identifier" &&
+                callee.property.type === "Identifier" &&
                 methods.includes(callee.property.name)
               ? callee.object
               : null;

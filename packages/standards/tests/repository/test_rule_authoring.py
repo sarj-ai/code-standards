@@ -66,10 +66,10 @@ def test_apply_creates_authored_files_and_registers_atomically(tmp_path: Path) -
         )
 
 
-def test_eslint_scaffold_uses_screaming_snake_case_documentation_constant(tmp_path: Path) -> None:
+def test_oxlint_scaffold_uses_screaming_snake_case_documentation_constant(tmp_path: Path) -> None:
     plan = rule_authoring.plan_new(
         tmp_path,
-        RuleSelector.parse("eslint:prefer-explicit-clock"),
+        RuleSelector.parse("oxlint:prefer-explicit-clock"),
         category="testing",
         summary="Tests should receive an explicit clock.",
     )
@@ -338,7 +338,7 @@ def test_generated_native_test_helper_uses_the_public_analyzer() -> None:
     assert verify_native_rule(NoDunderAll, analyze) == 2
 
 
-@pytest.mark.parametrize("engine", ["python", "eslint"])
+@pytest.mark.parametrize("engine", ["python", "oxlint"])
 def test_registration_rejects_colliding_generated_identifiers(tmp_path: Path, engine: str) -> None:
     first = rule_authoring.plan_new(
         tmp_path, RuleSelector.parse(f"{engine}:foo1"), category="correctness", summary="First detector."

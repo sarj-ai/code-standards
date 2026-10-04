@@ -1,22 +1,17 @@
 // vitest: shared-module-graph
-import * as tsParser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
+import { RuleTester } from "oxlint/plugins-dev";
+import { describe, it } from "vitest";
 
 import rule, {
   PREFER_IMMUTABLE_MODULE_CONSTANT_DOCUMENTATION,
 } from "../../src/rules/prefer-immutable-module-constant.js";
 
-RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
 RuleTester.it = it;
 RuleTester.itOnly = it.only;
 
 const RULE_TESTER = new RuleTester({
-  languageOptions: {
-    parser: tsParser,
-    parserOptions: { ecmaVersion: "latest", sourceType: "module" },
-  },
+  languageOptions: { parserOptions: { lang: "ts" } },
 });
 
 RULE_TESTER.run("prefer-immutable-module-constant", rule, {

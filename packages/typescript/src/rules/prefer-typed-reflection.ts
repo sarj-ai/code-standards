@@ -1,29 +1,31 @@
 /**
- * @fileoverview prefer-typed-reflection — Prefer typed access when Reflect.get or Reflect.apply discards a known contract.
+ * @fileoverview prefer-typed-reflection — prefer ordinary access and calls over static reflection.
  *
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/prefer-typed-reflection.test.ts
  */
-import {
-  AST_NODE_TYPES,
-  ASTUtils,
-  ESLintUtils,
-  type TSESTree,
-} from "@typescript-eslint/utils";
-import ts from "typescript";
+
+import { sourceOrigin } from "./_source-origin.js";
+import type { ESTree, SourceCode } from "@oxlint/plugins";
 import { createRule, type RuleDocumentation } from "./_docs.js";
+import { arrayMethodTarget, resolveArrayBinding } from "./_array-method.js";
 import { isGeneratedFile } from "./_paths.js";
+import {
+  classifyUnsafeDictionaryValue,
+  createTypeEnvironment,
+  type TypeEnvironment,
+} from "./_dictionary-types.js";
 
 export const PREFER_TYPED_REFLECTION_DOCUMENTATION = {
   summary:
-    "Prefer typed access when Reflect.get or Reflect.apply discards a known contract.",
+    "Prefer direct access over literal-key Reflect.get and literal-argument Reflect.apply.",
   rationale:
-    "Reflect.get and Reflect.apply can accept property or argument mistakes that normal typed access catches.",
+    "Direct access lets the compiler check properties and arguments instead of discarding their contracts through reflection.",
   remediation:
-    "Use direct typed property access or call the typed function, preserving receivers and evaluation semantics.",
+    "Use direct property access or a direct call, preserving receiver and evaluation semantics.",
   category: "maintainability",
   limitations: [
-    "Requires TypeScript type information. Inspects scope-resolved global Reflect.get with a literal key on a closed object type, and Reflect.apply with a known call signature and a literal argument array.",
-    "Dynamic keys, open dictionaries, unknown/any/generic targets, explicit Reflect.get receivers, aliases, and nonliteral argument arrays are excluded. Deliberate proxy or metaprogramming calls need a local suppression. No autofix because receiver and evaluation semantics may differ.",
+    "Checks scope-resolved Reflect and globalThis.Reflect with a literal key or literal argument array. Explicit same-file unknown/any/object/empty-object annotations and lexical aliases are excluded; other target types are not inferred or imported.",
+    "Dynamic keys, custom Reflect bindings, Reflect object aliases, explicit get receivers, and nonliteral argument arrays are excluded. No autofix changes proxy, receiver or evaluation behavior.",
   ],
   examples: [
     {
@@ -34,7 +36,7 @@ export const PREFER_TYPED_REFLECTION_DOCUMENTATION = {
         {
           path: "src/example.ts",
           source:
-            'declare const shipment: { status: string };\nconst status = Reflect.get(shipment, "status");',
+            'declare const shipment: { status: string }; const status = Reflect.get(shipment, "status");',
         },
       ],
       focusPath: "src/example.ts",
@@ -43,13 +45,13 @@ export const PREFER_TYPED_REFLECTION_DOCUMENTATION = {
     },
     {
       id: "after",
-      title: "Use the direct contract",
+      title: "Use direct access",
       outcome: "no-match",
       files: [
         {
           path: "src/example.ts",
           source:
-            "declare const shipment: { status: string };\nconst status = shipment.status;",
+            "declare const shipment: { status: string }; const status = shipment.status;",
         },
       ],
       focusPath: "src/example.ts",
@@ -58,32 +60,60 @@ export const PREFER_TYPED_REFLECTION_DOCUMENTATION = {
     },
   ],
 } as const satisfies RuleDocumentation;
-
-function propertyName(node: TSESTree.MemberExpression): string | null {
-  if (!node.computed && node.property.type === AST_NODE_TYPES.Identifier)
-    return node.property.name;
-  if (
-    node.computed &&
-    node.property.type === AST_NODE_TYPES.Literal &&
-    typeof node.property.value === "string"
-  )
-    return node.property.value;
-  return null;
-}
-
-function knownType(type: ts.Type): boolean {
-  if (type.isUnion()) return type.types.every(knownType);
+function reflectOwner(sourceCode: SourceCode, node: ESTree.Node): boolean {
+  if (globalName(sourceCode, node, "Reflect")) return true;
+  const member = arrayMethodTarget(node);
   return (
-    (type.flags &
-      (ts.TypeFlags.Any |
-        ts.TypeFlags.Unknown |
-        ts.TypeFlags.TypeParameter |
-        ts.TypeFlags.Never)) ===
-    0
+    member?.name === "Reflect" &&
+    globalName(sourceCode, member.object, "globalThis")
+  );
+}
+function globalName(
+  sourceCode: SourceCode,
+  node: ESTree.Node,
+  name: string,
+): boolean {
+  return (
+    node.type === "Identifier" &&
+    node.name === name &&
+    !resolveArrayBinding(sourceCode, node)?.defs.length
   );
 }
 
-export default createRule<[], "avoid">({
+function hasOpaqueAnnotation(
+  sourceCode: SourceCode,
+  node: ESTree.Node,
+  environment: TypeEnvironment,
+): boolean {
+  while (
+    node.type === "ParenthesizedExpression" ||
+    node.type === "TSNonNullExpression" ||
+    node.type === "TSSatisfiesExpression"
+  ) {
+    node = node.expression;
+  }
+  if (node.type === "TSAsExpression" || node.type === "TSTypeAssertion") {
+    return (
+      classifyUnsafeDictionaryValue(node.typeAnnotation, environment) !== null
+    );
+  }
+  const variable = resolveArrayBinding(sourceCode, node);
+  return (
+    variable?.identifiers.some((identifier) => {
+      const annotation =
+        identifier.type === "Identifier" ? identifier.typeAnnotation : null;
+      return (
+        annotation !== null &&
+        annotation !== undefined &&
+        classifyUnsafeDictionaryValue(
+          annotation.typeAnnotation,
+          environment,
+        ) !== null
+      );
+    }) ?? false
+  );
+}
+export default createRule({
   name: "prefer-typed-reflection",
   documentation: PREFER_TYPED_REFLECTION_DOCUMENTATION,
   meta: {
@@ -92,92 +122,39 @@ export default createRule<[], "avoid">({
     schema: [],
     messages: {
       avoid:
-        "Reflection discards this known contract. Use typed property access or a typed call; preserve the invocation receiver and property semantics.",
+        "Prefer direct property access or a direct call over this literal reflection operation; preserve receiver and property semantics.",
     },
   },
   defaultOptions: [],
-  create(context) {
-    if (isGeneratedFile(context.filename, context.sourceCode.text)) return {};
-    if (
-      !context.sourceCode.parserServices?.program ||
-      !context.sourceCode.parserServices.esTreeNodeToTSNodeMap
-    )
-      return {};
-    const services = ESLintUtils.getParserServices(context);
-    if (!services.program) return {};
-    const checker = services.program.getTypeChecker();
-    const isReflect = (node: TSESTree.Node): boolean =>
-      globalName(node, "Reflect") ||
-      (node.type === AST_NODE_TYPES.MemberExpression &&
-        propertyName(node) === "Reflect" &&
-        globalName(node.object, "globalThis"));
-
-    const globalName = (node: TSESTree.Node, name: string): boolean =>
-      node.type === AST_NODE_TYPES.Identifier &&
-      node.name === name &&
-      !ASTUtils.findVariable(context.sourceCode.getScope(node), name)?.defs
-        .length;
-    const closedObject = (type: ts.Type): boolean => {
-      if (type.isUnion()) return type.types.every(closedObject);
-      return (
-        knownType(type) &&
-        type.getProperties().length > 0 &&
-        checker.getIndexInfosOfType(type).length === 0
-      );
-    };
-    const inspectGet = (
-      node: TSESTree.CallExpression,
-      type: ts.Type,
-    ): boolean => {
-      const key = node.arguments[1];
-      return (
-        node.arguments.length === 2 &&
-        key?.type === AST_NODE_TYPES.Literal &&
-        (typeof key.value === "string" || typeof key.value === "number") &&
-        closedObject(type)
-      );
-    };
-    const inspectApply = (
-      node: TSESTree.CallExpression,
-      type: ts.Type,
-    ): boolean =>
-      node.arguments.length === 3 &&
-      node.arguments[2]?.type === AST_NODE_TYPES.ArrayExpression &&
-      knownType(type) &&
-      type
-        .getCallSignatures()
-        .some(
-          (signature) =>
-            signature.typeParameters === undefined &&
-            signature.parameters.every((parameter) =>
-              knownType(
-                checker.getTypeOfSymbolAtLocation(
-                  parameter,
-                  services.esTreeNodeToTSNodeMap.get(node),
-                ),
-              ),
-            ),
-        );
+  createOnce(context) {
+    let environment: TypeEnvironment | null = null;
     return {
+      Program(node): void {
+        environment = isGeneratedFile(sourceOrigin(context).filename, sourceOrigin(context).text)
+          ? null
+          : createTypeEnvironment(node, context.sourceCode.visitorKeys);
+      },
       CallExpression(node): void {
-        if (
-          node.callee.type !== AST_NODE_TYPES.MemberExpression ||
-          !isReflect(node.callee.object)
-        )
+        if (environment === null) return;
+        const method = arrayMethodTarget(node.callee);
+        if (method === null || !reflectOwner(context.sourceCode, method.object))
           return;
-        const method = propertyName(node.callee);
+        const key = node.arguments[1];
+        const literalGet =
+          method.name === "get" &&
+          node.arguments.length === 2 &&
+          key?.type === "Literal" &&
+          (typeof key.value === "string" || typeof key.value === "number");
+        const literalApply =
+          method.name === "apply" &&
+          node.arguments.length === 3 &&
+          node.arguments[2]?.type === "ArrayExpression";
         const target = node.arguments[0];
         if (
-          !target ||
-          target.type === AST_NODE_TYPES.SpreadElement ||
-          (method !== "get" && method !== "apply")
-        )
-          return;
-        const type = checker.getTypeAtLocation(
-          services.esTreeNodeToTSNodeMap.get(target),
-        );
-        if (
-          method === "get" ? inspectGet(node, type) : inspectApply(node, type)
+          (literalGet || literalApply) &&
+          target !== undefined &&
+          target.type !== "SpreadElement" &&
+          !hasOpaqueAnnotation(context.sourceCode, target, environment)
         )
           context.report({ node, messageId: "avoid" });
       },

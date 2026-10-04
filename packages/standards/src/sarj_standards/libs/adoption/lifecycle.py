@@ -19,7 +19,8 @@ from sarj_standards.libs.filesystem import is_link_like
 from sarj_standards.libs.json_boundary import parse_json
 from sarj_standards.libs.linting import runner, security_tools
 
-from . import manifest, packagemanager, scaffold, transaction
+from . import formatting, manifest, packagemanager, scaffold, transaction
+from .configs import OXLINT_CONFIG, OXLINT_CONFIG_NAMES
 
 
 if TYPE_CHECKING:
@@ -28,10 +29,8 @@ if TYPE_CHECKING:
 
 _PROJECT_SKIP_DIRS = frozenset({".git", ".venv", "build", "dist", "node_modules", "target", "vendor"})
 _SKILL_ARTIFACT_ROOTS = frozenset({".agents", ".claude"})
-_ESLINT_SUFFIXES = frozenset({".cjs", ".cts", ".js", ".jsx", ".mjs", ".mts", ".ts", ".tsx"})
-_ESLINT_GLOBAL_IGNORE_NAMES = frozenset(
-    {"eslint.config.js", "eslint.config.cjs", "eslint.config.mjs", "eslint.config.ts", "eslint.strict.mjs"}
-)
+_OXLINT_SUFFIXES = frozenset({".astro", ".cjs", ".cts", ".js", ".jsx", ".mjs", ".mts", ".ts", ".tsx"})
+_OXLINT_GLOBAL_IGNORE_NAMES = frozenset((*OXLINT_CONFIG_NAMES, "oxlint.strict.mjs"))
 _COMMAND_TIMEOUT = timedelta(minutes=10)
 _GIT_DISCOVERY_TIMEOUT = timedelta(seconds=5)
 _GIT_SAFE_ENV = frozenset(
@@ -61,7 +60,7 @@ class Inspection:
     package_manager: str | None
 
 
-class EslintSelection(NamedTuple):
+class OxlintSelection(NamedTuple):
     commands: tuple[Command, ...]
     unowned_count: int
 
@@ -90,7 +89,7 @@ def install_commands(
         )
         commands.append(
             Command(
-                "ESLint peers",
+                "Oxlint/Oxfmt policy dependencies",
                 packagemanager.install_argv(ecosystems.client, workspace=is_workspace, yarn=ecosystems.yarn),
                 install_root,
             )
@@ -157,35 +156,45 @@ def verification_commands(ecosystems: scaffold.Ecosystems) -> list[Command]:
                 )
             )
     if ecosystems.typescript_root is not None:
+        config = _oxlint_config(ecosystems.typescript_root)
         commands.append(
             Command(
-                "ESLint",
-                packagemanager.exec_argv(ecosystems.client, "eslint", "--no-cache", "."),
+                "Oxlint",
+                (
+                    sys.executable,
+                    "-m",
+                    "sarj_standards.libs.linting.typescript_gate",
+                    "--config",
+                    config.name if config is not None else OXLINT_CONFIG,
+                    "--format",
+                    "--",
+                    ".",
+                ),
                 ecosystems.typescript_root,
             )
         )
     return commands
 
 
-def selected_eslint_commands(root: Path, paths: Iterable[str], *, label: str = "selected") -> list[Command]:
-    return list(select_eslint_commands(root, paths, label=label).commands)
+def selected_oxlint_commands(root: Path, paths: Iterable[str], *, label: str = "selected") -> list[Command]:
+    return list(select_oxlint_commands(root, paths, label=label).commands)
 
 
-def select_eslint_commands(
+def select_oxlint_commands(
     root: Path,
     paths: Iterable[str],
     *,
     label: str = "selected",
     fix: bool = False,
     expand_directories: bool = False,
-) -> EslintSelection:
+) -> OxlintSelection:
     repository = root.resolve()
     fallback_project = _adopted_typescript_project(repository)
-    candidates = _selected_eslint_candidates(
+    candidates = _selected_oxlint_candidates(
         repository, paths, fallback_project=fallback_project, expand_directories=expand_directories
     )
     if not candidates:
-        return EslintSelection((), 0)
+        return OxlintSelection((), 0)
     grouped: dict[Path, set[str]] = {}
     unowned: list[Path] = []
     for candidate in candidates:
@@ -198,15 +207,16 @@ def select_eslint_commands(
     for project, scoped in sorted(grouped.items(), key=lambda item: str(item[0])):
         install_root = packagemanager.workspace_root(project, repository)
         client = packagemanager.detect(install_root)
-        config = _eslint_config(project)
-        config_args = () if config is None else ("--config", config.name)
+        config = _oxlint_config(project)
+        config_args = ("--config", config.name if config is not None else OXLINT_CONFIG)
         commands.append(
             Command(
-                f"ESLint ({label}: {project.relative_to(repository).as_posix() or '.'})",
+                f"Oxlint ({label}: {project.relative_to(repository).as_posix() or '.'})",
                 packagemanager.exec_argv(
                     client,
-                    "eslint",
+                    "oxlint",
                     *config_args,
+                    "--type-aware",
                     *(("--fix",) if fix else ()),
                     "--",
                     *sorted(scoped),
@@ -214,7 +224,7 @@ def select_eslint_commands(
                 project,
             )
         )
-    return EslintSelection(tuple(commands), len(unowned))
+    return OxlintSelection(tuple(commands), len(unowned))
 
 
 def _owning_typescript_project(
@@ -225,7 +235,7 @@ def _owning_typescript_project(
 ) -> Path | None:
     start = candidate if candidate.is_dir() else candidate.parent
     bounded = (start, *(parent for parent in start.parents if parent == repository or repository in parent.parents))
-    configured = next((path for path in bounded if _eslint_config(path) is not None), None)
+    configured = next((path for path in bounded if _oxlint_config(path) is not None), None)
     if configured is not None:
         return configured
     lock_names = tuple(name for name, _client in packagemanager.LOCKFILES)
@@ -242,9 +252,8 @@ def _nearest_lockfile_owner(bounded: tuple[Path, ...], lock_names: tuple[str, ..
     return next((path for path in bounded if any((path / name).is_file() for name in lock_names)), None)
 
 
-def _eslint_config(project: Path) -> Path | None:
-    names = ("eslint.config.js", "eslint.config.cjs", "eslint.config.mjs", "eslint.config.ts")
-    return next((project / name for name in names if (project / name).is_file()), None)
+def _oxlint_config(project: Path) -> Path | None:
+    return next((project / name for name in OXLINT_CONFIG_NAMES if (project / name).is_file()), None)
 
 
 def _adopted_typescript_project(repository: Path) -> Path | None:
@@ -255,14 +264,14 @@ def _adopted_typescript_project(repository: Path) -> Path | None:
     if adopted is None:
         return None
     project = (repository / adopted.typescript_dest).resolve()
-    return project if project.is_dir() and _eslint_config(project) is not None else None
+    return project if project.is_dir() and _oxlint_config(project) is not None else None
 
 
-def staged_eslint_commands(root: Path, paths: Iterable[str]) -> list[Command]:
-    return selected_eslint_commands(root, paths, label="staged")
+def staged_oxlint_commands(root: Path, paths: Iterable[str]) -> list[Command]:
+    return selected_oxlint_commands(root, paths, label="staged")
 
 
-def _selected_eslint_candidates(
+def _selected_oxlint_candidates(
     root: Path,
     paths: Iterable[str],
     *,
@@ -282,7 +291,7 @@ def _selected_eslint_candidates(
         if _is_skill_artifact(candidate, root):
             return
         if candidate.is_dir() and candidate.name not in _PROJECT_SKIP_DIRS:
-            sources = _eslint_sources(candidate)
+            sources = _oxlint_sources(candidate)
             owners = {_owning_typescript_project(source, root, fallback_project=fallback_project) for source in sources}
             candidate_owner = _owning_typescript_project(candidate, root, fallback_project=fallback_project)
             if (
@@ -296,8 +305,8 @@ def _selected_eslint_candidates(
             else:
                 candidates.update(sources)
         elif (
-            candidate.suffix.lower() in _ESLINT_SUFFIXES
-            and candidate.name not in _ESLINT_GLOBAL_IGNORE_NAMES
+            candidate.suffix.lower() in _OXLINT_SUFFIXES
+            and candidate.name not in _OXLINT_GLOBAL_IGNORE_NAMES
             and candidate.is_file()
         ):
             candidates.add(candidate)
@@ -307,11 +316,11 @@ def _selected_eslint_candidates(
     return candidates
 
 
-def _contains_eslint_source(directory: Path) -> bool:
-    return next(iter(_eslint_sources(directory)), None) is not None
+def _contains_oxlint_source(directory: Path) -> bool:
+    return next(iter(_oxlint_sources(directory)), None) is not None
 
 
-def _eslint_sources(directory: Path) -> set[Path]:
+def _oxlint_sources(directory: Path) -> set[Path]:
     sources: set[Path] = set()
     for parent, directories, names in os.walk(directory):
         base = Path(parent)
@@ -325,8 +334,8 @@ def _eslint_sources(directory: Path) -> set[Path]:
         sources.update(
             base / name
             for name in names
-            if Path(name).suffix.lower() in _ESLINT_SUFFIXES
-            and name not in _ESLINT_GLOBAL_IGNORE_NAMES
+            if Path(name).suffix.lower() in _OXLINT_SUFFIXES
+            and name not in _OXLINT_GLOBAL_IGNORE_NAMES
             and not is_link_like(base / name)
         )
     return sources
@@ -348,7 +357,13 @@ def _contains_skill_artifacts(directory: Path) -> bool:
     return False
 
 
-def format_commands(ecosystems: scaffold.Ecosystems) -> list[Command]:
+def format_commands(
+    ecosystems: scaffold.Ecosystems,
+    *,
+    lint_paths: Iterable[str] | None = None,
+    format_paths: Iterable[str] | None = None,
+    root: Path | None = None,
+) -> list[Command]:
     commands: list[Command] = []
     if ecosystems.python_root is not None:
         for project in _python_verification_roots(ecosystems.python_root):
@@ -367,17 +382,52 @@ def format_commands(ecosystems: scaffold.Ecosystems) -> list[Command]:
                 )
             )
     if ecosystems.typescript_root is not None:
-        commands.append(
-            Command(
-                "ESLint fixes",
-                packagemanager.exec_argv(ecosystems.client, "eslint", "--fix", "."),
-                ecosystems.typescript_root,
+        if lint_paths is None:
+            config = _oxlint_config(ecosystems.typescript_root)
+            commands.append(
+                Command(
+                    "Oxlint fixes",
+                    packagemanager.exec_argv(
+                        ecosystems.client,
+                        "oxlint",
+                        "--config",
+                        config.name if config is not None else OXLINT_CONFIG,
+                        "--type-aware",
+                        "--fix",
+                        ".",
+                    ),
+                    ecosystems.typescript_root,
+                )
             )
-        )
+        else:
+            commands.extend(
+                select_oxlint_commands(
+                    (root or ecosystems.typescript_root).resolve(),
+                    lint_paths,
+                    label="selected",
+                    fix=True,
+                ).commands
+            )
+        if format_paths is None:
+            commands.append(
+                Command(
+                    "Oxfmt",
+                    packagemanager.exec_argv(ecosystems.client, "oxfmt", "--write", "."),
+                    ecosystems.typescript_root,
+                )
+            )
+        else:
+            commands.extend(selected_formatter_commands((root or ecosystems.typescript_root).resolve(), format_paths))
     return commands
 
 
-def selected_format_commands(root: Path, paths: Iterable[str]) -> list[Command]:
+def selected_format_commands(
+    root: Path,
+    paths: Iterable[str],
+    *,
+    lint_paths: Iterable[str] | None = None,
+    format_paths: Iterable[str] | None = None,
+) -> list[Command]:
     repository = root.resolve()
     selected = tuple(sorted(set(paths)))
     python_paths = tuple(
@@ -393,7 +443,41 @@ def selected_format_commands(root: Path, paths: Iterable[str]) -> list[Command]:
                 Command("Ruff fixes", (_environment_binary("ruff"), "check", "--fix", *python_paths), repository),
             )
         )
-    commands.extend(select_eslint_commands(repository, selected, label="selected", fix=True).commands)
+    lint_commands = select_oxlint_commands(
+        repository,
+        selected if lint_paths is None else lint_paths,
+        label="selected",
+        fix=True,
+    ).commands
+    commands.extend(lint_commands)
+    commands.extend(selected_formatter_commands(repository, selected if format_paths is None else format_paths))
+    return commands
+
+
+def selected_formatter_commands(root: Path, paths: Iterable[str]) -> list[Command]:
+    repository = root.resolve()
+    commands: list[Command] = []
+    for config, source_paths in sorted(formatting.selected_formatter_projects(tuple(paths), repository).items()):
+        install_root = packagemanager.workspace_root(config.parent, repository)
+        client = packagemanager.detect(install_root)
+        scoped = sorted(path.as_posix() for path in source_paths)
+        commands.extend(
+            Command(
+                "Oxfmt",
+                packagemanager.exec_argv(
+                    client,
+                    "oxfmt",
+                    "--config",
+                    config.name,
+                    "--write",
+                    "--no-error-on-unmatched-pattern",
+                    "--",
+                    *scoped[start : start + 250],
+                ),
+                config.parent,
+            )
+            for start in range(0, len(scoped), 250)
+        )
     return commands
 
 

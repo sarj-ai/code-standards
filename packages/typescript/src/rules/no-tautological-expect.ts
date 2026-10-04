@@ -4,7 +4,10 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-tautological-expect.test.ts
  */
 
-import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
+import { sourceOrigin } from "./_source-origin.js";
+import type { ESTree } from "@oxlint/plugins";
+import { findVariable } from "./_scope.js";
+
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isTestFile } from "./_paths.js";
@@ -63,20 +66,20 @@ const OPERAND_PREVIEW_CHARS = 40;
 /** Sign prefixes: `-1` is a unary expression, not a literal, but it is constant. */
 const NUMERIC_SIGNS: ReadonlySet<string> = new Set(["-", "+"]);
 
-function isLiteral(node: TSESTree.Node): boolean {
+function isLiteral(node: ESTree.Node): boolean {
   switch (node.type) {
-    case AST_NODE_TYPES.Literal:
+    case "Literal":
       return !("regex" in node);
-    case AST_NODE_TYPES.TemplateLiteral:
+    case "TemplateLiteral":
       return node.expressions.length === 0;
-    case AST_NODE_TYPES.UnaryExpression:
-      return NUMERIC_SIGNS.has(node.operator) && node.argument.type === AST_NODE_TYPES.Literal && typeof node.argument.value === "number";
-    case AST_NODE_TYPES.ArrayExpression:
+    case "UnaryExpression":
+      return NUMERIC_SIGNS.has(node.operator) && node.argument.type === "Literal" && typeof node.argument.value === "number";
+    case "ArrayExpression":
       return node.elements.every((element) => element !== null && isLiteral(element));
-    case AST_NODE_TYPES.ObjectExpression:
+    case "ObjectExpression":
       return node.properties.every(
         (property) =>
-          property.type === AST_NODE_TYPES.Property &&
+          property.type === "Property" &&
           !property.computed &&
           isLiteral(property.value),
       );
@@ -85,21 +88,21 @@ function isLiteral(node: TSESTree.Node): boolean {
   }
 }
 
-function isStructuralLiteral(node: TSESTree.Node): boolean {
-  return node.type === AST_NODE_TYPES.ArrayExpression || node.type === AST_NODE_TYPES.ObjectExpression;
+function isStructuralLiteral(node: ESTree.Node): boolean {
+  return node.type === "ArrayExpression" || node.type === "ObjectExpression";
 }
 
-function passesZeroArgumentMatcher(node: TSESTree.Node, matcher: string): boolean {
-  let value: unknown;
+function passesZeroArgumentMatcher(node: ESTree.Node, matcher: string): boolean {
+  if (isStructuralLiteral(node))
+    return matcher === "toBeDefined" || matcher === "toBeTruthy";
+  let value: Extract<ESTree.Node, { type: "Literal" }>["value"] | undefined;
   switch (node.type) {
-    case AST_NODE_TYPES.Literal: value = node.value; break;
-    case AST_NODE_TYPES.TemplateLiteral: value = node.quasis[0]?.value.cooked; break;
-    case AST_NODE_TYPES.UnaryExpression:
-      if (node.argument.type !== AST_NODE_TYPES.Literal || typeof node.argument.value !== "number") return false;
+    case "Literal": value = node.value; break;
+    case "TemplateLiteral": value = node.quasis[0]?.value.cooked; break;
+    case "UnaryExpression":
+      if (node.argument.type !== "Literal" || typeof node.argument.value !== "number") return false;
       value = node.operator === "-" ? -node.argument.value : node.argument.value;
       break;
-    case AST_NODE_TYPES.ArrayExpression:
-    case AST_NODE_TYPES.ObjectExpression: value = {}; break;
     default: return false;
   }
   switch (matcher) {
@@ -114,11 +117,11 @@ function passesZeroArgumentMatcher(node: TSESTree.Node, matcher: string): boolea
 }
 
 /** The `expect(<single argument>)` call a matcher hangs directly off, if any. */
-function expectOperand(callee: TSESTree.MemberExpression): TSESTree.Node | null {
+function expectOperand(callee: ESTree.MemberExpression): ESTree.Node | null {
   const receiver = callee.object;
   if (
-    receiver.type !== AST_NODE_TYPES.CallExpression ||
-    receiver.callee.type !== AST_NODE_TYPES.Identifier ||
+    receiver.type !== "CallExpression" ||
+    receiver.callee.type !== "Identifier" ||
     receiver.callee.name !== "expect" ||
     receiver.arguments.length !== 1
   ) {
@@ -146,36 +149,36 @@ export default createRule<Options, MessageIds>({
   },
   defaultOptions: [],
   create(context) {
-    if (!isTestFile(context.filename)) {
+    if (!isTestFile(sourceOrigin(context).filename)) {
       return {};
     }
     /** The operand as written, collapsed to one line and elided for the message. */
-    const preview = (node: TSESTree.Node): string => {
+    const preview = (node: ESTree.Node): string => {
       const text = context.sourceCode.getText(node).replaceAll(/\s+/gu, " ");
       return text.length > OPERAND_PREVIEW_CHARS
         ? `${text.slice(0, OPERAND_PREVIEW_CHARS)}…`
         : text;
     };
     return {
-      CallExpression(node: TSESTree.CallExpression): void {
+      CallExpression(node: ESTree.CallExpression): void {
         const callee = node.callee;
-        if (callee.type !== AST_NODE_TYPES.MemberExpression || callee.computed) {
+        if (callee.type !== "MemberExpression" || callee.computed) {
           return;
         }
-        if (callee.property.type !== AST_NODE_TYPES.Identifier) {
+        if (callee.property.type !== "Identifier") {
           return;
         }
         const matcher = callee.property.name;
-        if (callee.object.type !== AST_NODE_TYPES.CallExpression || callee.object.callee.type !== AST_NODE_TYPES.Identifier) return;
+        if (callee.object.type !== "CallExpression" || callee.object.callee.type !== "Identifier") return;
         const expectIdentifier = callee.object.callee;
-        const variable = ASTUtils.findVariable(context.sourceCode.getScope(expectIdentifier), expectIdentifier.name);
+        const variable = findVariable(context.sourceCode.getScope(expectIdentifier), expectIdentifier.name);
         if (variable !== null && variable.defs.some((definition) => {
-          if (definition.node.type !== AST_NODE_TYPES.ImportSpecifier) return true;
+          if (definition.node.type !== "ImportSpecifier") return true;
           const declaration = definition.node.parent;
           const imported = definition.node.imported;
-          return declaration.type !== AST_NODE_TYPES.ImportDeclaration ||
+          return declaration.type !== "ImportDeclaration" ||
             !["vitest", "@jest/globals", "@playwright/test", "bun:test"].includes(String(declaration.source.value)) ||
-            (imported.type === AST_NODE_TYPES.Identifier ? imported.name : imported.value) !== "expect";
+            (imported.type === "Identifier" ? imported.name : imported.value) !== "expect";
         })) return;
         const operand = expectOperand(callee);
         if (operand === null || !isLiteral(operand)) {

@@ -9,7 +9,7 @@ VERSION ?=
 CHANNEL ?= stable
 REGISTRY ?= .sarj-standards-rollout.toml
 
-.PHONY: help setup build verify doctor docs-artifacts-check docs-code-sync docs-check test lint dogfood dogfood-python dogfood-typescript format-check typecheck repo-check check-no-private-refs check-file-conventions check-versions-synced release-check release-check-lock-age release-check-tags release-check-typescript sync-rule-ledger rollout
+.PHONY: help setup build verify doctor docs-artifacts-check docs-code-sync docs-check test lint dogfood dogfood-python dogfood-typescript format-check typecheck repo-check check-no-private-refs check-file-conventions check-versions-synced release-check release-check-lock-age release-check-tags release-check-typescript release-check-react-hooks sync-rule-ledger rollout
 
 help:
 	@echo "Targets: setup | verify | doctor | build | test | lint | dogfood | typecheck"
@@ -49,7 +49,7 @@ docs-code-sync:
 
 docs-check: docs-artifacts-check
 	cd apps/docs && npm run code-examples:check
-	cd apps/docs && npm run lint && npm run check && npm run build
+	cd apps/docs && npm run lint && npm test && npm run check && npm run build
 
 format-check:
 	uv run --project packages/standards --frozen ruff format --check \
@@ -71,7 +71,8 @@ build:
 	cd packages/standards   && uv build
 	cd packages/standards-compat && uv build
 
-test: check-versions-synced
+test: check-versions-synced typescript-build
+	npm --workspace packages/react-hooks test
 	cd packages/typescript     && npm test
 	cd packages/bootstrap      && uv run pytest -q
 	cd packages/contracts      && uv run pytest -q
@@ -157,7 +158,7 @@ check-no-private-refs:
 # and additional copies.
 # Regenerate the shipped record of every rule identifier and what became of it.
 # It never deletes: a rule that leaves a registry is moved to `retired`, because
-# a consumer config naming a removed rule makes ESLint exit 2 on the whole repo
+# a consumer config naming a removed rule makes Oxlint reject the config on the whole repo
 # and `doctor` needs the record to warn before the upgrade rather than after.
 sync-rule-ledger:
 	@$(STANDARDS) --root . maintain sync-ledger
@@ -181,10 +182,10 @@ repo-check:
 # installs from the lockfile and packs to a temporary directory: local release
 # checks cannot accidentally bless a stale ignored `dist/` tree or leave a
 # publishable tarball behind in the repository.
-release-check: check-versions-synced release-check-lock-age release-check-tags release-check-typescript
+release-check: check-versions-synced release-check-lock-age release-check-tags release-check-typescript release-check-react-hooks
 
 release-check-lock-age:
-	$(STANDARDS) --root . maintain release lock-age packages/typescript/package-lock.json --minimum-days 0
+	$(STANDARDS) --root . maintain release lock-age package-lock.json --workspace packages/typescript --minimum-days 0
 
 release-check-tags:
 	$(STANDARDS) --root . maintain release check-tag typescript-v$$(node -p "require('./packages/typescript/package.json').version")
@@ -192,3 +193,7 @@ release-check-tags:
 
 release-check-typescript:
 	$(STANDARDS) --root . maintain release typescript check
+
+release-check-react-hooks:
+	npm --workspace packages/react-hooks test
+	npm --workspace packages/react-hooks pack --dry-run --ignore-scripts

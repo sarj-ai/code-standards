@@ -1,5 +1,7 @@
 /** @fileoverview _runtime-exports — classify runtime exports conservatively for module naming rules. */
-import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
+
+import type { ESTree, SourceCode } from "@oxlint/plugins";
+import { findVariable } from "./_scope.js";
 
 export const GENERIC_MODULE_STEMS: ReadonlySet<string> = new Set([
   "common", "helper", "helpers", "misc", "shared", "stuff", "util", "utils",
@@ -10,7 +12,7 @@ type Emission = "runtime" | "erased" | "unknown";
 interface RuntimeExport {
   readonly key: string;
   readonly name: string;
-  readonly node: TSESTree.Node;
+  readonly node: ESTree.Node;
 }
 interface RuntimeExports {
   readonly exports: readonly RuntimeExport[];
@@ -18,53 +20,56 @@ interface RuntimeExports {
 }
 
 /** Count public runtime keys, preserving unknowns instead of silently dropping them. */
-export function runtimeExports(program: TSESTree.Program): RuntimeExports {
+export function runtimeExports(program: ESTree.Program): RuntimeExports {
   const bindings = localBindings(program);
   const exports = new Map<string, RuntimeExport>();
   let ambiguous = false;
-  function add(key: string, name: string, node: TSESTree.Node, emission: Emission): void {
+  function add(key: string, name: string, node: ESTree.Node, emission: Emission): void {
     if (emission === "unknown") ambiguous = true;
     if (emission === "runtime") exports.set(key, { key, name, node });
   }
-  function collectDefault(statement: TSESTree.ExportDefaultDeclaration): void {
+  function collectDefault(statement: ESTree.ExportDefaultDeclaration): void {
     const declaration = statement.declaration;
-    if (declaration.type === AST_NODE_TYPES.Identifier) {
+    if (declaration.type === "Identifier") {
       add("default", declaration.name, statement, bindings.get(declaration.name) ?? "unknown");
-    } else if ("id" in declaration && declaration.id?.type === AST_NODE_TYPES.Identifier) {
+    } else if ("id" in declaration && declaration.id?.type === "Identifier") {
       add("default", declaration.id.name, declaration, declarationEmission(declaration));
     } else ambiguous = true;
   }
-  function collectNamed(statement: TSESTree.ExportNamedDeclaration): void {
+  function collectNamed(statement: ESTree.ExportNamedDeclaration): void {
     if (statement.exportKind === "type") return;
     if (statement.source !== null) {
       if (statement.specifiers.some((specifier) => specifier.exportKind !== "type")) ambiguous = true;
       return;
     }
+    collectNamedDeclaration(statement);
+    for (const specifier of statement.specifiers) {
+      if (specifier.exportKind === "type") continue;
+      const key = specifier.exported.type === "Identifier" ? specifier.exported.name : specifier.exported.value;
+      const local = specifier.local.type === "Identifier" ? specifier.local.name : specifier.local.value;
+      add(key, key === "default" ? local : key, specifier, bindings.get(local) ?? "unknown");
+    }
+  }
+  function collectNamedDeclaration(statement: ESTree.ExportNamedDeclaration): void {
     const declaration = statement.declaration;
     if (declaration !== null) {
-      if (declaration.type === AST_NODE_TYPES.VariableDeclaration &&
-        declaration.declarations.some((item) => item.id.type !== AST_NODE_TYPES.Identifier)) ambiguous = true;
+      if (declaration.type === "VariableDeclaration" &&
+        declaration.declarations.some((item) => item.id.type !== "Identifier")) ambiguous = true;
       const names = declarationNames(declaration);
       if (names.length === 0 && declarationEmission(declaration) !== "erased") ambiguous = true;
       for (const name of names) add(name, name, declaration, bindings.get(name) ?? "unknown");
     }
-    for (const specifier of statement.specifiers) {
-      if (specifier.exportKind === "type") continue;
-      const key = specifier.exported.type === AST_NODE_TYPES.Identifier ? specifier.exported.name : specifier.exported.value;
-      const local = specifier.local.name;
-      add(key, key === "default" ? local : key, specifier, bindings.get(local) ?? "unknown");
-    }
   }
   for (const statement of program.body) {
-    if (statement.type === AST_NODE_TYPES.ExportAllDeclaration && statement.exportKind !== "type") ambiguous = true;
-    if (statement.type === AST_NODE_TYPES.TSExportAssignment) ambiguous = true;
-    if (statement.type === AST_NODE_TYPES.ExportDefaultDeclaration) collectDefault(statement);
-    if (statement.type === AST_NODE_TYPES.ExportNamedDeclaration) collectNamed(statement);
+    if (statement.type === "ExportAllDeclaration" && statement.exportKind !== "type") ambiguous = true;
+    if (statement.type === "TSExportAssignment") ambiguous = true;
+    if (statement.type === "ExportDefaultDeclaration") collectDefault(statement);
+    if (statement.type === "ExportNamedDeclaration") collectNamed(statement);
   }
   return { exports: [...exports.values()], ambiguous };
 }
 
-function localBindings(program: TSESTree.Program): ReadonlyMap<string, Emission> {
+function localBindings(program: ESTree.Program): ReadonlyMap<string, Emission> {
   const bindings = new Map<string, Emission>();
   function register(name: string, emission: Emission): void {
     const previous = bindings.get(name);
@@ -73,60 +78,60 @@ function localBindings(program: TSESTree.Program): ReadonlyMap<string, Emission>
     else bindings.set(name, "erased");
   }
   for (const statement of program.body) {
-    if (statement.type === AST_NODE_TYPES.ImportDeclaration) {
+    if (statement.type === "ImportDeclaration") {
       for (const specifier of statement.specifiers) {
         const typeOnly = statement.importKind === "type" ||
-          (specifier.type === AST_NODE_TYPES.ImportSpecifier && specifier.importKind === "type");
+          (specifier.type === "ImportSpecifier" && specifier.importKind === "type");
         register(specifier.local.name, typeOnly ? "erased" : "unknown");
       }
       continue;
     }
-    const declaration = statement.type === AST_NODE_TYPES.ExportNamedDeclaration ||
-      statement.type === AST_NODE_TYPES.ExportDefaultDeclaration ? statement.declaration : statement;
+    const declaration = statement.type === "ExportNamedDeclaration" ||
+      statement.type === "ExportDefaultDeclaration" ? statement.declaration : statement;
     if (declaration === null) continue;
     for (const name of declarationNames(declaration)) register(name, declarationEmission(declaration));
   }
   return bindings;
 }
 
-function declarationNames(declaration: TSESTree.Node): string[] {
+function declarationNames(declaration: ESTree.Node): string[] {
   if ("id" in declaration && declaration.id !== null) {
-    let id: TSESTree.Node = declaration.id;
-    while (id.type === AST_NODE_TYPES.TSQualifiedName) id = id.left;
-    if (id.type === AST_NODE_TYPES.Identifier) return [id.name];
+    let id: ESTree.Node = declaration.id;
+    while (id.type === "TSQualifiedName") id = id.left;
+    if (id.type === "Identifier") return [id.name];
   }
-  if (declaration.type !== AST_NODE_TYPES.VariableDeclaration) return [];
-  return declaration.declarations.flatMap((item) => item.id.type === AST_NODE_TYPES.Identifier ? [item.id.name] : []);
+  if (declaration.type !== "VariableDeclaration") return [];
+  return declaration.declarations.flatMap((item) => item.id.type === "Identifier" ? [item.id.name] : []);
 }
 
-function declarationEmission(declaration: TSESTree.Node): Emission {
+function declarationEmission(declaration: ESTree.Node): Emission {
   if ("declare" in declaration && declaration.declare === true) return "erased";
   switch (declaration.type) {
-    case AST_NODE_TYPES.TSInterfaceDeclaration:
-    case AST_NODE_TYPES.TSTypeAliasDeclaration:
-    case AST_NODE_TYPES.TSDeclareFunction:
+    case "TSInterfaceDeclaration":
+    case "TSTypeAliasDeclaration":
+    case "TSDeclareFunction":
       return "erased";
-    case AST_NODE_TYPES.ClassDeclaration:
-    case AST_NODE_TYPES.FunctionDeclaration:
-    case AST_NODE_TYPES.VariableDeclaration:
+    case "ClassDeclaration":
+    case "FunctionDeclaration":
+    case "VariableDeclaration":
       return "runtime";
-    case AST_NODE_TYPES.TSEnumDeclaration:
+    case "TSEnumDeclaration":
       return declaration.const ? "unknown" : "runtime";
-    case AST_NODE_TYPES.TSModuleDeclaration:
+    case "TSModuleDeclaration":
       return namespaceEmission(declaration);
     default:
       return "unknown";
   }
 }
 
-function namespaceEmission(declaration: TSESTree.TSModuleDeclaration): Emission {
+function namespaceEmission(declaration: ESTree.TSModuleDeclaration | ESTree.TSGlobalDeclaration): Emission {
   const { body } = declaration;
-  if (body === undefined) return "unknown";
+  if (body == null) return "unknown";
   if (body.body.length === 0) return "unknown";
   let ambiguous = false;
   for (const statement of body.body) {
-    if (statement.type === AST_NODE_TYPES.ExportNamedDeclaration && statement.exportKind === "type") continue;
-    const inner = statement.type === AST_NODE_TYPES.ExportNamedDeclaration ? statement.declaration : statement;
+    if (statement.type === "ExportNamedDeclaration" && statement.exportKind === "type") continue;
+    const inner = statement.type === "ExportNamedDeclaration" ? statement.declaration : statement;
     const emission = inner === null ? "unknown" : declarationEmission(inner);
     if (emission === "runtime") return "runtime";
     if (emission === "unknown") ambiguous = true;
@@ -136,27 +141,28 @@ function namespaceEmission(declaration: TSESTree.TSModuleDeclaration): Emission 
 
 /** Scope-aware CommonJS detection shared by both rules; mixed surfaces remain unknown. */
 export function isCommonJsExportReference(
-  node: TSESTree.CallExpression | TSESTree.MemberExpression,
-  sourceCode: Readonly<TSESLint.SourceCode>,
+  node: ESTree.Node,
+  sourceCode: Readonly<SourceCode>,
 ): boolean {
-  function isGlobal(node: TSESTree.Identifier): boolean {
-    const variable = ASTUtils.findVariable(sourceCode.getScope(node), node.name);
+  function isGlobal(node: ESTree.BindingIdentifier): boolean {
+    const variable = findVariable(sourceCode.getScope(node), node.name);
     return variable === null || variable.defs.length === 0;
   }
-  if (node.type === AST_NODE_TYPES.MemberExpression) {
-    return node.object.type === AST_NODE_TYPES.Identifier && isGlobal(node.object) &&
+  if (node.type !== "CallExpression" && node.type !== "MemberExpression") return false;
+  if (node.type === "MemberExpression") {
+    return node.object.type === "Identifier" && isGlobal(node.object) &&
       (node.object.name === "exports" || (node.object.name === "module" && memberPropertyName(node) === "exports"));
   }
   const first = node.arguments[0];
-  return first?.type === AST_NODE_TYPES.Identifier && first.name === "exports" && isGlobal(first) &&
-    node.callee.type === AST_NODE_TYPES.MemberExpression &&
-    node.callee.object.type === AST_NODE_TYPES.Identifier && node.callee.object.name === "Object" &&
+  return first?.type === "Identifier" && first.name === "exports" && isGlobal(first) &&
+    node.callee.type === "MemberExpression" &&
+    node.callee.object.type === "Identifier" && node.callee.object.name === "Object" &&
     isGlobal(node.callee.object) && CJS_OBJECT_EXPORT_METHODS.has(memberPropertyName(node.callee) ?? "");
 }
 
-function memberPropertyName(node: TSESTree.MemberExpression): string | null {
-  if (!node.computed && node.property.type === AST_NODE_TYPES.Identifier) return node.property.name;
-  return node.computed && node.property.type === AST_NODE_TYPES.Literal && typeof node.property.value === "string"
+function memberPropertyName(node: ESTree.MemberExpression): string | null {
+  if (!node.computed && node.property.type === "Identifier") return node.property.name;
+  return node.computed && node.property.type === "Literal" && typeof node.property.value === "string"
     ? node.property.value
     : null;
 }

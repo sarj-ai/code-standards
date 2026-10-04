@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { RULES } from "../src/index.js";
+import { rules } from "../src/index.js";
 import {
   createRule,
   documentationWarnings,
@@ -40,8 +40,8 @@ describe("source-owned TypeScript rule metadata", () => {
     const rule = documentedRule(documentation([]));
 
     expect(rule.documentation).toMatchObject({
-      engine: "eslint",
-      key: "eslint:representative-rule",
+      engine: "oxlint",
+      key: "oxlint:representative-rule",
       ruleId: "representative-rule",
       messageIds: ["message"],
       optionsSchema: null,
@@ -161,6 +161,6 @@ describe("source-owned TypeScript rule metadata", () => {
 
 describe("warning-first rollout", () => {
   it("requires source-owned documentation for every published rule", () => {
-    expect(documentationWarnings(RULES)).toEqual([]);
+    expect(documentationWarnings(rules)).toEqual([]);
   });
 });

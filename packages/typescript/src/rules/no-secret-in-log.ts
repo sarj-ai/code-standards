@@ -4,7 +4,9 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-secret-in-log.test.ts
  */
 
-import { type TSESTree } from "@typescript-eslint/utils";
+import { sourceOrigin } from "./_source-origin.js";
+import type { ESTree } from "@oxlint/plugins";
+
 
 import {
   createLogMatcher,
@@ -95,12 +97,12 @@ function hasRedactionMarker(name: string): boolean {
   return tokenize(name).some((token) => SECRET_REDACTION_TOKENS.has(token));
 }
 
-function valueName(node: TSESTree.Node): string | null {
+function valueName(node: ESTree.Node): string | null {
   if (node.type === "Identifier") return node.name;
   return node.type === "MemberExpression" && !node.computed && node.property.type === "Identifier" ? node.property.name : null;
 }
 
-function isRawSecretValue(prop: TSESTree.Property): boolean {
+function isRawSecretValue(prop: ESTree.ObjectProperty): boolean {
   if (prop.shorthand) {
     return true;
   }
@@ -150,7 +152,7 @@ const BLOB_SAFE_TOKENS: ReadonlySet<string> = new Set([
   "public",
 ]);
 
-function rawBlobValueName(value: TSESTree.Node): string | null {
+function rawBlobValueName(value: ESTree.Node): string | null {
   if (value.type === "AwaitExpression") return rawBlobValueName(value.argument);
   if (value.type === "ChainExpression") return rawBlobValueName(value.expression);
   if (value.type === "Identifier") {
@@ -198,7 +200,7 @@ function isRawBlobName(name: string): boolean {
 }
 
 /** The static string name of an object-property key, or null when not statically named. */
-function propertyKeyName(prop: TSESTree.Property): string | null {
+function propertyKeyName(prop: ESTree.ObjectProperty): string | null {
   if (prop.computed) {
     return null;
   }
@@ -238,13 +240,13 @@ export default createRule<Options, MessageIds>({
   create(context, [loggingOptions]) {
     const matcher = createLogMatcher(loggingOptions);
     // Bodies in a test file are fixtures the author wrote, not production PII.
-    const blobArmApplies = !isTestFile(context.filename);
+    const blobArmApplies = !isTestFile(sourceOrigin(context).filename);
 
 
 
 
 
-    function inspectLoggedValue(value: TSESTree.Node): void {
+    function inspectLoggedValue(value: ESTree.Node): void {
       if (value.type === "ObjectExpression") {
         for (const property of literalProperties(value)) {
           if (reportSecretProperty(property) || reportRawBlob(property, property.value)) continue;
@@ -270,8 +272,8 @@ export default createRule<Options, MessageIds>({
       if (!reportSecretArgument(value)) reportRawBlob(value, value);
     }
 
-    function literalProperties(value: TSESTree.ObjectExpression): TSESTree.Property[] {
-      const effective = new Map<string, TSESTree.Property>();
+    function literalProperties(value: ESTree.ObjectExpression): ESTree.ObjectProperty[] {
+      const effective = new Map<string, ESTree.ObjectProperty>();
       for (const entry of value.properties) {
         if (entry.type === "SpreadElement") {
           if (entry.argument.type !== "ObjectExpression") {
@@ -295,7 +297,7 @@ export default createRule<Options, MessageIds>({
     }
 
     /** Reports `node` when `value` carries an un-redacted request/response blob. */
-    function reportRawBlob(node: TSESTree.Node, value: TSESTree.Node): boolean {
+    function reportRawBlob(node: ESTree.Node, value: ESTree.Node): boolean {
       if (!blobArmApplies) {
         return false;
       }
@@ -307,7 +309,7 @@ export default createRule<Options, MessageIds>({
       return false;
     }
 
-    function reportSecretProperty(prop: TSESTree.Property): boolean {
+    function reportSecretProperty(prop: ESTree.ObjectProperty): boolean {
       const keyName = propertyKeyName(prop);
       const value = valueName(prop.value);
       if (value !== null && hasRedactionMarker(value)) return false;
@@ -319,7 +321,7 @@ export default createRule<Options, MessageIds>({
       return true;
     }
 
-    function reportSecretArgument(arg: TSESTree.Node): boolean {
+    function reportSecretArgument(arg: ESTree.Node): boolean {
       const name = valueName(arg);
       if (name === null || !isSecretKeyword(name)) {
         return false;
@@ -329,7 +331,7 @@ export default createRule<Options, MessageIds>({
     }
 
     return {
-      CallExpression(node: TSESTree.CallExpression): void {
+      CallExpression(node: ESTree.CallExpression): void {
         if (!matcher.isLoggingCall(node)) {
           return;
         }

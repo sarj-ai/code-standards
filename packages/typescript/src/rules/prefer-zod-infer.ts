@@ -4,7 +4,9 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/prefer-zod-infer.test.ts
  */
 
-import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
+import { sourceOrigin } from "./_source-origin.js";
+import type { ESTree } from "@oxlint/plugins";
+
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile, isStoryFile, isTestFile } from "./_paths.js";
@@ -19,8 +21,10 @@ type Options = readonly [
 ];
 
 export const PREFER_ZOD_INFER_DOCUMENTATION = {
-  summary: "Derive a type from its Zod schema with `z.infer` instead of hand-writing a twin declaration beside it.",
-  rationale: "A derived type stays synchronized when the runtime schema changes.",
+  summary:
+    "Derive a type from its Zod schema with `z.infer` instead of hand-writing a twin declaration beside it.",
+  rationale:
+    "A derived type stays synchronized when the runtime schema changes.",
   remediation: "Replace the hand-written twin with `z.infer<typeof Schema>`.",
   category: "correctness",
   limitations: [
@@ -29,8 +33,36 @@ export const PREFER_ZOD_INFER_DOCUMENTATION = {
     "This is a bounded syntactic comparison, not general type equivalence. Review schema input versus output, interface augmentation, and separately evolving domain contracts before replacing a declaration.",
   ],
   examples: [
-    { id: "inferred-type", title: "Infer the schema type", outcome: "no-match", files: [{ path: "src/user.ts", source: 'import { z } from "zod"; const UserSchema = z.object({ id: z.string() }); type User = z.infer<typeof UserSchema>;' }], focusPath: "src/user.ts", expectedCount: 0, public: true },
-    { id: "handwritten-twin", title: "Do not duplicate the schema shape", outcome: "match", files: [{ path: "src/user.ts", source: 'import { z } from "zod"; const UserSchema = z.object({ id: z.string() }); interface User { id: string }' }], focusPath: "src/user.ts", expectedCount: 1, public: true },
+    {
+      id: "inferred-type",
+      title: "Infer the schema type",
+      outcome: "no-match",
+      files: [
+        {
+          path: "src/user.ts",
+          source:
+            'import { z } from "zod"; const UserSchema = z.object({ id: z.string() }); type User = z.infer<typeof UserSchema>;',
+        },
+      ],
+      focusPath: "src/user.ts",
+      expectedCount: 0,
+      public: true,
+    },
+    {
+      id: "handwritten-twin",
+      title: "Do not duplicate the schema shape",
+      outcome: "match",
+      files: [
+        {
+          path: "src/user.ts",
+          source:
+            'import { z } from "zod"; const UserSchema = z.object({ id: z.string() }); interface User { id: string }',
+        },
+      ],
+      focusPath: "src/user.ts",
+      expectedCount: 1,
+      public: true,
+    },
   ],
 } as const satisfies RuleDocumentation;
 
@@ -51,7 +83,10 @@ const OPTIONAL_MODIFIERS: ReadonlySet<string> = new Set([
 ]);
 
 /** Modifiers that admit `null`. */
-const NULLABLE_MODIFIERS: ReadonlySet<string> = new Set(["nullable", "nullish"]);
+const NULLABLE_MODIFIERS: ReadonlySet<string> = new Set([
+  "nullable",
+  "nullish",
+]);
 
 /** Outer methods that preserve a static literal domain's inferred values. */
 const DOMAIN_PRESERVING_MODIFIERS: ReadonlySet<string> = new Set([
@@ -98,46 +133,46 @@ export function isPreferZodInferTypeConstraintName(name: string): boolean {
 }
 
 /** Zod leaf constructors and the TS AST node their inferred type is written as. */
-const LEAF_NODE_TYPES: Readonly<Record<string, readonly AST_NODE_TYPES[]>> = {
-  string: [AST_NODE_TYPES.TSStringKeyword],
-  email: [AST_NODE_TYPES.TSStringKeyword],
-  url: [AST_NODE_TYPES.TSStringKeyword],
-  uuid: [AST_NODE_TYPES.TSStringKeyword],
-  ulid: [AST_NODE_TYPES.TSStringKeyword],
-  cuid: [AST_NODE_TYPES.TSStringKeyword],
-  cuid2: [AST_NODE_TYPES.TSStringKeyword],
-  nanoid: [AST_NODE_TYPES.TSStringKeyword],
-  iso: [AST_NODE_TYPES.TSStringKeyword],
-  number: [AST_NODE_TYPES.TSNumberKeyword],
-  int: [AST_NODE_TYPES.TSNumberKeyword],
-  float32: [AST_NODE_TYPES.TSNumberKeyword],
-  float64: [AST_NODE_TYPES.TSNumberKeyword],
-  boolean: [AST_NODE_TYPES.TSBooleanKeyword],
-  bigint: [AST_NODE_TYPES.TSBigIntKeyword],
-  symbol: [AST_NODE_TYPES.TSSymbolKeyword],
-  any: [AST_NODE_TYPES.TSAnyKeyword],
-  unknown: [AST_NODE_TYPES.TSUnknownKeyword],
-  never: [AST_NODE_TYPES.TSNeverKeyword],
-  void: [AST_NODE_TYPES.TSVoidKeyword],
-  null: [AST_NODE_TYPES.TSNullKeyword],
-  undefined: [AST_NODE_TYPES.TSUndefinedKeyword],
-  literal: [AST_NODE_TYPES.TSLiteralType],
-  date: [AST_NODE_TYPES.TSTypeReference],
-  array: [AST_NODE_TYPES.TSArrayType, AST_NODE_TYPES.TSTypeReference],
-  tuple: [AST_NODE_TYPES.TSTupleType],
-  object: [AST_NODE_TYPES.TSTypeLiteral, AST_NODE_TYPES.TSTypeReference],
-  strictObject: [AST_NODE_TYPES.TSTypeLiteral, AST_NODE_TYPES.TSTypeReference],
-  looseObject: [AST_NODE_TYPES.TSTypeLiteral, AST_NODE_TYPES.TSTypeReference],
-  record: [AST_NODE_TYPES.TSTypeReference, AST_NODE_TYPES.TSTypeLiteral],
-  map: [AST_NODE_TYPES.TSTypeReference],
-  set: [AST_NODE_TYPES.TSTypeReference],
-  promise: [AST_NODE_TYPES.TSTypeReference],
-  enum: [AST_NODE_TYPES.TSUnionType, AST_NODE_TYPES.TSTypeReference, AST_NODE_TYPES.TSLiteralType],
-  nativeEnum: [AST_NODE_TYPES.TSUnionType, AST_NODE_TYPES.TSTypeReference, AST_NODE_TYPES.TSLiteralType],
-  union: [AST_NODE_TYPES.TSUnionType, AST_NODE_TYPES.TSTypeReference],
-  discriminatedUnion: [AST_NODE_TYPES.TSUnionType, AST_NODE_TYPES.TSTypeReference],
-  intersection: [AST_NODE_TYPES.TSIntersectionType, AST_NODE_TYPES.TSTypeReference],
-};
+const LEAF_NODE_TYPES: ReadonlyMap<string, readonly ESTree.Node["type"][]> = new Map(Object.entries({
+  string: ["TSStringKeyword"],
+  email: ["TSStringKeyword"],
+  url: ["TSStringKeyword"],
+  uuid: ["TSStringKeyword"],
+  ulid: ["TSStringKeyword"],
+  cuid: ["TSStringKeyword"],
+  cuid2: ["TSStringKeyword"],
+  nanoid: ["TSStringKeyword"],
+  iso: ["TSStringKeyword"],
+  number: ["TSNumberKeyword"],
+  int: ["TSNumberKeyword"],
+  float32: ["TSNumberKeyword"],
+  float64: ["TSNumberKeyword"],
+  boolean: ["TSBooleanKeyword"],
+  bigint: ["TSBigIntKeyword"],
+  symbol: ["TSSymbolKeyword"],
+  any: ["TSAnyKeyword"],
+  unknown: ["TSUnknownKeyword"],
+  never: ["TSNeverKeyword"],
+  void: ["TSVoidKeyword"],
+  null: ["TSNullKeyword"],
+  undefined: ["TSUndefinedKeyword"],
+  literal: ["TSLiteralType"],
+  date: ["TSTypeReference"],
+  array: ["TSArrayType", "TSTypeReference"],
+  tuple: ["TSTupleType"],
+  object: ["TSTypeLiteral", "TSTypeReference"],
+  strictObject: ["TSTypeLiteral", "TSTypeReference"],
+  looseObject: ["TSTypeLiteral", "TSTypeReference"],
+  record: ["TSTypeReference", "TSTypeLiteral"],
+  map: ["TSTypeReference"],
+  set: ["TSTypeReference"],
+  promise: ["TSTypeReference"],
+  enum: ["TSUnionType", "TSTypeReference", "TSLiteralType"],
+  nativeEnum: ["TSUnionType", "TSTypeReference", "TSLiteralType"],
+  union: ["TSUnionType", "TSTypeReference"],
+  discriminatedUnion: ["TSUnionType", "TSTypeReference"],
+  intersection: ["TSIntersectionType", "TSTypeReference"],
+} satisfies Record<string, readonly ESTree.Node["type"][]>));
 
 interface SchemaField {
   /** Exact primitive values for a static domain; null means domain values are dynamic. */
@@ -149,8 +184,8 @@ interface SchemaField {
   readonly reshaped: boolean;
 }
 
-function primitiveLiteralKey(node: TSESTree.Node): string | null {
-  if (node.type !== AST_NODE_TYPES.Literal) {
+function primitiveLiteralKey(node: ESTree.Node): string | null {
+  if (node.type !== "Literal") {
     return null;
   }
   if (node.value === null) {
@@ -170,7 +205,9 @@ function primitiveLiteralKey(node: TSESTree.Node): string | null {
   }
 }
 
-function exactDomain(keys: readonly (string | null)[]): ReadonlySet<string> | null {
+function exactDomain(
+  keys: readonly (string | null)[],
+): ReadonlySet<string> | null {
   if (keys.length === 0 || keys.some((key) => key === null)) {
     return null;
   }
@@ -180,20 +217,20 @@ function exactDomain(keys: readonly (string | null)[]): ReadonlySet<string> | nu
 
 function staticZodDomain(
   leaf: string | null,
-  call: TSESTree.CallExpression | null,
+  call: ESTree.CallExpression | null,
 ): ReadonlySet<string> | null | undefined {
   if (leaf === null || call === null) {
     return undefined;
   }
   if (leaf === "literal") {
     const [argument] = call.arguments;
-    if (argument === undefined || argument.type === AST_NODE_TYPES.SpreadElement) {
+    if (argument === undefined || argument.type === "SpreadElement") {
       return null;
     }
-    if (argument.type === AST_NODE_TYPES.ArrayExpression) {
+    if (argument.type === "ArrayExpression") {
       return exactDomain(
         argument.elements.map((element) =>
-          element === null || element.type === AST_NODE_TYPES.SpreadElement
+          element === null || element.type === "SpreadElement"
             ? null
             : primitiveLiteralKey(element),
         ),
@@ -203,13 +240,13 @@ function staticZodDomain(
   }
   if (leaf === "enum") {
     const [argument] = call.arguments;
-    if (argument === undefined || argument.type === AST_NODE_TYPES.SpreadElement) {
+    if (argument === undefined || argument.type === "SpreadElement") {
       return null;
     }
-    if (argument.type === AST_NODE_TYPES.ArrayExpression) {
+    if (argument.type === "ArrayExpression") {
       return exactDomain(
         argument.elements.map((element) => {
-          if (element === null || element.type === AST_NODE_TYPES.SpreadElement) {
+          if (element === null || element.type === "SpreadElement") {
             return null;
           }
           const key = primitiveLiteralKey(element);
@@ -217,11 +254,11 @@ function staticZodDomain(
         }),
       );
     }
-    if (argument.type === AST_NODE_TYPES.ObjectExpression) {
+    if (argument.type === "ObjectExpression") {
       return exactDomain(
         argument.properties.map((property) => {
           if (
-            property.type !== AST_NODE_TYPES.Property ||
+            property.type !== "Property" ||
             property.computed ||
             property.kind !== "init" ||
             property.method ||
@@ -236,13 +273,20 @@ function staticZodDomain(
     }
     return null;
   }
-  if (leaf === "nativeEnum" || leaf === "union" || leaf === "discriminatedUnion") {
+  if (
+    leaf === "nativeEnum" ||
+    leaf === "union" ||
+    leaf === "discriminatedUnion"
+  ) {
     return null;
   }
   return undefined;
 }
 
-function sameDomain(left: ReadonlySet<string>, right: ReadonlySet<string>): boolean {
+function sameDomain(
+  left: ReadonlySet<string>,
+  right: ReadonlySet<string>,
+): boolean {
   if (left.size !== right.size) {
     return false;
   }
@@ -257,7 +301,7 @@ function sameDomain(left: ReadonlySet<string>, right: ReadonlySet<string>): bool
 interface SchemaInfo {
   readonly name: string;
   readonly fields: ReadonlyMap<string, SchemaField>;
-  readonly initializer: TSESTree.Node;
+  readonly initializer: ESTree.Node;
 }
 
 interface EnumSchemaInfo {
@@ -275,8 +319,8 @@ interface InferredAliasInfo {
 interface LiteralUnionOccurrence {
   readonly domain: ReadonlySet<string>;
   readonly exported: boolean;
-  readonly node: TSESTree.TSUnionType;
-  readonly owner: TSESTree.Node;
+  readonly node: ESTree.TSUnionType;
+  readonly owner: ESTree.Node;
   readonly ownerName: string | null;
   readonly propertyName: string;
   readonly propertyTokens: readonly string[];
@@ -286,39 +330,44 @@ interface TypeMember {
   readonly optional: boolean;
   readonly nullable: boolean;
   readonly readonly: boolean;
-  readonly annotation: TSESTree.TypeNode | null;
+  readonly annotation: ESTree.TSType | null;
 }
 
 interface TypeDeclaration {
-  readonly declaration: TSESTree.TSInterfaceDeclaration | TSESTree.TSTypeAliasDeclaration;
+  readonly declaration:
+    | ESTree.TSInterfaceDeclaration
+    | ESTree.TSTypeAliasDeclaration;
   readonly name: string;
-  readonly node: TSESTree.Node;
+  readonly node: ESTree.Node;
   readonly members: ReadonlyMap<string, TypeMember>;
 }
 
-function isExportedDeclaration(node: TSESTree.Node): boolean {
-  return node.parent?.type === AST_NODE_TYPES.ExportNamedDeclaration;
+function isExportedDeclaration(node: ESTree.Node): boolean {
+  return node.parent?.type === "ExportNamedDeclaration";
 }
 
-function isModuleLevelDeclaration(node: TSESTree.Node): boolean {
+function isModuleLevelDeclaration(node: ESTree.Node): boolean {
   const parent = node.parent;
-  return parent?.type === AST_NODE_TYPES.Program ||
-    (parent?.type === AST_NODE_TYPES.ExportNamedDeclaration && parent.parent.type === AST_NODE_TYPES.Program);
+  return (
+    parent?.type === "Program" ||
+    (parent?.type === "ExportNamedDeclaration" &&
+      parent.parent.type === "Program")
+  );
 }
 
-function isModuleLevelConst(node: TSESTree.VariableDeclarator): boolean {
+function isModuleLevelConst(node: ESTree.VariableDeclarator): boolean {
   const declaration = node.parent;
   if (
-    declaration.type !== AST_NODE_TYPES.VariableDeclaration ||
+    declaration.type !== "VariableDeclaration" ||
     declaration.kind !== "const"
   ) {
     return false;
   }
   const container = declaration.parent;
   return (
-    container.type === AST_NODE_TYPES.Program ||
-    (container.type === AST_NODE_TYPES.ExportNamedDeclaration &&
-      container.parent.type === AST_NODE_TYPES.Program)
+    container.type === "Program" ||
+    (container.type === "ExportNamedDeclaration" &&
+      container.parent.type === "Program")
   );
 }
 
@@ -335,25 +384,27 @@ export function normalizeTypeName(name: string): string {
   return name.replace(/Type$/, "").toLowerCase();
 }
 
-/** Strips `| null` / `| undefined` from a union and reports what it removed. */
-function unwrapNullish(annotation: TSESTree.TypeNode): {
-  readonly core: TSESTree.TypeNode | null;
+interface UnwrappedNullish {
+  readonly core: ESTree.TSType | null;
   readonly nullable: boolean;
-} {
-  if (annotation.type !== AST_NODE_TYPES.TSUnionType) {
+}
+
+/** Strips `| null` / `| undefined` from a union and reports what it removed. */
+function unwrapNullish(annotation: ESTree.TSType): UnwrappedNullish {
+  if (annotation.type !== "TSUnionType") {
     return {
       core: annotation,
-      nullable: annotation.type === AST_NODE_TYPES.TSNullKeyword,
+      nullable: annotation.type === "TSNullKeyword",
     };
   }
-  const rest: TSESTree.TypeNode[] = [];
+  const rest: ESTree.TSType[] = [];
   let nullable = false;
   for (const member of annotation.types) {
-    if (member.type === AST_NODE_TYPES.TSNullKeyword) {
+    if (member.type === "TSNullKeyword") {
       nullable = true;
       continue;
     }
-    if (member.type === AST_NODE_TYPES.TSUndefinedKeyword) {
+    if (member.type === "TSUndefinedKeyword") {
       continue;
     }
     rest.push(member);
@@ -368,8 +419,10 @@ function unwrapNullish(annotation: TSESTree.TypeNode): {
 /** True only when the established rule owns this pair under its default options. */
 export function preferZodInferOwnsDefaultTwin(input: {
   readonly constrained: boolean;
-  readonly declaration: TSESTree.TSInterfaceDeclaration | TSESTree.TSTypeAliasDeclaration;
-  readonly initializer: TSESTree.Node;
+  readonly declaration:
+    | ESTree.TSInterfaceDeclaration
+    | ESTree.TSTypeAliasDeclaration;
+  readonly initializer: ESTree.Node;
   readonly reshaped: boolean;
   readonly schemaName: string;
   readonly typeName: string;
@@ -382,9 +435,23 @@ export function preferZodInferOwnsDefaultTwin(input: {
   ) {
     return false;
   }
-  const fields = twinSchemaFields(input.initializer, input.zodNamespaces);
-  const members = twinTypeMembers(input.declaration);
-  if (fields === null || members === null || fields.size !== members.size) return false;
+  return sameStaticObjectShape(
+    input.initializer,
+    input.declaration,
+    input.zodNamespaces,
+  );
+}
+
+/** Positively compare the supported local object fields without name correlation. */
+export function sameStaticObjectShape(
+  initializer: ESTree.Node,
+  declaration: ESTree.TSInterfaceDeclaration | ESTree.TSTypeAliasDeclaration,
+  zodNamespaces: ReadonlySet<string>,
+): boolean {
+  const fields = twinSchemaFields(initializer, zodNamespaces);
+  const members = twinTypeMembers(declaration);
+  if (fields === null || members === null || fields.size !== members.size)
+    return false;
   for (const [name, field] of fields) {
     const member = members.get(name);
     if (
@@ -404,7 +471,7 @@ export function preferZodInferOwnsDefaultTwin(input: {
 /** Compares a TypeScript annotation with a known Zod leaf; `null` means unknown. */
 function leafAgrees(
   field: SchemaField,
-  annotation: TSESTree.TypeNode | null,
+  annotation: ESTree.TSType | null,
 ): boolean | null {
   if (field.domain === null) {
     return false;
@@ -414,16 +481,32 @@ function leafAgrees(
       return false;
     }
     const annotationDomain = typeLiteralDomain(annotation);
-    return annotationDomain !== null && sameDomain(field.domain, annotationDomain);
+    return (
+      annotationDomain !== null && sameDomain(field.domain, annotationDomain)
+    );
   }
   const { leaf } = field;
-  if (leaf !== null && ["array", "tuple", "object", "strictObject", "looseObject", "record", "map", "set", "promise", "intersection"].includes(leaf)) {
+  if (
+    leaf !== null &&
+    [
+      "array",
+      "tuple",
+      "object",
+      "strictObject",
+      "looseObject",
+      "record",
+      "map",
+      "set",
+      "promise",
+      "intersection",
+    ].includes(leaf)
+  ) {
     return false;
   }
   if (leaf === null || annotation === null) {
     return null;
   }
-  const expected = LEAF_NODE_TYPES[leaf];
+  const expected = LEAF_NODE_TYPES.get(leaf);
   if (expected === undefined) {
     return null;
   }
@@ -433,25 +516,25 @@ function leafAgrees(
   }
   if (leaf === "date") {
     return (
-      core.type === AST_NODE_TYPES.TSTypeReference &&
-      core.typeName.type === AST_NODE_TYPES.Identifier &&
+      core.type === "TSTypeReference" &&
+      core.typeName.type === "Identifier" &&
       core.typeName.name === "Date"
     );
   }
   return expected.includes(core.type);
 }
 
-function typeLiteralDomain(annotation: TSESTree.TypeNode): ReadonlySet<string> | null {
+function typeLiteralDomain(
+  annotation: ESTree.TSType,
+): ReadonlySet<string> | null {
   const members =
-    annotation.type === AST_NODE_TYPES.TSUnionType
-      ? annotation.types
-      : [annotation];
+    annotation.type === "TSUnionType" ? annotation.types : [annotation];
   const keys: (string | null)[] = [];
   for (const member of members) {
-    if (member.type === AST_NODE_TYPES.TSNullKeyword) {
+    if (member.type === "TSNullKeyword") {
       continue;
     }
-    if (member.type !== AST_NODE_TYPES.TSLiteralType) {
+    if (member.type !== "TSLiteralType") {
       return null;
     }
     keys.push(primitiveLiteralKey(member.literal));
@@ -460,13 +543,13 @@ function typeLiteralDomain(annotation: TSESTree.TypeNode): ReadonlySet<string> |
 }
 
 function staticStringUnionDomain(
-  node: TSESTree.TypeNode,
+  node: ESTree.TSType,
 ): ReadonlySet<string> | null {
-  if (node.type !== AST_NODE_TYPES.TSUnionType) {
+  if (node.type !== "TSUnionType") {
     return null;
   }
   const keys = node.types.map((member) => {
-    if (member.type !== AST_NODE_TYPES.TSLiteralType) {
+    if (member.type !== "TSLiteralType") {
       return null;
     }
     const key = primitiveLiteralKey(member.literal);
@@ -477,22 +560,22 @@ function staticStringUnionDomain(
 }
 
 function twinCallChain(
-  node: TSESTree.Node,
+  node: ESTree.Node,
   zodNamespaces: ReadonlySet<string>,
-): readonly TSESTree.CallExpression[] | null {
-  const chain: TSESTree.CallExpression[] = [];
-  let current: TSESTree.Node = node;
-  while (current.type === AST_NODE_TYPES.CallExpression) {
+): readonly ESTree.CallExpression[] | null {
+  const chain: ESTree.CallExpression[] = [];
+  let current: ESTree.Node = node;
+  while (current.type === "CallExpression") {
     const callee = current.callee;
     if (
-      callee.type !== AST_NODE_TYPES.MemberExpression ||
+      callee.type !== "MemberExpression" ||
       callee.computed ||
-      callee.property.type !== AST_NODE_TYPES.Identifier
+      callee.property.type !== "Identifier"
     ) {
       return null;
     }
     chain.push(current);
-    if (callee.object.type === AST_NODE_TYPES.Identifier) {
+    if (callee.object.type === "Identifier") {
       return zodNamespaces.has(callee.object.name) ? chain.reverse() : null;
     }
     current = callee.object;
@@ -500,16 +583,16 @@ function twinCallChain(
   return null;
 }
 
-function twinMethodName(call: TSESTree.CallExpression): string {
+function twinMethodName(call: ESTree.CallExpression): string {
   const callee = call.callee;
-  return callee.type === AST_NODE_TYPES.MemberExpression &&
-    callee.property.type === AST_NODE_TYPES.Identifier
+  return callee.type === "MemberExpression" &&
+    callee.property.type === "Identifier"
     ? callee.property.name
     : "";
 }
 
 function twinSchemaFields(
-  initializer: TSESTree.Node,
+  initializer: ESTree.Node,
   zodNamespaces: ReadonlySet<string>,
 ): ReadonlyMap<string, SchemaField> | null {
   const chain = twinCallChain(initializer, zodNamespaces);
@@ -518,15 +601,15 @@ function twinSchemaFields(
   if (base === undefined) return null;
   const baseMethod = twinMethodName(base);
   if (baseMethod !== "object" && baseMethod !== "strictObject") return null;
-  if (rest.some((call) => !SHAPE_PRESERVING_METHODS.has(twinMethodName(call)))) return null;
+  if (rest.some((call) => !SHAPE_PRESERVING_METHODS.has(twinMethodName(call))))
+    return null;
   const shape = base.arguments[0];
-  if (shape === undefined || shape.type !== AST_NODE_TYPES.ObjectExpression) return null;
+  if (shape === undefined || shape.type !== "ObjectExpression") return null;
   const fields = new Map<string, SchemaField>();
   for (const property of shape.properties) {
-    if (property.type !== AST_NODE_TYPES.Property || property.computed) return null;
+    if (property.type !== "Property" || property.computed) return null;
     const { key } = property;
-    const name =
-      staticFieldName(key);
+    const name = staticFieldName(key);
     if (name === null) return null;
     fields.set(name, twinSchemaField(property.value, zodNamespaces));
   }
@@ -534,24 +617,24 @@ function twinSchemaFields(
 }
 
 function twinSchemaField(
-  node: TSESTree.Node,
+  node: ESTree.Node,
   zodNamespaces: ReadonlySet<string>,
 ): SchemaField {
   const modifiers: string[] = [];
-  let current: TSESTree.Node = node;
+  let current: ESTree.Node = node;
   let leaf: string | null = null;
-  let leafCall: TSESTree.CallExpression | null = null;
-  while (current.type === AST_NODE_TYPES.CallExpression) {
+  let leafCall: ESTree.CallExpression | null = null;
+  while (current.type === "CallExpression") {
     const callee = current.callee;
     if (
-      callee.type !== AST_NODE_TYPES.MemberExpression ||
+      callee.type !== "MemberExpression" ||
       callee.computed ||
-      callee.property.type !== AST_NODE_TYPES.Identifier
+      callee.property.type !== "Identifier"
     ) {
       break;
     }
     const receiver = callee.object;
-    if (receiver.type === AST_NODE_TYPES.Identifier && zodNamespaces.has(receiver.name)) {
+    if (receiver.type === "Identifier" && zodNamespaces.has(receiver.name)) {
       leaf = callee.property.name;
       leafCall = current;
       break;
@@ -571,16 +654,20 @@ function twinSchemaField(
 }
 
 function twinTypeMembers(
-  declaration: TSESTree.TSInterfaceDeclaration | TSESTree.TSTypeAliasDeclaration,
+  declaration: ESTree.TSInterfaceDeclaration | ESTree.TSTypeAliasDeclaration,
 ): ReadonlyMap<string, TypeMember> | null {
-  let members: readonly TSESTree.TypeElement[];
-  if (declaration.type === AST_NODE_TYPES.TSInterfaceDeclaration) {
-    if (declaration.typeParameters !== undefined || (declaration.extends?.length ?? 0) > 0) return null;
+  let members: readonly ESTree.TSSignature[];
+  if (declaration.type === "TSInterfaceDeclaration") {
+    if (
+      declaration.typeParameters != null ||
+      (declaration.extends?.length ?? 0) > 0
+    )
+      return null;
     members = declaration.body.body;
   } else {
     if (
-      declaration.typeParameters !== undefined ||
-      declaration.typeAnnotation.type !== AST_NODE_TYPES.TSTypeLiteral
+      declaration.typeParameters != null ||
+      declaration.typeAnnotation.type !== "TSTypeLiteral"
     ) {
       return null;
     }
@@ -588,10 +675,9 @@ function twinTypeMembers(
   }
   const result = new Map<string, TypeMember>();
   for (const member of members) {
-    if (member.type !== AST_NODE_TYPES.TSPropertySignature || member.computed) return null;
+    if (member.type !== "TSPropertySignature" || member.computed) return null;
     const { key } = member;
-    const name =
-      staticFieldName(key);
+    const name = staticFieldName(key);
     if (name === null) return null;
     const annotation = member.typeAnnotation?.typeAnnotation ?? null;
     result.set(name, {
@@ -605,14 +691,12 @@ function twinTypeMembers(
 }
 
 function nameTokens(name: string): readonly string[] {
-  return (
-    name
-      .replace(/([a-z\d])([A-Z])/gu, "$1 $2")
-      .replace(/([A-Z]+)([A-Z][a-z])/gu, "$1 $2")
-      .split(/[^A-Za-z\d]+/u)
-      .filter((token) => token !== "")
-      .map((token) => token.toLowerCase())
-  );
+  return name
+    .replace(/([a-z\d])([A-Z])/gu, "$1 $2")
+    .replace(/([A-Z]+)([A-Z][a-z])/gu, "$1 $2")
+    .split(/[^A-Za-z\d]+/u)
+    .filter((token) => token !== "")
+    .map((token) => token.toLowerCase());
 }
 
 function schemaNameTokens(name: string): readonly string[] {
@@ -674,9 +758,9 @@ export default createRule<Options, MessageIds>({
     const requireIdenticalShape = optionsArg?.requireIdenticalShape ?? true;
 
     if (
-      isTestFile(context.filename) ||
-      isStoryFile(context.filename) ||
-      isGeneratedFile(context.filename, context.sourceCode.text)
+      isTestFile(sourceOrigin(context).filename) ||
+      isStoryFile(sourceOrigin(context).filename) ||
+      isGeneratedFile(sourceOrigin(context).filename, sourceOrigin(context).text)
     ) {
       return {};
     }
@@ -692,16 +776,16 @@ export default createRule<Options, MessageIds>({
     /** Schemas reshaped elsewhere in this module. */
     const reshapedSchemaNames = new Set<string>();
 
-    function recordZodImport(node: TSESTree.ImportDeclaration): void {
+    function recordZodImport(node: ESTree.ImportDeclaration): void {
       if (!isZodModule(node.source.value)) {
         return;
       }
       for (const specifier of node.specifiers) {
         if (
-          specifier.type === AST_NODE_TYPES.ImportNamespaceSpecifier ||
-          specifier.type === AST_NODE_TYPES.ImportDefaultSpecifier ||
-          (specifier.type === AST_NODE_TYPES.ImportSpecifier &&
-            specifier.imported.type === AST_NODE_TYPES.Identifier &&
+          specifier.type === "ImportNamespaceSpecifier" ||
+          specifier.type === "ImportDefaultSpecifier" ||
+          (specifier.type === "ImportSpecifier" &&
+            specifier.imported.type === "Identifier" &&
             specifier.imported.name === "z")
         ) {
           zodNamespaces.add(specifier.local.name);
@@ -710,9 +794,7 @@ export default createRule<Options, MessageIds>({
     }
 
     /** Extracts an exact, direct module-level `z.enum([…])` domain. */
-    function enumSchemaDomain(
-      init: TSESTree.Node,
-    ): ReadonlySet<string> | null {
+    function enumSchemaDomain(init: ESTree.Node): ReadonlySet<string> | null {
       const chain = twinCallChain(init, zodNamespaces);
       if (chain === null || chain.length !== 1) {
         return null;
@@ -726,11 +808,11 @@ export default createRule<Options, MessageIds>({
     }
 
     /** Finds `z.infer<typeof Schema>` without relying on type services. */
-    function inferredSchemaName(node: TSESTree.TypeNode): string | null {
+    function inferredSchemaName(node: ESTree.TSType): string | null {
       if (
-        node.type !== AST_NODE_TYPES.TSTypeReference ||
-        node.typeName.type !== AST_NODE_TYPES.TSQualifiedName ||
-        node.typeName.left.type !== AST_NODE_TYPES.Identifier ||
+        node.type !== "TSTypeReference" ||
+        node.typeName.type !== "TSQualifiedName" ||
+        node.typeName.left.type !== "Identifier" ||
         !zodNamespaces.has(node.typeName.left.name) ||
         node.typeName.right.name !== "infer"
       ) {
@@ -739,34 +821,33 @@ export default createRule<Options, MessageIds>({
       const arguments_ = node.typeArguments?.params ?? [];
       const [argument] = arguments_;
       return arguments_.length === 1 &&
-        argument?.type === AST_NODE_TYPES.TSTypeQuery &&
-        argument.exprName.type === AST_NODE_TYPES.Identifier
+        argument?.type === "TSTypeQuery" &&
+        argument.exprName.type === "Identifier"
         ? argument.exprName.name
         : null;
     }
 
     function recordLiteralUnions(
-      members: readonly TSESTree.TypeElement[],
-      owner: TSESTree.Node,
+      members: readonly ESTree.TSSignature[],
+      owner: ESTree.Node,
       ownerName: string,
       exported: boolean,
     ): void {
       for (const member of members) {
         if (
-          member.type !== AST_NODE_TYPES.TSPropertySignature ||
+          member.type !== "TSPropertySignature" ||
           member.computed ||
           member.optional ||
           member.readonly ||
-          member.typeAnnotation === undefined
+          member.typeAnnotation == null
         ) {
           continue;
         }
         const key = member.key;
         const propertyName =
-          key.type === AST_NODE_TYPES.Identifier
+          key.type === "Identifier"
             ? key.name
-            : key.type === AST_NODE_TYPES.Literal &&
-              typeof key.value === "string"
+            : key.type === "Literal" && typeof key.value === "string"
               ? key.value
               : null;
         if (propertyName === null) {
@@ -778,7 +859,7 @@ export default createRule<Options, MessageIds>({
         }
         const annotation = member.typeAnnotation.typeAnnotation;
         const domain = staticStringUnionDomain(annotation);
-        if (domain === null || annotation.type !== AST_NODE_TYPES.TSUnionType) {
+        if (domain === null || annotation.type !== "TSUnionType") {
           continue;
         }
         literalUnionOccurrences.push({
@@ -793,9 +874,9 @@ export default createRule<Options, MessageIds>({
       }
     }
 
-    function collectConstrainedNames(node: TSESTree.TypeNode): void {
-      if (node.type === AST_NODE_TYPES.TSTypeReference) {
-        if (node.typeName.type === AST_NODE_TYPES.Identifier) {
+    function collectConstrainedNames(node: ESTree.TSType): void {
+      if (node.type === "TSTypeReference") {
+        if (node.typeName.type === "Identifier") {
           constrainedTypeNames.add(node.typeName.name);
         }
         for (const argument of node.typeArguments?.params ?? []) {
@@ -803,14 +884,11 @@ export default createRule<Options, MessageIds>({
         }
         return;
       }
-      if (node.type === AST_NODE_TYPES.TSArrayType) {
+      if (node.type === "TSArrayType") {
         collectConstrainedNames(node.elementType);
         return;
       }
-      if (
-        node.type === AST_NODE_TYPES.TSUnionType ||
-        node.type === AST_NODE_TYPES.TSIntersectionType
-      ) {
+      if (node.type === "TSUnionType" || node.type === "TSIntersectionType") {
         for (const member of node.types) {
           collectConstrainedNames(member);
         }
@@ -822,7 +900,7 @@ export default createRule<Options, MessageIds>({
         // Pre-index imports so legal import declarations placed after a schema
         // do not make recognition depend on traversal order.
         for (const statement of node.body) {
-          if (statement.type === AST_NODE_TYPES.ImportDeclaration) {
+          if (statement.type === "ImportDeclaration") {
             recordZodImport(statement);
           }
         }
@@ -833,7 +911,11 @@ export default createRule<Options, MessageIds>({
       },
 
       VariableDeclarator(node): void {
-        if (node.id.type !== AST_NODE_TYPES.Identifier || node.init == null || !isModuleLevelConst(node)) {
+        if (
+          node.id.type !== "Identifier" ||
+          node.init == null ||
+          !isModuleLevelConst(node)
+        ) {
           return;
         }
         const fields = twinSchemaFields(node.init, zodNamespaces);
@@ -850,10 +932,10 @@ export default createRule<Options, MessageIds>({
       },
 
       /** Records `XSchema.transform(...)` and equivalent module-level reshaping. */
-      "MemberExpression[computed=false]"(node: TSESTree.MemberExpression): void {
+      "MemberExpression[computed=false]"(node: ESTree.MemberExpression): void {
         if (
-          node.object.type === AST_NODE_TYPES.Identifier &&
-          node.property.type === AST_NODE_TYPES.Identifier &&
+          node.object.type === "Identifier" &&
+          node.property.type === "Identifier" &&
           isPreferZodInferModuleReshaper(node.property.name)
         ) {
           reshapedSchemaNames.add(node.object.name);
@@ -864,13 +946,16 @@ export default createRule<Options, MessageIds>({
       TSTypeReference(node): void {
         const { typeName } = node;
         const referenced =
-          typeName.type === AST_NODE_TYPES.Identifier
+          typeName.type === "Identifier"
             ? typeName.name
-            : typeName.type === AST_NODE_TYPES.TSQualifiedName &&
-              typeName.right.type === AST_NODE_TYPES.Identifier
+            : typeName.type === "TSQualifiedName" &&
+                typeName.right.type === "Identifier"
               ? typeName.right.name
               : null;
-        if (referenced === null || !isPreferZodInferTypeConstraintName(referenced)) {
+        if (
+          referenced === null ||
+          !isPreferZodInferTypeConstraintName(referenced)
+        ) {
           return;
         }
         for (const argument of node.typeArguments?.params ?? []) {
@@ -881,12 +966,17 @@ export default createRule<Options, MessageIds>({
       TSInterfaceDeclaration(node): void {
         if (!isModuleLevelDeclaration(node)) return;
         // Generics and `extends` cannot be replaced by direct schema inference.
-        if (node.typeParameters !== undefined || (node.extends?.length ?? 0) > 0) {
+        if (node.typeParameters != null || (node.extends?.length ?? 0) > 0) {
           return;
         }
         const members = twinTypeMembers(node);
         if (members !== null) {
-          typeDeclarations.push({ declaration: node, name: node.id.name, node: node.id, members });
+          typeDeclarations.push({
+            declaration: node,
+            name: node.id.name,
+            node: node.id,
+            members,
+          });
         }
         recordLiteralUnions(
           node.body.body,
@@ -907,14 +997,19 @@ export default createRule<Options, MessageIds>({
           });
         }
         if (
-          node.typeParameters !== undefined ||
-          node.typeAnnotation.type !== AST_NODE_TYPES.TSTypeLiteral
+          node.typeParameters != null ||
+          node.typeAnnotation.type !== "TSTypeLiteral"
         ) {
           return;
         }
         const members = twinTypeMembers(node);
         if (members !== null) {
-          typeDeclarations.push({ declaration: node, name: node.id.name, node: node.id, members });
+          typeDeclarations.push({
+            declaration: node,
+            name: node.id.name,
+            node: node.id,
+            members,
+          });
         }
         recordLiteralUnions(
           node.typeAnnotation.members,
@@ -934,11 +1029,15 @@ export default createRule<Options, MessageIds>({
           }
         }
 
-        function reportTwinDeclaration(declaration: typeof typeDeclarations[number]): void {
+        function reportTwinDeclaration(
+          declaration: (typeof typeDeclarations)[number],
+        ): void {
           if (constrainedTypeNames.has(declaration.name)) {
             return;
           }
-          if (ignorePatterns.some((pattern) => pattern.test(declaration.name))) {
+          if (
+            ignorePatterns.some((pattern) => pattern.test(declaration.name))
+          ) {
             return;
           }
           const schema = byName.get(normalizeTypeName(declaration.name));
@@ -948,14 +1047,14 @@ export default createRule<Options, MessageIds>({
           if (
             requireIdenticalShape
               ? !preferZodInferOwnsDefaultTwin({
-                constrained: constrainedTypeNames.has(declaration.name),
-                declaration: declaration.declaration,
-                initializer: schema.initializer,
-                reshaped: reshapedSchemaNames.has(schema.name),
-                schemaName: schema.name,
-                typeName: declaration.name,
-                zodNamespaces,
-              })
+                  constrained: constrainedTypeNames.has(declaration.name),
+                  declaration: declaration.declaration,
+                  initializer: schema.initializer,
+                  reshaped: reshapedSchemaNames.has(schema.name),
+                  schemaName: schema.name,
+                  typeName: declaration.name,
+                  zodNamespaces,
+                })
               : false
           ) {
             return;
@@ -968,7 +1067,9 @@ export default createRule<Options, MessageIds>({
           });
         }
 
-        for (const declaration of typeDeclarations) { reportTwinDeclaration(declaration); }
+        for (const declaration of typeDeclarations) {
+          reportTwinDeclaration(declaration);
+        }
 
         const aliasesBySchema = new Map<string, InferredAliasInfo[]>();
         for (const alias of inferredAliases) {
@@ -983,7 +1084,9 @@ export default createRule<Options, MessageIds>({
           readonly schema: EnumSchemaInfo;
         }
         const groups = new Map<string, RepeatedGroup>();
-        function collectLiteralUnionGroup(occurrence: LiteralUnionOccurrence): void {
+        function collectLiteralUnionGroup(
+          occurrence: LiteralUnionOccurrence,
+        ): void {
           const { ownerName } = occurrence;
           if (
             twinTypeNames.has(ownerName ?? "") ||
@@ -1015,7 +1118,9 @@ export default createRule<Options, MessageIds>({
           }
         }
 
-        for (const occurrence of literalUnionOccurrences) { collectLiteralUnionGroup(occurrence); }
+        for (const occurrence of literalUnionOccurrences) {
+          collectLiteralUnionGroup(occurrence);
+        }
 
         for (const { alias, occurrences, schema } of groups.values()) {
           if (
@@ -1043,6 +1148,10 @@ export default createRule<Options, MessageIds>({
   },
 });
 
-function staticFieldName(key: TSESTree.Node): string | null {
-  return key.type === AST_NODE_TYPES.Identifier ? key.name : key.type === AST_NODE_TYPES.Literal && typeof key.value === "string" ? key.value : null;
+function staticFieldName(key: ESTree.Node): string | null {
+  return key.type === "Identifier"
+    ? key.name
+    : key.type === "Literal" && typeof key.value === "string"
+      ? key.value
+      : null;
 }

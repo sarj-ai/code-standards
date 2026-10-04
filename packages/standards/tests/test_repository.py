@@ -490,7 +490,7 @@ def test_file_conventions_pair_rules_tests_and_registry(tmp_path: Path) -> None:
     }
 
 
-def test_file_conventions_accepts_unquoted_eslint_registry_keys(tmp_path: Path) -> None:
+def test_file_conventions_accepts_unquoted_oxlint_registry_keys(tmp_path: Path) -> None:
     _git_repo(
         tmp_path,
         {
@@ -666,6 +666,27 @@ def test_file_conventions_validate_managed_security_configs(
         "extra": [("package/copied.yml", f"duplicates configs/{source}; remove the unmanaged copy")],
     }
     assert [(finding.where, finding.message) for finding in findings] == expected[state]
+
+
+@pytest.mark.parametrize("manifest", ["package.json", "pyproject.toml"])
+def test_version_coverage_distinguishes_package_roots_from_vendored_metadata(tmp_path: Path, manifest: str) -> None:
+    package = f"packages/new-package/{manifest}"
+    vendor_lock = "packages/typescript/vendor/upstream/package-lock.json"
+    _git_repo(
+        tmp_path,
+        {
+            package: "{}",
+            f"packages/typescript/vendor/upstream/{manifest}": "{}",
+            vendor_lock: "{}",
+        },
+    )
+
+    findings = repository.check_versions(tmp_path, _policy())
+
+    assert [(finding.where, finding.message) for finding in findings] == [
+        (package, "versioned package manifest is absent from version policy"),
+        (vendor_lock, "lockfile is absent from version policy"),
+    ]
 
 
 def test_version_references_detect_lock_drift(tmp_path: Path) -> None:
@@ -1291,7 +1312,7 @@ def test_live_rule_inventory_does_not_depend_on_consumer_repository_layout(tmp_p
 
     typescript = [item for item in inventory if item["family"] == "typescript"]
     assert typescript
-    assert {item["id"] for item in typescript} == set(ledger.load().rules[ledger.ESLINT])
+    assert {item["id"] for item in typescript} == set(ledger.load().rules[ledger.OXLINT])
 
 
 def test_retired_rename_sync_preserves_historical_aliases_outside_live_source(tmp_path: Path) -> None:
@@ -1328,7 +1349,7 @@ def test_retired_rename_sync_preserves_historical_aliases_outside_live_source(tm
 
 @pytest.mark.parametrize("registry_name", ["RULES", "rules"])
 @pytest.mark.parametrize("rule_key", ['"prefer-modern-syntax"', "stepdown"])
-def test_eslint_rule_names_supports_canonical_and_legacy_registry_names(
+def test_oxlint_rule_names_supports_canonical_and_legacy_registry_names(
     tmp_path: Path, registry_name: str, rule_key: str
 ) -> None:
     index = tmp_path / "packages/typescript/src/index.ts"
@@ -1338,4 +1359,4 @@ def test_eslint_rule_names_supports_canonical_and_legacy_registry_names(
         encoding="utf-8",
     )
 
-    assert repository.eslint_rule_names(tmp_path) == [rule_key.strip('"')]
+    assert repository.oxlint_rule_names(tmp_path) == [rule_key.strip('"')]

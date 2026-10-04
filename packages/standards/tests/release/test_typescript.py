@@ -58,14 +58,15 @@ def test_check_mode_runs_clean_checks_then_pack(tmp_path: Path) -> None:
 
     run_typescript_release("check", package, runner=runner)
 
-    assert runner.calls[:4] == [
+    assert runner.calls[:5] == [
         ("npm", "ci", "--no-audit", "--no-fund"),
         ("npm", "run", "lint"),
         ("npm", "run", "typecheck"),
+        ("npm", "run", "build"),
         ("npm", "test"),
     ]
-    assert runner.calls[4][:2] == ("npm", "pack")
-    assert "--ignore-scripts" in runner.calls[4]
+    assert runner.calls[5][:2] == ("npm", "pack")
+    assert "--ignore-scripts" in runner.calls[5]
 
 
 def test_publish_delegates_authentication_to_npm_for_oidc(tmp_path: Path) -> None:

@@ -4,20 +4,19 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { builtinRules } from "eslint/use-at-your-own-risk";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
 
-import plugin, { RULES } from "../src/index.js";
+import { rules, strictRules, recommendedRules } from "../src/index.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const RULE_TESTS_DIR = resolve(HERE, "rules");
 
 /** Every Sarj-owned rule exported or wired into a preset, de-duplicated. */
 function ruleNamesUnderTest(): string[] {
-  const names = new Set(Object.keys(RULES));
-  for (const preset of Object.values(plugin.configs)) {
-    for (const key of Object.keys(preset.rules)) {
+  const names = new Set(Object.keys(rules));
+  for (const preset of [strictRules, recommendedRules]) {
+    for (const key of Object.keys(preset)) {
       if (key.startsWith("@sarj/")) names.add(key.slice("@sarj/".length));
     }
   }
@@ -25,7 +24,9 @@ function ruleNamesUnderTest(): string[] {
 }
 
 /** `const x = [...]` array literals declared at any depth in the file, by name. */
-function arrayConstants(source: ts.SourceFile): Map<string, ts.ArrayLiteralExpression> {
+function arrayConstants(
+  source: ts.SourceFile,
+): Map<string, ts.ArrayLiteralExpression> {
   const found = new Map<string, ts.ArrayLiteralExpression>();
   const visit = (node: ts.Node): void => {
     if (
@@ -56,6 +57,15 @@ function countCases(
   if (ts.isIdentifier(value)) {
     const target = constants.get(value.text);
     return target === undefined ? undefined : countCases(target, constants);
+  }
+  // Mapping a known local array keeps its case count; filtering or arbitrary
+  // calls remain unknown because they can remove every meaningful case.
+  if (
+    ts.isCallExpression(value) &&
+    ts.isPropertyAccessExpression(value.expression) &&
+    value.expression.name.text === "map"
+  ) {
+    return countCases(value.expression.expression, constants);
   }
   if (!ts.isArrayLiteralExpression(value)) return undefined;
 
@@ -93,11 +103,16 @@ function caseCounts(filePath: string): CaseCounts {
     running: number | undefined,
     addition: number | undefined,
   ): number | undefined =>
-    running === undefined || addition === undefined ? undefined : running + addition;
+    running === undefined || addition === undefined
+      ? undefined
+      : running + addition;
 
   function collectConfiguredCases(config: ts.ObjectLiteralExpression): void {
     for (const property of config.properties) {
-      if (!ts.isPropertyAssignment(property) || !ts.isIdentifier(property.name)) {
+      if (
+        !ts.isPropertyAssignment(property) ||
+        !ts.isIdentifier(property.name)
+      ) {
         continue;
       }
       const count = countCases(property.initializer, constants);
@@ -132,12 +147,12 @@ describe("every shipped rule is exercised by its own tests", () => {
   });
 
   it("every preset rule has a known implementation owner", () => {
-    for (const preset of Object.values(plugin.configs)) {
-      for (const key of Object.keys(preset.rules)) {
+    for (const preset of [strictRules, recommendedRules]) {
+      for (const key of Object.keys(preset)) {
         if (key.startsWith("@sarj/")) {
-          expect(key.slice("@sarj/".length) in RULES).toBe(true);
+          expect(key.slice("@sarj/".length) in rules).toBe(true);
         } else {
-          expect(builtinRules.has(key)).toBe(true);
+          expect(key.startsWith("eslint/")).toBe(true);
         }
       }
     }
@@ -148,35 +163,37 @@ describe("every shipped rule is exercised by its own tests", () => {
     expect(
       existsSync(path),
       `${name} is wired into a preset but has no tests/rules/${name}.test.ts. ` +
-      `A rule nobody has run is a rule nobody has read the findings of.`,
+        `A rule nobody has run is a rule nobody has read the findings of.`,
     ).toBe(true);
   });
 
-  it.each(names.filter((name) => existsSync(join(RULE_TESTS_DIR, `${name}.test.ts`))))("%s has at least one valid and one invalid case", (name) => {
+  it.each(
+    names.filter((name) => existsSync(join(RULE_TESTS_DIR, `${name}.test.ts`))),
+  )("%s has at least one valid and one invalid case", (name) => {
     const path = join(RULE_TESTS_DIR, `${name}.test.ts`);
     const { invalid, valid } = caseCounts(path);
     expect(
       valid,
       `${name}: could not statically count RuleTester \`valid\` cases in ` +
-      `tests/rules/${name}.test.ts — declare them as an array literal, or as a ` +
-      `\`const\` array in the same file.`,
+        `tests/rules/${name}.test.ts — declare them as an array literal, or as a ` +
+        `\`const\` array in the same file.`,
     ).not.toBeUndefined();
     expect(
       invalid,
       `${name}: could not statically count RuleTester \`invalid\` cases in ` +
-      `tests/rules/${name}.test.ts — declare them as an array literal, or as a ` +
-      `\`const\` array in the same file.`,
+        `tests/rules/${name}.test.ts — declare them as an array literal, or as a ` +
+        `\`const\` array in the same file.`,
     ).not.toBeUndefined();
     expect(
       valid,
       `${name}: no \`valid\` cases. Without one, nothing pins that the rule stays ` +
-      `quiet on the code it is supposed to allow.`,
+        `quiet on the code it is supposed to allow.`,
     ).toBeGreaterThan(0);
     expect(
       invalid,
       `${name}: no \`invalid\` cases. Without one, nothing pins that the rule fires ` +
-      `at all — which is how ban-loose-type-guards-in-tests shipped at "error", ` +
-      `untested, for its whole life.`,
+        `at all — which is how ban-loose-type-guards-in-tests shipped at "error", ` +
+        `untested, for its whole life.`,
     ).toBeGreaterThan(0);
   });
 });

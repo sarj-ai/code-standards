@@ -1,16 +1,14 @@
 // vitest: shared-module-graph
-import * as tsParser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
+import { RuleTester } from "oxlint/plugins-dev";
+import { describe, it } from "vitest";
 
 import rule, { TEST_LOOPS_OVER_LITERAL_CASES_DOCUMENTATION } from "../../src/rules/test-loops-over-literal-cases.js";
 
-RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
 RuleTester.it = it;
 RuleTester.itOnly = it.only;
 
-const RULE_TESTER = new RuleTester({ languageOptions: { parser: tsParser } });
+const RULE_TESTER = new RuleTester({ languageOptions: { parserOptions: { lang: "ts" } } });
 const TEST_FILE = "/repo/src/parser.test.ts";
 
 RULE_TESTER.run("test-loops-over-literal-cases", rule, {

@@ -4,6 +4,9 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-generic-single-export-module.test.ts
  */
 
+
+
+import { sourceOrigin } from "./_source-origin.js";
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile, isTestFile } from "./_paths.js";
 import { GENERIC_MODULE_STEMS, isCommonJsExportReference, runtimeExports } from "./_runtime-exports.js";
@@ -54,12 +57,12 @@ export default createRule<Options, MessageIds>({
   },
   defaultOptions: [],
   create(context) {
-    const file = fileParts(context.filename);
+    const file = fileParts(sourceOrigin(context).filename);
     const { stem } = file;
     if (
       !GENERIC_MODULE_STEMS.has(stem) ||
-      isTestFile(context.filename) ||
-      isGeneratedFile(context.filename, context.sourceCode.text)
+      isTestFile(sourceOrigin(context).filename) ||
+      isGeneratedFile(sourceOrigin(context).filename, sourceOrigin(context).text)
     ) return {};
     let hasCommonJsExport = false;
     return {
@@ -73,7 +76,7 @@ export default createRule<Options, MessageIds>({
         const onlyExport = exports.exports[0];
         if (onlyExport === undefined) return;
         const { name: exported, node } = onlyExport;
-        if (isConventionalFrameworkUtility(context.filename, exported)) return;
+        if (isConventionalFrameworkUtility(sourceOrigin(context).filename, exported)) return;
         const exportedRole = exported.replaceAll(/[^a-z0-9]/giu, "").toLowerCase();
         const pathRole = [stem, ...file.suffixes].join("").replaceAll(/[^a-z0-9]/giu, "");
         if (exportedRole === pathRole && file.suffixes.length > 0) return;

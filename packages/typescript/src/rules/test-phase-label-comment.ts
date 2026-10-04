@@ -4,7 +4,9 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/test-phase-label-comment.test.ts
  */
 
-import { AST_NODE_TYPES, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
+import { sourceOrigin } from "./_source-origin.js";
+import type { ESTree, SourceCode } from "@oxlint/plugins";
+
 
 import { wholeLineRemovalRange } from "./_comment-edits.js";
 import { createRule, type RuleDocumentation } from "./_docs.js";
@@ -52,16 +54,16 @@ export const TEST_PHASE_LABEL_COMMENT_DOCUMENTATION = {
   ],
 } as const satisfies RuleDocumentation;
 
-function insideExpression(sourceCode: Readonly<TSESLint.SourceCode>, comment: TSESTree.Comment): boolean {
+function insideExpression(sourceCode: Readonly<SourceCode>, comment: ESTree.Comment): boolean {
   const token = sourceCode.getTokenAfter(comment, { includeComments: false });
   if (token === null) return false;
-  let node: TSESTree.Node | null | undefined = sourceCode.getNodeByRangeIndex(token.range[0]);
-  while (node != null && node.type !== AST_NODE_TYPES.Program) {
+  let node: ESTree.Node | null | undefined = sourceCode.getNodeByRangeIndex(token.range[0]);
+  while (node != null && node.type !== "Program") {
     if (
-      node.type === AST_NODE_TYPES.ArrayExpression ||
-      node.type === AST_NODE_TYPES.ObjectExpression ||
-      node.type === AST_NODE_TYPES.CallExpression ||
-      node.type === AST_NODE_TYPES.NewExpression
+      node.type === "ArrayExpression" ||
+      node.type === "ObjectExpression" ||
+      node.type === "CallExpression" ||
+      node.type === "NewExpression"
     ) return node.loc.start.line < comment.loc.start.line;
     if (/Statement$/u.test(node.type) || /Declaration$/u.test(node.type)) return false;
     node = node.parent;
@@ -69,7 +71,7 @@ function insideExpression(sourceCode: Readonly<TSESLint.SourceCode>, comment: TS
   return false;
 }
 
-function continuesProseRun(comments: readonly TSESTree.Comment[], index: number): boolean {
+function continuesProseRun(comments: readonly ESTree.Comment[], index: number): boolean {
   const comment = comments[index];
   if (comment?.type !== "Line") return false;
   return [comments[index - 1], comments[index + 1]].some(
@@ -92,7 +94,7 @@ export default createRule<Options, MessageIds>({
   },
   defaultOptions: [],
   create(context) {
-    if (!isTestFile(context.filename) || isGeneratedFile(context.filename, context.sourceCode.text)) return {};
+    if (!isTestFile(sourceOrigin(context).filename) || isGeneratedFile(sourceOrigin(context).filename, sourceOrigin(context).text)) return {};
     return {
       Program(): void {
         const comments = context.sourceCode.getAllComments();
@@ -105,7 +107,7 @@ export default createRule<Options, MessageIds>({
           context.report({
             node: comment,
             messageId: "removeLabel",
-            fix: (fixer) => fixer.removeRange(removal.range),
+            fix: (fixer) => fixer.removeRange([...removal.range]),
           });
         }
       },

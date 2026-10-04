@@ -139,6 +139,7 @@ def check_typescript(package_root: Path, *, runner: ProcessRunner = run_build_pr
         ("npm", "ci", "--no-audit", "--no-fund"),
         ("npm", "run", "lint"),
         ("npm", "run", "typecheck"),
+        ("npm", "run", "build"),
         ("npm", "test"),
     ):
         runner(argv, cwd=package_root)

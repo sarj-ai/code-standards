@@ -84,28 +84,28 @@ def test_does_not_rewrite_a_ratchet_shaped_unrelated_json_file(tmp_path: Path) -
     ("source", "expected"),
     [
         (
-            "// eslint-disable-next-line @sarj/prefer-string-literal-union\nconst value = 1;\n",
+            "// oxlint-disable-next-line @sarj/prefer-string-literal-union\nconst value = 1;\n",
             "const value = 1;\n",
         ),
         (
-            "/* eslint-disable unicorn/no-null, @sarj/prefer-string-literal-union -- migration */\n",
-            "/* eslint-disable unicorn/no-null -- migration */\n",
+            "/* oxlint-disable unicorn/no-null, @sarj/prefer-string-literal-union -- migration */\n",
+            "/* oxlint-disable unicorn/no-null -- migration */\n",
         ),
         (
-            "const value = 1; // eslint-disable-line @sarj/prefer-string-literal-union\r\n",
+            "const value = 1; // oxlint-disable-line @sarj/prefer-string-literal-union\r\n",
             "const value = 1;\r\n",
         ),
         (
-            "// eslint-disable-next-line @sarj/require-interface-for-injected-service\n",
-            "// eslint-disable-next-line @sarj/require-port-for-service\n",
+            "// oxlint-disable-next-line @sarj/require-interface-for-injected-service\n",
+            "// oxlint-disable-next-line @sarj/require-port-for-service\n",
         ),
         (
-            "// eslint-disable-next-line @sarj/require-interface-for-injected-service, @sarj/require-port-for-service\n",
-            "// eslint-disable-next-line @sarj/require-port-for-service\n",
+            "// oxlint-disable-next-line @sarj/require-interface-for-injected-service, @sarj/require-port-for-service\n",
+            "// oxlint-disable-next-line @sarj/require-port-for-service\n",
         ),
         (
-            "// eslint-enable @sarj/prefer-string-literal-union, unicorn/no-null\n",
-            "// eslint-enable unicorn/no-null\n",
+            "// oxlint-enable @sarj/prefer-string-literal-union, unicorn/no-null\n",
+            "// oxlint-enable unicorn/no-null\n",
         ),
         ("value = 1  # sarj-noqa: SARJ061, SARJ096\n", "value = 1  # sarj-noqa: SARJ096\n"),
         ("# sarj-noqa: SARJ061\nvalue = 1\n", "value = 1\n"),
@@ -137,11 +137,11 @@ def test_migrates_retired_iac_suppression_to_general_rule(tmp_path: Path, commen
 @pytest.mark.parametrize(
     "source",
     [
-        'const note = "eslint-disable-next-line @sarj/prefer-string-literal-union";\n',
+        'const note = "oxlint-disable-next-line @sarj/prefer-string-literal-union";\n',
         'export default { rules: { "@sarj/prefer-string-literal-union": "off" } };\n',
         "// The old @sarj/prefer-string-literal-union rule was retired.\n",
-        "// eslint-disable\n",
-        "// eslint-disable-next-line @sarj/prefer-string-literal-union ???\n",
+        "// oxlint-disable\n",
+        "// oxlint-disable-next-line @sarj/prefer-string-literal-union ???\n",
     ],
 )
 def test_leaves_ambiguous_or_non_suppression_references_untouched(tmp_path: Path, source: str) -> None:
@@ -158,10 +158,10 @@ def test_leaves_ambiguous_or_non_suppression_references_untouched(tmp_path: Path
         ("@sarj/require-interface-for-injected-service", "@sarj/require-port-for-service"),
     ],
 )
-def test_migrates_exact_eslint_config_keys_from_the_retirement_ledger(
+def test_migrates_exact_oxlint_config_keys_from_the_retirement_ledger(
     tmp_path: Path, retired: str, replacement: str
 ) -> None:
-    target = tmp_path / "eslint.config.js"
+    target = tmp_path / "oxlint.config.js"
     source = (
         f"// {retired} remains prose\n"
         f"export const note = '{retired}';\n"
@@ -178,8 +178,8 @@ def test_migrates_exact_eslint_config_keys_from_the_retirement_ledger(
     )
 
 
-def test_migrates_exact_key_in_exported_eslint_config_call(tmp_path: Path) -> None:
-    target = tmp_path / "eslint.config.mts"
+def test_migrates_exact_key_in_exported_oxlint_config_call(tmp_path: Path) -> None:
+    target = tmp_path / "oxlint.config.mts"
     source = "export default defineConfig({ rules: {\n  '@sarj/zod-naming-convention': 'error',\n} });\n"
     target.write_text(source, encoding="utf-8")
 
@@ -206,15 +206,15 @@ def test_migrates_exact_key_in_exported_eslint_config_call(tmp_path: Path) -> No
         ("const words = ['export', 'default', { rules: {\n  '@sarj/zod-naming-convention': 'error',\n} }];\n"),
     ],
 )
-def test_does_not_rewrite_rule_like_keys_outside_eslint_rules_maps(tmp_path: Path, source: str) -> None:
-    target = tmp_path / "eslint.config.mjs"
+def test_does_not_rewrite_rule_like_keys_outside_oxlint_rules_maps(tmp_path: Path, source: str) -> None:
+    target = tmp_path / "oxlint.config.mjs"
     target.write_text(source, encoding="utf-8")
 
     assert retired_suppressions.plan((target,)) == ()
 
 
-def test_does_not_create_a_duplicate_eslint_config_key_during_migration(tmp_path: Path) -> None:
-    target = tmp_path / "eslint.config.mjs"
+def test_does_not_create_a_duplicate_oxlint_config_key_during_migration(tmp_path: Path) -> None:
+    target = tmp_path / "oxlint.config.mjs"
     source = (
         "export default [{ rules: {\n"
         "  '@sarj/zod-naming-convention': 'off',\n"
@@ -227,7 +227,7 @@ def test_does_not_create_a_duplicate_eslint_config_key_during_migration(tmp_path
 
 
 def test_does_not_rewrite_ambiguous_duplicate_retired_config_keys(tmp_path: Path) -> None:
-    target = tmp_path / "eslint.config.mjs"
+    target = tmp_path / "oxlint.config.mjs"
     source = (
         "export default [{ rules: { '@sarj/zod-naming-convention': 'off' } },\n"
         "  { rules: { '@sarj/zod-naming-convention': 'error' } }];\n"
@@ -238,7 +238,7 @@ def test_does_not_rewrite_ambiguous_duplicate_retired_config_keys(tmp_path: Path
 
 
 def test_does_not_rewrite_property_like_text_in_comments_or_strings(tmp_path: Path) -> None:
-    target = tmp_path / "eslint.config.mjs"
+    target = tmp_path / "oxlint.config.mjs"
     source = (
         "// { '@sarj/zod-naming-convention': 'error' }\n"
         "const example = \"{ '@sarj/zod-naming-convention': 'error' }\";\n"
@@ -257,11 +257,11 @@ def test_honors_doctor_exclusions_and_fixture_sentinel(tmp_path: Path) -> None:
         encoding="utf-8",
     )
     excluded = tmp_path / "excluded.ts"
-    excluded.write_text("// eslint-disable @sarj/prefer-string-literal-union\n", encoding="utf-8")
+    excluded.write_text("// oxlint-disable @sarj/prefer-string-literal-union\n", encoding="utf-8")
     fixture = tmp_path / "fixture.ts"
     fixture.write_text(
         "// sarj-doctor-ignore-retired-rules -- compatibility fixture\n"
-        "// eslint-disable @sarj/prefer-string-literal-union\n",
+        "// oxlint-disable @sarj/prefer-string-literal-union\n",
         encoding="utf-8",
     )
 
@@ -270,7 +270,7 @@ def test_honors_doctor_exclusions_and_fixture_sentinel(tmp_path: Path) -> None:
 
 def test_template_fixture_is_not_rewritten_and_remains_a_blocker(tmp_path: Path) -> None:
     target = tmp_path / "fixture.ts"
-    source = "const fixture = `\n// eslint-disable-next-line @sarj/prefer-string-literal-union\nconst value = 1;\n`;\n"
+    source = "const fixture = `\n// oxlint-disable-next-line @sarj/prefer-string-literal-union\nconst value = 1;\n`;\n"
     target.write_text(source, encoding="utf-8")
 
     assert retired_suppressions.plan((target,)) == ()
@@ -280,9 +280,9 @@ def test_template_fixture_is_not_rewritten_and_remains_a_blocker(tmp_path: Path)
 @pytest.mark.parametrize(
     "source",
     [
-        "// Example: // eslint-disable-next-line @sarj/prefer-string-literal-union\n",
-        "/* Example: // eslint-disable-next-line @sarj/prefer-string-literal-union */\n",
-        "// eslint-disable-next-line @sarj/prefer-string-literal-union ???\n",
+        "// Example: // oxlint-disable-next-line @sarj/prefer-string-literal-union\n",
+        "/* Example: // oxlint-disable-next-line @sarj/prefer-string-literal-union */\n",
+        "// oxlint-disable-next-line @sarj/prefer-string-literal-union ???\n",
     ],
 )
 def test_nested_or_malformed_directive_is_not_rewritten_and_remains_blocking(tmp_path: Path, source: str) -> None:
@@ -295,18 +295,18 @@ def test_nested_or_malformed_directive_is_not_rewritten_and_remains_blocking(tmp
 
 def test_retired_name_in_directive_reason_is_not_a_reference(tmp_path: Path) -> None:
     target = tmp_path / "service.ts"
-    source = "// eslint-disable-next-line unicorn/no-null -- migrated from @sarj/prefer-string-literal-union\n"
+    source = "// oxlint-disable-next-line unicorn/no-null -- migrated from @sarj/prefer-string-literal-union\n"
 
     assert retired_suppressions.reference_counts(target, source) == {}
 
 
-def test_migrates_retired_ids_in_mixed_core_plugin_and_scoped_eslint_directive(
+def test_migrates_retired_ids_in_mixed_core_plugin_and_scoped_oxlint_directive(
     tmp_path: Path,
 ) -> None:
     target = tmp_path / "service.ts"
     source = (
-        "// eslint-disable-next-line no-console, react/jsx-uses-react, "
-        "@typescript-eslint/no-explicit-any, @sarj/prefer-string-literal-union, "
+        "// oxlint-disable-next-line no-console, react/jsx-uses-react, "
+        "typescript/no-explicit-any, @sarj/prefer-string-literal-union, "
         "@sarj/require-interface-for-injected-service -- compatibility bridge\n"
     )
     target.write_text(source, encoding="utf-8")
@@ -314,8 +314,8 @@ def test_migrates_retired_ids_in_mixed_core_plugin_and_scoped_eslint_directive(
     assert retired_suppressions.plan((target,)) == (
         retired_suppressions.Rewrite(
             target,
-            "// eslint-disable-next-line no-console, react/jsx-uses-react, "
-            "@typescript-eslint/no-explicit-any, @sarj/require-port-for-service "
+            "// oxlint-disable-next-line no-console, react/jsx-uses-react, "
+            "typescript/no-explicit-any, @sarj/require-port-for-service "
             "-- compatibility bridge\n",
         ),
     )
@@ -336,10 +336,10 @@ def test_migrates_retired_ids_in_mixed_core_plugin_and_scoped_eslint_directive(
         "-no-console",
     ],
 )
-def test_malformed_eslint_id_keeps_mixed_directive_ambiguous_and_blocking(tmp_path: Path, malformed_id: str) -> None:
+def test_malformed_oxlint_id_keeps_mixed_directive_ambiguous_and_blocking(tmp_path: Path, malformed_id: str) -> None:
     target = tmp_path / "service.ts"
     source = (
-        "// eslint-disable-next-line "
+        "// oxlint-disable-next-line "
         f"no-console, {malformed_id}, @sarj/prefer-string-literal-union "
         "-- compatibility bridge\n"
     )
@@ -378,15 +378,15 @@ def test_migrates_python_directive_with_unicode_reason_separator(tmp_path: Path,
 
 def test_jsx_wrapped_directive_is_not_deleted_into_an_empty_expression(tmp_path: Path) -> None:
     target = tmp_path / "component.tsx"
-    source = "<Panel>{/* eslint-disable @sarj/prefer-string-literal-union */}</Panel>\n"
+    source = "<Panel>{/* oxlint-disable @sarj/prefer-string-literal-union */}</Panel>\n"
     target.write_text(source, encoding="utf-8")
 
     assert retired_suppressions.plan((target,)) == ()
     assert retired_suppressions.reference_counts(target, source) == {"@sarj/prefer-string-literal-union": 1}
 
 
-def test_migrates_valid_eslint_bulk_suppressions_without_adding_budgets(tmp_path: Path) -> None:
-    target = tmp_path / "eslint-suppressions.json"
+def test_migrates_valid_oxlint_bulk_suppressions_without_adding_budgets(tmp_path: Path) -> None:
+    target = tmp_path / "oxlint-suppressions.json"
     target.write_text(
         "{\n"
         '  "src/app.ts": {\n'
@@ -416,10 +416,10 @@ def test_migrates_valid_eslint_bulk_suppressions_without_adding_budgets(tmp_path
     )
 
 
-def test_migrates_bom_crlf_eslint_bulk_suppressions_without_normalizing_file_style(
+def test_migrates_bom_crlf_oxlint_bulk_suppressions_without_normalizing_file_style(
     tmp_path: Path,
 ) -> None:
-    target = tmp_path / "eslint-suppressions.json"
+    target = tmp_path / "oxlint-suppressions.json"
     target.write_text(
         '\ufeff{\r\n  "src/app.ts": {\r\n    "@sarj/jsdoc-restates-signature": {"count": 2}\r\n  }\r\n}\r\n',
         encoding="utf-8",
@@ -435,7 +435,7 @@ def test_migrates_bom_crlf_eslint_bulk_suppressions_without_normalizing_file_sty
 
 
 def test_duplicate_bulk_suppression_keys_are_not_lossily_migrated(tmp_path: Path) -> None:
-    target = tmp_path / "eslint-suppressions.json"
+    target = tmp_path / "oxlint-suppressions.json"
     source = (
         '{"src/app.ts":{"@sarj/jsdoc-restates-signature":{"count":1},"@sarj/jsdoc-restates-signature":{"count":2}}}\n'
     )
@@ -454,8 +454,8 @@ def test_duplicate_bulk_suppression_keys_are_not_lossily_migrated(tmp_path: Path
         "{ invalid json\n",
     ],
 )
-def test_leaves_unknown_eslint_bulk_suppression_shapes_blocking(tmp_path: Path, source: str) -> None:
-    target = tmp_path / "eslint-suppressions.json"
+def test_leaves_unknown_oxlint_bulk_suppression_shapes_blocking(tmp_path: Path, source: str) -> None:
+    target = tmp_path / "oxlint-suppressions.json"
     target.write_text(source, encoding="utf-8")
 
     assert retired_suppressions.plan((target,)) == ()

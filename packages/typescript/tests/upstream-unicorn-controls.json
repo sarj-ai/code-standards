@@ -1,0 +1,1223 @@
+{
+  "source": "sindresorhus/eslint-plugin-unicorn",
+  "commit": "f70155ebe24dbb35b9814c3dbb3ab3620e09c3e1",
+  "license": "../vendor/unicorn/license",
+  "fixtures": [
+    {
+      "rule": "class-reference-in-static-methods",
+      "valid": {
+        "code": "class A {static foo() {return this.foo();}}"
+      },
+      "invalid": {
+        "code": "class A {static foo() {return A.foo();}}"
+      }
+    },
+    {
+      "rule": "consistent-json-file-read",
+      "valid": {
+        "code": "JSON.parse(await fs.readFile(file, \"utf8\"));"
+      },
+      "invalid": {
+        "code": "JSON.parse(await fs.readFile(file));"
+      }
+    },
+    {
+      "rule": "iteration-fallback-style",
+      "valid": {
+        "code": "for (const item of items) {}"
+      },
+      "invalid": {
+        "code": "for (const item of items ?? []) {}"
+      }
+    },
+    {
+      "rule": "no-accidental-bitwise-operator",
+      "valid": {
+        "code": "a | b;"
+      },
+      "invalid": {
+        "code": "obj & obj.a;"
+      }
+    },
+    {
+      "rule": "no-array-concat-in-loop",
+      "valid": {
+        "code": "let result = [];\nresult = result.concat(chunk);"
+      },
+      "invalid": {
+        "code": "let result = [];\nfor (const chunk of chunks) {\n\tresult = result.concat(chunk);\n}"
+      }
+    },
+    {
+      "rule": "no-array-from-fill",
+      "valid": {
+        "code": "Array.from({length: 3})"
+      },
+      "invalid": {
+        "code": "Array.from({length: 3}).fill(0)"
+      }
+    },
+    {
+      "rule": "no-array-sort-for-min-max",
+      "valid": {
+        "code": "function f(set: Set<number>) { return set.toSorted((a, b) => a - b)[0]; }",
+        "languageOptions": {}
+      },
+      "invalid": {
+        "code": "const minimum = array.sort((a, b) => a - b)[0];"
+      }
+    },
+    {
+      "rule": "no-async-iterator-callback",
+      "valid": {
+        "code": "Iterator.from(values).map(async value => value)"
+      },
+      "invalid": {
+        "code": "globalThis.Iterator.from(values).filter(async value => value)"
+      }
+    },
+    {
+      "rule": "no-async-promise-finally",
+      "valid": {
+        "code": "promise.finally(() => {})"
+      },
+      "invalid": {
+        "code": "promise.finally(async () => {})"
+      }
+    },
+    {
+      "rule": "no-blob-to-file",
+      "valid": {
+        "code": "const file = new File([blob], \"image.jpg\");"
+      },
+      "invalid": {
+        "code": "const blob = new Blob();\nconst file = new File([blob], \"image.jpg\");\nURL.createObjectURL(file);"
+      }
+    },
+    {
+      "rule": "no-boolean-sort-comparator",
+      "valid": {
+        "code": "function f(set: Set<number>) { set.sort((a, b) => a > b); }",
+        "languageOptions": {}
+      },
+      "invalid": {
+        "code": "array.sort((a, b) => a > b)"
+      }
+    },
+    {
+      "rule": "no-canvas-to-image",
+      "valid": {
+        "code": "context.drawImage(canvas, 0, 0);"
+      },
+      "invalid": {
+        "code": "context.drawImage(loadImage(canvas.toDataURL()), 0, 0);"
+      }
+    },
+    {
+      "rule": "no-chained-comparison",
+      "valid": {
+        "code": "a < b"
+      },
+      "invalid": {
+        "code": "a < b < c"
+      }
+    },
+    {
+      "rule": "no-collection-bracket-access",
+      "valid": {
+        "code": "const map = new Map(); map.get(\"foo\");"
+      },
+      "invalid": {
+        "code": "const map = new Map(); map[\"foo\"];"
+      }
+    },
+    {
+      "rule": "no-computed-property-existence-check",
+      "valid": {
+        "code": "const value = object[key];"
+      },
+      "invalid": {
+        "code": "if (object[key]) {}"
+      }
+    },
+    {
+      "rule": "no-confusing-array-splice",
+      "valid": {
+        "code": "function f(foo: {splice(start: number, deleteCount: number, element: unknown): void}) { foo.splice(index, 1, element); }",
+        "languageOptions": {}
+      },
+      "invalid": {
+        "code": "array.splice(index, 1, element)"
+      }
+    },
+    {
+      "rule": "no-constant-zero-expression",
+      "valid": {
+        "code": "x * 1;"
+      },
+      "invalid": {
+        "code": "x * 0;"
+      }
+    },
+    {
+      "rule": "no-double-comparison",
+      "valid": {
+        "code": "x == y || x < y"
+      },
+      "invalid": {
+        "code": "x === y || x < y"
+      }
+    },
+    {
+      "rule": "no-duplicate-if-branches",
+      "valid": {
+        "code": "if (foo) {\n\tbar();\n} else {\n\tbaz();\n}"
+      },
+      "invalid": {
+        "code": "if (isAdmin) {\n\tshowDashboard();\n\tloadStats();\n} else {\n\tshowDashboard();\n\tloadStats();\n}"
+      }
+    },
+    {
+      "rule": "no-duplicate-logical-operands",
+      "valid": {
+        "code": "foo && bar"
+      },
+      "invalid": {
+        "code": "foo && foo"
+      }
+    },
+    {
+      "rule": "no-duplicate-loops",
+      "valid": {
+        "code": "const iterator = items.values(); for (const item of iterator.map(callback)) {}"
+      },
+      "invalid": {
+        "code": "for (const item of items.map(callback)) {}"
+      }
+    },
+    {
+      "rule": "no-duplicate-set-values",
+      "valid": {
+        "code": "new Set([1, 2, \"1\"])"
+      },
+      "invalid": {
+        "code": "new Set([1, 2, 1])"
+      }
+    },
+    {
+      "rule": "no-error-property-assignment",
+      "valid": {
+        "code": "Object.assign(error, {notNameNotStack})"
+      },
+      "invalid": {
+        "code": "Object.assign(new Error(), {name})"
+      }
+    },
+    {
+      "rule": "no-exports-in-scripts",
+      "valid": {
+        "code": "export const foo = 1;"
+      },
+      "invalid": {
+        "code": "#!/usr/bin/env node\nexport const foo = 1;"
+      }
+    },
+    {
+      "rule": "no-for-loop",
+      "valid": {
+        "code": "const value = Number(1);\nfor (let index = 0; index < value.length; index++) {\n\tconsole.log(value[index]);\n}"
+      },
+      "invalid": {
+        "code": "const array = [1].slice();\nfor (let i = 0; i < array.length; i++) {\n\tconsole.log(array[i]);\n}",
+        "output": "const array = [1].slice();\nfor (const element of array) {\n\tconsole.log(element);\n}",
+        "errors": 1
+      }
+    },
+    {
+      "rule": "no-global-object-property-assignment",
+      "valid": {
+        "code": "globalThis.foo"
+      },
+      "invalid": {
+        "code": "globalThis.foo = 1"
+      }
+    },
+    {
+      "rule": "no-impossible-length-comparison",
+      "valid": {
+        "code": "if (array.length === 0) {}"
+      },
+      "invalid": {
+        "code": "if (array.length < 0) {}"
+      }
+    },
+    {
+      "rule": "no-incorrect-query-selector",
+      "valid": {
+        "code": "new document.querySelectorAll(\"form\");"
+      },
+      "invalid": {
+        "code": "document.querySelectorAll(\"form\")[0].addEventListener(\"submit\", submitFunction);"
+      }
+    },
+    {
+      "rule": "no-incorrect-template-string-interpolation",
+      "valid": {
+        "code": "const greeting = `Hello ${name}`;"
+      },
+      "invalid": {
+        "code": "const greeting = `Hello {name}`;"
+      }
+    },
+    {
+      "rule": "no-invalid-argument-count",
+      "valid": {
+        "code": "function foo(a, b) {}\nfoo(1, 2);"
+      },
+      "invalid": {
+        "code": "function foo(a, b) {}\nfoo(1, 2, 3);"
+      }
+    },
+    {
+      "rule": "no-invalid-character-comparison",
+      "valid": {
+        "code": "str.charAt(4) === \"a\""
+      },
+      "invalid": {
+        "code": "\"abc\".charAt(4) === \"ab\""
+      }
+    },
+    {
+      "rule": "no-invalid-file-input-accept",
+      "valid": {
+        "code": "<input type=\"file\" accept=\"image/png\" />"
+      },
+      "invalid": {
+        "code": "const modes = new Set([\"foo\"]); modes.clear(); <input type=\"file\" accept={modes.size ? \"bad\" : \"image/jpeg\"} />"
+      }
+    },
+    {
+      "rule": "no-invalid-well-known-symbol-methods",
+      "valid": {
+        "code": "class Resource {\n\t[Symbol.dispose]() {}\n}"
+      },
+      "invalid": {
+        "code": "class Resource {\n\tasync [Symbol.dispose]() {}\n}\n\nusing resource = new Resource();"
+      }
+    },
+    {
+      "rule": "no-late-current-target-access",
+      "valid": {
+        "code": "element.addEventListener(\"click\", event => { event.currentTarget.disabled = true; });"
+      },
+      "invalid": {
+        "code": "element.addEventListener(\"click\", async event => {\n\tawait somePromise;\n\tevent.currentTarget.disabled = false;\n});"
+      }
+    },
+    {
+      "rule": "no-late-event-control",
+      "valid": {
+        "code": "element.addEventListener(\"click\", event => { event.preventDefault(); });"
+      },
+      "invalid": {
+        "code": "element.addEventListener(\"click\", async event => {\n\tawait somePromise;\n\tevent.preventDefault();\n});"
+      }
+    },
+    {
+      "rule": "no-loop-iterable-mutation",
+      "valid": {
+        "code": "for (const item of items) {\n\totherItems.push(item);\n}"
+      },
+      "invalid": {
+        "code": "for (const item of items) {\n\titems.push(item);\n}"
+      }
+    },
+    {
+      "rule": "no-mismatched-map-key",
+      "valid": {
+        "code": "function f(cache: {has(key: string): boolean; get(key: string): number}) { if (cache.has(\"a\")) { return cache.get(\"b\"); } }",
+        "languageOptions": {}
+      },
+      "invalid": {
+        "code": "function f(map: Map<string, number>) { if (map.has(\"a\")) { return map.get(\"b\"); } }",
+        "languageOptions": {}
+      }
+    },
+    {
+      "rule": "no-misrefactored-assignment",
+      "valid": {
+        "code": "a += b;"
+      },
+      "invalid": {
+        "code": "a += a + b;"
+      }
+    },
+    {
+      "rule": "no-multiple-promise-resolver-calls",
+      "valid": {
+        "code": "new Promise(resolve => {\n\ttry {\n\t\tresolve();\n\t\tprocess.exit(1);\n\t} catch {\n\t\tresolve();\n\t}\n});"
+      },
+      "invalid": {
+        "code": "new Promise(resolve => {\n\tconst modes = new Set();\n\tmodes.add('foo');\n\n\tif (!modes.size) {\n\t\treturn;\n\t}\n\n\tresolve();\n\tresolve();\n});"
+      }
+    },
+    {
+      "rule": "no-nonstandard-builtin-properties",
+      "valid": {
+        "code": "Object.entries(value)"
+      },
+      "invalid": {
+        "code": "Object.entires(value)"
+      }
+    },
+    {
+      "rule": "no-object-methods-with-collections",
+      "valid": {
+        "code": "Object.keys({a: 1})"
+      },
+      "invalid": {
+        "code": "Object.keys(new Map())"
+      }
+    },
+    {
+      "rule": "no-optional-chaining-on-undeclared-variable",
+      "valid": {
+        "code": "let foo; foo?.bar;"
+      },
+      "invalid": {
+        "code": "foo?.bar;"
+      }
+    },
+    {
+      "rule": "no-redundant-comparison",
+      "valid": {
+        "code": "a > 0 || b > 0 || a === b"
+      },
+      "invalid": {
+        "code": "a > 0 && b > 0 && a === b"
+      }
+    },
+    {
+      "rule": "no-return-array-push",
+      "valid": {
+        "code": "function foo() {\n\tarray.push(value);\n\treturn;\n}"
+      },
+      "invalid": {
+        "code": "const length = array.push(value);"
+      }
+    },
+    {
+      "rule": "no-selector-as-dom-name",
+      "valid": {
+        "code": "element.classList.add(\"foo\");"
+      },
+      "invalid": {
+        "code": "element.classList.add(\".foo\");"
+      }
+    },
+    {
+      "rule": "no-subtraction-comparison",
+      "valid": {
+        "code": "a > b"
+      },
+      "invalid": {
+        "code": "if (a - b > 0) {}"
+      }
+    },
+    {
+      "rule": "no-this-outside-of-class",
+      "valid": {
+        "code": "class Foo {\n\taccessor value = this.defaultValue;\n}"
+      },
+      "invalid": {
+        "code": "this.value;"
+      }
+    },
+    {
+      "rule": "no-uncalled-method",
+      "valid": {
+        "code": "array.reverse()"
+      },
+      "invalid": {
+        "code": "const method = [].reverse"
+      }
+    },
+    {
+      "rule": "no-undeclared-class-members",
+      "valid": {
+        "code": "class Foo {\n\tname;\n\tgetName() {\n\t\treturn this.name;\n\t}\n}"
+      },
+      "invalid": {
+        "code": "class Foo {\n\tgetName() {\n\t\treturn this.name;\n\t}\n}"
+      }
+    },
+    {
+      "rule": "no-unnecessary-array-flat-map",
+      "valid": {
+        "code": "array.map(value => value);"
+      },
+      "invalid": {
+        "code": "array.flatMap(value => [value]);"
+      }
+    },
+    {
+      "rule": "no-unnecessary-boolean-comparison",
+      "valid": {
+        "code": "value === true"
+      },
+      "invalid": {
+        "code": "const result = (a > b) === true;"
+      }
+    },
+    {
+      "rule": "no-unnecessary-fetch-options",
+      "valid": {
+        "code": "fetch(url)"
+      },
+      "invalid": {
+        "code": "fetch(url, {})"
+      }
+    },
+    {
+      "rule": "no-unnecessary-global-this",
+      "valid": {
+        "code": "globalThis.jQuery"
+      },
+      "invalid": {
+        "code": "globalThis.Array.from(items)"
+      }
+    },
+    {
+      "rule": "no-unnecessary-nested-ternary",
+      "valid": {
+        "code": "a ? b : c;"
+      },
+      "invalid": {
+        "code": "a ? b ? c : d : d;",
+        "output": "a && b ? c : d;",
+        "errors": 1
+      }
+    },
+    {
+      "rule": "no-unnecessary-polyfills",
+      "valid": {
+        "code": "require(\"object-assign\")",
+        "options": [
+          {
+            "targets": {
+              "node": "0.1.0"
+            }
+          }
+        ]
+      },
+      "invalid": {
+        "code": "require(\"setprototypeof\")",
+        "options": [
+          {
+            "targets": "node >4"
+          }
+        ],
+        "errors": [
+          {
+            "message": "Use built-in instead."
+          }
+        ]
+      }
+    },
+    {
+      "rule": "no-unnecessary-splice",
+      "valid": {
+        "code": "function f(foo: {splice(start?: number, deleteCount?: number): void}) { foo.splice(); }",
+        "languageOptions": {}
+      },
+      "invalid": {
+        "code": "array.splice();"
+      }
+    },
+    {
+      "rule": "no-unnecessary-string-trim",
+      "valid": {
+        "code": "import {z} from \"zod\"; z.string().trim().startsWith(\"asdf\")"
+      },
+      "invalid": {
+        "code": "foo.trim().startsWith(\"-\")"
+      }
+    },
+    {
+      "rule": "no-unsafe-buffer-conversion",
+      "valid": {
+        "code": "new Uint8Array(data)"
+      },
+      "invalid": {
+        "code": "new Uint8Array(data.buffer)"
+      }
+    },
+    {
+      "rule": "no-unsafe-dom-html",
+      "valid": {
+        "code": "element.innerHTML;"
+      },
+      "invalid": {
+        "code": "element.innerHTML = html;"
+      }
+    },
+    {
+      "rule": "no-unsafe-promise-all-settled-values",
+      "valid": {
+        "code": "const values = (await Promise.allSettled(promises)).map(result => {\n\tif (result.status !== 'fulfilled') {\n\t\tswitch (value) {\n\t\t\tcase 1:\n\t\t\t\tif (false) {\n\t\t\t\t\tbreak;\n\t\t\t\t}\n\n\t\t\t\tprocess.exit(1);\n\t\t\tdefault:\n\t\t\t\tprocess.exit(2);\n\t\t}\n\t}\n\n\treturn result.value;\n});"
+      },
+      "invalid": {
+        "code": "const values = (await Promise.allSettled(promises)).map(result => {\n\tif (result.status !== 'fulfilled') {\n\t\ttry {\n\t\t\tprocess.exit((maybeThrow(), 1));\n\t\t} catch {\n\t\t\tcleanup();\n\t\t}\n\t}\n\n\treturn result.value;\n});"
+      }
+    },
+    {
+      "rule": "no-unsafe-property-key",
+      "valid": {
+        "code": "object[\"key\"]"
+      },
+      "invalid": {
+        "code": "object[{}]"
+      }
+    },
+    {
+      "rule": "no-unsafe-sqlite-interpolation",
+      "valid": {
+        "code": "import {DatabaseSync} from \"node:sqlite\"; const database = new DatabaseSync(\":memory:\"); database.exec(\"SELECT 1\");"
+      },
+      "invalid": {
+        "code": "import {DatabaseSync} from \"node:sqlite\"; const database = new DatabaseSync(\":memory:\"); database.exec(`SELECT * FROM users WHERE id = ${id}`);"
+      }
+    },
+    {
+      "rule": "no-unsafe-string-replacement",
+      "valid": {
+        "code": "text.replace(\"pattern\", \"\".repeat(count))"
+      },
+      "invalid": {
+        "code": "template.replace(\"{url}\", htmlEscape(url))"
+      }
+    },
+    {
+      "rule": "no-unused-builtin-method-return",
+      "valid": {
+        "code": "items.values().map(transform);"
+      },
+      "invalid": {
+        "code": "array.map(fn);"
+      }
+    },
+    {
+      "rule": "no-unused-iterator-helper",
+      "valid": {
+        "code": "items.map(transform);"
+      },
+      "invalid": {
+        "code": "items.values().map(transform);"
+      }
+    },
+    {
+      "rule": "no-useless-boolean-cast",
+      "valid": {
+        "code": "const toBoolean = value => Boolean(value);"
+      },
+      "invalid": {
+        "code": "const example = records.filter(({fieldname}) => Boolean(fieldname));"
+      }
+    },
+    {
+      "rule": "no-useless-coercion",
+      "valid": {
+        "code": "Boolean(1)"
+      },
+      "invalid": {
+        "code": "Boolean(true)"
+      }
+    },
+    {
+      "rule": "no-useless-compound-assignment",
+      "valid": {
+        "code": "x += 1;"
+      },
+      "invalid": {
+        "code": "x += 0;"
+      }
+    },
+    {
+      "rule": "no-useless-concat",
+      "valid": {
+        "code": "'a' + b"
+      },
+      "invalid": {
+        "code": "'a' + 'b'"
+      }
+    },
+    {
+      "rule": "no-useless-continue",
+      "valid": {
+        "code": "for (const x of xs) {\n\tif (skip(x)) {\n\t\tcontinue;\n\t}\n\n\tprocess(x);\n}"
+      },
+      "invalid": {
+        "code": "for (const x of xs) {\n\tprocess(x);\n\tcontinue;\n}"
+      }
+    },
+    {
+      "rule": "no-useless-delete-check",
+      "valid": {
+        "code": "delete object[key];"
+      },
+      "invalid": {
+        "code": "const object = {}; if (key in object) { delete object[key]; }"
+      }
+    },
+    {
+      "rule": "no-useless-else",
+      "valid": {
+        "code": "function qux() {\n\tif (foo) {\n\t\treturn;\n\t}\n}"
+      },
+      "invalid": {
+        "code": "function qux() {\n\tif (foo) {\n\t\touter: do {\n\t\t\twhile (true) {\n\t\t\t\tcontinue outer;\n\t\t\t}\n\t\t} while (process.exit(1));\n\t} else {\n\t\tbaz();\n\t}\n}"
+      }
+    },
+    {
+      "rule": "no-useless-logical-operand",
+      "valid": {
+        "code": "const value = input && true;"
+      },
+      "invalid": {
+        "code": "const value = true && input;"
+      }
+    },
+    {
+      "rule": "no-useless-override",
+      "valid": {
+        "code": "class Foo { foo() { return super.foo(); } }"
+      },
+      "invalid": {
+        "code": "class Foo extends Bar { foo() { return super.foo(); } }"
+      }
+    },
+    {
+      "rule": "no-useless-re-export",
+      "valid": {
+        "code": "export {foo} from './foo.js';"
+      },
+      "invalid": {
+        "code": "export * from './foo.js';\nexport {foo} from './foo.js';"
+      }
+    },
+    {
+      "rule": "no-useless-recursion",
+      "valid": {
+        "code": "function foo(bar) {\n\twhile (bar.baz) {\n\t\tbar = bar.baz;\n\t}\n\n\treturn bar;\n}"
+      },
+      "invalid": {
+        "code": "function foo(bar) {\n\tif (bar.baz) {\n\t\treturn foo(bar.baz);\n\t}\n\n\treturn bar;\n}"
+      }
+    },
+    {
+      "rule": "no-useless-set-construction",
+      "valid": {
+        "code": "const Set = CustomSet; const selected = new Set(); selected.union(new Set(selected));"
+      },
+      "invalid": {
+        "code": "const selected = new Set();\nconst other = new Set();\nprevious()\nnew Set(condition ? selected : other).union(other)"
+      }
+    },
+    {
+      "rule": "no-xor-as-exponentiation",
+      "valid": {
+        "code": "2 ** 32"
+      },
+      "invalid": {
+        "code": "2 ^ 32"
+      }
+    },
+    {
+      "rule": "prefer-abort-signal-any",
+      "valid": {
+        "code": "const signal = AbortSignal.any([firstSignal, secondSignal]);"
+      },
+      "invalid": {
+        "code": "const abortController = new AbortController();\nfirstSignal.addEventListener('abort', () => abortController.abort());\nsecondSignal.addEventListener('abort', () => abortController.abort());\nfetch(url, {signal: abortController.signal});"
+      }
+    },
+    {
+      "rule": "prefer-abort-signal-timeout",
+      "valid": {
+        "code": "const signal = AbortSignal.timeout(delay);"
+      },
+      "invalid": {
+        "code": "const abortController = new AbortController;\nsetTimeout(() => abortController.abort(), delay);\nfetch(url, {signal: abortController.signal});"
+      }
+    },
+    {
+      "rule": "prefer-add-event-listener-options",
+      "valid": {
+        "code": "window.addEventListener(\"click\", listener)"
+      },
+      "invalid": {
+        "code": "window.addEventListener(\"click\", listener, true)"
+      }
+    },
+    {
+      "rule": "prefer-aggregate-error",
+      "valid": {
+        "code": "if (errors.length > 0) { throw new AggregateError(errors, \"Failed.\"); }"
+      },
+      "invalid": {
+        "code": "const errors: Error[] = [new Error(\"One failed.\")]; if (errors.length) { throw new Error(); }"
+      }
+    },
+    {
+      "rule": "prefer-array-from-async",
+      "valid": {
+        "code": "const result = [];\nfor await (const element of iterable) {\n\tresult.push(transform(element));\n}"
+      },
+      "invalid": {
+        "code": "const result = [];\nfor await (const element of iterable) {\n\tresult.push(element);\n}"
+      }
+    },
+    {
+      "rule": "prefer-array-from-map",
+      "valid": {
+        "code": "Array.from(iterable, mapFunction);"
+      },
+      "invalid": {
+        "code": "Array.from(iterable).map(element => element.id);"
+      }
+    },
+    {
+      "rule": "prefer-array-from-range",
+      "valid": {
+        "code": "Array.from({length}, (_, index) => index);"
+      },
+      "invalid": {
+        "code": "[...Array(length).keys()];"
+      }
+    },
+    {
+      "rule": "prefer-array-iterable-methods",
+      "valid": {
+        "code": "for (const [index, value] of [].entries()) {\n\tfoo(index, value);\n}"
+      },
+      "invalid": {
+        "code": "for (const [, value] of [].entries()) {\n\tfoo(value);\n}"
+      }
+    },
+    {
+      "rule": "prefer-array-last-methods",
+      "valid": {
+        "code": "array.findLast(logic);"
+      },
+      "invalid": {
+        "code": "array.reverse().find(logic);"
+      }
+    },
+    {
+      "rule": "prefer-array-slice",
+      "valid": {
+        "code": "array.splice(index)"
+      },
+      "invalid": {
+        "code": "process.argv.splice(2)[0]"
+      }
+    },
+    {
+      "rule": "prefer-combined-guards",
+      "valid": {
+        "code": "function foo() { if (a) { return; } }"
+      },
+      "invalid": {
+        "code": "function foo() { if (a) return; if (b) return; }"
+      }
+    },
+    {
+      "rule": "prefer-direct-iteration",
+      "valid": {
+        "code": "for (const item of array) {}"
+      },
+      "invalid": {
+        "code": "for (const item of [1, 2, 3].values()) {}"
+      }
+    },
+    {
+      "rule": "prefer-flat-math-min-max",
+      "valid": {
+        "code": "Math.max(a, b, c);"
+      },
+      "invalid": {
+        "code": "Math.max(Math.max(a, b), c);"
+      }
+    },
+    {
+      "rule": "prefer-global-number-constants",
+      "valid": {
+        "code": "const foo = NaN;"
+      },
+      "invalid": {
+        "code": "const foo = Number.NaN;"
+      }
+    },
+    {
+      "rule": "prefer-group-by",
+      "valid": {
+        "code": "const groups = Object.groupBy(items, item => item.type);",
+        "languageOptions": {
+          "sourceType": "script"
+        }
+      },
+      "invalid": {
+        "code": "items.reduce((groups, item) => {groups[item.type] ??= []; groups[item.type].push(item); return groups;}, {});"
+      }
+    },
+    {
+      "rule": "prefer-has-check",
+      "valid": {
+        "code": "map.has(key)"
+      },
+      "invalid": {
+        "code": "new URLSearchParams().get(key) !== null"
+      }
+    },
+    {
+      "rule": "prefer-https",
+      "valid": {
+        "code": "const url = \"https://sindresorhus.com\";"
+      },
+      "invalid": {
+        "code": "const url = \"http://sindresorhus.com\";"
+      }
+    },
+    {
+      "rule": "prefer-identifier-import-export-specifiers",
+      "valid": {
+        "code": "import \"foo\";"
+      },
+      "invalid": {
+        "code": "import {\"foo\" as foo} from \"foo\";"
+      }
+    },
+    {
+      "rule": "prefer-iterable-in-constructor",
+      "valid": {
+        "code": "const set = new Set(items);"
+      },
+      "invalid": {
+        "code": "const set = new Set();\nfor (const item of items) {\n\tset.add(item);\n}"
+      }
+    },
+    {
+      "rule": "prefer-iterator-concat",
+      "valid": {
+        "code": "new Set(foo)"
+      },
+      "invalid": {
+        "code": "new Set([...foo, ...bar])"
+      }
+    },
+    {
+      "rule": "prefer-iterator-helpers",
+      "valid": {
+        "code": "[...iterator].find(fn)"
+      },
+      "invalid": {
+        "code": "[...map.values()].find(fn)"
+      }
+    },
+    {
+      "rule": "prefer-iterator-to-array",
+      "valid": {
+        "code": "[...iterator]"
+      },
+      "invalid": {
+        "code": "[...map.values()]"
+      }
+    },
+    {
+      "rule": "prefer-iterator-to-array-at-end",
+      "valid": {
+        "code": "iterator.map(fn).toArray()"
+      },
+      "invalid": {
+        "code": "iterator.toArray().map(fn)"
+      }
+    },
+    {
+      "rule": "prefer-map-from-entries",
+      "valid": {
+        "code": "const object = {foo: 1}; if (object.foo) {}"
+      },
+      "invalid": {
+        "code": "const object = Object.fromEntries([[\"foo\", value]]); object.foo;"
+      }
+    },
+    {
+      "rule": "prefer-math-abs",
+      "valid": {
+        "code": "const absolute = Math.abs(value);"
+      },
+      "invalid": {
+        "code": "value < 0 ? -value : value"
+      }
+    },
+    {
+      "rule": "prefer-math-constants",
+      "valid": {
+        "code": "Math.PI"
+      },
+      "invalid": {
+        "code": "3.14"
+      }
+    },
+    {
+      "rule": "prefer-number-is-safe-integer",
+      "valid": {
+        "code": "Number.isSafeInteger(x)"
+      },
+      "invalid": {
+        "code": "Number.isInteger(x)"
+      }
+    },
+    {
+      "rule": "prefer-object-define-properties",
+      "valid": {
+        "code": "Object.defineProperty(foo, \"bar\", {value: 1});"
+      },
+      "invalid": {
+        "code": "Object.defineProperty(foo, \"bar\", {value: 1});\nObject.defineProperty(foo, \"baz\", {value: 2});"
+      }
+    },
+    {
+      "rule": "prefer-object-destructuring-defaults",
+      "valid": {
+        "code": "const {foo, bar} = options;"
+      },
+      "invalid": {
+        "code": "const {foo, bar} = {foo: false, bar: 1, ...options};"
+      }
+    },
+    {
+      "rule": "prefer-object-iterable-methods",
+      "valid": {
+        "code": "for (const key of Object.keys(object)) {\n\tfoo(key);\n}"
+      },
+      "invalid": {
+        "code": "for (const key of Object.keys(object)) {\n\tfoo(object[key]);\n}"
+      }
+    },
+    {
+      "rule": "prefer-promise-with-resolvers",
+      "valid": {
+        "code": "new Promise(resolve => resolve(value));"
+      },
+      "invalid": {
+        "code": "let resolve;\nconst promise = new Promise(resolve_ => {\n\tresolve = resolve_;\n});",
+        "output": "const {promise, resolve} = Promise.withResolvers();"
+      }
+    },
+    {
+      "rule": "prefer-queue-microtask",
+      "valid": {
+        "code": "queueMicrotask(callback);"
+      },
+      "invalid": {
+        "code": "process.nextTick(callback);"
+      }
+    },
+    {
+      "rule": "prefer-set-methods",
+      "valid": {
+        "code": "new Set([...a, ...b]);"
+      },
+      "invalid": {
+        "code": "const a = new Set(); const b = new Set(); new Set([...a, ...b]);"
+      }
+    },
+    {
+      "rule": "prefer-simple-sort-comparator",
+      "valid": {
+        "code": "function f(foo: {sort(comparator: (a: number, b: number) => number): void}) { foo.sort((a, b) => a > b ? 1 : -1); }",
+        "languageOptions": {}
+      },
+      "invalid": {
+        "code": "array.sort((a, b) => a > b ? 1 : -1)"
+      }
+    },
+    {
+      "rule": "prefer-simplified-conditions",
+      "valid": {
+        "code": "a && b"
+      },
+      "invalid": {
+        "code": "if (!(!a && !b)) {}"
+      }
+    },
+    {
+      "rule": "prefer-single-array-predicate",
+      "valid": {
+        "code": "array.some(element => element.foo) && array.some(element => element.bar);"
+      },
+      "invalid": {
+        "code": "if (\n\tarray.some(element => element.foo === 1)\n\t|| array.some(element => element.bar === 2)\n) {}"
+      }
+    },
+    {
+      "rule": "prefer-single-object-destructuring",
+      "valid": {
+        "code": "const {bar, baz} = foo;"
+      },
+      "invalid": {
+        "code": "const foo = {};\nconst {bar} = foo;\nconst {baz} = foo;"
+      }
+    },
+    {
+      "rule": "prefer-single-replace",
+      "valid": {
+        "code": "string.replaceAll('a', '-');"
+      },
+      "invalid": {
+        "code": "string.replaceAll('a', '-').replaceAll('b', '-');"
+      }
+    },
+    {
+      "rule": "prefer-split-limit",
+      "valid": {
+        "code": "string.split(\"/\", 1)[0]"
+      },
+      "invalid": {
+        "code": "string.split(\"/\")[0]",
+        "output": "string.split(\"/\", 1)[0]"
+      }
+    },
+    {
+      "rule": "prefer-string-match-all",
+      "valid": {
+        "code": "while ((match = regexp.exec(string)) !== null) {}"
+      },
+      "invalid": {
+        "code": "const regexp = /foo/g;\nconst string = 'foofoo';\nlet match;\nwhile ((match = regexp.exec(string)) !== null) {\n\tconsole.log(match);\n}"
+      }
+    },
+    {
+      "rule": "prefer-string-pad-start-end",
+      "valid": {
+        "code": "function f(bar: number[]) { const foo = \" \".repeat(10 - bar.length) + bar; }",
+        "languageOptions": {}
+      },
+      "invalid": {
+        "code": "const foo = \" \".repeat(10 - bar.length) + bar;",
+        "output": "const foo = bar.padStart(10);",
+        "errors": [{}]
+      }
+    },
+    {
+      "rule": "prefer-string-repeat",
+      "valid": {
+        "code": "const string = \" \";"
+      },
+      "invalid": {
+        "code": "const string = \"   \";"
+      }
+    },
+    {
+      "rule": "prefer-switch",
+      "valid": {
+        "code": "if (foo === 1) {}\nelse if (foo === 2) {}"
+      },
+      "invalid": {
+        "code": "if (foo === 1) {}\nelse if (foo === 2) {}\nelse if (foo === 3) {}"
+      }
+    },
+    {
+      "rule": "prefer-then-catch",
+      "valid": {
+        "code": "promise.then();"
+      },
+      "invalid": {
+        "code": "promise.then(onFulfilled, onRejected);"
+      }
+    },
+    {
+      "rule": "prefer-unary-minus",
+      "valid": {
+        "code": "x * 2;"
+      },
+      "invalid": {
+        "code": "x * -1;"
+      }
+    },
+    {
+      "rule": "prefer-unicode-code-point-escapes",
+      "valid": {
+        "code": "const foo = tag`\\u2661`"
+      },
+      "invalid": {
+        "code": "const foo = `\\x7A${bar}\\u2661`"
+      }
+    },
+    {
+      "rule": "prefer-url-can-parse",
+      "valid": {
+        "code": "const valid = URL.canParse(value);"
+      },
+      "invalid": {
+        "code": "function isValidUrl() {\n\ttry {\n\t\tnew URL(value, base);\n\t\treturn true;\n\t} catch {\n\t\treturn false;\n\t}\n}"
+      }
+    },
+    {
+      "rule": "prefer-url-search-parameters",
+      "valid": {
+        "code": "new URLSearchParams(query);"
+      },
+      "invalid": {
+        "code": "query.split(\"&\").map(part => part.split(\"=\"));"
+      }
+    },
+    {
+      "rule": "prefer-while-loop-condition",
+      "valid": {
+        "code": "while (hasMore()) {\n\tprocessNext();\n}"
+      },
+      "invalid": {
+        "code": "while (true) {\n\tif (!hasMore()) {\n\t\tbreak;\n\t}\n\n\tfor (const item of items) {\n\t\tif (done(item)) {\n\t\t\tbreak;\n\t\t}\n\t}\n}"
+      }
+    },
+    {
+      "rule": "require-css-escape",
+      "valid": {
+        "code": "new document.querySelector(`[data-id=\"${id}\"]`);"
+      },
+      "invalid": {
+        "code": "document.querySelector(`[data-id=\"${id}\"]`);"
+      }
+    },
+    {
+      "rule": "require-passive-events",
+      "valid": {
+        "code": "window.addEventListener(\"click\", () => {})"
+      },
+      "invalid": {
+        "code": "window.addEventListener(\"wheel\", () => {})"
+      }
+    },
+    {
+      "rule": "require-proxy-trap-boolean-return",
+      "valid": {
+        "code": "new Proxy(target, {set() { process.exit(1); }});"
+      },
+      "invalid": {
+        "code": "const trap = \"set\"; new Proxy(target, {[trap]() {}});"
+      }
+    },
+    {
+      "rule": "single-line-block-comment-style",
+      "valid": {
+        "code": "/**\nGet the value.\n*/"
+      },
+      "invalid": {
+        "code": "/** Get the value. */"
+      }
+    }
+  ],
+  "unavailable": []
+}

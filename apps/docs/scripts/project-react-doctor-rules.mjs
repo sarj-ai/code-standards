@@ -13,10 +13,7 @@ const CONFIG_PATH = join(
   REPOSITORY_ROOT,
   "packages/standards/src/sarj_standards/configs/doctor.config.json",
 );
-const REACT_DOCTOR_BIN = join(
-  APP_ROOT,
-  "node_modules/react-doctor/bin/react-doctor.js",
-);
+const REACT_DOCTOR_CLI = fileURLToPath(import.meta.resolve("react-doctor"));
 const FRAMEWORK_CONTEXTS = {
   global: ["react-project", "React projects"],
   nextjs: ["nextjs-project", "Next.js projects"],
@@ -35,7 +32,7 @@ async function project() {
     ]);
     const output = execFileSync(
       process.execPath,
-      [REACT_DOCTOR_BIN, "rules", "list", "--json"],
+      [REACT_DOCTOR_CLI, "rules", "list", "--json"],
       {
         cwd: projectRoot,
         encoding: "utf8",

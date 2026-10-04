@@ -19,7 +19,7 @@ code-standards doctor
 code-standards update
 ```
 
-Use repeatable `check --rule ENGINE:ID` selectors to select native rules, ESLint rules, or managed security audits. Exclusions, baselines, and severities still apply; Ruff selectors are not supported. Native linters and ESLint execute only selected rules. ESLint retains configured parsers, options, severities, and suppression directives.
+Use repeatable `check --rule ENGINE:ID` selectors to select native rules, Oxlint rules, or managed security audits. Exclusions, baselines, and severities still apply; Ruff selectors are not supported. Native linters execute only selected rules. Oxlint returns selected rule diagnostics while preserving native options, severities, directives, and bulk suppression counts.
 
 Terraform, Kubernetes, and GitHub Actions adoption adds isolated Checkov 3.3.20 and zizmor 1.30.1 runtimes. Setup and generated CI prewarm these tools; checks run offline with packaged policy. Use `--rule checkov:CKV_GCP_95` or `--rule zizmor:template-injection` to select upstream audits. Their findings start as warnings, use the canonical diagnostic baseline, and retain upstream IDs. Checkov honors its inline suppression directives; zizmor ignore comments are disabled. Explicit zizmor selectors include auditor-persona checks; online-only audits cannot run offline. Parsing or execution failures leave the analysis incomplete. Image digest evidence for source templates is deferred to their rendered deployment artifacts.
 

@@ -1,15 +1,14 @@
 // vitest: shared-module-graph
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
+import { RuleTester } from "oxlint/plugins-dev";
+import { describe, it } from "vitest";
 
 import rule, { PREFER_SCHEMA_FOR_API_PAYLOAD_DOCUMENTATION } from "../../src/rules/prefer-schema-for-api-payload.js";
 
-RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
 RuleTester.it = it;
 RuleTester.itOnly = it.only;
 
-const RULE_TESTER = new RuleTester();
+const RULE_TESTER = new RuleTester({ languageOptions: { parserOptions: { lang: "ts" } } });
 
 RULE_TESTER.run("prefer-schema-for-api-payload", rule, {
   valid: [

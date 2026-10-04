@@ -4,7 +4,8 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/prefer-switch-for-repeated-equality.test.ts
  */
 
-import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
+import type { ESTree } from "@oxlint/plugins";
+
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 
@@ -30,24 +31,24 @@ export const PREFER_SWITCH_FOR_REPEATED_EQUALITY_DOCUMENTATION = {
 } as const satisfies RuleDocumentation;
 
 function discriminantText(
-  sourceCode: Readonly<{ getText(node: TSESTree.Node): string }>,
-  test: TSESTree.Expression,
+  sourceCode: Readonly<{ getText(node: ESTree.Node): string }>,
+  test: ESTree.Expression,
 ): string | null {
-  if (test.type !== AST_NODE_TYPES.BinaryExpression || test.operator !== "===") return null;
+  if (test.type !== "BinaryExpression" || test.operator !== "===") return null;
   const leftIsCase = isCaseValue(test.left);
   const rightIsCase = isCaseValue(test.right);
   if (leftIsCase === rightIsCase) return null;
   const discriminant = leftIsCase ? test.right : test.left;
-  return discriminant.type === AST_NODE_TYPES.Identifier ? sourceCode.getText(discriminant) : null;
+  return discriminant.type === "Identifier" ? sourceCode.getText(discriminant) : null;
 }
 
-function isCaseValue(node: TSESTree.Expression | TSESTree.PrivateIdentifier): boolean {
-  if (node.type === AST_NODE_TYPES.Literal) return true;
-  if (node.type === AST_NODE_TYPES.Identifier) return /^[A-Z][A-Z0-9_]*$/u.test(node.name);
-  if (node.type !== AST_NODE_TYPES.MemberExpression || node.computed) return false;
+function isCaseValue(node: ESTree.Expression | ESTree.PrivateIdentifier): boolean {
+  if (node.type === "Literal") return true;
+  if (node.type === "Identifier") return /^[A-Z][A-Z0-9_]*$/u.test(node.name);
+  if (node.type !== "MemberExpression" || node.computed) return false;
   return (
-    node.property.type === AST_NODE_TYPES.Identifier &&
-    (node.object.type === AST_NODE_TYPES.Identifier || isCaseValue(node.object))
+    node.property.type === "Identifier" &&
+    (node.object.type === "Identifier" || isCaseValue(node.object))
   );
 }
 
@@ -66,12 +67,12 @@ export default createRule<Options, MessageIds>({
   create(context) {
     return {
       IfStatement(node): void {
-        if (node.parent.type === AST_NODE_TYPES.IfStatement && node.parent.alternate === node) return;
+        if (node.parent?.type === "IfStatement" && node.parent.alternate === node) return;
         const first = discriminantText(context.sourceCode, node.test);
         if (first === null) return;
         let count = 1;
         let current = node.alternate;
-        while (current?.type === AST_NODE_TYPES.IfStatement) {
+        while (current?.type === "IfStatement") {
           if (discriminantText(context.sourceCode, current.test) !== first) return;
           count += 1;
           current = current.alternate;

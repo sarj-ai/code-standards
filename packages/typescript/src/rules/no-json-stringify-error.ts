@@ -4,10 +4,10 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-json-stringify-error.test.ts
  */
 
-import { ASTUtils, type TSESTree } from "@typescript-eslint/utils";
-
 import { createRule, type RuleDocumentation } from "./_docs.js";
-import type { Scope, SourceCode } from "@typescript-eslint/utils/ts-eslint";
+import type { ESTree, SourceCode, Scope } from "@oxlint/plugins";
+import { findVariable } from "./_scope.js";
+
 
 type MessageIds = "noJsonStringifyError";
 type Options = readonly [];
@@ -57,14 +57,14 @@ const BUILTIN_ERROR_CONSTRUCTORS: ReadonlySet<string> = new Set([
 
 /** Whether a stable local binding is constructively proven to hold an Error. */
 function identifierIsProvenError(
-  identifier: TSESTree.Identifier,
-  scope: Scope.Scope,
+  identifier: ESTree.BindingIdentifier,
+  scope: Scope,
 ): boolean {
-  const variable = ASTUtils.findVariable(scope, identifier.name);
+  const variable = findVariable(scope, identifier.name);
   if (variable === null || variable.defs.length !== 1 || variable.references.some((reference) => reference.isWrite() && reference.init !== true)) return false;
   const definition = variable.defs[0];
   if (definition?.type === "CatchClause") return true;
-  if (definition?.type !== "Variable") return false;
+  if (definition?.type !== "Variable" || definition.node.type !== "VariableDeclarator") return false;
   const initializer = definition.node.init;
   return (
     initializer?.type === "NewExpression" &&
@@ -74,14 +74,14 @@ function identifierIsProvenError(
   );
 }
 
-function isGlobalIdentifier(name: string, scope: Scope.Scope): boolean {
-  const binding = ASTUtils.findVariable(scope, name);
+function isGlobalIdentifier(name: string, scope: Scope): boolean {
+  const binding = findVariable(scope, name);
   return binding === null || binding.defs.length === 0;
 }
 
 function positiveErrorSubject(
-  test: TSESTree.Expression,
-): TSESTree.Expression | null {
+  test: ESTree.Expression,
+): ESTree.Expression | null {
   return instanceofErrorSubject(test) ?? typeGuardSubject(test);
 }
 
@@ -89,8 +89,8 @@ function positiveErrorSubject(
 const TYPE_GUARD_PATTERN = /^(is|has)[A-Z]/;
 
 function instanceofErrorSubject(
-  test: TSESTree.Expression,
-): TSESTree.Expression | null {
+  test: ESTree.Expression,
+): ESTree.Expression | null {
   if (
     test.type === "BinaryExpression" &&
     test.operator === "instanceof" &&
@@ -104,8 +104,8 @@ function instanceofErrorSubject(
 
 /** The narrowed subject `x` of a user-defined type-guard call `isFoo(x)`, or null. */
 function typeGuardSubject(
-  test: TSESTree.Expression,
-): TSESTree.Expression | null {
+  test: ESTree.Expression,
+): ESTree.Expression | null {
   const arg = test.type === "CallExpression" ? test.arguments[0] : undefined;
   if (
     test.type === "CallExpression" &&
@@ -126,12 +126,12 @@ function typeGuardSubject(
  * so by the time `JSON.stringify(arg)` runs the value is the non-Error fallback.
  */
 function isNarrowedByEarlyReturn(
-  node: TSESTree.Node,
-  argExpr: TSESTree.Expression,
+  node: ESTree.Node,
+  argExpr: ESTree.Expression,
   sourceCode: Readonly<SourceCode>,
 ): boolean {
   const argText = sourceCode.getText(argExpr);
-  let current: TSESTree.Node | undefined = node.parent;
+  let current: ESTree.Node | null | undefined = node.parent;
   while (current) {
     if (current.type === "BlockStatement" || current.type === "Program") {
       if (hasEarlierErrorGuard(current.body, node, argText, sourceCode)) return true;
@@ -142,15 +142,15 @@ function isNarrowedByEarlyReturn(
 }
 
 function isGuardedByInstanceofError(
-  node: TSESTree.Node,
-  argExpr: TSESTree.Expression,
+  node: ESTree.Node,
+  argExpr: ESTree.Expression,
   sourceCode: Readonly<SourceCode>,
 ): boolean {
   const argText = sourceCode.getText(argExpr);
-  const sameSubject = (subject: TSESTree.Expression): boolean =>
+  const sameSubject = (subject: ESTree.Expression): boolean =>
     sourceCode.getText(subject) === argText;
 
-  let current: TSESTree.Node | undefined = node.parent;
+  let current: ESTree.Node | null | undefined = node.parent;
   while (current) {
     if (current.type === "ConditionalExpression") {
       const subject = positiveErrorSubject(current.test);
@@ -178,15 +178,15 @@ function isGuardedByInstanceofError(
 
 /** The subject `x` of a negated error-narrowing test — `!(x instanceof Error)` / `!isErrorLike(x)`. */
 function negatedInstanceofErrorSubject(
-  test: TSESTree.Expression,
-): TSESTree.Expression | null {
+  test: ESTree.Expression,
+): ESTree.Expression | null {
   if (test.type === "UnaryExpression" && test.operator === "!") {
     return positiveErrorSubject(test.argument);
   }
   return null;
 }
 
-function nodeWithin(node: TSESTree.Node, container: TSESTree.Node | null): boolean {
+function nodeWithin(node: ESTree.Node, container: ESTree.Node | null): boolean {
   return (
     container !== null &&
     node.range[0] >= container.range[0] &&
@@ -194,7 +194,7 @@ function nodeWithin(node: TSESTree.Node, container: TSESTree.Node | null): boole
   );
 }
 
-function isJsonStringify(callee: TSESTree.Expression): boolean {
+function isJsonStringify(callee: ESTree.Expression): boolean {
   return (
     callee.type === "MemberExpression" &&
     !callee.computed &&
@@ -207,20 +207,12 @@ function isJsonStringify(callee: TSESTree.Expression): boolean {
 
 /** Direct values serialized by a one-level object or array literal. */
 function directLiteralValues(
-  argument: TSESTree.CallExpressionArgument,
-): readonly TSESTree.Expression[] {
+  argument: ESTree.Argument,
+): readonly ESTree.Expression[] {
   if (argument.type === "ObjectExpression") {
     return argument.properties.flatMap((property) => {
       if (property.type !== "Property" || property.computed) return [];
       const value = property.value;
-      if (
-        value.type === "AssignmentPattern" ||
-        value.type === "ArrayPattern" ||
-        value.type === "ObjectPattern" ||
-        value.type === "TSEmptyBodyFunctionExpression"
-      ) {
-        return [];
-      }
       return [value];
     });
   }
@@ -233,8 +225,8 @@ function directLiteralValues(
 }
 
 function expressionSuggestsError(
-  expression: TSESTree.Expression,
-  scope: Scope.Scope,
+  expression: ESTree.Expression,
+  scope: Scope,
 ): boolean {
   if (expression.type === "Identifier") {
     return identifierIsProvenError(expression, scope);
@@ -256,8 +248,8 @@ function expressionSuggestsError(
  * locally to be an Error, excluding the ordinary string/payload escape hatches.
  */
 function memberSuggestsError(
-  member: TSESTree.MemberExpression,
-  scope: Scope.Scope,
+  member: ESTree.MemberExpression,
+  scope: Scope,
 ): boolean {
   const propName =
     !member.computed && member.property.type === "Identifier" ? member.property.name : null;
@@ -295,7 +287,7 @@ export default createRule<Options, MessageIds>({
   defaultOptions: [],
   create(context) {
     return {
-      CallExpression(node: TSESTree.CallExpression): void {
+      CallExpression(node: ESTree.CallExpression): void {
         if (!isJsonStringify(node.callee)) {
           return;
         }
@@ -328,7 +320,7 @@ export default createRule<Options, MessageIds>({
   },
 });
 
-function hasEarlierErrorGuard(statements: readonly TSESTree.Statement[], node: TSESTree.Node, argText: string, sourceCode: Readonly<SourceCode>): boolean {
+function hasEarlierErrorGuard(statements: readonly ESTree.Statement[], node: ESTree.Node, argText: string, sourceCode: Readonly<SourceCode>): boolean {
   for (const stmt of statements) {
     if (stmt.range[0] >= node.range[0]) {
       break;
@@ -349,7 +341,7 @@ function hasEarlierErrorGuard(statements: readonly TSESTree.Statement[], node: T
 
 
 /** Whether a branch statement unconditionally exits (its last statement returns/throws). */
-function branchTerminates(branch: TSESTree.Statement): boolean {
+function branchTerminates(branch: ESTree.Statement): boolean {
   const body = branch.type === "BlockStatement" ? branch.body : [branch];
   const last = body[body.length - 1];
   return (

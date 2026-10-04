@@ -1,15 +1,14 @@
 // vitest: shared-module-graph
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
+import { RuleTester } from "oxlint/plugins-dev";
+import { describe, it } from "vitest";
 
 import rule, { PREFER_SERVER_ACTIONS_DOCUMENTATION } from "../../src/rules/prefer-server-actions.js";
 
-RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
 RuleTester.it = it;
 RuleTester.itOnly = it.only;
 
-const RULE_TESTER = new RuleTester();
+const RULE_TESTER = new RuleTester({ languageOptions: { parserOptions: { lang: "ts" } } });
 const NEXT_CLIENT_MODULE = "/repo/app/ui/actions.tsx";
 const USE_CLIENT = '"use client"; ';
 const GATEWAY_BASE_PATH = [{ basePath: "/gateway" }] as const;

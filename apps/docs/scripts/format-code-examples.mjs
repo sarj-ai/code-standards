@@ -62,57 +62,11 @@ function normalize(source) {
   return `${source.replaceAll("\r\n", "\n").replaceAll("\r", "\n").trimEnd()}\n`;
 }
 
-// eslint-disable-next-line @sarj/stepdown -- adapter helpers precede the dispatcher they make readable.
-function runFormatter(command, args, source, label) {
-  try {
-    return execFileSync(command, args, {
-      cwd: repositoryRoot,
-      encoding: "utf8",
-      input: normalize(source),
-      maxBuffer: 1024 * 1024,
-      timeout: 30_000,
-    });
-  } catch (error) {
-    const stderr =
-      error && typeof error === "object" && "stderr" in error
-        ? String(error.stderr).trim()
-        : "";
-    throw new Error(`${label} formatter failed${stderr ? `: ${stderr}` : ""}`, {
-      cause: error,
-    });
-  }
-}
-
 function virtualPath(path) {
   const lower = path.toLowerCase();
   if (lower.endsWith(".tftest.hcl")) return "example.tftest.hcl";
   const extension = extname(lower);
   return `example${extension || ".txt"}`;
-}
-
-// eslint-disable-next-line @sarj/stepdown -- the Markdown adapter keeps its language table adjacent.
-function languageForFence(language) {
-  return {
-    bash: "example.sh",
-    hcl: "example.hcl",
-    javascript: "example.js",
-    js: "example.js",
-    json: "example.json",
-    markdown: "example.md",
-    md: "example.md",
-    python: "example.py",
-    py: "example.py",
-    sh: "example.sh",
-    shell: "example.sh",
-    sql: "example.sql",
-    terraform: "example.tf",
-    toml: "example.toml",
-    ts: "example.ts",
-    tsx: "example.tsx",
-    typescript: "example.ts",
-    yaml: "example.yml",
-    yml: "example.yml",
-  }[language.toLowerCase()];
 }
 
 async function formatMarkdownFences(source, context) {
@@ -141,6 +95,30 @@ async function formatMarkdownFences(source, context) {
   }
   output.push(source.slice(offset));
   return output.join("");
+}
+
+function languageForFence(language) {
+  return {
+    bash: "example.sh",
+    hcl: "example.hcl",
+    javascript: "example.js",
+    js: "example.js",
+    json: "example.json",
+    markdown: "example.md",
+    md: "example.md",
+    python: "example.py",
+    py: "example.py",
+    sh: "example.sh",
+    shell: "example.sh",
+    sql: "example.sql",
+    terraform: "example.tf",
+    toml: "example.toml",
+    ts: "example.ts",
+    tsx: "example.tsx",
+    typescript: "example.ts",
+    yaml: "example.yml",
+    yml: "example.yml",
+  }[language.toLowerCase()];
 }
 
 async function formatWithPrettier(source, path, context) {
@@ -219,6 +197,26 @@ async function formatCode(source, path, context) {
   const normalized = normalize(formatted);
   cache.set(cacheKey, normalized);
   return normalized;
+}
+
+function runFormatter(command, args, source, label) {
+  try {
+    return execFileSync(command, args, {
+      cwd: repositoryRoot,
+      encoding: "utf8",
+      input: normalize(source),
+      maxBuffer: 1024 * 1024,
+      timeout: 30_000,
+    });
+  } catch (error) {
+    const stderr =
+      error && typeof error === "object" && "stderr" in error
+        ? String(error.stderr).trim()
+        : "";
+    throw new Error(`${label} formatter failed${stderr ? `: ${stderr}` : ""}`, {
+      cause: error,
+    });
+  }
 }
 
 async function formatFile(file, context) {

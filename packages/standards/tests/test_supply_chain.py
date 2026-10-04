@@ -18,7 +18,7 @@ def test_every_setup_uv_step_pins_the_uv_binary() -> None:
         text = workflow.read_text(encoding="utf-8")
         for match in re.finditer(r"(?m)^\s*- uses: astral-sh/setup-uv@[^\n]+$", text):
             following = text[match.end() :].split("\n      - ", 1)[0]
-            if "version: '0.12.18'" not in following:
+            if re.search(r"(?m)^\s+version: (['\"])0\.12\.18\1\s*$", following) is None:
                 violations.append(f"setup-uv does not pin uv 0.12.18 in {workflow}")
     assert violations == []
 
@@ -86,7 +86,17 @@ def test_release_waits_for_exact_revision_safety_checks() -> None:
         "release-safety:\n    needs: detect\n" in release
     )  # sarj-noqa: SARJ402 -- workflow text is the release-policy contract
     release_safety = release.partition("\n  release-safety:\n")[2].partition("\n  detect:\n")[0]
-    for package in ("typescript", "bootstrap", "contracts", "python", "sql", "iac", "standards", "tsconfig"):
+    for package in (
+        "typescript",
+        "react-hooks",
+        "bootstrap",
+        "contracts",
+        "python",
+        "sql",
+        "iac",
+        "standards",
+        "tsconfig",
+    ):
         assert (
             f"needs.detect.outputs.{package} == 'true'" in release_safety
         )  # sarj-noqa: SARJ402 -- workflow text is the release-gate contract
@@ -177,19 +187,22 @@ def test_publishers_have_distinct_identities_and_digest_binding() -> None:
         "environment: npm-tsconfig-release" in release
     )  # sarj-noqa: SARJ402 -- workflow text is the publisher-identity contract
     assert (
+        "environment: npm-react-hooks-release" in release
+    )  # sarj-noqa: SARJ402 -- workflow text is the publisher-identity contract
+    assert (
         "environment: pypi-bootstrap-release" in release
     )  # sarj-noqa: SARJ402 -- workflow text is the publisher-identity contract
     assert (
-        release.count("artifact_sha256:") == 8
+        release.count("artifact_sha256:") == 9
     )  # sarj-noqa: SARJ402 -- workflow text is the artifact-integrity contract
     assert (
-        release.count("Verify build-bound artifact digest") == 8
+        release.count("Verify build-bound artifact digest") == 9
     )  # sarj-noqa: SARJ402 -- workflow text is the artifact-integrity contract
     assert (
         "test \"$actual_name\" = '@sarj/tsconfig'" in release
     )  # sarj-noqa: SARJ402 -- workflow text is the artifact-integrity contract
     assert (
-        release.count("Publish and verify registry bytes and source-bound provenance") == 2
+        release.count("Publish and verify registry bytes and source-bound provenance") == 3
     )  # sarj-noqa: SARJ402 -- workflow text is the artifact-integrity contract
     verifier = (  # sarj-noqa: SARJ402 -- verifier text is the pinned supply-chain contract
         REPO_ROOT / ".github/scripts/verify_registry_publication.py"
@@ -256,25 +269,29 @@ def test_npm_release_disables_install_scripts_and_keeps_publishers_dependency_fr
     assert typescript_job is not None
     typescript_ci = typescript_job[0]
 
-    assert "npm ci --ignore-scripts" in release  # sarj-noqa: SARJ402 -- workflow text is the publishing-policy contract
+    assert (
+        "npm --prefix ../.. ci --ignore-scripts" in release
+    )  # sarj-noqa: SARJ402 -- workflow text is the publishing-policy contract
     assert (
         'npm pack --pack-destination "$RUNNER_TEMP/npm-artifacts" --ignore-scripts' in release
     )  # sarj-noqa: SARJ402 -- workflow text is the publishing-policy contract
     assert (  # sarj-noqa: SARJ402 -- workflow text is the publishing-policy contract
-        "npm ci --ignore-scripts --no-audit --no-fund" in typescript_ci
+        "npm --prefix ../.. ci --ignore-scripts --no-audit --no-fund" in typescript_ci
     )
-    assert (
-        release.count("npm install --global npm@12.1.0 --ignore-scripts") == 2
-    )  # sarj-noqa: SARJ402 -- workflow text is the publishing-policy contract
+    bootstrap = "npm install --global npm@12.1.0 --ignore-scripts"
+    assert release.count(bootstrap) == 7  # sarj-noqa: SARJ402 -- build and publish jobs pin the script-free npm CLI
 
     def assert_dependency_free(job: str) -> None:
         match = re.search(rf"(?ms)^  {job}:\n.*?(?=^  [a-zA-Z0-9_-]+:\n|\Z)", release)
         assert match is not None
         publisher = match[0]
-        assert "npm install" not in publisher
-        assert "npm ci" not in publisher
+        npm_commands = re.findall(r"\bnpm[ \t]+[^\n]*", publisher)
+        # Publishers consume verified tarballs. The pinned CLI bootstrap is
+        # their only npm command; project installs and lifecycle scripts are forbidden.
+        assert npm_commands == [bootstrap]
 
     assert_dependency_free("publish-typescript")
+    assert_dependency_free("publish-react-hooks")
     assert_dependency_free("publish-tsconfig")
 
 

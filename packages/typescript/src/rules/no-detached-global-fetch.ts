@@ -4,12 +4,10 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-detached-global-fetch.test.ts
  */
 
-import {
-  AST_NODE_TYPES,
-  ASTUtils,
-  type TSESLint,
-  type TSESTree,
-} from "@typescript-eslint/utils";
+import { sourceOrigin } from "./_source-origin.js";
+import type { ESTree, Variable, Visitor } from "@oxlint/plugins";
+import { findVariable } from "./_scope.js";
+
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile, isScriptFile, isTestFile } from "./_paths.js";
@@ -52,16 +50,16 @@ export const NO_DETACHED_GLOBAL_FETCH_DOCUMENTATION = {
 
 const GLOBAL_RECEIVERS: ReadonlySet<string> = new Set(["globalThis", "self", "window"]);
 const EXPLICIT_RECEIVER_METHODS: ReadonlySet<string> = new Set(["apply", "bind", "call"]);
-const STORAGE_ASSIGNMENT_OPERATORS: ReadonlySet<TSESTree.AssignmentExpression["operator"]> =
+const STORAGE_ASSIGNMENT_OPERATORS: ReadonlySet<ESTree.AssignmentExpression["operator"]> =
   new Set(["=", "&&=", "??=", "||="]);
 
-function unwrapExpression(node: TSESTree.Expression): TSESTree.Expression {
+function unwrapExpression(node: ESTree.Node): ESTree.Node {
   let current = node;
   while (
-    current.type === AST_NODE_TYPES.ChainExpression ||
-    current.type === AST_NODE_TYPES.TSAsExpression ||
-    current.type === AST_NODE_TYPES.TSNonNullExpression ||
-    current.type === AST_NODE_TYPES.TSTypeAssertion
+    current.type === "ChainExpression" ||
+    current.type === "TSAsExpression" ||
+    current.type === "TSNonNullExpression" ||
+    current.type === "TSTypeAssertion"
   ) {
     current = current.expression;
   }
@@ -84,58 +82,58 @@ export default createRule<Options, MessageIds>({
   create(context) {
     const sourceCode = context.sourceCode;
     if (
-      isTestFile(context.filename) ||
-      isScriptFile(context.filename) ||
-      isGeneratedFile(context.filename, sourceCode.text)
+      isTestFile(sourceOrigin(context).filename) ||
+      isScriptFile(sourceOrigin(context).filename) ||
+      isGeneratedFile(sourceOrigin(context).filename, sourceOrigin(context).text)
     ) return {};
 
-    const aliases = new Set<TSESLint.Scope.Variable>();
+    const aliases = new Set<Variable>();
 
-    function bindingOf(identifier: TSESTree.Identifier): TSESLint.Scope.Variable | null {
-      return ASTUtils.findVariable(sourceCode.getScope(identifier), identifier.name);
+    function bindingOf(identifier: ESTree.BindingIdentifier): Variable | null {
+      return findVariable(sourceCode.getScope(identifier), identifier.name);
     }
 
-    function resolvesToGlobal(identifier: TSESTree.Identifier): boolean {
+    function resolvesToGlobal(identifier: ESTree.BindingIdentifier): boolean {
       const variable = bindingOf(identifier);
       return variable === null || variable.defs.length === 0;
     }
 
-    function isGlobalReceiver(node: TSESTree.Node): node is TSESTree.Identifier {
-      return node.type === AST_NODE_TYPES.Identifier &&
+    function isGlobalReceiver(node: ESTree.Node): node is ESTree.BindingIdentifier {
+      return node.type === "Identifier" &&
         GLOBAL_RECEIVERS.has(node.name) && resolvesToGlobal(node);
     }
 
-    function isStableAlias(variable: TSESLint.Scope.Variable): boolean {
+    function isStableAlias(variable: Variable): boolean {
       return !variable.references.some(
         (reference) => reference.isWrite() && reference.init !== true,
       );
     }
 
-    function recordAlias(identifier: TSESTree.Identifier): void {
+    function recordAlias(identifier: ESTree.BindingIdentifier): void {
       const variable = bindingOf(identifier);
       if (variable !== null && isStableAlias(variable)) aliases.add(variable);
     }
 
-    function staticMemberName(node: TSESTree.MemberExpression): string | null {
+    function staticMemberName(node: ESTree.MemberExpression): string | null {
       if (!node.computed) {
-        return node.property.type === AST_NODE_TYPES.Identifier ? node.property.name : null;
+        return node.property.type === "Identifier" ? node.property.name : null;
       }
-      return node.property.type === AST_NODE_TYPES.Literal && typeof node.property.value === "string"
+      return node.property.type === "Literal" && typeof node.property.value === "string"
         ? node.property.value
         : null;
     }
 
-    function mayBeRawFetch(node: TSESTree.Expression): boolean {
+    function mayBeRawFetch(node: ESTree.Node): boolean {
       const expression = unwrapExpression(node);
-      if (expression.type === AST_NODE_TYPES.Identifier) {
+      if (expression.type === "Identifier") {
         if (expression.name === "fetch" && resolvesToGlobal(expression)) return true;
         const variable = bindingOf(expression);
         return variable !== null && aliases.has(variable) && isStableAlias(variable);
       }
-      if (expression.type === AST_NODE_TYPES.MemberExpression) {
+      if (expression.type === "MemberExpression") {
         return isGlobalFetchMember(expression);
       }
-      if (expression.type === AST_NODE_TYPES.LogicalExpression) {
+      if (expression.type === "LogicalExpression") {
         // A raw fetch operand is always truthy, so `fetch && fallback` cannot
         // produce fetch. The right side of `&&`, and either side of `||`/`??`,
         // can still be the stored result.
@@ -143,35 +141,35 @@ export default createRule<Options, MessageIds>({
           ? mayBeRawFetch(expression.right)
           : mayBeRawFetch(expression.left) || mayBeRawFetch(expression.right);
       }
-      if (expression.type === AST_NODE_TYPES.ConditionalExpression) {
+      if (expression.type === "ConditionalExpression") {
         return mayBeRawFetch(expression.consequent) || mayBeRawFetch(expression.alternate);
       }
-      if (expression.type === AST_NODE_TYPES.SequenceExpression) {
+      if (expression.type === "SequenceExpression") {
         const last = expression.expressions.at(-1);
         return last !== undefined && mayBeRawFetch(last);
       }
       return false;
     }
 
-    function isGlobalFetchMember(node: TSESTree.MemberExpression): boolean {
+    function isGlobalFetchMember(node: ESTree.MemberExpression): boolean {
       if (!isGlobalReceiver(node.object)) return false;
       if (!node.computed) {
-        return node.property.type === AST_NODE_TYPES.Identifier && node.property.name === "fetch";
+        return node.property.type === "Identifier" && node.property.name === "fetch";
       }
-      return node.property.type === AST_NODE_TYPES.Literal && node.property.value === "fetch";
+      return node.property.type === "Literal" && node.property.value === "fetch";
     }
 
-    function recordAliasFromValue(identifier: TSESTree.Identifier, value: TSESTree.Expression): void {
+    function recordAliasFromValue(identifier: ESTree.BindingIdentifier, value: ESTree.Expression): void {
       if (mayBeRawFetch(value)) recordAlias(identifier);
     }
 
-    function reportStored(node: TSESTree.Expression): void {
+    function reportStored(node: ESTree.Node): void {
       if (mayBeRawFetch(node)) context.report({ node, messageId: "detachedGlobalFetch" });
     }
 
-    function isCompatibleReceiver(node: TSESTree.CallExpressionArgument | undefined): boolean {
-      if (node === undefined || node.type === AST_NODE_TYPES.SpreadElement) return false;
-      if (node.type !== AST_NODE_TYPES.Identifier || !resolvesToGlobal(node)) return false;
+    function isCompatibleReceiver(node: ESTree.Argument | undefined): boolean {
+      if (node == null || node.type === "SpreadElement") return false;
+      if (node.type !== "Identifier" || !resolvesToGlobal(node)) return false;
       return GLOBAL_RECEIVERS.has(node.name) || node.name === "undefined";
     }
 
@@ -179,20 +177,20 @@ export default createRule<Options, MessageIds>({
       AssignmentExpression(node): void {
         if (
           STORAGE_ASSIGNMENT_OPERATORS.has(node.operator) &&
-          node.left.type === AST_NODE_TYPES.MemberExpression
+          node.left.type === "MemberExpression"
         ) {
           reportStored(node.right);
         }
       },
       AssignmentPattern(node): void {
-        if (node.left.type !== AST_NODE_TYPES.Identifier) return;
+        if (node.left.type !== "Identifier") return;
         recordAliasFromValue(node.left, node.right);
-        if (node.parent.type === AST_NODE_TYPES.TSParameterProperty) reportStored(node.right);
+        if (node.parent?.type === "TSParameterProperty") reportStored(node.right);
       },
       CallExpression(node): void {
         const callee = unwrapExpression(node.callee);
         if (
-          callee.type !== AST_NODE_TYPES.MemberExpression ||
+          callee.type !== "MemberExpression" ||
           !EXPLICIT_RECEIVER_METHODS.has(staticMemberName(callee) ?? "") ||
           !mayBeRawFetch(callee.object) ||
           isCompatibleReceiver(node.arguments[0])
@@ -200,11 +198,13 @@ export default createRule<Options, MessageIds>({
         context.report({ node: callee.object, messageId: "detachedGlobalFetch" });
       },
       Property(node): void {
+        if (!("method" in node)) return;
         if (
-          node.parent.type === AST_NODE_TYPES.ObjectPattern ||
+          node.parent?.type === "ObjectPattern" ||
           node.method ||
-          node.value.type === AST_NODE_TYPES.AssignmentPattern ||
-          node.value.type === AST_NODE_TYPES.TSEmptyBodyFunctionExpression
+          node.value.type === "AssignmentPattern" ||
+          node.value.type === "ObjectPattern" || node.value.type === "ArrayPattern" ||
+          node.value.type === "TSEmptyBodyFunctionExpression"
         ) return;
         reportStored(node.value);
       },
@@ -213,27 +213,27 @@ export default createRule<Options, MessageIds>({
       },
       VariableDeclarator(node): void {
         if (node.init === null) return;
-        if (node.id.type === AST_NODE_TYPES.Identifier) {
+        if (node.id.type === "Identifier") {
           recordAliasFromValue(node.id, node.init);
           return;
         }
         if (
-          node.id.type !== AST_NODE_TYPES.ObjectPattern ||
+          node.id.type !== "ObjectPattern" ||
           !isGlobalReceiver(unwrapExpression(node.init))
         ) return;
         for (const property of node.id.properties) {
           if (
-            property.type !== AST_NODE_TYPES.Property ||
+            property.type !== "Property" ||
             property.computed ||
-            property.key.type !== AST_NODE_TYPES.Identifier ||
+            property.key.type !== "Identifier" ||
             property.key.name !== "fetch"
           ) continue;
-          const value = property.value.type === AST_NODE_TYPES.AssignmentPattern
+          const value = property.value.type === "AssignmentPattern"
             ? property.value.left
             : property.value;
-          if (value.type === AST_NODE_TYPES.Identifier) recordAlias(value);
+          if (value.type === "Identifier") recordAlias(value);
         }
       },
-    } satisfies TSESLint.RuleListener;
+    } satisfies Visitor;
   },
 });

@@ -1,17 +1,16 @@
 // vitest: shared-module-graph
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
+import { RuleTester } from "oxlint/plugins-dev";
+import { describe, it } from "vitest";
 
 import rule, {
   NO_TYPE_MEMBER_COMMENT_WALL_DOCUMENTATION,
 } from "../../src/rules/no-type-member-comment-wall.js";
 
-RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
 RuleTester.itOnly = it.only;
 RuleTester.it = it;
 
-const RULE_TESTER = new RuleTester();
+const RULE_TESTER = new RuleTester({ languageOptions: { parserOptions: { lang: "ts" } } });
 
 RULE_TESTER.run("no-type-member-comment-wall", rule, {
   valid: [

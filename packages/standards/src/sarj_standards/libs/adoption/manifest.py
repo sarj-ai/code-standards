@@ -28,11 +28,7 @@ PROFILES: Final[tuple[Profile, ...]] = ("standard", "application")
 HookManager = Literal["pre-commit", "lefthook", "none"]
 HOOK_MANAGERS: Final[tuple[HookManager, ...]] = ("pre-commit", "lefthook", "none")
 
-PEERS_JSON: Final = CONFIGS_DIR / "eslint.peers.json"
-_ESLINT_RULE_KEY: Final = re.compile(
-    r'^\s+"(?P<rule>[^"]+)":\s*(?:"(?:off|warn|error)"|\[)',
-    re.MULTILINE,
-)
+PEERS_JSON: Final = CONFIGS_DIR / "oxlint.peers.json"
 _SARJ_RULE_ENGINES: Final = frozenset({"python", "sql", "iac", "text"})
 _RUNNER_LABEL: Final = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,99}")
 _TOML_COLUMN_WIDTH: Final = 80  # Taplo's default; the shipped strict config does not override column_width.
@@ -40,7 +36,7 @@ _TOML_COLUMN_WIDTH: Final = 80  # Taplo's default; the shipped strict config doe
 
 class _UpstreamRuleEngine(StrEnum):
     CHECKOV = "checkov"
-    ESLINT = "eslint"
+    OXLINT = "oxlint"
     SHELLCHECK = "shellcheck"
     ZIZMOR = "zizmor"
 
@@ -67,20 +63,18 @@ def adopted_version() -> str:
     return __version__ if declared is None else declared
 
 
-def eslint_age_gate_preapprovals() -> dict[str, str]:
-    return _eslint_exact_versions("ageGatePreapprovals")
+def oxlint_yarn_identity_pins() -> dict[str, str]:
+    return _oxlint_exact_versions("yarnIdentityPins")
 
 
-def eslint_yarn_identity_pins() -> dict[str, str]:
-    return _eslint_exact_versions("yarnIdentityPins")
-
-
-def _eslint_exact_versions(key: str) -> dict[str, str]:
+def _oxlint_exact_versions(key: str) -> dict[str, str]:
     raw: object = parse_json(PEERS_JSON.read_text(encoding="utf-8"))
     table = as_table(raw)
     versions = as_table(table.get(key))
-    if not versions or any(not isinstance(value, str) or not value for value in versions.values()):
-        msg = f"eslint.peers.json {key} must map package names to exact versions"
+    if not isinstance(table.get(key), dict) or any(
+        not isinstance(value, str) or not value for value in versions.values()
+    ):
+        msg = f"oxlint.peers.json {key} must map package names to exact versions"
         raise ValueError(msg)
     return {name: value for name, value in versions.items() if isinstance(value, str)}
 
@@ -88,7 +82,7 @@ def _eslint_exact_versions(key: str) -> dict[str, str]:
 #: Config bundle selected for each detected ecosystem.
 PYTHON_CONFIGS: Final = ("ruff", "pyright")
 PYTHON_ANALYZERS: Final = ("deptry",)
-TYPESCRIPT_CONFIGS: Final = ("eslint",)
+TYPESCRIPT_CONFIGS: Final = ("oxlint",)
 SWIFT_CONFIGS: Final = ("swiftformat", "swiftlint")
 KOTLIN_CONFIGS: Final = ("ktlint", "detekt")
 MOBILE_CONFIGS: Final = ("mobile-security",)
@@ -575,7 +569,7 @@ def _removed_rule_selector(selector: str) -> bool:
     )
 
     engine, separator, rule = selector.partition(":")
-    if not separator or engine not in {*_SARJ_RULE_ENGINES, ledger.ESLINT}:
+    if not separator or engine not in {*_SARJ_RULE_ENGINES, ledger.OXLINT}:
         return False
     kind = ledger.CODE if engine == "python" and re.fullmatch(r"SARJ[0-9]{3}", rule) else engine
     return any(
@@ -605,14 +599,14 @@ def _validate_known_rule(engine: str, rule: str, selector: str) -> None:
         upstream = _UpstreamRuleEngine(engine)
     except ValueError:
         return
-    if upstream is not _UpstreamRuleEngine.ESLINT:
+    if upstream is not _UpstreamRuleEngine.OXLINT:
         _validate_source_tool_rule(upstream, rule, selector)
         return
     if rule.startswith("@sarj/"):
-        known = frozenset(f"@sarj/{name}" for name in shipped.rules.get(ledger.ESLINT, ()))
+        known = frozenset(f"@sarj/{name}" for name in shipped.rules.get(ledger.OXLINT, ()))
     elif "/" not in rule:
-        config = (CONFIGS_DIR / "eslint.strict.mjs").read_text(encoding="utf-8")
-        known = frozenset(match.group("rule") for match in _ESLINT_RULE_KEY.finditer(config))
+        inventory = parse_json((CONFIGS_DIR / "oxlint.rules.json").read_text(encoding="utf-8"))
+        known = frozenset(_string_list({"rules": inventory}, "rules", label="packaged Oxlint rule inventory"))
     else:
         return
     if rule not in known:
@@ -724,7 +718,7 @@ def installed_versions() -> dict[str, str]:
     return found
 
 
-def eslint_peers() -> dict[str, str]:
+def oxlint_peers() -> dict[str, str]:
     parsed: object = parse_json(PEERS_JSON.read_text(encoding="utf-8"))
     table = table_field(as_table(parsed), "peers")
     if not table:
@@ -733,7 +727,7 @@ def eslint_peers() -> dict[str, str]:
     return {name: pin for name, pin in table.items() if isinstance(pin, str)}
 
 
-def eslint_overrides() -> dict[str, object]:
+def oxlint_overrides() -> dict[str, object]:
     parsed: object = parse_json(PEERS_JSON.read_text(encoding="utf-8"))
     return table_field(as_table(parsed), "npmOverrides")
 

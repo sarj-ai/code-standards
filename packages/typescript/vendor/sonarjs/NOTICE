@@ -1,0 +1,5 @@
+SonarJS source component, derived from eslint-plugin-sonarjs 2.0.4.
+Copyright SonarSource SA. These component sources and modifications remain under LGPL-3.0; they are not relicensed MIT.
+The complete retained editable JavaScript component sources are shipped in vendor/sonarjs.
+To replace or modify this component, edit these sources and build the package with its standard npm run build command, or load your modified native plugin through Oxlint jsPlugins.
+Upstream source: https://github.com/SonarSource/SonarJS/tree/273825f98b35b29b409fbf4f89efce075c651d96/packages/jsts/src/rules

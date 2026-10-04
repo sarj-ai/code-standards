@@ -4,32 +4,31 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/interface-contract-members-private.test.ts
  */
 
-import {
-  AST_NODE_TYPES,
-  ESLintUtils,
-  type ParserServicesWithTypeInformation,
-  type TSESLint,
-  type TSESTree,
-} from "@typescript-eslint/utils";
-import * as ts from "typescript";
 
-import { convertibleMemberName } from "./_class-private.js";
+
+import { sourceOrigin } from "./_source-origin.js";
+import type { ESTree, SourceCode } from "@oxlint/plugins";
+
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile } from "./_paths.js";
+import { resolveVariable } from "./_scope.js";
 
 type MessageIds = "nonContractMemberMustBePrivate";
 type Options = readonly [];
 
 export const INTERFACE_CONTRACT_MEMBERS_PRIVATE_DOCUMENTATION = {
-  summary: "Require methods outside an implemented interface contract to use ECMAScript private names.",
-  rationale: "An implementing class should expose exactly its declared interface while keeping implementation helpers runtime-private.",
-  remediation: "Add the method to the interface when it is public API, or make it `#private` and remove external or inherited access.",
+  summary:
+    "Require methods outside an implemented interface contract to use ECMAScript private names.",
+  rationale:
+    "An implementing class should expose exactly its declared interface while keeping implementation helpers runtime-private.",
+  remediation:
+    "Add the method to the interface when it is public API, or make it `#private` and remove external or inherited access.",
   category: "architecture",
   autofix: "none",
   limitations: [
     "Only concrete classes with an explicit `implements` clause are checked; constructors, static members, protected extension hooks, and overrides are excluded.",
-    "Inherited interface members are resolved by TypeScript. Computed names are excluded because their contract identity is not stable syntax.",
-    "The rule abstains for the whole class when TypeScript cannot resolve any implemented contract, avoiding false positives for missing or unavailable package declarations.",
+    "Implemented interfaces and transitive interface parents must have one same-file lexical declaration. Imported interfaces, type aliases, merged declarations, index signatures, and computed names are excluded.",
+    "The rule abstains for the whole class when any implemented contract cannot be established from local declarations; cross-module contracts are not inspected.",
     "The rule is report-only because a public member can have consumers in another source file; the developer must choose whether to extend the interface or privatize it.",
     "TypeScript-private members are left to prefer-ecmascript-private-members so one concern produces one diagnostic.",
   ],
@@ -38,7 +37,13 @@ export const INTERFACE_CONTRACT_MEMBERS_PRIVATE_DOCUMENTATION = {
       id: "exact-interface-surface",
       title: "Keep helpers behind the runtime boundary",
       outcome: "no-match",
-      files: [{ path: "src/store.ts", source: "interface Store { load(): void } class DiskStore implements Store { load() { this.#read(); } #read() {} }" }],
+      files: [
+        {
+          path: "src/store.ts",
+          source:
+            "interface Store { load(): void } class DiskStore implements Store { load() { this.#read(); } #read() {} }",
+        },
+      ],
       focusPath: "src/store.ts",
       expectedCount: 0,
       public: true,
@@ -47,7 +52,13 @@ export const INTERFACE_CONTRACT_MEMBERS_PRIVATE_DOCUMENTATION = {
       id: "extra-public-method",
       title: "Do not grow an undeclared public surface",
       outcome: "match",
-      files: [{ path: "src/store.ts", source: "interface Store { load(): void } class DiskStore implements Store { load() { this.read(); } read() {} }" }],
+      files: [
+        {
+          path: "src/store.ts",
+          source:
+            "interface Store { load(): void } class DiskStore implements Store { load() { this.read(); } read() {} }",
+        },
+      ],
       focusPath: "src/store.ts",
       expectedCount: 1,
       public: true,
@@ -55,66 +66,41 @@ export const INTERFACE_CONTRACT_MEMBERS_PRIVATE_DOCUMENTATION = {
   ],
 } as const satisfies RuleDocumentation;
 
-function reportClass(
-  context: Readonly<TSESLint.RuleContext<MessageIds, Options>>,
-  services: ParserServicesWithTypeInformation,
-  owner: TSESTree.ClassDeclaration | TSESTree.ClassExpression,
-): void {
-  if (owner.abstract) return;
-  const contract = interfaceNames(services, owner);
-  if (contract === null) return;
-  const groups = new Map<string, TSESTree.MethodDefinition[]>();
-  for (const member of owner.body.body) {
-    if (!candidate(member)) continue;
-    const name = convertibleMemberName(member);
-    if (name === null || contract.has(name)) continue;
-    // Avoid duplicate diagnostics: the dedicated modern-private rule owns this
-    // member and converts it to the same required final form.
-    if (member.accessibility === "private" || member.key.type === AST_NODE_TYPES.PrivateIdentifier) continue;
-    const members = groups.get(name) ?? [];
-    members.push(member);
-    groups.set(name, members);
-  }
-  for (const [name, members] of groups) {
-    const first = members[0];
-    if (first === undefined) continue;
-    context.report({
-      node: first.key,
-      messageId: "nonContractMemberMustBePrivate",
-      data: { name },
-    });
-  }
-}
-
-function candidate(member: TSESTree.ClassElement): member is TSESTree.MethodDefinition {
-  return (
-    member.type === AST_NODE_TYPES.MethodDefinition &&
-    member.kind !== "constructor" &&
-    !member.static &&
-    member.accessibility !== "protected" &&
-    !member.override &&
-    !member.computed &&
-    member.key.type === AST_NODE_TYPES.Identifier &&
-    member.value.body !== null
-  );
-}
-
+/** Resolve only unambiguous interfaces declared in this file. */
 function interfaceNames(
-  services: ParserServicesWithTypeInformation,
-  owner: TSESTree.ClassDeclaration | TSESTree.ClassExpression,
+  sourceCode: SourceCode,
+  identifier: ESTree.IdentifierReference,
+  seen = new Set<ESTree.Node>(),
 ): ReadonlySet<string> | null {
-  const tsOwner = services.esTreeNodeToTSNodeMap.get(owner);
-  if (!ts.isClassDeclaration(tsOwner) && !ts.isClassExpression(tsOwner)) return null;
-  const implemented = tsOwner.heritageClauses?.filter((clause) => clause.token === ts.SyntaxKind.ImplementsKeyword) ?? [];
-  if (implemented.length === 0) return null;
-  const checker = services.program.getTypeChecker();
+  const definitions = resolveVariable(sourceCode, identifier)?.defs;
+  if (definitions?.length !== 1) return null;
+  const declaration = definitions[0]?.node;
+  if (declaration?.type !== "TSInterfaceDeclaration" || seen.has(declaration))
+    return null;
+  seen.add(declaration);
   const names = new Set<string>();
-  for (const clause of implemented) {
-    for (const contract of clause.types) {
-      const type = checker.getTypeAtLocation(contract);
-      if ((type.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) !== 0) return null;
-      for (const property of checker.getPropertiesOfType(type)) names.add(property.getName());
-    }
+  for (const member of declaration.body.body) {
+    if (
+      (member.type !== "TSMethodSignature" &&
+        member.type !== "TSPropertySignature") ||
+      member.computed
+    )
+      return null;
+    const key = member.key;
+    if (key.type === "Identifier") names.add(key.name);
+    else if (key.type === "Literal" && typeof key.value === "string")
+      names.add(key.value);
+    else return null;
+  }
+  for (const heritage of declaration.extends) {
+    if (heritage.expression.type !== "Identifier") return null;
+    const inherited = interfaceNames(
+      sourceCode,
+      heritage.expression,
+      new Set(seen),
+    );
+    if (inherited === null) return null;
+    for (const name of inherited) names.add(name);
   }
   return names;
 }
@@ -124,7 +110,10 @@ export default createRule<Options, MessageIds>({
   documentation: INTERFACE_CONTRACT_MEMBERS_PRIVATE_DOCUMENTATION,
   meta: {
     type: "problem",
-    docs: { description: "Require methods outside an implemented interface contract to use ECMAScript private names." },
+    docs: {
+      description:
+        "Require methods outside an implemented interface contract to use ECMAScript private names.",
+    },
     schema: [],
     messages: {
       nonContractMemberMustBePrivate:
@@ -133,17 +122,43 @@ export default createRule<Options, MessageIds>({
   },
   defaultOptions: [],
   create(context) {
-    if (isGeneratedFile(context.filename, context.sourceCode.text)) return {};
-    let services: ParserServicesWithTypeInformation | null;
-    try {
-      services = ESLintUtils.getParserServices(context);
-    } catch {
-      services = null;
+    if (isGeneratedFile(sourceOrigin(context).filename, sourceOrigin(context).text)) return {};
+    function reportClass(owner: ESTree.Class): void {
+      if (owner.abstract || !owner.implements?.length) return;
+      const contract = new Set<string>();
+      for (const implemented of owner.implements) {
+        if (implemented.expression.type !== "Identifier") return;
+        const names = interfaceNames(
+          context.sourceCode,
+          implemented.expression,
+        );
+        if (names === null) return;
+        for (const name of names) contract.add(name);
+      }
+      const reported = new Set<string>();
+      for (const member of owner.body.body) {
+        if (
+          member.type !== "MethodDefinition" ||
+          member.kind === "constructor" ||
+          member.static ||
+          member.accessibility === "protected" ||
+          member.accessibility === "private" ||
+          member.override ||
+          member.computed ||
+          member.key.type !== "Identifier" ||
+          member.value.body === null
+        )
+          continue;
+        const name = member.key.name;
+        if (contract.has(name) || reported.has(name)) continue;
+        reported.add(name);
+        context.report({
+          node: member.key,
+          messageId: "nonContractMemberMustBePrivate",
+          data: { name },
+        });
+      }
     }
-    if (services === null) return {};
-    return {
-      ClassDeclaration: (node): void => reportClass(context, services, node),
-      ClassExpression: (node): void => reportClass(context, services, node),
-    };
+    return { ClassDeclaration: reportClass, ClassExpression: reportClass };
   },
 });

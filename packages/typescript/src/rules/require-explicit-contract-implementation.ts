@@ -1,36 +1,51 @@
 /**
- * @fileoverview require-explicit-contract-implementation — Detect structural substitutes rejected by nominal runtime guards.
- *
+ * @fileoverview require-explicit-contract-implementation — detect structural substitutes rejected by nominal runtime guards.
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/require-explicit-contract-implementation.test.ts
  */
 
-import { AST_NODE_TYPES, ESLintUtils, type TSESTree } from "@typescript-eslint/utils";
-import * as ts from "typescript";
-
+import type { ESTree, SourceCode } from "@oxlint/plugins";
+import { sourceOrigin } from "./_source-origin.js";
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile } from "./_paths.js";
+import { resolveVariable, unwrapExpression } from "./_scope.js";
+import { forEachOwnAstChild } from "./_for-each-own-ast-child.js";
+import {
+  createTypeAliasEnvironment,
+  resolvedTypeMatches,
+  type TypeAliasEnvironment,
+} from "./_type-alias-resolution.js";
 
 type MessageIds = "declareActualContract";
 type Options = readonly [];
 
 export const REQUIRE_EXPLICIT_CONTRACT_IMPLEMENTATION_DOCUMENTATION = {
   defaultLevel: "warning",
-  summary: "Require nominal inheritance when an injected abstract class is rejected by an instanceof guard.",
-  rationale: "A structurally assignable fake can still fail a constructor's nominal runtime guard. Pure structural interfaces do not require an implements clause.",
-  remediation: "Use an implementation inheriting the existing abstract class, or remove the nominal guard if the boundary is intentionally structural.",
+  summary:
+    "Require nominal inheritance when an injected abstract class is rejected by an instanceof guard.",
+  rationale:
+    "A structurally assignable fake can still fail a constructor's nominal runtime guard. Pure structural interfaces do not require an implements clause.",
+  remediation:
+    "Use an implementation inheriting the existing abstract class, or remove the nominal guard if the boundary is intentionally structural.",
   category: "architecture",
   autofix: "none",
   limitations: [
     "Requires direct construction of both owned consumer and collaborator classes, with a first-statement consumer constructor guard rejecting the exact parameter with if (!(parameter instanceof Contract)) throw.",
     "The contract must resolve to an abstract class without decorators, unresolved ancestors, or custom computed static members in its resolved hierarchy.",
-    "Structural interfaces, non-rejecting branches, reassignment before the guard, casts, unresolved heritage, dynamic factories, explicit implementation constructors or initializers, modules referencing prototype-mutator members or assigning prototypes, and third-party classes are excluded.",
+    "Structural interfaces, non-rejecting branches, reassignment before the guard, casts, unresolved heritage, dynamic factories, explicit implementation constructors or initializers, modules referencing prototype-mutator members or assigning prototypes, and third-party classes are excluded. Imported declarations and signatures not proven from same-file syntax remain unresolved; no type checker is fabricated.",
   ],
   examples: [
     {
       id: "runtime-nominal-guard-with-structural-fake",
-      title: "A structurally compatible fake fails the constructor's runtime guard",
+      title:
+        "A structurally compatible fake fails the constructor's runtime guard",
       outcome: "match",
-      files: [{ path: "src/service.ts", source: "abstract class Publisher { abstract publish(): void } class Consumer { constructor(readonly publisher: Publisher) { if (!(publisher instanceof Publisher)) throw new TypeError('Nominal publisher required'); } } class FakePublisher { publish() {} } new Consumer(new FakePublisher());" }],
+      files: [
+        {
+          path: "src/service.ts",
+          source:
+            "abstract class Publisher { abstract publish(): void } class Consumer { constructor(readonly publisher: Publisher) { if (!(publisher instanceof Publisher)) throw new TypeError('Nominal publisher required'); } } class FakePublisher { publish() {} } new Consumer(new FakePublisher());",
+        },
+      ],
       focusPath: "src/service.ts",
       expectedCount: 1,
       public: true,
@@ -39,7 +54,13 @@ export const REQUIRE_EXPLICIT_CONTRACT_IMPLEMENTATION_DOCUMENTATION = {
       id: "runtime-nominal-guard-with-inherited-fake",
       title: "The fake satisfies the existing nominal runtime contract",
       outcome: "no-match",
-      files: [{ path: "src/service.ts", source: "abstract class Publisher { abstract publish(): void } class Consumer { constructor(readonly publisher: Publisher) { if (!(publisher instanceof Publisher)) throw new TypeError('Nominal publisher required'); } } class FakePublisher extends Publisher { publish() {} } new Consumer(new FakePublisher());" }],
+      files: [
+        {
+          path: "src/service.ts",
+          source:
+            "abstract class Publisher { abstract publish(): void } class Consumer { constructor(readonly publisher: Publisher) { if (!(publisher instanceof Publisher)) throw new TypeError('Nominal publisher required'); } } class FakePublisher extends Publisher { publish() {} } new Consumer(new FakePublisher());",
+        },
+      ],
       focusPath: "src/service.ts",
       expectedCount: 0,
       public: true,
@@ -47,127 +68,263 @@ export const REQUIRE_EXPLICIT_CONTRACT_IMPLEMENTATION_DOCUMENTATION = {
   ],
 } as const satisfies RuleDocumentation;
 
-function behavioralContract(checker: ts.TypeChecker, type: ts.Type): ts.Type | null {
-  if (type.isUnion()) {
-    const substantive = type.types.filter((member) =>
-      (member.flags & (ts.TypeFlags.Null | ts.TypeFlags.Undefined)) === 0);
-    if (substantive.length !== 1) return null;
-    return behavioralContract(checker, substantive[0]!);
-  }
-  if ((type.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) !== 0) return null;
-  const declaration = type.getSymbol()?.declarations?.find((item) =>
-    ts.isClassDeclaration(item) && item.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.AbstractKeyword));
-  if (declaration === undefined) return null;
-  return checker.getPropertiesOfType(type).some((property) => {
-    if (!property.declarations?.some((member) => ts.isMethodSignature(member) || ts.isMethodDeclaration(member))) return false;
-    const propertyType = checker.getTypeOfSymbolAtLocation(property, declaration);
-    return propertyType.getCallSignatures().length > 0;
-  }) ? type : null;
+function localClass(
+  source: SourceCode,
+  identifier: ESTree.Node,
+): ESTree.Class | null {
+  if (identifier.type !== "Identifier") return null;
+  const definitions = resolveVariable(source, identifier)?.defs;
+  const declaration = definitions?.length === 1 ? definitions[0]?.node : null;
+  return declaration?.type === "ClassDeclaration" ? declaration : null;
 }
 
-function ownedClass(checker: ts.TypeChecker, expression: ts.Node): ts.ClassDeclaration | null {
-  if (!ts.isNewExpression(expression)) return null;
-  const type = checker.getTypeAtLocation(expression);
-  if ((type.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) !== 0) return null;
-  const declaration = type.getSymbol()?.declarations?.find(ts.isClassDeclaration);
-  const constructed = canonicalSymbol(checker, expression.expression)?.declarations?.find(ts.isClassDeclaration);
-  if (declaration === undefined || declaration !== constructed || declaration.getSourceFile().isDeclarationFile ||
-      /(?:^|[/\\])(?:node_modules|vendor|generated)(?:[/\\])/u.test(declaration.getSourceFile().fileName)) return null;
-  return declaration;
+function hasPrototypeMutation(node: ESTree.Node): boolean {
+  const member = memberName(node);
+  if (
+    member === "setPrototypeOf" ||
+    member === "__proto__" ||
+    member === "hasInstance"
+  )
+    return true;
+  if (
+    node.type === "AssignmentExpression" &&
+    memberName(node.left) === "prototype"
+  )
+    return true;
+  let mutation = false;
+  forEachOwnAstChild(node, (child) => {
+    if (hasPrototypeMutation(child)) mutation = true;
+  });
+  return mutation;
 }
 
-function memberName(node: ts.Node): string | null {
-  if (ts.isPropertyAccessExpression(node)) return node.name.text;
-  if (ts.isElementAccessExpression(node) && ts.isStringLiteralLike(node.argumentExpression)) return node.argumentExpression.text;
-  return null;
+function memberName(node: ESTree.Node): string | null {
+  if (node.type !== "MemberExpression") return null;
+  if (!node.computed && node.property.type === "Identifier")
+    return node.property.name;
+  return node.computed &&
+    node.property.type === "Literal" &&
+    typeof node.property.value === "string"
+    ? node.property.value
+    : null;
 }
 
-function hasPrototypeMutation(source: ts.SourceFile): boolean {
-  function visit(node: ts.Node): boolean | undefined {
-    const member = memberName(node);
-    if (member === "setPrototypeOf" || member === "__proto__" || member === "hasInstance") return true;
-    if (ts.isBinaryExpression(node) && node.operatorToken.kind >= ts.SyntaxKind.FirstAssignment &&
-        node.operatorToken.kind <= ts.SyntaxKind.LastAssignment && memberName(node.left) === "prototype") return true;
-    return ts.forEachChild(node, visit);
-  }
-  return visit(source) === true;
+function ordinaryHierarchy(
+  source: SourceCode,
+  declaration: ESTree.Class,
+  seen = new Set<ESTree.Class>(),
+): boolean {
+  if (seen.has(declaration) || declaration.decorators.length > 0) return false;
+  seen.add(declaration);
+  if (
+    declaration.body.body.some(
+      (member) => "computed" in member && member.computed && member.static,
+    )
+  )
+    return false;
+  if (declaration.superClass === null) return true;
+  const parent = localClass(source, declaration.superClass);
+  return parent !== null && ordinaryHierarchy(source, parent, seen);
 }
 
 function nominallyInherits(
-  checker: ts.TypeChecker,
-  declaration: ts.ClassDeclaration,
-  target: ts.Symbol,
-  seen: Set<ts.Symbol>,
+  source: SourceCode,
+  declaration: ESTree.Class,
+  target: ESTree.Class,
+  seen = new Set<ESTree.Class>(),
 ): boolean | null {
-  if (ts.canHaveDecorators(declaration) && ts.getDecorators(declaration)?.length) return null;
-  if (hasPrototypeMutation(declaration.getSourceFile()) || declaration.members.some((member) =>
-    ts.isConstructorDeclaration(member) || (ts.isPropertyDeclaration(member) && member.initializer !== undefined))) return null;
-  const symbol = declaration.name === undefined ? undefined : canonicalSymbol(checker, declaration.name);
-  if (symbol !== undefined) {
-    if (seen.has(symbol)) return null;
-    seen.add(symbol);
-  }
-  const parents = declaration.heritageClauses?.find((clause) => clause.token === ts.SyntaxKind.ExtendsKeyword)?.types;
-  if (parents === undefined) return false;
-  if (parents.length !== 1) return null;
-  const parentSymbol = canonicalSymbol(checker, parents[0]!.expression);
-  if (parentSymbol === undefined) return null;
-  if (parentSymbol === target) return true;
-  const inherited = parentSymbol.declarations?.find(ts.isClassDeclaration);
-  return inherited === undefined ? null : nominallyInherits(checker, inherited, target, new Set(seen));
-}
-
-function canonicalSymbol(checker: ts.TypeChecker, node: ts.Node): ts.Symbol | undefined {
-  const symbol = checker.getSymbolAtLocation(node);
-  return symbol === undefined ? undefined : (symbol.flags & ts.SymbolFlags.Alias) !== 0
-    ? checker.getAliasedSymbol(symbol) : symbol;
-}
-
-function hasNominalRejectionGuard(
-  checker: ts.TypeChecker,
-  signature: ts.Signature,
-  parameter: ts.Symbol,
-  contract: ts.Symbol,
-): boolean {
-  const declaration = signature.getDeclaration();
-  if (declaration === undefined || !ts.isConstructorDeclaration(declaration)) return false;
-  if (ts.canHaveDecorators(declaration.parent) && ts.getDecorators(declaration.parent)?.length) return false;
-  if (hasPrototypeMutation(declaration.getSourceFile())) return false;
-  const first = declaration.body?.statements[0];
-  if (first === undefined || !ts.isIfStatement(first) || !alwaysThrows(first.thenStatement)) return false;
-  const condition = unparenthesized(first.expression);
-  if (!ts.isPrefixUnaryExpression(condition) || condition.operator !== ts.SyntaxKind.ExclamationToken) return false;
-  const comparison = unparenthesized(condition.operand);
-  if (!ts.isBinaryExpression(comparison) || comparison.operatorToken.kind !== ts.SyntaxKind.InstanceOfKeyword) return false;
-  if (canonicalSymbol(checker, comparison.left) !== parameter || canonicalSymbol(checker, comparison.right) !== contract) return false;
-  const target = contract.declarations?.find(ts.isClassDeclaration);
-  return target !== undefined && hasOrdinaryInstanceCheck(checker, target, new Set());
-}
-
-function unparenthesized(expression: ts.Expression): ts.Expression {
-  let current = expression;
-  while (ts.isParenthesizedExpression(current)) current = current.expression;
-  return current;
-}
-
-function alwaysThrows(statement: ts.Statement): boolean {
-  return ts.isThrowStatement(statement) ||
-    (ts.isBlock(statement) && statement.statements.length === 1 && ts.isThrowStatement(statement.statements[0]!));
-}
-
-function hasOrdinaryInstanceCheck(checker: ts.TypeChecker, declaration: ts.ClassDeclaration, seen: Set<ts.ClassDeclaration>): boolean {
-  if (seen.has(declaration) || ts.getDecorators(declaration)?.length || hasPrototypeMutation(declaration.getSourceFile())) return false;
+  if (
+    seen.has(declaration) ||
+    declaration.decorators.length > 0 ||
+    declaration.body.body.some(
+      (member) =>
+        (member.type === "MethodDefinition" && member.kind === "constructor") ||
+        (member.type === "PropertyDefinition" && member.value !== null),
+    )
+  )
+    return null;
   seen.add(declaration);
-  if (declaration.members.some((member) => member.name !== undefined && ts.isComputedPropertyName(member.name) &&
-      ts.canHaveModifiers(member) && ts.getModifiers(member)?.some((modifier) => modifier.kind === ts.SyntaxKind.StaticKeyword))) return false;
-  for (const clause of declaration.heritageClauses ?? []) {
-    if (clause.token !== ts.SyntaxKind.ExtendsKeyword) continue;
-    for (const parent of clause.types) {
-      const ancestor = canonicalSymbol(checker, parent.expression)?.declarations?.find(ts.isClassDeclaration);
-      if (ancestor === undefined || !hasOrdinaryInstanceCheck(checker, ancestor, seen)) return false;
+  if (declaration.superClass === null) return false;
+  const parent = localClass(source, declaration.superClass);
+  return parent === null
+    ? null
+    : parent === target || nominallyInherits(source, parent, target, seen);
+}
+
+function constructorOf(
+  declaration: ESTree.Class,
+): ESTree.MethodDefinition | null {
+  const member = declaration.body.body.find(
+    (member) =>
+      member.type === "MethodDefinition" && member.kind === "constructor",
+  );
+  return member?.type === "MethodDefinition" ? member : null;
+}
+
+function parameterIdentifier(
+  parameter: ESTree.ParamPattern | undefined,
+): ESTree.BindingIdentifier | null {
+  if (parameter?.type === "TSParameterProperty")
+    parameter = parameter.parameter;
+  if (parameter?.type === "AssignmentPattern") parameter = parameter.left;
+  return parameter?.type === "Identifier" ? parameter : null;
+}
+
+function annotatedContract(
+  source: SourceCode,
+  parameter: ESTree.BindingIdentifier,
+  types: TypeAliasEnvironment,
+): ESTree.Class | null {
+  const type = parameter.typeAnnotation?.typeAnnotation;
+  if (type == null) return null;
+  let contract: ESTree.Class | null = null;
+  const resolved = resolvedTypeMatches(type, types, (current, matches) => {
+    if (current.type === "TSUnionType") {
+      const members = current.types.filter(
+        (member) =>
+          member.type !== "TSNullKeyword" &&
+          member.type !== "TSUndefinedKeyword",
+      );
+      return (
+        members.length === 1 && members[0] !== undefined && matches(members[0])
+      );
     }
-  }
-  return true;
+    if (
+      current.type !== "TSTypeReference" ||
+      current.typeName.type !== "Identifier" ||
+      current.typeArguments?.params.length
+    )
+      return false;
+    const declaration = localClass(source, current.typeName);
+    if (declaration?.abstract !== true) return false;
+    contract = declaration;
+    return true;
+  });
+  return resolved ? contract : null;
+}
+
+function rejectsStructuralArgument(
+  source: SourceCode,
+  constructor: ESTree.MethodDefinition,
+  parameter: ESTree.BindingIdentifier,
+  contract: ESTree.Class,
+): boolean {
+  const first = constructor.value.body?.body[0];
+  if (first?.type !== "IfStatement" || !alwaysThrows(first.consequent))
+    return false;
+  const condition = unwrapExpression(first.test);
+  if (condition.type !== "UnaryExpression" || condition.operator !== "!")
+    return false;
+  const comparison = unwrapExpression(condition.argument);
+  return (
+    comparison.type === "BinaryExpression" &&
+    comparison.operator === "instanceof" &&
+    comparison.left.type === "Identifier" &&
+    resolveVariable(source, comparison.left) ===
+      resolveVariable(source, parameter) &&
+    localClass(source, comparison.right) === contract
+  );
+}
+
+function alwaysThrows(statement: ESTree.Statement): boolean {
+  return (
+    statement.type === "ThrowStatement" ||
+    (statement.type === "BlockStatement" &&
+      statement.body.length === 1 &&
+      statement.body[0]?.type === "ThrowStatement")
+  );
+}
+
+const PRIMITIVE_TYPES: ReadonlySet<string> = new Set([
+  "TSStringKeyword",
+  "TSNumberKeyword",
+  "TSBooleanKeyword",
+  "TSBigIntKeyword",
+  "TSSymbolKeyword",
+]);
+
+/** Require a same-file behavioral surface without guessing assignability. */
+function hasMatchingBehavior(
+  source: SourceCode,
+  declaration: ESTree.Class,
+  contract: ESTree.Class,
+): boolean {
+  const actual = new Map<string, ESTree.MethodDefinition>();
+  const required = new Map<string, ESTree.MethodDefinition>();
+  const collect = (
+    current: ESTree.Class,
+    methods: typeof actual,
+    seen: Set<ESTree.Class>,
+  ): boolean => {
+    if (seen.has(current)) return false;
+    seen.add(current);
+    for (const member of current.body.body) {
+      if ("static" in member && member.static) continue;
+      if (
+        (member.type !== "MethodDefinition" &&
+          member.type !== "TSAbstractMethodDefinition") ||
+        member.kind !== "method"
+      ) {
+        if (methods === required) return false;
+        continue;
+      }
+      const name = publicMethodName(member);
+      if (name === null) return false;
+      if (!methods.has(name)) methods.set(name, member);
+    }
+    if (current.superClass === null) return true;
+    const parent = localClass(source, current.superClass);
+    return parent !== null && collect(parent, methods, seen);
+  };
+  if (
+    !collect(contract, required, new Set()) ||
+    !collect(declaration, actual, new Set()) ||
+    required.size === 0
+  )
+    return false;
+  return [...required].every(([name, method]) => {
+    const implementation = actual.get(name);
+    if (
+      !implementation ||
+      method.value.params.length !== implementation.value.params.length
+    )
+      return false;
+    const result = method.value.returnType?.typeAnnotation;
+    // A zero-parameter void operation accepts an inferred implementation return.
+    if (method.value.params.length === 0 && result?.type === "TSVoidKeyword")
+      return true;
+    if (
+      result?.type !== "TSVoidKeyword" &&
+      (!result ||
+        !PRIMITIVE_TYPES.has(result.type) ||
+        implementation.value.returnType?.typeAnnotation.type !== result.type)
+    )
+      return false;
+    return method.value.params.every((parameter, index) => {
+      const expected = parameterIdentifier(parameter);
+      const supplied = parameterIdentifier(implementation.value.params[index]);
+      const expectedType = expected?.typeAnnotation?.typeAnnotation;
+      return (
+        expected !== null &&
+        supplied !== null &&
+        expected.optional === supplied.optional &&
+        expectedType != null &&
+        PRIMITIVE_TYPES.has(expectedType.type) &&
+        supplied.typeAnnotation?.typeAnnotation.type === expectedType.type
+      );
+    });
+  });
+}
+
+function publicMethodName(member: ESTree.MethodDefinition): string | null {
+  if (
+    member.computed ||
+    member.key.type !== "Identifier" ||
+    member.accessibility === "private" ||
+    member.accessibility === "protected"
+  )
+    return null;
+  return member.key.name;
 }
 
 export default createRule<Options, MessageIds>({
@@ -175,51 +332,76 @@ export default createRule<Options, MessageIds>({
   documentation: REQUIRE_EXPLICIT_CONTRACT_IMPLEMENTATION_DOCUMENTATION,
   meta: {
     type: "problem",
-    docs: { description: REQUIRE_EXPLICIT_CONTRACT_IMPLEMENTATION_DOCUMENTATION.summary },
+    docs: {
+      description:
+        REQUIRE_EXPLICIT_CONTRACT_IMPLEMENTATION_DOCUMENTATION.summary,
+    },
     schema: [],
     messages: {
-      declareActualContract: "`{{implementation}}` structurally matches `{{contract}}` but fails the rejecting instanceof guard; use nominal inheritance or make the boundary structural.",
+      declareActualContract:
+        "`{{implementation}}` structurally matches `{{contract}}` but fails the rejecting instanceof guard; use nominal inheritance or make the boundary structural.",
     },
   },
   defaultOptions: [],
   create(context) {
-    if (isGeneratedFile(context.filename, context.sourceCode.text)) return {};
-    if (!context.sourceCode.parserServices?.program || !context.sourceCode.parserServices.esTreeNodeToTSNodeMap) return {};
-    const services = ESLintUtils.getParserServices(context);
-    const checker = services.program.getTypeChecker();
-    function inspect(node: TSESTree.NewExpression): void {
-      const tsNode = services.esTreeNodeToTSNodeMap.get(node);
-      if (!ts.isNewExpression(tsNode)) return;
-      const consumer = canonicalSymbol(checker, tsNode.expression)?.declarations?.find(ts.isClassDeclaration);
-      if (consumer === undefined) return;
-      const signature = checker.getResolvedSignature(tsNode);
-      if (signature === undefined || signature.getDeclaration()?.parent !== consumer) return;
-      const parameters = signature.getParameters();
-      for (const [index, argument] of node.arguments.entries()) {
-        if (argument.type !== AST_NODE_TYPES.NewExpression) continue;
-        const parameter = parameters[index];
-        if (parameter === undefined) continue;
-        const parameterType = checker.getTypeOfSymbolAtLocation(parameter, tsNode);
-        const contractType = behavioralContract(checker, parameterType);
-        if (contractType === null) continue;
-        const contractSymbol = contractType.getSymbol();
-        if (contractSymbol === undefined || !hasNominalRejectionGuard(checker, signature, parameter, contractSymbol)) continue;
-        const tsArgument = services.esTreeNodeToTSNodeMap.get(argument);
-        const actualType = checker.getTypeAtLocation(tsArgument);
-        if (!checker.isTypeAssignableTo(actualType, contractType)) continue;
-        const implementation = ownedClass(checker, tsArgument);
-        if (implementation === null) continue;
-        const relationship = nominallyInherits(checker, implementation, contractSymbol, new Set());
-        if (relationship !== false) continue;
-        context.report({
-          node: argument,
-          messageId: "declareActualContract",
-          data: { implementation: implementation.name?.text ?? "class", contract: contractSymbol.getName() },
-        });
-      }
-    }
+    const origin = sourceOrigin(context);
+    if (
+      isGeneratedFile(origin.filename, origin.text) ||
+      hasPrototypeMutation(context.sourceCode.ast)
+    )
+      return {};
+    const source = context.sourceCode;
+    const types = createTypeAliasEnvironment(source.ast, source.visitorKeys);
     return {
-      NewExpression: inspect,
+      NewExpression(node): void {
+        const consumer = localClass(source, node.callee);
+        if (
+          consumer === null ||
+          consumer.decorators.length > 0 ||
+          node.typeArguments?.params.length
+        )
+          return;
+        const constructor = constructorOf(consumer);
+        if (constructor === null) return;
+        for (const [index, argument] of node.arguments.entries()) {
+          if (
+            argument.type !== "NewExpression" ||
+            argument.typeArguments?.params.length
+          )
+            continue;
+          const implementation = localClass(source, argument.callee);
+          const parameter = parameterIdentifier(
+            constructor.value.params[index],
+          );
+          const contract =
+            parameter === null
+              ? null
+              : annotatedContract(source, parameter, types);
+          if (
+            implementation === null ||
+            parameter === null ||
+            contract === null ||
+            !ordinaryHierarchy(source, contract) ||
+            !rejectsStructuralArgument(
+              source,
+              constructor,
+              parameter,
+              contract,
+            ) ||
+            nominallyInherits(source, implementation, contract) !== false ||
+            !hasMatchingBehavior(source, implementation, contract)
+          )
+            continue;
+          context.report({
+            node: argument,
+            messageId: "declareActualContract",
+            data: {
+              implementation: implementation.id?.name ?? "class",
+              contract: contract.id?.name ?? "class",
+            },
+          });
+        }
+      },
     };
   },
 });

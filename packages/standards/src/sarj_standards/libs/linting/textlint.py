@@ -354,7 +354,7 @@ _AI_GENERATION_RE = re.compile(
     re.IGNORECASE,
 )
 _DIRECTIVE_RE = re.compile(
-    r"^(?:!|shellcheck|yamllint|markdownlint|prettier|eslint|renovate|dependabot|"
+    r"^(?:!|shellcheck|yamllint|markdownlint|prettier|oxlint|renovate|dependabot|"
     r"pragma|noqa|sarj-noqa|type:|pyright|mypy|syntax=|hadolint|nosec|note:|"
     r"examples?:|flags:|format:|tool:|inputs?:|outputs?:|defaults?:|usage:|spdx)",
     re.IGNORECASE,
@@ -2545,7 +2545,7 @@ def _commented_config_runs(path: Path, lines: list[str]) -> set[int]:
 
 
 _CONFIG_TOOL_DIRECTIVE_RE = re.compile(
-    r"^(?:!|shellcheck\b|yamllint\b|prettier\b|eslint\b|renovate\b|dependabot\b)", re.IGNORECASE
+    r"^(?:!|shellcheck\b|yamllint\b|prettier\b|oxlint\b|renovate\b|dependabot\b)", re.IGNORECASE
 )
 _TOML_STRING_OR_COMMENT_RE = re.compile(
     r"#[^\n]*|\"\"\"(?:\\.|(?!\"\"\")[^\\])*\"\"\"|'''(?:(?!''').)*'''|\"(?:\\.|[^\"\\])*\"|'[^'\n]*'",

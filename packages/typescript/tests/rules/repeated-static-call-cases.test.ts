@@ -1,18 +1,16 @@
 // vitest: shared-module-graph
-import * as tsParser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { Linter } from "eslint";
-import { afterAll, describe, expect, it } from "vitest";
+import { RuleTester } from "oxlint/plugins-dev";
+import { ruleReports } from "../_native-rule.js";
+import { describe, expect, it } from "vitest";
 
 import duplicateTestBody from "../../src/rules/duplicate-test-body.js";
 import rule, { REPEATED_STATIC_CALL_CASES_DOCUMENTATION } from "../../src/rules/repeated-static-call-cases.js";
 
-RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
 RuleTester.it = it;
 RuleTester.itOnly = it.only;
 
-const RULE_TESTER = new RuleTester({ languageOptions: { parser: tsParser } });
+const RULE_TESTER = new RuleTester({ languageOptions: { parserOptions: { lang: "ts" } } });
 const TEST_FILE = "/repo/src/parser.test.ts";
 
 RULE_TESTER.run("repeated-static-call-cases", rule, {
@@ -50,24 +48,6 @@ RULE_TESTER.run("repeated-static-call-cases", rule, {
 it("defers a duplicated callback to duplicate-test-body", () => {
   const code = `test('first', () => { const family = 'numbers'; expect(parse('1')).toBe(1); expect(parse('1.0')).toBe(1); expect(parse('1e0')).toBe(1); });
 test('second', () => { const family = 'numbers'; expect(parse('1')).toBe(1); expect(parse('1.0')).toBe(1); expect(parse('1e0')).toBe(1); });`;
-  const linter = new Linter({ configType: "flat" });
-  const messages = linter.verify(code, [
-    {
-      files: ["**/*.ts"],
-      languageOptions: { parser: tsParser },
-      plugins: {
-        local: {
-          rules: {
-            "duplicate-test-body": duplicateTestBody,
-            "repeated-static-call-cases": rule,
-          },
-        },
-      },
-      rules: {
-        "local/duplicate-test-body": "error",
-        "local/repeated-static-call-cases": "warn",
-      },
-    },
-  ], "src/parser.test.ts");
-  expect(messages.map((message) => message.ruleId)).toEqual(["local/duplicate-test-body"]);
+  expect(ruleReports(rule, code, "src/parser.test.ts")).toHaveLength(0);
+  expect(ruleReports(duplicateTestBody, code, "src/parser.test.ts")).toHaveLength(1);
 });

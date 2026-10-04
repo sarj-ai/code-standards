@@ -1,15 +1,13 @@
 // vitest: shared-module-graph
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import * as tsParser from "@typescript-eslint/parser";
-import { Linter } from "eslint";
-import { afterAll, describe, expect, it } from "vitest";
+import { RuleTester } from "oxlint/plugins-dev";
+import { ruleReports } from "../_native-rule.js";
+import { describe, expect, it } from "vitest";
 
 import rule, {
   NO_TYPED_DOC_SECTIONS_DOCUMENTATION,
 } from "../../src/rules/no-typed-doc-sections.js";
 import restatedJsdoc from "../../src/rules/no-restated-jsdoc.js";
 
-RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
 RuleTester.it = it;
 RuleTester.itOnly = it.only;
@@ -20,17 +18,13 @@ it.each([
   "/** @param missing */\nfunction f(value: string): void {}",
   "/** @returns 'string' */\nfunction f(): string { return 'string'; }",
 ])("preserves a contract with both JSDoc rules enabled: %s", (source) => {
-  const findings = new Linter().verify(source, [{
-    files: ["**/*.ts"],
-    languageOptions: { parser: tsParser },
-    plugins: { sarj: { rules: { typed: rule, restated: restatedJsdoc } } },
-    rules: { "sarj/typed": "warn", "sarj/restated": "warn" },
-  }], { filename: "src/contracts.ts" });
+  const findings = [ ...ruleReports(rule, source), ...ruleReports(restatedJsdoc, source) ];
   expect(findings).toEqual([]);
 });
 
-new RuleTester().run("no-typed-doc-sections", rule, {
+new RuleTester({ languageOptions: { parserOptions: { lang: "ts" } } }).run("no-typed-doc-sections", rule, {
   valid: [
+    { name: "does not require docs for an inferred return", code: "/** @param userId the user identifier */\nfunction f(userId: string) { return 1; }" },
     { name: "preserves explicit types that differ from the signature", code: "/** @param value {unused}\n * @returns {string}\n */\nfunction f(value: number): number { return value; }" },
     { name: "preserves a narrower explicit parameter type", code: "/** @param {string} value */\nfunction f(value: unknown): void {}" },
     { name: "preserves optional parameter defaults", code: "/** @param [value=ready] */\nfunction f(value: string): void {}" },

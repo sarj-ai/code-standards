@@ -1,55 +1,139 @@
-import { join } from "node:path";
+import { RuleTester } from "oxlint/plugins-dev";
 
-import * as tsParser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
-
-import rule from "../../src/rules/no-reduce-accumulator-copy.js";
-
-RuleTester.afterAll = afterAll;
+import rule, {
+  NO_REDUCE_ACCUMULATOR_COPY_DOCUMENTATION as DOC,
+} from "../../src/rules/no-reduce-accumulator-copy.js";
+import { describe, it } from "vitest";
 RuleTester.describe = describe;
 RuleTester.it = it;
-RuleTester.itOnly = it.only;
 
-const RULE_TESTER = new RuleTester({ languageOptions: { parser: tsParser, parserOptions: {
-  projectService: { allowDefaultProject: ["*.ts*"] }, tsconfigRootDir: join(import.meta.dirname, "..", "fixtures"),
-} } });
+const tester = new RuleTester({
+  languageOptions: { parserOptions: { lang: "ts" } },
+});
+const error = { messageId: "copy" };
 
-RULE_TESTER.run("no-reduce-accumulator-copy", rule, {
+tester.run("@sarj/no-reduce-accumulator-copy", rule, {
   valid: [
-    "declare const pages: string[][]; pages.reduce<string[]>((acc, page) => { for (const item of page) { consume(acc.slice()); } return page; }, []);",
-    "declare const pages: string[][]; pages.reduce<string[]>((acc, page) => { { const acc: string[] = []; acc.slice(); } return page; }, []);",
-    "declare const pages: string[][]; pages.reduce<string[]>((acc, page) => page.slice(), []);",
-    "declare const pairs: [string, string][]; pairs.reduce<Record<string, string>>((acc, [key, value]) => Object.assign(acc, { [key]: value }), {});",
-    "declare const values: string[]; const Object = { assign: (...args: unknown[]) => ({}) }; values.reduce((acc) => Object.assign({}, acc), {});",
-    "declare const pages: string[][]; const rows = pages.flatMap(page => page);",
-    "declare const pages: string[][]; pages.reduce<string[]>((acc, page) => { acc.push(...page); return acc; }, []);",
-    "declare const pages: string[][]; declare const seed: string[]; pages.reduce((acc, page) => acc.concat(page), seed);",
-    "declare const pages: string[][]; pages.reduce((acc, page) => acc.concat(page));",
-    "declare const values: number[]; values.reduce((acc, value) => acc + value, 0);",
-    "declare const values: string[]; values.reduce((acc, value) => acc.concat(value), '');",
-    "declare const pages: string[][]; pages.reduce<string[]>((acc, page) => { const later = () => acc.slice(); return page; }, []);",
-    "declare const pages: string[][]; pages.reduce<string[]>((acc, page) => { function copy(acc: string[]) { return acc.slice(); } return page; }, []);",
-    "declare const pages: string[][]; pages.reduce<string[]>((acc, page) => { acc = page; return acc.slice(); }, []);",
-    "declare const custom: { reduce(fn: (acc: string[], x: string[]) => string[], seed: string[]): string[] }; custom.reduce((acc, x) => acc.concat(x), []);",
-    "declare const pages: string[][]; const Array = { from: (x: string[]) => x }; pages.reduce<string[]>((acc) => Array.from(acc), []);",
-    { code: "// @generated\ndeclare const pages: string[][]; pages.reduce<string[]>((acc, page) => acc.concat(page), []);" },
+    "items.reduce((acc, item) => { acc.push(item); return acc; }, []);",
+    "items.reduce((acc, item) => Object.assign(acc, item), {});",
+    "items.reduce((acc, item) => Object.assign(acc, acc, item), {});",
+    "items.reduce((acc, item) => { acc[item.id] = { ...item }; return acc; }, {});",
+    "items.reduce((acc, item) => { acc.push(Object.assign({}, item)); return acc; }, []);",
+    "items.reduce((acc, item) => { acc.push(item.slice()); return acc; }, []);",
+    "items.reduce((acc, item) => acc.concat(item), '');",
+    "items.reduce((acc, item) => acc.concat(item), customCollection);",
+    "function copy(acc) { return Object.assign({}, acc); }",
+    "items.map((acc, item) => Object.assign({}, acc));",
+    "items.reduce((acc, item) => { function copy(acc) { return Object.assign({}, acc); } return acc; }, {});",
+    "items.reduce((acc, item) => { const snapshot = () => Object.assign({}, acc); return acc; }, {});",
+    "items.reduce((acc, item) => { { const acc = {}; Object.assign({}, acc); } return acc; }, {});",
+    "const Object = custom; items.reduce((acc, item) => Object.assign({}, acc), {});",
+    "function run(Object) { return items.reduce((acc, item) => Object.assign({}, acc), {}); }",
+    "const Array = custom; items.reduce((acc, item) => Array.from(acc), []);",
+    "items.reduce((acc, item) => { let alias = acc; alias = item; return Object.assign({}, alias); }, {});",
+    "items.reduce((acc, item) => [...acc, item], []);", // Owned by the native rule.
+    "items.reduce((acc, item) => ({ ...acc, [item.id]: item }), {});",
   ],
   invalid: [
-    { code: "declare const pairs: [string, string][]; pairs.reduce<Record<string, string>>((acc, [key, value]) => Object.assign({}, acc, { [key]: value }), {});", errors: [{ messageId: "copy" }] },
-    { code: "declare const pairs: [string, string][]; pairs.reduce<Record<string, string>>((acc, [key, value]) => ({ ...acc, [key]: value }), {});", errors: [{ messageId: "copy" }] },
-    { code: "declare const pages: string[][]; pages.reduce<string[]>((acc, page) => acc.concat(page), []);", errors: [{ messageId: "copy" }] },
-    { code: "declare const pages: string[][]; pages.reduceRight<string[]>((acc, page) => [...acc, ...page], []);", errors: [{ messageId: "copy" }] },
-    { code: "declare const pages: string[][]; pages.reduce<string[]>((acc, page) => { const next = acc.slice(); next.push(...page); return next; }, []);", errors: [{ messageId: "copy" }] },
-    { code: "declare const pages: string[][]; pages.reduce<string[]>((acc) => Array.from(acc), []);", errors: [{ messageId: "copy" }] },
-    { code: "declare const pages: string[][]; pages.reduce<string[]>((acc) => acc['toReversed'](), []);", errors: [{ messageId: "copy" }] },
-    { code: "declare const pages: string[][]; pages.reduce<string[]>((acc, page, index) => acc.concat(page), []);", errors: [{ messageId: "copy" }] },
+    {
+      code: "items.reduce((acc, item) => Object.assign({}, acc, { [item.id]: item }), {});",
+      errors: [error],
+    },
+    {
+      code: "items.reduceRight((acc, item) => Object.assign({}, acc, item), {});",
+      errors: [error],
+    },
+    {
+      code: "items.reduce((acc, item, index, array) => Object.assign({}, acc, item), {});",
+      errors: [error],
+    },
+    {
+      code: "items.reduce(acc => Object.assign({}, acc), {});",
+      errors: [error],
+    },
+    {
+      code: "items.reduce(function (acc, item) { return Object.assign({}, item, acc); }, {});",
+      errors: [error],
+    },
+    {
+      code: "items['reduce'](((acc, item) => Object['assign']({}, acc, item)), {});",
+      errors: [error],
+    },
+    {
+      code: "items.reduce((acc = {}, item) => Object.assign({}, acc, item), {});",
+      errors: [error],
+    },
+    {
+      code: "items.reduce((acc, item) => { const alias = acc; return Object.assign({}, alias, item); }, {});",
+      errors: [error],
+    },
+    {
+      code: "items.reduce((acc, item) => Object.assign({}, acc as State, item), {});",
+      errors: [error],
+    },
+    {
+      code: "items.reduce((acc, item) => { const next = Object.assign({}, acc); next[item.id] = item; return next; }, {});",
+      errors: [error],
+    },
+    {
+      code: "items.reduce((acc, item) => acc.concat([item]), []);",
+      errors: [error],
+    },
+    {
+      code: "items.reduceRight((acc, item, index) => acc['concat']([item]), [] as Item[]);",
+      errors: [error],
+    },
+    {
+      code: "items.reduce((acc, item) => { const next = acc.slice(); next.push(item); return next; }, []);",
+      errors: [error],
+    },
+    {
+      code: "items.reduce((acc, item) => { const alias = acc; return alias.concat(item); }, []);",
+      errors: [error],
+    },
+    {
+      code: "const initial = []; items.reduce((acc, item) => acc.concat(item), initial);",
+      errors: [error],
+    },
+    {
+      code: "items.reduce((acc, item) => { const next = Array.from(acc); next.push(item); return next; }, []);",
+      errors: [error],
+    },
+    {
+      code: "items.reduce((acc, item) => acc.toSpliced(acc.length, 0, item), []);",
+      errors: [error],
+    },
+    {
+      code: "items.reduce((acc, item) => acc.toSorted(), []);",
+      errors: [error],
+    },
+    {
+      code: "items.reduce((acc, item) => acc.toReversed(), []);",
+      errors: [error],
+    },
+    {
+      code: "items.reduce((acc, item) => acc.with(0, item), []);",
+      errors: [error],
+    },
   ],
 });
 
-const SYNTAX_TESTER = new RuleTester({ languageOptions: { parser: tsParser } });
-
-SYNTAX_TESTER.run("no-reduce-accumulator-copy without a type project", rule, {
-  valid: ["items.reduce((acc, item) => acc.concat(item), []);"],
-  invalid: [],
+const authored = new RuleTester({
+  languageOptions: { parserOptions: { lang: "ts" } },
+});
+authored.run("@sarj/no-reduce-accumulator-copy-authored", rule, {
+  valid: [
+    { code: DOC.examples[1].files[0].source, filename: "src/example.ts" },
+    {
+      code: "// @generated\n" + DOC.examples[0].files[0].source,
+      filename: "src/generated.ts",
+    },
+  ],
+  invalid: [
+    {
+      code: DOC.examples[0].files[0].source,
+      filename: "src/example.ts",
+      errors: [{ messageId: "copy" }],
+    },
+  ],
 });

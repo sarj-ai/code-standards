@@ -4,7 +4,9 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/require-camelcase-properties.test.ts
  */
 
-import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
+import { sourceOrigin } from "./_source-origin.js";
+import type { ESTree } from "@oxlint/plugins";
+
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile } from "./_paths.js";
@@ -50,7 +52,7 @@ const SNAKE_CASE_RE = /^[a-z][a-z0-9]*(?:_[a-z0-9]+)+$/u;
 
 interface PropertyNode {
   readonly computed?: boolean;
-  readonly key: TSESTree.Node;
+  readonly key: ESTree.Node;
 }
 
 export default createRule<Options, MessageIds>({
@@ -67,10 +69,11 @@ export default createRule<Options, MessageIds>({
   },
   defaultOptions: [],
   create(context) {
-    if (isGeneratedFile(context.filename, context.sourceCode.text)) return {};
+    if (isGeneratedFile(sourceOrigin(context).filename, sourceOrigin(context).text)) return {};
 
-    const checkProperty = (node: PropertyNode): void => {
-      if (node.computed === true || node.key.type !== AST_NODE_TYPES.Identifier) return;
+    const checkProperty = (node: ESTree.Node | PropertyNode): void => {
+      if (!("key" in node)) return;
+      if (("computed" in node && node.computed === true) || node.key.type !== "Identifier") return;
       if (!SNAKE_CASE_RE.test(node.key.name)) return;
       context.report({
         node: node.key,
@@ -81,17 +84,14 @@ export default createRule<Options, MessageIds>({
 
     return {
       AccessorProperty: checkProperty,
-      MemberExpression(node: TSESTree.MemberExpression): void {
-        if (!node.computed && node.property.type === AST_NODE_TYPES.Identifier) {
+      MemberExpression(node: ESTree.MemberExpression): void {
+        if (!node.computed && node.property.type === "Identifier") {
           checkProperty({ key: node.property });
         }
       },
       MethodDefinition: checkProperty,
       Property: checkProperty,
       PropertyDefinition: checkProperty,
-      TSAbstractAccessorProperty: checkProperty,
-      TSAbstractMethodDefinition: checkProperty,
-      TSAbstractPropertyDefinition: checkProperty,
       TSMethodSignature: checkProperty,
       TSPropertySignature: checkProperty,
     };

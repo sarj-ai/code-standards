@@ -4,7 +4,10 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/prefer-non-nullable-collection.test.ts
  */
 
-import { AST_NODE_TYPES, ASTUtils, type TSESTree, type TSESLint } from "@typescript-eslint/utils";
+import { sourceOrigin } from "./_source-origin.js";
+import type { ESTree, Context, SourceCode } from "@oxlint/plugins";
+import { findVariable } from "./_scope.js";
+
 
 import { forEachAstChild } from "./_for-each-ast-child.js";
 import { createRule, type RuleDocumentation } from "./_docs.js";
@@ -28,13 +31,11 @@ type Options = readonly [];
 const ARRAY_TYPE_NAMES: ReadonlySet<string> = new Set(["Array", "ReadonlyArray"]);
 
 type FunctionNode =
-  | TSESTree.ArrowFunctionExpression
-  | TSESTree.FunctionDeclaration
-  | TSESTree.FunctionExpression;
+  | ESTree.ArrowFunctionExpression | ESTree.Function;
 
 interface NullableProperty {
   readonly name: string;
-  readonly node: TSESTree.TSPropertySignature;
+  readonly node: ESTree.TSPropertySignature;
   readonly acceptsNull: boolean;
   readonly acceptsUndefined: boolean;
 }
@@ -44,63 +45,63 @@ interface TypeShape {
   readonly properties: readonly NullableProperty[];
 }
 
-function propertyName(node: TSESTree.TSPropertySignature): string | null {
+function propertyName(node: ESTree.TSPropertySignature): string | null {
   const key = node.key;
   if (node.computed) return null;
-  if (key.type === AST_NODE_TYPES.Identifier) return key.name;
-  if (key.type === AST_NODE_TYPES.Literal && typeof key.value === "string") return key.value;
+  if (key.type === "Identifier") return key.name;
+  if (key.type === "Literal" && typeof key.value === "string") return key.value;
   return null;
 }
 
-function isArrayType(node: TSESTree.TypeNode): boolean {
-  if (node.type === AST_NODE_TYPES.TSArrayType) return true;
+function isArrayType(node: ESTree.TSType): boolean {
+  if (node.type === "TSArrayType") return true;
   return (
-    node.type === AST_NODE_TYPES.TSTypeReference &&
-    node.typeName.type === AST_NODE_TYPES.Identifier &&
+    node.type === "TSTypeReference" &&
+    node.typeName.type === "Identifier" &&
     ARRAY_TYPE_NAMES.has(node.typeName.name)
   );
 }
 
-function nullableProperty(node: TSESTree.TSPropertySignature): NullableProperty | null {
+function nullableProperty(node: ESTree.TSPropertySignature): NullableProperty | null {
   if (node.optional) return null;
   const name = propertyName(node);
   const annotation = node.typeAnnotation?.typeAnnotation;
-  if (name === null || annotation?.type !== AST_NODE_TYPES.TSUnionType) return null;
+  if (name === null || annotation?.type !== "TSUnionType") return null;
   const concrete = annotation.types.filter(
     (member) =>
-      member.type !== AST_NODE_TYPES.TSNullKeyword &&
-      member.type !== AST_NODE_TYPES.TSUndefinedKeyword,
+      member.type !== "TSNullKeyword" &&
+      member.type !== "TSUndefinedKeyword",
   );
   if (concrete.length === 0 || !concrete.every(isArrayType)) return null;
-  const acceptsNull = annotation.types.some((member) => member.type === AST_NODE_TYPES.TSNullKeyword);
+  const acceptsNull = annotation.types.some((member) => member.type === "TSNullKeyword");
   const acceptsUndefined = annotation.types.some(
-    (member) => member.type === AST_NODE_TYPES.TSUndefinedKeyword,
+    (member) => member.type === "TSUndefinedKeyword",
   );
   if (!acceptsNull && !acceptsUndefined) return null;
   return { name, node, acceptsNull, acceptsUndefined };
 }
 
-function shapeProperties(members: readonly TSESTree.TypeElement[]): readonly NullableProperty[] {
+function shapeProperties(members: readonly ESTree.TSSignature[]): readonly NullableProperty[] {
   return members.flatMap((member) => {
-    if (member.type !== AST_NODE_TYPES.TSPropertySignature) return [];
+    if (member.type !== "TSPropertySignature") return [];
     const property = nullableProperty(member);
     return property === null ? [] : [property];
   });
 }
 
-function typeIndex(program: TSESTree.Program): ReadonlyMap<string, TypeShape> {
+function typeIndex(program: ESTree.Program): ReadonlyMap<string, TypeShape> {
   const index = new Map<string, TypeShape>();
   for (const statement of program.body) {
-    const exported = statement.type === AST_NODE_TYPES.ExportNamedDeclaration;
+    const exported = statement.type === "ExportNamedDeclaration";
     const declaration = exported ? statement.declaration : statement;
-    if (declaration?.type === AST_NODE_TYPES.TSInterfaceDeclaration) {
+    if (declaration?.type === "TSInterfaceDeclaration") {
       index.set(declaration.id.name, {
         exported,
         properties: shapeProperties(declaration.body.body),
       });
     } else if (
-      declaration?.type === AST_NODE_TYPES.TSTypeAliasDeclaration &&
-      declaration.typeAnnotation.type === AST_NODE_TYPES.TSTypeLiteral
+      declaration?.type === "TSTypeAliasDeclaration" &&
+      declaration.typeAnnotation.type === "TSTypeLiteral"
     ) {
       index.set(declaration.id.name, {
         exported,
@@ -111,49 +112,49 @@ function typeIndex(program: TSESTree.Program): ReadonlyMap<string, TypeShape> {
   return index;
 }
 
-function emptyArray(node: TSESTree.Expression): boolean {
-  return node.type === AST_NODE_TYPES.ArrayExpression && node.elements.length === 0;
+function emptyArray(node: ESTree.Expression): boolean {
+  return node.type === "ArrayExpression" && node.elements.length === 0;
 }
 
 function sameAccess(
-  node: TSESTree.Node,
+  node: ESTree.Node,
   access: { readonly kind: "identifier"; readonly name: string } |
   { readonly kind: "member"; readonly object: string; readonly property: string },
 ): boolean {
   if (access.kind === "identifier") {
-    return node.type === AST_NODE_TYPES.Identifier && node.name === access.name;
+    return node.type === "Identifier" && node.name === access.name;
   }
   return (
-    node.type === AST_NODE_TYPES.MemberExpression &&
+    node.type === "MemberExpression" &&
     !node.computed &&
-    node.object.type === AST_NODE_TYPES.Identifier &&
+    node.object.type === "Identifier" &&
     node.object.name === access.object &&
-    node.property.type === AST_NODE_TYPES.Identifier &&
+    node.property.type === "Identifier" &&
     node.property.name === access.property
   );
 }
 
 function memberLengthOf(
-  node: TSESTree.Node,
+  node: ESTree.Node,
   access: Parameters<typeof sameAccess>[1],
 ): boolean {
-  const target = node.type === AST_NODE_TYPES.ChainExpression ? node.expression : node;
+  const target = node.type === "ChainExpression" ? node.expression : node;
   return (
-    target.type === AST_NODE_TYPES.MemberExpression &&
+    target.type === "MemberExpression" &&
     !target.computed &&
-    target.property.type === AST_NODE_TYPES.Identifier &&
+    target.property.type === "Identifier" &&
     target.property.name === "length" &&
     sameAccess(target.object, access)
   );
 }
 
 function optionalMemberLengthOf(
-  node: TSESTree.Node,
+  node: ESTree.Node,
   access: Parameters<typeof sameAccess>[1],
 ): boolean {
   return (
-    node.type === AST_NODE_TYPES.ChainExpression &&
-    node.expression.type === AST_NODE_TYPES.MemberExpression &&
+    node.type === "ChainExpression" &&
+    node.expression.type === "MemberExpression" &&
     node.expression.optional &&
     memberLengthOf(node, access)
   );
@@ -162,86 +163,87 @@ function optionalMemberLengthOf(
 function hasEquivalentLeadingGuard(
   fn: FunctionNode,
   access: Parameters<typeof sameAccess>[1],
-  visitorKeys: Readonly<TSESLint.SourceCode.VisitorKeys>,
+  visitorKeys: Readonly<SourceCode["visitorKeys"]>,
 ): boolean {
-  if (fn.body.type !== AST_NODE_TYPES.BlockStatement) return false;
+  if (fn.body === null) return false;
+  if (fn.body.type !== "BlockStatement") return false;
   const first = fn.body.body[0];
-  if (first?.type !== AST_NODE_TYPES.IfStatement) return false;
+  if (first?.type !== "IfStatement") return false;
   const terminating =
-    first.consequent.type === AST_NODE_TYPES.ReturnStatement ||
-    first.consequent.type === AST_NODE_TYPES.ThrowStatement ||
-    first.consequent.type === AST_NODE_TYPES.BlockStatement &&
+    first.consequent.type === "ReturnStatement" ||
+    first.consequent.type === "ThrowStatement" ||
+    first.consequent.type === "BlockStatement" &&
     first.consequent.body.length === 1 &&
-    (first.consequent.body[0]?.type === AST_NODE_TYPES.ReturnStatement ||
-      first.consequent.body[0]?.type === AST_NODE_TYPES.ThrowStatement);
+    (first.consequent.body[0]?.type === "ReturnStatement" ||
+      first.consequent.body[0]?.type === "ThrowStatement");
   if (!terminating) return false;
   if (contains(first.consequent, visitorKeys, (node) => sameAccess(node, access))) return false;
-  if (first.test.type === AST_NODE_TYPES.UnaryExpression && first.test.operator === "!" &&
+  if (first.test.type === "UnaryExpression" && first.test.operator === "!" &&
     optionalMemberLengthOf(first.test.argument, access)) return true;
   return (
-    first.test.type === AST_NODE_TYPES.LogicalExpression && first.test.operator === "||" &&
+    first.test.type === "LogicalExpression" && first.test.operator === "||" &&
     isNullGuard(first.test.left, access) && isEmptyGuard(first.test.right, access)
   );
 }
 
-function isNullGuard(node: TSESTree.Node, access: Parameters<typeof sameAccess>[1]): boolean {
+function isNullGuard(node: ESTree.Node, access: Parameters<typeof sameAccess>[1]): boolean {
   if (
-    node.type === AST_NODE_TYPES.UnaryExpression &&
+    node.type === "UnaryExpression" &&
     node.operator === "!" &&
     (sameAccess(node.argument, access) || optionalMemberLengthOf(node.argument, access))
   ) return true;
-  if (node.type !== AST_NODE_TYPES.BinaryExpression || !["==", "==="].includes(node.operator)) {
+  if (node.type !== "BinaryExpression" || !["==", "==="].includes(node.operator)) {
     return false;
   }
-  const nullish = (value: TSESTree.Node): boolean =>
-    value.type === AST_NODE_TYPES.Literal && value.value === null ||
-    value.type === AST_NODE_TYPES.Identifier && value.name === "undefined";
+  const nullish = (value: ESTree.Node): boolean =>
+    value.type === "Literal" && value.value === null ||
+    value.type === "Identifier" && value.name === "undefined";
   return sameAccess(node.left, access) && nullish(node.right) ||
     sameAccess(node.right, access) && nullish(node.left);
 }
 
-function isEmptyGuard(node: TSESTree.Node, access: Parameters<typeof sameAccess>[1]): boolean {
+function isEmptyGuard(node: ESTree.Node, access: Parameters<typeof sameAccess>[1]): boolean {
   if (
-    node.type === AST_NODE_TYPES.UnaryExpression &&
+    node.type === "UnaryExpression" &&
     node.operator === "!" &&
     memberLengthOf(node.argument, access)
   ) return true;
-  if (node.type !== AST_NODE_TYPES.BinaryExpression || !["==", "===", "<="].includes(node.operator)) {
+  if (node.type !== "BinaryExpression" || !["==", "===", "<="].includes(node.operator)) {
     return false;
   }
-  const zero = (value: TSESTree.Node): boolean =>
-    value.type === AST_NODE_TYPES.Literal && value.value === 0;
+  const zero = (value: ESTree.Node): boolean =>
+    value.type === "Literal" && value.value === 0;
   return memberLengthOf(node.left, access) && zero(node.right) ||
     node.operator !== "<=" && memberLengthOf(node.right, access) && zero(node.left);
 }
 
 function contains(
-  node: TSESTree.Node,
-  visitorKeys: Readonly<TSESLint.SourceCode.VisitorKeys>,
-  predicate: (current: TSESTree.Node) => boolean,
+  node: ESTree.Node,
+  visitorKeys: Readonly<SourceCode["visitorKeys"]>,
+  predicate: (current: ESTree.Node) => boolean,
 ): boolean {
   if (predicate(node)) return true;
   return forEachAstChild(node, visitorKeys, child => contains(child, visitorKeys, predicate));
 }
 
-function belongsToFunction(node: TSESTree.Node, fn: FunctionNode): boolean {
-  let current: TSESTree.Node | undefined = node;
-  while (current !== undefined && current !== fn) {
+function belongsToFunction(node: ESTree.Node, fn: FunctionNode): boolean {
+  let current: ESTree.Node | null | undefined = node;
+  while (current != null && current !== fn) {
     if (
       current !== node &&
-      (current.type === AST_NODE_TYPES.ArrowFunctionExpression ||
-        current.type === AST_NODE_TYPES.FunctionDeclaration ||
-        current.type === AST_NODE_TYPES.FunctionExpression)
+      (current.type === "ArrowFunctionExpression" ||
+        current.type === "FunctionDeclaration" ||
+        current.type === "FunctionExpression")
     ) return false;
     current = current.parent;
   }
   return current === fn;
 }
 
-function directlyCoalesced(node: TSESTree.Node): boolean {
+function directlyCoalesced(node: ESTree.Node): boolean {
   const parent = node.parent;
   return (
-    parent?.type === AST_NODE_TYPES.LogicalExpression &&
+    parent?.type === "LogicalExpression" &&
     parent.left === node &&
     (parent.operator === "??" || parent.operator === "||") &&
     emptyArray(parent.right)
@@ -249,11 +251,11 @@ function directlyCoalesced(node: TSESTree.Node): boolean {
 }
 
 function identifierIsOnlyCoalesced(
-  context: Readonly<TSESLint.RuleContext<MessageIds, Options>>,
-  binding: TSESTree.Identifier,
+  context: Readonly<Context>,
+  binding: ESTree.BindingIdentifier,
   fn: FunctionNode,
 ): boolean {
-  const variable = ASTUtils.findVariable(context.sourceCode.getScope(binding), binding.name);
+  const variable = findVariable(context.sourceCode.getScope(binding), binding.name);
   if (variable === null || variable.references.length === 0) return false;
   return variable.references.every(
     (reference) =>
@@ -262,24 +264,24 @@ function identifierIsOnlyCoalesced(
 }
 
 function memberIsOnlyCoalesced(
-  context: Readonly<TSESLint.RuleContext<MessageIds, Options>>,
-  object: TSESTree.Identifier,
+  context: Readonly<Context>,
+  object: ESTree.BindingIdentifier,
   property: string,
   fn: FunctionNode,
 ): boolean {
-  const variable = ASTUtils.findVariable(context.sourceCode.getScope(object), object.name);
+  const variable = findVariable(context.sourceCode.getScope(object), object.name);
   if (variable === null) return false;
   const accesses = variable.references.flatMap((reference) => {
     if (!belongsToFunction(reference.identifier, fn)) return [null];
     const parent = reference.identifier.parent;
     if (
-      parent?.type === AST_NODE_TYPES.MemberExpression &&
+      parent?.type === "MemberExpression" &&
       !parent.computed &&
       parent.object === reference.identifier &&
-      parent.property.type === AST_NODE_TYPES.Identifier &&
+      parent.property.type === "Identifier" &&
       parent.property.name === property
     ) return [parent];
-    return parent?.type === AST_NODE_TYPES.MemberExpression && parent.object === reference.identifier ? [] : [null];
+    return parent?.type === "MemberExpression" && parent.object === reference.identifier ? [] : [null];
   });
   return accesses.length > 0 && accesses.every((access) => access !== null && directlyCoalesced(access));
 }
@@ -301,18 +303,18 @@ export default createRule<Options, MessageIds>({
   },
   defaultOptions: [],
   create(context) {
-    if (isTestFile(context.filename) || isGeneratedFile(context.filename, context.sourceCode.text)) {
+    if (isTestFile(sourceOrigin(context).filename) || isGeneratedFile(sourceOrigin(context).filename, sourceOrigin(context).text)) {
       return {};
     }
 
     let shapes: ReadonlyMap<string, TypeShape> = new Map();
-    const evidence = new Map<TSESTree.TSPropertySignature, boolean[]>();
+    const evidence = new Map<ESTree.TSPropertySignature, boolean[]>();
 
-    function propertiesFor(annotation: TSESTree.TypeNode | undefined): readonly NullableProperty[] {
-      if (annotation?.type === AST_NODE_TYPES.TSTypeLiteral) return shapeProperties(annotation.members);
+    function propertiesFor(annotation: ESTree.TSType | undefined): readonly NullableProperty[] {
+      if (annotation?.type === "TSTypeLiteral") return shapeProperties(annotation.members);
       if (
-        annotation?.type === AST_NODE_TYPES.TSTypeReference &&
-        annotation.typeName.type === AST_NODE_TYPES.Identifier
+        annotation?.type === "TSTypeReference" &&
+        annotation.typeName.type === "Identifier"
       ) {
         const shape = shapes.get(annotation.typeName.name);
         return shape?.exported === false ? shape.properties : [];
@@ -327,16 +329,16 @@ export default createRule<Options, MessageIds>({
     }
 
     function checkFunction(fn: FunctionNode): void {
-      function checkParameter(rawParameter: TSESTree.Parameter): void {
-        const parameter = rawParameter.type === AST_NODE_TYPES.AssignmentPattern
+      function checkParameter(rawParameter: ESTree.ParamPattern): void {
+        const parameter = rawParameter.type === "AssignmentPattern"
           ? rawParameter.left
           : rawParameter;
-        if (parameter.type === AST_NODE_TYPES.ObjectPattern) {
+        if (parameter.type === "ObjectPattern") {
           const properties = propertiesFor(parameter.typeAnnotation?.typeAnnotation);
           checkDestructuredProperties(parameter, properties);
           return;
         }
-        if (parameter.type !== AST_NODE_TYPES.Identifier) return;
+        if (parameter.type !== "Identifier") return;
         const properties = propertiesFor(parameter.typeAnnotation?.typeAnnotation);
         for (const property of properties) {
           const access = {
@@ -352,24 +354,24 @@ export default createRule<Options, MessageIds>({
         }
       }
 
-      function checkDestructuredProperties(parameter: TSESTree.ObjectPattern, properties: readonly NullableProperty[]): void {
+      function checkDestructuredProperties(parameter: ESTree.ObjectPattern, properties: readonly NullableProperty[]): void {
         for (const property of properties) {
           const bindingProperty = parameter.properties.find(
-            (entry): entry is TSESTree.Property =>
-              entry.type === AST_NODE_TYPES.Property &&
+            (entry): entry is ESTree.BindingProperty =>
+              entry.type === "Property" &&
               !entry.computed &&
-              entry.key.type === AST_NODE_TYPES.Identifier &&
+              entry.key.type === "Identifier" &&
               entry.key.name === property.name,
           );
           if (bindingProperty === undefined) continue;
           const value = bindingProperty.value;
-          const binding = value.type === AST_NODE_TYPES.AssignmentPattern ? value.left : value;
-          if (binding.type !== AST_NODE_TYPES.Identifier) {
+          const binding = value.type === "AssignmentPattern" ? value.left : value;
+          if (binding.type !== "Identifier") {
             record(property, false);
             continue;
           }
           if (
-            value.type === AST_NODE_TYPES.AssignmentPattern &&
+            value.type === "AssignmentPattern" &&
             emptyArray(value.right) &&
             property.acceptsUndefined &&
             !property.acceptsNull
