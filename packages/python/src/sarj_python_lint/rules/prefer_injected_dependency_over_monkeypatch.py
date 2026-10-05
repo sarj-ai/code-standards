@@ -41,17 +41,21 @@ class PreferInjectedDependencyOverMonkeypatch(Rule):
     code: str = "SARJ445"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
         default_level=Severity.ERROR,
-        summary="Tests should inject dependencies instead of replacing attributes through ambient patching.",
+        summary="Prefer explicit test dependencies; justify scoped attribute patches at the boundary.",
         rationale=(
             "Attribute patching hides collaborators and configuration behind ambient module or object state, coupling "
-            "tests to lookup locations instead of an explicit boundary. Pytest monkeypatch remains appropriate for "
+            "tests to lookup locations instead of an explicit boundary. Replacing a scoped patch with bare assignment "
+            "does not fix that coupling and loses automatic restoration. Pytest monkeypatch remains appropriate for "
             "reversible process state such as environment variables and the working directory."
         ),
         remediation=(
             "Pass the collaborator, settings, clock, sleeper, random source, client, or factory explicitly; prefer a "
-            "real in-process dependency, framework override, or purpose-built ABC/Protocol fake. If a runtime "
-            "boundary is inherently global, or intercepting its lookup is the behavior under test, suppress SARJ445 "
-            "at that call with the concrete reason an owned injection seam would invalidate the test."
+            "real in-process dependency, framework override, or purpose-built ABC/Protocol fake. A scoped patch may "
+            "replace an existing constructor-injected collaborator on a test-owned instance with an interface-conforming "
+            "fake when rebuilding the fixture would add wiring without improving the boundary. Keep attribute-existence "
+            "checks enabled and the tested implementation intact. Suppress SARJ445 only at that call, naming the "
+            "owned instance and injection seam. For inherently global boundaries or lookup interception, explain why "
+            "injection would invalidate the test. Do not switch to bare assignment merely to avoid this rule."
         ),
         category=RuleCategory.TESTING,
         autofix=AutofixPolicy.NONE,
@@ -61,6 +65,7 @@ class PreferInjectedDependencyOverMonkeypatch(Rule):
             "Environment, mapping, import-path, and working-directory mutations are intentionally allowed.",
             "Untyped handles are recognized only on pytest tests or fixtures; directly parametrized values are excluded.",
             "A nested function that captures a monkeypatch handle from an outer scope is not inferred.",
+            "Instance ownership and collaborator contracts are not inferred; justified scoped patches need a local suppression.",
         ),
         examples=(
             RuleExample(

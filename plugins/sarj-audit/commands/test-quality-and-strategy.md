@@ -119,8 +119,14 @@ test. These defaults complement the judgment checks above:
   distinction is not obvious from the values.
 - Use scoped monkeypatching for process boundaries such as environment, clocks,
   or unavoidable third-party globals. Prefer constructor injection for service
-  dependencies; replacing `subject.method` with `monkeypatch.setattr` still
-  replaces the implementation the test claims to exercise.
+  dependencies. A scoped patch may replace an existing constructor-injected
+  collaborator on a test-owned instance with an interface-conforming fake when
+  rebuilding the fixture would add wiring without improving the boundary. Keep
+  attribute-existence checks enabled, preserve the tested implementation, and
+  explain ownership and the injection seam in an exact local `SARJ445` suppression.
+  Replacing `subject.method` still bypasses the behavior being tested. Do not
+  convert scoped patches to bare assignment just to silence the rule; restoration
+  alone also does not justify a patch.
 
 ### A small language switch harness
 
