@@ -15,6 +15,7 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
     from pathlib import Path
 
+    from sarj_python_lint.rules._copy_on_write import CopyOnWriteAnalysis
     from sarj_python_lint.rules._test_provenance import TestProvenance
 
 
@@ -79,3 +80,9 @@ class PythonFileContext:
             msg = "syntax-dependent facts require a successfully parsed source file"
             raise ValueError(msg)
         return tree
+
+    @cached_property
+    def copy_on_write(self) -> CopyOnWriteAnalysis:
+        from sarj_python_lint.rules._copy_on_write import CopyOnWriteAnalysis  # ruff: ignore[import-outside-top-level] — share ownership analysis only when requested
+
+        return CopyOnWriteAnalysis(self)

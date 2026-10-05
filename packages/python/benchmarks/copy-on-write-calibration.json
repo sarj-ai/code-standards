@@ -1,0 +1,668 @@
+{
+  "schemaVersion": 1,
+  "decision": "ship-warning",
+  "date": "2026-10-05",
+  "rules": [
+    {
+      "id": "python:no-input-model-mutation",
+      "code": "SARJ481",
+      "severity": "warning",
+      "autofix": "none",
+      "implementation": "packages/python/src/sarj_python_lint/rules/no_input_model_mutation.py",
+      "labeled_evaluation": {
+        "rule": "no-input-model-mutation",
+        "cases": 43,
+        "tp": 16,
+        "tn": 27,
+        "fp": 0,
+        "fn": 0,
+        "duplicates": 0
+      },
+      "inspected_live_matches": 40,
+      "live_false_positives": 0
+    },
+    {
+      "id": "python:no-before-validator-input-mutation",
+      "code": "SARJ482",
+      "severity": "warning",
+      "autofix": "none",
+      "implementation": "packages/python/src/sarj_python_lint/rules/no_before_validator_input_mutation.py",
+      "labeled_evaluation": {
+        "rule": "no-before-validator-input-mutation",
+        "cases": 20,
+        "tp": 9,
+        "tn": 11,
+        "fp": 0,
+        "fn": 0,
+        "duplicates": 0
+      },
+      "inspected_live_matches": 3,
+      "live_false_positives": 0
+    },
+    {
+      "id": "python:no-unused-copy-result",
+      "code": "SARJ483",
+      "severity": "warning",
+      "autofix": "none",
+      "implementation": "packages/python/src/sarj_python_lint/rules/no_unused_copy_result.py",
+      "labeled_evaluation": {
+        "rule": "no-unused-copy-result",
+        "cases": 13,
+        "tp": 5,
+        "tn": 8,
+        "fp": 0,
+        "fn": 0,
+        "duplicates": 0
+      },
+      "inspected_live_matches": 0,
+      "live_false_positives": 0
+    }
+  ],
+  "scope": "Source-proven ownership policy, not proof that every in-place API has a production defect. Unknown ownership and effects remain judgment audit work.",
+  "label_definition": "MATCH labels describe the supported detector contract. NO_MATCH labels include deliberate abstentions; zero labeled false negatives does not imply complete mutation detection.",
+  "shared_analysis": "packages/python/src/sarj_python_lint/rules/_copy_on_write.py; cached once per PythonFileContext and backed by the shared project AST index. Application model modules are never imported.",
+  "validation": {
+    "focused_python_tests": 93,
+    "runtime_semantic_tests": 5,
+    "python_package_tests": 8950,
+    "standards_wheel_tests": 2594,
+    "make_verify": "passed",
+    "typecheck": "0 errors and 0 warnings",
+    "native_self_lint": "all 113 Python rules pass on new implementation and tests",
+    "cli_behavior": "Warnings exit 0 and do not enter blocking baselines.",
+    "runtime_evidence": [
+      "Changed-path replacements preserve original inputs and earlier outputs across repeated calls.",
+      "A shallow-copy control demonstrates shared nested identity.",
+      "Replacement normalization preserves raw input on validation success and failure.",
+      "Discarding a model_copy result leaves the original unchanged."
+    ],
+    "interactions": "SARJ482 owns raw-input mutation in before validators; SARJ401 retains frozen after-validator writes. No same-location duplicate candidate diagnostics were found."
+  },
+  "corpus": {
+    "corpora": [
+      {
+        "label": "pydantic",
+        "files": 105,
+        "bytes": 1773212,
+        "matches": {
+          "SARJ481": 0,
+          "SARJ482": 0,
+          "SARJ483": 0
+        },
+        "duplicates": 0
+      },
+      {
+        "label": "<private-corpus>",
+        "files": 548,
+        "bytes": 7161399,
+        "matches": {
+          "SARJ481": 0,
+          "SARJ482": 0,
+          "SARJ483": 0
+        },
+        "duplicates": 0
+      },
+      {
+        "label": "<private-corpus>",
+        "files": 1610,
+        "bytes": 12655319,
+        "matches": {
+          "SARJ481": 37,
+          "SARJ482": 3,
+          "SARJ483": 0
+        },
+        "duplicates": 0
+      },
+      {
+        "label": "<private-corpus>",
+        "files": 1012,
+        "bytes": 9016055,
+        "matches": {
+          "SARJ481": 3,
+          "SARJ482": 0,
+          "SARJ483": 0
+        },
+        "duplicates": 0
+      }
+    ],
+    "elapsed_seconds": 43.07552,
+    "batches": 16,
+    "batch_size": 250,
+    "selected_files": 3275,
+    "selected_bytes": 30605985,
+    "public_package": {
+      "package": "pydantic",
+      "version": "2.13.5",
+      "source_digest": "sha256:d1a720d1b42b27a20183423cf80b7bae8d18d2a59825dc36ecb86972f2f61a05"
+    },
+    "private_pins": "Three verified owner-readable local Git snapshots. Full revisions, content digests, identities, and raw findings remain in the private evaluation boundary.",
+    "snapshot_definition": "Git snapshots pin HEAD and current tracked working-tree bytes, including existing uncommitted changes; untracked new regression fixtures are exercised separately by tests.",
+    "selection": "All tracked existing Python files in the Git snapshots; all Python source in the already-installed public package copy. No clone, fetch, download, or consumer edit.",
+    "exclusions": "The native runner skips oversized files and generated/vendor paths or banners. Maintained tests are included. Counts describe selected inputs, not an assertion that every source has eligible model provenance.",
+    "inspection": "Every retained finding was reviewed through anonymized AST structure; 40 input-mutation policy findings and 3 raw-validator mutations, 0 known false positives, 0 duplicates. Nonmatching live locations were not exhaustively reviewed.",
+    "refinements": [
+      "Bound annotation traversal after a recursive public-package type alias crashed the initial candidate.",
+      "Exclude import-proven pytest.raises assertions after reviewing four intentionally discarded replacements.",
+      "Preserve ownership depth in homogeneous literals and abstain on mixed ownership and keyword-based container overrides."
+    ]
+  },
+  "performance": {
+    "budget_maximum_slowdown": 1.25,
+    "cache_definition": "first analyze in fresh process; OS filesystem cache not cleared; three subsequent analyze calls rebuild per-invocation sessions",
+    "corpora": [
+      {
+        "label": "pydantic",
+        "files": 105,
+        "bytes": 1773212,
+        "selection": "first 250 sorted pinned paths; all when fewer",
+        "samples": [
+          {
+            "mode": "baseline",
+            "process_cold_seconds": 7.332415790995583,
+            "warm_seconds": [
+              7.333699750015512,
+              7.349911791970953,
+              7.478766374988481
+            ],
+            "warm_median_seconds": 7.349911791970953,
+            "peak_memory_bytes": 120176640,
+            "findings_per_run": [
+              800,
+              800,
+              800,
+              800
+            ],
+            "rules": 109,
+            "excluded_rules": [
+              "no-unnecessary-docstring"
+            ],
+            "python": "3.14.7",
+            "cold_samples_seconds": [
+              7.332415790995583,
+              7.46241987508256,
+              7.911058958037756
+            ],
+            "cold_median_seconds": 7.46241987508256
+          },
+          {
+            "mode": "combined",
+            "process_cold_seconds": 7.629946124972776,
+            "warm_seconds": [
+              9.496766458032653,
+              7.914963999995962,
+              7.929705083020963
+            ],
+            "warm_median_seconds": 7.929705083020963,
+            "peak_memory_bytes": 186073088,
+            "findings_per_run": [
+              800,
+              800,
+              800,
+              800
+            ],
+            "rules": 112,
+            "excluded_rules": [
+              "no-unnecessary-docstring"
+            ],
+            "python": "3.14.7",
+            "cold_samples_seconds": [
+              7.629946124972776,
+              7.930786291952245,
+              7.789300792035647
+            ],
+            "cold_median_seconds": 7.789300792035647
+          },
+          {
+            "mode": "candidate-only",
+            "process_cold_seconds": 0.5379100830759853,
+            "warm_seconds": [
+              0.6919900829670951,
+              0.533552790991962,
+              0.7020495830802247
+            ],
+            "warm_median_seconds": 0.6919900829670951,
+            "peak_memory_bytes": 167854080,
+            "findings_per_run": [
+              0,
+              0,
+              0,
+              0
+            ],
+            "rules": 3,
+            "excluded_rules": [
+              "no-unnecessary-docstring"
+            ],
+            "python": "3.14.7",
+            "cold_samples_seconds": [
+              0.5379100830759853,
+              0.5562056250637397,
+              0.5571926670381799
+            ],
+            "cold_median_seconds": 0.5562056250637397
+          }
+        ],
+        "warm_slowdown": 1.0788843876580092,
+        "cold_slowdown": 1.0405773952893627,
+        "cold_median_slowdown": 1.0438036082698268
+      },
+      {
+        "label": "<private-corpus>",
+        "files": 250,
+        "bytes": 3229479,
+        "selection": "first 250 sorted pinned paths; all when fewer",
+        "samples": [
+          {
+            "mode": "combined",
+            "process_cold_seconds": 17.025037416955456,
+            "warm_seconds": [
+              18.03732250002213,
+              18.490453458973207,
+              18.720386040979065
+            ],
+            "warm_median_seconds": 18.490453458973207,
+            "peak_memory_bytes": 416006144,
+            "findings_per_run": [
+              5,
+              5,
+              5,
+              5
+            ],
+            "rules": 113,
+            "excluded_rules": [],
+            "python": "3.14.7",
+            "cold_samples_seconds": [
+              17.025037416955456,
+              18.946955332998186,
+              18.22833166702185
+            ],
+            "cold_median_seconds": 18.22833166702185
+          },
+          {
+            "mode": "baseline",
+            "process_cold_seconds": 16.390787958051078,
+            "warm_seconds": [
+              17.475771042052656,
+              18.125738292001188,
+              17.785833167028613
+            ],
+            "warm_median_seconds": 17.785833167028613,
+            "peak_memory_bytes": 375619584,
+            "findings_per_run": [
+              5,
+              5,
+              5,
+              5
+            ],
+            "rules": 110,
+            "excluded_rules": [],
+            "python": "3.14.7",
+            "cold_samples_seconds": [
+              16.390787958051078,
+              17.94830358296167,
+              17.7240072080167
+            ],
+            "cold_median_seconds": 17.7240072080167
+          },
+          {
+            "mode": "candidate-only",
+            "process_cold_seconds": 1.8183493330143392,
+            "warm_seconds": [
+              2.2820747499354184,
+              2.705774417030625,
+              3.4373269580537453
+            ],
+            "warm_median_seconds": 2.705774417030625,
+            "peak_memory_bytes": 441712640,
+            "findings_per_run": [
+              0,
+              0,
+              0,
+              0
+            ],
+            "rules": 3,
+            "excluded_rules": [],
+            "python": "3.14.7",
+            "cold_samples_seconds": [
+              1.8183493330143392,
+              1.96881037496496,
+              2.0831927919061854
+            ],
+            "cold_median_seconds": 1.96881037496496
+          }
+        ],
+        "warm_slowdown": 1.0396169403663822,
+        "cold_slowdown": 1.0386954831291584,
+        "cold_median_slowdown": 1.0284543135807933
+      },
+      {
+        "label": "<private-corpus>",
+        "files": 250,
+        "bytes": 2279365,
+        "selection": "first 250 sorted pinned paths; all when fewer",
+        "samples": [
+          {
+            "mode": "baseline",
+            "process_cold_seconds": 10.461682749912143,
+            "warm_seconds": [
+              11.42855241696816,
+              16.192736833007075,
+              11.604225457995199
+            ],
+            "warm_median_seconds": 11.604225457995199,
+            "peak_memory_bytes": 538705920,
+            "findings_per_run": [
+              693,
+              693,
+              693,
+              693
+            ],
+            "rules": 110,
+            "excluded_rules": [],
+            "python": "3.14.7",
+            "cold_samples_seconds": [
+              10.461682749912143,
+              11.023722584010102,
+              10.64267833402846
+            ],
+            "cold_median_seconds": 10.64267833402846
+          },
+          {
+            "mode": "combined",
+            "process_cold_seconds": 20.790523916948587,
+            "warm_seconds": [
+              12.97123525000643,
+              11.697171917068772,
+              11.78807579097338
+            ],
+            "warm_median_seconds": 11.78807579097338,
+            "peak_memory_bytes": 544849920,
+            "findings_per_run": [
+              695,
+              695,
+              695,
+              695
+            ],
+            "rules": 113,
+            "excluded_rules": [],
+            "python": "3.14.7",
+            "cold_samples_seconds": [
+              20.790523916948587,
+              11.51247391605284,
+              11.46231712505687
+            ],
+            "cold_median_seconds": 11.51247391605284
+          },
+          {
+            "mode": "candidate-only",
+            "process_cold_seconds": 2.7788189169950783,
+            "warm_seconds": [
+              3.401498750085011,
+              3.810578875010833,
+              5.4307567910291255
+            ],
+            "warm_median_seconds": 3.810578875010833,
+            "peak_memory_bytes": 567574528,
+            "findings_per_run": [
+              2,
+              2,
+              2,
+              2
+            ],
+            "rules": 3,
+            "excluded_rules": [],
+            "python": "3.14.7",
+            "cold_samples_seconds": [
+              2.7788189169950783,
+              2.733466707984917,
+              2.7037877090042457
+            ],
+            "cold_median_seconds": 2.733466707984917
+          }
+        ],
+        "warm_slowdown": 1.0158433954634611,
+        "cold_slowdown": 1.987302082652352,
+        "cold_median_slowdown": 1.0817271324684625
+      },
+      {
+        "label": "<private-corpus>",
+        "files": 250,
+        "bytes": 2421071,
+        "selection": "first 250 sorted pinned paths; all when fewer",
+        "samples": [
+          {
+            "mode": "combined",
+            "process_cold_seconds": 10.525847667013295,
+            "warm_seconds": [
+              11.594072499894537,
+              11.57169212505687,
+              11.59334087499883
+            ],
+            "warm_median_seconds": 11.59334087499883,
+            "peak_memory_bytes": 407781376,
+            "findings_per_run": [
+              938,
+              938,
+              938,
+              938
+            ],
+            "rules": 113,
+            "excluded_rules": [],
+            "python": "3.14.7",
+            "cold_samples_seconds": [
+              10.525847667013295,
+              10.435443707974628,
+              10.282199417008087
+            ],
+            "cold_median_seconds": 10.435443707974628
+          },
+          {
+            "mode": "baseline",
+            "process_cold_seconds": 10.400197624927387,
+            "warm_seconds": [
+              11.142991250031628,
+              11.118348333984613,
+              11.189391916966997
+            ],
+            "warm_median_seconds": 11.142991250031628,
+            "peak_memory_bytes": 376930304,
+            "findings_per_run": [
+              938,
+              938,
+              938,
+              938
+            ],
+            "rules": 110,
+            "excluded_rules": [],
+            "python": "3.14.7",
+            "cold_samples_seconds": [
+              10.400197624927387,
+              9.87362770899199,
+              10.168993667000905
+            ],
+            "cold_median_seconds": 10.168993667000905
+          },
+          {
+            "mode": "candidate-only",
+            "process_cold_seconds": 1.594282874953933,
+            "warm_seconds": [
+              1.954602999961935,
+              2.0666460830252618,
+              1.9897276249248534
+            ],
+            "warm_median_seconds": 1.9897276249248534,
+            "peak_memory_bytes": 370966528,
+            "findings_per_run": [
+              0,
+              0,
+              0,
+              0
+            ],
+            "rules": 3,
+            "excluded_rules": [],
+            "python": "3.14.7",
+            "cold_samples_seconds": [
+              1.594282874953933,
+              1.538058958016336,
+              1.5488557919161394
+            ],
+            "cold_median_seconds": 1.5488557919161394
+          }
+        ],
+        "warm_slowdown": 1.040415505573149,
+        "cold_slowdown": 1.0120815052383956,
+        "cold_median_slowdown": 1.026202203452872
+      }
+    ],
+    "environment": "macOS-27.0-arm64-arm-64bit-Mach-O",
+    "method": "Each corpus and mode runs in a fresh process. Warm medians use three subsequent analyze calls with fresh per-invocation sessions. Cold medians use three fresh-process first calls, with alternating baseline/combined order for the extra repetitions.",
+    "cold_caveat": "Filesystem caches were not flushed. Timings are local and load-sensitive; initial runs overlapped repository verification. Repeated fresh-process medians resolve the isolated first-run outlier without claiming a controlled OS-cold benchmark.",
+    "public_baseline_exclusion": "SARJ420 (no-unnecessary-docstring) raises an existing KeyError on a nested owner in the public package. It is excluded symmetrically from that package baseline and combined comparison; private comparisons retain every existing registered rule.",
+    "worker_source": "import json, resource, statistics, sys, time\nfrom pathlib import Path\nfrom sarj_python_lint.__main__ import analyze\nfrom sarj_python_lint.rules import REGISTRY\nnew = {'no-input-model-mutation','no-before-validator-input-mutation','no-unused-copy-result'}\nmode=sys.argv[1]\nexcluded = {'no-unnecessary-docstring'} if sys.argv[2] == 'public' else set()\nrules=sorted(new if mode=='candidate-only' else set(REGISTRY)-new-excluded if mode=='baseline' else set(REGISTRY)-excluded)\npaths=[Path(path) for path in sys.argv[3:]]\nsamples=[]\ncounts=[]\nfor iteration in range(4):\n    started=time.perf_counter()\n    findings=analyze(rules, paths)\n    samples.append(time.perf_counter()-started)\n    counts.append(len(findings))\nprint(json.dumps({'mode':mode,'process_cold_seconds':samples[0],'warm_seconds':samples[1:],\n                 'warm_median_seconds':statistics.median(samples[1:]),'peak_memory_bytes':resource.getrusage(resource.RUSAGE_SELF).ru_maxrss,\n                 'findings_per_run':counts,'rules':len(rules),'excluded_rules':sorted(excluded),'python':sys.version.split()[0]}))\n",
+    "cold_worker_adjustment": "For each additional cold sample, use range(1) and omit the warm median; execute the same mode and selected files in a new interpreter."
+  },
+  "typescript": {
+    "examples": [
+      {
+        "id": "borrowed-property-write",
+        "current": [],
+        "widened": [
+          "no-param-reassign"
+        ]
+      },
+      {
+        "id": "parameter-rebind",
+        "current": [
+          "no-param-reassign"
+        ],
+        "widened": [
+          "no-param-reassign"
+        ]
+      },
+      {
+        "id": "owned-builder-sort",
+        "current": [],
+        "widened": [
+          "unicorn/no-array-sort"
+        ]
+      },
+      {
+        "id": "borrowed-sort",
+        "current": [],
+        "widened": [
+          "unicorn/no-array-sort"
+        ]
+      },
+      {
+        "id": "captured-replacement",
+        "current": [],
+        "widened": []
+      },
+      {
+        "id": "stateful-receiver",
+        "current": [],
+        "widened": [
+          "unicorn/no-array-reverse"
+        ]
+      },
+      {
+        "id": "nested-alias",
+        "current": [],
+        "widened": []
+      },
+      {
+        "id": "readonly-shared-elements",
+        "current": [],
+        "widened": []
+      }
+    ],
+    "corpus": {
+      "label": "authoring-typescript",
+      "files": 277,
+      "bytes": 2311679,
+      "current": 20,
+      "widened": 32,
+      "newFiles": 3,
+      "additions": {
+        "no-param-reassign": 10,
+        "unicorn/no-array-reverse": 2
+      }
+    },
+    "limitations": [
+      "Offline syntax-only evaluation; no application ownership or receiver type proof.",
+      "Parameter alias writes and nested sharing remain undetected.",
+      "Widening also reports fresh builders and stateful receiver operations."
+    ],
+    "decision": "retain-current-options"
+  },
+  "limitations": [
+    "No global ban on mutation, no readonly-parameter mandate, no frozen-model mandate, and no universal discarded-call rule.",
+    "Ambiguous control flow, captured closures, opaque calls, custom copy hooks, dynamic update mappings, and deep-copy provenance abstain.",
+    "Recursive annotation traversal is bounded; constructor argument sharing through custom validation is not propagated.",
+    "Shallow copies and readonly/frozen outer contracts do not provide deep immutability.",
+    "model_copy(update=...) does not validate; replacement values must satisfy the complete model contract, including cross-field invariants.",
+    "Serialization round trips are not a universal replacement strategy."
+  ],
+  "promotion": "Retain warnings without autofix through at least one warning release and broader ownership/adoption review before a separate error-promotion change.",
+  "reproduction": {
+    "focused": "cd packages/python && .venv/bin/pytest -q tests/rules/test_no_input_model_mutation.py tests/rules/test_no_before_validator_input_mutation.py tests/rules/test_no_unused_copy_result.py tests/test_copy_on_write_integration.py",
+    "runtime": "cd packages/standards && .venv/bin/pytest -q tests/test_copy_on_write_semantics.py",
+    "corpus": "code-standards --root . maintain rules evaluate --rule python:no-input-model-mutation --rule python:no-before-validator-input-mutation --rule python:no-unused-copy-result --corpus-manifest <verified-public-manifest> --private-overlay <owner-readable-private-overlay> --format json",
+    "corpus_library": "sarj_standards.libs.rules.run_isolated_corpora with a 250-file limit; verify_inventory before and after each corpus.",
+    "performance": "Run the included worker with <mode> <visibility> <selected-relative-paths...> from each pinned corpus root using the standards interpreter. Modes: baseline (registry minus candidates), combined (full registry), candidate-only. Take the first 250 sorted pinned paths, or all when fewer; repeat first calls in fresh processes and three subsequent analyze calls for warm medians.",
+    "gate": "MISE_TERRAFORM_VERSION=1.15.8 UV_CACHE_DIR=<writable-cache> PATH=<uv-0.12.18-directory>:$PATH make verify"
+  },
+  "port": {
+    "base_revision": "ffdec9e9f0f5aa934c063728aca1efa3610331ce",
+    "diagnostic_codes": "Reassigned to SARJ481-SARJ483 because current main already publishes SARJ459-SARJ461 for other rules.",
+    "historical_evidence": "The original calibration and performance results describe the prior authoring checkout. The detector implementation is unchanged; these numbers are not measurements of the enlarged current-main registry.",
+    "current_main_validation": {
+      "make_verify": "passed",
+      "focused_and_runtime_tests": 98,
+      "python_package_tests": 11633,
+      "standards_wheel_tests_passed": 2920,
+      "standards_wheel_tests_skipped": 9,
+      "typescript_tests": 6470,
+      "native_self_lint": "passed with current full registry",
+      "performance": {
+        "selection": "first 100 sorted maintained Python implementation files",
+        "files": 100,
+        "bytes": 1216736,
+        "samples": [
+          {
+            "mode": "baseline",
+            "seconds": [
+              9.377530416939408,
+              9.462161832954735,
+              9.643946291995235
+            ],
+            "peak_memory_bytes": 399360000,
+            "rules": 132
+          },
+          {
+            "mode": "combined",
+            "seconds": [
+              9.875027499976568,
+              11.53899879194796,
+              11.6206083339639
+            ],
+            "peak_memory_bytes": 484196352,
+            "rules": 135
+          },
+          {
+            "mode": "candidate-only",
+            "seconds": [
+              1.498299999977462,
+              2.3042910000076517,
+              1.9682578750653192
+            ],
+            "peak_memory_bytes": 485523456,
+            "rules": 3
+          }
+        ],
+        "baseline_registry": "current main minus candidate trio",
+        "cache_definition": "one fresh process per mode; one first analyze and two subsequent invokes; OS caches not flushed",
+        "slowdown": 1.2194886322658356
+      }
+    }
+  }
+}

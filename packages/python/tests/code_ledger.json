@@ -268,5 +268,8 @@
   "SARJ477": "no-broad-keyword-capture",
   "SARJ478": "no-test-method-grafting",
   "SARJ479": "no-mocked-pydantic-value-object",
-  "SARJ480": "prefer-native-string-check"
+  "SARJ480": "prefer-native-string-check",
+  "SARJ481": "no-input-model-mutation",
+  "SARJ482": "no-before-validator-input-mutation",
+  "SARJ483": "no-unused-copy-result"
 }
