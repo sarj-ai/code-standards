@@ -571,3 +571,18 @@ def test_context_on_constructed_monkeypatch_handle(tmp_path: Path) -> None:
         )
     )
     assert analyze([PreferInjectedDependencyOverMonkeypatch.id], [target]) == []
+
+
+def test_collaborator_exception_does_not_hide_adjacent_method_patch(tmp_path: Path) -> None:
+    target = tmp_path / "tests" / "test_service.py"
+    target.parent.mkdir()
+    target.write_text(
+        "def test_service(monkeypatch, service, failing_gateway):\n"
+        "    monkeypatch.setattr(service, 'gateway', failing_gateway)  "
+        "# sarj-noqa: SARJ445 -- function-owned service; replace its constructor-injected gateway.\n"
+        "    monkeypatch.setattr(service, 'run', lambda: 'ok')\n",
+        encoding="utf-8",
+    )
+    [diagnostic] = analyze([PreferInjectedDependencyOverMonkeypatch.id], [target])
+    assert diagnostic.code == "SARJ445"
+    assert diagnostic.line == 3
