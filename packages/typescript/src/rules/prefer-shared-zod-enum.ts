@@ -4,7 +4,10 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/prefer-shared-zod-enum.test.ts
  */
 
-import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
+import { sourceOrigin } from "./_source-origin.js";
+import type { ESTree, Variable } from "@oxlint/plugins";
+import { findVariable } from "./_scope.js";
+
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile, isTestFile } from "./_paths.js";
@@ -26,42 +29,42 @@ export const PREFER_SHARED_ZOD_ENUM_DOCUMENTATION = {
   ],
 } as const satisfies RuleDocumentation;
 
-function literalDomain(node: TSESTree.CallExpression): readonly string[] | null {
+function literalDomain(node: ESTree.CallExpression): readonly string[] | null {
   if (node.arguments.length !== 1) return null;
   const [argument] = node.arguments;
-  if (argument?.type !== AST_NODE_TYPES.ArrayExpression || argument.elements.length < 2) return null;
+  if (argument?.type !== "ArrayExpression" || argument.elements.length < 2) return null;
   const values: string[] = [];
   for (const element of argument.elements) {
-    if (element?.type !== AST_NODE_TYPES.Literal || typeof element.value !== "string") return null;
+    if (element?.type !== "Literal" || typeof element.value !== "string") return null;
     values.push(element.value);
   }
   return values;
 }
 
-function isModuleLevelNamedSchema(node: TSESTree.CallExpression): boolean {
-  let current: TSESTree.Node = node;
+function isModuleLevelNamedSchema(node: ESTree.CallExpression): boolean {
+  let current: ESTree.Node = node;
   while (
-    current.parent?.type === AST_NODE_TYPES.MemberExpression &&
+    current.parent?.type === "MemberExpression" &&
     current.parent.object === current
   ) {
     current = current.parent;
     if (
-      current.parent?.type === AST_NODE_TYPES.CallExpression &&
+      current.parent?.type === "CallExpression" &&
       current.parent.callee === current
     ) current = current.parent;
   }
   const declarator = current.parent;
   if (
-    declarator?.type !== AST_NODE_TYPES.VariableDeclarator ||
+    declarator?.type !== "VariableDeclarator" ||
     declarator.init !== current ||
-    declarator.id.type !== AST_NODE_TYPES.Identifier ||
-    declarator.parent.type !== AST_NODE_TYPES.VariableDeclaration
+    declarator.id.type !== "Identifier" ||
+    declarator.parent?.type !== "VariableDeclaration"
   ) return false;
   const declarationParent = declarator.parent.parent;
   return (
-    declarationParent.type === AST_NODE_TYPES.Program ||
-    (declarationParent.type === AST_NODE_TYPES.ExportNamedDeclaration &&
-      declarationParent.parent.type === AST_NODE_TYPES.Program)
+    declarationParent.type === "Program" ||
+    (declarationParent.type === "ExportNamedDeclaration" &&
+      declarationParent.parent?.type === "Program")
   );
 }
 
@@ -78,20 +81,20 @@ export default createRule<Options, MessageIds>({
   },
   defaultOptions: [],
   create(context) {
-    if (isTestFile(context.filename) || isGeneratedFile(context.filename, context.sourceCode.text)) return {};
-    const zodBindings = new Set<TSESLint.Scope.Variable>();
-    const bindingOf = (node: TSESTree.Identifier): TSESLint.Scope.Variable | null =>
-      ASTUtils.findVariable(context.sourceCode.getScope(node), node.name);
-    const candidates = new Map<string, Array<{ readonly node: TSESTree.CallExpression; readonly named: boolean }>>();
+    if (isTestFile(sourceOrigin(context).filename) || isGeneratedFile(sourceOrigin(context).filename, sourceOrigin(context).text)) return {};
+    const zodBindings = new Set<Variable>();
+    const bindingOf = (node: ESTree.BindingIdentifier): Variable | null =>
+      findVariable(context.sourceCode.getScope(node), node.name);
+    const candidates = new Map<string, Array<{ readonly node: ESTree.CallExpression; readonly named: boolean }>>();
     return {
       ImportDeclaration(node): void {
         if (!isZodModule(node.source.value)) return;
         for (const specifier of node.specifiers) {
           if (
-            specifier.type === AST_NODE_TYPES.ImportNamespaceSpecifier ||
-            specifier.type === AST_NODE_TYPES.ImportDefaultSpecifier ||
-            (specifier.type === AST_NODE_TYPES.ImportSpecifier &&
-              specifier.imported.type === AST_NODE_TYPES.Identifier &&
+            specifier.type === "ImportNamespaceSpecifier" ||
+            specifier.type === "ImportDefaultSpecifier" ||
+            (specifier.type === "ImportSpecifier" &&
+              specifier.imported.type === "Identifier" &&
               specifier.imported.name === "z")
           ) {
             const binding = bindingOf(specifier.local);
@@ -101,10 +104,10 @@ export default createRule<Options, MessageIds>({
       },
       CallExpression(node): void {
         if (
-          node.callee.type !== AST_NODE_TYPES.MemberExpression ||
+          node.callee.type !== "MemberExpression" ||
           node.callee.computed ||
-          node.callee.object.type !== AST_NODE_TYPES.Identifier ||
-          node.callee.property.type !== AST_NODE_TYPES.Identifier ||
+          node.callee.object.type !== "Identifier" ||
+          node.callee.property.type !== "Identifier" ||
           node.callee.property.name !== "enum"
         ) return;
         const binding = bindingOf(node.callee.object);

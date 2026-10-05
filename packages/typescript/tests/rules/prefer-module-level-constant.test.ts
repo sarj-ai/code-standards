@@ -1,20 +1,15 @@
 // vitest: shared-module-graph
-import * as tsParser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
+import { RuleTester } from "oxlint/plugins-dev";
+import { describe, it } from "vitest";
 
 import rule, { PREFER_MODULE_LEVEL_CONSTANT_DOCUMENTATION } from "../../src/rules/prefer-module-level-constant.js";
 
-RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
 RuleTester.it = it;
 RuleTester.itOnly = it.only;
 
 const RULE_TESTER = new RuleTester({
-  languageOptions: {
-    parser: tsParser,
-    parserOptions: { ecmaVersion: "latest", sourceType: "module" },
-  },
+  languageOptions: { parserOptions: { lang: "ts" } },
 });
 
 RULE_TESTER.run("prefer-module-level-constant", rule, {
@@ -166,7 +161,7 @@ RULE_TESTER.run("prefer-module-level-constant", rule, {
     },
     {
       name: "ignores declaration files",
-      code: "function f() { const A = ['a', 'b', 'c']; return A.length; }",
+      code: "declare function f(): number;",
       filename: "src/api.d.ts",
     },
     {

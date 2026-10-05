@@ -1,0 +1,501 @@
+{
+  "unicorn": {
+    "version": "76.0.0",
+    "commit": "f70155ebe24dbb35b9814c3dbb3ab3620e09c3e1",
+    "source": "https://github.com/sindresorhus/eslint-plugin-unicorn/tree/f70155ebe24dbb35b9814c3dbb3ab3620e09c3e1",
+    "license": "vendor/unicorn/license",
+    "retainedRules": [
+      "class-reference-in-static-methods",
+      "consistent-json-file-read",
+      "iteration-fallback-style",
+      "no-accidental-bitwise-operator",
+      "no-array-concat-in-loop",
+      "no-array-from-fill",
+      "no-array-sort-for-min-max",
+      "no-async-iterator-callback",
+      "no-async-promise-finally",
+      "no-blob-to-file",
+      "no-boolean-sort-comparator",
+      "no-canvas-to-image",
+      "no-chained-comparison",
+      "no-collection-bracket-access",
+      "no-computed-property-existence-check",
+      "no-confusing-array-splice",
+      "no-constant-zero-expression",
+      "no-double-comparison",
+      "no-duplicate-if-branches",
+      "no-duplicate-logical-operands",
+      "no-duplicate-loops",
+      "no-duplicate-set-values",
+      "no-error-property-assignment",
+      "no-exports-in-scripts",
+      "no-for-loop",
+      "no-global-object-property-assignment",
+      "no-impossible-length-comparison",
+      "no-incorrect-query-selector",
+      "no-incorrect-template-string-interpolation",
+      "no-invalid-argument-count",
+      "no-invalid-character-comparison",
+      "no-invalid-fetch-options",
+      "no-invalid-file-input-accept",
+      "no-invalid-well-known-symbol-methods",
+      "no-late-current-target-access",
+      "no-late-event-control",
+      "no-loop-iterable-mutation",
+      "no-mismatched-map-key",
+      "no-misrefactored-assignment",
+      "no-multiple-promise-resolver-calls",
+      "no-nonstandard-builtin-properties",
+      "no-object-methods-with-collections",
+      "no-optional-chaining-on-undeclared-variable",
+      "no-redundant-comparison",
+      "no-return-array-push",
+      "no-selector-as-dom-name",
+      "no-subtraction-comparison",
+      "no-this-outside-of-class",
+      "no-uncalled-method",
+      "no-undeclared-class-members",
+      "no-unnecessary-array-flat-map",
+      "no-unnecessary-boolean-comparison",
+      "no-unnecessary-fetch-options",
+      "no-unnecessary-global-this",
+      "no-unnecessary-nested-ternary",
+      "no-unnecessary-polyfills",
+      "no-unnecessary-splice",
+      "no-unnecessary-string-trim",
+      "no-unsafe-buffer-conversion",
+      "no-unsafe-dom-html",
+      "no-unsafe-promise-all-settled-values",
+      "no-unsafe-property-key",
+      "no-unsafe-sqlite-interpolation",
+      "no-unsafe-string-replacement",
+      "no-unused-builtin-method-return",
+      "no-unused-iterator-helper",
+      "no-useless-boolean-cast",
+      "no-useless-coercion",
+      "no-useless-compound-assignment",
+      "no-useless-concat",
+      "no-useless-continue",
+      "no-useless-delete-check",
+      "no-useless-else",
+      "no-useless-logical-operand",
+      "no-useless-override",
+      "no-useless-re-export",
+      "no-useless-recursion",
+      "no-useless-set-construction",
+      "no-useless-spread",
+      "no-xor-as-exponentiation",
+      "prefer-abort-signal-any",
+      "prefer-abort-signal-timeout",
+      "prefer-add-event-listener-options",
+      "prefer-aggregate-error",
+      "prefer-array-from-async",
+      "prefer-array-from-map",
+      "prefer-array-from-range",
+      "prefer-array-iterable-methods",
+      "prefer-array-last-methods",
+      "prefer-array-slice",
+      "prefer-combined-guards",
+      "prefer-direct-iteration",
+      "prefer-flat-math-min-max",
+      "prefer-global-number-constants",
+      "prefer-group-by",
+      "prefer-has-check",
+      "prefer-https",
+      "prefer-identifier-import-export-specifiers",
+      "prefer-iterable-in-constructor",
+      "prefer-iterator-concat",
+      "prefer-iterator-helpers",
+      "prefer-iterator-to-array",
+      "prefer-iterator-to-array-at-end",
+      "prefer-logical-operator-over-ternary",
+      "prefer-map-from-entries",
+      "prefer-math-abs",
+      "prefer-math-constants",
+      "prefer-number-is-safe-integer",
+      "prefer-number-properties",
+      "prefer-object-define-properties",
+      "prefer-object-destructuring-defaults",
+      "prefer-object-iterable-methods",
+      "prefer-promise-with-resolvers",
+      "prefer-queue-microtask",
+      "prefer-set-methods",
+      "prefer-simple-sort-comparator",
+      "prefer-simplified-conditions",
+      "prefer-single-array-predicate",
+      "prefer-single-object-destructuring",
+      "prefer-single-replace",
+      "prefer-split-limit",
+      "prefer-string-match-all",
+      "prefer-string-pad-start-end",
+      "prefer-string-repeat",
+      "prefer-switch",
+      "prefer-then-catch",
+      "prefer-top-level-await",
+      "prefer-unary-minus",
+      "prefer-unicode-code-point-escapes",
+      "prefer-url-can-parse",
+      "prefer-url-search-parameters",
+      "prefer-while-loop-condition",
+      "require-css-escape",
+      "require-module-specifiers",
+      "require-passive-events",
+      "require-proxy-trap-boolean-return",
+      "single-line-block-comment-style"
+    ],
+    "changes": [
+      "Remove four rules delegating to the ESLint engine; the only enabled one is replaced by stock eslint/logical-assignment-operators.",
+      "Remove their engine-importing utility barrel export.",
+      "Point standalone token/scope utility imports to the copied licensed utility source.",
+      "Expose exactly the retained syntax rules through a native definePlugin entry point.",
+      "Read VariableDeclaration.kind when the native scope definition omits kind.",
+      "Keep only package identity, documentation and ESM metadata used by the source port; remove unused original scripts, exports and dependency declarations.",
+      "Expose exact pinned prefer-top-level-await instead of the stock rule because the maintained upstream implementation retains the Zod schema catch fallback fix (upstream PR3005). Preserve its syntactic z/schema/*Schema detection and async-call suggestion; unknown custom catch methods are not type-resolved.",
+      "Extend the maintained Boolean helper with genuine same-file lexical binding evidence for explicitly annotated, nonoptional Boolean properties in local TypeScript object literals. Imported, inferred, optional and named property contracts remain unresolved; no checker or scope facade is introduced.",
+      "Expose the exact pinned prefer-number-properties and prefer-logical-operator-over-ternary implementations instead of their stock counterparts. Preserve no-radix/static decimal parseInt exemptions, checkNaN/checkInfinity options, Boolean ternary diagnostics and maintained fix restrictions in TypeScript; genuine native lexical bindings preserve shadowing and explicitly annotated Boolean tests. No rule-body rewrite or checker facade is introduced.",
+      "Expose exact pinned no-useless-spread and no-invalid-fetch-options instead of their stock counterparts. Preserve typed-array-to-Array conversions and unknown dynamic fetch methods while retaining actual redundant Array spreads and invalid GET/HEAD bodies; no source-body, severity, option or scope changes.",
+      "Replace prefer-combined-guards parser-service-dependent exclusion of nonliteral exits with a direct conservative AST exclusion, including process.exit arguments. The original TypeScript parser also excluded these in syntax-only JavaScript. Literal and empty exits, labels, comments and checkCompoundConditions options remain supported. Nonliteral JavaScript optimizations previously available under Espree are excluded because native syntax alone cannot establish flow/type safety; remove the redundant tagged-template walk.",
+      "Expose exact pinned require-module-specifiers instead of the stock rule. Preserve valid sole module markers, remove only redundant markers, and retain empty-import diagnostics and side-effect imports; no rule-body rewrite or dummy export is introduced.",
+      "Retain Unicorn 76's intentional exclusion of ternaries with two Boolean-literal branches. Older Unicorn 74 reported same-reference literal cases such as true ? true : false; genuine Unicorn 76 and the native source port both exclude them. This is an upstream version change, not an AST or plugin compatibility failure."
+    ],
+    "inactiveLegacyRules": {
+      "no-shorthand-property-overrides": "Only CSS Block visitors; original policy installs no CSS language.",
+      "no-missing-local-resource": "Only CSS, HTML, Markdown visitors; original policy installs no languages for those formats."
+    }
+  },
+  "eslint-utils": {
+    "version": "4.10.1",
+    "source": "https://www.npmjs.com/package/@eslint-community/eslint-utils/v/4.10.1",
+    "license": "vendor/eslint-utils/LICENSE",
+    "changes": [
+      "Remove the source map comment because this licensed source copy ships without map assets."
+    ]
+  },
+  "rule-options": {
+    "package": "@typescript-eslint/utils",
+    "version": "8.71.0",
+    "source": "https://github.com/typescript-eslint/typescript-eslint/tree/main/packages/utils/src/eslint-utils",
+    "license": "vendor/rule-options/LICENSE",
+    "changes": [
+      "Retain only standalone RuleCreator, applyDefault and deepMerge with local CJS filenames; no engine exports.",
+      "Remove sourceMappingURL directives for upstream map files absent from the retained source distribution."
+    ]
+  },
+  "ast-node-types": {
+    "package": "@typescript-eslint/types",
+    "version": "8.71.0",
+    "source": "https://github.com/typescript-eslint/typescript-eslint/tree/main/packages/types/src/generated/ast-spec.ts",
+    "license": "vendor/ast-node-types/LICENSE",
+    "changes": [
+      "Remove sourceMappingURL directives for upstream map files absent from the retained source distribution."
+    ]
+  },
+  "perfectionist": {
+    "package": "eslint-plugin-perfectionist",
+    "version": "5.12.1",
+    "source": "https://github.com/azat-io/eslint-plugin-perfectionist",
+    "license": "vendor/perfectionist/LICENSE",
+    "changes": [
+      "Copy syntax rule implementation and helpers; use separately licensed standalone AST enums and option factory.",
+      "Expose the exact sort-classes rule with original default options, grouping, dependency analysis and fixes. Shared defaults remain disabled; consumers retain explicit native rule settings. Original independent side-effectful initializer ordering is retained, without a stronger semantic safety claim."
+    ],
+    "retainedRules": [
+      "sort-interfaces",
+      "sort-jsx-props",
+      "sort-union-types",
+      "sort-classes"
+    ]
+  },
+  "simple-import-sort": {
+    "package": "eslint-plugin-simple-import-sort",
+    "version": "14.0.0",
+    "source": "https://github.com/lydell/eslint-plugin-simple-import-sort",
+    "license": "vendor/simple-import-sort/LICENSE",
+    "changes": [
+      "Rename CommonJS files to .cjs and update the local shared import."
+    ]
+  },
+  "zod": {
+    "package": "eslint-plugin-zod",
+    "version": "5.0.0",
+    "source": {
+      "type": "git",
+      "url": "https://github.com/marcalexiei/eslint-zod",
+      "directory": "plugins/eslint-plugin-zod"
+    },
+    "license": "vendor/zod/LICENSE",
+    "changes": [
+      "Copy rule sources and use separately licensed standalone option factory and local Zod utility implementation.",
+      "Embed pinned package metadata in the source-owned plugin to preserve package identity when bundled."
+    ]
+  },
+  "zod-utils": {
+    "package": "@eslint-zod/utils",
+    "version": "6.0.0",
+    "source": {
+      "type": "git",
+      "url": "https://github.com/marcalexiei/eslint-zod",
+      "directory": "packages/utils"
+    },
+    "license": "vendor/zod-utils/LICENSE",
+    "changes": [
+      "Use separately licensed AST enums and findVariable source; use native scope definition type literals."
+    ]
+  },
+  "node-test": {
+    "package": "eslint-node-test",
+    "version": "0.4.0",
+    "source": "https://github.com/sindresorhus/eslint-node-test",
+    "license": "vendor/node-test/LICENSE",
+    "changes": [
+      "Point token and scope utility imports to separately licensed local standalone source.",
+      "Keep only package identity, documentation and ESM metadata used by the source port; remove unused original scripts, exports and dependency declarations."
+    ]
+  },
+  "react": {
+    "package": "eslint-plugin-react",
+    "version": "7.37.5",
+    "source": "https://github.com/jsx-eslint/eslint-plugin-react",
+    "license": "vendor/react/LICENSE",
+    "changes": [
+      "Retain only two rules and their local helper closure.",
+      "Use modern messageId reporting directly; remove historical ESLint engine version detection."
+    ]
+  },
+  "core": {
+    "version": "10.9.1",
+    "source": "https://github.com/eslint/eslint/tree/v10.9.1/lib/rules",
+    "license": "vendor/core/LICENSE",
+    "retainedRules": [
+      "no-restricted-syntax",
+      "no-undef-init",
+      "no-octal",
+      "no-dupe-args"
+    ],
+    "changes": [
+      "Convert CommonJS rule exports to ESM for native definePlugin registration.",
+      "Replace the engine-owned variable lookup with the licensed standalone scope utility.",
+      "Retain the standalone parameter-opening-token helper with token predicates from the licensed standalone utilities."
+    ]
+  },
+  "jsdoc": {
+    "version": "16.2.4",
+    "source": "https://github.com/sarj-ai/code-standards",
+    "license": "LICENSE",
+    "changes": [
+      "Associate documentation with native AST owners and preceding comments; validate documentation type contracts with standalone parsers."
+    ]
+  },
+  "typescript": {
+    "package": "@typescript-eslint/eslint-plugin",
+    "version": "8.70.1",
+    "source": "https://github.com/typescript-eslint/typescript-eslint/tree/main/packages/eslint-plugin",
+    "license": "vendor/typescript/LICENSE",
+    "changes": [
+      "Retain naming validators and member ordering AST logic with standalone licensed helpers.",
+      "Resolve scope and unused-name facts through native sourceCode scope references.",
+      "Replace compiler type predicates with same-file initializer/annotation categories; unknown imported or inferred categories keep existing naming exemptions.",
+      "Validate identifier syntax as ES2024 Unicode identifiers without compiler APIs."
+    ],
+    "helperLicenses": [
+      "vendor/rule-options/LICENSE",
+      "vendor/typescript/LICENSE.scope-manager",
+      "vendor/typescript/LICENSE.visitor-keys"
+    ]
+  },
+  "bun": {
+    "package": "eslint-plugin-jest",
+    "version": "29.16.6",
+    "source": "https://github.com/jest-community/eslint-plugin-jest/tree/v29.16.6",
+    "license": "vendor/bun/LICENSE",
+    "retainedRules": ["prefer-to-be"],
+    "changes": [
+      "Retain only the configured matcher and its pure accessor, matcher-chain, import/scope, and fixer helpers.",
+      "Use literal native ESTree node names and separately licensed standalone RuleCreator, without a TypeScript compiler or ESLint dependency.",
+      "Use bun:test as the owning import package; retain upstream imported aliases, lexical shadowing and configured global aliases.",
+      "Embed the pinned upstream documentation version so the bundle does not read unpublished package assets."
+    ]
+  },
+  "native-presets": {
+    "sources": [
+      {
+        "package": "@eslint/js",
+        "version": "10.0.1",
+        "source": "https://github.com/eslint/eslint/tree/v10.0.1/packages/js",
+        "license": "vendor/native-presets/LICENSE"
+      },
+      {
+        "package": "@typescript-eslint/eslint-plugin",
+        "version": "8.70.1",
+        "source": "https://github.com/typescript-eslint/typescript-eslint/tree/v8.70.1/packages/eslint-plugin/src/configs",
+        "license": "vendor/typescript/LICENSE"
+      }
+    ],
+    "changes": [
+      "Translate all pinned recommended, strict-type-checked, stylistic-type-checked and TypeScript compatibility declarations to actual native rule IDs; merged TypeScript core rules use native eslint IDs.",
+      "Omit disabled legacy dot-notation and no-return-await identifiers absent from the native registry; their TypeScript replacements remain enabled.",
+      "Retire deprecated core no-return-await (ESLint8.46) rather than adding a replacement rule; typed typescript/return-await retains original error-handling correctness policy.",
+      "Retain recommended duplicate-parameter and legacy-octal checks through exact licensed core source ports: CommonJS scripts accept this syntax, so native module parser failures alone do not preserve the original recommended policy. TypeScript compatibility disables duplicate-parameter lint in favor of compiler ownership as before."
+    ]
+  },
+  "node": {
+    "package": "eslint-plugin-n",
+    "version": "18.3.0",
+    "source": "https://github.com/eslint-community/eslint-plugin-n/tree/v18.3.0",
+    "license": "vendor/node/LICENSE",
+    "retainedRules": ["prefer-promises/fs"],
+    "changes": [
+      "Retain the exact callback filesystem API policy and process.getBuiltinModule reference helper using separately licensed standalone scope/reference utilities."
+    ]
+  },
+  "astro": {
+    "package": "eslint-plugin-astro",
+    "version": "3.2.1",
+    "source": "https://github.com/ota-meshi/eslint-plugin-astro/tree/v3.2.1",
+    "license": "vendor/astro/LICENSE",
+    "retainedRules": [
+      "no-deprecated-astro-canonicalurl",
+      "no-deprecated-astro-fetchcontent",
+      "no-deprecated-astro-resolve",
+      "no-deprecated-getentrybyslug",
+      "no-exports-from-components",
+      "no-prerender-export-outside-pages",
+      "missing-client-only-directive-value",
+      "no-conflict-set-directives",
+      "no-unused-define-vars-in-style"
+    ],
+    "changes": [
+      "Retain six configured script rule bodies with standalone reference tracking; gate native script visits by actual .astro filename instead of an unsupported custom-parser service.",
+      "Reuse the licensed static-value and property-name helpers through the public Astro source port for framework markup checks.",
+      "The shared public Astro provider preserves the three configured markup/style checks using the official Astro compiler. Licensed CSS tokenizer source is retained in vendor/astro/css-variables.mjs under vendor/astro/LICENSE.",
+      "The official Astro compiler and TypeScript public AST/Printer APIs produce native lint documents for the complete configured policy. Genuine Oxc nodes, contexts and scopes remain unchanged; source maps preserve original filenames, ranges and directives.",
+      "Server documents use Node and Astro globals, and browser scripts use browser globals. Explicit configured globals remain authoritative. Original-source checks retain comments, raw syntax and framework markup that compilation removes."
+    ]
+  },
+  "query": {
+    "package": "@tanstack/eslint-plugin-query",
+    "version": "5.103.2",
+    "source": "https://github.com/TanStack/query/tree/%40tanstack%2Feslint-plugin-query%405.103.2/packages/eslint-plugin-query",
+    "integrity": "sha512-qycCzS4j5p7lLT6NUDcUURv3csrYS2VfnaxMDUn/bBi4MPjU0z+tAGoRPwPS3V86Z9yp6PG4p30MtbTOXo80NQ==",
+    "license": "vendor/query/LICENSE",
+    "retainedRules": [
+      "exhaustive-deps",
+      "stable-query-client",
+      "no-rest-destructuring",
+      "no-unstable-deps",
+      "infinite-query-property-order",
+      "no-void-query-fn",
+      "mutation-property-order"
+    ],
+    "changes": [
+      "Retain six original AST/scope rule bodies and configured recommended severities; source-owned native helper paths replace only compiler-dependent return checks.",
+      "Transpile pinned TypeScript source, use literal native ESTree node names and the separately licensed standalone RuleCreator; remove legacy context fallbacks. No compiler, parser service or ESLint runtime dependency.",
+      "no-void-query-fn checks inline and same-file referenced functions, explicit void/undefined and Promise<void/undefined> annotations, bare returns, statically missing returns, native undefined/void values and known global console returns. Unknown imported/inferred callback types are intentionally not guessed.",
+      "no-rest-destructuring retains direct imported Query hook checks and follows same-file custom-hook returns or explicit Query-result return annotations. Imported/inferred custom-hook result types without source evidence are intentionally not guessed.",
+      "Expose opt-in query profile with original TypeScript/TSX scope; shared strict defaults do not enable new Query checks.",
+      "Native binding identity also prevents a local identifier shadowing a Query import or result from being classified as that import/result. Legacy context fallbacks are removed; native sourceCode is used directly.",
+      "Same-file void evidence follows constant initializers and native type-alias bindings, preserves loop/try/finally/switch return flow, and verifies genuine Query type imports rather than matching unrelated local type names. Infinite/uncertain control flow and arbitrary imported/inferred types remain unresolved."
+    ]
+  },
+  "shadcn": {
+    "package": "@shadcn/lint",
+    "version": "0.2.0",
+    "source": "https://github.com/shadcn-ui/lint#readme",
+    "license": "vendor/shadcn/LICENSE",
+    "npmIntegrity": "sha512-DTYr427BR8cDc0J0Y++u1Uh12NAYGmdPiqgy4wKSogi7RNEhFanIcfBMPRPUvkunt9QiJUfI7B28TW39MrPCFA==",
+    "changes": [
+      "Preserve licensed JavaScript rule/helper sources and worker assets in their original relative layout; remove package-manager ESLint peer declarations and unused installation metadata.",
+      "Remove the unused TypeScript ESLint parser fallback; use the mandatory Oxc parser.",
+      "Remove the source-development worker path fallback; preserve the shipped native worker URL.",
+      "Preserve literal first-wildcard TypeScript alias substitution; expand every Node exports/imports target wildcard literally, including worker stylesheet resolution. Captured dollar sequences are never replacement-string operators.",
+      "Escape the complete regular-expression metacharacter set for dynamic SFC binding fragments and match genuine HTML script token delimiters during source extraction. This is lint-source extraction, not browser HTML sanitization."
+    ]
+  },
+  "better-tailwindcss": {
+    "package": "eslint-plugin-better-tailwindcss",
+    "version": "4.7.0",
+    "source": "https://github.com/schoero/eslint-plugin-better-tailwindcss#readme",
+    "license": "vendor/better-tailwindcss/LICENSE",
+    "npmIntegrity": "sha512-lrdlVW4pzLPj/zX5HRqMhKPesGijDfRhnSRJMlNcsrCyJHsndmHCLKTiRNa1eREUZ6G3D3QjdLc+G4tlfGrmkw==",
+    "changes": [
+      "Preserve licensed JavaScript rule/helper sources and worker assets in their original relative layout; remove package-manager ESLint peer declarations and unused installation metadata.",
+      "Expose only the six configured rules as a native plugin without legacy or flat ESLint configuration exports.",
+      "Point the standalone Tailwind syntax import to separately licensed local source.",
+      "Remove dangling source map comments."
+    ],
+    "retainedRules": [
+      "no-conflicting-classes",
+      "no-duplicate-classes",
+      "no-deprecated-classes",
+      "no-unnecessary-whitespace",
+      "enforce-shorthand-classes",
+      "enforce-consistent-variable-syntax"
+    ]
+  },
+  "tailwind-csstree": {
+    "package": "tailwind-csstree",
+    "version": "0.3.3",
+    "source": "https://github.com/humanwhocodes/tailwind-csstree#readme",
+    "license": "vendor/tailwind-csstree/LICENSE",
+    "npmIntegrity": "sha512-je9J5UYRsTJqAjYrIBMMlge8T/rreRd44pJxgG5Zx/zeo4kAC/liUKqzztRZrGlYRJLvIf2Cb1DVJMTXSzEShA==",
+    "changes": [
+      "Preserve licensed JavaScript rule/helper sources and worker assets in their original relative layout; remove package-manager ESLint peer declarations and unused installation metadata."
+    ]
+  },
+  "test": {
+    "package": "@biomejs/biome",
+    "version": "2.5.12",
+    "commit": "0a31d7c4e1f6cc1b3e08af4aef2ad4b97f6b4f1c",
+    "source": "https://github.com/biomejs/biome/tree/0a31d7c4e1f6cc1b3e08af4aef2ad4b97f6b4f1c/crates/biome_js_analyze/src",
+    "license": "vendor/biome-test/LICENSE",
+    "retainedRules": ["no-conditional-expect"],
+    "changes": [
+      "Translate the licensed noConditionalExpect outermost-assertion/conditional-ancestor algorithm and frameworks/playwright assertion-qualifier distinction to a direct native Oxlint AST rule. Retain original Rust sources and the upstream MIT license.",
+      "Resolve actual native lexical bindings for Vitest/Jest imports and their aliases/namespaces; retain stock test/spec/__tests__ recognition for genuine unshadowed globals without extending shared framework coverage.",
+      "Retain stock named helper/reference and Promise.catch callback checks using native scopes and AST ancestry. Matcher factories and expect.extend remain values rather than conditional assertions; no assertion-count allowance is introduced.",
+      "Stop outer registration conditions at named arrow functions directly passed as a genuine test callback, using actual lexical references and excluding reassigned bindings. Conditions inside the callback and indirectly called helpers remain checked."
+    ]
+  },
+  "nextjs": {
+    "package": "@next/eslint-plugin-next",
+    "version": "16.3.8",
+    "source": "https://github.com/vercel/next.js/tree/v16.3.8/packages/eslint-plugin-next",
+    "integrity": "sha512-eCR9RcLTZrVS+K3+VOhi0xMdUUGNuriCHHhU1ZoABC/QQ/Gp0OWbLKQxV2/9DkmihYdYRcQWFmZXW8M1AMUXYw==",
+    "license": "vendor/nextjs/LICENSE",
+    "retainedRules": ["no-location-assign-relative-destination"],
+    "changes": [
+      "Erase TypeScript-only annotations from the exact tagged rule and standalone defineRule identity helper; retain the original visitor/static-prefix/native scope algorithm.",
+      "Resolve getStringIfConstant and findVariable through the already licensed source-owned eslint-utils4.10.1 helper, without any engine or parser dependency.",
+      "Expose the missing recommended rule in an opt-in Next project profile; importing projects retain their own source scope and severity."
+    ]
+  },
+  "sonarjs": {
+    "package": "eslint-plugin-sonarjs",
+    "version": "2.0.4",
+    "commit": "273825f98b35b29b409fbf4f89efce075c651d96",
+    "source": "https://github.com/SonarSource/SonarJS/tree/273825f98b35b29b409fbf4f89efce075c651d96/packages/jsts/src/rules",
+    "npmIntegrity": "sha512-XVVAB/t0WSgHitHNajIcIDmviCO8kB9VSsrjy+4WUEVM3eieY9SDHEtCDaOMTjj6XMtcAr8BFDXCFaP005s+tg==",
+    "license": "vendor/sonarjs/LICENSE",
+    "additionalLicense": "vendor/sonarjs/LICENSE.GPL-3.0",
+    "notice": "vendor/sonarjs/NOTICE",
+    "originalConsumerVersion": "4.2.0",
+    "retainedRules": [
+      "no-all-duplicated-branches",
+      "no-collapsible-if",
+      "no-element-overwrite",
+      "no-identical-expressions",
+      "no-identical-functions",
+      "no-redundant-jump",
+      "no-use-of-empty-return-value",
+      "prefer-immediate-return"
+    ],
+    "changes": [
+      "Retain eight pre-relicense LGPL source algorithms and their pure helper closure. SonarJS4.2.0 is SSAL; none of its restricted implementation source is copied into this component. Shipped component sources and modifications retain LGPL licensing and replacement rights; the aggregate MIT license does not relicense them.",
+      "Replace broad engine/compiler utility imports with retained AST/token/location helpers and literal native ESTree node kinds; use actual sourceCode.getScope/getAncestors/reference writes. No fake context, checker or parser services.",
+      "Use native rule metadata and reports; remove the unused Sonar-server transport option/message encoding. Preserve the original no-identical-functions minimum-line option of3 and suggestions/fixes.",
+      "no-use-of-empty-return-value preserves actual lexical local functions, ambient return annotations, empty stubs and async/generator exclusions. Sequence-expression use checks follow their actual enclosing context, preserving the current consumer policy.",
+      "prefer-immediate-return preserves explicit declaration annotations, attached @type contracts and same-file function-valued initializer/binding evidence, including satisfies expressions. Alias evidence requires one real lexical definition, no non-initializing writes and no declared type annotation; as expressions are not unwrapped. Imported/inferred function types and compiler-only symbol distinctions such as typeof-annotated or reassigned function aliases are not guessed; no compiler contract exemption is claimed for them.",
+      "Expose the eight original consumer errors in an opt-in all-JavaScript/TypeScript source profile. The central shared strict default does not add these consumer policies."
+    ]
+  }
+}

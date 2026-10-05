@@ -33,6 +33,7 @@ _TAGGER_NAME = "sarj-ai release automation"
 
 class ReleaseTargetId(StrEnum):
     TYPESCRIPT = "typescript"
+    REACT_HOOKS = "react-hooks"
     BOOTSTRAP = "bootstrap"
     CONTRACTS = "contracts"
     PYTHON = "python"
@@ -74,7 +75,10 @@ class TagSyncResult:
 RELEASE_TARGETS: Final[Mapping[str, ReleaseTarget]] = MappingProxyType(
     {
         ReleaseTargetId.TYPESCRIPT: ReleaseTarget(
-            Path("packages/typescript/package.json"), "json", (ReleasePublication("npm", "@sarj/eslint-plugin"),)
+            Path("packages/typescript/package.json"), "json", (ReleasePublication("npm", "@sarj/oxlint-plugin"),)
+        ),
+        ReleaseTargetId.REACT_HOOKS: ReleaseTarget(
+            Path("packages/react-hooks/package.json"), "json", (ReleasePublication("npm", "@sarj/oxlint-react-hooks"),)
         ),
         ReleaseTargetId.BOOTSTRAP: ReleaseTarget(
             Path("packages/bootstrap/pyproject.toml"), "toml", (ReleasePublication("pypi", "sarj-standards-bootstrap"),)
@@ -112,7 +116,12 @@ RELEASE_ARTIFACT_PREFIXES: Final[Mapping[str, tuple[str, ...]]] = MappingProxyTy
         ReleaseTargetId.SQL: ("packages/sql/src/",),
         ReleaseTargetId.IAC: ("packages/iac/src/",),
         ReleaseTargetId.STANDARDS: ("packages/standards/src/", "packages/standards-compat/src/"),
-        ReleaseTargetId.TYPESCRIPT: ("packages/typescript/src/",),
+        ReleaseTargetId.TYPESCRIPT: (
+            "packages/typescript/src/",
+            "packages/typescript/types/",
+            "packages/typescript/vendor/",
+        ),
+        ReleaseTargetId.REACT_HOOKS: ("packages/react-hooks/vendor/",),
         ReleaseTargetId.TSCONFIG: ("packages/tsconfig/base.json", "packages/tsconfig/strict.json"),
     }
 )
@@ -122,7 +131,20 @@ RELEASE_ARTIFACT_FILES: Final[Mapping[str, tuple[str, ...]]] = MappingProxyType(
             dict.fromkeys(
                 path.as_posix()
                 for manifest in (target.manifest, *(item.manifest for item in target.publications if item.manifest))
-                for path in (manifest, manifest.parent / "LICENSE")
+                for path in (
+                    manifest,
+                    manifest.parent / "LICENSE",
+                    *(
+                        (manifest.parent / "tsup.config.ts", manifest.parent / "scripts/copy-native-assets.mjs")
+                        if name == ReleaseTargetId.TYPESCRIPT
+                        else ()
+                    ),
+                    *(
+                        (manifest.parent / "index.cjs", manifest.parent / "PROVENANCE.json")
+                        if name == ReleaseTargetId.REACT_HOOKS
+                        else ()
+                    ),
+                )
             )
         )
         for name, target in RELEASE_TARGETS.items()

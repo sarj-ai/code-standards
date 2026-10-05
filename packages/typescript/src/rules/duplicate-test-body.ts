@@ -4,7 +4,10 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/duplicate-test-body.test.ts
  */
 
-import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
+import { sourceOrigin } from "./_source-origin.js";
+import type { ESTree, SourceCode } from "@oxlint/plugins";
+import { findVariable } from "./_scope.js";
+
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile, isTestFile } from "./_paths.js";
@@ -14,9 +17,9 @@ type Options = readonly [];
 
 const TEST_CALLERS: ReadonlySet<string> = new Set(["it", "test"]);
 const TEST_MODIFIERS: ReadonlySet<string> = new Set(["concurrent", "fails", "only", "sequential", "skip"]);
-const FUNCTION_TYPES: ReadonlySet<AST_NODE_TYPES> = new Set([
-  AST_NODE_TYPES.FunctionExpression,
-  AST_NODE_TYPES.ArrowFunctionExpression,
+const FUNCTION_TYPES: ReadonlySet<ESTree.Node["type"]> = new Set([
+  "FunctionExpression",
+  "ArrowFunctionExpression",
 ]);
 const OMITTED_AST_KEYS: ReadonlySet<string> = new Set([
   "end",
@@ -70,17 +73,17 @@ export const DUPLICATE_TEST_BODY_DOCUMENTATION = {
   ],
 } as const satisfies RuleDocumentation;
 
-function rootIdentifier(callee: TSESTree.Node): TSESTree.Identifier | null {
-  if (callee.type === AST_NODE_TYPES.Identifier) return callee;
-  if (callee.type === AST_NODE_TYPES.MemberExpression) return rootIdentifier(callee.object);
-  if (callee.type === AST_NODE_TYPES.CallExpression) return rootIdentifier(callee.callee);
-  if (callee.type === AST_NODE_TYPES.TaggedTemplateExpression) return rootIdentifier(callee.tag);
+function rootIdentifier(callee: ESTree.Node): ESTree.BindingIdentifier | null {
+  if (callee.type === "Identifier") return callee;
+  if (callee.type === "MemberExpression") return rootIdentifier(callee.object);
+  if (callee.type === "CallExpression") return rootIdentifier(callee.callee);
+  if (callee.type === "TaggedTemplateExpression") return rootIdentifier(callee.tag);
   return null;
 }
 
-function staticMemberName(member: TSESTree.MemberExpression): string | null {
-  if (!member.computed && member.property.type === AST_NODE_TYPES.Identifier) return member.property.name;
-  if (member.computed && member.property.type === AST_NODE_TYPES.Literal && typeof member.property.value === "string") {
+function staticMemberName(member: ESTree.MemberExpression): string | null {
+  if (!member.computed && member.property.type === "Identifier") return member.property.name;
+  if (member.computed && member.property.type === "Literal" && typeof member.property.value === "string") {
     return member.property.value;
   }
   return null;
@@ -94,24 +97,24 @@ function normalizedAst(value: unknown, preserveLiteral = false): unknown {
     return typeof value === "bigint" ? value.toString() : value;
   }
   const record = value as Record<string, unknown>;
-  if (record["type"] === AST_NODE_TYPES.Literal && !preserveLiteral) {
-    return normalizedLiteral(value as TSESTree.Literal);
+  if (record["type"] === "Literal" && !preserveLiteral) {
+    return normalizedLiteral(value as (ESTree.BooleanLiteral | ESTree.NullLiteral | ESTree.NumericLiteral | ESTree.StringLiteral | ESTree.BigIntLiteral | ESTree.RegExpLiteral));
   }
   const normalized: Record<string, unknown> = {};
   const preservesAssertionContract =
-    record["type"] === AST_NODE_TYPES.CallExpression && isAssertionCall(value as TSESTree.CallExpression);
+    record["type"] === "CallExpression" && isAssertionCall(value as ESTree.CallExpression);
   for (const key of Object.keys(record).sort()) {
     if (OMITTED_AST_KEYS.has(key)) {
       continue;
     }
     const isPropertyName =
       key === "key" &&
-      (record["type"] === AST_NODE_TYPES.Property ||
-        record["type"] === AST_NODE_TYPES.MethodDefinition ||
-        record["type"] === AST_NODE_TYPES.PropertyDefinition);
+      (record["type"] === "Property" ||
+        record["type"] === "MethodDefinition" ||
+        record["type"] === "PropertyDefinition");
     const isComputedMemberName =
       key === "property" &&
-      record["type"] === AST_NODE_TYPES.MemberExpression;
+      record["type"] === "MemberExpression";
     normalized[key] = normalizedAst(
       record[key],
       preserveLiteral || preservesAssertionContract || isPropertyName || isComputedMemberName,
@@ -120,23 +123,23 @@ function normalizedAst(value: unknown, preserveLiteral = false): unknown {
   return normalized;
 }
 
-function isAssertionCall(node: TSESTree.CallExpression): boolean {
+function isAssertionCall(node: ESTree.CallExpression): boolean {
   const root = rootIdentifier(node.callee);
   return root !== null && ["assert", "expect"].includes(root.name);
 }
 
-function isAssertionStatement(statement: TSESTree.Statement): boolean {
-  if (statement.type !== AST_NODE_TYPES.ExpressionStatement) return false;
+function isAssertionStatement(statement: ESTree.Statement): boolean {
+  if (statement.type !== "ExpressionStatement") return false;
   const expression = statement.expression;
-  return expression.type === AST_NODE_TYPES.CallExpression && isAssertionCall(expression);
+  return expression.type === "CallExpression" && isAssertionCall(expression);
 }
 
-function isTypeOnlyContractStatement(statement: TSESTree.Statement): boolean {
-  return statement.type === AST_NODE_TYPES.TSTypeAliasDeclaration ||
-    statement.type === AST_NODE_TYPES.TSInterfaceDeclaration;
+function isTypeOnlyContractStatement(statement: ESTree.Statement): boolean {
+  return statement.type === "TSTypeAliasDeclaration" ||
+    statement.type === "TSInterfaceDeclaration";
 }
 
-function normalizedLiteral(node: TSESTree.Literal): readonly string[] {
+function normalizedLiteral(node: (ESTree.BooleanLiteral | ESTree.NullLiteral | ESTree.NumericLiteral | ESTree.StringLiteral | ESTree.BigIntLiteral | ESTree.RegExpLiteral)): readonly string[] {
   if ("regex" in node) {
     return ["Literal", "regex", node.regex.pattern, node.regex.flags];
   }
@@ -153,25 +156,25 @@ function normalizedLiteral(node: TSESTree.Literal): readonly string[] {
 }
 
 export interface DuplicateTestBodyCandidate {
-  readonly body: TSESTree.FunctionExpression | TSESTree.ArrowFunctionExpression;
-  readonly container: TSESTree.Program | TSESTree.BlockStatement;
+  readonly body: ESTree.Function | ESTree.ArrowFunctionExpression;
+  readonly container: ESTree.Program | ESTree.BlockStatement;
   readonly fingerprint: string;
 }
 
 export function duplicateTestBodyCandidate(
-  call: TSESTree.CallExpression,
-  sourceCode: Readonly<TSESLint.SourceCode>,
+  call: ESTree.CallExpression,
+  sourceCode: Readonly<SourceCode>,
 ): DuplicateTestBodyCandidate | null {
-  if (call.parent?.type !== AST_NODE_TYPES.ExpressionStatement) return null;
+  if (call.parent?.type !== "ExpressionStatement") return null;
   const container = call.parent.parent;
-  if (container?.type !== AST_NODE_TYPES.Program && container?.type !== AST_NODE_TYPES.BlockStatement) return null;
+  if (container?.type !== "Program" && container?.type !== "BlockStatement") return null;
   const root = rootIdentifier(call.callee);
   if (root === null || !isDuplicateTestFrameworkIdentifier(root, sourceCode)) return null;
   const candidate = testBody(call);
   if (candidate === null) return null;
   const body = candidate.body;
   if (
-    body.body.type !== AST_NODE_TYPES.BlockStatement ||
+    body.body === null || body.body.type !== "BlockStatement" ||
     body.body.body.length < MIN_STATEMENTS ||
     body.body.body.every(isAssertionStatement) ||
     body.body.body.some(isTypeOnlyContractStatement)
@@ -190,8 +193,8 @@ export function duplicateTestBodyCandidate(
   return { body, container, fingerprint };
 }
 
-function testBody(call: TSESTree.CallExpression): {
-  readonly body: TSESTree.FunctionExpression | TSESTree.ArrowFunctionExpression;
+function testBody(call: ESTree.CallExpression): {
+  readonly body: ESTree.Function | ESTree.ArrowFunctionExpression;
   readonly signature: string;
 } | null {
   const signature = testCallerSignature(call.callee);
@@ -200,58 +203,58 @@ function testBody(call: TSESTree.CallExpression): {
   }
   const title = call.arguments[0];
   if (
-    title?.type !== AST_NODE_TYPES.Literal &&
-    title?.type !== AST_NODE_TYPES.TemplateLiteral
+    title?.type !== "Literal" &&
+    title?.type !== "TemplateLiteral"
   ) {
     return null;
   }
   const callback = call.arguments.find(
-    (argument): argument is TSESTree.FunctionExpression | TSESTree.ArrowFunctionExpression =>
-      argument.type !== AST_NODE_TYPES.SpreadElement && FUNCTION_TYPES.has(argument.type),
+    (argument): argument is ESTree.Function | ESTree.ArrowFunctionExpression =>
+      argument.type !== "SpreadElement" && FUNCTION_TYPES.has(argument.type),
   );
-  if (callback === undefined || call.arguments.length !== 2 || containsInlineSnapshot(callback.body)) {
+  if (callback === undefined || callback.body === null || call.arguments.length !== 2 || containsInlineSnapshot(callback.body)) {
     return null;
   }
   return { body: callback, signature };
 }
 
-function testCallerSignature(callee: TSESTree.Node): string | null {
-  if (callee.type === AST_NODE_TYPES.Identifier) {
+function testCallerSignature(callee: ESTree.Node): string | null {
+  if (callee.type === "Identifier") {
     return TEST_CALLERS.has(callee.name) ? callee.name : null;
   }
-  if (callee.type === AST_NODE_TYPES.MemberExpression) {
+  if (callee.type === "MemberExpression") {
     const base = testCallerSignature(callee.object);
     const member = staticMemberName(callee);
     return base !== null && member !== null && TEST_MODIFIERS.has(member) ? `${base}.${member}` : null;
   }
-  if (callee.type === AST_NODE_TYPES.CallExpression) {
+  if (callee.type === "CallExpression") {
     return testCallerSignature(callee.callee);
   }
-  if (callee.type === AST_NODE_TYPES.TaggedTemplateExpression) {
+  if (callee.type === "TaggedTemplateExpression") {
     return testCallerSignature(callee.tag);
   }
   return null;
 }
 
-function hasEachMember(callee: TSESTree.Node): boolean {
-  if (callee.type === AST_NODE_TYPES.MemberExpression) {
+function hasEachMember(callee: ESTree.Node): boolean {
+  if (callee.type === "MemberExpression") {
     if (staticMemberName(callee) === "each") {
       return true;
     }
     return hasEachMember(callee.object);
   }
-  if (callee.type === AST_NODE_TYPES.CallExpression) {
+  if (callee.type === "CallExpression") {
     return hasEachMember(callee.callee);
   }
-  if (callee.type === AST_NODE_TYPES.TaggedTemplateExpression) {
+  if (callee.type === "TaggedTemplateExpression") {
     return hasEachMember(callee.tag);
   }
   return false;
 }
 
-function containsInlineSnapshot(node: TSESTree.Node): boolean {
+function containsInlineSnapshot(node: ESTree.Node): boolean {
   if (
-    node.type === AST_NODE_TYPES.MemberExpression &&
+    node.type === "MemberExpression" &&
     staticMemberName(node) !== null &&
     ["toMatchInlineSnapshot", "toThrowErrorMatchingInlineSnapshot"].includes(staticMemberName(node) ?? "")
   ) {
@@ -262,7 +265,7 @@ function containsInlineSnapshot(node: TSESTree.Node): boolean {
     const children = Array.isArray(value) ? value : [value];
     for (const child of children) {
       if (typeof child === "object" && child !== null && typeof (child as { type?: unknown }).type === "string") {
-        if (containsInlineSnapshot(child as TSESTree.Node)) return true;
+        if (containsInlineSnapshot(child as ESTree.Node)) return true;
       }
     }
   }
@@ -270,19 +273,19 @@ function containsInlineSnapshot(node: TSESTree.Node): boolean {
 }
 
 function isDuplicateTestFrameworkIdentifier(
-  identifier: TSESTree.Identifier,
-  sourceCode: Readonly<TSESLint.SourceCode>,
+  identifier: ESTree.BindingIdentifier,
+  sourceCode: Readonly<SourceCode>,
 ): boolean {
-  const variable = ASTUtils.findVariable(sourceCode.getScope(identifier), identifier.name);
+  const variable = findVariable(sourceCode.getScope(identifier), identifier.name);
   if (variable === null || variable.defs.length === 0) return true;
   return variable.defs.some((definition) => {
-    if (definition.node.type === AST_NODE_TYPES.ImportDefaultSpecifier) return definition.node.parent.source.value === "node:test";
-    if (definition.node.type !== AST_NODE_TYPES.ImportSpecifier) return false;
+    if (definition.node.type === "ImportDefaultSpecifier") return definition.parent?.type === "ImportDeclaration" && definition.parent.source.value === "node:test";
+    if (definition.node.type !== "ImportSpecifier") return false;
     const imported = definition.node.imported;
-    if (!TEST_CALLERS.has(imported.type === AST_NODE_TYPES.Identifier ? imported.name : String(imported.value))) return false;
-    let current: TSESTree.Node | null | undefined = definition.node;
-    while (current != null && current.type !== AST_NODE_TYPES.ImportDeclaration) current = current.parent;
-    return current?.type === AST_NODE_TYPES.ImportDeclaration &&
+    if (!TEST_CALLERS.has(imported.type === "Identifier" ? imported.name : String(imported.value))) return false;
+    let current: ESTree.Node | null | undefined = definition.node;
+    while (current != null && current.type !== "ImportDeclaration") current = current.parent;
+    return current?.type === "ImportDeclaration" &&
       typeof current.source.value === "string" && TEST_MODULES.has(current.source.value);
   });
 }
@@ -304,12 +307,12 @@ export default createRule<Options, MessageIds>({
   },
   defaultOptions: [],
   create(context) {
-    if (!isTestFile(context.filename) || isGeneratedFile(context.filename, context.sourceCode.text)) {
+    if (!isTestFile(sourceOrigin(context).filename) || isGeneratedFile(sourceOrigin(context).filename, sourceOrigin(context).text)) {
       return {};
     }
-    const siblings = new Map<TSESTree.Node, Set<string>>();
+    const siblings = new Map<ESTree.Node, Set<string>>();
     return {
-      CallExpression(node: TSESTree.CallExpression): void {
+      CallExpression(node: ESTree.CallExpression): void {
         const candidate = duplicateTestBodyCandidate(node, context.sourceCode);
         if (candidate === null) return;
         const fingerprints = siblings.get(candidate.container) ?? new Set<string>();

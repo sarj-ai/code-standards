@@ -4,7 +4,9 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-storage-in-stateless-modules.test.ts
  */
 
-import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
+import { sourceOrigin } from "./_source-origin.js";
+import type { ESTree } from "@oxlint/plugins";
+
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isTestFile } from "./_paths.js";
@@ -57,14 +59,14 @@ const STORAGE_RECEIVER_WORDS: ReadonlySet<string> = new Set([
 
 /** The flagged storage method name of `receiver.method(...)`, or null. */
 function storageMethodName(
-  node: TSESTree.CallExpression,
+  node: ESTree.CallExpression,
   methods: ReadonlySet<string>,
 ): string | null {
   const callee = node.callee;
   if (
-    callee.type !== AST_NODE_TYPES.MemberExpression ||
+    callee.type !== "MemberExpression" ||
     callee.computed ||
-    callee.property.type !== AST_NODE_TYPES.Identifier
+    callee.property.type !== "Identifier"
   ) {
     return null;
   }
@@ -86,17 +88,17 @@ function storageMethodName(
 
 /** Whether the receiver itself gives syntactic evidence of storage access. */
 function isStorageLikeReceiver(
-  node: TSESTree.Expression | TSESTree.Super,
+  node: ESTree.Expression | ESTree.Super,
 ): boolean {
-  if (node.type === AST_NODE_TYPES.Identifier) {
+  if (node.type === "Identifier") {
     return isStorageIdentifier(node.name);
   }
-  if (node.type !== AST_NODE_TYPES.MemberExpression) {
+  if (node.type !== "MemberExpression") {
     return false;
   }
   if (
     !node.computed &&
-    node.property.type === AST_NODE_TYPES.Identifier &&
+    node.property.type === "Identifier" &&
     isStorageIdentifier(node.property.name)
   ) {
     return true;
@@ -150,7 +152,7 @@ export default createRule<Options, MessageIds>({
   },
   defaultOptions: [{}],
   create(context, [options]) {
-    if (isTestFile(context.filename)) {
+    if (isTestFile(sourceOrigin(context).filename)) {
       return {};
     }
     const modules = options?.modules ?? [];
@@ -159,14 +161,14 @@ export default createRule<Options, MessageIds>({
     }
 
     const scoped = compile(modules);
-    if (!scoped.some((re) => re.test(context.filename))) {
+    if (!scoped.some((re) => re.test(sourceOrigin(context).filename))) {
       return {};
     }
 
     const methods = new Set(options?.methods ?? DEFAULT_METHODS);
 
     return {
-      CallExpression(node: TSESTree.CallExpression): void {
+      CallExpression(node: ESTree.CallExpression): void {
         const method = storageMethodName(node, methods);
         if (method !== null) {
           context.report({
@@ -180,14 +182,14 @@ export default createRule<Options, MessageIds>({
   },
 });
 
-function hasSqlPreparationEvidence(node: TSESTree.CallExpression, callee: TSESTree.MemberExpression): boolean {
+function hasSqlPreparationEvidence(node: ESTree.CallExpression, callee: ESTree.MemberExpression): boolean {
   const argument = node.arguments[0];
   const text = argument === undefined ? null : sqlTextOf(argument);
   if (text !== null) {
     if (!/^\s*(?:SELECT|WITH|INSERT|UPDATE|DELETE|REPLACE|CREATE|ALTER|DROP|PRAGMA|EXPLAIN)\b/iu.test(stripSqlNoise(text))) return false;
   } else {
     const receiver = callee.object;
-    const receiverName = receiver.type === AST_NODE_TYPES.Identifier ? receiver.name : receiver.type === AST_NODE_TYPES.MemberExpression && !receiver.computed && receiver.property.type === AST_NODE_TYPES.Identifier ? receiver.property.name : "";
+    const receiverName = receiver.type === "Identifier" ? receiver.name : receiver.type === "MemberExpression" && !receiver.computed && receiver.property.type === "Identifier" ? receiver.property.name : "";
     if (!/^(?:db|database|connection)$/iu.test(receiverName)) return false;
   }
 

@@ -1,59 +1,45 @@
-import { join } from "node:path";
-
-import * as tsParser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
-
+import { RuleTester } from "oxlint/plugins-dev";
+import { describe, it } from "vitest";
 import rule, {
-  NO_JSON_STRINGIFY_OBJECT_EQUALITY_DOCUMENTATION,
+  NO_JSON_STRINGIFY_OBJECT_EQUALITY_DOCUMENTATION as DOC,
 } from "../../src/rules/no-json-stringify-object-equality.js";
-
-RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
 RuleTester.it = it;
-RuleTester.itOnly = it.only;
-
-const RULE_TESTER = new RuleTester({
-  languageOptions: {
-    parser: tsParser,
-    parserOptions: {
-      projectService: { allowDefaultProject: ["*.ts*", "*/*.ts*", "*/*/*.ts*"] },
-      tsconfigRootDir: join(import.meta.dirname, "..", "fixtures"),
-    },
-  },
+const tester = new RuleTester({
+  languageOptions: { parserOptions: { lang: "ts" } },
 });
-const PRODUCTION = "json-object-equality.ts";
-
-RULE_TESTER.run("no-json-stringify-object-equality", rule, {
+const source = (code: string) => ({ code, filename: "src/example.ts" });
+const error = { messageId: "serializedObjectEquality" };
+tester.run("@sarj/no-json-stringify-object-equality", rule, {
   valid: [
+    source(
+      DOC.examples.find((example) => example.outcome === "no-match")!.files[0]
+        .source,
+    ),
+    ...[
+      'JSON.stringify([1,true,"x",null]) === JSON.stringify([1,true,"x",null]);',
+      "JSON.stringify(1) === JSON.stringify(2);",
+      'JSON.stringify(actual) === "expected";',
+      "const JSON=custom; JSON.stringify(actual)===JSON.stringify(expected);",
+      "function run(JSON){return JSON.stringify(actual)===JSON.stringify(expected)}",
+      "const serializer=JSON.stringify; serializer(a)===serializer(b);",
+      "const before=JSON.stringify(a); before===JSON.stringify(b);",
+      "// @generated\nJSON.stringify(a)===JSON.stringify(b);",
+    ].map(source),
     {
-      name: "accepts the documented domain comparator",
-      filename: PRODUCTION,
-      code: NO_JSON_STRINGIFY_OBJECT_EQUALITY_DOCUMENTATION.examples[0].files[0].source,
+      code: "JSON.stringify(a)===JSON.stringify(b)",
+      filename: "src/compare.test.ts",
     },
-    { name: "allows serialization for persistence", filename: PRODUCTION, code: "const stored = JSON.stringify(value);" },
-    { name: "allows one-sided text comparison", filename: PRODUCTION, code: "const same = JSON.stringify(value) === stored;" },
-    { name: "allows primitive string arrays", filename: PRODUCTION, code: "declare const left: string[]; declare const right: readonly string[]; const same = JSON.stringify(left) === JSON.stringify(right);" },
-    { name: "allows primitive tuples", filename: PRODUCTION, code: "declare const left: readonly [string, number]; declare const right: [string, number]; const same = JSON.stringify(left) === JSON.stringify(right);" },
-    { name: "allows literal primitive arrays without type services", code: "const same = JSON.stringify(['a', 1]) === JSON.stringify(['a', 1]);" },
-    { name: "allows a shadowed JSON object", filename: PRODUCTION, code: "function compare(JSON: Serializer, left: object, right: object) { return JSON.stringify(left) === JSON.stringify(right); }" },
-    { name: "allows a shadowed computed JSON object", filename: PRODUCTION, code: "function compare(JSON: Serializer, left: object, right: object) { return JSON['stringify'](left) === JSON['stringify'](right); }" },
-    { name: "allows a structural helper", filename: PRODUCTION, code: "const same = sameJson(left, right);" },
-    { name: "ignores tests", filename: "compare.test.ts", code: "expect(JSON.stringify(actual)).toBe(JSON.stringify(expected));" },
-    { name: "ignores generated files", filename: "generated/compare.ts", code: "const same = JSON.stringify({a: 1}) === JSON.stringify({a: 1});" },
   ],
   invalid: [
-    {
-      name: "reports the documented object comparison",
-      filename: PRODUCTION,
-      code: NO_JSON_STRINGIFY_OBJECT_EQUALITY_DOCUMENTATION.examples[1].files[0].source,
-      errors: [{ messageId: "serializedObjectEquality" }],
-    },
-    { name: "reports reordered object properties", filename: PRODUCTION, code: "const same = JSON.stringify({ event_type: 'a', event_payload: {} }) === JSON.stringify({ event_payload: {}, event_type: 'a' });", errors: [{ messageId: "serializedObjectEquality" }] },
-    { name: "reports object variables", filename: PRODUCTION, code: "declare const actual: { id: string }; declare const expected: { id: string }; const same = JSON.stringify(actual) !== JSON.stringify(expected);", errors: [{ messageId: "serializedObjectEquality" }] },
-    { name: "reports arrays containing objects", filename: PRODUCTION, code: "declare const actual: Array<{ id: string }>; declare const expected: Array<{ id: string }>; const same = JSON.stringify(actual) === JSON.stringify(expected);", errors: [{ messageId: "serializedObjectEquality" }] },
-    { name: "reports unknown values", filename: PRODUCTION, code: "declare const actual: unknown; declare const expected: unknown; const same = JSON.stringify(actual) == JSON.stringify(expected);", errors: [{ messageId: "serializedObjectEquality" }] },
-    { name: "reports undefined-collapsing object comparison", filename: PRODUCTION, code: "const same = JSON.stringify({ value: undefined }) === JSON.stringify({});", errors: [{ messageId: "serializedObjectEquality" }] },
-    { name: "reports computed native stringify access", filename: PRODUCTION, code: "declare const actual: { id: string }; declare const expected: { id: string }; const same = JSON['stringify'](actual) === JSON['stringify'](expected);", errors: [{ messageId: "serializedObjectEquality" }] },
-  ],
+    source(
+      DOC.examples.find((example) => example.outcome === "match")!.files[0]
+        .source,
+    ),
+    ...[
+      "JSON.stringify({id:1}) === JSON.stringify({id:1});",
+      'JSON["stringify"](a) !== JSON["stringify"](b);',
+      "JSON.stringify([{}]) == JSON.stringify([]);",
+    ].map(source),
+  ].map((test) => ({ ...test, errors: [error] })),
 });

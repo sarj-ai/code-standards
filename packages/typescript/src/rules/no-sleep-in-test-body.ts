@@ -4,7 +4,10 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-sleep-in-test-body.test.ts
  */
 
-import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
+import { sourceOrigin } from "./_source-origin.js";
+import type { ESTree } from "@oxlint/plugins";
+import { findVariable } from "./_scope.js";
+
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isTestFile } from "./_paths.js";
@@ -35,45 +38,46 @@ const TEST_CALLERS: ReadonlySet<string> = new Set([
   "afterEach",
 ]);
 
-const FUNCTION_TYPES: ReadonlySet<AST_NODE_TYPES> = new Set([
-  AST_NODE_TYPES.FunctionDeclaration,
-  AST_NODE_TYPES.FunctionExpression,
-  AST_NODE_TYPES.ArrowFunctionExpression,
+const FUNCTION_TYPES: ReadonlySet<ESTree.Node["type"]> = new Set([
+  "FunctionDeclaration",
+  "FunctionExpression",
+  "ArrowFunctionExpression",
 ]);
 
 /** True for a nonzero numeric literal — the timing guess, as opposed to a `0` yield. */
-function isNonzeroNumericLiteral(node: TSESTree.Node | undefined): boolean {
-  return node?.type === AST_NODE_TYPES.Literal && typeof node.value === "number" && node.value !== 0;
+function isNonzeroNumericLiteral(node: ESTree.Node | undefined): boolean {
+  return node?.type === "Literal" && typeof node.value === "number" && node.value !== 0;
 }
 
 /**
  * True when `node` is `new Promise((r) => setTimeout(r, n))` — including the
  * block-bodied `{ setTimeout(r, n); }` spelling.
  */
-function isPromiseSleep(node: TSESTree.NewExpression): boolean {
-  if (node.callee.type !== AST_NODE_TYPES.Identifier || node.callee.name !== "Promise") {
+function isPromiseSleep(node: ESTree.NewExpression): boolean {
+  if (node.callee.type !== "Identifier" || node.callee.name !== "Promise") {
     return false;
   }
   const executor = node.arguments[0];
   if (
-    executor?.type !== AST_NODE_TYPES.ArrowFunctionExpression &&
-    executor?.type !== AST_NODE_TYPES.FunctionExpression
+    executor?.type !== "ArrowFunctionExpression" &&
+    executor?.type !== "FunctionExpression"
   ) {
     return false;
   }
   const body = executor.body;
+  if (body === null) return false;
   const resolve = executor.params[0];
-  if (executor.params.length !== 1 || resolve?.type !== AST_NODE_TYPES.Identifier || resolve.name === "setTimeout") return false;
-  const statement = body.type === AST_NODE_TYPES.BlockStatement && body.body.length === 1 ? body.body[0] : null;
-  const timer = body.type !== AST_NODE_TYPES.BlockStatement ? body : statement?.type === AST_NODE_TYPES.ExpressionStatement ? statement.expression : null;
-  return timer?.type === AST_NODE_TYPES.CallExpression && isTimedSetTimeout(timer) &&
-    timer.arguments[0]?.type === AST_NODE_TYPES.Identifier && timer.arguments[0].name === resolve.name;
+  if (executor.params.length !== 1 || resolve?.type !== "Identifier" || resolve.name === "setTimeout") return false;
+  const statement = body.type === "BlockStatement" && body.body.length === 1 ? body.body[0] : null;
+  const timer = body.type !== "BlockStatement" ? body : statement?.type === "ExpressionStatement" ? statement.expression : null;
+  return timer?.type === "CallExpression" && isTimedSetTimeout(timer) &&
+    timer.arguments[0]?.type === "Identifier" && timer.arguments[0].name === resolve.name;
 }
 
-function isTimedSetTimeout(node: TSESTree.Node): boolean {
+function isTimedSetTimeout(node: ESTree.Node): boolean {
   return (
-    node.type === AST_NODE_TYPES.CallExpression &&
-    node.callee.type === AST_NODE_TYPES.Identifier &&
+    node.type === "CallExpression" &&
+    node.callee.type === "Identifier" &&
     node.callee.name === "setTimeout" &&
     node.arguments.length >= 2 &&
     isNonzeroNumericLiteral(node.arguments[1])
@@ -81,9 +85,9 @@ function isTimedSetTimeout(node: TSESTree.Node): boolean {
 }
 
 /** True when `node` is `sleep(n)` / `delay(n)` with a nonzero numeric literal. */
-function isHelperSleep(node: TSESTree.CallExpression): boolean {
+function isHelperSleep(node: ESTree.CallExpression): boolean {
   return (
-    node.callee.type === AST_NODE_TYPES.Identifier &&
+    node.callee.type === "Identifier" &&
     SLEEP_HELPERS.has(node.callee.name) &&
     node.arguments.length >= 1 &&
     isNonzeroNumericLiteral(node.arguments[0])
@@ -91,14 +95,14 @@ function isHelperSleep(node: TSESTree.CallExpression): boolean {
 }
 
 /** The nearest enclosing function of `node`, skipping the `new Promise` executor. */
-function nearestEnclosingFunction(node: TSESTree.Node): TSESTree.Node | null {
+function nearestEnclosingFunction(node: ESTree.Node): ESTree.Node | null {
   for (let current = node.parent; current != null; current = current.parent) {
     if (!FUNCTION_TYPES.has(current.type)) {
       continue;
     }
     const grandparent = current.parent;
     const isPromiseExecutor =
-      grandparent?.type === AST_NODE_TYPES.NewExpression && isPromiseSleep(grandparent);
+      grandparent?.type === "NewExpression" && isPromiseSleep(grandparent);
     if (!isPromiseExecutor) {
       return current;
     }
@@ -107,21 +111,21 @@ function nearestEnclosingFunction(node: TSESTree.Node): TSESTree.Node | null {
 }
 
 /** True when the sleep itself controls the test body rather than serving as injected test data. */
-function isImmediatelyConsumedSleep(node: TSESTree.Node): boolean {
+function isImmediatelyConsumedSleep(node: ESTree.Node): boolean {
   const parent = node.parent;
-  if (parent?.type === AST_NODE_TYPES.AwaitExpression ||
-      parent?.type === AST_NODE_TYPES.ReturnStatement ||
-      parent?.type === AST_NODE_TYPES.ExpressionStatement) {
+  if (parent?.type === "AwaitExpression" ||
+      parent?.type === "ReturnStatement" ||
+      parent?.type === "ExpressionStatement") {
     return true;
   }
-  return parent?.type === AST_NODE_TYPES.ArrowFunctionExpression && parent.body === node;
+  return parent?.type === "ArrowFunctionExpression" && parent.body === node;
 }
 
 /** True when `fn` is the callback argument of an `it`/`test`/per-test-hook call. */
-function isTestBody(fn: TSESTree.Node): boolean {
+function isTestBody(fn: ESTree.Node): boolean {
   const call = fn.parent;
   if (
-    call?.type !== AST_NODE_TYPES.CallExpression ||
+    call?.type !== "CallExpression" ||
     !call.arguments.some((argument) => argument === fn)
   ) {
     return false;
@@ -131,17 +135,17 @@ function isTestBody(fn: TSESTree.Node): boolean {
 }
 
 /** The base callee name of a call, unwrapping `.only` / `.skip` / `.each` chains. */
-function testCallerName(callee: TSESTree.Node): string | null {
-  if (callee.type === AST_NODE_TYPES.Identifier) {
+function testCallerName(callee: ESTree.Node): string | null {
+  if (callee.type === "Identifier") {
     return callee.name;
   }
-  if (callee.type === AST_NODE_TYPES.MemberExpression) {
+  if (callee.type === "MemberExpression") {
     return testCallerName(callee.object);
   }
-  if (callee.type === AST_NODE_TYPES.CallExpression) {
+  if (callee.type === "CallExpression") {
     return testCallerName(callee.callee);
   }
-  if (callee.type === AST_NODE_TYPES.TaggedTemplateExpression) {
+  if (callee.type === "TaggedTemplateExpression") {
     return testCallerName(callee.tag);
   }
   return null;
@@ -164,10 +168,10 @@ export default createRule<Options, MessageIds>({
   },
   defaultOptions: [],
   create(context) {
-    if (!isTestFile(context.filename)) {
+    if (!isTestFile(sourceOrigin(context).filename)) {
       return {};
     }
-    const report = (node: TSESTree.Node): void => {
+    const report = (node: ESTree.Node): void => {
       if (!isImmediatelyConsumedSleep(node)) {
         return;
       }
@@ -178,18 +182,18 @@ export default createRule<Options, MessageIds>({
       context.report({ node, messageId: "noSleepInTestBody" });
     };
     return {
-      NewExpression(node: TSESTree.NewExpression): void {
+      NewExpression(node: ESTree.NewExpression): void {
         if (isPromiseSleep(node)) {
-          const constructor = ASTUtils.findVariable(context.sourceCode.getScope(node), "Promise");
-          const timer = ASTUtils.findVariable(context.sourceCode.getScope(node), "setTimeout");
+          const constructor = findVariable(context.sourceCode.getScope(node), "Promise");
+          const timer = findVariable(context.sourceCode.getScope(node), "setTimeout");
           if ((constructor?.defs.length ?? 0) > 0 || (timer?.defs.length ?? 0) > 0) return;
           report(node);
         }
       },
-      CallExpression(node: TSESTree.CallExpression): void {
+      CallExpression(node: ESTree.CallExpression): void {
         if (isHelperSleep(node)) {
-          if (node.callee.type !== AST_NODE_TYPES.Identifier) return;
-          const variable = ASTUtils.findVariable(context.sourceCode.getScope(node), node.callee.name);
+          if (node.callee.type !== "Identifier") return;
+          const variable = findVariable(context.sourceCode.getScope(node), node.callee.name);
           if (variable?.defs.some((definition) => definition.type !== "ImportBinding")) return;
           report(node);
         }

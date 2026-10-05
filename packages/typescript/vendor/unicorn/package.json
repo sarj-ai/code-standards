@@ -1,0 +1,7 @@
+{
+  "name": "eslint-plugin-unicorn",
+  "version": "76.0.0",
+  "license": "MIT",
+  "repository": "github:sindresorhus/eslint-plugin-unicorn",
+  "type": "module"
+}

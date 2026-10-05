@@ -1,0 +1,6 @@
+{
+  "printWidth": 80,
+  "sortImports": false,
+  "sortPackageJson": false,
+  "ignorePatterns": ["dist/**", "node_modules/**", "tests/fixtures/**"]
+}

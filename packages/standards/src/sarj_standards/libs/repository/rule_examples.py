@@ -28,13 +28,13 @@ class SelectedRule:
 _NODE_VERIFY = """import {rules} from './dist/index.js';
 import {verifyRuleExamples} from './dist/rule-examples.js';
 const rule = rules[process.argv[1]];
-if (!rule) throw new Error('unknown live rule selector: eslint:' + process.argv[1]);
+if (!rule) throw new Error('unknown live rule selector: oxlint:' + process.argv[1]);
 console.log(await verifyRuleExamples(rule));
 """
 
 
 def verify(root: Path, selector: RuleSelector) -> int:
-    if selector.engine is RuleEngine.ESLINT:
+    if selector.engine is RuleEngine.OXLINT:
         return _typescript(root, selector)
     rule = selected(selector)
     return verify_examples(rule.spec.examples, rule.analyze)
@@ -130,14 +130,14 @@ def run_focused_tests(root: Path, selector: RuleSelector) -> None:
         / "packages"
         / (
             "typescript"
-            if selector.engine is RuleEngine.ESLINT
+            if selector.engine is RuleEngine.OXLINT
             else "standards"
             if selector.engine is RuleEngine.TEXT
             else selector.engine.value
         )
     )
     slug = str(selector.rule_id)
-    if selector.engine is RuleEngine.ESLINT:
+    if selector.engine is RuleEngine.OXLINT:
         test = package / "tests/rules" / f"{slug}.test.ts"
         npm = shutil.which("npm")
         if npm is None:

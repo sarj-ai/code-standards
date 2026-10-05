@@ -4,12 +4,10 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/require-pascal-case-zod-schema-name.test.ts
  */
 
-import {
-  type TSESLint,
-  type TSESTree,
-  AST_NODE_TYPES,
-  ASTUtils,
-} from "@typescript-eslint/utils";
+import { sourceOrigin } from "./_source-origin.js";
+import type { ESTree, Variable } from "@oxlint/plugins";
+import { findVariable } from "./_scope.js";
+
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile, isTestFile } from "./_paths.js";
@@ -88,24 +86,24 @@ const SCHEMA_RETURNING_METHODS: ReadonlySet<string> = new Set([
 ]);
 
 /** Return the final method name in a call chain. */
-const terminalMethodName = (callee: TSESTree.MemberExpression): string | null =>
-  !callee.computed && callee.property.type === AST_NODE_TYPES.Identifier
+const terminalMethodName = (callee: ESTree.MemberExpression): string | null =>
+  !callee.computed && callee.property.type === "Identifier"
     ? callee.property.name
     : null;
 
 /** Return the identifier at the root of a fluent call/member chain. */
-const calleeChainRoot = (node: TSESTree.Node): TSESTree.Identifier | null => {
-  let current: TSESTree.Node = node;
+const calleeChainRoot = (node: ESTree.Node): ESTree.BindingIdentifier | null => {
+  let current: ESTree.Node = node;
 
   for (;;) {
-    if (current.type === AST_NODE_TYPES.Identifier) {
+    if (current.type === "Identifier") {
       return current;
     }
-    if (current.type === AST_NODE_TYPES.MemberExpression) {
+    if (current.type === "MemberExpression") {
       current = current.object;
       continue;
     }
-    if (current.type === AST_NODE_TYPES.CallExpression) {
+    if (current.type === "CallExpression") {
       current = current.callee;
       continue;
     }
@@ -113,17 +111,17 @@ const calleeChainRoot = (node: TSESTree.Node): TSESTree.Identifier | null => {
   }
 };
 
-const chainMemberNames = (node: TSESTree.Node): readonly string[] => {
+const chainMemberNames = (node: ESTree.Node): readonly string[] => {
   const names: string[] = [];
   let current = node;
   for (;;) {
-    if (current.type === AST_NODE_TYPES.MemberExpression) {
-      if (current.computed || current.property.type !== AST_NODE_TYPES.Identifier) return [];
+    if (current.type === "MemberExpression") {
+      if (current.computed || current.property.type !== "Identifier") return [];
       names.push(current.property.name);
       current = current.object;
       continue;
     }
-    if (current.type === AST_NODE_TYPES.CallExpression) {
+    if (current.type === "CallExpression") {
       current = current.callee;
       continue;
     }
@@ -133,25 +131,25 @@ const chainMemberNames = (node: TSESTree.Node): readonly string[] => {
   return names;
 };
 
-const unwrapExpression = (node: TSESTree.Expression): TSESTree.Expression => {
+const unwrapExpression = (node: ESTree.Expression): ESTree.Expression => {
   let current = node;
   while (
-    current.type === AST_NODE_TYPES.TSAsExpression ||
-    current.type === AST_NODE_TYPES.TSSatisfiesExpression ||
-    current.type === AST_NODE_TYPES.TSNonNullExpression ||
-    current.type === AST_NODE_TYPES.TSTypeAssertion
+    current.type === "TSAsExpression" ||
+    current.type === "TSSatisfiesExpression" ||
+    current.type === "TSNonNullExpression" ||
+    current.type === "TSTypeAssertion"
   ) {
     current = current.expression;
   }
   return current;
 };
 
-const isModuleDeclarator = (node: TSESTree.VariableDeclarator): boolean => {
+const isModuleDeclarator = (node: ESTree.VariableDeclarator): boolean => {
   const declaration = node.parent;
-  if (declaration.type !== AST_NODE_TYPES.VariableDeclaration) return false;
+  if (declaration.type !== "VariableDeclaration") return false;
   const owner = declaration.parent;
-  return owner.type === AST_NODE_TYPES.Program ||
-    (owner.type === AST_NODE_TYPES.ExportNamedDeclaration && owner.parent.type === AST_NODE_TYPES.Program);
+  return owner.type === "Program" ||
+    (owner.type === "ExportNamedDeclaration" && owner.parent?.type === "Program");
 };
 
 export default createRule<Options, MessageIds>({
@@ -169,25 +167,25 @@ export default createRule<Options, MessageIds>({
   },
   defaultOptions: [],
   create(context) {
-    const zodBindings = new Set<TSESLint.Scope.Variable>();
-    const schemaBindings = new Set<TSESLint.Scope.Variable>();
+    const zodBindings = new Set<Variable>();
+    const schemaBindings = new Set<Variable>();
 
-    function resolvedBinding(identifier: TSESTree.Identifier): TSESLint.Scope.Variable | null {
-      return ASTUtils.findVariable(
+    function resolvedBinding(identifier: ESTree.BindingIdentifier): Variable | null {
+      return findVariable(
         context.sourceCode.getScope(identifier),
         identifier.name,
       );
     }
 
-    function recordZodBinding(identifier: TSESTree.Identifier): void {
+    function recordZodBinding(identifier: ESTree.BindingIdentifier): void {
       const binding = resolvedBinding(identifier);
       if (binding !== null) zodBindings.add(binding);
     }
 
-    function isConfirmedSchema(expression: TSESTree.Expression): boolean {
+    function isConfirmedSchema(expression: ESTree.Expression): boolean {
       const init = unwrapExpression(expression);
-      if (init.type === AST_NODE_TYPES.Identifier) return isSchemaBinding(init);
-      if (init.type !== AST_NODE_TYPES.CallExpression || init.callee.type !== AST_NODE_TYPES.MemberExpression) {
+      if (init.type === "Identifier") return isSchemaBinding(init);
+      if (init.type !== "CallExpression" || init.callee.type !== "MemberExpression") {
         return false;
       }
       const terminal = terminalMethodName(init.callee);
@@ -202,12 +200,12 @@ export default createRule<Options, MessageIds>({
       return root !== null && isSchemaBinding(root) && SCHEMA_RETURNING_METHODS.has(terminal);
     }
 
-    function isSchemaBinding(identifier: TSESTree.Identifier): boolean {
+    function isSchemaBinding(identifier: ESTree.BindingIdentifier): boolean {
       const binding = resolvedBinding(identifier);
       return binding !== null && schemaBindings.has(binding);
     }
 
-    function isZodChain(node: TSESTree.Node): boolean {
+    function isZodChain(node: ESTree.Node): boolean {
       const root = calleeChainRoot(node);
       if (root === null) return false;
       const binding = resolvedBinding(root);
@@ -216,22 +214,22 @@ export default createRule<Options, MessageIds>({
 
     // Test and benchmark schemas are local fixtures rather than APIs.
     if (
-      isTestFile(context.filename) ||
-      BENCHMARK_PATH_RE.test(context.filename.replaceAll("\\", "/")) ||
-      isGeneratedFile(context.filename, context.sourceCode.text)
+      isTestFile(sourceOrigin(context).filename) ||
+      BENCHMARK_PATH_RE.test(sourceOrigin(context).filename.replaceAll("\\", "/")) ||
+      isGeneratedFile(sourceOrigin(context).filename, sourceOrigin(context).text)
     ) {
       return {};
     }
 
     return {
-      ImportDeclaration(node: TSESTree.ImportDeclaration): void {
+      ImportDeclaration(node: ESTree.ImportDeclaration): void {
         if (!isZodModule(node.source.value)) return;
         for (const specifier of node.specifiers) {
           if (
-            specifier.type === AST_NODE_TYPES.ImportNamespaceSpecifier ||
-            specifier.type === AST_NODE_TYPES.ImportDefaultSpecifier ||
-            (specifier.type === AST_NODE_TYPES.ImportSpecifier &&
-              (specifier.imported.type === AST_NODE_TYPES.Identifier
+            specifier.type === "ImportNamespaceSpecifier" ||
+            specifier.type === "ImportDefaultSpecifier" ||
+            (specifier.type === "ImportSpecifier" &&
+              (specifier.imported.type === "Identifier"
                 ? specifier.imported.name === "z"
                 : specifier.imported.value === "z"))
           ) {
@@ -239,11 +237,11 @@ export default createRule<Options, MessageIds>({
           }
         }
       },
-      VariableDeclarator(node: TSESTree.VariableDeclarator): void {
+      VariableDeclarator(node: ESTree.VariableDeclarator): void {
         if (!isModuleDeclarator(node)) return;
         const init = node.init;
         if (init === null || init === undefined) return;
-        if (node.id.type !== AST_NODE_TYPES.Identifier) return;
+        if (node.id.type !== "Identifier") return;
         if (!isConfirmedSchema(init)) return;
         const binding = resolvedBinding(node.id);
         if (binding !== null) schemaBindings.add(binding);

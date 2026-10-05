@@ -5,6 +5,8 @@
  *
  */
 
+
+
 export const RENAMED_RULES = {
   "jsdoc-restates-signature": "no-restated-jsdoc",
   "zod-naming-convention": "require-pascal-case-zod-schema-name",

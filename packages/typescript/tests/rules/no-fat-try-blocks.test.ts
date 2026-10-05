@@ -1,19 +1,15 @@
 // vitest: shared-module-graph
-import * as tsParser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
+import { RuleTester } from "oxlint/plugins-dev";
+import { describe, it } from "vitest";
 
 import rule, { NO_FAT_TRY_BLOCKS_DOCUMENTATION } from "../../src/rules/no-fat-try-blocks.js";
 
-RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
 RuleTester.it = it;
 RuleTester.itOnly = it.only;
 
 const RULE_TESTER = new RuleTester({
-  languageOptions: {
-    parser: tsParser,
-  },
+  languageOptions: { parserOptions: { lang: "ts" } },
 });
 
 // Most fixtures below carry a statement AFTER the `try`. That is deliberate: it

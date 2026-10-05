@@ -4,7 +4,10 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-bespoke-api-case-conversion.test.ts
  */
 
-import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
+import { sourceOrigin } from "./_source-origin.js";
+import type { ESTree } from "@oxlint/plugins";
+import { findVariable } from "./_scope.js";
+
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile, isTestFile } from "./_paths.js";
@@ -66,23 +69,23 @@ const API_BOUNDARY_IMPORT_RE = /(?:^|[/_.-])(?:api|client|sdk|contract|generated
 const SNAKE_CASE_RE = /^[a-z][a-z0-9]*(?:_[a-z0-9]+)+$/;
 const LOWER_CAMEL_CASE_RE = /^[a-z][A-Za-z0-9]*$/;
 
-function propertyName(node: TSESTree.PropertyName): string | null {
-  return node.type === AST_NODE_TYPES.Identifier ? node.name : null;
+function propertyName(node: ESTree.PropertyKey): string | null {
+  return node.type === "Identifier" ? node.name : null;
 }
 
-function memberName(node: TSESTree.Node): string | null {
+function memberName(node: ESTree.Node): string | null {
   let current = node;
   while (
-    current.type === AST_NODE_TYPES.TSAsExpression ||
-    current.type === AST_NODE_TYPES.TSNonNullExpression ||
-    current.type === AST_NODE_TYPES.TSTypeAssertion
+    current.type === "TSAsExpression" ||
+    current.type === "TSNonNullExpression" ||
+    current.type === "TSTypeAssertion"
   ) {
     current = current.expression;
   }
   if (
-    current.type !== AST_NODE_TYPES.MemberExpression ||
+    current.type !== "MemberExpression" ||
     current.computed ||
-    current.property.type !== AST_NODE_TYPES.Identifier
+    current.property.type !== "Identifier"
   ) {
     return null;
   }
@@ -117,38 +120,38 @@ export default createRule<Options, MessageIds>({
   },
   defaultOptions: [],
   create(context) {
-    const filename = context.filename.replaceAll("\\", "/");
+    const filename = sourceOrigin(context).filename.replaceAll("\\", "/");
     const basename = filename.slice(filename.lastIndexOf("/") + 1);
     if (
       !ADAPTER_BASENAME_RE.test(basename) ||
-      isGeneratedFile(filename, context.sourceCode.text) ||
+      isGeneratedFile(filename, sourceOrigin(context).text) ||
       isTestFile(filename, ["fixtureTree"])
     ) {
       return {};
     }
 
-    const hasApiReceiver = (value: TSESTree.Node): boolean => {
+    const hasApiReceiver = (value: ESTree.Node): boolean => {
       let current = value;
       while (true) {
-        if (current.type === AST_NODE_TYPES.MemberExpression) current = current.object;
-        else if (current.type === AST_NODE_TYPES.TSAsExpression || current.type === AST_NODE_TYPES.TSNonNullExpression || current.type === AST_NODE_TYPES.TSTypeAssertion) current = current.expression;
+        if (current.type === "MemberExpression") current = current.object;
+        else if (current.type === "TSAsExpression" || current.type === "TSNonNullExpression" || current.type === "TSTypeAssertion") current = current.expression;
         else break;
       }
-      if (current.type !== AST_NODE_TYPES.Identifier) return false;
-      const binding = ASTUtils.findVariable(context.sourceCode.getScope(current), current.name);
+      if (current.type !== "Identifier") return false;
+      const binding = findVariable(context.sourceCode.getScope(current), current.name);
       if (binding?.defs.length !== 1 || binding.references.some((reference) => reference.isWrite() && reference.init !== true)) return false;
       const identifier = binding.defs[0]?.name;
-      if (identifier?.type !== AST_NODE_TYPES.Identifier) return false;
+      if (identifier?.type !== "Identifier") return false;
       const annotation = identifier.typeAnnotation?.typeAnnotation;
-      if (annotation?.type !== AST_NODE_TYPES.TSTypeReference) return false;
+      if (annotation?.type !== "TSTypeReference") return false;
       let typeName = annotation.typeName;
-      while (typeName.type === AST_NODE_TYPES.TSQualifiedName) typeName = typeName.left;
-      if (typeName.type !== AST_NODE_TYPES.Identifier) return false;
-      const typeBinding = ASTUtils.findVariable(context.sourceCode.getScope(typeName), typeName.name);
-      return typeBinding?.defs.length === 1 && typeBinding.defs[0]?.type === "ImportBinding" && typeBinding.defs[0].parent.type === AST_NODE_TYPES.ImportDeclaration && API_BOUNDARY_IMPORT_RE.test(typeBinding.defs[0].parent.source.value);
+      while (typeName.type === "TSQualifiedName") typeName = typeName.left;
+      if (typeName.type !== "Identifier") return false;
+      const typeBinding = findVariable(context.sourceCode.getScope(typeName), typeName.name);
+      return typeBinding?.defs.length === 1 && typeBinding.defs[0]?.type === "ImportBinding" && typeBinding.defs[0].parent?.type === "ImportDeclaration" && API_BOUNDARY_IMPORT_RE.test(typeBinding.defs[0].parent.source.value);
     };
     return {
-      Property(node: TSESTree.Property): void {
+      Property(node: ESTree.ObjectProperty): void {
         if (node.computed || node.method || node.shorthand) return;
         const key = propertyName(node.key);
         const value = memberName(node.value);

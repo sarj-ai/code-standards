@@ -1,42 +1,30 @@
-import { join } from "node:path";
-
-import * as tsParser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, expect, it } from "vitest";
-import { z } from "zod";
+import { RuleTester } from "oxlint/plugins-dev";
+import { describe, expect, it } from "vitest";
 
 import rule, {
   NO_ZOD_NATIVE_ENUM_DOCUMENTATION,
 } from "../../src/rules/no-zod-native-enum.js";
 
-RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
 RuleTester.it = it;
 RuleTester.itOnly = it.only;
 
-it("preserves the public enum keys rather than rewriting them to values", () => {
-  const original = z.nativeEnum({ Active: "active", Inactive: "inactive" });
-  const replacement = z.enum(["active", "inactive"]);
-  expect(original.enum).toEqual({ Active: "active", Inactive: "inactive" });
-  expect(replacement.enum).toEqual({ active: "active", inactive: "inactive" });
+it("keeps enum migration report-only because public schema keys can change", () => {
   expect(rule.meta.fixable).toBeUndefined();
 });
 
 const RULE_TESTER = new RuleTester({
-  languageOptions: {
-    parser: tsParser,
-    parserOptions: {
-      projectService: {
-        allowDefaultProject: ["*.ts*", "*/*.ts*", "*/*/*.ts*"],
-      },
-      tsconfigRootDir: join(import.meta.dirname, "..", "fixtures"),
-    },
-  },
+  languageOptions: { parserOptions: { lang: "ts" } },
 });
 const withZod = (code: string): string => `import { z } from "zod"; ${code}`;
 
 RULE_TESTER.run("no-zod-native-enum", rule, {
   valid: [
+    {
+      name: "does not resolve imported enum identity across modules",
+      code: "import { z } from 'zod';\nimport { ImportedStatus } from './zod-enum.js';\nconst S = z.enum(ImportedStatus);",
+      filename: "schema.ts",
+    },
     {
       name: "allows nativeEnum coverage in test files",
       code: 'import { z } from "zod"; const fruitEnum = z.nativeEnum(Fruits);',
@@ -141,7 +129,9 @@ RULE_TESTER.run("no-zod-native-enum", rule, {
     },
     {
       name: "reports without rewriting an object wrapped by satisfies",
-      code: withZod("const S = z.nativeEnum({ A: 'a', B: 'b' } satisfies Record<string, string>);"),
+      code: withZod(
+        "const S = z.nativeEnum({ A: 'a', B: 'b' } satisfies Record<string, string>);",
+      ),
       output: null,
       errors: [{ messageId: "nativeEnum" }],
     },
@@ -201,7 +191,9 @@ RULE_TESTER.run("no-zod-native-enum", rule, {
     },
     {
       name: "reports a local TypeScript enum passed to nativeEnum",
-      code: withZod("enum Status { Active = 'active' }\nconst S = z.nativeEnum(Status);"),
+      code: withZod(
+        "enum Status { Active = 'active' }\nconst S = z.nativeEnum(Status);",
+      ),
       output: null,
       errors: [{ messageId: "nativeEnum" }],
     },
@@ -231,13 +223,17 @@ RULE_TESTER.run("no-zod-native-enum", rule, {
     },
     {
       name: "reports without rewriting nativeEnum inside a chained schema",
-      code: withZod('const S = z.object({ s: z.nativeEnum({ A: "a" }).optional() });'),
+      code: withZod(
+        'const S = z.object({ s: z.nativeEnum({ A: "a" }).optional() });',
+      ),
       output: null,
       errors: [{ messageId: "nativeEnum" }],
     },
     {
       name: "reports z.enum with a local TypeScript enum",
-      code: withZod("enum Status { Active = 'active', Done = 'done' }\nconst S = z.enum(Status);"),
+      code: withZod(
+        "enum Status { Active = 'active', Done = 'done' }\nconst S = z.enum(Status);",
+      ),
       output: null,
       errors: [{ messageId: "enumOfTsEnum", data: { name: "Status" } }],
     },
@@ -249,24 +245,19 @@ RULE_TESTER.run("no-zod-native-enum", rule, {
     },
     {
       name: "reports z.enum with a type-asserted local enum",
-      code: withZod("enum Status { Active = 'active' }\nconst S = z.enum(Status as any);"),
+      code: withZod(
+        "enum Status { Active = 'active' }\nconst S = z.enum(Status as any);",
+      ),
       output: null,
       errors: [{ messageId: "enumOfTsEnum" }],
     },
     {
       name: "reports z.enum with a satisfies-wrapped local enum",
-      code: withZod("enum Status { Active = 'active' }\nconst S = z.enum(Status satisfies object);"),
+      code: withZod(
+        "enum Status { Active = 'active' }\nconst S = z.enum(Status satisfies object);",
+      ),
       output: null,
       errors: [{ messageId: "enumOfTsEnum" }],
-    },
-    {
-      name: "reports z.enum with an imported TypeScript enum",
-      code: "import { z } from 'zod';\nimport { ImportedStatus } from './zod-enum.js';\nconst S = z.enum(ImportedStatus);",
-      filename: "schema.ts",
-      output: null,
-      errors: [
-        { messageId: "enumOfTsEnum", data: { name: "ImportedStatus" } },
-      ],
     },
   ],
 });

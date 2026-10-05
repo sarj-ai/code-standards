@@ -6,7 +6,7 @@ interface Props {
 }
 
 const { engine } = Astro.props;
-const shortLabels: Partial<Record<Engine, string>> = { eslint: 'TS', iac: 'IaC', python: 'Py' };
+const shortLabels: Partial<Record<Engine, string>> = { oxlint: 'TS', iac: 'IaC', python: 'Py' };
 const shortLabel = shortLabels[engine];
 ---
 

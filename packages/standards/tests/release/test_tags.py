@@ -246,8 +246,16 @@ def test_create_release_tags_is_idempotent_and_pushes_exact_ref(tmp_path: Path) 
     assert calls[-1] == ("git", "push", "origin", "refs/tags/python-v1.2.3")
 
 
+@pytest.mark.parametrize(
+    ("target", "artifact_path"),
+    [
+        ("python", "packages/python/src/sarj_python/__init__.py"),
+        ("typescript", "packages/typescript/types/astro.d.ts"),
+    ],
+    ids=("python-source", "exported-declaration"),
+)
 def test_create_release_tags_handles_real_git_missing_tag_exit_code(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, target: str, artifact_path: str
 ) -> None:
     local_environment = subprocess.run(
         ["git", "rev-parse", "--local-env-vars"], check=True, capture_output=True, text=True
@@ -277,13 +285,14 @@ def test_create_release_tags_handles_real_git_missing_tag_exit_code(
 
     result = create_release_tags(
         repository,
-        ("python",),
+        (target,),
         commit=commit,
         publication_checker=lambda _requirement: True,
     )
 
-    assert result.created == ("python-v1.2.3",)
-    assert _git(remote, "rev-list", "-n", "1", "refs/tags/python-v1.2.3") == commit
+    tag = f"{target}-v1.2.3"
+    assert result.created == (tag,)
+    assert _git(remote, "rev-list", "-n", "1", f"refs/tags/{tag}") == commit
 
     (repository / "README.md").write_text("unrelated change\n", encoding="utf-8")
     _git(repository, "add", "README.md")
@@ -301,13 +310,37 @@ def test_create_release_tags_handles_real_git_missing_tag_exit_code(
 
     retry = create_release_tags(
         repository,
-        ("python",),
+        (target,),
         commit=newer_commit,
         publication_checker=lambda _requirement: True,
     )
 
     assert retry.created == ()
-    assert retry.existing == ("python-v1.2.3",)
+    assert retry.existing == (tag,)
+
+    artifact = repository / artifact_path
+    artifact.parent.mkdir(parents=True, exist_ok=True)
+    artifact.write_text("export type Published = string;\n", encoding="utf-8")
+    _git(repository, "add", artifact_path)
+    _git(
+        repository,
+        "-c",
+        "user.email=release-test@example.com",
+        "-c",
+        "user.name=Release Test",
+        "commit",
+        "-m",
+        "publishable change",
+    )
+    changed_commit = _git(repository, "rev-parse", "HEAD")
+
+    with pytest.raises(ValueError, match=f"existing remote tag {tag} points to {commit}"):
+        create_release_tags(
+            repository,
+            (target,),
+            commit=changed_commit,
+            publication_checker=lambda _requirement: True,
+        )
 
 
 def test_create_release_tags_rejects_an_unpublished_manifest_version(tmp_path: Path) -> None:

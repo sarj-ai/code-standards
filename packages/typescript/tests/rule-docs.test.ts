@@ -1,3 +1,4 @@
+import { RENAMED_RULES } from "../src/rules/_renamed-rules.js";
 /**
  * The doc-diet ratchet, ported from `sarj-python-lint`'s `test_rule_meta.py` /
  * `test_rule_links.py`.
@@ -21,8 +22,18 @@ import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
-import plugin, { RENAMED_RULES, RETIRED_RULES, RULES } from "../src/index.js";
-import { examplesPath, examplesUrl, REPO_BLOB, TESTS_DIR } from "../src/rules/_docs.js";
+import plugin, {
+  retiredRules,
+  rules,
+  strictRules,
+  recommendedRules,
+} from "../src/index.js";
+import {
+  examplesPath,
+  examplesUrl,
+  REPO_BLOB,
+  TESTS_DIR,
+} from "../src/rules/_docs.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(HERE, "../../..");
@@ -43,7 +54,7 @@ const MAX_FILEOVERVIEW_LINES = 6;
 const EVIDENCE_IN_COMMENT =
   /((?<![-\w.#/])\d{3,}|\d+(?:\.\d+)?%|\.tsx?:\d+|\bcorpus\b|\bsweep\b|false[- ]positives?\b|true positives?\b|\bmeasured\b|\bfindings?\b|\bhits?\b|\baudit\b|PR #\d+)/iu;
 
-const RULE_NAMES = Object.keys(RULES).sort();
+const RULE_NAMES = Object.keys(rules).sort();
 const MODULE_NAMES = readdirSync(RULES_DIR)
   .filter((file) => file.endsWith(".ts"))
   .map((file) => file.replace(/\.ts$/u, ""))
@@ -57,7 +68,10 @@ function moduleSource(name: string): string {
 /** Sarj rule keys configured by a shipped flat-config module. */
 function configuredSarjRuleNames(source: string): Set<string> {
   return new Set(
-    Array.from(source.matchAll(/"@sarj\/([a-z0-9-]+)"\s*:/gu), (match) => match[1] ?? ""),
+    Array.from(
+      source.matchAll(/"@sarj\/([a-z0-9-]+)"\s*:/gu),
+      (match) => match[1] ?? "",
+    ),
   );
 }
 
@@ -95,7 +109,9 @@ function commentLines(source: string): { line: number; text: string }[] {
 
 describe("the executable-example links are derived, not typed", () => {
   it("links to this repository's main branch", () => {
-    expect(REPO_BLOB).toBe("https://github.com/sarj-ai/code-standards/blob/main");
+    expect(REPO_BLOB).toBe(
+      "https://github.com/sarj-ai/code-standards/blob/main",
+    );
   });
 
   it("keeps executable examples in the rule test directory", () => {
@@ -107,7 +123,9 @@ describe("the executable-example links are derived, not typed", () => {
   });
 
   it("hangs the URL off the repo blob", () => {
-    expect(examplesUrl("no-enum")).toBe(`${REPO_BLOB}/${examplesPath("no-enum")}`);
+    expect(examplesUrl("no-enum")).toBe(
+      `${REPO_BLOB}/${examplesPath("no-enum")}`,
+    );
   });
 
   it("tracks the name it is given, which is the whole point", () => {
@@ -116,10 +134,13 @@ describe("the executable-example links are derived, not typed", () => {
     );
   });
 
-  it.each(RULE_NAMES)("%s points meta.docs.url at its executable examples", (name) => {
-    const rule = RULES[name as keyof typeof RULES];
-    expect(rule.meta.docs?.url).toBe(examplesUrl(name));
-  });
+  it.each(RULE_NAMES)(
+    "%s points meta.docs.url at its executable examples",
+    (name) => {
+      const rule = rules[name as keyof typeof rules];
+      expect(rule.meta.docs?.url).toBe(examplesUrl(name));
+    },
+  );
 });
 
 describe("every rule module is a claim plus its derived links", () => {
@@ -133,10 +154,13 @@ describe("every rule module is a claim plus its derived links", () => {
     ).toBeLessThanOrEqual(MAX_FILEOVERVIEW_LINES);
   });
 
-  it.each(MODULE_NAMES)("%s states its own name and a claim on line one", (name) => {
-    const [first] = fileoverviewLines(moduleSource(name));
-    expect(first).toMatch(new RegExp(`^@fileoverview ${name} — \\S`, "u"));
-  });
+  it.each(MODULE_NAMES)(
+    "%s states its own name and a claim on line one",
+    (name) => {
+      const [first] = fileoverviewLines(moduleSource(name));
+      expect(first).toMatch(new RegExp(`^@fileoverview ${name} — \\S`, "u"));
+    },
+  );
 
   it.each(RULE_NAMES)("%s carries the derived examples link", (name) => {
     expect(fileoverviewLines(moduleSource(name))).toContain(
@@ -144,40 +168,55 @@ describe("every rule module is a claim plus its derived links", () => {
     );
   });
 
-  it.each(HELPER_NAMES)("%s carries no examples link, having no test module", (name) => {
-    expect(fileoverviewLines(moduleSource(name)).join("\n")).not.toContain("Examples:");
-  });
-
-  it.each(MODULE_NAMES.filter((name) => name !== "_docs"))("%s hand-writes no repo link", (name) => {
-    const stray = moduleSource(name)
-      .split("\n")
-      .filter(
-        (line) =>
-          line.includes(REPO_BLOB) &&
-          !line.includes(examplesUrl(name)),
+  it.each(HELPER_NAMES)(
+    "%s carries no examples link, having no test module",
+    (name) => {
+      expect(fileoverviewLines(moduleSource(name)).join("\n")).not.toContain(
+        "Examples:",
       );
-    expect(stray).toEqual([]);
-  });
+    },
+  );
+
+  it.each(MODULE_NAMES.filter((name) => name !== "_docs"))(
+    "%s hand-writes no repo link",
+    (name) => {
+      const stray = moduleSource(name)
+        .split("\n")
+        .filter(
+          (line) =>
+            line.includes(REPO_BLOB) && !line.includes(examplesUrl(name)),
+        );
+      expect(stray).toEqual([]);
+    },
+  );
 });
 
 describe("the behavior lives in executable tests", () => {
   it.each(RULE_NAMES)("%s has a non-empty examples module", (name) => {
     const file = resolve(REPO_ROOT, examplesPath(name));
-    expect(statSync(file).size, `${examplesPath(name)} is empty`).toBeGreaterThan(0);
+    expect(
+      statSync(file).size,
+      `${examplesPath(name)} is empty`,
+    ).toBeGreaterThan(0);
   });
 
-  it.each(MODULE_NAMES)("%s carries no measurement in a code comment", (name) => {
-    const offenders = commentLines(moduleSource(name))
-      .filter(({ text }) => EVIDENCE_IN_COMMENT.test(text))
-      .map(({ line, text }) => `${name}.ts:${line}: ${text}`);
-    expect(
-      offenders,
-      "Corpus reports do not belong in implementation comments; encode behavior in tests.",
-    ).toEqual([]);
-  });
+  it.each(MODULE_NAMES)(
+    "%s carries no measurement in a code comment",
+    (name) => {
+      const offenders = commentLines(moduleSource(name))
+        .filter(({ text }) => EVIDENCE_IN_COMMENT.test(text))
+        .map(({ line, text }) => `${name}.ts:${line}: ${text}`);
+      expect(
+        offenders,
+        "Corpus reports do not belong in implementation comments; encode behavior in tests.",
+      ).toEqual([]);
+    },
+  );
 
   it("ships no exemption or budget file", () => {
-    const strays = readdirSync(HERE).filter((file) => /budget|exempt|allowlist/iu.test(file));
+    const strays = readdirSync(HERE).filter((file) =>
+      /budget|exempt|allowlist/iu.test(file),
+    );
     expect(strays).toEqual([]);
   });
 });
@@ -195,7 +234,7 @@ describe("a rename ships a map, not a hole", () => {
    * caused. A name may be RETIRED or RENAMED, which are separate, deliberate
    * acts; it may not quietly vanish.
    *
-   * "Retired" is not restated here. It is read from `RETIRED_RULES`, the same map
+   * "Retired" is not restated here. It is read from `retiredRules`, the same map
    * `strict-config-sync.test.ts` derives from git history — so a withdrawal is
    * recorded in exactly one place and this list never has to be edited for one.
    */
@@ -266,7 +305,9 @@ describe("a rename ships a map, not a hole", () => {
     // that stopped resolving with nothing anywhere saying what to do instead.
     const unaccounted = SHIPPED_IN_6_1_0.filter(
       (name) =>
-        !(name in plugin.rules) && !(name in RENAMED_RULES) && !(name in RETIRED_RULES),
+        !(name in plugin.rules) &&
+        !(name in RENAMED_RULES) &&
+        !(name in retiredRules),
     );
     expect(
       unaccounted,
@@ -280,7 +321,9 @@ describe("a rename ships a map, not a hole", () => {
   it("never both renames and retires the same name", () => {
     // The two maps answer opposite questions about one name; an entry in both is
     // a contradiction a consumer's migration script cannot resolve.
-    const both = Object.keys(RENAMED_RULES).filter((name) => name in RETIRED_RULES);
+    const both = Object.keys(RENAMED_RULES).filter(
+      (name) => name in retiredRules,
+    );
     expect(both).toEqual([]);
   });
 
@@ -293,7 +336,8 @@ describe("a rename ships a map, not a hole", () => {
     // ...and every shipped name that is no longer a live rule must be in it.
     const live = new Set(RULE_NAMES);
     const orphaned = SHIPPED_IN_6_1_0.filter(
-      (name) => !live.has(name) && !(name in RENAMED_RULES) && !(name in RETIRED_RULES),
+      (name) =>
+        !live.has(name) && !(name in RENAMED_RULES) && !(name in retiredRules),
     );
     expect(orphaned).toEqual([]);
   });
@@ -316,7 +360,7 @@ describe("a rename ships a map, not a hole", () => {
 
   it("deprecates no live rule, so no name points at a dead end", () => {
     for (const to of Object.values(RENAMED_RULES)) {
-      expect(RULES[to].meta.deprecated).toBeUndefined();
+      expect(rules[to].meta.deprecated).toBeUndefined();
     }
   });
 
@@ -324,15 +368,18 @@ describe("a rename ships a map, not a hole", () => {
     // A preset naming a rule the plugin does not define is `Could not find
     // "@sarj/<rule>" in plugin "@sarj"` for every consumer of that preset.
     for (const from of Object.keys(RENAMED_RULES)) {
-      expect(plugin.configs.strict.rules).not.toHaveProperty(`@sarj/${from}`);
-      expect(plugin.configs.recommended.rules).not.toHaveProperty(`@sarj/${from}`);
+      expect(strictRules).not.toHaveProperty(`@sarj/${from}`);
+      expect(recommendedRules).not.toHaveProperty(`@sarj/${from}`);
     }
   });
 
   it("leaves no old name in the shipped strict config", () => {
     const configured = configuredSarjRuleNames(
       readFileSync(
-        resolve(REPO_ROOT, "packages/standards/src/sarj_standards/configs/eslint.strict.mjs"),
+        resolve(
+          REPO_ROOT,
+          "packages/standards/src/sarj_standards/configs/oxlint.strict.mjs",
+        ),
         "utf8",
       ),
     );
@@ -343,8 +390,10 @@ describe("a rename ships a map, not a hole", () => {
 
   it("records each migration on the live rule that generates docs and redirects", () => {
     for (const [from, to] of Object.entries(RENAMED_RULES)) {
-      expect(RULES[to as keyof typeof RULES]).toBeDefined();
-      expect(RULES[to as keyof typeof RULES]?.documentation?.aliases).toContain(from);
+      expect(rules[to as keyof typeof rules]).toBeDefined();
+      expect(rules[to as keyof typeof rules]?.documentation?.aliases).toContain(
+        from,
+      );
     }
   });
 });

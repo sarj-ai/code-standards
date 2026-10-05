@@ -1,0 +1,11 @@
+{
+  "package": "eslint-plugin-playwright",
+  "version": "2.12.0",
+  "source": "https://github.com/playwright-community/eslint-plugin-playwright",
+  "license": "LICENSE",
+  "changes": [
+    "Retain the two configured syntax rule exports, omitting ESLint preset and legacy config exports.",
+    "Remove unconfigured rule initialization and ESLint config assembly; retain required shared helpers."
+  ],
+  "helpers": {}
+}

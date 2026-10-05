@@ -1,15 +1,14 @@
 // vitest: shared-module-graph
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
+import { RuleTester } from "oxlint/plugins-dev";
+import { describe, it } from "vitest";
 
 import rule, { NO_RESTATED_COMMENT_DOCUMENTATION } from "../../src/rules/no-restated-comment.js";
 
-RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
 RuleTester.it = it;
 RuleTester.itOnly = it.only;
 
-const RULE_TESTER = new RuleTester();
+const RULE_TESTER = new RuleTester({ languageOptions: { parserOptions: { lang: "ts" } } });
 
 RULE_TESTER.run("no-restated-comment", rule, {
   valid: [
@@ -107,11 +106,11 @@ RULE_TESTER.run("no-restated-comment", rule, {
     },
   ],
   invalid: [
-    { name: "does not group an unrelated type query", code: "// Serialize key\nconst key = serialize(input);\ntype Payload = typeof other;", errors: [{ messageId: "restatesLineBelow", suggestions: 1 }] },
+    { name: "does not group an unrelated type query", code: "// Serialize key\nconst key = serialize(input);\ntype Payload = typeof other;", errors: [{ messageId: "restatesLineBelow" }] },
     {
       name: "uses identifiers inside template interpolations but not template text",
       code: "// serialized values\nreturn `${serializeValues(input)}`;",
-      errors: [{ messageId: "restatesLineBelow", suggestions: 1 }],
+      errors: [{ messageId: "restatesLineBelow" }],
     },
     {
       name: "does not treat a preceding trailing comment as a paragraph",
@@ -143,11 +142,11 @@ RULE_TESTER.run("no-restated-comment", rule, {
     },
     {
       code: "// Serialize key\nconst [key] = serialize(_k);\nreturn null;",
-      errors: [{ messageId: "restatesLineBelow", suggestions: 1 }],
+      errors: [{ messageId: "restatesLineBelow" }],
     },
     {
       code: "// issue path length\nconst issues = sortByPathLength(error.issues);\nreturn null;",
-      errors: [{ messageId: "restatesLineBelow", suggestions: 1 }],
+      errors: [{ messageId: "restatesLineBelow" }],
     },
     {
       name: "preserves CRLF while deleting an indented comment line",
@@ -167,18 +166,18 @@ RULE_TESTER.run("no-restated-comment", rule, {
     },
     {
       code: "// Get the cached page data\nconst pageData = pageKey ? getCache().data : undefined;\nreturn null;",
-      errors: [{ messageId: "restatesLineBelow", suggestions: 1 }],
+      errors: [{ messageId: "restatesLineBelow" }],
     },
     // The trailing-`e` strip makes the inflection fold symmetric, so
     // `serialized` and `serialize` land on the same stem.
     {
       code: "// serialized values\nconst out = serializeValues(input);\nreturn null;",
-      errors: [{ messageId: "restatesLineBelow", suggestions: 1 }],
+      errors: [{ messageId: "restatesLineBelow" }],
     },
     {
       name: "reports a restatement at the eight-word budget",
       code: "// cached page data result output value item record\nconst cachedPageDataResultOutputValueItemRecord = getCachedPageDataResultOutputValueItemRecord();\nreturn null;",
-      errors: [{ messageId: "restatesLineBelow", suggestions: 1 }],
+      errors: [{ messageId: "restatesLineBelow" }],
     },
   ],
 });

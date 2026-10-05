@@ -36,13 +36,13 @@ class LevelEdit:
 def prepare(root: Path, selector: RuleSelector, relative_source: str, level: DefaultLevel) -> LevelEdit:
     path = root / relative_source
     before = path.read_text(encoding="utf-8")
-    if selector.engine is RuleEngine.ESLINT:
+    if selector.engine is RuleEngine.OXLINT:
         rendered = _typescript(root, before, level)
     elif selector.engine is RuleEngine.TEXT:
         rendered = _text(before, level, rule_id=str(selector.rule_id))
     else:
         rendered = _python(before, selector.engine, level)
-    if selector.engine is not RuleEngine.ESLINT:
+    if selector.engine is not RuleEngine.OXLINT:
         compile(rendered.source, str(path), "exec", dont_inherit=True)
     return LevelEdit(path=path, before=before, after=rendered.source, current=rendered.current)
 

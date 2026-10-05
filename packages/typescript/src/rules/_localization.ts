@@ -2,11 +2,9 @@
  * @fileoverview _localization — localization policies share opt-in and translation-boundary semantics.
  */
 
-import {
-  AST_NODE_TYPES,
-  type TSESLint,
-  type TSESTree,
-} from "@typescript-eslint/utils";
+import { nodeAncestors } from "./_scope.js";
+import type { ESTree, SourceCode } from "@oxlint/plugins";
+
 
 import {
   attributeText,
@@ -50,16 +48,16 @@ export function needsTranslation(
 }
 
 export function withinTranslation(
-  node: TSESTree.Node,
-  source: TSESLint.SourceCode,
+  node: ESTree.Node,
+  source: SourceCode,
   options: LocalizationOptions | undefined,
 ): boolean {
   const isText =
-    node.type === AST_NODE_TYPES.JSXText ||
-    node.type === AST_NODE_TYPES.JSXExpressionContainer;
+    node.type === "JSXText" ||
+    node.type === "JSXExpressionContainer";
   let translateResolved = false;
-  for (const current of [node, ...source.getAncestors(node).toReversed()]) {
-    if (current.type !== AST_NODE_TYPES.JSXElement) continue;
+  for (const current of [node, ...nodeAncestors(node).toReversed()]) {
+    if (current.type !== "JSXElement") continue;
     const opening = current.openingElement;
     if (translationExemptElement(opening, isText)) return true;
     if (!translateResolved) {
@@ -80,8 +78,8 @@ export function withinTranslation(
   return false;
 }
 
-function translationExemptElement(opening: TSESTree.JSXOpeningElement, isText: boolean): boolean {
-  if (opening.name.type !== AST_NODE_TYPES.JSXIdentifier) return false;
+function translationExemptElement(opening: ESTree.JSXOpeningElement, isText: boolean): boolean {
+  if (opening.name.type !== "JSXIdentifier") return false;
   if (["script", "style"].includes(opening.name.name)) return true;
   return isText && ["code", "samp"].includes(opening.name.name);
 }

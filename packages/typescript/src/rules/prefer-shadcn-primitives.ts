@@ -4,10 +4,21 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/prefer-shadcn-primitives.test.ts
  */
 
-import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
-import { parse as parseTypeScript } from "@typescript-eslint/typescript-estree";
+import { sourceOrigin } from "./_source-origin.js";
+import { nodeAncestors } from "./_scope.js";
+import type { ESTree } from "@oxlint/plugins";
+
+import { parseSync } from "oxc-parser";
 import { existsSync, lstatSync, readFileSync, realpathSync } from "node:fs";
-import { dirname, isAbsolute, join, parse as parsePath, relative, resolve, sep } from "node:path";
+import {
+  dirname,
+  isAbsolute,
+  join,
+  parse as parsePath,
+  relative,
+  resolve,
+  sep,
+} from "node:path";
 import { parse as parseJsonc, type ParseError } from "jsonc-parser";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
@@ -21,9 +32,12 @@ export interface RuleOptions {
 type Options = readonly [RuleOptions?];
 
 export const PREFER_SHADCN_PRIMITIVES_DOCUMENTATION = {
-  summary: "Require visible raw JSX controls to use the corresponding shared shadcn primitive.",
-  rationale: "Shared primitives centralize interaction, accessibility, and visual behavior across the product.",
-  remediation: "Replace the raw visible control with the corresponding shared shadcn component.",
+  summary:
+    "Require visible raw JSX controls to use the corresponding shared shadcn primitive.",
+  rationale:
+    "Shared primitives centralize interaction, accessibility, and visual behavior across the product.",
+  remediation:
+    "Replace the raw visible control with the corresponding shared shadcn component.",
   category: "style",
   limitations: [
     "Native multiple selects and controls with possibly enabled hidden attributes are excluded. Unknown JSX spreads can hide controls; visual equivalence is not inferred.",
@@ -32,8 +46,36 @@ export const PREFER_SHADCN_PRIMITIVES_DOCUMENTATION = {
     "Package-local project detection is opt-in and fails closed unless components.json, one unambiguous tsconfig/jsconfig alias, the exact primitive module, and its expected export all exist.",
   ],
   examples: [
-    { id: "shared-button", title: "Use a shared button", outcome: "no-match", files: [{ path: "src/form.tsx", source: "import { Button } from '@/components/ui/button'; const action = <Button>Save</Button>;" }], focusPath: "src/form.tsx", expectedCount: 0, public: true },
-    { id: "raw-button", title: "Do not use a raw button", outcome: "match", files: [{ path: "src/form.tsx", source: "import { Card } from '@/components/ui/card'; const action = <button>Save</button>;" }], focusPath: "src/form.tsx", expectedCount: 1, public: true },
+    {
+      id: "shared-button",
+      title: "Use a shared button",
+      outcome: "no-match",
+      files: [
+        {
+          path: "src/form.tsx",
+          source:
+            "import { Button } from '@/components/ui/button'; const action = <Button>Save</Button>;",
+        },
+      ],
+      focusPath: "src/form.tsx",
+      expectedCount: 0,
+      public: true,
+    },
+    {
+      id: "raw-button",
+      title: "Do not use a raw button",
+      outcome: "match",
+      files: [
+        {
+          path: "src/form.tsx",
+          source:
+            "import { Card } from '@/components/ui/card'; const action = <button>Save</button>;",
+        },
+      ],
+      focusPath: "src/form.tsx",
+      expectedCount: 1,
+      public: true,
+    },
   ],
 } as const satisfies RuleDocumentation;
 
@@ -74,8 +116,7 @@ const LABELABLE_ELEMENTS: ReadonlySet<string> = new Set([
   "textarea",
 ]);
 
-const SHARED_PRIMITIVE_IMPLEMENTATION_RE =
-  /(?:^|\/)components\/ui(?:\/|$)/i;
+const SHARED_PRIMITIVE_IMPLEMENTATION_RE = /(?:^|\/)components\/ui(?:\/|$)/i;
 const SHARED_PRIMITIVE_IMPORT_RE = /(?:^|\/)components\/ui\/([^/]+)$/i;
 const AMBIGUOUS_INPUT_TYPES: ReadonlySet<string> = new Set([
   "button",
@@ -113,7 +154,8 @@ function detectProjectPrimitives(
 
   const manifest = readJsonc(join(packageRoot, "components.json"));
   const alias = stringProperty(manifest, "aliases", "ui");
-  const unresolvedUiRoot = alias === null ? null : resolveAlias(packageRoot, alias);
+  const unresolvedUiRoot =
+    alias === null ? null : resolveAlias(packageRoot, alias);
   if (unresolvedUiRoot === null) return { available: new Set(), uiRoot: null };
   const uiRoot = safeContainedDirectory(packageRoot, unresolvedUiRoot);
   if (uiRoot === null) {
@@ -125,17 +167,22 @@ function detectProjectPrimitives(
     [PrimitiveCapability, string]
   >) {
     if (!requested.has(capability)) continue;
-    moduleCandidates.set(capability, ["tsx", "ts", "jsx", "js"].flatMap((extension) => [
-      join(uiRoot, `${moduleName}.${extension}`),
-      join(uiRoot, moduleName, `index.${extension}`),
-    ]));
+    moduleCandidates.set(
+      capability,
+      ["tsx", "ts", "jsx", "js"].flatMap((extension) => [
+        join(uiRoot, `${moduleName}.${extension}`),
+        join(uiRoot, moduleName, `index.${extension}`),
+      ]),
+    );
   }
   const fingerprint = [
     join(packageRoot, "components.json"),
     join(packageRoot, "tsconfig.json"),
     join(packageRoot, "jsconfig.json"),
     ...[...moduleCandidates.values()].flat(),
-  ].map(fileFingerprint).join("|");
+  ]
+    .map(fileFingerprint)
+    .join("|");
   const cacheKey = `${packageRoot}:${[...requested].sort().join(",")}`;
   const cached = PROJECT_PRIMITIVES_CACHE.get(cacheKey);
   if (cached?.fingerprint === fingerprint) return cached.value;
@@ -143,9 +190,7 @@ function detectProjectPrimitives(
   const available = new Set<PrimitiveCapability>();
   for (const [capability, candidates] of moduleCandidates) {
     if (
-      candidates.some(
-        (candidate) => exportsPrimitive(candidate, capability),
-      )
+      candidates.some((candidate) => exportsPrimitive(candidate, capability))
     ) {
       available.add(capability);
     }
@@ -158,7 +203,9 @@ function detectProjectPrimitives(
 function fileFingerprint(path: string): string {
   try {
     const stat = lstatSync(path);
-    return stat.isFile() ? `${path}:${stat.size}:${stat.mtimeMs}` : `${path}:excluded`;
+    return stat.isFile()
+      ? `${path}:${stat.size}:${stat.mtimeMs}`
+      : `${path}:excluded`;
   } catch {
     return `${path}:missing`;
   }
@@ -166,10 +213,16 @@ function fileFingerprint(path: string): string {
 
 function isWithin(root: string, candidate: string): boolean {
   const path = relative(root, candidate);
-  return path === "" || (!path.startsWith(`..${sep}`) && path !== ".." && !isAbsolute(path));
+  return (
+    path === "" ||
+    (!path.startsWith(`..${sep}`) && path !== ".." && !isAbsolute(path))
+  );
 }
 
-function safeContainedDirectory(root: string, candidate: string): string | null {
+function safeContainedDirectory(
+  root: string,
+  candidate: string,
+): string | null {
   try {
     if (!lstatSync(candidate).isDirectory()) return null;
     const realRoot = realpathSync(root);
@@ -219,7 +272,8 @@ function readSmallRegularFile(path: string): string | null {
 function stringProperty(value: unknown, ...keys: string[]): string | null {
   let current = value;
   for (const key of keys) {
-    if (typeof current !== "object" || current === null || !(key in current)) return null;
+    if (typeof current !== "object" || current === null || !(key in current))
+      return null;
     current = (current as Record<string, unknown>)[key];
   }
   return typeof current === "string" && current.trim() !== "" ? current : null;
@@ -235,10 +289,14 @@ function resolveAlias(packageRoot: string, alias: string): string | null {
   if (configPath === undefined) return null;
   const config = readJsonc(configPath);
   if (typeof config !== "object" || config === null) return null;
-  const compilerOptions = (config as Record<string, unknown>)["compilerOptions"];
-  if (typeof compilerOptions !== "object" || compilerOptions === null) return null;
+  const compilerOptions = (config as Record<string, unknown>)[
+    "compilerOptions"
+  ];
+  if (typeof compilerOptions !== "object" || compilerOptions === null)
+    return null;
   const options = compilerOptions as Record<string, unknown>;
-  const baseUrl = typeof options["baseUrl"] === "string" ? options["baseUrl"] : ".";
+  const baseUrl =
+    typeof options["baseUrl"] === "string" ? options["baseUrl"] : ".";
   const paths = options["paths"];
   if (typeof paths !== "object" || paths === null) return null;
 
@@ -248,34 +306,40 @@ function resolveAlias(packageRoot: string, alias: string): string | null {
   return resolve(packageRoot, baseUrl, match);
 }
 
-function exportsPrimitive(path: string, exportName: PrimitiveCapability): boolean {
+function exportsPrimitive(
+  path: string,
+  exportName: PrimitiveCapability,
+): boolean {
   try {
     const source = readSmallRegularFile(path);
     if (source === null) return false;
-    const program = parseTypeScript(source, { jsx: true, sourceType: "module" });
+    const result = parseSync(path, source, { lang: "tsx" });
+    if (result.errors.length > 0) return false;
+    const program = result.program;
     return program.body.some((statement) => {
-      if (statement.type !== AST_NODE_TYPES.ExportNamedDeclaration) return false;
+      if (statement.type !== "ExportNamedDeclaration") return false;
       if (statement.exportKind === "type") return false;
       if (
         statement.specifiers.some(
           (specifier) =>
-            specifier.type === AST_NODE_TYPES.ExportSpecifier &&
+            specifier.type === "ExportSpecifier" &&
             specifier.exportKind !== "type" &&
-            specifier.exported.type === AST_NODE_TYPES.Identifier &&
+            specifier.exported.type === "Identifier" &&
             specifier.exported.name === exportName,
         )
       ) {
         return true;
       }
       const declaration = statement.declaration;
-      if (declaration?.type === AST_NODE_TYPES.VariableDeclaration) {
+      if (declaration?.type === "VariableDeclaration") {
         return declaration.declarations.some(
-          (item) => item.id.type === AST_NODE_TYPES.Identifier && item.id.name === exportName,
+          (item) =>
+            item.id.type === "Identifier" && item.id.name === exportName,
         );
       }
       return (
-        (declaration?.type === AST_NODE_TYPES.FunctionDeclaration ||
-          declaration?.type === AST_NODE_TYPES.ClassDeclaration) &&
+        (declaration?.type === "FunctionDeclaration" ||
+          declaration?.type === "ClassDeclaration") &&
         declaration.id?.name === exportName
       );
     });
@@ -284,14 +348,10 @@ function exportsPrimitive(path: string, exportName: PrimitiveCapability): boolea
   }
 }
 
-function rawElementName(
-  node: TSESTree.JSXOpeningElement,
-): RawPrimitive | null {
-  if (node.name.type !== AST_NODE_TYPES.JSXIdentifier) return null;
+function rawElementName(node: ESTree.JSXOpeningElement): RawPrimitive | null {
+  if (node.name.type !== "JSXIdentifier") return null;
   const name = node.name.name;
-  return Object.hasOwn(RAW_PRIMITIVES, name)
-    ? (name as RawPrimitive)
-    : null;
+  return Object.hasOwn(RAW_PRIMITIVES, name) ? (name as RawPrimitive) : null;
 }
 
 type StaticAttribute =
@@ -300,42 +360,40 @@ type StaticAttribute =
   | { readonly kind: "unknown" };
 
 function effectiveAttribute(
-  node: TSESTree.JSXOpeningElement,
+  node: ESTree.JSXOpeningElement,
   attributeName: string,
 ): StaticAttribute {
   for (const attribute of node.attributes.toReversed()) {
-    if (attribute.type === AST_NODE_TYPES.JSXSpreadAttribute) {
+    if (attribute.type === "JSXSpreadAttribute") {
       return { kind: "unknown" };
     }
     if (
-      attribute.name.type !== AST_NODE_TYPES.JSXIdentifier ||
+      attribute.name.type !== "JSXIdentifier" ||
       attribute.name.name !== attributeName
     ) {
       continue;
     }
     const value = staticString(attribute.value);
-    return value === null
-      ? { kind: "unknown" }
-      : { kind: "known", value };
+    return value === null ? { kind: "unknown" } : { kind: "known", value };
   }
   return { kind: "missing" };
 }
 
-function staticString(value: TSESTree.JSXAttribute["value"]): string | null {
-  if (value?.type === AST_NODE_TYPES.Literal) {
+function staticString(value: ESTree.JSXAttribute["value"]): string | null {
+  if (value?.type === "Literal") {
     return typeof value.value === "string" ? value.value : null;
   }
-  if (value?.type !== AST_NODE_TYPES.JSXExpressionContainer) return null;
+  if (value?.type !== "JSXExpressionContainer") return null;
   return staticExpressionString(value.expression);
 }
 
 function staticExpressionString(
-  expression: TSESTree.Expression | TSESTree.JSXEmptyExpression,
+  expression: ESTree.Expression | ESTree.JSXEmptyExpression,
 ): string | null {
-  if (expression.type === AST_NODE_TYPES.Literal) {
+  if (expression.type === "Literal") {
     return typeof expression.value === "string" ? expression.value : null;
   }
-  if (expression.type === AST_NODE_TYPES.TemplateLiteral) {
+  if (expression.type === "TemplateLiteral") {
     let value = expression.quasis[0]?.value.cooked ?? "";
     for (const [index, substitution] of expression.expressions.entries()) {
       const staticSubstitution = staticExpressionString(substitution);
@@ -346,18 +404,18 @@ function staticExpressionString(
     return value;
   }
   if (
-    expression.type === AST_NODE_TYPES.TSAsExpression ||
-    expression.type === AST_NODE_TYPES.TSNonNullExpression ||
-    expression.type === AST_NODE_TYPES.TSSatisfiesExpression ||
-    expression.type === AST_NODE_TYPES.TSTypeAssertion
+    expression.type === "TSAsExpression" ||
+    expression.type === "TSNonNullExpression" ||
+    expression.type === "TSSatisfiesExpression" ||
+    expression.type === "TSTypeAssertion"
   ) {
     return staticExpressionString(expression.expression);
   }
   return null;
 }
 
-function isLabelableElement(node: TSESTree.JSXElement): boolean {
-  if (node.openingElement.name.type !== AST_NODE_TYPES.JSXIdentifier) {
+function isLabelableElement(node: ESTree.JSXElement): boolean {
+  if (node.openingElement.name.type !== "JSXIdentifier") {
     return false;
   }
   const name = node.openingElement.name.name;
@@ -372,33 +430,33 @@ function isLabelableElement(node: TSESTree.JSXElement): boolean {
 }
 
 function containsLabelableElement(
-  node: TSESTree.JSXElement | TSESTree.JSXFragment,
+  node: ESTree.JSXElement | ESTree.JSXFragment,
 ): boolean {
   return node.children.some((child) => {
-    if (child.type === AST_NODE_TYPES.JSXElement) {
+    if (child.type === "JSXElement") {
       return isLabelableElement(child) || containsLabelableElement(child);
     }
-    if (child.type === AST_NODE_TYPES.JSXFragment) {
+    if (child.type === "JSXFragment") {
       return containsLabelableElement(child);
     }
     return false;
   });
 }
 
-function isStaticallyAssociatedLabel(node: TSESTree.JSXOpeningElement): boolean {
+function isStaticallyAssociatedLabel(node: ESTree.JSXOpeningElement): boolean {
   const htmlFor = effectiveAttribute(node, "htmlFor");
   if (htmlFor.kind === "known" && htmlFor.value.trim().length > 0) return true;
   return (
-    node.parent.type === AST_NODE_TYPES.JSXElement &&
-    containsLabelableElement(node.parent)
+    node.parent.type === "JSXElement" && containsLabelableElement(node.parent)
   );
 }
 
 function replacementFor(
-  node: TSESTree.JSXOpeningElement,
+  node: ESTree.JSXOpeningElement,
   element: RawPrimitive,
 ): Replacement | null {
-  if (element === "select" && mayHaveBooleanAttribute(node, "multiple")) return null;
+  if (element === "select" && mayHaveBooleanAttribute(node, "multiple"))
+    return null;
   if (element !== "input") return RAW_PRIMITIVES[element];
   const typeAttribute = effectiveAttribute(node, "type");
   if (typeAttribute.kind === "unknown") return null;
@@ -415,13 +473,19 @@ function replacementFor(
   return RAW_PRIMITIVES.input;
 }
 
-function mayHaveBooleanAttribute(node: TSESTree.JSXOpeningElement, name: string): boolean {
+function mayHaveBooleanAttribute(
+  node: ESTree.JSXOpeningElement,
+  name: string,
+): boolean {
   for (const attribute of node.attributes.toReversed()) {
-    if (attribute.type === AST_NODE_TYPES.JSXSpreadAttribute) return true;
-    if (attribute.name.type !== AST_NODE_TYPES.JSXIdentifier || attribute.name.name !== name) continue;
-    return !(attribute.value?.type === AST_NODE_TYPES.JSXExpressionContainer &&
-      attribute.value.expression.type === AST_NODE_TYPES.Literal &&
-      attribute.value.expression.value === false);
+    if (attribute.type === "JSXSpreadAttribute") return true;
+    if (attribute.name.type !== "JSXIdentifier" || attribute.name.name !== name)
+      continue;
+    return !(
+      attribute.value?.type === "JSXExpressionContainer" &&
+      attribute.value.expression.type === "Literal" &&
+      attribute.value.expression.value === false
+    );
   }
   return false;
 }
@@ -452,11 +516,11 @@ export default createRule<Options, MessageIds>({
   },
   defaultOptions: [{}],
   create(context, [options]) {
-    const filename = context.filename.replaceAll("\\", "/");
+    const filename = sourceOrigin(context).filename.replaceAll("\\", "/");
     if (
       isTestFile(filename) ||
       isStoryFile(filename) ||
-      isGeneratedFile(filename, context.sourceCode.text) ||
+      isGeneratedFile(filename, sourceOrigin(context).text) ||
       SHARED_PRIMITIVE_IMPLEMENTATION_RE.test(filename)
     ) {
       return {};
@@ -470,7 +534,7 @@ export default createRule<Options, MessageIds>({
     const candidates: Array<{
       readonly capability: PrimitiveCapability;
       readonly element: RawPrimitive;
-      readonly node: TSESTree.JSXOpeningElement;
+      readonly node: ESTree.JSXOpeningElement;
       readonly replacement: string;
     }> = [];
     return {
@@ -479,39 +543,52 @@ export default createRule<Options, MessageIds>({
         const match = SHARED_PRIMITIVE_IMPORT_RE.exec(node.source.value);
         if (match?.[1] === undefined) return;
         hasSharedPrimitiveImport = true;
-        for (const [capability, moduleName] of Object.entries(CAPABILITIES) as Array<
-          [PrimitiveCapability, string]
-        >) {
-          if (match[1].toLowerCase() === moduleName) importedCapabilities.add(capability);
+        for (const [capability, moduleName] of Object.entries(
+          CAPABILITIES,
+        ) as Array<[PrimitiveCapability, string]>) {
+          if (match[1].toLowerCase() === moduleName)
+            importedCapabilities.add(capability);
         }
       },
       JSXOpeningElement(node): void {
         const element = rawElementName(node);
         if (element === null) return;
-        if (mayHaveBooleanAttribute(node, "hidden") ||
-          context.sourceCode.getAncestors(node).some((ancestor) =>
-            ancestor.type === AST_NODE_TYPES.JSXElement &&
-            mayHaveBooleanAttribute(ancestor.openingElement, "hidden"),
-          )) return;
+        if (
+          mayHaveBooleanAttribute(node, "hidden") ||
+          nodeAncestors(node).some(
+            (ancestor) =>
+              ancestor.type === "JSXElement" &&
+              mayHaveBooleanAttribute(ancestor.openingElement, "hidden"),
+          )
+        )
+          return;
         if (element === "label" && !isStaticallyAssociatedLabel(node)) return;
         const replacement = replacementFor(node, element);
         if (replacement === null) return;
         candidates.push({ element, node, ...replacement });
       },
       "Program:exit"(): void {
-        const requested = new Set(candidates.map(({ capability }) => capability));
-        const projectPrimitives = detectsProject && requested.size > 0
-          ? detectProjectPrimitives(context.filename, requested)
-          : { available: new Set<PrimitiveCapability>(), uiRoot: null };
+        const requested = new Set(
+          candidates.map(({ capability }) => capability),
+        );
+        const projectPrimitives =
+          detectsProject && requested.size > 0
+            ? detectProjectPrimitives(sourceOrigin(context).filename, requested)
+            : { available: new Set<PrimitiveCapability>(), uiRoot: null };
         if (
           projectPrimitives.uiRoot !== null &&
-          isWithin(projectPrimitives.uiRoot, realpathOrOriginal(context.filename))
-        ) return;
+          isWithin(
+            projectPrimitives.uiRoot,
+            realpathOrOriginal(sourceOrigin(context).filename),
+          )
+        )
+          return;
         for (const { capability, element, node, replacement } of candidates) {
           const available =
             options?.assumeAvailable === true ||
             (detectsProject
-              ? projectPrimitives.available.has(capability) || importedCapabilities.has(capability)
+              ? projectPrimitives.available.has(capability) ||
+                importedCapabilities.has(capability)
               : hasSharedPrimitiveImport);
           if (!available) continue;
           context.report({
@@ -533,7 +610,10 @@ function realpathOrOriginal(path: string): string {
   }
 }
 
-function matchingAliasTargets(paths: Record<string, unknown>, alias: string): string[] {
+function matchingAliasTargets(
+  paths: Record<string, unknown>,
+  alias: string,
+): string[] {
   const matches: string[] = [];
   for (const [pattern, rawTargets] of Object.entries(paths)) {
     if (!Array.isArray(rawTargets) || rawTargets.length !== 1) {
@@ -549,8 +629,18 @@ function matchingAliasTargets(paths: Record<string, unknown>, alias: string): st
     const prefix = pattern.slice(0, star);
     const suffix = pattern.slice(star + 1);
     if (!alias.startsWith(prefix) || !alias.endsWith(suffix)) continue;
-    const substitution = alias.slice(prefix.length, alias.length - suffix.length);
-    matches.push(target.replace("*", substitution));
+    const substitution = alias.slice(
+      prefix.length,
+      alias.length - suffix.length,
+    );
+    const targetStar = target.indexOf("*");
+    matches.push(
+      targetStar === -1
+        ? target
+        : target.slice(0, targetStar) +
+            substitution +
+            target.slice(targetStar + 1),
+    );
   }
   return matches;
 }

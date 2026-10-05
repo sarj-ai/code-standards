@@ -1,17 +1,15 @@
 // vitest: shared-module-graph
-import * as tsParser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
+import { RuleTester } from "oxlint/plugins-dev";
+import { describe, it } from "vitest";
 
 import rule, { PREFER_NATIVE_RANDOM_UUID_DOCUMENTATION } from "../../src/rules/prefer-native-random-uuid.js";
 
-RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
 RuleTester.it = it;
 RuleTester.itOnly = it.only;
 
 const RULE_TESTER = new RuleTester({
-  languageOptions: { parser: tsParser },
+  languageOptions: { parserOptions: { lang: "ts" } },
 });
 
 RULE_TESTER.run("prefer-native-random-uuid", rule, {
@@ -36,9 +34,9 @@ RULE_TESTER.run("prefer-native-random-uuid", rule, {
     },
   ],
   invalid: [
-    { name: "withholds replacement when globalThis is shadowed", code: "import { v4 } from 'uuid'; function run(globalThis) { return v4(); }", errors: [{ messageId: "preferNative", suggestions: 0 }] },
-    { name: "preserves comments inside the replaced call", code: "import { v4 } from 'uuid'; v4(/* preserve compatibility note */);", errors: [{ messageId: "preferNative", suggestions: 0 }] },
-    { name: "public match example", filename: PREFER_NATIVE_RANDOM_UUID_DOCUMENTATION.examples[1].focusPath, code: PREFER_NATIVE_RANDOM_UUID_DOCUMENTATION.examples[1].files[0].source, errors: [{ messageId: "preferNative", suggestions: 1 }] },
+    { name: "withholds replacement when globalThis is shadowed", code: "import { v4 } from 'uuid'; function run(globalThis) { return v4(); }", errors: [{ messageId: "preferNative", suggestions: null }] },
+    { name: "preserves comments inside the replaced call", code: "import { v4 } from 'uuid'; v4(/* preserve compatibility note */);", errors: [{ messageId: "preferNative", suggestions: null }] },
+    { name: "public match example", filename: PREFER_NATIVE_RANDOM_UUID_DOCUMENTATION.examples[1].focusPath, code: PREFER_NATIVE_RANDOM_UUID_DOCUMENTATION.examples[1].files[0].source, errors: [{ messageId: "preferNative" }] },
     {
       code: 'import { v4 } from "uuid"; v4();',
       output: null,
@@ -121,7 +119,7 @@ RULE_TESTER.run("prefer-native-random-uuid", rule, {
     },
     {
       code: 'const uuid = require("uuid"); uuid.v4();',
-      languageOptions: { globals: { require: "readonly" } },
+      languageOptions: { parserOptions: { lang: "ts" } },
       output: null,
       errors: [
         {

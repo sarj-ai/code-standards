@@ -1,124 +1,177 @@
-/**
- * Runs the shipped config over real files, which `calculateConfigForFile` cannot.
- *
- * `strict-config-loads.test.ts` next door normalises the config: it resolves
- * every config object and validates every rule id and option against its schema.
- * What it never does is LOAD a rule's implementation, so a plugin that is
- * installable, importable, schema-valid and still broken passes it.
- *
- * That is not hypothetical. `eslint-plugin-react@7.37.5` — the newest published
- * release — calls `context.getFilename()`, removed in ESLint 10, and this config
- * requires ESLint 10 (its unicorn floor pulls `>= 10.4`). Every react rule threw
- * `TypeError: contextOrFilename.getFilename is not a function` on the first file
- * linted, while every existing test passed. A consumer following the README hit
- * a stack trace with no way to tell a broken shared config from their own
- * mistake — and copying the file and deleting imports is the fastest way out of
- * that, which is how vendoring starts.
- *
- * `lintFiles` is the only call that proves the config works. It is slower than
- * `calculateConfigForFile`, so this file lints two small fixtures rather than a
- * corpus: one `.ts` and one `.tsx`, because the `.tsx`-scoped overrides bring in
- * blocks the `.ts` path never merges.
- */
-
-import { readFile } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
-
-import { ESLint, type Linter } from "eslint";
-import reactHooks from "eslint-plugin-react-hooks";
-import { describe, expect, it } from "vitest";
-
+/** Execute shipped native policies over authored files, including typed and syntax-only controls. */
+import { spawnSync } from "node:child_process";
 import {
-  createConfig as createApplicationConfig,
-} from "../../standards/src/sarj_standards/configs/eslint.application.mjs";
-import strictConfig, {
-  createConfig as createStrictConfig,
-} from "../../standards/src/sarj_standards/configs/eslint.strict.mjs";
+  cpSync,
+  mkdtempSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { format } from "oxfmt";
+import { createStrictOxlintConfig } from "../dist/config.js";
+import { createSelectedOxlintConfig } from "../src/create-selected-oxlint-config.js";
 import { PREFER_NULLISH_FILTER_PREDICATE_DOCUMENTATION } from "../src/rules/prefer-nullish-filter-predicate.js";
-import { rulesOf } from "./_config.js";
 
-const HERE = dirname(fileURLToPath(import.meta.url));
-const FIXTURE_DIR = resolve(HERE, "fixtures/runs");
-const NESTED_MONOREPO_DIR = resolve(HERE, "fixtures/nested-monorepo");
-type ConfigFactory = (options?: {
-  tsconfigRootDir?: string | URL;
-  projectService?: boolean | object;
-  syntaxOnlyConfigFiles?: string[];
-}) => Linter.Config[];
-const STRICT_CONFIG_FACTORY = createStrictConfig as unknown as ConfigFactory;
-const CONFIG_FACTORIES: ReadonlyArray<readonly [string, ConfigFactory]> = [
-  ["strict", createStrictConfig],
-  ["application", createApplicationConfig],
-];
-
-async function lint(file: string): Promise<Linter.LintMessage[]> {
-  const eslint = new ESLint({
-    cwd: FIXTURE_DIR,
-    overrideConfigFile: true,
-    overrideConfig: strictConfig as Linter.Config[],
-  });
-  const results = await eslint.lintFiles([resolve(FIXTURE_DIR, file)]);
-  return results.flatMap((result) => result.messages);
+const engine = join(
+  dirname(fileURLToPath(import.meta.resolve("oxlint/package.json"))),
+  "bin/oxlint",
+);
+const fixtures = fileURLToPath(new URL("./fixtures/runs", import.meta.url));
+let root: string;
+interface Diagnostic {
+  code?: string;
+  severity: string;
+  message: string;
+  labels?: { span: { line: number } }[];
 }
-
-function severity(setting: unknown): unknown {
-  return Array.isArray(setting) ? setting[0] : setting;
+interface Run {
+  diagnostics: Diagnostic[];
+  output: string;
 }
-
-const ESLINT_MAJOR = Number.parseInt(ESLint.version.split(".")[0] ?? "0", 10);
-
-describe("the shipped eslint.strict.mjs can actually lint", () => {
-  it.each(CONFIG_FACTORIES)(
-    "%s rejects void-discarded promises while retaining handled promises",
-    async (_name, createConfig) => {
-      const ruleId = "@typescript-eslint/no-floating-promises";
-      const focused = createConfig({ tsconfigRootDir: FIXTURE_DIR }).map((entry) => ({
-        ...entry,
-        rules: Object.fromEntries(
-          Object.entries(entry.rules ?? {}).filter(([id]) => id === ruleId),
-        ),
-      }));
-      const eslint = new ESLint({
-        cwd: FIXTURE_DIR,
-        overrideConfigFile: true,
-        overrideConfig: [...focused, { rules: { [ruleId]: "error" } }],
-      });
-      const [result] = await eslint.lintText(
-        [
-          "declare function start(): Promise<void>;",
-          "declare function handleError(error: unknown): void;",
-          "void start();",
-          "void start().then(() => {});",
-          "void start().catch(handleError);",
-          "void start().then(() => {}, handleError);",
-          "await start();",
-          "function returned() { return start(); }",
-          "void 0;",
-        ].join("\n"),
-        { filePath: resolve(FIXTURE_DIR, "example.ts") },
+const configurations = new Map<string, string>();
+beforeAll(() => {
+  root = mkdtempSync(
+    fileURLToPath(new URL("../.native-fixture-", import.meta.url)),
+  );
+  cpSync(fixtures, root, { recursive: true });
+  cpSync(
+    fileURLToPath(new URL("./fixtures/nested-monorepo", import.meta.url)),
+    root,
+    { recursive: true },
+  );
+  writeFileSync(
+    join(root, "tsconfig.json"),
+    JSON.stringify({
+      compilerOptions: {
+        target: "ES2024",
+        module: "NodeNext",
+        moduleResolution: "NodeNext",
+        strict: true,
+        jsx: "preserve",
+        allowJs: true,
+        checkJs: false,
+      },
+      include: ["**/*.ts", "**/*.tsx"],
+    }),
+  );
+});
+afterAll(() => rmSync(root, { recursive: true, force: true }));
+async function lint(
+  source: string,
+  {
+    filename = "probe.ts",
+    rules,
+    typed = false,
+    fix = false,
+    syntaxOnlyConfigFiles,
+  }: {
+    filename?: string;
+    rules?: readonly string[];
+    typed?: boolean;
+    fix?: boolean;
+    syntaxOnlyConfigFiles?: string[];
+  } = {},
+): Promise<Run> {
+  const key = JSON.stringify({ typed, rules, syntaxOnlyConfigFiles });
+  let policy = configurations.get(key);
+  if (policy === undefined) {
+    policy = join(root, `policy-${configurations.size}.json`);
+    const config = await createStrictOxlintConfig({
+      root,
+      typeAware: typed,
+      syntaxOnlyConfigFiles,
+    });
+    writeFileSync(policy, JSON.stringify(config));
+    if (rules !== undefined)
+      writeFileSync(
+        policy,
+        JSON.stringify(await createSelectedOxlintConfig(policy, rules)),
       );
-      expect(result?.messages.map(({ ruleId: id, line, severity: level }) => ({ id, line, level }))).toEqual([
-        { id: ruleId, line: 3, level: 2 },
-        { id: ruleId, line: 4, level: 2 },
-      ]);
+    configurations.set(key, policy);
+  }
+  const file = join(root, filename);
+  mkdirSync(dirname(file), { recursive: true });
+  writeFileSync(file, source);
+  const run = spawnSync(
+    process.execPath,
+    [
+      engine,
+      "--config",
+      policy,
+      "--format=json",
+      ...(fix ? ["--fix"] : []),
+      file,
+    ],
+    { cwd: root, encoding: "utf8", timeout: 30_000 },
+  );
+  if (run.error) throw run.error;
+  expect(run.stderr).toBe("");
+  expect([0, 1]).toContain(run.status);
+  if (run.stdout.startsWith("No files found")) {
+    expect(run.status).toBe(1);
+    return { diagnostics: [], output: readFileSync(file, "utf8") };
+  }
+  const result = JSON.parse(run.stdout) as { diagnostics: Diagnostic[] };
+  expect(
+    result.diagnostics.filter(
+      ({ code, message }) =>
+        code === undefined &&
+        !message.startsWith("Unused oxlint-disable directive"),
+    ),
+  ).toEqual([]);
+  return {
+    diagnostics: result.diagnostics,
+    output: readFileSync(file, "utf8"),
+  };
+}
+function findings(run: Run, rule: string): Diagnostic[] {
+  const slash = rule.lastIndexOf("/");
+  const family = slash === -1 ? "eslint" : rule.slice(0, slash);
+  const name = rule.slice(slash + 1);
+  return run.diagnostics.filter(({ code }) => code === `${family}(${name})`);
+}
+
+describe("the shipped Oxlint configuration executes", () => {
+  it.each(["example.ts", "widget.tsx"])(
+    "lints %s with real findings and no rule crashes",
+    async (filename) => {
+      const result = await lint(
+        readFileSync(join(fixtures, filename), "utf8"),
+        { filename, typed: true },
+      );
+      if (filename === "example.ts")
+        expect(findings(result, "@sarj/no-enum")).not.toHaveLength(0);
     },
   );
-
-  it.each(CONFIG_FACTORIES)(
-    "%s allows async JSX handlers without weakening other promise boundaries",
-    async (_name, createConfig) => {
-      const promiseRules = new Set([
-        "@typescript-eslint/no-floating-promises",
-        "@typescript-eslint/no-misused-promises",
-        "@typescript-eslint/strict-void-return",
-      ]);
-      const eslint = new ESLint({
-        cwd: FIXTURE_DIR,
-        overrideConfigFile: true,
-        overrideConfig: createConfig({ tsconfigRootDir: FIXTURE_DIR }),
-      });
-      const [result] = await eslint.lintText([
+  it("keeps typed rules live and preserves handled Promise boundaries", async () => {
+    const source = [
+      "declare function start(): Promise<void>;",
+      "declare function handleError(error: unknown): void;",
+      "void start();",
+      "void start().then(() => {});",
+      "void start().catch(handleError);",
+      "void start().then(() => {}, handleError);",
+      "await start();",
+      "function returned() { return start(); }",
+      "void 0;",
+    ].join("\n");
+    const result = await lint(source, {
+      typed: true,
+      rules: ["typescript/no-floating-promises"],
+    });
+    expect(findings(result, "typescript/no-floating-promises")).toHaveLength(2);
+    expect(result.diagnostics.map(({ severity }) => severity)).toEqual([
+      "error",
+      "error",
+    ]);
+  });
+  it("allows async JSX handlers while retaining other Promise boundaries", async () => {
+    const result = await lint(
+      [
         "declare function Button(props: { onClick: () => void }): null;",
         "declare function save(): Promise<void>;",
         "declare function report(error: unknown): void;",
@@ -130,462 +183,253 @@ describe("the shipped eslint.strict.mjs can actually lint", () => {
         "[1].forEach(async () => { await save(); });",
         "const ignored: () => void = handleClick;",
         "if (save()) { report('not a boolean'); }",
-      ].join("\n"), { filePath: resolve(FIXTURE_DIR, "widget.tsx") });
-      expect(result?.messages.filter(({ ruleId }) => promiseRules.has(ruleId ?? ""))
-        .map(({ ruleId, line }) => ({ ruleId, line }))).toEqual([
-        { ruleId: "@typescript-eslint/no-floating-promises", line: 7 },
-        { ruleId: "@typescript-eslint/no-floating-promises", line: 8 },
-        { ruleId: "@typescript-eslint/no-misused-promises", line: 9 },
-        { ruleId: "@typescript-eslint/no-misused-promises", line: 10 },
-        { ruleId: "@typescript-eslint/no-misused-promises", line: 11 },
-      ]);
-    },
-  );
-
-  it("keeps quoted snake_case wire access compatible with camelCase policy", async () => {
-    const eslint = new ESLint({
-      cwd: FIXTURE_DIR,
-      overrideConfigFile: true,
-      overrideConfig: strictConfig as Linter.Config[],
-    });
-    const [result] = await eslint.lintText(
-      "const record = { 'snake_case': 1, camelCase: 2 }; record['snake_case']; record['camelCase']; record.snake_case;",
-      { filePath: resolve(FIXTURE_DIR, "example.ts") },
+      ].join("\n"),
+      {
+        filename: "async-handlers.tsx",
+        typed: true,
+        rules: [
+          "typescript/no-floating-promises",
+          "typescript/no-misused-promises",
+          "typescript/strict-void-return",
+        ],
+      },
     );
-    const relevant = (result?.messages ?? []).filter((message) =>
-      message.ruleId === "@typescript-eslint/dot-notation" ||
-      message.ruleId === "@sarj/require-camelcase-properties"
-    );
-    expect(relevant.map((message) => message.ruleId)).toEqual([
-      "@typescript-eslint/dot-notation",
-      "@sarj/require-camelcase-properties",
-    ]);
-  });
-
-  it("does not contain comment prose that ESLint misreads as a directive", async () => {
-    const eslint = new ESLint({
-      cwd: FIXTURE_DIR,
-      overrideConfigFile: true,
-      overrideConfig: STRICT_CONFIG_FACTORY({ projectService: false }),
-    });
-    const source = await readFile(
-      resolve(
-        HERE,
-        "../../standards/src/sarj_standards/configs/eslint.strict.mjs",
-      ),
-      "utf8",
-    );
-    const [result] = await eslint.lintText(source, {
-      filePath: resolve(FIXTURE_DIR, "shared-policy.mjs"),
-    });
-
     expect(
-      result?.messages.filter((message) =>
-        message.message.includes("Definition for rule"),
-      ),
-    ).toEqual([]);
-  });
-
-  it.each(CONFIG_FACTORIES)("%s keeps syntax naming active in untyped TSX", async (_name, createConfig) => {
-    const eslint = new ESLint({
-      cwd: FIXTURE_DIR,
-      overrideConfigFile: true,
-      overrideConfig: createConfig({ projectService: false }),
-    });
-    const [result] = await eslint.lintText(
-      "export const Example = () => <div />; export interface invalid_name {}",
-      { filePath: "untyped.tsx" },
-    );
-    expect(result?.messages.filter(message => message.fatal === true)).toEqual([]);
-    expect(result?.messages.map(message => message.ruleId)).toContain("@typescript-eslint/naming-convention");
-  });
-
-  it.each(CONFIG_FACTORIES)("%s keeps naming active in an explicit syntax-only TSX override", async (_name, createConfig) => {
-    const eslint = new ESLint({
-      cwd: FIXTURE_DIR,
-      overrideConfigFile: true,
-      overrideConfig: createConfig({
-        projectService: true,
-        syntaxOnlyConfigFiles: ["**/tooling.tsx"],
-      }),
-    });
-    const [result] = await eslint.lintText(
-      "export const Example = () => <div />;",
-      { filePath: "tooling.tsx" },
-    );
-    expect(result?.messages.filter(message => message.fatal === true)).toEqual([]);
-    const configured: unknown = await eslint.calculateConfigForFile("tooling.tsx");
-    expect(severity(rulesOf(configured)["@typescript-eslint/naming-convention"])).toBe(2);
-  });
-
-  it.each(CONFIG_FACTORIES)(
-    "%s rejects direct and implied evaluation exactly once in syntax-only code",
-    async (_name, createConfig) => {
-      const ownedRules = new Set([
-        "@typescript-eslint/no-implied-eval",
-        "no-eval",
-        "no-implied-eval",
-        "no-new-func",
-        "no-prototype-builtins",
-      ]);
-      const focused = createConfig({ projectService: false }).map((entry) => ({
-        ...entry,
-        rules: Object.fromEntries(
-          Object.entries(entry.rules ?? {}).filter(([ruleId]) => ownedRules.has(ruleId)),
-        ),
-      }));
-      const eslint = new ESLint({
-        cwd: FIXTURE_DIR,
-        overrideConfigFile: true,
-        overrideConfig: focused,
-      });
-      const [result] = await eslint.lintText(
-        [
-          'eval("work()")',
-          'globalThis.setTimeout("work()", 0)',
-          'new Function("return 1")',
-          'payload.hasOwnProperty("id")',
-        ].join("\n"),
-        { filePath: "tooling.js" },
-      );
-      const rules = (result?.messages ?? []).map((message) => message.ruleId).toSorted();
-      expect(rules).toEqual([
-        "no-eval",
-        "no-implied-eval",
-        "no-new-func",
-        "no-prototype-builtins",
-      ]);
-    },
-  );
-
-  it.each(CONFIG_FACTORIES)(
-    "%s assigns typed dynamic execution to the TypeScript rule without core duplicates",
-    async (_name, createConfig) => {
-      const ownedRules = new Set([
-        "@typescript-eslint/no-implied-eval",
-        "no-eval",
-        "no-implied-eval",
-        "no-new-func",
-      ]);
-      const focused = createConfig({ tsconfigRootDir: FIXTURE_DIR }).map((entry) => ({
-        ...entry,
-        rules: Object.fromEntries(
-          Object.entries(entry.rules ?? {}).filter(([ruleId]) => ownedRules.has(ruleId)),
-        ),
-      }));
-      const eslint = new ESLint({
-        cwd: FIXTURE_DIR,
-        overrideConfigFile: true,
-        overrideConfig: focused,
-      });
-      const [result] = await eslint.lintText(
-        [
-          'eval("direct()")',
-          '(0, eval)("indirect()")',
-          'globalThis.setTimeout("later()", 0)',
-          'new Function("return 1")',
-        ].join("\n"),
-        { filePath: resolve(FIXTURE_DIR, "example.ts") },
-      );
-      expect(result?.messages.map((message) => message.ruleId)).toEqual([
-        "no-eval",
-        "no-eval",
-        "@typescript-eslint/no-implied-eval",
-        "@typescript-eslint/no-implied-eval",
-      ]);
-    },
-  );
-
-  it("keeps typed diagnostics live in a nested monorepo package", async () => {
-    const eslint = new ESLint({
-      cwd: NESTED_MONOREPO_DIR,
-      overrideConfigFile: true,
-      overrideConfig: STRICT_CONFIG_FACTORY({
-        tsconfigRootDir: NESTED_MONOREPO_DIR,
-      }),
-    });
-    const [result] = await eslint.lintFiles([
-      resolve(NESTED_MONOREPO_DIR, "packages/example/src/index.ts"),
+      result.diagnostics.map(({ code, severity, labels }) => ({
+        code,
+        severity,
+        line: labels?.[0]?.span.line,
+      })),
+    ).toEqual([
+      { code: "typescript(no-floating-promises)", severity: "error", line: 7 },
+      { code: "typescript(no-floating-promises)", severity: "error", line: 8 },
+      { code: "typescript(no-misused-promises)", severity: "error", line: 9 },
+      { code: "typescript(no-misused-promises)", severity: "error", line: 10 },
+      { code: "typescript(no-misused-promises)", severity: "error", line: 11 },
     ]);
-    const fatal = result?.messages.filter((message) => message.fatal === true) ?? [];
-    expect(fatal).toEqual([]);
-    expect(result?.messages.map((message) => message.ruleId)).toContain(
-      "@typescript-eslint/await-thenable",
-    );
   });
-
-  it.each(CONFIG_FACTORIES)(
-    "%s lints an excluded Vite config with syntax-aware rules",
-    async (_name, createConfig) => {
-      const eslint = new ESLint({
-        cwd: NESTED_MONOREPO_DIR,
-        overrideConfigFile: true,
-        overrideConfig: createConfig({ tsconfigRootDir: NESTED_MONOREPO_DIR }),
-      });
-
-      const [result] = await eslint.lintFiles([
-        resolve(NESTED_MONOREPO_DIR, "packages/example/vite.config.ts"),
-      ]);
-
-      expect(result?.messages.filter((message) => message.fatal === true)).toEqual([]);
-      expect(result?.messages.map((message) => message.ruleId)).toContain("@sarj/no-enum");
-      expect(result?.messages.map((message) => message.ruleId)).not.toContain(
-        "@typescript-eslint/await-thenable",
-      );
-    },
-  );
-
-  it.each(CONFIG_FACTORIES)(
-    "%s lints dependency-cruiser config without requiring project ownership",
-    async (_name, createConfig) => {
-      const eslint = new ESLint({
-        cwd: NESTED_MONOREPO_DIR,
-        overrideConfigFile: true,
-        overrideConfig: createConfig({ tsconfigRootDir: NESTED_MONOREPO_DIR }),
-      });
-
-      const [result] = await eslint.lintFiles([
-        resolve(NESTED_MONOREPO_DIR, "packages/example/.dependency-cruiser.cjs"),
-      ]);
-
-      expect(result?.messages.filter((message) => message.fatal === true)).toEqual([]);
-      expect(result?.messages.map((message) => message.ruleId)).toContain("no-var");
-      expect(result?.messages.map((message) => message.ruleId)).toContain(
-        "@typescript-eslint/naming-convention",
-      );
-      expect(result?.messages.map((message) => message.ruleId)).not.toContain(
-        "@typescript-eslint/await-thenable",
-      );
-    },
-  );
-
-  it.each(CONFIG_FACTORIES)(
-    "%s lints shared ESLint config without requiring project ownership",
-    async (_name, createConfig) => {
-      const eslint = new ESLint({
-        cwd: NESTED_MONOREPO_DIR,
-        overrideConfigFile: true,
-        overrideConfig: createConfig({ tsconfigRootDir: NESTED_MONOREPO_DIR }),
-      });
-
-      const [result] = await eslint.lintFiles([
-        resolve(NESTED_MONOREPO_DIR, "packages/example/eslint.config.base.js"),
-      ]);
-
-      expect(result?.messages.filter((message) => message.fatal === true)).toEqual([]);
-      expect(result?.messages.map((message) => message.ruleId)).toContain("no-var");
-      expect(result?.messages.map((message) => message.ruleId)).toContain(
-        "@typescript-eslint/naming-convention",
-      );
-      expect(result?.messages.map((message) => message.ruleId)).not.toContain(
-        "@typescript-eslint/await-thenable",
-      );
-    },
-  );
-
-  it.each(CONFIG_FACTORIES)(
-    "%s keeps wire keys while requiring camelCase parameter bindings",
-    async (_name, createConfig) => {
-      const eslint = new ESLint({
-        cwd: NESTED_MONOREPO_DIR,
-        overrideConfigFile: true,
-        overrideConfig: createConfig({ tsconfigRootDir: NESTED_MONOREPO_DIR }),
-      });
-
-      const [result] = await eslint.lintFiles([
-        resolve(NESTED_MONOREPO_DIR, "packages/example/src/parameter-naming.ts"),
-      ]);
-      const names = result?.messages
-        .filter((message) => message.ruleId === "@typescript-eslint/naming-convention")
-        .map((message) => message.message.match(/`([^`]+)`/)?.[1]);
-
-      expect(names).toEqual(["snake_param", "wire_key", "snake_local", "snake_item"]);
-    },
-  );
-
-  it.each(CONFIG_FACTORIES)(
-    "%s keeps an owned generic config type-aware by default",
-    async (_name, createConfig) => {
-      const eslint = new ESLint({
-        cwd: NESTED_MONOREPO_DIR,
-        overrideConfigFile: true,
-        overrideConfig: createConfig({ tsconfigRootDir: NESTED_MONOREPO_DIR }),
-      });
-
-      const [result] = await eslint.lintFiles([
-        resolve(NESTED_MONOREPO_DIR, "packages/example/src/domain.config.ts"),
-      ]);
-
-      expect(result?.messages.filter((message) => message.fatal === true)).toEqual([]);
-      expect(result?.messages.map((message) => message.ruleId)).toContain(
-        "@typescript-eslint/await-thenable",
-      );
-    },
-  );
-
-  it.each(CONFIG_FACTORIES)(
-    "%s limits member ordering to class accessibility bands",
-    async (_name, createConfig) => {
-      const eslint = new ESLint({
-        cwd: NESTED_MONOREPO_DIR,
-        overrideConfigFile: true,
-        overrideConfig: createConfig({ tsconfigRootDir: NESTED_MONOREPO_DIR }),
-      });
-
-      const [result] = await eslint.lintFiles([
-        resolve(NESTED_MONOREPO_DIR, "packages/example/src/member-ordering.ts"),
-      ]);
-
-      expect(result?.messages.map((message) => message.ruleId)).not.toContain(
-        "@typescript-eslint/member-ordering",
-      );
-    },
-  );
-
-  it.each(CONFIG_FACTORIES)(
-    "%s accepts type-like PascalCase module constants while rejecting camelCase values",
-    async (_name, createConfig) => {
-      const eslint = new ESLint({
-        cwd: NESTED_MONOREPO_DIR,
-        overrideConfigFile: true,
-        overrideConfig: createConfig({ tsconfigRootDir: NESTED_MONOREPO_DIR }),
-      });
-
-      const [result] = await eslint.lintFiles([
-        resolve(NESTED_MONOREPO_DIR, "packages/example/src/constant-naming.ts"),
-      ]);
-      const namingMessages = result?.messages.filter(
-        (message) => message.ruleId === "@typescript-eslint/naming-convention",
-      );
-
-      expect(namingMessages?.map((message) => message.message)).toEqual([
-        "Variable name `moduleMetadata` must match one of the following formats: UPPER_CASE, PascalCase",
-      ]);
-    },
-  );
-
-  it.each(CONFIG_FACTORIES)(
-    "%s lets consumers keep an owned Vite config type-aware",
-    async (_name, createConfig) => {
-      const config = createConfig({
-        syntaxOnlyConfigFiles: [],
-        tsconfigRootDir: NESTED_MONOREPO_DIR,
-      });
-      expect(config.some((entry) => entry.files?.length === 0)).toBe(false);
-      const eslint = new ESLint({
-        cwd: NESTED_MONOREPO_DIR,
-        overrideConfigFile: true,
-        overrideConfig: config,
-      });
-
-      const [result] = await eslint.lintFiles([
-        resolve(NESTED_MONOREPO_DIR, "packages/example/src/vite.config.ts"),
-      ]);
-
-      expect(result?.messages.filter((message) => message.fatal === true)).toEqual([]);
-      expect(result?.messages.map((message) => message.ruleId)).toContain(
-        "@typescript-eslint/await-thenable",
-      );
-    },
-  );
-
   it.each([
-    "react/no-object-type-as-default-prop",
-    "react/no-unknown-property",
-  ])("enables %s as an error", async (rule) => {
-    const eslint = new ESLint({
-      cwd: FIXTURE_DIR,
-      overrideConfigFile: true,
-      overrideConfig: strictConfig as Linter.Config[],
-    });
-    const config: unknown = await eslint.calculateConfigForFile(
-      resolve(FIXTURE_DIR, "widget.tsx"),
-    );
-    const setting = rulesOf(config)[rule];
-    expect(severity(setting)).toBe(2);
-  });
-
-  it("enables every react-hooks recommended-latest rule as an error", async () => {
-    const eslint = new ESLint({
-      cwd: FIXTURE_DIR,
-      overrideConfigFile: true,
-      overrideConfig: strictConfig as Linter.Config[],
-    });
-    const config: unknown = await eslint.calculateConfigForFile(
-      resolve(FIXTURE_DIR, "widget.tsx"),
-    );
-    const configuredRules = rulesOf(config);
-    const recommendedLatest = reactHooks.configs["recommended-latest"].rules;
-
-    expect(Object.keys(recommendedLatest).sort()).toEqual([
-      "react-hooks/config",
-      "react-hooks/error-boundaries",
-      "react-hooks/exhaustive-deps",
-      "react-hooks/gating",
-      "react-hooks/globals",
-      "react-hooks/immutability",
-      "react-hooks/incompatible-library",
-      "react-hooks/preserve-manual-memoization",
-      "react-hooks/purity",
-      "react-hooks/refs",
-      "react-hooks/rules-of-hooks",
-      "react-hooks/set-state-in-effect",
-      "react-hooks/set-state-in-render",
-      "react-hooks/static-components",
-      "react-hooks/unsupported-syntax",
-      "react-hooks/use-memo",
-      "react-hooks/void-use-memo",
-    ]);
-    for (const rule of Object.keys(recommendedLatest)) {
-      expect(severity(configuredRules[rule]), rule).toBe(2);
-    }
-    expect(severity(configuredRules["react/no-unstable-nested-components"])).toBe(0);
-  });
-
-  it("requires explicit button types inside design-system primitives", () => {
-    const primitiveConfig = (strictConfig as Linter.Config[]).find(
-      (entry) =>
-        entry.files?.includes("**/components/ui/**") &&
-        entry.files.includes("**/components/design-system/**"),
-    );
-    expect(primitiveConfig?.rules?.["react/button-has-type"]).toBe("error");
-  });
-
-  it.each(["example.ts", "widget.tsx"])(
-    "lints %s without a rule throwing",
-    async (file) => {
-      const messages = await lint(file);
-      // ESLint surfaces a crashed rule as a fatal message rather than a throw
-      // for some failure modes, so assert on both paths.
-      const fatal = messages.filter((message) => message.fatal === true);
-      expect(fatal).toEqual([]);
+    { filename: "callback.ts", expected: ["warning"] },
+    { filename: "callback.tsx", expected: [] },
+  ])(
+    "retains the strict void-return scope in $filename",
+    async ({ filename, expected }) => {
+      const result = await lint(
+        "declare function run(cb: () => void): void;\nrun(() => 123);",
+        { filename, typed: true, rules: ["typescript/strict-void-return"] },
+      );
+      expect(
+        findings(result, "typescript/strict-void-return").map(
+          ({ severity }) => severity,
+        ),
+      ).toEqual(expected);
     },
   );
-
-  it("reports real findings, so a silent pass cannot be mistaken for success", async () => {
-    const ruleIds = new Set((await lint("example.ts")).map((m) => m.ruleId));
-    expect(ruleIds.has("@sarj/no-enum")).toBe(true);
-    // A type-aware rule must fire too, or `projectService` failed to find a
-    // tsconfig and the entire typed half of the config was inert.
+  it("keeps quoted wire keys compatible with camelCase policy", async () => {
+    const result = await lint(
+      "const record = { 'snake_case': 1, camelCase: 2 }; record['snake_case']; record['camelCase']; record.snake_case;",
+      {
+        typed: true,
+        rules: [
+          "typescript/dot-notation",
+          "@sarj/require-camelcase-properties",
+        ],
+      },
+    );
+    expect(findings(result, "typescript/dot-notation")).toHaveLength(1);
+    expect(findings(result, "@sarj/require-camelcase-properties")).toHaveLength(
+      1,
+    );
+  });
+  it.each([false, true])(
+    "keeps syntax naming active with typeAware=%s",
+    async (typed) => {
+      const result = await lint(
+        "export const Example = () => <div />; export interface invalid_name {}",
+        {
+          filename: "tooling.tsx",
+          typed,
+          syntaxOnlyConfigFiles: ["**/tooling.tsx"],
+          rules: ["sarj-typescript/naming-convention"],
+        },
+      );
+      expect(
+        findings(result, "sarj-typescript/naming-convention"),
+      ).not.toHaveLength(0);
+    },
+  );
+  it("assigns syntax dynamic evaluation one diagnostic owner", async () => {
+    const result = await lint(
+      'eval("work()"); globalThis.setTimeout("work()", 0); new Function("return 1"); payload.hasOwnProperty("id");',
+      {
+        filename: "tooling.js",
+        rules: [
+          "no-eval",
+          "no-implied-eval",
+          "no-new-func",
+          "no-prototype-builtins",
+          "typescript/no-implied-eval",
+        ],
+      },
+    );
     expect(
-      [...ruleIds].some((rule) => rule?.startsWith("@typescript-eslint/")),
-    ).toBe(true);
+      result.diagnostics
+        .map(({ code }) => code)
+        .sort((left, right) => (left ?? "").localeCompare(right ?? "")),
+    ).toEqual([
+      "eslint(no-eval)",
+      "eslint(no-implied-eval)",
+      "eslint(no-new-func)",
+      "eslint(no-prototype-builtins)",
+    ]);
   });
-
-  it("runs the modern upstream rule against executable source", async () => {
-    const ruleIds = (await lint("modern-upstream-rules.ts")).map((message) => message.ruleId);
-    expect(ruleIds).toContain("prefer-object-has-own");
+  it("assigns typed dynamic evaluation one diagnostic owner", async () => {
+    const result = await lint(
+      'eval("direct()"); (0, eval)("indirect()"); globalThis.setTimeout("later()", 0); new Function("return 1");',
+      {
+        typed: true,
+        rules: [
+          "no-eval",
+          "no-implied-eval",
+          "no-new-func",
+          "typescript/no-implied-eval",
+        ],
+      },
+    );
+    expect(
+      result.diagnostics
+        .map(({ code }) => code)
+        .sort((left, right) => (left ?? "").localeCompare(right ?? "")),
+    ).toEqual([
+      "eslint(no-eval)",
+      "eslint(no-eval)",
+      "typescript(no-implied-eval)",
+      "typescript(no-implied-eval)",
+    ]);
   });
-
+  it.each([
+    "packages/example/src/index.ts",
+    "packages/example/src/domain.config.ts",
+  ])("keeps real type analysis live in owned %s", async (filename) => {
+    const result = await lint(readFileSync(join(root, filename), "utf8"), {
+      filename,
+      typed: true,
+      rules: ["typescript/await-thenable"],
+    });
+    expect(findings(result, "typescript/await-thenable")).toHaveLength(1);
+  });
+  it("keeps an excluded Vite config syntax-only", async () => {
+    const filename = "packages/example/vite.config.ts";
+    const result = await lint(readFileSync(join(root, filename), "utf8"), {
+      filename,
+      typed: true,
+      rules: ["typescript/await-thenable", "@sarj/no-enum"],
+    });
+    expect(findings(result, "@sarj/no-enum")).toHaveLength(1);
+    expect(findings(result, "typescript/await-thenable")).toEqual([]);
+  });
+  it("lets consumers retain type analysis for an owned Vite config", async () => {
+    const filename = "packages/example/src/vite.config.ts";
+    const result = await lint(readFileSync(join(root, filename), "utf8"), {
+      filename,
+      typed: true,
+      syntaxOnlyConfigFiles: [],
+      rules: ["typescript/await-thenable"],
+    });
+    expect(findings(result, "typescript/await-thenable")).toHaveLength(1);
+  });
+  it("retains naming and var checks outside a configured type project", async () => {
+    const filename = "packages/example/.dependency-cruiser.cjs";
+    const result = await lint(readFileSync(join(root, filename), "utf8"), {
+      filename,
+      typed: true,
+      rules: [
+        "no-var",
+        "sarj-typescript/naming-convention",
+        "typescript/await-thenable",
+      ],
+    });
+    expect(findings(result, "no-var")).toHaveLength(1);
+    expect(findings(result, "sarj-typescript/naming-convention")).toHaveLength(
+      1,
+    );
+    expect(findings(result, "typescript/await-thenable")).toEqual([]);
+  });
+  it("keeps wire keys while requiring camelCase parameter bindings", async () => {
+    const filename = "packages/example/src/parameter-naming.ts";
+    const result = await lint(readFileSync(join(root, filename), "utf8"), {
+      filename,
+      typed: true,
+      rules: ["sarj-typescript/naming-convention"],
+    });
+    expect(
+      findings(result, "sarj-typescript/naming-convention").map(
+        ({ message }) => message.match(/`([^`]+)`/)?.[1],
+      ),
+    ).toEqual(["snake_param", "wire_key", "snake_local", "snake_item"]);
+  });
+  it("accepts type-like module constants without admitting camelCase values", async () => {
+    const filename = "packages/example/src/constant-naming.ts";
+    const result = await lint(readFileSync(join(root, filename), "utf8"), {
+      filename,
+      typed: true,
+      rules: ["sarj-typescript/naming-convention"],
+    });
+    expect(
+      findings(result, "sarj-typescript/naming-convention").map(
+        ({ message }) => message.match(/`([^`]+)`/)?.[1],
+      ),
+    ).toEqual(["moduleMetadata"]);
+  });
+  it("limits class ordering to accessibility rather than static or field layout", async () => {
+    const filename = "packages/example/src/member-ordering.ts";
+    const result = await lint(readFileSync(join(root, filename), "utf8"), {
+      filename,
+      rules: ["sarj-typescript/member-ordering"],
+    });
+    expect(findings(result, "sarj-typescript/member-ordering")).toEqual([]);
+  });
+  it("retains the Hooks engine and explicit buttons in design-system primitives", async () => {
+    const button = await lint(
+      "export function Save() {return <button>Save</button>;}",
+      { filename: "components/ui/save.tsx" },
+    );
+    expect(findings(button, "react/button-has-type")).toHaveLength(1);
+    const hook = await lint(
+      "import {useState} from 'react'; export function Broken({ready}) {if (ready) useState(0); return <div/>;}",
+      { filename: "src/broken.tsx" },
+    );
+    expect(findings(hook, "react-hooks/rules-of-hooks")).not.toHaveLength(0);
+  });
+  it("rejects range and file-scoped directives while permitting reviewed line-local ones", async () => {
+    const rule = "@sarj/no-vague-suppression-description";
+    const range = await lint(
+      "/* oxlint-disable no-console -- native reviewed region */\nconsole.log('hidden');\n/* oxlint-enable no-console */",
+      { rules: [rule] },
+    );
+    expect(findings(range, rule)).toHaveLength(2);
+    const file = await lint(
+      "/* eslint no-console: off -- file policy override */\nconsole.log('hidden');",
+      { rules: [rule] },
+    );
+    expect(findings(file, rule)).toHaveLength(1);
+    const local = await lint(
+      "debugger; // oxlint-disable-line no-debugger -- pauses this manual inspector probe",
+      { rules: [rule, "no-debugger"] },
+    );
+    expect(findings(local, rule)).toEqual([]);
+    expect(findings(local, "no-debugger")).toEqual([]);
+  });
   it.each([
     {
       rule: "no-extra-bind",
+      safeFix: false,
       source: "const load = (() => 1).bind(undefined);",
       expected: "const load = (() => 1);",
       extension: "ts",
     },
     {
-      rule: "no-undef-init",
+      rule: "sarj-core/no-undef-init",
       source: "let value = undefined;",
       expected: "let value;",
       extension: "ts",
@@ -604,6 +448,7 @@ describe("the shipped eslint.strict.mjs can actually lint", () => {
     },
     {
       rule: "no-useless-return",
+      safeFix: false,
       source: "function finish(): void { return; }",
       expected: "function finish(): void {  }",
       extension: "ts",
@@ -621,139 +466,206 @@ describe("the shipped eslint.strict.mjs can actually lint", () => {
       extension: "tsx",
     },
     {
-      rule: "@typescript-eslint/no-useless-empty-export",
+      rule: "typescript/no-useless-empty-export",
       source: "export const value = 1; export {};",
       expected: "export const value = 1; ",
       extension: "ts",
     },
     {
-      rule: "unicorn/no-useless-coercion",
+      rule: "sarj-unicorn/no-useless-coercion",
       source: 'const value = String("ready");',
       expected: 'const value = "ready";',
       extension: "ts",
     },
+    {
+      rule: "typescript/consistent-type-exports",
+      source:
+        "type User = { id: string }; const version = 1; export { User, version };",
+      expected:
+        "type User = { id: string }; const version = 1; export { type User, version };",
+    },
+    {
+      rule: "typescript/no-unnecessary-qualifier",
+      source:
+        "namespace Values { export type Item = string; const value: Values.Item = 'x'; }",
+      expected:
+        "namespace Values { export type Item = string; const value: Item = 'x'; }",
+    },
+    {
+      rule: "arrow-body-style",
+      source: "const value = () => { return 1; };",
+      expected: "const value = () =>  1 ;",
+      nearMiss: "const value = () => 1;",
+    },
+    {
+      rule: "sarj-unicorn/single-line-block-comment-style",
+      source: "/*\nconcise rationale\n*/\nconst value = 1;",
+      expected: "/* concise rationale */\nconst value = 1;",
+      nearMiss: "/* concise rationale */\nconst value = 1;",
+    },
+    {
+      rule: "eslint/logical-assignment-operators",
+      safeFix: false,
+      source: "let value; value = value || fallback;",
+      expected: "let value; value ||= fallback;",
+      nearMiss: "let value; value ||= fallback;",
+    },
+    {
+      rule: "sarj-unicorn/prefer-single-object-destructuring",
+      source:
+        "const source = {a: 1, b: 2}; const {a} = source; const {b} = source;",
+      expected: "const source = {a: 1, b: 2}; const {a, b} = source;",
+      nearMiss:
+        "let source = {a: 1, b: 2}; const {a} = source; const {b} = source;",
+    },
+    {
+      rule: "sarj-unicorn/iteration-fallback-style",
+      source: "for (const item of items ?? []) { use(item); }",
+      expected:
+        "if ((items) != null) {\n\tfor (const item of items) { use(item); }\n}",
+      nearMiss:
+        "if (items != null) { for (const item of items) { use(item); } }",
+    },
   ])(
-    "autofixes $rule once and converges",
-    async ({ rule, source, expected, extension }) => {
-      const ownedRules = new Set([rule, "arrow-body-style"]);
-      const config = STRICT_CONFIG_FACTORY({ projectService: false }).map((entry) => ({
-        ...entry,
-        rules: Object.fromEntries(
-          Object.entries(entry.rules ?? {}).filter(([ruleId]) => ownedRules.has(ruleId)),
-        ),
-      }));
-      const eslint = new ESLint({
-        cwd: FIXTURE_DIR,
+    "preserves $rule findings and its stock safe-fix classification",
+    async (control) => {
+      const { rule, source, expected } = control;
+      const typed =
+        rule === "typescript/consistent-type-exports" ||
+        rule === "typescript/no-unnecessary-qualifier";
+      const filename = rule.startsWith("react/")
+        ? "concision.tsx"
+        : "concision.ts";
+      const first = await lint(source, {
+        filename,
+        rules: [rule, "arrow-body-style"],
+        typed,
         fix: true,
-        overrideConfigFile: true,
-        overrideConfig: config,
       });
-      const filePath = resolve(FIXTURE_DIR, `concision-probe.${extension}`);
-      const [first] = await eslint.lintText(source, { filePath });
-      expect(first?.output).toBe(expected);
-      expect(first?.messages.filter((message) => message.ruleId === rule)).toEqual([]);
-
-      const [second] = await eslint.lintText(first?.output ?? source, { filePath });
-      expect(second?.output).toBeUndefined();
-      expect(second?.messages.filter((message) => message.ruleId === rule)).toEqual([]);
+      if ("safeFix" in control && control.safeFix === false) {
+        expect(first.output).toBe(source);
+        expect(findings(first, rule)).toHaveLength(1);
+        expect(
+          findings(
+            await lint(expected, { filename, rules: [rule], typed }),
+            rule,
+          ),
+        ).toEqual([]);
+        return;
+      }
+      if (rule === "prefer-arrow-callback") {
+        expect(first.output).toBe("items.map((item) => { return item; });");
+        expect(findings(first, rule)).toEqual([]);
+        const remaining = await lint(first.output, {
+          filename,
+          rules: [rule, "arrow-body-style"],
+          typed,
+        });
+        expect(findings(remaining, "arrow-body-style")).toHaveLength(1);
+        const formatted = await format(filename, first.output);
+        expect(formatted.errors).toEqual([]);
+        const second = await lint(formatted.code, {
+          filename,
+          rules: [rule, "arrow-body-style"],
+          typed,
+          fix: true,
+        });
+        const final = await format(filename, second.output);
+        const intended = await format(filename, expected);
+        expect(final.errors).toEqual([]);
+        expect(intended.errors).toEqual([]);
+        expect(final.code).toBe(intended.code);
+        const third = await lint(final.code, {
+          filename,
+          rules: [rule, "arrow-body-style"],
+          typed,
+          fix: true,
+        });
+        expect(third.output).toBe(final.code);
+        expect(third.diagnostics).toEqual([]);
+        return;
+      }
+      expect(first.output).toBe(expected);
+      expect(findings(first, rule)).toEqual([]);
+      const second = await lint(first.output, {
+        filename,
+        rules: [rule, "arrow-body-style"],
+        typed,
+        fix: true,
+      });
+      expect(second.output).toBe(first.output);
+      expect(findings(second, rule)).toEqual([]);
+      if ("nearMiss" in control) {
+        const accepted = await lint(control.nearMiss, {
+          filename,
+          rules: [rule],
+          typed,
+          fix: true,
+        });
+        expect(accepted.output).toBe(control.nearMiss);
+        expect(findings(accepted, rule)).toEqual([]);
+      }
     },
   );
-
-  it.each([
-    {
-      rule: "@typescript-eslint/consistent-type-exports",
-      source: "type User = { id: string }; const version = 1; export { User, version };",
-      expected: "type User = { id: string }; const version = 1; export { type User, version };",
-    },
-    {
-      rule: "@typescript-eslint/no-unnecessary-qualifier",
-      source: "namespace Values { export type Item = string; const value: Values.Item = 'x'; }",
-      expected: "namespace Values { export type Item = string; const value: Item = 'x'; }",
-    },
-  ])("type-checks and converges the $rule autofix", async ({ rule, source, expected }) => {
-    const config = STRICT_CONFIG_FACTORY({ tsconfigRootDir: FIXTURE_DIR }).map((entry) => ({
-      ...entry,
-      rules: Object.fromEntries(
-        Object.entries(entry.rules ?? {}).filter(([ruleId]) => ruleId === rule),
-      ),
-    }));
-    const eslint = new ESLint({
-      cwd: FIXTURE_DIR,
-      fix: true,
-      overrideConfigFile: true,
-      overrideConfig: config,
-    });
-    const filePath = resolve(FIXTURE_DIR, "typed-concision-probe.ts");
-    const [first] = await eslint.lintText(source, { filePath });
-    expect(first?.output).toBe(expected);
-    expect(first?.messages.filter((message) => message.ruleId === rule)).toEqual([]);
-
-    const [second] = await eslint.lintText(first?.output ?? source, { filePath });
-    expect(second?.output).toBeUndefined();
-    expect(second?.messages.filter((message) => message.ruleId === rule)).toEqual([]);
-  });
-
   it.each([
     {
       rule: "unicorn/no-object-as-default-parameter",
       severity: 2,
-      source: "function configure(options = {timeout: 1000}) { return options; }",
+      source:
+        "function configure(options = {timeout: 1000}) { return options; }",
       nearMiss: "function configure({timeout = 1000} = {}) { return timeout; }",
     },
     {
-      rule: "unicorn/no-unsafe-sqlite-interpolation",
+      rule: "sarj-unicorn/no-unsafe-sqlite-interpolation",
       severity: 2,
-      source: "import {DatabaseSync} from 'node:sqlite'; const database = new DatabaseSync(':memory:'); database.prepare(`SELECT * FROM users WHERE id = ${id}`);",
-      nearMiss: "import {DatabaseSync} from 'node:sqlite'; const database = new DatabaseSync(':memory:'); const query = database.prepare('SELECT * FROM users WHERE id = ?'); query.get(id);",
+      source:
+        "import {DatabaseSync} from 'node:sqlite'; const database = new DatabaseSync(':memory:'); database.prepare(`SELECT * FROM users WHERE id = ${id}`);",
+      nearMiss:
+        "import {DatabaseSync} from 'node:sqlite'; const database = new DatabaseSync(':memory:'); const query = database.prepare('SELECT * FROM users WHERE id = ?'); query.get(id);",
     },
     {
-      rule: "@typescript-eslint/default-param-last",
+      rule: "eslint/default-param-last",
       severity: 2,
-      source: "function load(optional = true, required: string) { return [optional, required]; }",
-      nearMiss: "function load(required: string, optional = true) { return [required, optional]; }",
+      source:
+        "function load(optional = true, required: string) { return [optional, required]; }",
+      nearMiss:
+        "function load(required: string, optional = true) { return [required, optional]; }",
     },
     {
-      rule: "unicorn/no-computed-property-existence-check",
+      rule: "sarj-unicorn/no-computed-property-existence-check",
       severity: 1,
-      source: "function contains(object: Record<string, unknown>, key: string) { return Boolean(object[key]); }",
-      nearMiss: "function contains(object: Record<string, unknown>, key: string) { return Object.hasOwn(object, key); }",
+      source:
+        "function contains(object: Record<string, unknown>, key: string) { return Boolean(object[key]); }",
+      nearMiss:
+        "function contains(object: Record<string, unknown>, key: string) { return Object.hasOwn(object, key); }",
     },
     {
       rule: "unicorn/custom-error-definition",
       severity: 1,
-      source: "class ServiceError extends Error { constructor(message: string) { super(message); } }",
-      nearMiss: "class ServiceError extends Error { constructor(message: string, options?: ErrorOptions) { super(message, options); this.name = 'ServiceError'; } }",
+      source:
+        "class ServiceError extends Error { constructor(message: string) { super(message); } }",
+      nearMiss:
+        "class ServiceError extends Error { constructor(message: string, options?: ErrorOptions) { super(message, options); this.name = 'ServiceError'; } }",
     },
-  ])("enforces $rule with its calibrated severity", async ({ rule, severity: expectedSeverity, source, nearMiss }) => {
-    const config = STRICT_CONFIG_FACTORY({ projectService: false }).map((entry) => ({
-      ...entry,
-      rules: Object.fromEntries(
-        Object.entries(entry.rules ?? {}).filter(([ruleId]) => ruleId === rule),
-      ),
-    }));
-    const eslint = new ESLint({
-      cwd: FIXTURE_DIR,
-      overrideConfigFile: true,
-      overrideConfig: config,
-    });
-    const [invalid] = await eslint.lintText(source, {
-      filePath: resolve(FIXTURE_DIR, "candidate-rule.ts"),
-    });
-    const findings = invalid?.messages.filter((message) => message.ruleId === rule) ?? [];
-    expect(findings).toHaveLength(1);
-    expect(findings[0]?.severity).toBe(expectedSeverity);
-
-    const [valid] = await eslint.lintText(nearMiss, {
-      filePath: resolve(FIXTURE_DIR, "candidate-rule.ts"),
-    });
-    expect(valid?.messages.filter((message) => message.ruleId === rule)).toEqual([]);
-  });
-
+  ])(
+    "enforces $rule with its calibrated severity",
+    async ({ rule, severity, source, nearMiss }) => {
+      const invalid = await lint(source, { rules: [rule] });
+      expect(findings(invalid, rule)).toMatchObject([
+        { severity: severity === 2 ? "error" : "warning" },
+      ]);
+      expect(findings(await lint(nearMiss, { rules: [rule] }), rule)).toEqual(
+        [],
+      );
+    },
+  );
   it.each([
     {
       rule: "no-async-promise-executor",
-      source: "new Promise(async (resolve) => { resolve(await operation()); });",
-      nearMiss: "new Promise((resolve, reject) => { operation().then(resolve, reject); });",
+      source:
+        "new Promise(async (resolve) => { resolve(await operation()); });",
+      nearMiss:
+        "new Promise((resolve, reject) => { operation().then(resolve, reject); });",
     },
     {
       rule: "no-constant-binary-expression",
@@ -762,292 +674,36 @@ describe("the shipped eslint.strict.mjs can actually lint", () => {
     },
     {
       rule: "no-unsafe-finally",
-      source: "function read() { try { return operation(); } finally { return fallback(); } }",
-      nearMiss: "function read() { try { return operation(); } finally { cleanup(() => { return fallback(); }); } }",
+      source:
+        "function read() { try { return operation(); } finally { return fallback(); } }",
+      nearMiss:
+        "function read() { try { return operation(); } finally { cleanup(() => { return fallback(); }); } }",
     },
     {
       rule: "no-unsafe-optional-chaining",
       source: "function copy(value) { return [...value?.items]; }",
       nearMiss: "function copy(value) { return [...(value?.items ?? [])]; }",
     },
-  ])("blocks $rule while accepting its safe alternative", async ({ rule, source, nearMiss }) => {
-    const eslint = new ESLint({
-      cwd: FIXTURE_DIR,
-      overrideConfigFile: true,
-      overrideConfig: STRICT_CONFIG_FACTORY({ projectService: false }),
-    });
-    const options = { filePath: resolve(FIXTURE_DIR, "recommended-core.js") };
-    const [invalid] = await eslint.lintText(source, options);
-    const findings = invalid?.messages.filter((message) => message.ruleId === rule) ?? [];
-    expect(findings).toHaveLength(1);
-    expect(findings[0]?.severity).toBe(2);
-    expect(invalid?.fatalErrorCount).toBe(0);
-
-    const [valid] = await eslint.lintText(nearMiss, options);
-    expect(valid?.messages.filter((message) => message.ruleId === rule)).toEqual([]);
-    expect(valid?.fatalErrorCount).toBe(0);
-
-    const [suppressed] = await eslint.lintText(`/* eslint-disable ${rule} */\n${source}`, options);
-    expect(suppressed?.messages.filter((message) => message.ruleId === rule)).toEqual([]);
-    expect(suppressed?.suppressedMessages.filter((message) => message.ruleId === rule)).toHaveLength(1);
-  });
-
-  it("preserves optional-chain short circuits and cleanup-local control flow", async () => {
-    const eslint = new ESLint({
-      cwd: FIXTURE_DIR,
-      overrideConfigFile: true,
-      overrideConfig: STRICT_CONFIG_FACTORY({ projectService: false }),
-    });
-    const [result] = await eslint.lintText(
-      "function read(value) { try { return value?.items.map(normalize); } finally { for (const task of tasks) { if (task.done) break; task.run(); } } } const copy = {...value?.items};",
-      { filePath: resolve(FIXTURE_DIR, "recommended-edge-cases.js") },
-    );
-    expect(result?.fatalErrorCount).toBe(0);
-    expect(result?.messages.filter((message) =>
-      message.ruleId === "no-unsafe-finally" || message.ruleId === "no-unsafe-optional-chaining",
-    )).toEqual([]);
-  });
-
-  it.each([
-    {
-      rule: "arrow-body-style",
-      source: "const value = () => { return 1; };",
-      expected: "const value = () => 1;",
-      nearMiss: "const value = () => 1;",
-    },
-    {
-      rule: "unicorn/single-line-block-comment-style",
-      source: "/*\nconcise rationale\n*/\nconst value = 1;",
-      expected: "/* concise rationale */\nconst value = 1;",
-      nearMiss: "/* concise rationale */\nconst value = 1;",
-    },
-    {
-      rule: "unicorn/logical-assignment-operators",
-      source: "let value; value = value || fallback;",
-      expected: "let value; value ||= fallback;",
-      nearMiss: "let value; value ||= fallback;",
-    },
-    {
-      rule: "unicorn/prefer-single-object-destructuring",
-      source: "const source = {a: 1, b: 2}; const {a} = source; const {b} = source;",
-      expected: "const source = {a: 1, b: 2}; const {a, b} = source;",
-      nearMiss: "let source = {a: 1, b: 2}; const {a} = source; const {b} = source;",
-    },
-    {
-      rule: "unicorn/iteration-fallback-style",
-      source: "for (const item of items ?? []) { use(item); }",
-      expected: "if ((items) != null) {\n\tfor (const item of items) { use(item); }\n}",
-      nearMiss: "if (items != null) { for (const item of items) { use(item); } }",
-    },
-  ])("fixes $rule once without changing an accepted near miss", async ({ rule, source, expected, nearMiss }) => {
-    const config = STRICT_CONFIG_FACTORY({ projectService: false }).map((entry) => ({
-      ...entry,
-      rules: Object.fromEntries(
-        Object.entries(entry.rules ?? {}).filter(([ruleId]) => ruleId === rule),
-      ),
-    }));
-    const eslint = new ESLint({
-      cwd: FIXTURE_DIR,
-      fix: true,
-      overrideConfigFile: true,
-      overrideConfig: config,
-    });
-    const [first] = await eslint.lintText(source, {
-      filePath: resolve(FIXTURE_DIR, "upstream-concision.ts"),
-    });
-    expect(first?.output).toBe(expected);
-
-    const [second] = await eslint.lintText(expected, {
-      filePath: resolve(FIXTURE_DIR, "upstream-concision.ts"),
-    });
-    expect(second?.output).toBeUndefined();
-    expect(second?.messages.filter((message) => message.ruleId === rule)).toEqual([]);
-
-    const [accepted] = await eslint.lintText(nearMiss, {
-      filePath: resolve(FIXTURE_DIR, "upstream-concision.ts"),
-    });
-    expect(accepted?.output).toBeUndefined();
-    expect(accepted?.messages.filter((message) => message.ruleId === rule)).toEqual([]);
-  });
-
-  it("prefers concise multiline arrow expressions instead of expanding return blocks", async () => {
-    const rule = "arrow-body-style";
-    const config = STRICT_CONFIG_FACTORY({ projectService: false }).map((entry) => ({
-      ...entry,
-      rules: Object.fromEntries(
-        Object.entries(entry.rules ?? {}).filter(([ruleId]) => ruleId === rule),
-      ),
-    }));
-    const eslint = new ESLint({
-      cwd: FIXTURE_DIR,
-      fix: true,
-      overrideConfigFile: true,
-      overrideConfig: config,
-    });
-    const concise = `const getObject = () => ({
-  value: getValue(
-    first,
-    second,
-  ),
-});`;
-    const verbose = `const getObject = () => {
-  return {
-    value: getValue(
-      first,
-      second,
-    ),
-  };
-};`;
-    const fixedVerbose = `const getObject = () => ({
-    value: getValue(
-      first,
-      second,
-    ),
-  });`;
-    const [fixed] = await eslint.lintText(verbose, {
-      filePath: resolve(FIXTURE_DIR, "upstream-concision.ts"),
-    });
-    const [accepted] = await eslint.lintText(concise, {
-      filePath: resolve(FIXTURE_DIR, "upstream-concision.ts"),
-    });
-    const [second] = await eslint.lintText(fixed?.output ?? "", {
-      filePath: resolve(FIXTURE_DIR, "upstream-concision.ts"),
-    });
-
-    expect(fixed?.output).toBe(fixedVerbose);
-    expect(accepted?.output).toBeUndefined();
-    expect(accepted?.messages.filter((message) => message.ruleId === rule)).toEqual([]);
-    expect(second?.output).toBeUndefined();
-    expect(second?.messages.filter((message) => message.ruleId === rule)).toEqual([]);
-  });
-
-  it("keeps the iteration guard fix compatible with existing authorities", async () => {
-    const filePath = resolve(FIXTURE_DIR, "iteration-fallback-conflict.ts");
-    const fixing = new ESLint({
-      cwd: FIXTURE_DIR,
-      fix: true,
-      overrideConfigFile: true,
-      overrideConfig: strictConfig as Linter.Config[],
-    });
-    const [fixed] = await fixing.lintFiles([filePath]);
-    expect(fixed?.output).toContain("if ((items) != null)");
-
-    const checking = new ESLint({
-      cwd: FIXTURE_DIR,
-      overrideConfigFile: true,
-      overrideConfig: strictConfig as Linter.Config[],
-    });
-    const [checked] = await checking.lintText(fixed?.output ?? "", { filePath });
-    const ruleIds = checked?.messages.map((message) => message.ruleId) ?? [];
-    expect(ruleIds).not.toContain("unicorn/iteration-fallback-style");
-    expect(ruleIds).not.toContain("@typescript-eslint/prefer-nullish-coalescing");
-    expect(ruleIds).not.toContain("eqeqeq");
-  });
-
-  it("rejects range disables while preserving line-local suppressions", async () => {
-    const eslint = new ESLint({
-      cwd: FIXTURE_DIR,
-      overrideConfigFile: true,
-      overrideConfig: strictConfig as Linter.Config[],
-    });
-    const [rangeResult] = await eslint.lintText(
-      "/* eslint-disable no-console -- generated compatibility region */\nconsole.log('hidden');\n/* eslint-enable no-console */\n",
-      { filePath: resolve(FIXTURE_DIR, "example.ts") },
-    );
-    const rangeMessages = rangeResult?.messages.filter(
-      (message) => message.ruleId === "@eslint-community/eslint-comments/no-use",
-    ) ?? [];
-    expect(rangeMessages).toHaveLength(2);
-
-    const [localResult] = await eslint.lintText(
-      "console.log('visible'); // eslint-disable-line no-console -- compatibility probe\n",
-      { filePath: resolve(FIXTURE_DIR, "example.ts") },
-    );
-    expect(
-      localResult?.messages.filter(
-        (message) => message.ruleId === "@eslint-community/eslint-comments/no-use",
-      ),
-    ).toEqual([]);
-  });
-
-  it.each(CONFIG_FACTORIES)(
-    "%s rejects file-scoped rule configuration comments",
-    async (_name, createConfig) => {
-      const eslint = new ESLint({
-        cwd: FIXTURE_DIR,
-        overrideConfigFile: true,
-        overrideConfig: createConfig(),
-      });
-      const [result] = await eslint.lintText(
-        "/* eslint no-console: off -- file-scoped suppression */\nconsole.log('hidden');\n",
-        { filePath: resolve(FIXTURE_DIR, "example.ts") },
-      );
-
+  ])(
+    "blocks $rule and accepts its safe alternative",
+    async ({ rule, source, nearMiss }) => {
       expect(
-        result?.messages.map((message) => message.ruleId),
-      ).toContain("@eslint-community/eslint-comments/no-use");
+        findings(await lint(source, { rules: [rule] }), rule),
+      ).toMatchObject([{ severity: "error" }]);
+      expect(findings(await lint(nearMiss, { rules: [rule] }), rule)).toEqual(
+        [],
+      );
+      expect(
+        findings(
+          await lint(
+            `// oxlint-disable-next-line ${rule} -- reviewed fixture\n${source}`,
+            { rules: [rule] },
+          ),
+          rule,
+        ),
+      ).toEqual([]);
     },
   );
-
-  it("prefers the promise-based Node filesystem API", async () => {
-    const eslint = new ESLint({
-      cwd: FIXTURE_DIR,
-      overrideConfigFile: true,
-      overrideConfig: strictConfig as Linter.Config[],
-    });
-    const [result] = await eslint.lintText(
-      "import { readFile } from 'node:fs';\nreadFile('poem.txt', () => undefined);\n",
-      { filePath: resolve(FIXTURE_DIR, "example.ts") },
-    );
-    expect(result?.messages.map((message) => message.ruleId)).toContain(
-      "n/prefer-promises/fs",
-    );
-
-    const [promiseResult] = await eslint.lintText(
-      "import { readFile } from 'node:fs/promises';\nawait readFile('poem.txt');\n",
-      { filePath: resolve(FIXTURE_DIR, "example.ts") },
-    );
-    expect(
-      promiseResult?.messages.filter((message) => message.ruleId === "n/prefer-promises/fs"),
-    ).toEqual([]);
-  });
-
-  it("keeps the nullish-filter suggestion compatible with the composed profile", async () => {
-    const eslint = new ESLint({
-      cwd: FIXTURE_DIR,
-      overrideConfigFile: true,
-      overrideConfig: strictConfig as Linter.Config[],
-    });
-    const [result] = await eslint.lintText(
-      PREFER_NULLISH_FILTER_PREDICATE_DOCUMENTATION.examples[0].files[0].source,
-      { filePath: resolve(FIXTURE_DIR, "example.ts") },
-    );
-    const ruleIds = result?.messages.map((message) => message.ruleId) ?? [];
-
-    expect(ruleIds).not.toContain("eqeqeq");
-    expect(ruleIds).not.toContain("@sarj/prefer-nullish-filter-predicate");
-  });
-
-  it("gives cross-accessibility ordering one diagnostic owner", async () => {
-    const messages = await lint("stepdown-conflict.ts");
-    const ordering = messages.filter((message) =>
-      ["@typescript-eslint/member-ordering", "@sarj/stepdown", "perfectionist/sort-classes"].includes(message.ruleId ?? ""),
-    );
-    expect(ordering.map((message) => message.ruleId)).toEqual(["@typescript-eslint/member-ordering"]);
-  });
-
-  it("covers constructors and accessors without a stepdown ownership gap", async () => {
-    const messages = await lint("stepdown-callable-conflicts.ts");
-    const ordering = messages.filter((message) =>
-      ["@typescript-eslint/member-ordering", "@sarj/stepdown", "perfectionist/sort-classes"].includes(message.ruleId ?? ""),
-    );
-    expect(ordering.map((message) => message.ruleId)).toEqual([
-      "@typescript-eslint/member-ordering",
-      "@typescript-eslint/member-ordering",
-      "@typescript-eslint/member-ordering",
-    ]);
-  });
-
   it.each([
     ["promise.then(handle);", 1],
     ["promise?.then(handle);", 1],
@@ -1055,179 +711,120 @@ describe("the shipped eslint.strict.mjs can actually lint", () => {
     ['promise["then"](handle);', 1],
     ["const { then: continuePromise } = promise;", 0],
     ["async function load() { await promise.then(handle); }", 1],
-    ["// eslint-disable-next-line @sarj/prefer-await-in-async-return\npromise.then(handle);", 0],
-    ["// eslint-disable-next-line no-restricted-properties\npromise.then(handle);", 1],
+    [
+      "// oxlint-disable-next-line @sarj/prefer-await-in-async-return\npromise.then(handle);",
+      0,
+    ],
+    [
+      "// oxlint-disable-next-line no-restricted-properties\npromise.then(handle);",
+      1,
+    ],
     ["await Promise.all([first(), second()]);", 0],
     ["work().catch(reportError);", 0],
     ["work().finally(cleanup);", 0],
     ['const schema = { if: {}, then: { type: "string" } };', 0],
-    ['const schema = { then: { type: "string" } }; const type = schema.then.type;', 0],
-    ['const schema = { then: { type: "string" } }; const { then: branch } = schema;', 0],
-    ['const flow = { then(value: number) { return value + 1; } }; flow.then(1);', 0],
+    [
+      'const schema = { then: { type: "string" } }; const type = schema.then.type;',
+      0,
+    ],
+    [
+      'const schema = { then: { type: "string" } }; const { then: branch } = schema;',
+      0,
+    ],
+    [
+      "const flow = { then(value: number) { return value + 1; } }; flow.then(1);",
+      0,
+    ],
     ['const text = "promise.then(handle)"; // promise.then(handle)', 0],
-  ])("enforces the typed then-only policy for %s", async (source, expectedCount) => {
-    const eslint = new ESLint({
-      cwd: FIXTURE_DIR,
-      overrideConfigFile: true,
-      overrideConfig: STRICT_CONFIG_FACTORY({ tsconfigRootDir: FIXTURE_DIR }),
+  ])("retains the proven Promise-only policy for %s", async (source, count) => {
+    const declarations =
+      "declare const promise: Promise<number>; declare function handle(input: number): number;\n";
+    const result = await lint(declarations + source, {
+      rules: ["@sarj/prefer-await-in-async-return"],
     });
-    const declarations = "declare const promise: Promise<number>; declare function handle(input: number): number;\n";
-    const results = await eslint.lintText(declarations + source, { filePath: resolve(FIXTURE_DIR, "example.ts") });
-    const violations = results.flatMap((result) => result.messages)
-      .filter((message) => message.ruleId === "@sarj/prefer-await-in-async-return");
-    expect(violations).toHaveLength(expectedCount);
-    expect(results.flatMap((result) => result.messages)
-      .some((message) => message.ruleId === "no-restricted-properties")).toBe(false);
-    for (const violation of violations) {
-      expect(violation.severity).toBe(2);
-      expect(violation.message).toContain("Use async/await");
-    }
-  });
-
-  it.each(CONFIG_FACTORIES)("%s does not infer Promise policy without type services", async (_name, createConfig) => {
-    const eslint = new ESLint({
-      cwd: FIXTURE_DIR,
-      overrideConfigFile: true,
-      overrideConfig: createConfig({ tsconfigRootDir: FIXTURE_DIR, projectService: false }),
-    });
-    const results = await eslint.lintText("Promise.resolve(1).then(handle);", {
-      filePath: resolve(FIXTURE_DIR, "example.mjs"),
-    });
-    expect(results.flatMap((result) => result.messages)
-      .filter((message) => message.ruleId === "@sarj/prefer-await-in-async-return")).toHaveLength(0);
-  });
-
-  it("enforces explicit await for a direct typed async return", async () => {
-    const ruleIds = (await lint("promise-probe.ts")).map((message) => message.ruleId);
-    expect(ruleIds).toContain("@sarj/prefer-await-in-async-return");
-    expect(ruleIds).not.toContain("promise/prefer-await-to-then");
-  });
-
-  /**
-   * The config shipped with no `ignores`, so `eslint .` linted build output.
-   *
-   * Measured over 175,852 deduplicated files: 24.4% of all `@sarj/*` findings
-   * landed on generated paths. The two fixtures below are byte-identical and
-   * both violate; only their directory differs, so a pass here means the
-   * ignore is doing the work and nothing else is.
-   */
-  it("ignores build output and still lints the identical authored file", async () => {
-    const eslint = new ESLint({
-      cwd: FIXTURE_DIR,
-      overrideConfigFile: true,
-      overrideConfig: strictConfig as Linter.Config[],
-      warnIgnored: false,
-    });
-
-    const [authored] = await eslint.lintFiles([
-      resolve(FIXTURE_DIR, "src/authored.ts"),
-    ]);
-    const authoredRules = (authored?.messages ?? []).map((m) => m.ruleId);
-    expect(authoredRules).toContain("@sarj/no-enum");
-
-    const library = await eslint.lintFiles([
-      resolve(FIXTURE_DIR, "lib/compiled.ts"),
-    ]);
-    expect(library.flatMap((result) => result.messages.map((message) => message.ruleId))).toContain("@sarj/no-enum");
-
-    const emitted = new ESLint({
-      cwd: FIXTURE_DIR,
-      overrideConfigFile: true,
-      overrideConfig: [...strictConfig as Linter.Config[], { ignores: ["lib/**"] }],
-      warnIgnored: false,
-    });
-    expect((await emitted.lintFiles([resolve(FIXTURE_DIR, "lib/compiled.ts")])).flatMap((result) => result.messages)).toEqual([]);
-
-    // The ignore must be a GLOBAL ignore: an entry that grows a `files` key
-    // stops ignoring anything, and nothing else in the config would notice.
-    const globalIgnores = (strictConfig as Linter.Config[]).filter(
-      (entry) => entry.ignores !== undefined && entry.files === undefined,
+    expect(findings(result, "@sarj/prefer-await-in-async-return")).toHaveLength(
+      count,
     );
-    expect(globalIgnores.length).toBe(1);
-  });
-
-  it.each(CONFIG_FACTORIES)("%s ignores Yarn Plug'n'Play runtime files", async (_name, factory) => {
-    const eslint = new ESLint({
-      cwd: FIXTURE_DIR,
-      overrideConfigFile: true,
-      overrideConfig: factory(),
-      warnIgnored: false,
-    });
-
-    const generated = await eslint.lintFiles([
-      resolve(FIXTURE_DIR, ".pnp.cjs"),
-      resolve(FIXTURE_DIR, ".pnp.loader.mjs"),
-    ]);
-
-    expect(generated.flatMap((result) => result.messages)).toEqual([]);
-  });
-
-  it.each(CONFIG_FACTORIES)("%s ignores vendored Yarn releases while checking authored plugins", async (_name, factory) => {
-    const eslint = new ESLint({
-      cwd: FIXTURE_DIR,
-      overrideConfigFile: true,
-      overrideConfig: factory({ projectService: false }),
-      warnIgnored: false,
-    });
-    const source = "new Promise(async (resolve) => { resolve(await operation()); });";
-    const vendored = await eslint.lintText(source, { filePath: ".yarn/releases/yarn.cjs" });
-    expect(vendored.flatMap((result) => result.messages)).toEqual([]);
-
-    const [authored] = await eslint.lintText(source, { filePath: ".yarn/plugins/custom.cjs" });
-    expect(authored?.fatalErrorCount).toBe(0);
-    expect(authored?.messages.filter((message) => message.ruleId === "no-async-promise-executor"))
-      .toMatchObject([{ severity: 2 }]);
-  });
-
-  /**
-   * The 18 react rules were dropped wholesale because eslint-plugin-react calls
-   * `context.getFilename()`, removed in ESLint 10. Dropping them swapped a crash
-   * for silence: every consumer got zero React coverage. `@eslint/compat`'s
-   * `fixupPluginRules` restores the removed context APIs, so the rules run.
-   */
-  it.runIf(ESLINT_MAJOR >= 10)("keeps every react/* key live through the compat adapter", async () => {
-    // A react/* key is only safe when the plugin is registered AND its removed
-    // context APIs are restored -- otherwise it is "Definition for rule not
-    // found", or a crash, at consumer lint time.
-    const eslint = new ESLint({
-      cwd: FIXTURE_DIR,
-      overrideConfigFile: true,
-      overrideConfig: strictConfig as Linter.Config[],
-    });
-    const probes = await Promise.all(
-      ["example.ts", "widget.tsx"].map(async (probe) => ({
-        probe,
-        resolved: await eslint.calculateConfigForFile(resolve(FIXTURE_DIR, probe)) as unknown,
-      })),
-    );
-    expect(probes.map(({ probe }) => probe)).toEqual(["example.ts", "widget.tsx"]);
-    expect(probes.every(({ resolved }) =>
-      Object.keys(rulesOf(resolved)).some((rule) => rule.startsWith("react/"))
-    )).toBe(true);
-  });
-
-  it.runIf(ESLINT_MAJOR >= 10)("fails once eslint-plugin-react supports ESLint 10, so the adapter expires", async () => {
-    // `lib/util/version.js` is what calls the removed `context.getFilename()`.
-    // This probes the RAW plugin, not the fixed-up one, so it is an honest
-    // upstream check: when a release fixes it this stops throwing, this test
-    // fails, and the @eslint/compat wrapper gets deleted rather than living on.
-    const { default: react } = await import("eslint-plugin-react");
-    const eslint = new ESLint({
-      cwd: FIXTURE_DIR,
-      overrideConfigFile: true,
-      overrideConfig: [
-        {
-          files: ["**/*.tsx"],
-          plugins: { react },
-          rules: { "react/no-unstable-nested-components": "error" },
-        },
-      ] as Linter.Config[],
-    });
-    const [result] = await eslint.lintFiles([resolve(FIXTURE_DIR, "widget.tsx")]);
-    const fatal = (result?.messages ?? []).filter((m) => m.fatal === true);
+    expect(findings(result, "no-restricted-properties")).toEqual([]);
     expect(
-      fatal.length > 0,
-      "eslint-plugin-react now runs on ESLint 10 -- drop fixupPluginRules from eslint.strict.mjs",
+      findings(result, "@sarj/prefer-await-in-async-return").every(
+        ({ severity }) => severity === "error",
+      ),
     ).toBe(true);
+  });
+  it("keeps the composed nullish filter suggestion accepted", async () => {
+    const source =
+      PREFER_NULLISH_FILTER_PREDICATE_DOCUMENTATION.examples[0].files[0].source;
+    const result = await lint(source, { typed: true });
+    expect(findings(result, "eqeqeq")).toEqual([]);
+    expect(findings(result, "@sarj/prefer-nullish-filter-predicate")).toEqual(
+      [],
+    );
+  });
+  it.each([
+    ["stepdown-conflict.ts", 1],
+    ["stepdown-callable-conflicts.ts", 3],
+  ] as const)("keeps one ordering owner in %s", async (filename, count) => {
+    const result = await lint(readFileSync(join(fixtures, filename), "utf8"), {
+      filename,
+    });
+    expect(findings(result, "sarj-typescript/member-ordering")).toHaveLength(
+      count,
+    );
+    expect(findings(result, "@sarj/stepdown")).toEqual([]);
+    expect(findings(result, "perfectionist/sort-classes")).toEqual([]);
+  });
+  it("keeps Node filesystem Promise imports preferred", async () => {
+    expect(
+      findings(
+        await lint(
+          "import {readFile} from 'node:fs'; readFile('poem.txt', () => undefined);",
+        ),
+        "sarj-node/prefer-promises-fs",
+      ),
+    ).not.toHaveLength(0);
+    expect(
+      findings(
+        await lint(
+          "import {readFile} from 'node:fs/promises'; await readFile('poem.txt');",
+        ),
+        "sarj-node/prefer-promises-fs",
+      ),
+    ).toEqual([]);
+  });
+  it.each([
+    "dist/compiled.ts",
+    "build/compiled.ts",
+    ".pnp.cjs",
+    ".pnp.loader.mjs",
+    ".yarn/releases/yarn.cjs",
+  ])(
+    "ignores generated %s while checking identical authored source",
+    async (filename) => {
+      const source = "enum Status {Active}";
+      expect((await lint(source, { filename })).diagnostics).toEqual([]);
+      expect(
+        findings(
+          await lint(source, { filename: "src/authored.ts" }),
+          "@sarj/no-enum",
+        ),
+      ).toHaveLength(1);
+    },
+  );
+  it("checks authored Yarn plugins and library sources", async () => {
+    const source =
+      "new Promise(async (resolve) => { resolve(await operation()); });";
+    expect(
+      findings(
+        await lint(source, { filename: ".yarn/plugins/custom.cjs" }),
+        "no-async-promise-executor",
+      ),
+    ).toHaveLength(1);
+    expect(
+      findings(
+        await lint("enum Status {Active}", { filename: "lib/authored.ts" }),
+        "@sarj/no-enum",
+      ),
+    ).toHaveLength(1);
   });
 });

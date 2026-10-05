@@ -4,7 +4,9 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-trailing-value-narration.test.ts
  */
 
-import { AST_TOKEN_TYPES, type TSESTree } from "@typescript-eslint/utils";
+import { sourceOrigin } from "./_source-origin.js";
+import type { ESTree } from "@oxlint/plugins";
+
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { trailingCommentRemovalRange } from "./_comment-edits.js";
@@ -109,7 +111,7 @@ function canonicalUnit(word: string): string {
   }
 }
 
-function identifierUnit(node: TSESTree.Node): string | null {
+function identifierUnit(node: ESTree.Node): string | null {
   if (node.type === "MemberExpression" && !node.computed) return identifierUnit(node.property);
   if (node.type !== "Identifier") return null;
   const suffix = UNIT_NAME_SUFFIX_RE.exec(node.name)?.[0];
@@ -137,18 +139,18 @@ export default createRule<Options, MessageIds>({
   },
   defaultOptions: [],
   create(context) {
-    if (isGeneratedFile(context.filename, context.sourceCode.text)) {
+    if (isGeneratedFile(sourceOrigin(context).filename, sourceOrigin(context).text)) {
       return {};
     }
     const sourceCode = context.sourceCode;
 
-    function isTrailing(comment: TSESTree.Comment): boolean {
+    function isTrailing(comment: ESTree.Comment): boolean {
       const before = sourceCode.getTokenBefore(comment, { includeComments: false });
       return before !== null && before.loc.end.line === comment.loc.start.line;
     }
 
-    function isInsideBrackets(comment: TSESTree.Comment): boolean {
-      let node: TSESTree.Node | null | undefined = sourceCode.getNodeByRangeIndex(comment.range[0]);
+    function isInsideBrackets(comment: ESTree.Comment): boolean {
+      let node: ESTree.Node | null | undefined = sourceCode.getNodeByRangeIndex(comment.range[0]);
       while (node != null) {
         if (node.type === "BlockStatement" || node.type === "Program") return false;
         if (
@@ -163,7 +165,7 @@ export default createRule<Options, MessageIds>({
       return false;
     }
 
-    function attachedValue(comment: TSESTree.Comment): { name: TSESTree.Node; value: TSESTree.Node } | null {
+    function attachedValue(comment: ESTree.Comment): { name: ESTree.Node; value: ESTree.Node } | null {
       let token = sourceCode.getTokenBefore(comment);
       if (token?.value === ";" || token?.value === ",") token = sourceCode.getTokenBefore(token);
       if (token === null) return null;
@@ -180,13 +182,13 @@ export default createRule<Options, MessageIds>({
 
     return {
       Program(): void {
-        function checkTrailingComment(comment: TSESTree.Comment): void {
+        function checkTrailingComment(comment: ESTree.Comment): void {
           if (!isTrailing(comment) || isInsideBrackets(comment)) return;
           const attached = attachedValue(comment);
           if (attached === null) return;
           const code = `${sourceCode.getText(attached.name)} ${sourceCode.getText(attached.value)}`;
           const codeNumbers = new Set(sourceCode.getTokens(attached.value)
-            .filter((token) => token.type === AST_TOKEN_TYPES.Numeric)
+            .filter((token) => token.type === "Numeric")
             .flatMap((token) => [...numbersIn(token.value)]));
           const body = comment.value.replace(/^\*+/, "").replace(/\*+$/, "").trim();
           if (narratesValue(body, code, codeNumbers)) {
@@ -206,7 +208,7 @@ export default createRule<Options, MessageIds>({
                 : [
                   {
                     messageId: "removeNarration",
-                    fix: (fixer) => fixer.removeRange(removal.range),
+                    fix: (fixer) => fixer.removeRange([...removal.range]),
                   },
                 ],
             });
@@ -219,11 +221,11 @@ export default createRule<Options, MessageIds>({
   },
 });
 
-function namedValue(node: TSESTree.Node): { name: TSESTree.Node; value: TSESTree.Node } | null | undefined {
+function namedValue(node: ESTree.Node): { name: ESTree.Node; value: ESTree.Node } | null | undefined {
   if (node.type === "VariableDeclarator" && node.id.type === "Identifier" && node.init !== null) {
     return { name: node.id, value: node.init };
   }
-  if (node.type === "Property" && !node.computed && node.kind === "init" && node.parent.type === "ObjectExpression") {
+  if (node.type === "Property" && !node.computed && node.kind === "init" && node.parent?.type === "ObjectExpression") {
     return { name: node.key, value: node.value };
   }
   if (node.type === "PropertyDefinition" && !node.computed && node.value !== null) {

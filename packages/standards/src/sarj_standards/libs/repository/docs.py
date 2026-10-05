@@ -32,6 +32,7 @@ _GENERATED_READMES: Final = (
     Path("packages/sql/README.md"),
     Path("packages/iac/README.md"),
     Path("packages/typescript/README.md"),
+    Path("packages/react-hooks/README.md"),
     Path("packages/tsconfig/README.md"),
     Path("plugins/sarj-audit/README.md"),
 )
@@ -45,7 +46,8 @@ _PACKAGE_DEFINITIONS: Final = (
     ("packages/python/pyproject.toml", "PyPI", "python"),
     ("packages/sql/pyproject.toml", "PyPI", "sql"),
     ("packages/iac/pyproject.toml", "PyPI", "iac"),
-    ("packages/typescript/package.json", "npm", "eslint"),
+    ("packages/typescript/package.json", "npm", "oxlint"),
+    ("packages/react-hooks/package.json", "npm", None),
     ("packages/tsconfig/package.json", "npm", None),
 )
 _DOCUMENTATION_URL: Final = "https://code-standards.sarj.ai/"
@@ -220,10 +222,10 @@ def _package_usage(name: str, engine: str | None) -> str:
             "code-standards doctor\n"
             "code-standards update\n"
             "```\n\n"
-            "Use repeatable `check --rule ENGINE:ID` selectors to select native rules, ESLint rules, or managed security audits. "
+            "Use repeatable `check --rule ENGINE:ID` selectors to select native rules, Oxlint rules, or managed security audits. "
             "Exclusions, baselines, and severities still apply; Ruff selectors are not supported. "
-            "Native linters and ESLint execute only selected rules. ESLint retains configured parsers, options, "
-            "severities, and suppression directives.\n\n"
+            "Native linters execute only selected rules. Oxlint returns selected rule diagnostics while preserving "
+            "native options, severities, directives, and bulk suppression counts.\n\n"
             "Terraform, Kubernetes, and GitHub Actions adoption adds isolated Checkov 3.3.20 and zizmor 1.30.1 "
             "runtimes. Setup and generated CI prewarm these tools; checks run offline with packaged policy. "
             "Use `--rule checkov:CKV_GCP_95` or `--rule zizmor:template-injection` to select upstream audits. "
@@ -234,6 +236,13 @@ def _package_usage(name: str, engine: str | None) -> str:
             "is deferred to their rendered deployment artifacts.\n\n"
             "`check --jobs 2` overlaps native analysis with the external-tool pipeline. The default is "
             "`--jobs 1`; external tools remain sequential and report ordering is deterministic."
+        )
+    if name == "@sarj/oxlint-react-hooks":
+        return (
+            "Licensed Meta React Hooks rules for stock Oxlint, including React Compiler checks. "
+            "Standards installs this package and aliases React Doctor's hooks dependency to it. "
+            "React Doctor retains its full CLI and configured checks without installing an ESLint engine. "
+            "The upstream implementation is unchanged; LICENSE and PROVENANCE.json record its source."
         )
     if name == "sarj-rule-contracts":
         return (
@@ -272,6 +281,14 @@ def _package_usage(name: str, engine: str | None) -> str:
             "iac": "sarj-iac-lint",
         }.get(engine)
     )
+    if engine == "oxlint":
+        return (
+            "Rules and configuration are documented in the generated rule directory.\n\n"
+            "Oxlint's `--fix` applies safe fixes; other findings require a source change. "
+            "Run the check again after fixing, since one fix can expose another finding.\n\n"
+            "Better Tailwind rules use the consumer's Tailwind 3 or 4 installation. "
+            "Conflict detection and Shadcn theme checks require Tailwind 4."
+        )
     if executable is None:
         return "Rules and configuration are documented in the generated rule directory."
     return f"```bash\n{executable} --help\n```"

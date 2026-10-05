@@ -58,7 +58,7 @@ def changed_line_scope(root: Path, *, staged: bool) -> ChangedLineScope | None:
         (*common, "--name-only", "-z", "--"), cwd=root, check=False, text=True, capture_output=True
     )
     patch = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true]
-        (*common, "--unified=0", "--no-color", "--no-ext-diff", "--"),
+        (*common, "--unified=0", "--inter-hunk-context=0", "--no-color", "--no-ext-diff", "--"),
         cwd=root,
         check=False,
         text=True,
@@ -112,9 +112,9 @@ def touches_changed_lines(diagnostic: Diagnostic, scope: ChangedLineScope | None
 
 
 def is_baselineable(
-    diagnostic: Diagnostic,  # ruff: ignore[unused-function-argument] -- Preserve the public diagnostic policy keyword.
+    diagnostic: Diagnostic,
 ) -> bool:
-    return True
+    return diagnostic.source != "oxfmt"
 
 
 def load(

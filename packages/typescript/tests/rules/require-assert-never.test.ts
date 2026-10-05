@@ -1,33 +1,39 @@
-import { join } from "node:path";
+import { RuleTester } from "oxlint/plugins-dev";
+import { describe, it } from "vitest";
 
-import * as tsParser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
+import rule, {
+  REQUIRE_ASSERT_NEVER_DOCUMENTATION,
+} from "../../src/rules/require-assert-never.js";
 
-import rule, { REQUIRE_ASSERT_NEVER_DOCUMENTATION } from "../../src/rules/require-assert-never.js";
-
-RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
 RuleTester.it = it;
 RuleTester.itOnly = it.only;
 
 const RULE_TESTER = new RuleTester({
-  languageOptions: {
-    parser: tsParser,
-    parserOptions: {
-      projectService: {
-        allowDefaultProject: ["*.ts*", "*/*.ts*", "*/*/*.ts*"],
-      },
-      tsconfigRootDir: join(import.meta.dirname, "..", "fixtures"),
-    },
-  },
+  languageOptions: { parserOptions: { lang: "ts" } },
 });
 
 RULE_TESTER.run("require-assert-never", rule, {
   valid: [
-    { name: "does not treat one union-valued case as covering every possible value", code: "declare const kind: 'a' | 'b'; declare const choice: 'a' | 'b'; switch (kind) { case choice: break; default: }" },
-    { name: "does not count an open case expression as finite coverage", code: "declare const kind: 'a' | 'b'; declare const choice: string; switch (kind) { case choice: break; default: }" },
-    { name: "accepts the documented exhaustive default", code: REQUIRE_ASSERT_NEVER_DOCUMENTATION.examples[0].files[0].source },
+    {
+      filename: "src/generated/client.ts",
+      code: "declare const kind: 'a' | 'b'; switch(kind) { case 'a': break; case 'b': break; default: }",
+    },
+    "import type { Kind } from './kind.js'; declare const kind: Kind; switch(kind) { case 'a': break; case 'b': break; default: }",
+    "type Kind = 'a' | 'b'; function local(kind: string) { switch(kind) { case 'a': break; case 'b': break; default: } }",
+    "type Kind = 'a' | Kind; declare const kind: Kind; switch(kind) { case 'a': break; case 'b': break; default: }",
+    {
+      name: "does not treat one union-valued case as covering every possible value",
+      code: "declare const kind: 'a' | 'b'; declare const choice: 'a' | 'b'; switch (kind) { case choice: break; default: }",
+    },
+    {
+      name: "does not count an open case expression as finite coverage",
+      code: "declare const kind: 'a' | 'b'; declare const choice: string; switch (kind) { case choice: break; default: }",
+    },
+    {
+      name: "accepts the documented exhaustive default",
+      code: REQUIRE_ASSERT_NEVER_DOCUMENTATION.examples[0].files[0].source,
+    },
     {
       name: "allows a switch with no default",
       code: `
@@ -214,8 +220,18 @@ RULE_TESTER.run("require-assert-never", rule, {
     },
   ],
   invalid: [
-    { name: "retains singleton literal case aliases", code: "declare const kind: 'a' | 'b'; const first = 'a' as const; const second = 'b' as const; switch (kind) { case first: break; case second: break; default: }", errors: [{ messageId: "missingAssertNever" }], output: null },
-    { name: "reports the documented empty default", code: REQUIRE_ASSERT_NEVER_DOCUMENTATION.examples[1].files[0].source, errors: [{ messageId: "missingAssertNever" }], output: null },
+    {
+      name: "retains singleton literal case aliases",
+      code: "declare const kind: 'a' | 'b'; const first = 'a' as const; const second = 'b' as const; switch (kind) { case first: break; case second: break; default: }",
+      errors: [{ messageId: "missingAssertNever" }],
+      output: null,
+    },
+    {
+      name: "reports the documented empty default",
+      code: REQUIRE_ASSERT_NEVER_DOCUMENTATION.examples[1].files[0].source,
+      errors: [{ messageId: "missingAssertNever" }],
+      output: null,
+    },
     {
       name: "reports an undocumented empty default",
       code: `declare const kind: 'a' | 'b';

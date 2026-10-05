@@ -1,15 +1,18 @@
 // vitest: shared-module-graph
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
+import { RuleTester } from "oxlint/plugins-dev";
+import { describe, it } from "vitest";
 
-import rule, { NO_COMMENT_CRUFT_DOCUMENTATION } from "../../src/rules/no-comment-cruft.js";
+import rule, {
+  NO_COMMENT_CRUFT_DOCUMENTATION,
+} from "../../src/rules/no-comment-cruft.js";
 
-RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
 RuleTester.it = it;
 RuleTester.itOnly = it.only;
 
-const RULE_TESTER = new RuleTester();
+const RULE_TESTER = new RuleTester({
+  languageOptions: { parserOptions: { lang: "tsx" } },
+});
 
 RULE_TESTER.run("no-comment-cruft", rule, {
   valid: [
@@ -17,7 +20,9 @@ RULE_TESTER.run("no-comment-cruft", rule, {
     {
       code: "const x = 1;\n// region, sector AND facility_type are HARD constraints when the investor names them\nconst y = 2;",
     },
-    { code: "const x = 1;\n// region is derived from the caller's IP, which the CDN rewrites\nconst y = 2;" },
+    {
+      code: "const x = 1;\n// region is derived from the caller's IP, which the CDN rewrites\nconst y = 2;",
+    },
     { code: "const x = 1;\n// region defaults to us-east-1\nconst y = 2;" },
     { code: "const x = 1;\n// region comes from tenant\nconst y = 2;" },
     { code: "const x = 1;\n// regions are resolved lazily\nconst y = 2;" },
@@ -28,8 +33,12 @@ RULE_TESTER.run("no-comment-cruft", rule, {
     // Sentence punctuation distinguishes prose from a region title.
     { code: "const x = 1;\n// Region centroids for map_pan.\nconst y = 2;" },
     // --- a ticket/URL turns a scoping note into an owned decision ---
-    { code: "// EN-only for now; add an AR variant once AR audio exists (PROJ-249)\nconst langs = ['en'];" },
-    { code: "// hacky — mirrors https://example.com/api/quirk until they fix it\nconst x = 1;" },
+    {
+      code: "// EN-only for now; add an AR variant once AR audio exists (PROJ-249)\nconst langs = ['en'];",
+    },
+    {
+      code: "// hacky — mirrors https://example.com/api/quirk until they fix it\nconst x = 1;",
+    },
     // A reference on any line protects the whole contiguous run.
     {
       code: "// Stripe returns a stale timestamp, so the sink writes a field to advance it.\n// EN-only for now (PROJ-249).\nconst config = load();",
@@ -41,8 +50,12 @@ RULE_TESTER.run("no-comment-cruft", rule, {
     { code: "const city = 1;\n// Riyadh\nconst y = 2;" },
     { code: "const x = 1;\n// idempotent\nconst y = 2;" },
     // Third-person `lets` is a different word doing real work.
-    { code: "const x = 1;\n// lets a same-day re-run find the message it already posted\nconst y = 2;" },
-    { code: "const x = 1;\n// Lets describeAppointmentWithUser skip the extra round-trip\nconst y = 2;" },
+    {
+      code: "const x = 1;\n// lets a same-day re-run find the message it already posted\nconst y = 2;",
+    },
+    {
+      code: "const x = 1;\n// Lets describeAppointmentWithUser skip the extra round-trip\nconst y = 2;",
+    },
     // A RUN of enumeration markers is an algorithm walkthrough, not narration.
     {
       code: "// 1. Load the config\nconst c = load();\n// 2. Reconcile the rows\nconst r = reconcile(c);\n// 3. Emit\nemit(r);",
@@ -60,29 +73,49 @@ RULE_TESTER.run("no-comment-cruft", rule, {
     // Trailing explanatory comment.
     { code: "const x = compute(); // cached when warm" },
     { code: "const placeholder = 'implementation omitted';" },
-    { code: "// placeholder color is required by the design system\nconst color = token();" },
-    { code: "// in a real implementation this changes; see PROJ-123\nconst value = fallback();" },
-    { code: "// in a real application, rotate this key before deployment\nconst key = loadKey();" },
-    { code: "// for demonstration purposes only; never use this key in production\nconst key = loadKey();" },
-    { code: "// the pool is process-wide in a real application\nconst pool = createPool();" },
-    { code: "// same as above, but input must be converted to a string\nconst value = convert();" },
-    { code: "// the placeholder implementation preserves ABI compatibility\nconst value = fallback();" },
-    { code: "// in a real implementation this would call the API, but offline mode avoids the network\nconst value = fallback();" },
+    {
+      code: "// placeholder color is required by the design system\nconst color = token();",
+    },
+    {
+      code: "// in a real implementation this changes; see PROJ-123\nconst value = fallback();",
+    },
+    {
+      code: "// in a real application, rotate this key before deployment\nconst key = loadKey();",
+    },
+    {
+      code: "// for demonstration purposes only; never use this key in production\nconst key = loadKey();",
+    },
+    {
+      code: "// the pool is process-wide in a real application\nconst pool = createPool();",
+    },
+    {
+      code: "// same as above, but input must be converted to a string\nconst value = convert();",
+    },
+    {
+      code: "// the placeholder implementation preserves ABI compatibility\nconst value = fallback();",
+    },
+    {
+      code: "// in a real implementation this would call the API, but offline mode avoids the network\nconst value = fallback();",
+    },
     // JSDoc / @fileoverview headers are never flagged.
     {
       code: "/**\n * @fileoverview does a thing\n * with detail\n * across lines\n * and more\n */\nexport const x = 1;",
     },
     // Directive comments are ignored (TODO/FIXME carry an owner elsewhere).
-    { code: "// TODO@example-owner(JIRA-1234): return cachedValue();\nconst x = 1;" },
+    {
+      code: "// TODO@example-owner(JIRA-1234): return cachedValue();\nconst x = 1;",
+    },
     { code: "// prettier-ignore\nconst x = 1;" },
     {
       name: "preserves tool directives",
-      code: "// eslint-disable-next-line\n// =====\n// @ts-expect-error -- fixture\n// biome-ignore lint: fixture\n// c8 ignore next\nconst x = 1;",
+      code: "// oxlint-disable-next-line @sarj/no-comment-cruft -- vendor requires emitted comments\n// @ts-expect-error -- fixture\n// biome-ignore lint: fixture\n// c8 ignore next\nconst x = 1;",
     },
     // A short leading comment block (< 4 lines) is fine.
     { code: "// the entrypoint\nimport x from 'y';" },
     // Prose with `key=value` / comparisons is not commented-out code.
-    { code: "// 0=Monday … 6=Sunday — matches Python's WeekDay IntEnum\nexport const days = 1;" },
+    {
+      code: "// 0=Monday … 6=Sunday — matches Python's WeekDay IntEnum\nexport const days = 1;",
+    },
     { code: "// if x === y the cache is warm\nconst x = 1;" },
     { code: "// returns true => proceed\nconst ok = true;" },
     // Prose `word = phrase` with no code-tail is not commented-out code.
@@ -162,7 +195,9 @@ RULE_TESTER.run("no-comment-cruft", rule, {
       code: "// validate coordinates\nconst points = extractPoints(feature.geometry.coordinates);",
     },
     // A comment above a multi-line statement labels a region, not one line.
-    { code: "// merge all enrichments\nconst combined = {\n  a: 1,\n  b: 2,\n};" },
+    {
+      code: "// merge all enrichments\nconst combined = {\n  a: 1,\n  b: 2,\n};",
+    },
     // A blank line means the comment heads a block, not the statement below.
     { code: "// create the session\n\nconst session = createSession();" },
     // A zero/empty seed computes nothing for the comment to restate.
@@ -193,7 +228,7 @@ RULE_TESTER.run("no-comment-cruft", rule, {
     },
     // An illustration lead-in protects the entire contiguous example.
     {
-      code: "// Example:\n//\n// <Routes>\n//   <Route path=\"blog\" element={<Blog />} />\n// </Routes>\n//\n// function Blog() {\n//   return null;\n// }\nconst x = 1;",
+      code: '// Example:\n//\n// <Routes>\n//   <Route path="blog" element={<Blog />} />\n// </Routes>\n//\n// function Blog() {\n//   return null;\n// }\nconst x = 1;',
     },
 
     // A short translation must be corroborated by the statement below.
@@ -214,7 +249,9 @@ RULE_TESTER.run("no-comment-cruft", rule, {
     {
       code: "export interface HandlerInterface {\n  // app.get(path, handler x5)\n  <P extends string>(path: P, handler: H): void;\n}",
     },
-    { code: "type Router = {\n  // app.use(middleware)\n  use(m: M): void;\n};" },
+    {
+      code: "type Router = {\n  // app.use(middleware)\n  use(m: M): void;\n};",
+    },
     // --- a JSDoc block is still where the "why" lives ---
     // One shouted line does not make the block a signpost; the prose beneath it
     // is what the reader came for.
@@ -239,7 +276,9 @@ RULE_TESTER.run("no-comment-cruft", rule, {
       code: "interface T {\n  /** ISO 8601 */\n  at: string;\n}",
     },
     // A shouted SENTENCE is prose someone chose to shout.
-    { code: "class C {\n  /** ALWAYS RUN THIS BEFORE THE SEED STEP */\n  a() { return 1; }\n}" },
+    {
+      code: "class C {\n  /** ALWAYS RUN THIS BEFORE THE SEED STEP */\n  a() { return 1; }\n}",
+    },
     // Trailing, so it annotates the code beside it rather than heading a region.
     { code: "const a = 1; /** HELPERS */" },
     // A short lowercase phrase is a description of the member, not a signpost —

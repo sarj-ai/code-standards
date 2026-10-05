@@ -26,8 +26,8 @@ _GITHUB_MERGE_SUBJECT_RE: Final = re.compile(r"^Merge pull request #[1-9][0-9]* 
 _PRIVATE_REFS_FILE: Final = ".sarj-private-refs.toml"
 _TEST_COMMAND_RE: Final = re.compile(r"(?:npm test|pytest|make (?:verify|test)\b)")
 _PYPROJECT_VERSION_RE: Final = re.compile(r'^version = "([^"]+)"$', re.MULTILINE)
-_ESLINT_RULE_RE: Final = re.compile(r'^\s*"?([a-z][a-z0-9-]*)"?:', re.MULTILINE)
-_ESLINT_MAP_RE: Final = re.compile(
+_OXLINT_RULE_RE: Final = re.compile(r'^\s*"?([a-z][a-z0-9-]*)"?:', re.MULTILINE)
+_OXLINT_MAP_RE: Final = re.compile(
     r"^const (?:RULES|rules) = \{$(?P<body>.*?)^\}(?: as const)?;$", re.MULTILINE | re.DOTALL
 )
 _MARKDOWN_LOCATIONS: Final = (
@@ -452,8 +452,8 @@ def _check_rule_family(root: Path, family: RuleFamily) -> list[Finding]:
     source = root / family.source
     tests = root / family.tests
     registry = _read_text(root / family.registry)
-    registered_eslint: frozenset[str] = (
-        frozenset(eslint_rule_names(root)) if family.name == "typescript" else frozenset()
+    registered_oxlint: frozenset[str] = (
+        frozenset(oxlint_rule_names(root)) if family.name == "typescript" else frozenset()
     )
     findings: list[Finding] = []
     for path in sorted(source.glob(f"*.{family.extension}")):
@@ -465,7 +465,7 @@ def _check_rule_family(root: Path, family: RuleFamily) -> list[Finding]:
                 Finding("file-conventions", str(path.relative_to(root)), f"missing {test.relative_to(root)}")
             )
         registered = (
-            path.stem in registered_eslint
+            path.stem in registered_oxlint
             if family.name == "typescript"
             else family.registry_pattern.format(name=path.stem) in registry
         )
@@ -758,7 +758,7 @@ def _check_version_coverage(root: Path, policy: RepositoryPolicy) -> list[Findin
     manifests = {
         path
         for path in tracked
-        if fnmatch(path, "packages/*/pyproject.toml") or fnmatch(path, "packages/*/package.json")
+        if Path(path).full_match("packages/*/pyproject.toml") or Path(path).full_match("packages/*/package.json")
     }
     locks = {path for path in tracked if path.endswith(("uv.lock", "package-lock.json"))}
     return [
@@ -767,9 +767,9 @@ def _check_version_coverage(root: Path, policy: RepositoryPolicy) -> list[Findin
     ] + [Finding("versions", path, "lockfile is absent from version policy") for path in sorted(locks - known_locks)]
 
 
-def eslint_rule_names(root: Path) -> list[str]:
+def oxlint_rule_names(root: Path) -> list[str]:
     source = _read_text(root / "packages/typescript/src/index.ts")
-    body = _ESLINT_MAP_RE.search(source)
+    body = _OXLINT_MAP_RE.search(source)
     if body is None:
         return []
-    return sorted(_ESLINT_RULE_RE.findall(body.group("body")))
+    return sorted(_OXLINT_RULE_RE.findall(body.group("body")))

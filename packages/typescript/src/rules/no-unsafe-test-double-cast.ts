@@ -4,7 +4,9 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-unsafe-test-double-cast.test.ts
  */
 
-import { AST_NODE_TYPES, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
+import { sourceOrigin } from "./_source-origin.js";
+import type { ESTree, SourceCode } from "@oxlint/plugins";
+
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile, isTestFile } from "./_paths.js";
@@ -24,34 +26,34 @@ export const NO_UNSAFE_TEST_DOUBLE_CAST_DOCUMENTATION = {
   ],
 } as const satisfies RuleDocumentation;
 
-function isUnknown(node: TSESTree.TypeNode): boolean {
-  return node.type === AST_NODE_TYPES.TSUnknownKeyword;
+function isUnknown(node: ESTree.TSType): boolean {
+  return node.type === "TSUnknownKeyword";
 }
 
-function containsMockFactory(node: TSESTree.Node, source: TSESLint.SourceCode): boolean {
+function containsMockFactory(node: ESTree.Node, source: SourceCode): boolean {
   if (isMockFactory(node, source)) return true;
-  if (node.type === AST_NODE_TYPES.ObjectExpression) {
+  if (node.type === "ObjectExpression") {
     return node.properties.some((property) =>
-      property.type === AST_NODE_TYPES.Property
+      property.type === "Property"
         ? containsMockFactory(property.value, source)
         : containsMockFactory(property.argument, source));
   }
-  if (node.type === AST_NODE_TYPES.ArrayExpression) {
+  if (node.type === "ArrayExpression") {
     return node.elements.some((element) => element !== null && containsMockFactory(element, source));
   }
-  if (node.type === AST_NODE_TYPES.TSAsExpression || node.type === AST_NODE_TYPES.TSTypeAssertion) {
+  if (node.type === "TSAsExpression" || node.type === "TSTypeAssertion") {
     return containsMockFactory(node.expression, source);
   }
   return false;
 }
 
-function isMockFactory(node: TSESTree.Node, source: TSESLint.SourceCode): boolean {
-  return node.type === AST_NODE_TYPES.CallExpression &&
-    node.callee.type === AST_NODE_TYPES.MemberExpression &&
+function isMockFactory(node: ESTree.Node, source: SourceCode): boolean {
+  return node.type === "CallExpression" &&
+    node.callee.type === "MemberExpression" &&
     !node.callee.computed &&
-    node.callee.object.type === AST_NODE_TYPES.Identifier &&
+    node.callee.object.type === "Identifier" &&
     (importedTestMockNamespace(source, node.callee.object) !== null || isUnshadowedTestMockGlobal(source, node.callee.object)) &&
-    node.callee.property.type === AST_NODE_TYPES.Identifier &&
+    node.callee.property.type === "Identifier" &&
     ["fn", "spyOn"].includes(node.callee.property.name);
 }
 
@@ -66,13 +68,13 @@ export default createRule<[], MessageIds>({
   },
   defaultOptions: [],
   create(context) {
-    if (!isTestFile(context.filename) || isGeneratedFile(context.filename, context.sourceCode.text)) return {};
+    if (!isTestFile(sourceOrigin(context).filename) || isGeneratedFile(sourceOrigin(context).filename, sourceOrigin(context).text)) return {};
     return {
-      TSAsExpression(node: TSESTree.TSAsExpression): void {
-        if ((node.expression.type === AST_NODE_TYPES.TSAsExpression || node.expression.type === AST_NODE_TYPES.TSTypeAssertion) && isUnknown(node.expression.typeAnnotation) && containsMockFactory(node.expression.expression, context.sourceCode)) context.report({ node, messageId: "noUnsafeTestDoubleCast" });
+      TSAsExpression(node: ESTree.TSAsExpression): void {
+        if ((node.expression.type === "TSAsExpression" || node.expression.type === "TSTypeAssertion") && isUnknown(node.expression.typeAnnotation) && containsMockFactory(node.expression.expression, context.sourceCode)) context.report({ node, messageId: "noUnsafeTestDoubleCast" });
       },
-      TSTypeAssertion(node: TSESTree.TSTypeAssertion): void {
-        if ((node.expression.type === AST_NODE_TYPES.TSAsExpression || node.expression.type === AST_NODE_TYPES.TSTypeAssertion) && isUnknown(node.expression.typeAnnotation) && containsMockFactory(node.expression.expression, context.sourceCode)) context.report({ node, messageId: "noUnsafeTestDoubleCast" });
+      TSTypeAssertion(node: ESTree.TSTypeAssertion): void {
+        if ((node.expression.type === "TSAsExpression" || node.expression.type === "TSTypeAssertion") && isUnknown(node.expression.typeAnnotation) && containsMockFactory(node.expression.expression, context.sourceCode)) context.report({ node, messageId: "noUnsafeTestDoubleCast" });
       },
     };
   },

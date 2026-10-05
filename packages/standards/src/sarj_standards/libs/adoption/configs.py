@@ -8,11 +8,25 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
 
 
+OXLINT_CONFIG: Final = "oxlint.config.mjs"
+OXLINT_CONFIG_NAMES: Final = (
+    "oxlint.config.mjs",
+    "oxlint.config.js",
+    "oxlint.config.cjs",
+    "oxlint.config.mts",
+    "oxlint.config.ts",
+    "oxlint.config.cts",
+    ".oxlintrc.json",
+    ".oxlintrc.jsonc",
+)
+OXFMT_CONFIG_NAMES: Final = (".oxfmtrc.json", ".oxfmtrc.jsonc", "oxfmt.config.ts", "oxfmt.config.mts")
+
+
 CONFIG_NAMES: Final[Mapping[str, tuple[str, str]]] = MappingProxyType(
     {
         "ruff": ("ruff.strict.toml", ".ruff-strict.toml"),
         "pyright": ("pyright.strict.json", ".pyright-strict.json"),
-        "eslint": ("eslint.strict.mjs", "eslint.strict.mjs"),
+        "oxlint": ("oxlint.strict.mjs", "oxlint.strict.mjs"),
         "swiftformat": ("swiftformat.strict", ".swiftformat"),
         "swiftlint": ("swiftlint.strict.yml", ".swiftlint.yml"),
         "ktlint": ("ktlint.strict.editorconfig", ".editorconfig"),
@@ -29,7 +43,7 @@ CONFIG_NAMES: Final[Mapping[str, tuple[str, str]]] = MappingProxyType(
 
 # These files travel with an existing capability instead of adding another
 # manifest switch. React Doctor is an advisory companion to the TypeScript
-# gate, so every ESLint consumer receives the same data-only configuration.
+# gate, so every Oxlint consumer receives the same data-only configuration.
 TYPESCRIPT_COMPANION_CONFIGS: Final[Mapping[str, tuple[str, str]]] = MappingProxyType(
     {
         "react-doctor": ("doctor.config.json", "doctor.config.json"),
@@ -54,7 +68,7 @@ MOBILE_COMPANION_CONFIGS: Final[Mapping[str, tuple[str, str]]] = MappingProxyTyp
 APPLICATION_CONFIG_NAMES: Final[Mapping[str, str]] = MappingProxyType(
     {
         "ruff": "ruff.strict.toml",
-        "eslint": "eslint.strict.mjs",
+        "oxlint": "oxlint.strict.mjs",
     }
 )
 PYTHON_CONFIGS: Final = frozenset({"ruff", "pyright"})

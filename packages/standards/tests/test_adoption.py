@@ -19,8 +19,8 @@ from sarj_standards import (
 )
 from sarj_standards._meta import (
     CONFIGS_DIR,
-    ESLINT_PEERS,
-    ESLINT_STRICT,
+    OXLINT_PEERS,
+    OXLINT_STRICT,
 )
 import sarj_standards.cli.main as cli
 from sarj_standards.cli.main import main
@@ -106,10 +106,10 @@ def test_doctor_leaves_maintainer_repository_policy_to_maintain_check(
     assert cli.main(["--root", str(tmp_path), "doctor"]) == 0
 
 
-def test_every_eslint_import_has_a_pinned_peer() -> None:
-    imported = set(re.findall(r'^import \w+ from "([^"]+)";', ESLINT_STRICT.read_text(), re.MULTILINE))
-    pinned = set(manifest.eslint_peers())
-    assert imported - pinned == set(), "eslint.strict.mjs imports a package with no pin in eslint.peers.json"
+def test_every_oxlint_import_has_a_pinned_peer() -> None:
+    imported = set(re.findall(r'^import \w+ from "([^"]+)";', OXLINT_STRICT.read_text(), re.MULTILINE))
+    pinned = set(manifest.oxlint_peers())
+    assert imported - pinned == set(), "oxlint.strict.mjs imports a package with no pin in oxlint.peers.json"
 
 
 def test_python_configs_pin_the_314_language_floor() -> None:
@@ -181,33 +181,24 @@ def test_python315_watch_profiles_are_advisory_and_isolated() -> None:
     )  # sarj-noqa: SARJ402 -- exact config text is the watch-profile contract
 
 
-@pytest.mark.parametrize("config_name", ["eslint.strict.mjs", "eslint.application.mjs"])
-def test_eslint_config_degrades_cleanly_without_a_type_project(config_name: str) -> None:
-    text = (CONFIGS_DIR / config_name).read_text(encoding="utf-8")
-    if config_name == "eslint.application.mjs":
-        executable = "\n".join(line for line in text.splitlines() if not line.startswith("//"))
-        assert executable.strip() == 'export { createConfig, default } from "./eslint.strict.mjs";'
-        text = (CONFIGS_DIR / "eslint.strict.mjs").read_text(encoding="utf-8")
-
-    assert "dirname(fileURLToPath(import.meta.url))" in text
-    assert "export function createConfig(options = {})" in text
-    assert "[CONFIG_DIRECTORY, process.cwd()].map(normalizeRoot)" in text
-    assert "const detectedRoot = candidates.find(hasTypeProject)" in text
-    assert "projectService: PROJECT_SERVICE" in text
-    assert "tsconfigRootDir: TYPE_PROJECT_ROOT" in text
-    assert "PROJECT_SERVICE !== false" in text
-    assert "UNTYPED_RULE_OVERRIDES" in text
-    assert '"**/eslint.strict.mjs"' in text
-    assert '"**/eslint.config.mjs"' in text
+def test_shared_config_uses_stock_plugin_configuration() -> None:
+    text = (CONFIGS_DIR / "oxlint.strict.mjs").read_text(encoding="utf-8")
+    assert (
+        'from "@sarj/oxlint-plugin/config"' in text
+    )  # sarj-noqa: SARJ402 -- the public wrapper import specifier is the packaged integration contract.
+    assert (
+        "createStrictOxlintConfig({ root: import.meta.dirname })" in text
+    )  # sarj-noqa: SARJ402 -- the wrapper must bind native project discovery to the importing repository.
+    assert (
+        "projectService" not in text
+    )  # sarj-noqa: SARJ402 -- the native wrapper cannot retain an ESLint compiler service bridge.
 
 
-def test_peer_pins_are_exact_versions_or_official_compiler_aliases() -> None:
-    peers = manifest.eslint_peers()
-    assert len(peers) >= 9, "every package eslint.strict.mjs imports must be pinned"
+def test_native_peer_pins_are_exact_versions() -> None:
+    peers = manifest.oxlint_peers()
+    assert {"@sarj/oxlint-plugin", "oxlint", "oxlint-tsgolint", "oxfmt"} <= peers.keys()
     for name, pin in peers.items():
-        assert re.fullmatch(r"(?:npm:(?:@typescript/typescript6|typescript)@)?\d+\.\d+\.\d+", pin), (
-            f"{name} must be pinned exactly, got {pin}"
-        )
+        assert re.fullmatch(r"\d+\.\d+\.\d+", pin), f"{name} must be pinned exactly, got {pin}"
 
 
 def test_react_doctor_config_is_offline_blocking_and_non_overlapping() -> None:
@@ -230,38 +221,41 @@ def test_react_doctor_config_is_offline_blocking_and_non_overlapping() -> None:
     assert config["serverAuthFunctionNames"] == ["forRequest"]
 
 
-def test_peers_manifest_carries_the_overrides_that_make_it_installable() -> None:
-    overrides = manifest.eslint_overrides()
-    assert "eslint-plugin-react" in overrides
-    assert overrides["eslint-plugin-react"] == {"eslint": "$eslint"}
+def test_stock_peers_route_doctor_hooks_to_the_native_package_without_an_eslint_engine() -> None:
+    peers = manifest.oxlint_peers()
+    assert {"eslint", "@typescript-eslint/parser", "@typescript-eslint/utils"}.isdisjoint(peers)
+    assert manifest.oxlint_overrides() == {
+        "eslint-plugin-react-hooks": f"npm:@sarj/oxlint-react-hooks@{peers['@sarj/oxlint-react-hooks']}"
+    }
 
 
 def test_peers_command_prints_one_install_command() -> None:
     proc = _cli("show", "peers")
     assert proc.returncode == 0
     assert "npm install --ignore-scripts --no-audit --no-fund" in proc.stdout
-    for name in manifest.eslint_peers():
+    for name in manifest.oxlint_peers():
         assert name in proc.stdout
 
 
-def test_eslint_plugin_pin_matches_the_published_package() -> None:
+def test_oxlint_plugin_pin_matches_the_published_package() -> None:
     source = REPO_ROOT / "packages" / "typescript" / "package.json"
     if not source.is_file():
         pytest.skip("running against an installed wheel, outside the source tree")
     parsed: object = json.loads(source.read_text(encoding="utf-8"))  # pyright: ignore[reportAny] — untyped stdlib boundary
     package_json = manifest.as_table(parsed)
-    assert manifest.eslint_peers()["@sarj/eslint-plugin"] == package_json["version"]
+    assert manifest.oxlint_peers()["@sarj/oxlint-plugin"] == package_json["version"]
 
 
-def test_this_repos_own_overrides_are_the_ones_consumers_get() -> None:
-    source = REPO_ROOT / "packages" / "typescript" / "package.json"
+def test_native_hooks_package_version_matches_the_managed_doctor_override() -> None:
+    source = REPO_ROOT / "packages" / "react-hooks" / "package.json"
     if not source.is_file():
         pytest.skip("running against an installed wheel, outside the source tree")
     parsed: object = json.loads(source.read_text(encoding="utf-8"))  # pyright: ignore[reportAny] — untyped stdlib boundary
-    own = manifest.table_field(manifest.as_table(parsed), "overrides")
-    shipped = manifest.eslint_overrides()
-    assert shipped, "eslint.peers.json must declare the overrides to compare against"
-    assert {name: own.get(name) for name in shipped} == shipped
+    package = manifest.as_table(parsed)
+    version = manifest.text_field(package, "version")
+    assert manifest.text_field(package, "name") == "@sarj/oxlint-react-hooks"
+    assert version == manifest.oxlint_peers()["@sarj/oxlint-react-hooks"]
+    assert manifest.oxlint_overrides()["eslint-plugin-react-hooks"] == f"npm:@sarj/oxlint-react-hooks@{version}"
 
 
 def test_manifest_round_trips(tmp_path: Path) -> None:
@@ -477,7 +471,7 @@ def test_manifest_renders_as_valid_toml() -> None:
     assert parsed["bundle"] == "1.2.3"
     assert parsed["capabilities"]["disable"] == [
         "pyright",
-        "eslint",
+        "oxlint",
         "swiftformat",
         "swiftlint",
         "ktlint",
@@ -690,7 +684,7 @@ def test_setup_discards_removed_rule_exclusions(tmp_path: Path, schema: int, bun
     mobile = ', "swiftformat", "swiftlint", "ktlint", "detekt", "mobile-security"' if schema == 4 else ""
     manifest_path.write_text(
         f'schema = {schema}\nbundle = "{bundle}"\n'
-        f'[capabilities]\ndisable = ["pyright", "eslint", "markdownlint", "shellcheck", "taplo", "yamllint"{mobile}]\n'
+        f'[capabilities]\ndisable = ["pyright", "oxlint", "markdownlint", "shellcheck", "taplo", "yamllint"{mobile}]\n'
         f'[exclude]\npaths = ["generated/**"]\nrules = ["python:SARJ012", "python:{retired}"]\n'
         f'[[exclude.overrides]]\npaths = ["tests/old/**"]\nrules = ["python:{retired}"]\nreason = "retired"\n'
         f'[[exclude.overrides]]\npaths = ["tests/**"]\nrules = ["python:SARJ012", "python:{retired}"]\n'
@@ -792,7 +786,7 @@ def test_setup_losslessly_rerenders_schema_three_as_schema_four(tmp_path: Path) 
     manifest_path = tmp_path / manifest.MANIFEST_NAME
     manifest_path.write_text(
         'schema = 3\nbundle = "1.2.3"\nprofile = "application"\nrule_profile = "all"\n'
-        '[capabilities]\ndisable = ["pyright", "eslint", "markdownlint", "shellcheck", "taplo", "yamllint"]\n'
+        '[capabilities]\ndisable = ["pyright", "oxlint", "markdownlint", "shellcheck", "taplo", "yamllint"]\n'
         '[dest]\npython = "."\ntypescript = "."\n'
         '[hooks]\nmanager = "none"\n'
         '[verify]\npaths = ["src"]\n'
@@ -835,7 +829,7 @@ def test_setup_fails_closed_on_unowned_top_level_manifest_scalars(tmp_path: Path
     path = tmp_path / manifest.MANIFEST_NAME
     path.write_text(
         'schema = 3\nbundle = "1.2.3"\nconsumer_mode = "strict"\n'
-        '[capabilities]\ndisable = ["pyright", "eslint", "markdownlint", "shellcheck", "taplo", "yamllint"]\n',
+        '[capabilities]\ndisable = ["pyright", "oxlint", "markdownlint", "shellcheck", "taplo", "yamllint"]\n',
         encoding="utf-8",
     )
     before = path.read_bytes()
@@ -926,7 +920,7 @@ def test_setup_refuses_to_discard_a_schema_less_python_baseline(tmp_path: Path) 
 def test_doctor_repair_uses_the_same_one_way_manifest_migration(tmp_path: Path) -> None:
     _typescript_repo(tmp_path)
     (tmp_path / manifest.MANIFEST_NAME).write_text(
-        'version = "0.42.0"\nconfigs = ["eslint"]\n\n[dest]\npython = "."\ntypescript = "."\n',
+        'version = "0.42.0"\nconfigs = ["oxlint"]\n\n[dest]\npython = "."\ntypescript = "."\n',
         encoding="utf-8",
     )
 
@@ -990,8 +984,8 @@ def test_schema_three_rejects_removed_fields(tmp_path: Path, field: str) -> None
     ("python", "typescript", "expected"),
     [
         (True, False, ("ruff", "pyright", "markdownlint", "shellcheck", "taplo", "yamllint")),
-        (False, True, ("eslint", "markdownlint", "shellcheck", "taplo", "yamllint")),
-        (True, True, ("ruff", "pyright", "eslint", "markdownlint", "shellcheck", "taplo", "yamllint")),
+        (False, True, ("oxlint", "markdownlint", "shellcheck", "taplo", "yamllint")),
+        (True, True, ("ruff", "pyright", "oxlint", "markdownlint", "shellcheck", "taplo", "yamllint")),
     ],
 )
 def test_config_set_follows_the_detected_ecosystems(
@@ -1003,7 +997,7 @@ def test_config_set_follows_the_detected_ecosystems(
 def test_doctor_respects_the_manifests_config_set(tmp_path: Path) -> None:
     _python_repo(tmp_path)
     assert _cli("--root", str(tmp_path), "setup", "--no-install").returncode == 0
-    assert not (tmp_path / "eslint.strict.mjs").exists()
+    assert not (tmp_path / "oxlint.strict.mjs").exists()
 
     proc = _cli("--root", str(tmp_path), "doctor")
     assert proc.returncode == 0, proc.stdout
@@ -1042,7 +1036,7 @@ def test_setup_accepts_several_configs(tmp_path: Path) -> None:
     assert (tmp_path / ".ruff-strict.toml").is_file()
     assert (tmp_path / ".pyright-strict.json").is_file()
     assert (tmp_path / ".basedpyright-strict.json").is_file()
-    assert not (tmp_path / "eslint.strict.mjs").exists()
+    assert not (tmp_path / "oxlint.strict.mjs").exists()
 
 
 def test_init_writes_the_whole_python_wiring(tmp_path: Path) -> None:
@@ -1191,14 +1185,14 @@ def test_setup_explicit_configs_update_manifest_without_losing_exclusions(tmp_pa
     assert first.returncode == 0, first.stderr
     assert _cli("--root", str(tmp_path), "exclude", "add", "path", "generated/**").returncode == 0
 
-    second = _cli("--root", str(tmp_path), "setup", "--config", "eslint", "--no-install")
+    second = _cli("--root", str(tmp_path), "setup", "--config", "oxlint", "--no-install")
 
     assert second.returncode == 0, second.stderr
     adopted = manifest.load(tmp_path)
     assert adopted is not None
-    assert adopted.configs == ("eslint",)
+    assert adopted.configs == ("oxlint",)
     assert adopted.excluded_paths == ("generated/**",)
-    assert (tmp_path / "eslint.strict.mjs").is_file()
+    assert (tmp_path / "oxlint.strict.mjs").is_file()
 
 
 def test_setup_preserves_every_supported_manifest_policy_section(tmp_path: Path) -> None:
@@ -1216,7 +1210,7 @@ def test_setup_preserves_every_supported_manifest_policy_section(tmp_path: Path)
         encoding="utf-8",
     )
 
-    second = _cli("--root", str(tmp_path), "setup", "--config", "eslint", "--no-install")
+    second = _cli("--root", str(tmp_path), "setup", "--config", "oxlint", "--no-install")
 
     assert second.returncode == 0, second.stderr
     adopted = manifest.load(tmp_path)
@@ -1231,9 +1225,9 @@ def test_setup_preserves_every_supported_manifest_policy_section(tmp_path: Path)
 def test_sync_uses_canonical_config_with_legacy_profile(tmp_path: Path) -> None:
     _typescript_repo(tmp_path)
     assert _cli("--root", str(tmp_path), "setup", "--profile", "application", "--no-install").returncode == 0
-    expected = CONFIGS_DIR / "eslint.strict.mjs"
+    expected = CONFIGS_DIR / "oxlint.strict.mjs"
     assert (
-        tmp_path / "eslint.strict.mjs"
+        tmp_path / "oxlint.strict.mjs"
     ).read_bytes() == expected.read_bytes()  # sarj-noqa: SARJ402 -- generated config bytes are the adoption contract
     assert _cli("--root", str(tmp_path), "doctor").returncode == 0
 
@@ -1332,12 +1326,12 @@ def test_init_writes_a_typescript_entrypoint_with_an_override_seam(tmp_path: Pat
     proc = _cli("--root", str(tmp_path), "setup", "--no-install")
     assert proc.returncode == 0, proc.stderr
 
-    entrypoint = (tmp_path / "eslint.config.mjs").read_text()
-    assert 'import strict from "./eslint.strict.mjs"' in entrypoint
-    assert 'testFrameworks: ["vitest", "bun", "node", "testing-library", "playwright"]' in entrypoint
-    assert "repo-specific overrides" in entrypoint
-    assert "unicorn/filename-case" in entrypoint
-    assert (tmp_path / "eslint.strict.mjs").is_file()
+    entrypoint = (tmp_path / "oxlint.config.mjs").read_text()
+    assert 'import strict from "./oxlint.strict.mjs"' in entrypoint
+    assert "defineConfig" in entrypoint
+    assert "...(strict.overrides ?? [])" in entrypoint
+    assert "repository-specific native Oxlint overrides" in entrypoint
+    assert (tmp_path / "oxlint.strict.mjs").is_file()
     assert json.loads((tmp_path / "doctor.config.json").read_text(encoding="utf-8")) == json.loads(
         (CONFIGS_DIR / "doctor.config.json").read_text(encoding="utf-8")
     )
@@ -1349,7 +1343,7 @@ def test_init_writes_a_typescript_entrypoint_with_an_override_seam(tmp_path: Pat
     [
         pytest.param("npm install --ignore-scripts", id="install-command"),
         pytest.param("overrides", id="npm-overrides-block"),
-        pytest.param("eslint-plugin-react", id="the-package-the-overrides-unblock"),
+        pytest.param("Oxlint/Oxfmt", id="native-tool-policy"),
     ],
 )
 def test_init_gives_a_typescript_repo_everything_npm_needs(tmp_path: Path, expected: str) -> None:
@@ -1360,23 +1354,23 @@ def test_init_gives_a_typescript_repo_everything_npm_needs(tmp_path: Path, expec
         (tmp_path / "package.json").read_text(encoding="utf-8")
     )
     package = manifest.as_table(parsed)
-    assert manifest.table_field(package, "devDependencies") == manifest.eslint_peers()
+    assert manifest.table_field(package, "devDependencies") == manifest.oxlint_peers()
 
 
 def test_setup_converges_peers_duplicated_across_dependency_sections(tmp_path: Path) -> None:
     _typescript_repo(tmp_path)
-    peers = manifest.eslint_peers()
+    peers = manifest.oxlint_peers()
     package_path = tmp_path / "package.json"
     package_path.write_text(
         json.dumps(
             {
                 "name": "web",
                 "dependencies": {
-                    "@sarj/eslint-plugin": peers["@sarj/eslint-plugin"],
-                    "eslint": peers["eslint"],
+                    "@sarj/oxlint-plugin": peers["@sarj/oxlint-plugin"],
+                    "oxlint": peers["oxlint"],
                     "runtime": "1.0.0",
                 },
-                "devDependencies": {"@sarj/eslint-plugin": "8.0.0", "eslint": "8.0.0", "test-only": "1.0.0"},
+                "devDependencies": {"@sarj/oxlint-plugin": "8.0.0", "oxlint": "8.0.0", "test-only": "1.0.0"},
             }
         ),
         encoding="utf-8",
@@ -1389,11 +1383,11 @@ def test_setup_converges_peers_duplicated_across_dependency_sections(tmp_path: P
     package = manifest.as_table(parsed)
     runtime = manifest.table_field(package, "dependencies")
     development = manifest.table_field(package, "devDependencies")
-    assert runtime["@sarj/eslint-plugin"] == peers["@sarj/eslint-plugin"]
-    assert runtime["eslint"] == peers["eslint"]
+    assert runtime["@sarj/oxlint-plugin"] == peers["@sarj/oxlint-plugin"]
+    assert runtime["oxlint"] == peers["oxlint"]
     assert runtime["runtime"] == "1.0.0"
-    assert "@sarj/eslint-plugin" not in development
-    assert "eslint" not in development
+    assert "@sarj/oxlint-plugin" not in development
+    assert "oxlint" not in development
     assert development["test-only"] == "1.0.0"
     assert _cli("--root", str(tmp_path), "setup", "--no-install").returncode == 0
 
@@ -1404,7 +1398,7 @@ def test_setup_refuses_to_major_bump_lint_tooling_in_runtime_dependencies(tmp_pa
     original = json.dumps(
         {
             "name": "web",
-            "dependencies": {"eslint": "^9.0.0", "runtime": "1.0.0"},
+            "dependencies": {"oxlint": "^9.0.0", "runtime": "1.0.0"},
         }
     )
     package_path.write_text(original, encoding="utf-8")
@@ -1555,7 +1549,7 @@ def test_commit_policy_only_preserves_existing_language_tooling_and_lefthook_job
     pyproject = tmp_path / "pyproject.toml"
     pyproject.write_text("[tool.pyright]\nextends = 'custom.json'\n", encoding="utf-8")
     package = tmp_path / "package.json"
-    package.write_text('{"devDependencies":{"eslint":"1.0.0"}}\n', encoding="utf-8")
+    package.write_text('{"devDependencies":{"oxlint":"1.0.0"}}\n', encoding="utf-8")
     lefthook = tmp_path / "lefthook.yml"
     original_lefthook = (
         "pre-commit:\n  commands:\n    consumer:\n      run: custom-check\n"
@@ -1587,7 +1581,7 @@ def test_commit_policy_only_preserves_existing_language_tooling_and_lefthook_job
     assert second.returncode == 0, second.stderr
     assert "scope: commit policy only" in first.stdout
     assert pyproject.read_text(encoding="utf-8") == "[tool.pyright]\nextends = 'custom.json'\n"
-    assert package.read_text(encoding="utf-8") == '{"devDependencies":{"eslint":"1.0.0"}}\n'
+    assert package.read_text(encoding="utf-8") == '{"devDependencies":{"oxlint":"1.0.0"}}\n'
     assert original_lefthook in converged
     assert converged.count("repo-standards-commit-message") == 1
     assert lefthook.read_text(encoding="utf-8") == converged
@@ -1655,7 +1649,7 @@ def test_init_adopts_shared_configs_without_an_ecosystem(tmp_path: Path) -> None
 
 @pytest.mark.parametrize(
     "config",
-    ["ruff", "pyright", "eslint", "swiftformat", "swiftlint", "ktlint", "detekt", "mobile-security"],
+    ["ruff", "pyright", "oxlint", "swiftformat", "swiftlint", "ktlint", "detekt", "mobile-security"],
 )
 def test_init_rejects_ecosystem_config_without_its_project(tmp_path: Path, config: str) -> None:
     proc = _cli("--root", str(tmp_path), "setup", "--config", config, "--no-install")
@@ -2070,8 +2064,7 @@ def test_init_writes_the_npm_overrides_into_package_json(tmp_path: Path) -> None
     parsed: object = json.loads((tmp_path / "package.json").read_text(encoding="utf-8"))  # pyright: ignore[reportAny] — untyped stdlib boundary
     written = manifest.as_table(parsed)
     overrides = manifest.table_field(written, "overrides")
-    assert set(overrides) == set(manifest.eslint_overrides())
-    assert manifest.table_field(overrides, "eslint-plugin-react")["eslint"] == manifest.eslint_peers()["eslint"]
+    assert set(overrides) == set(manifest.oxlint_overrides())
     assert written["name"] == "web", "the consumer's own keys must survive the merge"
 
 
@@ -2085,7 +2078,7 @@ def test_init_preserves_tab_indented_package_json(tmp_path: Path) -> None:
     assert proc.returncode == 0, proc.stderr
     updated = package.read_text(encoding="utf-8")
     assert '\n\t"devDependencies": {' in updated
-    assert '\n\t\t"@sarj/eslint-plugin":' in updated
+    assert '\n\t\t"@sarj/oxlint-plugin":' in updated
     assert '\n  "devDependencies": {' not in updated
 
 
@@ -2128,7 +2121,8 @@ def test_init_does_not_clobber_a_consumers_existing_overrides(tmp_path: Path) ->
     parsed: object = json.loads((tmp_path / "package.json").read_text(encoding="utf-8"))  # pyright: ignore[reportAny] — untyped stdlib boundary
     overrides = manifest.table_field(manifest.as_table(parsed), "overrides")
     assert overrides["left-pad"] == "1.3.0"
-    assert "eslint-plugin-react" in overrides
+    assert "eslint" not in overrides
+    assert overrides["eslint-plugin-react-hooks"] == manifest.oxlint_overrides()["eslint-plugin-react-hooks"]
 
 
 def test_init_leaves_a_package_json_that_already_has_the_overrides_alone(
@@ -2141,22 +2135,22 @@ def test_init_leaves_a_package_json_that_already_has_the_overrides_alone(
     second = _cli("--root", str(tmp_path), "setup", "--no-install")
     assert second.returncode == 0
     assert (tmp_path / "package.json").read_text(encoding="utf-8") == before
-    assert "already pins the tested ESLint peers and npm overrides" in second.stdout
+    assert "already pins the tested Oxlint peers and npm overrides" in second.stdout
 
 
-def test_init_wires_the_subproject_that_actually_installs_eslint(tmp_path: Path) -> None:
+def test_init_wires_the_subproject_that_actually_installs_oxlint(tmp_path: Path) -> None:
     (tmp_path / "web").mkdir()
     (tmp_path / "web" / "package.json").write_text('{"name": "web"}\n')
     (tmp_path / "web" / "package-lock.json").write_text("{}\n")
     proc = _cli("--root", str(tmp_path), "setup", "--no-install")
     assert proc.returncode == 0, proc.stderr
 
-    assert (tmp_path / "web" / "eslint.config.mjs").is_file()
-    assert (tmp_path / "web" / "eslint.strict.mjs").is_file()
-    assert not (tmp_path / "eslint.config.mjs").exists()
+    assert (tmp_path / "web" / "oxlint.config.mjs").is_file()
+    assert (tmp_path / "web" / "oxlint.strict.mjs").is_file()
+    assert not (tmp_path / "oxlint.config.mjs").exists()
 
     parsed: object = json.loads((tmp_path / "web" / "package.json").read_text(encoding="utf-8"))  # pyright: ignore[reportAny] — untyped stdlib boundary
-    assert "eslint-plugin-react" in manifest.table_field(manifest.as_table(parsed), "overrides")
+    assert manifest.table_field(manifest.as_table(parsed), "devDependencies") == manifest.oxlint_peers()
 
 
 def test_doctor_reads_the_subproject_destinations_back_out_of_the_manifest(
@@ -2565,7 +2559,7 @@ def test_doctor_repair_restores_owned_config_while_reporting_manual_retired_rule
     config = tmp_path / ".ruff-strict.toml"
     config.unlink()
     retired = "@sarj/no-" + "unsafe-cast"
-    (tmp_path / "legacy-eslint.config.mjs").write_text(f'export default [{{ rules: {{ "{retired}": "off" }} }}];\n')
+    (tmp_path / "legacy-oxlint.config.mjs").write_text(f'export default {{ rules: {{ "{retired}": "off" }} }};\n')
 
     repaired = _cli("--root", str(tmp_path), "doctor", "--repair", "--no-install")
 
@@ -2913,6 +2907,27 @@ def test_show_ci_syncs_every_uv_workspace_package_and_runs_configured_bootstrap(
     assert "uv sync --locked --project python --all-packages" in rendered.stdout
     assert "run: |\n          uv run --project python generate-api" in rendered.stdout
     assert "run: |\n          yarn generate" in rendered.stdout
+
+
+@pytest.mark.parametrize("destination", [".", "frontend"])
+def test_pnpm_ci_installs_the_declared_manager_without_corepack(tmp_path: Path, destination: str) -> None:
+    project = tmp_path / destination
+    project.mkdir(parents=True, exist_ok=True)
+    (project / "package.json").write_text('{"name":"web","packageManager":"pnpm@12.3.4"}\n', encoding="utf-8")
+    (project / "pnpm-lock.yaml").write_text("lockfileVersion: '9.0'\n", encoding="utf-8")
+    (tmp_path / manifest.MANIFEST_NAME).write_text(
+        manifest.Manifest(__version__, ("oxlint",), ".", destination).render(), encoding="utf-8"
+    )
+
+    workflow = scaffold.github_ci_workflow(tmp_path)
+
+    assert "uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320" in workflow
+    assert workflow.index("uses: pnpm/action-setup@") < workflow.index("run: pnpm install --frozen-lockfile")
+    assert "corepack" not in workflow
+    if destination != ".":
+        assert 'package_json_file: "frontend/package.json"' in workflow
+        assert 'working-directory: "frontend"' in workflow
+    assert "run: pnpm install --frozen-lockfile --ignore-scripts" in workflow
 
 
 def test_show_ci_preserves_github_expressions_in_bootstrap_shell_commands(tmp_path: Path) -> None:
@@ -3614,10 +3629,10 @@ def test_init_recognizes_a_quoted_commented_local_generated_hook(tmp_path: Path)
     assert "entry: stale" not in generated
 
 
-def test_doctor_catches_a_stale_eslint_plugin_pin(tmp_path: Path) -> None:
+def test_doctor_catches_a_stale_oxlint_plugin_pin(tmp_path: Path) -> None:
     _typescript_repo(tmp_path)
     (tmp_path / "package.json").write_text(
-        json.dumps({"name": "web", "devDependencies": {"@sarj/eslint-plugin": "2.16.0"}})
+        json.dumps({"name": "web", "devDependencies": {"@sarj/oxlint-plugin": "2.16.0"}})
     )
     proc = _cli("--root", str(tmp_path), "doctor")
     assert proc.returncode == 1
@@ -3630,10 +3645,10 @@ def test_doctor_catches_a_stale_eslint_plugin_pin(tmp_path: Path) -> None:
     ids=["bare", "equals", "double-equals"],
 )
 def test_doctor_accepts_only_exact_spellings_of_the_tested_floor(tmp_path: Path, operator: str) -> None:
-    floor = manifest.eslint_peers()["@sarj/eslint-plugin"]
+    floor = manifest.oxlint_peers()["@sarj/oxlint-plugin"]
     _typescript_repo(tmp_path)
     (tmp_path / "package.json").write_text(
-        json.dumps({"name": "web", "devDependencies": {"@sarj/eslint-plugin": f"{operator}{floor}"}})
+        json.dumps({"name": "web", "devDependencies": {"@sarj/oxlint-plugin": f"{operator}{floor}"}})
     )
     proc = _cli("--root", str(tmp_path), "doctor")
     assert "matches the tested peer set" in proc.stdout, proc.stdout
@@ -3642,10 +3657,10 @@ def test_doctor_accepts_only_exact_spellings_of_the_tested_floor(tmp_path: Path,
 
 @pytest.mark.parametrize("operator", ["^", "~", ">=", ">", "<", "~=", "v"])
 def test_doctor_rejects_ranges_even_when_they_name_the_tested_floor(tmp_path: Path, operator: str) -> None:
-    floor = manifest.eslint_peers()["@sarj/eslint-plugin"]
+    floor = manifest.oxlint_peers()["@sarj/oxlint-plugin"]
     _typescript_repo(tmp_path)
     (tmp_path / "package.json").write_text(
-        json.dumps({"name": "web", "devDependencies": {"@sarj/eslint-plugin": f"{operator}{floor}"}})
+        json.dumps({"name": "web", "devDependencies": {"@sarj/oxlint-plugin": f"{operator}{floor}"}})
     )
 
     proc = _cli("--root", str(tmp_path), "doctor")
@@ -3655,10 +3670,10 @@ def test_doctor_rejects_ranges_even_when_they_name_the_tested_floor(tmp_path: Pa
 
 
 def test_doctor_still_reports_a_range_that_is_not_the_floor(tmp_path: Path) -> None:
-    floor = manifest.eslint_peers()["@sarj/eslint-plugin"]
+    floor = manifest.oxlint_peers()["@sarj/oxlint-plugin"]
     _typescript_repo(tmp_path)
     (tmp_path / "package.json").write_text(
-        json.dumps({"name": "web", "devDependencies": {"@sarj/eslint-plugin": f"^~{floor}"}})
+        json.dumps({"name": "web", "devDependencies": {"@sarj/oxlint-plugin": f"^~{floor}"}})
     )
     proc = _cli("--root", str(tmp_path), "doctor")
     assert proc.returncode == 1
@@ -3666,21 +3681,21 @@ def test_doctor_still_reports_a_range_that_is_not_the_floor(tmp_path: Path) -> N
 
 
 @pytest.mark.parametrize("specifier", ["file:../plugin", "link:../plugin", "workspace:*"])
-def test_doctor_warns_that_a_local_eslint_plugin_checkout_is_unverified(tmp_path: Path, specifier: str) -> None:
+def test_doctor_warns_that_a_local_oxlint_plugin_checkout_is_unverified(tmp_path: Path, specifier: str) -> None:
     (tmp_path / "package.json").write_text(
-        json.dumps({"name": "web", "devDependencies": {"@sarj/eslint-plugin": specifier}})
+        json.dumps({"name": "web", "devDependencies": {"@sarj/oxlint-plugin": specifier}})
     )
     proc = _cli("--root", str(tmp_path), "doctor")
     assert proc.returncode == 1
-    assert "doctor.eslint.plugin-unverified" in proc.stdout
+    assert "doctor.oxlint.plugin-unverified" in proc.stdout
 
 
 def test_doctor_verifies_an_in_repository_file_plugin_at_the_tested_version(tmp_path: Path) -> None:
-    floor = manifest.eslint_peers()["@sarj/eslint-plugin"]
+    floor = manifest.oxlint_peers()["@sarj/oxlint-plugin"]
     plugin = tmp_path / "packages" / "typescript"
     plugin.mkdir(parents=True)
     (plugin / "package.json").write_text(
-        json.dumps({"name": "@sarj/eslint-plugin", "version": floor}),
+        json.dumps({"name": "@sarj/oxlint-plugin", "version": floor}),
         encoding="utf-8",
     )
     app = tmp_path / "apps" / "docs"
@@ -3689,7 +3704,7 @@ def test_doctor_verifies_an_in_repository_file_plugin_at_the_tested_version(tmp_
         json.dumps(
             {
                 "name": "docs",
-                "devDependencies": {"@sarj/eslint-plugin": "file:../../packages/typescript"},
+                "devDependencies": {"@sarj/oxlint-plugin": "file:../../packages/typescript"},
             }
         ),
         encoding="utf-8",
@@ -3698,7 +3713,7 @@ def test_doctor_verifies_an_in_repository_file_plugin_at_the_tested_version(tmp_
     findings = doctor.diagnose(tmp_path)
 
     plugin_findings = [finding for finding in findings if finding.where.startswith("apps/docs/package.json")]
-    assert [(finding.level, finding.id) for finding in plugin_findings] == [(doctor.Level.OK, "doctor.eslint.plugin")]
+    assert [(finding.level, finding.id) for finding in plugin_findings] == [(doctor.Level.OK, "doctor.oxlint.plugin")]
 
 
 def test_adopted_workspace_checks_the_install_root_not_nested_plugin_ranges(tmp_path: Path) -> None:
@@ -3711,7 +3726,7 @@ def test_adopted_workspace_checks_the_install_root_not_nested_plugin_ranges(tmp_
     )
     (web / "yarn.lock").write_text("", encoding="utf-8")
     (package / "package.json").write_text(
-        json.dumps({"name": "legacy", "devDependencies": {"@sarj/eslint-plugin": "^0.2.0"}}),
+        json.dumps({"name": "legacy", "devDependencies": {"@sarj/oxlint-plugin": "^0.2.0"}}),
         encoding="utf-8",
     )
     assert _cli("--root", str(tmp_path), "setup", "--no-install").returncode == 0
@@ -3719,12 +3734,12 @@ def test_adopted_workspace_checks_the_install_root_not_nested_plugin_ranges(tmp_
     findings = doctor.diagnose(tmp_path)
 
     assert not [finding for finding in findings if finding.where.startswith("web/packages/legacy/package.json")]
-    assert not [finding for finding in findings if finding.id == "doctor.eslint.peer"]
+    assert not [finding for finding in findings if finding.id == "doctor.oxlint.peer"]
     parsed: object = json.loads(  # pyright: ignore[reportAny] -- untyped stdlib boundary
         (web / "package.json").read_text(encoding="utf-8")
     )
     install_package = manifest.as_table(parsed)
-    assert manifest.table_field(install_package, "devDependencies") == manifest.eslint_peers()
+    assert manifest.table_field(install_package, "devDependencies") == manifest.oxlint_peers()
 
 
 def test_doctor_skips_vendored_trees(tmp_path: Path) -> None:
@@ -3883,8 +3898,8 @@ _DOCTOR_OUTPUT_LINE = re.compile(r"^(?:ok|warn|drift)\s", re.MULTILINE)
 def _documented_pins(text: str) -> dict[str, str]:
     instructions = "\n".join(line for line in text.splitlines() if not _DOCTOR_OUTPUT_LINE.match(line))
     pins = doctor.parse_pins(instructions)
-    if plugin := re.search(r"@sarj/eslint-plugin@(?P<version>\d+\.\d+\.\d+)", instructions):
-        pins["@sarj/eslint-plugin"] = plugin.group("version")
+    if plugin := re.search(r"@sarj/oxlint-plugin@(?P<version>\d+\.\d+\.\d+)", instructions):
+        pins["@sarj/oxlint-plugin"] = plugin.group("version")
     return pins
 
 
@@ -3897,7 +3912,7 @@ def test_readme_never_advertises_a_version_that_is_not_shipping(readme: Path) ->
         pytest.skip(f"{readme} not present")
     current = {
         **manifest.installed_versions(),
-        "@sarj/eslint-plugin": manifest.eslint_peers()["@sarj/eslint-plugin"],
+        "@sarj/oxlint-plugin": manifest.oxlint_peers()["@sarj/oxlint-plugin"],
     }
     stale = {
         name: pin
@@ -3908,11 +3923,10 @@ def test_readme_never_advertises_a_version_that_is_not_shipping(readme: Path) ->
 
 
 def test_peers_json_documents_why_each_ceiling_exists() -> None:
-    parsed: object = json.loads(ESLINT_PEERS.read_text(encoding="utf-8"))  # pyright: ignore[reportAny] — untyped stdlib boundary
+    parsed: object = json.loads(OXLINT_PEERS.read_text(encoding="utf-8"))  # pyright: ignore[reportAny] — untyped stdlib boundary
     data = manifest.as_table(parsed)
     peers = manifest.table_field(data, "peers")
     ceilings = manifest.table_field(data, "ceilings")
-    assert ceilings, "a pin below latest is a claim; it has to carry its evidence"
     for name, reason in ceilings.items():
         assert name in peers
         assert isinstance(reason, str)
@@ -3934,33 +3948,33 @@ def test_doctor_treats_a_repository_that_was_never_setup_as_drift(tmp_path: Path
     assert "doctor.manifest.absent" in proc.stdout
 
 
-def test_doctor_rejects_zero_warning_budget_for_an_adopted_eslint_consumer(tmp_path: Path) -> None:
+def test_doctor_rejects_zero_warning_budget_for_an_adopted_oxlint_consumer(tmp_path: Path) -> None:
     _typescript_repo(tmp_path)
-    assert _cli("--root", str(tmp_path), "setup", "--config", "eslint", "--no-install").returncode == 0
+    assert _cli("--root", str(tmp_path), "setup", "--config", "oxlint", "--no-install").returncode == 0
     package = tmp_path / "package.json"
     parsed = manifest.as_table(json.loads(package.read_text(encoding="utf-8")))  # pyright: ignore[reportAny]
-    parsed["scripts"] = {"lint": "eslint . --max-warnings 0"}
+    parsed["scripts"] = {"lint": "oxlint . --max-warnings 0"}
     package.write_text(json.dumps(parsed), encoding="utf-8")
 
     findings = doctor.diagnose_adoption_health(tmp_path)
 
-    assert any(item.id == "doctor.eslint.warning-exit" and item.level is doctor.Level.DRIFT for item in findings)
+    assert any(item.id == "doctor.oxlint.warning-exit" and item.level is doctor.Level.DRIFT for item in findings)
 
 
-def test_doctor_allows_eslint_warnings_to_remain_nonblocking(tmp_path: Path) -> None:
+def test_doctor_allows_oxlint_warnings_to_remain_nonblocking(tmp_path: Path) -> None:
     _typescript_repo(tmp_path)
-    assert _cli("--root", str(tmp_path), "setup", "--config", "eslint", "--no-install").returncode == 0
+    assert _cli("--root", str(tmp_path), "setup", "--config", "oxlint", "--no-install").returncode == 0
     package = tmp_path / "package.json"
     parsed = manifest.as_table(json.loads(package.read_text(encoding="utf-8")))  # pyright: ignore[reportAny]
     parsed["scripts"] = {
-        "lint": "eslint .",
-        "unrelated": "echo eslint-config && other-tool --max-warnings 0",
+        "lint": "oxlint .",
+        "unrelated": "echo oxlint-config && other-tool --max-warnings 0",
     }
     package.write_text(json.dumps(parsed), encoding="utf-8")
 
     findings = doctor.diagnose_adoption_health(tmp_path)
 
-    assert not any(item.id == "doctor.eslint.warning-exit" for item in findings)
+    assert not any(item.id == "doctor.oxlint.warning-exit" for item in findings)
 
 
 def test_doctor_reports_drift_after_a_synced_config_is_deleted(tmp_path: Path) -> None:
@@ -3973,18 +3987,18 @@ def test_doctor_reports_drift_after_a_synced_config_is_deleted(tmp_path: Path) -
     assert ".ruff-strict.toml" in proc.stdout
 
 
-def test_doctor_rejects_an_eslint_import_whose_strict_target_is_missing(tmp_path: Path) -> None:
+def test_doctor_rejects_an_oxlint_import_whose_strict_target_is_missing(tmp_path: Path) -> None:
     _typescript_repo(tmp_path)
     setup = _cli("--root", str(tmp_path), "setup", "--no-install")
     assert setup.returncode == 0, setup.stderr
-    (tmp_path / "eslint.strict.mjs").unlink()
+    (tmp_path / "oxlint.strict.mjs").unlink()
 
     proc = _cli("--root", str(tmp_path), "doctor")
 
     assert proc.returncode == 1
     assert "doctor.config.missing" in proc.stdout
-    assert "doctor.eslint.wiring" in proc.stdout
-    assert "does not reference eslint.strict.mjs" in proc.stdout
+    assert "doctor.oxlint.wiring" in proc.stdout
+    assert "does not reference oxlint.strict.mjs" in proc.stdout
 
 
 def test_init_refuses_to_replace_unadopted_configs_without_force(tmp_path: Path) -> None:
@@ -4021,7 +4035,7 @@ _SCAFFOLDED_FILES = {
         '[hooks]\nmanager = "pre-commit"\n'
     ),
     "pyrightconfig.json": '{ "typeCheckingMode": "standard" }\n',
-    "eslint.config.mjs": "export default [];  // hand-rolled\n",
+    "oxlint.config.mjs": 'import strict from "./oxlint.strict.mjs";\nexport default { ...strict }; // hand-rolled\n',
 }
 
 
@@ -4056,29 +4070,30 @@ def test_init_safely_wires_existing_python_and_typescript_configs(tmp_path: Path
         "extends": ".basedpyright-strict.json",
         "pythonVersion": "3.14",
     }
-    eslint = (tmp_path / "eslint.config.mjs").read_text()
-    assert 'import strict from "./eslint.strict.mjs"' in eslint
-    assert "...strict" in eslint
-    assert "// hand-rolled" in eslint
+    oxlint = (tmp_path / "oxlint.config.mjs").read_text()
+    assert 'import strict from "./oxlint.strict.mjs"' in oxlint
+    assert "...strict" in oxlint
+    assert "// hand-rolled" in oxlint
 
 
-def test_init_wires_the_existing_eslint_js_entrypoint_without_creating_a_shadow(tmp_path: Path) -> None:
+def test_setup_rejects_an_unwired_entrypoint_without_creating_a_shadow(tmp_path: Path) -> None:
     _typescript_repo(tmp_path)
-    entrypoint = tmp_path / "eslint.config.js"
-    entrypoint.write_text("export default [];\n", encoding="utf-8")
+    entrypoint = tmp_path / "oxlint.config.js"
+    entrypoint.write_text("export default { rules: { 'eslint/no-console': 'warn' } };\n", encoding="utf-8")
 
     proc = _cli("--root", str(tmp_path), "setup", "--no-install")
 
-    assert proc.returncode == 0, proc.stderr
-    assert "eslint.strict.mjs" in entrypoint.read_text(encoding="utf-8")
-    assert not (tmp_path / "eslint.config.mjs").exists()
+    assert proc.returncode == 2, proc.stderr
+    assert "must import ./oxlint.strict.mjs" in proc.stderr
+    assert entrypoint.read_text(encoding="utf-8") == "export default { rules: { 'eslint/no-console': 'warn' } };\n"
+    assert not (tmp_path / "oxlint.config.mjs").exists()
 
 
 def test_setup_composes_a_define_config_entrypoint(tmp_path: Path) -> None:
     _typescript_repo(tmp_path)
-    entrypoint = tmp_path / "eslint.config.js"
+    entrypoint = tmp_path / "oxlint.config.js"
     entrypoint.write_text(
-        'import { defineConfig } from "eslint/config";\nexport default defineConfig([{ rules: {} }]);\n',
+        'import { defineConfig } from "oxlint";\nimport strict from "./oxlint.strict.mjs";\nexport default defineConfig({ ...strict, overrides: [{ files: ["scripts/**"], rules: { "eslint/no-console": "off" } }] });\n',
         encoding="utf-8",
     )
 
@@ -4086,73 +4101,74 @@ def test_setup_composes_a_define_config_entrypoint(tmp_path: Path) -> None:
 
     assert proc.returncode == 0, proc.stderr
     updated = entrypoint.read_text(encoding="utf-8")
-    assert 'import strict from "./eslint.strict.mjs"' in updated
-    assert "export default defineConfig([\n  ...strict," in updated
+    assert 'import strict from "./oxlint.strict.mjs"' in updated
+    assert 'rules: { "eslint/no-console": "off" }' in updated
+    assert "export default defineConfig({ ...strict," in updated
 
 
-def test_init_accepts_an_eslint_entrypoint_that_reexports_a_wired_local_config(tmp_path: Path) -> None:
+def test_init_accepts_an_oxlint_entrypoint_that_reexports_a_wired_local_config(tmp_path: Path) -> None:
     _typescript_repo(tmp_path)
     packages = tmp_path / "packages"
     packages.mkdir()
-    (tmp_path / "eslint.config.js").write_text(
-        'export { default } from "./packages/eslint.config.base.js";\n',
+    (tmp_path / "oxlint.config.js").write_text(
+        'export { default } from "./packages/oxlint.config.base.js";\n',
         encoding="utf-8",
     )
-    base = packages / "eslint.config.base.js"
-    base.write_text('import strict from "../eslint.strict.mjs";\nexport default [...strict];\n', encoding="utf-8")
+    base = packages / "oxlint.config.base.js"
+    base.write_text('import strict from "../oxlint.strict.mjs";\nexport default { ...strict };\n', encoding="utf-8")
 
     proc = _cli("--root", str(tmp_path), "setup", "--no-install")
 
     assert proc.returncode == 0, proc.stderr
-    assert "already imports eslint.strict.mjs" in proc.stdout
-    assert 'export { default } from "./packages/eslint.config.base.js"' in (tmp_path / "eslint.config.js").read_text(
+    assert "already imports oxlint.strict.mjs" in proc.stdout
+    assert 'export { default } from "./packages/oxlint.config.base.js"' in (tmp_path / "oxlint.config.js").read_text(
         encoding="utf-8"
     )
 
 
-def test_setup_accepts_nested_eslint_configs_that_reexport_repository_policy(tmp_path: Path) -> None:
+def test_setup_accepts_nested_oxlint_configs_that_reexport_repository_policy(tmp_path: Path) -> None:
     _typescript_repo(tmp_path)
-    (tmp_path / "eslint.config.mjs").write_text(
-        'import strict from "./eslint.strict.mjs";\nexport default [...strict];\n', encoding="utf-8"
+    (tmp_path / "oxlint.config.mjs").write_text(
+        'import strict from "./oxlint.strict.mjs";\nexport default { ...strict };\n', encoding="utf-8"
     )
     nested = tmp_path / "apps" / "web"
     nested.mkdir(parents=True)
-    (nested / "eslint.config.mjs").write_text('export { default } from "../../eslint.config.mjs";\n', encoding="utf-8")
+    (nested / "oxlint.config.mjs").write_text('export { default } from "../../oxlint.config.mjs";\n', encoding="utf-8")
 
     proc = _cli("--root", str(tmp_path), "setup", "--no-install")
 
     assert proc.returncode == 0, proc.stderr
-    assert (nested / "eslint.config.mjs").read_text(encoding="utf-8") == (
-        'export { default } from "../../eslint.config.mjs";\n'
+    assert (nested / "oxlint.config.mjs").read_text(encoding="utf-8") == (
+        'export { default } from "../../oxlint.config.mjs";\n'
     )
 
 
-def test_setup_wires_a_conventional_nested_named_eslint_export(tmp_path: Path) -> None:
+def test_setup_wires_a_conventional_nested_named_oxlint_export(tmp_path: Path) -> None:
     _typescript_repo(tmp_path)
-    (tmp_path / "eslint.config.mjs").write_text(
-        'import strict from "./eslint.strict.mjs";\nexport default [...strict];\n', encoding="utf-8"
+    (tmp_path / "oxlint.config.mjs").write_text(
+        'import strict from "./oxlint.strict.mjs";\nexport default { ...strict };\n', encoding="utf-8"
     )
     nested = tmp_path / "apps" / "legacy"
     nested.mkdir(parents=True)
-    config = nested / "eslint.config.mjs"
-    config.write_text("const eslintConfig = [];\nexport default eslintConfig;\n", encoding="utf-8")
+    config = nested / "oxlint.config.mjs"
+    config.write_text("const oxlintConfig = { rules: {} };\nexport default oxlintConfig;\n", encoding="utf-8")
 
     proc = _cli("--root", str(tmp_path), "setup", "--no-install")
 
-    assert proc.returncode == 0, proc.stderr
+    assert proc.returncode == 2, proc.stderr
     updated = config.read_text(encoding="utf-8")
-    assert 'import sarjStrict from "../../eslint.strict.mjs"' in updated
-    assert "export default [...sarjStrict, ...eslintConfig];" in updated
+    assert "would shadow Standards and cannot be merged safely" in proc.stderr
+    assert updated == "const oxlintConfig = { rules: {} };\nexport default oxlintConfig;\n"
 
 
-def test_setup_with_an_explicit_typescript_destination_preserves_independent_eslint_roots(tmp_path: Path) -> None:
+def test_setup_with_an_explicit_typescript_destination_preserves_independent_oxlint_roots(tmp_path: Path) -> None:
     selected = tmp_path / "apps" / "dashboard"
     selected.mkdir(parents=True)
     (selected / "package.json").write_text('{"name":"dashboard"}\n', encoding="utf-8")
     independent = tmp_path / "apps" / "independent"
     independent.mkdir(parents=True)
     (independent / "package.json").write_text('{"name":"independent"}\n', encoding="utf-8")
-    config = independent / "eslint.config.mjs"
+    config = independent / "oxlint.config.mjs"
     original = "export default makeIndependentPolicy();\n"
     config.write_text(original, encoding="utf-8")
 
@@ -4163,7 +4179,7 @@ def test_setup_with_an_explicit_typescript_destination_preserves_independent_esl
         "--typescript-dest",
         "apps/dashboard",
         "--config",
-        "eslint",
+        "oxlint",
         "--hooks",
         "none",
         "--no-install",
@@ -4173,12 +4189,17 @@ def test_setup_with_an_explicit_typescript_destination_preserves_independent_esl
     assert config.read_text(encoding="utf-8") == original
 
 
-def test_setup_does_not_spread_a_nested_object_default_export(tmp_path: Path) -> None:
+@pytest.mark.parametrize("config_name", ["oxlint.config.mjs", ".oxlintrc.json", ".oxlintrc.jsonc"])
+def test_setup_rejects_nested_policy_without_proven_shared_inheritance(tmp_path: Path, config_name: str) -> None:
     _typescript_repo(tmp_path)
     nested = tmp_path / "apps" / "legacy"
     nested.mkdir(parents=True)
-    config = nested / "eslint.config.mjs"
-    original = "const eslintConfig = { rules: {} };\nexport default eslintConfig;\n"
+    config = nested / config_name
+    original = (
+        '{"rules":{"no-debugger":"off"}}\n'
+        if config.suffix in {".json", ".jsonc"}
+        else "const oxlintConfig = { rules: {} };\nexport default oxlintConfig;\n"
+    )
     config.write_text(original, encoding="utf-8")
 
     proc = _cli("--root", str(tmp_path), "setup", "--no-install")
@@ -4186,14 +4207,14 @@ def test_setup_does_not_spread_a_nested_object_default_export(tmp_path: Path) ->
     assert proc.returncode == 2
     assert "cannot be merged safely" in proc.stderr
     assert config.read_text(encoding="utf-8") == original
-    assert not (tmp_path / "eslint.strict.mjs").exists()
+    assert not (tmp_path / "oxlint.strict.mjs").exists()
 
 
-def test_setup_ignores_nested_eslint_when_the_capability_is_not_selected(tmp_path: Path) -> None:
+def test_setup_ignores_nested_oxlint_when_the_capability_is_not_selected(tmp_path: Path) -> None:
     _typescript_repo(tmp_path)
     nested = tmp_path / "apps" / "legacy"
     nested.mkdir(parents=True)
-    config = nested / "eslint.config.mjs"
+    config = nested / "oxlint.config.mjs"
     original = "export default { rules: {} };\n"
     config.write_text(original, encoding="utf-8")
 
@@ -4201,18 +4222,23 @@ def test_setup_ignores_nested_eslint_when_the_capability_is_not_selected(tmp_pat
 
     assert proc.returncode == 0, proc.stderr
     assert config.read_text(encoding="utf-8") == original
-    assert not (tmp_path / "eslint.strict.mjs").exists()
+    assert not (tmp_path / "oxlint.strict.mjs").exists()
 
 
-def test_init_rejects_ambiguous_eslint_entrypoints_without_changes(tmp_path: Path) -> None:
+@pytest.mark.parametrize("other_config", ["oxlint.config.js", ".oxlintrc.json", ".oxlintrc.jsonc"])
+def test_init_rejects_ambiguous_oxlint_entrypoints_without_changes(tmp_path: Path, other_config: str) -> None:
     _typescript_repo(tmp_path)
-    (tmp_path / "eslint.config.js").write_text("export default [];\n", encoding="utf-8")
-    (tmp_path / "eslint.config.mjs").write_text("export default [];\n", encoding="utf-8")
+    (tmp_path / other_config).write_text(
+        "{}\n" if other_config.endswith((".json", ".jsonc")) else "export default {};\n", encoding="utf-8"
+    )
+    (tmp_path / "oxlint.config.mjs").write_text(
+        'import strict from "./oxlint.strict.mjs";\nexport default { ...strict };\n', encoding="utf-8"
+    )
 
     proc = _cli("--root", str(tmp_path), "setup", "--no-install")
 
     assert proc.returncode == 2
-    assert "multiple active ESLint flat configs" in proc.stderr
+    assert "multiple active Oxlint configs" in proc.stderr
     assert not (tmp_path / manifest.MANIFEST_NAME).exists()
 
 
@@ -4369,7 +4395,7 @@ def test_failed_typescript_install_cleans_new_node_modules_and_normalizes_status
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     _typescript_repo(tmp_path)
-    plan = service.plan_init(tmp_path, configs=("eslint",), hook_manager="none", force=True)
+    plan = service.plan_init(tmp_path, configs=("oxlint",), hook_manager="none", force=True)
 
     def failed_install(_commands: object) -> int:
         partial = tmp_path / "node_modules" / "partial-install"
@@ -4395,7 +4421,7 @@ def test_failed_install_preserves_preexisting_node_modules(monkeypatch: pytest.M
     existing = tmp_path / "node_modules" / "keep.txt"
     existing.parent.mkdir()
     existing.write_text("keep\n", encoding="utf-8")
-    plan = service.plan_init(tmp_path, configs=("eslint",), hook_manager="none", force=True)
+    plan = service.plan_init(tmp_path, configs=("oxlint",), hook_manager="none", force=True)
 
     def fail_install(_commands: Iterable[lifecycle.Command]) -> int:
         return 1

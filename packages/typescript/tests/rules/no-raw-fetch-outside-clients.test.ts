@@ -1,21 +1,17 @@
 // vitest: shared-module-graph
-import * as tsParser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { Linter } from "eslint";
-import { afterAll, describe, expect, it } from "vitest";
+import { RuleTester } from "oxlint/plugins-dev";
+import { ruleReports } from "../_native-rule.js";
+import { describe, expect, it } from "vitest";
 
 import rule, { NO_RAW_FETCH_OUTSIDE_CLIENTS_DOCUMENTATION } from "../../src/rules/no-raw-fetch-outside-clients.js";
 import preferServerActions from "../../src/rules/prefer-server-actions.js";
 
-RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
 RuleTester.it = it;
 RuleTester.itOnly = it.only;
 
 const RULE_TESTER = new RuleTester({
-  languageOptions: {
-    parser: tsParser,
-  },
+  languageOptions: { parserOptions: { lang: "ts" } },
 });
 
 const HANDLER = "/repo/src/routes/handler.ts";
@@ -436,40 +432,16 @@ describe("ownership with prefer-server-actions", () => {
     "fetch('/api/items',{method:'POST',method:'GET'});",
     "fetch('/api/items',{method:'POST',...options});",
   ])("retains client ownership when mutation proof is absent: %s", (source) => {
-    const messages = new Linter().verify(`'use client'; ${source}`, {
-      files: ["**/*.tsx"], languageOptions: {parser: tsParser},
-      plugins: {sarj: {rules: {"no-raw-fetch-outside-clients": rule as never, "prefer-server-actions": preferServerActions as never}}},
-      rules: {"sarj/no-raw-fetch-outside-clients": "error", "sarj/prefer-server-actions": "error"},
-    } as never, "app/ui/actions.tsx");
-    expect(messages.map(({ruleId}) => ruleId)).toEqual(["sarj/no-raw-fetch-outside-clients"]);
+    const code = `'use client'; ${source}`;
+    expect(ruleReports(rule, code, "app/ui/actions.tsx")).toHaveLength(1);
+    expect(ruleReports(preferServerActions, code, "app/ui/actions.tsx")).toHaveLength(0);
   });
   it.each([
     ["/api/items", {}],
     ["/demo/api/items", { basePath: "/demo" }],
   ])("emits one diagnostic for %s", (url, options) => {
-    const linter = new Linter();
-    const messages = linter.verify(
-      `'use client'; fetch('${url}', { method: 'POST' });`,
-      {
-        files: ["**/*.tsx"],
-        languageOptions: { parser: tsParser },
-        plugins: {
-          sarj: {
-            rules: {
-              "no-raw-fetch-outside-clients": rule as never,
-              "prefer-server-actions": preferServerActions as never,
-            },
-          },
-        },
-        rules: {
-          "sarj/no-raw-fetch-outside-clients": ["error", options],
-          "sarj/prefer-server-actions": ["error", options],
-        },
-      } as never,
-      "app/ui/actions.tsx",
-    );
-    expect(messages.map(({ ruleId }) => ruleId)).toEqual([
-      "sarj/prefer-server-actions",
-    ]);
+    const code = `'use client'; fetch('${url}', { method: 'POST' });`;
+    expect(ruleReports(rule, code, "app/ui/actions.tsx", [options])).toHaveLength(0);
+    expect(ruleReports(preferServerActions, code, "app/ui/actions.tsx", [options])).toHaveLength(1);
   });
 });

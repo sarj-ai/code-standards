@@ -100,7 +100,15 @@ def test_publish_command_is_idempotent(
 
     def run(argv: tuple[str, ...], *, check: bool, timeout: int) -> None:
         events.append("publish")
-        assert argv == ("npm", "publish", "package.tgz", "--access", "public", "--ignore-scripts")
+        assert argv == (
+            "npm",
+            "publish",
+            "package.tgz",
+            "--access",
+            "public",
+            "--provenance",
+            "--ignore-scripts",
+        )
         assert check
         assert timeout == 120
 
@@ -459,7 +467,7 @@ def test_attested_commit_must_be_an_unchanged_ancestor(
     attested = "a" * 40
     current = "b" * 40
 
-    assert verifier.attested_commit_matches_current_tree("@sarj/eslint-plugin", attested, current) is expected
+    assert verifier.attested_commit_matches_current_tree("@sarj/oxlint-plugin", attested, current) is expected
     assert calls[0] == ("git", "merge-base", "--is-ancestor", attested, current)
     if len(returncodes) == 2:
         assert calls[1] == (
@@ -471,5 +479,57 @@ def test_attested_commit_must_be_an_unchanged_ancestor(
             "--",
             "packages/typescript/LICENSE",
             "packages/typescript/package.json",
+            "packages/typescript/tsup.config.ts",
+            "packages/typescript/scripts/copy-native-assets.mjs",
             "packages/typescript/src",
+            "packages/typescript/types",
+            "packages/typescript/vendor",
         )
+
+
+@pytest.mark.parametrize(
+    ("changed_path", "expected"),
+    [
+        ("README.md", True),
+        ("packages/typescript/types/astro.d.ts", False),
+        ("packages/typescript/scripts/copy-native-assets.mjs", False),
+        ("packages/typescript/tsup.config.ts", False),
+    ],
+    ids=("unrelated-change", "exported-declaration", "asset-copy-script", "bundle-configuration"),
+)
+def test_attested_commit_checks_actual_published_declarations(
+    verifier: PublicationVerifier,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    changed_path: str,
+    *,
+    expected: bool,
+) -> None:
+    local_environment = subprocess.run(
+        ("git", "rev-parse", "--local-env-vars"), check=True, capture_output=True, text=True
+    ).stdout.splitlines()
+    for key in local_environment:
+        if key.startswith("GIT_"):
+            monkeypatch.delenv(key, raising=False)
+    monkeypatch.chdir(tmp_path)
+
+    def git(*args: str) -> str:
+        return subprocess.run(("git", *args), check=True, capture_output=True, text=True).stdout.strip()
+
+    git("init")
+    git("config", "user.email", "release-test@example.com")
+    git("config", "user.name", "Release Test")
+    declaration = tmp_path / "packages/typescript/types/astro.d.ts"
+    declaration.parent.mkdir(parents=True)
+    declaration.write_text("export type Published = string;\n", encoding="utf-8")
+    git("add", ".")
+    git("commit", "-m", "published declaration")
+    attested = git("rev-parse", "HEAD")
+    changed_file = tmp_path / changed_path
+    changed_file.parent.mkdir(parents=True, exist_ok=True)
+    changed_file.write_text("export type Published = number;\n", encoding="utf-8")
+    git("add", ".")
+    git("commit", "-m", "later change")
+    current = git("rev-parse", "HEAD")
+
+    assert verifier.attested_commit_matches_current_tree("@sarj/oxlint-plugin", attested, current) is expected

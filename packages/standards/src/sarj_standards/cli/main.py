@@ -68,8 +68,8 @@ _HOOK_INSTALL_IDS: Final = frozenset(
 _REACT_DOCTOR_METADATA = frozenset(
     {
         "doctor.config.json",
-        "eslint.config.js",
-        "eslint.config.mjs",
+        "oxlint.config.js",
+        "oxlint.config.mjs",
         "package-lock.json",
         "package.json",
         "pnpm-lock.yaml",
@@ -141,6 +141,7 @@ class _Args:
     release_mode: str = ""
     tag: str = ""
     lockfile: Path | None = None
+    release_workspace: str | None = None
     minimum_age: timedelta | None = None
     release_exclude: list[str] = field(default_factory=list)
     release_exclude_file: list[Path] = field(default_factory=list)
@@ -279,7 +280,7 @@ def cmd_path(args: _Args) -> int:
 def cmd_peers(args: _Args) -> int:
     from sarj_standards.libs.adoption import packagemanager, scaffold  # ruff: ignore[import-outside-top-level]
 
-    peers = manifest.eslint_peers()
+    peers = manifest.oxlint_peers()
     for name, pin in sorted(peers.items()):
         print(f"{name:50s} {pin}")
     root = _resolve_dest(args.dest)
@@ -498,7 +499,7 @@ def _repair_legacy_manifest(root: Path, *, install: bool) -> manifest.Manifest:
         # A schema-three manifest already made an explicit TypeScript authority
         # choice. Preserve unrelated nested projects during its one-way schema
         # migration; the subsequent upgrade diagnoses the selected authority.
-        allow_existing_nested_eslint=True,
+        allow_existing_nested_oxlint=True,
     )
     if migration.scaffold.errors or migration.sync is None:
         detail = "; ".join(migration.scaffold.errors) or "setup plan is not applicable"
@@ -1105,7 +1106,7 @@ def _check_selected_rules(args: _Args, root: Path, scope: _CheckScope) -> int:
         paths,
         jobs=args.jobs,
         rules=args.selected_rules,
-        external=any(selector.engine.value == "eslint" for selector in args.selected_rules),
+        external=any(selector.engine.value == "oxlint" for selector in args.selected_rules),
         trust=TrustMode.TRUSTED if args.trust_repository_code else TrustMode.SAFE,
         staged=args.staged,
     )
@@ -1392,7 +1393,7 @@ def cmd_rule_evaluate(args: _Args) -> int:
     report = Standards(root).analyze(
         args.files or None,
         jobs=args.jobs,
-        external=any(selector.engine.value == "eslint" for selector in args.selected_rules),
+        external=any(selector.engine.value == "oxlint" for selector in args.selected_rules),
         trust=TrustMode.TRUSTED if args.trust_repository_code else TrustMode.SAFE,
         mode=(AnalysisMode.CORPUS if args.evaluation_scope is _EvaluationScope.CORPUS else AnalysisMode.POLICY),
         rules=args.selected_rules,
@@ -1582,7 +1583,7 @@ def cmd_observe(args: _Args) -> int:
     report = Standards(root).analyze(
         args.files or None,
         jobs=args.jobs,
-        external=any(selector.engine.value == "eslint" for selector in args.selected_rules),
+        external=any(selector.engine.value == "oxlint" for selector in args.selected_rules),
         trust=TrustMode.TRUSTED if args.trust_repository_code else TrustMode.SAFE,
         mode=AnalysisMode.OBSERVE,
         rules=args.selected_rules,
@@ -1598,7 +1599,7 @@ def _rule_evaluation_summary(report: object, selectors: Sequence[RuleSelector]) 
         msg = "rule evaluation report has an invalid internal type"
         raise TypeError(msg)
     sources = {
-        RuleEngine.ESLINT: frozenset(("eslint",)),
+        RuleEngine.OXLINT: frozenset(("oxlint",)),
         RuleEngine.IAC: frozenset(("iac", "sarj-iac-lint")),
         RuleEngine.PYTHON: frozenset(("python", "sarj-python-lint")),
         RuleEngine.SQL: frozenset(("sql", "sarj-sql-lint")),
@@ -2087,9 +2088,66 @@ def _selected_paths(root: Path, paths: Iterable[str]) -> list[str]:
 
 
 def cmd_format(args: _Args) -> int:
-    from sarj_standards.libs.adoption import doctor, lifecycle, scaffold  # ruff: ignore[import-outside-top-level]
+    from sarj_standards.libs.adoption import lifecycle, scaffold  # ruff: ignore[import-outside-top-level]
 
     root = _resolve_dest(args.dest)
+    status = _format_preflight(args, root)
+    if status != 0:
+        return status
+    adopted = _declared_manifest(args)
+    ecosystems = scaffold.detect(root) if adopted is None else scaffold.detect_adopted(root, adopted)
+    from sarj_standards.libs.diagnostics import Completion, to_text  # ruff: ignore[import-outside-top-level]
+    from sarj_standards.libs.linting.analysis import report_from_tools  # ruff: ignore[import-outside-top-level]
+    from sarj_standards.libs.linting.external import safe_fix_selection  # ruff: ignore[import-outside-top-level]
+    from sarj_standards.libs.linting.formatting import (  # ruff: ignore[import-outside-top-level]
+        analyze_formatting,
+        maintained_formatting_paths,
+    )
+
+    lint_paths = None
+    format_paths = None
+    maintained: Sequence[str] = ()
+    policy = None
+    if ecosystems.typescript_root is not None:
+        from sarj_standards.libs.linting.policy import Policy  # ruff: ignore[import-outside-top-level]
+        from sarj_standards.libs.linting.runner import group_paths  # ruff: ignore[import-outside-top-level]
+
+        policy = Policy.from_manifest(root, adopted)
+        inputs = args.files or tuple(str(root / path) for path in (adopted.verify_paths if adopted else (".",)))
+        maintained = group_paths(inputs, policy=policy).typescript
+        try:
+            format_paths = maintained_formatting_paths(inputs, root=root, policy=policy)
+        except (OSError, TypeError, ValueError) as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 2
+        selected = safe_fix_selection(maintained, root=root)
+        if any(report.completion is not Completion.COMPLETE for report in selected.reports):
+            print(to_text(report_from_tools(root, selected.reports)), end="")
+            return 2
+        lint_paths = selected.paths
+    commands = (
+        lifecycle.selected_format_commands(root, args.files, lint_paths=lint_paths, format_paths=format_paths)
+        if args.files
+        else lifecycle.format_commands(ecosystems, lint_paths=lint_paths, format_paths=format_paths, root=root)
+    )
+    status = lifecycle.execute(commands)
+    if status == 0 and ecosystems.typescript_root is not None:
+        from sarj_standards.libs.diagnostics import TrustMode  # ruff: ignore[import-outside-top-level]
+        from sarj_standards.libs.linting.external import analyze_external  # ruff: ignore[import-outside-top-level]
+
+        reports = analyze_external(
+            maintained, root=root, policy=policy, trust=TrustMode.TRUSTED, capabilities=frozenset({"oxlint"})
+        )
+        reports = (*reports, analyze_formatting(format_paths or (), root=root, trust=TrustMode.TRUSTED, policy=policy))
+        report = report_from_tools(root, reports)
+        print(to_text(report), end="")
+        return report.exit_code
+    return status
+
+
+def _format_preflight(args: _Args, root: Path) -> int:
+    from sarj_standards.libs.adoption import doctor  # ruff: ignore[import-outside-top-level]
+
     diagnosed = doctor.diagnose(root)
     if any(finding.id == "doctor.manifest.absent" for finding in diagnosed):
         print("error: repository is not adopted; run `code-standards setup`", file=sys.stderr)
@@ -2112,12 +2170,7 @@ def cmd_format(args: _Args) -> int:
         except ValueError as exc:
             print(f"error: {exc}", file=sys.stderr)
             return 2
-    adopted = _declared_manifest(args)
-    ecosystems = scaffold.detect(root) if adopted is None else scaffold.detect_adopted(root, adopted)
-    commands = (
-        lifecycle.selected_format_commands(root, args.files) if args.files else lifecycle.format_commands(ecosystems)
-    )
-    return lifecycle.execute(commands)
+    return 0
 
 
 def _staged_files(root: Path) -> list[str]:
@@ -2297,11 +2350,10 @@ def _baseline_analysis_reports(args: _Args, root: Path, selected: list[str] | No
                 mode=AnalysisMode.CORPUS,
                 rules=scoped_rules,
                 include_react_doctor=False,
-                pass_on_unpruned_eslint_suppressions=args.baseline_cmd == "update" and bool(args.baseline_rules),
             )
         )
-    upstream_eslint = _upstream_eslint_rules_for_baseline(args.baseline_rules)
-    if upstream_eslint:
+    upstream_oxlint = _upstream_oxlint_rules_for_baseline(args.baseline_rules)
+    if upstream_oxlint:
         from sarj_standards.libs.linting.analysis import (  # ruff: ignore[import-outside-top-level]
             report_from_tools,
         )
@@ -2316,9 +2368,8 @@ def _baseline_analysis_reports(args: _Args, root: Path, selected: list[str] | No
                 root=root,
                 trust=trust,
                 policy=_baseline_corpus_policy(root),
-                capabilities=frozenset({"eslint"}),
+                capabilities=frozenset({"oxlint"}),
                 include_react_doctor=False,
-                pass_on_unpruned_eslint_suppressions=True,
             ),
         )
         reports.append(external)
@@ -2416,9 +2467,9 @@ def _analysis_rules_for_baseline(selectors: Sequence[str]) -> list[str] | None:
             continue
         if separator and source in _BASELINE_RULE_SOURCE_ALIASES:
             normalized.append(f"{_BASELINE_RULE_SOURCE_ALIASES[source]}:{rule_id}")
-        elif selector.startswith("eslint:@sarj/"):
-            normalized.append("eslint:" + selector.removeprefix("eslint:@sarj/"))
-        elif selector.startswith("eslint:"):
+        elif selector.startswith("oxlint:@sarj/"):
+            normalized.append("oxlint:" + selector.removeprefix("oxlint:@sarj/"))
+        elif selector.startswith("oxlint:"):
             if selector in _baseline_catalog_selectors():
                 normalized.append(selector)
         else:
@@ -2426,14 +2477,14 @@ def _analysis_rules_for_baseline(selectors: Sequence[str]) -> list[str] | None:
     return normalized
 
 
-def _upstream_eslint_rules_for_baseline(selectors: Sequence[str]) -> frozenset[str]:
+def _upstream_oxlint_rules_for_baseline(selectors: Sequence[str]) -> frozenset[str]:
     return frozenset(
         selector
         for selector in selectors
-        if selector.startswith("eslint:")
-        and not selector.startswith("eslint:@sarj/")
+        if selector.startswith("oxlint:")
+        and not selector.startswith("oxlint:@sarj/")
         and selector not in _baseline_catalog_selectors()
-        and not _is_react_doctor_rule_id(selector.removeprefix("eslint:"))
+        and not _is_react_doctor_rule_id(selector.removeprefix("oxlint:"))
     )
 
 
@@ -2442,7 +2493,7 @@ def _react_doctor_rules_for_baseline(selectors: Sequence[str]) -> frozenset[str]
         selector
         for selector in selectors
         if (source := selector.partition(":")[0]) in _REACT_DOCTOR_RULE_SOURCES
-        or (source == "eslint" and _is_react_doctor_rule_id(selector.partition(":")[2]))
+        or (source == "oxlint" and _is_react_doctor_rule_id(selector.partition(":")[2]))
     )
 
 
@@ -2456,7 +2507,7 @@ def _shellcheck_rules_for_baseline(selectors: Sequence[str]) -> frozenset[str]:
 
 def _is_react_doctor_selector(*, source: str, rule_id: str, separator: bool) -> bool:
     return separator and (
-        source in _REACT_DOCTOR_RULE_SOURCES or (source == "eslint" and _is_react_doctor_rule_id(rule_id))
+        source in _REACT_DOCTOR_RULE_SOURCES or (source == "oxlint" and _is_react_doctor_rule_id(rule_id))
     )
 
 
@@ -2474,7 +2525,7 @@ def _baseline_merge_selectors(selectors: Sequence[str]) -> tuple[str, ...]:
             native_source = _BASELINE_RULE_ENGINE_SOURCES.get(source)
             if selector == "react-doctor:*":
                 continue
-            if separator and source == "eslint" and _is_react_doctor_rule_id(rule_id):
+            if separator and source == "oxlint" and _is_react_doctor_rule_id(rule_id):
                 plugin, _, plugin_rule_id = rule_id.partition("/")
                 resolved.extend((f"react-doctor:{rule_id}", f"{plugin}:{plugin_rule_id}"))
             elif separator and source == "react-hooks-js":
@@ -2483,8 +2534,8 @@ def _baseline_merge_selectors(selectors: Sequence[str]) -> tuple[str, ...]:
                 resolved.append(f"react-doctor:react-doctor/{rule_id}")
             elif separator and native_source is not None:
                 resolved.append(f"{native_source}:{rule_id}")
-            elif separator and source == "eslint" and selector in catalog.canonical:
-                resolved.append(f"eslint:@sarj/{rule_id}")
+            elif separator and source == "oxlint" and selector in catalog.canonical:
+                resolved.append(f"oxlint:@sarj/{rule_id}")
     return tuple(dict.fromkeys(resolved))
 
 
@@ -2630,7 +2681,7 @@ class _ProfileChoice(StrEnum):
 class _ConfigChoice(StrEnum):
     CHECKOV = "checkov"
     DETEKT = "detekt"
-    ESLINT = "eslint"
+    OXLINT = "oxlint"
     KTLINT = "ktlint"
     MARKDOWNLINT = "markdownlint"
     MOBILE_SECURITY = "mobile-security"
@@ -2871,7 +2922,7 @@ def build_app(handler: Callable[[_Args], int] = _dispatch) -> typer.Typer:
             bool,
             typer.Option(
                 "--trust-repository-code",
-                help="allow executable repository ESLint configuration (generated hooks and CI set this explicitly)",
+                help="allow executable repository Oxlint configuration (generated hooks and CI set this explicitly)",
             ),
         ] = False,
         jobs: Annotated[
@@ -2946,7 +2997,7 @@ def build_app(handler: Callable[[_Args], int] = _dispatch) -> typer.Typer:
         output: Annotated[Path | None, typer.Option("--output")] = None,
         trust_repository_code: Annotated[
             bool,
-            typer.Option("--trust-repository-code", help="allow repository ESLint configuration to execute"),
+            typer.Option("--trust-repository-code", help="allow repository Oxlint configuration to execute"),
         ] = False,
         max_annotations_per_level: Annotated[int, typer.Option("--max-annotations-per-level")] = 10,
         files: Annotated[
@@ -3272,7 +3323,7 @@ def build_app(handler: Callable[[_Args], int] = _dispatch) -> typer.Typer:
             )
         )
 
-    @group_show.command("peers", help="show tested ESLint peer dependencies and install command")
+    @group_show.command("peers", help="show tested Oxlint peer dependencies and install command")
     def command_show_peers(
         ctx: typer.Context,
     ) -> int:
@@ -3434,6 +3485,9 @@ def build_app(handler: Callable[[_Args], int] = _dispatch) -> typer.Typer:
         *,
         lockfile: Annotated[Path, typer.Argument()],
         minimum_age: Annotated[int | None, typer.Option("--minimum-days")] = None,
+        workspace: Annotated[
+            str | None, typer.Option("--workspace", help="exact workspace path in the root npm lockfile")
+        ] = None,
         release_exclude: Annotated[list[str] | None, typer.Option("--exclude")] = None,
         release_exclude_file: Annotated[
             list[Path] | None,
@@ -3447,6 +3501,7 @@ def build_app(handler: Callable[[_Args], int] = _dispatch) -> typer.Typer:
                 repo_cmd="release",
                 release_cmd="lock-age",
                 lockfile=lockfile,
+                release_workspace=workspace,
                 minimum_age=timedelta(days=minimum_age) if minimum_age is not None else None,
                 release_exclude=release_exclude if release_exclude is not None else [],
                 release_exclude_file=release_exclude_file if release_exclude_file is not None else [],
@@ -3856,7 +3911,7 @@ def build_app(handler: Callable[[_Args], int] = _dispatch) -> typer.Typer:
         output: Annotated[Path | None, typer.Option("--output")] = None,
         trust_repository_code: Annotated[
             bool,
-            typer.Option("--trust-repository-code", help="allow executable repository ESLint configuration"),
+            typer.Option("--trust-repository-code", help="allow executable repository Oxlint configuration"),
         ] = False,
         files: Annotated[list[str] | None, typer.Argument()] = None,
     ) -> int:
@@ -4240,7 +4295,7 @@ def _run_repo_release_lock_age(args: _Args, root: Path, lockfile: Path) -> int:
             for exclusion in release.load_exact_exclusions((root / exclusion_file).resolve())
         ),
     )
-    report = release.check_lockfile_release_age((root / lockfile).resolve(), policy)
+    report = release.check_lockfile_release_age((root / lockfile).resolve(), policy, workspace=args.release_workspace)
     if report.failures:
         print("\n".join(str(failure) for failure in report.failures))
         return 1

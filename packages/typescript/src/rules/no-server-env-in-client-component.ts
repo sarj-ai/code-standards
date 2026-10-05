@@ -4,7 +4,8 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-server-env-in-client-component.test.ts
  */
 
-import { type TSESTree } from "@typescript-eslint/utils";
+import type { ESTree } from "@oxlint/plugins";
+
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 
@@ -55,7 +56,7 @@ export const NO_SERVER_ENV_IN_CLIENT_COMPONENT_DOCUMENTATION = {
   ],
 } as const satisfies RuleDocumentation;
 
-function isClientModule(program: TSESTree.Program): boolean {
+function isClientModule(program: ESTree.Program): boolean {
   return program.body.some(
     (statement) =>
       statement.type === "ExpressionStatement" &&
@@ -63,7 +64,7 @@ function isClientModule(program: TSESTree.Program): boolean {
   );
 }
 
-function isTypeOnlyImport(node: TSESTree.ImportDeclaration): boolean {
+function isTypeOnlyImport(node: ESTree.ImportDeclaration): boolean {
   return (
     node.importKind === "type" ||
     (node.specifiers.length > 0 &&

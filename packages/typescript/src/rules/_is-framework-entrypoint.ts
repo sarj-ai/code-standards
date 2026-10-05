@@ -1,4 +1,6 @@
 /** @fileoverview _is-framework-entrypoint — recognize framework-owned paths and runtime export contracts. */
+
+
 import { readFileSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 

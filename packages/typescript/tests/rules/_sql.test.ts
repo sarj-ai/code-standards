@@ -1,40 +1,20 @@
 // vitest: shared-module-graph
 /** Executable contract for TypeScript SQL extraction and masking. */
 
-import * as tsParser from "@typescript-eslint/parser";
-import { type TSESTree } from "@typescript-eslint/utils";
-import { Linter } from "eslint";
+import type { ESTree } from "@oxlint/plugins";
+import { ruleReports } from "../_native-rule.js";
 import { describe, expect, it } from "vitest";
 
 import { createSqlListener, sqlSingleQuotedRanges, sqlTextOf, stripSqlNoise } from "../../src/rules/_sql.js";
 
-const RULE_ID = "probe/sql";
-
-/** Every SQL text `createSqlListener` hands a rule, in dispatch order. */
+/** Every SQL text the native listener dispatches, including fragment ordering. */
 function dispatched(code: string): string[] {
-  const linter = new Linter();
-  const messages = linter.verify(code, {
-    plugins: {
-      probe: {
-        rules: {
-          sql: {
-            meta: { schema: [], type: "problem", messages: { sql: "{{sql}}" } },
-            create: (context: {
-              report: (d: { node: TSESTree.Node; messageId: string; data: { sql: string } }) => void;
-            }) =>
-              createSqlListener((sql, node) => {
-                context.report({ node, messageId: "sql", data: { sql } });
-              }),
-          } as never,
-        },
-      },
-    },
-    languageOptions: { parser: tsParser as never },
-    rules: { [RULE_ID]: "error" },
-  } as never);
-  const noise = messages.filter((message) => message.ruleId !== RULE_ID);
-  expect(noise, `harness produced non-rule messages: ${JSON.stringify(noise)}`).toEqual([]);
-  return messages.map((message) => message.message);
+  const found: string[] = [];
+  ruleReports({
+    meta: { schema: [], messages: {} },
+    create: () => createSqlListener((sql) => { found.push(sql); }),
+  }, code);
+  return found;
 }
 
 describe("createSqlListener hands each whole statement over exactly once", () => {
@@ -78,7 +58,7 @@ describe("sqlTextOf reconstructs the shapes TypeScript SQL actually takes", () =
   });
 
   it("refuses a concatenation with a non-string operand", () => {
-    expect(sqlTextOf({ type: "Identifier" } as unknown as TSESTree.Node)).toBeNull();
+    expect(sqlTextOf({ type: "Identifier" } as unknown as ESTree.Node)).toBeNull();
   });
 });
 

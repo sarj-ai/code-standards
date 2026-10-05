@@ -1,31 +1,53 @@
-import { Linter } from "eslint";
+import { ruleReports } from "../_native-rule.js";
 import { mkdirSync, mkdtempSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { dirname, join } from "path";
-import * as tsParser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, expect, it } from "vitest";
+import { RuleTester } from "oxlint/plugins-dev";
+import { describe, expect, it } from "vitest";
 
-import rule, { PREFER_SEMANTIC_COLORS_DOCUMENTATION } from "../../src/rules/prefer-semantic-colors.js";
+import rule, {
+  PREFER_SEMANTIC_COLORS_DOCUMENTATION,
+} from "../../src/rules/prefer-semantic-colors.js";
 
-RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
 RuleTester.it = it;
 RuleTester.itOnly = it.only;
 
 const RULE_TESTER = new RuleTester({
-  languageOptions: { parser: tsParser, parserOptions: { ecmaFeatures: { jsx: true } } },
+  languageOptions: { parserOptions: { lang: "tsx" } },
 });
 
 RULE_TESTER.run("prefer-semantic-colors", rule, {
   valid: [
-    { name: "false class helper condition emits no class", code: "clsx({ 'bg-red-500': false });" },
-    { name: "null class helper condition emits no class", code: "clsx({ 'bg-red-500': null });" },
-    { name: "zero class helper condition emits no class", code: "clsx({ 'bg-red-500': 0 });" },
-    { name: "empty class helper condition emits no class", code: "clsx({ 'bg-red-500': '' });" },
-    { name: "class helper conditions are not class fragments", code: "clsx({ 'text-primary': 'text-red-500' });" },
-    { name: "URL fragment is not a color", code: '<div style={{ fill: "url(#abc)", background: "url(image.svg#abcdef)" }} />' },
-    { name: "public no-match example", filename: PREFER_SEMANTIC_COLORS_DOCUMENTATION.examples[0].focusPath, code: PREFER_SEMANTIC_COLORS_DOCUMENTATION.examples[0].files[0].source },
+    {
+      name: "false class helper condition emits no class",
+      code: "clsx({ 'bg-red-500': false });",
+    },
+    {
+      name: "null class helper condition emits no class",
+      code: "clsx({ 'bg-red-500': null });",
+    },
+    {
+      name: "zero class helper condition emits no class",
+      code: "clsx({ 'bg-red-500': 0 });",
+    },
+    {
+      name: "empty class helper condition emits no class",
+      code: "clsx({ 'bg-red-500': '' });",
+    },
+    {
+      name: "class helper conditions are not class fragments",
+      code: "clsx({ 'text-primary': 'text-red-500' });",
+    },
+    {
+      name: "URL fragment is not a color",
+      code: '<div style={{ fill: "url(#abc)", background: "url(image.svg#abcdef)" }} />',
+    },
+    {
+      name: "public no-match example",
+      filename: PREFER_SEMANTIC_COLORS_DOCUMENTATION.examples[0].focusPath,
+      code: PREFER_SEMANTIC_COLORS_DOCUMENTATION.examples[0].files[0].source,
+    },
     {
       name: "allows Radix semantic steps outside Tailwind's palette scale",
       code: `const x = <div className="text-gray-11 bg-gray-12" />;`,
@@ -37,7 +59,9 @@ RULE_TESTER.run("prefer-semantic-colors", rule, {
     { code: `const x = <circle fill="hsl(var(--chart-selection))" />;` },
     { code: `const x = <div className="bg-[rgb(var(--content-error))]" />;` },
     // Intrinsic SVG shapes carry artwork colors under any wrapper.
-    { code: `const x = <SomeIcon><circle fill="#1877F2" /><path stroke="#7c3aed" /></SomeIcon>;` },
+    {
+      code: `const x = <SomeIcon><circle fill="#1877F2" /><path stroke="#7c3aed" /></SomeIcon>;`,
+    },
     {
       name: "skips react-email files whose output cannot resolve CSS variables",
       code: `import { Tailwind } from "@react-email/components";\nconst x = <Tailwind><p className="text-neutral-800" /></Tailwind>;`,
@@ -56,26 +80,40 @@ RULE_TESTER.run("prefer-semantic-colors", rule, {
     },
 
     // Semantic tokens pass.
-    { code: `const x = <div className="bg-primary text-destructive border-border" />;` },
-    { code: `const x = <div className="bg-card text-muted-foreground bg-chart-1" />;` },
+    {
+      code: `const x = <div className="bg-primary text-destructive border-border" />;`,
+    },
+    {
+      code: `const x = <div className="bg-card text-muted-foreground bg-chart-1" />;`,
+    },
     { code: `const x = <div className="bg-primary/10 text-foreground/90" />;` },
     // white/black / overlay idiom are allowed (rarely have a token equivalent).
     { code: `const x = <div className="text-white bg-black/50" />;` },
     { code: `const x = <path fill="white" />;` },
     // Non-color arbitrary values must NOT be flagged.
-    { code: `const x = <div className="w-[437px] grid-cols-[auto_1fr] max-h-[80vh]" />;` },
+    {
+      code: `const x = <div className="w-[437px] grid-cols-[auto_1fr] max-h-[80vh]" />;`,
+    },
     // CSS variables / currentColor / none.
     { code: `const x = <div style={{ color: "var(--primary)" }} />;` },
     { code: `const x = <path fill="currentColor" stroke="none" />;` },
     // SVG defs-container children carry structural fills — masking breaks without
     // literal #fff/#000, so fill/stroke inside them never fires.
-    { code: `const x = <svg><clipPath id="a"><path fill="#fff" d="M0 0h1v1H0z" /></clipPath></svg>;` },
-    { code: `const x = <svg><mask id="m"><rect fill="#fff" /><rect fill="#000" /></mask></svg>;` },
+    {
+      code: `const x = <svg><clipPath id="a"><path fill="#fff" d="M0 0h1v1H0z" /></clipPath></svg>;`,
+    },
+    {
+      code: `const x = <svg><mask id="m"><rect fill="#fff" /><rect fill="#000" /></mask></svg>;`,
+    },
     // SVG artwork drawing elements (not just defs containers) carry inherent
     // illustration colors — not reusable UI tokens.
     { code: `const x = <svg><path fill="#e6e6e6" d="M0 0h1v1H0z" /></svg>;` },
-    { code: `const x = <svg viewBox="0 0 20 20"><circle fill="#d0d6d7" cx="10" cy="10" r="5" /><polygon stroke="#D06B64" points="0,0 1,1" /></svg>;` },
-    { code: `const x = <svg><linearGradient><stop stopColor="#D06B64" /></linearGradient></svg>;` },
+    {
+      code: `const x = <svg viewBox="0 0 20 20"><circle fill="#d0d6d7" cx="10" cy="10" r="5" /><polygon stroke="#D06B64" points="0,0 1,1" /></svg>;`,
+    },
+    {
+      code: `const x = <svg><linearGradient><stop stopColor="#D06B64" /></linearGradient></svg>;`,
+    },
     {
       code: `const x = <StyledSvg><path fill="#e7e1ec" /><path stroke="#2f1d4a" /></StyledSvg>;`,
     },
@@ -100,11 +138,22 @@ RULE_TESTER.run("prefer-semantic-colors", rule, {
     { code: `const safelist = ["bg-red-500", "text-blue-600"];` },
     { code: `expect(el).toHaveClass("bg-red-500");` },
     { code: `const msg = "apply the bg-red-500 class for errors";` },
-    { code: `const COLOR_MAP = { connectivity: "bg-red-500", flow: "bg-blue-500" };` },
+    {
+      code: `const COLOR_MAP = { connectivity: "bg-red-500", flow: "bg-blue-500" };`,
+    },
   ],
   invalid: [
-    { name: "URL followed by a real color remains checked", code: '<div style={{ background: "url(#abc) #ff0000" }} />', errors: [{ messageId: "inlineColor" }] },
-    { name: "public match example", filename: PREFER_SEMANTIC_COLORS_DOCUMENTATION.examples[1].focusPath, code: PREFER_SEMANTIC_COLORS_DOCUMENTATION.examples[1].files[0].source, errors: [{ messageId: "rawPalette" }] },
+    {
+      name: "URL followed by a real color remains checked",
+      code: '<div style={{ background: "url(#abc) #ff0000" }} />',
+      errors: [{ messageId: "inlineColor" }],
+    },
+    {
+      name: "public match example",
+      filename: PREFER_SEMANTIC_COLORS_DOCUMENTATION.examples[1].focusPath,
+      code: PREFER_SEMANTIC_COLORS_DOCUMENTATION.examples[1].files[0].source,
+      errors: [{ messageId: "rawPalette" }],
+    },
     {
       code: `const x = <div className="text-red-500" />;`,
       output: null,
@@ -248,22 +297,9 @@ RULE_TESTER.run("prefer-semantic-colors", rule, {
 const SOURCE = `const x = <div className="text-neutral-800" />;\n`;
 
 function countIn(root: string, relative: string): number {
-  const linter = new Linter({ configType: "flat", cwd: root });
-  const filename = join(root, relative);
-  const messages = linter.verify(SOURCE, [
-    {
-      files: ["**/*.tsx"],
-      plugins: { local: { rules: { "prefer-semantic-colors": rule } } },
-      languageOptions: {
-        parser: tsParser,
-        parserOptions: { ecmaFeatures: { jsx: true } },
-      },
-      rules: {
-        "local/prefer-semantic-colors": ["error", { requireSemanticTokens: true }],
-      },
-    },
-  ], filename);
-  return messages.filter((m) => m.ruleId).length;
+  return ruleReports(rule, SOURCE, join(root, relative), [
+    { requireSemanticTokens: true },
+  ]).length;
 }
 
 function project(marker: string | null, contents = ""): string {
@@ -298,7 +334,10 @@ describe("prefer-semantic-colors requireSemanticTokens gate", () => {
   });
 
   it("accepts a Tailwind v4 @theme stylesheet, which has no config file at all", () => {
-    const root = project("src/index.css", '@import "tailwindcss";\n@theme {\n  --color-brand: #123456;\n}\n');
+    const root = project(
+      "src/index.css",
+      '@import "tailwindcss";\n@theme {\n  --color-brand: #123456;\n}\n',
+    );
     expect(countIn(root, "src/components/Thing.tsx")).toBe(1);
   });
 
@@ -315,7 +354,9 @@ describe("prefer-semantic-colors requireSemanticTokens gate", () => {
       "packages/tailwind-config/package.json": '{"name":"tailwind-config"}\n',
       "packages/tailwind-config/tailwind.config.ts": TAILWIND_CONFIG,
     });
-    expect(countIn(root, "apps/web/app/(dashboard)/settings/badge.tsx")).toBe(1);
+    expect(countIn(root, "apps/web/app/(dashboard)/settings/badge.tsx")).toBe(
+      1,
+    );
   });
 
   it("finds a sibling token config declared through pnpm-workspace.yaml", () => {
@@ -329,7 +370,10 @@ describe("prefer-semantic-colors requireSemanticTokens gate", () => {
 
   it("reaches a marker more than eight directories up", () => {
     const deep = "a/b/c/d/e/f/g/h/i/badge.tsx";
-    const root = tree({ [deep]: SOURCE, "components.json": '{"style":"default"}\n' });
+    const root = tree({
+      [deep]: SOURCE,
+      "components.json": '{"style":"default"}\n',
+    });
     expect(countIn(root, deep)).toBe(1);
   });
 
@@ -357,8 +401,6 @@ describe("prefer-semantic-colors requireSemanticTokens gate", () => {
 
 /** Exercise filesystem detection and its process-wide caches with real paths. */
 
-const RULE_ID = "sarj/prefer-semantic-colors";
-
 /** A component with exactly one raw palette class, so counts are unambiguous. */
 const RAW_PALETTE_COMPONENT = `export const Badge = () => <span className="text-red-500" />;`;
 
@@ -367,44 +409,25 @@ interface Options {
   readonly opaqueForegroundPairs?: boolean;
 }
 
-function lintFile(root: string, filename: string, options: Options = {}): string[] {
-  // Assert harness noise so a configuration miss cannot masquerade as a clean lint.
-  const linter = new Linter({ cwd: root });
-  const messages = linter.verify(
-    RAW_PALETTE_COMPONENT,
-    {
-      files: ["**/*.tsx"],
-      plugins: { sarj: { rules: { "prefer-semantic-colors": rule as never } } },
-      languageOptions: { parser: tsParser as never, parserOptions: { ecmaFeatures: { jsx: true } } },
-      rules: { [RULE_ID]: ["error", options] },
-    } as never,
-    filename,
+function lintFile(
+  _root: string,
+  filename: string,
+  options: Options = {},
+): string[] {
+  return ruleReports(rule, RAW_PALETTE_COMPONENT, filename, [options]).map(
+    (report) => report.messageId ?? "?",
   );
-  const noise = messages.filter((message) => message.ruleId !== RULE_ID);
-  expect(noise, `harness produced non-rule messages: ${JSON.stringify(noise)}`).toEqual([]);
-  return messages.map((message) => message.messageId ?? "?");
 }
 
 function lintSource(
-  root: string,
+  _root: string,
   filename: string,
   source: string,
   options: Options,
 ): string[] {
-  const linter = new Linter({ cwd: root });
-  const messages = linter.verify(
-    source,
-    {
-      files: ["**/*.tsx"],
-      plugins: { sarj: { rules: { "prefer-semantic-colors": rule as never } } },
-      languageOptions: { parser: tsParser as never, parserOptions: { ecmaFeatures: { jsx: true } } },
-      rules: { [RULE_ID]: ["error", options] },
-    } as never,
-    filename,
+  return ruleReports(rule, source, filename, [options]).map(
+    (report) => report.messageId ?? "?",
   );
-  const noise = messages.filter((message) => message.ruleId !== RULE_ID);
-  expect(noise, `harness produced non-rule messages: ${JSON.stringify(noise)}`).toEqual([]);
-  return messages.map((message) => message.messageId ?? "?");
 }
 
 /** Create a temp tree; every scenario gets a fresh root so the module cache cannot bleed. */
@@ -423,22 +446,32 @@ const SHADCN_CSS = `:root { --background: 0 0% 100%; --foreground: 222 47% 11%; 
 describe("requireSemanticTokens gates on a real design system", () => {
   it("suppresses the rule when the option is on and no design system exists", () => {
     const root = makeRepo({ "src/badge.tsx": "" });
-    expect(lintFile(root, join(root, "src/badge.tsx"), { requireSemanticTokens: true })).toEqual([]);
+    expect(
+      lintFile(root, join(root, "src/badge.tsx"), {
+        requireSemanticTokens: true,
+      }),
+    ).toEqual([]);
   });
 
   it("still reports in that same tree when the option is off", () => {
     const root = makeRepo({ "src/badge.tsx": "" });
-    expect(lintFile(root, join(root, "src/badge.tsx"), {})).toEqual(["rawPalette"]);
-    expect(lintFile(root, join(root, "src/badge.tsx"), { requireSemanticTokens: false })).toEqual([
+    expect(lintFile(root, join(root, "src/badge.tsx"), {})).toEqual([
       "rawPalette",
     ]);
+    expect(
+      lintFile(root, join(root, "src/badge.tsx"), {
+        requireSemanticTokens: false,
+      }),
+    ).toEqual(["rawPalette"]);
   });
 
   it("reports when the option is on and a design system does exist", () => {
     const root = makeRepo({ "components.json": "{}", "src/badge.tsx": "" });
-    expect(lintFile(root, join(root, "src/badge.tsx"), { requireSemanticTokens: true })).toEqual([
-      "rawPalette",
-    ]);
+    expect(
+      lintFile(root, join(root, "src/badge.tsx"), {
+        requireSemanticTokens: true,
+      }),
+    ).toEqual(["rawPalette"]);
   });
 });
 
@@ -462,43 +495,59 @@ describe("opaque foreground semantic-token enforcement", () => {
   }
 
   it("reports a raw foreground only when its semantic pair is declared", () => {
-    expect(messages(`<button className="bg-primary text-white">Save</button>`)).toEqual([
-      "opaqueForegroundPair",
-    ]);
+    expect(
+      messages(`<button className="bg-primary text-white">Save</button>`),
+    ).toEqual(["opaqueForegroundPair"]);
   });
 
   it("allows translucent overlays and unpaired foregrounds", () => {
-    expect(messages(`<><div className="bg-black/50" /><span className="text-white" /></>`)).toEqual([]);
+    expect(
+      messages(
+        `<><div className="bg-black/50" /><span className="text-white" /></>`,
+      ),
+    ).toEqual([]);
   });
 
   it("allows exact paper colors in print-only variants", () => {
-    expect(messages(`<div className="print:bg-white print:text-black" />`)).toEqual([]);
+    expect(
+      messages(`<div className="print:bg-white print:text-black" />`),
+    ).toEqual([]);
   });
 
   it("allows a foreground when the matching semantic pair is not declared", () => {
-    expect(messages(
-      `<button className="bg-primary text-white">Save</button>`,
-      `:root { --primary: 222 47% 11%; }`,
-    )).toEqual([]);
+    expect(
+      messages(
+        `<button className="bg-primary text-white">Save</button>`,
+        `:root { --primary: 222 47% 11%; }`,
+      ),
+    ).toEqual([]);
   });
 
   it("keeps the existing raw-color diagnostics active without semantic tokens", () => {
-    expect(messages(`<div className="text-red-500" />`, `body { margin: 0; }`)).toEqual([
-      "rawPalette",
-    ]);
+    expect(
+      messages(`<div className="text-red-500" />`, `body { margin: 0; }`),
+    ).toEqual(["rawPalette"]);
   });
 
   it("excludes opaque utility classes inside SVG artwork", () => {
-    expect(messages(`<svg className="bg-white"><path className="text-white" /></svg>`)).toEqual([]);
+    expect(
+      messages(
+        `<svg className="bg-white"><path className="text-white" /></svg>`,
+      ),
+    ).toEqual([]);
   });
 
   it("excludes Remotion render trees", () => {
-    expect(messages(`import { AbsoluteFill } from "remotion"; <AbsoluteFill className="bg-white" />;`)).toEqual([]);
+    expect(
+      messages(
+        `import { AbsoluteFill } from "remotion"; <AbsoluteFill className="bg-white" />;`,
+      ),
+    ).toEqual([]);
   });
 });
 
 describe("design-system detection covers systems that are not shadcn's", () => {
-  const detected: Readonly<Record<string, Readonly<Record<string, string>>>> = {
+  const detected = {
     // Config presence counts even when a preset owns the vocabulary.
     "a tailwind.config.js with only a preset": {
       "tailwind.config.js": `module.exports = { presets: [require("@medusajs/ui-preset")] };`,
@@ -511,7 +560,9 @@ describe("design-system detection covers systems that are not shadcn's", () => {
     "medusa-style ui tokens in a stylesheet": {
       "app/globals.css": `.x { @apply bg-ui-bg-base text-ui-fg-subtle; }`,
     },
-    "medusa-style custom properties": { "app/globals.css": `:root { --fg-base: #000; }` },
+    "medusa-style custom properties": {
+      "app/globals.css": `:root { --fg-base: #000; }`,
+    },
     "dub-style content/default tokens": {
       "src/styles/globals.css": `:root { --content-error: 1 2 3; } .y { @apply bg-default; }`,
     },
@@ -520,13 +571,15 @@ describe("design-system detection covers systems that are not shadcn's", () => {
     "a Tailwind v4 @theme block": {
       "src/index.css": `@import "tailwindcss";\n@theme {\n  --color-brand: oklch(0.7 0.1 200);\n}`,
     },
-  };
+  } as const;
 
   it.each(Object.entries(detected))("detects %s", (_name, files) => {
     const root = makeRepo({ ...files, "src/app/badge.tsx": "" });
-    expect(lintFile(root, join(root, "src/app/badge.tsx"), { requireSemanticTokens: true })).toEqual([
-      "rawPalette",
-    ]);
+    expect(
+      lintFile(root, join(root, "src/app/badge.tsx"), {
+        requireSemanticTokens: true,
+      }),
+    ).toEqual(["rawPalette"]);
   });
 
   it("does not treat a stylesheet without tokens as a design system", () => {
@@ -534,7 +587,11 @@ describe("design-system detection covers systems that are not shadcn's", () => {
       "app/globals.css": `body { margin: 0; font-family: system-ui; }`,
       "src/app/badge.tsx": "",
     });
-    expect(lintFile(root, join(root, "src/app/badge.tsx"), { requireSemanticTokens: true })).toEqual([]);
+    expect(
+      lintFile(root, join(root, "src/app/badge.tsx"), {
+        requireSemanticTokens: true,
+      }),
+    ).toEqual([]);
   });
 });
 
@@ -546,7 +603,9 @@ describe("workspace detection", () => {
       "turbo.json": "{}",
     });
     expect(
-      lintFile(root, join(root, "apps/web/src/badge.tsx"), { requireSemanticTokens: true }),
+      lintFile(root, join(root, "apps/web/src/badge.tsx"), {
+        requireSemanticTokens: true,
+      }),
     ).toEqual(["rawPalette"]);
   });
 });
@@ -558,13 +617,18 @@ describe("the resolved-answer cache is order-independent", () => {
     "src/shallow.tsx": "",
     "src/features/nested/deep.tsx": "",
   };
-  const relatives = ["src/shallow.tsx", "src/features/nested/deep.tsx"] as const;
+  const relatives = [
+    "src/shallow.tsx",
+    "src/features/nested/deep.tsx",
+  ] as const;
 
-  function lintInOrder(order: readonly string[]): Record<string, string[]> {
+  function lintInOrder(order: readonly string[]): ReadonlyMap<string, readonly string[]> {
     const root = makeRepo(layout);
-    const out: Record<string, string[]> = {};
+    const out = new Map<string, readonly string[]>();
     for (const rel of order) {
-      out[rel] = lintFile(root, join(root, rel), { requireSemanticTokens: true });
+      out.set(rel, lintFile(root, join(root, rel), {
+        requireSemanticTokens: true,
+      }));
     }
     return out;
   }
@@ -576,16 +640,22 @@ describe("the resolved-answer cache is order-independent", () => {
     expect(forward).toEqual(reversed);
     // Equality alone would also accept two incorrect empty results.
     for (const rel of relatives) {
-      expect(forward[rel], `${rel} in forward order`).toEqual(["rawPalette"]);
-      expect(reversed[rel], `${rel} in reverse order`).toEqual(["rawPalette"]);
+      expect(forward.get(rel), `${rel} in forward order`).toEqual(["rawPalette"]);
+      expect(reversed.get(rel), `${rel} in reverse order`).toEqual(["rawPalette"]);
     }
   });
 
   it("keeps a negative answer stable across repeated lints", () => {
     const root = makeRepo({ "src/a.tsx": "", "src/b.tsx": "" });
-    expect(lintFile(root, join(root, "src/a.tsx"), { requireSemanticTokens: true })).toEqual([]);
-    expect(lintFile(root, join(root, "src/b.tsx"), { requireSemanticTokens: true })).toEqual([]);
-    expect(lintFile(root, join(root, "src/a.tsx"), { requireSemanticTokens: true })).toEqual([]);
+    expect(
+      lintFile(root, join(root, "src/a.tsx"), { requireSemanticTokens: true }),
+    ).toEqual([]);
+    expect(
+      lintFile(root, join(root, "src/b.tsx"), { requireSemanticTokens: true }),
+    ).toEqual([]);
+    expect(
+      lintFile(root, join(root, "src/a.tsx"), { requireSemanticTokens: true }),
+    ).toEqual([]);
     // Positive control: the tree really was lintable, the rule really was inert.
     expect(lintFile(root, join(root, "src/a.tsx"), {})).toEqual(["rawPalette"]);
   });

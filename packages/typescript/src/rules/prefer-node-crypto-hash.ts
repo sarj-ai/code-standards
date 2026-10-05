@@ -4,7 +4,9 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/prefer-node-crypto-hash.test.ts
  */
 
-import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
+import type { ESTree, Variable } from "@oxlint/plugins";
+import { findVariable } from "./_scope.js";
+
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 
@@ -29,13 +31,13 @@ export const PREFER_NODE_CRYPTO_HASH_DOCUMENTATION = {
   ],
 } as const satisfies RuleDocumentation;
 
-type ScopeVariable = TSESLint.Scope.Variable;
+type ScopeVariable = Variable;
 
-function memberName(node: TSESTree.MemberExpression): string | null {
-  if (!node.computed && node.property.type === AST_NODE_TYPES.Identifier) return node.property.name;
+function memberName(node: ESTree.MemberExpression): string | null {
+  if (!node.computed && node.property.type === "Identifier") return node.property.name;
   if (
     node.computed &&
-    node.property.type === AST_NODE_TYPES.Literal &&
+    node.property.type === "Literal" &&
     typeof node.property.value === "string"
   ) {
     return node.property.value;
@@ -44,51 +46,51 @@ function memberName(node: TSESTree.MemberExpression): string | null {
 }
 
 function isCryptoLoader(
-  node: TSESTree.Expression,
-  resolve: (identifier: TSESTree.Identifier) => ScopeVariable | null,
+  node: ESTree.Expression,
+  resolve: (identifier: ESTree.BindingIdentifier) => ScopeVariable | null,
 ): boolean {
-  if (node.type !== AST_NODE_TYPES.CallExpression || node.arguments.length !== 1) return false;
+  if (node.type !== "CallExpression" || node.arguments.length !== 1) return false;
   const [argument] = node.arguments;
   if (
     argument === undefined ||
-    argument.type === AST_NODE_TYPES.SpreadElement ||
+    argument.type === "SpreadElement" ||
     !isCryptoSpecifier(argument)
   ) {
     return false;
   }
-  if (node.callee.type === AST_NODE_TYPES.Identifier) {
+  if (node.callee.type === "Identifier") {
     return (
       node.callee.name === "require" &&
       isUnshadowedBuiltinIdentifier(node.callee, resolve)
     );
   }
   return (
-    node.callee.type === AST_NODE_TYPES.MemberExpression &&
-    node.callee.object.type === AST_NODE_TYPES.Identifier &&
+    node.callee.type === "MemberExpression" &&
+    node.callee.object.type === "Identifier" &&
     node.callee.object.name === "process" &&
     isUnshadowedBuiltinIdentifier(node.callee.object, resolve) &&
     memberName(node.callee) === "getBuiltinModule"
   );
 }
 
-function isCryptoSpecifier(node: TSESTree.Expression): boolean {
+function isCryptoSpecifier(node: ESTree.Expression): boolean {
   return (
-    node.type === AST_NODE_TYPES.Literal &&
+    node.type === "Literal" &&
     (node.value === "crypto" || node.value === "node:crypto")
   );
 }
 
 function isUnshadowedBuiltinIdentifier(
-  identifier: TSESTree.Identifier,
-  resolve: (identifier: TSESTree.Identifier) => ScopeVariable | null,
+  identifier: ESTree.BindingIdentifier,
+  resolve: (identifier: ESTree.BindingIdentifier) => ScopeVariable | null,
 ): boolean {
   const variable = resolve(identifier);
   return variable === null || variable.defs.length === 0;
 }
 
-function propertyName(node: TSESTree.Property): string | null {
-  if (!node.computed && node.key.type === AST_NODE_TYPES.Identifier) return node.key.name;
-  if (node.key.type === AST_NODE_TYPES.Literal && typeof node.key.value === "string") {
+function propertyName(node: ESTree.ObjectProperty | ESTree.BindingProperty): string | null {
+  if (!node.computed && node.key.type === "Identifier") return node.key.name;
+  if (node.key.type === "Literal" && typeof node.key.value === "string") {
     return node.key.value;
   }
   return null;
@@ -103,15 +105,15 @@ export default createRule<Options, MessageIds>({
     const directBindings = new Set<ScopeVariable>();
     const namespaceBindings = new Set<ScopeVariable>();
 
-    function resolve(identifier: TSESTree.Identifier): ScopeVariable | null {
-      return ASTUtils.findVariable(
+    function resolve(identifier: ESTree.BindingIdentifier): ScopeVariable | null {
+      return findVariable(
         context.sourceCode.getScope(identifier),
         identifier.name,
       );
     }
 
     function record(
-      identifier: TSESTree.Identifier,
+      identifier: ESTree.BindingIdentifier,
       destination: Set<ScopeVariable>,
     ): void {
       const variable = resolve(identifier);
@@ -123,12 +125,12 @@ export default createRule<Options, MessageIds>({
         if (node.source.value !== "crypto" && node.source.value !== "node:crypto") return;
         for (const specifier of node.specifiers) {
           if (
-            specifier.type === AST_NODE_TYPES.ImportNamespaceSpecifier ||
-            specifier.type === AST_NODE_TYPES.ImportDefaultSpecifier
+            specifier.type === "ImportNamespaceSpecifier" ||
+            specifier.type === "ImportDefaultSpecifier"
           ) {
             record(specifier.local, namespaceBindings);
           } else if (
-            specifier.type === AST_NODE_TYPES.ImportSpecifier &&
+            specifier.type === "ImportSpecifier" &&
             importedName(specifier.imported) === "createHash"
           ) {
             record(specifier.local, directBindings);
@@ -137,22 +139,22 @@ export default createRule<Options, MessageIds>({
       },
       VariableDeclarator(node): void {
         if (
-          node.parent.kind !== "const" ||
+          node.parent?.type !== "VariableDeclaration" || node.parent.kind !== "const" ||
           node.init === null ||
           !isCryptoLoader(node.init, resolve)
         ) {
           return;
         }
-        if (node.id.type === AST_NODE_TYPES.Identifier) {
+        if (node.id.type === "Identifier") {
           record(node.id, namespaceBindings);
           return;
         }
-        if (node.id.type !== AST_NODE_TYPES.ObjectPattern) return;
+        if (node.id.type !== "ObjectPattern") return;
         for (const property of node.id.properties) {
           if (
-            property.type === AST_NODE_TYPES.Property &&
+            property.type === "Property" &&
             propertyName(property) === "createHash" &&
-            property.value.type === AST_NODE_TYPES.Identifier
+            property.value.type === "Identifier"
           ) {
             record(property.value, directBindings);
           }
@@ -162,16 +164,16 @@ export default createRule<Options, MessageIds>({
         if (!isMemberCall(node, "digest")) return;
         const update = node.callee.object;
         if (
-          update.type !== AST_NODE_TYPES.CallExpression ||
+          update.type !== "CallExpression" ||
           update.arguments.length !== 1 ||
           !isMemberCall(update, "update")
         )
           return;
         const create = update.callee.object;
         if (
-          create.type !== AST_NODE_TYPES.CallExpression ||
+          create.type !== "CallExpression" ||
           create.arguments.length !== 1 ||
-          create.arguments[0]?.type !== AST_NODE_TYPES.Literal ||
+          create.arguments[0]?.type !== "Literal" ||
           typeof create.arguments[0].value !== "string" ||
           !isCreateHashCall(
             create,
@@ -187,40 +189,40 @@ export default createRule<Options, MessageIds>({
   },
 });
 
-function importedName(node: TSESTree.Identifier | TSESTree.StringLiteral): string {
-  return node.type === AST_NODE_TYPES.Identifier ? node.name : node.value;
+function importedName(node: ESTree.BindingIdentifier | ESTree.StringLiteral): string {
+  return node.type === "Identifier" ? node.name : node.value;
 }
 
 function isMemberCall(
-  node: TSESTree.CallExpression,
+  node: ESTree.CallExpression,
   name: string,
-): node is TSESTree.CallExpression & {
-  callee: TSESTree.MemberExpression;
+): node is ESTree.CallExpression & {
+  callee: ESTree.MemberExpression;
 } {
   return (
-    node.callee.type === AST_NODE_TYPES.MemberExpression &&
+    node.callee.type === "MemberExpression" &&
     memberName(node.callee) === name
   );
 }
 
 function isCreateHashCall(
-  node: TSESTree.CallExpression,
+  node: ESTree.CallExpression,
   directBindings: ReadonlySet<ScopeVariable>,
   namespaceBindings: ReadonlySet<ScopeVariable>,
-  resolve: (identifier: TSESTree.Identifier) => ScopeVariable | null,
+  resolve: (identifier: ESTree.BindingIdentifier) => ScopeVariable | null,
 ): boolean {
-  if (node.callee.type === AST_NODE_TYPES.Identifier) {
+  if (node.callee.type === "Identifier") {
     const variable = resolve(node.callee);
     return variable !== null && directBindings.has(variable);
   }
   if (
-    node.callee.type !== AST_NODE_TYPES.MemberExpression ||
+    node.callee.type !== "MemberExpression" ||
     memberName(node.callee) !== "createHash"
   ) {
     return false;
   }
   if (isCryptoLoader(node.callee.object, resolve)) return true;
-  if (node.callee.object.type !== AST_NODE_TYPES.Identifier) return false;
+  if (node.callee.object.type !== "Identifier") return false;
   const variable = resolve(node.callee.object);
   return (
     variable !== null &&

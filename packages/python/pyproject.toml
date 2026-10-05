@@ -1,6 +1,6 @@
 [project]
 name = "sarj-python-lint"
-version = "1.20.1"
+version = "1.20.2"
 description = "Custom Python lint rules — AST-based, pre-commit-friendly, hypermodern defaults"
 readme = "README.md"
 authors = [{ name = "sarj-ai" }]
@@ -15,7 +15,7 @@ classifiers = [
   "Programming Language :: Python :: 3.14",
   "Topic :: Software Development :: Quality Assurance",
 ]
-dependencies = ["sarj-rule-contracts==0.2.0", "packaging==26.3", "ruff>=0.16.9", "sqlglot==30.19.0", "typer==0.27.2"]
+dependencies = ["sarj-rule-contracts==0.3.0", "packaging==26.3", "ruff>=0.16.9", "sqlglot==30.19.0", "typer==0.27.2"]
 
 [project.scripts]
 sarj-python-lint = "sarj_python_lint.__main__:main"

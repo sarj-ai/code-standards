@@ -4,8 +4,9 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/require-button-accessible-name.test.ts
  */
 
-import { AST_NODE_TYPES } from "@typescript-eslint/utils";
 
+
+import { sourceOrigin } from "./_source-origin.js";
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import {
   attributeNameStatus,
@@ -99,9 +100,9 @@ export default createRule<Options, "missingName">({
   defaultOptions: [{}],
   create(context, [options]) {
     if (
-      isGeneratedFile(context.filename, context.sourceCode.text) ||
-      isTestFile(context.filename) ||
-      isStoryFile(context.filename)
+      isGeneratedFile(sourceOrigin(context).filename, sourceOrigin(context).text) ||
+      isTestFile(sourceOrigin(context).filename) ||
+      isStoryFile(sourceOrigin(context).filename)
     )
       return {};
     const iconModules = options?.iconModules ?? ["lucide-react"];
@@ -109,10 +110,10 @@ export default createRule<Options, "missingName">({
       JSXElement(node): void {
         const opening = node.openingElement;
         const native =
-          opening.name.type === AST_NODE_TYPES.JSXIdentifier &&
+          opening.name.type === "JSXIdentifier" &&
           opening.name.name === "button";
         const conventional =
-          opening.name.type === AST_NODE_TYPES.JSXIdentifier &&
+          opening.name.type === "JSXIdentifier" &&
           opening.name.name === "Button";
         const imported =
           native || conventional
@@ -132,8 +133,8 @@ export default createRule<Options, "missingName">({
           !native &&
           opening.attributes.some(
             (attribute) =>
-              attribute.type === AST_NODE_TYPES.JSXAttribute &&
-              attribute.name.type === AST_NODE_TYPES.JSXIdentifier &&
+              attribute.type === "JSXAttribute" &&
+              attribute.name.type === "JSXIdentifier" &&
               ["render", "asChild"].includes(attribute.name.name),
           )
         )

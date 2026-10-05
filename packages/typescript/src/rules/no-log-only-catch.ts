@@ -4,7 +4,10 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-log-only-catch.test.ts
  */
 
-import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
+import { sourceOrigin } from "./_source-origin.js";
+import type { ESTree, Scope } from "@oxlint/plugins";
+import { findVariable } from "./_scope.js";
+
 
 import {
   createLogMatcher,
@@ -18,14 +21,46 @@ type MessageIds = "noLogOnlyCatch" | "emptyCatch";
 type Options = readonly [LoggingOptions?];
 
 export const NO_LOG_ONLY_CATCH_DOCUMENTATION = {
-  summary: "Disallow `catch` clauses that only log (or silently do nothing) and then swallow the error; rethrow or handle it instead.",
-  rationale: "Swallowing an exception after logging lets execution continue as if the operation succeeded.",
-  remediation: "Rethrow the error, return an explicit fallback, or perform concrete recovery.",
+  summary:
+    "Disallow `catch` clauses that only log (or silently do nothing) and then swallow the error; rethrow or handle it instead.",
+  rationale:
+    "Swallowing an exception after logging lets execution continue as if the operation succeeded.",
+  remediation:
+    "Rethrow the error, return an explicit fallback, or perform concrete recovery.",
   category: "correctness",
-  limitations: ["Documented intentional ignores, tests, and catches with observable recovery are excluded."],
+  limitations: [
+    "Documented intentional ignores, tests, and catches with observable recovery are excluded.",
+  ],
   examples: [
-    { id: "rethrow-after-log", title: "Preserve failure after logging", outcome: "no-match", files: [{ path: "src/task.ts", source: "try { run(); } catch (error) { console.error(error); throw error; }" }], focusPath: "src/task.ts", expectedCount: 0, public: true },
-    { id: "log-and-swallow", title: "Do not only log a failure", outcome: "match", files: [{ path: "src/task.ts", source: "try { run(); } catch (error) { console.error(error); }" }], focusPath: "src/task.ts", expectedCount: 1, public: true },
+    {
+      id: "rethrow-after-log",
+      title: "Preserve failure after logging",
+      outcome: "no-match",
+      files: [
+        {
+          path: "src/task.ts",
+          source:
+            "try { run(); } catch (error) { console.error(error); throw error; }",
+        },
+      ],
+      focusPath: "src/task.ts",
+      expectedCount: 0,
+      public: true,
+    },
+    {
+      id: "log-and-swallow",
+      title: "Do not only log a failure",
+      outcome: "match",
+      files: [
+        {
+          path: "src/task.ts",
+          source: "try { run(); } catch (error) { console.error(error); }",
+        },
+      ],
+      focusPath: "src/task.ts",
+      expectedCount: 1,
+      public: true,
+    },
   ],
 } as const satisfies RuleDocumentation;
 
@@ -34,34 +69,34 @@ export const NO_LOG_ONLY_CATCH_DOCUMENTATION = {
 const BENCHMARK_DIR_RE = /(?:^|[\\/])benchmarks?[\\/]/;
 
 const SINGLE_STATEMENT_HOSTS: ReadonlySet<string> = new Set([
-  AST_NODE_TYPES.DoWhileStatement,
-  AST_NODE_TYPES.ForInStatement,
-  AST_NODE_TYPES.ForOfStatement,
-  AST_NODE_TYPES.ForStatement,
-  AST_NODE_TYPES.IfStatement,
-  AST_NODE_TYPES.WhileStatement,
+  "DoWhileStatement",
+  "ForInStatement",
+  "ForOfStatement",
+  "ForStatement",
+  "IfStatement",
+  "WhileStatement",
 ]);
 
 const FUNCTION_TYPES: ReadonlySet<string> = new Set([
-  AST_NODE_TYPES.ArrowFunctionExpression,
-  AST_NODE_TYPES.FunctionDeclaration,
-  AST_NODE_TYPES.FunctionExpression,
+  "ArrowFunctionExpression",
+  "FunctionDeclaration",
+  "FunctionExpression",
 ]);
 
 /** The statement list a node sits directly in, plus its index in that list. */
 function statementSlot(
-  node: TSESTree.Node,
-): { readonly list: readonly TSESTree.Node[]; readonly index: number } | null {
+  node: ESTree.Node,
+): { readonly list: readonly ESTree.Node[]; readonly index: number } | null {
   const parent = node.parent;
-  if (parent === undefined) return null;
-  let list: readonly TSESTree.Node[];
+  if (parent == null) return null;
+  let list: readonly ESTree.Node[];
   switch (parent.type) {
-    case AST_NODE_TYPES.BlockStatement:
-    case AST_NODE_TYPES.Program:
-    case AST_NODE_TYPES.StaticBlock:
+    case "BlockStatement":
+    case "Program":
+    case "StaticBlock":
       list = parent.body;
       break;
-    case AST_NODE_TYPES.SwitchCase:
+    case "SwitchCase":
       list = parent.consequent;
       break;
     default:
@@ -75,16 +110,18 @@ function statementSlot(
  * Class 1 — the try ends in a `return` and something follows the try, so the
  * catch's only job is to let control fall through to that fallback.
  */
-function fallbackFollowsTry(tryStatement: TSESTree.TryStatement): boolean {
+function fallbackFollowsTry(tryStatement: ESTree.TryStatement): boolean {
   const body = tryStatement.block.body;
   const last = body.at(-1);
-  return last?.type === AST_NODE_TYPES.ReturnStatement && hasFollowingStatement(tryStatement);
+  return (
+    last?.type === "ReturnStatement" && hasFollowingStatement(tryStatement)
+  );
 }
 
-function hasFollowingStatement(node: TSESTree.Node): boolean {
+function hasFollowingStatement(node: ESTree.Node): boolean {
   for (
-    let current: TSESTree.Node | undefined = node;
-    current !== undefined && !FUNCTION_TYPES.has(current.type);
+    let current: ESTree.Node | null | undefined = node;
+    current != null && !FUNCTION_TYPES.has(current.type);
     current = current.parent
   ) {
     const slot = statementSlot(current);
@@ -94,46 +131,48 @@ function hasFollowingStatement(node: TSESTree.Node): boolean {
 }
 
 function seededFallbackHandled(
-  tryStatement: TSESTree.TryStatement,
-  scope: TSESLint.Scope.Scope,
+  tryStatement: ESTree.TryStatement,
+  scope: Scope,
 ): boolean {
   const slot = statementSlot(tryStatement);
   if (slot === null || slot.index === 0) return false;
   const previous = slot.list[slot.index - 1];
-  if (previous?.type !== AST_NODE_TYPES.VariableDeclaration || previous.kind === "const") {
+  if (previous?.type !== "VariableDeclaration" || previous.kind === "const") {
     return false;
   }
   const declarator = previous.declarations[0];
-  if (previous.declarations.length !== 1 || declarator === undefined) return false;
-  if (declarator.id.type !== AST_NODE_TYPES.Identifier) return false;
+  if (previous.declarations.length !== 1 || declarator === undefined)
+    return false;
+  if (declarator.id.type !== "Identifier") return false;
   if (declarator.init == null || !isSeedValue(declarator.init)) return false;
 
-  const variable = ASTUtils.findVariable(scope, declarator.id.name);
+  const variable = findVariable(scope, declarator.id.name);
   if (variable === null) return false;
   const [tryStart, tryEnd] = tryStatement.block.range;
   let writtenInTry = false;
   let readAfter = false;
   for (const reference of variable.references) {
     const [start] = reference.identifier.range;
-    if (reference.isWrite() && start >= tryStart && start < tryEnd) writtenInTry = true;
+    if (reference.isWrite() && start >= tryStart && start < tryEnd)
+      writtenInTry = true;
     if (reference.isRead() && start >= tryStatement.range[1]) readAfter = true;
   }
   return writtenInTry && readAfter;
 }
 
 /** An explicit fallback seed: a literal, `undefined`, or an empty array/object. */
-function isSeedValue(node: TSESTree.Expression): boolean {
-  const inner = node.type === AST_NODE_TYPES.TSAsExpression ? node.expression : node;
+function isSeedValue(node: ESTree.Expression): boolean {
+  const inner = node.type === "TSAsExpression" ? node.expression : node;
   switch (inner.type) {
-    case AST_NODE_TYPES.Literal:
+    case "Literal":
       return true;
-    case AST_NODE_TYPES.Identifier:
+    case "Identifier":
       return inner.name === "undefined";
-    case AST_NODE_TYPES.UnaryExpression:
-      return inner.argument.type === AST_NODE_TYPES.Literal;
-    case AST_NODE_TYPES.ArrayExpression:
+    case "UnaryExpression":
+      return inner.argument.type === "Literal";
+    case "ArrayExpression":
       return inner.elements.length === 0;
-    case AST_NODE_TYPES.ObjectExpression:
+    case "ObjectExpression":
       return inner.properties.length === 0;
     default:
       return false;
@@ -166,55 +205,117 @@ export default createRule<Options, MessageIds>({
   defaultOptions: [{}],
   create(context, [loggingOptions]) {
     const matcher = createLogMatcher(loggingOptions);
-    const filename = context.filename;
+    const filename = sourceOrigin(context).filename;
     const sourceCode = context.sourceCode;
 
-    function hasCoercionValidation(node: TSESTree.CatchClause): boolean {
+    function hasCoercionValidation(node: ESTree.CatchClause): boolean {
       const owner = node.parent;
+      if (owner?.type !== "TryStatement") return false;
       const statement = owner.block.body[0];
-      if (node.body.body.length !== 0 || owner.finalizer !== null || owner.block.body.length !== 1 ||
-        statement?.type !== AST_NODE_TYPES.ExpressionStatement ||
-        statement.expression.type !== AST_NODE_TYPES.AssignmentExpression || statement.expression.operator !== "=") return false;
+      if (
+        node.body.body.length !== 0 ||
+        owner.finalizer !== null ||
+        owner.block.body.length !== 1 ||
+        statement?.type !== "ExpressionStatement" ||
+        statement.expression.type !== "AssignmentExpression" ||
+        statement.expression.operator !== "="
+      )
+        return false;
       const { left, right } = statement.expression;
-      if (left.type !== AST_NODE_TYPES.MemberExpression || left.computed || left.object.type !== AST_NODE_TYPES.Identifier ||
-        right.type !== AST_NODE_TYPES.CallExpression || right.optional || right.callee.type !== AST_NODE_TYPES.Identifier ||
-        !["String", "Number", "Boolean", "BigInt"].includes(right.callee.name) || right.arguments.length !== 1) return false;
+      if (
+        left.type !== "MemberExpression" ||
+        left.computed ||
+        left.object.type !== "Identifier" ||
+        right.type !== "CallExpression" ||
+        right.optional ||
+        right.callee.type !== "Identifier" ||
+        !["String", "Number", "Boolean", "BigInt"].includes(
+          right.callee.name,
+        ) ||
+        right.arguments.length !== 1
+      )
+        return false;
       const argument = right.arguments[0];
-      if (argument === undefined || sourceCode.getText(left) !== sourceCode.getText(argument)) return false;
-      const global = ASTUtils.findVariable(sourceCode.getScope(right.callee), right.callee.name);
+      if (
+        argument === undefined ||
+        sourceCode.getText(left) !== sourceCode.getText(argument)
+      )
+        return false;
+      const global = findVariable(
+        sourceCode.getScope(right.callee),
+        right.callee.name,
+      );
       if (global !== null && global.defs.length > 0) return false;
-      const root = ASTUtils.findVariable(sourceCode.getScope(left.object), left.object.name);
-      if (root === null || root.references.some((reference) => reference.isWrite() && !reference.init)) return false;
+      const root = findVariable(
+        sourceCode.getScope(left.object),
+        left.object.name,
+      );
+      if (
+        root === null ||
+        root.references.some(
+          (reference) => reference.isWrite() && !reference.init,
+        )
+      )
+        return false;
       return hasFollowingCoercionCheck(owner, left, right.callee.name);
     }
 
-    function hasFollowingCoercionCheck(owner: TSESTree.TryStatement, left: TSESTree.MemberExpression, coercion: string): boolean {
-      let current: TSESTree.Node = owner;
+    function hasFollowingCoercionCheck(
+      owner: ESTree.TryStatement,
+      left: ESTree.MemberExpression,
+      coercion: string,
+    ): boolean {
+      let current: ESTree.Node = owner;
       let slot = statementSlot(current);
-      while (slot === null && current.parent !== undefined && !FUNCTION_TYPES.has(current.parent.type)) {
+      while (
+        slot === null &&
+        current.parent != null &&
+        !FUNCTION_TYPES.has(current.parent?.type)
+      ) {
         current = current.parent;
         slot = statementSlot(current);
       }
       let next = slot?.list[slot.index + 1];
       let target = sourceCode.getText(left);
-      if (next?.type === AST_NODE_TYPES.VariableDeclaration && next.kind === "const" && next.declarations.length === 1) {
+      if (
+        next?.type === "VariableDeclaration" &&
+        next.kind === "const" &&
+        next.declarations.length === 1
+      ) {
         const alias = next.declarations[0];
-        if (alias?.id.type !== AST_NODE_TYPES.Identifier || alias.init === null || sourceCode.getText(alias.init) !== target) return false;
+        if (
+          alias?.id.type !== "Identifier" ||
+          alias.init === null ||
+          sourceCode.getText(alias.init) !== target
+        )
+          return false;
         target = alias.id.name;
         next = slot?.list[slot.index + 2];
       }
-      if (next?.type !== AST_NODE_TYPES.IfStatement) return false;
+      if (next?.type !== "IfStatement") return false;
       let condition = next.test;
-      while (condition.type === AST_NODE_TYPES.LogicalExpression && condition.operator === "&&") condition = condition.left;
-      if (condition.type !== AST_NODE_TYPES.BinaryExpression || !["==", "==="].includes(condition.operator)) return false;
+      while (
+        condition.type === "LogicalExpression" &&
+        condition.operator === "&&"
+      )
+        condition = condition.left;
+      if (
+        condition.type !== "BinaryExpression" ||
+        !["==", "==="].includes(condition.operator)
+      )
+        return false;
       const test = condition.left;
-      return test.type === AST_NODE_TYPES.UnaryExpression && test.operator === "typeof" &&
+      return (
+        test.type === "UnaryExpression" &&
+        test.operator === "typeof" &&
         sourceCode.getText(test.argument) === target &&
-        condition.right.type === AST_NODE_TYPES.Literal && condition.right.value === coercion.toLowerCase();
+        condition.right.type === "Literal" &&
+        condition.right.value === coercion.toLowerCase()
+      );
     }
 
     /** True when a statement is exactly a bare logging call, e.g. `console.error(err);`. */
-    function isLoggingCallStatement(statement: TSESTree.Statement): boolean {
+    function isLoggingCallStatement(statement: ESTree.Statement): boolean {
       if (statement.type !== "ExpressionStatement") {
         return false;
       }
@@ -224,15 +325,20 @@ export default createRule<Options, MessageIds>({
     /**
      * Class 3 — a rationale written next to the braces instead of inside them.
      */
-    function hasAdjacentRationale(node: TSESTree.CatchClause): boolean {
+    function hasAdjacentRationale(node: ESTree.CatchClause): boolean {
       const tryStatement = node.parent;
-      if (hasCommentDirectlyAbove(tryStatement) || hasCommentDirectlyAbove(node)) return true;
+      if (tryStatement?.type !== "TryStatement") return false;
+      if (
+        hasCommentDirectlyAbove(tryStatement) ||
+        hasCommentDirectlyAbove(node)
+      )
+        return true;
       const block = tryStatement.parent;
       if (
-        block?.type !== AST_NODE_TYPES.BlockStatement ||
+        block?.type !== "BlockStatement" ||
         block.body.length !== 1 ||
-        block.parent === undefined ||
-        !SINGLE_STATEMENT_HOSTS.has(block.parent.type)
+        block.parent == null ||
+        !SINGLE_STATEMENT_HOSTS.has(block.parent?.type)
       ) {
         return false;
       }
@@ -240,29 +346,36 @@ export default createRule<Options, MessageIds>({
     }
 
     /** True when a `//`/`/* *\/` run ends on the line directly above `node`. */
-    function hasCommentDirectlyAbove(node: TSESTree.Node): boolean {
+    function hasCommentDirectlyAbove(node: ESTree.Node): boolean {
       const above = sourceCode.getCommentsBefore(node).at(-1);
-      return above !== undefined && above.loc.end.line === node.loc.start.line - 1;
+      return (
+        above !== undefined && above.loc.end.line === node.loc.start.line - 1
+      );
     }
 
-    if (isTestFile(filename) || BENCHMARK_DIR_RE.test(filename.replaceAll("\\", "/"))) {
+    if (
+      isTestFile(filename) ||
+      BENCHMARK_DIR_RE.test(filename.replaceAll("\\", "/"))
+    ) {
       return {};
     }
 
     return {
-      CatchClause(node: TSESTree.CatchClause): void {
+      CatchClause(node: ESTree.CatchClause): void {
         const statements = node.body.body;
 
         // A comment inside the block documents an intentional ignore — for a
         // silent swallow and for a log-and-continue alike.
         const isDocumented =
-          sourceCode.getCommentsInside(node.body).length > 0 || hasAdjacentRationale(node);
+          sourceCode.getCommentsInside(node.body).length > 0 ||
+          hasAdjacentRationale(node);
 
         if (
           isDocumented ||
           hasCoercionValidation(node) ||
-          fallbackFollowsTry(node.parent) ||
-          seededFallbackHandled(node.parent, sourceCode.getScope(node))
+          (node.parent?.type === "TryStatement" &&
+            (fallbackFollowsTry(node.parent) ||
+              seededFallbackHandled(node.parent, sourceCode.getScope(node))))
         ) {
           return;
         }

@@ -1,16 +1,14 @@
 // vitest: shared-module-graph
-import * as parser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
+import { RuleTester } from "oxlint/plugins-dev";
+import { describe, it } from "vitest";
 
 import rule from "../../src/rules/require-button-accessible-name.js";
 
-RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
 RuleTester.it = it;
 RuleTester.itOnly = it.only;
 const RULE_TESTER = new RuleTester({
-  languageOptions: { parser, parserOptions: { ecmaFeatures: { jsx: true } } },
+  languageOptions: { parserOptions: { lang: "tsx" } },
   defaultFilenames: { ts: "/repo/src/action.ts", tsx: "/repo/src/action.tsx" },
 });
 const OPTIONS = [
@@ -61,9 +59,6 @@ RULE_TESTER.run("require-button-accessible-name", rule, {
       filename: "/repo/src/fixtures/action.tsx",
     },
     { code: "// @generated\n<button><svg /></button>" },
-    {
-      code: "// eslint-disable-next-line @rule-tester/require-button-accessible-name -- demonstrated external labeling\n<button><svg /></button>",
-    },
   ],
   invalid: [
     { code: "<Button />", errors: [{ messageId: "missingName" }] },

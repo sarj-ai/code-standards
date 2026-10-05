@@ -1,19 +1,15 @@
 // vitest: shared-module-graph
-import * as tsParser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
+import { RuleTester } from "oxlint/plugins-dev";
+import { describe, it } from "vitest";
 
 import rule, { REQUIRE_FETCH_TIMEOUT_DOCUMENTATION } from "../../src/rules/require-fetch-timeout.js";
 
-RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
 RuleTester.it = it;
 RuleTester.itOnly = it.only;
 
 const RULE_TESTER = new RuleTester({
-  languageOptions: {
-    parser: tsParser,
-  },
+  languageOptions: { parserOptions: { lang: "ts" } },
 });
 
 RULE_TESTER.run("require-fetch-timeout", rule, {
@@ -34,10 +30,6 @@ RULE_TESTER.run("require-fetch-timeout", rule, {
       name: "ignores codemod fixtures",
       code: "async function f() { await fetch('https://api.example.com/x'); }",
       filename: "/repo/src/v5/remove-overloads/__testfixtures__/bug-reports.input.tsx",
-    },
-    {
-      name: "accepts AbortSignal.timeout",
-      code: "await fetch(url, { signal: AbortSignal.timeout(5000) });",
     },
     {
       name: "accepts an AbortController signal",

@@ -118,11 +118,11 @@ describe("isScriptFile", () => {
 });
 
 /** A gate is a per-rule exemption, so every caller must be recorded here. */
-const GATE_HOLDERS: Readonly<Record<string, readonly string[]>> = {
+const GATE_HOLDERS = {
   "no-bespoke-api-case-conversion.ts": ["fixtureTree"],
   "no-type-member-comment-wall.ts": ["externalTree", "fixtureTree", "storyTree"],
   "prefer-millisecond-control-duration-schema.ts": ["fixtureTree"],
-};
+} as const;
 
 describe("path gates are opt-in, per rule, and recorded", () => {
   const GATE_RE = /"(externalTree|fixtureTree|storyTree)"/g;

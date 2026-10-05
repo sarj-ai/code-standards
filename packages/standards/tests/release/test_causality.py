@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import subprocess
 from typing import TYPE_CHECKING
 
 import pytest
@@ -78,7 +79,12 @@ def test_bootstrap_source_is_owned_by_the_bootstrap_release(tmp_path: Path) -> N
     assert report.violations[0].manifest.as_posix() == "packages/bootstrap/pyproject.toml"
 
 
-def test_json_package_failure_names_its_exact_version_field(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    "changed_path",
+    ["packages/typescript/src/index.ts", "packages/typescript/types/astro.d.ts"],
+    ids=("runtime-source", "exported-declaration"),
+)
+def test_json_package_failure_names_its_exact_version_field(tmp_path: Path, changed_path: str) -> None:
     _write_manifest(tmp_path, "packages/typescript/package.json", "15.17.18", json=True)
 
     def runner(
@@ -88,7 +94,7 @@ def test_json_package_failure_names_its_exact_version_field(tmp_path: Path) -> N
         capture_output: bool = False,  # ruff: ignore[unused-function-argument] -- ProcessRunner fixes this keyword.
     ) -> ProcessResult:
         if "--name-only" in argv:
-            return ProcessResult(0, "packages/typescript/src/index.ts\0")
+            return ProcessResult(0, f"{changed_path}\0")
         return ProcessResult(0, "")
 
     report = check_release_causality(
@@ -102,8 +108,73 @@ def test_json_package_failure_names_its_exact_version_field(tmp_path: Path) -> N
 
     assert report.violations[0].render() == (
         'typescript: bump top-level "version" in packages/typescript/package.json; '
-        "publishable files changed: packages/typescript/src/index.ts"
+        f"publishable files changed: {changed_path}"
     )
+
+
+@pytest.mark.parametrize(
+    "changed_path",
+    ["packages/typescript/scripts/copy-native-assets.mjs", "packages/typescript/tsup.config.ts"],
+    ids=("asset-copy-script", "bundle-configuration"),
+)
+def test_build_input_only_change_requires_a_package_version_bump(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, changed_path: str
+) -> None:
+    local_environment = subprocess.run(
+        ("git", "rev-parse", "--local-env-vars"), check=True, capture_output=True, text=True
+    ).stdout.splitlines()
+    for key in local_environment:
+        if key.startswith("GIT_"):
+            monkeypatch.delenv(key, raising=False)
+
+    def git(*args: str) -> str:
+        return subprocess.run(("git", *args), cwd=tmp_path, check=True, capture_output=True, text=True).stdout.strip()
+
+    git("init")
+    git("config", "user.email", "release-test@example.com")
+    git("config", "user.name", "Release Test")
+    package = tmp_path / "packages/typescript/package.json"
+    package.parent.mkdir(parents=True)
+    package.write_text('{\n  "version": "17.0.0"\n}\n', encoding="utf-8")
+    build_input = tmp_path / changed_path
+    build_input.parent.mkdir(parents=True, exist_ok=True)
+    build_input.write_text('export const asset = "original";\n', encoding="utf-8")
+    git("add", ".")
+    git("commit", "-m", "published build input")
+    before = git("rev-parse", "HEAD")
+    build_input.write_text('export const asset = "changed";\n', encoding="utf-8")
+    git("add", ".")
+    git("commit", "-m", "change published build input")
+    after = git("rev-parse", "HEAD")
+
+    report = check_release_causality(
+        tmp_path,
+        before=before,
+        after=after,
+        tag_checker=lambda *_args, **_kwargs: False,
+        publication_checker=lambda _requirement: True,
+    )
+
+    assert not report.ok
+    assert report.changed_targets == ("typescript",)
+    assert report.violations[0].render() == (
+        'typescript: bump top-level "version" in packages/typescript/package.json; '
+        f"publishable files changed: {changed_path}"
+    )
+
+    package.write_text('{\n  "version": "17.0.1"\n}\n', encoding="utf-8")
+    git("add", ".")
+    git("commit", "-m", "bump package for changed build input")
+    report = check_release_causality(
+        tmp_path,
+        before=before,
+        after=git("rev-parse", "HEAD"),
+        tag_checker=lambda *_args, **_kwargs: True,
+        publication_checker=lambda _requirement: True,
+    )
+
+    assert report.ok
+    assert report.changed_targets == report.bumped_targets == ("typescript",)
 
 
 def test_compatibility_source_is_owned_by_the_atomic_standards_release(tmp_path: Path) -> None:

@@ -4,11 +4,9 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-redundant-optional-array-default.test.ts
  */
 
-import {
-  AST_NODE_TYPES,
-  type TSESLint,
-  type TSESTree,
-} from "@typescript-eslint/utils";
+import { sourceOrigin } from "./_source-origin.js";
+import type { ESTree, Scope } from "@oxlint/plugins";
+
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile, isTestFile } from "./_paths.js";
@@ -68,21 +66,21 @@ export const NO_REDUNDANT_OPTIONAL_ARRAY_DEFAULT_DOCUMENTATION = {
   ],
 } as const satisfies RuleDocumentation;
 
-function importedName(specifier: TSESTree.ImportSpecifier): string | null {
-  return specifier.imported.type === AST_NODE_TYPES.Identifier
+function importedName(specifier: ESTree.ImportSpecifier): string | null {
+  return specifier.imported.type === "Identifier"
     ? specifier.imported.name
     : typeof specifier.imported.value === "string"
       ? specifier.imported.value
       : null;
 }
 
-function memberName(node: TSESTree.MemberExpression): string | null {
-  if (!node.computed && node.property.type === AST_NODE_TYPES.Identifier) {
+function memberName(node: ESTree.MemberExpression): string | null {
+  if (!node.computed && node.property.type === "Identifier") {
     return node.property.name;
   }
   if (
     node.computed &&
-    node.property.type === AST_NODE_TYPES.Literal &&
+    node.property.type === "Literal" &&
     typeof node.property.value === "string"
   ) {
     return node.property.value;
@@ -109,20 +107,20 @@ export default createRule<Options, MessageIds>({
   create(context) {
     const sourceCode = context.sourceCode;
     if (
-      isTestFile(context.filename) ||
-      isGeneratedFile(context.filename, sourceCode.getText())
+      isTestFile(sourceOrigin(context).filename) ||
+      isGeneratedFile(sourceOrigin(context).filename, sourceCode.getText())
     ) {
       return {};
     }
 
     const namespaces = new Set<string>();
     const arrayConstructors = new Set<string>();
-    const importBindings = new Map<string, TSESTree.Identifier>();
+    const importBindings = new Map<string, ESTree.BindingIdentifier>();
 
-    function resolvesToTrackedImport(node: TSESTree.Identifier): boolean {
+    function resolvesToTrackedImport(node: ESTree.BindingIdentifier): boolean {
       const binding = importBindings.get(node.name);
       if (binding === undefined) return false;
-      let scope: TSESLint.Scope.Scope | null = sourceCode.getScope(node);
+      let scope: Scope | null = sourceCode.getScope(node);
       while (scope !== null) {
         const variable = scope.variables.find((candidate) => candidate.name === node.name);
         if (variable !== undefined) {
@@ -133,17 +131,17 @@ export default createRule<Options, MessageIds>({
       return false;
     }
 
-    function isArraySchemaExpression(node: TSESTree.Node): boolean {
-      if (node.type !== AST_NODE_TYPES.CallExpression) return false;
+    function isArraySchemaExpression(node: ESTree.Node): boolean {
+      if (node.type !== "CallExpression") return false;
       const { callee } = node;
-      if (callee.type === AST_NODE_TYPES.Identifier) {
+      if (callee.type === "Identifier") {
         return arrayConstructors.has(callee.name) && resolvesToTrackedImport(callee);
       }
-      if (callee.type !== AST_NODE_TYPES.MemberExpression) return false;
+      if (callee.type !== "MemberExpression") return false;
       const method = memberName(callee);
       if (
         method === "array" &&
-        (callee.object.type === AST_NODE_TYPES.Identifier
+        (callee.object.type === "Identifier"
           ? namespaces.has(callee.object.name) && resolvesToTrackedImport(callee.object)
           : isZodSchemaExpression(callee.object))
       ) {
@@ -152,15 +150,15 @@ export default createRule<Options, MessageIds>({
       return isArraySchemaExpression(callee.object);
     }
 
-    function isZodSchemaExpression(node: TSESTree.Node): boolean {
-      if (node.type !== AST_NODE_TYPES.CallExpression) return false;
+    function isZodSchemaExpression(node: ESTree.Node): boolean {
+      if (node.type !== "CallExpression") return false;
       const { callee } = node;
-      if (callee.type === AST_NODE_TYPES.Identifier) {
+      if (callee.type === "Identifier") {
         return resolvesToTrackedImport(callee);
       }
-      if (callee.type !== AST_NODE_TYPES.MemberExpression) return false;
+      if (callee.type !== "MemberExpression") return false;
       if (
-        callee.object.type === AST_NODE_TYPES.Identifier &&
+        callee.object.type === "Identifier" &&
         namespaces.has(callee.object.name) &&
         resolvesToTrackedImport(callee.object)
       ) {
@@ -170,12 +168,12 @@ export default createRule<Options, MessageIds>({
     }
 
     return {
-      ImportDeclaration(node: TSESTree.ImportDeclaration): void {
+      ImportDeclaration(node: ESTree.ImportDeclaration): void {
         if (!isZodModule(node.source.value)) return;
         for (const specifier of node.specifiers) {
           if (
-            specifier.type === AST_NODE_TYPES.ImportNamespaceSpecifier ||
-            specifier.type === AST_NODE_TYPES.ImportDefaultSpecifier
+            specifier.type === "ImportNamespaceSpecifier" ||
+            specifier.type === "ImportDefaultSpecifier"
           ) {
             namespaces.add(specifier.local.name);
             importBindings.set(specifier.local.name, specifier.local);
@@ -193,19 +191,19 @@ export default createRule<Options, MessageIds>({
           }
         }
       },
-      CallExpression(node: TSESTree.CallExpression): void {
+      CallExpression(node: ESTree.CallExpression): void {
         const defaultCallee = node.callee;
         if (
-          defaultCallee.type !== AST_NODE_TYPES.MemberExpression ||
+          defaultCallee.type !== "MemberExpression" ||
           memberName(defaultCallee) !== "default" ||
-          defaultCallee.object.type !== AST_NODE_TYPES.CallExpression
+          defaultCallee.object.type !== "CallExpression"
         ) {
           return;
         }
         const optionalCall = defaultCallee.object;
         const optionalCallee = optionalCall.callee;
         if (
-          optionalCallee.type !== AST_NODE_TYPES.MemberExpression ||
+          optionalCallee.type !== "MemberExpression" ||
           memberName(optionalCallee) !== "optional" ||
           optionalCall.arguments.length !== 0 ||
           !isArraySchemaExpression(optionalCallee.object) ||

@@ -4,7 +4,9 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-select-star.test.ts
  */
 
-import { type TSESTree } from "@typescript-eslint/utils";
+import { sourceOrigin } from "./_source-origin.js";
+import type { ESTree } from "@oxlint/plugins";
+
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isTestFile } from "./_paths.js";
@@ -89,10 +91,10 @@ export default createRule<Options, MessageIds>({
   },
   defaultOptions: [],
   create(context) {
-    if (isTestFile(context.filename) || !SELECT_GATE.test(context.sourceCode.text)) {
+    if (isTestFile(sourceOrigin(context).filename) || !SELECT_GATE.test(context.sourceCode.text)) {
       return {};
     }
-    return createSqlListener((sql: string, node: TSESTree.Node): void => {
+    return createSqlListener((sql: string, node: ESTree.Node): void => {
       if (!QUERY_SHAPE.test(sql) || !hasRealSelectStar(sql)) {
         return;
       }

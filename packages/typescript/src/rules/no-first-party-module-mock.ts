@@ -4,7 +4,9 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-first-party-module-mock.test.ts
  */
 
-import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
+import { sourceOrigin } from "./_source-origin.js";
+import type { ESTree } from "@oxlint/plugins";
+
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile, isTestFile } from "./_paths.js";
@@ -40,14 +42,14 @@ export default createRule<Options, MessageIds>({
   },
   defaultOptions: [{ additionalModulePrefixes: [] }],
   create(context, [options]) {
-    if (!isTestFile(context.filename) || isGeneratedFile(context.filename, context.sourceCode.text)) return {};
+    if (!isTestFile(sourceOrigin(context).filename) || isGeneratedFile(sourceOrigin(context).filename, sourceOrigin(context).text)) return {};
     return {
-      CallExpression(node: TSESTree.CallExpression): void {
-        if (node.callee.type !== AST_NODE_TYPES.MemberExpression || node.callee.computed || node.callee.object.type !== AST_NODE_TYPES.Identifier || node.callee.property.type !== AST_NODE_TYPES.Identifier || !["mock", "doMock"].includes(node.callee.property.name)) return;
+      CallExpression(node: ESTree.CallExpression): void {
+        if (node.callee.type !== "MemberExpression" || node.callee.computed || node.callee.object.type !== "Identifier" || node.callee.property.type !== "Identifier" || !["mock", "doMock"].includes(node.callee.property.name)) return;
         const framework = importedTestMockNamespace(context.sourceCode, node.callee.object);
         if (framework === null || (framework === "jest" && mayBeVirtual(node.arguments[2]))) return;
         const argument = node.arguments[0];
-        if (argument?.type !== AST_NODE_TYPES.Literal || typeof argument.value !== "string") return;
+        if (argument?.type !== "Literal" || typeof argument.value !== "string") return;
         if (!isFirstParty(argument.value, options.additionalModulePrefixes ?? [])) return;
         context.report({ node: argument, messageId: "noFirstPartyModuleMock", data: { module: argument.value } });
       },
@@ -55,12 +57,12 @@ export default createRule<Options, MessageIds>({
   },
 });
 
-function mayBeVirtual(options: TSESTree.CallExpressionArgument | undefined): boolean {
+function mayBeVirtual(options: ESTree.Argument | undefined): boolean {
   if (options === undefined) return false;
-  if (options.type !== AST_NODE_TYPES.ObjectExpression) return true;
+  if (options.type !== "ObjectExpression") return true;
   return options.properties.some((property) => {
-    if (property.type !== AST_NODE_TYPES.Property || property.computed) return true;
-    const name = property.key.type === AST_NODE_TYPES.Identifier ? property.key.name : property.key.type === AST_NODE_TYPES.Literal ? property.key.value : null;
-    return name === "virtual" && !(property.value.type === AST_NODE_TYPES.Literal && property.value.value === false);
+    if (property.type !== "Property" || property.computed) return true;
+    const name = property.key.type === "Identifier" ? property.key.name : property.key.type === "Literal" ? property.key.value : null;
+    return name === "virtual" && !(property.value.type === "Literal" && property.value.value === false);
   });
 }

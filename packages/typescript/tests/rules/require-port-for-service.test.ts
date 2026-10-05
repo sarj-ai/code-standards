@@ -1,33 +1,52 @@
 // vitest: shared-module-graph
-import * as tsParser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
+import { RuleTester } from "oxlint/plugins-dev";
+import { describe, it } from "vitest";
 
-import rule, { REQUIRE_PORT_FOR_SERVICE_DOCUMENTATION } from "../../src/rules/require-port-for-service.js";
+import rule, {
+  REQUIRE_PORT_FOR_SERVICE_DOCUMENTATION,
+} from "../../src/rules/require-port-for-service.js";
 
-RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
 RuleTester.itOnly = it.only;
 RuleTester.it = it;
 
 const RULE_TESTER = new RuleTester({
-  languageOptions: {
-    parser: tsParser,
-    parserOptions: { ecmaVersion: "latest", sourceType: "module" },
-  },
+  languageOptions: { parserOptions: { lang: "ts" } },
 });
 
 const SRC = "/repo/src/domain/record-normalizer/service.ts";
 
 RULE_TESTER.run("require-port-for-service", rule, {
   valid: [
-    { name: "qualified imported port aliases remain unresolved rather than empty", code: "import type * as contracts from './contracts'; type Handler = contracts.Handler; export class RequestHandler implements Handler { constructor(private readonly store: TaskStore) {} handle() { this.store.handle(); } }" },
-    { name: "callable port aliases retain their capability across local aliases", code: "type Run = Fn; type Fn = () => void; interface Handler { handle: Run } export class RequestHandler implements Handler { constructor(private readonly store: TaskStore) {} handle() { this.store.handle(); } }" },
-    { name: "locally shadowed constructor names do not prove retained injection", code: "export class RequestHandler { private store: TaskStore; constructor(store: TaskStore) { { const store = new TaskStore(); this.store = store; } } handle() { this.store.handle(); } }" },
-    { name: "a parameter property replaced with a constructed value is not injection", code: "export class RequestHandler { constructor(private readonly store: TaskStore) { this.store = new TaskStore(); } handle() { this.store.handle(); } }" },
-    { name: "quoted callable keys match equivalent interface keys", code: 'interface Handler { "handle"(): void } export class RequestHandler implements Handler { constructor(private readonly store: TaskStore) {} "handle"(): void { this.store.handle(); } }' },
-    { name: "quoted function properties match equivalent port properties", code: 'interface Handler { "handle": () => void } export class RequestHandler implements Handler { constructor(private readonly store: TaskStore) {} "handle" = () => { this.store.handle(); }; }' },
-    { name: "accepts the documented service port", filename: REQUIRE_PORT_FOR_SERVICE_DOCUMENTATION.examples[0].focusPath, code: REQUIRE_PORT_FOR_SERVICE_DOCUMENTATION.examples[0].files[0].source },
+    {
+      name: "qualified imported port aliases remain unresolved rather than empty",
+      code: "import type * as contracts from './contracts'; type Handler = contracts.Handler; export class RequestHandler implements Handler { constructor(private readonly store: TaskStore) {} handle() { this.store.handle(); } }",
+    },
+    {
+      name: "callable port aliases retain their capability across local aliases",
+      code: "type Run = Fn; type Fn = () => void; interface Handler { handle: Run } export class RequestHandler implements Handler { constructor(private readonly store: TaskStore) {} handle() { this.store.handle(); } }",
+    },
+    {
+      name: "locally shadowed constructor names do not prove retained injection",
+      code: "export class RequestHandler { private store: TaskStore; constructor(store: TaskStore) { { const store = new TaskStore(); this.store = store; } } handle() { this.store.handle(); } }",
+    },
+    {
+      name: "a parameter property replaced with a constructed value is not injection",
+      code: "export class RequestHandler { constructor(private readonly store: TaskStore) { this.store = new TaskStore(); } handle() { this.store.handle(); } }",
+    },
+    {
+      name: "quoted callable keys match equivalent interface keys",
+      code: 'interface Handler { "handle"(): void } export class RequestHandler implements Handler { constructor(private readonly store: TaskStore) {} "handle"(): void { this.store.handle(); } }',
+    },
+    {
+      name: "quoted function properties match equivalent port properties",
+      code: 'interface Handler { "handle": () => void } export class RequestHandler implements Handler { constructor(private readonly store: TaskStore) {} "handle" = () => { this.store.handle(); }; }',
+    },
+    {
+      name: "accepts the documented service port",
+      filename: REQUIRE_PORT_FOR_SERVICE_DOCUMENTATION.examples[0].focusPath,
+      code: REQUIRE_PORT_FOR_SERVICE_DOCUMENTATION.examples[0].files[0].source,
+    },
     {
       name: "treats a retained metadata record read through fields as constructor data",
       filename: SRC,
@@ -808,9 +827,9 @@ RULE_TESTER.run("require-port-for-service", rule, {
     {
       filename: SRC,
       code: `
-        export class Boxed {
+        export class Boxed<TItem> {
           private readonly item: unknown;
-          constructor<TItem>(item: TItem) { this.item = item; }
+          constructor(item: TItem) { this.item = item; }
           unwrap(): unknown { return this.item; }
         }
       `,
@@ -970,8 +989,26 @@ RULE_TESTER.run("require-port-for-service", rule, {
       code: "interface WorkerService { run(): void } export class WorkerServiceImpl { constructor(private readonly worker: Worker) {} run(): void { this.worker.run(); } }",
       errors: [{ messageId: "requireInterface" }],
     },
-    { name: "different quoted method names do not establish a port", code: 'interface Handler { "save"(): void } export class RequestHandler implements Handler { constructor(private readonly store: TaskStore) {} "handle"(): void { this.store.handle(); } }', errors: [{ messageId: "requireInterface" }] },
-    { name: "reports the documented concrete service", filename: REQUIRE_PORT_FOR_SERVICE_DOCUMENTATION.examples[1].focusPath, code: REQUIRE_PORT_FOR_SERVICE_DOCUMENTATION.examples[1].files[0].source, errors: [{ messageId: "requireInterface", data: { name: "RequestHandler", deps: "store: TaskStore", methods: "handle" } }] },
+    {
+      name: "different quoted method names do not establish a port",
+      code: 'interface Handler { "save"(): void } export class RequestHandler implements Handler { constructor(private readonly store: TaskStore) {} "handle"(): void { this.store.handle(); } }',
+      errors: [{ messageId: "requireInterface" }],
+    },
+    {
+      name: "reports the documented concrete service",
+      filename: REQUIRE_PORT_FOR_SERVICE_DOCUMENTATION.examples[1].focusPath,
+      code: REQUIRE_PORT_FOR_SERVICE_DOCUMENTATION.examples[1].files[0].source,
+      errors: [
+        {
+          messageId: "requireInterface",
+          data: {
+            name: "RequestHandler",
+            deps: "store: TaskStore",
+            methods: "handle",
+          },
+        },
+      ],
+    },
     {
       name: "selects the concrete constructor after overload signatures",
       filename: SRC,
@@ -987,7 +1024,11 @@ RULE_TESTER.run("require-port-for-service", rule, {
       errors: [
         {
           messageId: "requireInterface",
-          data: { name: "RequestHandler", deps: "store: TaskStore", methods: "handle" },
+          data: {
+            name: "RequestHandler",
+            deps: "store: TaskStore",
+            methods: "handle",
+          },
         },
       ],
     },
@@ -1046,7 +1087,16 @@ RULE_TESTER.run("require-port-for-service", rule, {
           build(): Report { return this.store.build(); }
         }
       `,
-      errors: [{ messageId: "requireInterface", data: { name: "ReportBuilder", deps: "store: ReportStore", methods: "build" } }],
+      errors: [
+        {
+          messageId: "requireInterface",
+          data: {
+            name: "ReportBuilder",
+            deps: "store: ReportStore",
+            methods: "build",
+          },
+        },
+      ],
     },
     {
       name: "implementing a local concrete class does not declare a port",
@@ -1058,7 +1108,16 @@ RULE_TESTER.run("require-port-for-service", rule, {
           handle(): void { this.store.handle(); }
         }
       `,
-      errors: [{ messageId: "requireInterface", data: { name: "RequestHandler", deps: "store: TaskStore", methods: "handle" } }],
+      errors: [
+        {
+          messageId: "requireInterface",
+          data: {
+            name: "RequestHandler",
+            deps: "store: TaskStore",
+            methods: "handle",
+          },
+        },
+      ],
     },
     {
       name: "a local empty type alias is not a service port",
@@ -1070,7 +1129,16 @@ RULE_TESTER.run("require-port-for-service", rule, {
           handle(): void { this.store.handle(); }
         }
       `,
-      errors: [{ messageId: "requireInterface", data: { name: "RequestHandler", deps: "store: TaskStore", methods: "handle" } }],
+      errors: [
+        {
+          messageId: "requireInterface",
+          data: {
+            name: "RequestHandler",
+            deps: "store: TaskStore",
+            methods: "handle",
+          },
+        },
+      ],
     },
     {
       name: "recognizes nullish assignment and type-asserted constructor storage",
@@ -1082,7 +1150,16 @@ RULE_TESTER.run("require-port-for-service", rule, {
           handle(): void { this.store?.handle(); }
         }
       `,
-      errors: [{ messageId: "requireInterface", data: { name: "RequestHandler", deps: "store: TaskStore", methods: "handle" } }],
+      errors: [
+        {
+          messageId: "requireInterface",
+          data: {
+            name: "RequestHandler",
+            deps: "store: TaskStore",
+            methods: "handle",
+          },
+        },
+      ],
     },
     {
       name: "a local marker interface does not cover the service surface",
@@ -1095,7 +1172,16 @@ RULE_TESTER.run("require-port-for-service", rule, {
           serialize(): string { return ""; }
         }
       `,
-      errors: [{ messageId: "requireInterface", data: { name: "RequestHandler", deps: "store: TaskStore", methods: "handle, serialize" } }],
+      errors: [
+        {
+          messageId: "requireInterface",
+          data: {
+            name: "RequestHandler",
+            deps: "store: TaskStore",
+            methods: "handle, serialize",
+          },
+        },
+      ],
     },
     {
       name: "a local concrete superclass is not a service port",
@@ -1107,7 +1193,16 @@ RULE_TESTER.run("require-port-for-service", rule, {
           handle(): void { this.store.handle(); }
         }
       `,
-      errors: [{ messageId: "requireInterface", data: { name: "RequestHandler", deps: "store: TaskStore", methods: "handle" } }],
+      errors: [
+        {
+          messageId: "requireInterface",
+          data: {
+            name: "RequestHandler",
+            deps: "store: TaskStore",
+            methods: "handle",
+          },
+        },
+      ],
     },
     {
       name: "recognizes a nullable collaborator stored through a non-null assertion in control flow",
@@ -1122,7 +1217,16 @@ RULE_TESTER.run("require-port-for-service", rule, {
           handle(): void { this.store.handle(); }
         }
       `,
-      errors: [{ messageId: "requireInterface", data: { name: "RequestHandler", deps: "store: TaskStore", methods: "handle" } }],
+      errors: [
+        {
+          messageId: "requireInterface",
+          data: {
+            name: "RequestHandler",
+            deps: "store: TaskStore",
+            methods: "handle",
+          },
+        },
+      ],
     },
     {
       name: "counts public arrow properties as callable service surface",
@@ -1133,7 +1237,16 @@ RULE_TESTER.run("require-port-for-service", rule, {
           handle = async (): Promise<void> => this.store.run();
         }
       `,
-      errors: [{ messageId: "requireInterface", data: { name: "RequestHandler", deps: "store: TaskStore", methods: "handle" } }],
+      errors: [
+        {
+          messageId: "requireInterface",
+          data: {
+            name: "RequestHandler",
+            deps: "store: TaskStore",
+            methods: "handle",
+          },
+        },
+      ],
     },
     {
       name: "recognizes a detached named export",
@@ -1145,7 +1258,16 @@ RULE_TESTER.run("require-port-for-service", rule, {
         }
         export { RequestHandler };
       `,
-      errors: [{ messageId: "requireInterface", data: { name: "RequestHandler", deps: "store: TaskStore", methods: "handle" } }],
+      errors: [
+        {
+          messageId: "requireInterface",
+          data: {
+            name: "RequestHandler",
+            deps: "store: TaskStore",
+            methods: "handle",
+          },
+        },
+      ],
     },
     // GROUND TRUTH — the origin case raised in review on a first-party repo,
     // verbatim in shape. Its sibling in the same directory tree does declare an
@@ -1190,7 +1312,11 @@ RULE_TESTER.run("require-port-for-service", rule, {
       errors: [
         {
           messageId: "requireInterface",
-          data: { name: "ProfileService", deps: "profileStore: ProfileStore", methods: "getProfileById, listProfiles" },
+          data: {
+            name: "ProfileService",
+            deps: "profileStore: ProfileStore",
+            methods: "getProfileById, listProfiles",
+          },
         },
       ],
     },
@@ -1208,7 +1334,11 @@ RULE_TESTER.run("require-port-for-service", rule, {
       errors: [
         {
           messageId: "requireInterface",
-          data: { name: "ReportParserImpl", deps: "axios: AxiosInstance", methods: "parse, warmUp" },
+          data: {
+            name: "ReportParserImpl",
+            deps: "axios: AxiosInstance",
+            methods: "parse, warmUp",
+          },
         },
       ],
     },
@@ -1234,7 +1364,11 @@ RULE_TESTER.run("require-port-for-service", rule, {
       errors: [
         {
           messageId: "requireInterface",
-          data: { name: "DigestReportService", deps: "deps: DigestReportDeps", methods: "runDaily" },
+          data: {
+            name: "DigestReportService",
+            deps: "deps: DigestReportDeps",
+            methods: "runDaily",
+          },
         },
       ],
     },
@@ -1261,7 +1395,11 @@ RULE_TESTER.run("require-port-for-service", rule, {
       errors: [
         {
           messageId: "requireInterface",
-          data: { name: "ArtifactSyncHandler", deps: "services: ServiceRegistry, bucket: R2Bucket", methods: "handle" },
+          data: {
+            name: "ArtifactSyncHandler",
+            deps: "services: ServiceRegistry, bucket: R2Bucket",
+            methods: "handle",
+          },
         },
       ],
     },
@@ -1278,7 +1416,11 @@ RULE_TESTER.run("require-port-for-service", rule, {
       errors: [
         {
           messageId: "requireInterface",
-          data: { name: "CatalogFacade", deps: "client: catalog.Client", methods: "lookup" },
+          data: {
+            name: "CatalogFacade",
+            deps: "client: catalog.Client",
+            methods: "lookup",
+          },
         },
       ],
     },
@@ -1295,7 +1437,11 @@ RULE_TESTER.run("require-port-for-service", rule, {
       errors: [
         {
           messageId: "requireInterface",
-          data: { name: "TaskProcessor", deps: "svc: ServiceRegistry", methods: "process" },
+          data: {
+            name: "TaskProcessor",
+            deps: "svc: ServiceRegistry",
+            methods: "process",
+          },
         },
       ],
     },
@@ -1317,7 +1463,11 @@ RULE_TESTER.run("require-port-for-service", rule, {
       errors: [
         {
           messageId: "requireInterface",
-          data: { name: "Scheduler", deps: "store: TaskStore", methods: "schedule" },
+          data: {
+            name: "Scheduler",
+            deps: "store: TaskStore",
+            methods: "schedule",
+          },
         },
       ],
     },
@@ -1341,7 +1491,11 @@ RULE_TESTER.run("require-port-for-service", rule, {
       errors: [
         {
           messageId: "requireInterface",
-          data: { name: "TaskMessageHandler", deps: "svc: ServiceRegistry", methods: "handle" },
+          data: {
+            name: "TaskMessageHandler",
+            deps: "svc: ServiceRegistry",
+            methods: "handle",
+          },
         },
       ],
     },
@@ -1359,7 +1513,11 @@ RULE_TESTER.run("require-port-for-service", rule, {
       errors: [
         {
           messageId: "requireInterface",
-          data: { name: "PanelPresenter", deps: "store: PanelStore", methods: "select" },
+          data: {
+            name: "PanelPresenter",
+            deps: "store: PanelStore",
+            methods: "select",
+          },
         },
       ],
     },
@@ -1405,7 +1563,11 @@ RULE_TESTER.run("require-port-for-service", rule, {
       errors: [
         {
           messageId: "requireInterface",
-          data: { name: "FetchHandler", deps: "taskStore: TaskStore", methods: "fetch" },
+          data: {
+            name: "FetchHandler",
+            deps: "taskStore: TaskStore",
+            methods: "fetch",
+          },
         },
       ],
     },
@@ -1422,7 +1584,11 @@ RULE_TESTER.run("require-port-for-service", rule, {
       errors: [
         {
           messageId: "requireInterface",
-          data: { name: "HttpMessageService", deps: "client: AxiosInstance", methods: "send" },
+          data: {
+            name: "HttpMessageService",
+            deps: "client: AxiosInstance",
+            methods: "send",
+          },
         },
       ],
     },
@@ -1442,7 +1608,11 @@ RULE_TESTER.run("require-port-for-service", rule, {
       errors: [
         {
           messageId: "requireInterface",
-          data: { name: "ReportParserImpl", deps: "axios: AxiosInstance", methods: "parse, warmUp" },
+          data: {
+            name: "ReportParserImpl",
+            deps: "axios: AxiosInstance",
+            methods: "parse, warmUp",
+          },
         },
       ],
     },
@@ -1463,7 +1633,11 @@ RULE_TESTER.run("require-port-for-service", rule, {
       errors: [
         {
           messageId: "requireInterface",
-          data: { name: "ApiClient", deps: "http: AxiosInstance", methods: "listJobs, warmUp" },
+          data: {
+            name: "ApiClient",
+            deps: "http: AxiosInstance",
+            methods: "listJobs, warmUp",
+          },
         },
       ],
     },
@@ -1485,7 +1659,11 @@ RULE_TESTER.run("require-port-for-service", rule, {
       errors: [
         {
           messageId: "requireInterface",
-          data: { name: "ApiClient", deps: "http: AxiosInstance, cache: JobCache", methods: "listJobs" },
+          data: {
+            name: "ApiClient",
+            deps: "http: AxiosInstance, cache: JobCache",
+            methods: "listJobs",
+          },
         },
       ],
     },
@@ -1501,7 +1679,11 @@ RULE_TESTER.run("require-port-for-service", rule, {
       errors: [
         {
           messageId: "requireInterface",
-          data: { name: "ApiClient", deps: "jobStore: JobStore", methods: "listJobs" },
+          data: {
+            name: "ApiClient",
+            deps: "jobStore: JobStore",
+            methods: "listJobs",
+          },
         },
       ],
     },
@@ -1680,7 +1862,11 @@ RULE_TESTER.run("require-port-for-service", rule, {
       errors: [
         {
           messageId: "requireInterface",
-          data: { name: "OrgSyncService", deps: "userRepo: UserRepo", methods: "syncOrg" },
+          data: {
+            name: "OrgSyncService",
+            deps: "userRepo: UserRepo",
+            methods: "syncOrg",
+          },
         },
       ],
     },
@@ -1699,7 +1885,11 @@ RULE_TESTER.run("require-port-for-service", rule, {
       errors: [
         {
           messageId: "requireInterface",
-          data: { name: "CatalogFacade", deps: "client: catalog.Client", methods: "lookup" },
+          data: {
+            name: "CatalogFacade",
+            deps: "client: catalog.Client",
+            methods: "lookup",
+          },
         },
       ],
     },
@@ -1718,7 +1908,11 @@ RULE_TESTER.run("require-port-for-service", rule, {
       errors: [
         {
           messageId: "requireInterface",
-          data: { name: "IntersectionService", deps: "userRepo: UserRepo", methods: "run" },
+          data: {
+            name: "IntersectionService",
+            deps: "userRepo: UserRepo",
+            methods: "run",
+          },
         },
       ],
     },
@@ -1736,7 +1930,11 @@ RULE_TESTER.run("require-port-for-service", rule, {
       errors: [
         {
           messageId: "requireInterface",
-          data: { name: "ExportedBagService", deps: "userRepo: UserRepo", methods: "run" },
+          data: {
+            name: "ExportedBagService",
+            deps: "userRepo: UserRepo",
+            methods: "run",
+          },
         },
       ],
     },

@@ -4,36 +4,41 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-zod-native-enum.test.ts
  */
 
-import {
-  ESLintUtils,
-  type TSESLint,
-  type TSESTree,
-  type ParserServicesWithTypeInformation,
-  AST_NODE_TYPES,
-  ASTUtils,
-} from "@typescript-eslint/utils";
-import * as ts from "typescript";
+import { sourceOrigin } from "./_source-origin.js";
+import type { ESTree, Variable } from "@oxlint/plugins";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isTestFile } from "./_paths.js";
+import { resolveVariable } from "./_scope.js";
 
 type MessageIds = "nativeEnum" | "enumOfTsEnum";
 type Options = readonly [];
 
 export const NO_ZOD_NATIVE_ENUM_DOCUMENTATION = {
   summary:
-    "Disallow `z.nativeEnum()` (and `z.enum()` over a TypeScript enum); use `z.enum([\"a\", \"b\"])` with a string-literal union instead.",
-  rationale: "The project prefers literal-first schema definitions. nativeEnum also accepts plain enum-like objects, so this is an explicit declaration policy, not proof that every call duplicates a TypeScript enum's runtime object.",
-  remediation: "Pass string literals directly to `z.enum` and derive the TypeScript type with `z.infer`.",
+    'Disallow `z.nativeEnum()` (and `z.enum()` over a TypeScript enum); use `z.enum(["a", "b"])` with a string-literal union instead.',
+  rationale:
+    "The project prefers literal-first schema definitions. nativeEnum also accepts plain enum-like objects, so this is an explicit declaration policy, not proof that every call duplicates a TypeScript enum's runtime object.",
+  remediation:
+    "Pass string literals directly to `z.enum` and derive the TypeScript type with `z.infer`.",
   category: "maintainability",
   autofix: "none",
-  limitations: ["Migration is manual: replacing an enum-like object with a value array changes the public schema.enum keys and can affect consumers."],
+  limitations: [
+    "Zod calls are identified through imports from zod, its subpaths, or @hono/zod-openapi; local shadows are excluded. z.enum over an imported enum or re-exported Zod wrapper is not resolved across modules.",
+    "Migration is manual: replacing an enum-like object with a value array changes the public schema.enum keys and can affect consumers.",
+  ],
   examples: [
     {
       id: "zod-literal-enum",
       title: "Declare string values directly in Zod",
       outcome: "no-match",
-      files: [{ path: "src/status.ts", source: "import { z } from \"zod\"; const S = z.enum([\"active\", \"inactive\"]);" }],
+      files: [
+        {
+          path: "src/status.ts",
+          source:
+            'import { z } from "zod"; const S = z.enum(["active", "inactive"]);',
+        },
+      ],
       focusPath: "src/status.ts",
       expectedCount: 0,
       public: true,
@@ -42,7 +47,13 @@ export const NO_ZOD_NATIVE_ENUM_DOCUMENTATION = {
       id: "zod-native-enum",
       title: "Do not wrap a TypeScript enum",
       outcome: "match",
-      files: [{ path: "src/status.ts", source: "import { z } from \"zod\"; const S = z.nativeEnum({ Active: \"active\", Inactive: \"inactive\" });" }],
+      files: [
+        {
+          path: "src/status.ts",
+          source:
+            'import { z } from "zod"; const S = z.nativeEnum({ Active: "active", Inactive: "inactive" });',
+        },
+      ],
       focusPath: "src/status.ts",
       expectedCount: 1,
       public: true,
@@ -66,55 +77,19 @@ function isIgnoredFile(filename: string, sourceText: string): boolean {
 
 /** `zod`, `zod/v4`, `zod/mini`, `@hono/zod-openapi`, `@/lib/zod`, ... */
 function isZodModule(source: string): boolean {
-  return /(^|[/@-])zod([/-]|$)/.test(source);
+  return (
+    source === "zod" ||
+    source.startsWith("zod/") ||
+    source === "@hono/zod-openapi"
+  );
 }
 
 /** Unwraps `x as const` / `x satisfies T` / `(x)` down to the inner expression. */
-function unwrap(node: TSESTree.Expression): TSESTree.Expression {
-  if (
-    node.type === AST_NODE_TYPES.TSAsExpression ||
-    node.type === AST_NODE_TYPES.TSSatisfiesExpression
-  ) {
+function unwrap(node: ESTree.Expression): ESTree.Expression {
+  if (node.type === "TSAsExpression" || node.type === "TSSatisfiesExpression") {
     return unwrap(node.expression);
   }
   return node;
-}
-
-/** Resolves an identifier to a `TSEnumDeclaration` declared in this file. */
-function resolvesToLocalEnum(
-  node: TSESTree.Identifier,
-  scope: TSESLint.Scope.Scope,
-): boolean {
-  let current: TSESLint.Scope.Scope | null = scope;
-  while (current !== null) {
-    const variable = current.variables.find((v) => v.name === node.name);
-    if (variable !== undefined) {
-      return variable.defs.some(
-        (def) => def.node.type === AST_NODE_TYPES.TSEnumDeclaration,
-      );
-    }
-    current = current.upper;
-  }
-  return false;
-}
-
-const ENUM_SYMBOL_FLAGS =
-  ts.SymbolFlags.RegularEnum | ts.SymbolFlags.ConstEnum | ts.SymbolFlags.Enum;
-
-function resolvesToImportedEnum(
-  node: TSESTree.Identifier,
-  services: ParserServicesWithTypeInformation,
-): boolean {
-  const checker = services.program.getTypeChecker();
-  const tsNode = services.esTreeNodeToTSNodeMap.get(node);
-  let symbol = checker.getSymbolAtLocation(tsNode);
-  if (symbol === undefined) {
-    return false;
-  }
-  if ((symbol.flags & ts.SymbolFlags.Alias) !== 0) {
-    symbol = checker.getAliasedSymbol(symbol);
-  }
-  return (symbol.flags & ENUM_SYMBOL_FLAGS) !== 0;
 }
 
 export default createRule<Options, MessageIds>({
@@ -124,7 +99,7 @@ export default createRule<Options, MessageIds>({
     type: "suggestion",
     docs: {
       description:
-        "Disallow `z.nativeEnum()` (and `z.enum()` over a TypeScript enum); use `z.enum([\"a\", \"b\"])` with a string-literal union instead.",
+        'Disallow `z.nativeEnum()` (and `z.enum()` over a TypeScript enum); use `z.enum(["a", "b"])` with a string-literal union instead.',
     },
     schema: [],
     messages: {
@@ -137,88 +112,73 @@ export default createRule<Options, MessageIds>({
   defaultOptions: [],
   create(context) {
     const sourceCode = context.sourceCode;
-    if (isIgnoredFile(context.filename, sourceCode.getText())) {
+    if (isIgnoredFile(sourceOrigin(context).filename, sourceCode.getText())) {
       return {};
     }
     // A test that covers `z.nativeEnum` must call it; see @fileoverview.
-    if (isTestFile(context.filename)) {
+    if (isTestFile(sourceOrigin(context).filename)) {
       return {};
     }
 
-    let services: ParserServicesWithTypeInformation | null;
-    try {
-      services = ESLintUtils.getParserServices(context);
-    } catch {
-      services = null;
-    }
+    const zodImportedBindings = new Map<Variable, string>();
+    const zodNamespaceBindings = new Set<Variable>();
 
-    /** Import bindings, not spellings: shadowed locals must not inherit Zod provenance. */
-    const zodImportedBindings = new Map<TSESLint.Scope.Variable, string>();
-    const zodNamespaceBindings = new Set<TSESLint.Scope.Variable>();
-
-    function resolvedBinding(
-      identifier: TSESTree.Identifier,
-    ): TSESLint.Scope.Variable | null {
-      return ASTUtils.findVariable(
-        sourceCode.getScope(identifier),
-        identifier.name,
-      );
-    }
-
-    function isZodMemberCall(node: TSESTree.CallExpression, api: string): boolean {
+    function isZodMemberCall(
+      node: ESTree.CallExpression,
+      api: string,
+    ): boolean {
       const callee = node.callee;
       if (
-        callee.type === AST_NODE_TYPES.MemberExpression &&
-        callee.object.type === AST_NODE_TYPES.Identifier &&
-        ((callee.property.type === AST_NODE_TYPES.Identifier &&
+        callee.type === "MemberExpression" &&
+        callee.object.type === "Identifier" &&
+        ((callee.property.type === "Identifier" &&
           !callee.computed &&
           callee.property.name === api) ||
           (callee.computed &&
-            callee.property.type === AST_NODE_TYPES.Literal &&
+            callee.property.type === "Literal" &&
             callee.property.value === api))
       ) {
-        const binding = resolvedBinding(callee.object);
+        const binding = resolveVariable(sourceCode, callee.object);
         return binding !== null && zodNamespaceBindings.has(binding);
       }
-      if (callee.type === AST_NODE_TYPES.Identifier) {
-        const binding = resolvedBinding(callee);
-        return (
-          binding !== null && zodImportedBindings.get(binding) === api
-        );
+      if (callee.type === "Identifier") {
+        const binding = resolveVariable(sourceCode, callee);
+        return binding !== null && zodImportedBindings.get(binding) === api;
       }
       return false;
     }
 
+    function registerImport(
+      spec: ESTree.ImportDeclaration["specifiers"][number],
+    ): void {
+      if (spec.type === "ImportSpecifier" && spec.importKind === "type") return;
+      const binding = resolveVariable(sourceCode, spec.local);
+      if (binding === null) return;
+      if (
+        spec.type === "ImportNamespaceSpecifier" ||
+        spec.type === "ImportDefaultSpecifier"
+      ) {
+        zodNamespaceBindings.add(binding);
+        return;
+      }
+      const imported =
+        spec.imported.type === "Identifier"
+          ? spec.imported.name
+          : spec.imported.value;
+      if (imported === "z") zodNamespaceBindings.add(binding);
+      if (spec.imported.type === "Identifier")
+        zodImportedBindings.set(binding, spec.imported.name);
+    }
+
     return {
-      ImportDeclaration(node: TSESTree.ImportDeclaration): void {
-        if (!isZodModule(node.source.value)) {
+      ImportDeclaration(node: ESTree.ImportDeclaration): void {
+        if (node.importKind === "type" || !isZodModule(node.source.value)) {
           return;
         }
-        for (const spec of node.specifiers) {
-          if (
-            spec.type === AST_NODE_TYPES.ImportNamespaceSpecifier ||
-            spec.type === AST_NODE_TYPES.ImportDefaultSpecifier ||
-            (spec.type === AST_NODE_TYPES.ImportSpecifier &&
-              (spec.imported.type === AST_NODE_TYPES.Identifier
-                ? spec.imported.name === "z"
-                : spec.imported.value === "z"))
-          ) {
-            const binding = resolvedBinding(spec.local);
-            if (binding !== null) zodNamespaceBindings.add(binding);
-          }
-          if (
-            spec.type === AST_NODE_TYPES.ImportSpecifier &&
-            spec.imported.type === AST_NODE_TYPES.Identifier
-          ) {
-            const binding = resolvedBinding(spec.local);
-            if (binding !== null) {
-              zodImportedBindings.set(binding, spec.imported.name);
-            }
-          }
-        }
+        for (const spec of node.specifiers) registerImport(spec);
       },
 
-      CallExpression(node: TSESTree.CallExpression): void {
+      CallExpression(node: ESTree.CallExpression): void {
         if (isZodMemberCall(node, "nativeEnum")) {
           context.report({
             node,
@@ -231,14 +191,15 @@ export default createRule<Options, MessageIds>({
           return;
         }
         const argument = node.arguments[0];
-        if (argument === undefined || argument.type === AST_NODE_TYPES.SpreadElement) {
+        if (argument === undefined || argument.type === "SpreadElement") {
           return;
         }
         const arg = unwrap(argument);
-        if (arg.type !== AST_NODE_TYPES.Identifier) return;
+        if (arg.type !== "Identifier") return;
         const isEnum =
-          resolvesToLocalEnum(arg, sourceCode.getScope(arg)) ||
-          (services !== null && resolvesToImportedEnum(arg, services));
+          resolveVariable(sourceCode, arg)?.defs.some(
+            (definition) => definition.node.type === "TSEnumDeclaration",
+          ) === true;
         if (isEnum) {
           context.report({
             node,

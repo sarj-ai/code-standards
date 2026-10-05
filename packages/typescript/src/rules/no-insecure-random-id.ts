@@ -4,7 +4,10 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-insecure-random-id.test.ts
  */
 
-import { ASTUtils, type TSESTree } from "@typescript-eslint/utils";
+import { sourceOrigin } from "./_source-origin.js";
+import type { ESTree } from "@oxlint/plugins";
+import { findVariable } from "./_scope.js";
+
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isTestFile } from "./_paths.js";
@@ -76,7 +79,7 @@ const PATH_OR_DOM_MARKER = /[\\/#]|\.[A-Za-z0-9]/;
 /**
  * Returns true if `node` is a `Math.random()` CallExpression.
  */
-function isMathRandomCall(node: TSESTree.Node): node is TSESTree.CallExpression {
+function isMathRandomCall(node: ESTree.Node): node is ESTree.CallExpression {
   if (node.type !== "CallExpression") {
     return false;
   }
@@ -94,10 +97,10 @@ function isMathRandomCall(node: TSESTree.Node): node is TSESTree.CallExpression 
 }
 
 /** Finds the nearest binding or property name without leaving its value. */
-function findEnclosingNames(node: TSESTree.Node): string[] {
+function findEnclosingNames(node: ESTree.Node): string[] {
   const names: string[] = [];
   let directBinding = true;
-  let current: TSESTree.Node = node;
+  let current: ESTree.Node = node;
   let parent = current.parent;
 
   while (parent) {
@@ -140,12 +143,12 @@ function findEnclosingNames(node: TSESTree.Node): string[] {
  * parts read as a filename/path/DOM id (contain a slash, backslash, `#`, or a
  * `.ext`-style fragment).
  */
-function isConcatenatedIntoPathOrDomId(node: TSESTree.Node): boolean {
+function isConcatenatedIntoPathOrDomId(node: ESTree.Node): boolean {
   const valueNode = climbValueChain(node);
 
-  let current: TSESTree.Node = valueNode;
+  let current: ESTree.Node = valueNode;
   let parent = current.parent;
-  let top: TSESTree.Node | undefined;
+  let top: ESTree.Node | undefined;
 
   while (parent) {
     if (
@@ -176,8 +179,8 @@ function isConcatenatedIntoPathOrDomId(node: TSESTree.Node): boolean {
   return parts.some((part) => PATH_OR_DOM_MARKER.test(part));
 }
 
-function climbValueChain(node: TSESTree.Node): TSESTree.Node {
-  let current: TSESTree.Node = node;
+function climbValueChain(node: ESTree.Node): ESTree.Node {
+  let current: ESTree.Node = node;
   let parent = current.parent;
 
   while (parent) {
@@ -206,7 +209,7 @@ function climbValueChain(node: TSESTree.Node): TSESTree.Node {
  * literal subtree into `out`.
  */
 function collectStaticStringParts(
-  node: TSESTree.Node,
+  node: ESTree.Node,
   out: string[],
 ): void {
   if (node.type === "Literal" && typeof node.value === "string") {
@@ -242,15 +245,15 @@ export default createRule<Options, MessageIds>({
   },
   defaultOptions: [],
   create(context) {
-    if (isTestFile(context.filename)) {
+    if (isTestFile(sourceOrigin(context).filename)) {
       return {};
     }
     return {
-      CallExpression(node: TSESTree.CallExpression): void {
+      CallExpression(node: ESTree.CallExpression): void {
         if (!isMathRandomCall(node)) {
           return;
         }
-        if ((ASTUtils.findVariable(context.sourceCode.getScope(node), "Math")?.defs.length ?? 0) > 0) return;
+        if ((findVariable(context.sourceCode.getScope(node), "Math")?.defs.length ?? 0) > 0) return;
 
         const names = findEnclosingNames(node);
 
@@ -277,19 +280,19 @@ export default createRule<Options, MessageIds>({
   },
 });
 
-function appendPropertyName(property: TSESTree.Property | TSESTree.PropertyDefinition, names: string[]): void {
+function appendPropertyName(property: ESTree.ObjectProperty | ESTree.BindingProperty | ESTree.AssignmentTargetProperty | ESTree.PropertyDefinition, names: string[]): void {
   const key = property.key;
   if (!property.computed && key.type === "Identifier") names.push(key.name);
   if (key.type === "Literal" && typeof key.value === "string") names.push(key.value);
 }
 
-function appendAssignedName(assignment: TSESTree.AssignmentExpression, directBinding: boolean, names: string[]): void {
+function appendAssignedName(assignment: ESTree.AssignmentExpression, directBinding: boolean, names: string[]): void {
   if (directBinding && assignment.left.type === "Identifier") names.push(assignment.left.name);
   if (directBinding && assignment.left.type === "MemberExpression" && !assignment.left.computed && assignment.left.property.type === "Identifier") {
     names.push(assignment.left.property.name);
   }
 }
 
-function appendDirectBindingName(id: TSESTree.Node | null, directBinding: boolean, names: string[]): void {
+function appendDirectBindingName(id: ESTree.Node | null, directBinding: boolean, names: string[]): void {
   if (directBinding && id?.type === "Identifier") names.push(id.name);
 }

@@ -38,7 +38,7 @@ class RuleOrigin(StrEnum):
 
 class RuleEngine(StrEnum):
     CHECKOV = "checkov"
-    ESLINT = "eslint"
+    OXLINT = "oxlint"
     IAC = "iac"
     PYTHON = "python"
     SQL = "sql"
@@ -79,7 +79,7 @@ class RuleSelector:
 
     @property
     def native_rule_id(self) -> str:
-        if self.engine is RuleEngine.ESLINT:
+        if self.engine is RuleEngine.OXLINT:
             return f"@sarj/{self.rule_id}"
         return str(self.rule_id)
 

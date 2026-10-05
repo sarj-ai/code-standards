@@ -4,8 +4,9 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-string-concat-in-loop.test.ts
  */
 
-import { type TSESTree } from "@typescript-eslint/utils";
-import type { Scope } from "@typescript-eslint/utils/ts-eslint";
+import { sourceOrigin } from "./_source-origin.js";
+import type { ESTree, Scope, Variable } from "@oxlint/plugins";
+
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile } from "./_paths.js";
@@ -56,10 +57,10 @@ const LOOP_NODE_TYPES: ReadonlySet<string> = new Set([
 
 /** Resolves an identifier through its enclosing scopes. */
 function findVariable(
-  scope: Scope.Scope,
+  scope: Scope,
   name: string,
-): Scope.Variable | undefined {
-  let current: Scope.Scope | null = scope;
+): Variable | undefined {
+  let current: Scope | null = scope;
   while (current !== null) {
     const variable = current.variables.find((v) => v.name === name);
     if (variable !== undefined) {
@@ -71,7 +72,7 @@ function findVariable(
 }
 
 /** Requires exactly one variable declaration with a string-literal initializer. */
-function isStringInitializedVariable(variable: Scope.Variable): boolean {
+function isStringInitializedVariable(variable: Variable): boolean {
   if (variable.defs.length !== 1) {
     return false;
   }
@@ -95,8 +96,8 @@ function isStringInitializedVariable(variable: Scope.Variable): boolean {
 
 /** A tagged-template parameter is statically a string at every numeric index. */
 function isTemplateStringsArrayElement(
-  node: TSESTree.Expression | null,
-  scope: Scope.Scope,
+  node: ESTree.Expression | null,
+  scope: Scope,
 ): boolean {
   if (
     node?.type !== "MemberExpression" ||
@@ -117,7 +118,7 @@ function isTemplateStringsArrayElement(
 }
 
 /** Checks whether an initializer is a string or template literal. */
-function isStringLiteralInit(node: TSESTree.Expression | null): boolean {
+function isStringLiteralInit(node: ESTree.Expression | null): boolean {
   if (node === null) {
     return false;
   }
@@ -132,7 +133,7 @@ function isStringLiteralInit(node: TSESTree.Expression | null): boolean {
 
 /** Recognizes longhand accumulation such as `s = s + x`. */
 function isConcatOntoTarget(
-  rhs: TSESTree.Expression,
+  rhs: ESTree.Expression,
   target: string,
 ): boolean {
   if (rhs.type === "TemplateLiteral") {
@@ -149,7 +150,7 @@ function isConcatOntoTarget(
 
 /** Finds a target identifier in a chained `+` expression. */
 function isConcatOperand(
-  node: TSESTree.Expression | TSESTree.PrivateIdentifier,
+  node: ESTree.Expression | ESTree.PrivateIdentifier,
   target: string,
 ): boolean {
   if (node.type === "Identifier") {
@@ -165,8 +166,8 @@ function isConcatOperand(
 
 /** Checks whether the loop creates a fresh accumulator on every iteration. */
 function isDeclaredInsideLoop(
-  variable: Scope.Variable,
-  repetition: TSESTree.Node,
+  variable: Variable,
+  repetition: ESTree.Node,
 ): boolean {
   const def = variable.defs[0];
   if (def === undefined) {
@@ -176,27 +177,27 @@ function isDeclaredInsideLoop(
     ? repetition.arguments[0]
     : (
         repetition as
-          | TSESTree.ForStatement
-          | TSESTree.ForOfStatement
-          | TSESTree.ForInStatement
-          | TSESTree.WhileStatement
-          | TSESTree.DoWhileStatement
+          | ESTree.ForStatement
+          | ESTree.ForOfStatement
+          | ESTree.ForInStatement
+          | ESTree.WhileStatement
+          | ESTree.DoWhileStatement
       ).body;
-  if (body === undefined || body.type === "SpreadElement") return false;
+  if (body == null || body.type === "SpreadElement") return false;
   const [declStart, declEnd] = def.node.range;
   const [bodyStart, bodyEnd] = body.range;
   return declStart >= bodyStart && declEnd <= bodyEnd;
 }
 
 /** Finds the nearest loop whose body contains the assignment. */
-function enclosingLoop(node: TSESTree.Node): TSESTree.Node | null {
-  let child: TSESTree.Node = node;
+function enclosingLoop(node: ESTree.Node): ESTree.Node | null {
+  let child: ESTree.Node = node;
   let parent = node.parent;
   while (parent !== undefined && parent !== null) {
     if (
       (parent.type === "ArrowFunctionExpression" ||
         parent.type === "FunctionExpression") &&
-      parent.parent.type === "CallExpression" &&
+      parent.parent?.type === "CallExpression" &&
       parent.parent.arguments[0] === parent &&
       parent.parent.callee.type === "MemberExpression" &&
       !parent.parent.callee.computed &&
@@ -208,11 +209,11 @@ function enclosingLoop(node: TSESTree.Node): TSESTree.Node | null {
     if (parent.type === "ArrowFunctionExpression" || parent.type === "FunctionExpression" || parent.type === "FunctionDeclaration") return null;
     if (LOOP_NODE_TYPES.has(parent.type)) {
       const loop = parent as
-        | TSESTree.ForStatement
-        | TSESTree.ForOfStatement
-        | TSESTree.ForInStatement
-        | TSESTree.WhileStatement
-        | TSESTree.DoWhileStatement;
+        | ESTree.ForStatement
+        | ESTree.ForOfStatement
+        | ESTree.ForInStatement
+        | ESTree.WhileStatement
+        | ESTree.DoWhileStatement;
       if (loop.body === child) {
         return loop;
       }
@@ -223,15 +224,15 @@ function enclosingLoop(node: TSESTree.Node): TSESTree.Node | null {
   return null;
 }
 
-function immediatelyExitsLoop(node: TSESTree.AssignmentExpression, loop: TSESTree.Node): boolean {
-  if (!LOOP_NODE_TYPES.has(loop.type) || node.parent.type !== "ExpressionStatement") return false;
+function immediatelyExitsLoop(node: ESTree.AssignmentExpression, loop: ESTree.Node): boolean {
+  if (!LOOP_NODE_TYPES.has(loop.type) || node.parent?.type !== "ExpressionStatement") return false;
   const statement = node.parent;
   const block = statement.parent;
   if (block.type !== "BlockStatement") return false;
   const next = block.body[block.body.indexOf(statement) + 1];
   if (next?.type !== "BreakStatement" && next?.type !== "ReturnStatement" && next?.type !== "ThrowStatement") return false;
   if (next.type === "BreakStatement" && next.label !== null) return false;
-  for (let current: TSESTree.Node | undefined = block; current !== undefined && current !== loop; current = current.parent) {
+  for (let current: ESTree.Node | null | undefined = block; current !== undefined && current !== loop; current = current.parent) {
     if (current.type === "TryStatement" ||
       (next.type === "BreakStatement" && current.type === "SwitchStatement")) return false;
   }
@@ -239,7 +240,7 @@ function immediatelyExitsLoop(node: TSESTree.AssignmentExpression, loop: TSESTre
 }
 
 /** A small literal loop cannot exhibit unbounded quadratic growth. */
-function isSmallStaticForLoop(node: TSESTree.Node): boolean {
+function isSmallStaticForLoop(node: ESTree.Node): boolean {
   if (
     node.type !== "ForStatement" ||
     node.init?.type !== "VariableDeclaration" ||
@@ -275,7 +276,7 @@ function isSmallStaticForLoop(node: TSESTree.Node): boolean {
 }
 
 /** Recognizes an exact Array.reduce-style string accumulator. */
-function isStringSeededReduce(node: TSESTree.CallExpression): boolean {
+function isStringSeededReduce(node: ESTree.CallExpression): boolean {
   if (
     node.callee.type !== "MemberExpression" ||
     node.callee.computed ||
@@ -304,6 +305,7 @@ function isStringSeededReduce(node: TSESTree.CallExpression): boolean {
     return false;
   }
   const accumulator = callback.params[0].name;
+  if (callback.body === null) return false;
   if (callback.body.type !== "BlockStatement") {
     return isConcatOntoTarget(callback.body, accumulator);
   }
@@ -332,20 +334,20 @@ export default createRule<Options, MessageIds>({
   },
   defaultOptions: [],
   create(context) {
-    if (isGeneratedFile(context.filename, context.sourceCode.text)) {
+    if (isGeneratedFile(sourceOrigin(context).filename, sourceOrigin(context).text)) {
       return {};
     }
 
     // Report each accumulator once per loop.
-    const reported = new WeakMap<TSESTree.Node, Set<string>>();
+    const reported = new WeakMap<ESTree.Node, Set<string>>();
 
     return {
-      CallExpression(node: TSESTree.CallExpression): void {
+      CallExpression(node: ESTree.CallExpression): void {
         if (isStringSeededReduce(node)) {
           context.report({ node, messageId: "noStringReduce" });
         }
       },
-      AssignmentExpression(node: TSESTree.AssignmentExpression): void {
+      AssignmentExpression(node: ESTree.AssignmentExpression): void {
         // The LHS must be a plain variable reference.
         if (node.left.type !== "Identifier") {
           return;

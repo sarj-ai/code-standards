@@ -1,0 +1,82 @@
+[
+  {
+    "name": "zod-fallback",
+    "source": "import {z} from \"zod\";export const schema=z.object({email:z.string().catch(\"\"),name:z.string().optional().catch(undefined)});",
+    "expected": 0
+  },
+  {
+    "name": "zod-coerce-fallback",
+    "source": "import {z} from \"zod\";export const schema=z.object({count:z.coerce.number().catch(0)});",
+    "expected": 0
+  },
+  {
+    "name": "schema-binding-fallback",
+    "source": "const NumberSchema=z.number();export const schema=z.object({count:NumberSchema.catch(0)});",
+    "expected": 0
+  },
+  {
+    "name": "promise-catch",
+    "source": "Promise.resolve(1).catch(()=>0);",
+    "expected": 1
+  },
+  {
+    "name": "promise-then",
+    "source": "Promise.resolve(1).then(value=>value);",
+    "expected": 1
+  },
+  {
+    "name": "async-iife",
+    "source": "(async()=>{await run()})();",
+    "expected": 1
+  },
+  {
+    "name": "await-promise",
+    "source": "export const data=await Promise.resolve(1);",
+    "expected": 0
+  },
+  {
+    "name": "async-parse-catch",
+    "source": "z.string().parseAsync(raw).catch(()=>0);",
+    "expected": 1
+  },
+  {
+    "name": "sync-parse-catch",
+    "source": "z.string().parse(raw).catch(()=>0);",
+    "expected": 1
+  },
+  {
+    "name": "ordinary-catch",
+    "source": "const receiver={catch(){}};receiver.catch(()=>0);",
+    "expected": 1
+  },
+  {
+    "name": "assigned-promise-retained",
+    "source": "const result=Promise.resolve(1).catch(()=>0);export {result};",
+    "expected": 0
+  },
+  {
+    "name": "nested-promise-retained",
+    "source": "function run(){Promise.resolve(1).catch(()=>0)}",
+    "expected": 0
+  },
+  {
+    "name": "custom-z-retained",
+    "source": "const z={string:()=>({catch:()=>0})};z.string().catch(0);",
+    "expected": 0
+  },
+  {
+    "name": "schema-async-promise",
+    "source": "NumberSchema.parseAsync(input).catch(()=>0);",
+    "expected": 1
+  },
+  {
+    "name": "async-local-call",
+    "source": "const start=async()=>{await run()};start();",
+    "expected": 1
+  },
+  {
+    "name": "corrected-async-local-call",
+    "source": "const start=async()=>{await run()};await start();",
+    "expected": 0
+  }
+]

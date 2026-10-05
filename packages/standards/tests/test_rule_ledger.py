@@ -42,7 +42,7 @@ def _code(rule: object) -> str:
 def _is_live(shipped: ledger.Ledger, kind: str, identifier: str) -> bool:
     if kind == ledger.CODE:
         return any(identifier in codes for codes in shipped.codes.values())
-    if kind == ledger.ESLINT:
+    if kind == ledger.OXLINT:
         return identifier.removeprefix("@sarj/") in shipped.rules.get(kind, ())
     return identifier in shipped.rules.get(kind, ())
 
@@ -80,7 +80,7 @@ def test_no_retired_identifier_is_live_again(shipped: ledger.Ledger) -> None:
 
 def test_every_rename_points_somewhere_live(shipped: ledger.Ledger) -> None:
     renames = [entry for entry in shipped.retired if entry.status is ledger.Status.RENAMED]
-    assert renames, "four ESLint rules have been renamed; a ledger with no rename has lost them"
+    assert renames, "four Oxlint rules have been renamed; a ledger with no rename has lost them"
     broken = [
         entry.id
         for entry in renames
@@ -186,8 +186,8 @@ def test_doctor_ignores_retired_selector_fixtures_in_baseline_test_module(tmp_pa
     assert not list(check_retired_rules(tmp_path))
 
 
-def test_doctor_names_a_removed_eslint_rule_in_a_config(tmp_path: Path) -> None:
-    (tmp_path / "eslint.config.mjs").write_text(
+def test_doctor_names_a_removed_oxlint_rule_in_a_config(tmp_path: Path) -> None:
+    (tmp_path / "oxlint.config.mjs").write_text(
         'export default [{ rules: { "@sarj/prefer-setup-file-mocks": "error" } }];\n',
         encoding="utf-8",
     )
@@ -199,21 +199,21 @@ def test_doctor_names_a_removed_eslint_rule_in_a_config(tmp_path: Path) -> None:
 
 def test_doctor_removes_loose_type_guard_references_without_replacement(tmp_path: Path) -> None:
     rule = "@sarj/ban-loose-type-guards-in-tests"
-    (tmp_path / "eslint.config.mjs").write_text(
+    (tmp_path / "oxlint.config.mjs").write_text(
         f'export default [{{ rules: {{ "{rule}": "error" }} }}];\n', encoding="utf-8"
     )
     (tmp_path / "widget.test.ts").write_text(
-        f"// eslint-disable-next-line {rule}\nexpect(typeof value).toBe('string');\n",
+        f"// oxlint-disable-next-line {rule}\nexpect(typeof value).toBe('string');\n",
         encoding="utf-8",
     )
-    (tmp_path / "eslint-suppressions.json").write_text(
+    (tmp_path / "oxlint-suppressions.json").write_text(
         f'{{"widget.test.ts": {{"{rule}": {{"count": 1}}}}}}\n', encoding="utf-8"
     )
 
     findings = sorted(check_retired_rules(tmp_path), key=lambda finding: finding.where)
     assert [finding.where for finding in findings] == [
-        f"eslint-suppressions.json: {rule} x1",
-        f"eslint.config.mjs: {rule} x1",
+        f"oxlint-suppressions.json: {rule} x1",
+        f"oxlint.config.mjs: {rule} x1",
         f"widget.test.ts: {rule} x1",
     ]
     assert all("no longer exists" in finding.detail for finding in findings)
@@ -230,7 +230,7 @@ _ALIASES_DELETED_IN_9_0_0 = {
 
 @pytest.mark.parametrize(("old", "new"), sorted(_ALIASES_DELETED_IN_9_0_0.items()))
 def test_doctor_points_a_deleted_alias_at_its_replacement(tmp_path: Path, old: str, new: str) -> None:
-    (tmp_path / "eslint.config.mjs").write_text(
+    (tmp_path / "oxlint.config.mjs").write_text(
         f'export default [{{ rules: {{ "{old}": "error" }} }}];\n', encoding="utf-8"
     )
     findings = list(check_retired_rules(tmp_path))
@@ -247,23 +247,23 @@ def test_doctor_finds_a_deleted_alias_in_source_and_suppressions(tmp_path: Path)
     old = "@sarj/jsdoc-restates-signature"
     new = "@sarj/no-restated-jsdoc"
     (tmp_path / "widget.ts").write_text(
-        f"// eslint-disable-next-line {old}\nexport const widget = 1;\n",
+        f"// oxlint-disable-next-line {old}\nexport const widget = 1;\n",
         encoding="utf-8",
     )
-    (tmp_path / "eslint-suppressions.json").write_text(
+    (tmp_path / "oxlint-suppressions.json").write_text(
         f'{{"widget.ts": {{"{old}": {{"count": 1}}}}}}\n',
         encoding="utf-8",
     )
 
     findings = sorted(check_retired_rules(tmp_path), key=lambda finding: finding.where)
     assert [finding.where for finding in findings] == [
-        f"eslint-suppressions.json: {old} x1",
+        f"oxlint-suppressions.json: {old} x1",
         f"widget.ts: {old} x1",
     ]
     assert all(f"renamed to {new}" in finding.detail for finding in findings)
 
 
-def test_doctor_migrates_the_renamed_python_rule_without_confusing_its_eslint_twin(tmp_path: Path) -> None:
+def test_doctor_migrates_the_renamed_python_rule_without_confusing_its_oxlint_twin(tmp_path: Path) -> None:
     (tmp_path / ".pre-commit-config.yaml").write_text(
         "repos:\n  - hooks:\n      - id: sarj-trailing-value-narration\n", encoding="utf-8"
     )
@@ -276,7 +276,7 @@ def test_doctor_migrates_the_renamed_python_rule_without_confusing_its_eslint_tw
 
 def test_doctor_names_a_stale_disable_directive(tmp_path: Path) -> None:
     (tmp_path / "widget.tsx").write_text(
-        "// eslint-disable-next-line @sarj/no-implicit-attribute-access\nexport const a = 1;\n",
+        "// oxlint-disable-next-line @sarj/no-implicit-attribute-access\nexport const a = 1;\n",
         encoding="utf-8",
     )
     findings = list(check_retired_rules(tmp_path))
@@ -376,7 +376,7 @@ def test_doctor_prunes_generated_playwright_mcp_artifacts(tmp_path: Path) -> Non
 
 
 def test_doctor_counts_repeats_in_one_file(tmp_path: Path) -> None:
-    (tmp_path / "eslint-suppressions.json").write_text(
+    (tmp_path / "oxlint-suppressions.json").write_text(
         '{"a": {"@sarj/prefer-setup-file-mocks": 1}, "b": {"@sarj/prefer-setup-file-mocks": 2}}\n',
         encoding="utf-8",
     )

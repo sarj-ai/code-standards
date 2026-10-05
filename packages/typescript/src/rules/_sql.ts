@@ -3,7 +3,8 @@
  *
  */
 
-import { AST_NODE_TYPES, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
+import type { ESTree, Visitor } from "@oxlint/plugins";
+
 
 import { forEachOwnAstChild } from "./_for-each-own-ast-child.js";
 
@@ -113,15 +114,15 @@ function maskSqlRange(text: string, out: string[], start: number, end: number): 
 const SUBSTITUTION_MARKER = "?";
 
 /** Reconstruct static SQL literals, templates, concatenations, and fragment arrays. */
-export function sqlTextOf(node: TSESTree.Node): string | null {
+export function sqlTextOf(node: ESTree.Node): string | null {
   switch (node.type) {
-    case AST_NODE_TYPES.Literal:
+    case "Literal":
       return typeof node.value === "string" ? node.value : null;
-    case AST_NODE_TYPES.TemplateLiteral:
+    case "TemplateLiteral":
       return node.quasis.map((q) => q.value.cooked ?? q.value.raw).join(SUBSTITUTION_MARKER);
-    case AST_NODE_TYPES.TaggedTemplateExpression:
+    case "TaggedTemplateExpression":
       return sqlTextOf(node.quasi);
-    case AST_NODE_TYPES.BinaryExpression: {
+    case "BinaryExpression": {
       if (node.operator !== "+") {
         return null;
       }
@@ -129,7 +130,7 @@ export function sqlTextOf(node: TSESTree.Node): string | null {
       const right = sqlTextOf(node.right);
       return left !== null && right !== null ? left + right : null;
     }
-    case AST_NODE_TYPES.ArrayExpression: {
+    case "ArrayExpression": {
       const parts: string[] = [];
       for (const element of node.elements) {
         if (element === null) {
@@ -149,31 +150,31 @@ export function sqlTextOf(node: TSESTree.Node): string | null {
 }
 
 /** Return whether an array's fragments are consumed together by `.join(...)`. */
-function isJoinedFragmentArray(node: TSESTree.ArrayExpression): boolean {
+function isJoinedFragmentArray(node: ESTree.ArrayExpression): boolean {
   const parent = node.parent;
   return (
-    parent?.type === AST_NODE_TYPES.MemberExpression &&
+    parent?.type === "MemberExpression" &&
     parent.object === node &&
     !parent.computed &&
-    parent.property.type === AST_NODE_TYPES.Identifier &&
+    parent.property.type === "Identifier" &&
     parent.property.name === "join" &&
-    parent.parent?.type === AST_NODE_TYPES.CallExpression
+    parent.parent?.type === "CallExpression"
   );
 }
 
 /** Every string-bearing descendant that a composite node has already absorbed. */
-function markConsumed(node: TSESTree.Node, consumed: WeakSet<TSESTree.Node>): void {
+function markConsumed(node: ESTree.Node, consumed: WeakSet<ESTree.Node>): void {
   consumed.add(node);
   forEachOwnAstChild(node, child => markConsumed(child, consumed));
 }
 
 /** Hand each whole, statically resolvable SQL statement to `handler` once. */
 export function createSqlListener(
-  handler: (sql: string, node: TSESTree.Node) => void,
-): TSESLint.RuleListener {
-  const consumed = new WeakSet<TSESTree.Node>();
+  handler: (sql: string, node: ESTree.Node) => void,
+): Visitor {
+  const consumed = new WeakSet<ESTree.Node>();
 
-  const visit = (node: TSESTree.Node): void => {
+  const visit = (node: ESTree.Node): void => {
     if (consumed.has(node)) {
       return;
     }
@@ -186,18 +187,18 @@ export function createSqlListener(
   };
 
   return {
-    BinaryExpression: (node: TSESTree.BinaryExpression): void => {
+    BinaryExpression: (node: ESTree.BinaryExpression): void => {
       visit(node);
     },
-    ArrayExpression: (node: TSESTree.ArrayExpression): void => {
+    ArrayExpression: (node: ESTree.ArrayExpression): void => {
       if (isJoinedFragmentArray(node)) {
         visit(node);
       }
     },
-    TemplateLiteral: (node: TSESTree.TemplateLiteral): void => {
+    TemplateLiteral: (node: ESTree.TemplateLiteral): void => {
       visit(node);
     },
-    Literal: (node: TSESTree.Literal): void => {
+    Literal: (node: (ESTree.BooleanLiteral | ESTree.NullLiteral | ESTree.NumericLiteral | ESTree.StringLiteral | ESTree.BigIntLiteral | ESTree.RegExpLiteral)): void => {
       visit(node);
     },
   };

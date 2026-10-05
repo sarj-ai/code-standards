@@ -1,0 +1,288 @@
+[
+  {
+    "rule": "await-async-events",
+    "valid": "import {screen,render,waitFor,fireEvent,waitForElementToBeRemoved,act} from \"@testing-library/react\";import userEvent from \"@testing-library/user-event\";await userEvent.click(button);",
+    "invalid": "import {screen,render,waitFor,fireEvent,waitForElementToBeRemoved,act} from \"@testing-library/react\";import userEvent from \"@testing-library/user-event\";userEvent.click(button);",
+    "options": [
+      {
+        "eventModule": "userEvent"
+      }
+    ]
+  },
+  {
+    "rule": "await-async-queries",
+    "valid": "import {screen,render,waitFor,fireEvent,waitForElementToBeRemoved,act} from \"@testing-library/react\";import userEvent from \"@testing-library/user-event\";await screen.findByText(\"ok\");",
+    "invalid": "import {screen,render,waitFor,fireEvent,waitForElementToBeRemoved,act} from \"@testing-library/react\";import userEvent from \"@testing-library/user-event\";screen.findByText(\"ok\");",
+    "fix": true
+  },
+  {
+    "rule": "await-async-utils",
+    "valid": "import {screen,render,waitFor,fireEvent,waitForElementToBeRemoved,act} from \"@testing-library/react\";import userEvent from \"@testing-library/user-event\";await waitFor(()=>expect(value).toBe(1));",
+    "invalid": "import {screen,render,waitFor,fireEvent,waitForElementToBeRemoved,act} from \"@testing-library/react\";import userEvent from \"@testing-library/user-event\";waitFor(()=>expect(value).toBe(1));",
+    "fix": true
+  },
+  {
+    "rule": "no-await-sync-events",
+    "valid": "import {screen,render,waitFor,fireEvent,waitForElementToBeRemoved,act} from \"@testing-library/react\";import userEvent from \"@testing-library/user-event\";fireEvent.click(button);",
+    "invalid": "import {screen,render,waitFor,fireEvent,waitForElementToBeRemoved,act} from \"@testing-library/react\";import userEvent from \"@testing-library/user-event\";await fireEvent.click(button);",
+    "options": [
+      {
+        "eventModules": ["fire-event"]
+      }
+    ]
+  },
+  {
+    "rule": "no-await-sync-queries",
+    "valid": "import {screen,render,waitFor,fireEvent,waitForElementToBeRemoved,act} from \"@testing-library/react\";import userEvent from \"@testing-library/user-event\";screen.getByText(\"ok\");",
+    "invalid": "import {screen,render,waitFor,fireEvent,waitForElementToBeRemoved,act} from \"@testing-library/react\";import userEvent from \"@testing-library/user-event\";await screen.getByText(\"ok\");",
+    "fix": true
+  },
+  {
+    "rule": "no-container",
+    "valid": "import {screen,render,waitFor,fireEvent,waitForElementToBeRemoved,act} from \"@testing-library/react\";import userEvent from \"@testing-library/user-event\";render(<div/>);screen.getByRole(\"button\");",
+    "invalid": "import {screen,render,waitFor,fireEvent,waitForElementToBeRemoved,act} from \"@testing-library/react\";import userEvent from \"@testing-library/user-event\";const {container}=render(<div/>);container.querySelector(\"button\");"
+  },
+  {
+    "rule": "no-debugging-utils",
+    "valid": "import {screen,render,waitFor,fireEvent,waitForElementToBeRemoved,act} from \"@testing-library/react\";import userEvent from \"@testing-library/user-event\";screen.getByText(\"ok\");",
+    "invalid": "import {screen,render,waitFor,fireEvent,waitForElementToBeRemoved,act} from \"@testing-library/react\";import userEvent from \"@testing-library/user-event\";screen.debug();"
+  },
+  {
+    "rule": "no-dom-import",
+    "valid": "import {screen,render,waitFor,fireEvent,waitForElementToBeRemoved,act} from \"@testing-library/react\";import userEvent from \"@testing-library/user-event\";import {render as display} from \"@testing-library/react\";",
+    "invalid": "import {screen,render,waitFor,fireEvent,waitForElementToBeRemoved,act} from \"@testing-library/react\";import userEvent from \"@testing-library/user-event\";import {render as display} from \"@testing-library/dom\";",
+    "options": ["react"],
+    "fix": true
+  },
+  {
+    "rule": "no-global-regexp-flag-in-query",
+    "valid": "import {screen,render,waitFor,fireEvent,waitForElementToBeRemoved,act} from \"@testing-library/react\";import userEvent from \"@testing-library/user-event\";screen.getByText(/ok/i);",
+    "invalid": "import {screen,render,waitFor,fireEvent,waitForElementToBeRemoved,act} from \"@testing-library/react\";import userEvent from \"@testing-library/user-event\";screen.getByText(/ok/g);",
+    "fix": true
+  },
+  {
+    "rule": "no-manual-cleanup",
+    "valid": "import {screen,render,waitFor,fireEvent,waitForElementToBeRemoved,act} from \"@testing-library/react\";import userEvent from \"@testing-library/user-event\";render(<div/>);",
+    "invalid": "import {screen,render,waitFor,fireEvent,waitForElementToBeRemoved,act} from \"@testing-library/react\";import userEvent from \"@testing-library/user-event\";import {cleanup} from \"@testing-library/react\";cleanup();"
+  },
+  {
+    "rule": "no-node-access",
+    "valid": "import {screen,render,waitFor,fireEvent,waitForElementToBeRemoved,act} from \"@testing-library/react\";import userEvent from \"@testing-library/user-event\";screen.getByRole(\"button\");",
+    "invalid": "import {screen,render,waitFor,fireEvent,waitForElementToBeRemoved,act} from \"@testing-library/react\";import userEvent from \"@testing-library/user-event\";const button=screen.getByText(\"ok\").closest(\"button\");"
+  },
+  {
+    "rule": "no-promise-in-fire-event",
+    "valid": "import {screen,render,waitFor,fireEvent,waitForElementToBeRemoved,act} from \"@testing-library/react\";import userEvent from \"@testing-library/user-event\";fireEvent.click(await screen.findByText(\"ok\"));",
+    "invalid": "import {screen,render,waitFor,fireEvent,waitForElementToBeRemoved,act} from \"@testing-library/react\";import userEvent from \"@testing-library/user-event\";fireEvent.click(screen.findByText(\"ok\"));"
+  },
+  {
+    "rule": "no-render-in-lifecycle",
+    "valid": "import {screen,render,waitFor,fireEvent,waitForElementToBeRemoved,act} from \"@testing-library/react\";import userEvent from \"@testing-library/user-event\";it(\"renders\",()=>{render(<div/>);});",
+    "invalid": "import {screen,render,waitFor,fireEvent,waitForElementToBeRemoved,act} from \"@testing-library/react\";import userEvent from \"@testing-library/user-event\";beforeEach(()=>{render(<div/>);});"
+  },
+  {
+    "rule": "no-unnecessary-act",
+    "valid": "import {screen,render,waitFor,fireEvent,waitForElementToBeRemoved,act} from \"@testing-library/react\";import userEvent from \"@testing-library/user-event\";render(<div/>);",
+    "invalid": "import {screen,render,waitFor,fireEvent,waitForElementToBeRemoved,act} from \"@testing-library/react\";import userEvent from \"@testing-library/user-event\";act(()=>{render(<div/>);});"
+  },
+  {
+    "rule": "no-wait-for-multiple-assertions",
+    "valid": "import {screen,render,waitFor,fireEvent,waitForElementToBeRemoved,act} from \"@testing-library/react\";import userEvent from \"@testing-library/user-event\";await waitFor(()=>{expect(value).toBe(1);});expect(value).toBeTruthy();",
+    "invalid": "import {screen,render,waitFor,fireEvent,waitForElementToBeRemoved,act} from \"@testing-library/react\";import userEvent from \"@testing-library/user-event\";await waitFor(()=>{expect(value).toBe(1);expect(value).toBeTruthy();});",
+    "fix": true
+  },
+  {
+    "rule": "no-wait-for-side-effects",
+    "valid": "import {screen,render,waitFor,fireEvent,waitForElementToBeRemoved,act} from \"@testing-library/react\";import userEvent from \"@testing-library/user-event\";fireEvent.click(button);await waitFor(()=>expect(value).toBe(1));",
+    "invalid": "import {screen,render,waitFor,fireEvent,waitForElementToBeRemoved,act} from \"@testing-library/react\";import userEvent from \"@testing-library/user-event\";await waitFor(()=>{fireEvent.click(button);expect(value).toBe(1);});",
+    "fix": true
+  },
+  {
+    "rule": "no-wait-for-snapshot",
+    "valid": "import {screen,render,waitFor,fireEvent,waitForElementToBeRemoved,act} from \"@testing-library/react\";import userEvent from \"@testing-library/user-event\";expect(screen.getByText(\"ok\")).toMatchSnapshot();",
+    "invalid": "import {screen,render,waitFor,fireEvent,waitForElementToBeRemoved,act} from \"@testing-library/react\";import userEvent from \"@testing-library/user-event\";await waitFor(()=>expect(screen.getByText(\"ok\")).toMatchSnapshot());"
+  },
+  {
+    "rule": "prefer-find-by",
+    "valid": "import {screen,render,waitFor,fireEvent,waitForElementToBeRemoved,act} from \"@testing-library/react\";import userEvent from \"@testing-library/user-event\";await screen.findByText(\"ok\");",
+    "invalid": "import {screen,render,waitFor,fireEvent,waitForElementToBeRemoved,act} from \"@testing-library/react\";import userEvent from \"@testing-library/user-event\";await waitFor(()=>screen.getByText(\"ok\"));"
+  },
+  {
+    "rule": "prefer-presence-queries",
+    "valid": "import {screen,render,waitFor,fireEvent,waitForElementToBeRemoved,act} from \"@testing-library/react\";import userEvent from \"@testing-library/user-event\";expect(screen.getByText(\"ok\")).toBeInTheDocument();",
+    "invalid": "import {screen,render,waitFor,fireEvent,waitForElementToBeRemoved,act} from \"@testing-library/react\";import userEvent from \"@testing-library/user-event\";expect(screen.queryByText(\"ok\")).toBeInTheDocument();",
+    "fix": true
+  },
+  {
+    "rule": "prefer-query-by-disappearance",
+    "valid": "import {screen,render,waitFor,fireEvent,waitForElementToBeRemoved,act} from \"@testing-library/react\";import userEvent from \"@testing-library/user-event\";await waitForElementToBeRemoved(()=>screen.queryByText(\"ok\"));",
+    "invalid": "import {screen,render,waitFor,fireEvent,waitForElementToBeRemoved,act} from \"@testing-library/react\";import userEvent from \"@testing-library/user-event\";await waitForElementToBeRemoved(()=>screen.getByText(\"ok\"));"
+  },
+  {
+    "rule": "prefer-screen-queries",
+    "valid": "import {screen,render,waitFor,fireEvent,waitForElementToBeRemoved,act} from \"@testing-library/react\";import userEvent from \"@testing-library/user-event\";screen.getByText(\"ok\");",
+    "invalid": "import {screen,render,waitFor,fireEvent,waitForElementToBeRemoved,act} from \"@testing-library/react\";import userEvent from \"@testing-library/user-event\";const {getByText}=render(<div/>);getByText(\"ok\");"
+  },
+  {
+    "rule": "render-result-naming-convention",
+    "valid": "import {screen,render,waitFor,fireEvent,waitForElementToBeRemoved,act} from \"@testing-library/react\";import userEvent from \"@testing-library/user-event\";const view=render(<div/>);",
+    "invalid": "import {screen,render,waitFor,fireEvent,waitForElementToBeRemoved,act} from \"@testing-library/react\";import userEvent from \"@testing-library/user-event\";const badName=render(<div/>);"
+  },
+  {
+    "rule": "await-async-events",
+    "valid": "import {screen,render,waitFor,fireEvent,waitForElementToBeRemoved,act} from \"@testing-library/react\";import userEvent from \"@testing-library/user-event\";async function run(){await userEvent.click(button);}",
+    "invalid": "import {screen,render,waitFor,fireEvent,waitForElementToBeRemoved,act} from \"@testing-library/react\";import userEvent from \"@testing-library/user-event\";async function run(){userEvent.click(button);}",
+    "options": [
+      {
+        "eventModule": "userEvent"
+      }
+    ],
+    "fix": true
+  },
+  {
+    "rule": "prefer-find-by",
+    "valid": "import {screen,render,waitFor,fireEvent,waitForElementToBeRemoved,act} from \"@testing-library/react\";import userEvent from \"@testing-library/user-event\";expect(await screen.findByText(\"ok\")).toBeInTheDocument();",
+    "invalid": "import {screen,render,waitFor,fireEvent,waitForElementToBeRemoved,act} from \"@testing-library/react\";import userEvent from \"@testing-library/user-event\";await waitFor(()=>expect(screen.getByText(\"ok\")).toBeInTheDocument());",
+    "fix": true
+  },
+  {
+    "rule": "no-wait-for-multiple-assertions",
+    "valid": "import {screen,render,waitFor,fireEvent,waitForElementToBeRemoved,act} from \"@testing-library/react\";import userEvent from \"@testing-library/user-event\";await waitFor(()=>{\nexpect(value).toBe(1);\n});\nexpect(value).toBeTruthy();",
+    "invalid": "import {screen,render,waitFor,fireEvent,waitForElementToBeRemoved,act} from \"@testing-library/react\";import userEvent from \"@testing-library/user-event\";await waitFor(()=>{\nexpect(value).toBe(1);\nexpect(value).toBeTruthy();\n});",
+    "fix": true
+  },
+  {
+    "rule": "no-wait-for-side-effects",
+    "valid": "import {screen,render,waitFor,fireEvent,waitForElementToBeRemoved,act} from \"@testing-library/react\";import userEvent from \"@testing-library/user-event\";fireEvent.click(button);\nawait waitFor(()=>{\nexpect(value).toBe(1);\n});",
+    "invalid": "import {screen,render,waitFor,fireEvent,waitForElementToBeRemoved,act} from \"@testing-library/react\";import userEvent from \"@testing-library/user-event\";await waitFor(()=>{\nfireEvent.click(button);\nexpect(value).toBe(1);\n});",
+    "fix": true
+  },
+  {
+    "rule": "prefer-find-by",
+    "valid": "import {screen,render,waitFor,fireEvent,waitForElementToBeRemoved,act} from \"@testing-library/react\";import userEvent from \"@testing-library/user-event\";const button=await screen.findByText(\"ok\");expect(button).toBeInTheDocument();",
+    "invalid": "import {screen,render,waitFor,fireEvent,waitForElementToBeRemoved,act} from \"@testing-library/react\";import userEvent from \"@testing-library/user-event\";await waitFor(async()=>{const button=await screen.findByText(\"ok\");expect(button).toBeInTheDocument();});",
+    "fix": true
+  },
+  {
+    "rule": "no-await-sync-queries",
+    "valid": "import {screen,render,waitFor,fireEvent,waitForElementToBeRemoved,act} from \"@testing-library/react\";import userEvent from \"@testing-library/user-event\";async function run(screen){await screen.getByText(\"ok\");}",
+    "invalid": "import {screen,render,waitFor,fireEvent,waitForElementToBeRemoved,act} from \"@testing-library/react\";import userEvent from \"@testing-library/user-event\";async function run(){await screen.getByText(\"ok\");}",
+    "fix": true
+  },
+  {
+    "rule": "no-await-sync-queries",
+    "valid": "import {screen,render,waitFor,fireEvent,waitForElementToBeRemoved,act} from \"@testing-library/react\";import userEvent from \"@testing-library/user-event\";const local={getByText(){return 1;}};await local.getByText(\"ok\");",
+    "invalid": "import {screen,render,waitFor,fireEvent,waitForElementToBeRemoved,act} from \"@testing-library/react\";import userEvent from \"@testing-library/user-event\";await screen.queryByText(\"ok\");",
+    "fix": true
+  },
+  {
+    "rule": "no-wait-for-snapshot",
+    "valid": "import {screen,render,waitFor,fireEvent,waitForElementToBeRemoved,act} from \"@testing-library/react\";import userEvent from \"@testing-library/user-event\";function run(waitFor){waitFor(()=>expect(value).toMatchSnapshot());}",
+    "invalid": "import {screen,render,waitFor,fireEvent,waitForElementToBeRemoved,act} from \"@testing-library/react\";import userEvent from \"@testing-library/user-event\";waitFor(()=>expect(value).toMatchSnapshot());"
+  },
+  {
+    "rule": "await-async-queries",
+    "valid": "import {screen,render,waitFor,fireEvent,waitForElementToBeRemoved,act} from \"@testing-library/react\";import userEvent from \"@testing-library/user-event\";const {findByText}=render(<div/>);await findByText(\"ok\");",
+    "invalid": "import {screen,render,waitFor,fireEvent,waitForElementToBeRemoved,act} from \"@testing-library/react\";import userEvent from \"@testing-library/user-event\";const {findByText}=render(<div/>);findByText(\"ok\");",
+    "fix": true
+  },
+  {
+    "rule": "await-async-queries",
+    "valid": "import {screen,render,waitFor,fireEvent,waitForElementToBeRemoved,act} from \"@testing-library/react\";import userEvent from \"@testing-library/user-event\";const view=render(<div/>);await view.findByText(\"ok\");",
+    "invalid": "import {screen,render,waitFor,fireEvent,waitForElementToBeRemoved,act} from \"@testing-library/react\";import userEvent from \"@testing-library/user-event\";const view=render(<div/>);view.findByText(\"ok\");",
+    "fix": true
+  },
+  {
+    "rule": "no-await-sync-queries",
+    "valid": "import {screen,render,waitFor,fireEvent,waitForElementToBeRemoved,act} from \"@testing-library/react\";import userEvent from \"@testing-library/user-event\";import {within} from \"@testing-library/react\";within(node).getByText(\"ok\");",
+    "invalid": "import {screen,render,waitFor,fireEvent,waitForElementToBeRemoved,act} from \"@testing-library/react\";import userEvent from \"@testing-library/user-event\";import {within} from \"@testing-library/react\";await within(node).getByText(\"ok\");",
+    "fix": true
+  },
+  {
+    "rule": "await-async-queries",
+    "valid": "import {screen,render,waitFor,fireEvent,waitForElementToBeRemoved,act} from \"@testing-library/react\";import userEvent from \"@testing-library/user-event\";import {screen as view} from \"@/test/test-utils\";await view.findByText(\"ok\");",
+    "invalid": "import {screen,render,waitFor,fireEvent,waitForElementToBeRemoved,act} from \"@testing-library/react\";import userEvent from \"@testing-library/user-event\";import {screen as view} from \"@/test/test-utils\";view.findByText(\"ok\");",
+    "options": [
+      {
+        "utilsModule": "@/test/test-utils"
+      }
+    ]
+  },
+  {
+    "rule": "await-async-utils",
+    "valid": "import {screen,render,waitFor,fireEvent,waitForElementToBeRemoved,act} from \"@testing-library/react\";import userEvent from \"@testing-library/user-event\";import {waitFor as wait} from \"@/test/test-utils\";await wait(()=>expect(value).toBe(1));",
+    "invalid": "import {screen,render,waitFor,fireEvent,waitForElementToBeRemoved,act} from \"@testing-library/react\";import userEvent from \"@testing-library/user-event\";import {waitFor as wait} from \"@/test/test-utils\";wait(()=>expect(value).toBe(1));",
+    "options": [
+      {
+        "utilsModule": "@/test/test-utils"
+      }
+    ]
+  },
+  {
+    "rule": "await-async-events",
+    "valid": "import {screen,render,waitFor,fireEvent,waitForElementToBeRemoved,act} from \"@testing-library/react\";import userEvent from \"@testing-library/user-event\";import {userEvent as user} from \"@/test/test-utils\";await user.click(button);",
+    "invalid": "import {screen,render,waitFor,fireEvent,waitForElementToBeRemoved,act} from \"@testing-library/react\";import userEvent from \"@testing-library/user-event\";import {userEvent as user} from \"@/test/test-utils\";user.click(button);",
+    "options": [
+      {
+        "utilsModule": "@/test/test-utils",
+        "eventModule": "userEvent"
+      }
+    ]
+  },
+  {
+    "rule": "prefer-screen-queries",
+    "valid": "import {screen,render,waitFor,fireEvent,waitForElementToBeRemoved,act} from \"@testing-library/react\";import userEvent from \"@testing-library/user-event\";import {screen as view} from \"@/test/test-utils\";view.getByText(\"ok\");",
+    "invalid": "import {screen,render,waitFor,fireEvent,waitForElementToBeRemoved,act} from \"@testing-library/react\";import userEvent from \"@testing-library/user-event\";import {render as display} from \"@/test/test-utils\";const {getByText}=display(<div/>);getByText(\"ok\");",
+    "options": [
+      {
+        "utilsModule": "@/test/test-utils"
+      }
+    ]
+  },
+  {
+    "rule": "await-async-queries",
+    "valid": "import {screen,render,waitFor,fireEvent,waitForElementToBeRemoved,act} from \"@testing-library/react\";import userEvent from \"@testing-library/user-event\";import {screen as view} from \"@/test/test-utils\";view.findByText(\"ok\");",
+    "invalid": "import {screen,render,waitFor,fireEvent,waitForElementToBeRemoved,act} from \"@testing-library/react\";import userEvent from \"@testing-library/user-event\";screen.findByText(\"ok\");"
+  },
+  {
+    "rule": "await-async-utils",
+    "valid": "import {screen,render,waitFor,fireEvent,waitForElementToBeRemoved,act} from \"@testing-library/react\";import userEvent from \"@testing-library/user-event\";import {waitFor as wait} from \"@/test/test-utils\";wait(()=>expect(value).toBe(1));",
+    "invalid": "import {screen,render,waitFor,fireEvent,waitForElementToBeRemoved,act} from \"@testing-library/react\";import userEvent from \"@testing-library/user-event\";waitFor(()=>expect(value).toBe(1));"
+  },
+  {
+    "rule": "await-async-events",
+    "valid": "import {screen,render,waitFor,fireEvent,waitForElementToBeRemoved,act} from \"@testing-library/react\";import userEvent from \"@testing-library/user-event\";import {userEvent as user} from \"@/test/test-utils\";user.click(button);",
+    "invalid": "import {screen,render,waitFor,fireEvent,waitForElementToBeRemoved,act} from \"@testing-library/react\";import userEvent from \"@testing-library/user-event\";userEvent.click(button);",
+    "options": [
+      {
+        "eventModule": "userEvent"
+      }
+    ]
+  },
+  {
+    "rule": "prefer-screen-queries",
+    "valid": "import {screen,render,waitFor,fireEvent,waitForElementToBeRemoved,act} from \"@testing-library/react\";import userEvent from \"@testing-library/user-event\";import {render as display} from \"@/test/test-utils\";const {getByText}=display(<div/>);getByText(\"ok\");",
+    "invalid": "import {screen,render,waitFor,fireEvent,waitForElementToBeRemoved,act} from \"@testing-library/react\";import userEvent from \"@testing-library/user-event\";const {getByText}=render(<div/>);getByText(\"ok\");"
+  },
+  {
+    "rule": "await-async-events",
+    "valid": "import {screen,render,waitFor,fireEvent,waitForElementToBeRemoved,act} from \"@testing-library/react\";import userEvent from \"@testing-library/user-event\";import {userEvent as user} from \"@/test/test-utils\";const actor=user.setup();await actor.click(button);",
+    "invalid": "import {screen,render,waitFor,fireEvent,waitForElementToBeRemoved,act} from \"@testing-library/react\";import userEvent from \"@testing-library/user-event\";import {userEvent as user} from \"@/test/test-utils\";const actor=user.setup();actor.click(button);",
+    "options": [
+      {
+        "utilsModule": "@/test/test-utils",
+        "eventModule": "userEvent"
+      }
+    ]
+  },
+  {
+    "rule": "await-async-events",
+    "valid": "import {screen,render,waitFor,fireEvent,waitForElementToBeRemoved,act} from \"@testing-library/react\";import userEvent from \"@testing-library/user-event\";function setup(){return {user:userEvent.setup()};}const {user}=setup();await user.click(button);",
+    "invalid": "import {screen,render,waitFor,fireEvent,waitForElementToBeRemoved,act} from \"@testing-library/react\";import userEvent from \"@testing-library/user-event\";function setup(){return {user:userEvent.setup()};}const {user}=setup();user.click(button);"
+  },
+  {
+    "rule": "await-async-events",
+    "valid": "import {screen,render,waitFor,fireEvent,waitForElementToBeRemoved,act} from \"@testing-library/react\";import userEvent from \"@testing-library/user-event\";const actor=userEvent.setup();function run(actor){actor.click(button);}",
+    "invalid": "import {screen,render,waitFor,fireEvent,waitForElementToBeRemoved,act} from \"@testing-library/react\";import userEvent from \"@testing-library/user-event\";const actor=userEvent.setup();actor.click(button);"
+  }
+]

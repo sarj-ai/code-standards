@@ -4,7 +4,10 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/test-loops-over-literal-cases.test.ts
  */
 
-import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
+import { sourceOrigin } from "./_source-origin.js";
+import type { ESTree } from "@oxlint/plugins";
+import { findVariable } from "./_scope.js";
+
 
 import { forEachOwnAstChild } from "./_for-each-own-ast-child.js";
 import { createRule, type RuleDocumentation } from "./_docs.js";
@@ -34,36 +37,36 @@ const ASSERTION_ROOTS: ReadonlySet<string> = new Set([
   "expect",
   "expectTypeOf",
 ]);
-const FUNCTION_TYPES: ReadonlySet<AST_NODE_TYPES> = new Set([
-  AST_NODE_TYPES.FunctionDeclaration,
-  AST_NODE_TYPES.FunctionExpression,
-  AST_NODE_TYPES.ArrowFunctionExpression,
+const FUNCTION_TYPES: ReadonlySet<ESTree.Node["type"]> = new Set([
+  "FunctionDeclaration",
+  "FunctionExpression",
+  "ArrowFunctionExpression",
 ]);
 const MIN_CASES = 2;
 const TEST_MODULES: ReadonlySet<string> = new Set(["@jest/globals", "@playwright/test", "bun:test", "node:test", "vitest"]);
 const ASSERTION_MODULES: ReadonlySet<string> = new Set([...TEST_MODULES, "node:assert", "node:assert/strict"]);
 
-function rootIdentifier(callee: TSESTree.Node): TSESTree.Identifier | null {
-  if (callee.type === AST_NODE_TYPES.Identifier) return callee;
-  if (callee.type === AST_NODE_TYPES.MemberExpression) return rootIdentifier(callee.object);
-  if (callee.type === AST_NODE_TYPES.CallExpression) return rootIdentifier(callee.callee);
-  if (callee.type === AST_NODE_TYPES.TaggedTemplateExpression) return rootIdentifier(callee.tag);
+function rootIdentifier(callee: ESTree.Node): ESTree.BindingIdentifier | null {
+  if (callee.type === "Identifier") return callee;
+  if (callee.type === "MemberExpression") return rootIdentifier(callee.object);
+  if (callee.type === "CallExpression") return rootIdentifier(callee.callee);
+  if (callee.type === "TaggedTemplateExpression") return rootIdentifier(callee.tag);
   return null;
 }
 
-function staticMemberName(member: TSESTree.MemberExpression): string | null {
-  if (!member.computed && member.property.type === AST_NODE_TYPES.Identifier) return member.property.name;
-  if (member.computed && member.property.type === AST_NODE_TYPES.Literal && typeof member.property.value === "string") {
+function staticMemberName(member: ESTree.MemberExpression): string | null {
+  if (!member.computed && member.property.type === "Identifier") return member.property.name;
+  if (member.computed && member.property.type === "Literal" && typeof member.property.value === "string") {
     return member.property.value;
   }
   return null;
 }
 
-function isTestBody(node: TSESTree.Node, isFrameworkTest: (identifier: TSESTree.Identifier) => boolean): boolean {
+function isTestBody(node: ESTree.Node, isFrameworkTest: (identifier: ESTree.BindingIdentifier) => boolean): boolean {
   const call = node.parent;
-  const root = call?.type === AST_NODE_TYPES.CallExpression ? rootIdentifier(call.callee) : null;
+  const root = call?.type === "CallExpression" ? rootIdentifier(call.callee) : null;
   return (
-    call?.type === AST_NODE_TYPES.CallExpression &&
+    call?.type === "CallExpression" &&
     call.arguments.some((argument) => argument === node) &&
     isTestCaller(call.callee) &&
     root !== null &&
@@ -71,50 +74,49 @@ function isTestBody(node: TSESTree.Node, isFrameworkTest: (identifier: TSESTree.
   );
 }
 
-function isTestCaller(callee: TSESTree.Node): boolean {
-  if (callee.type === AST_NODE_TYPES.Identifier) return TEST_CALLERS.has(callee.name);
-  if (callee.type !== AST_NODE_TYPES.MemberExpression) return false;
+function isTestCaller(callee: ESTree.Node): boolean {
+  if (callee.type === "Identifier") return TEST_CALLERS.has(callee.name);
+  if (callee.type !== "MemberExpression") return false;
   const member = staticMemberName(callee);
   return member !== null && TEST_MODIFIERS.has(member) && isTestCaller(callee.object);
 }
 
 function nearestEnclosingFunction(
-  node: TSESTree.Node,
-): TSESTree.FunctionDeclaration | TSESTree.FunctionExpression | TSESTree.ArrowFunctionExpression | null {
+  node: ESTree.Node,
+): ESTree.Function | ESTree.ArrowFunctionExpression | null {
   for (let current = node.parent; current != null; current = current.parent) {
     if (FUNCTION_TYPES.has(current.type)) {
-      return current as TSESTree.FunctionDeclaration | TSESTree.FunctionExpression | TSESTree.ArrowFunctionExpression;
+      return current as ESTree.Function | ESTree.ArrowFunctionExpression;
     }
   }
   return null;
 }
 
-function isStaticCase(node: TSESTree.Node): boolean {
+function isStaticCase(node: ESTree.Node): boolean {
   if (
-    node.type === AST_NODE_TYPES.TSAsExpression ||
-    node.type === AST_NODE_TYPES.TSTypeAssertion ||
-    node.type === AST_NODE_TYPES.TSSatisfiesExpression ||
-    node.type === AST_NODE_TYPES.TSNonNullExpression
+    node.type === "TSAsExpression" ||
+    node.type === "TSTypeAssertion" ||
+    node.type === "TSSatisfiesExpression" ||
+    node.type === "TSNonNullExpression"
   ) {
     return isStaticCase(node.expression);
   }
   switch (node.type) {
-    case AST_NODE_TYPES.Literal:
+    case "Literal":
       return true;
-    case AST_NODE_TYPES.TemplateLiteral:
+    case "TemplateLiteral":
       return node.expressions.length === 0;
-    case AST_NODE_TYPES.UnaryExpression:
+    case "UnaryExpression":
       return (node.operator === "+" || node.operator === "-") && isStaticCase(node.argument);
-    case AST_NODE_TYPES.ArrayExpression:
+    case "ArrayExpression":
       return node.elements.every(
-        (element) => element !== null && element.type !== AST_NODE_TYPES.SpreadElement && isStaticCase(element),
+        (element) => element !== null && element.type !== "SpreadElement" && isStaticCase(element),
       );
-    case AST_NODE_TYPES.ObjectExpression:
+    case "ObjectExpression":
       return node.properties.every(
         (property) =>
-          property.type === AST_NODE_TYPES.Property &&
+          property.type === "Property" &&
           !property.computed &&
-          property.value.type !== AST_NODE_TYPES.AssignmentPattern &&
           isStaticCase(property.value),
       );
     default:
@@ -122,7 +124,7 @@ function isStaticCase(node: TSESTree.Node): boolean {
   }
 }
 
-function walkOwnScope(node: TSESTree.Node, predicate: (current: TSESTree.Node) => boolean): boolean {
+function walkOwnScope(node: ESTree.Node, predicate: (current: ESTree.Node) => boolean): boolean {
   if (predicate(node)) {
     return true;
   }
@@ -131,51 +133,51 @@ function walkOwnScope(node: TSESTree.Node, predicate: (current: TSESTree.Node) =
 }
 
 function isAssertion(
-  node: TSESTree.Node,
-  isFrameworkAssertion: (identifier: TSESTree.Identifier) => boolean,
+  node: ESTree.Node,
+  isFrameworkAssertion: (identifier: ESTree.BindingIdentifier) => boolean,
 ): boolean {
-  if (node.type !== AST_NODE_TYPES.CallExpression || !ASSERTION_ROOTS.has(callerName(node.callee) ?? "")) return false;
+  if (node.type !== "CallExpression" || !ASSERTION_ROOTS.has(callerName(node.callee) ?? "")) return false;
   const root = rootIdentifier(node.callee);
   return root !== null && isFrameworkAssertion(root);
 }
 
-function callerName(callee: TSESTree.Node): string | null {
-  if (callee.type === AST_NODE_TYPES.Identifier) {
+function callerName(callee: ESTree.Node): string | null {
+  if (callee.type === "Identifier") {
     return callee.name;
   }
-  if (callee.type === AST_NODE_TYPES.MemberExpression) {
+  if (callee.type === "MemberExpression") {
     return callerName(callee.object);
   }
-  if (callee.type === AST_NODE_TYPES.CallExpression) {
+  if (callee.type === "CallExpression") {
     return callerName(callee.callee);
   }
-  if (callee.type === AST_NODE_TYPES.TaggedTemplateExpression) {
+  if (callee.type === "TaggedTemplateExpression") {
     return callerName(callee.tag);
   }
   return null;
 }
 
-function opensSubtest(node: TSESTree.Node, callbackParameters: ReadonlySet<string>): boolean {
-  if (node.type !== AST_NODE_TYPES.CallExpression) {
+function opensSubtest(node: ESTree.Node, callbackParameters: ReadonlySet<string>): boolean {
+  if (node.type !== "CallExpression") {
     return false;
   }
   const callee = node.callee;
-  return callee.type === AST_NODE_TYPES.MemberExpression &&
+  return callee.type === "MemberExpression" &&
     staticMemberName(callee) === "test" &&
-    callee.object.type === AST_NODE_TYPES.Identifier &&
+    callee.object.type === "Identifier" &&
     callbackParameters.has(callee.object.name) &&
     node.arguments.some(
-      (argument) => argument.type !== AST_NODE_TYPES.SpreadElement && FUNCTION_TYPES.has(argument.type),
+      (argument) => argument.type !== "SpreadElement" && FUNCTION_TYPES.has(argument.type),
     );
 }
 
 const LOOP_CARRIED_CONTROL: ReadonlySet<string> = new Set([
-  AST_NODE_TYPES.AssignmentExpression,
-  AST_NODE_TYPES.UpdateExpression,
-  AST_NODE_TYPES.BreakStatement,
-  AST_NODE_TYPES.ContinueStatement,
-  AST_NODE_TYPES.ReturnStatement,
-  AST_NODE_TYPES.ThrowStatement,
+  "AssignmentExpression",
+  "UpdateExpression",
+  "BreakStatement",
+  "ContinueStatement",
+  "ReturnStatement",
+  "ThrowStatement",
 ]);
 
 export default createRule<Options, MessageIds>({
@@ -195,43 +197,43 @@ export default createRule<Options, MessageIds>({
   },
   defaultOptions: [],
   create(context) {
-    if (!isTestFile(context.filename)) {
+    if (!isTestFile(sourceOrigin(context).filename)) {
       return {};
     }
     const isFrameworkIdentifier = (
-      identifier: TSESTree.Identifier,
+      identifier: ESTree.BindingIdentifier,
       modules: ReadonlySet<string>,
     ): boolean => {
-      const variable = ASTUtils.findVariable(context.sourceCode.getScope(identifier), identifier.name);
+      const variable = findVariable(context.sourceCode.getScope(identifier), identifier.name);
       if (variable === null || variable.defs.length === 0) return true;
       return variable.defs.some((definition) => {
-        let current: TSESTree.Node | null | undefined = definition.node;
-        while (current != null && current.type !== AST_NODE_TYPES.ImportDeclaration) current = current.parent;
-        return current?.type === AST_NODE_TYPES.ImportDeclaration &&
+        let current: ESTree.Node | null | undefined = definition.node;
+        while (current != null && current.type !== "ImportDeclaration") current = current.parent;
+        return current?.type === "ImportDeclaration" &&
           typeof current.source.value === "string" && modules.has(current.source.value);
       });
     };
-    const isFrameworkTest = (identifier: TSESTree.Identifier): boolean => isFrameworkIdentifier(identifier, TEST_MODULES);
-    const isFrameworkAssertion = (identifier: TSESTree.Identifier): boolean => isFrameworkIdentifier(identifier, ASSERTION_MODULES);
+    const isFrameworkTest = (identifier: ESTree.BindingIdentifier): boolean => isFrameworkIdentifier(identifier, TEST_MODULES);
+    const isFrameworkAssertion = (identifier: ESTree.BindingIdentifier): boolean => isFrameworkIdentifier(identifier, ASSERTION_MODULES);
     return {
-      ForOfStatement(node: TSESTree.ForOfStatement): void {
+      ForOfStatement(node: ESTree.ForOfStatement): void {
         const enclosing = nearestEnclosingFunction(node);
         if (enclosing === null || !isTestBody(enclosing, isFrameworkTest)) {
           return;
         }
-        for (let current: TSESTree.Node | undefined = node; current !== undefined && current !== enclosing; current = current.parent) {
-          if (current.parent?.type === AST_NODE_TYPES.BlockStatement && current.parent.body.at(-1) !== current) return;
+        for (let current: ESTree.Node | null | undefined = node; current !== undefined && current !== enclosing; current = current.parent) {
+          if (current.parent?.type === "BlockStatement" && current.parent.body.at(-1) !== current) return;
         }
         const cases = unwrapExpression(node.right);
         const callbackParameters = new Set(
-          enclosing.params.flatMap((parameter) => parameter.type === AST_NODE_TYPES.Identifier ? [parameter.name] : []),
+          enclosing.params.flatMap((parameter) => parameter.type === "Identifier" ? [parameter.name] : []),
         );
         if (
-          cases.type !== AST_NODE_TYPES.ArrayExpression ||
+          cases.type !== "ArrayExpression" ||
           cases.elements.length < MIN_CASES ||
           !cases.elements.every(
             (element) =>
-              element !== null && element.type !== AST_NODE_TYPES.SpreadElement && isStaticCase(element),
+              element !== null && element.type !== "SpreadElement" && isStaticCase(element),
           ) ||
           !walkOwnScope(node.body, (current) => isAssertion(current, isFrameworkAssertion)) ||
           walkOwnScope(node.body, (current) => opensSubtest(current, callbackParameters)) ||
@@ -240,8 +242,8 @@ export default createRule<Options, MessageIds>({
           return;
         }
         const capturesSetup = walkOwnScope(node.body, (current) => {
-          if (current.type !== AST_NODE_TYPES.Identifier) return false;
-          const variable = ASTUtils.findVariable(context.sourceCode.getScope(current), current.name);
+          if (current.type !== "Identifier") return false;
+          const variable = findVariable(context.sourceCode.getScope(current), current.name);
           if (variable === null || !variable.references.some((reference) => reference.identifier === current)) return false;
           return variable.defs.some((definition) => {
             const declaration = definition.name;
@@ -260,12 +262,12 @@ export default createRule<Options, MessageIds>({
   },
 });
 
-function unwrapExpression(node: TSESTree.Expression): TSESTree.Expression {
+function unwrapExpression(node: ESTree.Expression): ESTree.Expression {
   if (
-    node.type === AST_NODE_TYPES.TSAsExpression ||
-    node.type === AST_NODE_TYPES.TSTypeAssertion ||
-    node.type === AST_NODE_TYPES.TSSatisfiesExpression ||
-    node.type === AST_NODE_TYPES.TSNonNullExpression
+    node.type === "TSAsExpression" ||
+    node.type === "TSTypeAssertion" ||
+    node.type === "TSSatisfiesExpression" ||
+    node.type === "TSNonNullExpression"
   ) {
     return unwrapExpression(node.expression);
   }

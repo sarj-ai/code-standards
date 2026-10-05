@@ -1,11 +1,12 @@
 /** @fileoverview _for-each-ast-child — visit parser-declared AST children through one checked reflection boundary. */
 
-import type { TSESLint, TSESTree } from "@typescript-eslint/utils";
+import type { ESTree, SourceCode } from "@oxlint/plugins";
+
 
 export function forEachAstChild(
-  node: TSESTree.Node,
-  visitorKeys: Readonly<TSESLint.SourceCode.VisitorKeys>,
-  visit: (child: TSESTree.Node) => boolean | void,
+  node: ESTree.Node,
+  visitorKeys: Readonly<SourceCode["visitorKeys"]>,
+  visit: (child: ESTree.Node) => boolean | void,
 ): boolean {
   for (const key of visitorKeys[node.type] ?? []) {
     if (forEachAstChildKey(node, key, visit)) return true;
@@ -14,9 +15,9 @@ export function forEachAstChild(
 }
 
 export function forEachAstChildKey(
-  node: TSESTree.Node,
+  node: ESTree.Node,
   key: string,
-  visit: (child: TSESTree.Node) => boolean | void,
+  visit: (child: ESTree.Node) => boolean | void,
 ): boolean {
   const value: unknown = (node as unknown as Record<string, unknown>)[key];
   if (Array.isArray(value)) {
@@ -28,6 +29,6 @@ export function forEachAstChildKey(
   return false;
 }
 
-function isNode(value: unknown): value is TSESTree.Node {
+function isNode(value: unknown): value is ESTree.Node {
   return typeof value === "object" && value !== null && "type" in value && typeof value.type === "string";
 }

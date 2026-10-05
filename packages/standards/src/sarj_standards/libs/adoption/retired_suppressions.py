@@ -21,18 +21,18 @@ _CODE_SOURCE_SUFFIXES: Final = frozenset({".hcl", ".py", ".pyi", ".tf", ".tfvars
 _SOURCE_SUFFIXES: Final = frozenset(
     {".cjs", ".cts", ".js", ".jsx", ".mjs", ".mts", ".ts", ".tsx", *_CODE_SOURCE_SUFFIXES}
 )
-_ESLINT_DIRECTIVE: Final = re.compile(
-    r"(?P<intro>(?://|/\*)\s*eslint-(?:disable(?:-next-line|-line)?|enable)\s+)"
+_OXLINT_DIRECTIVE: Final = re.compile(
+    r"(?P<intro>(?://|/\*)\s*oxlint-(?:disable(?:-next-line|-line)?|enable)\s+)"
     r"(?P<body>.*?)(?P<close>\s*\*/)?$"
 )
 _CODE_DIRECTIVE: Final = re.compile(r"(?P<intro>(?:#|//)\s*sarj-noqa:\s*)(?P<body>.*?)$")
 _REASON: Final = re.compile(r"(?P<rules>.*?)(?P<reason>\s+(?:--|[–—])\s+.*)?$")
-_ESLINT_SEGMENT = r"[A-Za-z0-9][A-Za-z0-9_-]*"
-_ESLINT_ID: Final = re.compile(rf"^(?:{_ESLINT_SEGMENT}|@?{_ESLINT_SEGMENT}(?:/{_ESLINT_SEGMENT})+)$")
+_OXLINT_SEGMENT = r"[A-Za-z0-9][A-Za-z0-9_-]*"
+_OXLINT_ID: Final = re.compile(rf"^(?:{_OXLINT_SEGMENT}|@?{_OXLINT_SEGMENT}(?:/{_OXLINT_SEGMENT})+)$")
 _SARJ_CODE: Final = re.compile(r"^SARJ\d+$")
-_ESLINT_SUPPRESSIONS: Final = "eslint-suppressions.json"
+_OXLINT_SUPPRESSIONS: Final = "oxlint-suppressions.json"
 _RATCHET_SUPPRESSIONS: Final = "suppression-baseline.json"
-_ESLINT_CONFIG_NAMES: Final = re.compile(r"^eslint\.config\.(?:[cm]?[jt]s)$")
+_OXLINT_CONFIG_NAMES: Final = re.compile(r"^oxlint\.config\.(?:[cm]?[jt]s)$")
 _PROPERTY_KEY_OFFSET: Final = 2
 _JAVASCRIPT_CLOSING: Final = MappingProxyType({"(": ")", "[": "]", "{": "}"})
 
@@ -86,11 +86,11 @@ def plan(files: Iterable[Path]) -> tuple[Rewrite, ...]:
     shipped = ledger.load()
     retired = shipped.retired
     active = shipped.active_ids()
-    eslint = {entry.id: _replacement(entry, active) for entry in retired if entry.kind == ledger.ESLINT}
+    oxlint = {entry.id: _replacement(entry, active) for entry in retired if entry.kind == ledger.OXLINT}
     codes = {entry.id: _replacement(entry, active) for entry in retired if entry.kind == ledger.CODE}
     rewrites: list[Rewrite] = []
     for path in files:
-        if not supports(path) and path.name not in {_ESLINT_SUPPRESSIONS, _RATCHET_SUPPRESSIONS}:
+        if not supports(path) and path.name not in {_OXLINT_SUPPRESSIONS, _RATCHET_SUPPRESSIONS}:
             continue
         try:
             original = path.read_bytes().decode("utf-8")
@@ -99,12 +99,12 @@ def plan(files: Iterable[Path]) -> tuple[Rewrite, ...]:
         if "sarj-doctor-ignore-retired-rules" in original:
             continue
         match path.name:
-            case "eslint-suppressions.json":
-                migrated = _rewrite_eslint_suppressions(original, eslint)
+            case "oxlint-suppressions.json":
+                migrated = _rewrite_oxlint_suppressions(original, oxlint)
             case "suppression-baseline.json":
                 migrated = _rewrite_ratchet_suppressions(original, codes)
             case _:
-                migrated = _rewrite(path, original, eslint, codes)
+                migrated = _rewrite(path, original, oxlint, codes)
         if migrated != original:
             rewrites.append(Rewrite(path, migrated))
     return tuple(rewrites)
@@ -151,14 +151,14 @@ def _replacement(entry: ledger.Retired, active: frozenset[str]) -> str | None:
     replacement = entry.replacement
     if replacement is None or replacement not in active:
         return entry.id
-    if entry.kind == ledger.ESLINT and not replacement.startswith("@sarj/"):
+    if entry.kind == ledger.OXLINT and not replacement.startswith("@sarj/"):
         return entry.id
     if entry.kind == ledger.CODE and _SARJ_CODE.fullmatch(replacement) is None:
         return entry.id
     return replacement
 
 
-def _rewrite_eslint_suppressions(text: str, retired: dict[str, str | None]) -> str:
+def _rewrite_oxlint_suppressions(text: str, retired: dict[str, str | None]) -> str:
     bom = "\ufeff" if text.startswith("\ufeff") else ""
     payload = text.removeprefix("\ufeff")
     try:
@@ -276,7 +276,7 @@ def _suppression_count(value: object) -> int | None:
     return count if isinstance(count, int) and not isinstance(count, bool) and count >= 0 else None
 
 
-def _rewrite(path: Path, text: str, eslint: dict[str, str | None], codes: dict[str, str | None]) -> str:
+def _rewrite(path: Path, text: str, oxlint: dict[str, str | None], codes: dict[str, str | None]) -> str:
     rewritten = text
     for span in reversed(_comment_spans(path, text)):
         comment = text[span.start : span.end]
@@ -285,7 +285,7 @@ def _rewrite(path: Path, text: str, eslint: dict[str, str | None], codes: dict[s
         directive = _classify_directive(path, comment)
         if directive.state is not _DirectiveState.VALID:
             continue
-        retired = codes if path.suffix.lower() in _CODE_SOURCE_SUFFIXES else eslint
+        retired = codes if path.suffix.lower() in _CODE_SOURCE_SUFFIXES else oxlint
         if not any(token in retired for token in directive.tokens):
             continue
         replacement = _rewrite_valid_directive(directive, retired)
@@ -294,7 +294,7 @@ def _rewrite(path: Path, text: str, eslint: dict[str, str | None], codes: dict[s
             rewritten = _remove_directive_line(rewritten, span, start)
         else:
             rewritten = f"{rewritten[:start]}{replacement}{rewritten[span.end :]}"
-    return _rewrite_eslint_config_keys(path, rewritten, eslint)
+    return _rewrite_oxlint_config_keys(path, rewritten, oxlint)
 
 
 def _remove_directive_line(rewritten: str, span: _CommentSpan, start: int) -> str:
@@ -310,15 +310,15 @@ def _remove_directive_line(rewritten: str, span: _CommentSpan, start: int) -> st
     return f"{rewritten[:line_start]}{trimmed}{rewritten[end:]}"
 
 
-def _rewrite_eslint_config_keys(path: Path, text: str, retired: dict[str, str | None]) -> str:
-    if _ESLINT_CONFIG_NAMES.fullmatch(path.name) is None:
+def _rewrite_oxlint_config_keys(path: Path, text: str, retired: dict[str, str | None]) -> str:
+    if _OXLINT_CONFIG_NAMES.fullmatch(path.name) is None:
         return text
     rewritten = text
     for retired_id, replacement in retired.items():
         if replacement is None or replacement == retired_id:
             continue
-        matches = _eslint_rule_property_keys(rewritten, retired_id)
-        replacement_matches = _eslint_rule_property_keys(rewritten, replacement)
+        matches = _oxlint_rule_property_keys(rewritten, retired_id)
+        replacement_matches = _oxlint_rule_property_keys(rewritten, replacement)
         if matches is None or replacement_matches is None:
             return text
         if len(matches) != 1 or replacement_matches:
@@ -329,7 +329,7 @@ def _rewrite_eslint_config_keys(path: Path, text: str, retired: dict[str, str | 
     return rewritten
 
 
-def _eslint_rule_property_keys(text: str, expected: str) -> tuple[tuple[int, int], ...] | None:
+def _oxlint_rule_property_keys(text: str, expected: str) -> tuple[tuple[int, int], ...] | None:
     tokens = _export_default_expression_tokens(text)
     if tokens is None:
         return None
@@ -479,9 +479,9 @@ def _is_jsx_comment_wrapper(path: Path, text: str, span: _CommentSpan, comment: 
 
 def _classify_directive(path: Path, comment: str) -> _Directive:
     code = path.suffix.lower() in _CODE_SOURCE_SUFFIXES
-    pattern = _CODE_DIRECTIVE if code else _ESLINT_DIRECTIVE
-    marker = "sarj-noqa" if code else "eslint-"
-    valid = _SARJ_CODE.fullmatch if code else _ESLINT_ID.fullmatch
+    pattern = _CODE_DIRECTIVE if code else _OXLINT_DIRECTIVE
+    marker = "sarj-noqa" if code else "oxlint-"
+    valid = _SARJ_CODE.fullmatch if code else _OXLINT_ID.fullmatch
     match = pattern.fullmatch(comment)
     if match is None:
         state = _DirectiveState.AMBIGUOUS if marker in comment.lower() else _DirectiveState.NONE
@@ -617,8 +617,8 @@ def _looks_like_ambiguous_reference(line: str) -> bool:
     if "sarj" not in normalized:
         return False
     return (
-        "eslint-disable" in normalized
-        or "eslint-enable" in normalized
+        "oxlint-disable" in normalized
+        or "oxlint-enable" in normalized
         or "sarj-noqa" in normalized
         or "--rule" in normalized
         or re.search(r"[\"']@sarj/[^\"']+[\"']\s*:", line) is not None

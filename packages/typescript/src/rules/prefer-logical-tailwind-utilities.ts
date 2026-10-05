@@ -4,8 +4,9 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/prefer-logical-tailwind-utilities.test.ts
  */
 
-import { AST_NODE_TYPES } from "@typescript-eslint/utils";
 
+
+import { sourceOrigin } from "./_source-origin.js";
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { attributeText } from "./_jsx-accessibility.js";
 import { isGeneratedFile, isStoryFile, isTestFile } from "./_paths.js";
@@ -53,7 +54,7 @@ export const PREFER_LOGICAL_TAILWIND_UTILITIES_DOCUMENTATION = {
   ],
 } as const satisfies RuleDocumentation;
 
-const PREFIXES: Readonly<Record<string, string>> = {
+const PREFIXES = {
   ml: "ms",
   mr: "me",
   pl: "ps",
@@ -66,21 +67,18 @@ const PREFIXES: Readonly<Record<string, string>> = {
   "rounded-tr": "rounded-se",
   "rounded-bl": "rounded-es",
   "rounded-br": "rounded-ee",
-};
-const EXACT: Readonly<Record<string, string>> = {
-  "text-left": "text-start",
-  "text-right": "text-end",
-  "float-left": "float-start",
-  "float-right": "float-end",
-  "clear-left": "clear-start",
-  "clear-right": "clear-end",
-};
+} as const;
+const EXACT: ReadonlyMap<string, string> = new Map([
+  ["text-left", "text-start"], ["text-right", "text-end"],
+  ["float-left", "float-start"], ["float-right", "float-end"],
+  ["clear-left", "clear-start"], ["clear-right", "clear-end"],
+]);
 
-const INSET_PREFIXES: Readonly<Record<string, string>> = {
+const INSET_PREFIXES = {
   ...PREFIXES,
   left: "start",
   right: "end",
-};
+} as const;
 
 function replacementFor(token: string, checkInsets: boolean): string | null {
   const variant = tailwindVariantPrefix(token);
@@ -91,7 +89,7 @@ function replacementFor(token: string, checkInsets: boolean): string | null {
   const signed = raw.slice(prefix.length, suffix === "" ? undefined : -1);
   const sign = signed.startsWith("-") ? "-" : "";
   const base = signed.slice(sign.length);
-  let logical = EXACT[base];
+  let logical = EXACT.get(base);
   const mappings = checkInsets ? INSET_PREFIXES : PREFIXES;
   for (const [physical, replacement] of Object.entries(mappings)) {
     if (base === physical || base.startsWith(`${physical}-`)) {
@@ -136,9 +134,9 @@ export default createRule<Options, "physicalUtility">({
   create(context, [options]) {
     if (
       options?.enabled === false ||
-      isGeneratedFile(context.filename, context.sourceCode.text) ||
-      isTestFile(context.filename) ||
-      isStoryFile(context.filename)
+      isGeneratedFile(sourceOrigin(context).filename, sourceOrigin(context).text) ||
+      isTestFile(sourceOrigin(context).filename) ||
+      isStoryFile(sourceOrigin(context).filename)
     )
       return {};
     return {
@@ -147,8 +145,8 @@ export default createRule<Options, "physicalUtility">({
         if (value === null) return;
         const attribute = node.attributes.findLast(
           (entry) =>
-            entry.type === AST_NODE_TYPES.JSXAttribute &&
-            entry.name.type === AST_NODE_TYPES.JSXIdentifier &&
+            entry.type === "JSXAttribute" &&
+            entry.name.type === "JSXIdentifier" &&
             entry.name.name === "className",
         );
         if (attribute === undefined) return;

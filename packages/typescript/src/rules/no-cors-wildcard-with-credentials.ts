@@ -4,12 +4,9 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-cors-wildcard-with-credentials.test.ts
  */
 
-import {
-  AST_NODE_TYPES,
-  ASTUtils,
-  type TSESLint,
-  type TSESTree,
-} from "@typescript-eslint/utils";
+import type { ESTree, Variable } from "@oxlint/plugins";
+import { findVariable } from "./_scope.js";
+
 
 import { forEachOwnAstChild } from "./_for-each-own-ast-child.js";
 import { createRule, type RuleDocumentation } from "./_docs.js";
@@ -52,7 +49,7 @@ const ACAO_HEADER = "access-control-allow-origin";
 const ACAC_HEADER = "access-control-allow-credentials";
 const HEADER_SET_METHODS: ReadonlySet<string> = new Set(["setheader", "set", "append"]);
 
-function isCredentialsTrueValue(node: TSESTree.Node): boolean {
+function isCredentialsTrueValue(node: ESTree.Node): boolean {
   if (node.type === "Literal") {
     if (node.value === true) {
       return true;
@@ -64,14 +61,14 @@ function isCredentialsTrueValue(node: TSESTree.Node): boolean {
   return false;
 }
 
-function isStarLiteral(node: TSESTree.Node): boolean {
+function isStarLiteral(node: ESTree.Node): boolean {
   return node.type === "Literal" && node.value === "*";
 }
 
 /**
  * Returns the (non-computed) string name of a property key, or `undefined`.
  */
-function propertyKeyName(prop: TSESTree.Property): string | undefined {
+function propertyKeyName(prop: ESTree.ObjectProperty): string | undefined {
   if (prop.computed) {
     return undefined;
   }
@@ -86,14 +83,14 @@ function propertyKeyName(prop: TSESTree.Property): string | undefined {
 }
 
 function isCorsWildcardCredentialsCall(
-  node: TSESTree.CallExpression | TSESTree.NewExpression,
+  node: ESTree.CallExpression | ESTree.NewExpression,
 ): boolean {
   const name = calleeName(node);
   if (name === undefined || name.toLowerCase() !== "cors") {
     return false;
   }
   const options = node.arguments.find(
-    (arg): arg is TSESTree.ObjectExpression => arg.type === "ObjectExpression",
+    (arg): arg is ESTree.ObjectExpression => arg.type === "ObjectExpression",
   );
   if (options === undefined) {
     return false;
@@ -117,11 +114,11 @@ function isCorsWildcardCredentialsCall(
 /**
  * True only for the boolean literal `true` (not `1`, not a truthy expression).
  */
-function isTrueLiteral(node: TSESTree.Node): boolean {
+function isTrueLiteral(node: ESTree.Node): boolean {
   return node.type === "Literal" && node.value === true;
 }
 
-function subtreeContainsStarLiteral(node: TSESTree.Node): boolean {
+function subtreeContainsStarLiteral(node: ESTree.Node): boolean {
   if (isStarLiteral(node)) {
     return true;
   }
@@ -134,7 +131,7 @@ function subtreeContainsStarLiteral(node: TSESTree.Node): boolean {
  * (`cors` for `cors(...)` and `app.cors(...)`, `Cors` for `new Cors(...)`).
  */
 function calleeName(
-  node: TSESTree.CallExpression | TSESTree.NewExpression,
+  node: ESTree.CallExpression | ESTree.NewExpression,
 ): string | undefined {
   const callee = node.callee;
   if (callee.type === "Identifier") {
@@ -156,7 +153,7 @@ function calleeName(
  * `Access-Control-Allow-Credentials: "true"` (case-insensitive keys).
  */
 function isWildcardCredentialsHeaderObject(
-  node: TSESTree.ObjectExpression,
+  node: ESTree.ObjectExpression,
 ): boolean {
   let wildcardOrigin = false;
   let credentialsTrue = false;
@@ -186,7 +183,7 @@ type HeaderSetKind = "origin" | "credentials";
  * neither.
  */
 function classifyHeaderSetCall(
-  node: TSESTree.CallExpression,
+  node: ESTree.CallExpression,
 ): HeaderSetKind | undefined {
   const callee = node.callee;
   if (
@@ -216,8 +213,8 @@ function classifyHeaderSetCall(
   return undefined;
 }
 
-function enclosingScope(node: TSESTree.Node): TSESTree.Node | undefined {
-  let current: TSESTree.Node | undefined = node.parent;
+function enclosingScope(node: ESTree.Node): ESTree.Node | undefined {
+  let current: ESTree.Node | null | undefined = node.parent;
   while (current) {
     if (
       current.type === "FunctionDeclaration" ||
@@ -232,8 +229,8 @@ function enclosingScope(node: TSESTree.Node): TSESTree.Node | undefined {
 }
 
 interface ScopeHeaderSets {
-  originNodes: TSESTree.CallExpression[];
-  credentialsNodes: TSESTree.CallExpression[];
+  originNodes: ESTree.CallExpression[];
+  credentialsNodes: ESTree.CallExpression[];
 }
 
 type ReceiverHeaderSets = Map<string, ScopeHeaderSets>;
@@ -254,15 +251,15 @@ export default createRule<Options, MessageIds>({
   },
   defaultOptions: [],
   create(context) {
-    const scopeHeaderSets = new Map<TSESTree.Node | "module", ReceiverHeaderSets>();
-    const variableIds = new WeakMap<TSESLint.Scope.Variable, number>();
+    const scopeHeaderSets = new Map<ESTree.Node | "module", ReceiverHeaderSets>();
+    const variableIds = new WeakMap<Variable, number>();
     let nextVariableId = 0;
 
     function recordHeaderSet(
-      node: TSESTree.CallExpression,
+      node: ESTree.CallExpression,
       kind: HeaderSetKind,
     ): void {
-      if (node.callee.type !== AST_NODE_TYPES.MemberExpression) return;
+      if (node.callee.type !== "MemberExpression") return;
       const receiver = receiverIdentity(node.callee.object);
       if (receiver === null) return;
       const key = enclosingScope(node) ?? "module";
@@ -283,9 +280,9 @@ export default createRule<Options, MessageIds>({
       }
     }
 
-    function receiverIdentity(node: TSESTree.Node): string | null {
-      if (node.type === AST_NODE_TYPES.Identifier) {
-        const variable = ASTUtils.findVariable(
+    function receiverIdentity(node: ESTree.Node): string | null {
+      if (node.type === "Identifier") {
+        const variable = findVariable(
           context.sourceCode.getScope(node),
           node.name,
         );
@@ -293,11 +290,11 @@ export default createRule<Options, MessageIds>({
           ? `global:${node.name}`
           : `variable:${variableId(variable)}`;
       }
-      if (node.type === AST_NODE_TYPES.ThisExpression) return "this";
+      if (node.type === "ThisExpression") return "this";
       if (
-        node.type === AST_NODE_TYPES.MemberExpression &&
+        node.type === "MemberExpression" &&
         !node.computed &&
-        node.property.type === AST_NODE_TYPES.Identifier
+        node.property.type === "Identifier"
       ) {
         const owner = receiverIdentity(node.object);
         return owner === null ? null : `${owner}.${node.property.name}`;
@@ -305,7 +302,7 @@ export default createRule<Options, MessageIds>({
       return null;
     }
 
-    function variableId(variable: TSESLint.Scope.Variable): number {
+    function variableId(variable: Variable): number {
       const existing = variableIds.get(variable);
       if (existing !== undefined) return existing;
       const value = nextVariableId++;
@@ -314,12 +311,12 @@ export default createRule<Options, MessageIds>({
     }
 
     return {
-      NewExpression(node: TSESTree.NewExpression): void {
+      NewExpression(node: ESTree.NewExpression): void {
         if (isCorsWildcardCredentialsCall(node)) {
           context.report({ node, messageId: "corsWildcardWithCredentials" });
         }
       },
-      CallExpression(node: TSESTree.CallExpression): void {
+      CallExpression(node: ESTree.CallExpression): void {
         if (isCorsWildcardCredentialsCall(node)) {
           context.report({ node, messageId: "corsWildcardWithCredentials" });
           return;
@@ -329,7 +326,7 @@ export default createRule<Options, MessageIds>({
           recordHeaderSet(node, kind);
         }
       },
-      ObjectExpression(node: TSESTree.ObjectExpression): void {
+      ObjectExpression(node: ESTree.ObjectExpression): void {
         if (isWildcardCredentialsHeaderObject(node)) {
           context.report({ node, messageId: "corsWildcardWithCredentials" });
         }

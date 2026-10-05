@@ -1,0 +1,17 @@
+{
+  "$comment": "Exact tested tools for the native Oxlint/Oxfmt policy. Astro uses the official compiler and TypeScript public APIs; no ESLint engine is installed.",
+  "peers": {
+    "@sarj/oxlint-plugin": "17.0.0",
+    "oxlint": "1.86.0",
+    "oxlint-tsgolint": "7.0.2003",
+    "oxfmt": "0.71.0",
+    "typescript": "7.0.2",
+    "react-doctor": "0.9.14",
+    "@sarj/oxlint-react-hooks": "0.1.0"
+  },
+  "yarnIdentityPins": {},
+  "npmOverrides": {
+    "eslint-plugin-react-hooks": "npm:@sarj/oxlint-react-hooks@0.1.0"
+  },
+  "ceilings": {}
+}

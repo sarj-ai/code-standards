@@ -138,12 +138,12 @@ def test_rule_exclusions_require_an_exact_known_engine_selector(tmp_path: Path) 
     with pytest.raises(ValueError, match="unknown Standards rule"):
         exclusions.add(tmp_path, "rule", "python:this-rule-does-not-exist")
     with pytest.raises(ValueError, match="unknown Standards rule"):
-        exclusions.add(tmp_path, "rule", "eslint:@sarj/this-rule-does-not-exist")
+        exclusions.add(tmp_path, "rule", "oxlint:@sarj/this-rule-does-not-exist")
     with pytest.raises(ValueError, match="unknown Standards rule"):
-        exclusions.add(tmp_path, "rule", "eslint:this-rule-does-not-exist")
+        exclusions.add(tmp_path, "rule", "oxlint:this-rule-does-not-exist")
 
-    assert exclusions.add(tmp_path, "rule", "eslint:@typescript-eslint/no-explicit-any").changed
-    assert exclusions.add(tmp_path, "rule", "eslint:no-console").changed
+    assert exclusions.add(tmp_path, "rule", "oxlint:typescript/no-explicit-any").changed
+    assert exclusions.add(tmp_path, "rule", "oxlint:no-console").changed
     assert exclusions.add(tmp_path, "rule", "python:no-comment-cruft").changed
     assert exclusions.add(tmp_path, "rule", "python:LIB001").changed
 

@@ -257,25 +257,25 @@ def test_upgrade_rejects_a_concurrently_edited_diagnostic_baseline(tmp_path: Pat
     assert baseline_path.read_text(encoding="utf-8") == late_edit
 
 
-def test_upgrade_preserves_preexisting_nested_eslint_projects(tmp_path: Path) -> None:
+def test_upgrade_preserves_preexisting_nested_oxlint_projects(tmp_path: Path) -> None:
     (tmp_path / "package.json").write_text('{"name":"workspace","private":true}\n', encoding="utf-8")
     (tmp_path / "package-lock.json").write_text('{"lockfileVersion":3}\n', encoding="utf-8")
-    (tmp_path / "eslint.config.mjs").write_text(
-        'import strict from "./eslint.strict.mjs";\nexport default strict;\n', encoding="utf-8"
+    (tmp_path / "oxlint.config.mjs").write_text(
+        'import strict from "./oxlint.strict.mjs";\nexport default strict;\n', encoding="utf-8"
     )
-    (tmp_path / "eslint.strict.mjs").write_text("export default [];\n", encoding="utf-8")
+    (tmp_path / "oxlint.strict.mjs").write_text("export default {};\n", encoding="utf-8")
     nested = tmp_path / "packages" / "legacy"
     nested.mkdir(parents=True)
     (nested / "package.json").write_text('{"name":"legacy"}\n', encoding="utf-8")
-    consumer_config = nested / "eslint.config.mjs"
-    consumer_config.write_text("export default [];\n", encoding="utf-8")
-    adopted = manifest.Manifest("0.0.1", ("eslint",), ".", ".", hook_manager="none")
+    consumer_config = nested / "oxlint.config.mjs"
+    consumer_config.write_text("export default {};\n", encoding="utf-8")
+    adopted = manifest.Manifest("0.0.1", ("oxlint",), ".", ".", hook_manager="none")
     (tmp_path / manifest.MANIFEST_NAME).write_text(adopted.render(), encoding="utf-8")
 
     plan = upgrade.build_plan(tmp_path)
 
     assert consumer_config not in {path for path, _contents in (*plan.scaffold_plan.writes, *plan.scaffold_plan.edits)}
-    assert consumer_config.read_text(encoding="utf-8") == "export default [];\n"
+    assert consumer_config.read_text(encoding="utf-8") == "export default {};\n"
 
 
 def test_upgrade_synchronizes_identical_generated_config_mirrors(tmp_path: Path) -> None:
@@ -284,19 +284,19 @@ def test_upgrade_synchronizes_identical_generated_config_mirrors(tmp_path: Path)
     fixture = tmp_path / "tests" / "fixtures" / "legacy"
     for project in (primary, mirror, fixture):
         project.mkdir(parents=True)
-        (project / "eslint.strict.mjs").write_text("export default [];\n", encoding="utf-8")
+        (project / "oxlint.strict.mjs").write_text("export default {};\n", encoding="utf-8")
     (tmp_path / "package.json").write_text('{"name":"workspace","private":true}\n', encoding="utf-8")
     (primary / "package.json").write_text('{"name":"dashboard"}\n', encoding="utf-8")
     (tmp_path / "package-lock.json").write_text('{"lockfileVersion":3}\n', encoding="utf-8")
-    adopted = manifest.Manifest("0.0.1", ("eslint",), ".", "apps/dashboard", hook_manager="none")
+    adopted = manifest.Manifest("0.0.1", ("oxlint",), ".", "apps/dashboard", hook_manager="none")
     (tmp_path / manifest.MANIFEST_NAME).write_text(adopted.render(), encoding="utf-8")
 
     plan = upgrade.build_plan(tmp_path)
     targets = {target for _source, target in plan.config_writes}
 
-    assert primary / "eslint.strict.mjs" in targets
-    assert mirror / "eslint.strict.mjs" in targets
-    assert fixture / "eslint.strict.mjs" not in targets
+    assert primary / "oxlint.strict.mjs" in targets
+    assert mirror / "oxlint.strict.mjs" in targets
+    assert fixture / "oxlint.strict.mjs" not in targets
 
 
 def test_upgrade_does_not_touch_a_divergent_config_with_the_same_name(tmp_path: Path) -> None:
@@ -304,19 +304,19 @@ def test_upgrade_does_not_touch_a_divergent_config_with_the_same_name(tmp_path: 
     custom = tmp_path / "apps" / "banking"
     for project in (primary, custom):
         project.mkdir(parents=True)
-    (primary / "eslint.strict.mjs").write_text("export default [];\n", encoding="utf-8")
-    custom_config = custom / "eslint.strict.mjs"
-    custom_config.write_text("export default [{ custom: true }];\n", encoding="utf-8")
+    (primary / "oxlint.strict.mjs").write_text("export default {};\n", encoding="utf-8")
+    custom_config = custom / "oxlint.strict.mjs"
+    custom_config.write_text("export default { settings: { custom: true } };\n", encoding="utf-8")
     (tmp_path / "package.json").write_text('{"name":"workspace","private":true}\n', encoding="utf-8")
     (primary / "package.json").write_text('{"name":"dashboard"}\n', encoding="utf-8")
     (tmp_path / "package-lock.json").write_text('{"lockfileVersion":3}\n', encoding="utf-8")
-    adopted = manifest.Manifest("0.0.1", ("eslint",), ".", "apps/dashboard", hook_manager="none")
+    adopted = manifest.Manifest("0.0.1", ("oxlint",), ".", "apps/dashboard", hook_manager="none")
     (tmp_path / manifest.MANIFEST_NAME).write_text(adopted.render(), encoding="utf-8")
 
     targets = {target for _source, target in upgrade.build_plan(tmp_path).config_writes}
 
     assert custom_config not in targets
-    assert custom_config.read_text(encoding="utf-8") == "export default [{ custom: true }];\n"
+    assert custom_config.read_text(encoding="utf-8") == "export default { settings: { custom: true } };\n"
 
 
 def test_upgrade_plan_normalizes_a_repository_alias(tmp_path: Path) -> None:
@@ -557,102 +557,55 @@ def test_canonical_bootstrap_launcher_is_one_idempotent_version_authority() -> N
 
 
 @pytest.mark.parametrize(
-    ("relative", "heading"),
+    ("relative", "policy"),
     [
-        ("typescript/.yarnrc.yml", "npmPreapprovedPackages"),
-        ("pnpm-workspace.yaml", "minimumReleaseAgeExclude"),
+        (".npmrc", "min-release-age=20160\nmin-release-age-exclude=unrelated,external-parser\n"),
+        (
+            "pnpm-workspace.yaml",
+            (
+                "minimumReleaseAge: 20160\nminimumReleaseAgeStrict: true\n"
+                'minimumReleaseAgeExclude: ["unrelated@1.2.3"] # retained\n'
+            ),
+        ),
+        (
+            "pnpm-workspace.yaml",
+            (
+                "minimumReleaseAge: 20160\nminimumReleaseAgeStrict: true\n"
+                'minimumReleaseAgeExclude:\n  - "unrelated@1.2.3" # retained\n'
+            ),
+        ),
+        (
+            ".yarnrc.yml",
+            'npmMinimalAgeGate: 20160\nnpmPreapprovedPackages:\n  - "unrelated@1.2.3" # retained\n',
+        ),
     ],
 )
-def test_upgrade_advances_an_existing_package_age_preapproval_for_the_tested_plugin(
-    tmp_path: Path,
-    relative: str,
-    heading: str,
+@pytest.mark.parametrize("existing_approval", [False, True])
+def test_dependency_upgrade_neither_adds_nor_advances_age_exceptions(
+    tmp_path: Path, relative: str, policy: str, existing_approval: bool
 ) -> None:
-    policy = tmp_path / relative
-    policy.parent.mkdir(parents=True, exist_ok=True)
-    policy.write_text(
-        f'{heading}:\n  - "@sarj/eslint-plugin@15.9.0" # internal\n',
-        encoding="utf-8",
-    )
+    if existing_approval:
+        if relative == ".npmrc":
+            policy = policy.replace("unrelated", "@sarj/oxlint-plugin@15.9.0,unrelated")
+        elif "[" in policy:
+            policy = policy.replace('"unrelated@1.2.3"', '"@sarj/oxlint-plugin@15.9.0", "unrelated@1.2.3"')
+        else:
+            policy += '  - "@sarj/oxlint-plugin@15.9.0"\n'
+    path = tmp_path / relative
+    path.write_text(policy, encoding="utf-8")
+    package = tmp_path / "package.json"
+    package.write_text('{"devDependencies":{"@sarj/oxlint-plugin":"15.9.0"}}\n', encoding="utf-8")
+    versions = {"@sarj/oxlint-plugin": "17.0.0"}
 
-    updates = doctor.plan_version_pin_updates(tmp_path, {"@sarj/eslint-plugin": "15.10.0"})
+    [update] = doctor.plan_version_pin_updates(tmp_path, versions)
 
-    assert [update.path for update in updates] == [policy]
-    approvals = manifest.eslint_age_gate_preapprovals()
-    approvals["@sarj/eslint-plugin"] = "15.10.0"
-    assert updates[0].packages == tuple(sorted(approvals))
-    assert updates[0].contents == f"{heading}:\n" + "".join(
-        f'  - "{name}@{version}"\n' for name, version in sorted(approvals.items())
-    )
-
-
-def test_upgrade_retires_mature_typescript_eslint_age_exceptions_but_keeps_other_entries(tmp_path: Path) -> None:
-    policy = tmp_path / ".yarnrc.yml"
-    policy.write_text(
-        'npmPreapprovedPackages:\n  - "unrelated@1.2.3"\n'
-        '  - "@typescript-eslint/parser@8.68.0"\n'
-        '  - "@sarj/eslint-plugin@15.24.0"\n',
-        encoding="utf-8",
-    )
-
-    [update] = doctor.plan_version_pin_updates(tmp_path, {"@sarj/eslint-plugin": "15.24.0"})
-
-    assert '"unrelated@1.2.3"' in update.contents
-    assert '"@sarj/eslint-plugin@15.24.0"' in update.contents
-    assert "@typescript-eslint/parser" not in update.contents
-    assert doctor.rewrite_version_pins(update.contents, {"@sarj/eslint-plugin": "15.24.0"}).contents == update.contents
-
-
-def test_upgrade_converges_npm_age_gate_package_exclusions_without_weakening_the_gate(tmp_path: Path) -> None:
-    policy = tmp_path / ".npmrc"
-    policy.write_text(
-        "min-release-age=20160\nmin-release-age-exclude=unrelated,@sarj/eslint-plugin,@typescript-eslint/parser\n",
-        encoding="utf-8",
-    )
-
-    [update] = doctor.plan_version_pin_updates(tmp_path, {"@sarj/eslint-plugin": "15.17.1"})
-
-    assert "min-release-age=20160\n" in update.contents
-    [exclude] = [line for line in update.contents.splitlines() if line.startswith("min-release-age-exclude=")]
-    values = exclude.partition("=")[2].split(",")
-    assert values[0] == "unrelated"
-    assert set(values[1:]) == set(manifest.eslint_age_gate_preapprovals())
-    assert doctor.rewrite_version_pins(update.contents, {"@sarj/eslint-plugin": "15.17.1"}).contents == update.contents
-
-
-def test_upgrade_preserves_unrelated_yaml_preapprovals_and_is_idempotent(tmp_path: Path) -> None:
-    policy = tmp_path / "pnpm-workspace.yaml"
-    policy.write_text(
-        "minimumReleaseAge: 20160\nminimumReleaseAgeStrict: true\nminimumReleaseAgeExclude:\n"
-        '  - "unrelated@1.2.3" # retained\n  - "@typescript-eslint/utils@8.67.0"\n',
-        encoding="utf-8",
-    )
-
-    [update] = doctor.plan_version_pin_updates(tmp_path, {"@sarj/eslint-plugin": "15.17.1"})
-
-    assert "minimumReleaseAge: 20160\nminimumReleaseAgeStrict: true\n" in update.contents
-    assert '  - "unrelated@1.2.3" # retained\n' in update.contents
-    assert "8.67.0" not in update.contents
-    assert doctor.rewrite_version_pins(update.contents, {"@sarj/eslint-plugin": "15.17.1"}).contents == update.contents
-
-
-def test_upgrade_keeps_a_root_comment_after_yaml_preapprovals(tmp_path: Path) -> None:
-    policy = tmp_path / "pnpm-workspace.yaml"
-    policy.write_text(
-        "minimumReleaseAgeExclude:\n"
-        '  - "@typescript-eslint/utils@8.67.0"\n'
-        "\n"
-        "# The next policy is independent of the age gate.\n"
-        "peerDependencyRules:\n"
-        "  allowedVersions: {}\n",
-        encoding="utf-8",
-    )
-
-    [update] = doctor.plan_version_pin_updates(tmp_path, {"@sarj/eslint-plugin": "15.17.1"})
-
-    comment = update.contents.index("# The next policy")
-    assert update.contents.rfind('  - "', 0, comment) > 0
-    assert update.contents[comment - 2 : comment] == "\n\n"
+    assert update.path == package
+    assert '"@sarj/oxlint-plugin":"17.0.0"' in update.contents
+    assert doctor.rewrite_version_pins(policy, versions).contents == policy
+    assert doctor.rewrite_version_pins(policy, versions).packages == ()
+    assert path.read_text(encoding="utf-8") == policy
+    package.write_text(update.contents, encoding="utf-8")
+    assert doctor.plan_version_pin_updates(tmp_path, versions) == ()
 
 
 def test_upgrade_ignores_unselected_ambiguous_mobile_roots(tmp_path: Path) -> None:
@@ -708,10 +661,10 @@ def test_upgrade_does_not_require_mobile_runners_for_disabled_capabilities(tmp_p
 
 def test_upgrade_does_not_rewrite_the_plugin_outside_an_age_preapproval_section(tmp_path: Path) -> None:
     policy = tmp_path / ".yarnrc.yml"
-    original = 'otherPackages:\n  - "@sarj/eslint-plugin@15.9.0"\n'
+    original = 'otherPackages:\n  - "@sarj/oxlint-plugin@15.9.0"\n'
     policy.write_text(original, encoding="utf-8")
 
-    updates = doctor.plan_version_pin_updates(tmp_path, {"@sarj/eslint-plugin": "15.10.0"})
+    updates = doctor.plan_version_pin_updates(tmp_path, {"@sarj/oxlint-plugin": "15.10.0"})
 
     assert updates == ()
     assert policy.read_text(encoding="utf-8") == original
@@ -723,46 +676,46 @@ def test_upgrade_advances_exact_plugin_pins_in_nested_workspace_manifests(tmp_pa
     package.write_text(
         "{\n"
         '  "name": "client",\n'
-        '  "dependencies": {"@sarj/eslint-plugin": "15.9.0"},\n'
+        '  "dependencies": {"@sarj/oxlint-plugin": "15.9.0"},\n'
         '  "devDependencies": {\n'
-        '    "@sarj/eslint-plugin": "15.9.0",\n'
+        '    "@sarj/oxlint-plugin": "15.9.0",\n'
         '    "other": "1.0.0"\n'
         "  }\n"
         "}\n",
         encoding="utf-8",
     )
 
-    updates = doctor.plan_version_pin_updates(tmp_path, {"@sarj/eslint-plugin": "15.10.1"})
+    updates = doctor.plan_version_pin_updates(tmp_path, {"@sarj/oxlint-plugin": "15.10.1"})
 
-    assert [(update.path, update.packages) for update in updates] == [(package, ("@sarj/eslint-plugin",))]
-    assert updates[0].contents.count('"@sarj/eslint-plugin": "15.10.1"') == 2
+    assert [(update.path, update.packages) for update in updates] == [(package, ("@sarj/oxlint-plugin",))]
+    assert updates[0].contents.count('"@sarj/oxlint-plugin": "15.10.1"') == 2
     assert '"other": "1.0.0"' in updates[0].contents
 
 
 def test_upgrade_preserves_workspace_plugin_ranges(tmp_path: Path) -> None:
     package = tmp_path / "typescript" / "packages" / "legacy" / "package.json"
     package.parent.mkdir(parents=True)
-    original = '{"devDependencies":{"@sarj/eslint-plugin":"^15.9.0"}}\n'
+    original = '{"devDependencies":{"@sarj/oxlint-plugin":"^15.9.0"}}\n'
     package.write_text(original, encoding="utf-8")
 
-    updates = doctor.plan_version_pin_updates(tmp_path, {"@sarj/eslint-plugin": "15.10.1"})
+    updates = doctor.plan_version_pin_updates(tmp_path, {"@sarj/oxlint-plugin": "15.10.1"})
 
     assert updates == ()
     assert package.read_text(encoding="utf-8") == original
 
 
 def test_upgrade_composes_package_pins_with_peer_scaffolding(tmp_path: Path) -> None:
-    adopted = manifest.Manifest("0.0.1", ("eslint",), ".", ".", hook_manager="none")
+    adopted = manifest.Manifest("0.0.1", ("oxlint",), ".", ".", hook_manager="none")
     (tmp_path / manifest.MANIFEST_NAME).write_text(adopted.render(), encoding="utf-8")
     package = tmp_path / "package.json"
-    current = manifest.eslint_peers()["@sarj/eslint-plugin"]
+    current = manifest.oxlint_peers()["@sarj/oxlint-plugin"]
     old = f"{current.split('.')[0]}.0.0"
     package.write_text(
         json.dumps(
             {
                 "name": "consumer",
-                "dependencies": {"@sarj/eslint-plugin": old, "application": "1.2.3"},
-                "devDependencies": {"@sarj/eslint-plugin": old, "test-tool": "4.5.6"},
+                "dependencies": {"@sarj/oxlint-plugin": old, "application": "1.2.3"},
+                "devDependencies": {"@sarj/oxlint-plugin": old, "test-tool": "4.5.6"},
                 "scripts": {"custom": "keep this"},
             }
         ),
@@ -775,9 +728,9 @@ def test_upgrade_composes_package_pins_with_peer_scaffolding(tmp_path: Path) -> 
 
     updated = package.read_text(encoding="utf-8")
     data = manifest.as_table(parse_json(updated))
-    assert manifest.table_field(data, "dependencies") == {"@sarj/eslint-plugin": current, "application": "1.2.3"}
+    assert manifest.table_field(data, "dependencies") == {"@sarj/oxlint-plugin": current, "application": "1.2.3"}
     dev_dependencies = manifest.table_field(data, "devDependencies")
-    assert "@sarj/eslint-plugin" not in dev_dependencies
+    assert "@sarj/oxlint-plugin" not in dev_dependencies
     assert dev_dependencies["test-tool"] == "4.5.6"
     assert manifest.table_field(data, "scripts") == {"custom": "keep this"}
     assert package not in {update.path for update in doctor.plan_version_pin_updates(tmp_path)}
@@ -792,7 +745,7 @@ def test_upgrade_refreshes_a_secondary_javascript_lock_after_rewriting_its_pin(
     secondary = tmp_path / "secondary-app"
     secondary.mkdir()
     (secondary / "package.json").write_text(
-        '{"devDependencies":{"@sarj/eslint-plugin":"0.0.1"}}\n',
+        '{"devDependencies":{"@sarj/oxlint-plugin":"0.0.1"}}\n',
         encoding="utf-8",
     )
     lockfile = secondary / "package-lock.json"
@@ -1114,7 +1067,7 @@ def test_update_migrates_a_legacy_manifest_before_applying(tmp_path: Path, capsy
     )
     source = tmp_path / "service.ts"
     source.write_text(
-        "// eslint-disable-next-line @sarj/prefer-string-literal-union\nexport const value = 1;\n",
+        "// oxlint-disable-next-line @sarj/prefer-string-literal-union\nexport const value = 1;\n",
         encoding="utf-8",
     )
 
@@ -1128,22 +1081,19 @@ def test_update_migrates_a_legacy_manifest_before_applying(tmp_path: Path, capsy
 
 
 @pytest.mark.parametrize(
-    ("relative", "initial_policy", "versioned"),
+    ("relative", "initial_policy"),
     [
         (
             ".npmrc",
-            "min-release-age=20160\nmin-release-age-exclude=@sarj/eslint-plugin\n",
-            False,
+            "min-release-age=20160\nmin-release-age-exclude=@sarj/oxlint-plugin\n",
         ),
         (
             "pnpm-workspace.yaml",
-            'minimumReleaseAge: 20160\nminimumReleaseAgeExclude:\n  - "@sarj/eslint-plugin@15.9.0"\n',
-            True,
+            'minimumReleaseAge: 20160\nminimumReleaseAgeExclude:\n  - "@sarj/oxlint-plugin@15.9.0"\n',
         ),
         (
             ".yarnrc.yml",
-            'npmMinimalAgeGate: 20160\nnpmPreapprovedPackages:\n  - "@sarj/eslint-plugin@15.9.0"\n',
-            True,
+            'npmMinimalAgeGate: 20160\nnpmPreapprovedPackages:\n  - "@sarj/oxlint-plugin@15.9.0"\n',
         ),
     ],
 )
@@ -1152,17 +1102,16 @@ def test_update_migrates_legacy_wiring_before_the_single_dependency_install(
     tmp_path: Path,
     relative: str,
     initial_policy: str,
-    versioned: bool,
 ) -> None:
     (tmp_path / "package.json").write_text(
-        '{"name":"fixture","private":true,"devDependencies":{"@sarj/eslint-plugin":"15.9.0"}}\n',
+        '{"name":"fixture","private":true,"devDependencies":{"@sarj/oxlint-plugin":"15.9.0"}}\n',
         encoding="utf-8",
     )
     (tmp_path / "package-lock.json").write_text('{"lockfileVersion":3}\n', encoding="utf-8")
     policy = tmp_path / relative
     policy.write_text(initial_policy, encoding="utf-8")
     (tmp_path / manifest.MANIFEST_NAME).write_text(
-        'version = "0.42.0"\nconfigs = ["eslint"]\n\n[dest]\npython = "."\ntypescript = "."\n',
+        'version = "0.42.0"\nconfigs = ["oxlint"]\n\n[dest]\npython = "."\ntypescript = "."\n',
         encoding="utf-8",
     )
     observed_policies: list[str] = []
@@ -1181,12 +1130,7 @@ def test_update_migrates_legacy_wiring_before_the_single_dependency_install(
     assert status == 0
     assert len(observed_policies) == 1
     [rewritten] = observed_policies
-    approvals = manifest.eslint_age_gate_preapprovals()
-    if versioned:
-        assert all(f'"{name}@{version}"' in rewritten for name, version in approvals.items())
-    else:
-        exclusions = next(line for line in rewritten.splitlines() if line.startswith("min-release-age-exclude="))
-        assert set(exclusions.partition("=")[2].split(",")) == set(approvals)
+    assert rewritten == initial_policy
 
 
 def test_update_installs_once_after_a_no_drift_legacy_migration(
@@ -1195,12 +1139,12 @@ def test_update_installs_once_after_a_no_drift_legacy_migration(
 ) -> None:
     package = tmp_path / "package.json"
     package.write_text(
-        '{"name":"fixture","private":true,"devDependencies":{"@sarj/eslint-plugin":"15.9.0"}}\n',
+        '{"name":"fixture","private":true,"devDependencies":{"@sarj/oxlint-plugin":"15.9.0"}}\n',
         encoding="utf-8",
     )
     (tmp_path / "package-lock.json").write_text('{"lockfileVersion":3}\n', encoding="utf-8")
     (tmp_path / manifest.MANIFEST_NAME).write_text(
-        'version = "0.42.0"\nconfigs = ["eslint"]\n\n[dest]\npython = "."\ntypescript = "."\n',
+        'version = "0.42.0"\nconfigs = ["oxlint"]\n\n[dest]\npython = "."\ntypescript = "."\n',
         encoding="utf-8",
     )
     observed_packages: list[str] = []
@@ -1218,21 +1162,21 @@ def test_update_installs_once_after_a_no_drift_legacy_migration(
 
     assert status == 0
     assert len(observed_packages) == 1
-    assert manifest.eslint_peers()["@sarj/eslint-plugin"] in observed_packages[0]
+    assert manifest.oxlint_peers()["@sarj/oxlint-plugin"] in observed_packages[0]
 
 
-def test_update_preserves_existing_nested_eslint_projects_during_schema_migration(tmp_path: Path) -> None:
+def test_update_preserves_existing_nested_oxlint_projects_during_schema_migration(tmp_path: Path) -> None:
     selected = tmp_path / "apps" / "dashboard"
     selected.mkdir(parents=True)
     (selected / "package.json").write_text('{"name":"dashboard"}\n', encoding="utf-8")
-    (selected / "eslint.config.mjs").write_text(
-        'import strict from "./eslint.strict.mjs";\nexport default strict;\n',
+    (selected / "oxlint.config.mjs").write_text(
+        'import strict from "./oxlint.strict.mjs";\nexport default strict;\n',
         encoding="utf-8",
     )
     nested = selected / "packages" / "legacy"
     nested.mkdir(parents=True)
     (nested / "package.json").write_text('{"name":"independent"}\n', encoding="utf-8")
-    nested_config = nested / "eslint.config.mjs"
+    nested_config = nested / "oxlint.config.mjs"
     original_nested = "export default makeIndependentPolicy();\n"
     nested_config.write_text(original_nested, encoding="utf-8")
     (tmp_path / "package.json").write_text('{"name":"workspace","private":true}\n', encoding="utf-8")
@@ -1426,7 +1370,7 @@ def test_upgrade_no_install_rolls_back_when_dependency_and_configuration_drift_r
             "forced missing dependency",
             "doctor.python.legacy-in-project-tool",
         ),
-        doctor.Finding(doctor.Level.DRIFT, "eslint.config.mjs", "forced broken wiring", "doctor.eslint.wiring"),
+        doctor.Finding(doctor.Level.DRIFT, "oxlint.config.mjs", "forced broken wiring", "doctor.oxlint.wiring"),
     ]
 
     def diagnose(_root: Path) -> list[doctor.Finding]:
@@ -1443,7 +1387,7 @@ def test_upgrade_no_install_rolls_back_when_dependency_and_configuration_drift_r
 @pytest.mark.parametrize(
     "finding_id",
     [
-        "doctor.eslint.shadowed-config",
+        "doctor.oxlint.shadowed-config",
         "doctor.precommit.rev",
         "doctor.pyright.deprecated",
         "doctor.ruff.authority",
@@ -1547,7 +1491,7 @@ def test_upgrade_transactionally_migrates_retired_source_suppressions(tmp_path: 
     _outdated_python_repo(tmp_path)
     source = tmp_path / "service.ts"
     source.write_text(
-        "// eslint-disable-next-line unicorn/no-null, @sarj/prefer-string-literal-union -- legacy\n"
+        "// oxlint-disable-next-line unicorn/no-null, @sarj/prefer-string-literal-union -- legacy\n"
         "export const value = null;\n",
         encoding="utf-8",
     )
@@ -1557,23 +1501,23 @@ def test_upgrade_transactionally_migrates_retired_source_suppressions(tmp_path: 
     assert plan.suppression_writes == [
         (
             source,
-            "// eslint-disable-next-line unicorn/no-null -- legacy\nexport const value = null;\n",
+            "// oxlint-disable-next-line unicorn/no-null -- legacy\nexport const value = null;\n",
         )
     ]
     assert upgrade.unsafe_retired_findings(plan) == []
     assert upgrade.apply(plan, install=False) == 0
     assert source.read_text(encoding="utf-8") == (
-        "// eslint-disable-next-line unicorn/no-null -- legacy\nexport const value = null;\n"
+        "// oxlint-disable-next-line unicorn/no-null -- legacy\nexport const value = null;\n"
     )
     assert not [finding for finding in doctor.diagnose(tmp_path) if finding.id == "doctor.rule.retired"]
 
 
-def test_upgrade_transactionally_migrates_the_known_renamed_eslint_config_key(tmp_path: Path) -> None:
+def test_upgrade_transactionally_migrates_the_known_renamed_oxlint_config_key(tmp_path: Path) -> None:
     _outdated_python_repo(tmp_path)
-    config = tmp_path / "apps" / "web" / "eslint.config.js"
+    config = tmp_path / "apps" / "web" / "oxlint.config.js"
     config.parent.mkdir(parents=True)
     config.write_text(
-        "export default [{ rules: { '@sarj/zod-naming-convention': 'error' } }];\n",
+        "export default { rules: { '@sarj/zod-naming-convention': 'error' } };\n",
         encoding="utf-8",
     )
 
@@ -1582,7 +1526,7 @@ def test_upgrade_transactionally_migrates_the_known_renamed_eslint_config_key(tm
     assert plan.suppression_writes == [
         (
             config,
-            "export default [{ rules: { '@sarj/require-pascal-case-zod-schema-name': 'error' } }];\n",
+            "export default { rules: { '@sarj/require-pascal-case-zod-schema-name': 'error' } };\n",
         )
     ]
     assert upgrade.unsafe_retired_findings(plan) == []
@@ -1592,13 +1536,13 @@ def test_upgrade_transactionally_migrates_the_known_renamed_eslint_config_key(tm
 
 def test_upgrade_rejects_a_stale_config_migration_without_clobbering_it(tmp_path: Path) -> None:
     _outdated_python_repo(tmp_path)
-    config = tmp_path / "eslint.config.mjs"
+    config = tmp_path / "oxlint.config.mjs"
     config.write_text(
-        "export default [{ rules: { '@sarj/zod-naming-convention': 'error' } }];\n",
+        "export default { rules: { '@sarj/zod-naming-convention': 'error' } };\n",
         encoding="utf-8",
     )
     plan = upgrade.build_plan(tmp_path)
-    concurrent = "export default [{ rules: {} }]; // user edit\n"
+    concurrent = "export default { rules: {} }; // user edit\n"
     config.write_text(concurrent, encoding="utf-8")
 
     assert upgrade.apply(plan, install=False) == 2
@@ -1641,9 +1585,9 @@ def test_upgrade_check_explains_doctor_drift_when_bundle_is_current(
     assert upgrade.apply(upgrade.build_plan(tmp_path), install=False) == 0
     finding = doctor.Finding(
         doctor.Level.DRIFT,
-        "package.json: eslint",
+        "package.json: oxlint",
         "expected exact tested peer",
-        "doctor.eslint.peer",
+        "doctor.oxlint.peer",
         "run `sarj-standards update`",
     )
 
@@ -1661,7 +1605,7 @@ def test_upgrade_check_explains_doctor_drift_when_bundle_is_current(
     assert "already matches standards" not in output
     assert "bundle current:" in output
     assert "doctor found 1 configuration drift" in output
-    assert "drift: doctor.eslint.peer package.json: eslint" in output
+    assert "drift: doctor.oxlint.peer package.json: oxlint" in output
     assert "fix: run `sarj-standards update`" in output
 
 

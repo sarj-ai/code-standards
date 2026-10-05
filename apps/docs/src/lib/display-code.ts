@@ -23,10 +23,7 @@ interface DisplayProjection {
 }
 
 const repositoryRoot = resolve(process.cwd(), "../..");
-const projectionPath = resolve(
-  process.cwd(),
-  "src/generated/formatted-code.v1.json",
-);
+const projectionPath = resolve(process.cwd(), "src/generated/formatted-code.v1.json");
 const catalogPath = resolve(
   repositoryRoot,
   "packages/standards/src/sarj_standards/schemas/rule-catalog.v1.json",
@@ -36,26 +33,19 @@ const cliPath = resolve(
   "packages/standards/src/sarj_standards/configs/cli-reference.v1.json",
 );
 
-// eslint-disable-next-line @sarj/stepdown -- hashing is a local implementation detail of projection loading.
-function sha256(source: string): string {
-  return hash("sha256", source, "hex");
-}
-
 async function readProjection(): Promise<DisplayProjection> {
-  const projection = JSON.parse(
-    await readFile(projectionPath, "utf8"),
-  ) as DisplayProjection;
-  if (
-    projection.catalogSha256 !== sha256(await readFile(catalogPath, "utf8"))
-  ) {
+  const projection = JSON.parse(await readFile(projectionPath, "utf8")) as DisplayProjection;
+  if (projection.catalogSha256 !== sha256(await readFile(catalogPath, "utf8"))) {
     throw new Error("Formatted code projection is stale for the rule catalog.");
   }
   if (projection.cliSha256 !== sha256(await readFile(cliPath, "utf8"))) {
-    throw new Error(
-      "Formatted code projection is stale for the CLI reference.",
-    );
+    throw new Error("Formatted code projection is stale for the CLI reference.");
   }
   return projection;
+}
+
+function sha256(source: string): string {
+  return hash("sha256", source, "hex");
 }
 
 const projection = await readProjection();
@@ -64,12 +54,9 @@ export const formattedStaticCode = projection.static;
 
 export function displayRule(rule: Rule): DisplayRule {
   const displayed = projection.rules[rule.key];
-  if (displayed === undefined)
-    throw new Error(`Formatted code projection is missing ${rule.key}.`);
+  if (displayed === undefined) throw new Error(`Formatted code projection is missing ${rule.key}.`);
   if (displayed.examples.length !== rule.examples.length) {
-    throw new Error(
-      `Formatted code projection example count differs for ${rule.key}.`,
-    );
+    throw new Error(`Formatted code projection example count differs for ${rule.key}.`);
   }
   for (const [index, example] of displayed.examples.entries()) {
     const raw = rule.examples.at(index);
@@ -79,9 +66,7 @@ export function displayRule(rule: Rule): DisplayRule {
       example.scenarioId !== raw.scenarioId ||
       example.outcome !== raw.outcome
     ) {
-      throw new Error(
-        `Formatted code projection topology differs for ${rule.key}.`,
-      );
+      throw new Error(`Formatted code projection topology differs for ${rule.key}.`);
     }
   }
   return displayed;

@@ -78,41 +78,30 @@ def test_an_unsupported_declared_package_manager_fails_closed(tmp_path: Path) ->
 def test_npm_keeps_the_nested_form_with_resolved_root_references() -> None:
     overrides = packagemanager.overrides_for(PackageManager.NPM)
     assert overrides.key_path == ("overrides",)
-    assert overrides.entries["eslint-plugin-react"] == {"eslint": manifest.eslint_peers()["eslint"]}
+    assert overrides.entries == manifest.oxlint_overrides()
     assert "$" not in json.dumps(overrides.as_document())
 
 
 def test_pnpm_gets_a_flat_selector_for_its_workspace_policy() -> None:
     overrides = packagemanager.overrides_for(PackageManager.PNPM)
     assert overrides.key_path == ("overrides",)
-    assert "eslint-plugin-react>eslint" in overrides.entries
+    assert overrides.entries == manifest.oxlint_overrides()
 
 
-def test_yarn_gets_resolved_overrides_and_one_tested_typescript_eslint_identity() -> None:
+def test_yarn_uses_native_package_versions_without_identity_resolutions() -> None:
     overrides = packagemanager.overrides_for(PackageManager.YARN)
     assert overrides.key_path == ("resolutions",)
-    expected_identity = manifest.eslint_yarn_identity_pins()
-    assert overrides.entries == {
-        "eslint-plugin-react/eslint": manifest.eslint_peers()["eslint"],
-        **expected_identity,
-    }
+    expected_identity = manifest.oxlint_yarn_identity_pins()
+    assert expected_identity == {}
+    assert overrides.entries == manifest.oxlint_overrides()
     assert "$" not in json.dumps(overrides.as_document())
 
 
-def test_mature_typescript_eslint_identity_pins_are_not_age_gate_exceptions() -> None:
-    approvals = manifest.eslint_age_gate_preapprovals()
-    identity_pins = manifest.eslint_yarn_identity_pins()
-
-    assert approvals == {"@sarj/eslint-plugin": manifest.eslint_peers()["@sarj/eslint-plugin"]}
-    assert "typescript-eslint" in identity_pins
-    assert "@typescript-eslint/parser" in identity_pins
-    assert not approvals.keys() & identity_pins.keys()
-
-
-def test_bun_gets_a_flat_eslint_override_it_actually_honors() -> None:
+def test_bun_preserves_native_hooks_override_without_forcing_doctors_engine() -> None:
     overrides = packagemanager.overrides_for(PackageManager.BUN)
     assert overrides.key_path == ("overrides",)
-    assert overrides.entries == {"eslint": manifest.eslint_peers()["eslint"]}
+    assert overrides.entries == manifest.oxlint_overrides()
+    assert "oxlint" not in overrides.entries
 
 
 @pytest.mark.parametrize(
@@ -138,27 +127,27 @@ def test_install_argv_matches_the_printed_script_free_command(client: PackageMan
 
 
 def test_lint_execution_can_never_install_from_the_network() -> None:
-    assert packagemanager.exec_argv(PackageManager.NPM, "eslint", "--", "app.ts") == (
+    assert packagemanager.exec_argv(PackageManager.NPM, "oxlint", "--", "app.ts") == (
         "npm",
         "exec",
         "--offline",
         "--",
-        "eslint",
+        "oxlint",
         "--",
         "app.ts",
     )
-    assert packagemanager.exec_argv(PackageManager.BUN, "eslint", "--", "app.ts") == (
+    assert packagemanager.exec_argv(PackageManager.BUN, "oxlint", "--", "app.ts") == (
         "bunx",
         "--bun",
         "--no-install",
-        "eslint",
+        "oxlint",
         "--",
         "app.ts",
     )
-    assert packagemanager.exec_argv(PackageManager.PNPM, "eslint", "--", "app.ts") == (
+    assert packagemanager.exec_argv(PackageManager.PNPM, "oxlint", "--", "app.ts") == (
         "pnpm",
         "exec",
-        "eslint",
+        "oxlint",
         "--",
         "app.ts",
     )
@@ -385,7 +374,7 @@ def test_init_writes_pnpm_overrides_into_workspace_yaml_for_a_standalone_repo(tm
     assert "overrides" not in written, "a bare `overrides` key is ignored by pnpm"
     assert "pnpm" not in written, "pnpm 11 ignores package.json#pnpm.overrides"
     workspace = (tmp_path / "pnpm-workspace.yaml").read_text(encoding="utf-8")
-    assert '"eslint-plugin-react>eslint"' in workspace
+    assert "oxlint-plugin-react" not in workspace
     assert "pnpm install --no-frozen-lockfile --ignore-scripts" in proc.stdout
     assert "--ignore-workspace" not in proc.stdout
 
@@ -399,7 +388,7 @@ def test_pnpm_11_workspace_overrides_are_merged_in_the_workspace_yaml(tmp_path: 
 
     assert proc.returncode == 0, proc.stderr
     text = workspace.read_text(encoding="utf-8")
-    assert '"eslint-plugin-react>eslint"' in text
+    assert "oxlint-plugin-react" not in text
     assert "rollup@<4" in text
     assert "allowBuilds" in text
     package: dict[str, object] = json.loads(  # pyright: ignore[reportAny]
@@ -433,17 +422,15 @@ def test_init_writes_resolutions_into_a_yarn_repo(tmp_path: Path) -> None:
     written = manifest.as_table(parsed)
     assert "overrides" not in written, "a bare `overrides` key is ignored by Yarn"
     resolutions = manifest.table_field(written, "resolutions")
-    assert resolutions["eslint-plugin-react/eslint"] == manifest.eslint_peers()["eslint"]
-    expected_identity = {
-        name: version
-        for name, version in manifest.eslint_age_gate_preapprovals().items()
-        if name == "typescript-eslint" or name.startswith("@typescript-eslint/")
-    }
-    assert {name: resolutions[name] for name in expected_identity} == expected_identity
+    assert resolutions == manifest.oxlint_overrides()
+    dependencies = manifest.table_field(written, "devDependencies")
+    assert dependencies["typescript"] == manifest.oxlint_peers()["typescript"]
+    assert dependencies["@sarj/oxlint-plugin"] == manifest.oxlint_peers()["@sarj/oxlint-plugin"]
+    assert not any("eslint" in name for name in dependencies)
     assert "yarn install --no-immutable --mode=skip-build" in proc.stdout
 
 
-def test_init_pins_nested_yarn_eslint_configs_to_the_canonical_plugin_identity(tmp_path: Path) -> None:
+def test_init_pins_nested_yarn_oxlint_configs_to_the_canonical_plugin_identity(tmp_path: Path) -> None:
     child = tmp_path / "packages" / "client"
     child.mkdir(parents=True)
     _project(
@@ -458,15 +445,13 @@ def test_init_pins_nested_yarn_eslint_configs_to_the_canonical_plugin_identity(t
     child_package = {
         "name": "client",
         "devDependencies": {
-            "@typescript-eslint/parser": "^8.67.0",
-            "typescript-eslint": "^8.67.0",
+            "zod": "4.0.0",
         },
     }
     (child / "package.json").write_text(json.dumps(child_package), encoding="utf-8")
-    (child / "eslint.config.js").write_text(
-        'import strict from "../../eslint.strict.mjs";\n'
-        'import tseslint from "typescript-eslint";\n'
-        "export default [...strict, ...tseslint.configs.strictTypeChecked];\n",
+    (child / "oxlint.config.js").write_text(
+        'import strict from "../../oxlint.strict.mjs";\n'
+        "export default { ...strict, overrides: [{ files: ['legacy/**'], rules: { 'eslint/no-console': 'off' } }] };\n",
         encoding="utf-8",
     )
 
@@ -475,9 +460,9 @@ def test_init_pins_nested_yarn_eslint_configs_to_the_canonical_plugin_identity(t
     assert proc.returncode == 0, proc.stderr
     root: object = json.loads((tmp_path / "package.json").read_text(encoding="utf-8"))  # pyright: ignore[reportAny]
     resolutions = manifest.table_field(manifest.as_table(root), "resolutions")
-    identity_pins = manifest.eslint_yarn_identity_pins()
-    assert resolutions["typescript-eslint"] == identity_pins["typescript-eslint"]
-    assert resolutions["@typescript-eslint/parser"] == identity_pins["@typescript-eslint/parser"]
+    identity_pins = manifest.oxlint_yarn_identity_pins()
+    assert identity_pins == {}
+    assert resolutions == manifest.oxlint_overrides()
     assert json.loads((child / "package.json").read_text(encoding="utf-8")) == child_package
 
 
@@ -490,14 +475,14 @@ def test_init_writes_bun_override_without_npm_nested_syntax(tmp_path: Path) -> N
         (tmp_path / "package.json").read_text(encoding="utf-8")
     )
     overrides = manifest.table_field(manifest.as_table(parsed), "overrides")
-    assert overrides == {"eslint": manifest.eslint_peers()["eslint"]}
+    assert overrides == manifest.oxlint_overrides()
 
 
 def test_npm_repairs_a_scalar_direct_peer_override_and_preserves_child_overrides(tmp_path: Path) -> None:
     _project(
         tmp_path,
         "package-lock.json",
-        {"name": "web", "overrides": {"eslint-plugin-react": "7.37.4"}},
+        {"name": "web", "overrides": {"oxlint": {".": "1.85.0", "unrelated": "2.0.0"}}},
     )
 
     proc = _cli("init", "--dest", str(tmp_path))
@@ -505,9 +490,9 @@ def test_npm_repairs_a_scalar_direct_peer_override_and_preserves_child_overrides
     assert proc.returncode == 0, proc.stderr
     parsed: object = json.loads((tmp_path / "package.json").read_text(encoding="utf-8"))  # pyright: ignore[reportAny]
     overrides = manifest.table_field(manifest.as_table(parsed), "overrides")
-    react = manifest.table_field(overrides, "eslint-plugin-react")
-    assert react["."] == "$eslint-plugin-react"
-    assert react["eslint"] == manifest.eslint_peers()["eslint"]
+    native = manifest.table_field(overrides, "oxlint")
+    assert native["."] == "$oxlint"
+    assert native["unrelated"] == "2.0.0"
 
 
 def test_npm_direct_peer_override_tracks_the_exact_pin_without_escaping_unicode(tmp_path: Path) -> None:
@@ -528,7 +513,7 @@ def test_npm_direct_peer_override_tracks_the_exact_pin_without_escaping_unicode(
     package_text = (tmp_path / "package.json").read_text(encoding="utf-8")
     parsed: object = json.loads(package_text)  # pyright: ignore[reportAny]
     package = manifest.as_table(parsed)
-    assert manifest.table_field(package, "devDependencies")["typescript"] == "npm:@typescript/typescript6@6.0.2"
+    assert manifest.table_field(package, "devDependencies")["typescript"] == manifest.oxlint_peers()["typescript"]
     assert manifest.table_field(package, "overrides")["typescript"] == "$typescript"
     assert package["description"] == "Customer dashboard — browser client"
     assert "—" in package_text
@@ -547,7 +532,7 @@ def test_pnpm_workspace_policy_keeps_unrelated_package_json_pnpm_settings(tmp_pa
     pnpm = manifest.table_field(manifest.as_table(parsed), "pnpm")
     assert pnpm["onlyBuiltDependencies"] == ["esbuild"]
     assert "overrides" not in pnpm
-    assert '"eslint-plugin-react>eslint"' in (tmp_path / "pnpm-workspace.yaml").read_text(encoding="utf-8")
+    assert "oxlint-plugin-react" not in (tmp_path / "pnpm-workspace.yaml").read_text(encoding="utf-8")
 
 
 def test_a_second_init_on_a_pnpm_repo_changes_nothing(tmp_path: Path) -> None:
@@ -560,7 +545,7 @@ def test_a_second_init_on_a_pnpm_repo_changes_nothing(tmp_path: Path) -> None:
     assert second.returncode == 0
     assert (tmp_path / "package.json").read_text(encoding="utf-8") == before_package
     assert (tmp_path / "pnpm-workspace.yaml").read_text(encoding="utf-8") == before_workspace
-    assert "already pins the tested ESLint peers and pnpm overrides" in second.stdout
+    assert "already pins the tested Oxlint peers and pnpm overrides" in second.stdout
 
 
 def test_doctor_rejects_obsolete_package_json_pnpm_overrides(tmp_path: Path) -> None:

@@ -1,12 +1,12 @@
 schema = 4
-bundle = "8.25.1"
+bundle = "9.0.0"
 rule_profile = "all"
 
 [capabilities]
-# The TypeScript package defines the ESLint preset itself, so its authored
+# The TypeScript package defines the Oxlint preset itself, so its authored
 # config is validated by the package's full lint/runtime suite instead of
 # importing the consumer preset from itself.
-disable = ["eslint", "swiftformat", "swiftlint", "ktlint", "detekt", "mobile-security", "markdownlint", "shellcheck", "taplo", "yamllint", "checkov", "zizmor"]
+disable = ["oxlint", "swiftformat", "swiftlint", "ktlint", "detekt", "mobile-security", "markdownlint", "shellcheck", "taplo", "yamllint", "checkov", "zizmor"]
 
 
 [dest]
@@ -123,6 +123,7 @@ iac = ["packages/iac/pyproject.toml"]
 standards = ["packages/standards/pyproject.toml", "packages/standards-compat/pyproject.toml"]
 typescript = ["packages/typescript/package.json"]
 tsconfig = ["packages/tsconfig/package.json"]
+react-hooks = ["packages/react-hooks/package.json"]
 
 [[repository.version_references]]
 path = "packages/bootstrap/uv.lock"
@@ -203,28 +204,28 @@ version = "iac"
 selector = "sarj-iac-lint"
 
 [[repository.version_references]]
-path = "packages/typescript/package-lock.json"
+path = "package-lock.json"
 format = "json-pointer"
 version = "typescript"
-selector = "/version"
+selector = "/packages/packages~1typescript/version"
 
 [[repository.version_references]]
-path = "packages/typescript/package-lock.json"
+path = "package-lock.json"
 format = "json-pointer"
-version = "typescript"
-selector = "/packages//version"
+version = "react-hooks"
+selector = "/packages/packages~1react-hooks/version"
 
 [[repository.version_references]]
-path = "apps/docs/package-lock.json"
+path = "apps/docs/package.json"
 format = "json-pointer"
 version = "typescript"
-selector = "/packages/..~1..~1packages~1typescript/version"
+selector = "/devDependencies/@sarj~1oxlint-plugin"
 
 [[repository.version_references]]
-path = "packages/standards/src/sarj_standards/configs/eslint.peers.json"
+path = "packages/standards/src/sarj_standards/configs/oxlint.peers.json"
 format = "json-pointer"
 version = "typescript"
-selector = "/peers/@sarj~1eslint-plugin"
+selector = "/peers/@sarj~1oxlint-plugin"
 
 [repository.version_coverage]
 manifests = [
@@ -237,17 +238,17 @@ manifests = [
   "packages/standards-compat/pyproject.toml",
   "packages/tsconfig/package.json",
   "packages/typescript/package.json",
+  "packages/react-hooks/package.json",
 ]
 locks = [
   "packages/contracts/uv.lock",
-  "apps/docs/package-lock.json",
+  "package-lock.json",
   "packages/bootstrap/uv.lock",
   "uv.lock",
   "packages/python/uv.lock",
   "packages/sql/uv.lock",
   "packages/iac/uv.lock",
   "packages/standards/uv.lock",
-  "packages/typescript/package-lock.json",
 ]
 
 [[repository.version_references]]
@@ -315,3 +316,9 @@ path = "packages/standards/pyproject.toml"
 format = "exact-pin"
 version = "contracts"
 selector = "sarj-rule-contracts"
+
+[[repository.version_references]]
+path = "packages/standards/src/sarj_standards/configs/oxlint.peers.json"
+format = "json-pointer"
+version = "react-hooks"
+selector = "/peers/@sarj~1oxlint-react-hooks"

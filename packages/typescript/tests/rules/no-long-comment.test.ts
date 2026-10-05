@@ -1,17 +1,16 @@
 // vitest: shared-module-graph
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
+import { RuleTester } from "oxlint/plugins-dev";
+import { describe, it } from "vitest";
 
 import rule, { NO_LONG_COMMENT_DOCUMENTATION } from "../../src/rules/no-long-comment.js";
 
-RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
 RuleTester.it = it;
 RuleTester.itOnly = it.only;
 
 const UNPUNCTUATED_COMMENT_WALL = `/** ${Array.from({ length: 120 }, () => "context").join(" ")} */\nconst value = 1;`;
 
-new RuleTester().run("no-long-comment", rule, {
+new RuleTester({ languageOptions: { parserOptions: { lang: "ts" } } }).run("no-long-comment", rule, {
   valid: [
     "// The cache is process local.\nconst cache = new Map();",
     "// First fact. Second fact.\nconst value = 1;",

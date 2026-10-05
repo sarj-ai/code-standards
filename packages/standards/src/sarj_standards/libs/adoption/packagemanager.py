@@ -37,7 +37,6 @@ LOCKFILES: Final[tuple[tuple[str, PackageManager], ...]] = (
 )
 AGE_GATE_POLICY_NAMES: Final = frozenset({".npmrc", ".yarnrc.yml", ".yarnrc.yaml", "pnpm-workspace.yaml"})
 
-_ESLINT: Final = "eslint"
 _YARN_BERRY_MINIMUM_MAJOR: Final = 2
 _YAML_ENTRY = re.compile(r'^\s*(?P<key>"[^"]+"|\'[^\']+\'|[^:#]+):\s*(?P<value>[^#\n]+?)\s*(?:#.*)?$')
 _EXACT_VERSION = re.compile(
@@ -144,28 +143,22 @@ class Overrides:
 
 
 def overrides_for(client: PackageManager) -> Overrides:
-    npm_entries = manifest.eslint_overrides()
+    npm_entries = manifest.oxlint_overrides()
     match client:
         case PackageManager.NPM:
             return Overrides(("overrides",), {name: _resolved_tree(value) for name, value in npm_entries.items()})
         case PackageManager.PNPM:
             return Overrides(("overrides",), dict(_flatten(npm_entries, ">")))
         case PackageManager.YARN:
-            # Yarn preserves a workspace package's older compatible lockfile
-            # resolution when the install-root pin advances. A nested ESLint
-            # config can then load a second `typescript-eslint` plugin object,
-            # which flat config rejects even though both declared ranges are
-            # individually valid. Keep the complete tested family on one
-            # identity across every workspace. These resolution pins are not
-            # age-gate exceptions: they remain after the releases mature.
-            identity_pins = manifest.eslint_yarn_identity_pins()
+            # Optional shared resolution pins keep tested tools aligned across workspaces.
+            identity_pins = manifest.oxlint_yarn_identity_pins()
             return Overrides(
                 ("resolutions",),
                 {**dict(_flatten(npm_entries, "/")), **identity_pins},
             )
         case PackageManager.BUN:
-            # Bun ignores nested npm overrides, so pin ESLint at the root.
-            return Overrides(("overrides",), {_ESLINT: manifest.eslint_peers()[_ESLINT]})
+            entries: dict[str, object] = {name: value for name, value in npm_entries.items() if isinstance(value, str)}
+            return Overrides(("overrides",), entries)
 
 
 def pnpm_workspace_values(text: str) -> dict[str, str]:
@@ -186,7 +179,7 @@ def pnpm_workspace_values(text: str) -> dict[str, str]:
 
 
 def _flatten(entries: Mapping[str, object], separator: str) -> Iterator[tuple[str, str]]:
-    peers = manifest.eslint_peers()
+    peers = manifest.oxlint_peers()
     for parent, value in entries.items():
         nested = manifest.as_table(value)
         if not nested:
@@ -208,7 +201,7 @@ def _resolved_tree(value: object) -> object:
     nested = manifest.as_table(value)
     if nested:
         return {name: _resolved_tree(pin) for name, pin in nested.items()}
-    return _resolved(value, manifest.eslint_peers())
+    return _resolved(value, manifest.oxlint_peers())
 
 
 def install_command(
@@ -275,16 +268,12 @@ def exec_argv(client: PackageManager, *command: str) -> Sequence[str]:
 
 def install_note(client: PackageManager, *, yarn: YarnVariant = YarnVariant.CLASSIC) -> str | None:
     if client is PackageManager.YARN:
-        note = (
-            "Yarn resolves `resolutions` at install time, so re-run `yarn install`"
-            f" after the block is written -- and note Yarn pins {_ESLINT} for"
-            " eslint-plugin-react to an exact version rather than tracking your own."
-        )
+        note = "Yarn resolves `resolutions` at install time, so re-run `yarn install` after the block is written."
         if yarn is YarnVariant.BERRY:
             note += (
                 " Yarn 4.15+ also refuses a package published within its minimum release"
                 " age (`All versions satisfying ... are quarantined`); if a fresh"
-                " @sarj/eslint-plugin trips that, wait until it clears the gate or,"
+                " @sarj/oxlint-plugin trips that, wait until it clears the gate or,"
                 " after review, add its exact package descriptor to `npmPreapprovedPackages`."
                 " Keep `npmMinimalAgeGate` unchanged."
             )

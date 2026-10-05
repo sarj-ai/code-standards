@@ -4,11 +4,9 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-impossible-zod-literal-bounds.test.ts
  */
 
-import {
-  AST_NODE_TYPES,
-  type TSESLint,
-  type TSESTree,
-} from "@typescript-eslint/utils";
+import { sourceOrigin } from "./_source-origin.js";
+import type { ESTree, Scope } from "@oxlint/plugins";
+
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile, isTestFile } from "./_paths.js";
@@ -70,7 +68,7 @@ type Bound = {
 };
 
 type Chain = {
-  readonly calls: readonly { method: string; node: TSESTree.CallExpression }[];
+  readonly calls: readonly { method: string; node: ESTree.CallExpression }[];
   readonly kind: SchemaKind;
 };
 
@@ -94,21 +92,21 @@ const RESHAPING_METHODS: ReadonlySet<string> = new Set([
   "transform",
 ]);
 
-function importedName(specifier: TSESTree.ImportSpecifier): string | null {
-  return specifier.imported.type === AST_NODE_TYPES.Identifier
+function importedName(specifier: ESTree.ImportSpecifier): string | null {
+  return specifier.imported.type === "Identifier"
     ? specifier.imported.name
     : typeof specifier.imported.value === "string"
       ? specifier.imported.value
       : null;
 }
 
-function memberName(node: TSESTree.MemberExpression): string | null {
-  if (!node.computed && node.property.type === AST_NODE_TYPES.Identifier) {
+function memberName(node: ESTree.MemberExpression): string | null {
+  if (!node.computed && node.property.type === "Identifier") {
     return node.property.name;
   }
   if (
     node.computed &&
-    node.property.type === AST_NODE_TYPES.Literal &&
+    node.property.type === "Literal" &&
     typeof node.property.value === "string"
   ) {
     return node.property.value;
@@ -116,14 +114,14 @@ function memberName(node: TSESTree.MemberExpression): string | null {
   return null;
 }
 
-function finiteNumber(node: TSESTree.CallExpressionArgument | undefined): number | null {
-  if (node?.type === AST_NODE_TYPES.Literal && typeof node.value === "number") {
+function finiteNumber(node: ESTree.Argument | undefined): number | null {
+  if (node?.type === "Literal" && typeof node.value === "number") {
     return Number.isFinite(node.value) ? node.value : null;
   }
   if (
-    node?.type === AST_NODE_TYPES.UnaryExpression &&
+    node?.type === "UnaryExpression" &&
     (node.operator === "-" || node.operator === "+") &&
-    node.argument.type === AST_NODE_TYPES.Literal &&
+    node.argument.type === "Literal" &&
     typeof node.argument.value === "number"
   ) {
     const value = node.operator === "-" ? -node.argument.value : node.argument.value;
@@ -162,12 +160,12 @@ function isEmpty(lower: Bound | null, upper: Bound | null): boolean {
   );
 }
 
-function isOutermostCall(node: TSESTree.CallExpression): boolean {
+function isOutermostCall(node: ESTree.CallExpression): boolean {
   const parent = node.parent;
   return !(
-    parent?.type === AST_NODE_TYPES.MemberExpression &&
+    parent?.type === "MemberExpression" &&
     parent.object === node &&
-    parent.parent?.type === AST_NODE_TYPES.CallExpression &&
+    parent.parent?.type === "CallExpression" &&
     parent.parent.callee === parent
   );
 }
@@ -191,8 +189,8 @@ export default createRule<Options, MessageIds>({
   create(context) {
     const sourceCode = context.sourceCode;
     if (
-      isTestFile(context.filename) ||
-      isGeneratedFile(context.filename, sourceCode.getText())
+      isTestFile(sourceOrigin(context).filename) ||
+      isGeneratedFile(sourceOrigin(context).filename, sourceCode.getText())
     ) {
       return {};
     }
@@ -200,12 +198,12 @@ export default createRule<Options, MessageIds>({
     const namespaces = new Set<string>();
     const constructors = new Map<string, SchemaKind>();
     const preprocessors = new Set<string>();
-    const importBindings = new Map<string, TSESTree.Identifier>();
+    const importBindings = new Map<string, ESTree.BindingIdentifier>();
 
-    function resolvesToTrackedImport(node: TSESTree.Identifier): boolean {
+    function resolvesToTrackedImport(node: ESTree.BindingIdentifier): boolean {
       const binding = importBindings.get(node.name);
       if (binding === undefined) return false;
-      let scope: TSESLint.Scope.Scope | null = sourceCode.getScope(node);
+      let scope: Scope | null = sourceCode.getScope(node);
       while (scope !== null) {
         const variable = scope.variables.find((candidate) => candidate.name === node.name);
         if (variable !== undefined) {
@@ -216,16 +214,16 @@ export default createRule<Options, MessageIds>({
       return false;
     }
 
-    function readChain(node: TSESTree.CallExpression): Chain | null {
-      const calls: { method: string; node: TSESTree.CallExpression }[] = [];
+    function readChain(node: ESTree.CallExpression): Chain | null {
+      const calls: { method: string; node: ESTree.CallExpression }[] = [];
       let current = node;
       while (true) {
         const kind = baseKind(current);
         if (kind !== null) return { calls, kind };
         const callee = current.callee;
         if (
-          callee.type !== AST_NODE_TYPES.MemberExpression ||
-          callee.object.type !== AST_NODE_TYPES.CallExpression
+          callee.type !== "MemberExpression" ||
+          callee.object.type !== "CallExpression"
         ) {
           return null;
         }
@@ -236,16 +234,16 @@ export default createRule<Options, MessageIds>({
       }
     }
 
-    function baseKind(node: TSESTree.CallExpression): SchemaKind | null {
+    function baseKind(node: ESTree.CallExpression): SchemaKind | null {
       const callee = node.callee;
-      if (callee.type === AST_NODE_TYPES.Identifier) {
+      if (callee.type === "Identifier") {
         return resolvesToTrackedImport(callee)
           ? constructors.get(callee.name) ?? null
           : null;
       }
       if (
-        callee.type !== AST_NODE_TYPES.MemberExpression ||
-        callee.object.type !== AST_NODE_TYPES.Identifier ||
+        callee.type !== "MemberExpression" ||
+        callee.object.type !== "Identifier" ||
         !namespaces.has(callee.object.name) ||
         !resolvesToTrackedImport(callee.object)
       ) {
@@ -257,24 +255,24 @@ export default createRule<Options, MessageIds>({
         : null;
     }
 
-    function isInsideReshapingCall(node: TSESTree.CallExpression): boolean {
-      let child: TSESTree.Node = node;
+    function isInsideReshapingCall(node: ESTree.CallExpression): boolean {
+      let child: ESTree.Node = node;
       let parent = child.parent;
-      while (parent !== undefined && parent.type !== AST_NODE_TYPES.Program) {
-        if (parent.type === AST_NODE_TYPES.CallExpression) {
+      while (parent !== undefined && parent.type !== "Program") {
+        if (parent.type === "CallExpression") {
           const callee = parent.callee;
           if (
-            callee.type === AST_NODE_TYPES.MemberExpression &&
+            callee.type === "MemberExpression" &&
             RESHAPING_METHODS.has(memberName(callee) ?? "") &&
-            (callee.object.type === AST_NODE_TYPES.CallExpression ||
-              (callee.object.type === AST_NODE_TYPES.Identifier &&
+            (callee.object.type === "CallExpression" ||
+              (callee.object.type === "Identifier" &&
                 namespaces.has(callee.object.name) &&
                 resolvesToTrackedImport(callee.object)))
           ) {
             return true;
           }
           if (
-            callee.type === AST_NODE_TYPES.Identifier &&
+            callee.type === "Identifier" &&
             preprocessors.has(callee.name) &&
             resolvesToTrackedImport(callee)
           ) {
@@ -344,12 +342,12 @@ export default createRule<Options, MessageIds>({
     }
 
     return {
-      ImportDeclaration(node: TSESTree.ImportDeclaration): void {
+      ImportDeclaration(node: ESTree.ImportDeclaration): void {
         if (!isZodModule(node.source.value)) return;
         for (const specifier of node.specifiers) {
           if (
-            specifier.type === AST_NODE_TYPES.ImportNamespaceSpecifier ||
-            specifier.type === AST_NODE_TYPES.ImportDefaultSpecifier
+            specifier.type === "ImportNamespaceSpecifier" ||
+            specifier.type === "ImportDefaultSpecifier"
           ) {
             namespaces.add(specifier.local.name);
             importBindings.set(specifier.local.name, specifier.local);
@@ -368,7 +366,7 @@ export default createRule<Options, MessageIds>({
           }
         }
       },
-      CallExpression(node: TSESTree.CallExpression): void {
+      CallExpression(node: ESTree.CallExpression): void {
         if (!isOutermostCall(node) || isInsideReshapingCall(node)) return;
         const chain = readChain(node);
         if (chain === null) return;

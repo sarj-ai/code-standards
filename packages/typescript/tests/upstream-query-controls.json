@@ -1,0 +1,172 @@
+[
+  {
+    "rule": "exhaustive-deps",
+    "valid": "import {useQuery} from '@tanstack/react-query'; function Component({todoId}) {return useQuery({queryKey:['todo',todoId],queryFn:()=>fetchTodo(todoId)});}",
+    "invalid": "import {useQuery} from '@tanstack/react-query'; function Component({todoId}) {return useQuery({queryKey:['todo'],queryFn:()=>fetchTodo(todoId)});}"
+  },
+  {
+    "rule": "stable-query-client",
+    "valid": "import {QueryClient} from '@tanstack/react-query'; const client=new QueryClient(); function Component(){return client;}",
+    "invalid": "import {QueryClient} from '@tanstack/react-query'; function Component(){const client=new QueryClient();return client;}"
+  },
+  {
+    "rule": "no-rest-destructuring",
+    "valid": "import {useQuery} from '@tanstack/react-query'; const {data}=useQuery({queryKey:['todo'],queryFn:()=>1});",
+    "invalid": "import {useQuery} from '@tanstack/react-query'; const {data,...rest}=useQuery({queryKey:['todo'],queryFn:()=>1});"
+  },
+  {
+    "rule": "no-unstable-deps",
+    "valid": "import {useQuery} from '@tanstack/react-query'; import {useEffect} from 'react'; const {data}=useQuery({queryKey:['todo'],queryFn:()=>1});useEffect(()=>{},[data]);",
+    "invalid": "import {useQuery} from '@tanstack/react-query'; import {useEffect} from 'react'; const query=useQuery({queryKey:['todo'],queryFn:()=>1});useEffect(()=>{},[query]);"
+  },
+  {
+    "rule": "infinite-query-property-order",
+    "valid": "import {useInfiniteQuery} from '@tanstack/react-query'; useInfiniteQuery({queryFn:()=>1,getNextPageParam:()=>1});",
+    "invalid": "import {useInfiniteQuery} from '@tanstack/react-query'; useInfiniteQuery({getNextPageParam:()=>1,queryFn:()=>1});"
+  },
+  {
+    "rule": "no-void-query-fn",
+    "valid": "const options={queryFn:()=>1};",
+    "invalid": "const options={queryFn:()=>{}};"
+  },
+  {
+    "rule": "mutation-property-order",
+    "valid": "import {useMutation} from '@tanstack/react-query';useMutation({onMutate:()=>1,onError:()=>{},onSettled:()=>{}});",
+    "invalid": "import {useMutation} from '@tanstack/react-query';useMutation({onError:()=>{},onMutate:()=>1,onSettled:()=>{}});"
+  },
+  {
+    "rule": "no-void-query-fn",
+    "valid": "const options={queryFn:()=>{throw Error();}};",
+    "invalid": "const options={queryFn:()=>{return;}};"
+  },
+  {
+    "rule": "no-void-query-fn",
+    "valid": "const options={queryFn:()=>{if(ready)return 1;else return 2;}};",
+    "invalid": "const options={queryFn:()=>{if(ready)return 1;}};"
+  },
+  {
+    "rule": "no-void-query-fn",
+    "valid": "async function fetchTodo():Promise<number>{return 1;} const options={queryFn:fetchTodo};",
+    "invalid": "async function fetchTodo():Promise<void>{} const options={queryFn:fetchTodo};"
+  },
+  {
+    "rule": "no-void-query-fn",
+    "valid": "function fetchTodo(){return 1;} const options={queryFn:fetchTodo};",
+    "invalid": "function fetchTodo(){} const options={queryFn:fetchTodo};"
+  },
+  {
+    "rule": "no-void-query-fn",
+    "valid": "const options={queryFn:()=>null};",
+    "invalid": "const options={queryFn:async()=>undefined};"
+  },
+  {
+    "rule": "no-rest-destructuring",
+    "valid": "import {useQuery} from '@tanstack/react-query';function useTodo(){return useQuery({queryFn:()=>1});}const {data}=useTodo();",
+    "invalid": "import {useQuery} from '@tanstack/react-query';function useTodo(){return useQuery({queryFn:()=>1});}const {data,...rest}=useTodo();"
+  },
+  {
+    "rule": "no-rest-destructuring",
+    "valid": "function useData(){return {data:1};}const {data,...rest}=useData();",
+    "invalid": "import {useQuery} from '@tanstack/react-query';const useTodo=()=>useQuery({queryFn:()=>1});const query=useTodo();const {data,...rest}=query;"
+  },
+  {
+    "rule": "no-void-query-fn",
+    "valid": "function make(undefined:number){return {queryFn:()=>undefined};}",
+    "invalid": "const options={queryFn:()=>void 0};"
+  },
+  {
+    "rule": "no-void-query-fn",
+    "valid": "const console={log:()=>1};const options={queryFn:()=>console.log()};",
+    "invalid": "const options={queryFn:()=>console.log(\"done\")};"
+  },
+  {
+    "rule": "no-void-query-fn",
+    "valid": "import {fetchTodo} from \"./remote\";const options={queryFn:fetchTodo};",
+    "invalid": "const fetchTodo=()=>{};const options={queryFn:fetchTodo};"
+  },
+  {
+    "rule": "no-void-query-fn",
+    "valid": "const options={queryFn:()=>{function nested(){return;}return 1;}};",
+    "invalid": "const options={queryFn:()=>{function nested(){return 1;}}};"
+  },
+  {
+    "rule": "no-void-query-fn",
+    "valid": "function make(fn:()=>number){return {queryFn:fn};}",
+    "invalid": "function make(fn:()=>void){return {queryFn:fn};}"
+  },
+  {
+    "rule": "no-void-query-fn",
+    "valid": "declare function read():unknown;const options={queryFn:read};",
+    "invalid": "declare function read():void;const options={queryFn:read};"
+  },
+  {
+    "rule": "no-rest-destructuring",
+    "valid": "import {useQuery} from '@tanstack/react-query';function make(useQuery){const {data,...rest}=useQuery();}",
+    "invalid": "import {useQuery as query} from '@tanstack/react-query';const {data,...rest}=query({queryFn:()=>1});"
+  },
+  {
+    "rule": "no-rest-destructuring",
+    "valid": "import {useQuery} from '@tanstack/react-query';const result=useQuery();function read(result){const {data,...rest}=result;}",
+    "invalid": "import {useQuery} from '@tanstack/react-query';const result=useQuery();const {...rest}=result;"
+  },
+  {
+    "rule": "no-rest-destructuring",
+    "valid": "import {useData} from \"./remote\";const {data,...rest}=useData();",
+    "invalid": "import {useQuery} from '@tanstack/react-query';function useData(){return useQuery();}const result=useData();const copy={...result};"
+  },
+  {
+    "rule": "stable-query-client",
+    "valid": "import {QueryClient} from '@tanstack/react-query';function Component(QueryClient){const client=new QueryClient();return client;}",
+    "invalid": "import {QueryClient} from '@tanstack/react-query';function useClient(){const client=new QueryClient();return client;}"
+  },
+  {
+    "rule": "no-void-query-fn",
+    "valid": "const options={queryFn:()=>{for(const item of [1])console.log(item);return 1;}};",
+    "invalid": "const options={queryFn:()=>{for(const item of [1])console.log(item);}};"
+  },
+  {
+    "rule": "no-void-query-fn",
+    "valid": "const options={queryFn:()=>{try{return 1;}finally{console.log(2);}}};",
+    "invalid": "const options={queryFn:()=>{try{console.log(1);}finally{console.log(2);}}};"
+  },
+  {
+    "rule": "no-void-query-fn",
+    "valid": "const missing=1;const options={queryFn:()=>missing};",
+    "invalid": "const missing=undefined;const options={queryFn:()=>missing};"
+  },
+  {
+    "rule": "no-rest-destructuring",
+    "valid": "type UseQueryResult<T>={data:T};function useData():UseQueryResult<number>{return {data:1};}const {...rest}=useData();",
+    "invalid": "import type {UseQueryResult as QR} from \"@tanstack/react-query\";declare function useData():QR<number>;const {...rest}=useData();"
+  },
+  {
+    "rule": "no-void-query-fn",
+    "valid": "const options={queryFn:()=>{try{return;}finally{return 1;}}};",
+    "invalid": "const options={queryFn:()=>{try{return 1;}finally{return;}}};"
+  },
+  {
+    "rule": "no-void-query-fn",
+    "valid": "const options={queryFn:()=>{do{return 1;}while(false)}};",
+    "invalid": "const options={queryFn:()=>{do{return;}while(false)}};"
+  },
+  {
+    "rule": "no-void-query-fn",
+    "valid": "const options={queryFn:()=>{switch(state){case 1:return 1;default:return 2;}}};",
+    "invalid": "const options={queryFn:()=>{switch(state){case 1:return;default:return 2;}}};"
+  },
+  {
+    "rule": "no-rest-destructuring",
+    "valid": "type QR={data:number};type Result=QR;function useData():Result{return {data:1}};const {...rest}=useData();",
+    "invalid": "import type {UseQueryResult as QR} from \"@tanstack/react-query\";type Result=QR<number>;declare function useData():Result;const {...rest}=useData();"
+  },
+  {
+    "rule": "no-void-query-fn",
+    "valid": "type Promise<T>={value:T};declare function read():Promise<void>;const options={queryFn:read};",
+    "invalid": "type Empty=void;declare function read():Empty;const options={queryFn:read};"
+  },
+  {
+    "rule": "no-void-query-fn",
+    "valid": "type Reader=()=>number;declare const read:Reader;const options={queryFn:read};",
+    "invalid": "type Reader=()=>void;declare const read:Reader;const options={queryFn:read};"
+  }
+]

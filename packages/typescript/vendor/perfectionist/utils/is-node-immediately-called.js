@@ -1,0 +1,20 @@
+import { AST_NODE_TYPES } from '../../ast-node-types/index.cjs'
+/**
+ * Checks whether a node is the callee of a call or `new` expression.
+ *
+ * Used to treat immediately invoked function expressions as eagerly executed:
+ * references inside their bodies are read as soon as the surrounding expression
+ * is evaluated, unlike references inside deferred function bodies.
+ *
+ * @param node - The AST node to check.
+ * @returns Whether the node is immediately called.
+ */
+function isNodeImmediatelyCalled(node) {
+  let { parent } = node
+  return (
+    (parent.type === AST_NODE_TYPES.CallExpression ||
+      parent.type === AST_NODE_TYPES.NewExpression) &&
+    parent.callee === node
+  )
+}
+export { isNodeImmediatelyCalled }

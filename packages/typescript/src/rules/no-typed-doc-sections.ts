@@ -3,7 +3,9 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-typed-doc-sections.test.ts
  */
 
-import type { TSESLint, TSESTree } from "@typescript-eslint/utils";
+import { sourceOrigin } from "./_source-origin.js";
+import type { ESTree, SourceCode } from "@oxlint/plugins";
+
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { proseGroups } from "./_prose-budget.js";
@@ -28,14 +30,14 @@ interface TypedTag {
   readonly explicitType: string | null;
 }
 
-type Signature = TSESTree.FunctionDeclaration | TSESTree.FunctionExpression | TSESTree.ArrowFunctionExpression | TSESTree.TSDeclareFunction | TSESTree.TSMethodSignature | TSESTree.TSEmptyBodyFunctionExpression;
+type Signature = ESTree.Function | ESTree.ArrowFunctionExpression | ESTree.TSMethodSignature;
 
-function parameterTarget(parameter: TSESTree.Parameter): TSESTree.Node {
+function parameterTarget(parameter: ESTree.ParamPattern): ESTree.Node {
   if (parameter.type === "TSParameterProperty") return parameterTarget(parameter.parameter);
   return parameter.type === "AssignmentPattern" ? parameter.left : parameter;
 }
 
-function documentedSignature(sourceCode: Readonly<TSESLint.SourceCode>, comment: TSESTree.Comment): Signature | null {
+function documentedSignature(sourceCode: Readonly<SourceCode>, comment: ESTree.Comment): Signature | null {
   const before = sourceCode.getTokenBefore(comment);
   if (before?.loc.end.line === comment.loc.start.line) return null;
   const token = sourceCode.getTokenAfter(comment);
@@ -44,7 +46,7 @@ function documentedSignature(sourceCode: Readonly<TSESLint.SourceCode>, comment:
   while (node !== null && node.type !== "Program" && node.type !== "BlockStatement" && node.type !== "ClassBody") {
     const signature = functionSignature(node);
     if (signature !== null) {
-      return signature.returnType !== undefined && signature.params.every((parameter) => {
+      return signature.returnType != null && signature.params.every((parameter) => {
         const target = parameterTarget(parameter);
         return "typeAnnotation" in target && target.typeAnnotation != null;
       }) ? signature : null;
@@ -54,7 +56,7 @@ function documentedSignature(sourceCode: Readonly<TSESLint.SourceCode>, comment:
   return null;
 }
 
-function functionSignature(node: TSESTree.Node): Signature | null {
+function functionSignature(node: ESTree.Node): Signature | null {
   switch (node.type) {
     case "ExportNamedDeclaration":
     case "ExportDefaultDeclaration":
@@ -102,14 +104,14 @@ function typedTags(text: string): TypedTag[] {
   });
 }
 
-function isVacuousTag(tag: TypedTag, signature: Signature, sourceCode: Readonly<TSESLint.SourceCode>): boolean {
+function isVacuousTag(tag: TypedTag, signature: Signature, sourceCode: Readonly<SourceCode>): boolean {
   let annotation = signature.returnType;
   if (PARAM_TAGS.has(tag.kind)) {
     const parameter = signature.params.map(parameterTarget).find((node) => node.type === "Identifier" && node.name === tag.name);
     if (parameter?.type !== "Identifier") return false;
     annotation = parameter.typeAnnotation;
   }
-  if (annotation === undefined) return false;
+  if (annotation == null) return false;
   if (tag.explicitType !== null && (
     !/^(?:string|number|boolean|bigint|symbol|unknown|never|void|null|undefined)$/u.test(tag.explicitType) ||
     sourceCode.getText(annotation.typeAnnotation) !== tag.explicitType
@@ -180,7 +182,7 @@ export default createRule<Options, MessageIds>({
   create(context) {
     return {
       Program(): void {
-        for (const group of proseGroups(context.filename, context.sourceCode, true)) {
+        for (const group of proseGroups(sourceOrigin(context).filename, context.sourceCode, true)) {
           const signature = documentedSignature(context.sourceCode, group.comment);
           if (
             group.hasTypedTags &&

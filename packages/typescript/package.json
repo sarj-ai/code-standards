@@ -1,23 +1,112 @@
 {
-  "name": "@sarj/eslint-plugin",
-  "version": "16.3.0",
+  "name": "@sarj/oxlint-plugin",
+  "version": "17.0.0",
   "packageManager": "npm@12.1.0",
-  "description": "Custom ESLint rules for hypermodern TypeScript / React / Next.js projects",
+  "description": "Sarj source policies for stock Oxlint",
   "type": "module",
-  "main": "./dist/index.cjs",
-  "module": "./dist/index.js",
+  "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "bin": {
+    "sarj-astro-lint": "./dist/framework/astro-cli.js"
+  },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "import": "./dist/index.js",
-      "require": "./dist/index.cjs"
+      "default": "./dist/index.js"
+    },
+    "./config": {
+      "types": "./dist/config.d.ts",
+      "default": "./dist/config.js"
+    },
+    "./rule-examples": {
+      "types": "./dist/rule-examples.d.ts",
+      "default": "./dist/rule-examples.js"
+    },
+    "./select-rules": {
+      "types": "./dist/select-rules.d.ts",
+      "default": "./dist/select-rules.js"
+    },
+    "./upstream/unicorn": {
+      "default": "./dist/upstream/unicorn.js"
+    },
+    "./upstream/perfectionist": {
+      "default": "./dist/upstream/perfectionist.js"
+    },
+    "./upstream/simple-import-sort": {
+      "default": "./dist/upstream/simple-import-sort.js"
+    },
+    "./upstream/zod": {
+      "default": "./dist/upstream/zod.js"
+    },
+    "./upstream/node-test": {
+      "default": "./dist/upstream/node-test.js"
+    },
+    "./upstream/react": {
+      "default": "./dist/upstream/react.js"
+    },
+    "./upstream/core": {
+      "default": "./dist/upstream/core.js"
+    },
+    "./upstream/jsdoc": {
+      "default": "./dist/upstream/jsdoc.js"
+    },
+    "./upstream/typescript": {
+      "default": "./dist/upstream/typescript.js"
+    },
+    "./upstream/playwright": {
+      "default": "./dist/upstream/playwright.js"
+    },
+    "./upstream/testing-library": {
+      "default": "./dist/upstream/testing-library.js"
+    },
+    "./upstream/bun": {
+      "default": "./dist/upstream/bun.js"
+    },
+    "./presets": {
+      "types": "./dist/presets.d.ts",
+      "default": "./dist/presets.js"
+    },
+    "./upstream/node": {
+      "default": "./dist/upstream/node.js"
+    },
+    "./upstream/astro": {
+      "types": "./types/astro.d.ts",
+      "default": "./dist/upstream/astro.js"
+    },
+    "./upstream/query": {
+      "default": "./dist/upstream/query.js"
+    },
+    "./upstream/shadcn": {
+      "default": "./dist/upstream/shadcn/index.js"
+    },
+    "./upstream/better-tailwindcss": {
+      "default": "./dist/upstream/better-tailwindcss/index.js"
+    },
+    "./upstream/nextjs": {
+      "default": "./dist/upstream/nextjs.js"
+    },
+    "./upstream/test": {
+      "default": "./dist/upstream/test.js"
+    },
+    "./upstream/sonarjs": {
+      "default": "./dist/upstream/sonarjs.js"
+    },
+    "./framework/astro": {
+      "types": "./types/framework-astro.d.ts",
+      "default": "./dist/framework/astro.js"
     }
   },
   "files": [
     "dist",
+    "types",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "LICENSE.anti-slop",
+    "vendor/PROVENANCE.json",
+    "vendor/**/LICENSE*",
+    "vendor/**/license",
+    "vendor/**/PROVENANCE.json",
+    "vendor/sonarjs/**"
   ],
   "publishConfig": {
     "access": "public"
@@ -28,24 +117,23 @@
     "url": "git+https://github.com/sarj-ai/code-standards.git",
     "directory": "packages/typescript"
   },
-  "homepage": "https://code-standards.sarj.ai/rules/eslint/",
+  "homepage": "https://code-standards.sarj.ai/rules/oxlint/",
   "bugs": {
     "url": "https://github.com/sarj-ai/code-standards/issues"
   },
   "scripts": {
-    "build": "tsup",
+    "build": "tsup && node scripts/copy-native-assets.mjs",
     "dogfood": "npm run build && npm run dogfood:built",
-    "lint": "eslint . --max-warnings 0",
+    "lint": "oxlint --config oxlint.config.mts --deny-warnings src tests tsup.config.ts vitest.config.ts scripts",
     "prepack": "npm run build && npm run verify-package",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "verify-package": "node -e \"const fs=require('node:fs'),p=require('./package.json'),walk=x=>typeof x==='string'?[x]:x&&typeof x==='object'?Object.values(x).flatMap(walk):[];for(const file of new Set([p.main,p.module,p.types,...walk(p.exports)].filter(Boolean).map(x=>x.startsWith('./')?x.slice(2):x))){if(!file.startsWith('dist/'))throw new Error('export must live under dist: '+file);const stat=fs.statSync(file);if(!stat.isFile()||stat.size===0)throw new Error('missing or empty export: '+file)}\"",
-    "dogfood:built": "eslint --config eslint.dogfood.config.mjs src tests eslint.config.mjs eslint.dogfood.config.mjs module-constant-naming-options.mjs tsup.config.ts vitest.config.ts --max-warnings 0 && node -e \"import('./dist/index.js').then(({default:p}) => console.log('dogfood: '+Object.keys(p.rules).length+' TypeScript rules, 0 diagnostics'))\""
+    "verify-package": "node scripts/verify-package.mjs",
+    "dogfood:built": "oxlint --config oxlint.dogfood.config.mts --deny-warnings src tests tsup.config.ts vitest.config.ts scripts"
   },
   "keywords": [
-    "eslint",
-    "eslintplugin",
-    "eslint-plugin",
+    "oxlint",
+    "oxlint-plugin",
     "sarj",
     "react",
     "nextjs",
@@ -54,63 +142,69 @@
   "author": "sarj-ai",
   "license": "MIT",
   "dependencies": {
-    "@typescript-eslint/typescript-estree": "^8.70.1",
-    "@typescript-eslint/utils": "^8.70.1",
-    "jsonc-parser": "^3.3.1"
+    "@astrojs/compiler": "4.0.0",
+    "@eslint/css-tree": "4.0.5",
+    "@jridgewell/trace-mapping": "0.3.31",
+    "@oxlint/plugins": "1.86.0",
+    "@sarj/oxlint-react-hooks": "0.1.0",
+    "@valibot/to-json-schema": "1.8.0",
+    "browserslist": "4.28.8",
+    "change-case": "5.4.4",
+    "cn": "0.3.2",
+    "comment-parser": "1.4.9",
+    "core-js-compat": "3.50.0",
+    "detect-indent": "7.0.2",
+    "enhanced-resolve": "5.26.0",
+    "entities": "8.0.0",
+    "es-iterator-helpers": "1.3.1",
+    "eslint-visitor-keys": "5.0.1",
+    "estraverse": "5.3.0",
+    "find-up-simple": "1.0.1",
+    "globals": "17.11.0",
+    "identifier-regex": "1.1.0",
+    "indent-string": "5.0.0",
+    "is-builtin-module": "5.0.0",
+    "jiti": "2.7.0",
+    "jsdoc-type-pratt-parser": "9.2.2",
+    "jsonc-parser": "3.3.1",
+    "natural-compare": "1.4.0",
+    "natural-orderby": "5.0.0",
+    "oxc-parser": "0.152.0",
+    "pluralize": "8.0.0",
+    "quote-js-string": "0.1.0",
+    "regjsparser": "0.13.2",
+    "reserved-identifiers": "1.2.0",
+    "resolve": "2.0.0-next.6",
+    "semver": "7.8.5",
+    "string.prototype.matchall": "4.0.12",
+    "strip-indent": "4.1.1",
+    "synckit": "0.11.13",
+    "tsconfig-paths-webpack-plugin": "4.2.0",
+    "typescript-native": "npm:typescript@7.1.0-dev.20260919.1",
+    "valibot": "1.5.0",
+    "yaml": "2.9.0"
   },
   "devDependencies": {
-    "@eslint-community/eslint-plugin-eslint-comments": "^4.8.1",
-    "@eslint/compat": "^2.1.1",
-    "@eslint/js": "10.0.1",
-    "@shadcn/lint": "0.2.0",
     "@types/node": "26.6.2",
-    "@typescript/native": "npm:typescript@7.0.2",
-    "@typescript-eslint/parser": "8.70.1",
-    "@typescript-eslint/rule-tester": "8.70.1",
-    "@typescript-eslint/utils": "8.70.1",
-    "@vitest/eslint-plugin": "1.6.27",
-    "eslint": "10.11.0",
-    "eslint-node-test": "0.4.0",
-    "eslint-plugin-better-tailwindcss": "^4.7.0",
-    "eslint-plugin-jest": "29.16.6",
-    "eslint-plugin-jsdoc": "64.5.4",
-    "eslint-plugin-n": "^18.3.0",
-    "eslint-plugin-perfectionist": "5.12.1",
-    "eslint-plugin-playwright": "2.12.0",
-    "eslint-plugin-promise": "^7.3.0",
-    "eslint-plugin-react": "^7.37.5",
-    "eslint-plugin-react-hooks": "^7.1.1",
-    "eslint-plugin-simple-import-sort": "^14.0.0",
-    "eslint-plugin-testing-library": "7.16.2",
-    "eslint-plugin-unicorn": "^76.0.0",
-    "eslint-plugin-zod": "^4.14.2",
-    "tsup": "latest",
-    "typescript": "npm:@typescript/typescript6@6.0.2",
-    "typescript-eslint": "^8.70.1",
-    "vitest": "5.0.1"
+    "oxfmt": "0.71.0",
+    "oxlint": "1.86.0",
+    "oxlint-tsgolint": "7.0.2003",
+    "tailwindcss": "4.3.2",
+    "tsup": "8.5.1",
+    "typescript": "6.0.3",
+    "vitest": "5.0.1",
+    "zod": "4.3.6"
   },
   "peerDependencies": {
-    "eslint": ">=9.39.4",
-    "typescript": ">=5.0.0"
-  },
-  "engines": {
-    "node": ">=22.22.2"
-  },
-  "allowScripts": {
-    "esbuild@0.28.2": true,
-    "fsevents@2.3.3": true
+    "oxlint": ">=1.86.0",
+    "tailwindcss": "^3.3.0 || ^4.1.17"
   },
   "peerDependenciesMeta": {
-    "typescript": {
+    "tailwindcss": {
       "optional": true
     }
   },
-  "overrides": {
-    "brace-expansion@^5.0.0": "5.0.9",
-    "esbuild": "0.28.2",
-    "nanoid@<3.3.18": "3.3.18",
-    "eslint-plugin-react": {
-      "eslint": "$eslint"
-    }
+  "engines": {
+    "node": ">=22.22.2"
   }
 }

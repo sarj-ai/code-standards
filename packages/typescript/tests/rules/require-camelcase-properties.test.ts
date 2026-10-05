@@ -1,17 +1,16 @@
 // vitest: shared-module-graph
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
+import { RuleTester } from "oxlint/plugins-dev";
+import { describe, it } from "vitest";
 
 import rule, {
   REQUIRE_CAMELCASE_PROPERTIES_DOCUMENTATION,
 } from "../../src/rules/require-camelcase-properties.js";
 
-RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
 RuleTester.it = it;
 RuleTester.itOnly = it.only;
 
-const RULE_TESTER = new RuleTester();
+const RULE_TESTER = new RuleTester({ languageOptions: { parserOptions: { lang: "ts" } } });
 const ERROR = { messageId: "requireCamelcaseProperty" as const };
 
 RULE_TESTER.run("require-camelcase-properties", rule, {

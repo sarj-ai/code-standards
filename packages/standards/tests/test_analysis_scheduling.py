@@ -64,8 +64,8 @@ def test_failed_group_preserves_completed_group_and_redacts_root(tmp_path: Path,
 
 
 def test_same_analyzer_invocations_have_deterministic_report_order(tmp_path: Path) -> None:
-    first = ToolReport("eslint", Completion.COMPLETE, invocation_id=InvocationId("a"))
-    second = ToolReport("eslint", Completion.COMPLETE, invocation_id=InvocationId("b"))
+    first = ToolReport("oxlint", Completion.COMPLETE, invocation_id=InvocationId("a"))
+    second = ToolReport("oxlint", Completion.COMPLETE, invocation_id=InvocationId("b"))
     assert report_from_tools(tmp_path, [second, first]) == report_from_tools(tmp_path, [first, second])
 
 

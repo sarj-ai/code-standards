@@ -57,9 +57,9 @@ def _rule(rule_id: str, *, level: str = "warning", summary: str = "Summary") -> 
 def _write_revision(root: Path, rules: list[dict[str, object]], message: str) -> str:
     inventory_rules = [
         {
-            "family": "typescript" if rule["engine"] == "eslint" else rule["engine"],
+            "family": "typescript" if rule["engine"] in {"eslint", "oxlint"} else rule["engine"],
             "id": rule["id"],
-            "code": rule["code"],
+            "code": rule["code"] or rule["id"],
             "source": rule["source"],
             "test": rule["test"],
         }
@@ -360,28 +360,28 @@ def test_cli_rejects_missing_revision(repository: Path, capsys: pytest.CaptureFi
 @pytest.mark.parametrize(
     ("engine", "rule_id", "level", "expected_status"),
     [
-        ("eslint", "no-reduce-accumulator-copy", "error", 0),
-        ("eslint", "no-reduce-accumulator-copy", "off", 1),
+        ("oxlint", "no-reduce-accumulator-copy", "error", 0),
+        ("oxlint", "no-reduce-accumulator-copy", "off", 1),
         ("python", "no-reduce-accumulator-copy", "error", 1),
-        ("eslint", "no-reduce-accumulator-copy-extra", "error", 1),
-        ("eslint", "no-known-value-widening", "error", 0),
-        ("eslint", "no-broad-return-type", "error", 0),
-        ("eslint", "no-broad-return-type", "off", 1),
+        ("oxlint", "no-reduce-accumulator-copy-extra", "error", 1),
+        ("oxlint", "no-known-value-widening", "error", 0),
+        ("oxlint", "no-broad-return-type", "error", 0),
+        ("oxlint", "no-broad-return-type", "off", 1),
         ("python", "no-broad-return-type", "error", 1),
-        ("eslint", "no-broad-return-type-extra", "error", 1),
-        ("eslint", "prefer-typed-reflection", "error", 0),
-        ("eslint", "prefer-typed-reflection", "off", 1),
+        ("oxlint", "no-broad-return-type-extra", "error", 1),
+        ("oxlint", "prefer-typed-reflection", "error", 0),
+        ("oxlint", "prefer-typed-reflection", "off", 1),
         ("python", "prefer-typed-reflection", "error", 1),
-        ("eslint", "prefer-typed-reflection-extra", "error", 1),
-        ("eslint", "no-conditional-empty-object-spread", "error", 0),
-        ("eslint", "no-conditional-empty-object-spread", "off", 1),
+        ("oxlint", "prefer-typed-reflection-extra", "error", 1),
+        ("oxlint", "no-conditional-empty-object-spread", "error", 0),
+        ("oxlint", "no-conditional-empty-object-spread", "off", 1),
         ("python", "no-conditional-empty-object-spread", "error", 1),
-        ("eslint", "no-conditional-empty-object-spread-extra", "error", 1),
-        ("eslint", "no-known-value-widening", "off", 1),
+        ("oxlint", "no-conditional-empty-object-spread-extra", "error", 1),
+        ("oxlint", "no-known-value-widening", "off", 1),
         ("python", "no-known-value-widening", "error", 1),
-        ("eslint", "no-known-value-widening-extra", "error", 1),
+        ("oxlint", "no-known-value-widening-extra", "error", 1),
         ("python", "no-excessive-cognitive-complexity", "error", 0),
-        ("eslint", "no-excessive-cognitive-complexity", "error", 0),
+        ("oxlint", "no-excessive-cognitive-complexity", "error", 0),
         ("python", "no-excessive-cognitive-complexity", "off", 1),
         ("sql", "no-excessive-cognitive-complexity", "error", 1),
         ("python", "no-excessive-cognitive-complexity-extra", "error", 1),
@@ -413,3 +413,69 @@ def test_error_first_approval_is_exact_and_does_not_allow_disabled_rules(
         )
         == expected_status
     )
+
+
+def _typescript_rule(rule_id: str, engine: str, *, level: str = "error") -> dict[str, object]:
+    rule = _rule(rule_id, level=level)
+    rule.update(
+        {
+            "key": f"{engine}:{rule_id}",
+            "engine": engine,
+            "code": None,
+            "source": f"packages/typescript/src/rules/{rule_id}.ts",
+            "test": f"packages/typescript/tests/rules/{rule_id}.test.ts",
+        }
+    )
+    return rule
+
+
+def test_historical_engine_migration_retains_identity_and_original_descriptors(repository: Path) -> None:
+    before = _write_revision(repository, [_typescript_rule("retained-policy", "eslint")], "historical engine")
+    after = _write_revision(repository, [_typescript_rule("retained-policy", "oxlint")], "native engine")
+    result = rule_changes.compare(repository, before=before, after=after)
+    assert [(change["kind"], change["key"]) for change in result["changes"]] == [
+        ("implementation-changed", "oxlint:retained-policy"),
+    ]
+    change = result["changes"][0]
+    assert change["releaseTarget"] == "typescript"
+    assert change["before"] is not None
+    assert change["after"] is not None
+    assert change["before"]["key"] == "eslint:retained-policy"
+    assert change["before"]["engine"] == "eslint"
+    assert change["after"]["key"] == "oxlint:retained-policy"
+    assert change["after"]["engine"] == "oxlint"
+    assert rule_changes.added_rules_at_other_levels(result, required="warning") == []
+
+
+def test_engine_migration_does_not_approve_a_new_error_policy(repository: Path) -> None:
+    before = _write_revision(repository, [_typescript_rule("retained-policy", "eslint")], "historical engine")
+    after = _write_revision(
+        repository,
+        [
+            _typescript_rule("retained-policy", "oxlint"),
+            _typescript_rule("new-policy", "oxlint"),
+        ],
+        "native engine and new policy",
+    )
+    result = rule_changes.compare(repository, before=before, after=after)
+    assert rule_changes.added_rules_at_other_levels(result, required="warning") == ["oxlint:new-policy"]
+
+
+@pytest.mark.parametrize(
+    ("engine", "key"), [("unknown", "unknown:retained-policy"), ("eslint", "oxlint:retained-policy")]
+)
+def test_historical_catalog_rejects_unknown_engine_or_inconsistent_key(
+    repository: Path,
+    engine: str,
+    key: str,
+) -> None:
+    before = _write_revision(repository, [_typescript_rule("retained-policy", "eslint")], "historical engine")
+    malformed = _typescript_rule("retained-policy", "eslint")
+    malformed.update({"engine": engine, "key": key})
+    catalog = {"schemaVersion": 1, "rules": [malformed]}
+    (repository / _CATALOG).write_text(json.dumps(catalog), encoding="utf-8")
+    _git(repository, "add", ".")
+    _git(repository, "commit", "-m", "malformed historical metadata")
+    after = _git(repository, "rev-parse", "HEAD")
+    with pytest.raises(ValueError, match="inconsistent key/engine/id"):
+        rule_changes.compare(repository, before=before, after=after)

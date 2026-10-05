@@ -7,13 +7,13 @@ extend-exclude = ["sdk"]
 target-version = "py314"
 
 [format]
-quote-style              = "double"
-indent-style             = "space"
+quote-style = "double"
+indent-style = "space"
 skip-magic-trailing-comma = false
-line-ending              = "auto"
+line-ending = "auto"
 # Markdown has its own canonical linter. Ruff 0.16+ otherwise reformats Python
 # fences in existing prose when a repository runs `ruff format .`.
-exclude                  = ["*.md"]
+exclude = ["*.md"]
 
 [lint]
 select = ["ALL"]
@@ -23,7 +23,9 @@ preview = true
 # imports. Its fix is intentionally unsafe when it must change annotation
 # evaluation semantics, so consumer baselines can grandfather existing debt.
 future-annotations = true
-logger-objects = ["loguru.logger"]  # treat loguru as a logger so G004/G010 fire on it (the house logger)
+logger-objects = [
+  "loguru.logger",
+] # treat loguru as a logger so G004/G010 fire on it (the house logger)
 # TC001/2/3 stay advisory but are never auto-applied: their unsafe fixes can
 # move runtime-evaluated framework annotations into `TYPE_CHECKING`, changing
 # behavior under deferred annotations. Marking them unfixable preserves the
@@ -83,7 +85,14 @@ ignore = [
   # custom rules were written to remove, and every author paid the tax.
 
   # Missing docstrings are not a defect.
-  "D100", "D101", "D102", "D103", "D104", "D105", "D106", "D107",
+  "D100",
+  "D101",
+  "D102",
+  "D103",
+  "D104",
+  "D105",
+  "D106",
+  "D107",
 
   # Mutually-exclusive pairs: ruff requires one of each to be off.
   "D203",
@@ -91,25 +100,32 @@ ignore = [
 
   # DEMAND MORE PROSE. These make a machine ask for text that the signature,
   # the type annotations and the `raise` statements already carry.
-  "D417",    # undocumented-param        — describe every argument
-  "DOC201",  # docstring-missing-returns — describe the return
-  "DOC402",  # docstring-missing-yields  — describe the yield
-  "DOC501",  # docstring-missing-exception
+  "D417", # undocumented-param        — describe every argument
+  "DOC201", # docstring-missing-returns — describe the return
+  "DOC402", # docstring-missing-yields  — describe the yield
+  "DOC501", # docstring-missing-exception
 
   # WORDING AND SECTION CEREMONY. None of these catch a defect; they tax someone
   # for writing a short useful sentence, which is the sentence most worth having.
-  "D200",    # one-line docstring should fit on one line
-  "D205",    # blank line required between summary and description
-  "D400",    # first line should end with a period
-  "D401",    # first line should be in imperative mood ("gets" -> "Get")
-  "D403",    # first word should be capitalized
-  "D404",    # first word should not be "This"
-  "D405", "D406", "D407", "D408", "D409",  # section name / underline formatting
-  "D410", "D411", "D412", "D413",          # blank lines around sections
-  "D415",    # first line should end with terminal punctuation
-  "D416",    # section name should end with a colon
-  "D420",    # section order
-  "D421",    # property docstring should not start with a verb
+  "D200", # one-line docstring should fit on one line
+  "D205", # blank line required between summary and description
+  "D400", # first line should end with a period
+  "D401", # first line should be in imperative mood ("gets" -> "Get")
+  "D403", # first word should be capitalized
+  "D404", # first word should not be "This"
+  "D405",
+  "D406",
+  "D407",
+  "D408",
+  "D409", # section name / underline formatting
+  "D410",
+  "D411",
+  "D412",
+  "D413", # blank lines around sections
+  "D415", # first line should end with terminal punctuation
+  "D416", # section name should end with a colon
+  "D420", # section order
+  "D421", # property docstring should not start with a verb
 
   # DELIBERATELY STILL ENFORCED — every one of these REMOVES text or catches a
   # docstring that lies about the code, so they pull the same direction as the
@@ -168,9 +184,9 @@ ignore = [
 # explanation.
 
 [lint.isort]
-combine-as-imports        = true
-force-single-line          = false
-lines-after-imports        = 2
+combine-as-imports = true
+force-single-line = false
+lines-after-imports = 2
 force-sort-within-sections = true
 
 # Under PEP 649 (py314) plain annotations are lazy, so TC001-003 moving their
@@ -246,24 +262,24 @@ warns-extend-require-match-for = [
 ]
 
 [lint.flake8-tidy-imports.banned-api]
-"unittest.mock.Mock".msg              = "Prefer real fixtures or hand-rolled fakes implementing the relevant ABC. If a mock is genuinely required, import with `# noqa: TID251 — <reason>`."
-"unittest.mock.AsyncMock".msg         = "Same as Mock."
-"unittest.mock.MagicMock".msg         = "Same as Mock."
-"unittest.mock.patch".msg             = "Prefer dependency injection via fixtures over monkey-patching."
-"pytest_mock".msg                     = "pytest-mock's `mocker` fixture is unittest.mock with a different spelling — it bypasses the mock bans above without any noqa trail. Use real fixtures/fakes; for a genuine external boundary use `from unittest import mock` + inline `# noqa: TID251 — <reason>`."
+"unittest.mock.Mock".msg = "Prefer real fixtures or hand-rolled fakes implementing the relevant ABC. If a mock is genuinely required, import with `# noqa: TID251 — <reason>`."
+"unittest.mock.AsyncMock".msg = "Same as Mock."
+"unittest.mock.MagicMock".msg = "Same as Mock."
+"unittest.mock.patch".msg = "Prefer dependency injection via fixtures over monkey-patching."
+"pytest_mock".msg = "pytest-mock's `mocker` fixture is unittest.mock with a different spelling — it bypasses the mock bans above without any noqa trail. Use real fixtures/fakes; for a genuine external boundary use `from unittest import mock` + inline `# noqa: TID251 — <reason>`."
 
-"datetime.datetime.utcnow".msg        = "Deprecated in Python 3.12. Use `datetime.now(UTC)`."
-"pickle.load".msg                     = "Pickle deserializes arbitrary objects and is unsafe on untrusted input. Use JSON via Pydantic, or msgspec/orjson."
-"pickle.loads".msg                    = "Same — pickle is unsafe."
+"datetime.datetime.utcnow".msg = "Deprecated in Python 3.12. Use `datetime.now(UTC)`."
+"pickle.load".msg = "Pickle deserializes arbitrary objects and is unsafe on untrusted input. Use JSON via Pydantic, or msgspec/orjson."
+"pickle.loads".msg = "Same — pickle is unsafe."
 
-"os.environ".msg                      = "Use a Pydantic Settings class instead. If you genuinely need raw os.environ, add `# noqa: TID251 — <reason>` inline."
-"os.getenv".msg                       = "Same — use a Pydantic Settings class instead of os.getenv."
+"os.environ".msg = "Use a Pydantic Settings class instead. If you genuinely need raw os.environ, add `# noqa: TID251 — <reason>` inline."
+"os.getenv".msg = "Same — use a Pydantic Settings class instead of os.getenv."
 
-"fastapi.UploadFile".msg              = "Use a pre-signed URL so the client uploads directly to object storage."
+"fastapi.UploadFile".msg = "Use a pre-signed URL so the client uploads directly to object storage."
 "pydantic.alias_generators.to_camel".msg = "Don't camelCase API contracts in the backend. Keep snake_case; transform on the frontend with Zod."
-"typing.cast".msg                     = "Prefer discriminated unions or `isinstance` narrowing over `cast`."
-"psycopg.sql.Literal".msg             = "Use parameterized queries (psycopg's `%s` placeholders) instead of sql.Literal."
-"uuid.uuid4".msg                      = "Use uuid.uuid7() — time-ordered, aligns with the DB uuidv7() default. For unguessable secrets use secrets.token_urlsafe(), not a UUID."
+"typing.cast".msg = "Prefer discriminated unions or `isinstance` narrowing over `cast`."
+"psycopg.sql.Literal".msg = "Use parameterized queries (psycopg's `%s` placeholders) instead of sql.Literal."
+"uuid.uuid4".msg = "Use uuid.uuid7() — time-ordered, aligns with the DB uuidv7() default. For unguessable secrets use secrets.token_urlsafe(), not a UUID."
 
 # BEGIN GENERATED LIBRARY POLICY
 "aioredis".msg = "LIB020: aioredis was merged into redis-py; use redis.asyncio. Replace with redis.asyncio."
@@ -297,19 +313,33 @@ warns-extend-require-match-for = [
 # hardcoded-secret checks remain active in shipped code. Test trees also need
 # not be importable packages, and deterministic test PRNG use is not a secret
 # generation risk.
-"**/tests/**"             = ["S101", "S105", "S106", "S311", "INP001", "FBT001", "FBT002", "FBT003", "PLR2004", "S404", "S603", "S607", "PLR6301"]
-"**/test/**"              = ["S311"]
+"**/tests/**" = [
+  "S101",
+  "S105",
+  "S106",
+  "S311",
+  "INP001",
+  "FBT001",
+  "FBT002",
+  "FBT003",
+  "PLR2004",
+  "S404",
+  "S603",
+  "S607",
+  "PLR6301",
+]
+"**/test/**" = ["S311"]
 "**/integration_tests/**" = ["S311"]
 # A test-named module outside a test tree is still test code.
-"**/test_*.py"            = ["ANN201", "ANN202", "S101", "S105", "S106", "S311", "INP001"]
-"**/*_test.py"            = ["S311"]
-"**/conftest.py"          = ["S101", "S105", "S106", "S311", "INP001"]
+"**/test_*.py" = ["ANN201", "ANN202", "S101", "S105", "S106", "S311", "INP001"]
+"**/*_test.py" = ["S311"]
+"**/conftest.py" = ["S101", "S105", "S106", "S311", "INP001"]
 # Standalone scripts may print and need not be importable packages. Their
 # security and exception handling require the same checks as other source.
-"scripts/**"      = ["T201", "INP001"]
+"scripts/**" = ["T201", "INP001"]
 # CLI entrypoints print to stdout — that's their job, not stray debug output.
-"**/__main__.py"  = ["T201"]
-"**/cli/**/*.py"  = ["T201"]
+"**/__main__.py" = ["T201"]
+"**/cli/**/*.py" = ["T201"]
 # NOTE: `"__init__.py" = []` and `"**/settings.py" = []` used to sit here. Ruff
 # per-file-ignores are additive and an empty list cannot un-ignore anything, so
 # both entries were no-ops; they are removed rather than left as config that

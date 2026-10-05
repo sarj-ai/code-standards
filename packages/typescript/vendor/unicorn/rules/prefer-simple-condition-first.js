@@ -1,0 +1,271 @@
+import {isCommentToken} from '../../eslint-utils/index.mjs';
+import {isNullLiteral} from './ast/index.js';
+import {
+	isParenthesized,
+	getParenthesizedText,
+	getParenthesizedRange,
+	shouldAddParenthesesToLogicalExpressionChild,
+	isBooleanExpression,
+	isControlFlowTest,
+	isTypeScriptExpressionWrapper,
+	unwrapTypeScriptExpression,
+} from './utils/index.js';
+
+const MESSAGE_ID = 'prefer-simple-condition-first';
+const MESSAGE_ID_UNSAFE = 'prefer-simple-condition-first/unsafe';
+
+const messages = {
+	[MESSAGE_ID]: 'Prefer this simple condition first in the `{{operator}}` expression.',
+	[MESSAGE_ID_UNSAFE]: 'Consider moving this simple condition first after verifying short-circuit behavior.',
+};
+
+function isIdentifierOrTypeofIdentifier(node) {
+	node = unwrapTypeScriptExpression(node);
+	return node.type === 'Identifier'
+		|| (
+			node.type === 'UnaryExpression'
+			&& node.operator === 'typeof'
+			&& unwrapTypeScriptExpression(node.argument).type === 'Identifier'
+		);
+}
+
+/**
+Check if a node can be an operand in a simple strict comparison.
+*/
+function isSimpleOperand(node) {
+	node = unwrapTypeScriptExpression(node);
+
+	if (isIdentifierOrTypeofIdentifier(node) || node.type === 'Literal') {
+		return true;
+	}
+
+	if (
+		node.type !== 'UnaryExpression'
+		|| (node.operator !== '-' && node.operator !== '+')
+	) {
+		return false;
+	}
+
+	// Signed number literals and negative BigInt literals: `-1`, `+0`, `-1n`
+	const argument = unwrapTypeScriptExpression(node.argument);
+	return argument.type === 'Literal'
+		&& (
+			typeof argument.value === 'number'
+			|| (node.operator === '-' && typeof argument.value === 'bigint')
+		);
+}
+
+function isSimple(node) {
+	node = unwrapTypeScriptExpression(node);
+
+	if (node.type === 'Identifier') {
+		return true;
+	}
+
+	if (
+		node.type === 'UnaryExpression'
+		&& node.operator === '!'
+	) {
+		return isSimple(node.argument);
+	}
+
+	if (node.type === 'BinaryExpression') {
+		const left = unwrapTypeScriptExpression(node.left);
+		const right = unwrapTypeScriptExpression(node.right);
+		if (
+			(node.operator === '==' || node.operator === '!=')
+			&& (
+				(left.type === 'Identifier' && isNullLiteral(right))
+				|| (isNullLiteral(left) && right.type === 'Identifier')
+			)
+		) {
+			return true;
+		}
+
+		return isSimpleOperand(left) && isSimpleOperand(right)
+			&& (node.operator === '===' || node.operator === '!==')
+			&& (isIdentifierOrTypeofIdentifier(left) || isIdentifierOrTypeofIdentifier(right));
+	}
+
+	return false;
+}
+
+function getOperandText(node, context, {operator, property}) {
+	const isNodeParenthesized = isParenthesized(node, context);
+	let text = isNodeParenthesized
+		? getParenthesizedText(node, context)
+		: context.sourceCode.getText(node);
+
+	if (
+		!isNodeParenthesized
+		&& shouldAddParenthesesToLogicalExpressionChild(node, {operator, property})
+	) {
+		text = `(${text})`;
+	}
+
+	return text;
+}
+
+/**
+Check if a LogicalExpression is used in a boolean context where the produced value is only tested for truthiness, not consumed as a value.
+*/
+function isBooleanContext(node, context) {
+	if (isBooleanExpression(node, context) || isControlFlowTest(node)) {
+		return true;
+	}
+
+	const {parent} = node;
+	return isTypeScriptExpressionWrapper(parent)
+		&& parent.expression === node
+		&& isBooleanContext(parent, context);
+}
+
+function getLogicalOperands(node, operator, operands = []) {
+	const unwrappedNode = unwrapTypeScriptExpression(node);
+	if (unwrappedNode.type !== 'LogicalExpression' || unwrappedNode.operator !== operator) {
+		operands.push(node);
+		return operands;
+	}
+
+	getLogicalOperands(unwrappedNode.left, operator, operands);
+	getLogicalOperands(unwrappedNode.right, operator, operands);
+	return operands;
+}
+
+function isSafeConditionalExpression(node) {
+	const unwrappedNode = unwrapTypeScriptExpression(node);
+	return unwrappedNode.type === 'ConditionalExpression'
+		&& [unwrappedNode.test, unwrappedNode.consequent, unwrappedNode.alternate].every(child =>
+			isSimple(child) || isSimpleOperand(child) || isSafeConditionalExpression(child),
+		);
+}
+
+function isSafeToMove(node) {
+	return isSimple(node) || isSafeConditionalExpression(node);
+}
+
+function hasSameOperatorLogicalParent(node) {
+	const {operator} = node;
+	let {parent} = node;
+	while (
+		isTypeScriptExpressionWrapper(parent)
+		&& parent.expression === node
+	) {
+		node = parent;
+		parent = node.parent;
+	}
+
+	return parent?.type === 'LogicalExpression' && parent.operator === operator;
+}
+
+function hasTypeScriptWrappedLogicalExpression(node, operator) {
+	if (isTypeScriptExpressionWrapper(node)) {
+		const unwrappedNode = unwrapTypeScriptExpression(node);
+		return unwrappedNode.type === 'LogicalExpression' && unwrappedNode.operator === operator;
+	}
+
+	return node.type === 'LogicalExpression'
+		&& node.operator === operator
+		&& (hasTypeScriptWrappedLogicalExpression(node.left, operator) || hasTypeScriptWrappedLogicalExpression(node.right, operator));
+}
+
+function hasCommentsThatPreventFix(node, operands, context) {
+	const {sourceCode} = context;
+	if (sourceCode.getCommentsInside(node).length > 0) {
+		return true;
+	}
+
+	const [firstOperand] = operands;
+	const lastOperand = operands.at(-1);
+	const [start] = getParenthesizedRange(firstOperand, context);
+	const [, end] = getParenthesizedRange(lastOperand, context);
+	const range = {range: [start, end]};
+	return isCommentToken(sourceCode.getTokenBefore(range, {includeComments: true}))
+		|| isCommentToken(sourceCode.getTokenAfter(range, {includeComments: true}));
+}
+
+/**
+@param {import('eslint').Rule.RuleContext} context
+*/
+const create = context => {
+	const {sourceCode} = context;
+
+	context.on('LogicalExpression', node => {
+		if (node.operator !== '&&' && node.operator !== '||') {
+			return;
+		}
+
+		if (hasSameOperatorLogicalParent(node)) {
+			return;
+		}
+
+		if (!isBooleanContext(node, context)) {
+			return;
+		}
+
+		const operands = getLogicalOperands(node, node.operator);
+		const classifiedOperands = operands.map(operand => ({operand, isSimple: isSimple(operand)}));
+		const firstComplexOperandIndex = classifiedOperands.findIndex(({isSimple}) => !isSimple);
+		const firstMisplacedSimpleOperandIndex = classifiedOperands.findIndex(
+			({isSimple}, index) => isSimple && index > firstComplexOperandIndex,
+		);
+		if (
+			firstComplexOperandIndex === -1
+			|| firstMisplacedSimpleOperandIndex === -1
+		) {
+			return;
+		}
+
+		const reorderedOperands = [
+			...classifiedOperands.filter(({isSimple}) => isSimple),
+			...classifiedOperands.filter(({isSimple}) => !isSimple),
+		].map(({operand}) => operand);
+		const lastSimpleOperandIndex = classifiedOperands.findLastIndex(({isSimple}) => isSimple);
+		const canSafelyReorder = classifiedOperands.every(
+			({operand, isSimple}, index) => isSimple || index > lastSimpleOperandIndex || isSafeToMove(operand),
+		);
+		const canFix = canSafelyReorder
+			&& !hasTypeScriptWrappedLogicalExpression(node, node.operator)
+			&& !hasCommentsThatPreventFix(node, operands, context);
+		const fix = canFix
+			? fixer => fixer.replaceTextRange(
+				sourceCode.getRange(node),
+				reorderedOperands
+					.map((operand, index) => getOperandText(operand, context, {
+						operator: node.operator,
+						property: index === 0 ? 'left' : 'right',
+					}))
+					.join(` ${node.operator} `),
+			)
+			: undefined;
+
+		return {
+			node,
+			loc: sourceCode.getLoc(operands[firstMisplacedSimpleOperandIndex]),
+			messageId: canSafelyReorder ? MESSAGE_ID : MESSAGE_ID_UNSAFE,
+			data: {operator: node.operator},
+			...(fix && {fix}),
+		};
+	});
+};
+
+/**
+@type {import('eslint').Rule.RuleModule}
+*/
+const config = {
+	create,
+	meta: {
+		type: 'suggestion',
+		docs: {
+			description: 'Prefer simple conditions first in logical expressions.',
+			recommended: true,
+		},
+		fixable: 'code',
+		messages,
+		languages: [
+			'js/js',
+		],
+	},
+};
+
+export default config;

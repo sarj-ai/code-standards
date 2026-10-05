@@ -4,7 +4,9 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-restricted-library-load.test.ts
  */
 
-import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
+import type { ESTree } from "@oxlint/plugins";
+import { findVariable } from "./_scope.js";
+
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 
@@ -34,11 +36,11 @@ export const NO_RESTRICTED_LIBRARY_LOAD_DOCUMENTATION = {
   ],
 } as const satisfies RuleDocumentation;
 
-function staticModule(node: TSESTree.Node | undefined): string | null {
-  if (node?.type === AST_NODE_TYPES.Literal && typeof node.value === "string") {
+function staticModule(node: ESTree.Node | undefined): string | null {
+  if (node?.type === "Literal" && typeof node.value === "string") {
     return node.value;
   }
-  if (node?.type === AST_NODE_TYPES.TemplateLiteral && node.expressions.length === 0) {
+  if (node?.type === "TemplateLiteral" && node.expressions.length === 0) {
     return node.quasis[0]?.value.cooked ?? null;
   }
   return null;
@@ -48,11 +50,11 @@ function matchesModule(source: string, module: string): boolean {
   return source === module || source.startsWith(`${module}/`);
 }
 
-function staticMemberName(node: TSESTree.MemberExpression): string | null {
-  if (!node.computed && node.property.type === AST_NODE_TYPES.Identifier) {
+function staticMemberName(node: ESTree.MemberExpression): string | null {
+  if (!node.computed && node.property.type === "Identifier") {
     return node.property.name;
   }
-  return node.computed && node.property.type === AST_NODE_TYPES.Literal &&
+  return node.computed && node.property.type === "Literal" &&
     typeof node.property.value === "string"
     ? node.property.value
     : null;
@@ -98,7 +100,7 @@ export default createRule<Options, MessageIds>({
   create(context, [options]) {
     const restrictions = options.libraries;
 
-    function report(node: TSESTree.Node, source: string): void {
+    function report(node: ESTree.Node, source: string): void {
       const restriction = restrictions.find((entry) =>
         matchesModule(source, entry.module),
       );
@@ -115,8 +117,8 @@ export default createRule<Options, MessageIds>({
       });
     }
 
-    function isUnshadowedRequire(node: TSESTree.Identifier): boolean {
-      const variable = ASTUtils.findVariable(
+    function isUnshadowedRequire(node: ESTree.BindingIdentifier): boolean {
+      const variable = findVariable(
         context.sourceCode.getScope(node),
         node.name,
       );
@@ -124,20 +126,20 @@ export default createRule<Options, MessageIds>({
     }
 
     return {
-      ImportExpression(node: TSESTree.ImportExpression): void {
+      ImportExpression(node: ESTree.ImportExpression): void {
         const source = staticModule(node.source);
         if (source !== null) report(node.source, source);
       },
-      CallExpression(node: TSESTree.CallExpression): void {
-        let requireIdentifier: TSESTree.Identifier | null = null;
+      CallExpression(node: ESTree.CallExpression): void {
+        let requireIdentifier: ESTree.BindingIdentifier | null = null;
         if (
-          node.callee.type === AST_NODE_TYPES.Identifier &&
+          node.callee.type === "Identifier" &&
           node.callee.name === "require"
         ) {
           requireIdentifier = node.callee;
         } else if (
-          node.callee.type === AST_NODE_TYPES.MemberExpression &&
-          node.callee.object.type === AST_NODE_TYPES.Identifier &&
+          node.callee.type === "MemberExpression" &&
+          node.callee.object.type === "Identifier" &&
           node.callee.object.name === "require" &&
           staticMemberName(node.callee) === "resolve"
         ) {
@@ -145,11 +147,11 @@ export default createRule<Options, MessageIds>({
         }
         if (requireIdentifier === null || !isUnshadowedRequire(requireIdentifier)) return;
         const source = staticModule(node.arguments[0]);
-        if (source !== null) report(node.arguments[0] as TSESTree.Node, source);
+        if (source !== null) report(node.arguments[0] as ESTree.Node, source);
       },
-      TSImportEqualsDeclaration(node: TSESTree.TSImportEqualsDeclaration): void {
+      TSImportEqualsDeclaration(node: ESTree.TSImportEqualsDeclaration): void {
         if (node.importKind === "type") return;
-        if (node.moduleReference.type !== AST_NODE_TYPES.TSExternalModuleReference) return;
+        if (node.moduleReference.type !== "TSExternalModuleReference") return;
         const source = staticModule(node.moduleReference.expression);
         if (source !== null) report(node.moduleReference.expression, source);
       },

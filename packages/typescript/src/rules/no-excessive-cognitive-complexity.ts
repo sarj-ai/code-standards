@@ -4,13 +4,15 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-excessive-cognitive-complexity.test.ts
  */
 
-import { AST_NODE_TYPES, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
+import { sourceOrigin } from "./_source-origin.js";
+import type { ESTree, SourceCode } from "@oxlint/plugins";
+
 
 import { forEachAstChild } from "./_for-each-ast-child.js";
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile } from "./_paths.js";
 
-type FunctionNode = TSESTree.FunctionDeclaration | TSESTree.FunctionExpression | TSESTree.ArrowFunctionExpression;
+type FunctionNode = ESTree.Function | ESTree.ArrowFunctionExpression;
 interface ComplexityPoint {
   readonly line: number;
   readonly amount: number;
@@ -43,20 +45,20 @@ export const NO_EXCESSIVE_COGNITIVE_COMPLEXITY_DOCUMENTATION = {
 
 export function functionComplexity(
   fn: FunctionNode,
-  visitorKeys: Readonly<TSESLint.SourceCode.VisitorKeys>,
+  visitorKeys: Readonly<SourceCode["visitorKeys"]>,
 ): readonly ComplexityPoint[] {
   const points: ComplexityPoint[] = [];
-  function add(node: TSESTree.Node, nesting: number, construct: string): void {
+  function add(node: ESTree.Node, nesting: number, construct: string): void {
     points.push({ line: node.loc.start.line, amount: nesting + 1, construct });
   }
-  function conditional(node: TSESTree.IfStatement, nesting: number): void {
+  function conditional(node: ESTree.IfStatement, nesting: number): void {
     add(node, nesting, "if");
     let branch = node;
     while (true) {
       visit(branch.test, nesting);
       visit(branch.consequent, nesting + 1);
       const alternate = branch.alternate;
-      if (alternate?.type === AST_NODE_TYPES.IfStatement) {
+      if (alternate?.type === "IfStatement") {
         add(alternate, 0, "else if");
         branch = alternate;
       } else {
@@ -68,70 +70,70 @@ export function functionComplexity(
       }
     }
   }
-  function visit(node: TSESTree.Node, nesting: number): void {
+  function visit(node: ESTree.Node, nesting: number): void {
     switch (node.type) {
-      case AST_NODE_TYPES.FunctionDeclaration:
-      case AST_NODE_TYPES.FunctionExpression:
-      case AST_NODE_TYPES.ArrowFunctionExpression:
-      case AST_NODE_TYPES.ClassDeclaration:
-      case AST_NODE_TYPES.ClassExpression:
+      case "FunctionDeclaration":
+      case "FunctionExpression":
+      case "ArrowFunctionExpression":
+      case "ClassDeclaration":
+      case "ClassExpression":
         return;
-      case AST_NODE_TYPES.IfStatement:
+      case "IfStatement":
         conditional(node, nesting);
         return;
-      case AST_NODE_TYPES.ForStatement:
+      case "ForStatement":
         add(node, nesting, "loop");
         if (node.init !== null) visit(node.init, nesting);
         if (node.test !== null) visit(node.test, nesting);
         if (node.update !== null) visit(node.update, nesting);
         visit(node.body, nesting + 1);
         return;
-      case AST_NODE_TYPES.ForInStatement:
-      case AST_NODE_TYPES.ForOfStatement:
+      case "ForInStatement":
+      case "ForOfStatement":
         add(node, nesting, "loop");
         visit(node.left, nesting);
         visit(node.right, nesting);
         visit(node.body, nesting + 1);
         return;
-      case AST_NODE_TYPES.WhileStatement:
-      case AST_NODE_TYPES.DoWhileStatement:
+      case "WhileStatement":
+      case "DoWhileStatement":
         add(node, nesting, "loop");
         visit(node.test, nesting);
         visit(node.body, nesting + 1);
         return;
-      case AST_NODE_TYPES.CatchClause:
+      case "CatchClause":
         add(node, nesting, "catch");
         visit(node.body, nesting + 1);
         return;
-      case AST_NODE_TYPES.SwitchStatement:
+      case "SwitchStatement":
         add(node, nesting, "switch");
         visit(node.discriminant, nesting);
         for (const branch of node.cases) visit(branch, nesting + 1);
         return;
-      case AST_NODE_TYPES.ConditionalExpression:
+      case "ConditionalExpression":
         add(node, nesting, "conditional");
         visit(node.test, nesting);
         visit(node.consequent, nesting + 1);
         visit(node.alternate, nesting + 1);
         return;
-      case AST_NODE_TYPES.LogicalExpression:
+      case "LogicalExpression":
         if (node.operator !== "??") {
           logical(node, nesting);
           return;
         }
         break;
-      case AST_NODE_TYPES.BreakStatement:
-      case AST_NODE_TYPES.ContinueStatement:
+      case "BreakStatement":
+      case "ContinueStatement":
         if (node.label !== null) add(node, 0, "labeled jump");
         return;
     }
     visitChildren(node, nesting);
   }
 
-  function logical(node: TSESTree.LogicalExpression, nesting: number): void {
+  function logical(node: ESTree.LogicalExpression, nesting: number): void {
     let previous: string | undefined;
-    function flatten(expression: TSESTree.Node): void {
-      if (expression.type !== AST_NODE_TYPES.LogicalExpression || expression.operator === "??") {
+    function flatten(expression: ESTree.Node): void {
+      if (expression.type !== "LogicalExpression" || expression.operator === "??") {
         visit(expression, nesting);
         return;
       }
@@ -142,10 +144,10 @@ export function functionComplexity(
     }
     flatten(node);
   }
-  function visitChildren(node: TSESTree.Node, nesting: number): void {
+  function visitChildren(node: ESTree.Node, nesting: number): void {
     forEachAstChild(node, visitorKeys, child => visit(child, nesting));
   }
-  visit(fn.body, 0);
+  if (fn.body !== null) visit(fn.body, 0);
   return points;
 }
 
@@ -162,7 +164,7 @@ export default createRule<[], "excessiveComplexity">({
   },
   defaultOptions: [],
   create(context) {
-    if (isGeneratedFile(context.filename, context.sourceCode.text)) return {};
+    if (isGeneratedFile(sourceOrigin(context).filename, sourceOrigin(context).text)) return {};
     function check(node: FunctionNode): void {
       const points = functionComplexity(node, context.sourceCode.visitorKeys);
       const score = points.reduce((sum, point) => sum + point.amount, 0);

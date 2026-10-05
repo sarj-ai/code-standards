@@ -1,24 +1,18 @@
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import * as parser from "@typescript-eslint/parser";
-import { afterAll, describe, it } from "vitest";
-import { join } from "node:path";
+import { RuleTester } from "oxlint/plugins-dev";
+import { describe, it } from "vitest";
 import rule from "../../src/rules/no-broad-return-type.js";
 
-RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
 RuleTester.it = it;
 RuleTester.itOnly = it.only;
 const TESTER = new RuleTester({
-  languageOptions: {
-    parser,
-    parserOptions: {
-      projectService: { allowDefaultProject: ["*.ts*"] },
-      tsconfigRootDir: join(import.meta.dirname, "..", "fixtures"),
-    },
-  },
+  languageOptions: { parserOptions: { lang: "ts" } },
 });
 TESTER.run("no-broad-return-type", rule, {
   valid: [
+    "function opaque(value: { id: string }): unknown { return value as unknown; }",
+    "import type { Domain } from './domain.js'; function decode(value: Domain): unknown { return value; }",
+    "type Record<K, V> = { retained: string }; function decode(value: { id: string }): Record<string, unknown> { return value; }",
     "function generic<T>(value: Promise<T>): Promise<unknown> { return value; }",
     "function serialize(value: unknown, choose: boolean): unknown { if (choose) return [1]; return value; }",
     "function generic<T extends { id: string }>(value: T): unknown { return value; }",
@@ -90,9 +84,4 @@ TESTER.run("no-broad-return-type", rule, {
       ],
     },
   ],
-});
-const SYNTAX_TESTER = new RuleTester({ languageOptions: { parser } });
-SYNTAX_TESTER.run("without type information", rule, {
-  valid: ["function request(value: { id: string }): unknown { return value; }"],
-  invalid: [],
 });

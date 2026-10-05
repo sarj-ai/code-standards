@@ -2,11 +2,12 @@
  * @fileoverview _prose-budget — shared extraction and sentence counting for comment-budget rules.
  */
 
-import { AST_NODE_TYPES, type TSESTree, type TSESLint } from "@typescript-eslint/utils";
+import type { ESTree, SourceCode } from "@oxlint/plugins";
+
 
 import { isGeneratedFile, isScriptFile, isStoryFile, isTestFile } from "./_paths.js";
 
-const DIRECTIVE_RE = /^(?:!|eslint\b|eslint-|@ts-|prettier|biome-|c8\b|v8\b|istanbul\b|@vite|webpack|@jsx|@jest-environment|@vitest-environment|#__|todo\b|fixme\b|hack\b)/i;
+const DIRECTIVE_RE = /^(?:!|oxlint\b|oxlint-|oxlint\b|oxlint-|eslint\b|eslint-|@ts-|prettier|biome-|c8\b|v8\b|istanbul\b|@vite|webpack|@jsx|@jest-environment|@vitest-environment|#__|todo\b|fixme\b|hack\b)/i;
 const LICENSE_RE = /\b(?:copyright|spdx-license-identifier|licensed under)\b/i;
 const TYPED_TAG_RE = /@(arg|argument|param|return|returns|yield|yields)\b/i;
 const VALUE_TAG_RE = /@(example|deprecated|see|remarks|throws|internal|public|alpha|beta|since|template|fileoverview)\b/i;
@@ -18,12 +19,12 @@ const TECHNICAL_ANCHOR_RE =
   /https?:\/\/|`[^`\n]+`|:[a-z][a-z0-9_-]*:|(["'])[^"'\n]+\1|\bv?\d+\.\d+(?:\.\d+)?\b|\b\d+(?:\.\d+)?\s?(?:ns|us|ms|s|sec|secs|seconds?|mins?|minutes?|hours?|days?|bytes?|kib|mib|gib|kb|mb|gb|hz|khz|mhz|px|%)\b|\b[a-z][a-z0-9]*[A-Z][A-Za-z0-9]*\b|\b[A-Za-z][A-Za-z0-9]*_[A-Za-z0-9_]+\b|(?:^|\s)(?:[\w.-]+\/)+[\w.-]+|\b[\w.-]+\.(?:py|pyi|js|jsx|ts|tsx|json|ya?ml|toml|csv|parquet|md)\b|->|=>|==|!=|<=|>=|\|/mu;
 
 export interface ProseGroup {
-  readonly comment: TSESTree.Comment;
+  readonly comment: ESTree.Comment;
   readonly text: string;
   readonly hasTypedTags: boolean;
 }
 
-function body(comment: TSESTree.Comment): string {
+function body(comment: ESTree.Comment): string {
   return comment.value
     .replace(/^\*/, "")
     .split("\n")
@@ -71,7 +72,7 @@ export function hasTechnicalAnchor(text: string): boolean {
 
 export function proseGroups(
   filename: string,
-  sourceCode: Readonly<TSESLint.SourceCode>,
+  sourceCode: Readonly<SourceCode>,
   includeValueTags = false,
 ): ProseGroup[] {
   if (
@@ -81,7 +82,7 @@ export function proseGroups(
     isTestFile(filename)
   ) return [];
   const groups: ProseGroup[] = [];
-  let run: TSESTree.Comment[] = [];
+  let run: ESTree.Comment[] = [];
   const flush = (): void => {
     if (run.length === 0) return;
     const text = run.map(body).join("\n");
@@ -110,43 +111,43 @@ export function proseGroups(
   return groups;
 }
 
-function annotatedParameter(parameter: TSESTree.Parameter): boolean {
-  if (parameter.type === AST_NODE_TYPES.TSParameterProperty) return annotatedParameter(parameter.parameter);
-  const target = parameter.type === AST_NODE_TYPES.AssignmentPattern ? parameter.left : parameter;
+function annotatedParameter(parameter: ESTree.ParamPattern): boolean {
+  if (parameter.type === "TSParameterProperty") return annotatedParameter(parameter.parameter);
+  const target = parameter.type === "AssignmentPattern" ? parameter.left : parameter;
   return "typeAnnotation" in target && target.typeAnnotation != null;
 }
 
 export function documentsTypedFunction(
-  sourceCode: Readonly<TSESLint.SourceCode>,
-  comment: TSESTree.Comment,
+  sourceCode: Readonly<SourceCode>,
+  comment: ESTree.Comment,
 ): boolean {
   const token = sourceCode.getTokenAfter(comment, { includeComments: false });
   if (token === null || token.loc.start.line !== comment.loc.end.line + 1) return false;
-  let node: TSESTree.Node | null = sourceCode.getNodeByRangeIndex(token.range[0]);
-  while (node != null && node.type !== AST_NODE_TYPES.Program) {
+  let node: ESTree.Node | null = sourceCode.getNodeByRangeIndex(token.range[0]);
+  while (node != null && node.type !== "Program") {
     if (typedFunction(node)) return true;
     node = node.parent ?? null;
   }
   return false;
 }
 
-function typedFunction(node: TSESTree.Node): boolean {
+function typedFunction(node: ESTree.Node): boolean {
   switch (node.type) {
-    case AST_NODE_TYPES.ExportNamedDeclaration:
-    case AST_NODE_TYPES.ExportDefaultDeclaration:
+    case "ExportNamedDeclaration":
+    case "ExportDefaultDeclaration":
       return node.declaration != null && typedFunction(node.declaration);
-    case AST_NODE_TYPES.FunctionDeclaration:
-    case AST_NODE_TYPES.TSDeclareFunction:
+    case "FunctionDeclaration":
+    case "TSDeclareFunction":
       return node.returnType != null && node.params.every(annotatedParameter);
-    case AST_NODE_TYPES.VariableDeclaration: {
+    case "VariableDeclaration": {
       const init = node.declarations[0]?.init;
       return init != null &&
-        (init.type === AST_NODE_TYPES.ArrowFunctionExpression || init.type === AST_NODE_TYPES.FunctionExpression) &&
+        (init.type === "ArrowFunctionExpression" || init.type === "FunctionExpression") &&
         init.returnType != null && init.params.every(annotatedParameter);
     }
-    case AST_NODE_TYPES.MethodDefinition:
+    case "MethodDefinition":
       return node.value.returnType != null && node.value.params.every(annotatedParameter);
-    case AST_NODE_TYPES.TSMethodSignature:
+    case "TSMethodSignature":
       return node.returnType != null && node.params.every(annotatedParameter);
     default:
       return false;

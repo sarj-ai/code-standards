@@ -4,7 +4,9 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/require-use-server-in-actions-file.test.ts
  */
 
-import { type TSESTree } from "@typescript-eslint/utils";
+import { sourceOrigin } from "./_source-origin.js";
+import type { ESTree } from "@oxlint/plugins";
+
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 
@@ -44,9 +46,9 @@ export const REQUIRE_USE_SERVER_IN_ACTIONS_FILE_DOCUMENTATION = {
   ],
 } as const satisfies RuleDocumentation;
 
-function isExportedAsyncFunction(node: TSESTree.ExportNamedDeclaration): boolean {
+function isExportedAsyncFunction(node: ESTree.ExportNamedDeclaration): boolean {
   const declaration = node.declaration;
-  const unmarked = (fn: TSESTree.FunctionDeclaration | TSESTree.FunctionExpression | TSESTree.ArrowFunctionExpression): boolean =>
+  const unmarked = (fn: ESTree.Function | ESTree.ArrowFunctionExpression): boolean =>
     fn.async && !(fn.body?.type === "BlockStatement" && fn.body.body.some((statement) => statement.type === "ExpressionStatement" && statement.directive === "use server"));
   if (declaration?.type === "FunctionDeclaration") return unmarked(declaration);
   return (
@@ -73,11 +75,11 @@ export default createRule<Options, MessageIds>({
   create(context) {
     return {
       Program(node): void {
-        const filename = context.filename.replaceAll("\\", "/");
+        const filename = sourceOrigin(context).filename.replaceAll("\\", "/");
         if (!ACTION_MODULE_RE.test(filename)) return;
         if (node.body.some((statement) => statement.type === "ExpressionStatement" && statement.directive === "use server")) return;
         const exportedAction = node.body.find(
-          (statement): statement is TSESTree.ExportNamedDeclaration =>
+          (statement): statement is ESTree.ExportNamedDeclaration =>
             statement.type === "ExportNamedDeclaration" && isExportedAsyncFunction(statement),
         );
         if (exportedAction) context.report({ node: exportedAction, messageId: "requireUseServerInActionsFile" });

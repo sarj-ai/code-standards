@@ -1,0 +1,302 @@
+[
+  {
+    "rule": "no-all-duplicated-branches",
+    "name": "same-branches",
+    "source": "if(flag){run()}else{run()}",
+    "expected": 1
+  },
+  {
+    "rule": "no-all-duplicated-branches",
+    "name": "different-branches",
+    "source": "if(flag){run()}else{stop()}",
+    "expected": 0
+  },
+  {
+    "rule": "no-all-duplicated-branches",
+    "name": "missing-else",
+    "source": "if(flag){run()}",
+    "expected": 0
+  },
+  {
+    "rule": "no-all-duplicated-branches",
+    "name": "same-conditional",
+    "source": "const value=flag?load():load()",
+    "expected": 1
+  },
+  {
+    "rule": "no-collapsible-if",
+    "name": "nested-if",
+    "source": "if(a){if(b){run()}}",
+    "expected": 1
+  },
+  {
+    "rule": "no-collapsible-if",
+    "name": "outer-else",
+    "source": "if(a){if(b){run()}}else{stop()}",
+    "expected": 0
+  },
+  {
+    "rule": "no-collapsible-if",
+    "name": "inner-else",
+    "source": "if(a){if(b){run()}else{stop()}}",
+    "expected": 0
+  },
+  {
+    "rule": "no-element-overwrite",
+    "name": "same-element",
+    "source": "items[1]=a;items[1]=b;",
+    "expected": 1
+  },
+  {
+    "rule": "no-element-overwrite",
+    "name": "read-between-writes",
+    "source": "items[1]=a;items[1]=items[1]+b;",
+    "expected": 0
+  },
+  {
+    "rule": "no-element-overwrite",
+    "name": "different-receiver",
+    "source": "items[1]=a;others[1]=b;",
+    "expected": 0
+  },
+  {
+    "rule": "no-element-overwrite",
+    "name": "same-map-key",
+    "source": "map.set(\"key\",a);map.set(\"key\",b);",
+    "expected": 1
+  },
+  {
+    "rule": "no-identical-expressions",
+    "name": "same-expression",
+    "source": "const value=items[index]-items[index];",
+    "expected": 1
+  },
+  {
+    "rule": "no-identical-expressions",
+    "name": "different-expression",
+    "source": "const value=items[index]-others[index];",
+    "expected": 0
+  },
+  {
+    "rule": "no-identical-expressions",
+    "name": "identifier-equality",
+    "source": "const value=left===left;",
+    "expected": 0
+  },
+  {
+    "rule": "no-identical-expressions",
+    "name": "bigint-shift",
+    "source": "const value=1n<<1n;",
+    "expected": 0
+  },
+  {
+    "rule": "no-identical-functions",
+    "name": "same-functions",
+    "source": "function first(value){\n const next=value+1;\n log(next);\n return next;\n}\nfunction second(value){\n const next=value+1;\n log(next);\n return next;\n}",
+    "expected": 1
+  },
+  {
+    "rule": "no-identical-functions",
+    "name": "different-functions",
+    "source": "function first(value){\n const next=value+1;\n log(next);\n return next;\n}\nfunction second(value){\n const next=value+2;\n log(next);\n return next;\n}",
+    "expected": 0
+  },
+  {
+    "rule": "no-identical-functions",
+    "name": "below-three-lines",
+    "source": "function first(value){return value+1;}function second(value){return value+1;}",
+    "expected": 0
+  },
+  {
+    "rule": "no-redundant-jump",
+    "name": "redundant-return",
+    "source": "function run(){work();return;}",
+    "expected": 1
+  },
+  {
+    "rule": "no-redundant-jump",
+    "name": "redundant-continue",
+    "source": "for(const item of items){work(item);continue;}",
+    "expected": 1
+  },
+  {
+    "rule": "no-redundant-jump",
+    "name": "valued-return",
+    "source": "function run(){work();return value;}",
+    "expected": 0
+  },
+  {
+    "rule": "no-redundant-jump",
+    "name": "early-return",
+    "source": "function run(){if(flag){return;}work();}",
+    "expected": 0
+  },
+  {
+    "rule": "no-use-of-empty-return-value",
+    "name": "void-result",
+    "source": "function run(){log(1)}const value=run();",
+    "expected": 1
+  },
+  {
+    "rule": "no-use-of-empty-return-value",
+    "name": "valued-result",
+    "source": "function run(){return 1}const value=run();",
+    "expected": 0
+  },
+  {
+    "rule": "no-use-of-empty-return-value",
+    "name": "shadowed-function",
+    "source": "function run(){log(1)}function outer(run){const value=run();}",
+    "expected": 0
+  },
+  {
+    "rule": "no-use-of-empty-return-value",
+    "name": "async-function",
+    "source": "async function run(){log(1)}const value=run();",
+    "expected": 0
+  },
+  {
+    "rule": "no-use-of-empty-return-value",
+    "name": "empty-stub",
+    "source": "function run(){}const value=run();",
+    "expected": 0
+  },
+  {
+    "rule": "no-use-of-empty-return-value",
+    "name": "ambient-void",
+    "source": "declare function run():void;const value=run();",
+    "expected": 1
+  },
+  {
+    "rule": "no-use-of-empty-return-value",
+    "name": "ambient-number",
+    "source": "declare function run():number;const value=run();",
+    "expected": 0
+  },
+  {
+    "rule": "no-use-of-empty-return-value",
+    "name": "unused-sequence",
+    "source": "function run(){log(1)}(1,run());",
+    "expected": 0
+  },
+  {
+    "rule": "prefer-immediate-return",
+    "name": "temporary-return",
+    "source": "function run(){const value=load();return value;}",
+    "expected": 1
+  },
+  {
+    "rule": "prefer-immediate-return",
+    "name": "temporary-throw",
+    "source": "function run(){const value=new Error(\"failed\");throw value;}",
+    "expected": 1
+  },
+  {
+    "rule": "prefer-immediate-return",
+    "name": "extra-read",
+    "source": "function run(){const value=load();log(value);return value;}",
+    "expected": 0
+  },
+  {
+    "rule": "prefer-immediate-return",
+    "name": "annotated-contract",
+    "source": "function run(){const value:number=load();return value;}",
+    "expected": 0
+  },
+  {
+    "rule": "prefer-immediate-return",
+    "name": "jsdoc-contract",
+    "source": "function run(){\n/** @type {number} */\nconst value=load();\nreturn value;\n}",
+    "expected": 0
+  },
+  {
+    "rule": "prefer-immediate-return",
+    "name": "direct-function",
+    "source": "function run(){const handler=function named(){};return handler;}",
+    "expected": 0
+  },
+  {
+    "rule": "prefer-immediate-return",
+    "name": "local-function-alias",
+    "source": "function handler(){}function run(){const value=handler;return value;}",
+    "expected": 0
+  },
+  {
+    "rule": "prefer-immediate-return",
+    "name": "satisfies-function",
+    "source": "function run(){const value=(()=>1) satisfies (()=>number);return value;}",
+    "expected": 0
+  },
+  {
+    "rule": "prefer-immediate-return",
+    "name": "satisfies-function-alias",
+    "source": "function get(){return 1}function run(){const value=get satisfies (()=>number);return value;}",
+    "expected": 0
+  },
+  {
+    "rule": "prefer-immediate-return",
+    "name": "as-function-type",
+    "source": "function run(){const value=(()=>1) as (()=>number);return value;}",
+    "expected": 1
+  },
+  {
+    "rule": "prefer-immediate-return",
+    "name": "mutable-function-alias",
+    "source": "let handler:(()=>number)|number=()=>1;handler=1;function run(){const value=handler;return value;}",
+    "expected": 1
+  },
+  {
+    "rule": "prefer-immediate-return",
+    "name": "union-function-alias",
+    "source": "let handler:(()=>number)|number=()=>1;function run(){const value=handler;return value;}",
+    "expected": 1
+  },
+  {
+    "rule": "prefer-immediate-return",
+    "name": "structural-function-alias",
+    "source": "const handler:()=>number=()=>1;function run(){const value=handler;return value;}",
+    "expected": 1
+  },
+  {
+    "rule": "prefer-immediate-return",
+    "name": "immutable-arrow-alias",
+    "source": "const handler=()=>1;function run(){const value=handler;return value;}",
+    "expected": 0
+  },
+  {
+    "rule": "prefer-immediate-return",
+    "name": "unwritten-let-function-alias",
+    "source": "let handler=()=>1;function run(){const value=handler;return value;}",
+    "expected": 0
+  },
+  {
+    "rule": "prefer-immediate-return",
+    "name": "direct-arrow-function",
+    "source": "function run(){const value=()=>1;return value;}",
+    "expected": 0
+  },
+  {
+    "rule": "prefer-immediate-return",
+    "name": "parenthesized-arrow-function",
+    "source": "function run(){const value=(()=>1);return value;}",
+    "expected": 0
+  },
+  {
+    "rule": "prefer-immediate-return",
+    "name": "shadowed-function-alias",
+    "source": "const handler=()=>1;function run(handler:number){const value=handler;return value;}",
+    "expected": 1
+  },
+  {
+    "rule": "prefer-immediate-return",
+    "name": "function-alias-chain",
+    "source": "const handler=()=>1;const alias=handler;function run(){const value=alias;return value;}",
+    "expected": 0
+  },
+  {
+    "rule": "prefer-immediate-return",
+    "name": "function-alias-closure-write",
+    "source": "let handler=()=>1;function replace(){handler=()=>2}function run(){const value=handler;return value;}",
+    "expected": 1
+  }
+]

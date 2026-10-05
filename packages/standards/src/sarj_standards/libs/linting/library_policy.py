@@ -354,8 +354,8 @@ CATALOG: Final[tuple[LibraryMapping, ...]] = (
         "typescript",
         "obsolete",
         "tslint",
-        "eslint",
-        "TSLint is deprecated; use ESLint with typescript-eslint.",
+        "oxlint",
+        "TSLint is deprecated; use Oxlint with its type-aware rules.",
     ),
 )
 

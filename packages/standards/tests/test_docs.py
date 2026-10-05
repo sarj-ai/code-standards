@@ -21,6 +21,7 @@ GENERATED_READMES = (
     Path("packages/sql/README.md"),
     Path("packages/iac/README.md"),
     Path("packages/typescript/README.md"),
+    Path("packages/react-hooks/README.md"),
     Path("packages/tsconfig/README.md"),
     Path("plugins/sarj-audit/README.md"),
     Path(".github/SECURITY.md"),
@@ -95,7 +96,11 @@ def _repository(root: Path) -> None:
         ),
         "typescript": (
             "package.json",
-            '{"name":"@sarj/eslint-plugin","version":"1.0.0","description":"TypeScript rules.","license":"MIT"}\n',
+            '{"name":"@sarj/oxlint-plugin","version":"1.0.0","description":"TypeScript rules.","license":"MIT"}\n',
+        ),
+        "react-hooks": (
+            "package.json",
+            '{"name":"@sarj/oxlint-react-hooks","version":"0.1.0","description":"Native React Hooks rules.","license":"MIT"}\n',
         ),
         "tsconfig": (
             "package.json",
@@ -109,7 +114,7 @@ def _repository(root: Path) -> None:
     ledger = root / "packages/standards/src/sarj_standards/configs/rule-ledger.json"
     ledger.parent.mkdir(parents=True)
     ledger.write_text(
-        json.dumps({"rules": {"eslint": ["one", "two"], "python": ["one"], "sql": [], "iac": [], "text": []}}),
+        json.dumps({"rules": {"oxlint": ["one", "two"], "python": ["one"], "sql": [], "iac": [], "text": []}}),
         encoding="utf-8",
     )
     plugin_manifest = root / "plugins/sarj-audit/.claude-plugin/plugin.json"
@@ -290,14 +295,14 @@ def test_docs_lint_dependencies_are_reproducible_and_compatible() -> None:
     assert _is_object_table(raw)
     dependencies = raw.get("devDependencies")
     assert _is_string_table(dependencies)
-    for name in ("@eslint/js", "eslint", "eslint-plugin-astro", "typescript-eslint"):
+    for name in ("oxlint", "oxlint-tsgolint", "oxfmt"):
         assert dependencies[name][0].isdigit(), f"{name} must use an exact version"
-    plugin_specifier = dependencies["@sarj/eslint-plugin"]
-    assert plugin_specifier.startswith("file:")
-    plugin_raw = _load_json(REPO_ROOT / "apps/docs" / plugin_specifier.removeprefix("file:") / "package.json")
+    plugin_specifier = dependencies["@sarj/oxlint-plugin"]
+    assert plugin_specifier == manifest.oxlint_peers()["@sarj/oxlint-plugin"]
+    plugin_raw = _load_json(REPO_ROOT / "packages/typescript/package.json")
     assert _is_object_table(plugin_raw)
-    assert plugin_raw.get("name") == "@sarj/eslint-plugin"
-    assert plugin_raw.get("version") == manifest.eslint_peers()["@sarj/eslint-plugin"]
-    # TypeScript 7 is outside Astro Check and typescript-eslint's peer ranges and
-    # currently crashes @sarj/eslint-plugin while loading its enum utilities.
+    assert plugin_raw.get("name") == "@sarj/oxlint-plugin"
+    assert plugin_raw.get("version") == manifest.oxlint_peers()["@sarj/oxlint-plugin"]
+    assert {"eslint", "@eslint/js", "typescript-eslint"}.isdisjoint(dependencies)
+    # Astro Check retains its supported compiler, independent of native lint rules.
     assert dependencies["typescript"] == "6.0.3"

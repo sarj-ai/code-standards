@@ -4,7 +4,9 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/prefer-constant-time-secret-compare.test.ts
  */
 
-import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
+import { sourceOrigin } from "./_source-origin.js";
+import type { ESTree } from "@oxlint/plugins";
+
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isAuthSecretName, SECRET_WORDS, tokenize } from "./_secret-names.js";
@@ -41,22 +43,22 @@ const AST_NODE_TYPE_RE = /^(?:TS|JSX)?[A-Z][A-Za-z]*(?:Signature|Keyword|Express
  * any literal (string / number / boolean / null / regex), a template literal
  * with no substitutions, `undefined`/`NaN`, or an ALL-CAPS constant reference.
  */
-function isExcludedOperand(node: TSESTree.Node): boolean {
+function isExcludedOperand(node: ESTree.Node): boolean {
   switch (node.type) {
-    case AST_NODE_TYPES.Literal:
+    case "Literal":
       return true;
-    case AST_NODE_TYPES.TemplateLiteral:
+    case "TemplateLiteral":
       return node.expressions.length === 0;
-    case AST_NODE_TYPES.Identifier:
+    case "Identifier":
       return (
         SENTINEL_IDENTIFIERS.has(node.name) ||
         SENTINEL_PREFIX_RE.test(node.name) ||
         isConstantReference(node.name)
       );
-    case AST_NODE_TYPES.MemberExpression:
+    case "MemberExpression":
       return (
         !node.computed &&
-        node.property.type === AST_NODE_TYPES.Identifier &&
+        node.property.type === "Identifier" &&
         (SENTINEL_PREFIX_RE.test(node.property.name) ||
           isConstantReference(node.property.name))
       );
@@ -72,22 +74,22 @@ function isConstantReference(identifier: string): boolean {
 }
 
 /** The identifier a plain operand denotes, or null for anything else. */
-function operandName(node: TSESTree.Node): string | null {
-  if (node.type === AST_NODE_TYPES.Identifier) {
+function operandName(node: ESTree.Node): string | null {
+  if (node.type === "Identifier") {
     return node.name;
   }
   if (
-    node.type === AST_NODE_TYPES.MemberExpression &&
+    node.type === "MemberExpression" &&
     !node.computed &&
-    node.property.type === AST_NODE_TYPES.Identifier
+    node.property.type === "Identifier"
   ) {
     return node.property.name;
   }
   return null;
 }
 
-function isSecretOperand(node: TSESTree.Node): boolean {
-  if (node.type === AST_NODE_TYPES.TemplateLiteral) {
+function isSecretOperand(node: ESTree.Node): boolean {
+  if (node.type === "TemplateLiteral") {
     return node.expressions.some((expression) => isSecretOperand(expression));
   }
   const name = operandName(node);
@@ -97,8 +99,8 @@ function isSecretOperand(node: TSESTree.Node): boolean {
 }
 
 /** The secret identifier this comparison exposes, for the diagnostic message. */
-function secretNameOf(node: TSESTree.Node): string | null {
-  if (node.type === AST_NODE_TYPES.TemplateLiteral) {
+function secretNameOf(node: ESTree.Node): string | null {
+  if (node.type === "TemplateLiteral") {
     for (const expression of node.expressions) {
       const nested = secretNameOf(expression);
       if (nested !== null) {
@@ -127,11 +129,11 @@ export default createRule<Options, MessageIds>({
   },
   defaultOptions: [],
   create(context) {
-    if (isTestFile(context.filename)) {
+    if (isTestFile(sourceOrigin(context).filename)) {
       return {};
     }
     return {
-      BinaryExpression(node: TSESTree.BinaryExpression): void {
+      BinaryExpression(node: ESTree.BinaryExpression): void {
         if (!EQUALITY_OPERATORS.has(node.operator)) {
           return;
         }

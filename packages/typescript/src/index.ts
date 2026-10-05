@@ -1,3 +1,5 @@
+import type { OxlintConfig } from "oxlint";
+import { definePlugin } from "@oxlint/plugins";
 import requireExplicitContractImplementation from "./rules/require-explicit-contract-implementation.js";
 import requireExplicitServiceContract from "./rules/require-explicit-service-contract.js";
 import noConditionalEmptyObjectSpread from "./rules/no-conditional-empty-object-spread.js";
@@ -120,11 +122,10 @@ import sourceCoupledTest from "./rules/source-coupled-test.js";
 import soleExportMatchesFilename from "./rules/sole-export-matches-filename.js";
 import iacSourceCoupledTest from "./rules/iac-source-coupled-test.js";
 import requirePascalCaseZodSchemaName from "./rules/require-pascal-case-zod-schema-name.js";
-import { RENAMED_RULES } from "./rules/_renamed-rules.js";
-import { RETIRED_RULES } from "./rules/_retired-rules.js";
 
 const RULES = {
-  "require-explicit-contract-implementation": requireExplicitContractImplementation,
+  "require-explicit-contract-implementation":
+    requireExplicitContractImplementation,
   "require-explicit-service-contract": requireExplicitServiceContract,
   "no-conditional-empty-object-spread": noConditionalEmptyObjectSpread,
   "prefer-typed-reflection": preferTypedReflection,
@@ -205,7 +206,8 @@ const RULES = {
   "prefer-ecmascript-private-members": preferEcmascriptPrivateMembers,
   "prefer-discriminated-union": preferDiscriminatedUnion,
   "prefer-input-group-search": preferInputGroupSearch,
-  "prefer-millisecond-control-duration-schema": preferMillisecondControlDurationSchema,
+  "prefer-millisecond-control-duration-schema":
+    preferMillisecondControlDurationSchema,
   "prefer-immutable-module-constant": preferImmutableModuleConstant,
   "prefer-shadcn-primitives": preferShadcnPrimitives,
   "prefer-module-level-constant": preferModuleLevelConstant,
@@ -238,24 +240,30 @@ const RULES = {
   "require-static-next-matcher": requireStaticNextMatcher,
   "require-zod-form-validation": requireZodFormValidation,
   "store-insert-requires-on-conflict": storeInsertRequiresOnConflict,
-  "stepdown": stepdown,
+  stepdown: stepdown,
   "source-coupled-test": sourceCoupledTest,
   "sole-export-matches-filename": soleExportMatchesFilename,
   "require-pascal-case-zod-schema-name": requirePascalCaseZodSchemaName,
 } as const;
 
 const meta = {
-  name: "@sarj/eslint-plugin",
-  version: "16.3.0",
+  name: "@sarj/oxlint-plugin",
+  version: "17.0.0",
 } as const;
 
-/** @deprecated All repositories use one policy; retained for import compatibility. */
-const APPLICATION_ONLY_RULES = [] as const;
-
-const LIBRARY_IMPORT_POLICY = ["error", {
-  paths: LIBRARY_POLICY.map(({ module, note }) => ({ name: module, message: note })),
-  patterns: LIBRARY_POLICY.map(({ module, note }) => ({ group: [`${module}/*`], message: note })),
-}] as const;
+const LIBRARY_IMPORT_POLICY: ["error", object] = [
+  "error",
+  {
+    paths: LIBRARY_POLICY.map(({ module, note }) => ({
+      name: module,
+      message: note,
+    })),
+    patterns: LIBRARY_POLICY.map(({ module, note }) => ({
+      group: [`${module}/*`],
+      message: note,
+    })),
+  },
+];
 
 /** Rules staged as non-blocking warnings while corpus adoption evidence accumulates. */
 const ADVISORY_RULES = [
@@ -294,7 +302,7 @@ const RECOMMENDED_RULES = {
   "@sarj/no-unlocalized-toast": ["error", { enabled: false }],
   "@sarj/no-unlocalized-jsx-attributes": ["error", { enabled: false }],
   "@sarj/no-unlocalized-jsx-text": ["error", { enabled: false }],
-  "no-restricted-imports": LIBRARY_IMPORT_POLICY,
+  "eslint/no-restricted-imports": LIBRARY_IMPORT_POLICY,
   "@sarj/no-restricted-library-load": ["error", { libraries: LIBRARY_POLICY }],
   "@sarj/prefer-native-random-uuid": "error",
   "@sarj/prefer-shadcn-primitives": "error",
@@ -396,7 +404,7 @@ const RECOMMENDED_RULES = {
   "@sarj/sole-export-matches-filename": "error",
   "@sarj/test-phase-label-comment": "error",
   "@sarj/require-pascal-case-zod-schema-name": "error",
-} as const;
+} as const satisfies NonNullable<OxlintConfig["rules"]>;
 
 const STRICT_RULES = {
   "@sarj/no-conditional-empty-object-spread": "error",
@@ -411,7 +419,7 @@ const STRICT_RULES = {
   "@sarj/no-unlocalized-toast": ["error", { enabled: false }],
   "@sarj/no-unlocalized-jsx-attributes": ["error", { enabled: false }],
   "@sarj/no-unlocalized-jsx-text": ["error", { enabled: false }],
-  "no-restricted-imports": LIBRARY_IMPORT_POLICY,
+  "eslint/no-restricted-imports": LIBRARY_IMPORT_POLICY,
   "@sarj/no-restricted-library-load": ["error", { libraries: LIBRARY_POLICY }],
   "@sarj/prefer-native-random-uuid": "error",
   "@sarj/prefer-shadcn-primitives": "error",
@@ -517,57 +525,17 @@ const STRICT_RULES = {
   "@sarj/sole-export-matches-filename": "error",
   "@sarj/test-phase-label-comment": "error",
   "@sarj/require-pascal-case-zod-schema-name": "error",
-} as const;
+} as const satisfies NonNullable<OxlintConfig["rules"]>;
 
-type FlatPreset = {
-  readonly name: string;
-  readonly plugins: Record<string, unknown>;
-  readonly rules: Record<string, unknown>;
-};
-
-const PLUGIN = {
-  meta,
-  rules: RULES,
-  retiredRules: RETIRED_RULES,
-  get configs(): {
-    readonly recommended: FlatPreset;
-    readonly strict: FlatPreset;
-  } {
-    return {
-      recommended: {
-        name: "@sarj/recommended",
-        plugins: { "@sarj": PLUGIN },
-        rules: RECOMMENDED_RULES,
-      },
-      strict: {
-        name: "@sarj/strict",
-        plugins: { "@sarj": PLUGIN },
-        rules: STRICT_RULES,
-      },
-    };
-  },
-} as const;
-
-export default PLUGIN;
+export default definePlugin({ meta, rules: RULES });
 export { publicDocumentation } from "./rules/_docs.js";
 export {
   type RetiredRule,
-  RETIRED_RULES,
   RETIRED_RULES as retiredRules,
 } from "./rules/_retired-rules.js";
 export {
-  ADVISORY_RULES,
-  APPLICATION_ONLY_RULES,
-  RECOMMENDED_RULES,
-  RENAMED_RULES,
-  RULES,
-  STRICT_RULES,
-};
-export {
   ADVISORY_RULES as advisoryRules,
-  APPLICATION_ONLY_RULES as applicationOnlyRules,
   RECOMMENDED_RULES as recommendedRules,
-  RENAMED_RULES as renamedRules,
   RULES as rules,
   STRICT_RULES as strictRules,
 };

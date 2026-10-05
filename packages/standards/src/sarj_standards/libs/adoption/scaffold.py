@@ -21,7 +21,8 @@ from sarj_standards.libs.linting import security_tools
 from sarj_standards.libs.typed_containers import is_object_list, is_object_mapping
 from sarj_standards.libs.yaml_boundary import parse_yaml
 
-from . import hooks, launcher, manifest, packagemanager, uvtool
+from . import formatting, hooks, launcher, manifest, packagemanager, uvtool
+from .configs import OXFMT_CONFIG_NAMES, OXLINT_CONFIG, OXLINT_CONFIG_NAMES
 from .packagemanager import LOCKFILES, Overrides, PackageManager, YarnVariant
 
 
@@ -105,15 +106,6 @@ class Plan:
 
 
 DEFAULT_CI_RUNNER: Final = "ubuntu-latest"
-_ESLINT_CONFIG: Final = "eslint.config.mjs"
-_ESLINT_CONFIG_NAMES: Final = (
-    "eslint.config.js",
-    "eslint.config.mjs",
-    "eslint.config.cjs",
-    "eslint.config.ts",
-    "eslint.config.mts",
-    "eslint.config.cts",
-)
 _PYRIGHT_CONFIG: Final = "pyrightconfig.json"
 _PYRIGHT_POLICY_PARENT: Final = ".basedpyright-strict.json"
 _LEGACY_PYRIGHT_POLICY_PARENT: Final = ".pyright-strict.json"
@@ -250,7 +242,7 @@ def detect(
 
 def detect_adopted(root: Path, adopted: manifest.Manifest) -> Ecosystems:
     python = bool({"ruff", "pyright"}.intersection(adopted.configs))
-    typescript = "eslint" in adopted.configs
+    typescript = "oxlint" in adopted.configs
     swift = bool({"swiftformat", "swiftlint"}.intersection(adopted.configs))
     kotlin = bool({"ktlint", "detekt"}.intersection(adopted.configs))
     # An adopted manifest is authoritative. Do not auto-detect disabled
@@ -582,7 +574,7 @@ def build_plan(
     kotlin_dest: str | None = None,
     profile: manifest.Profile = "standard",
     hook_manager: manifest.HookManager | None = None,
-    allow_existing_nested_eslint: bool = False,
+    allow_existing_nested_oxlint: bool = False,
 ) -> Plan:
     ecosystems = detect(
         root,
@@ -644,7 +636,7 @@ def build_plan(
     _plan_manifest(root, plan, force=force, update_existing=update_manifest)
     _plan_repo_commit_message_policy(root, plan)
     _plan_retired_repository_launcher(root, plan)
-    _plan_language_configs(root, plan, force=force, allow_existing_nested_eslint=allow_existing_nested_eslint)
+    _plan_language_configs(root, plan, force=force, allow_existing_nested_oxlint=allow_existing_nested_oxlint)
     match plan.hook_manager:
         case "pre-commit":
             _plan_precommit(root, plan, force=force)
@@ -745,7 +737,7 @@ def _incompatible_mobile_workflows(
     )
 
 
-def _plan_language_configs(root: Path, plan: Plan, *, force: bool, allow_existing_nested_eslint: bool) -> None:
+def _plan_language_configs(root: Path, plan: Plan, *, force: bool, allow_existing_nested_oxlint: bool) -> None:
     ecosystems = plan.ecosystems
     selected = plan.configs
     if (
@@ -760,11 +752,11 @@ def _plan_language_configs(root: Path, plan: Plan, *, force: bool, allow_existin
         and any(name in selected for name in manifest.TYPESCRIPT_CONFIGS)
     ):
         _plan_typescript(ecosystems.typescript_root, plan, force=force)
-        # Nested configs are only Standards' concern when ESLint was actually
-        # selected. At this point eslint.strict.mjs is either present or a
+        # Nested configs are only Standards' concern when Oxlint was actually
+        # selected. At this point oxlint.strict.mjs is either present or a
         # target in the config sync plan built by ``plan_init``.
-        if "eslint" in selected and not allow_existing_nested_eslint:
-            _report_unwired_nested_eslint_configs(root, ecosystems.typescript_root, plan)
+        if "oxlint" in selected and not allow_existing_nested_oxlint:
+            _report_unwired_nested_oxlint_configs(root, ecosystems.typescript_root, plan)
 
 
 def build_commit_policy_plan(
@@ -961,54 +953,24 @@ def _report_independent_roots(
     )
 
 
-def _report_unwired_nested_eslint_configs(repository: Path, selected: Path, plan: Plan) -> None:
-    # A selected TypeScript destination is an authority boundary. ESLint roots
+def _report_unwired_nested_oxlint_configs(repository: Path, selected: Path, plan: Plan) -> None:
+    # A selected TypeScript destination is an authority boundary. Oxlint roots
     # in sibling workspaces cannot shadow that project and must not be
     # rewritten as though they were its descendants.
-    for config_root in _all_roots(selected, _ESLINT_CONFIG_NAMES):
+    for config_root in _all_roots(selected, OXLINT_CONFIG_NAMES):
         if config_root == selected:
             continue
-        configs = tuple(config_root / name for name in _ESLINT_CONFIG_NAMES if (config_root / name).is_file())
-        strict = selected / "eslint.strict.mjs"
+        configs = tuple(config_root / name for name in OXLINT_CONFIG_NAMES if (config_root / name).is_file())
+        strict = selected / "oxlint.strict.mjs"
         if not configs or any(
-            _eslint_wiring_reaches_strict(path, repository, planned_strict=strict) for path in configs
+            _oxlint_wiring_reaches_strict(path, repository, planned_strict=strict) for path in configs
         ):
             continue
         relative = config_root.relative_to(repository).as_posix()
-        if len(configs) == 1 and (wired := _wire_nested_eslint(configs[0], strict)) is not None:
-            plan.writes.append((configs[0], wired))
-            plan.notes.append(f"wired nested ESLint policy in {relative}")
-            continue
         plan.errors.append(
-            f"nested ESLint config in {relative} would shadow Standards and cannot be merged safely; "
-            f"run setup with --typescript-dest {shlex.quote(relative)} or wire that config to eslint.strict.mjs"
+            f"nested Oxlint config in {relative} would shadow Standards and cannot be merged safely; "
+            f"run setup with --typescript-dest {shlex.quote(relative)} or wire that config to oxlint.strict.mjs"
         )
-
-
-_NAMED_ESLINT_EXPORT = re.compile(r"(?m)^\s*export\s+default\s+(?P<name>[A-Za-z_$][\w$]*)\s*;?\s*$")
-
-
-def _wire_nested_eslint(path: Path, strict: Path) -> str | None:
-    text = path.read_text(encoding="utf-8")
-    exported = _NAMED_ESLINT_EXPORT.search(text)
-    if exported is None:
-        return None
-    name = re.escape(exported.group("name"))
-    if (
-        re.search(
-            rf"(?m)^\s*(?:const|let)\s+{name}(?:\s*:[^=\n]+)?\s*=\s*(?:defineConfig\s*\(\s*)?\[",
-            text[: exported.start()],
-        )
-        is None
-    ):
-        # An imported identifier, function result, or object is not known to be
-        # iterable. Spreading it could make ESLint crash after setup.
-        return None
-    relative = os.path.relpath(strict, path.parent).replace(os.sep, "/")
-    specifier = relative if relative.startswith(".") else f"./{relative}"
-    prefix = f'import sarjStrict from "{specifier}";\n\n'
-    replacement = f"export default [...sarjStrict, ...{exported.group('name')}];"
-    return f"{prefix}{text[: exported.start()]}{replacement}{text[exported.end() :]}"
 
 
 def dest_of(root: Path, subdirectory: Path | None) -> str:
@@ -1457,42 +1419,23 @@ def _json_object(path: Path) -> _JsonObjectResult:
 
 
 def _plan_typescript(root: Path, plan: Plan, *, force: bool) -> None:
-    existing_configs = [root / name for name in _ESLINT_CONFIG_NAMES if (root / name).is_file()]
+    existing_configs = [root / name for name in OXLINT_CONFIG_NAMES if (root / name).is_file()]
     if len(existing_configs) > 1:
         names = ", ".join(path.name for path in existing_configs)
-        plan.errors.append(f"multiple active ESLint flat configs in {root}: {names}; keep one before running setup")
+        plan.errors.append(f"multiple active Oxlint configs in {root}: {names}; keep one before running setup")
         return
-    eslint = existing_configs[0] if existing_configs else root / _ESLINT_CONFIG
-    if eslint.is_file():
-        text = eslint.read_text(encoding="utf-8")
-        if _eslint_wiring_reaches_strict(eslint, root, planned_strict=root / "eslint.strict.mjs"):
-            plan.skips.append((eslint, "already imports eslint.strict.mjs"))
-        elif re.search(r"(?m)^[ \t]*export\s+default\s+defineConfig\s*\(\s*\[", text):
-            wired = f'import strict from "./eslint.strict.mjs";\n\n{
-                re.sub(
-                    r"(?m)^[ \t]*export\s+default\s+defineConfig\s*\(\s*\[",
-                    "export default defineConfig([\n  ...strict,",
-                    text,
-                    count=1,
-                )
-            }'
-            plan.writes.append((eslint, wired))
-        elif re.search(r"(?m)^[ \t]*export\s+default\s*\[", text):
-            wired = f'import strict from "./eslint.strict.mjs";\n\n{
-                re.sub(
-                    r"(?m)^[ \t]*export\s+default\s*\[",
-                    "export default [\n  ...strict,",
-                    text,
-                    count=1,
-                )
-            }'
-            plan.writes.append((eslint, wired))
+    oxlint = existing_configs[0] if existing_configs else root / OXLINT_CONFIG
+    if oxlint.is_file():
+        if _oxlint_wiring_reaches_strict(oxlint, root, planned_strict=root / "oxlint.strict.mjs"):
+            plan.skips.append((oxlint, "already imports oxlint.strict.mjs"))
         else:
             plan.errors.append(
-                f"cannot safely wire {eslint}; import `./eslint.strict.mjs` and spread it in the exported flat config"
+                f"{oxlint} must import ./oxlint.strict.mjs and compose its native rules and overrides; "
+                "review the repository configuration before running setup"
             )
     else:
-        _record(plan, eslint, _eslint_entrypoint(), force=force, reason="exists; import ./eslint.strict.mjs from it")
+        _record(plan, oxlint, _oxlint_entrypoint(), force=force, reason="exists; import ./oxlint.strict.mjs from it")
+    _plan_oxfmt(root, plan, force=force)
     client = plan.ecosystems.client
     install_root = plan.ecosystems.typescript_install_root or root
     _plan_npm_overrides(install_root, plan, client)
@@ -1510,7 +1453,7 @@ def _plan_typescript(root: Path, plan: Plan, *, force: bool) -> None:
         client is PackageManager.PNPM or install_root != root or (install_root / "pnpm-workspace.yaml").is_file()
     )
     plan.notes.append(
-        f"detected {client} -- install the tested ESLint peer set:\n"
+        f"detected {client} -- install the tested Oxlint/Oxfmt policy dependencies:\n"
         f"    {packagemanager.install_command(client, workspace=is_workspace, yarn=plan.ecosystems.yarn)}"
     )
     caveat = packagemanager.install_note(client, yarn=plan.ecosystems.yarn)
@@ -1524,7 +1467,7 @@ _LOCAL_MODULE = re.compile(
 )
 
 
-def _eslint_wiring_reaches_strict(
+def _oxlint_wiring_reaches_strict(
     path: Path,
     root: Path,
     seen: set[Path] | None = None,
@@ -1543,13 +1486,13 @@ def _eslint_wiring_reaches_strict(
     text = resolved.read_text(encoding="utf-8", errors="replace")
     for match in _LOCAL_MODULE.finditer(text):
         target = (resolved.parent / match.group("path")).resolve()
-        if target.name == "eslint.strict.mjs" and (
+        if target.name == "oxlint.strict.mjs" and (
             target.is_file() or (planned_strict is not None and target == planned_strict.resolve())
         ):
             return True
         candidates = (target, *(target.with_suffix(suffix) for suffix in (".js", ".mjs", ".cjs", ".ts")))
         if any(
-            _eslint_wiring_reaches_strict(candidate, root, visited, planned_strict=planned_strict)
+            _oxlint_wiring_reaches_strict(candidate, root, visited, planned_strict=planned_strict)
             for candidate in candidates
         ):
             return True
@@ -1584,23 +1527,21 @@ def _plan_npm_overrides(root: Path, plan: Plan, client: PackageManager) -> None:
     if not package_json.is_file():
         plan.errors.append(
             f"cannot adopt TypeScript in {root}: no package.json exists at the detected install root, so the "
-            f"tested ESLint peers and {client} overrides cannot be installed; select the correct workspace root"
+            f"tested Oxlint peers and {client} overrides cannot be installed; select the correct workspace root"
         )
         return
     try:
         merged = _merged_npm_overrides(package_json.read_text(encoding="utf-8"), package_overrides, client=client)
     except (TypeError, ValueError) as exc:
-        plan.errors.append(f"cannot safely merge tested ESLint peers into {package_json}: {exc}")
+        plan.errors.append(f"cannot safely merge tested Oxlint peers into {package_json}: {exc}")
         return
     if merged is None:
-        plan.skips.append((package_json, f"already pins the tested ESLint peers and {client} overrides"))
+        plan.skips.append((package_json, f"already pins the tested Oxlint peers and {client} overrides"))
         return
     plan.writes.append((package_json, merged))
     plan.notes.append(
-        f"pinned the tested ESLint peers in {package_json} and merged the {client} overrides into "
+        f"pinned the tested Oxlint peers in {package_json} and merged the {client} overrides into "
         f"{override_target}:\n{printed}\n"
-        f"    {client} cannot resolve the tree without them -- eslint-plugin-react"
-        " peers eslint <=9.7 and the unicorn floor needs >=10.4."
     )
 
 
@@ -1612,14 +1553,14 @@ def _plan_yarn_workspace_peers(typescript_root: Path, plan: Plan) -> None:
     try:
         merged = _merged_npm_overrides(package_json.read_text(encoding="utf-8"), None, client=PackageManager.YARN)
     except (TypeError, ValueError) as exc:
-        plan.errors.append(f"cannot safely merge tested ESLint peers into {package_json}: {exc}")
+        plan.errors.append(f"cannot safely merge tested Oxlint peers into {package_json}: {exc}")
         return
     if merged is None:
-        plan.skips.append((package_json, "Yarn workspace already pins the tested ESLint peers"))
+        plan.skips.append((package_json, "Yarn workspace already pins the tested Oxlint peers"))
         return
     plan.writes.append((package_json, merged))
     plan.notes.append(
-        f"pinned the tested ESLint peers in Yarn workspace {package_json};"
+        f"pinned the tested Oxlint peers in Yarn workspace {package_json};"
         " Plug'n'Play resolves config imports from that workspace rather than its install root"
     )
 
@@ -1658,7 +1599,7 @@ def _merged_npm_overrides(text: str, overrides: Overrides | None, *, client: Pac
     existing_peers = manifest.table_field(data, "devDependencies")
     updated_runtime = dict(runtime_dependencies)
     updated_peers = dict(existing_peers)
-    for name, peer_version in manifest.eslint_peers().items():
+    for name, peer_version in manifest.oxlint_peers().items():
         # Preserve dependency-section ownership while repairing duplicate peers.
         if name in runtime_dependencies:
             current = runtime_dependencies[name]
@@ -1714,7 +1655,7 @@ def _merge_override_entries(data: dict[str, object], overrides: Overrides, *, cl
 
 
 def _align_npm_direct_dependency_overrides(overrides: dict[str, object]) -> None:
-    for name, pinned in manifest.eslint_peers().items():
+    for name, pinned in manifest.oxlint_peers().items():
         current = overrides.get(name)
         if isinstance(current, str):
             if current not in {pinned, f"${name}"}:
@@ -1754,39 +1695,42 @@ def _indent_of(text: str) -> int | str:
     return match.group("indent") if match else 2
 
 
-def _eslint_entrypoint() -> str:
-    return """// Flat config entrypoint. `eslint.strict.mjs` next to this file is SYNCED --
-// `code-standards setup` overwrites it, and `setup --dry-run` fails CI if
-// you edit it. Put every repo-specific decision HERE instead, in the override
-// block below: later entries win, so you can relax a rule, add a framework
-// exemption, or scope one to a directory without forking the canonical file.
-import strict from "./eslint.strict.mjs";
+def _oxlint_entrypoint() -> str:
+    return """// The shared strict configuration is synchronized by code-standards.
+// Keep repository-specific rules and overrides in this file.
+import { defineConfig } from "oxlint";
+import strict from "./oxlint.strict.mjs";
 
-// Bun, Testing Library, and Playwright are opt-in because their global test
-// syntax overlaps other runners. To enable them, replace the import above with:
-//   import { createConfig } from "./eslint.strict.mjs";
-//   const strict = createConfig({
-//     testFrameworks: ["vitest", "bun", "node", "testing-library", "playwright"],
-//     playwrightTestFiles: ["tests/browser/**/*.spec.ts"],
-//   });
-
-export default [
+export default defineConfig({
   ...strict,
-
-  // --- repo-specific overrides -------------------------------------------
-  // Example: your router generates bracketed filenames that unicorn rejects.
-  //
-  // {
-  //   files: ["src/routes/**/*.tsx"],
-  //   rules: {
-  //     "unicorn/filename-case": ["error", {
-  //       cases: { kebabCase: true },
-  //       ignore: [String.raw`^\\[`],
-  //     }],
-  //   },
-  // },
-];
+  overrides: [
+    ...(strict.overrides ?? []),
+    // Add repository-specific native Oxlint overrides here.
+  ],
+});
 """
+
+
+def _plan_oxfmt(root: Path, plan: Plan, *, force: bool) -> None:
+    existing = [root / name for name in OXFMT_CONFIG_NAMES if (root / name).is_file()]
+    if len(existing) > 1:
+        plan.errors.append(f"multiple active Oxfmt configs in {root}; keep one before running setup")
+        return
+    if existing:
+        plan.skips.append((existing[0], "preserve existing formatter policy"))
+        return
+    try:
+        document = formatting.oxfmt_policy(root, install_root=plan.ecosystems.typescript_install_root)
+    except (OSError, TypeError, ValueError) as exc:
+        plan.errors.append(str(exc))
+        return
+    _record(
+        plan,
+        root / ".oxfmtrc.json",
+        json.dumps(document, indent=2) + "\n",
+        force=force,
+        reason="preserve existing formatter policy",
+    )
 
 
 def _plan_precommit(root: Path, plan: Plan, *, force: bool) -> None:
@@ -2400,7 +2344,12 @@ def _append_javascript_ci(
             )
         )
     javascript_command = _ci_javascript_install(ecosystems.client, ecosystems.yarn)
-    if ecosystems.client in {PackageManager.PNPM, PackageManager.YARN}:
+    if ecosystems.client is PackageManager.PNPM:
+        lines.append("      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0")
+        if install_root is not None and install_root != root:
+            package_json = (install_root / "package.json").relative_to(root).as_posix()
+            lines.extend(("        with:", f"          package_json_file: {json.dumps(package_json)}"))
+    elif ecosystems.client is PackageManager.YARN:
         javascript_command = f"corepack enable && {javascript_command}"
     lines.extend(("      - name: Install JavaScript dependencies", f"        run: {javascript_command}"))
     if install_root is not None and install_root != root:

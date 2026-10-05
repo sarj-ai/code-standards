@@ -3,7 +3,10 @@
  *
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-conditional-empty-object-spread.test.ts
  */
-import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
+
+import { sourceOrigin } from "./_source-origin.js";
+import type { ESTree } from "@oxlint/plugins";
+
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile } from "./_paths.js";
 
@@ -53,9 +56,9 @@ export const NO_CONDITIONAL_EMPTY_OBJECT_SPREAD_DOCUMENTATION = {
   ],
 } as const satisfies RuleDocumentation;
 
-function isEmptyObject(node: TSESTree.Expression): boolean {
+function isEmptyObject(node: ESTree.Expression): boolean {
   return (
-    node.type === AST_NODE_TYPES.ObjectExpression &&
+    node.type === "ObjectExpression" &&
     node.properties.length === 0
   );
 }
@@ -76,12 +79,12 @@ export default createRule<[], "avoid">({
   },
   defaultOptions: [],
   create(context) {
-    if (isGeneratedFile(context.filename, context.sourceCode.text)) return {};
+    if (isGeneratedFile(sourceOrigin(context).filename, sourceOrigin(context).text)) return {};
     return {
       SpreadElement(node): void {
         if (
-          node.parent.type !== AST_NODE_TYPES.ObjectExpression ||
-          node.argument.type !== AST_NODE_TYPES.ConditionalExpression
+          node.parent?.type !== "ObjectExpression" ||
+          node.argument.type !== "ConditionalExpression"
         )
           return;
         if (

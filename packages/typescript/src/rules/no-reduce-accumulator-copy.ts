@@ -1,100 +1,224 @@
 /**
- * @fileoverview no-reduce-accumulator-copy — review copying of growing collection accumulators.
+ * @fileoverview no-reduce-accumulator-copy — avoid copying the accumulator on each reduction.
  *
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-reduce-accumulator-copy.test.ts
  */
-import { AST_NODE_TYPES, ASTUtils, ESLintUtils, type TSESTree } from "@typescript-eslint/utils";
-import ts from "typescript";
 
-import { forEachAstChild } from "./_for-each-ast-child.js";
+import { sourceOrigin } from "./_source-origin.js";
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile } from "./_paths.js";
+import type { ESTree, SourceCode, Variable } from "@oxlint/plugins";
 
-export const NO_REDUCE_ACCUMULATOR_COPY_DOCUMENTATION = {
-  summary: "Review copies of the accumulated collection inside a built-in reduce callback.",
-  rationale: "Copying a growing accumulator at every step can make collection quadratic instead of linear in its output size.",
-  remediation: "Use map or flatMap where their semantics match, or append into a fresh locally owned accumulator. Preserve retained snapshots and shared state.",
-  category: "performance",
-  limitations: [
-    "Requires type information proving the built-in Array or ReadonlyArray reduce/reduceRight method, an inline callback, and a fresh empty array or object-literal seed.",
-    "Inspects direct accumulator spreads, Object.assign with a fresh object target, Array.from, and concat/slice/toSpliced/toSorted/toReversed/with calls. Aliases, named callbacks, nested functions, and loops are outside this rule.",
-    "A copy is evidence for review, not proof of growth or measured latency. No autofix is provided: snapshots, side effects, indexes, and ownership can make mutation incorrect.",
-  ],
-  examples: [
-    { id: "copy-rows", title: "Repeated concatenation copies prior report rows", outcome: "match", files: [{ path: "src/reports.ts", source: "declare const pages: string[][];\nconst rows = pages.reduce<string[]>((acc, page) => acc.concat(page), []);" }], focusPath: "src/reports.ts", expectedCount: 1, public: true },
-    { id: "flatten-rows", title: "Flatten report rows without copying the accumulated prefix", outcome: "no-match", files: [{ path: "src/reports.ts", source: "declare const pages: string[][];\nconst rows = pages.flatMap(page => page);" }], focusPath: "src/reports.ts", expectedCount: 0, public: true },
-  ],
-} as const satisfies RuleDocumentation;
+import {
+  arrayMethodTarget,
+  isKnownArrayExpression,
+  resolveArrayBinding,
+  unwrapArrayExpression,
+} from "./_array-method.js";
 
-const COPY_METHODS: ReadonlySet<string> = new Set(["concat", "slice", "toSpliced", "toSorted", "toReversed", "with"]);
-
-function methodName(node: TSESTree.MemberExpression): string | null {
-  if (!node.computed && node.property.type === AST_NODE_TYPES.Identifier) return node.property.name;
-  if (node.computed && node.property.type === AST_NODE_TYPES.Literal && typeof node.property.value === "string") return node.property.value;
+function enclosingReducer(node: ESTree.Node) {
+  let parent = node.parent;
+  while (parent !== null) {
+    if (parent.type === "FunctionDeclaration") return null;
+    if (
+      parent.type === "ArrowFunctionExpression" ||
+      parent.type === "FunctionExpression"
+    ) {
+      return reducerCallback(parent);
+    }
+    parent = parent.parent;
+  }
   return null;
 }
 
-export default createRule<[], "copy">({
+/** Match the inline callback against its owning reduce call. */
+function reducerCallback(
+  callback: ESTree.ArrowFunctionExpression | ESTree.Function,
+) {
+  let owner: ESTree.Node | null = callback.parent;
+  while (owner !== null && unwrapArrayExpression(owner) === callback)
+    owner = owner.parent;
+  if (owner?.type !== "CallExpression") return null;
+  const method = arrayMethodTarget(owner.callee);
+  const firstArgument = owner.arguments[0];
+  if (
+    method === null ||
+    (method.name !== "reduce" && method.name !== "reduceRight") ||
+    owner.arguments.length > 2 ||
+    firstArgument === undefined ||
+    unwrapArrayExpression(firstArgument) !== callback
+  )
+    return null;
+  const firstParameter = callback.params[0];
+  const accumulator =
+    firstParameter?.type === "AssignmentPattern"
+      ? firstParameter.left
+      : firstParameter;
+  if (accumulator?.type !== "Identifier") return null;
+  return { callback, accumulator, initialValue: owner.arguments[1] };
+}
+
+function referencesAccumulator(
+  sourceCode: SourceCode,
+  node: ESTree.Node,
+  accumulator: Variable,
+  visited = new Set<Variable>(),
+): boolean {
+  const variable = resolveArrayBinding(sourceCode, node);
+  if (variable === null || visited.has(variable)) return false;
+  if (variable === accumulator) return true;
+  visited.add(variable);
+  if (
+    variable.references.some(
+      (reference) => reference.isWrite() && !reference.init,
+    )
+  )
+    return false;
+  for (const definition of variable.defs) {
+    if (
+      definition.type === "Variable" &&
+      definition.node.type === "VariableDeclarator" &&
+      definition.node.id.type === "Identifier" &&
+      definition.node.init !== null &&
+      definition.node.parent.type === "VariableDeclaration" &&
+      definition.node.parent.kind === "const"
+    ) {
+      return referencesAccumulator(
+        sourceCode,
+        definition.node.init,
+        accumulator,
+        visited,
+      );
+    }
+  }
+  return false;
+}
+
+function isGlobalCopyOwner(
+  sourceCode: SourceCode,
+  node: ESTree.Node,
+  name: string,
+): boolean {
+  node = unwrapArrayExpression(node);
+  if (node.type !== "Identifier" || node.name !== name) return false;
+  const variable = resolveArrayBinding(sourceCode, node);
+  return variable === null || variable.defs.length === 0;
+}
+
+export const NO_REDUCE_ACCUMULATOR_COPY_DOCUMENTATION = {
+  summary:
+    "Review copies of the accumulated collection inside a built-in reduce callback.",
+  rationale:
+    "Copying a growing accumulator at every step can make collection quadratic instead of linear in its output size.",
+  remediation:
+    "Use map or flatMap where their semantics match, or append into a fresh locally owned accumulator. Preserve retained snapshots and shared state.",
+  category: "performance",
+  limitations: [
+    "Inline reduce/reduceRight callbacks are identified by syntax, including custom methods. Stable accumulator aliases and local array seed evidence are followed through lexical scopes.",
+    "Object.assign to a literal target, Array.from, and concat/slice/toSpliced/toSorted/toReversed/with copies are checked. Native oxc/no-accumulating-spread owns spread accumulation and loop copies.",
+    "Imported seeds and named callbacks are not resolved. Nested functions and reassigned aliases are excluded. A copy calls for review, not proof of measured latency; no autofix changes ownership.",
+  ],
+  examples: [
+    {
+      id: "copy-rows",
+      title: "Repeated concatenation copies prior report rows",
+      outcome: "match",
+      files: [
+        {
+          path: "src/reports.ts",
+          source:
+            "declare const pages: string[][];\nconst rows = pages.reduce<string[]>((acc, page) => acc.concat(page), []);",
+        },
+      ],
+      focusPath: "src/reports.ts",
+      expectedCount: 1,
+      public: true,
+    },
+    {
+      id: "flatten-rows",
+      title: "Flatten report rows without copying the accumulated prefix",
+      outcome: "no-match",
+      files: [
+        {
+          path: "src/reports.ts",
+          source:
+            "declare const pages: string[][];\nconst rows = pages.flatMap(page => page);",
+        },
+      ],
+      focusPath: "src/reports.ts",
+      expectedCount: 0,
+      public: true,
+    },
+  ],
+} as const satisfies RuleDocumentation;
+
+/** Reject non-spread copies of reducer accumulators; pair with oxc/no-accumulating-spread. */
+export default createRule({
   name: "no-reduce-accumulator-copy",
   documentation: NO_REDUCE_ACCUMULATOR_COPY_DOCUMENTATION,
-  meta: { type: "suggestion", docs: { description: NO_REDUCE_ACCUMULATOR_COPY_DOCUMENTATION.summary }, schema: [], messages: {
-    copy: "This reduce callback copies its accumulated collection. If it grows each iteration, use a direct transformation or append to a fresh local accumulator; preserve snapshot and callback semantics.",
-  } },
   defaultOptions: [],
-  create(context) {
-    if (isGeneratedFile(context.filename, context.sourceCode.text)) return {};
-    if (!context.sourceCode.parserServices?.program || !context.sourceCode.parserServices.esTreeNodeToTSNodeMap) return {};
-    const services = ESLintUtils.getParserServices(context);
-    const program = services.program;
-    if (program === null) return {};
-    const checker = program.getTypeChecker();
+  meta: {
+    type: "problem",
+    docs: { description: NO_REDUCE_ACCUMULATOR_COPY_DOCUMENTATION.summary },
+    messages: {
+      copy: "Do not copy the reducer accumulator on every iteration; growing copies can cause quadratic work. Mutate a fresh, locally owned accumulator and return it, or use an iterator pipeline/flatMap.",
+    },
+  },
+  createOnce(context) {
+    let generated = false;
     return {
-      CallExpression(node): void {
-        if (node.callee.type !== AST_NODE_TYPES.MemberExpression ||
-          !["reduce", "reduceRight"].includes(methodName(node.callee) ?? "") ||
-          node.arguments.length !== 2) return;
-        const seed = node.arguments[1];
-        const arraySeed = seed?.type === AST_NODE_TYPES.ArrayExpression && seed.elements.length === 0;
-        const objectSeed = seed?.type === AST_NODE_TYPES.ObjectExpression && seed.properties.length === 0;
-        if (!arraySeed && !objectSeed) return;
-        const callback = node.arguments[0];
-        if (!callback || (callback.type !== AST_NODE_TYPES.ArrowFunctionExpression && callback.type !== AST_NODE_TYPES.FunctionExpression)) return;
-        const parameter = callback.params[0];
-        if (parameter?.type !== AST_NODE_TYPES.Identifier) return;
-        const signature = checker.getResolvedSignature(services.esTreeNodeToTSNodeMap.get(node));
-        const declaration = signature?.declaration;
-        if (!declaration || !program.isSourceFileDefaultLibrary(declaration.getSourceFile()) ||
-          !ts.isInterfaceDeclaration(declaration.parent) ||
-          !["Array", "ReadonlyArray"].includes(declaration.parent.name.text)) return;
-        const accumulator = context.sourceCode.getDeclaredVariables(callback).find(variable => variable.identifiers.includes(parameter));
-        if (!accumulator || accumulator.references.some(reference => reference.isWrite())) return;
-        const referencesAccumulator = (value: TSESTree.Node): boolean => value.type === AST_NODE_TYPES.Identifier &&
-          ASTUtils.findVariable(context.sourceCode.getScope(value), value.name) === accumulator;
-        const inspect = (current: TSESTree.Node): void => {
-          if (current !== callback.body && [AST_NODE_TYPES.ArrowFunctionExpression, AST_NODE_TYPES.FunctionExpression, AST_NODE_TYPES.FunctionDeclaration, AST_NODE_TYPES.ClassDeclaration, AST_NODE_TYPES.ClassExpression, AST_NODE_TYPES.ForStatement, AST_NODE_TYPES.ForInStatement, AST_NODE_TYPES.ForOfStatement, AST_NODE_TYPES.WhileStatement, AST_NODE_TYPES.DoWhileStatement].some(kind => kind === current.type)) return;
-          if (current.type === AST_NODE_TYPES.SpreadElement && ((arraySeed && current.parent.type === AST_NODE_TYPES.ArrayExpression) || (objectSeed && current.parent.type === AST_NODE_TYPES.ObjectExpression)) && referencesAccumulator(current.argument)) {
-            context.report({ node: current, messageId: "copy" });
-          }
-          if (current.type === AST_NODE_TYPES.CallExpression) inspectCall(current);
-          forEachAstChild(current, context.sourceCode.visitorKeys, inspect);
-        };
-
-        const inspectCall = (current: TSESTree.CallExpression): void => {
-          if (current.callee.type !== AST_NODE_TYPES.MemberExpression) return;
-          const member = current.callee;
-          const name = methodName(member);
-          const directCopy = arraySeed && name !== null && COPY_METHODS.has(name) && referencesAccumulator(member.object);
-          const globalArray = member.object.type === AST_NODE_TYPES.Identifier && member.object.name === "Array" &&
-            !(ASTUtils.findVariable(context.sourceCode.getScope(member.object), "Array")?.defs.length);
-          const fromCopy = arraySeed && name === "from" && globalArray && current.arguments[0] !== undefined && referencesAccumulator(current.arguments[0]);
-          const globalObject = member.object.type === AST_NODE_TYPES.Identifier && member.object.name === "Object" &&
-            !(ASTUtils.findVariable(context.sourceCode.getScope(member.object), "Object")?.defs.length);
-          const target = current.arguments[0];
-          const assignCopy = objectSeed && name === "assign" && globalObject && target?.type === AST_NODE_TYPES.ObjectExpression &&
-            current.arguments.slice(1).some(referencesAccumulator);
-          if (directCopy || fromCopy || assignCopy) context.report({ node: current, messageId: "copy" });
-        };
-        inspect(callback.body);
+      Program(): void {
+        generated = isGeneratedFile(sourceOrigin(context).filename, sourceOrigin(context).text);
+      },
+      CallExpression(node) {
+        if (generated) return;
+        const method = arrayMethodTarget(node.callee);
+        if (method === null) return;
+        const reducer = enclosingReducer(node);
+        if (reducer === null) return;
+        const accumulator = context.sourceCode
+          .getDeclaredVariables(reducer.callback)
+          .find((variable) =>
+            variable.identifiers.some(
+              (identifier) => identifier.start === reducer.accumulator.start,
+            ),
+          );
+        if (accumulator === undefined) return;
+        const isAccumulator = (expression: ESTree.Node) =>
+          referencesAccumulator(context.sourceCode, expression, accumulator);
+        let copiesAccumulator = false;
+        if (
+          method.name === "assign" &&
+          isGlobalCopyOwner(context.sourceCode, method.object, "Object")
+        ) {
+          const target = node.arguments[0];
+          copiesAccumulator =
+            target !== undefined &&
+            unwrapArrayExpression(target).type === "ObjectExpression" &&
+            node.arguments.slice(1).some(isAccumulator);
+        } else if (
+          method.name === "from" &&
+          isGlobalCopyOwner(context.sourceCode, method.object, "Array")
+        ) {
+          const source = node.arguments[0];
+          copiesAccumulator = source !== undefined && isAccumulator(source);
+        } else if (
+          [
+            "concat",
+            "slice",
+            "toSpliced",
+            "toSorted",
+            "toReversed",
+            "with",
+          ].includes(method.name)
+        ) {
+          const initialValue = reducer.initialValue;
+          const arrayAccumulator =
+            initialValue !== undefined &&
+            isKnownArrayExpression(context.sourceCode, initialValue);
+          copiesAccumulator = arrayAccumulator && isAccumulator(method.object);
+        }
+        if (copiesAccumulator) context.report({ node, messageId: "copy" });
       },
     };
   },

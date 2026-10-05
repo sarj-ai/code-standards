@@ -3,12 +3,10 @@
  *
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/prefer-multi-value-zod-literal.test.ts
  */
-import {
-  AST_NODE_TYPES,
-  ASTUtils,
-  type TSESLint,
-  type TSESTree,
-} from "@typescript-eslint/utils";
+
+import { sourceOrigin } from "./_source-origin.js";
+import type { ESTree, Context, Variable, Visitor } from "@oxlint/plugins";
+import { findVariable } from "./_scope.js";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile, isTestFile } from "./_paths.js";
@@ -62,40 +60,40 @@ export const PREFER_MULTI_VALUE_ZOD_LITERAL_DOCUMENTATION = {
 } as const satisfies RuleDocumentation;
 
 function isStaticPrimitive(
-  node: TSESTree.CallExpressionArgument,
-  context: TSESLint.RuleContext<MessageIds, Options>,
+  node: ESTree.Argument,
+  context: Context,
 ): boolean {
-  if (node.type === AST_NODE_TYPES.Literal) {
+  if (node.type === "Literal") {
     return (
       node.value === null ||
       ["bigint", "boolean", "number", "string"].includes(typeof node.value)
     );
   }
   if (
-    node.type === AST_NODE_TYPES.TemplateLiteral &&
+    node.type === "TemplateLiteral" &&
     node.expressions.length === 0
   )
     return true;
-  if (node.type === AST_NODE_TYPES.Identifier && node.name === "undefined") {
-    const binding = ASTUtils.findVariable(
+  if (node.type === "Identifier" && node.name === "undefined") {
+    const binding = findVariable(
       context.sourceCode.getScope(node),
       node.name,
     );
     return binding === null || binding.defs.length === 0;
   }
   return (
-    node.type === AST_NODE_TYPES.UnaryExpression &&
+    node.type === "UnaryExpression" &&
     node.operator === "-" &&
-    node.argument.type === AST_NODE_TYPES.Literal &&
+    node.argument.type === "Literal" &&
     ["bigint", "number"].includes(typeof node.argument.value)
   );
 }
 
-function isStaticString(node: TSESTree.CallExpressionArgument): boolean {
+function isStaticString(node: ESTree.Argument): boolean {
   return (
-    (node.type === AST_NODE_TYPES.Literal &&
+    (node.type === "Literal" &&
       typeof node.value === "string") ||
-    (node.type === AST_NODE_TYPES.TemplateLiteral &&
+    (node.type === "TemplateLiteral" &&
       node.expressions.length === 0)
   );
 }
@@ -124,33 +122,33 @@ export default createRule<Options, MessageIds>({
   defaultOptions: [{}],
   create(context, [options]) {
     if (
-      isTestFile(context.filename) ||
-      isGeneratedFile(context.filename, context.sourceCode.text)
+      isTestFile(sourceOrigin(context).filename) ||
+      isGeneratedFile(sourceOrigin(context).filename, sourceOrigin(context).text)
     )
       return {};
 
-    const zodBindings = new Set<TSESLint.Scope.Variable>();
-    const zod4Bindings = new Set<TSESLint.Scope.Variable>();
+    const zodBindings = new Set<Variable>();
+    const zod4Bindings = new Set<Variable>();
 
     function resolvedBinding(
-      identifier: TSESTree.Identifier,
-    ): TSESLint.Scope.Variable | null {
-      return ASTUtils.findVariable(
+      identifier: ESTree.BindingIdentifier,
+    ): Variable | null {
+      return findVariable(
         context.sourceCode.getScope(identifier),
         identifier.name,
       );
     }
 
     function directMemberCall(
-      node: TSESTree.CallExpression,
-      binding: TSESLint.Scope.Variable,
+      node: ESTree.CallExpression,
+      binding: Variable,
       method: string,
     ): boolean {
       if (
-        node.callee.type !== AST_NODE_TYPES.MemberExpression ||
+        node.callee.type !== "MemberExpression" ||
         node.callee.computed ||
-        node.callee.object.type !== AST_NODE_TYPES.Identifier ||
-        node.callee.property.type !== AST_NODE_TYPES.Identifier ||
+        node.callee.object.type !== "Identifier" ||
+        node.callee.property.type !== "Identifier" ||
         node.callee.property.name !== method
       )
         return false;
@@ -163,10 +161,10 @@ export default createRule<Options, MessageIds>({
         const isExplicitV4 = /^zod\/v4(?:$|[-/])/.test(node.source.value);
         for (const specifier of node.specifiers) {
           if (
-            specifier.type === AST_NODE_TYPES.ImportDefaultSpecifier ||
-            specifier.type === AST_NODE_TYPES.ImportNamespaceSpecifier ||
-            (specifier.type === AST_NODE_TYPES.ImportSpecifier &&
-              (specifier.imported.type === AST_NODE_TYPES.Identifier
+            specifier.type === "ImportDefaultSpecifier" ||
+            specifier.type === "ImportNamespaceSpecifier" ||
+            (specifier.type === "ImportSpecifier" &&
+              (specifier.imported.type === "Identifier"
                 ? specifier.imported.name === "z"
                 : specifier.imported.value === "z"))
           ) {
@@ -179,8 +177,8 @@ export default createRule<Options, MessageIds>({
       },
       CallExpression(node): void {
         if (
-          node.callee.type !== AST_NODE_TYPES.MemberExpression ||
-          node.callee.object.type !== AST_NODE_TYPES.Identifier
+          node.callee.type !== "MemberExpression" ||
+          node.callee.object.type !== "Identifier"
         )
           return;
         const binding = resolvedBinding(node.callee.object);
@@ -194,16 +192,16 @@ export default createRule<Options, MessageIds>({
           return;
         const [argument] = node.arguments;
         if (
-          argument?.type !== AST_NODE_TYPES.ArrayExpression ||
+          argument?.type !== "ArrayExpression" ||
           argument.elements.length < 2
         )
           return;
 
-        const values: TSESTree.CallExpressionArgument[] = [];
+        const values: ESTree.Argument[] = [];
         for (const element of argument.elements) {
           if (
             element === null ||
-            element.type !== AST_NODE_TYPES.CallExpression ||
+            element.type !== "CallExpression" ||
             !directMemberCall(element, binding, "literal") ||
             element.arguments.length !== 1
           )
@@ -221,6 +219,6 @@ export default createRule<Options, MessageIds>({
           data: { zod: namespace },
         });
       },
-    } satisfies TSESLint.RuleListener;
+    } satisfies Visitor;
   },
 });

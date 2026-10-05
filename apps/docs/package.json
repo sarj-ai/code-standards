@@ -13,43 +13,39 @@
     "predev": "npm run code-examples:check",
     "build": "astro build",
     "check": "astro check",
-    "lint": "eslint . --max-warnings 0",
+    "lint": "oxlint --config oxlint.config.mjs --type-aware --deny-warnings --ignore-pattern '**/*.astro' . && node scripts/lint-astro-framework.mjs src",
     "dev": "astro dev",
     "preview": "astro preview",
     "deploy": "wrangler deploy",
     "third-party-catalog:check": "node scripts/verify-third-party-catalog.mjs --source",
     "verify:deployment": "node scripts/verify-deployment.mjs",
-    "audit:dependencies": "node scripts/audit-dependencies.mjs"
+    "audit:dependencies": "npm audit --audit-level=moderate",
+    "test": "node --test tests/*.test.mjs"
   },
   "dependencies": {
     "@astrojs/starlight": "0.41.11",
     "@sarj/design": "0.5.0",
-    "astro": "7.3.5"
+    "astro": "7.3.5",
+    "zod": "4.3.6"
   },
   "devDependencies": {
     "@astrojs/check": "0.9.10",
+    "@astrojs/compiler": "4.0.0",
     "@astrojs/sitemap": "3.7.4",
-    "@eslint/js": "10.0.1",
-    "@sarj/eslint-plugin": "file:../../packages/typescript",
-    "eslint": "10.11.0",
-    "eslint-plugin-astro": "3.2.1",
+    "@sarj/oxlint-plugin": "17.0.0",
+    "oxc-parser": "0.152.0",
+    "oxfmt": "0.71.0",
+    "oxlint": "1.86.0",
+    "oxlint-tsgolint": "7.0.2003",
     "prettier": "3.9.9",
     "prettier-plugin-sh": "0.19.0",
     "prettier-plugin-toml": "2.0.6",
     "react-doctor": "0.9.14",
     "sql-formatter": "15.9.0",
     "typescript": "6.0.3",
-    "typescript-eslint": "8.70.1",
     "wrangler": "4.138.0"
   },
   "engines": {
     "node": ">=22.22.2"
-  },
-  "overrides": {
-    "http-cache-semantics": "https://codeload.github.com/kornelski/http-cache-semantics/tar.gz/11fb104275349bbd84bf21eafd40b18220c29c46",
-    "sharp": "0.35.4",
-    "miniflare": {
-      "undici": "7.29.1"
-    }
   }
 }

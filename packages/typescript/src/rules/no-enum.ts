@@ -4,7 +4,9 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-enum.test.ts
  */
 
-import { type TSESTree } from "@typescript-eslint/utils";
+import { sourceOrigin } from "./_source-origin.js";
+import type { ESTree } from "@oxlint/plugins";
+
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile } from "./_paths.js";
@@ -97,7 +99,7 @@ export default createRule<Options, MessageIds>({
   create(context, [optionsArg]) {
     const options = optionsArg ?? {};
     const ignoreFiles = options.ignoreFiles ?? [];
-    const filename = context.filename;
+    const filename = sourceOrigin(context).filename;
     const sourceText = context.sourceCode.getText();
 
     // `ignoreFiles` adds repository-specific paths to shared generated-file detection.
@@ -109,7 +111,7 @@ export default createRule<Options, MessageIds>({
     }
 
     return {
-      TSEnumDeclaration(node: TSESTree.TSEnumDeclaration): void {
+      TSEnumDeclaration(node: ESTree.TSEnumDeclaration): void {
         context.report({
           node,
           messageId: "noEnum",

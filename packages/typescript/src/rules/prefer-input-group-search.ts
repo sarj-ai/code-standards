@@ -4,7 +4,10 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/prefer-input-group-search.test.ts
  */
 
-import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
+import { nodeAncestors } from "./_scope.js";
+import type { ESTree } from "@oxlint/plugins";
+import { findVariable } from "./_scope.js";
+
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 
@@ -33,35 +36,35 @@ const MAX_JSX_DISTANCE = 2;
 const SEARCH_EXPORTS = ["Search", "SearchIcon", "LucideSearch"] as const;
 
 interface Occurrence {
-  ancestors: readonly TSESTree.Node[];
-  node: TSESTree.JSXOpeningElement;
+  ancestors: readonly ESTree.Node[];
+  node: ESTree.JSXOpeningElement;
 }
 
 function localNamedImports(
-  node: TSESTree.ImportDeclaration,
+  node: ESTree.ImportDeclaration,
   importedName: string,
 ): string[] {
   return node.specifiers
     .filter(
-      (specifier): specifier is TSESTree.ImportSpecifier =>
-        specifier.type === AST_NODE_TYPES.ImportSpecifier &&
-        (specifier.imported.type === AST_NODE_TYPES.Identifier
+      (specifier): specifier is ESTree.ImportSpecifier =>
+        specifier.type === "ImportSpecifier" &&
+        (specifier.imported.type === "Identifier"
           ? specifier.imported.name
           : specifier.imported.value) === importedName,
     )
     .map((specifier) => specifier.local.name);
 }
 
-function elementName(node: TSESTree.JSXOpeningElement): string | null {
-  return node.name.type === AST_NODE_TYPES.JSXIdentifier
+function elementName(node: ESTree.JSXOpeningElement): string | null {
+  return node.name.type === "JSXIdentifier"
     ? node.name.name
     : null;
 }
 
-function jsxAncestors(occurrence: Occurrence): TSESTree.JSXElement[] {
+function jsxAncestors(occurrence: Occurrence): ESTree.JSXElement[] {
   return occurrence.ancestors.filter(
-    (ancestor): ancestor is TSESTree.JSXElement =>
-      ancestor.type === AST_NODE_TYPES.JSXElement,
+    (ancestor): ancestor is ESTree.JSXElement =>
+      ancestor.type === "JSXElement",
   );
 }
 
@@ -78,7 +81,7 @@ function nearestEligibleCommonAncestor(
   search: Occurrence,
   input: Occurrence,
   inputGroupNames: ReadonlySet<string>,
-): TSESTree.JSXElement | null {
+): ESTree.JSXElement | null {
   const searchAncestors = jsxAncestors(search);
   const inputAncestorList = jsxAncestors(input);
   const inputAncestors = new Set(inputAncestorList);
@@ -105,7 +108,7 @@ function nearestEligibleCommonAncestor(
 
 function isActionIcon(
   search: Occurrence,
-  wrapper: TSESTree.JSXElement,
+  wrapper: ESTree.JSXElement,
 ): boolean {
   if (hasInteraction(search.node)) return true;
   return jsxAncestors(search).some((ancestor) => {
@@ -115,17 +118,17 @@ function isActionIcon(
   });
 }
 
-function hasInteraction(node: TSESTree.JSXOpeningElement): boolean {
+function hasInteraction(node: ESTree.JSXOpeningElement): boolean {
   return node.attributes.some((attribute) =>
-    attribute.type === AST_NODE_TYPES.JSXAttribute &&
-    attribute.name.type === AST_NODE_TYPES.JSXIdentifier &&
+    attribute.type === "JSXAttribute" &&
+    attribute.name.type === "JSXIdentifier" &&
     /^(?:on[A-Z]|href$)/u.test(attribute.name.name),
   );
 }
 
 function mutuallyExclusive(left: Occurrence, right: Occurrence): boolean {
   return left.ancestors.some((ancestor, index) => {
-    if (ancestor.type !== AST_NODE_TYPES.ConditionalExpression) return false;
+    if (ancestor.type !== "ConditionalExpression") return false;
     const otherIndex = right.ancestors.indexOf(ancestor);
     if (otherIndex < 0) return false;
     const leftBranch = left.ancestors[index + 1];
@@ -181,12 +184,12 @@ export default createRule<Options, MessageIds>({
       JSXOpeningElement(node): void {
         const name = elementName(node);
         if (name === null) return;
-        const binding = ASTUtils.findVariable(context.sourceCode.getScope(node), name);
+        const binding = findVariable(context.sourceCode.getScope(node), name);
         if (binding?.defs.length !== 1 ||
-          binding.defs[0]?.node.type !== AST_NODE_TYPES.ImportSpecifier ||
+          binding.defs[0]?.node.type !== "ImportSpecifier" ||
           binding.defs[0].node.importKind === "type") return;
         const occurrence = {
-          ancestors: context.sourceCode.getAncestors(node),
+          ancestors: nodeAncestors(node),
           node,
         };
         if (searchNames.has(name)) searches.push(occurrence);
@@ -194,7 +197,7 @@ export default createRule<Options, MessageIds>({
       },
       "Program:exit"(): void {
         if (inputGroupNames.size === 0) return;
-        const reported = new Set<TSESTree.JSXElement>();
+        const reported = new Set<ESTree.JSXElement>();
         for (const search of searches) {
           if (isWithinInputGroup(search, inputGroupNames)) continue;
           for (const input of inputs) {

@@ -91,7 +91,7 @@ def test_committed_third_party_catalog_has_a_closed_effective_inventory() -> Non
         "checkov",
         "deptry",
         "detekt",
-        "eslint",
+        "oxlint",
         "ktlint",
         "mobsfscan",
         "react-doctor",
@@ -103,14 +103,18 @@ def test_committed_third_party_catalog_has_a_closed_effective_inventory() -> Non
     assert "@sarj" not in provider_ids
     assert {
         "detekt",
-        "eslint",
+        "oxlint",
         "ktlint",
         "mobsfscan",
         "react-doctor",
         "ruff",
         "swiftformat",
         "swiftlint",
-        "typescript-eslint",
+        "typescript",
+        "sarj-typescript",
+        "sarj-bun",
+        "sarj-playwright",
+        "sarj-testing-library",
         "unicorn",
     } <= provider_ids
     assert len({value["key"] for value in rules}) == len(rules)

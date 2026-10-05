@@ -1,0 +1,78 @@
+import {ReferenceTracker} from '../../../eslint-utils/index.mjs';
+
+const createTraceMap = (object, type) => {
+	let map = {[type]: true};
+
+	const path = object.split('.').toReversed();
+	for (const name of path) {
+		map = {[name]: map};
+	}
+
+	return map;
+};
+
+const mergeTraceMap = (target, source) => {
+	for (const key of Reflect.ownKeys(source)) {
+		const value = source[key];
+
+		if (typeof value === 'object') {
+			target[key] ??= {};
+			mergeTraceMap(target[key], value);
+		} else {
+			target[key] = value;
+		}
+	}
+};
+
+export class GlobalReferenceTracker {
+	static READ = ReferenceTracker.READ;
+	static CALL = ReferenceTracker.CALL;
+	static CONSTRUCT = ReferenceTracker.CONSTRUCT;
+	#traceMap = {};
+	#context;
+	#filter;
+	#handle;
+
+	constructor({
+		object,
+		objects = [object],
+		type = ReferenceTracker.READ,
+
+		context,
+		filter,
+		handle,
+	}) {
+		for (const object of objects) {
+			mergeTraceMap(this.#traceMap, createTraceMap(object, type));
+		}
+
+		this.#context = context;
+		this.#filter = filter;
+		this.#handle = handle;
+	}
+
+	* #track(globalScope, options) {
+		const context = options?.context ?? this.#context;
+		const filter = options?.filter ?? this.#filter;
+		const handle = options?.handle ?? this.#handle;
+		const tracker = new ReferenceTracker(globalScope);
+
+		for (const reference of tracker.iterateGlobalReferences(this.#traceMap)) {
+			if (filter && !filter(reference)) {
+				continue;
+			}
+
+			const problems = handle(reference, context);
+
+			yield problems;
+		}
+	}
+
+	listen(options) {
+		const context = options?.context ?? this.#context;
+		context.onExit(
+			'Program',
+			program => this.#track(context.sourceCode.getScope(program), options),
+		);
+	}
+}

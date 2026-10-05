@@ -84,10 +84,10 @@ def inventory(root: Path) -> list[dict[str, str]]:
                 else f"packages/standards/tests/text_rules/test_{module.rsplit('/', 1)[-1]}.py",
             }
         )
-    eslint_rules = (
-        repository.eslint_rule_names(root)
+    oxlint_rules = (
+        repository.oxlint_rule_names(root)
         if (root / "packages/typescript/src/index.ts").is_file()
-        else list(ledger.load().rules.get(ledger.ESLINT, ()))
+        else list(ledger.load().rules.get(ledger.OXLINT, ()))
     )
     items.extend(
         {
@@ -97,7 +97,7 @@ def inventory(root: Path) -> list[dict[str, str]]:
             "source": f"packages/typescript/src/rules/{rule_id}.ts",
             "test": f"packages/typescript/tests/rules/{rule_id}.test.ts",
         }
-        for rule_id in eslint_rules
+        for rule_id in oxlint_rules
     )
     return sorted(items, key=itemgetter("family", "id"))
 
@@ -106,7 +106,7 @@ def sync_ledger(root: Path, *, check: bool, writer: Callable[[Path, str], None] 
     path = root / "packages/standards/src/sarj_standards/configs/rule-ledger.json"
     previous = _load_ledger(path)
     rules, codes, source_renames = _native_ledger_state()
-    rules["eslint"] = repository.eslint_rule_names(root)
+    rules["oxlint"] = repository.oxlint_rule_names(root)
     rules["text"] = sorted(textlint.REGISTRY)
     codes["text"] = sorted(meta.code for meta in textlint.REGISTRY.values())
     for rule_id, meta in textlint.REGISTRY.items():
@@ -147,7 +147,7 @@ def _append_removed_entries(
     known: set[str],
 ) -> None:
     for family, raw_names in old_rules.items():
-        prefix = "@sarj/" if family == "eslint" else ""
+        prefix = "@sarj/" if family == "oxlint" else ""
         for name in _string_list(raw_names):
             identifier = f"{prefix}{name}"
             if name not in rules.get(family, []) and identifier not in known:
@@ -224,7 +224,7 @@ def _retired(
         for entry in entries
         if not (
             entry.get("status") == "renamed"
-            and (entry.get("kind") == "eslint" or (str(entry.get("kind")), str(entry.get("id"))) in derived_renames)
+            and (entry.get("kind") == "oxlint" or (str(entry.get("kind")), str(entry.get("id"))) in derived_renames)
         )
     ]
     existing = {str(entry.get("id")): entry for entry in entries}
@@ -253,7 +253,7 @@ def _retired(
             if prior is not None and prior.get("replacement") == replacement
             else {
                 "id": identifier,
-                "kind": "eslint",
+                "kind": "oxlint",
                 "status": "renamed",
                 "replacement": replacement,
                 "note": f"Replace @sarj/{old} with @sarj/{new} before upgrading.",

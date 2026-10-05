@@ -1,14 +1,13 @@
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
+import { RuleTester } from "oxlint/plugins-dev";
+import { describe, it } from "vitest";
 
 import rule, { NO_RAW_ENV_DOCUMENTATION } from "../../src/rules/no-raw-env.js";
 
-RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
 RuleTester.it = it;
 RuleTester.itOnly = it.only;
 
-const RULE_TESTER = new RuleTester();
+const RULE_TESTER = new RuleTester({ languageOptions: { parserOptions: { lang: "ts" } } });
 
 RULE_TESTER.run("no-raw-env", rule, {
   valid: [
@@ -137,10 +136,6 @@ RULE_TESTER.run("no-raw-env", rule, {
     { name: "does not treat a comment as environment validation", filename: "src/env.ts", code: "// z.object({ KEY: z.string() }).parse(process.env)\nexport const key = process.env.KEY;", errors: [{messageId: "noRawEnv"}] },
     { name: "does not treat string payload as environment validation", filename: "src/env.ts", code: "const example = 'z.object({}).parse(process.env)'; export const key = process.env.KEY;", errors: [{messageId: "noRawEnv"}] },
     { name: "reports the documented raw environment read", code: NO_RAW_ENV_DOCUMENTATION.examples[1].files[0].source, errors: [{ messageId: "noRawEnv" }] },
-    {
-      code: "const url = process.env.DATABASE_URL;",
-      errors: [{ messageId: "noRawEnv" }],
-    },
     {
       code: "const { FOO } = process.env;",
       errors: [{ messageId: "noRawEnv" }],

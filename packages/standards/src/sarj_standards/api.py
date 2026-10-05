@@ -15,7 +15,6 @@ from .libs.adoption.lifecycle import (
     Inspection,
     execute,
     inspect,
-    selected_eslint_commands,
     verification_commands,
 )
 from .libs.adoption.manifest import load as load_manifest
@@ -54,7 +53,8 @@ from .libs.diagnostics import (
 )
 from .libs.filesystem import is_link_like
 from .libs.linting.analysis import analyze as analyze_paths, report_from_tools
-from .libs.linting.external import analyze_external
+from .libs.linting.external import analyze_external, safe_fix_selection
+from .libs.linting.formatting import analyze_formatting, maintained_formatting_paths
 from .libs.linting.library_policy import (
     ManifestPolicyError,
     accepts_path as library_policy_accepts_path,
@@ -235,8 +235,22 @@ class Standards:
                 for item in policy_findings
             )
             source_status = check(selected, policy=policy)
-            eslint_status = execute(selected_eslint_commands(self.root, selected))
-            return _operation_result(max(source_status, eslint_status, 1 if findings else 0), findings=findings)
+            reports = analyze_external(
+                selected,
+                root=self.root,
+                policy=policy,
+                trust=TrustMode.TRUSTED,
+                capabilities=frozenset({"oxlint"}) if adopted is None else frozenset(adopted.enabled_capabilities),
+            )
+            if adopted is not None and "oxlint" in adopted.enabled_capabilities:
+                reports = (
+                    *reports,
+                    analyze_formatting(selected, root=self.root, trust=TrustMode.TRUSTED, policy=policy),
+                )
+            oxlint_status = report_from_tools(self.root, reports).exit_code
+            return _operation_result(
+                max(source_status, oxlint_status, 1 if findings else 0), findings=(*findings, *_tool_findings(reports))
+            )
         return _operation_result(_verify(self.root))
 
     def analyze(
@@ -250,7 +264,6 @@ class Standards:
         staged: bool = False,
         react_doctor_triggered: bool = False,
         include_react_doctor: bool = True,
-        pass_on_unpruned_eslint_suppressions: bool = False,
         jobs: int = 1,
         python_type_check: bool = True,
     ) -> AnalysisReport:
@@ -265,7 +278,7 @@ class Standards:
             adopted = _analysis_manifest(self.root, normalized_mode)
             selection_policy = _selection_policy(self.root, adopted, normalized_mode)
             rule_selection = _rule_selection(rules)
-            selected = _analysis_inputs(self.root, paths, mode=normalized_mode)
+            selected = _analysis_inputs(self.root, paths, mode=normalized_mode, rule_selection=rule_selection)
         except (OSError, TypeError, ValueError) as exc:
             return _failed_analysis(self.root, "invalid-input", str(exc))
         try:
@@ -306,10 +319,10 @@ class Standards:
             return _with_coverage(
                 _without_baselined_diagnostics(native, baseline_counts, changed_scope=changed_scope), coverage
             )
-        if selected_groups.typescript and adopted is not None and "eslint" not in adopted.configs:
+        if selected_groups.typescript and adopted is not None and "oxlint" not in adopted.configs:
             coverage.append(
                 CoverageNotice(
-                    "eslint",
+                    "oxlint",
                     "disabled by repository capabilities",
                     len(selected_groups.typescript),
                     CoverageDisposition.NOT_REQUESTED,
@@ -338,7 +351,6 @@ class Standards:
                 react_doctor_triggered=react_doctor_triggered,
                 staged=staged,
                 react_doctor_full_scan=react_doctor_full_scan,
-                pass_on_unpruned_eslint_suppressions=pass_on_unpruned_eslint_suppressions,
                 python_type_check=python_type_check,
             )
 
@@ -379,7 +391,48 @@ class Standards:
                 findings=(Finding("fix.input.invalid", "error", str(exc)),),
                 exit_code=_INVALID_EXIT,
             )
-        return _operation_result(lifecycle.execute(lifecycle.format_commands(ecosystems)))
+        if ecosystems.typescript_root is None:
+            return _operation_result(lifecycle.execute(lifecycle.format_commands(ecosystems)))
+        policy = Policy.from_manifest(self.root, adopted)
+        inputs = tuple(str(self.root / path) for path in (adopted.verify_paths if adopted is not None else (".",)))
+        maintained = group_paths(inputs, policy=policy).typescript
+        try:
+            format_paths = maintained_formatting_paths(inputs, root=self.root, policy=policy)
+        except (OSError, TypeError, ValueError) as exc:
+            return _operation_result(2, findings=(Finding("fix.input.invalid", "error", str(exc)),))
+        selected = safe_fix_selection(maintained, root=self.root)
+        if any(report.completion is not Completion.COMPLETE for report in selected.reports):
+            return Result(
+                Status.FAILED,
+                findings=tuple(
+                    Finding(f"fix.{issue.kind}", "error", issue.message)
+                    for report in selected.reports
+                    for issue in report.issues
+                ),
+                exit_code=_INVALID_EXIT,
+            )
+        try:
+            commands = lifecycle.format_commands(
+                ecosystems, lint_paths=selected.paths, format_paths=format_paths, root=self.root
+            )
+        except (OSError, TypeError, ValueError) as exc:
+            return _operation_result(2, findings=(Finding("fix.configuration.invalid", "error", str(exc)),))
+        status = lifecycle.execute(commands)
+        checked: tuple[ToolReport, ...] = ()
+        if status == 0:
+            checked = analyze_external(
+                maintained,
+                root=self.root,
+                policy=policy,
+                trust=TrustMode.TRUSTED,
+                capabilities=frozenset({"oxlint"}),
+            )
+            checked = (
+                *checked,
+                analyze_formatting(format_paths, root=self.root, trust=TrustMode.TRUSTED, policy=policy),
+            )
+            status = report_from_tools(self.root, checked).exit_code
+        return _operation_result(status, findings=_tool_findings(checked))
 
     def doctor(self) -> Result:
         diagnosed = diagnose(self.root)
@@ -537,6 +590,16 @@ def _operation_result(
     return Result(status, findings, changes, exit_code)
 
 
+def _tool_findings(reports: Sequence[ToolReport]) -> tuple[Finding, ...]:
+    return tuple(
+        Finding(item.code, str(item.severity), item.message, item.location.path)
+        for report in reports
+        for item in report.diagnostics
+    ) + tuple(
+        Finding(f"{report.name}.{issue.kind}", "error", issue.message) for report in reports for issue in report.issues
+    )
+
+
 def _failed_analysis(root: Path, kind: str, message: str) -> AnalysisReport:
     issue = ExecutionIssue("sarj-standards", kind, message)
     tool = ToolReport("sarj-standards", Completion.FAILED, issues=(issue,))
@@ -587,15 +650,24 @@ def _with_coverage(report: AnalysisReport, coverage: Sequence[CoverageNotice]) -
     return AnalysisReport(report.root, completion, conclusion, report.tools, notices)
 
 
-def _analysis_inputs(root: Path, paths: Sequence[str] | None, *, mode: AnalysisMode = AnalysisMode.POLICY) -> list[str]:
+def _analysis_inputs(
+    root: Path,
+    paths: Sequence[str] | None,
+    *,
+    mode: AnalysisMode = AnalysisMode.POLICY,
+    rule_selection: RuleSelection | None = None,
+) -> list[str]:
     if paths is not None:
         selected = _contained_paths(root, paths)
-        return selected if mode is AnalysisMode.RAW else _with_tracked_terraform_tests(root, selected)
-    if mode is AnalysisMode.RAW:
+    elif mode is AnalysisMode.RAW:
         return [str(root)]
-    adopted = load_manifest(root)
-    verify_paths = adopted.verify_paths if adopted is not None else (".",)
-    return _with_tracked_terraform_tests(root, [str(root / path) for path in verify_paths])
+    else:
+        adopted = load_manifest(root)
+        verify_paths = adopted.verify_paths if adopted is not None else (".",)
+        selected = [str(root / path) for path in verify_paths]
+    if mode is AnalysisMode.RAW or (rule_selection is not None and RuleEngine.IAC not in rule_selection.engines):
+        return selected
+    return _with_tracked_terraform_tests(root, selected)
 
 
 def _with_tracked_terraform_tests(root: Path, selected: list[str]) -> list[str]:
@@ -627,15 +699,14 @@ def _selected_external_analysis(
     react_doctor_triggered: bool,
     staged: bool,
     react_doctor_full_scan: bool,
-    pass_on_unpruned_eslint_suppressions: bool,
     python_type_check: bool,
 ) -> tuple[ToolReport, ...]:
     rule_ids = (
-        frozenset(str(value) for value in rule_selection.ids_for(RuleEngine.ESLINT))
+        frozenset(str(value) for value in rule_selection.ids_for(RuleEngine.OXLINT))
         if rule_selection is not None
         else None
     )
-    external_engines = frozenset({RuleEngine.ESLINT, RuleEngine.CHECKOV, RuleEngine.ZIZMOR})
+    external_engines = frozenset({RuleEngine.OXLINT, RuleEngine.CHECKOV, RuleEngine.ZIZMOR})
     selected_capabilities = (
         frozenset(engine.value for engine in rule_selection.engines & external_engines)
         if rule_selection is not None
@@ -659,7 +730,6 @@ def _selected_external_analysis(
                 force_react_doctor=react_doctor_triggered,
                 react_doctor_staged=staged,
                 react_doctor_full_scan=react_doctor_full_scan,
-                pass_on_unpruned_eslint_suppressions=pass_on_unpruned_eslint_suppressions,
                 python_type_check=python_type_check,
             )
             if adopted is not None
@@ -675,7 +745,6 @@ def _selected_external_analysis(
                 force_react_doctor=react_doctor_triggered,
                 react_doctor_staged=staged,
                 react_doctor_full_scan=react_doctor_full_scan,
-                pass_on_unpruned_eslint_suppressions=pass_on_unpruned_eslint_suppressions,
                 python_type_check=python_type_check,
             )
         )
@@ -684,6 +753,11 @@ def _selected_external_analysis(
     )
     if rule_selection is not None:
         external_reports = tuple(_filter_report_selectors(report, rule_selection) for report in external_reports)
+    elif adopted is not None and "oxlint" in adopted.enabled_capabilities:
+        external_reports = (
+            *external_reports,
+            analyze_formatting(active_selected, root=root, trust=normalized_trust, policy=selection_policy),
+        )
     return external_reports
 
 
@@ -758,18 +832,18 @@ def _native_typescript_coverage(
     rule_selection: RuleSelection | None,
     coverage: list[CoverageNotice],
 ) -> None:
-    if selected_groups.typescript and (rule_selection is None or RuleEngine.ESLINT in rule_selection.engines):
-        eslint_enabled = adopted is None or "eslint" in adopted.configs
+    if selected_groups.typescript and (rule_selection is None or RuleEngine.OXLINT in rule_selection.engines):
+        oxlint_enabled = adopted is None or "oxlint" in adopted.configs
         coverage.append(
             CoverageNotice(
-                "eslint",
+                "oxlint",
                 (
                     "native analysis does not run TypeScript; use check or external trusted analysis"
-                    if eslint_enabled
+                    if oxlint_enabled
                     else "disabled by repository capabilities"
                 ),
                 len(selected_groups.typescript),
-                CoverageDisposition.FAILED if eslint_enabled else CoverageDisposition.NOT_REQUESTED,
+                CoverageDisposition.FAILED if oxlint_enabled else CoverageDisposition.NOT_REQUESTED,
             )
         )
 
@@ -842,7 +916,7 @@ def _routed_for_selection(grouped: object, selected: RuleSelection | None) -> se
         routed.update(grouped.iac)
     if RuleEngine.TEXT in engines:
         routed.update(grouped.text)
-    if RuleEngine.ESLINT in engines:
+    if RuleEngine.OXLINT in engines:
         routed.update(grouped.typescript)
     if selected is None:
         routed.update(grouped.kotlin)
@@ -854,12 +928,14 @@ def _filter_report_selectors(
     report: ToolReport,
     selected: RuleSelection,
 ) -> ToolReport:
-    engine = RuleEngine(report.name) if report.name in {"eslint", "zizmor", "checkov"} else None
+    engine = RuleEngine(report.name) if report.name in {"oxlint", "zizmor", "checkov"} else None
     allowed: frozenset[str] = frozenset() if engine is None else selected.native_ids_for(engine)
     return ToolReport(
         report.name,
         report.completion,
-        diagnostics=tuple(item for item in report.diagnostics if item.rule_id in allowed),
+        diagnostics=tuple(
+            item for item in report.diagnostics if item.rule_id in allowed or item.rule_id == "oxlint/configuration"
+        ),
         issues=report.issues,
         analyzer_id=report.analyzer_id,
         invocation_id=report.invocation_id,
@@ -907,7 +983,7 @@ def _selector_for_diagnostic(item: Diagnostic) -> RuleSelector | None:
     if engine is None:
         return None
     identity = item.rule_id or item.code
-    if engine is RuleEngine.ESLINT and identity.startswith("@sarj/"):
+    if engine is RuleEngine.OXLINT and identity.startswith("@sarj/"):
         identity = identity.removeprefix("@sarj/")
     try:
         return RuleSelector(engine, RuleId(identity))
@@ -925,7 +1001,7 @@ def _engine_for_diagnostic(item: Diagnostic) -> RuleEngine | None:
         "sql": RuleEngine.SQL,
         "iac": RuleEngine.IAC,
         "text": RuleEngine.TEXT,
-        "eslint": RuleEngine.ESLINT,
+        "oxlint": RuleEngine.OXLINT,
         "checkov": RuleEngine.CHECKOV,
         "zizmor": RuleEngine.ZIZMOR,
     }.get(item.source)

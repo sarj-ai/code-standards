@@ -96,11 +96,11 @@ class TestRegistry:
         path = tmp_path / "registry.toml"
         path.write_text(
             'schema=1\n[[consumer]]\nname="one"\nrepository="r"\nbranch="main"\nverify=["true"]\n'
-            'baseline_rules=["eslint:@sarj/new-rule"]\n',
+            'baseline_rules=["oxlint:@sarj/new-rule"]\n',
             encoding="utf-8",
         )
 
-        assert rollout.load_registry(path)[0].baseline_rules == ("eslint:@sarj/new-rule",)
+        assert rollout.load_registry(path)[0].baseline_rules == ("oxlint:@sarj/new-rule",)
 
     def test_react_doctor_policy_change_adds_one_source_wildcard(self) -> None:
         selected = rollout.rollout_baseline_rules(
@@ -109,13 +109,13 @@ class TestRegistry:
                 "r/one",
                 "main",
                 ("true",),
-                baseline_rules=("eslint:@sarj/new-rule",),
+                baseline_rules=("oxlint:@sarj/new-rule",),
             ),
             rollout.ReactDoctorPolicy(b'{"blocking":"warning"}', "0.9.12"),
             rollout.ReactDoctorPolicy(b'{"blocking":"error"}', "0.9.12"),
         )
 
-        assert selected == ("eslint:@sarj/new-rule", "react-doctor:*")
+        assert selected == ("oxlint:@sarj/new-rule", "react-doctor:*")
 
     def test_unchanged_react_doctor_policy_does_not_rebaseline(self) -> None:
         policy = rollout.ReactDoctorPolicy(b'{"blocking":"error"}', "0.9.12")
@@ -335,7 +335,7 @@ class TestSafety:
                 MANIFEST,
                 ".shellcheckrc",
                 "uv.lock",
-                "eslint.config.mjs",
+                "oxlint.config.mjs",
                 ".github/workflows/standards.yml",
                 ".github/workflows/ci.yml",
             )
@@ -346,9 +346,9 @@ class TestSafety:
         tmp_path: Path,
     ) -> None:
         nested_configs = (
-            "apps/assistant/eslint.config.js",
-            "apps/dashboard/eslint.config.js",
-            "packages/shared/eslint.config.js",
+            "apps/assistant/oxlint.config.js",
+            "apps/dashboard/oxlint.config.js",
+            "packages/shared/oxlint.config.js",
         )
         for relative in nested_configs:
             config = tmp_path / relative
@@ -365,7 +365,7 @@ class TestSafety:
         assert set(nested_configs) <= allowed
         assert "typescript/.yarnrc.yml" in allowed
         assert "pnpm-workspace.yaml" in allowed
-        arbitrary_config = "src/eslint.config.js"
+        arbitrary_config = "src/oxlint.config.js"
         assert arbitrary_config not in allowed
         with pytest.raises(rollout.RolloutError, match="protected paths"):
             rollout.reject_unsafe_diff((MANIFEST, arbitrary_config), allowed_paths=allowed)
@@ -493,16 +493,16 @@ class TestSafety:
         source = tmp_path / "apps/web/src/index.ts"
         source.parent.mkdir(parents=True)
         source.write_text(
-            f"/* eslint-disable no-console, {rollout.RETIRED_ESLINT_SELECTORS[1]}, eqeqeq -- legacy */\nconst x = 1;\n",
+            f"/* oxlint-disable no-console, {rollout.RETIRED_OXLINT_SELECTORS[1]}, eqeqeq -- legacy */\nconst x = 1;\n",
             encoding="utf-8",
         )
         runner = FakeRunner([(0, "apps/web/src/index.ts\0")])
 
-        changed = rollout.remove_retired_eslint_suppressions(tmp_path, runner)
+        changed = rollout.remove_retired_oxlint_suppressions(tmp_path, runner)
 
         assert changed == frozenset({"apps/web/src/index.ts"})
         assert source.read_text(encoding="utf-8") == (
-            "/* eslint-disable no-console, eqeqeq -- legacy */\nconst x = 1;\n"
+            "/* oxlint-disable no-console, eqeqeq -- legacy */\nconst x = 1;\n"
         )
 
 
@@ -1061,9 +1061,9 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
         repo = tmp_path / "repo"
         repo.mkdir()
         manifest = repo / MANIFEST
-        eslint = repo / "eslint.config.mjs"
+        oxlint = repo / "oxlint.config.mjs"
         manifest.write_text('schema = 3\nbundle = "5.8.0"\n', encoding="utf-8")
-        eslint.write_text("export default [];\n", encoding="utf-8")
+        oxlint.write_text("export default [];\n", encoding="utf-8")
         (repo / "guard.py").write_bytes(
             (Path(__file__).parents[1] / "fixtures" / "retirement" / "guard.py.txt").read_bytes()
         )
@@ -1169,7 +1169,7 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
                     ).stdout
                     assert not dirty, "verification hooks must run against a clean candidate commit"
                     if self.verification_runs in dirty_runs:
-                        eslint.write_text(f'export default ["generated-{self.verification_runs}"];\n', encoding="utf-8")
+                        oxlint.write_text(f'export default ["generated-{self.verification_runs}"];\n', encoding="utf-8")
                     returncode = returncodes[self.verification_runs - 1]
                     return subprocess.CompletedProcess(rendered, returncode, "verification result", "")
                 return subprocess.run(
@@ -1306,8 +1306,8 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
                 text=True,
             ).stdout.strip(),
         )
-        expected_eslint = f'export default ["generated-{max(dirty_runs)}"];\n' if dirty_runs else "export default [];\n"
-        assert eslint.read_text(encoding="utf-8") == expected_eslint
+        expected_oxlint = f'export default ["generated-{max(dirty_runs)}"];\n' if dirty_runs else "export default [];\n"
+        assert oxlint.read_text(encoding="utf-8") == expected_oxlint
         pull_request_command = next(command for command in runner.commands if command[:3] == ("gh", "pr", "create"))
         pull_request_body = pull_request_command[pull_request_command.index("--body") + 1]
         if dirty_runs == frozenset({1, 2}):

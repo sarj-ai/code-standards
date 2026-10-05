@@ -234,7 +234,7 @@ async function verifyDist(ruleCounts) {
     ),
     "Third party Rules must be closed by default outside its active routes",
   );
-  const engineIds = ["python", "eslint", "iac", "sql", "text"];
+  const engineIds = ["python", "oxlint", "iac", "sql", "text"];
   assert.deepEqual(
     [...rulesIndex.matchAll(/data-sidebar-engine="([^"]+)"/gu)].map(
       (match) => match[1],
@@ -404,12 +404,34 @@ async function verifyProviderPages(provider, expectedProviderOrder) {
       hrefSet.has(provider.homepage),
       `${provider.id} page ${String(pageNumber)} must link to its official homepage`,
     );
-    const expectedDocsUrlCounts = new Map();
-    for (const rule of pageRules) {
-      expectedDocsUrlCounts.set(
-        rule.docsUrl,
-        (expectedDocsUrlCounts.get(rule.docsUrl) ?? 0) + 1,
+    const ruleRows = [
+      ...page.matchAll(
+        /<li id="([^"]+)" class="third-party-rule-row" data-third-party-rule\b[^>]*>([\s\S]*?)<\/li>/gu,
+      ),
+    ];
+    for (const [index, rule] of pageRules.entries()) {
+      const row = ruleRows[index];
+      assert.equal(
+        row?.[1],
+        anchorForRule(rule),
+        `${rule.key} must own its rendered row`,
       );
+      const officialLinks = [
+        ...row[2].matchAll(
+          /<a\b[^>]*\bclass="third-party-rule-row__official"[^>]*>[\s\S]*?<\/a>/gu,
+        ),
+      ];
+      assert.equal(
+        officialLinks.length,
+        1,
+        `${rule.key} must link once to its official explanation`,
+      );
+      assert.deepEqual(
+        htmlHrefs(officialLinks[0][0]),
+        [rule.docsUrl],
+        `${rule.key} must link to its own official explanation`,
+      );
+      providerDocHrefs.push(rule.docsUrl);
       assert.ok(
         page.includes(escapeHtml(rule.displayId)),
         `${rule.key} must render its rule ID`,
@@ -427,16 +449,6 @@ async function verifyProviderPages(provider, expectedProviderOrder) {
         `${rule.key} must render its summary`,
       );
     }
-    for (const [docsUrl, expectedCount] of expectedDocsUrlCounts) {
-      assert.equal(
-        hrefs.filter((href) => href === docsUrl).length,
-        expectedCount,
-        `${provider.id} page ${String(pageNumber)} must link once per rule to its official explanation`,
-      );
-    }
-    providerDocHrefs.push(
-      ...hrefs.filter((href) => expectedDocsUrlCounts.has(href)),
-    );
     for (const candidate of catalog.providers) {
       assert.ok(
         hrefSet.has(`/third-party-linters/${candidate.id}/`),

@@ -1,0 +1,138 @@
+import identifierRegex from 'identifier-regex';
+import resolveVariableName from './resolve-variable-name.js';
+
+// https://github.com/microsoft/TypeScript/issues/2536#issuecomment-87194347
+const typescriptReservedWords = new Set([
+	'break',
+	'case',
+	'catch',
+	'class',
+	'const',
+	'continue',
+	'debugger',
+	'default',
+	'delete',
+	'do',
+	'else',
+	'enum',
+	'export',
+	'extends',
+	'false',
+	'finally',
+	'for',
+	'function',
+	'if',
+	'import',
+	'in',
+	'instanceof',
+	'new',
+	'null',
+	'return',
+	'super',
+	'switch',
+	'this',
+	'throw',
+	'true',
+	'try',
+	'typeof',
+	'var',
+	'void',
+	'while',
+	'with',
+	'as',
+	'implements',
+	'interface',
+	'let',
+	'package',
+	'private',
+	'protected',
+	'public',
+	'static',
+	'yield',
+	'any',
+	'boolean',
+	'constructor',
+	'declare',
+	'get',
+	'module',
+	'require',
+	'number',
+	'set',
+	'string',
+	'symbol',
+	'type',
+	'from',
+	'of',
+]);
+
+const identifierNameRegex = identifierRegex();
+
+const isValidIdentifier = name =>
+	typeof name === 'string'
+	&& identifierNameRegex.test(name)
+	&& !typescriptReservedWords.has(name);
+
+/*
+Unresolved reference is probably from the global scope. We should avoid using that name.
+
+For example, like `foo` and `bar` below.
+
+```
+function unicorn() {
+	return foo;
+}
+
+function unicorn() {
+	return function() {
+		return bar;
+	};
+}
+```
+*/
+// `scope.through` already contains every unresolved reference from the scope and its descendants, so there is no need to walk child scopes.
+const isUnresolvedName = (name, scope) =>
+	scope.through.some(({identifier, resolved}) => identifier?.name === name && !resolved);
+
+const isSafeName = (name, scopes) =>
+	scopes.every(scope => !(resolveVariableName(name, scope) || isUnresolvedName(name, scope)));
+
+const alwaysTrue = () => true;
+
+/**
+Rule-specific name check function.
+
+@callback isSafe
+@param {string} name - The generated candidate name.
+@param {Scope[]} scopes - The same list of scopes you pass to `getAvailableVariableName`.
+@returns {boolean} - `true` if the `name` is ok.
+*/
+
+/**
+Generates a unique name prefixed with `name` such that:
+- it is not defined in any of the `scopes`,
+- it is not a reserved word,
+- it is not `arguments` in strict scopes (where `arguments` is not allowed),
+- it does not collide with the actual `arguments` (which is always defined in function scopes).
+
+Useful when you want to rename a variable (or create a new variable) while being sure not to shadow any other variables in the code.
+
+@param {string} name - The desired name for a new variable.
+@param {Scope[]} scopes - The list of scopes the new variable will be referenced in.
+@param {isSafe} [isSafe] - Rule-specific name check function.
+@returns {string} - Either `name` as is, or a string like `${name}_` suffixed with underscores to make the name unique.
+*/
+export default function getAvailableVariableName(name, scopes, isSafe = alwaysTrue) {
+	if (!isValidIdentifier(name)) {
+		name += '_';
+
+		if (!isValidIdentifier(name)) {
+			return;
+		}
+	}
+
+	while (!isSafeName(name, scopes) || !isSafe(name, scopes)) {
+		name += '_';
+	}
+
+	return name;
+}

@@ -4,11 +4,11 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/prefer-discriminated-union.test.ts
  */
 
-import { type TSESTree } from "@typescript-eslint/utils";
-
+import { sourceOrigin } from "./_source-origin.js";
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile, isTestFile } from "./_paths.js";
-import { AST_NODE_TYPES } from "@typescript-eslint/utils";
+import type { ESTree } from "@oxlint/plugins";
+
 
 type MessageIds = "preferDiscriminatedUnion";
 type Options = readonly [];
@@ -49,14 +49,14 @@ const SUCCESS_PAYLOAD_MEMBER_NAMES: ReadonlySet<string> = new Set([
 
 const REQUIRED_STATUS_MEMBER_COUNT = 1;
 
-const FUNCTION_RETURN_OWNER_TYPES: ReadonlySet<AST_NODE_TYPES> = new Set([
-  AST_NODE_TYPES.ArrowFunctionExpression,
-  AST_NODE_TYPES.FunctionDeclaration,
-  AST_NODE_TYPES.FunctionExpression,
-  AST_NODE_TYPES.TSDeclareFunction,
-  AST_NODE_TYPES.TSEmptyBodyFunctionExpression,
-  AST_NODE_TYPES.TSFunctionType,
-  AST_NODE_TYPES.TSMethodSignature,
+const FUNCTION_RETURN_OWNER_TYPES: ReadonlySet<ESTree.Node["type"]> = new Set([
+  "ArrowFunctionExpression",
+  "FunctionDeclaration",
+  "FunctionExpression",
+  "TSDeclareFunction",
+  "TSEmptyBodyFunctionExpression",
+  "TSFunctionType",
+  "TSMethodSignature",
 ]);
 
 /**
@@ -64,7 +64,7 @@ const FUNCTION_RETURN_OWNER_TYPES: ReadonlySet<AST_NODE_TYPES> = new Set([
  * boolean status plus optional success and failure payloads.
  */
 function looksLikeMutuallyExclusiveState(
-  typeLiteral: TSESTree.TSTypeLiteral,
+  typeLiteral: ESTree.TSTypeLiteral,
 ): boolean {
   let statusMemberCount = 0;
   let hasFailurePayload = false;
@@ -72,7 +72,7 @@ function looksLikeMutuallyExclusiveState(
   let hasUnrecognizedMember = false;
 
   for (const member of typeLiteral.members) {
-    if (member.type !== AST_NODE_TYPES.TSPropertySignature) {
+    if (member.type !== "TSPropertySignature") {
       hasUnrecognizedMember = true;
       continue;
     }
@@ -112,15 +112,15 @@ function looksLikeMutuallyExclusiveState(
  * Returns the property key name for a member if it is a plain identifier or
  * string-literal property signature, otherwise `null`.
  */
-function getMemberName(member: TSESTree.TypeElement): string | null {
-  if (member.type !== AST_NODE_TYPES.TSPropertySignature || member.computed) {
+function getMemberName(member: ESTree.TSSignature): string | null {
+  if (member.type !== "TSPropertySignature" || member.computed) {
     return null;
   }
   const { key } = member;
-  if (key.type === AST_NODE_TYPES.Identifier) {
+  if (key.type === "Identifier") {
     return key.name;
   }
-  if (key.type === AST_NODE_TYPES.Literal && typeof key.value === "string") {
+  if (key.type === "Literal" && typeof key.value === "string") {
     return key.value;
   }
   return null;
@@ -129,28 +129,28 @@ function getMemberName(member: TSESTree.TypeElement): string | null {
 /**
  * Whether a property signature is annotated with `boolean`.
  */
-function isBooleanTyped(member: TSESTree.TSPropertySignature): boolean {
+function isBooleanTyped(member: ESTree.TSPropertySignature): boolean {
   return (
     member.typeAnnotation?.typeAnnotation.type ===
-    AST_NODE_TYPES.TSBooleanKeyword
+    "TSBooleanKeyword"
   );
 }
 
 /** The whole inline object returned by a function, directly or through `Promise`. */
 function inlineReturnTypeLiteral(
-  node: TSESTree.TSTypeLiteral,
-): TSESTree.TSTypeAnnotation | null {
-  let annotation: TSESTree.TSTypeAnnotation | null = null;
-  if (node.parent.type === AST_NODE_TYPES.TSTypeAnnotation) {
+  node: ESTree.TSTypeLiteral,
+): ESTree.TSTypeAnnotation | null {
+  let annotation: ESTree.TSTypeAnnotation | null = null;
+  if (node.parent?.type === "TSTypeAnnotation") {
     annotation = node.parent;
   } else if (
-    node.parent.type === AST_NODE_TYPES.TSTypeParameterInstantiation &&
+    node.parent?.type === "TSTypeParameterInstantiation" &&
     node.parent.params.length === 1 &&
     node.parent.params[0] === node &&
-    node.parent.parent.type === AST_NODE_TYPES.TSTypeReference &&
-    node.parent.parent.typeName.type === AST_NODE_TYPES.Identifier &&
-    node.parent.parent.typeName.name === "Promise" &&
-    node.parent.parent.parent.type === AST_NODE_TYPES.TSTypeAnnotation
+    node.parent.parent?.type === "TSTypeReference" &&
+    node.parent.parent?.typeName.type === "Identifier" &&
+    node.parent.parent?.typeName.name === "Promise" &&
+    node.parent.parent.parent?.type === "TSTypeAnnotation"
   ) {
     annotation = node.parent.parent.parent;
   }
@@ -181,15 +181,15 @@ export default createRule<Options, MessageIds>({
   defaultOptions: [],
   create(context) {
     if (
-      isTestFile(context.filename) ||
-      isGeneratedFile(context.filename, context.sourceCode.text)
+      isTestFile(sourceOrigin(context).filename) ||
+      isGeneratedFile(sourceOrigin(context).filename, sourceOrigin(context).text)
     ) {
       return {};
     }
 
     function checkTypeLiteral(
-      typeLiteral: TSESTree.TSTypeLiteral,
-      reportNode: TSESTree.Node,
+      typeLiteral: ESTree.TSTypeLiteral,
+      reportNode: ESTree.Node,
     ): void {
       if (looksLikeMutuallyExclusiveState(typeLiteral)) {
         context.report({
@@ -201,26 +201,26 @@ export default createRule<Options, MessageIds>({
 
     return {
       TSInterfaceDeclaration(
-        node: TSESTree.TSInterfaceDeclaration,
+        node: ESTree.TSInterfaceDeclaration,
       ): void {
         if (node.extends.length > 0) {
           return;
         }
         // An interface body is structurally an object type literal; reuse the
         // same membership analysis by treating its `body.body` as members.
-        const synthetic: TSESTree.TSTypeLiteral = {
+        const synthetic: ESTree.TSTypeLiteral = {
           ...node.body,
-          type: AST_NODE_TYPES.TSTypeLiteral,
+          type: "TSTypeLiteral",
           members: node.body.body,
         };
         checkTypeLiteral(synthetic, node);
       },
       "TSTypeAliasDeclaration > TSTypeLiteral"(
-        node: TSESTree.TSTypeLiteral,
+        node: ESTree.TSTypeLiteral,
       ): void {
         checkTypeLiteral(node, node.parent);
       },
-      TSTypeLiteral(node: TSESTree.TSTypeLiteral): void {
+      TSTypeLiteral(node: ESTree.TSTypeLiteral): void {
         const annotation = inlineReturnTypeLiteral(node);
         if (annotation !== null) checkTypeLiteral(node, annotation);
       },

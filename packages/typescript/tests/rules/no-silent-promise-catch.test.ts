@@ -1,19 +1,15 @@
 // vitest: shared-module-graph
-import * as tsParser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
+import { RuleTester } from "oxlint/plugins-dev";
+import { describe, it } from "vitest";
 
 import rule, { NO_SILENT_PROMISE_CATCH_DOCUMENTATION } from "../../src/rules/no-silent-promise-catch.js";
 
-RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
 RuleTester.it = it;
 RuleTester.itOnly = it.only;
 
 const RULE_TESTER = new RuleTester({
-  languageOptions: {
-    parser: tsParser,
-  },
+  languageOptions: { parserOptions: { lang: "ts" } },
 });
 
 RULE_TESTER.run("no-silent-promise-catch", rule, {
@@ -151,17 +147,7 @@ RULE_TESTER.run("no-silent-promise-catch", rule, {
     {
       code: "p.catch(() => ({ ok: false }));",
     },
-    // An eslint-disable-next-line above the call suppresses cleanly even when
-    // the handler sits on a later line than the call (the report is anchored
-    // on the CallExpression, not the handler).
-    {
-      code: [
-        "// eslint-disable-next-line @rule-tester/no-silent-promise-catch -- deliberate",
-        "p.catch(",
-        "  () => null,",
-        ");",
-      ].join("\n"),
-    },
+
   ],
   invalid: [
     { name: "does not exempt a shadowed Zod name", code: "import { z } from 'zod'; function run(z) { z.string().catch(() => null); }", errors: [{ messageId: "silentCatch" }] },

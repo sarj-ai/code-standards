@@ -162,7 +162,7 @@ def _historical_selectors(key: str, engine: str, raw_aliases: tuple[str, ...]) -
         for alias in raw_aliases
         for selector in (
             f"{engine}:{alias}",
-            *((f"eslint:@sarj/{alias}",) if engine == "eslint" and not alias.startswith("@") else ()),
+            *((f"oxlint:@sarj/{alias}",) if engine == "oxlint" and not alias.startswith("@") else ()),
         )
     )
     if len(historical) != len(set(historical)):
@@ -329,7 +329,7 @@ def _typescript_spec(value: object) -> RuleSpec:
     if frozenset(value) != _TYPESCRIPT_FIELDS:
         msg = "TypeScript public metadata entry has unexpected or missing fields"
         raise ValueError(msg)
-    if value["engine"] != RuleEngine.ESLINT.value or value["code"] is not None:
+    if value["engine"] != RuleEngine.OXLINT.value or value["code"] is not None:
         msg = "TypeScript public metadata has invalid engine or code"
         raise ValueError(msg)
     examples = value.get("examples")
@@ -345,7 +345,7 @@ def _typescript_spec(value: object) -> RuleSpec:
         msg = "TypeScript public metadata since must be a string or null"
         raise TypeError(msg)
     return RuleSpec(
-        engine=RuleEngine.ESLINT,
+        engine=RuleEngine.OXLINT,
         rule_id=RuleId(_value_from_dict(value, "ruleId")),
         code=None,
         summary=_value_from_dict(value, "summary"),
@@ -459,7 +459,7 @@ def build(
         *(_typescript_specs(resolved) if typescript is None else typescript),
     )
     engine_family = {
-        RuleEngine.ESLINT: "typescript",
+        RuleEngine.OXLINT: "typescript",
         RuleEngine.IAC: "iac",
         RuleEngine.PYTHON: "python",
         RuleEngine.SQL: "sql",

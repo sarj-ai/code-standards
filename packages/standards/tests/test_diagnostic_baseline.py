@@ -309,6 +309,7 @@ def test_deletion_hunks_preserve_baselines_away_from_surviving_boundaries(
     subprocess.run(("git", "init", "-q"), cwd=tmp_path, check=True)
     subprocess.run(("git", "config", "user.name", "Standards Test"), cwd=tmp_path, check=True)
     subprocess.run(("git", "config", "user.email", "standards@example.com"), cwd=tmp_path, check=True)
+    subprocess.run(("git", "config", "diff.interHunkContext", "10"), cwd=tmp_path, check=True)
     source = tmp_path / "app.py"
     source.write_text(before, encoding="utf-8")
     subprocess.run(("git", "add", "app.py"), cwd=tmp_path, check=True)
@@ -496,8 +497,8 @@ def test_baseline_init_refuses_to_overwrite_and_update_replaces(tmp_path: Path) 
 @pytest.mark.parametrize(
     ("selector", "expected"),
     [
-        ("eslint:@sarj/prefer-ecmascript-private-members", "eslint:prefer-ecmascript-private-members"),
-        ("eslint:prefer-ecmascript-private-members", "eslint:prefer-ecmascript-private-members"),
+        ("oxlint:@sarj/prefer-ecmascript-private-members", "oxlint:prefer-ecmascript-private-members"),
+        ("oxlint:prefer-ecmascript-private-members", "oxlint:prefer-ecmascript-private-members"),
         ("sarj-iac-lint:no-restated-comment", "iac:no-restated-comment"),
         ("iac:no-restated-comment", "iac:no-restated-comment"),
         ("sarj-python-lint:no-unnecessary-docstring", "python:no-unnecessary-docstring"),
@@ -524,7 +525,7 @@ def test_scoped_baseline_update_normalizes_native_sarj_rule_source(
         ),
         encoding="utf-8",
     )
-    captured: list[tuple[object, object, object]] = []
+    captured: list[tuple[object, object]] = []
 
     def analyze(
         _self: api.Standards,
@@ -535,7 +536,6 @@ def test_scoped_baseline_update_normalizes_native_sarj_rule_source(
             (
                 kwargs.get("rules"),
                 kwargs.get("include_react_doctor"),
-                kwargs.get("pass_on_unpruned_eslint_suppressions"),
             )
         )
         return report_from_tools(tmp_path, ())
@@ -557,7 +557,7 @@ def test_scoped_baseline_update_normalizes_native_sarj_rule_source(
         )
         == 0
     )
-    assert captured == [([expected], False, True)]
+    assert captured == [([expected], False)]
 
 
 def test_scoped_baseline_update_runs_only_shellcheck_for_native_selector(
@@ -659,7 +659,7 @@ def test_scoped_baseline_update_keeps_retired_iac_alias_invalid(
 @pytest.mark.parametrize(
     ("source", "rule_id", "selector"),
     [
-        ("eslint", "@sarj/prefer-ecmascript-private-members", "eslint:prefer-ecmascript-private-members"),
+        ("oxlint", "@sarj/prefer-ecmascript-private-members", "oxlint:prefer-ecmascript-private-members"),
         ("sarj-iac-lint", "no-restated-comment", "iac:no-restated-comment"),
         ("sarj-python-lint", "no-unnecessary-docstring", "python:no-unnecessary-docstring"),
         ("sarj-sql-lint", "no-create-trigger", "sql:no-create-trigger"),
@@ -791,7 +791,7 @@ def test_scoped_baseline_update_replaces_debt_recorded_under_a_catalogued_alias(
     assert baseline.load(baseline_path) == {"b" * 64: 1}
 
 
-def test_scoped_baseline_update_replaces_plugin_qualified_eslint_alias_debt(
+def test_scoped_baseline_update_replaces_plugin_qualified_oxlint_alias_debt(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -800,7 +800,7 @@ def test_scoped_baseline_update_replaces_plugin_qualified_eslint_alias_debt(
         "OLD",
         "old",
         Severity.ERROR,
-        "eslint",
+        "oxlint",
         Location("old.ts"),
         rule_id="@sarj/zod-naming-convention",
         fingerprint="a" * 64,
@@ -818,7 +818,7 @@ def test_scoped_baseline_update_replaces_plugin_qualified_eslint_alias_debt(
         "NEW",
         "replacement",
         Severity.ERROR,
-        "eslint",
+        "oxlint",
         Location("new.ts"),
         rule_id="@sarj/require-pascal-case-zod-schema-name",
         fingerprint="b" * 64,
@@ -831,7 +831,7 @@ def test_scoped_baseline_update_replaces_plugin_qualified_eslint_alias_debt(
     ) -> AnalysisReport:
         return report_from_tools(
             tmp_path,
-            (ToolReport("eslint", Completion.COMPLETE, (replacement,)),),
+            (ToolReport("oxlint", Completion.COMPLETE, (replacement,)),),
         )
 
     monkeypatch.setattr(api.Standards, "analyze", analyze)  # sarj-noqa: SARJ445 -- intercepts baseline analyzer routing
@@ -846,7 +846,7 @@ def test_scoped_baseline_update_replaces_plugin_qualified_eslint_alias_debt(
                 "--output",
                 str(baseline_path),
                 "--rule",
-                "eslint:require-pascal-case-zod-schema-name",
+                "oxlint:require-pascal-case-zod-schema-name",
             ]
         )
         == 0
@@ -859,15 +859,15 @@ def test_scoped_baseline_update_replaces_plugin_qualified_eslint_alias_debt(
     [
         ("react-doctor:react-doctor/no-array-index-as-key", "react-doctor", "react-doctor/no-array-index-as-key"),
         ("react-doctor:no-array-index-as-key", "react-doctor", "react-doctor/no-array-index-as-key"),
-        ("eslint:react-doctor/no-array-index-as-key", "react-doctor", "react-doctor/no-array-index-as-key"),
-        ("eslint:react-doctor/no-array-index-as-key", "react-doctor", "no-array-index-as-key"),
+        ("oxlint:react-doctor/no-array-index-as-key", "react-doctor", "react-doctor/no-array-index-as-key"),
+        ("oxlint:react-doctor/no-array-index-as-key", "react-doctor", "no-array-index-as-key"),
         (
             "react-doctor:react-hooks-js/no-useless-custom-hooks",
             "react-doctor",
             "react-hooks-js/no-useless-custom-hooks",
         ),
-        ("eslint:react-hooks-js/no-useless-custom-hooks", "react-doctor", "react-hooks-js/no-useless-custom-hooks"),
-        ("eslint:react-hooks-js/no-useless-custom-hooks", "react-hooks-js", "no-useless-custom-hooks"),
+        ("oxlint:react-hooks-js/no-useless-custom-hooks", "react-doctor", "react-hooks-js/no-useless-custom-hooks"),
+        ("oxlint:react-hooks-js/no-useless-custom-hooks", "react-hooks-js", "no-useless-custom-hooks"),
         ("react-hooks-js:no-useless-custom-hooks", "react-doctor", "react-hooks-js/no-useless-custom-hooks"),
         ("react-hooks-js:no-useless-custom-hooks", "react-hooks-js", "no-useless-custom-hooks"),
     ],
@@ -1031,12 +1031,12 @@ def test_scoped_baseline_update_uses_manifest_verification_paths(
     (tmp_path / MANIFEST_NAME).write_text(adopted.render(), encoding="utf-8")
     captured: list[object] = []
 
-    def analyze_eslint(files: object, **_kwargs: object) -> tuple[ToolReport, ...]:
+    def analyze_oxlint(files: object, **_kwargs: object) -> tuple[ToolReport, ...]:
         captured.append(files)
         return ()
 
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- intercepts baseline analyzer routing
-        external, "analyze_external", analyze_eslint
+        external, "analyze_external", analyze_oxlint
     )
 
     assert (
@@ -1049,7 +1049,7 @@ def test_scoped_baseline_update_uses_manifest_verification_paths(
                 "--output",
                 str(baseline_path),
                 "--rule",
-                "eslint:unicorn/prefer-iterator-helpers",
+                "oxlint:unicorn/prefer-iterator-helpers",
             ]
         )
         == 0
@@ -1118,9 +1118,9 @@ def test_scoped_baseline_update_includes_tracked_terraform_tests_outside_verific
 
 @pytest.mark.parametrize(
     "selector",
-    ["eslint:@typescript-eslint/naming-convention", "eslint:unicorn/prefer-iterator-helpers"],
+    ["oxlint:typescript/naming-convention", "oxlint:unicorn/prefer-iterator-helpers"],
 )
-def test_scoped_baseline_update_runs_only_eslint_for_upstream_selector(
+def test_scoped_baseline_update_runs_only_oxlint_for_upstream_selector(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     selector: str,
@@ -1147,7 +1147,7 @@ def test_scoped_baseline_update_runs_only_eslint_for_upstream_selector(
 
     external_calls: list[object] = []
 
-    def analyze_eslint(files: object, **kwargs: object) -> tuple[ToolReport, ...]:
+    def analyze_oxlint(files: object, **kwargs: object) -> tuple[ToolReport, ...]:
         policy = kwargs.get("policy")
         assert isinstance(policy, Policy)
         external_calls.append(
@@ -1155,14 +1155,13 @@ def test_scoped_baseline_update_runs_only_eslint_for_upstream_selector(
                 files,
                 kwargs.get("capabilities"),
                 kwargs.get("include_react_doctor"),
-                kwargs.get("pass_on_unpruned_eslint_suppressions"),
                 policy.allows_path(tmp_path / "generated" / "client.ts"),
             )
         )
         return ()
 
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- intercepts baseline analyzer routing
-        external, "analyze_external", analyze_eslint
+        external, "analyze_external", analyze_oxlint
     )
 
     assert (
@@ -1181,7 +1180,7 @@ def test_scoped_baseline_update_runs_only_eslint_for_upstream_selector(
         == 0
     )
     assert captured == []
-    assert external_calls == [([str(tmp_path)], frozenset({"eslint"}), False, True, False)]
+    assert external_calls == [([str(tmp_path)], frozenset({"oxlint"}), False, False)]
 
 
 def test_baseline_rejects_a_path_outside_the_repository(tmp_path: Path) -> None:

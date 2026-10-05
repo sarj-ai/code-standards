@@ -1,44 +1,28 @@
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve, sep } from "node:path";
-
-import * as parser from "@typescript-eslint/parser";
-import { Linter, type Rule } from "eslint";
-
+import { RuleTester } from "oxlint/plugins-dev";
 import type { DocumentedRule, RuleExample } from "./rules/_docs.js";
 
-/** Execute all authored examples, including private regressions, in isolated projects. */
-export async function verifyRuleExamples<Options extends readonly unknown[], MessageIds extends string>(
-  rule: DocumentedRule<Options, MessageIds>,
+/** Execute authored syntax examples through the official Oxlint rule tester. */
+export async function verifyRuleExamples<MessageIds extends string>(
+  rule: DocumentedRule<MessageIds>,
 ): Promise<number> {
   const spec = rule.documentation;
-  if (spec === undefined || !spec.publicExamples.some((item) => item.outcome === "match") ||
-      !spec.publicExamples.some((item) => item.outcome === "no-match")) {
-    throw new Error("rule requires documented public matching and non-matching examples");
+  if (
+    spec === undefined ||
+    !spec.publicExamples.some((item) => item.outcome === "match") ||
+    !spec.publicExamples.some((item) => item.outcome === "no-match")
+  ) {
+    throw new Error(
+      "rule requires documented public matching and non-matching examples",
+    );
   }
   for (const example of spec.examples) {
     const root = await mkdtemp(join(tmpdir(), "sarj-rule-example-"));
     try {
-      for (const file of example.files) {
-        const path = fixturePath(root, file.path);
-        await mkdir(dirname(path), { recursive: true });
-        await writeFile(path, file.source);
-      }
-      const tsconfig = join(root, "tsconfig.json");
-      if (!example.files.some((file) => file.path === "tsconfig.json")) {
-        await writeFile(tsconfig, JSON.stringify({ compilerOptions: {
-          target: "ESNext", module: "ESNext", moduleResolution: "Bundler", strict: true,
-          allowJs: true, jsx: "preserve", noEmit: true,
-        }, include: ["**/*"] }));
-      }
-      const ruleId = `@sarj/${spec.ruleId}`;
-      const config: Linter.Config = {
-        files: ["**/*.{ts,tsx,js,jsx,mts,cts,mjs,cjs}"],
-        languageOptions: { parser, parserOptions: { project: tsconfig, tsconfigRootDir: root } },
-        plugins: { "@sarj": { rules: { [spec.ruleId]: rule as unknown as Rule.RuleModule } } },
-        rules: { [ruleId]: ["error", ...(rule.defaultOptions ?? [])] },
-      };
-      await verifyExample(new Linter({ cwd: root }), config, example, root, ruleId);
+      await writeFixture(root, example.files);
+      executeExample(spec.ruleId, rule, example, root);
     } finally {
       await rm(root, { recursive: true, force: true });
     }
@@ -46,33 +30,76 @@ export async function verifyRuleExamples<Options extends readonly unknown[], Mes
   return spec.examples.length;
 }
 
-function fixturePath(root: string, path: string): string {
-  const resolved = resolve(root, path);
-  if (!resolved.startsWith(root + sep)) throw new Error(`unsafe example path: ${path}`);
-  return resolved;
+async function writeFixture(
+  root: string,
+  files: RuleExample["files"],
+): Promise<void> {
+  for (const file of files) {
+    const path = fixturePath(root, file.path);
+    await mkdir(dirname(path), { recursive: true });
+    await writeFile(path, file.source);
+  }
 }
 
-async function verifyExample(linter: Linter, config: Linter.Config, example: RuleExample, root: string, ruleId: string): Promise<void> {
+function executeExample<MessageIds extends string>(
+  ruleId: string,
+  rule: DocumentedRule<MessageIds>,
+  example: RuleExample,
+  root: string,
+): void {
   const focus = example.files.find((file) => file.path === example.focusPath);
-  if (focus === undefined) throw new Error(`${example.id}: focus file is missing`);
-  const filename = fixturePath(root, focus.path);
-  const messages = linter.verify(focus.source, config, { filename });
-  if (messages.some((message) => message.fatal || message.ruleId !== ruleId)) {
-    throw new Error(`${example.id}: invalid fixture: ${messages.map((message) => message.message).join("; ")}`);
+  if (focus === undefined)
+    throw new Error(`${example.id}: focus file is missing`);
+  if (example.fixedFiles?.some((file) => file.path !== example.focusPath)) {
+    throw new Error(
+      `${example.id}: a rule can fix only its current source file`,
+    );
   }
-  if (messages.length !== example.expectedCount) {
-    throw new Error(`${example.id}: expected ${example.expectedCount} findings, received ${messages.length}`);
-  }
-  for (const expected of example.fixedFiles ?? []) {
-    const input = example.files.find((file) => file.path === expected.path);
-    if (input === undefined) throw new Error(`${example.id}: fixed file has no original`);
-    const options = { filename: fixturePath(root, input.path) };
-    const fixed = linter.verifyAndFix(input.source, config, options);
-    if (fixed.output !== expected.source) throw new Error(`${example.id}: unexpected fixed source`);
-    await writeFile(options.filename, fixed.output);
-    const repeated = linter.verifyAndFix(fixed.output, config, options);
-    if (repeated.fixed || repeated.output !== fixed.output || repeated.messages.length > 0) {
-      throw new Error(`${example.id}: fix is not clean and idempotent`);
+  const fixed = example.fixedFiles?.find(
+    (file) => file.path === example.focusPath,
+  );
+  const test = {
+    name: example.id,
+    filename: fixturePath(root, focus.path),
+    code: focus.source,
+  };
+  // Official hooks permit immediate execution outside a test framework. The
+  // synchronous run always restores them before another example can execute.
+  const previousDescribe = RuleTester.describe;
+  const previousIt = RuleTester.it;
+  try {
+    RuleTester.describe = (_name, callback) => callback();
+    RuleTester.it = (_name, callback) => callback();
+    const tester = new RuleTester();
+    if (example.expectedCount === 0) {
+      tester.run(ruleId, rule, { valid: [test], invalid: [] });
+    } else {
+      const invalid: RuleTester.InvalidTestCase = {
+        ...test,
+        errors: example.expectedCount,
+      };
+      if (fixed !== undefined) invalid.output = fixed.source;
+      tester.run(ruleId, rule, { valid: [], invalid: [invalid] });
     }
+    if (fixed !== undefined)
+      tester.run(ruleId, rule, {
+        valid: [{ ...test, name: `${example.id}: fixed`, code: fixed.source }],
+        invalid: [],
+      });
+  } catch (error) {
+    throw new Error(
+      `${example.id}: ${error instanceof Error ? error.message : String(error)}`,
+      { cause: error },
+    );
+  } finally {
+    RuleTester.describe = previousDescribe;
+    RuleTester.it = previousIt;
   }
+}
+
+function fixturePath(root: string, path: string): string {
+  const resolved = resolve(root, path);
+  if (!resolved.startsWith(root + sep))
+    throw new Error(`unsafe example path: ${path}`);
+  return resolved;
 }

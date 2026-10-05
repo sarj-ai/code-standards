@@ -105,9 +105,9 @@ def route(root: Path, base: str, head: str, *, event: str = "pull_request") -> f
         pytest.param(".sarj-standards.toml", {"standards", "docs"}, id="bundle-manifest"),
         pytest.param("packages/standards/uv.lock", {"standards", "docs", "mobile"}, id="runner-dependencies"),
         pytest.param(
-            "packages/standards/src/sarj_standards/configs/eslint.strict.mjs",
+            "packages/standards/src/sarj_standards/configs/oxlint.strict.mjs",
             {"typescript", "standards", "docs", "codeql-javascript-typescript"},
-            id="eslint-consumer-config",
+            id="oxlint-consumer-config",
         ),
         pytest.param("new-package/source.py", SCOPES, id="unknown-owner"),
         pytest.param(
@@ -320,6 +320,17 @@ class WorkflowStep(BaseModel):
     name: str = ""
     condition: str = Field(default="", alias="if")
     run: str = ""
+    working_directory: str | None = Field(default=None, alias="working-directory")
+
+
+class WorkflowRunDefaults(BaseModel):
+    model_config: ClassVar[ConfigDict] = ConfigDict(frozen=True, extra="ignore")
+    working_directory: str = Field(default=".", alias="working-directory")
+
+
+class WorkflowDefaults(BaseModel):
+    model_config: ClassVar[ConfigDict] = ConfigDict(frozen=True, extra="ignore")
+    run: WorkflowRunDefaults = Field(default_factory=WorkflowRunDefaults)
 
 
 class WorkflowJob(BaseModel):
@@ -328,6 +339,12 @@ class WorkflowJob(BaseModel):
     name: str = ""
     condition: str = Field(default="", alias="if")
     steps: list[WorkflowStep] = Field(default_factory=list)
+    defaults: WorkflowDefaults = Field(default_factory=WorkflowDefaults)
+
+
+class RepositoryPackageManifest(BaseModel):
+    model_config: ClassVar[ConfigDict] = ConfigDict(frozen=True, extra="ignore")
+    package_manager: str = Field(alias="packageManager")
 
 
 class Workflow(BaseModel):
@@ -339,6 +356,48 @@ def workflow(name: str) -> Workflow:
     path = SCRIPT.parents[1] / "workflows" / name
     document: object = yaml.safe_load(path.read_text())  # pyright: ignore[reportAny] -- Pydantic validates the YAML boundary.
     return Workflow.model_validate(document)
+
+
+@pytest.mark.parametrize("filename", ["ci.yml", "release.yml"])
+def test_npm_workspace_commands_use_repository_root(filename: str) -> None:
+    for name, job in workflow(filename).jobs.items():
+        for step in job.steps:
+            if any(line.strip().startswith("npm ") and "--workspace " in line for line in step.run.splitlines()):
+                directory = step.working_directory or job.defaults.run.working_directory
+                assert directory == ".", (filename, name, step.run, directory)
+
+
+def test_adoption_smoke_packs_native_workspaces_without_install_scripts() -> None:
+    commands = [
+        line.strip()
+        for step in workflow("ci.yml").jobs["adoption-smoke"].steps
+        for line in step.run.splitlines()
+        if line.strip().startswith("npm ") and " pack " in line
+    ]
+    assert commands == [
+        'npm --workspace packages/typescript pack --ignore-scripts --pack-destination "$artifacts"',
+        'npm --workspace packages/react-hooks pack --ignore-scripts --pack-destination "$artifacts"',
+    ]
+
+
+@pytest.mark.parametrize("filename", ["ci.yml", "release.yml"])
+def test_locked_npm_installs_use_the_repository_package_manager(filename: str) -> None:
+    manifest = RepositoryPackageManifest.model_validate_json((SCRIPT.parents[2] / "package.json").read_text())
+    pin = f"npm install --global {manifest.package_manager} --ignore-scripts"
+    external_pin = f"npx --yes --ignore-scripts {manifest.package_manager} install --global {manifest.package_manager} --ignore-scripts"
+    for name, job in workflow(filename).jobs.items():
+        pinned = False
+        for step in job.steps:
+            if step.run in {pin, external_pin}:
+                pinned = True
+            if any(line.strip().startswith("npm ") and " ci " in f" {line} " for line in step.run.splitlines()):
+                assert pinned, (filename, name, step.run)
+
+
+def test_typescript_npm_bootstrap_does_not_replace_the_running_cli() -> None:
+    manifest = RepositoryPackageManifest.model_validate_json((SCRIPT.parents[2] / "package.json").read_text())
+    bootstrap = f"npx --yes --ignore-scripts {manifest.package_manager} install --global {manifest.package_manager} --ignore-scripts"
+    assert any(step.run == bootstrap for step in workflow("ci.yml").jobs["typescript"].steps)
 
 
 def test_routing_failure_cannot_silently_skip_required_jobs() -> None:

@@ -4,17 +4,23 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/prefer-immutable-module-constant.test.ts
  */
 
-import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
-import type { Scope } from "@typescript-eslint/utils/ts-eslint";
-
+import type { ESTree, Variable } from "@oxlint/plugins";
+import { sourceOrigin } from "./_source-origin.js";
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile, isTestFile } from "./_paths.js";
+import { findVariable } from "./_scope.js";
+import {
+  createTypeAliasEnvironment,
+  hasVisibleTypeBinding,
+  visibleTypeAlias,
+} from "./_type-alias-resolution.js";
 
 type MessageIds = "preferAsConst" | "preferReadonlyCollection";
 type Options = readonly [];
 
 export const PREFER_IMMUTABLE_MODULE_CONSTANT_DOCUMENTATION = {
-  summary: "Require module-level constant collections to expose readonly state.",
+  summary:
+    "Require module-level constant collections to expose readonly state.",
   rationale:
     "A const binding prevents reassignment but does not stop callers from mutating its array, object, Set, or Map contents.",
   remediation:
@@ -29,7 +35,12 @@ export const PREFER_IMMUTABLE_MODULE_CONSTANT_DOCUMENTATION = {
       id: "readonly-array-literal",
       title: "A module constant exposes a readonly literal",
       outcome: "no-match",
-      files: [{ path: "src/constants.ts", source: "const VALUES = [1, 2, 3] as const;" }],
+      files: [
+        {
+          path: "src/constants.ts",
+          source: "const VALUES = [1, 2, 3] as const;",
+        },
+      ],
       focusPath: "src/constants.ts",
       expectedCount: 0,
       public: true,
@@ -38,7 +49,9 @@ export const PREFER_IMMUTABLE_MODULE_CONSTANT_DOCUMENTATION = {
       id: "mutable-array-literal",
       title: "A module constant exposes a mutable array",
       outcome: "match",
-      files: [{ path: "src/constants.ts", source: "const VALUES = [1, 2, 3];" }],
+      files: [
+        { path: "src/constants.ts", source: "const VALUES = [1, 2, 3];" },
+      ],
       focusPath: "src/constants.ts",
       expectedCount: 1,
       public: true,
@@ -48,7 +61,13 @@ export const PREFER_IMMUTABLE_MODULE_CONSTANT_DOCUMENTATION = {
       scenarioId: "type-binding",
       title: "A type named Readonly still exposes mutable properties",
       outcome: "match",
-      files: [{ path: "src/constants.ts", source: "type Readonly = { voice: boolean };\nexport const TOOL_SUPPORT: Readonly = { voice: true };" }],
+      files: [
+        {
+          path: "src/constants.ts",
+          source:
+            "type Readonly = { voice: boolean };\nexport const TOOL_SUPPORT: Readonly = { voice: true };",
+        },
+      ],
       focusPath: "src/constants.ts",
       expectedCount: 1,
       public: true,
@@ -58,7 +77,13 @@ export const PREFER_IMMUTABLE_MODULE_CONSTANT_DOCUMENTATION = {
       scenarioId: "type-binding",
       title: "A local alias resolves to readonly properties",
       outcome: "no-match",
-      files: [{ path: "src/constants.ts", source: "type ToolSupport = Readonly<{ voice: boolean }>;\nexport const TOOL_SUPPORT: ToolSupport = { voice: true };" }],
+      files: [
+        {
+          path: "src/constants.ts",
+          source:
+            "type ToolSupport = Readonly<{ voice: boolean }>;\nexport const TOOL_SUPPORT: ToolSupport = { voice: true };",
+        },
+      ],
       focusPath: "src/constants.ts",
       expectedCount: 0,
       public: true,
@@ -84,79 +109,99 @@ const MUTATING_METHODS: ReadonlySet<string> = new Set([
   "unshift",
 ]);
 
-function isAsConst(node: TSESTree.Node, sourceText: (node: TSESTree.Node) => string): boolean {
-  if (node.type === AST_NODE_TYPES.TSSatisfiesExpression || node.type === AST_NODE_TYPES.TSNonNullExpression) {
+function isAsConst(
+  node: ESTree.Node,
+  sourceText: (node: ESTree.Node) => string,
+): boolean {
+  if (
+    node.type === "TSSatisfiesExpression" ||
+    node.type === "TSNonNullExpression"
+  ) {
     return isAsConst(node.expression, sourceText);
   }
-  if (node.type !== AST_NODE_TYPES.TSAsExpression) return false;
+  if (node.type !== "TSAsExpression") return false;
   return sourceText(node.typeAnnotation).trim() === "const";
 }
 
 /** Strip type-only wrappers without treating a mutable assertion as readonly. */
-function unwrapExpression(node: TSESTree.Node): TSESTree.Node {
+function unwrapExpression(node: ESTree.Node): ESTree.Node {
   if (
-    node.type === AST_NODE_TYPES.TSAsExpression ||
-    node.type === AST_NODE_TYPES.TSSatisfiesExpression ||
-    node.type === AST_NODE_TYPES.TSNonNullExpression
+    node.type === "TSAsExpression" ||
+    node.type === "TSSatisfiesExpression" ||
+    node.type === "TSNonNullExpression"
   ) {
     return unwrapExpression(node.expression);
   }
   return node;
 }
 
-type GlobalResolver = (identifier: TSESTree.Identifier) => boolean;
-type LocalType = TSESTree.TSTypeAliasDeclaration | TSESTree.TSTypeParameter;
-type LocalTypeResolver = (identifier: TSESTree.Identifier) => LocalType | undefined;
-type TypeArguments = ReadonlyMap<TSESTree.TSTypeParameter, TypeArgument>;
+type GlobalResolver = (
+  identifier: Extract<ESTree.Node, { type: "Identifier" }>,
+) => boolean;
+type LocalType = ESTree.TSTypeAliasDeclaration | ESTree.TSTypeParameter;
+type LocalTypeResolver = (
+  identifier: Extract<ESTree.Node, { type: "Identifier" }>,
+) => LocalType | undefined;
+type TypeArguments = ReadonlyMap<ESTree.TSTypeParameter, TypeArgument>;
 type ReadonlyState = "readonly" | "mutable" | "unknown";
 type TypeArgument = {
-  readonly node: TSESTree.Node;
+  readonly node: ESTree.Node;
   readonly arguments: TypeArguments;
-  readonly seen: ReadonlySet<TSESTree.Node>;
+  readonly seen: ReadonlySet<ESTree.Node>;
 };
 
-function isObjectFreeze(node: TSESTree.Node, isUnshadowedGlobal: GlobalResolver): boolean {
+function isObjectFreeze(
+  node: ESTree.Node,
+  isUnshadowedGlobal: GlobalResolver,
+): boolean {
   const inner = unwrapExpression(node);
   if (
-    inner.type === AST_NODE_TYPES.CallExpression &&
-    inner.callee.type === AST_NODE_TYPES.MemberExpression &&
+    inner.type === "CallExpression" &&
+    inner.callee.type === "MemberExpression" &&
     !inner.callee.computed &&
-    inner.callee.object.type === AST_NODE_TYPES.Identifier &&
+    inner.callee.object.type === "Identifier" &&
     inner.callee.object.name === "Object" &&
     isUnshadowedGlobal(inner.callee.object) &&
-    inner.callee.property.type === AST_NODE_TYPES.Identifier &&
+    inner.callee.property.type === "Identifier" &&
     inner.callee.property.name === "freeze" &&
     inner.arguments.length === 1
   ) {
     const argument = inner.arguments[0];
-    return argument !== undefined && argument.type !== AST_NODE_TYPES.SpreadElement && collectionKind(argument, isUnshadowedGlobal) === "literal";
+    return (
+      argument !== undefined &&
+      argument.type !== "SpreadElement" &&
+      collectionKind(argument, isUnshadowedGlobal) === "literal"
+    );
   }
   return false;
 }
 
-function collectionKind(node: TSESTree.Node, isUnshadowedGlobal: GlobalResolver): "literal" | "Set" | "Map" | null {
+function collectionKind(
+  node: ESTree.Node,
+  isUnshadowedGlobal: GlobalResolver,
+): "literal" | "Set" | "Map" | null {
   const inner = unwrapExpression(node);
   if (
-    inner.type === AST_NODE_TYPES.CallExpression &&
-    inner.callee.type === AST_NODE_TYPES.MemberExpression &&
+    inner.type === "CallExpression" &&
+    inner.callee.type === "MemberExpression" &&
     !inner.callee.computed &&
-    inner.callee.object.type === AST_NODE_TYPES.Identifier &&
+    inner.callee.object.type === "Identifier" &&
     inner.callee.object.name === "Object" &&
     isUnshadowedGlobal(inner.callee.object) &&
-    inner.callee.property.type === AST_NODE_TYPES.Identifier &&
+    inner.callee.property.type === "Identifier" &&
     inner.callee.property.name === "freeze" &&
     inner.arguments.length === 1 &&
     inner.arguments[0] !== undefined &&
-    inner.arguments[0].type !== AST_NODE_TYPES.SpreadElement
+    inner.arguments[0].type !== "SpreadElement"
   ) {
     return collectionKind(inner.arguments[0], isUnshadowedGlobal);
   }
-  if (inner.type === AST_NODE_TYPES.ArrayExpression || inner.type === AST_NODE_TYPES.ObjectExpression) {
+  if (inner.type === "ArrayExpression" || inner.type === "ObjectExpression") {
     return "literal";
   }
   if (
-    inner.type === AST_NODE_TYPES.NewExpression &&
-    inner.callee.type === AST_NODE_TYPES.Identifier &&
+    inner.type === "NewExpression" &&
+    inner.callee.type === "Identifier" &&
     (inner.callee.name === "Set" || inner.callee.name === "Map") &&
     isUnshadowedGlobal(inner.callee)
   ) {
@@ -166,78 +211,123 @@ function collectionKind(node: TSESTree.Node, isUnshadowedGlobal: GlobalResolver)
 }
 
 function declaredReadonlyType(
-  node: TSESTree.VariableDeclarator,
+  node: ESTree.VariableDeclarator,
   kind: "literal" | "Set" | "Map",
   resolveLocalType: LocalTypeResolver,
   isUnshadowedType: GlobalResolver,
 ): boolean {
-  const annotation = node.id.type === AST_NODE_TYPES.Identifier ? node.id.typeAnnotation : undefined;
-  if (annotation !== undefined && readonlyTypeState(annotation.typeAnnotation, kind, resolveLocalType, isUnshadowedType) === "readonly") {
+  const annotation =
+    node.id.type === "Identifier" ? node.id.typeAnnotation : undefined;
+  if (
+    annotation != null &&
+    readonlyTypeState(
+      annotation.typeAnnotation,
+      kind,
+      resolveLocalType,
+      isUnshadowedType,
+    ) === "readonly"
+  ) {
     return true;
   }
-  return node.init?.type === AST_NODE_TYPES.TSAsExpression &&
-    readonlyTypeState(node.init.typeAnnotation, kind, resolveLocalType, isUnshadowedType) === "readonly";
+  return (
+    node.init?.type === "TSAsExpression" &&
+    readonlyTypeState(
+      node.init.typeAnnotation,
+      kind,
+      resolveLocalType,
+      isUnshadowedType,
+    ) === "readonly"
+  );
 }
 
 function readonlyTypeState(
-  node: TSESTree.Node,
+  node: ESTree.Node,
   kind: "literal" | "Set" | "Map",
   resolveLocalType: LocalTypeResolver,
   isUnshadowedType: GlobalResolver,
   arguments_: TypeArguments = new Map(),
-  seen: ReadonlySet<TSESTree.Node> = new Set(),
+  seen: ReadonlySet<ESTree.Node> = new Set(),
 ): ReadonlyState {
   if (seen.has(node)) return "unknown";
-  if (node.type !== AST_NODE_TYPES.TSTypeReference || node.typeName.type !== AST_NODE_TYPES.Identifier) {
+  if (node.type !== "TSTypeReference" || node.typeName.type !== "Identifier") {
     return directReadonlyState(node, kind, isUnshadowedType);
   }
   const declaration = resolveLocalType(node.typeName);
-  if (declaration === undefined) return directReadonlyState(node, kind, isUnshadowedType);
-  if (declaration.type === AST_NODE_TYPES.TSTypeParameter) {
+  if (declaration === undefined)
+    return directReadonlyState(node, kind, isUnshadowedType);
+  if (declaration.type === "TSTypeParameter") {
     const argument = arguments_.get(declaration);
-    return argument === undefined ? "unknown" : readonlyTypeState(
-      argument.node, kind, resolveLocalType, isUnshadowedType, argument.arguments, argument.seen,
-    );
+    return argument === undefined
+      ? "unknown"
+      : readonlyTypeState(
+          argument.node,
+          kind,
+          resolveLocalType,
+          isUnshadowedType,
+          argument.arguments,
+          argument.seen,
+        );
   }
   const expanded = new Set([...seen, node]);
   return readonlyTypeState(
-    declaration.typeAnnotation, kind, resolveLocalType, isUnshadowedType,
-    bindTypeArguments(declaration, node, arguments_, expanded), expanded,
+    declaration.typeAnnotation,
+    kind,
+    resolveLocalType,
+    isUnshadowedType,
+    bindTypeArguments(declaration, node, arguments_, expanded),
+    expanded,
   );
 }
 
 function bindTypeArguments(
-  declaration: TSESTree.TSTypeAliasDeclaration,
-  reference: TSESTree.TSTypeReference,
+  declaration: ESTree.TSTypeAliasDeclaration,
+  reference: ESTree.TSTypeReference,
   arguments_: TypeArguments,
-  seen: ReadonlySet<TSESTree.Node>,
+  seen: ReadonlySet<ESTree.Node>,
 ): TypeArguments {
   const bindings = new Map(arguments_);
-  for (const [index, parameter] of (declaration.typeParameters?.params ?? []).entries()) {
+  for (const [index, parameter] of (
+    declaration.typeParameters?.params ?? []
+  ).entries()) {
     const argument = reference.typeArguments?.params[index];
     const node = argument ?? parameter.default;
-    if (node !== undefined) {
-      bindings.set(parameter, { node, arguments: argument === undefined ? new Map(bindings) : arguments_, seen });
+    if (node != null) {
+      bindings.set(parameter, {
+        node,
+        arguments: argument === undefined ? new Map(bindings) : arguments_,
+        seen,
+      });
     }
   }
   return bindings;
 }
 
-function directReadonlyState(node: TSESTree.Node, kind: "literal" | "Set" | "Map", isUnshadowedType: GlobalResolver): ReadonlyState {
-  if (node.type === AST_NODE_TYPES.TSTypeOperator && node.operator === "readonly") {
+function directReadonlyState(
+  node: ESTree.Node,
+  kind: "literal" | "Set" | "Map",
+  isUnshadowedType: GlobalResolver,
+): ReadonlyState {
+  if (node.type === "TSTypeOperator" && node.operator === "readonly") {
     return "readonly";
   }
-  if (node.type === AST_NODE_TYPES.TSTypeLiteral) {
+  if (node.type === "TSTypeLiteral") {
     if (node.members.length === 0) return "unknown";
-    const readonly = kind === "literal" && node.members.length > 0 && node.members.every((member) =>
-      (member.type === AST_NODE_TYPES.TSPropertySignature || member.type === AST_NODE_TYPES.TSIndexSignature) && member.readonly,
-    );
+    const readonly =
+      kind === "literal" &&
+      node.members.length > 0 &&
+      node.members.every(
+        (member) =>
+          (member.type === "TSPropertySignature" ||
+            member.type === "TSIndexSignature") &&
+          member.readonly,
+      );
     return readonly ? "readonly" : "mutable";
   }
-  if (node.type === AST_NODE_TYPES.TSArrayType || node.type === AST_NODE_TYPES.TSTupleType) return "mutable";
+  if (node.type === "TSArrayType" || node.type === "TSTupleType")
+    return "mutable";
   if (
-    node.type !== AST_NODE_TYPES.TSTypeReference ||
-    node.typeName.type !== AST_NODE_TYPES.Identifier ||
+    node.type !== "TSTypeReference" ||
+    node.typeName.type !== "Identifier" ||
     !isUnshadowedType(node.typeName)
   ) {
     return "unknown";
@@ -246,71 +336,114 @@ function directReadonlyState(node: TSESTree.Node, kind: "literal" | "Set" | "Map
     return kind === "literal" ? "readonly" : "mutable";
   }
   if (["Array", "Map", "Set"].includes(node.typeName.name)) return "mutable";
-  if (!["ReadonlyArray", "ReadonlyMap", "ReadonlySet"].includes(node.typeName.name)) return "unknown";
-  const readonly = kind === "literal" ? node.typeName.name === "ReadonlyArray" : node.typeName.name === `Readonly${kind}`;
+  if (
+    !["ReadonlyArray", "ReadonlyMap", "ReadonlySet"].includes(
+      node.typeName.name,
+    )
+  )
+    return "unknown";
+  const readonly =
+    kind === "literal"
+      ? node.typeName.name === "ReadonlyArray"
+      : node.typeName.name === `Readonly${kind}`;
   return readonly ? "readonly" : "mutable";
 }
 
 function hasUnknownExplicitType(
-  node: TSESTree.VariableDeclarator,
+  node: ESTree.VariableDeclarator,
   kind: "literal" | "Set" | "Map",
   resolveLocalType: LocalTypeResolver,
   isUnshadowedType: GlobalResolver,
 ): boolean {
-  const annotation = (node.id.type === AST_NODE_TYPES.Identifier ? node.id.typeAnnotation?.typeAnnotation : undefined) ??
-    (node.init?.type === AST_NODE_TYPES.TSAsExpression ? node.init.typeAnnotation : undefined);
-  if (annotation === undefined) return false;
-  if (annotation.type === AST_NODE_TYPES.TSArrayType || annotation.type === AST_NODE_TYPES.TSTypeOperator) return false;
-  if (annotation.type !== AST_NODE_TYPES.TSTypeReference || annotation.typeName.type !== AST_NODE_TYPES.Identifier) return true;
+  const annotation =
+    (node.id.type === "Identifier"
+      ? node.id.typeAnnotation?.typeAnnotation
+      : undefined) ??
+    (node.init?.type === "TSAsExpression"
+      ? node.init.typeAnnotation
+      : undefined);
+  if (annotation == null) return false;
+  if (annotation.type === "TSArrayType" || annotation.type === "TSTypeOperator")
+    return false;
+  if (
+    annotation.type !== "TSTypeReference" ||
+    annotation.typeName.type !== "Identifier"
+  )
+    return true;
   if (resolveLocalType(annotation.typeName) !== undefined) {
-    return readonlyTypeState(annotation, kind, resolveLocalType, isUnshadowedType) === "unknown";
+    return (
+      readonlyTypeState(
+        annotation,
+        kind,
+        resolveLocalType,
+        isUnshadowedType,
+      ) === "unknown"
+    );
   }
-  return resolveLocalType(annotation.typeName) === undefined && (
-    !isUnshadowedType(annotation.typeName) ||
-    !["Array", "Map", "Readonly", "ReadonlyArray", "ReadonlyMap", "ReadonlySet", "Set"].includes(annotation.typeName.name)
+  return (
+    resolveLocalType(annotation.typeName) === undefined &&
+    (!isUnshadowedType(annotation.typeName) ||
+      ![
+        "Array",
+        "Map",
+        "Readonly",
+        "ReadonlyArray",
+        "ReadonlyMap",
+        "ReadonlySet",
+        "Set",
+      ].includes(annotation.typeName.name))
   );
 }
 
-function referenceMutates(identifier: TSESTree.Identifier, isUnshadowedGlobal: GlobalResolver): boolean {
+function referenceMutates(
+  identifier: Extract<ESTree.Node, { type: "Identifier" }>,
+  isUnshadowedGlobal: GlobalResolver,
+): boolean {
   let member = identifier.parent;
-  if (
-    member?.type !== AST_NODE_TYPES.MemberExpression ||
-    member.object !== identifier
-  ) {
+  if (member?.type !== "MemberExpression" || member.object !== identifier) {
     return (
-      member?.type === AST_NODE_TYPES.CallExpression &&
+      member?.type === "CallExpression" &&
       member.arguments[0] === identifier &&
-      member.callee.type === AST_NODE_TYPES.MemberExpression &&
+      member.callee.type === "MemberExpression" &&
       !member.callee.computed &&
-      member.callee.object.type === AST_NODE_TYPES.Identifier &&
+      member.callee.object.type === "Identifier" &&
       member.callee.object.name === "Object" &&
       isUnshadowedGlobal(member.callee.object) &&
-      member.callee.property.type === AST_NODE_TYPES.Identifier &&
+      member.callee.property.type === "Identifier" &&
       member.callee.property.name === "assign"
     );
   }
   while (
-    member.parent.type === AST_NODE_TYPES.MemberExpression &&
+    member.parent.type === "MemberExpression" &&
     member.parent.object === member
   ) {
     member = member.parent;
   }
   const parent = member.parent;
-  if (parent?.type === AST_NODE_TYPES.AssignmentExpression && parent.left === member) {
+  if (parent?.type === "AssignmentExpression" && parent.left === member) {
     return true;
   }
-  if (parent?.type === AST_NODE_TYPES.UpdateExpression && parent.argument === member) {
+  if (parent?.type === "UpdateExpression" && parent.argument === member) {
     return true;
   }
-  if (parent?.type === AST_NODE_TYPES.UnaryExpression && parent.operator === "delete" && parent.argument === member) {
+  if (
+    parent?.type === "UnaryExpression" &&
+    parent.operator === "delete" &&
+    parent.argument === member
+  ) {
     return true;
   }
   return (
-    parent?.type === AST_NODE_TYPES.CallExpression &&
+    parent?.type === "CallExpression" &&
     parent.callee === member &&
-    ((member.property.type === AST_NODE_TYPES.Identifier && !member.computed) ||
-      (member.property.type === AST_NODE_TYPES.Literal && typeof member.property.value === "string")) &&
-    MUTATING_METHODS.has(member.property.type === AST_NODE_TYPES.Identifier ? member.property.name : member.property.value)
+    ((member.property.type === "Identifier" && !member.computed) ||
+      (member.property.type === "Literal" &&
+        typeof member.property.value === "string")) &&
+    MUTATING_METHODS.has(
+      member.property.type === "Identifier"
+        ? member.property.name
+        : member.property.value,
+    )
   );
 }
 
@@ -333,47 +466,60 @@ export default createRule<Options, MessageIds>({
   },
   defaultOptions: [],
   create(context) {
+    const origin = sourceOrigin(context);
     const sourceCode = context.sourceCode;
     const isUnshadowedGlobal: GlobalResolver = (identifier) => {
-      const variable = ASTUtils.findVariable(sourceCode.getScope(identifier), identifier.name);
+      const variable = findVariable(
+        sourceCode.getScope(identifier),
+        identifier.name,
+      );
       return variable === null || variable.defs.length === 0;
     };
-    const isUnshadowedType: GlobalResolver = (identifier) => {
-      const variable = ASTUtils.findVariable(sourceCode.getScope(identifier), identifier.name);
-      return variable === null || !variable.defs.some((definition) => definition.isTypeDefinition);
-    };
+    const types = createTypeAliasEnvironment(
+      sourceCode.ast,
+      sourceCode.visitorKeys,
+    );
+    const isUnshadowedType: GlobalResolver = (identifier) =>
+      !hasVisibleTypeBinding(identifier.name, identifier, types);
     const resolveLocalType: LocalTypeResolver = (identifier) => {
-      const variable = ASTUtils.findVariable(sourceCode.getScope(identifier), identifier.name);
-      const definitions = variable?.defs.filter((definition) => definition.isTypeDefinition) ?? [];
-      const declaration = definitions.length === 1 ? definitions[0]?.node : undefined;
-      return declaration?.type === AST_NODE_TYPES.TSTypeAliasDeclaration || declaration?.type === AST_NODE_TYPES.TSTypeParameter
-        ? declaration : undefined;
+      for (
+        let ancestor: ESTree.Node | null = identifier;
+        ancestor !== null;
+        ancestor = ancestor.parent
+      ) {
+        if (!("typeParameters" in ancestor)) continue;
+        const parameter = ancestor.typeParameters?.params.find(
+          (parameter) => parameter.name.name === identifier.name,
+        );
+        if (parameter !== undefined) return parameter;
+      }
+      return visibleTypeAlias(identifier.name, identifier, types) ?? undefined;
     };
     if (
-      JAVASCRIPT_FILE_RE.test(context.filename) ||
-      isTestFile(context.filename) ||
-      isGeneratedFile(context.filename, sourceCode.getText())
+      JAVASCRIPT_FILE_RE.test(origin.filename) ||
+      isTestFile(origin.filename) ||
+      isGeneratedFile(origin.filename, origin.text)
     ) {
       return {};
     }
     const exportedNames = new Set<string>();
-    const mutatesThroughAlias = (root: Scope.Variable): boolean => {
+    const mutatesThroughAlias = (root: Variable): boolean => {
       const pending = [root];
-      const seen = new Set<Scope.Variable>();
+      const seen = new Set<Variable>();
       while (pending.length > 0) {
         const variable = pending.pop();
         if (variable === undefined || seen.has(variable)) continue;
         seen.add(variable);
         for (const reference of variable.references) {
           const identifier = reference.identifier;
-          if (identifier.type !== AST_NODE_TYPES.Identifier) continue;
+          if (identifier.type !== "Identifier") continue;
           if (referenceMutates(identifier, isUnshadowedGlobal)) return true;
           const declarator = identifier.parent;
           if (
-            declarator.type !== AST_NODE_TYPES.VariableDeclarator ||
+            declarator.type !== "VariableDeclarator" ||
             declarator.init !== identifier ||
-            declarator.id.type !== AST_NODE_TYPES.Identifier ||
-            declarator.parent.type !== AST_NODE_TYPES.VariableDeclaration
+            declarator.id.type !== "Identifier" ||
+            declarator.parent.type !== "VariableDeclaration"
           ) {
             continue;
           }
@@ -385,46 +531,65 @@ export default createRule<Options, MessageIds>({
     };
     return {
       Program(node): void {
-        function collectModuleBindings(statement: TSESTree.ProgramStatement): void {
-          if (statement.type === AST_NODE_TYPES.ExportNamedDeclaration) {
-            if (statement.source !== null || statement.exportKind === "type") return;
+        function collectModuleBindings(statement: ESTree.Statement): void {
+          if (statement.type === "ExportNamedDeclaration") {
+            if (statement.source !== null || statement.exportKind === "type")
+              return;
             for (const specifier of statement.specifiers) {
-              if (specifier.type === AST_NODE_TYPES.ExportSpecifier && specifier.exportKind !== "type" && specifier.local.type === AST_NODE_TYPES.Identifier) {
+              if (
+                specifier.type === "ExportSpecifier" &&
+                specifier.exportKind !== "type" &&
+                specifier.local.type === "Identifier"
+              ) {
                 exportedNames.add(specifier.local.name);
               }
             }
           } else if (
-            statement.type === AST_NODE_TYPES.ExportDefaultDeclaration &&
-            unwrapTransparentExport(statement.declaration)?.type === AST_NODE_TYPES.Identifier
+            statement.type === "ExportDefaultDeclaration" &&
+            unwrapTransparentExport(statement.declaration)?.type ===
+              "Identifier"
           ) {
-            exportedNames.add((unwrapTransparentExport(statement.declaration) as TSESTree.Identifier).name);
+            exportedNames.add(
+              (
+                unwrapTransparentExport(statement.declaration) as Extract<
+                  ESTree.Node,
+                  { type: "Identifier" }
+                >
+              ).name,
+            );
           }
         }
 
-        for (const statement of node.body) { collectModuleBindings(statement); }
+        for (const statement of node.body) {
+          collectModuleBindings(statement);
+        }
       },
       VariableDeclarator(node): void {
         const declaration = node.parent;
         if (
-          declaration.type !== AST_NODE_TYPES.VariableDeclaration ||
+          declaration.type !== "VariableDeclaration" ||
           declaration.kind !== "const" ||
-          node.id.type !== AST_NODE_TYPES.Identifier ||
+          node.id.type !== "Identifier" ||
           node.init === null
         ) {
           return;
         }
         const container = declaration.parent;
         if (
-          container.type !== AST_NODE_TYPES.Program &&
+          container.type !== "Program" &&
           !(
-            container.type === AST_NODE_TYPES.ExportNamedDeclaration &&
-            container.parent.type === AST_NODE_TYPES.Program
+            container.type === "ExportNamedDeclaration" &&
+            container.parent.type === "Program"
           )
         ) {
           return;
         }
-        const directlyExported = container.type === AST_NODE_TYPES.ExportNamedDeclaration;
-        if (!CONSTANT_NAME.test(node.id.name) && !directlyExported && !exportedNames.has(node.id.name)) {
+        const directlyExported = container.type === "ExportNamedDeclaration";
+        if (
+          !CONSTANT_NAME.test(node.id.name) &&
+          !directlyExported &&
+          !exportedNames.has(node.id.name)
+        ) {
           return;
         }
         if (
@@ -434,18 +599,31 @@ export default createRule<Options, MessageIds>({
           return;
         }
         const kind = collectionKind(node.init, isUnshadowedGlobal);
-        if (kind === null || declaredReadonlyType(node, kind, resolveLocalType, isUnshadowedType) || hasUnknownExplicitType(node, kind, resolveLocalType, isUnshadowedType)) {
+        if (
+          kind === null ||
+          declaredReadonlyType(
+            node,
+            kind,
+            resolveLocalType,
+            isUnshadowedType,
+          ) ||
+          hasUnknownExplicitType(node, kind, resolveLocalType, isUnshadowedType)
+        ) {
           return;
         }
         const variable = sourceCode.getDeclaredVariables(node)[0];
-        if (!directlyExported && !exportedNames.has(node.id.name) &&
-          variable !== undefined && mutatesThroughAlias(variable)
+        if (
+          !directlyExported &&
+          !exportedNames.has(node.id.name) &&
+          variable !== undefined &&
+          mutatesThroughAlias(variable)
         ) {
           return;
         }
         context.report({
           node: node.id,
-          messageId: kind === "literal" ? "preferAsConst" : "preferReadonlyCollection",
+          messageId:
+            kind === "literal" ? "preferAsConst" : "preferReadonlyCollection",
           data: { name: node.id.name, kind },
         });
       },
@@ -453,8 +631,11 @@ export default createRule<Options, MessageIds>({
   },
 });
 
-function unwrapTransparentExport(node: TSESTree.Node): TSESTree.Node | null {
-  if (node.type === AST_NODE_TYPES.TSSatisfiesExpression || node.type === AST_NODE_TYPES.TSNonNullExpression) {
+function unwrapTransparentExport(node: ESTree.Node): ESTree.Node | null {
+  if (
+    node.type === "TSSatisfiesExpression" ||
+    node.type === "TSNonNullExpression"
+  ) {
     return unwrapTransparentExport(node.expression);
   }
   return node;

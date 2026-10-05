@@ -19,9 +19,8 @@ from sarj_standards._meta import (
     BASEDPYRIGHT_PYTHON315_WATCH,
     BASEDPYRIGHT_STRICT,
     CONFIGS_DIR,
-    ESLINT_APPLICATION,
-    ESLINT_STRICT,
     MARKDOWNLINT_STRICT,
+    OXLINT_STRICT,
     PYRIGHT_STRICT,
     RUFF_APPLICATION,
     RUFF_PYTHON315_WATCH,
@@ -31,6 +30,7 @@ from sarj_standards._meta import (
 )
 from sarj_standards.libs.adoption import manifest
 from sarj_standards.libs.repository import config_generation
+from tests._oxlint_config import native_rules
 
 
 _PACKAGE_ROOT = Path(__file__).resolve().parents[1]
@@ -40,8 +40,7 @@ _PUBLIC_CONFIGS = (
     RUFF_APPLICATION,
     PYRIGHT_STRICT,
     BASEDPYRIGHT_STRICT,
-    ESLINT_STRICT,
-    ESLINT_APPLICATION,
+    OXLINT_STRICT,
     CONFIGS_DIR / "rule-ledger.json",
 )
 _PRIVATE_TELEMETRY = {
@@ -98,7 +97,7 @@ def test_configs_dir_exists() -> None:
         RUFF_STRICT,
         PYRIGHT_STRICT,
         BASEDPYRIGHT_STRICT,
-        ESLINT_STRICT,
+        OXLINT_STRICT,
         MARKDOWNLINT_STRICT,
         TAPLO_STRICT,
         YAMLLINT_STRICT,
@@ -111,7 +110,7 @@ def test_all_blocking_configs_bundled(path: Path) -> None:
 
 @pytest.mark.parametrize(
     "path",
-    [RUFF_APPLICATION, ESLINT_APPLICATION, RUFF_PYTHON315_WATCH, BASEDPYRIGHT_PYTHON315_WATCH],
+    [RUFF_APPLICATION, RUFF_PYTHON315_WATCH, BASEDPYRIGHT_PYTHON315_WATCH],
 )
 def test_application_configs_bundled(path: Path) -> None:
     assert path.is_file(), f"missing bundled application config: {path}"
@@ -130,7 +129,7 @@ def test_public_configs_do_not_ship_repository_telemetry() -> None:
 
 
 def test_application_configs_have_no_generation_drift() -> None:
-    assert config_generation.sync(check=True)
+    assert config_generation.sync(_PACKAGE_ROOT.parents[1], check=True)
 
 
 @pytest.mark.parametrize("config", [RUFF_STRICT, RUFF_APPLICATION])
@@ -180,7 +179,7 @@ def test_ruff_accepts_explicit_public_reexports_without_weakening_f401(tmp_path:
 
 def test_legacy_ruff_config_aliases_have_identical_enforcement() -> None:
     assert tomllib.loads(RUFF_APPLICATION.read_text()) == {"extend": RUFF_STRICT.name}
-    assert 'export { createConfig, default } from "./eslint.strict.mjs";' in ESLINT_APPLICATION.read_text()
+    assert "createStrictOxlintConfig" in OXLINT_STRICT.read_text()
 
 
 def test_all_managed_configs_enforce_library_catalog() -> None:
@@ -197,18 +196,16 @@ def test_all_managed_configs_enforce_library_catalog() -> None:
     assert "argparse" in standard_bans
     assert "pandas" in standard_bans
 
-    application_eslint = ESLINT_STRICT.read_text()
-    standard_eslint = ESLINT_STRICT.read_text()
-    assert '"name": "axios"' in application_eslint
-    assert '"name": "lodash"' in application_eslint
-    assert 'name: "@clerk/nextjs"' in application_eslint
-    assert '"group": ["axios/*"]' in application_eslint
-    assert '"@sarj/no-restricted-library-load"' in application_eslint
-    assert '"@sarj/prefer-native-random-uuid": "error"' in application_eslint
-    assert '"module": "axios"' in application_eslint
-    assert '"name": "axios"' in standard_eslint
-    assert '"name": "lodash"' in standard_eslint
-    assert '"@sarj/no-restricted-library-load"' in standard_eslint
+    rules = native_rules()
+    restricted = rules["eslint/no-restricted-imports"]
+    assert isinstance(restricted, list)
+    restrictions = manifest.as_table(manifest.list_field(rules, "eslint/no-restricted-imports")[1])
+    names = {
+        manifest.text_field(manifest.as_table(item), "name") for item in manifest.list_field(restrictions, "paths")
+    }
+    assert {"axios", "lodash", "@clerk/nextjs"} <= names
+    assert manifest.list_field(rules, "@sarj/no-restricted-library-load")[0] == "error"
+    assert rules["@sarj/prefer-native-random-uuid"] == "error"
 
 
 def test_ruff_config_is_valid_toml() -> None:
@@ -565,8 +562,8 @@ def test_python_visibility_contract_is_explicitly_strict() -> None:
     assert re.search(r'"reportPrivateLocalImportUsage"\s*:\s*"error"', BASEDPYRIGHT_STRICT.read_text())
 
 
-def test_eslint_config_is_esm() -> None:
-    text = ESLINT_STRICT.read_text()
+def test_oxlint_config_is_esm() -> None:
+    text = OXLINT_STRICT.read_text()
     assert "export default" in text
 
 
@@ -581,44 +578,23 @@ def test_taplo_excludes_generated_strict_configs() -> None:
 
 
 def test_consistent_type_assertions_options_are_schema_compatible() -> None:
-    text = ESLINT_STRICT.read_text()
-    match = re.search(
-        r'"@typescript-eslint/consistent-type-assertions"\s*:\s*\[\s*"error"\s*,\s*\{(?P<options>[^}]*)\}',
-        text,
-    )
-    assert match is not None
-    options = match.group("options")
-    if 'assertionStyle: "never"' in options:
-        assert "objectLiteralTypeAssertions" not in options
+    configured = native_rules()["typescript/consistent-type-assertions"]
+    assert configured == ["error", {"assertionStyle": "never"}]
 
 
-def test_eslint_config_avoids_eslint_10_only_unicorn_rules() -> None:
-    text = ESLINT_STRICT.read_text()
-    assert "prohibitLocalVariables" not in text
-    assert '"unicorn/no-array-for-each"' not in text
-    assert '"unicorn/no-for-each"' not in text
-    assert "CallExpression[callee.property.name='forEach']" in text
+def test_retained_typescript_policies_are_enabled_in_native_plugins() -> None:
+    rules = native_rules()
+    assert manifest.list_field(rules, "sarj-typescript/naming-convention")[0] == "error"
+    assert manifest.list_field(rules, "sarj-typescript/member-ordering")[0] == "error"
 
 
 def test_prefer_nullish_coalescing_ignores_primitives() -> None:
-    text = ESLINT_STRICT.read_text()
-    assert re.search(
-        r'"@typescript-eslint/prefer-nullish-coalescing"\s*:\s*\[\s*"error"\s*,\s*\{[^}]*ignorePrimitives\s*:\s*\{',
-        text,
-    )
+    configured = native_rules()["typescript/prefer-nullish-coalescing"]
+    assert configured == ["error", {"ignorePrimitives": {"number": True, "string": True, "boolean": True}}]
 
 
-def test_naming_convention_allows_framework_names() -> None:
-    text = ESLINT_STRICT.read_text()
-    assert re.search(
-        r'"@typescript-eslint/naming-convention".+?format:\s*\["camelCase"\].+?filter:\s*\{\s*regex:\s*"\^\(UNSAFE_\|__\)"',
-        text,
-        re.DOTALL,
-    )
-
-
-def test_eslint_config_does_not_assume_react_compiler() -> None:
-    text = ESLINT_STRICT.read_text()
+def test_oxlint_config_does_not_assume_react_compiler() -> None:
+    text = OXLINT_STRICT.read_text()
     assert "CallExpression[callee.name='useMemo']" not in text
     assert "CallExpression[callee.name='useCallback']" not in text
 
@@ -633,7 +609,7 @@ def test_cli_list(tmp_path: Path) -> None:
     )
     assert "ruff" in proc.stdout
     assert "pyright" in proc.stdout
-    assert "eslint" in proc.stdout
+    assert "oxlint" in proc.stdout
     assert "markdownlint" in proc.stdout
     assert "taplo" in proc.stdout
     assert "yamllint" in proc.stdout
@@ -668,21 +644,28 @@ def test_ruff_ignores_sections_forbidden_by_typed_docstring_policy() -> None:
     assert {"DOC201", "DOC402"} <= {item for item in ignored if isinstance(item, str)}
 
 
-def test_eslint_module_sort_does_not_conflict_with_imports_first() -> None:
-    config = ESLINT_STRICT.read_text()
+def test_native_source_plugins_retain_import_and_declaration_ordering() -> None:
+    rules = native_rules()
+    for rule in (
+        "simple-import-sort/imports",
+        "simple-import-sort/exports",
+        "perfectionist/sort-interfaces",
+        "perfectionist/sort-jsx-props",
+        "perfectionist/sort-union-types",
+    ):
+        assert rules[rule] == "error"
 
-    assert '"perfectionist/sort-modules": "off"' in config
-    assert '"perfectionist/sort-objects": "off"' in config
 
-
-def test_eslint_async_and_void_rules_have_single_authorities() -> None:
-    config = ESLINT_STRICT.read_text()
-
-    assert '"@typescript-eslint/promise-function-async": "off"' in config
-    assert '"@typescript-eslint/no-inferrable-types": "off"' in config
-    assert "{ ignoreArrowShorthand: true }" in config
-    assert '"unicorn/no-thenable": "off"' in config
-    assert '"unicorn/no-useless-undefined": "off"' in config
-    assert '"unicorn/no-useless-switch-case": "off"' in config
-    assert '"react/forbid-component-props": "off"' in config
-    assert '"react/forbid-dom-props": "off"' in config
+def test_oxlint_async_and_void_rules_have_single_authorities() -> None:
+    rules = native_rules()
+    for name in (
+        "typescript/promise-function-async",
+        "typescript/no-inferrable-types",
+        "unicorn/no-thenable",
+        "unicorn/no-useless-undefined",
+        "unicorn/no-useless-switch-case",
+        "react/forbid-component-props",
+        "react/forbid-dom-props",
+    ):
+        assert rules[name] == "off"
+    assert rules["typescript/no-confusing-void-expression"] == ["error", {"ignoreArrowShorthand": True}]

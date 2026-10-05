@@ -4,7 +4,9 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/store-insert-requires-on-conflict.test.ts
  */
 
-import { type TSESTree } from "@typescript-eslint/utils";
+import { sourceOrigin } from "./_source-origin.js";
+import type { ESTree } from "@oxlint/plugins";
+
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isTestFile } from "./_paths.js";
@@ -34,9 +36,9 @@ const CONFLICT_HANDLED = /\bON\s+CONFLICT\b|\bON\s+DUPLICATE\s+KEY\b|\bINSERT\s+
 
 const REPLAY_CONTRACT_NAME = /(?:enqueue|ensure|migrate|recordOnce|schedule|seed|upsert|getOrCreate|createIfAbsent|insertIfAbsent)/i;
 
-function owningCallableName(node: TSESTree.Node): string | null {
+function owningCallableName(node: ESTree.Node): string | null {
   for (
-    let current: TSESTree.Node | null | undefined = node.parent;
+    let current: ESTree.Node | null | undefined = node.parent;
     current !== null && current !== undefined;
     current = current.parent
   ) {
@@ -72,10 +74,10 @@ export default createRule<Options, MessageIds>({
   },
   defaultOptions: [],
   create(context) {
-    if (isTestFile(context.filename) || !INSERT_GATE.test(context.sourceCode.text)) {
+    if (isTestFile(sourceOrigin(context).filename) || !INSERT_GATE.test(context.sourceCode.text)) {
       return {};
     }
-    return createSqlListener((sql: string, node: TSESTree.Node): void => {
+    return createSqlListener((sql: string, node: ESTree.Node): void => {
       if (!INSERT_WRITE.test(sql) || CONFLICT_HANDLED.test(sql)) {
         return;
       }
@@ -88,7 +90,7 @@ export default createRule<Options, MessageIds>({
   },
 });
 
-function expressionCallableName(current: TSESTree.ArrowFunctionExpression | TSESTree.FunctionExpression): string | null {
+function expressionCallableName(current: ESTree.ArrowFunctionExpression | ESTree.Function): string | null {
   const parent = current.parent;
   if (parent.type === "VariableDeclarator" && parent.id.type === "Identifier") return parent.id.name;
   if (parent.type === "Property" && !parent.computed && parent.key.type === "Identifier") return parent.key.name;

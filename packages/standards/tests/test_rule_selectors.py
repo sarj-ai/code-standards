@@ -35,17 +35,17 @@ def test_rule_selector_rejects_noncanonical_values(value: str) -> None:
 def test_rule_selection_normalizes_strings_and_selectors_without_duplicates() -> None:
     python_rule = RuleSelector(RuleEngine.PYTHON, RuleId("no-rule"))
 
-    selection = RuleSelection.from_values((python_rule, "eslint:no-alert", "python:no-rule"))
+    selection = RuleSelection.from_values((python_rule, "oxlint:no-alert", "python:no-rule"))
 
     assert selection.selectors == frozenset(
         {
             python_rule,
-            RuleSelector(RuleEngine.ESLINT, RuleId("no-alert")),
+            RuleSelector(RuleEngine.OXLINT, RuleId("no-alert")),
         }
     )
-    assert selection.engines == frozenset({RuleEngine.PYTHON, RuleEngine.ESLINT})
+    assert selection.engines == frozenset({RuleEngine.PYTHON, RuleEngine.OXLINT})
     assert selection.ids_for(RuleEngine.PYTHON) == frozenset({RuleId("no-rule")})
-    assert selection.native_ids_for(RuleEngine.ESLINT) == frozenset({"@sarj/no-alert"})
+    assert selection.native_ids_for(RuleEngine.OXLINT) == frozenset({"@sarj/no-alert"})
 
 
 def test_rule_selection_rejects_one_bare_string() -> None:

@@ -4,8 +4,9 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-unlocalized-jsx-attributes.test.ts
  */
 
-import { AST_NODE_TYPES } from "@typescript-eslint/utils";
 
+
+import { sourceOrigin } from "./_source-origin.js";
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { attributeText } from "./_jsx-accessibility.js";
 import {
@@ -102,7 +103,7 @@ export default createRule<Options, "unlocalized">({
   defaultOptions: [{ enabled: true }],
   create(context, [options]) {
     if (
-      localizationExcluded(context.filename, context.sourceCode.text, options)
+      localizationExcluded(sourceOrigin(context).filename, context.sourceCode.text, options)
     )
       return {};
     const attributes = options?.attributes ?? [
@@ -122,8 +123,8 @@ export default createRule<Options, "unlocalized">({
           if (text === null || !needsTranslation(text, options)) continue;
           const attribute = node.attributes.findLast(
             (entry) =>
-              entry.type === AST_NODE_TYPES.JSXAttribute &&
-              entry.name.type === AST_NODE_TYPES.JSXIdentifier &&
+              entry.type === "JSXAttribute" &&
+              entry.name.type === "JSXIdentifier" &&
               entry.name.name === name,
           );
           if (attribute !== undefined)

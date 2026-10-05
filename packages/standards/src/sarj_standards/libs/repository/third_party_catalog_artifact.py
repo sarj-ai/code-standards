@@ -18,6 +18,7 @@ from sarj_standards.libs.linting import security_tools
 
 
 _DESTINATION: Final = Path("apps/docs/src/generated/third-party-rules.v1.json")
+_NATIVE_INVENTORY: Final = Path("packages/standards/src/sarj_standards/configs/oxlint.rules.json")
 _NODE_PROJECTION: Final = Path("packages/typescript/scripts/project-third-party-rules.mjs")
 _REACT_DOCTOR_PROJECTION: Final = Path("apps/docs/scripts/project-react-doctor-rules.mjs")
 _MOBILE_CONFIG_ROOT: Final = Path("packages/standards/src/sarj_standards/configs")
@@ -56,7 +57,7 @@ type ProviderEngine = Literal[
     "checkov",
     "deptry",
     "detekt",
-    "eslint",
+    "oxlint",
     "ktlint",
     "mobsfscan",
     "react-doctor",
@@ -124,7 +125,7 @@ class _Rule(_FrozenModel):
     profiles: tuple[_Profile, ...]
 
 
-class _EslintProjection(_FrozenModel):
+class _OxlintProjection(_FrozenModel):
     providers: tuple[_Provider, ...]
     rules: tuple[_Rule, ...]
 
@@ -210,20 +211,20 @@ def build(root: Path) -> _CatalogArtifact:
     ruff = _required_tool("ruff")
     deptry = _required_tool("deptry")
     _run((npm, "run", "build", "--silent"), cwd=resolved / "packages/typescript")
-    eslint = _eslint_projection(resolved, node)
+    oxlint = _oxlint_projection(resolved, node)
     react_doctor = _react_doctor_projection(resolved, node)
     ruff_projection = _ruff_projection(resolved, ruff)
     deptry_projection = _deptry_projection(resolved, deptry)
     supplemental = (_mobile_projections(resolved), _security_projections())
     rules = (
-        *eslint.rules,
+        *oxlint.rules,
         *react_doctor.rules,
         *ruff_projection.rules,
         *deptry_projection.rules,
         *(rule for projection in supplemental for rule in projection.rules),
     )
     providers = (
-        *eslint.providers,
+        *oxlint.providers,
         _react_doctor_provider(resolved),
         ruff_projection.provider,
         deptry_projection.provider,
@@ -258,15 +259,34 @@ def render(root: Path) -> str:
 def sync(root: Path, *, check: bool) -> SyncResult:
     resolved = root.resolve()
     destination = resolved / _DESTINATION
-    expected = render(resolved)
+    artifact = build(resolved)
+    expected = (
+        json.dumps(
+            artifact.model_dump(mode="json", by_alias=True), ensure_ascii=False, separators=(",", ":"), sort_keys=True
+        )
+        + "\n"
+    )
+    native_providers = {provider.id for provider in artifact.providers if provider.engine == "oxlint"}
+    inventory = sorted(
+        {
+            str(value)
+            for rule in artifact.rules
+            if rule.provider in native_providers
+            for value in ((rule.id, rule.display_id) if rule.provider == "oxlint" else (rule.display_id,))
+        }
+    )
+    inventory_path = resolved / _NATIVE_INVENTORY
+    expected_inventory = json.dumps(inventory, indent=2) + "\n"
+    current_inventory = inventory_path.read_text(encoding="utf-8") if inventory_path.is_file() else ""
     current = destination.read_text(encoding="utf-8") if destination.is_file() else ""
-    if current == expected:
+    if current == expected and current_inventory == expected_inventory:
         return SyncResult(0, "ok: third-party-rules.v1.json matches resolved tool policy")
     if check:
         return SyncResult(1, "drift: third-party-rules.v1.json differs; rerun with --sync")
     from sarj_standards.libs.adoption import transaction  # ruff: ignore[import-outside-top-level]
 
     transaction.atomic_write_text(resolved, destination, expected)
+    transaction.atomic_write_text(resolved, inventory_path, expected_inventory)
     return SyncResult(0, "updated: third-party-rules.v1.json")
 
 
@@ -303,9 +323,9 @@ def _run(argv: tuple[str, ...], *, cwd: Path) -> str:
     return completed.stdout
 
 
-def _eslint_projection(root: Path, node: str) -> _EslintProjection:
+def _oxlint_projection(root: Path, node: str) -> _OxlintProjection:
     output = _run((node, str(root / _NODE_PROJECTION)), cwd=root)
-    return _EslintProjection.model_validate_json(output)
+    return _OxlintProjection.model_validate_json(output)
 
 
 def _react_doctor_projection(root: Path, node: str) -> _ReactDoctorProjection:
@@ -358,7 +378,7 @@ def _deptry_projection(root: Path, executable: str) -> _RuffProjection:
 
 def _react_doctor_provider(root: Path) -> _Provider:
     peers = _Peers.model_validate_json(
-        (root / "packages/standards/src/sarj_standards/configs/eslint.peers.json").read_text(encoding="utf-8")
+        (root / "packages/standards/src/sarj_standards/configs/oxlint.peers.json").read_text(encoding="utf-8")
     ).peers
     return _Provider(
         id="react-doctor",

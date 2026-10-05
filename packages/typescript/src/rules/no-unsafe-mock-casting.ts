@@ -4,12 +4,10 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-unsafe-mock-casting.test.ts
  */
 
-import {
-  type TSESLint,
-  type TSESTree,
-  AST_NODE_TYPES,
-  ASTUtils,
-} from "@typescript-eslint/utils";
+import { sourceOrigin } from "./_source-origin.js";
+import type { ESTree, Variable } from "@oxlint/plugins";
+import { findVariable } from "./_scope.js";
+
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile } from "./_paths.js";
@@ -79,46 +77,46 @@ export default createRule<[], MessageIds>({
   },
   defaultOptions: [],
   create(context) {
-    if (isGeneratedFile(context.filename, context.sourceCode.text)) {
+    if (isGeneratedFile(sourceOrigin(context).filename, sourceOrigin(context).text)) {
       return {};
     }
 
-    const directBindings = new Set<TSESLint.Scope.Variable>();
-    const namespaceBindings = new Set<TSESLint.Scope.Variable>();
+    const directBindings = new Set<Variable>();
+    const namespaceBindings = new Set<Variable>();
 
-    function resolve(identifier: TSESTree.Identifier): TSESLint.Scope.Variable | null {
-      return ASTUtils.findVariable(
+    function resolve(identifier: ESTree.BindingIdentifier): Variable | null {
+      return findVariable(
         context.sourceCode.getScope(identifier),
         identifier.name,
       );
     }
 
     function record(
-      identifier: TSESTree.Identifier,
-      destination: Set<TSESLint.Scope.Variable>,
+      identifier: ESTree.BindingIdentifier,
+      destination: Set<Variable>,
     ): void {
       const binding = resolve(identifier);
       if (binding !== null) destination.add(binding);
     }
 
     function checkAssertion(
-      node: TSESTree.TSAsExpression | TSESTree.TSTypeAssertion,
+      node: ESTree.TSAsExpression | ESTree.TSTypeAssertion,
     ): void {
       if (isMockTypeReference(node.typeAnnotation)) {
         context.report({ node, messageId: "unsafeMockCast" });
       }
     }
 
-    function isMockTypeReference(node: TSESTree.TypeNode): boolean {
-      if (node.type !== AST_NODE_TYPES.TSTypeReference) return false;
+    function isMockTypeReference(node: ESTree.TSType): boolean {
+      if (node.type !== "TSTypeReference") return false;
       const typeName = node.typeName;
-      if (typeName.type === AST_NODE_TYPES.Identifier) {
+      if (typeName.type === "Identifier") {
         const binding = resolve(typeName);
         return binding !== null && directBindings.has(binding);
       }
       if (
-        typeName.type === AST_NODE_TYPES.TSQualifiedName &&
-        typeName.left.type === AST_NODE_TYPES.Identifier &&
+        typeName.type === "TSQualifiedName" &&
+        typeName.left.type === "Identifier" &&
         MOCK_TYPE_NAMES.has(typeName.right.name)
       ) {
         const binding = resolve(typeName.left);
@@ -128,15 +126,15 @@ export default createRule<[], MessageIds>({
     }
 
     return {
-      ImportDeclaration(node: TSESTree.ImportDeclaration): void {
+      ImportDeclaration(node: ESTree.ImportDeclaration): void {
         if (!MOCK_MODULES.has(node.source.value)) return;
         for (const specifier of node.specifiers) {
-          if (specifier.type === AST_NODE_TYPES.ImportNamespaceSpecifier) {
+          if (specifier.type === "ImportNamespaceSpecifier") {
             record(specifier.local, namespaceBindings);
           } else if (
-            specifier.type === AST_NODE_TYPES.ImportSpecifier &&
+            specifier.type === "ImportSpecifier" &&
             MOCK_TYPE_NAMES.has(
-              specifier.imported.type === AST_NODE_TYPES.Identifier
+              specifier.imported.type === "Identifier"
                 ? specifier.imported.name
                 : specifier.imported.value,
             )

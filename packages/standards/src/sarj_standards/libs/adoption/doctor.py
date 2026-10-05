@@ -27,7 +27,7 @@ from sarj_standards.libs.repository import hooks as repository_hooks, ledger
 from sarj_standards.libs.yaml_boundary import mapping_items, sequence_items
 
 from . import hooks, launcher, manifest, packagemanager, retired_suppressions, scaffold
-from .configs import PYTHON_COMPANION_CONFIGS
+from .configs import OXFMT_CONFIG_NAMES, OXLINT_CONFIG_NAMES, PYTHON_COMPANION_CONFIGS
 
 
 if TYPE_CHECKING:
@@ -71,12 +71,7 @@ class VersionPinRewrite(NamedTuple):
     packages: tuple[str, ...]
 
 
-class AgeGateRewrite(NamedTuple):
-    contents: str
-    packages: frozenset[str]
-
-
-class _PackageEslintPinRewrite(NamedTuple):
+class _PackageOxlintPinRewrite(NamedTuple):
     contents: str
     changed: bool
 
@@ -92,31 +87,17 @@ _REPO_STANDARDS_ACTION = re.compile(
     r"@[A-Za-z0-9_./-]+"
 )
 _ACTION_VERSION_COMMENT = re.compile(r"([ \t]+)# v\d+\.\d+\.\d+([ \t]*)(?=\r?$)", re.MULTILINE)
-_PREAPPROVED_ESLINT = re.compile(
-    r"(?m)^(?P<prefix>[ \t]*(?:npmPreapprovedPackages|minimumReleaseAgeExclude):[^\n]*\n"
-    r'(?:[ \t]+-[^\n]*\n)*?[ \t]+-\s*["\']?@sarj/eslint-plugin@)'
-    r'(?P<version>[0-9][0-9A-Za-z._+\-]*)(?P<suffix>["\']?\s*(?:#.*)?)$'
-)
-_AGE_GATE_YAML_HEADER = re.compile(
-    r"^(?P<indent>[ \t]*)(?:npmPreapprovedPackages|minimumReleaseAgeExclude):[ \t]*(?:#.*)?$"
-)
-_AGE_GATE_YAML_ITEM = re.compile(
-    r"^(?P<indent>[ \t]*)-[ \t]*(?P<quote>['\"]?)(?P<value>[^'\"#\s]+)(?P=quote)[ \t]*(?:#.*)?$"
-)
-_NPM_AGE_GATE_EXCLUDE = re.compile(
-    r"(?m)^(?P<prefix>[ \t]*min-release-age-exclude[ \t]*=[ \t]*)(?P<value>[^\r\n#]*)(?P<suffix>[ \t]*(?:#.*)?)$"
-)
 _PACKAGE_DEPENDENCY_SECTION = re.compile(
     r'(?P<prefix>"(?:dependencies|devDependencies)"\s*:\s*\{)(?P<body>[^{}]*)(?P<suffix>\})',
     re.DOTALL,
 )
-_PACKAGE_ESLINT_PIN = re.compile(
-    r'(?P<prefix>"@sarj/eslint-plugin"\s*:\s*")'
+_PACKAGE_OXLINT_PIN = re.compile(
+    r'(?P<prefix>"@sarj/oxlint-plugin"\s*:\s*")'
     r"(?P<version>[0-9][0-9A-Za-z._+\-]*)"
     r'(?P<suffix>")'
 )
-_ZERO_ESLINT_WARNING_BUDGET = re.compile(r"(?:^|\s)--max-warnings(?:=|\s+)0(?:\s|$)")
-_ESLINT_INVOCATION = re.compile(r"(?:^|[\s;&|])(?:[^\s;&|]*/)?eslint(?:\s|$)")
+_ZERO_OXLINT_WARNING_BUDGET = re.compile(r"(?:^|\s)--max-warnings(?:=|\s+)0(?:\s|$)")
+_OXLINT_INVOCATION = re.compile(r"(?:^|[\s;&|])(?:[^\s;&|]*/)?oxlint(?:\s|$)")
 
 #: Standards must not inherit a consumer repository's ``uv.toml`` policy. In
 #: particular, ``exclude-newer`` can make a just-published exact bundle appear
@@ -133,15 +114,7 @@ _HOOK_ID = re.compile(r"(?m)^\s*-\s+id:\s*(?P<id>[^\s#]+)")
 #: A `rev:` that is a raw commit, not a release tag.
 _SHA_REV = re.compile(r"^[0-9a-f]{7,40}$")
 
-_ESLINT_PLUGIN: Final = "@sarj/eslint-plugin"
-_ESLINT_CONFIG_NAMES: Final = (
-    "eslint.config.js",
-    "eslint.config.mjs",
-    "eslint.config.cjs",
-    "eslint.config.ts",
-    "eslint.config.mts",
-    "eslint.config.cts",
-)
+_OXLINT_PLUGIN: Final = "@sarj/oxlint-plugin"
 _LOCAL_SPECIFIERS: Final = ("file:", "link:", "workspace:", "portal:")
 _PYRIGHT_CONFIG_NAMES: Final = frozenset(
     {
@@ -162,20 +135,20 @@ _STANDALONE_RUFF_CONFIG_NAMES: Final = (".ruff.toml", "ruff.toml")
 _RUFF_REPLACEMENT_KEYS: Final = frozenset({"ignore", "per-file-ignores", "select"})
 _CONFIG_TARGETS: Final = MappingProxyType(
     {
-        "ruff": ("ruff.strict.toml", "ruff.application.toml", ".ruff-strict.toml", "python"),
-        "pyright": ("pyright.strict.json", "pyright.strict.json", ".pyright-strict.json", "python"),
-        "eslint": ("eslint.strict.mjs", "eslint.application.mjs", "eslint.strict.mjs", "typescript"),
-        "markdownlint": ("markdownlint.strict.yaml", "markdownlint.strict.yaml", ".markdownlint.yaml", "root"),
-        "shellcheck": ("shellcheck.strict.rc", "shellcheck.strict.rc", ".shellcheckrc", "root"),
-        "taplo": ("taplo.strict.toml", "taplo.strict.toml", ".taplo.toml", "root"),
-        "yamllint": ("yamllint.strict.yaml", "yamllint.strict.yaml", ".yamllint.yaml", "root"),
-        "zizmor": ("zizmor.strict.yml", "zizmor.strict.yml", "zizmor.yml", "root"),
-        "checkov": ("checkov.strict.yml", "checkov.strict.yml", ".checkov.yml", "root"),
+        "ruff": ("ruff.strict.toml", ".ruff-strict.toml", "python"),
+        "pyright": ("pyright.strict.json", ".pyright-strict.json", "python"),
+        "oxlint": ("oxlint.strict.mjs", "oxlint.strict.mjs", "typescript"),
+        "markdownlint": ("markdownlint.strict.yaml", ".markdownlint.yaml", "root"),
+        "shellcheck": ("shellcheck.strict.rc", ".shellcheckrc", "root"),
+        "taplo": ("taplo.strict.toml", ".taplo.toml", "root"),
+        "yamllint": ("yamllint.strict.yaml", ".yamllint.yaml", "root"),
+        "zizmor": ("zizmor.strict.yml", "zizmor.yml", "root"),
+        "checkov": ("checkov.strict.yml", ".checkov.yml", "root"),
     }
 )
 
 #: Where a rule identifier can be written: configs and suppression baselines, but
-#: also ordinary source, because an `eslint-disable-next-line @sarj/<rule>` for a
+#: also ordinary source, because an `oxlint-disable-next-line @sarj/<rule>` for a
 #: rule that no longer exists is its own error under the shipped strict config's
 #: `reportUnusedDisableDirectives: "error"`, and a `sarj-noqa: SARJnnn` comment
 #: outlives the code it named.
@@ -199,7 +172,7 @@ _REFERENCE_SUFFIXES: Final = (
     ".yml",
 )
 _RULE_MAPPING_REFERENCE = re.compile(r"^\s*(?:-\s*)?(?:id|entry)\s*:\s*.*sarj", re.IGNORECASE)
-_ESLINT_RULE_REFERENCE = re.compile(r"[\"']@sarj/[^\"']+[\"']\s*:")
+_OXLINT_RULE_REFERENCE = re.compile(r"[\"']@sarj/[^\"']+[\"']\s*:")
 _STANDARD_BASELINE_NAMES: Final = frozenset({".sarj-python-baseline.json", "suppression-baseline.json"})
 _IGNORE_RETIRED_RULE_REFERENCES = "sarj-doctor-ignore-retired-rules"
 
@@ -246,7 +219,7 @@ def _git_environment() -> dict[str, str]:
 
 def diagnose(root: Path) -> list[Finding]:
     installed = manifest.installed_versions()
-    installed[_ESLINT_PLUGIN] = manifest.eslint_peers()[_ESLINT_PLUGIN]
+    installed[_OXLINT_PLUGIN] = manifest.oxlint_peers()[_OXLINT_PLUGIN]
     files = authored_files(root)
     findings = [*_check_manifest(root)]
     if manifest.manifest_path(root).is_file():
@@ -255,13 +228,13 @@ def diagnose(root: Path) -> list[Finding]:
     findings.extend(_check_hook_manager(root))
     findings.extend(_check_pin_files(root, files, installed))
     findings.extend(_check_legacy_in_project_launcher(root))
-    if not _has_adopted_eslint(root):
-        findings.extend(_check_eslint_plugin(root, files))
+    if not _has_adopted_oxlint(root):
+        findings.extend(_check_oxlint_plugin(root, files))
     findings.extend(check_retired_rules(root, files))
     findings.extend(check_pyright_deprecated(root, files))
     findings.extend(check_ruff_policy_authority(root, files))
     findings.extend(_check_adoption_wiring(root))
-    findings.extend(_check_eslint_warning_exit_semantics(root))
+    findings.extend(_check_oxlint_warning_exit_semantics(root))
     findings.extend(_check_shellcheck(root, files))
     findings.extend(_check_ci_gate(root))
     findings.extend(_check_commit_policy_ci(root))
@@ -374,7 +347,7 @@ def _path_is_excluded(root: Path, path: Path, exclusions: Sequence[str]) -> bool
 
 def diagnose_adoption_health(root: Path, selected: Sequence[Path] = ()) -> list[Finding]:
     installed = manifest.installed_versions()
-    installed[_ESLINT_PLUGIN] = manifest.eslint_peers()[_ESLINT_PLUGIN]
+    installed[_OXLINT_PLUGIN] = manifest.oxlint_peers()[_OXLINT_PLUGIN]
     files = _adoption_health_files(root, selected)
     findings = [*_check_manifest(root)]
     if manifest.manifest_path(root).is_file():
@@ -383,13 +356,13 @@ def diagnose_adoption_health(root: Path, selected: Sequence[Path] = ()) -> list[
     findings.extend(_check_hook_manager(root))
     findings.extend(_check_pin_files(root, files, installed))
     findings.extend(_check_legacy_in_project_launcher(root))
-    if not _has_adopted_eslint(root):
-        findings.extend(_check_eslint_plugin(root, files))
+    if not _has_adopted_oxlint(root):
+        findings.extend(_check_oxlint_plugin(root, files))
     findings.extend(check_retired_rules(root, files))
     findings.extend(check_pyright_deprecated(root, files))
     findings.extend(check_ruff_policy_authority(root, files))
     findings.extend(_check_adoption_wiring(root))
-    findings.extend(_check_eslint_warning_exit_semantics(root))
+    findings.extend(_check_oxlint_warning_exit_semantics(root))
     findings.extend(_check_shellcheck(root, files))
     findings.extend(_check_ci_gate(root))
     findings.extend(_check_commit_policy_ci(root))
@@ -758,12 +731,12 @@ def _installed_hook_managers(root: Path, *, hook_type: str = "pre-commit") -> fr
     return frozenset(managers)
 
 
-def _has_adopted_eslint(root: Path) -> bool:
+def _has_adopted_oxlint(root: Path) -> bool:
     try:
         adopted = manifest.load(root)
     except OSError, TypeError, ValueError:
         return False
-    return adopted is not None and "eslint" in adopted.configs
+    return adopted is not None and "oxlint" in adopted.configs
 
 
 def _doctor_exclusions(root: Path) -> tuple[str, ...]:
@@ -835,8 +808,8 @@ def _reference_text(text: str, *, configured: bool = False) -> str:
         normalized = line.lower()
         if "sarj" not in normalized:
             continue
-        directive = any(marker in normalized for marker in ("sarj-noqa", "eslint-disable", "--rule"))
-        mapped = bool(_RULE_MAPPING_REFERENCE.search(line) or _ESLINT_RULE_REFERENCE.search(line))
+        directive = any(marker in normalized for marker in ("sarj-noqa", "oxlint-disable", "--rule"))
+        mapped = bool(_RULE_MAPPING_REFERENCE.search(line) or _OXLINT_RULE_REFERENCE.search(line))
         if directive or mapped:
             lines.append(line)
     return "\n".join(lines)
@@ -1039,27 +1012,6 @@ def _check_pin_file(root: Path, path: Path, installed: Mapping[str, str]) -> Ite
                 "doctor.version.pin",
                 "run `code-standards update`",
             )
-    for match in _PREAPPROVED_ESLINT.finditer(_read(path)):
-        pinned = match.group("version")
-        current = installed.get(_ESLINT_PLUGIN)
-        where = f"{path.relative_to(root)}: {_ESLINT_PLUGIN}@{pinned}"
-        if current is None:
-            yield Finding(
-                Level.WARN,
-                where,
-                "the preapproved internal package version is unverified",
-                "doctor.version.unverified",
-            )
-        elif pinned == current:
-            yield Finding(Level.OK, where, "matches the tested peer set", "doctor.version.pin")
-        else:
-            yield Finding(
-                Level.DRIFT,
-                where,
-                f"the tested internal plugin is {_ESLINT_PLUGIN}@{current}",
-                "doctor.version.pin",
-                "run `code-standards update`",
-            )
 
 
 def _check_legacy_in_project_launcher(root: Path) -> Iterator[Finding]:
@@ -1133,13 +1085,6 @@ def rewrite_version_pins(text: str, installed: Mapping[str, str]) -> VersionPinR
         relative_end = match.end("version") - match.start()
         return f"{canonical}=={current}{match.group(0)[relative_end:]}"
 
-    def preapproved_eslint(match: re.Match[str]) -> str:
-        current = installed.get(_ESLINT_PLUGIN)
-        if current is None or match.group("version") == current:
-            return match.group(0)
-        changed.add(_ESLINT_PLUGIN)
-        return f"{match.group('prefix')}{current}{match.group('suffix')}"
-
     isolated = _UVX_STANDARDS.sub(isolate_launcher, text)
     if (
         any(name in isolated for name in ("code-standards", "sarj-standards"))
@@ -1155,85 +1100,7 @@ def rewrite_version_pins(text: str, installed: Mapping[str, str]) -> VersionPinR
             changed.add("code-standards")
             isolated = migrated
     pinned = _PIN.sub(replacement, isolated)
-    pinned = _PREAPPROVED_ESLINT.sub(preapproved_eslint, pinned)
-    preapprovals = manifest.eslint_age_gate_preapprovals()
-    if current_plugin := installed.get(_ESLINT_PLUGIN):
-        preapprovals[_ESLINT_PLUGIN] = current_plugin
-    pinned, age_gate_changed = _rewrite_age_gate_preapprovals(
-        pinned, preapprovals, retired=frozenset(manifest.eslint_yarn_identity_pins())
-    )
-    changed.update(age_gate_changed)
     return VersionPinRewrite(pinned, tuple(sorted(changed)))
-
-
-def _rewrite_age_gate_preapprovals(
-    text: str,
-    approvals: Mapping[str, str],
-    *,
-    retired: frozenset[str] = frozenset(),
-) -> AgeGateRewrite:
-    managed = frozenset(approvals) | retired
-    lines = text.splitlines(keepends=True)
-    for index, line in enumerate(lines):
-        header = _AGE_GATE_YAML_HEADER.fullmatch(line.rstrip("\r\n"))
-        if header is None:
-            continue
-        retained: list[str] = []
-        trailing: list[str] = []
-
-        def retain_existing_items(index: int, header: re.Match[str], retained: list[str], trailing: list[str]) -> int:
-            end = index + 1
-            saw_item = False
-            while end < len(lines):
-                candidate = lines[end]
-                stripped = candidate.strip()
-                indentation = len(candidate) - len(candidate.lstrip(" \t"))
-                if (
-                    stripped
-                    and indentation <= len(header.group("indent"))
-                    and (not stripped.startswith("#") or saw_item)
-                ):
-                    while retained and not retained[-1].strip():
-                        trailing.insert(0, retained.pop())
-                    break
-                item = _AGE_GATE_YAML_ITEM.fullmatch(candidate.rstrip("\r\n"))
-                if item is None:
-                    retained.append(candidate)
-                else:
-                    saw_item = True
-                    value = item.group("value")
-                    package = _managed_preapproval(value, managed)
-                    if package is None:
-                        retained.append(candidate)
-                end += 1
-            return end
-
-        end = retain_existing_items(index, header, retained, trailing)
-        item_indent = f"{header.group('indent')}  "
-        rendered = [f'{item_indent}- "{name}@{approvals[name]}"\n' for name in sorted(approvals)]
-        replacement = [line, *retained, *rendered, *trailing]
-        original = lines[index:end]
-        if replacement != original:
-            lines[index:end] = replacement
-            return AgeGateRewrite("".join(lines), frozenset(approvals))
-        return AgeGateRewrite(text, frozenset())
-
-    def npm_replacement(match: re.Match[str]) -> str:
-        existing = [trimmed for item in match.group("value").split(",") if (trimmed := item.strip())]
-        retained = [item for item in existing if item not in managed]
-        values = ",".join((*retained, *sorted(approvals)))
-        prefix, suffix = match.group("prefix", "suffix")
-        return f"{prefix}{values}{suffix}"
-
-    rewritten = _NPM_AGE_GATE_EXCLUDE.sub(npm_replacement, text, count=1)
-    return AgeGateRewrite(rewritten, frozenset(approvals) if rewritten != text else frozenset())
-
-
-def _managed_preapproval(value: str, managed: frozenset[str]) -> str | None:
-    return next(
-        (name for name in managed if value == name or value.startswith(f"{name}@")),
-        None,
-    )
 
 
 def plan_version_pin_updates(
@@ -1241,7 +1108,7 @@ def plan_version_pin_updates(
     installed: Mapping[str, str] | None = None,
 ) -> tuple[VersionPinUpdate, ...]:
     versions = dict(manifest.installed_versions() if installed is None else installed)
-    versions.setdefault(_ESLINT_PLUGIN, manifest.eslint_peers()[_ESLINT_PLUGIN])
+    versions.setdefault(_OXLINT_PLUGIN, manifest.oxlint_peers()[_OXLINT_PLUGIN])
     exclusions = _doctor_exclusions(root)
     updates: list[VersionPinUpdate] = []
     for path in _walk(root):
@@ -1271,10 +1138,10 @@ def rewrite_file_version_pins(
         contents = action_update.contents
         packages = tuple(sorted({*packages, *action_update.packages}))
     if path.name == "package.json":
-        plugin_version = installed.get(_ESLINT_PLUGIN) or manifest.eslint_peers()[_ESLINT_PLUGIN]
-        contents, plugin_changed = _rewrite_package_eslint_pins(contents, plugin_version)
+        plugin_version = installed.get(_OXLINT_PLUGIN) or manifest.oxlint_peers()[_OXLINT_PLUGIN]
+        contents, plugin_changed = _rewrite_package_oxlint_pins(contents, plugin_version)
         if plugin_changed:
-            packages = tuple(sorted({*packages, _ESLINT_PLUGIN}))
+            packages = tuple(sorted({*packages, _OXLINT_PLUGIN}))
     return VersionPinRewrite(contents, packages)
 
 
@@ -1354,7 +1221,7 @@ def _yaml_scalar_text(node: ScalarNode) -> str:
     return node.value  # pyright: ignore[reportAny] -- PyYAML scalar value boundary.
 
 
-def _rewrite_package_eslint_pins(text: str, version: str) -> _PackageEslintPinRewrite:
+def _rewrite_package_oxlint_pins(text: str, version: str) -> _PackageOxlintPinRewrite:
     changed = False
 
     def dependency_section(match: re.Match[str]) -> str:
@@ -1367,27 +1234,27 @@ def _rewrite_package_eslint_pins(text: str, version: str) -> _PackageEslintPinRe
             changed = True
             return f"{pin.group('prefix')}{version}{pin.group('suffix')}"
 
-        body = _PACKAGE_ESLINT_PIN.sub(plugin_pin, match.group("body"))
+        body = _PACKAGE_OXLINT_PIN.sub(plugin_pin, match.group("body"))
         return f"{match.group('prefix')}{body}{match.group('suffix')}"
 
-    return _PackageEslintPinRewrite(_PACKAGE_DEPENDENCY_SECTION.sub(dependency_section, text), changed)
+    return _PackageOxlintPinRewrite(_PACKAGE_DEPENDENCY_SECTION.sub(dependency_section, text), changed)
 
 
-def _check_eslint_plugin(root: Path, files: Sequence[Path]) -> Iterator[Finding]:
+def _check_oxlint_plugin(root: Path, files: Sequence[Path]) -> Iterator[Finding]:
     # A missing peer manifest is a packaging defect and must fail loudly.
-    floor = manifest.eslint_peers()[_ESLINT_PLUGIN]
+    floor = manifest.oxlint_peers()[_OXLINT_PLUGIN]
     for path in _candidate_files(files, (".json",)):
-        yield from _check_eslint_package(root, path, floor)
+        yield from _check_oxlint_package(root, path, floor)
 
 
-def _check_eslint_package(root: Path, path: Path, floor: str) -> Iterator[Finding]:
+def _check_oxlint_package(root: Path, path: Path, floor: str) -> Iterator[Finding]:
     if path.name != "package.json":
         return
     text = _read(path)
     try:
         pinned = _package_json_pin_text(text)
     except json.JSONDecodeError as exc:
-        if path != root / "package.json" and _ESLINT_PLUGIN not in text:
+        if path != root / "package.json" and _OXLINT_PLUGIN not in text:
             return
         yield Finding(
             Level.DRIFT,
@@ -1408,38 +1275,38 @@ def _check_eslint_package(root: Path, path: Path, floor: str) -> Iterator[Findin
         return
     if pinned is None:
         return
-    where = f"{path.relative_to(root)}: {_ESLINT_PLUGIN}@{pinned}"
-    if pinned.startswith("file:") and _local_eslint_plugin_matches(root, path, pinned, floor):
+    where = f"{path.relative_to(root)}: {_OXLINT_PLUGIN}@{pinned}"
+    if pinned.startswith("file:") and _local_oxlint_plugin_matches(root, path, pinned, floor):
         yield Finding(
             Level.OK,
             where,
             "local plugin package matches the tested peer version",
-            "doctor.eslint.plugin",
+            "doctor.oxlint.plugin",
         )
         return
     if pinned.startswith(_LOCAL_SPECIFIERS):
         yield Finding(
             Level.WARN,
-            f"{path.relative_to(root)}: {_ESLINT_PLUGIN}@{pinned}",
+            f"{path.relative_to(root)}: {_OXLINT_PLUGIN}@{pinned}",
             "local/workspace plugin source cannot prove the published tested version",
-            "doctor.eslint.plugin-unverified",
+            "doctor.oxlint.plugin-unverified",
             "use the exact published peer outside local plugin development",
         )
         return
     if _is_exact_pin(pinned, floor):
-        yield Finding(Level.OK, where, "matches the tested peer set", "doctor.eslint.plugin")
+        yield Finding(Level.OK, where, "matches the tested peer set", "doctor.oxlint.plugin")
     else:
         yield Finding(
             Level.DRIFT,
             where,
-            f"the bundled eslint.strict.mjs is tested against {floor};"
+            f"the bundled oxlint.strict.mjs is tested against {floor};"
             " see `code-standards show peers` for the whole resolvable set",
-            "doctor.eslint.plugin",
+            "doctor.oxlint.plugin",
             "run `code-standards update`",
         )
 
 
-def _local_eslint_plugin_matches(root: Path, manifest_path: Path, pinned: str, floor: str) -> bool:
+def _local_oxlint_plugin_matches(root: Path, manifest_path: Path, pinned: str, floor: str) -> bool:
     candidate = (manifest_path.parent / pinned.removeprefix("file:")).resolve()
     repository = root.resolve()
     if not candidate.is_relative_to(repository):
@@ -1448,7 +1315,7 @@ def _local_eslint_plugin_matches(root: Path, manifest_path: Path, pinned: str, f
         raw: object = parse_json((candidate / "package.json").read_text(encoding="utf-8"))
     except OSError, json.JSONDecodeError:
         return False
-    return _is_object_table(raw) and raw.get("name") == _ESLINT_PLUGIN and raw.get("version") == floor
+    return _is_object_table(raw) and raw.get("name") == _OXLINT_PLUGIN and raw.get("version") == floor
 
 
 def _is_object_table(value: object) -> TypeGuard[dict[str, object]]:
@@ -1482,44 +1349,61 @@ def _check_adoption_wiring(root: Path) -> Iterator[Finding]:
 
 
 def _check_typescript_wiring(root: Path, typescript_root: Path | None, adopted: manifest.Manifest) -> Iterator[Finding]:
-    if typescript_root is None or "eslint" not in adopted.configs:
+    if typescript_root is None or "oxlint" not in adopted.configs:
         return
-    entrypoints = [typescript_root / name for name in _ESLINT_CONFIG_NAMES if (typescript_root / name).is_file()]
+    entrypoints = [typescript_root / name for name in OXLINT_CONFIG_NAMES if (typescript_root / name).is_file()]
     if len(entrypoints) > 1:
         yield Finding(
             Level.DRIFT,
             str(typescript_root.relative_to(root)),
-            f"multiple ESLint flat configs are active: {', '.join(path.name for path in entrypoints)}",
-            "doctor.eslint.ambiguous-config",
-            "keep one ESLint flat config and remove the shadowed duplicates",
+            f"multiple Oxlint configs are active: {', '.join(path.name for path in entrypoints)}",
+            "doctor.oxlint.ambiguous-config",
+            "keep one Oxlint config and remove the shadowed duplicates",
         )
-    active_entrypoint = entrypoints[0] if entrypoints else typescript_root / "eslint.config.mjs"
-    if _eslint_wiring_reaches_strict(active_entrypoint, typescript_root):
+    active_entrypoint = entrypoints[0] if entrypoints else typescript_root / "oxlint.config.mjs"
+    if _oxlint_wiring_reaches_strict(active_entrypoint, typescript_root):
         yield Finding(
             Level.OK,
             str(active_entrypoint.relative_to(root)),
-            "references eslint.strict.mjs",
-            "doctor.eslint.wiring",
+            "references oxlint.strict.mjs",
+            "doctor.oxlint.wiring",
         )
     else:
         yield Finding(
             Level.DRIFT,
             str(active_entrypoint.relative_to(root)),
-            "does not reference eslint.strict.mjs directly or through a local config",
-            "doctor.eslint.wiring",
-            "import and spread `./eslint.strict.mjs` from the active ESLint config chain",
+            "does not reference oxlint.strict.mjs directly or through a local config",
+            "doctor.oxlint.wiring",
+            "import and spread `./oxlint.strict.mjs` from the active Oxlint config chain",
         )
-    shadowing = _nested_eslint_configs(typescript_root, active_entrypoint)
+    shadowing = _nested_oxlint_configs(typescript_root, active_entrypoint)
     if shadowing:
         rendered = ", ".join(path.relative_to(root).as_posix() for path in shadowing)
         yield Finding(
             Level.DRIFT,
             str(typescript_root.relative_to(root)),
-            f"package-local ESLint configs can bypass the adopted config: {rendered}",
-            "doctor.eslint.shadowed-config",
-            "make each package config import the adopted eslint.strict.mjs chain, or remove the shadowing config",
+            f"package-local Oxlint configs can bypass the adopted config: {rendered}",
+            "doctor.oxlint.shadowed-config",
+            "make each package config import the adopted oxlint.strict.mjs chain, or remove the shadowing config",
         )
-    yield from _check_eslint_peer_set(root, typescript_root)
+    yield from _check_oxfmt_config(root, typescript_root)
+    yield from _check_oxlint_peer_set(root, typescript_root)
+
+
+def _check_oxfmt_config(root: Path, project: Path) -> Iterator[Finding]:
+    configs = [project / name for name in OXFMT_CONFIG_NAMES if (project / name).is_file()]
+    if len(configs) == 1:
+        yield Finding(
+            Level.OK, str(configs[0].relative_to(root)), "Oxfmt formatter policy is present", "doctor.oxfmt.wiring"
+        )
+    else:
+        yield Finding(
+            Level.DRIFT,
+            str(project.relative_to(root)),
+            "one Oxfmt formatter config is required",
+            "doctor.oxfmt.wiring",
+            "run `code-standards update` or migrate existing formatting policy",
+        )
 
 
 def _check_python_wiring(root: Path, python_root: Path | None, adopted: manifest.Manifest) -> Iterator[Finding]:
@@ -1566,7 +1450,7 @@ def _check_adopted_config(root: Path, name: str, destinations: Mapping[str, Path
             "remove or correct the unknown config name in the adoption manifest",
         )
         return
-    standard_source, _application_source, target_name, kind = spec
+    standard_source, target_name, kind = spec
     destination = destinations[kind]
     if destination is None:
         return
@@ -1655,12 +1539,12 @@ def _check_ci_gate(root: Path) -> Iterator[Finding]:
     )
 
 
-def _check_eslint_warning_exit_semantics(root: Path) -> Iterator[Finding]:
+def _check_oxlint_warning_exit_semantics(root: Path) -> Iterator[Finding]:
     try:
         adopted = manifest.load(root)
     except OSError, TypeError, ValueError:
         return
-    if adopted is None or "eslint" not in adopted.configs:
+    if adopted is None or "oxlint" not in adopted.configs:
         return
     typescript_root = _manifest_destination(root, adopted.typescript_dest)
     if typescript_root is None:
@@ -1676,26 +1560,26 @@ def _check_eslint_warning_exit_semantics(root: Path) -> Iterator[Finding]:
         except RecursionError, ValidationError:
             continue  # The package-json validator owns malformed documents.
         for name, command in sorted(scripts.items()):
-            if not _ESLINT_INVOCATION.search(command) or not _ZERO_ESLINT_WARNING_BUDGET.search(command):
+            if not _OXLINT_INVOCATION.search(command) or not _ZERO_OXLINT_WARNING_BUDGET.search(command):
                 continue
             yield Finding(
                 Level.DRIFT,
                 f"{path.relative_to(root)}: scripts.{name}",
                 "--max-warnings 0 makes warning-stage Standards rules block the canonical consumer lint command",
-                "doctor.eslint.warning-exit",
+                "doctor.oxlint.warning-exit",
                 "remove --max-warnings 0; Standards owns warning-to-error promotion after corpus evidence is clean",
             )
 
 
-def _nested_eslint_configs(typescript_root: Path, active_entrypoint: Path) -> tuple[Path, ...]:
-    names = {*_ESLINT_CONFIG_NAMES, ".eslintrc", ".eslintrc.json", ".eslintrc.js", ".eslintrc.cjs"}
+def _nested_oxlint_configs(typescript_root: Path, active_entrypoint: Path) -> tuple[Path, ...]:
+    names = {*OXLINT_CONFIG_NAMES, ".oxlintrc", ".oxlintrc.js", ".oxlintrc.cjs"}
     found: list[Path] = []
     for path in _walk(typescript_root):
         if path == active_entrypoint or path.name not in names:
             continue
-        if path.parent == typescript_root and path.name == "eslint.strict.mjs":
+        if path.parent == typescript_root and path.name == "oxlint.strict.mjs":
             continue
-        if _eslint_wiring_reaches_strict(path, typescript_root):
+        if _oxlint_wiring_reaches_strict(path, typescript_root):
             continue
         found.append(path)
     return tuple(sorted(found))
@@ -1737,7 +1621,7 @@ _LOCAL_MODULE = re.compile(
 )
 
 
-def _eslint_wiring_reaches_strict(path: Path, root: Path, seen: set[Path] | None = None) -> bool:
+def _oxlint_wiring_reaches_strict(path: Path, root: Path, seen: set[Path] | None = None) -> bool:
     visited: set[Path] = set() if seen is None else seen
     resolved = path.resolve()
     if resolved in visited or not resolved.is_file():
@@ -1750,15 +1634,15 @@ def _eslint_wiring_reaches_strict(path: Path, root: Path, seen: set[Path] | None
     text = _read(resolved)
     for match in _LOCAL_MODULE.finditer(text):
         target = (resolved.parent / match.group("path")).resolve()
-        if target.name == "eslint.strict.mjs" and target.is_file():
+        if target.name == "oxlint.strict.mjs" and target.is_file():
             return True
         candidates = (target, *(target.with_suffix(suffix) for suffix in (".js", ".mjs", ".cjs", ".ts")))
-        if any(_eslint_wiring_reaches_strict(candidate, root, visited) for candidate in candidates):
+        if any(_oxlint_wiring_reaches_strict(candidate, root, visited) for candidate in candidates):
             return True
     return False
 
 
-def _check_eslint_peer_set(root: Path, typescript_root: Path) -> Iterator[Finding]:
+def _check_oxlint_peer_set(root: Path, typescript_root: Path) -> Iterator[Finding]:
     package_root = packagemanager.workspace_root(typescript_root, root)
     package_json = package_root / "package.json"
     if not package_json.is_file():
@@ -1766,7 +1650,7 @@ def _check_eslint_peer_set(root: Path, typescript_root: Path) -> Iterator[Findin
             Level.DRIFT,
             str(package_json.relative_to(root)),
             "package.json is missing for the declared TypeScript project",
-            "doctor.eslint.package",
+            "doctor.oxlint.package",
             "restore package.json or correct dest.typescript",
         )
         return
@@ -1803,7 +1687,7 @@ def _check_eslint_peer_set(root: Path, typescript_root: Path) -> Iterator[Findin
     declared: dict[str, object] = {}
     for key in ("dependencies", "devDependencies"):
         declared.update(manifest.table_field(document, key))
-    for name, expected in sorted(manifest.eslint_peers().items()):
+    for name, expected in sorted(manifest.oxlint_peers().items()):
         actual = declared.get(name)
         if isinstance(actual, str) and _is_exact_pin(actual, expected):
             continue
@@ -1811,7 +1695,7 @@ def _check_eslint_peer_set(root: Path, typescript_root: Path) -> Iterator[Findin
             Level.DRIFT,
             f"{package_json.relative_to(root)}: {name}",
             f"expected exact tested peer {expected}, found {actual!r}",
-            "doctor.eslint.peer",
+            "doctor.oxlint.peer",
             "run `code-standards update`",
         )
 
@@ -1824,7 +1708,7 @@ def _check_eslint_peer_set(root: Path, typescript_root: Path) -> Iterator[Findin
                 Level.DRIFT,
                 str(pnpm_workspace.relative_to(root)),
                 "required pnpm 11 workspace policy is missing",
-                "doctor.eslint.override",
+                "doctor.oxlint.override",
                 "run `code-standards update`",
             )
             return
@@ -1836,7 +1720,7 @@ def _check_eslint_peer_set(root: Path, typescript_root: Path) -> Iterator[Findin
             Level.DRIFT,
             str(pnpm_workspace.relative_to(root)),
             "required pnpm peer override is missing",
-            "doctor.eslint.override",
+            "doctor.oxlint.override",
             "run `code-standards update`",
         )
         return
@@ -1848,7 +1732,7 @@ def _check_eslint_peer_set(root: Path, typescript_root: Path) -> Iterator[Findin
             Level.DRIFT,
             str(package_json.relative_to(root)),
             f"required {client} peer override is missing",
-            "doctor.eslint.override",
+            "doctor.oxlint.override",
             "run `code-standards update`",
         )
 
@@ -1879,7 +1763,7 @@ def _package_json_pin_text(text: str) -> str | None:
     parsed: object = parse_json(text)
     package_json = manifest.as_table(parsed)
     for field in ("dependencies", "devDependencies"):
-        pinned = manifest.as_table(package_json.get(field)).get(_ESLINT_PLUGIN)
+        pinned = manifest.as_table(package_json.get(field)).get(_OXLINT_PLUGIN)
         if isinstance(pinned, str):
             return pinned
     return None

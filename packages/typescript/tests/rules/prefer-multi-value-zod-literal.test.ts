@@ -1,14 +1,12 @@
 // vitest: shared-module-graph
-import * as tsParser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, expect, it } from "vitest";
+import { RuleTester } from "oxlint/plugins-dev";
+import { describe, expect, it } from "vitest";
 import { z } from "zod";
 
 import rule, {
   PREFER_MULTI_VALUE_ZOD_LITERAL_DOCUMENTATION,
 } from "../../src/rules/prefer-multi-value-zod-literal.js";
 
-RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
 RuleTester.it = it;
 RuleTester.itOnly = it.only;
@@ -24,10 +22,7 @@ it("does not automatically change the public schema and validation error contrac
 });
 
 const RULE_TESTER = new RuleTester({
-  languageOptions: {
-    parser: tsParser,
-    parserOptions: { ecmaVersion: "latest", sourceType: "module" },
-  },
+  languageOptions: { parserOptions: { lang: "ts" } },
 });
 const ERROR = { messageId: "useMultiValueLiteral" as const };
 

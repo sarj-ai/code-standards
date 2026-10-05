@@ -4,7 +4,10 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/prefer-whole-object-assertion.test.ts
  */
 
-import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
+import { sourceOrigin } from "./_source-origin.js";
+import type { ESTree } from "@oxlint/plugins";
+import { findVariable } from "./_scope.js";
+
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile, isTestFile } from "./_paths.js";
@@ -51,9 +54,9 @@ type AssertionKey =
   | { readonly kind: "index"; readonly index: number };
 
 interface Assertion {
-  readonly statement: TSESTree.ExpressionStatement;
+  readonly statement: ESTree.ExpressionStatement;
   /** The object the asserted member expression hangs off — the run's grouping key. */
-  readonly receiver: TSESTree.Expression;
+  readonly receiver: ESTree.Expression;
   readonly key: AssertionKey;
   readonly matcher: string;
   /** Source text of the expected value, including nullary matcher literals. */
@@ -62,13 +65,13 @@ interface Assertion {
   readonly expectedIsLiteral: boolean;
 }
 
-function literalText(node: TSESTree.Node, getText: (node: TSESTree.Node) => string): string | null {
+function literalText(node: ESTree.Node, getText: (node: ESTree.Node) => string): string | null {
   switch (node.type) {
-    case AST_NODE_TYPES.Literal:
+    case "Literal":
       return "regex" in node ? null : getText(node);
-    case AST_NODE_TYPES.TemplateLiteral:
+    case "TemplateLiteral":
       return node.expressions.length === 0 ? getText(node) : null;
-    case AST_NODE_TYPES.UnaryExpression:
+    case "UnaryExpression":
       return NUMERIC_SIGNS.has(node.operator) && literalText(node.argument, getText) !== null
         ? getText(node)
         : null;
@@ -77,17 +80,17 @@ function literalText(node: TSESTree.Node, getText: (node: TSESTree.Node) => stri
   }
 }
 
-function isPureReceiver(node: TSESTree.Node): boolean {
+function isPureReceiver(node: ESTree.Node): boolean {
   switch (node.type) {
-    case AST_NODE_TYPES.Identifier:
-    case AST_NODE_TYPES.ThisExpression:
+    case "Identifier":
+    case "ThisExpression":
       return true;
-    case AST_NODE_TYPES.MemberExpression:
+    case "MemberExpression":
       if (node.optional) {
         return false;
       }
       if (node.computed) {
-        return node.property.type === AST_NODE_TYPES.Literal && isPureReceiver(node.object);
+        return node.property.type === "Literal" && isPureReceiver(node.object);
       }
       return isPureReceiver(node.object);
     default:
@@ -96,21 +99,21 @@ function isPureReceiver(node: TSESTree.Node): boolean {
 }
 
 /** A non-negative integer array index written as a literal, else `null`. */
-function literalIndex(node: TSESTree.Node): number | null {
-  if (node.type !== AST_NODE_TYPES.Literal || typeof node.value !== "number") {
+function literalIndex(node: ESTree.Node): number | null {
+  if (node.type !== "Literal" || typeof node.value !== "number") {
     return null;
   }
   return Number.isInteger(node.value) && node.value >= 0 ? node.value : null;
 }
 
 function propertyAccess(
-  node: TSESTree.MemberExpression,
-): { readonly receiver: TSESTree.Expression; readonly path: readonly string[] } | null {
+  node: ESTree.MemberExpression,
+): { readonly receiver: ESTree.Expression; readonly path: readonly string[] } | null {
   const path: string[] = [];
-  let current: TSESTree.Expression = node;
-  while (current.type === AST_NODE_TYPES.MemberExpression && !current.computed && !current.optional) {
+  let current: ESTree.Expression = node;
+  while (current.type === "MemberExpression" && !current.computed && !current.optional) {
     if (
-      current.property.type !== AST_NODE_TYPES.Identifier ||
+      current.property.type !== "Identifier" ||
       COLLECTION_PROPERTIES.has(current.property.name) ||
       LITERAL_KEY_HAZARDS.has(current.property.name)
     ) return null;
@@ -139,7 +142,7 @@ export default createRule<Options, MessageIds>({
   },
   defaultOptions: [],
   create(context) {
-    if (!isTestFile(context.filename) || isGeneratedFile(context.filename, context.sourceCode.text)) {
+    if (!isTestFile(sourceOrigin(context).filename) || isGeneratedFile(sourceOrigin(context).filename, sourceOrigin(context).text)) {
       return {};
     }
     const { sourceCode } = context;
@@ -231,7 +234,7 @@ export default createRule<Options, MessageIds>({
       });
     }
 
-    function checkBody(body: readonly TSESTree.Statement[]): void {
+    function checkBody(body: readonly ESTree.Statement[]): void {
       let run: Assertion[] = [];
 
       const flush = (): void => {
@@ -266,27 +269,27 @@ export default createRule<Options, MessageIds>({
       flush();
     }
 
-    function parseAssertion(statement: TSESTree.Statement): Assertion | null {
-      if (statement.type !== AST_NODE_TYPES.ExpressionStatement) {
+    function parseAssertion(statement: ESTree.Statement): Assertion | null {
+      if (statement.type !== "ExpressionStatement") {
         return null;
       }
       const call = statement.expression;
-      if (call.type !== AST_NODE_TYPES.CallExpression) {
+      if (call.type !== "CallExpression") {
         return null;
       }
       const callee = call.callee;
       if (
-        callee.type !== AST_NODE_TYPES.MemberExpression ||
+        callee.type !== "MemberExpression" ||
         callee.computed ||
-        callee.property.type !== AST_NODE_TYPES.Identifier
+        callee.property.type !== "Identifier"
       ) {
         return null;
       }
       const matcher = callee.property.name;
       const expectCall = callee.object;
       if (
-        expectCall.type !== AST_NODE_TYPES.CallExpression ||
-        expectCall.callee.type !== AST_NODE_TYPES.Identifier ||
+        expectCall.type !== "CallExpression" ||
+        expectCall.callee.type !== "Identifier" ||
         expectCall.callee.name !== "expect" ||
         expectCall.arguments.length !== 1
       ) {
@@ -294,7 +297,7 @@ export default createRule<Options, MessageIds>({
       }
       const actual = expectCall.arguments[0];
       if (!isTestExpect(expectCall.callee)) return null;
-      if (actual === undefined || actual.type !== AST_NODE_TYPES.MemberExpression || actual.optional) {
+      if (actual === undefined || actual.type !== "MemberExpression" || actual.optional) {
         return null;
       }
       if (!isPureReceiver(actual.object)) {
@@ -302,7 +305,7 @@ export default createRule<Options, MessageIds>({
       }
 
       let key: AssertionKey;
-      let receiver: TSESTree.Expression;
+      let receiver: ESTree.Expression;
       if (actual.computed) {
         const index = literalIndex(actual.property);
         if (index === null) {
@@ -320,20 +323,20 @@ export default createRule<Options, MessageIds>({
       return assertionExpectation(statement, call, receiver, key, matcher);
     }
 
-    function isTestExpect(callee: TSESTree.Identifier): boolean {
-      const variable = ASTUtils.findVariable(sourceCode.getScope(callee), callee.name);
+    function isTestExpect(callee: ESTree.BindingIdentifier): boolean {
+      const variable = findVariable(sourceCode.getScope(callee), callee.name);
       if (variable !== null && variable.defs.some((definition) => {
-        if (definition.node.type !== AST_NODE_TYPES.ImportSpecifier) return true;
+        if (definition.node.type !== "ImportSpecifier") return true;
         const declaration = definition.node.parent;
         const imported = definition.node.imported;
-        return declaration.type !== AST_NODE_TYPES.ImportDeclaration ||
+        return declaration.type !== "ImportDeclaration" ||
           !["vitest", "@jest/globals", "@playwright/test", "bun:test"].includes(String(declaration.source.value)) ||
-          (imported.type === AST_NODE_TYPES.Identifier ? imported.name : imported.value) !== "expect";
+          (imported.type === "Identifier" ? imported.name : imported.value) !== "expect";
       })) return false;
       return true;
     }
 
-    function assertionExpectation(statement: TSESTree.ExpressionStatement, call: TSESTree.CallExpression, receiver: TSESTree.Expression | TSESTree.Super, key: Assertion["key"], matcher: string): Assertion | null {
+    function assertionExpectation(statement: ESTree.ExpressionStatement, call: ESTree.CallExpression, receiver: ESTree.Expression | ESTree.Super, key: Assertion["key"], matcher: string): Assertion | null {
       const synthetic = SYNTHETIC_LITERAL_MATCHERS.get(matcher);
       if (synthetic !== undefined && call.arguments.length === 0) {
         return { statement, receiver, key, matcher, expectedText: synthetic, expectedIsLiteral: true };
@@ -342,7 +345,7 @@ export default createRule<Options, MessageIds>({
         return null;
       }
       const expected = call.arguments[0];
-      if (call.arguments.length !== 1 || expected === undefined || expected.type === AST_NODE_TYPES.SpreadElement) {
+      if (call.arguments.length !== 1 || expected === undefined || expected.type === "SpreadElement") {
         return null;
       }
       const literal = literalText(expected, (node) => sourceCode.getText(node));
@@ -357,10 +360,10 @@ export default createRule<Options, MessageIds>({
     }
 
     return {
-      BlockStatement: (node: TSESTree.BlockStatement): void => {
+      BlockStatement: (node: ESTree.BlockStatement): void => {
         checkBody(node.body);
       },
-      Program: (node: TSESTree.Program): void => {
+      Program: (node: ESTree.Program): void => {
         checkBody(node.body);
       },
     };

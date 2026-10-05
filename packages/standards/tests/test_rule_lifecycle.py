@@ -37,8 +37,8 @@ def _files(root: Path) -> tuple[Path, ...]:
         "packages/standards/src/sarj_standards/schemas/rule-catalog.v1.json",
         "packages/standards/src/sarj_standards/configs/rule-ledger.json",
         "packages/typescript/src/index.ts",
-        "packages/standards/src/sarj_standards/configs/eslint.strict.mjs",
-        "packages/standards/src/sarj_standards/configs/eslint.application.mjs",
+        "packages/standards/src/sarj_standards/configs/oxlint.strict.mjs",
+        "packages/standards/src/sarj_standards/configs/oxlint.application.mjs",
     )
     paths = tuple(root / item for item in relative)
     for path in paths:
@@ -300,7 +300,7 @@ def test_stage_warning_points_to_rule_discovery_when_no_selector_is_close(
     with pytest.raises(ValueError, match=r"maintain rules manifest"):
         rule_lifecycle.stage_warning(
             tmp_path,
-            RuleSelector(RuleEngine.ESLINT, RuleId("unrelated-name")),
+            RuleSelector(RuleEngine.OXLINT, RuleId("unrelated-name")),
         )
 
 
@@ -319,7 +319,7 @@ def test_stage_warning_rejects_source_without_rule_documentation(
 @pytest.mark.parametrize(
     ("engine", "source", "field"),
     [
-        (RuleEngine.ESLINT, "const SAMPLE_DOCUMENTATION = {\n  summary: 'example',\n};\n", 'defaultLevel: "warning"'),
+        (RuleEngine.OXLINT, "const SAMPLE_DOCUMENTATION = {\n  summary: 'example',\n};\n", 'defaultLevel: "warning"'),
         (
             RuleEngine.TEXT,
             'REGISTRY = {\n        "sample": RuleMeta(\n            code="SARJ999",\n        ),\n}\n',
@@ -337,14 +337,14 @@ def test_source_severity_editor_round_trips_other_engines(
     path.write_text(source, encoding="utf-8")
     selector = RuleSelector(engine, RuleId("sample"))
 
-    root = Path(__file__).resolve().parents[3] if engine is RuleEngine.ESLINT else tmp_path
+    root = Path(__file__).resolve().parents[3] if engine is RuleEngine.OXLINT else tmp_path
     staged = rule_level_source.prepare(root, selector, str(path), DefaultLevel.WARNING)
     assert staged.current is DefaultLevel.ERROR
     assert field in staged.after
     path.write_text(staged.after, encoding="utf-8")
     promoted = rule_level_source.prepare(root, selector, str(path), DefaultLevel.ERROR)
     assert promoted.current is DefaultLevel.WARNING
-    expected = staged.after.replace('"warning"', '"error"') if engine is RuleEngine.ESLINT else source
+    expected = staged.after.replace('"warning"', '"error"') if engine is RuleEngine.OXLINT else source
     assert promoted.after == expected
 
 

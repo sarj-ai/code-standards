@@ -3,16 +3,18 @@
  *
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/prefer-nominal-id-types.test.ts
  */
-import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
+
+import { sourceOrigin } from "./_source-origin.js";
+import type { ESTree, Context } from "@oxlint/plugins";
+import { findVariable } from "./_scope.js";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile } from "./_paths.js";
 
 type MessageIds = "preferNominalIds";
 type Options = [];
-type Context = Readonly<TSESLint.RuleContext<MessageIds, Options>>;
 type Carrier = "string" | "number" | "string[]" | "number[]";
-type Boundary = TSESTree.Node & { readonly params: readonly TSESTree.Parameter[] };
+type Boundary = ESTree.Node & { readonly params: readonly ESTree.ParamPattern[] };
 
 const OPERATIONAL_ROLES: ReadonlySet<string> = new Set([
   "request", "trace", "span", "correlation", "process", "thread", "timeout", "interval",
@@ -42,39 +44,39 @@ function arrayCarrier(carrier: Carrier | undefined): Carrier | undefined {
   return undefined;
 }
 
-function isNullish(node: TSESTree.TypeNode): boolean {
-  return node.type === AST_NODE_TYPES.TSUndefinedKeyword || node.type === AST_NODE_TYPES.TSNullKeyword ||
-    (node.type === AST_NODE_TYPES.TSLiteralType && node.literal.type === AST_NODE_TYPES.Literal && node.literal.value === null);
+function isNullish(node: ESTree.TSType): boolean {
+  return node.type === "TSUndefinedKeyword" || node.type === "TSNullKeyword" ||
+    (node.type === "TSLiteralType" && node.literal.type === "Literal" && node.literal.value === null);
 }
 
-function referenceCarrier(node: TSESTree.TSTypeReference, context: Context, depth: number): Carrier | undefined {
-  if (node.typeName.type !== AST_NODE_TYPES.Identifier) return undefined;
-  const variable = ASTUtils.findVariable(context.sourceCode.getScope(node), node.typeName.name);
+function referenceCarrier(node: ESTree.TSTypeReference, context: Context, depth: number): Carrier | undefined {
+  if (node.typeName.type !== "Identifier") return undefined;
+  const variable = findVariable(context.sourceCode.getScope(node), node.typeName.name);
   const definitions = variable?.defs ?? [];
   const args = node.typeArguments?.params;
   if (definitions.length === 0 && ["Array", "ReadonlyArray"].includes(node.typeName.name) && args?.length === 1) {
     return arrayCarrier(rawCarrier(args[0], context, depth + 1));
   }
-  if (args !== undefined || definitions.length !== 1) return undefined;
+  if (args != null || definitions.length !== 1) return undefined;
   const declaration = definitions[0]?.node;
-  if (declaration?.type !== AST_NODE_TYPES.TSTypeAliasDeclaration || declaration.typeParameters !== undefined) return undefined;
+  if (declaration?.type !== "TSTypeAliasDeclaration" || declaration.typeParameters != null) return undefined;
   return rawCarrier(declaration.typeAnnotation, context, depth + 1);
 }
 
-function rawCarrier(node: TSESTree.TypeNode | undefined, context: Context, depth = 0): Carrier | undefined {
-  if (node === undefined || depth >= MAX_ALIAS_DEPTH) return undefined;
+function rawCarrier(node: ESTree.TSType | undefined, context: Context, depth = 0): Carrier | undefined {
+  if (node == null || depth >= MAX_ALIAS_DEPTH) return undefined;
   switch (node.type) {
-    case AST_NODE_TYPES.TSStringKeyword: return "string";
-    case AST_NODE_TYPES.TSNumberKeyword: return "number";
-    case AST_NODE_TYPES.TSArrayType: return arrayCarrier(rawCarrier(node.elementType, context, depth + 1));
-    case AST_NODE_TYPES.TSTypeOperator:
+    case "TSStringKeyword": return "string";
+    case "TSNumberKeyword": return "number";
+    case "TSArrayType": return arrayCarrier(rawCarrier(node.elementType, context, depth + 1));
+    case "TSTypeOperator":
       return node.operator === "readonly" ? rawCarrier(node.typeAnnotation, context, depth + 1) : undefined;
-    case AST_NODE_TYPES.TSUnionType: {
+    case "TSUnionType": {
       const members = node.types.filter((member) => !isNullish(member));
       if (members.length !== 1) return undefined;
       return rawCarrier(members[0], context, depth + 1);
     }
-    case AST_NODE_TYPES.TSTypeReference: return referenceCarrier(node, context, depth);
+    case "TSTypeReference": return referenceCarrier(node, context, depth);
     default: return undefined;
   }
 }
@@ -83,7 +85,7 @@ function checkBoundary(node: Boundary, context: Context): void {
   const roles = new Map<Carrier, string>();
   for (const parameter of node.params) {
     const identifier = parameterIdentifier(parameter);
-    if (identifier?.typeAnnotation === undefined) continue;
+    if (identifier?.typeAnnotation == null) continue;
     const role = identifierRole(identifier.name);
     if (role === undefined) continue;
     const carrier = rawCarrier(identifier.typeAnnotation.typeAnnotation, context);
@@ -105,10 +107,10 @@ function identifierRole(name: string): string | undefined {
   return OPERATIONAL_ROLES.has(role) ? undefined : role;
 }
 
-function parameterIdentifier(parameter: TSESTree.Parameter): TSESTree.Identifier | undefined {
-  if (parameter.type === AST_NODE_TYPES.Identifier) return parameter;
-  if (parameter.type === AST_NODE_TYPES.AssignmentPattern && parameter.left.type === AST_NODE_TYPES.Identifier) return parameter.left;
-  if (parameter.type === AST_NODE_TYPES.TSParameterProperty) return parameterIdentifier(parameter.parameter);
+function parameterIdentifier(parameter: ESTree.ParamPattern): ESTree.BindingIdentifier | undefined {
+  if (parameter.type === "Identifier") return parameter;
+  if (parameter.type === "AssignmentPattern" && parameter.left.type === "Identifier") return parameter.left;
+  if (parameter.type === "TSParameterProperty") return parameterIdentifier(parameter.parameter);
   return undefined;
 }
 
@@ -123,7 +125,7 @@ export default createRule<Options, MessageIds>({
   },
   defaultOptions: [],
   create(context) {
-    if (isGeneratedFile(context.filename, context.sourceCode.text)) return {};
+    if (isGeneratedFile(sourceOrigin(context).filename, sourceOrigin(context).text)) return {};
     return {
       ArrowFunctionExpression: (node): void => checkBoundary(node, context),
       FunctionDeclaration: (node): void => checkBoundary(node, context),

@@ -78,9 +78,11 @@ else
         select_scopes "${scopes[@]}" ;;
       .sarj-standards.toml)
         select_scopes standards docs ;;
+      package.json|package-lock.json)
+        select_scopes typescript standards docs docs-audit ;;
       pyproject.toml|uv.lock)
         select_scopes python standards docs ;;
-      packages/standards/src/sarj_standards/configs/eslint*)
+      packages/standards/src/sarj_standards/configs/oxlint*)
         select_scopes typescript standards docs ;;
       packages/standards/src/sarj_standards/configs/rule-*|packages/standards/src/sarj_standards/configs/cli-reference.v1.json)
         select_scopes standards docs ;;
@@ -96,7 +98,7 @@ else
         select_scopes sql standards docs ;;
       packages/iac/*)
         select_scopes iac standards docs ;;
-      packages/typescript/*)
+      packages/typescript/*|packages/react-hooks/*)
         select_scopes typescript standards docs ;;
       packages/tsconfig/*)
         select_scopes tsconfig standards docs ;;

@@ -4,8 +4,9 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/sole-export-matches-filename.test.ts
  */
 
-import { AST_NODE_TYPES } from "@typescript-eslint/utils";
 
+
+import { sourceOrigin } from "./_source-origin.js";
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isFrameworkEntrypoint } from "./_is-framework-entrypoint.js";
 import { isGeneratedFile, isTestFile } from "./_paths.js";
@@ -63,14 +64,14 @@ export default createRule<Options, MessageIds>({
   },
   defaultOptions: [],
   create(context) {
-    const fileStem = stem(context.filename);
-    const normalizedFilename = context.filename.replaceAll("\\", "/");
+    const fileStem = stem(sourceOrigin(context).filename);
+    const normalizedFilename = sourceOrigin(context).filename.replaceAll("\\", "/");
     if (
       EXCLUDED_STEMS.has(fileStem) ||
       GENERIC_MODULE_STEMS.has(fileStem) ||
-      context.filename.endsWith(".d.ts") ||
-      isTestFile(context.filename) ||
-      isGeneratedFile(context.filename, context.sourceCode.text)
+      sourceOrigin(context).filename.endsWith(".d.ts") ||
+      isTestFile(sourceOrigin(context).filename) ||
+      isGeneratedFile(sourceOrigin(context).filename, sourceOrigin(context).text)
     ) return {};
     let hasCommonJsExport = false;
     return {
@@ -91,7 +92,7 @@ export default createRule<Options, MessageIds>({
         if (
           only.name === "collections" &&
           /(?:^|\/)src\/content\.config\.(?:ts|js|mjs)$/u.test(normalizedFilename) &&
-          program.body.some((statement) => statement.type === AST_NODE_TYPES.ImportDeclaration &&
+          program.body.some((statement) => statement.type === "ImportDeclaration" &&
             statement.source.value === "astro:content")
         ) return;
         const exportedStem = kebabCase(only.name);

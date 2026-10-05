@@ -58,7 +58,10 @@ def test_release_cli_preserves_release_age_environment(
     def check(
         lockfile: Path,
         policy: release.ReleaseAgePolicy,
+        *,
+        workspace: str | None = None,
     ) -> release.ReleaseAgeReport:
+        assert workspace is None
         assert lockfile == (tmp_path / "package-lock.json").resolve()
         policies.append(policy)
         return release.ReleaseAgeReport((), ())
@@ -171,3 +174,41 @@ def test_verify_tags_process_failure_is_not_reported_as_recovery(
 
     assert status == 2
     assert capsys.readouterr().err == "error: git ls-remote failed with exit code 128\n"
+
+
+def test_lock_age_cli_resolves_root_lock_and_preserves_workspace_selection(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    calls: list[tuple[Path, str | None]] = []
+
+    def check(
+        lockfile: Path,
+        _policy: release.ReleaseAgePolicy,
+        *,
+        workspace: str | None = None,
+    ) -> release.ReleaseAgeReport:
+        calls.append((lockfile, workspace))
+        return release.ReleaseAgeReport((), ())
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- test intercepts the registry-backed release-age boundary
+        release, "check_lockfile_release_age", check
+    )
+    assert (
+        cli.main(
+            [
+                "--root",
+                str(tmp_path),
+                "maintain",
+                "release",
+                "lock-age",
+                "package-lock.json",
+                "--workspace",
+                "packages/typescript",
+                "--minimum-days",
+                "14",
+            ]
+        )
+        == 0
+    )
+    assert calls == [(tmp_path / "package-lock.json", "packages/typescript")]

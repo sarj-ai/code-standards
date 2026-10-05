@@ -1,15 +1,14 @@
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
+import { RuleTester } from "oxlint/plugins-dev";
+import { describe, it } from "vitest";
 
 import rule, { ENFORCE_FILE_STRUCTURE_DOCUMENTATION } from "../../src/rules/enforce-file-structure.js";
 
 // Bind vitest to RuleTester for proper test reporting
-RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
 RuleTester.it = it;
 RuleTester.itOnly = it.only;
 
-const RULE_TESTER = new RuleTester();
+const RULE_TESTER = new RuleTester({ languageOptions: { parserOptions: { lang: "tsx" } } });
 
 const NON_ACTION_FILENAME = "src/components/some-component.ts";
 const ACTION_FILENAME = "src/actions/create-user.ts";

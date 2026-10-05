@@ -4,8 +4,10 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/prefer-server-actions.test.ts
  */
 
-import { ASTUtils, type TSESTree } from "@typescript-eslint/utils";
-import type { RuleContext, Scope } from "@typescript-eslint/utils/ts-eslint";
+import { sourceOrigin } from "./_source-origin.js";
+import type { ESTree, Context, Scope } from "@oxlint/plugins";
+import { findVariable } from "./_scope.js";
+
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 
@@ -38,20 +40,20 @@ const NON_REACT_FRAMEWORK_RE =
 
 const BASE_PATH_RE = /^\/(?!$)(?!.*[?#])(?:[^/]+\/)*[^/]+$/u;
 
-type Ctx = Readonly<RuleContext<MessageIds, Options>>;
+type Ctx = Readonly<Context>;
 
 function getScope(
   context: Ctx,
-  node: TSESTree.Node,
-): Scope.Scope {
+  node: ESTree.Node,
+): Scope {
   return context.sourceCode.getScope(node);
 }
 
 function resolvesToGlobalFetch(
   context: Ctx,
-  identifier: TSESTree.Identifier,
+  identifier: ESTree.BindingIdentifier,
 ): boolean {
-  let scope: Scope.Scope | null = getScope(context, identifier);
+  let scope: Scope | null = getScope(context, identifier);
   while (scope) {
     const variable = scope.set.get(identifier.name);
     if (variable !== undefined) return variable.defs.length === 0;
@@ -61,23 +63,23 @@ function resolvesToGlobalFetch(
 }
 
 function resolveNode(
-  node: TSESTree.Node | null | undefined,
+  node: ESTree.Node | null | undefined,
   context: Ctx,
-): TSESTree.Node | null {
+): ESTree.Node | null {
   if (!node) return null;
   if (node.type !== "Identifier") return node;
 
-  const variable = ASTUtils.findVariable(getScope(context, node), node.name);
+  const variable = findVariable(getScope(context, node), node.name);
   const definition = variable?.defs.length === 1 ? variable.defs[0] : undefined;
-  if (definition?.type !== "Variable" || definition.parent.kind !== "const" || definition.node.init === null || variable?.references.some((reference) => reference.isWrite() && reference.init !== true)) return node;
+  if (definition?.type !== "Variable" || definition.node.type !== "VariableDeclarator" || definition.parent?.type !== "VariableDeclaration" || definition.parent.kind !== "const" || definition.node.init === null || variable?.references.some((reference) => reference.isWrite() && reference.init !== true)) return node;
   if (definition.node.init.type === "ObjectExpression" && variable?.references.some((reference) => reference.identifier !== node && reference.init !== true)) return node;
   return definition.node.init;
 }
 
-function isAxiosClient(node: TSESTree.Node, context: Ctx, seen = new Set<TSESTree.Node>()): boolean {
+function isAxiosClient(node: ESTree.Node, context: Ctx, seen = new Set<ESTree.Node>()): boolean {
   if (node.type !== "Identifier" || seen.has(node)) return false;
   seen.add(node);
-  const variable = ASTUtils.findVariable(getScope(context, node), node.name);
+  const variable = findVariable(getScope(context, node), node.name);
   const definition = variable?.defs.length === 1 ? variable.defs[0] : undefined;
   if (definition === undefined || variable?.references.some((reference) => reference.isWrite() && reference.init !== true)) return false;
   if (variable?.references.some((reference) => {
@@ -86,21 +88,21 @@ function isAxiosClient(node: TSESTree.Node, context: Ctx, seen = new Set<TSESTre
     const parent = identifier.parent;
     if (parent.type === "CallExpression" && parent.callee === identifier) return false;
     return parent.type !== "MemberExpression" || parent.object !== identifier || parent.computed ||
-      parent.parent.type !== "CallExpression" || parent.parent.callee !== parent;
+      parent.parent?.type !== "CallExpression" || parent.parent.callee !== parent;
   })) return false;
   if (definition.type === "ImportBinding") {
     const declaration = definition.parent;
-    return declaration.type === "ImportDeclaration" && declaration.source.value === "axios" && declaration.importKind !== "type" &&
+    return declaration?.type === "ImportDeclaration" && declaration.source.value === "axios" && declaration.importKind !== "type" &&
       (definition.node.type === "ImportDefaultSpecifier" || (definition.node.type === "ImportSpecifier" && definition.node.importKind !== "type" && (definition.node.imported.type === "Identifier" ? definition.node.imported.name : definition.node.imported.value) === "default"));
   }
-  if (definition.type !== "Variable" || definition.parent.kind !== "const") return false;
+  if (definition.type !== "Variable" || definition.node.type !== "VariableDeclarator" || definition.parent?.type !== "VariableDeclaration" || definition.parent.kind !== "const") return false;
   const init = definition.node.init;
   return init?.type === "CallExpression" && init.arguments.length <= 1 && hasLocalAxiosOptions(init.arguments[0], context) && init.callee.type === "MemberExpression" && !init.callee.computed &&
     init.callee.property.type === "Identifier" && init.callee.property.name === "create" && isAxiosClient(init.callee.object, context, seen);
 }
 
-function hasLocalAxiosOptions(node: TSESTree.Node | undefined, context: Ctx): boolean {
-  if (node === undefined) return true;
+function hasLocalAxiosOptions(node: ESTree.Node | undefined, context: Ctx): boolean {
+  if (node == null) return true;
   const options = resolveNode(node, context);
   return options?.type === "ObjectExpression" && options.properties.every((property) =>
     property.type === "Property" && !property.computed && property.kind === "init" &&
@@ -109,7 +111,7 @@ function hasLocalAxiosOptions(node: TSESTree.Node | undefined, context: Ctx): bo
 }
 
 function isApiUrl(
-  node: TSESTree.Node | null | undefined,
+  node: ESTree.Node | null | undefined,
   context: Ctx,
   apiPrefixes: readonly string[],
 ): boolean {
@@ -142,7 +144,7 @@ function isValidBasePath(basePath: string): boolean {
 }
 
 function isMutationMethod(
-  node: TSESTree.Node | null | undefined,
+  node: ESTree.Node | null | undefined,
   context: Ctx,
 ): boolean {
   const resolved = resolveNode(node, context);
@@ -178,7 +180,7 @@ function isMutationMethod(
 }
 
 function isFunctionArgument(
-  node: TSESTree.CallExpressionArgument,
+  node: ESTree.Argument,
   context: Ctx,
 ): boolean {
   const resolved = resolveNode(node, context);
@@ -190,7 +192,7 @@ function isFunctionArgument(
   }
   if (node.type !== "Identifier") return false;
 
-  let scope: Scope.Scope | null = getScope(context, node);
+  let scope: Scope | null = getScope(context, node);
   while (scope) {
     const variable = scope.set.get(node.name);
     if (
@@ -204,9 +206,9 @@ function isFunctionArgument(
 }
 
 function getPropertyNode(
-  objNode: TSESTree.Node | null | undefined,
+  objNode: ESTree.Node | null | undefined,
   propName: string,
-): TSESTree.Node | null {
+): ESTree.Node | null {
   if (!objNode || objNode.type !== "ObjectExpression") return null;
   if (objNode.properties.some((property) => property.type === "SpreadElement" || property.computed)) return null;
   for (const prop of [...objNode.properties].reverse()) {
@@ -221,14 +223,6 @@ function getPropertyNode(
       keyName = prop.key.value;
     }
     if (keyName === propName) {
-      // Skip destructuring patterns — they're not valid as config values.
-      if (
-        prop.value.type === "AssignmentPattern" ||
-        prop.value.type === "ArrayPattern" ||
-        prop.value.type === "ObjectPattern"
-      ) {
-        return null;
-      }
       return prop.value;
     }
   }
@@ -262,7 +256,7 @@ export default createRule<Options, MessageIds>({
   },
   defaultOptions: [{}],
   create(context, [options]) {
-    const filename = context.filename.replaceAll("\\", "/");
+    const filename = sourceOrigin(context).filename.replaceAll("\\", "/");
     if (SKIP_FILE_REGEX.test(filename)) {
       return {};
     }
@@ -299,7 +293,7 @@ export default createRule<Options, MessageIds>({
       apiPrefixes.push(`${options.basePath}/api/`);
     }
 
-    function isFetchMutation(node: TSESTree.CallExpression): boolean {
+    function isFetchMutation(node: ESTree.CallExpression): boolean {
       const urlArg = node.arguments[0];
       if (urlArg && urlArg.type !== "SpreadElement" && isApiUrl(urlArg, context, apiPrefixes)) {
         const initArg = node.arguments[1];
@@ -314,7 +308,7 @@ export default createRule<Options, MessageIds>({
       return false;
     }
 
-    function isAxiosMethodMutation(node: TSESTree.CallExpression, method: string): boolean {
+    function isAxiosMethodMutation(node: ESTree.CallExpression, method: string): boolean {
       const methodName = method.toLowerCase();
       if (AXIOS_MUTATION_METHODS.has(methodName)) {
         const config = node.arguments[methodName === "delete" ? 1 : 2];
@@ -337,7 +331,7 @@ export default createRule<Options, MessageIds>({
       return false;
     }
 
-    function isAxiosConfigMutation(node: TSESTree.CallExpression): boolean {
+    function isAxiosConfigMutation(node: ESTree.CallExpression): boolean {
       const firstArg = node.arguments[0];
       if (firstArg && firstArg.type !== "SpreadElement") {
         const configArg = resolveNode(firstArg, context);

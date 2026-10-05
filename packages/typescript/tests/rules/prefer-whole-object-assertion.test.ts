@@ -1,20 +1,16 @@
 // vitest: shared-module-graph
-import * as tsParser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { Linter } from "eslint";
-import { afterAll, describe, expect, it } from "vitest";
+import { RuleTester } from "oxlint/plugins-dev";
+import { ruleReports } from "../_native-rule.js";
+import { describe, expect, it } from "vitest";
 
 import rule, { PREFER_WHOLE_OBJECT_ASSERTION_DOCUMENTATION } from "../../src/rules/prefer-whole-object-assertion.js";
 
-RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
 RuleTester.it = it;
 RuleTester.itOnly = it.only;
 
 const RULE_TESTER = new RuleTester({
-  languageOptions: {
-    parser: tsParser,
-  },
+  languageOptions: { parserOptions: { lang: "ts" } },
 });
 
 /** The rule only runs in test files, so every case has to look like one. */
@@ -527,30 +523,21 @@ expect(config.stt.model).toBe("nova");`,
  *
  * Before 2026-07 the fixer read `arguments[0]` of every assertion in the run and
  * dropped it into a `toMatchObject`, never looking at the matcher. Every input
- * below was silently rewritten into a weaker or broken test by `eslint --fix`.
- * `verifyAndFix` is used rather than the rule tester's `output` field because
- * what is being pinned is the *end state of a real fix pass*: if a future edit
- * reintroduces a matcher-blind fixer, this fails.
+ * below was silently rewritten into a weaker or broken test by an unsafe fixer.
+ * The official native host captures each report and verifies that this report-only
+ * rule never attaches an automatic fix; unsafe fixer mutations fail here.
  */
 describe("prefer-whole-object-assertion autofix soundness", () => {
-  const linter = new Linter();
-  const config = [
-    {
-      files: ["**/*.ts"],
-      languageOptions: { parser: tsParser },
-      plugins: { local: { rules: { "prefer-whole-object-assertion": rule } } },
-      rules: { "local/prefer-whole-object-assertion": "error" },
-      // Off so these cases measure THIS fixer. ESLint's own unused-directive
-      // fixer deletes a stranded `eslint-disable-next-line` on the next pass,
-      // which would hide the orphaning rather than fix it.
-      linterOptions: { reportUnusedDisableDirectives: "off" },
-    },
-  ] as unknown as Linter.Config[];
-
-  const fix = (code: string): string => linter.verifyAndFix(code, config, FILENAME).output;
+  const fix = (code: string): string => {
+    const reports = ruleReports(rule, code, FILENAME);
+    expect(reports.every((report) => report.fix === undefined)).toBe(true);
+    expect(rule.meta?.fixable).toBeUndefined();
+    return code;
+  };
 
   it("preserves absent-property semantics instead of adding a presence assertion", () => {
-    const user: { name: string; missing?: string } = { name: "Ada" };
+    interface UserWithAbsentProperty { name: string; missing?: string }
+    const user: UserWithAbsentProperty = { name: "Ada" };
     expect(user.missing).toBeUndefined();
     expect(() => expect(user).toMatchObject({ name: "Ada", missing: undefined })).toThrow();
     const code = `expect(user.name).toBe("Ada");\nexpect(user.missing).toBeUndefined();`;
@@ -629,7 +616,7 @@ describe("prefer-whole-object-assertion autofix soundness", () => {
 
   /**
    * A removed statement takes its own text but not the comment above it. Worst
-   * case that comment is an `eslint-disable-next-line`, which then points at the
+   * case that comment is an `oxlint-disable-next-line`, which then points at the
    * merged assertion and becomes a fresh unused-directive error.
    */
   describe("comments inside the run", () => {
@@ -638,8 +625,8 @@ describe("prefer-whole-object-assertion autofix soundness", () => {
       expect(fix(code)).toBe(code);
     });
 
-    it("does not strand an eslint-disable directive", () => {
-      const code = `expect(o.a).toBe(1);\n// eslint-disable-next-line local/prefer-whole-object-assertion\nexpect(o.b).toBe(2);\n`;
+    it("does not strand an oxlint-disable directive", () => {
+      const code = `expect(o.a).toBe(1);\n// oxlint-disable-next-line local/prefer-whole-object-assertion\nexpect(o.b).toBe(2);\n`;
       expect(fix(code)).toBe(code);
     });
 

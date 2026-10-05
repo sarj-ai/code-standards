@@ -22,7 +22,7 @@ class FileEdit:
 
 
 def registry_path(root: Path, engine: RuleEngine) -> Path:
-    if engine is RuleEngine.ESLINT:
+    if engine is RuleEngine.OXLINT:
         return root / "packages/typescript/src/index.ts"
     if engine is RuleEngine.TEXT:
         return root / "packages/standards/src/sarj_standards/libs/linting/text_rules/_registry.py"
@@ -37,11 +37,11 @@ def plan(
     name = "".join(part.capitalize() for part in slug.split("-"))
     registry = registry_path(root, selector.engine)
     before = registry.read_bytes() if registry.is_file() else None
-    if selector.engine is RuleEngine.ESLINT:
+    if selector.engine is RuleEngine.OXLINT:
         source = before.decode() if before is not None else "const RULES = {\n};\n"
         anchor = "const RULES = {\n"
         if source.count(anchor) != 1:
-            msg = "ESLint registry must contain one RULES object"
+            msg = "Oxlint registry must contain one RULES object"
             raise ValueError(msg)
         binding = name[0].lower() + name[1:]
         if re.search(rf"\b(?:import|const|let|class|function)\s+{re.escape(binding)}\b", source):
@@ -106,7 +106,7 @@ def _reserve(root: Path, selector: RuleSelector, code: str | None, reserved: fro
         for value in retired
         if (entry := as_table(value)).get("kind") in {family, "code"} and isinstance(entry.get("id"), str)
     }
-    historical_id = f"@sarj/{identifier}" if selector.engine is RuleEngine.ESLINT else identifier
+    historical_id = f"@sarj/{identifier}" if selector.engine is RuleEngine.OXLINT else identifier
     if identifier in list_field(rules, family) or historical_id in retired_ids:
         msg = f"rule identity is already reserved: {selector}"
         raise ValueError(msg)
@@ -154,7 +154,7 @@ class _RegistryImport:
 
 
 def live_codes(root: Path, engine: RuleEngine) -> frozenset[str]:
-    if engine is RuleEngine.ESLINT:
+    if engine is RuleEngine.OXLINT:
         return frozenset()
     registry = registry_path(root, engine)
     codes: set[str] = _registered_codes(root, engine, registry) if registry.is_file() else set()

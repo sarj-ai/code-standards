@@ -4,7 +4,10 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-silent-promise-catch.test.ts
  */
 
-import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
+import { sourceOrigin } from "./_source-origin.js";
+import type { ESTree } from "@oxlint/plugins";
+import { findVariable } from "./_scope.js";
+
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isScriptFile, isTestFile } from "./_paths.js";
@@ -45,13 +48,13 @@ const ZOD_CHAIN_METHODS: ReadonlySet<string> = new Set([
 ]);
 
 /** True for a standard Fetch body parser — the receiver of a parse-fallback catch. */
-function isBodyParseCall(node: TSESTree.Expression): boolean {
+function isBodyParseCall(node: ESTree.Expression): boolean {
   return (
-    node.type === AST_NODE_TYPES.CallExpression &&
+    node.type === "CallExpression" &&
     node.arguments.length === 0 &&
-    node.callee.type === AST_NODE_TYPES.MemberExpression &&
+    node.callee.type === "MemberExpression" &&
     !node.callee.computed &&
-    node.callee.property.type === AST_NODE_TYPES.Identifier &&
+    node.callee.property.type === "Identifier" &&
     BODY_PARSE_METHODS.has(node.callee.property.name)
   );
 }
@@ -74,36 +77,37 @@ const isExplanatory = (comment: { value: string }): boolean =>
   !DIRECTIVE_COMMENT_RE.test(comment.value);
 
 /** True for `reader.cancel(reason)` / `stream.close()` — a teardown receiver. */
-function isTeardownCall(node: TSESTree.Expression): boolean {
+function isTeardownCall(node: ESTree.Expression): boolean {
   return (
-    node.type === AST_NODE_TYPES.CallExpression &&
-    node.callee.type === AST_NODE_TYPES.MemberExpression &&
+    node.type === "CallExpression" &&
+    node.callee.type === "MemberExpression" &&
     !node.callee.computed &&
-    node.callee.property.type === AST_NODE_TYPES.Identifier &&
+    node.callee.property.type === "Identifier" &&
     TEARDOWN_METHODS.has(node.callee.property.name)
   );
 }
 
 /** Web Share rejects on ordinary user cancellation, which callers may ignore. */
-function isCancelledWebShare(node: TSESTree.Expression): boolean {
+function isCancelledWebShare(node: ESTree.Expression): boolean {
   return (
-    node.type === AST_NODE_TYPES.CallExpression &&
-    node.callee.type === AST_NODE_TYPES.MemberExpression &&
+    node.type === "CallExpression" &&
+    node.callee.type === "MemberExpression" &&
     !node.callee.computed &&
-    node.callee.object.type === AST_NODE_TYPES.Identifier &&
+    node.callee.object.type === "Identifier" &&
     node.callee.object.name === "navigator" &&
-    node.callee.property.type === AST_NODE_TYPES.Identifier &&
+    node.callee.property.type === "Identifier" &&
     node.callee.property.name === "share"
   );
 }
 
 /** True when the handler's whole body provably does nothing with the error. */
 function isSilentHandler(
-  handler: TSESTree.ArrowFunctionExpression | TSESTree.FunctionExpression,
+  handler: ESTree.ArrowFunctionExpression | ESTree.Function,
 ): boolean {
   const body = handler.body;
 
-  if (body.type !== AST_NODE_TYPES.BlockStatement) {
+  if (body === null) return false;
+  if (body.type !== "BlockStatement") {
     // Arrow expression body: `.catch(() => null)`
     return isSilentExpression(body);
   }
@@ -115,7 +119,7 @@ function isSilentHandler(
 
   if (body.body.length === 1) {
     const only = body.body[0];
-    if (only !== undefined && only.type === AST_NODE_TYPES.ReturnStatement) {
+    if (only !== undefined && only.type === "ReturnStatement") {
       // `.catch(() => { return null; })`
       return only.argument === null || isSilentExpression(only.argument);
     }
@@ -126,25 +130,25 @@ function isSilentHandler(
 
 /** True for expressions that provably discard the error: bare literals,
  * `undefined`, empty object/array literals. */
-function isSilentExpression(node: TSESTree.Expression): boolean {
+function isSilentExpression(node: ESTree.Expression): boolean {
   switch (node.type) {
-    case AST_NODE_TYPES.Literal:
+    case "Literal":
       // null / number / string / boolean literals (regex literals excluded —
       // nobody writes `.catch(() => /x/)` and they are not sentinel values).
       return !("regex" in node);
-    case AST_NODE_TYPES.Identifier:
+    case "Identifier":
       return node.name === "undefined";
-    case AST_NODE_TYPES.UnaryExpression:
+    case "UnaryExpression":
       // `void 0` — the other spelling of undefined.
       return (
         node.operator === "void" &&
-        node.argument.type === AST_NODE_TYPES.Literal
+        node.argument.type === "Literal"
       );
-    case AST_NODE_TYPES.ObjectExpression:
+    case "ObjectExpression":
       return node.properties.length === 0;
-    case AST_NODE_TYPES.ArrayExpression:
+    case "ArrayExpression":
       return node.elements.length === 0;
-    case AST_NODE_TYPES.TSAsExpression:
+    case "TSAsExpression":
       // `.catch(() => null as Foo | null)` is still silent.
       return isSilentExpression(node.expression);
     default:
@@ -169,38 +173,38 @@ export default createRule<Options, MessageIds>({
   },
   defaultOptions: [],
   create(context) {
-    if (isTestFile(context.filename) || isScriptFile(context.filename)) {
+    if (isTestFile(sourceOrigin(context).filename) || isScriptFile(sourceOrigin(context).filename)) {
       return {};
     }
 
-    function isZodSchema(node: TSESTree.Node, seen = new Set<TSESTree.Node>()): boolean {
+    function isZodSchema(node: ESTree.Node, seen = new Set<ESTree.Node>()): boolean {
       if (seen.has(node)) return false;
       seen.add(node);
-      if (node.type === AST_NODE_TYPES.Identifier) {
-        const binding = ASTUtils.findVariable(context.sourceCode.getScope(node), node.name);
+      if (node.type === "Identifier") {
+        const binding = findVariable(context.sourceCode.getScope(node), node.name);
         if (binding === null || binding.references.some((reference) => reference.isWrite() && reference.init !== true)) return false;
         const [definition] = binding.defs;
-        return binding.defs.length === 1 && definition?.node.type === AST_NODE_TYPES.VariableDeclarator &&
+        return binding.defs.length === 1 && definition?.node.type === "VariableDeclarator" &&
           definition.node.init !== null && isZodSchema(definition.node.init, seen);
       }
-      if (node.type !== AST_NODE_TYPES.CallExpression || node.callee.type !== AST_NODE_TYPES.MemberExpression ||
-        node.callee.computed || node.callee.property.type !== AST_NODE_TYPES.Identifier) return false;
+      if (node.type !== "CallExpression" || node.callee.type !== "MemberExpression" ||
+        node.callee.computed || node.callee.property.type !== "Identifier") return false;
       const { object, property } = node.callee;
-      if (object.type === AST_NODE_TYPES.Identifier && ZOD_CONSTRUCTORS.has(property.name)) {
-        const binding = ASTUtils.findVariable(context.sourceCode.getScope(object), object.name);
+      if (object.type === "Identifier" && ZOD_CONSTRUCTORS.has(property.name)) {
+        const binding = findVariable(context.sourceCode.getScope(object), object.name);
         if (binding?.defs.some((definition) => {
           const specifier = definition.node;
-          return (specifier.type === AST_NODE_TYPES.ImportNamespaceSpecifier || specifier.type === AST_NODE_TYPES.ImportDefaultSpecifier ||
-            (specifier.type === AST_NODE_TYPES.ImportSpecifier && specifier.imported.type === AST_NODE_TYPES.Identifier && specifier.imported.name === "z")) &&
-            specifier.parent.type === AST_NODE_TYPES.ImportDeclaration && isZodModule(String(specifier.parent.source.value));
+          return (specifier.type === "ImportNamespaceSpecifier" || specifier.type === "ImportDefaultSpecifier" ||
+            (specifier.type === "ImportSpecifier" && specifier.imported.type === "Identifier" && specifier.imported.name === "z")) &&
+            specifier.parent?.type === "ImportDeclaration" && isZodModule(String(specifier.parent.source.value));
         })) return true;
       }
       return ZOD_CHAIN_METHODS.has(property.name) && isZodSchema(object, seen);
     }
 
     const hasExplanatoryComment = (
-      call: TSESTree.CallExpression,
-      handler: TSESTree.ArrowFunctionExpression | TSESTree.FunctionExpression,
+      call: ESTree.CallExpression,
+      handler: ESTree.ArrowFunctionExpression | ESTree.Function,
     ): boolean => {
       const sourceCode = context.sourceCode;
       if (sourceCode.getCommentsInside(handler).some(isExplanatory)) {
@@ -209,12 +213,12 @@ export default createRule<Options, MessageIds>({
       // Walk out to the enclosing statement so a comment above or beside
       // `lazyRoutePromise.catch(() => {});` is found rather than one sitting
       // between the receiver and `.catch`.
-      let statement: TSESTree.Node = call;
+      let statement: ESTree.Node = call;
       while (
-        statement.parent !== undefined &&
+        statement.parent != null &&
         statement.parent !== null &&
         !statement.type.endsWith("Statement") &&
-        statement.type !== AST_NODE_TYPES.VariableDeclaration
+        statement.type !== "VariableDeclaration"
       ) {
         statement = statement.parent;
       }
@@ -229,11 +233,11 @@ export default createRule<Options, MessageIds>({
     };
 
     return {
-      CallExpression(node: TSESTree.CallExpression): void {
+      CallExpression(node: ESTree.CallExpression): void {
         if (
-          node.callee.type !== AST_NODE_TYPES.MemberExpression ||
+          node.callee.type !== "MemberExpression" ||
           node.callee.computed ||
-          node.callee.property.type !== AST_NODE_TYPES.Identifier
+          node.callee.property.type !== "Identifier"
         ) {
           return;
         }
@@ -258,10 +262,10 @@ export default createRule<Options, MessageIds>({
         // `p.catch(() => null).then(...)` — the next link consumes the fallback,
         // so it is a recovery step, not a value handed back to an outside caller.
         if (
-          node.parent.type === AST_NODE_TYPES.MemberExpression &&
+          node.parent?.type === "MemberExpression" &&
           node.parent.object === node &&
           !node.parent.computed &&
-          node.parent.property.type === AST_NODE_TYPES.Identifier &&
+          node.parent.property.type === "Identifier" &&
           node.parent.property.name === "then"
         ) {
           return;
@@ -274,8 +278,8 @@ export default createRule<Options, MessageIds>({
         const handler = node.arguments[handlerIndex];
         if (
           handler === undefined ||
-          (handler.type !== AST_NODE_TYPES.ArrowFunctionExpression &&
-            handler.type !== AST_NODE_TYPES.FunctionExpression)
+          (handler.type !== "ArrowFunctionExpression" &&
+            handler.type !== "FunctionExpression")
         ) {
           return;
         }

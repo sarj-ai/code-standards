@@ -1,15 +1,14 @@
 // vitest: shared-module-graph
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
+import { RuleTester } from "oxlint/plugins-dev";
+import { describe, it } from "vitest";
 
 import rule, { EXCESSIVE_COMMENTARY_DOCUMENTATION } from "../../src/rules/excessive-commentary.js";
 
-RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
 RuleTester.it = it;
 RuleTester.itOnly = it.only;
 
-new RuleTester().run("excessive-commentary", rule, {
+new RuleTester({ languageOptions: { parserOptions: { lang: "ts" } } }).run("excessive-commentary", rule, {
   valid: [
     EXCESSIVE_COMMENTARY_DOCUMENTATION.examples[1].files[0].source,
     "// Short rationale remains local.\nconst value = 1;",

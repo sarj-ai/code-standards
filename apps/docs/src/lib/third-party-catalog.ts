@@ -5,10 +5,7 @@ export const THIRD_PARTY_PAGE_SIZE = 32;
 export type ThirdPartyProfile = (typeof THIRD_PARTY_PROFILES)[number];
 export type ThirdPartyLevel = "error" | "warning";
 export type ThirdPartyAutofix = "always" | "available" | "none" | "sometimes";
-export type ThirdPartyProjectionScope =
-  | "complete"
-  | "config-explicit"
-  | "provider-only";
+export type ThirdPartyProjectionScope = "complete" | "config-explicit" | "provider-only";
 
 export interface ThirdPartyProvider {
   id: string;
@@ -51,17 +48,13 @@ export interface ThirdPartyCatalog {
   rules: ThirdPartyRule[];
 }
 
-// eslint-disable-next-line @sarj/stepdown -- validators read in dependency order from primitive shape to catalog root.
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function requireRecord(
-  value: unknown,
-  context: string,
-): Record<string, unknown> {
+function requireRecord(value: unknown, context: string): Record<string, unknown> {
   if (!isRecord(value)) throw new TypeError(`${context} must be an object.`);
   return value;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function requireExactFields(
@@ -75,17 +68,11 @@ function requireExactFields(
     actual.length !== expected.length ||
     actual.some((field, index) => field !== expected[index])
   ) {
-    throw new TypeError(
-      `${context} must contain exactly: ${expected.join(", ")}.`,
-    );
+    throw new TypeError(`${context} must contain exactly: ${expected.join(", ")}.`);
   }
 }
 
-function requireString(
-  record: Record<string, unknown>,
-  field: string,
-  context: string,
-): string {
+function requireString(record: Record<string, unknown>, field: string, context: string): string {
   const value = record[field];
   if (typeof value !== "string" || value.length === 0) {
     throw new TypeError(`${context}.${field} must be a non-empty string.`);
@@ -93,25 +80,16 @@ function requireString(
   return value;
 }
 
-function requireHttps(
-  record: Record<string, unknown>,
-  field: string,
-  context: string,
-): string {
+function requireHttps(record: Record<string, unknown>, field: string, context: string): string {
   const value = requireString(record, field, context);
   if (!value.startsWith("https://"))
     throw new TypeError(`${context}.${field} must be an HTTPS URL.`);
   return value;
 }
 
-function requireArray(
-  record: Record<string, unknown>,
-  field: string,
-  context: string,
-): unknown[] {
+function requireArray(record: Record<string, unknown>, field: string, context: string): unknown[] {
   const value = record[field];
-  if (!Array.isArray(value))
-    throw new TypeError(`${context}.${field} must be an array.`);
+  if (!Array.isArray(value)) throw new TypeError(`${context}.${field} must be an array.`);
   return value;
 }
 
@@ -120,15 +98,7 @@ function parseProvider(value: unknown, index: number): ThirdPartyProvider {
   const record = requireRecord(value, context);
   requireExactFields(
     record,
-    [
-      "engine",
-      "homepage",
-      "id",
-      "label",
-      "package",
-      "projectionScope",
-      "version",
-    ],
+    ["engine", "homepage", "id", "label", "package", "projectionScope", "version"],
     context,
   );
   const id = requireString(record, "id", context);
@@ -158,8 +128,7 @@ function parseContext(value: unknown, context: string): ThirdPartyContext {
   const record = requireRecord(value, context);
   requireExactFields(record, ["id", "label", "level"], context);
   const level = requireString(record, "level", context);
-  if (level !== "error" && level !== "warning")
-    throw new TypeError(`${context}.level is invalid.`);
+  if (level !== "error" && level !== "warning") throw new TypeError(`${context}.level is invalid.`);
   return {
     id: requireString(record, "id", context),
     label: requireString(record, "label", context),
@@ -174,9 +143,8 @@ function parseProfile(value: unknown, context: string): ThirdPartyRuleProfile {
   if (!THIRD_PARTY_PROFILES.includes(name as ThirdPartyProfile)) {
     throw new TypeError(`${context}.name is unsupported.`);
   }
-  const contexts = requireArray(record, "contexts", context).map(
-    (item, index) =>
-      parseContext(item, `${context}.contexts[${String(index)}]`),
+  const contexts = requireArray(record, "contexts", context).map((item, index) =>
+    parseContext(item, `${context}.contexts[${String(index)}]`),
   );
   const contextIds = contexts.map((item) => item.id);
   if (contextIds.length !== new Set(contextIds).size)
@@ -210,18 +178,12 @@ function parseRule(value: unknown, index: number): ThirdPartyRule {
   if (typeof record.hasSuggestions !== "boolean") {
     throw new TypeError(`${context}.hasSuggestions must be a boolean.`);
   }
-  if (
-    record.family !== null &&
-    (typeof record.family !== "string" || record.family.length === 0)
-  ) {
-    throw new TypeError(
-      `${context}.family must be a non-empty string or null.`,
-    );
+  if (record.family !== null && (typeof record.family !== "string" || record.family.length === 0)) {
+    throw new TypeError(`${context}.family must be a non-empty string or null.`);
   }
   const family = record.family;
-  const profiles = requireArray(record, "profiles", context).map(
-    (item, profileIndex) =>
-      parseProfile(item, `${context}.profiles[${String(profileIndex)}]`),
+  const profiles = requireArray(record, "profiles", context).map((item, profileIndex) =>
+    parseProfile(item, `${context}.profiles[${String(profileIndex)}]`),
   );
   const profileNames = profiles.map((profile) => profile.name);
   if (profileNames.length !== new Set(profileNames).size)
@@ -258,49 +220,30 @@ function parseCatalog(value: unknown): ThirdPartyCatalog {
       "third-party catalog profiles must be application, standard in canonical order.",
     );
   }
-  const providers = requireArray(
-    record,
-    "providers",
-    "third-party catalog",
-  ).map(parseProvider);
-  const rules = requireArray(record, "rules", "third-party catalog").map(
-    parseRule,
-  );
+  const providers = requireArray(record, "providers", "third-party catalog").map(parseProvider);
+  const rules = requireArray(record, "rules", "third-party catalog").map(parseRule);
   const providerIds = providers.map((provider) => provider.id);
   if (providerIds.length !== new Set(providerIds).size)
     throw new TypeError("third-party catalog has duplicate providers.");
   const knownProviders = new Set(providerIds);
-  const providerRuleCounts = new Map(
-    providerIds.map((providerId) => [providerId, 0]),
-  );
+  const providerRuleCounts = new Map(providerIds.map((providerId) => [providerId, 0]));
   const ruleKeys = rules.map((rule) => rule.key);
   if (ruleKeys.length !== new Set(ruleKeys).size)
     throw new TypeError("third-party catalog has duplicate rule keys.");
   for (const rule of rules) {
     if (!knownProviders.has(rule.provider))
-      throw new TypeError(
-        `third-party rule ${rule.key} has an unknown provider.`,
-      );
+      throw new TypeError(`third-party rule ${rule.key} has an unknown provider.`);
     if (rule.key !== `${rule.provider}:${rule.id}`)
-      throw new TypeError(
-        `third-party rule ${rule.key} does not match its provider and ID.`,
-      );
-    providerRuleCounts.set(
-      rule.provider,
-      (providerRuleCounts.get(rule.provider) ?? 0) + 1,
-    );
+      throw new TypeError(`third-party rule ${rule.key} does not match its provider and ID.`);
+    providerRuleCounts.set(rule.provider, (providerRuleCounts.get(rule.provider) ?? 0) + 1);
     if (rule.profiles.every((profile) => profile.contexts.length === 0)) {
-      throw new TypeError(
-        `third-party rule ${rule.key} is not enabled in any context.`,
-      );
+      throw new TypeError(`third-party rule ${rule.key} is not enabled in any context.`);
     }
   }
   for (const [providerId, ruleCount] of providerRuleCounts) {
     const provider = providers.find(({ id }) => id === providerId);
     if (ruleCount === 0 && provider?.projectionScope !== "provider-only")
-      throw new TypeError(
-        `third-party provider ${providerId} has no enabled rules.`,
-      );
+      throw new TypeError(`third-party provider ${providerId} has no enabled rules.`);
   }
   return {
     schemaVersion: 1,
@@ -312,9 +255,7 @@ function parseCatalog(value: unknown): ThirdPartyCatalog {
 
 export const thirdPartyCatalog = parseCatalog(rawThirdPartyCatalog);
 
-export function thirdPartyRulesForProvider(
-  providerId: string,
-): ThirdPartyRule[] {
+export function thirdPartyRulesForProvider(providerId: string): ThirdPartyRule[] {
   return thirdPartyCatalog.rules
     .filter((rule) => rule.provider === providerId)
     .sort(
@@ -335,15 +276,11 @@ export function thirdPartyProvidersForNavigation(
   );
 }
 
-export function thirdPartyProviderNavigationLabel(
-  provider: ThirdPartyProvider,
-): string {
+export function thirdPartyProviderNavigationLabel(provider: ThirdPartyProvider): string {
   return provider.label;
 }
 
-export function thirdPartyProviderHref(
-  provider: Pick<ThirdPartyProvider, "id">,
-): string {
+export function thirdPartyProviderHref(provider: Pick<ThirdPartyProvider, "id">): string {
   return `/third-party-linters/${provider.id}/`;
 }
 
@@ -362,9 +299,7 @@ export function thirdPartyProviderSearchIndexHref(
   return `${thirdPartyProviderHref(provider)}rules.json`;
 }
 
-export function thirdPartyRuleAnchor(
-  rule: Pick<ThirdPartyRule, "id" | "provider">,
-): string {
+export function thirdPartyRuleAnchor(rule: Pick<ThirdPartyRule, "id" | "provider">): string {
   const encodedId = [...new TextEncoder().encode(`${rule.provider}:${rule.id}`)]
     .map((byte) => byte.toString(16).padStart(2, "0"))
     .join("");
@@ -379,8 +314,6 @@ export function thirdPartyRuleHref(
   return `${thirdPartyProviderPageHref(provider, page)}#${thirdPartyRuleAnchor(rule)}`;
 }
 
-export function thirdPartyRulePolicySignature(
-  rule: Pick<ThirdPartyRule, "profiles">,
-): string {
+export function thirdPartyRulePolicySignature(rule: Pick<ThirdPartyRule, "profiles">): string {
   return JSON.stringify(rule.profiles);
 }

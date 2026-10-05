@@ -4,6 +4,9 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-production-browser-source-maps.test.ts
  */
 
+
+
+import { sourceOrigin } from "./_source-origin.js";
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { exportedNextConfigProperty } from "./_exported-next-config-property.js";
 
@@ -58,7 +61,7 @@ export default createRule<Options, MessageIds>({
   },
   defaultOptions: [],
   create(context) {
-    if (!NEXT_CONFIG_RE.test(context.filename.replaceAll("\\", "/"))) return {};
+    if (!NEXT_CONFIG_RE.test(sourceOrigin(context).filename.replaceAll("\\", "/"))) return {};
     return {
       "Program:exit"(): void {
         const node = exportedNextConfigProperty(context.sourceCode, ["productionBrowserSourceMaps"]);

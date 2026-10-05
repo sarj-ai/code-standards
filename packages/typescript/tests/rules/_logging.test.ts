@@ -1,6 +1,6 @@
 // vitest: shared-module-graph
-import * as tsParser from "@typescript-eslint/parser";
-import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
+import { parseSync } from "oxc-parser";
+import type { ESTree } from "@oxlint/plugins";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -10,10 +10,10 @@ import {
   LOG_METHODS,
 } from "../../src/rules/_logging.js";
 
-function expression(source: string): TSESTree.Expression {
-  const program = tsParser.parse(source);
+function expression(source: string): ESTree.Expression {
+  const program = parseSync("probe.ts", source).program;
   const statement = program.body[0];
-  if (statement?.type !== AST_NODE_TYPES.ExpressionStatement) {
+  if (statement?.type !== "ExpressionStatement") {
     throw new Error(`Expected an expression: ${source}`);
   }
   return statement.expression;

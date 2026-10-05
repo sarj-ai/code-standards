@@ -4,7 +4,9 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-repeated-string-literal.test.ts
  */
 
-import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
+import { sourceOrigin } from "./_source-origin.js";
+import type { ESTree } from "@oxlint/plugins";
+
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile, isTestFile } from "./_paths.js";
@@ -22,10 +24,10 @@ const SQL_KEYWORD_RE =
 const IDENTIFIER_RE = /^[a-z_][a-z0-9_.]*$/;
 const URL_PATH_RE = /^\/(?=[^\s]*[A-Za-z0-9])[A-Za-z0-9._~!$&'()*+,;=:@%/?#{}\u005B\u005D-]+$/;
 
-const FUNCTION_TYPES: ReadonlySet<AST_NODE_TYPES> = new Set([
-  AST_NODE_TYPES.FunctionDeclaration,
-  AST_NODE_TYPES.FunctionExpression,
-  AST_NODE_TYPES.ArrowFunctionExpression,
+const FUNCTION_TYPES: ReadonlySet<ESTree.Node["type"]> = new Set([
+  "FunctionDeclaration",
+  "FunctionExpression",
+  "ArrowFunctionExpression",
 ]);
 
 export const NO_REPEATED_STRING_LITERAL_DOCUMENTATION = {
@@ -51,7 +53,7 @@ function preview(value: string): string {
 }
 
 /** The enclosing function node, or null when the literal sits at module/class scope. */
-function enclosingFunction(node: TSESTree.Node): TSESTree.Node | null {
+function enclosingFunction(node: ESTree.Node): ESTree.Node | null {
   for (let current = node.parent; current != null; current = current.parent) {
     if (FUNCTION_TYPES.has(current.type)) {
       return current;
@@ -65,31 +67,31 @@ function enclosingFunction(node: TSESTree.Node): TSESTree.Node | null {
  * import/`require` source (repeating a module path is the point) or a JSX
  * attribute value (styling strings, handled by the styling rules).
  */
-function isScaffolding(node: TSESTree.Node): boolean {
+function isScaffolding(node: ESTree.Node): boolean {
   const parent = node.parent;
-  if (parent === undefined) {
+  if (parent == null) {
     return true;
   }
   const isNonComputedPropertyKey =
-    (parent.type === AST_NODE_TYPES.Property ||
-      parent.type === AST_NODE_TYPES.PropertyDefinition ||
-      parent.type === AST_NODE_TYPES.MethodDefinition ||
-      parent.type === AST_NODE_TYPES.AccessorProperty) &&
+    (parent.type === "Property" ||
+      parent.type === "PropertyDefinition" ||
+      parent.type === "MethodDefinition" ||
+      parent.type === "AccessorProperty") &&
     parent.key === node &&
     !parent.computed;
   const isRequireSource =
-    parent.type === AST_NODE_TYPES.CallExpression &&
-    parent.callee.type === AST_NODE_TYPES.Identifier &&
+    parent.type === "CallExpression" &&
+    parent.callee.type === "Identifier" &&
     parent.callee.name === "require";
   return (
-    parent.type === AST_NODE_TYPES.ImportDeclaration ||
-    parent.type === AST_NODE_TYPES.ImportExpression ||
-    parent.type === AST_NODE_TYPES.ExportNamedDeclaration ||
-    parent.type === AST_NODE_TYPES.ExportAllDeclaration ||
-    parent.type === AST_NODE_TYPES.TSImportType ||
-    parent.type === AST_NODE_TYPES.JSXAttribute ||
-    (parent.type === AST_NODE_TYPES.JSXExpressionContainer && parent.parent.type === AST_NODE_TYPES.JSXAttribute) ||
-    parent.type === AST_NODE_TYPES.TSLiteralType ||
+    parent.type === "ImportDeclaration" ||
+    parent.type === "ImportExpression" ||
+    parent.type === "ExportNamedDeclaration" ||
+    parent.type === "ExportAllDeclaration" ||
+    parent.type === "TSImportType" ||
+    parent.type === "JSXAttribute" ||
+    (parent.type === "JSXExpressionContainer" && parent.parent?.type === "JSXAttribute") ||
+    parent.type === "TSLiteralType" ||
     isNonComputedPropertyKey ||
     isRequireSource
   );
@@ -113,15 +115,15 @@ export default createRule<Options, MessageIds>({
   defaultOptions: [],
   create(context) {
     if (
-      isTestFile(context.filename) ||
-      isGeneratedFile(context.filename, context.sourceCode.text)
+      isTestFile(sourceOrigin(context).filename) ||
+      isGeneratedFile(sourceOrigin(context).filename, sourceOrigin(context).text)
     ) {
       return {};
     }
-    const occurrences = new Map<string, TSESTree.Node[]>();
-    const scopes = new WeakMap<TSESTree.Node, TSESTree.Node | null>();
+    const occurrences = new Map<string, ESTree.Node[]>();
+    const scopes = new WeakMap<ESTree.Node, ESTree.Node | null>();
 
-    const record = (value: string, node: TSESTree.Node): void => {
+    const record = (value: string, node: ESTree.Node): void => {
       if (value.length < MIN_LENGTH || !isStructured(value) || isScaffolding(node)) {
         return;
       }
@@ -135,15 +137,15 @@ export default createRule<Options, MessageIds>({
     };
 
     return {
-      Literal(node: TSESTree.Literal): void {
+      Literal(node: (ESTree.BooleanLiteral | ESTree.NullLiteral | ESTree.NumericLiteral | ESTree.StringLiteral | ESTree.BigIntLiteral | ESTree.RegExpLiteral)): void {
         if (typeof node.value === "string") {
           record(node.value, node);
         }
       },
-      TemplateLiteral(node: TSESTree.TemplateLiteral): void {
+      TemplateLiteral(node: ESTree.TemplateLiteral): void {
         // A tagged template (`js`…``, `css`…``, `sql`…``) is a call, not a
         // string value — the tag, not this rule, decides what the text means.
-        if (node.parent.type === AST_NODE_TYPES.TaggedTemplateExpression) {
+        if (node.parent?.type === "TaggedTemplateExpression") {
           return;
         }
         const [only] = node.quasis;

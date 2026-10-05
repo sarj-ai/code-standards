@@ -4,12 +4,15 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 import json
+from pathlib import PurePosixPath
+import re
 from typing import TYPE_CHECKING, NamedTuple, Protocol, Self
 from urllib.parse import quote
 from urllib.request import Request, urlopen
 
 from sarj_standards.libs.json_boundary import parse_json
-from sarj_standards.libs.release._values import is_object_dict, string_object_dict
+from sarj_standards.libs.release._values import is_object_dict, is_object_list, string_object_dict
+from sarj_standards.libs.release.process import ProcessRunner, run_build_process
 
 
 if TYPE_CHECKING:
@@ -97,13 +100,22 @@ class ReleaseAgeReport:
         return not self.failures
 
 
-def locked_registry_packages(lockfile: Path, policy: ReleaseAgePolicy) -> tuple[PackageIdentity, ...]:
+def locked_registry_packages(
+    lockfile: Path,
+    policy: ReleaseAgePolicy,
+    *,
+    workspace: str | None = None,
+    runner: ProcessRunner = run_build_process,
+) -> tuple[PackageIdentity, ...]:
     packages_value = _load_object(lockfile).get("packages")
     if packages_value is None:
         return ()
     packages = string_object_dict(packages_value, label="package-lock packages")
+    locations = _workspace_locations(lockfile, packages, workspace, runner) if workspace is not None else None
     identities: set[PackageIdentity] = set()
-    for lock_path, metadata_value in packages.items():
+    lock_paths = packages if locations is None else locations
+    for lock_path in lock_paths:
+        metadata_value = packages[lock_path]
         name = _package_name(lock_path)
         if name is None or not is_object_dict(metadata_value):
             continue
@@ -122,6 +134,51 @@ def locked_registry_packages(lockfile: Path, policy: ReleaseAgePolicy) -> tuple[
         if name not in policy.exclusions and f"{name}@{version}" not in policy.exclusions:
             identities.add(identity)
     return tuple(sorted(identities))
+
+
+def _workspace_locations(
+    lockfile: Path,
+    packages: Mapping[str, object],
+    workspace: str,
+    runner: ProcessRunner,
+) -> frozenset[str]:
+    path = PurePosixPath(workspace)
+    if (
+        path.is_absolute()
+        or ".." in path.parts
+        or path.as_posix() != workspace
+        or re.fullmatch(r"[A-Za-z0-9._/-]+", workspace) is None
+        or workspace not in packages
+    ):
+        msg = f"workspace is not an exact package path in the root lockfile: {workspace}"
+        raise ValueError(msg)
+    if lockfile.name != "package-lock.json":
+        msg = "npm workspace queries require the genuine root package-lock.json"
+        raise ValueError(msg)
+    # npm's public lock-only query owns links, hoisting, peers and optional
+    # platform dependencies; no installed tree or registry download is needed.
+    selector = f":path({workspace}), :path({workspace}) *"
+    result = runner(
+        ("npm", "query", "--package-lock-only", "--offline", selector),
+        cwd=lockfile.parent,
+        capture_output=True,
+    )
+    value: object = parse_json(result.stdout)
+    if not is_object_list(value):
+        msg = "npm query did not return a dependency array"
+        raise TypeError(msg)
+    locations: set[str] = set()
+    for item in value:
+        node = string_object_dict(item, label="npm dependency query node")
+        location = node.get("location")
+        if not isinstance(location, str) or location not in packages:
+            msg = "npm query returned a dependency outside the root lockfile"
+            raise ValueError(msg)
+        locations.add(location)
+    if workspace not in locations:
+        msg = "npm query did not select the requested workspace"
+        raise ValueError(msg)
+    return frozenset(locations)
 
 
 def _load_object(path: Path) -> dict[str, object]:
@@ -165,6 +222,8 @@ def check_lockfile_release_age(
     fetcher: PackumentFetcher = fetch_npm_packument,
     clock: Callable[[], datetime] = _utc_now,
     concurrency: int = 12,
+    workspace: str | None = None,
+    runner: ProcessRunner = run_build_process,
 ) -> ReleaseAgeReport:
     if concurrency < 1:
         msg = "release-age concurrency must be at least one"
@@ -175,7 +234,7 @@ def check_lockfile_release_age(
         raise ValueError(msg)
     now = now.astimezone(UTC)
     effective_policy = ReleaseAgePolicy() if policy is None else policy
-    identities = locked_registry_packages(lockfile, effective_policy)
+    identities = locked_registry_packages(lockfile, effective_policy, workspace=workspace, runner=runner)
     cutoff = now - effective_policy.minimum_age
 
     def check_one(identity: PackageIdentity) -> ReleaseAgeFailure | None:

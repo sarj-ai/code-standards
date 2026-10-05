@@ -1,0 +1,107 @@
+[
+  {
+    "name": "relative-assign",
+    "source": "window.location.assign(\"/calls\");",
+    "expected": 1
+  },
+  {
+    "name": "relative-href",
+    "source": "window.location.href=\"/calls\";",
+    "expected": 1
+  },
+  {
+    "name": "absolute",
+    "source": "window.location.assign(\"https://example.com/calls\");",
+    "expected": 0
+  },
+  {
+    "name": "shadowed-window",
+    "source": "function navigate(window:{location:{assign:(url:string)=>void}}){window.location.assign(\"/calls\");}",
+    "expected": 0
+  },
+  {
+    "name": "global-location",
+    "source": "location.assign(\"/calls\");",
+    "expected": 1
+  },
+  {
+    "name": "global-this",
+    "source": "globalThis.location.assign(\"/calls\");",
+    "expected": 1
+  },
+  {
+    "name": "document",
+    "source": "document.location.href=\"/calls\";",
+    "expected": 1
+  },
+  {
+    "name": "self",
+    "source": "self.location.assign(\"/calls\");",
+    "expected": 1
+  },
+  {
+    "name": "computed-properties",
+    "source": "window[\"location\"][\"assign\"](\"/calls\");",
+    "expected": 1
+  },
+  {
+    "name": "absolute-protocol-relative",
+    "source": "window.location.assign(\"//example.com/calls\");",
+    "expected": 0
+  },
+  {
+    "name": "absolute-mailto",
+    "source": "window.location.href=\"mailto:hello@example.com\";",
+    "expected": 0
+  },
+  {
+    "name": "prefix-template",
+    "source": "window.location.assign(`/calls/${id}`);",
+    "expected": 1
+  },
+  {
+    "name": "prefix-concat",
+    "source": "window.location.assign(\"/calls/\"+id);",
+    "expected": 1
+  },
+  {
+    "name": "const-alias",
+    "source": "const url=\"/calls\";window.location.assign(url);",
+    "expected": 1
+  },
+  {
+    "name": "mutable-last-write-relative",
+    "source": "let url=\"https://example.com\";url=\"/calls\";window.location.assign(url);",
+    "expected": 1
+  },
+  {
+    "name": "mutable-last-write-absolute",
+    "source": "let url=\"/calls\";url=\"https://example.com\";window.location.assign(url);",
+    "expected": 0
+  },
+  {
+    "name": "dynamic",
+    "source": "window.location.assign(url);",
+    "expected": 0
+  },
+  {
+    "name": "local-location",
+    "source": "function go(location:{assign:(url:string)=>void}){location.assign(\"/calls\")}",
+    "expected": 0
+  },
+  {
+    "name": "custom-location-owner",
+    "source": "const owner={location:{assign(){}}};owner.location.assign(\"/calls\");",
+    "expected": 0
+  },
+  {
+    "name": "no-args",
+    "source": "window.location.assign();",
+    "expected": 0
+  },
+  {
+    "name": "spread-args",
+    "source": "window.location.assign(...args);",
+    "expected": 0
+  }
+]

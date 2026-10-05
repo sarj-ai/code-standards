@@ -1,20 +1,16 @@
 // vitest: shared-module-graph
-import * as tsParser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { Linter } from "eslint";
-import { afterAll, describe, expect, it } from "vitest";
+import { RuleTester } from "oxlint/plugins-dev";
+import { ruleReports } from "../_native-rule.js";
+import { describe, expect, it } from "vitest";
 
 import rule, { NO_STORAGE_IN_STATELESS_MODULES_DOCUMENTATION } from "../../src/rules/no-storage-in-stateless-modules.js";
 
-RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
 RuleTester.it = it;
 RuleTester.itOnly = it.only;
 
 const RULE_TESTER = new RuleTester({
-  languageOptions: {
-    parser: tsParser,
-  },
+  languageOptions: { parserOptions: { lang: "ts" } },
 });
 
 const STATELESS_MODULE_FILENAME = "/repo/src/engineer-digest/post.ts";
@@ -23,26 +19,8 @@ const STATELESS_MODULE_OPTIONS = [
 ];
 
 it("rejects malformed module patterns instead of silently disabling itself", () => {
-  const linter = new Linter();
-  expect(() =>
-    linter.verify(
-      "kv.put(k, v);",
-      [
-        {
-          files: ["**/*.ts"],
-          languageOptions: { parser: tsParser },
-          plugins: { sarj: { rules: { stateless: rule } } },
-          rules: {
-            "sarj/stateless": [
-              "error",
-              { modules: ["([unterminated"] },
-            ],
-          },
-        },
-      ],
-      { filename: "src/engineer-digest/post.ts" },
-    ),
-  ).toThrow(/Invalid regular expression/u);
+  expect(() => ruleReports(rule, "kv.put(k, v);", STATELESS_MODULE_FILENAME,
+    [{ modules: ["([unterminated"] }])).toThrow(/Invalid regular expression/u);
 });
 
 RULE_TESTER.run("no-storage-in-stateless-modules", rule, {

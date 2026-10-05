@@ -1,30 +1,51 @@
 // vitest: shared-module-graph
-import * as tsParser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
+import { RuleTester } from "oxlint/plugins-dev";
+import { describe, it } from "vitest";
 
-import rule, { PREFER_ZOD_INFER_DOCUMENTATION } from "../../src/rules/prefer-zod-infer.js";
+import rule, {
+  PREFER_ZOD_INFER_DOCUMENTATION,
+} from "../../src/rules/prefer-zod-infer.js";
 
-RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
 RuleTester.it = it;
 RuleTester.itOnly = it.only;
 
 const RULE_TESTER = new RuleTester({
-  languageOptions: { parser: tsParser },
+  languageOptions: { parserOptions: { lang: "ts" } },
 });
 
 const IMPORT = 'import { z } from "zod";\n';
 
 RULE_TESTER.run("prefer-zod-infer", rule, {
   valid: [
-    { name: "requires proof for every field rather than one matching primitive", code: `${IMPORT}const UserSchema = z.object({ id: z.string(), payload: SomeSchema }); interface User { id: string; payload: OtherType }` },
-    { name: "leaves matching collection shapes for manual type-aware review", code: `${IMPORT}const UserSchema = z.object({ id: z.string(), tags: z.array(z.string()) }); interface User { id: string; tags: string[] }` },
-    { name: "does not pair a local schema with a module type", code: `${IMPORT}function build() { const UserSchema = z.object({ id: z.string() }); return UserSchema; } interface User { id: string }` },
-    { name: "does not pair a local type with a module schema", code: `${IMPORT}const UserSchema = z.object({ id: z.string() }); function run() { interface User { id: string } }` },
-    { name: "does not equate different array element types", code: `${IMPORT}const UserSchema = z.object({ id: z.string(), tags: z.array(z.string()) }); interface User { id: string; tags: number[] }` },
-    { name: "does not equate different nested object shapes", code: `${IMPORT}const UserSchema = z.object({ id: z.string(), child: z.object({ value: z.string() }) }); interface User { id: string; child: { value: number } }` },
-    { name: "accepts the documented inferred type", code: PREFER_ZOD_INFER_DOCUMENTATION.examples[0].files[0].source },
+    {
+      name: "requires proof for every field rather than one matching primitive",
+      code: `${IMPORT}const UserSchema = z.object({ id: z.string(), payload: SomeSchema }); interface User { id: string; payload: OtherType }`,
+    },
+    {
+      name: "leaves matching collection shapes for manual type-aware review",
+      code: `${IMPORT}const UserSchema = z.object({ id: z.string(), tags: z.array(z.string()) }); interface User { id: string; tags: string[] }`,
+    },
+    {
+      name: "does not pair a local schema with a module type",
+      code: `${IMPORT}function build() { const UserSchema = z.object({ id: z.string() }); return UserSchema; } interface User { id: string }`,
+    },
+    {
+      name: "does not pair a local type with a module schema",
+      code: `${IMPORT}const UserSchema = z.object({ id: z.string() }); function run() { interface User { id: string } }`,
+    },
+    {
+      name: "does not equate different array element types",
+      code: `${IMPORT}const UserSchema = z.object({ id: z.string(), tags: z.array(z.string()) }); interface User { id: string; tags: number[] }`,
+    },
+    {
+      name: "does not equate different nested object shapes",
+      code: `${IMPORT}const UserSchema = z.object({ id: z.string(), child: z.object({ value: z.string() }) }); interface User { id: string; child: { value: number } }`,
+    },
+    {
+      name: "accepts the documented inferred type",
+      code: PREFER_ZOD_INFER_DOCUMENTATION.examples[0].files[0].source,
+    },
     // The supported shape: the type is derived, so it cannot drift.
     `${IMPORT}const UserSchema = z.object({ id: z.string(), name: z.string() });
      type User = z.infer<typeof UserSchema>;`,
@@ -201,23 +222,47 @@ RULE_TESTER.run("prefer-zod-infer", rule, {
   ],
 
   invalid: [
-    { name: "reports the documented hand-written twin", code: PREFER_ZOD_INFER_DOCUMENTATION.examples[1].files[0].source, errors: [{ messageId: "handWrittenTwin", data: { typeName: "User", schemaName: "UserSchema" } }] },
+    {
+      name: "reports the documented hand-written twin",
+      code: PREFER_ZOD_INFER_DOCUMENTATION.examples[1].files[0].source,
+      errors: [
+        {
+          messageId: "handWrittenTwin",
+          data: { typeName: "User", schemaName: "UserSchema" },
+        },
+      ],
+    },
     {
       code: `${IMPORT}const UserSchema = z.object({ id: z.string(), name: z.string() });
              interface User { id: string; name: string }`,
-      errors: [{ messageId: "handWrittenTwin", data: { typeName: "User", schemaName: "UserSchema" } }],
+      errors: [
+        {
+          messageId: "handWrittenTwin",
+          data: { typeName: "User", schemaName: "UserSchema" },
+        },
+      ],
     },
     // Declaration order does not affect pairing.
     {
       code: `${IMPORT}export interface ApiConfig { type: string; endpoint?: string }
              export const apiConfigSchema = z.object({ type: z.string(), endpoint: z.string().optional() });`,
-      errors: [{ messageId: "handWrittenTwin", data: { typeName: "ApiConfig", schemaName: "apiConfigSchema" } }],
+      errors: [
+        {
+          messageId: "handWrittenTwin",
+          data: { typeName: "ApiConfig", schemaName: "apiConfigSchema" },
+        },
+      ],
     },
     // The `Z`-prefix convention and a type alias rather than an interface.
     {
       code: `${IMPORT}const ZJobOptionsSchema = z.object({ id: z.string().optional(), name: z.string(), attempts: z.number() });
              type JobOptions = { id?: string; name: string; attempts: number };`,
-      errors: [{ messageId: "handWrittenTwin", data: { typeName: "JobOptions", schemaName: "ZJobOptionsSchema" } }],
+      errors: [
+        {
+          messageId: "handWrittenTwin",
+          data: { typeName: "JobOptions", schemaName: "ZJobOptionsSchema" },
+        },
+      ],
     },
     // `XType` is the same claim as `X`.
     {

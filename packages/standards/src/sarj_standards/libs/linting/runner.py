@@ -53,6 +53,7 @@ class _Tool(StrEnum):
 
 _SUFFIX_TO_TOOL = MappingProxyType(
     {
+        ".astro": _Tool.TYPESCRIPT,
         ".hcl": _Tool.IAC,
         ".py": _Tool.PYTHON,
         ".pyi": _Tool.PYTHON,
@@ -258,6 +259,45 @@ def group_paths(files: Sequence[str], *, policy: Policy | None = None) -> Groupe
             continue
         _route_unique_path(grouped, path, raw_path, seen)
     return grouped
+
+
+def maintained_files(
+    files: Sequence[str], *, suffixes: frozenset[str], policy: Policy | None = None
+) -> tuple[str, ...]:
+    selected: set[Path] = set()
+    for _raw, path, directory in _validated_inputs(files, policy=policy):
+        candidates: Iterable[Path] = _discover_tool_files(path, suffixes) if directory else (path,)
+        for candidate in candidates:
+            if (
+                candidate.suffix.lower() not in suffixes
+                or is_link_like(candidate)
+                or _is_skill_artifact(candidate)
+                or _is_conventionally_generated(candidate)
+            ):
+                continue
+            if (
+                _has_generated_header(candidate)
+                or (policy is not None and not policy.allows_path(candidate))
+                or not _is_routable_discovered_file(candidate)
+            ):
+                continue
+            selected.add(candidate.resolve())
+    return tuple(str(path) for path in sorted(selected))
+
+
+def _discover_tool_files(path: Path, suffixes: frozenset[str]) -> list[Path]:
+    discovered: list[Path] = []
+    for parent, directories, names in os.walk(path, followlinks=False):
+        base = Path(parent)
+        directories[:] = sorted(
+            name
+            for name in directories
+            if name.casefold() not in _IGNORED_DIRS
+            and not is_link_like(base / name)
+            and not (base.name in _SKILL_ARTIFACT_ROOTS and name == "skills")
+        )
+        discovered.extend(base / name for name in names if Path(name).suffix.lower() in suffixes)
+    return discovered
 
 
 def _validated_inputs(files: Sequence[str], *, policy: Policy | None) -> list[tuple[str, Path, bool]]:

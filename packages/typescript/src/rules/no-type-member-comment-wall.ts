@@ -4,7 +4,9 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-type-member-comment-wall.test.ts
  */
 
-import { AST_NODE_TYPES, AST_TOKEN_TYPES, type TSESTree } from "@typescript-eslint/utils";
+import { sourceOrigin } from "./_source-origin.js";
+import type { ESTree } from "@oxlint/plugins";
+
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 
@@ -59,12 +61,12 @@ export const NO_TYPE_MEMBER_COMMENT_WALL_DOCUMENTATION = {
 } as const satisfies RuleDocumentation;
 
 /** A member the rule can judge: a named property or method signature. */
-type NamedMember = TSESTree.TSPropertySignature | TSESTree.TSMethodSignature;
+type NamedMember = ESTree.TSPropertySignature | ESTree.TSMethodSignature;
 
-function isNamedMember(node: TSESTree.TypeElement): node is NamedMember {
+function isNamedMember(node: ESTree.TSSignature): node is NamedMember {
   return (
-    (node.type === AST_NODE_TYPES.TSPropertySignature ||
-      node.type === AST_NODE_TYPES.TSMethodSignature) &&
+    (node.type === "TSPropertySignature" ||
+      node.type === "TSMethodSignature") &&
     !node.computed
   );
 }
@@ -91,23 +93,23 @@ export default createRule<Options, MessageIds>({
     // Generated or vendored, a test fixture, or a demo story: three kinds of
     // file whose member comments are output rather than commentary.
     if (
-      isGeneratedFile(context.filename, sourceCode.text, ["externalTree"]) ||
-      isTestFile(context.filename, ["fixtureTree"]) ||
-      isStoryFile(context.filename, ["storyTree"])
+      isGeneratedFile(sourceOrigin(context).filename, sourceOrigin(context).text, ["externalTree"]) ||
+      isTestFile(sourceOrigin(context).filename, ["fixtureTree"]) ||
+      isStoryFile(sourceOrigin(context).filename, ["storyTree"])
     ) {
       return {};
     }
 
     // One pass over the file's comments, indexed by the line they end on (a
     // leading comment) and the line they start on (a trailing one).
-    const endingOn = new Map<number, TSESTree.Comment>();
-    const startingOn = new Map<number, TSESTree.Comment>();
+    const endingOn = new Map<number, ESTree.Comment>();
+    const startingOn = new Map<number, ESTree.Comment>();
     for (const comment of sourceCode.getAllComments()) {
       endingOn.set(comment.loc.end.line, comment);
       if (!startingOn.has(comment.loc.start.line)) startingOn.set(comment.loc.start.line, comment);
     }
 
-    function documentingComment(member: NamedMember): TSESTree.Comment | undefined {
+    function documentingComment(member: NamedMember): ESTree.Comment | undefined {
       const beforeMember = sourceCode.getTokenBefore(member, { includeComments: false });
       const ownsItsLine =
         beforeMember === null || beforeMember.loc.end.line < member.loc.start.line;
@@ -117,8 +119,8 @@ export default createRule<Options, MessageIds>({
         if (before === null || before.loc.end.line < lead.loc.start.line) {
           const previousLine = endingOn.get(lead.loc.start.line - 1);
           if (
-            lead.type === AST_TOKEN_TYPES.Line &&
-            previousLine?.type === AST_TOKEN_TYPES.Line &&
+            lead.type === "Line" &&
+            previousLine?.type === "Line" &&
             previousLine.loc.start.column === lead.loc.start.column
           ) {
             // The final row alone can omit rationale carried above it, so leave
@@ -132,8 +134,8 @@ export default createRule<Options, MessageIds>({
       return trail !== undefined && trail.range[0] > member.range[0] ? trail : undefined;
     }
 
-    function check(node: TSESTree.TSInterfaceBody | TSESTree.TSTypeLiteral): void {
-      const members = node.type === AST_NODE_TYPES.TSInterfaceBody ? node.body : node.members;
+    function check(node: ESTree.TSInterfaceBody | ESTree.TSTypeLiteral): void {
+      const members = node.type === "TSInterfaceBody" ? node.body : node.members;
       const named = members.filter(isNamedMember);
       if (named.length === 0) return;
 
@@ -142,7 +144,7 @@ export default createRule<Options, MessageIds>({
       let restated = 0;
       // A comment documents at most one member, so a shared block cannot be
       // counted once per member that happens to sit next to it.
-      const claimed = new Set<TSESTree.Comment>();
+      const claimed = new Set<ESTree.Comment>();
       for (const [index, { member, comment }] of documented.entries()) {
         if (comment === undefined || claimed.has(comment)) continue;
         const next = documented[index + 1];
@@ -173,7 +175,7 @@ export default createRule<Options, MessageIds>({
     }
 
     function isGroupLabel(
-      comment: TSESTree.Comment,
+      comment: ESTree.Comment,
       member: NamedMember,
       headsRun: boolean,
     ): boolean {

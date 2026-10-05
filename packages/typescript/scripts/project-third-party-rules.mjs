@@ -1,178 +1,311 @@
-import { builtinRules } from "eslint/use-at-your-own-risk";
-import { ESLint } from "eslint";
+import { execFileSync } from "node:child_process";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
+import { createStrictOxlintConfig } from "../dist/config.js";
+import { TESTING_LIBRARY_REACT_RECOMMENDED_RULES } from "../dist/presets.js";
 
 const PACKAGE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const REPOSITORY_ROOT = resolve(PACKAGE_ROOT, "../..");
-const CONFIG_ROOT = join(REPOSITORY_ROOT, "packages/standards/src/sarj_standards/configs");
-const CACHE_PREFIX = join(PACKAGE_ROOT, "node_modules/.cache/sarj-third-party-catalog-");
-
-const CONTEXTS = [
-  ["source-ts", "TypeScript source", "src/example.ts"],
-  ["source-tsx", "React source", "src/example.tsx"],
-  ["source-js", "JavaScript source", "src/example.js"],
-  ["source-jsx", "React JavaScript source", "src/example.jsx"],
-  ["test-ts", "TypeScript tests", "tests/example.test.ts"],
-  ["test-bun-ts", "Bun tests", "tests/example.bun.test.ts"],
-  ["test-playwright-ts", "Playwright end-to-end tests", "tests/example.playwright.ts"],
-  ["config-ts", "Syntax-only tool configuration", "vite.config.ts"],
-  ["design-system-tsx", "Design-system React source", "src/components/ui/example.tsx"],
-];
-
-const PROVIDERS = {
-  eslint: ["ESLint", "eslint", "https://eslint.org/"],
-  "typescript-eslint": ["typescript-eslint", "typescript-eslint", "https://typescript-eslint.io/"],
-  react: ["React", "eslint-plugin-react", "https://github.com/jsx-eslint/eslint-plugin-react"],
-  "react-hooks": ["React Hooks", "eslint-plugin-react-hooks", "https://react.dev/reference/eslint-plugin-react-hooks"],
-  unicorn: ["Unicorn", "eslint-plugin-unicorn", "https://github.com/sindresorhus/eslint-plugin-unicorn"],
-  "eslint-comments": ["ESLint Comments", "@eslint-community/eslint-plugin-eslint-comments", "https://eslint-community.github.io/eslint-plugin-eslint-comments/"],
-  n: ["Node.js", "eslint-plugin-n", "https://github.com/eslint-community/eslint-plugin-n"],
-  perfectionist: ["Perfectionist", "eslint-plugin-perfectionist", "https://perfectionist.dev/"],
-  promise: ["Promise", "eslint-plugin-promise", "https://github.com/eslint-community/eslint-plugin-promise"],
-  "simple-import-sort": ["Simple Import Sort", "eslint-plugin-simple-import-sort", "https://github.com/lydell/eslint-plugin-simple-import-sort"],
-  "better-tailwindcss": ["Better Tailwind CSS", "eslint-plugin-better-tailwindcss", "https://github.com/schoero/eslint-plugin-better-tailwindcss"],
-  jsdoc: ["JSDoc", "eslint-plugin-jsdoc", "https://github.com/gajus/eslint-plugin-jsdoc"],
-  shadcn: ["shadcn", "@shadcn/lint", "https://github.com/shadcn-ui/lint"],
-  vitest: ["Vitest", "@vitest/eslint-plugin", "https://github.com/vitest-dev/eslint-plugin-vitest"],
-  "node-test": ["Node Test", "eslint-node-test", "https://github.com/sindresorhus/eslint-node-test"],
-  jest: ["Jest / Bun Test", "eslint-plugin-jest", "https://github.com/jest-community/eslint-plugin-jest"],
-  "testing-library": ["Testing Library", "eslint-plugin-testing-library", "https://github.com/testing-library/eslint-plugin-testing-library"],
-  playwright: ["Playwright", "eslint-plugin-playwright", "https://github.com/mskelton/eslint-plugin-playwright"],
-  zod: ["ESLint Zod", "eslint-plugin-zod", "https://github.com/marcalexiei/eslint-zod"],
+const CLI = join(
+  dirname(fileURLToPath(import.meta.resolve("oxlint/package.json"))),
+  "bin/oxlint",
+);
+const [
+  manifest,
+  aggregateProvenance,
+  playwrightProvenance,
+  testingLibraryProvenance,
+] = await Promise.all(
+  [
+    "package.json",
+    "vendor/PROVENANCE.json",
+    "vendor/playwright/PROVENANCE.json",
+    "vendor/testing-library/PROVENANCE.json",
+  ].map(async (path) =>
+    JSON.parse(await readFile(join(PACKAGE_ROOT, path), "utf8")),
+  ),
+);
+const provenance = {
+  ...aggregateProvenance,
+  playwright: playwrightProvenance,
+  "testing-library": testingLibraryProvenance,
 };
-
-const namespaceToProvider = (namespace) => ({
-  "@typescript-eslint": "typescript-eslint",
-  "@eslint-community/eslint-comments": "eslint-comments",
-}[namespace] ?? namespace);
-
-const level = (setting) => {
-  const severity = Array.isArray(setting) ? setting[0] : setting;
-  if (severity === 2 || severity === "error") return "error";
-  if (severity === 1 || severity === "warn" || severity === "warning") return "warning";
-  return undefined;
-};
-
-const splitRule = (displayId) => {
-  if (!displayId.includes("/")) return ["eslint", displayId, undefined];
-  if (displayId.startsWith("@typescript-eslint/")) {
-    return ["typescript-eslint", displayId.slice("@typescript-eslint/".length), "@typescript-eslint"];
-  }
-  if (displayId.startsWith("@eslint-community/eslint-comments/")) {
-    return ["eslint-comments", displayId.slice("@eslint-community/eslint-comments/".length), "@eslint-community/eslint-comments"];
-  }
-  if (displayId.startsWith("@sarj/")) return ["@sarj", displayId.slice("@sarj/".length), "@sarj"];
-  const [namespace, ...parts] = displayId.split("/");
-  return [namespaceToProvider(namespace), parts.join("/"), namespace];
-};
-
-async function loadProfiles() {
-  await mkdir(dirname(CACHE_PREFIX), { recursive: true });
-  const cacheRoot = await mkdtemp(CACHE_PREFIX);
-  const profiles = {};
-  try {
-    for (const name of ["strict"]) {
-      const destination = join(cacheRoot, `eslint.${name}.mjs`);
-      const source = await readFile(join(CONFIG_ROOT, `eslint.${name}.mjs`), "utf8");
-      const localSarj = pathToFileURL(join(PACKAGE_ROOT, "dist/index.js")).href;
-      const rewritten = source.replace('from "@sarj/eslint-plugin"', `from "${localSarj}"`);
-      if (rewritten === source) throw new Error(`could not resolve local @sarj import in eslint.${name}.mjs`);
-      await writeFile(destination, rewritten, "utf8");
-      const module = await import(`${pathToFileURL(destination).href}?catalog=1`);
-      profiles.standard = module.createConfig({
-        projectService: true,
-        tsconfigRootDir: REPOSITORY_ROOT,
-        testFrameworks: ["vitest", "bun", "node", "testing-library", "playwright"],
-      });
-      // Version-one catalog labels remain compatible; both expose one policy.
-      profiles.application = profiles.standard;
-    }
-    return profiles;
-  } finally {
-    await rm(cacheRoot, { recursive: true, force: true });
-  }
-}
 
 async function project() {
-  const profiles = await loadProfiles();
-  const peers = JSON.parse(await readFile(join(CONFIG_ROOT, "eslint.peers.json"), "utf8")).peers;
-  const registries = { eslint: builtinRules };
-  for (const configs of Object.values(profiles)) {
-    for (const config of configs) {
-      for (const [namespace, plugin] of Object.entries(config.plugins ?? {})) {
-        const provider = namespaceToProvider(namespace);
-        if (provider !== "@sarj") registries[provider] = plugin.rules ?? {};
+  const native = new Map(
+    run(["--rules", "--format=json"]).map((rule) => [
+      `${rule.scope.replaceAll("_", "-")}/${rule.value}`,
+      rule,
+    ]),
+  );
+  const cacheParent = join(PACKAGE_ROOT, "node_modules/.cache");
+  await mkdir(cacheParent, { recursive: true });
+  const temporary = await mkdtemp(join(cacheParent, "sarj-native-catalog-"));
+  try {
+    const { policy, expanded, classOrdering } = await loadPolicy(temporary);
+    const registries = await loadRegistries(policy);
+    const providers = new Map();
+    const records = new Map();
+    for (const context of configurationGroups(
+      policy,
+      expanded,
+      classOrdering,
+    )) {
+      for (const [configuredId, setting] of Object.entries(
+        context.rules ?? {},
+      )) {
+        includeRule(
+          configuredId,
+          setting,
+          context,
+          native,
+          registries,
+          providers,
+          records,
+        );
       }
     }
+    const rules = [...records.values()]
+      .sort((left, right) => left.key.localeCompare(right.key))
+      .map(({ contexts, ...record }) => ({
+        ...record,
+        profiles: ["application", "standard"].map((name) => ({
+          name,
+          contexts,
+        })),
+      }));
+    const orderedProviders = [...providers.values()].sort((left, right) =>
+      left.id.localeCompare(right.id),
+    );
+    process.stdout.write(
+      `${JSON.stringify({ providers: orderedProviders, rules })}\n`,
+    );
+  } finally {
+    await rm(temporary, { recursive: true, force: true });
   }
-
-  const records = new Map();
-  for (const [profile, configs] of Object.entries(profiles)) {
-    const eslint = new ESLint({ cwd: REPOSITORY_ROOT, overrideConfigFile: true, overrideConfig: configs });
-    for (const [contextId, contextLabel, path] of CONTEXTS) {
-      const effective = await eslint.calculateConfigForFile(path);
-      for (const [displayId, setting] of Object.entries(effective?.rules ?? {})) {
-        const effectiveLevel = level(setting);
-        if (effectiveLevel === undefined) continue;
-        const [provider, id] = splitRule(displayId);
-        if (provider === "@sarj") continue;
-        if (!(provider in PROVIDERS)) throw new Error(`unknown configured ESLint provider: ${provider}`);
-        const rule = provider === "eslint" ? registries.eslint.get(id) : registries[provider]?.[id];
-        if (rule === undefined) throw new Error(`missing installed metadata for ${displayId}`);
-        const rawSummary = rule.meta?.docs?.description;
-        const rawDocsUrl = rule.meta?.docs?.url;
-        if (typeof rawSummary !== "string" || rawSummary.length === 0) throw new Error(`missing summary for ${displayId}`);
-        const summary = plainTextSummary(rawSummary);
-        const docsUrl = typeof rawDocsUrl === "string" && rawDocsUrl.startsWith("https://")
-          ? rawDocsUrl
-          : undefined;
-        if (docsUrl === undefined) throw new Error(`missing HTTPS docs URL for ${displayId}`);
-        const key = `${provider}:${id}`;
-        let record = records.get(key);
-        if (record === undefined) {
-          record = {
-            key,
-            provider,
-            id,
-            displayId,
-            summary,
-            docsUrl,
-            family: null,
-            autofix: rule.meta?.fixable === undefined ? "none" : "available",
-            hasSuggestions: rule.meta?.hasSuggestions === true,
-            profiles: new Map(),
-          };
-          records.set(key, record);
-        }
-        const contexts = record.profiles.get(profile) ?? [];
-        contexts.push({ id: contextId, label: contextLabel, level: effectiveLevel });
-        record.profiles.set(profile, contexts);
-      }
-    }
-  }
-
-  const providers = Object.entries(PROVIDERS).map(([id, [label, packageName, homepage]]) => ({
-    id,
-    label,
-    engine: "eslint",
-    package: packageName,
-    version: peers[packageName],
-    homepage,
-  }));
-  const rules = [...records.values()].sort((left, right) => left.key.localeCompare(right.key)).map((record) => ({
-    ...record,
-    profiles: [...record.profiles.entries()].sort(([left], [right]) => left.localeCompare(right)).map(([name, contexts]) => ({ name, contexts })),
-  }));
-  process.stdout.write(`${JSON.stringify({ providers, rules })}\n`);
 }
 
-function plainTextSummary(value) {
+function run(arguments_) {
+  return JSON.parse(
+    execFileSync(process.execPath, [CLI, ...arguments_], {
+      cwd: PACKAGE_ROOT,
+      encoding: "utf8",
+      timeout: 30_000,
+      maxBuffer: 16 * 1024 * 1024,
+    }),
+  );
+}
+
+async function loadPolicy(temporary) {
+  const baseline = await createStrictOxlintConfig({
+    root: REPOSITORY_ROOT,
+    query: true,
+    nextjs: true,
+    sonarjs: true,
+    testFrameworks: ["vitest", "bun", "node", "testing-library", "playwright"],
+  });
+  const classOrdering = {
+    files: ["**/*.{js,jsx,mjs,cjs,ts,tsx,mts,cts}"],
+    rules: { "perfectionist/sort-classes": "error" },
+  };
+  const policy = {
+    ...baseline,
+    overrides: [
+      ...(baseline.overrides ?? []),
+      {
+        files: ["**/*.{test,spec}.tsx"],
+        rules: TESTING_LIBRARY_REACT_RECOMMENDED_RULES,
+      },
+      classOrdering,
+    ],
+  };
+  const config = join(temporary, ".oxlintrc.json");
+  await writeFile(config, JSON.stringify(policy));
+  // The engine validates every configured plugin and expands native categories.
+  // Its serializer currently omits some JavaScript rules, so the public native
+  // configuration remains the source of their exact declarations and options.
+  const expanded = run(["--config", config, "--print-config"]);
+  return { policy, expanded, classOrdering };
+}
+
+async function loadRegistries(policy) {
+  const registries = new Map();
+  for (const plugin of policy.jsPlugins ?? []) {
+    const specifier = typeof plugin === "string" ? plugin : plugin.specifier;
+    const module = await import(specifier);
+    const implementation = module.default ?? module;
+    const namespace =
+      typeof plugin === "string" ? implementation.meta.name : plugin.name;
+    registries.set(namespace, implementation.rules);
+  }
+  return registries;
+}
+
+function configurationGroups(policy, expanded, classOrdering) {
+  // These are native configuration groups, not an emulation of file matching.
+  // Oxlint's public CLI does not expose an effective per-file configuration API.
+  return [
+    {
+      id: "base",
+      label: "Base native configuration",
+      rules: canonicalRules({ ...expanded.rules, ...policy.rules }),
+    },
+    ...(policy.overrides ?? []).map((override, index) => ({
+      id: `override-${index + 1}`,
+      label:
+        override === classOrdering
+          ? "Explicit class ordering opt-in (JavaScript and TypeScript)"
+          : `Native override: ${override.files.join(", ")}`,
+      rules: canonicalRules(override.rules ?? {}),
+    })),
+  ];
+}
+
+function canonicalRules(rules) {
+  return Object.fromEntries(
+    Object.entries(rules).map(([id, setting]) => [canonicalRule(id), setting]),
+  );
+}
+
+function includeRule(
+  configuredId,
+  setting,
+  context,
+  native,
+  registries,
+  providers,
+  records,
+) {
+  const severity = level(setting);
+  // Authored Sarj and React Doctor rules have separate metadata projections.
+  if (
+    severity === undefined ||
+    configuredId.startsWith("@sarj/") ||
+    configuredId.startsWith("react-doctor/")
+  )
+    return;
+  const displayId = canonicalRule(configuredId);
+  const separator = displayId.indexOf("/");
+  const namespace = displayId.slice(0, separator);
+  const id = displayId.slice(separator + 1);
+  const nativeRule = native.get(displayId);
+  const pluginRule = registries.get(namespace)?.[id];
+  if (nativeRule === undefined && pluginRule === undefined)
+    throw new Error(
+      `configured rule has no native implementation: ${displayId}`,
+    );
+  const provider = namespace === "eslint" ? "oxlint" : namespace;
+  if (!providers.has(provider))
+    providers.set(
+      provider,
+      providerRecord(provider, namespace, nativeRule, pluginRule),
+    );
+  const key = `${provider}:${id}`;
+  let record = records.get(key);
+  if (record === undefined) {
+    record = ruleRecord(key, provider, id, displayId, nativeRule, pluginRule);
+    records.set(key, record);
+  }
+  record.contexts.push({
+    id: context.id,
+    label: context.label,
+    level: severity,
+  });
+}
+
+function level(setting) {
+  const severity = Array.isArray(setting) ? setting[0] : setting;
+  if ([2, "error", "deny"].includes(severity)) return "error";
+  if ([1, "warn", "warning"].includes(severity)) return "warning";
+  return undefined;
+}
+
+function canonicalRule(id) {
+  if (!id.includes("/")) return `eslint/${id}`;
+  return id.replace(/^(jsx_a11y|react_perf)\//u, (scope) =>
+    scope.replaceAll("_", "-"),
+  );
+}
+
+function providerRecord(provider, namespace, nativeRule, pluginRule) {
+  const sourceFamily = namespace.replace(/^sarj-/u, "");
+  const source =
+    nativeRule === undefined ? provenance[sourceFamily] : undefined;
+  const packageName =
+    source?.package ?? providerPackage(namespace, nativeRule !== undefined);
+  return {
+    id: provider,
+    label:
+      nativeRule !== undefined
+        ? `Oxlint ${namespace} rules`
+        : `${sourceFamily} source policies`,
+    engine: "oxlint",
+    package: packageName,
+    version:
+      (source?.package === undefined ? undefined : source.version) ??
+      manifest.dependencies[packageName] ??
+      manifest.devDependencies[packageName] ??
+      manifest.version,
+    homepage:
+      nativeRule !== undefined
+        ? "https://oxc.rs/docs/guide/usage/linter/"
+        : (sourceHomepage(source?.source) ?? pluginRule.meta.docs?.url),
+    projectionScope: "config-explicit",
+  };
+}
+
+function sourceHomepage(source) {
+  return typeof source === "string" ? source : source?.url;
+}
+
+function providerPackage(namespace, isNative) {
+  if (isNative) return "oxlint";
+  if (namespace === "sarj-react-hooks") return "@sarj/oxlint-react-hooks";
+  return "@sarj/oxlint-plugin";
+}
+
+function ruleRecord(key, provider, id, displayId, nativeRule, pluginRule) {
+  const docsUrl = nativeRule?.["docs_url"] ?? pluginRule.meta.docs?.url;
+  if (typeof docsUrl !== "string" || !docsUrl.startsWith("https://"))
+    throw new Error(`missing upstream HTTPS documentation for ${displayId}`);
+  const fix = fixMetadata(nativeRule, pluginRule);
+  return {
+    key,
+    provider,
+    id,
+    displayId,
+    summary: plainText(pluginRule?.meta.docs?.description ?? title(id)),
+    docsUrl,
+    family: nativeRule?.category ?? null,
+    ...fix,
+    contexts: [],
+  };
+}
+
+function fixMetadata(nativeRule, pluginRule) {
+  if (nativeRule !== undefined)
+    return {
+      autofix: nativeRule.fix.includes("fix") ? "available" : "none",
+      hasSuggestions: nativeRule.fix.includes("suggestion"),
+    };
+  return {
+    autofix: pluginRule.meta.fixable === undefined ? "none" : "available",
+    hasSuggestions: pluginRule.meta.hasSuggestions === true,
+  };
+}
+
+function plainText(value) {
   return value
     .replaceAll(/\[([^\]]+)\]\([^\s)]+(?:\s+"[^"]*")?\)/gu, "$1")
     .replaceAll(/\s+/gu, " ")
     .trim();
+}
+
+function title(id) {
+  const words = id.replaceAll("-", " ");
+  if (words.startsWith("no ")) return `Disallow ${words.slice(3)}.`;
+  return `${words[0].toUpperCase()}${words.slice(1)}.`;
 }
 
 await project();

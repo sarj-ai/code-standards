@@ -1,128 +1,129 @@
-// vitest: shared-module-graph
-import eslintComments from "@eslint-community/eslint-plugin-eslint-comments";
-import * as tsParser from "@typescript-eslint/parser";
-import { RuleTester } from "@typescript-eslint/rule-tester";
-import { Linter } from "eslint";
-import tseslint from "typescript-eslint";
-import { afterAll, describe, expect, it } from "vitest";
-
-import rule from "../../src/rules/no-vague-suppression-description.js";
-
-RuleTester.afterAll = afterAll;
+import { RuleTester } from "oxlint/plugins-dev";
+import { describe, it } from "vitest";
+import rule, {
+  NO_VAGUE_SUPPRESSION_DESCRIPTION_DOCUMENTATION as DOC,
+} from "../../src/rules/no-vague-suppression-description.js";
 RuleTester.describe = describe;
 RuleTester.it = it;
-RuleTester.itOnly = it.only;
-
-const RULE_TESTER = new RuleTester({
-  languageOptions: { parser: tsParser },
-  linterOptions: { reportUnusedDisableDirectives: false },
+const tester = new RuleTester({
+  languageOptions: { parserOptions: { lang: "ts" } },
 });
-
-RULE_TESTER.run("no-vague-suppression-description", rule, {
+const source = (code: string) => ({ code, filename: "src/adapter.ts" });
+const invalid = (code: string, ...messageIds: string[]) => ({
+  ...source(code),
+  errors: messageIds.map((messageId) => ({ messageId })),
+});
+tester.run("@sarj/no-vague-suppression-description", rule, {
   valid: [
-    "// eslint-disable-next-line no-console -- CLI output is the public interface\nconsole.log(value);",
-    "// @ts-expect-error -- vendor declaration omits the runtime overload added in v4\nlegacy.call(value);",
-    "// @ts-expect-error vendor declaration omits the runtime overload added in v4\nlegacy.call(value);",
-    "// @ts-expect-error: generated SDK types model this nullable response as required\nread(value);",
-    "// false positive in prose, not a directive\nconst value = 1;",
-    "// Unlike @ts-expect-error -- needed, this prose does not suppress anything\nconst value = 1;",
-    "/* Unlike @ts-expect-error -- needed, this block is prose. */\nconst value = 1;",
-    "/* @ts-ignore -- intentional */\nlegacy.call(value);",
-    "// @ts-expect-error\nlegacy.call(value);",
-    "// eslint-disable-next-line no-console\nconsole.log(value);",
-    "/* @ts-expect-error -- vendor declaration omits the runtime overload */\nlegacy.call(value);",
-    "const value = 1; // eslint-disable-line @rule-tester/no-vague-suppression-description -- needed",
-    {
-      filename: "/repo/src/generated/client.ts",
-      code: "// @ts-expect-error -- needed\ncall();",
-    },
+    source("/* eslintConfig is the retired configuration filename. */\nrun();"),
+    source(
+      DOC.examples.find((example) => example.outcome === "no-match")!.files[0]
+        .source,
+    ),
+    source(
+      "// oxlint-disable-next-line no-debugger -- browser integration requires a breakpoint\ndebugger;",
+    ),
+    source(
+      "debugger; // oxlint-disable-line no-debugger -- browser integration requires a breakpoint",
+    ),
+    source(
+      "// oxlint-disable-next-line no-debugger, no-alert -- vendor SDK requires both legacy calls\ndebugger;",
+    ),
+    source(
+      "// oxlint-disable-next-line imaginary/no-vague-suppression-description -- vendor SDK requires this call\nrun();",
+    ),
+    source(
+      "// oxlint-disable-next-line no-vague-suppression-description -- vendor SDK requires this call\nrun();",
+    ),
+    source(
+      "// oxlint-disable-next-line no-console/ -- vendor SDK requires this call\nrun();",
+    ),
+    source("const message = 'oxlint-disable';"),
+    source("// unrelated needed comment"),
+    source("// @generated\n// oxlint-disable\ndebugger;"),
+    source(
+      "// @ts-expect-error -- vendor types omit runtime field\nvalue.field;",
+    ),
   ],
   invalid: [
-    {
-      code: "// eslint-disable-next-line no-console -- needed\nconsole.log(value);",
-      errors: [{ messageId: "vagueDescription" }],
-    },
-    {
-      code: "// eslint-disable-next-line no-console -- false positive\nconsole.log(value);",
-      errors: [{ messageId: "vagueDescription" }],
-    },
-    {
-      code: "// @ts-expect-error: to satisfy linter\nlegacy.call(value);",
-      errors: [{ messageId: "vagueDescription" }],
-    },
-    {
-      code: "// @ts-expect-error needed\nlegacy.call(value);",
-      errors: [{ messageId: "vagueDescription" }],
-    },
-    {
-      code: "/* @ts-expect-error -- intentional */\nlegacy.call(value);",
-      errors: [{ messageId: "vagueDescription" }],
-    },
-    {
-      code: "// eslint-disable-next-line @rule-tester/no-vague-suppression-description -- needed\nconst value = 1;",
-      errors: [{ messageId: "vagueDescription" }],
-    },
+    invalid(
+      "/* eslint no-console: off */\nconsole.log('value');",
+      "legacyDirective",
+    ),
+    invalid(
+      DOC.examples.find((example) => example.outcome === "match")!.files[0]
+        .source,
+      "vagueDescription",
+    ),
+    invalid(
+      "// oxlint-disable-next-line no-debugger\ndebugger;",
+      "missingDescription",
+    ),
+    invalid(
+      "// oxlint-disable-line -- vendor SDK requires this call\ndebugger;",
+      "missingRules",
+    ),
+    invalid(
+      "// oxlint-disable-next-line\ndebugger;",
+      "missingRules",
+      "missingDescription",
+    ),
+    invalid(
+      "// oxlint-disable no-debugger -- vendor SDK requires this call\ndebugger;",
+      "lineOnly",
+    ),
+    invalid("// oxlint-enable no-debugger\ndebugger;", "lineOnly"),
+    invalid(
+      "// eslint-disable-next-line no-debugger -- vendor SDK requires this call\ndebugger;",
+      "legacyDirective",
+    ),
+    invalid(
+      "// oxlint-disable-next-line no-console -- vendor SDK requires this call\nconsole.log(1);",
+      "restrictedRule",
+    ),
+    ...["imaginary/no-console", "/no-console", "first/second/no-console"].map(
+      (name) =>
+        invalid(
+          `// oxlint-disable-next-line ${name} -- vendor SDK requires this call\nconsole.log(1);`,
+          "restrictedRule",
+        ),
+    ),
+    ...["exhaustive-deps", "imaginary/exhaustive-deps"].map((name) =>
+      invalid(
+        `// oxlint-disable-next-line ${name} -- library requires stable closure\nrun();`,
+        "restrictedRule",
+      ),
+    ),
+    invalid(
+      "// oxlint-disable-next-line react/exhaustive-deps -- library requires stable closure\nrun();",
+      "restrictedRule",
+    ),
+    invalid(
+      "// oxlint-disable-next-line sarj-react-hooks/exhaustive-deps -- library requires stable closure\nrun();",
+      "restrictedRule",
+    ),
+    invalid(
+      "// oxlint-disable-next-line @sarj/no-vague-suppression-description -- vendor SDK requires this call\nrun();",
+      "restrictedRule",
+    ),
+    invalid(
+      "// oxlint-disable-next-line no-debugger, no-debugger -- vendor SDK requires this call\ndebugger;",
+      "duplicateRule",
+    ),
+    ...[
+      "needed",
+      "Required.",
+      "false positive",
+      "to satisfy the type checker",
+    ].map((reason) =>
+      invalid(
+        `// oxlint-disable-next-line no-debugger -- ${reason}\ndebugger;`,
+        "vagueDescription",
+      ),
+    ),
+    invalid(
+      "// @ts-expect-error: intentional\nvalue.field;",
+      "vagueDescription",
+    ),
   ],
-});
-
-describe("upstream ownership integration", () => {
-  const linter = new Linter({ configType: "flat" });
-  const config = [
-    {
-      files: ["**/*.ts"],
-      languageOptions: { parser: tsParser },
-      linterOptions: { reportUnusedDisableDirectives: "off" },
-      plugins: {
-        "@typescript-eslint": tseslint.plugin,
-        comments: eslintComments,
-        sarj: { rules: { "no-vague-suppression-description": rule } },
-      },
-      rules: {
-        "@typescript-eslint/ban-ts-comment": [
-          "error",
-          {
-            minimumDescriptionLength: 3,
-            "ts-check": false,
-            "ts-expect-error": "allow-with-description",
-            "ts-ignore": true,
-            "ts-nocheck": true,
-          },
-        ],
-        "comments/require-description": ["error", { ignore: [] }],
-        "no-console": "error",
-        "sarj/no-vague-suppression-description": "warn",
-      },
-    },
-  ] as unknown as Linter.Config[];
-
-  it.each([
-    {
-      code: "// eslint-disable-next-line no-console\nconsole.log(value);",
-      expected: ["comments/require-description"],
-      name: "missing description is upstream-only",
-    },
-    {
-      code: "// eslint-disable-next-line no-console -- needed\nconsole.log(value);",
-      expected: ["sarj/no-vague-suppression-description"],
-      name: "vague present description is custom-only",
-    },
-    {
-      code: "// eslint-disable-next-line no-console -- CLI output is the public interface\nconsole.log(value);",
-      expected: [],
-      name: "concrete description is accepted by both owners",
-    },
-    {
-      code: "// @ts-ignore -- intentional\nconst value: string = 1;",
-      expected: ["@typescript-eslint/ban-ts-comment"],
-      name: "ts-ignore is upstream-only",
-    },
-    {
-      code: "// Unlike @ts-ignore -- needed, this prose suppresses nothing.\nconst value = 1;",
-      expected: [],
-      name: "directive mention in prose belongs to neither",
-    },
-  ])("$name", ({ code, expected }) => {
-    const messages = linter.verify(code, config, "src/ownership.ts");
-    expect(messages.map((message) => message.ruleId).filter((ruleId) => ruleId !== null)).toEqual(expected);
-  });
 });
