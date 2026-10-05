@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "5306156f02133d71010e0ad0b3adabfae930d58b5c14d19d8f24d1c0783f36f7",
-  "cliSha256": "fd6a4f1e25e95cb1caf49912caba80b7e2ec125d0ffba51a04fc63a1d7af88f9",
+  "catalogSha256": "09d09db0ed948cc41ed0f7c03d66a15487579cb2906d6e43acdbff0a97bdf6b2",
+  "cliSha256": "197e15b5c456d943b8bdcfd55ed5df86ea5db377db121ebf18abcc7f3a9da119",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -5819,6 +5819,71 @@
       ],
       "optionsSchemaSource": null
     },
+    "python:no-before-validator-input-mutation": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/records.py",
+              "source": "from pydantic import BaseModel, model_validator\n\n\nclass Record(BaseModel):\n    name: str\n\n    @model_validator(mode=\"before\")\n    @classmethod\n    def normalize(cls, data: dict[str, object]):\n        data = dict(data)\n        data[\"name\"] = \"new\"\n        return data\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/records.py",
+          "id": "fresh-normalization-builder",
+          "outcome": "accept",
+          "scenarioId": "local-builder",
+          "title": "A copied outer mapping can be updated locally"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/records.py",
+              "source": "from pydantic import BaseModel, model_validator\n\n\nclass Record(BaseModel):\n    name: str\n\n    @model_validator(mode=\"before\")\n    @classmethod\n    def normalize(cls, data: dict[str, object]):\n        data.pop(\"legacy\", None)\n        return data\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/records.py",
+          "id": "raw-input-pop",
+          "outcome": "reject",
+          "scenarioId": "local-builder",
+          "title": "Removing a raw entry changes caller data"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/records.py",
+              "source": "from pydantic import BaseModel, model_validator\n\n\nclass Record(BaseModel):\n    name: str\n\n    @model_validator(mode=\"before\")\n    @classmethod\n    def normalize(cls, data: dict[str, object]):\n        data[\"name\"] = \"new\"\n        return data\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/records.py",
+          "id": "raw-input-write",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Before-validation changes the original mapping"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/records.py",
+              "source": "from pydantic import BaseModel, model_validator\n\n\nclass Record(BaseModel):\n    name: str\n\n    @model_validator(mode=\"before\")\n    @classmethod\n    def normalize(cls, data: dict[str, object]):\n        return {**data, \"name\": \"new\"}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/records.py",
+          "id": "replacement-input",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Return normalized data without changing the original"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "python:no-broad-keyword-capture": {
       "examples": [
         {
@@ -6672,6 +6737,71 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Implementation owns its lazy import"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:no-input-model-mutation": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/records.py",
+              "source": "from pydantic import BaseModel\n\n\nclass Attachment(BaseModel):\n    url: str\n\n\nclass Record(BaseModel):\n    attachment: Attachment\n\n\ndef sign(record: Record):\n    attachment = record.attachment.model_copy(update={\"url\": \"signed\"})\n    return record.model_copy(update={\"attachment\": attachment})\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/records.py",
+          "id": "copy-changed-ancestors",
+          "outcome": "accept",
+          "scenarioId": "nested-copy",
+          "title": "Replace the nested value and its parent"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/records.py",
+              "source": "from pydantic import BaseModel\n\n\nclass Record(BaseModel):\n    name: str\n\n\ndef rename(record: Record):\n    record.name = \"new\"\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/records.py",
+          "id": "input-field-write",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A transformation changes its caller's model"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/records.py",
+              "source": "from pydantic import BaseModel\n\n\nclass Record(BaseModel):\n    name: str\n\n\ndef rename(record: Record):\n    return record.model_copy(update={\"name\": \"new\"})\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/records.py",
+          "id": "returned-replacement",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Return a trusted replacement"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/records.py",
+              "source": "from pydantic import BaseModel\n\n\nclass Attachment(BaseModel):\n    url: str\n\n\nclass Record(BaseModel):\n    attachment: Attachment\n\n\ndef sign(record: Record):\n    copied = record.model_copy()\n    copied.attachment.url = \"signed\"\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/records.py",
+          "id": "shallow-model-shares-child",
+          "outcome": "reject",
+          "scenarioId": "nested-copy",
+          "title": "A shallow model copy shares a nested model"
         }
       ],
       "optionsSchemaSource": null
@@ -7747,6 +7877,71 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Human-only module, class, and function prose"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:no-unused-copy-result": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/records.py",
+              "source": "from copy import replace\n\n\ndef rename(record):\n    result = replace(record, name=\"new\")\n    return result\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/records.py",
+          "id": "consumed-standard-copy",
+          "outcome": "accept",
+          "scenarioId": "standard-replacement",
+          "title": "Capture the standard-library replacement"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/records.py",
+              "source": "from dataclasses import replace\n\n\ndef rename(record):\n    replace(record, name=\"new\")\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/records.py",
+          "id": "discarded-dataclass-replacement",
+          "outcome": "reject",
+          "scenarioId": "standard-replacement",
+          "title": "A standard-library replacement is ignored"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/records.py",
+              "source": "from pydantic import BaseModel\n\n\nclass Record(BaseModel):\n    name: str\n\n\ndef rename(record: Record):\n    record.model_copy(update={\"name\": \"new\"})\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/records.py",
+          "id": "discarded-model-copy",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A replacement model is ignored"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/records.py",
+              "source": "from pydantic import BaseModel\n\n\nclass Record(BaseModel):\n    name: str\n\n\ndef rename(record: Record):\n    return record.model_copy(update={\"name\": \"new\"})\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/records.py",
+          "id": "returned-copy",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Return the replacement to its caller"
         }
       ],
       "optionsSchemaSource": null

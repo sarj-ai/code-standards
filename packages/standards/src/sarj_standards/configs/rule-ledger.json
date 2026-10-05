@@ -42,6 +42,7 @@
       "no-analytical-aggregation-in-postgres-store",
       "no-any-mapping-types",
       "no-bare-test-phase-comments",
+      "no-before-validator-input-mutation",
       "no-broad-keyword-capture",
       "no-comment-cruft",
       "no-conftest-test-module-import",
@@ -61,6 +62,7 @@
       "no-generic-single-export-module",
       "no-hidden-constructor-fallback",
       "no-injected-module-loader",
+      "no-input-model-mutation",
       "no-invalid-argument-name-suppression",
       "no-mocked-pydantic-value-object",
       "no-nested-pydantic-field-validator",
@@ -90,6 +92,7 @@
       "no-trailing-numeric-unit-assignment-comment",
       "no-unique-violation-message-match",
       "no-unnecessary-docstring",
+      "no-unused-copy-result",
       "no-unused-underscored-keyword-parameter",
       "no-unused-value-marker",
       "no-vague-suppression-description",
@@ -456,7 +459,10 @@
       "SARJ477",
       "SARJ478",
       "SARJ479",
-      "SARJ480"
+      "SARJ480",
+      "SARJ481",
+      "SARJ482",
+      "SARJ483"
     ],
     "sql": [
       "SARJ101",

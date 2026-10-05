@@ -32,6 +32,7 @@ from sarj_python_lint.rules.no_analytical_aggregation_in_postgres_store import (
     NoAnalyticalAggregationInPostgresStore,
 )
 from sarj_python_lint.rules.no_any_mapping_types import NoAnyMappingTypes
+from sarj_python_lint.rules.no_before_validator_input_mutation import NoBeforeValidatorInputMutation
 from sarj_python_lint.rules.no_broad_keyword_capture import NoBroadKeywordCapture
 from sarj_python_lint.rules.no_comment_cruft import NoCommentCruft
 from sarj_python_lint.rules.no_conftest_test_module_import import NoConftestTestModuleImport
@@ -60,6 +61,7 @@ from sarj_python_lint.rules.no_hidden_constructor_fallback import (
     NoHiddenConstructorFallback,
 )
 from sarj_python_lint.rules.no_injected_module_loader import NoInjectedModuleLoader
+from sarj_python_lint.rules.no_input_model_mutation import NoInputModelMutation
 from sarj_python_lint.rules.no_invalid_argument_name_suppression import NoInvalidArgumentNameSuppression
 from sarj_python_lint.rules.no_mocked_pydantic_value_object import NoMockedPydanticValueObject
 from sarj_python_lint.rules.no_nested_pydantic_field_validator import NoNestedPydanticFieldValidator
@@ -90,6 +92,7 @@ from sarj_python_lint.rules.no_unique_violation_message_match import (
     NoUniqueViolationMessageMatch,
 )
 from sarj_python_lint.rules.no_unnecessary_docstring import NoUnnecessaryDocstring
+from sarj_python_lint.rules.no_unused_copy_result import NoUnusedCopyResult
 from sarj_python_lint.rules.no_unused_underscored_keyword_parameter import NoUnusedUnderscoredKeywordParameter
 from sarj_python_lint.rules.no_unused_value_marker import NoUnusedValueMarker
 from sarj_python_lint.rules.no_vague_suppression_description import (
@@ -204,6 +207,9 @@ if TYPE_CHECKING:
 
 REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
     {
+        NoUnusedCopyResult.id: NoUnusedCopyResult,
+        NoBeforeValidatorInputMutation.id: NoBeforeValidatorInputMutation,
+        NoInputModelMutation.id: NoInputModelMutation,
         NoDatabaseProgrammability.id: NoDatabaseProgrammability,
         RequireExplicitContractImplementation.id: RequireExplicitContractImplementation,
         PreferRequiredConstructorParameters.id: PreferRequiredConstructorParameters,
