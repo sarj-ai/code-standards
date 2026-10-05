@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "c6e391f44331446d629cdb6852217b93ec36cf4847b016b9d93f0c36cf26108e",
-  "cliSha256": "48bb093f33a55253daf17f59113503b4a510f54ac6db3f8dddc9fefb2fb1b3ad",
+  "catalogSha256": "5306156f02133d71010e0ad0b3adabfae930d58b5c14d19d8f24d1c0783f36f7",
+  "cliSha256": "fd6a4f1e25e95cb1caf49912caba80b7e2ec125d0ffba51a04fc63a1d7af88f9",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -8804,6 +8804,21 @@
           "title": "A string assertion unnecessarily constructs a schema validator"
         },
         {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/responses.py",
+              "source": "from pydantic import TypeAdapter, JsonValue\nfrom fastapi.encoders import jsonable_encoder\n\n\ndef response_content(body):\n    return TypeAdapter(dict[str, JsonValue]).validate_python(\n        jsonable_encoder(\n            {\"body\": body},\n            custom_encoder={\n                bytes: lambda value: value.decode(\"utf-8\", errors=\"replace\")\n            },\n        )\n    )\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/responses.py",
+          "id": "generic-json-after-encoding",
+          "outcome": "reject",
+          "scenarioId": "json-output",
+          "title": "A generic validator wraps an already encoded response mapping"
+        },
+        {
           "expectedCount": 0,
           "files": [
             {
@@ -8817,6 +8832,21 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "A native assertion rejects unexpected types and narrows the value"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/responses.py",
+              "source": "from fastapi.encoders import jsonable_encoder\nfrom fastapi.responses import JSONResponse\n\n\ndef response(body) -> JSONResponse:\n    return JSONResponse(content=jsonable_encoder({\"body\": body}))\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/responses.py",
+          "id": "response-serialization-boundary",
+          "outcome": "accept",
+          "scenarioId": "json-output",
+          "title": "The response owns encoded content without annotation-only validation"
         }
       ],
       "optionsSchemaSource": null

@@ -29,7 +29,10 @@ _PYDANTIC = frozenset({"pydantic", "pydantic.type_adapter"})
 _BUILTINS = frozenset({"builtins"})
 _PYTEST = frozenset({"pytest"})
 _VALIDATION_ERROR = frozenset({"pydantic", "pydantic_core"})
-_MODULES = _PYDANTIC | _BUILTINS | _PYTEST | _VALIDATION_ERROR
+_JSON_TYPES = frozenset({"pydantic", "pydantic.types"})
+_ENCODERS = frozenset({"fastapi.encoders"})
+_MODULES = _PYDANTIC | _BUILTINS | _PYTEST | _VALIDATION_ERROR | _JSON_TYPES | _ENCODERS | {"fastapi"}
+_MAPPING_SCHEMA_ARGUMENTS = 2
 
 
 @dataclass(frozen=True, slots=True)
@@ -44,15 +47,15 @@ class PreferNativeStringCheck(Rule):
     code = "SARJ480"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
         default_level=Severity.WARNING,
-        summary="Use native string assertions instead of unconstrained Pydantic coercion.",
-        rationale="An unconstrained TypeAdapter(str).validate_python(...) obscures a simple string check and can decode bytes instead of rejecting them.",
-        remediation="Use isinstance(value, str) and the appropriate failure path; in tests, assert the type. Keep structured validation at the model or JSON boundary. Preserve intentional coercion or ValidationError contracts explicitly.",
+        summary="Avoid unconstrained adapters for string assertions or already encoded JSON mappings.",
+        rationale="A plain string adapter obscures an assertion and can decode bytes. Generic JSON-dictionary validation after encoding adds a separate runtime contract, often only to satisfy an annotation; it can reject nested integer keys that a response serializer accepts and does not prove response serializability.",
+        remediation="Use isinstance(value, str) for string assertions. For annotation-only JSON adaptation, return a typed Response/JSONResponse at the serialization boundary. Keep structured input and specific schema validation. Preserve intentional coercion, recursive string-key validation or ValidationError contracts explicitly.",
         category=RuleCategory.MAINTAINABILITY,
         autofix=AutofixPolicy.NONE,
         limitations=(
-            "Only plain built-in str adapters used by validate_python inside an assertion without validation options are reported. Configured adapters, constrained types, unions, models, containers, other scalar types and JSON/serialization operations are excluded.",
+            "Plain built-in str adapters are checked only inside assertions. The JSON branch checks exactly dict[str, pydantic.JsonValue] immediately wrapping FastAPI jsonable_encoder of a dictionary literal with string literal keys; dynamic values and keyword encoder options are allowed. Custom encoders must be a literal mapping with only proven built-in bytes keys, so they cannot replace the root mapping or its string keys. Unknown input shapes, opaque or shape-changing encoders, schema aliases, other containers, constrained types, unions, models, configured adapters and validation options are excluded.",
             "Scoped import aliases and unescaped unconditional module or local adapter bindings are recognized, including independent functions reusing a name. Conditional, reassigned, indirect or class/comprehension/parameter/global/nonlocal cached bindings are excluded, as are shadowed symbols, wildcard imports and imports with visible mutation or escape.",
-            "Only assertion tests are checked: messages and lambda or generator expressions are excluded. Proven pytest.raises(ValidationError) contexts are preserved; other intentional byte-decoding or exception contracts need a local reasoned suppression. No automatic replacement can preserve those contracts.",
+            "String assertion messages and deferred expressions are excluded. The JSON branch excludes lambdas, comprehensions, function/class headers and cached encoded values; proven pytest.raises(ValidationError) contexts and try bodies catching ValidationError are preserved. Broader catches and contextlib.suppress are not inferred. This advisory does not prove equivalent behavior: intentional validation or byte-decoding contracts need a local reasoned suppression; there is no autofix.",
         ),
         examples=(
             RuleExample(
@@ -83,6 +86,36 @@ class PreferNativeStringCheck(Rule):
                 expected_count=0,
                 public=True,
             ),
+            RuleExample(
+                example_id="generic-json-after-encoding",
+                scenario="json-output",
+                title="A generic validator wraps an already encoded response mapping",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/responses.py",
+                        "from pydantic import TypeAdapter, JsonValue\nfrom fastapi.encoders import jsonable_encoder\ndef response_content(body):\n    return TypeAdapter(dict[str, JsonValue]).validate_python(jsonable_encoder({'body': body}, custom_encoder={bytes: lambda value: value.decode('utf-8', errors='replace')}))\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/responses.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="response-serialization-boundary",
+                scenario="json-output",
+                title="The response owns encoded content without annotation-only validation",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/responses.py",
+                        "from fastapi.encoders import jsonable_encoder\nfrom fastapi.responses import JSONResponse\ndef response(body) -> JSONResponse:\n    return JSONResponse(content=jsonable_encoder({'body': body}))\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/responses.py"),
+                expected_count=0,
+                public=True,
+            ),
         ),
     )
     description = documentation.summary
@@ -109,13 +142,24 @@ class PreferNativeStringCheck(Rule):
             receiver = _validation_receiver(call)
             if receiver is None:
                 continue
-            if not _inside_assertion(call, context) or _expects_validation_error(
-                call, context, provenance, imports, unsafe_imports
-            ):
-                continue
             if isinstance(receiver, ast.Name):
                 receiver = _cached_constructor(receiver, call, provenance, uncertain_names, mutated_bindings)
-            if receiver is None or not _plain_string_adapter(receiver, context, provenance, imports, unsafe_imports):
+            if receiver is None:
+                continue
+            if _inside_assertion(call, context) and _plain_string_adapter(
+                receiver, context, provenance, imports, unsafe_imports
+            ):
+                message = "plain str adapter in an assertion; use isinstance(value, str) with an explicit failure path, or preserve the intentional Pydantic contract explicitly"
+            elif (
+                _encoded_json_mapping(call.args[0], context, provenance, imports, unsafe_imports)
+                and _supported_json_context(call, context)
+                and _plain_json_mapping_adapter(receiver, context, provenance, imports, unsafe_imports)
+                and not _catches_validation_error(call, context, provenance, imports, unsafe_imports)
+            ):
+                message = "generic JSON validation after encoding; for annotation-only adaptation, return a typed Response/JSONResponse with the encoded mapping, or preserve intentional recursive string-key/ValidationError validation explicitly"
+            else:
+                continue
+            if _expects_validation_error(call, context, provenance, imports, unsafe_imports):
                 continue
             if is_suppressed(context.source_lines, call.lineno, self.code):
                 continue
@@ -126,7 +170,7 @@ class PreferNativeStringCheck(Rule):
                     col=call.col_offset + 1,
                     code=self.code,
                     severity=Severity.WARNING,
-                    message="plain str adapter in an assertion; use isinstance(value, str) with an explicit failure path, or preserve the intentional Pydantic contract explicitly",
+                    message=message,
                 )
             )
         return sorted(findings, key=lambda finding: (finding.line, finding.col))
@@ -215,6 +259,130 @@ def _single_value(call: ast.Call, keyword: str) -> ast.expr | None:
     return None
 
 
+def _plain_json_mapping_adapter(
+    node: ast.expr,
+    context: PythonFileContext,
+    provenance: ResourceProvenance,
+    imports: dict[ast.Import | ast.ImportFrom, ImportIndex],
+    unsafe_imports: set[str],
+) -> bool:
+    if not isinstance(node, ast.Call):
+        return False
+    function = node.func.value if isinstance(node.func, ast.Subscript) else node.func
+    schema = _single_value(node, "type")
+    if (
+        not isinstance(schema, ast.Subscript)
+        or not isinstance(schema.slice, ast.Tuple)
+        or len(schema.slice.elts) != _MAPPING_SCHEMA_ARGUMENTS
+        or not _resolves(
+            function, context, provenance, imports, unsafe_imports, sources=_PYDANTIC, symbol="TypeAdapter"
+        )
+    ):
+        return False
+    key, value = schema.slice.elts
+    return (
+        _builtin_type(schema.value, context, provenance, imports, unsafe_imports, symbol="dict")
+        and _builtin_type(key, context, provenance, imports, unsafe_imports, symbol="str")
+        and _resolves(value, context, provenance, imports, unsafe_imports, sources=_JSON_TYPES, symbol="JsonValue")
+    )
+
+
+def _builtin_type(
+    node: ast.expr,
+    context: PythonFileContext,
+    provenance: ResourceProvenance,
+    imports: dict[ast.Import | ast.ImportFrom, ImportIndex],
+    unsafe_imports: set[str],
+    *,
+    symbol: str,
+) -> bool:
+    return (
+        isinstance(node, ast.Name)
+        and node.id == symbol
+        and context.imports.builtin_is_unshadowed(symbol)
+        and _lexical_binding(symbol, node, provenance) is None
+        and "builtins" not in unsafe_imports
+        and f"builtins.{symbol}" not in unsafe_imports
+    ) or _resolves(node, context, provenance, imports, unsafe_imports, sources=_BUILTINS, symbol=symbol)
+
+
+def _encoded_json_mapping(
+    node: ast.expr,
+    context: PythonFileContext,
+    provenance: ResourceProvenance,
+    imports: dict[ast.Import | ast.ImportFrom, ImportIndex],
+    unsafe_imports: set[str],
+) -> bool:
+    if (
+        not isinstance(node, ast.Call)
+        or not _resolves(
+            node.func, context, provenance, imports, unsafe_imports, sources=_ENCODERS, symbol="jsonable_encoder"
+        )
+        or any(keyword.arg is None for keyword in node.keywords)
+    ):
+        return False
+    custom_encoder = next((keyword.value for keyword in node.keywords if keyword.arg == "custom_encoder"), None)
+    if custom_encoder is not None and not _bytes_encoders(custom_encoder, context, provenance, imports, unsafe_imports):
+        return False
+    value = (
+        node.args[0]
+        if len(node.args) == 1 and not any(keyword.arg == "obj" for keyword in node.keywords)
+        else next((keyword.value for keyword in node.keywords if not node.args and keyword.arg == "obj"), None)
+    )
+    return isinstance(value, ast.Dict) and all(
+        isinstance(key, ast.Constant) and isinstance(key.value, str) for key in value.keys
+    )
+
+
+def _bytes_encoders(
+    node: ast.expr,
+    context: PythonFileContext,
+    provenance: ResourceProvenance,
+    imports: dict[ast.Import | ast.ImportFrom, ImportIndex],
+    unsafe_imports: set[str],
+) -> bool:
+    return isinstance(node, ast.Dict) and all(
+        key is not None and _builtin_type(key, context, provenance, imports, unsafe_imports, symbol="bytes")
+        for key in node.keys
+    )
+
+
+def _supported_json_context(call: ast.Call, context: PythonFileContext) -> bool:
+    child: ast.AST = call
+    parent = context.parents.get(child)
+    while parent is not None:
+        if isinstance(parent, ast.Lambda | ast.ListComp | ast.SetComp | ast.DictComp | ast.GeneratorExp):
+            return False
+        if isinstance(parent, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
+            return isinstance(child, ast.stmt)
+        child = parent
+        parent = context.parents.get(child)
+    return True
+
+
+def _catches_validation_error(
+    call: ast.Call,
+    context: PythonFileContext,
+    provenance: ResourceProvenance,
+    imports: dict[ast.Import | ast.ImportFrom, ImportIndex],
+    unsafe_imports: set[str],
+) -> bool:
+    child: ast.AST = call
+    parent = context.parents.get(child)
+    while parent is not None and not isinstance(
+        parent, ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda | ast.GeneratorExp
+    ):
+        if isinstance(parent, ast.Try | ast.TryStar) and child in parent.body:
+            for handler in parent.handlers:
+                if handler.type is not None and _validation_error_type(
+                    handler.type, context, provenance, imports, unsafe_imports
+                ):
+                    return True
+        child = parent
+        parent = context.parents.get(child)
+    return False
+
+
 def _resolves(
     node: ast.expr,
     context: PythonFileContext,
@@ -256,6 +424,8 @@ def _import_key(module: str, symbol: str | None) -> str:
         return f"pydantic.{symbol}"
     if symbol == "ValidationError" and module in _VALIDATION_ERROR:
         return f"pydantic_core.{symbol}"
+    if symbol == "JsonValue" and module in _JSON_TYPES:
+        return f"pydantic.{symbol}"
     return f"{module}.{symbol}" if symbol is not None else module
 
 
@@ -310,6 +480,10 @@ def _unsafe_imports(
         unsafe.add(key)
         if key in _PYDANTIC:
             unsafe.add("pydantic.TypeAdapter")
+        if key in _JSON_TYPES:
+            unsafe.add("pydantic.JsonValue")
+        if key in _ENCODERS or key == "fastapi":
+            unsafe.add("fastapi.encoders.jsonable_encoder")
         if key in _VALIDATION_ERROR:
             unsafe.add("pydantic_core.ValidationError")
         if key == "pytest":
@@ -371,7 +545,7 @@ def _import_escapes(
     imports: dict[ast.Import | ast.ImportFrom, ImportIndex],
 ) -> bool:
     parent = context.parents.get(read)
-    if key == "pydantic.TypeAdapter":
+    if key in {"pydantic.TypeAdapter", "fastapi.encoders.jsonable_encoder"}:
         return not (
             isinstance(parent, ast.Attribute)
             or (isinstance(parent, ast.Subscript) and parent.value is read)
@@ -446,14 +620,22 @@ def _expects_validation_error(
     imports: dict[ast.Import | ast.ImportFrom, ImportIndex],
     unsafe_imports: set[str],
 ) -> bool:
-    parent = context.parents.get(call)
-    while parent is not None and not isinstance(parent, ast.FunctionDef | ast.AsyncFunctionDef):
-        if isinstance(parent, ast.With | ast.AsyncWith) and any(
-            _raises_validation_error(item.context_expr, context, provenance, imports, unsafe_imports)
-            for item in parent.items
+    child: ast.AST = call
+    parent = context.parents.get(child)
+    while parent is not None and not isinstance(
+        parent, ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda | ast.GeneratorExp
+    ):
+        if (
+            isinstance(parent, ast.With | ast.AsyncWith)
+            and isinstance(child, ast.stmt)
+            and any(
+                _raises_validation_error(item.context_expr, context, provenance, imports, unsafe_imports)
+                for item in parent.items
+            )
         ):
             return True
-        parent = context.parents.get(parent)
+        child = parent
+        parent = context.parents.get(child)
     return False
 
 
@@ -477,6 +659,16 @@ def _raises_validation_error(
     )
     if expected is None:
         return False
+    return _validation_error_type(expected, context, provenance, imports, unsafe_imports)
+
+
+def _validation_error_type(
+    expected: ast.expr,
+    context: PythonFileContext,
+    provenance: ResourceProvenance,
+    imports: dict[ast.Import | ast.ImportFrom, ImportIndex],
+    unsafe_imports: set[str],
+) -> bool:
     types = expected.elts if isinstance(expected, ast.Tuple) else (expected,)
     return any(
         _resolves(
