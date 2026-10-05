@@ -28,6 +28,7 @@ class ResourceProvenance:
         self.context = context
         self.bindings: dict[ast.AST | None, dict[str, list[ast.AST]]] = defaultdict(lambda: defaultdict(list))
         self.reads: dict[str, list[ast.Name]] = defaultdict(list)
+        self._reads_by_binding: dict[str, dict[ast.AST, list[ast.Name]]] = {}
         self.escape_cache: dict[tuple[ast.AST, bool], bool] = {}
         self.wildcard = False
         self.mutated: set[str] = set()
@@ -132,10 +133,15 @@ class ResourceProvenance:
             return False
         key = (binding, allow_context)
         if key not in self.escape_cache:
+            if name.id not in self._reads_by_binding:
+                grouped: dict[ast.AST, list[ast.Name]] = defaultdict(list)
+                for read in self.reads.get(name.id, ()):
+                    if (read_binding := self.binding(read.id, read)) is not None:
+                        grouped[read_binding].append(read)
+                self._reads_by_binding[name.id] = grouped
             self.escape_cache[key] = all(
                 self._method_or_context_read(read, allow_context=allow_context)
-                for read in self.reads.get(name.id, ())
-                if self.binding(read.id, read) is binding
+                for read in self._reads_by_binding[name.id].get(binding, ())
             )
         return self.escape_cache[key]
 
