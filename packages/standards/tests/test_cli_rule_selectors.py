@@ -196,11 +196,11 @@ def test_check_unknown_rule_fails_closed(tmp_path: Path, capsys: pytest.CaptureF
             "  # sarj-noqa: SARJ020 — verify transaction locking on a dedicated connection",
             1,
         ),
-        ("tests/fixtures/database.py", "", 0),
+        ("tests/fixtures/database.py", "", 1),
     ],
     ids=("blocking-default", "exact-transaction-exception", "unrelated-suppression", "shared-fixture"),
 )
-def test_raw_database_connections_block_outside_an_explicit_test_support_boundary(
+def test_raw_sql_requires_store_or_exact_database_exception(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
     filename: str,
@@ -212,8 +212,8 @@ def test_raw_database_connections_block_outside_an_explicit_test_support_boundar
     target.write_text(
         "from psycopg_pool import AsyncConnectionPool\n\n"
         "async def test_orders(pool: AsyncConnectionPool):\n"
-        f"    async with pool.connection() as conn:{suppression}\n"
-        "        await conn.execute('SELECT 1')\n"
+        "    async with pool.connection() as conn:\n"
+        f"        await conn.execute('SELECT 1'){suppression}\n"
     )
 
     status = main(

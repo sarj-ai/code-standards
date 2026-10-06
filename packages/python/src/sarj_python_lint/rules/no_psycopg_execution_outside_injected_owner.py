@@ -133,18 +133,8 @@ class NoPsycopgExecutionOutsideInjectedOwner(Rule):
             or _is_operational_path(path)
         ):
             return []
-        tree = context.tree
-        if not isinstance(tree, ast.Module):
-            return []
-        types = _type_index(tree)
-        ownership = {
-            node: _class_ownership(node, types) for node in context.nodes(ast.AST) if isinstance(node, ast.ClassDef)
-        }
         source_lines = context.source_lines
-        calls: list[ast.Call] = []
-        for scope in _function_scopes(tree):
-            owned = ownership[scope.owner] if scope.owner is not None else _ClassOwnership(frozenset(), frozenset())
-            calls.extend(_FunctionAnalyzer(types, owned).analyze(scope.function))
+        calls = psycopg_execution_calls(context, include_injected=False, include_probes=False)
         unique = {(call.lineno, call.col_offset): call for call in calls}
         return [
             Diagnostic(
@@ -161,6 +151,25 @@ class NoPsycopgExecutionOutsideInjectedOwner(Rule):
             for call in sorted(unique.values(), key=lambda item: (item.lineno, item.col_offset))
             if not _node_is_suppressed(source_lines, call, self.code)
         ]
+
+
+def psycopg_execution_calls(
+    context: PythonFileContext, *, include_injected: bool, include_probes: bool
+) -> list[ast.Call]:
+    tree = context.tree
+    if tree is None:
+        return []
+    types = _type_index(tree)
+    ownership = {node: _class_ownership(node, types) for node in context.nodes(ast.ClassDef)}
+    calls: list[ast.Call] = []
+    for scope in _function_scopes(tree):
+        owned = ownership[scope.owner] if scope.owner is not None else _ClassOwnership(frozenset(), frozenset())
+        calls.extend(
+            _FunctionAnalyzer(types, owned, include_injected=include_injected, include_probes=include_probes).analyze(
+                scope.function
+            )
+        )
+    return calls
 
 
 def _type_index(tree: ast.Module) -> _TypeIndex:
@@ -416,9 +425,13 @@ def _function_scopes(tree: ast.Module) -> list[_FunctionScope]:
 
 @final
 class _FunctionAnalyzer:
-    def __init__(self, types: _TypeIndex, ownership: _ClassOwnership) -> None:
+    def __init__(
+        self, types: _TypeIndex, ownership: _ClassOwnership, *, include_injected: bool, include_probes: bool
+    ) -> None:
         self._types = types
         self._ownership = ownership
+        self._allowed_origins = frozenset(_Origin) if include_injected else frozenset({_Origin.EXTERNAL})
+        self._include_probes = include_probes
         self._findings: list[ast.Call] = []
         self._shadowed: set[str] = set()
 
@@ -578,8 +591,8 @@ class _FunctionAnalyzer:
                 if (
                     isinstance(node.func, ast.Attribute)
                     and node.func.attr in _EXECUTE_METHODS
-                    and analyzer._expression_origin(node.func.value, state) is _Origin.EXTERNAL
-                    and not _is_connection_probe(node)
+                    and analyzer._expression_origin(node.func.value, state) in analyzer._allowed_origins
+                    and (analyzer._include_probes or not _is_connection_probe(node))
                 ):
                     analyzer._findings.append(node)
                 self.generic_visit(node)

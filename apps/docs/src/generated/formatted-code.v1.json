@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "7c273f27ba879fe128b22e350fe935a7767d1377266a99b871cc2ddded293d33",
-  "cliSha256": "19141fb37a5ef70a326752c58ffef7e16275e37bc546da47c02c17e09ad44ba8",
+  "catalogSha256": "97c8b9bafc7777348edde6ea55c736fc49f14f463bd64d39a8051ff03e470683",
+  "cliSha256": "4d1513c43783c67182728961cb4eb1a061d59944a13f923c3c4ce85da8c6fedf",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -7162,16 +7162,16 @@
           "expectedCount": 1,
           "files": [
             {
-              "path": "tests/test_orders.py",
-              "source": "async def load_rows(pool: AsyncConnectionPool):\n    async with pool.connection() as conn:\n        return await conn.execute(\"SELECT 1\")\n"
+              "path": "tests/fixtures/probe.py",
+              "source": "from psycopg_pool import AsyncConnectionPool\n\n\nclass Probe:\n    def __init__(self, pool: AsyncConnectionPool):\n        self._pool = pool\n\n    async def seed(self):\n        async with self._pool.connection() as conn:\n            await conn.execute(\"INSERT INTO jobs (id) VALUES (%s)\", (job_id,))\n"
             }
           ],
           "fixedFiles": [],
-          "focusPath": "tests/test_orders.py",
-          "id": "test-acquires-pool-connection",
+          "focusPath": "tests/fixtures/probe.py",
+          "id": "test-probe-executes-sql",
           "outcome": "reject",
           "scenarioId": "primary",
-          "title": "A test helper reaches directly through its pool"
+          "title": "An injected test probe still bypasses the owning store"
         },
         {
           "expectedCount": 0,
