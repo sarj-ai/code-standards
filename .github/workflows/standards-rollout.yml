@@ -15,16 +15,19 @@ on:
 
 permissions:
   contents: read
-  issues: write
 
 concurrency:
   group: standards-rollout
   cancel-in-progress: false
 
 jobs:
-  rollout:
+  plan:
     runs-on: ubuntu-latest
-    timeout-minutes: 50
+    timeout-minutes: 15
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      consumers: ${{ steps.plan.outputs.consumers }}
+      plan_status: ${{ steps.plan.outputs.plan_status }}
     steps:
       - name: Harden the runner
         uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
@@ -33,25 +36,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: ${{ github.sha }}
-          fetch-depth: 0
           persist-credentials: false
       - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
           version: '0.12.18'
-      - name: Install the pinned mise bootstrap
-        env:
-          MISE_VERSION: '2026.8.8'
-          MISE_SHA256: 1fce52a3656cf14bef6feeb9f0b90d545126a0bb598f0a69afbb9e4702f8f3e3
-        run: |
-          set -euo pipefail
-          destination="$RUNNER_TEMP/mise-bin"
-          mkdir -p "$destination"
-          curl --fail --location --retry 3 --silent --show-error \
-            "https://github.com/jdx/mise/releases/download/v${MISE_VERSION}/mise-v${MISE_VERSION}-linux-x64" \
-            --output "$destination/mise"
-          printf '%s  %s\n' "$MISE_SHA256" "$destination/mise" | sha256sum --check --strict
-          chmod 0755 "$destination/mise"
-          printf '%s\n' "$destination" >> "$GITHUB_PATH"
       - name: Resolve the exact bundle version
         id: version
         env:
@@ -80,11 +68,10 @@ jobs:
           app-id: ${{ vars.STANDARDS_ROLLOUT_APP_ID }}
           private-key: ${{ secrets.STANDARDS_ROLLOUT_APP_PRIVATE_KEY }}
           owner: sarj-ai
-          permission-contents: write
-          permission-pull-requests: write
-          permission-workflows: write
-      - name: Apply or reconcile the deterministic rollout
-        id: rollout
+          permission-contents: read
+          permission-pull-requests: read
+      - name: Plan the deterministic rollout
+        id: plan
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           VERSION: ${{ steps.version.outputs.version }}
@@ -103,11 +90,110 @@ jobs:
             return "${PIPESTATUS[0]}"
           }
 
-          operation_status=0
+          plan_status=0
+          consumers='[]'
           if [[ -z "$REGISTRY_TOML" ]]; then
             echo "rollout consumer registry is not configured" | tee -a "$log"
-            operation_status=1
+            plan_status=1
           elif [[ -z "$GH_TOKEN" ]]; then
+            echo "rollout App token was not minted" | tee -a "$log"
+            plan_status=1
+          else
+            consumers="$(uv run --project packages/standards --frozen python -m sarj_standards.libs.release.rollout --registry "$registry" consumers 2> "$RUNNER_TEMP/consumers.err")" || {
+              plan_status=$?
+              consumers='[]'
+            }
+            tee -a "$log" < "$RUNNER_TEMP/consumers.err" >&2
+            if (( plan_status == 0 )) && [[ "$EVENT_NAME" != schedule ]]; then
+              run_and_log uv run --project packages/standards --frozen python -m sarj_standards.libs.release.rollout --registry "$registry" plan --version "$VERSION" || plan_status=$?
+            fi
+          fi
+          {
+            echo "plan_status=$plan_status"
+            echo "consumers=$consumers"
+          } >> "$GITHUB_OUTPUT"
+      - name: Keep the rollout log for the fleet report
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: standards-rollout-log-plan
+          path: ${{ runner.temp }}/standards-rollout.log
+          if-no-files-found: ignore
+          retention-days: 7
+
+  # Consumers share no state during apply, so each one runs in its own job and
+  # the fleet takes as long as its slowest consumer instead of their sum.
+  rollout:
+    needs: plan
+    if: needs.plan.outputs.plan_status == '0'
+    name: rollout (${{ matrix.consumer.name }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    strategy:
+      fail-fast: false
+      matrix:
+        consumer: ${{ fromJSON(needs.plan.outputs.consumers) }}
+    steps:
+      - name: Harden the runner
+        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: '0.12.18'
+      - name: Install the pinned mise bootstrap
+        env:
+          MISE_VERSION: '2026.8.8'
+          MISE_SHA256: 1fce52a3656cf14bef6feeb9f0b90d545126a0bb598f0a69afbb9e4702f8f3e3
+        run: |
+          set -euo pipefail
+          destination="$RUNNER_TEMP/mise-bin"
+          mkdir -p "$destination"
+          curl --fail --location --retry 3 --silent --show-error \
+            "https://github.com/jdx/mise/releases/download/v${MISE_VERSION}/mise-v${MISE_VERSION}-linux-x64" \
+            --output "$destination/mise"
+          printf '%s  %s\n' "$MISE_SHA256" "$destination/mise" | sha256sum --check --strict
+          chmod 0755 "$destination/mise"
+          printf '%s\n' "$destination" >> "$GITHUB_PATH"
+      - name: Mint the fleet rollout token
+        id: app-token
+        continue-on-error: true
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ vars.STANDARDS_ROLLOUT_APP_ID }}
+          private-key: ${{ secrets.STANDARDS_ROLLOUT_APP_PRIVATE_KEY }}
+          owner: sarj-ai
+          permission-contents: write
+          permission-pull-requests: write
+          permission-workflows: write
+      - name: Apply or reconcile the deterministic rollout
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          VERSION: ${{ needs.plan.outputs.version }}
+          CONSUMER: ${{ matrix.consumer.identity }}
+          EVENT_NAME: ${{ github.event_name }}
+          REGISTRY_TOML: ${{ vars.STANDARDS_ROLLOUT_REGISTRY_TOML }}
+        run: |
+          set -uo pipefail
+          log="$RUNNER_TEMP/standards-rollout.log"
+          registry="$RUNNER_TEMP/standards-rollout.toml"
+          : > "$log"
+          install -m 600 /dev/null "$registry"
+          printf '%s' "$REGISTRY_TOML" > "$registry"
+
+          run_and_log() {
+            "$@" 2>&1 | tee -a "$log"
+            return "${PIPESTATUS[0]}"
+          }
+
+          operation_status=0
+          if [[ -z "$GH_TOKEN" ]]; then
             echo "rollout App token was not minted" | tee -a "$log"
             operation_status=1
           else
@@ -115,15 +201,100 @@ jobs:
             git config --global user.name "sarj-standards-rollout[bot]"
             git config --global user.email "sarj-standards-rollout[bot]@users.noreply.github.com"
             if [[ "$EVENT_NAME" == schedule ]]; then
-              run_and_log uv run --project packages/standards --frozen python -m sarj_standards.libs.release.rollout --registry "$registry" reconcile --version "$VERSION" || operation_status=$?
+              run_and_log uv run --project packages/standards --frozen python -m sarj_standards.libs.release.rollout --registry "$registry" reconcile --version "$VERSION" --consumer "$CONSUMER" || operation_status=$?
             else
-              run_and_log uv run --project packages/standards --frozen python -m sarj_standards.libs.release.rollout --registry "$registry" plan --version "$VERSION" || operation_status=$?
-              if (( operation_status == 0 )); then
-                run_and_log uv run --project packages/standards --frozen python -m sarj_standards.libs.release.rollout --registry "$registry" apply --version "$VERSION" || operation_status=$?
-              fi
+              run_and_log uv run --project packages/standards --frozen python -m sarj_standards.libs.release.rollout --registry "$registry" apply --version "$VERSION" --consumer "$CONSUMER" || operation_status=$?
             fi
           fi
+          echo "$operation_status" > "$RUNNER_TEMP/standards-rollout.status"
+          exit "$operation_status"
+      - name: Keep the rollout log for the fleet report
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: standards-rollout-log-consumer-${{ strategy.job-index }}
+          path: |
+            ${{ runner.temp }}/standards-rollout.log
+            ${{ runner.temp }}/standards-rollout.status
+          if-no-files-found: ignore
+          retention-days: 7
 
+  report:
+    needs: [plan, rollout]
+    if: ${{ !cancelled() && needs.plan.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Harden the runner
+        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: '0.12.18'
+      - name: Mint the fleet rollout token
+        id: app-token
+        continue-on-error: true
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ vars.STANDARDS_ROLLOUT_APP_ID }}
+          private-key: ${{ secrets.STANDARDS_ROLLOUT_APP_PRIVATE_KEY }}
+          owner: sarj-ai
+          permission-contents: read
+          permission-pull-requests: read
+      - name: Collect the plan and consumer logs
+        continue-on-error: true
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: standards-rollout-log-*
+          path: ${{ runner.temp }}/rollout-logs
+      - name: Report fleet status
+        id: rollout
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          VERSION: ${{ needs.plan.outputs.version }}
+          PLAN_STATUS: ${{ needs.plan.outputs.plan_status }}
+          CONSUMERS: ${{ needs.plan.outputs.consumers }}
+          ROLLOUT_RESULT: ${{ needs.rollout.result }}
+          REGISTRY_TOML: ${{ vars.STANDARDS_ROLLOUT_REGISTRY_TOML }}
+        run: |
+          set -uo pipefail
+          log="$RUNNER_TEMP/standards-rollout.log"
+          registry="$RUNNER_TEMP/standards-rollout.toml"
+          : > "$log"
+          install -m 600 /dev/null "$registry"
+          printf '%s' "$REGISTRY_TOML" > "$registry"
+
+          run_and_log() {
+            "$@" 2>&1 | tee -a "$log"
+            return "${PIPESTATUS[0]}"
+          }
+
+          parts=("$RUNNER_TEMP/rollout-logs/standards-rollout-log-plan")
+          for ((index = 0; index < $(jq length <<< "$CONSUMERS"); index++)); do
+            parts+=("$RUNNER_TEMP/rollout-logs/standards-rollout-log-consumer-$index")
+          done
+          operation_status="$PLAN_STATUS"
+          for part in "${parts[@]}"; do
+            if [[ -f "$part/standards-rollout.log" ]]; then
+              cat "$part/standards-rollout.log" >> "$log"
+            fi
+            if [[ -f "$part/standards-rollout.status" ]] && (( $(< "$part/standards-rollout.status") > operation_status )); then
+              operation_status="$(< "$part/standards-rollout.status")"
+            fi
+          done
+          # A leg that failed before recording its status still fails the rollout.
+          if (( operation_status == 0 )) && [[ "$ROLLOUT_RESULT" != success ]]; then
+            operation_status=1
+          fi
           status_status=0
           run_and_log uv run --project packages/standards --frozen python -m sarj_standards.libs.release.rollout --registry "$registry" status --version "$VERSION" || status_status=$?
           if (( operation_status != 0 || status_status != 0 )); then
@@ -139,7 +310,7 @@ jobs:
       - name: Publish durable rollout status
         env:
           GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ steps.version.outputs.version }}
+          VERSION: ${{ needs.plan.outputs.version }}
           RESULT: ${{ steps.rollout.outputs.result }}
           OPERATION_STATUS: ${{ steps.rollout.outputs.operation_status }}
           STATUS_STATUS: ${{ steps.rollout.outputs.status_status }}

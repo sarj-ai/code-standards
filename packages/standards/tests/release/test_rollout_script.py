@@ -288,7 +288,14 @@ class TestRegistry:
             rollout.load_registry(path)
 
 
-def test_later_wave_is_blocked_until_prior_wave_merges(monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.parametrize(
+    ("selected", "expected"),
+    [(None, ["pr-open", "blocked"]), ("r/c@main", ["pr-open"]), ("r/e@main", ["blocked"])],
+    ids=("fleet", "selected-prior-wave", "selected-later-wave"),
+)
+def test_later_wave_is_blocked_until_prior_wave_merges(
+    selected: str | None, expected: list[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
     canary = rollout.Consumer("canary", "r/c", "main", ("true",), channel=rollout.RolloutChannel.CANARY)
     early = rollout.Consumer("early", "r/e", "main", ("true",), channel=rollout.RolloutChannel.EARLY)
 
@@ -309,9 +316,39 @@ def test_later_wave_is_blocked_until_prior_wave_merges(monkeypatch: pytest.Monke
         rollout, "status", fake_status
     )
 
-    outcomes = rollout.apply("9.0.0", (canary, early), FakeRunner())
+    outcomes = rollout.apply("9.0.0", (canary, early), FakeRunner(), consumer=selected)
 
-    assert [item.state for item in outcomes] == ["pr-open", "blocked"]
+    assert [item.state for item in outcomes] == expected
+
+
+def test_selected_consumer_is_the_only_one_applied(monkeypatch: pytest.MonkeyPatch) -> None:
+    first = rollout.Consumer("Shared", "r/shared", "main", ("true",))
+    second = rollout.Consumer("Shared", "r/shared", "dev", ("true",))
+    applied: list[str] = []
+
+    def fake_verify_release(_version: str, _runner: rollout.CommandRunner) -> str:
+        return "a" * 64
+
+    def fake_apply_one(
+        item: rollout.Consumer, _version: str, _runner: rollout.CommandRunner, *, dry_run: bool
+    ) -> rollout.Outcome:
+        assert dry_run is False
+        applied.append(item.identity)
+        return rollout.Outcome(item, rollout.OutcomeState.PR_OPEN)
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- test records release verification without querying registries
+        rollout, "verify_release", fake_verify_release
+    )
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- test records which consumer would be mutated
+        rollout, "apply_one", fake_apply_one
+    )
+
+    outcomes = rollout.apply("9.0.0", (first, second), FakeRunner(), consumer="r/shared@dev")
+
+    assert applied == ["r/shared@dev"]
+    assert [item.consumer for item in outcomes] == [second]
+    with pytest.raises(rollout.RolloutError, match="'r/other@main' is not in the selected channel"):
+        rollout.apply("9.0.0", (first, second), FakeRunner(), consumer="r/other@main")
 
 
 class TestSafety:
