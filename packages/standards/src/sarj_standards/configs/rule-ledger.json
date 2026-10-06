@@ -103,6 +103,7 @@
       "prefer-class-row",
       "prefer-collection-comprehension",
       "prefer-constant-time-secret-compare",
+      "prefer-declarative-non-empty-string",
       "prefer-fstring-over-concat",
       "prefer-immutable-module-constant",
       "prefer-injected-dependency-over-monkeypatch",
@@ -462,7 +463,8 @@
       "SARJ480",
       "SARJ481",
       "SARJ482",
-      "SARJ483"
+      "SARJ483",
+      "SARJ484"
     ],
     "sql": [
       "SARJ101",

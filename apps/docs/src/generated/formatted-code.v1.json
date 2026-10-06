@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "97c8b9bafc7777348edde6ea55c736fc49f14f463bd64d39a8051ff03e470683",
-  "cliSha256": "4d1513c43783c67182728961cb4eb1a061d59944a13f923c3c4ce85da8c6fedf",
+  "catalogSha256": "53ca7f2bb59e059be32c494aecc6bba5c00a20a7756ec81c9da59333b2f94c87",
+  "cliSha256": "4631d5801f9bf949a0af21e837ce2ddf5545b524e6f3bb529186fcc854995896",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -8382,6 +8382,71 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Request API key uses ordinary equality"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:prefer-declarative-non-empty-string": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/models.py",
+              "source": "from pydantic import BaseModel, field_validator\n\n\nclass Label(BaseModel):\n    value: str\n\n    @field_validator(\"value\")\n    @classmethod\n    def require_value(cls, value):\n        if not value:\n            raise ValueError(\"empty\")\n        return value\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/models.py",
+          "id": "model-empty-guard",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "An after validator only rejects an empty string"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/models.py",
+              "source": "from pydantic import BaseModel, Field\n\n\nclass Label(BaseModel):\n    value: str = Field(min_length=1)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/models.py",
+          "id": "model-length-contract",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "The field publishes its non-empty constraint"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/labels.py",
+              "source": "from typing import Annotated\nfrom pydantic import Field, validate_call\n\n\n@validate_call\ndef label(value: Annotated[str, Field(min_length=1)]):\n    return f\"label:{value}\"\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/labels.py",
+          "id": "validated-parameter-contract",
+          "outcome": "accept",
+          "scenarioId": "validated-parameter",
+          "title": "The validated parameter declares its constraint"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/labels.py",
+              "source": "from pydantic import validate_call\n\n\n@validate_call\ndef label(value: str):\n    if value == \"\":\n        raise ValueError(\"empty\")\n    return f\"label:{value}\"\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/labels.py",
+          "id": "validated-parameter-guard",
+          "outcome": "reject",
+          "scenarioId": "validated-parameter",
+          "title": "An already validated function rejects an empty parameter"
         }
       ],
       "optionsSchemaSource": null

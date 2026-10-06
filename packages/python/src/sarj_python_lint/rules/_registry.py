@@ -110,6 +110,7 @@ from sarj_python_lint.rules.prefer_collection_comprehension import PreferCollect
 from sarj_python_lint.rules.prefer_constant_time_secret_compare import (
     PreferConstantTimeSecretCompare,
 )
+from sarj_python_lint.rules.prefer_declarative_non_empty_string import PreferDeclarativeNonEmptyString
 from sarj_python_lint.rules.prefer_fstring_over_concat import PreferFstringOverConcat
 from sarj_python_lint.rules.prefer_immutable_module_constant import (
     PreferImmutableModuleConstant,
@@ -209,6 +210,7 @@ REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
     {
         NoUnusedCopyResult.id: NoUnusedCopyResult,
         NoBeforeValidatorInputMutation.id: NoBeforeValidatorInputMutation,
+        PreferDeclarativeNonEmptyString.id: PreferDeclarativeNonEmptyString,
         NoInputModelMutation.id: NoInputModelMutation,
         NoDatabaseProgrammability.id: NoDatabaseProgrammability,
         RequireExplicitContractImplementation.id: RequireExplicitContractImplementation,
