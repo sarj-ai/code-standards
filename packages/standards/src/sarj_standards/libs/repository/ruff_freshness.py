@@ -8,10 +8,11 @@ import tomllib
 from typing import TYPE_CHECKING, Annotated, Final, Protocol
 
 from packaging.version import InvalidVersion, Version
-from pydantic import TypeAdapter
+from pydantic import RootModel
 import typer
 
 from sarj_standards.libs.adoption.manifest import as_table, list_field, table_field, text_field
+from sarj_standards.libs.typed_containers import is_object_list
 
 
 if TYPE_CHECKING:
@@ -28,9 +29,14 @@ _MANIFESTS: Final = (
     ("packages/iac/pyproject.toml", ">="),
 )
 _RUFF_REQUIREMENT = re.compile(r"^ruff(?P<operator>==|>=)(?P<version>[^;\s]+)")
-_JSON_OBJECT_ADAPTER = TypeAdapter(dict[str, object])
-_JSON_LIST_ADAPTER = TypeAdapter(list[object])
-_ISSUE_LIST_ADAPTER = TypeAdapter(list[dict[str, object]])
+
+
+class _RepositoryMetadata(RootModel[dict[str, object]]):
+    pass
+
+
+class _GithubIssueRecords(RootModel[list[dict[str, object]]]):
+    pass
 
 
 @dataclass(frozen=True, slots=True)
@@ -97,14 +103,13 @@ def _latest_stable(metadata: object) -> str:
 
 
 def _ruff_requirements(path: Path) -> tuple[str, ...]:
-    document = _JSON_OBJECT_ADAPTER.validate_python(tomllib.loads(path.read_text(encoding="utf-8")))
+    document = _RepositoryMetadata.model_validate(tomllib.loads(path.read_text(encoding="utf-8"))).root
     values: list[str] = []
     dependencies = list_field(table_field(document, "project"), "dependencies")
     values.extend(value for value in dependencies if isinstance(value, str) and value.startswith("ruff"))
     for group in table_field(document, "dependency-groups").values():
-        if isinstance(group, list):
-            group_values = _JSON_LIST_ADAPTER.validate_python(group)
-            values.extend(value for value in group_values if isinstance(value, str) and value.startswith("ruff"))
+        if is_object_list(group):
+            values.extend(value for value in group if isinstance(value, str) and value.startswith("ruff"))
     normalized: list[str] = []
     for value in values:
         match = _RUFF_REQUIREMENT.match(value)
@@ -136,7 +141,7 @@ def synchronize_issue(
     )
     if listed.returncode != 0:
         raise OSError(listed.stderr.strip() or "gh issue list failed")
-    issues = _ISSUE_LIST_ADAPTER.validate_json(listed.stdout)
+    issues = _GithubIssueRecords.model_validate_json(listed.stdout).root
     existing = _matching_issue(issues)
     if result.current:
         if existing is not None and existing.state == "OPEN":
@@ -180,7 +185,7 @@ def main(
     repository: Annotated[str | None, typer.Option("--repository")] = None,
     run_url: Annotated[str, typer.Option("--run-url")] = "",
 ) -> None:
-    metadata = _JSON_OBJECT_ADAPTER.validate_json(metadata_path.read_text(encoding="utf-8"))
+    metadata = _RepositoryMetadata.model_validate_json(metadata_path.read_text(encoding="utf-8")).root
     result = evaluate((Path.cwd() if root is None else root).resolve(), metadata)
     if repository:
         synchronize_issue(result, repository=repository, run_url=run_url)

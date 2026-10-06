@@ -15,7 +15,7 @@ import tomllib
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Final, NamedTuple
 
-from pydantic import TypeAdapter, ValidationError
+from pydantic import BaseModel, Field, ValidationError
 from repo_standards.core.parser import load_manifest as load_repository_manifest
 import yaml
 from yaml.nodes import MappingNode, Node, ScalarNode, SequenceNode
@@ -33,6 +33,10 @@ from .configs import PYTHON_COMPANION_CONFIGS
 if TYPE_CHECKING:
     from collections.abc import Iterator, Mapping, Sequence
     from typing import TypeGuard
+
+
+class _PackageScripts(BaseModel):
+    scripts: dict[str, str] = Field(default_factory=dict)
 
 
 class Level(StrEnum):
@@ -1671,8 +1675,7 @@ def _check_eslint_warning_exit_semantics(root: Path) -> Iterator[Finding]:
         if not path.is_file():
             continue
         try:
-            package = TypeAdapter(dict[str, object]).validate_json(_read(path))
-            scripts = TypeAdapter(dict[str, str]).validate_python(package.get("scripts", {}))
+            scripts = _PackageScripts.model_validate_json(_read(path)).scripts
         except RecursionError, ValidationError:
             continue  # The package-json validator owns malformed documents.
         for name, command in sorted(scripts.items()):

@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING, ClassVar, Final, Literal, NamedTuple, Protocol
 import zipfile
 
 from pathspec import PathSpec
-from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
+from pydantic import BaseModel, ConfigDict, Field, RootModel
 from sarj_rule_contracts import RuleEngine, RuleSelection
 import yaml
 
@@ -95,8 +95,12 @@ _REACT_DOCTOR_SOURCE_SUFFIXES = frozenset(
 _ESLINT_NODE_OPTIONS: Final = "--max-old-space-size=4096"
 _ESLINT_FORMATTER: Final = Path(__file__).parents[2] / "configs" / "eslint-compact-formatter.mjs"
 _ESLINT_SELECTED_RUNNER: Final = Path(__file__).parents[2] / "configs" / "eslint-selected-rules.mjs"
-_JSON_OBJECT_ADAPTER = TypeAdapter(dict[str, object])
-_YAML_OBJECT_ADAPTER = TypeAdapter(object)
+
+
+class _JsonToolReport(RootModel[dict[str, object]]):
+    pass
+
+
 _REACT_RUNTIME_PACKAGES = frozenset(
     {
         "@astrojs/react",
@@ -839,7 +843,7 @@ def _mobsfscan_argv(rules: Path, *, config: Path | None) -> tuple[str, ...]:
     )
     if config is None:
         return (*argv, "--severity", "WARNING", "--severity", "ERROR")
-    raw = _YAML_OBJECT_ADAPTER.validate_python(parse_yaml(_read_mobile_config(config)))
+    raw = parse_yaml(_read_mobile_config(config))
     entries = _array(raw, "mobsfscan config")
     if len(entries) != 1:
         msg = "mobsfscan config must contain exactly one mapping"
@@ -2505,7 +2509,7 @@ def parse_ktlint(  # ruff: ignore[too-many-locals] -- protocol normalization kee
 def parse_mobsfscan(  # ruff: ignore[too-many-locals] -- protocol normalization keeps untyped fields explicit.
     payload: str, *, root: Path, expected_paths: Sequence[str] | None = None
 ) -> tuple[Diagnostic, ...]:
-    report = _JSON_OBJECT_ADAPTER.validate_json(payload, strict=True)
+    report = _JsonToolReport.model_validate_json(payload, strict=True).root
     errors = _array(report.get("errors", []), "mobsfscan errors")
     if expected_paths is not None:
         _validate_mobsfscan_coverage(report, root, expected_paths)
@@ -2576,7 +2580,7 @@ def _is_tolerated_swift_partial_parsing(value: object) -> bool:
 def parse_sarif(  # ruff: ignore[too-many-locals] -- protocol normalization keeps SARIF containment explicit.
     payload: str, *, root: Path
 ) -> tuple[Diagnostic, ...]:
-    report = _JSON_OBJECT_ADAPTER.validate_json(payload, strict=True)
+    report = _JsonToolReport.model_validate_json(payload, strict=True).root
     diagnostics: list[Diagnostic] = []
     documents: dict[Path, SourceDocument | None] = {}
     for raw_run in _array(report.get("runs"), "SARIF runs"):

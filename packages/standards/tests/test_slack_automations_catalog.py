@@ -5,19 +5,16 @@ import json
 from typing import TYPE_CHECKING, TypeIs
 
 from jsonschema import Draft202012Validator
-from pydantic import TypeAdapter
 import pytest
 
 import sarj_standards.cli.main as cli
 from sarj_standards.libs.catalogs import render_schema, validate_catalog
+from sarj_standards.libs.json_boundary import parse_json
 from sarj_standards.schemas._paths import SLACK_AUTOMATIONS_SCHEMA
 
 
 if TYPE_CHECKING:
     from pathlib import Path
-
-
-_JSON = TypeAdapter(object)
 
 
 def _is_table(value: object) -> TypeIs[dict[str, object]]:
@@ -117,7 +114,7 @@ def _valid() -> dict[str, object]:
 
 
 def _load_json(value: str) -> object:
-    return _JSON.validate_json(value)
+    return parse_json(value)
 
 
 def _bot(document: dict[str, object]) -> dict[str, object]:
