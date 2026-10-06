@@ -1213,6 +1213,13 @@
       "note": "Remove this hook; syntax cannot prove whether a production write API can represent the fixture state."
     },
     {
+      "id": "no-raw-sql-in-tests",
+      "kind": "python",
+      "status": "renamed",
+      "replacement": "no-raw-connection-in-tests",
+      "note": "Replace sarj-no-raw-sql-in-tests with sarj-no-raw-connection-in-tests before upgrading."
+    },
+    {
       "id": "no-redundant-literal-description",
       "kind": "python",
       "status": "renamed",
