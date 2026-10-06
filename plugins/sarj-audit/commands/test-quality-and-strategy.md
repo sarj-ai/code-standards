@@ -14,6 +14,10 @@ specifically concerns one of them. In pull-request audits, separate executable
 test changes from support-only fixtures, fakes, and expected-data maintenance;
 classify individual tests rather than whole files or pull requests.
 
+Before adding tests, inspect existing coverage, identify the changed contract,
+and choose the cheapest faithful boundary. Reuse maintained fakes and fixtures
+before introducing support abstractions.
+
 Trace actual CI test selections and their effective pytest roots/configuration,
 coverage collection, skips and prerequisites, retries, and optional lanes before
 assessing which contracts execute. Establish the intended lane and available
@@ -85,6 +89,12 @@ the weakness:
     run if an earlier teardown action fails. Identify the exact acquisition and
     failing operation rather than inferring a leak from a resource's name or a
     timeout whose API already closes it.
+15. **Distinct coverage and necessary support** — Identify the contract,
+    interaction, regression, or lifecycle need each additional case or support
+    abstraction serves. Prefer sparse scenarios when dimensions do not interact;
+    after paths rejoin, cover common behavior once unless a distinct failure
+    requires another combination. Retain safety, race, cryptographic,
+    compatibility, and lifecycle cases when their boundaries differ.
 
 Do not use assertion-to-code ratio, raw coverage percentage, test length, or the
 mere presence of mocks/private calls as evidence of low value. Prefer the
@@ -219,6 +229,9 @@ one shared event log rather than inferring ordering from separate lists.
 
 For every finding include the test location, the behavior it claims, the
 specific mutation that survives, the impact, and the smallest stronger oracle.
+For redundancy findings instead, name the proposed removal, the existing
+covering tests, the preserved regressions, and the demonstrated maintenance or
+execution cost. Identical outcomes alone do not establish equivalent contracts.
 Also name nearby strong counterexamples when they establish an important
 false-positive boundary. Separate confirmed weak tests from suggestions, and
 record whether an active deterministic rule supports the finding or whether it
