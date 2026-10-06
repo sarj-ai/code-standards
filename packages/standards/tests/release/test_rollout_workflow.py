@@ -100,8 +100,8 @@ def test_rollout_bootstrap_obeys_the_selected_action_policy() -> None:
 
     assert "jdx/mise-action" not in workflow
     assert "mise-v${MISE_VERSION}-linux-x64" in workflow
-    assert "2026.8.8" in workflow
-    assert "1fce52a3656cf14bef6feeb9f0b90d545126a0bb598f0a69afbb9e4702f8f3e3" in workflow
+    assert "2026.10.3" in workflow
+    assert "8d48bc510b7d844fad0bc7156c0855c2a1e7230c51e498a7f6b63b021f8b57c5" in workflow
     assert "sha256sum --check --strict" in workflow
 
 

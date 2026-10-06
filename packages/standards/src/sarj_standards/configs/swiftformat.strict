@@ -1,4 +1,4 @@
-# Canonical SwiftFormat 0.62.1 configuration for Swift projects.
+# Canonical SwiftFormat 0.63.1 configuration for Swift projects.
 # The owning project selects its Swift language mode; this shared policy must
 # remain valid for maintained Swift 5 and Swift 6 targets.
 --indent 4

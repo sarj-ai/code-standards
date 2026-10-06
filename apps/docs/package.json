@@ -1,7 +1,7 @@
 {
   "name": "@sarj-ai/code-standards-docs",
   "version": "0.1.0",
-  "packageManager": "npm@12.1.0",
+  "packageManager": "npm@12.2.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -31,22 +31,22 @@
     "@astrojs/sitemap": "3.7.4",
     "@eslint/js": "10.0.1",
     "@sarj/eslint-plugin": "file:../../packages/typescript",
-    "eslint": "10.11.0",
+    "eslint": "10.12.0",
     "eslint-plugin-astro": "3.2.1",
     "prettier": "3.9.9",
-    "prettier-plugin-sh": "0.19.0",
-    "prettier-plugin-toml": "2.0.6",
-    "react-doctor": "0.9.14",
+    "prettier-plugin-sh": "0.20.2",
+    "prettier-plugin-toml": "3.0.2",
+    "react-doctor": "0.9.17",
     "sql-formatter": "15.9.0",
     "typescript": "6.0.3",
-    "typescript-eslint": "8.70.1",
-    "wrangler": "4.138.0"
+    "typescript-eslint": "8.71.1",
+    "wrangler": "4.147.0"
   },
   "engines": {
     "node": ">=22.22.2"
   },
   "overrides": {
-    "http-cache-semantics": "https://codeload.github.com/kornelski/http-cache-semantics/tar.gz/11fb104275349bbd84bf21eafd40b18220c29c46",
+    "http-cache-semantics": "4.3.0",
     "sharp": "0.35.4",
     "miniflare": {
       "undici": "7.29.1"

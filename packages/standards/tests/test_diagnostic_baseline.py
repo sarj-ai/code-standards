@@ -423,13 +423,13 @@ def test_existing_baseline_fingerprint_hides_only_matching_react_doctor_debt(tmp
 def checkov_process(monkeypatch: pytest.MonkeyPatch) -> None:
     original = external._run_process  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
     payload = json.dumps(
-        {"passed": 0, "failed": 0, "skipped": 0, "parsing_errors": 0, "resource_count": 0, "checkov_version": "3.3.20"}
+        {"passed": 0, "failed": 0, "skipped": 0, "parsing_errors": 0, "resource_count": 0, "checkov_version": "3.3.23"}
     )
 
     def run(
         argv: Sequence[str], *, cwd: Path, environment: dict[str, str], timeout_seconds: float = 900
     ) -> external.ProcessOutput:
-        if "checkov==3.3.20" in argv:
+        if "checkov==3.3.23" in argv:
             assert "--offline" in argv
             assert "--skip-download" in argv
             return external.ProcessOutput(0, payload, "")

@@ -49,7 +49,7 @@ def _checkov(
             "skipped_checks": [],
             "parsing_errors": [],
         },
-        "summary": {"checkov_version": "3.3.20", "parsing_errors": 0},
+        "summary": {"checkov_version": "3.3.23", "parsing_errors": 0},
     }
 
 
@@ -159,7 +159,7 @@ def _empty_checkov_summary() -> dict[str, object]:
         "skipped": 0,
         "parsing_errors": 0,
         "resource_count": 0,
-        "checkov_version": "3.3.20",
+        "checkov_version": "3.3.23",
     }
 
 
@@ -307,7 +307,7 @@ def test_security_routing_uses_actual_selected_source_and_offline_managed_config
     )
     assert [report.name for report in reports] == ["zizmor", "checkov"]
     assert all(report.completion is Completion.COMPLETE for report in reports)
-    assert [report.version for report in reports] == ["1.30.1", "3.3.20"]
+    assert [report.version for report in reports] == ["1.30.1", "3.3.23"]
     assert all(str(config) not in argv for argv in calls)
 
 
