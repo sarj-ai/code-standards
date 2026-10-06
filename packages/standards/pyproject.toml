@@ -1,6 +1,6 @@
 [project]
 name = "code-standards"
-version = "8.27.0"
+version = "8.28.0"
 description = "One deterministic quality gate for Sarj Python, TypeScript, Swift, Kotlin, shell, SQL, IaC, and repository policy."
 readme = "README.md"
 requires-python = ">=3.14"
@@ -18,19 +18,19 @@ classifiers = [
 dependencies = [
   "sarj-rule-contracts==0.2.0",
   "pathspec==1.1.1",
-  "basedpyright==1.40.1",
+  "basedpyright==1.40.2",
   "deptry==0.25.1",
-  "lefthook==2.1.14",
+  "lefthook==2.1.17",
   "packaging==26.3",
   "pre-commit==4.6.2",
   "pydantic==2.13.5",
   "PyYAML==6.0.3",
-  "repo-standards==6.2.0",
-  "ruff==0.16.9",
-  "semgrep==1.178.0",
+  "repo-standards==6.2.2",
+  "ruff==0.16.10",
+  "semgrep==1.179.0",
   "shellcheck-py==0.11.0.1; (sys_platform == 'darwin' and platform_machine == 'arm64') or (sys_platform == 'darwin' and platform_machine == 'x86_64') or (sys_platform == 'linux' and platform_machine == 'x86_64') or (sys_platform == 'win32' and platform_machine == 'AMD64')",
   "sarj-iac-lint==0.18.0",
-  "sarj-python-lint==1.22.0",
+  "sarj-python-lint==1.22.1",
   "sarj-sql-lint==0.18.9",
   "typer==0.27.2",
 ]
@@ -67,10 +67,6 @@ dev = [
   "pytest>=9.1.1",
 ]
 
-[tool.uv]
-# Semgrep 1.178.0 requires vulnerable PyJWT 2.13.x. Remove this override when
-# its upstream requirement admits the patched version.
-override-dependencies = ["pyjwt[crypto]==2.15.1"]
 
 [tool.uv.sources]
 sarj-rule-contracts = { path = "../contracts", editable = true }

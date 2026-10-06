@@ -37,11 +37,11 @@ jobs:
           persist-credentials: false
       - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
-          version: '0.12.18'
+          version: '0.12.23'
       - name: Install the pinned mise bootstrap
         env:
-          MISE_VERSION: '2026.8.8'
-          MISE_SHA256: 1fce52a3656cf14bef6feeb9f0b90d545126a0bb598f0a69afbb9e4702f8f3e3
+          MISE_VERSION: '2026.10.3'
+          MISE_SHA256: 8d48bc510b7d844fad0bc7156c0855c2a1e7230c51e498a7f6b63b021f8b57c5
         run: |
           set -euo pipefail
           destination="$RUNNER_TEMP/mise-bin"

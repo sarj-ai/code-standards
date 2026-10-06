@@ -19,7 +19,7 @@ if TYPE_CHECKING:
 
 
 SecurityTool = Literal["zizmor", "checkov"]
-VERSIONS: Final[Mapping[SecurityTool, str]] = MappingProxyType({"zizmor": "1.30.1", "checkov": "3.3.20"})
+VERSIONS: Final[Mapping[SecurityTool, str]] = MappingProxyType({"zizmor": "1.30.1", "checkov": "3.3.23"})
 TOOLS: Final[tuple[SecurityTool, ...]] = ("zizmor", "checkov")
 TERRAFORM_CHECKS: Final = ("CKV_GCP_41", "CKV_GCP_95", "CKV_GCP_97")
 KUBERNETES_CHECKS: Final = ("CKV_K8S_10", "CKV_K8S_12", "CKV_K8S_13", "CKV_K8S_43")

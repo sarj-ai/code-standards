@@ -126,7 +126,7 @@ def _root_readme(
         ),
         (
             "## Contributing\n\n"
-            "Install uv 0.12.18, Python 3.14, Node 24.21, and GNU Make. Then bootstrap a fresh checkout:\n\n"
+            "Install uv 0.12.23, Python 3.14, Node 24.21, and GNU Make. Then bootstrap a fresh checkout:\n\n"
             "```bash\nmake setup\nmake verify\n```"
             "\n\nCreate a rule with `maintain rules new ENGINE:ID --category CATEGORY --summary TEXT --apply`. "
             "Without `--apply`, the command shows its plan. Creation writes the detector and executable test, "
@@ -224,7 +224,7 @@ def _package_usage(name: str, engine: str | None) -> str:
             "Exclusions, baselines, and severities still apply; Ruff selectors are not supported. "
             "Native linters and ESLint execute only selected rules. ESLint retains configured parsers, options, "
             "severities, and suppression directives.\n\n"
-            "Terraform, Kubernetes, and GitHub Actions adoption adds isolated Checkov 3.3.20 and zizmor 1.30.1 "
+            "Terraform, Kubernetes, and GitHub Actions adoption adds isolated Checkov 3.3.23 and zizmor 1.30.1 "
             "runtimes. Setup and generated CI prewarm these tools; checks run offline with packaged policy. "
             "Use `--rule checkov:CKV_GCP_95` or `--rule zizmor:template-injection` to select upstream audits. "
             "Their findings start as warnings, use the canonical diagnostic baseline, and retain upstream IDs. "

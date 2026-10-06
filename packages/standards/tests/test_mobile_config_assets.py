@@ -13,9 +13,9 @@ _VERSIONS = {
     "ktlint": "1.8.0",
     "mint": "0.18.0",
     "mobsfscan": "1.0.0",
-    "semgrep": "1.177.0",
-    "swiftformat": "0.62.1",
-    "swiftformat_commit": "2226e9d89bf05a604cc985bab3dccb44ff7c8ee3",
+    "semgrep": "1.179.0",
+    "swiftformat": "0.63.1",
+    "swiftformat_commit": "77d3f8222a779de39dbcfe16c7ec60f437f794d6",
     "swiftlint": "0.65.1",
     "swiftlint_commit": "6aba03e3d8302b33f106e0f922210f35ca4b52cf",
 }
