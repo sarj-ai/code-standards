@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import cast  # ruff: ignore[banned-api] -- narrow PyYAML's untyped public return at one parser boundary.
 
-from pydantic import TypeAdapter
-import yaml
+from pydantic import RootModel
+
+from sarj_standards.libs.yaml_boundary import parse_yaml
 
 
 _CONFIGS = Path(__file__).resolve().parents[1] / "src/sarj_standards/configs"
@@ -19,33 +19,45 @@ _VERSIONS = {
     "swiftlint": "0.65.1",
     "swiftlint_commit": "6aba03e3d8302b33f106e0f922210f35ca4b52cf",
 }
-_MAPPING_ADAPTER = TypeAdapter(dict[str, object])
-_MAPPING_SEQUENCE_ADAPTER = TypeAdapter(list[dict[str, object]])
-_STRING_MAPPING_ADAPTER = TypeAdapter(dict[str, str])
-_STRING_SEQUENCE_ADAPTER = TypeAdapter(list[str])
+
+
+class _MobileConfiguration(RootModel[dict[str, object]]):
+    pass
+
+
+class _MobileConfigurations(RootModel[list[dict[str, object]]]):
+    pass
+
+
+class _MobileToolVersions(RootModel[dict[str, str]]):
+    pass
+
+
+class _RuleNames(RootModel[list[str]]):
+    pass
 
 
 def _yaml_mapping(name: str) -> dict[str, object]:
     loaded = _yaml_object((_CONFIGS / name).read_text(encoding="utf-8"))
-    return _MAPPING_ADAPTER.validate_python(loaded)
+    return _MobileConfiguration.model_validate(loaded).root
 
 
 def _yaml_object(source: str) -> object:
-    return cast("object", yaml.safe_load(source))
+    return parse_yaml(source)
 
 
 def _table(parent: dict[str, object], key: str) -> dict[str, object]:
-    return _MAPPING_ADAPTER.validate_python(parent[key])
+    return _MobileConfiguration.model_validate(parent[key]).root
 
 
 def _strings(parent: dict[str, object], key: str) -> list[str]:
-    return _STRING_SEQUENCE_ADAPTER.validate_python(parent[key])
+    return _RuleNames.model_validate(parent[key]).root
 
 
 def test_mobile_tool_versions_and_mint_pins_are_exact() -> None:
-    versions = _STRING_MAPPING_ADAPTER.validate_json(
+    versions = _MobileToolVersions.model_validate_json(
         (_CONFIGS / "mobile-tools.versions.json").read_text(encoding="utf-8")
-    )
+    ).root
     assert versions == _VERSIONS
 
     mint_lines = (_CONFIGS / "Mintfile.mobile.strict").read_text(encoding="utf-8").splitlines()
@@ -153,7 +165,7 @@ def test_ktlint_uses_the_official_style_without_wildcard_imports() -> None:
 
 def test_mobsfscan_gates_actionable_findings_without_product_policy_noise() -> None:
     raw = _yaml_object((_CONFIGS / "mobsf.strict.yml").read_text(encoding="utf-8"))
-    loaded = _MAPPING_SEQUENCE_ADAPTER.validate_python(raw)
+    loaded = _MobileConfigurations.model_validate(raw).root
     assert len(loaded) == 1
     config = loaded[0]
     assert config["ignore-rules"] == []

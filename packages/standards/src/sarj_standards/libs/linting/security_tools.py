@@ -7,7 +7,7 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING, ClassVar, Final, Literal
 from urllib.parse import unquote, urlparse
 
-from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
+from pydantic import BaseModel, ConfigDict, Field, RootModel
 import yaml
 
 from sarj_standards.libs.diagnostics import Diagnostic, Location, Severity, SourceDocument
@@ -200,9 +200,8 @@ class _SarifReport(_ProtocolModel):
     runs: tuple[_SarifRun, ...] = Field(min_length=1)
 
 
-_CHECKOV_ADAPTER: Final[TypeAdapter[_CheckovReport | tuple[_CheckovReport, ...] | _CheckovEmptySummary]] = TypeAdapter(
-    _CheckovReport | tuple[_CheckovReport, ...] | _CheckovEmptySummary
-)
+class _CheckovPayload(RootModel[_CheckovReport | tuple[_CheckovReport, ...] | _CheckovEmptySummary]):
+    pass
 
 
 @dataclass(frozen=True, slots=True)
@@ -342,7 +341,7 @@ def parse_checkov(payload: str, *, root: Path) -> tuple[Diagnostic, ...]:
 
 
 def _checkov_reports(payload: str) -> tuple[_CheckovReport, ...]:
-    parsed = _CHECKOV_ADAPTER.validate_json(payload)
+    parsed = _CheckovPayload.model_validate_json(payload).root
     if isinstance(parsed, _CheckovEmptySummary):
         if parsed.checkov_version != VERSIONS["checkov"]:
             msg = "Checkov reported an unexpected version"

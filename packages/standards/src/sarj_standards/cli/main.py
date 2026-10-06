@@ -17,7 +17,7 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING, Annotated, Final, NoReturn, TypeIs
 
 from packaging.version import InvalidVersion, Version
-from pydantic import TypeAdapter, ValidationError
+from pydantic import BaseModel, ValidationError
 from repo_standards.core.commit_message import check_local_commit_message_file
 import typer
 
@@ -37,6 +37,10 @@ if TYPE_CHECKING:
     from sarj_standards.libs.adoption import doctor, lifecycle, service, upgrade
     from sarj_standards.libs.diagnostics import AnalysisReport, Diagnostic, ExecutionIssue
     from sarj_standards.libs.repository import rule_catalog_artifact
+
+
+class _CorpusLintReport(BaseModel):
+    diagnostics: list[dict[str, object]]
 
 
 _NEXT_STEPS = (
@@ -1452,8 +1456,7 @@ def _cmd_rule_evaluate_manifest(args: _Args, root: Path) -> int:
             msg = "corpus runner returned an invalid result"
             raise TypeError(msg)
         try:
-            report_payload = TypeAdapter(dict[str, object]).validate_json(stdout)
-            raw_diagnostics = TypeAdapter(list[dict[str, object]]).validate_python(report_payload.get("diagnostics"))
+            raw_diagnostics = _CorpusLintReport.model_validate_json(stdout).diagnostics
         except ValidationError as exc:
             msg = f"corpus {source.report_name} batch {batch.ordinal} returned invalid JSON"
             raise CorpusLintError(msg) from exc

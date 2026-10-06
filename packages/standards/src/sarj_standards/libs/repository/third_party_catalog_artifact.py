@@ -11,7 +11,7 @@ import tempfile
 from types import MappingProxyType
 from typing import Annotated, ClassVar, Final, Literal, NewType
 
-from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
+from pydantic import BaseModel, ConfigDict, Field, RootModel
 import typer
 
 from sarj_standards.libs.linting import security_tools
@@ -69,6 +69,10 @@ type ProjectionScope = Literal["complete", "config-explicit", "provider-only"]
 RuleId = NewType("RuleId", str)
 DisplayRuleId = NewType("DisplayRuleId", str)
 ContextId = NewType("ContextId", str)
+
+
+class _MobileToolVersions(RootModel[dict[str, str]]):
+    pass
 
 
 class _FrozenModel(BaseModel):
@@ -157,6 +161,10 @@ class _CatalogArtifact(_FrozenModel):
     profiles: tuple[ProfileName, ProfileName]
     providers: tuple[_Provider, ...]
     rules: tuple[_Rule, ...]
+
+
+class _RuffMetadataList(RootModel[tuple[_RuffMetadata, ...]]):
+    pass
 
 
 @dataclass(frozen=True, slots=True)
@@ -372,9 +380,9 @@ def _react_doctor_provider(root: Path) -> _Provider:
 
 def _mobile_projections(root: Path) -> _ToolProjection:
     config_root = root / _MOBILE_CONFIG_ROOT
-    versions = TypeAdapter(dict[str, str]).validate_json(
+    versions = _MobileToolVersions.model_validate_json(
         (config_root / "mobile-tools.versions.json").read_text(encoding="utf-8"), strict=True
-    )
+    ).root
     provider_specs = (
         _MobileProviderSpec("detekt", "Detekt", "detekt", "detekt", "https://detekt.dev/", "config-explicit"),
         _MobileProviderSpec(
@@ -618,7 +626,7 @@ def _ruff_projection(root: Path, ruff: str) -> _RuffProjection:
 
 
 def parse_ruff_metadata(output: str) -> dict[str, _RuffMetadata]:
-    metadata_values = TypeAdapter(tuple[_RuffMetadata, ...]).validate_json(output)
+    metadata_values = _RuffMetadataList.model_validate_json(output).root
     # Ruff may expose preview rules by name before assigning a stable code or
     # linter family. The name is the stable selector Ruff accepts until a code
     # exists, so it remains part of the effective public inventory.

@@ -125,8 +125,8 @@ class RequirePydanticForExternalJson(Rule):
             "schema makes required fields, types, and protocol versions explicit at the boundary."
         ),
         remediation=(
-            "Validate raw JSON with `Model.model_validate_json(...)` or `TypeAdapter(Model).validate_json(...)`; "
-            "for an already-decoded response, use `model_validate`, `validate_python`, or another maintained "
+            "Validate raw JSON with `Model.model_validate_json(...)`; use a named RootModel for scalar or collection roots. "
+            "For an already-decoded response, use `model_validate` or another maintained "
             "runtime schema validator before reading fields."
         ),
         category=RuleCategory.CORRECTNESS,

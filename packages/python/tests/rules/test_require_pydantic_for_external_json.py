@@ -440,7 +440,9 @@ def test_message_covers_already_decoded_json() -> None:
     assert "model_validate" in diagnostic.message
     documentation = RequirePydanticForExternalJson.documentation
     assert documentation is not None
-    assert "validate_python" in documentation.remediation
+    assert "model_validate" in documentation.remediation
+    assert "RootModel" in documentation.remediation
+    assert "TypeAdapter" not in documentation.remediation
 
 
 def test_direct_subprocess_output_is_proven_external() -> None:
