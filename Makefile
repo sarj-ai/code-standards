@@ -18,7 +18,7 @@ COMMIT ?= HEAD
 ROLLOUT_OPTIONS = --registry "$(REGISTRY)" --jobs "$(JOBS)"
 ROLLOUT_TARGET = --channel "$(CHANNEL)" $(if $(CONSUMER),--consumer "$(CONSUMER)")
 
-.PHONY: help setup build verify doctor docs-artifacts-check docs-code-sync docs-check test lint dogfood dogfood-python dogfood-typescript format-check typecheck repo-check check-no-private-refs check-file-conventions check-versions-synced release-check release-check-lock-age release-check-tags release-check-typescript sync-rule-ledger rollout rollout-plan rollout-status rollout-reconcile
+.PHONY: help setup build verify doctor docs-artifacts-check docs-code-sync docs-check test lint dogfood dogfood-python dogfood-typescript format-check typecheck repo-check check-no-private-refs check-file-conventions check-versions-synced release-check release-portability release-check-lock-age release-check-tags release-check-typescript sync-rule-ledger rollout rollout-plan rollout-status rollout-reconcile
 
 help:
 	@echo "Targets: setup | verify | doctor | build | test | lint | dogfood | typecheck"
@@ -27,7 +27,7 @@ help:
 	@echo "         Optional: CONSUMER=owner/repo@branch JOBS=4 DRY_RUN=1 CHANNEL=stable"
 	@echo "         test-standards TEST_JOBS=4 PYTEST_ARGS='-k release' | test -j4"
 	@echo "         test-plan | test-standards-changed BASE=origin/main"
-	@echo "         release-status COMMIT=origin/main"
+	@echo "         release-status COMMIT=origin/main | release-portability"
 	@echo "Releases are published only after a version-changing merge to main."
 
 rollout:
@@ -224,3 +224,7 @@ release-check-tags:
 
 release-check-typescript:
 	$(STANDARDS) --root . maintain release typescript check
+
+# Reproduce both platform release smoke lanes, including a fresh hook install.
+release-portability:
+	bash .github/scripts/release-portability.sh
