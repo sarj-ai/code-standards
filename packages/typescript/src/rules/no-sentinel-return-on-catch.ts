@@ -6,6 +6,8 @@
 
 import { type TSESTree, AST_NODE_TYPES, ASTUtils } from "@typescript-eslint/utils";
 
+import { unwrapExpression } from "./_unwrap-expression.js";
+
 import { forEachOwnAstChild } from "./_for-each-own-ast-child.js";
 import {
   createLogMatcher,
@@ -229,18 +231,19 @@ function argsIncludeBinding(
 
 /** Whether a node is a parse-style call or constructor that throws on bad input. */
 function isParseShapedNode(node: TSESTree.Node): boolean {
+  const unwrappedNodeCallee = node.type === "CallExpression" || node.type === "NewExpression" ? unwrapExpression(node.callee) : null;
   if (
     node.type === AST_NODE_TYPES.CallExpression &&
-    node.callee.type === AST_NODE_TYPES.MemberExpression &&
-    ASTUtils.getPropertyName(node.callee) !== null
+    unwrappedNodeCallee?.type === AST_NODE_TYPES.MemberExpression &&
+    ASTUtils.getPropertyName(unwrappedNodeCallee) !== null
   ) {
-    return (ASTUtils.getPropertyName(node.callee) ?? "") === "parse";
+    return (ASTUtils.getPropertyName(unwrappedNodeCallee) ?? "") === "parse";
   }
   if (
     node.type === AST_NODE_TYPES.NewExpression &&
-    node.callee.type === AST_NODE_TYPES.Identifier
+    unwrappedNodeCallee?.type === AST_NODE_TYPES.Identifier
   ) {
-    return SAFE_PARSE_CONSTRUCTORS.has(node.callee.name);
+    return SAFE_PARSE_CONSTRUCTORS.has(unwrappedNodeCallee.name);
   }
   return false;
 }
@@ -253,17 +256,19 @@ const SAFE_PARSE_CONSTRUCTORS: ReadonlySet<string> = new Set([
 ]);
 
 function isBodyDecodeNode(node: TSESTree.Node): boolean {
+  const unwrappedNodeCallee = node.type === "CallExpression" || node.type === "NewExpression" ? unwrapExpression(node.callee) : null;
   return (
     node.type === AST_NODE_TYPES.CallExpression &&
-    node.callee.type === AST_NODE_TYPES.MemberExpression &&
-    ASTUtils.getPropertyName(node.callee) !== null &&
-    BODY_DECODE_METHODS.has((ASTUtils.getPropertyName(node.callee) ?? ""))
+    unwrappedNodeCallee?.type === AST_NODE_TYPES.MemberExpression &&
+    ASTUtils.getPropertyName(unwrappedNodeCallee) !== null &&
+    BODY_DECODE_METHODS.has((ASTUtils.getPropertyName(unwrappedNodeCallee) ?? ""))
   );
 }
 
 /** Pure validation and optional browser-storage reads around JSON parsing. */
 function isSafeParseSupportCall(node: TSESTree.CallExpression): boolean {
-  const callee = node.callee;
+  const callee = unwrapExpression(node.callee);
+
   if (
     callee.type !== AST_NODE_TYPES.MemberExpression ||
     ASTUtils.getPropertyName(callee) === null

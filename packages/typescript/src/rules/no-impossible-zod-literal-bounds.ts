@@ -209,7 +209,7 @@ export default createRule<Options, MessageIds>({
       while (true) {
         const kind = baseKind(current);
         if (kind !== null) return { calls, kind };
-        const callee = current.callee;
+        const callee = unwrapExpression(current.callee);
         const calleeReceiver = callee.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(callee.object) : callee;
         if (
           callee.type !== AST_NODE_TYPES.MemberExpression ||
@@ -225,7 +225,8 @@ export default createRule<Options, MessageIds>({
     }
 
     function baseKind(node: TSESTree.CallExpression): SchemaKind | null {
-      const callee = node.callee;
+      const callee = unwrapExpression(node.callee);
+
       const calleeReceiver = callee.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(callee.object) : callee;
       if (callee.type === AST_NODE_TYPES.Identifier) {
         return resolvesToTrackedImport(callee)
@@ -251,7 +252,7 @@ export default createRule<Options, MessageIds>({
       let parent = child.parent;
       while (parent !== undefined && parent.type !== AST_NODE_TYPES.Program) {
         if (parent.type === AST_NODE_TYPES.CallExpression) {
-          const callee = parent.callee;
+          const callee = unwrapExpression(parent.callee);
           const calleeReceiver = callee.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(callee.object) : callee;
           if (
             callee.type === AST_NODE_TYPES.MemberExpression &&

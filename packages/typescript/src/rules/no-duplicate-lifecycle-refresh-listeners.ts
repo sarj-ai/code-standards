@@ -37,19 +37,20 @@ function registration(
   sourceCode: Readonly<{ getScope(node: TSESTree.Node): TSESLint.Scope.Scope }>,
   node: TSESTree.CallExpression,
 ): { operation: ListenerOperation; event: LifecycleEvent; callback: TSESTree.Identifier } | null {
-  const receiver = node.callee.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(node.callee.object) : node.callee;
+  const unwrappedNodeCallee = unwrapExpression(node.callee);
+  const receiver = unwrappedNodeCallee.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(unwrappedNodeCallee.object) : unwrappedNodeCallee;
   if (
-    node.callee.type !== AST_NODE_TYPES.MemberExpression || receiver.type !== AST_NODE_TYPES.Identifier ||
+    unwrappedNodeCallee.type !== AST_NODE_TYPES.MemberExpression || receiver.type !== AST_NODE_TYPES.Identifier ||
     !isUnshadowedGlobal(sourceCode, receiver) ||
-    ASTUtils.getPropertyName(node.callee) === null ||
-    ((ASTUtils.getPropertyName(node.callee) ?? "") !== "addEventListener" && (ASTUtils.getPropertyName(node.callee) ?? "") !== "removeEventListener") ||
+    ASTUtils.getPropertyName(unwrappedNodeCallee) === null ||
+    ((ASTUtils.getPropertyName(unwrappedNodeCallee) ?? "") !== "addEventListener" && (ASTUtils.getPropertyName(unwrappedNodeCallee) ?? "") !== "removeEventListener") ||
     node.arguments.length < 2
   ) return null;
-  const event = node.arguments[0];
+  const event = node.arguments[0] === undefined ? undefined : unwrapExpression(node.arguments[0]);
   const callback = node.arguments[1];
   if (event === undefined || callback === undefined) return null;
   if (event.type !== AST_NODE_TYPES.Literal || typeof event.value !== "string" || callback.type !== AST_NODE_TYPES.Identifier) return null;
-  const operation = (ASTUtils.getPropertyName(node.callee) ?? "") === "addEventListener" ? "add" : "remove";
+  const operation = (ASTUtils.getPropertyName(unwrappedNodeCallee) ?? "") === "addEventListener" ? "add" : "remove";
   if (receiver.name === "window" && event.value === "focus") return { operation, event: "focus", callback };
   if (receiver.name === "document" && event.value === "visibilitychange") return { operation, event: "visibilitychange", callback };
   return null;
@@ -123,8 +124,10 @@ export default createRule<Options, MessageIds>({
         if (node.init?.type === AST_NODE_TYPES.ArrowFunctionExpression || node.init?.type === AST_NODE_TYPES.FunctionExpression) {
           functionCallbacks.set(node.init, variable);
         }
-        if (node.init?.type !== AST_NODE_TYPES.CallExpression || node.init.callee.type !== AST_NODE_TYPES.Identifier) return;
-        const hook = ASTUtils.findVariable(context.sourceCode.getScope(node.init.callee), node.init.callee.name);
+        if (node.init?.type !== AST_NODE_TYPES.CallExpression) return;
+        const hookCallee = unwrapExpression(node.init.callee);
+        if (hookCallee.type !== AST_NODE_TYPES.Identifier) return;
+        const hook = ASTUtils.findVariable(context.sourceCode.getScope(hookCallee), hookCallee.name);
         if (hook !== null && routerHooks.has(hook)) routers.add(variable);
       },
       FunctionDeclaration(node): void {
@@ -133,6 +136,7 @@ export default createRule<Options, MessageIds>({
         if (variable !== null && !variable.references.some((reference) => reference.isWrite() && !reference.init)) functionCallbacks.set(node, variable);
       },
       CallExpression(node): void {
+        const unwrappedNodeCallee = unwrapExpression(node.callee);
         const item = registration(context.sourceCode, node);
         if (item !== null) {
           const callback = ASTUtils.findVariable(context.sourceCode.getScope(item.callback), item.callback.name);
@@ -147,10 +151,10 @@ export default createRule<Options, MessageIds>({
           }
         }
 
-        const receiver = node.callee.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(node.callee.object) : node.callee;
+        const receiver = unwrappedNodeCallee.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(unwrappedNodeCallee.object) : unwrappedNodeCallee;
         if (
-          node.callee.type !== AST_NODE_TYPES.MemberExpression || receiver.type !== AST_NODE_TYPES.Identifier ||
-          ASTUtils.getPropertyName(node.callee) === null || (ASTUtils.getPropertyName(node.callee) ?? "") !== "refresh"
+          unwrappedNodeCallee.type !== AST_NODE_TYPES.MemberExpression || receiver.type !== AST_NODE_TYPES.Identifier ||
+          ASTUtils.getPropertyName(unwrappedNodeCallee) === null || (ASTUtils.getPropertyName(unwrappedNodeCallee) ?? "") !== "refresh"
         ) return;
         const router = ASTUtils.findVariable(context.sourceCode.getScope(receiver), receiver.name);
         if (router === null || !routers.has(router)) return;

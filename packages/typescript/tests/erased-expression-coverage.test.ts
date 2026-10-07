@@ -10,9 +10,10 @@ import { describe, expect, it } from "vitest";
 
 import { RULES } from "../src/index.js";
 import cases from "./fixtures/erased-expression-coverage.json";
+import callCases from "./fixtures/call-expression-coverage.json";
 
 describe("erased receivers, static template keys and discarded SQL", () => {
-  it.each(cases)("$rule: $name", async (example) => {
+  it.each([...cases, ...callCases])("$rule: $name", async (example) => {
     const root = await mkdtemp(join(tmpdir(), "sarj-erased-expression-"));
     try {
       for (const file of example.files) {
@@ -35,7 +36,7 @@ describe("erased receivers, static template keys and discarded SQL", () => {
         files: ["**/*.{ts,tsx,js,jsx,mts,cts,mjs,cjs}"],
         languageOptions: { parser, parserOptions: { project: tsconfig, tsconfigRootDir: root } },
         plugins: { "@sarj": { rules: { [example.rule]: rule as unknown as Rule.RuleModule } } },
-        rules: { [ruleId]: ["error", ...(example.rule === "no-storage-in-stateless-modules"
+        rules: { [ruleId]: ["error", ...(example.rule === "no-restricted-library-load" ? [{ libraries: [{ id: "LIB101", module: "axios", replacement: "Ky" }] }] : example.rule === "no-storage-in-stateless-modules"
           ? [{ modules: ["engineer-digest"] }] : rule.defaultOptions ?? [])] },
       };
       const focus = example.files.find(file => file.path === example.focusPath);

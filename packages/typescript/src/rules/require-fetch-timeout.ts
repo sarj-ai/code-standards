@@ -6,6 +6,8 @@
 
 import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
 
+import { unwrapExpression } from "./_unwrap-expression.js";
+
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isScriptFile, isTestFile } from "./_paths.js";
 
@@ -86,6 +88,7 @@ function isInlineUrl(
   node: TSESTree.CallExpressionArgument,
   resolvesToGlobal: (identifier: TSESTree.Identifier) => boolean,
 ): boolean {
+  node = unwrapExpression(node);
   return (
     (node.type === AST_NODE_TYPES.Literal && typeof node.value === "string") ||
     node.type === AST_NODE_TYPES.TemplateLiteral ||
@@ -210,7 +213,8 @@ export default createRule<Options, MessageIds>({
 
     return {
       CallExpression(node: TSESTree.CallExpression): void {
-        if (!isGlobalFetchCall(node.callee)) {
+        const unwrappedNodeCallee = unwrapExpression(node.callee);
+        if (!isGlobalFetchCall(unwrappedNodeCallee)) {
           return;
         }
 

@@ -164,7 +164,7 @@ function buildsLocalizedText(node: TSESTree.Node): boolean {
   return subtreeSome(node, (inner) => {
     if (inner.type === AST_NODE_TYPES.TaggedTemplateExpression) return true;
     if (inner.type !== AST_NODE_TYPES.CallExpression) return false;
-    const { callee } = inner;
+    const callee = unwrapExpression(inner.callee);
     const calleeReceiver = callee.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(callee.object) : callee;
     if (callee.type === AST_NODE_TYPES.Identifier)
       return I18N_CALLEE_NAMES.has(callee.name);
@@ -287,12 +287,13 @@ export default createRule<Options, MessageIds>({
       node: TSESTree.CallExpression,
       allowed: ReadonlySet<string>,
     ): string | null {
-      if (node.callee.type !== AST_NODE_TYPES.MemberExpression) return null;
-      const root = calleeChainRoot(node.callee);
+      const unwrappedNodeCallee = unwrapExpression(node.callee);
+      if (unwrappedNodeCallee.type !== AST_NODE_TYPES.MemberExpression) return null;
+      const root = calleeChainRoot(unwrappedNodeCallee);
       if (root === null) return null;
       const binding = resolvedBinding(root);
       if (binding === null || !zodBindings.has(binding)) return null;
-      const names = chainMemberNames(node.callee);
+      const names = chainMemberNames(unwrappedNodeCallee);
       if (names.length === 1 && allowed.has(names[0] ?? ""))
         return names[0] ?? null;
       if (
@@ -305,7 +306,8 @@ export default createRule<Options, MessageIds>({
     }
 
     function isSchemaConstruction(node: TSESTree.CallExpression): boolean {
-      const callee = node.callee;
+      const callee = unwrapExpression(node.callee);
+
       const calleeReceiver = callee.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(callee.object) : callee;
       if (callee.type !== AST_NODE_TYPES.MemberExpression || ASTUtils.getPropertyName(callee) === null || NON_SCHEMA_TERMINALS.has((ASTUtils.getPropertyName(callee) ?? ""))) return false;
       if (calleeReceiver.type === AST_NODE_TYPES.CallExpression) return isSchemaConstruction(calleeReceiver);

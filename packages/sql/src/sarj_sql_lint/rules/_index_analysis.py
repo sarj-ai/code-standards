@@ -10,6 +10,7 @@ from sarj_sql_lint.rule_base import (
     is_dump_file,
     is_generated_migration,
     is_migration_source,
+    mask_sql_comments,
     mask_sql_literals_and_comments,
     source_location,
 )
@@ -137,7 +138,9 @@ def authored_indexes(path: Path, source: str) -> tuple[IndexDefinition, ...]:
 def authored_index_operations(path: Path, source: str) -> tuple[IndexOperation, ...]:
     if not _is_authored_index_source(path, source):
         return ()
-    masked = _mask_dollar_quoted_bodies(source, mask_sql_literals_and_comments(source))
+    masked = _mask_dollar_quoted_bodies(
+        source, mask_sql_literals_and_comments(source, mask_dollar_literals="$" in source)
+    )
     return tuple(sorted((*parse_indexes(source), *_parse_drops(masked)), key=lambda operation: operation.start))
 
 
@@ -157,7 +160,10 @@ def authored_secondary_indexes(path: Path, source: str) -> tuple[IndexDefinition
 
 
 def parse_indexes(source: str) -> tuple[IndexDefinition, ...]:
-    masked = _mask_dollar_quoted_bodies(source, mask_sql_literals_and_comments(source))
+    masked = _mask_dollar_quoted_bodies(
+        source, mask_sql_literals_and_comments(source, mask_dollar_literals="$" in source)
+    )
+    uncommented = mask_sql_comments(source)
     quoted_identifier_spans = _quoted_identifier_spans(masked)
     indexes: list[IndexDefinition] = []
     for match in _CREATE_INDEX_RE.finditer(masked):
@@ -174,13 +180,13 @@ def parse_indexes(source: str) -> tuple[IndexDefinition, ...]:
             continue
         include: tuple[str, ...] = ()
         if suffix.include_open is not None and suffix.include_close is not None:
-            include = _split_elements(source[suffix.include_open + 1 : suffix.include_close])
+            include = _split_elements(uncommented[suffix.include_open + 1 : suffix.include_close])
         storage_parameters: tuple[str, ...] = ()
         if suffix.storage_open is not None and suffix.storage_close is not None:
-            storage_parameters = _split_elements(source[suffix.storage_open + 1 : suffix.storage_close])
+            storage_parameters = _split_elements(uncommented[suffix.storage_open + 1 : suffix.storage_close])
         predicate = ""
         if suffix.where_start is not None:
-            predicate = _normalize_sql(source[suffix.where_start : statement_end])
+            predicate = _normalize_sql(uncommented[suffix.where_start : statement_end])
         location = source_location(source, match.start())
         indexes.append(
             IndexDefinition(
@@ -191,7 +197,7 @@ def parse_indexes(source: str) -> tuple[IndexDefinition, ...]:
                 table=_normalize_identifier(match.group("table")),
                 method=_normalize_identifier(match.group("method") or "btree"),
                 only=match.group("only") is not None,
-                keys=_split_elements(source[opening + 1 : closing]),
+                keys=_split_elements(uncommented[opening + 1 : closing]),
                 include=include,
                 nulls_distinct=suffix.nulls_distinct or ("nulls distinct" if unique else ""),
                 storage_parameters=storage_parameters,

@@ -6,6 +6,8 @@
 
 import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
 
+import { unwrapExpression } from "./_unwrap-expression.js";
+
 import { createRule, type RuleDocumentation } from "./_docs.js";
 
 type MessageIds = "preferNative" | "replaceWithNative";
@@ -126,22 +128,23 @@ export default createRule<Options, MessageIds>({
         }
       },
       "CallExpression:exit"(node: TSESTree.CallExpression): void {
+        const unwrappedNodeCallee = unwrapExpression(node.callee);
         if (node.arguments.length !== 0) return;
-        if (node.callee.type === AST_NODE_TYPES.Identifier) {
-          const variable = resolve(node.callee);
+        if (unwrappedNodeCallee.type === AST_NODE_TYPES.Identifier) {
+          const variable = resolve(unwrappedNodeCallee);
           if (variable !== null && directBindings.has(variable)) report(node);
           return;
         }
         if (
-          node.callee.type !== AST_NODE_TYPES.MemberExpression ||
-          node.callee.computed ||
-          node.callee.object.type !== AST_NODE_TYPES.Identifier ||
-          node.callee.property.type !== AST_NODE_TYPES.Identifier ||
-          node.callee.property.name !== "v4"
+          unwrappedNodeCallee.type !== AST_NODE_TYPES.MemberExpression ||
+          unwrappedNodeCallee.computed ||
+          unwrappedNodeCallee.object.type !== AST_NODE_TYPES.Identifier ||
+          unwrappedNodeCallee.property.type !== AST_NODE_TYPES.Identifier ||
+          unwrappedNodeCallee.property.name !== "v4"
         ) {
           return;
         }
-        const variable = resolve(node.callee.object);
+        const variable = resolve(unwrappedNodeCallee.object);
         if (variable !== null && namespaceBindings.has(variable)) report(node);
       },
     };

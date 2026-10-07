@@ -101,12 +101,13 @@ export default createRule<Options, MessageIds>({
         }
       },
       CallExpression(node): void {
-        const receiver = node.callee.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(node.callee.object) : node.callee;
+        const unwrappedNodeCallee = unwrapExpression(node.callee);
+        const receiver = unwrappedNodeCallee.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(unwrappedNodeCallee.object) : unwrappedNodeCallee;
         if (
-          node.callee.type !== AST_NODE_TYPES.MemberExpression ||
+          unwrappedNodeCallee.type !== AST_NODE_TYPES.MemberExpression ||
           receiver.type !== AST_NODE_TYPES.Identifier ||
-          ASTUtils.getPropertyName(node.callee) === null ||
-          (ASTUtils.getPropertyName(node.callee) ?? "") !== "enum"
+          ASTUtils.getPropertyName(unwrappedNodeCallee) === null ||
+          (ASTUtils.getPropertyName(unwrappedNodeCallee) ?? "") !== "enum"
         ) return;
         const binding = bindingOf(receiver);
         if (binding === null || !zodBindings.has(binding)) return;

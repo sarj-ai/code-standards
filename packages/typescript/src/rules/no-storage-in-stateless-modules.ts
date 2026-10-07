@@ -61,7 +61,8 @@ function storageMethodName(
   node: TSESTree.CallExpression,
   methods: ReadonlySet<string>,
 ): string | null {
-  const callee = node.callee;
+  const callee = unwrapExpression(node.callee);
+
   const calleeReceiver = callee.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(callee.object) : callee;
   if (callee.type !== AST_NODE_TYPES.MemberExpression) return null;
   const name = ASTUtils.getPropertyName(callee);

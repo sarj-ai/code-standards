@@ -72,6 +72,7 @@ function isDirectTestCallback(node: TSESTree.Node, context: Context): node is Fu
 }
 
 function testRoot(callee: TSESTree.Node): TSESTree.Identifier | null {
+  callee = unwrapExpression(callee);
   if (callee.type === AST_NODE_TYPES.Identifier) return callee;
   if (callee.type !== AST_NODE_TYPES.MemberExpression) return null;
   const modifier = ASTUtils.getPropertyName(callee);
@@ -111,16 +112,19 @@ function staticShape(input: TSESTree.Node): string {
 function assertionShape(statement: TSESTree.Statement, context: Context, callback: FunctionNode): AssertionShape | null {
   if (statement.type !== AST_NODE_TYPES.ExpressionStatement || statement.expression.type !== AST_NODE_TYPES.CallExpression) return null;
   const matcherCall = statement.expression;
-  if (matcherCall.callee.type !== AST_NODE_TYPES.MemberExpression || ASTUtils.getPropertyName(matcherCall.callee) === null || matcherCall.arguments.length !== 1) return null;
-  const matcher = (ASTUtils.getPropertyName(matcherCall.callee) ?? "");
+  const matcherCallee = unwrapExpression(matcherCall.callee);
+  if (matcherCallee.type !== AST_NODE_TYPES.MemberExpression || ASTUtils.getPropertyName(matcherCallee) === null || matcherCall.arguments.length !== 1) return null;
+  const matcher = (ASTUtils.getPropertyName(matcherCallee) ?? "");
   if (SNAPSHOT_MATCHERS.test(matcher)) return null;
-  const chain = expectCallFromMatcher(matcherCall.callee);
-  if (chain === null || chain.call.callee.type !== AST_NODE_TYPES.Identifier || importedName(chain.call.callee, context, ASSERTION_MODULES) !== "expect" || chain.call.arguments.length !== 1) return null;
+  const chain = expectCallFromMatcher(matcherCallee);
+  const expectCallee = chain === null ? null : unwrapExpression(chain.call.callee);
+  if (chain === null || expectCallee?.type !== AST_NODE_TYPES.Identifier || importedName(expectCallee, context, ASSERTION_MODULES) !== "expect" || chain.call.arguments.length !== 1) return null;
   const observed = chain.call.arguments[0];
   const expected = matcherCall.arguments[0];
-  if (observed?.type !== AST_NODE_TYPES.CallExpression || observed.callee.type !== AST_NODE_TYPES.Identifier || observed.arguments.length === 0 || observed.arguments.some((arg) => arg.type === AST_NODE_TYPES.SpreadElement || !isStatic(arg)) || expected?.type === AST_NODE_TYPES.SpreadElement || expected === undefined || !isStatic(expected)) return null;
-  const skeleton = `${observed.callee.name}/${observed.arguments.map((item) => staticShape(item)).join(",")}/${chain.modifiers.join(".")}/${matcher}/${staticShape(expected)}`;
-  const binding = ASTUtils.findVariable(context.sourceCode.getScope(observed.callee), observed.callee.name);
+  const observedCallee = observed?.type === AST_NODE_TYPES.CallExpression ? unwrapExpression(observed.callee) : null;
+  if (observed?.type !== AST_NODE_TYPES.CallExpression || observedCallee?.type !== AST_NODE_TYPES.Identifier || observed.arguments.length === 0 || observed.arguments.some((arg) => arg.type === AST_NODE_TYPES.SpreadElement || !isStatic(arg)) || expected?.type === AST_NODE_TYPES.SpreadElement || expected === undefined || !isStatic(expected)) return null;
+  const skeleton = `${observedCallee.name}/${observed.arguments.map((item) => staticShape(item)).join(",")}/${chain.modifiers.join(".")}/${matcher}/${staticShape(expected)}`;
+  const binding = ASTUtils.findVariable(context.sourceCode.getScope(observedCallee), observedCallee.name);
   if (binding?.defs.some((definition) =>
     definition.node.range[0] >= callback.range[0] && definition.node.range[1] <= callback.range[1],
   )) return null;

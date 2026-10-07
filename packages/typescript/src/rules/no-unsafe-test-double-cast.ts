@@ -47,14 +47,15 @@ function containsMockFactory(node: TSESTree.Node, source: TSESLint.SourceCode): 
 }
 
 function isMockFactory(node: TSESTree.Node, source: TSESLint.SourceCode): boolean {
-  if (node.type !== AST_NODE_TYPES.CallExpression || node.callee.type !== AST_NODE_TYPES.MemberExpression) return false;
-  const receiver = unwrapExpression(node.callee.object);
+  const unwrappedNodeCallee = node.type === "CallExpression" || node.type === "NewExpression" ? unwrapExpression(node.callee) : null;
+  if (node.type !== AST_NODE_TYPES.CallExpression || unwrappedNodeCallee?.type !== AST_NODE_TYPES.MemberExpression) return false;
+  const receiver = unwrapExpression(unwrappedNodeCallee.object);
   return node.type === AST_NODE_TYPES.CallExpression &&
-    node.callee.type === AST_NODE_TYPES.MemberExpression &&
+    unwrappedNodeCallee?.type === AST_NODE_TYPES.MemberExpression &&
     receiver.type === AST_NODE_TYPES.Identifier &&
     (importedTestMockNamespace(source, receiver) !== null || isUnshadowedTestMockGlobal(source, receiver)) &&
-    ASTUtils.getPropertyName(node.callee) !== null &&
-    ["fn", "spyOn"].includes((ASTUtils.getPropertyName(node.callee) ?? ""));
+    ASTUtils.getPropertyName(unwrappedNodeCallee) !== null &&
+    ["fn", "spyOn"].includes((ASTUtils.getPropertyName(unwrappedNodeCallee) ?? ""));
 }
 
 export default createRule<[], MessageIds>({

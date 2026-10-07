@@ -44,11 +44,12 @@ export default createRule<Options, MessageIds>({
     if (!isTestFile(context.filename) || isGeneratedFile(context.filename, context.sourceCode.text)) return {};
     return {
       CallExpression(node: TSESTree.CallExpression): void {
-        const receiver = node.callee.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(node.callee.object) : node.callee;
-        if (node.callee.type !== AST_NODE_TYPES.MemberExpression || receiver.type !== AST_NODE_TYPES.Identifier || ASTUtils.getPropertyName(node.callee) === null || !["mock", "doMock"].includes((ASTUtils.getPropertyName(node.callee) ?? ""))) return;
+        const unwrappedNodeCallee = unwrapExpression(node.callee);
+        const receiver = unwrappedNodeCallee.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(unwrappedNodeCallee.object) : unwrappedNodeCallee;
+        if (unwrappedNodeCallee.type !== AST_NODE_TYPES.MemberExpression || receiver.type !== AST_NODE_TYPES.Identifier || ASTUtils.getPropertyName(unwrappedNodeCallee) === null || !["mock", "doMock"].includes((ASTUtils.getPropertyName(unwrappedNodeCallee) ?? ""))) return;
         const framework = importedTestMockNamespace(context.sourceCode, receiver);
         if (framework === null || (framework === "jest" && mayBeVirtual(node.arguments[2]))) return;
-        const argument = node.arguments[0];
+        const argument = node.arguments[0] === undefined ? undefined : unwrapExpression(node.arguments[0]);
         if (argument?.type !== AST_NODE_TYPES.Literal || typeof argument.value !== "string") return;
         if (!isFirstParty(argument.value, options.additionalModulePrefixes ?? [])) return;
         context.report({ node: argument, messageId: "noFirstPartyModuleMock", data: { module: argument.value } });

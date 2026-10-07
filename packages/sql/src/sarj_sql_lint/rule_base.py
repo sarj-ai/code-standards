@@ -49,6 +49,7 @@ class _ScanResult(NamedTuple):
     masked_source: str
     executable_spans: list[tuple[int, int]]
     comments: list[SourceComment]
+    comment_spans: tuple[tuple[int, int], ...]
 
 
 class SourceComment(NamedTuple):
@@ -379,6 +380,7 @@ class _SqlMasker:
         self.out: list[str] = []
         self.bodies = _DollarBodies()
         self.comments: list[SourceComment] = []
+        self.comment_spans: list[tuple[int, int]] = []
         self.statement = _StatementContext()
         self.offset = 0
         self.chunk_start = 0
@@ -388,7 +390,9 @@ class _SqlMasker:
             self._scan_token()
         if self.chunk_start < len(self.source):
             self.out.append(self.source[self.chunk_start :])
-        return _ScanResult("".join(self.out), self.bodies.finish(len(self.source)), self.comments)
+        return _ScanResult(
+            "".join(self.out), self.bodies.finish(len(self.source)), self.comments, tuple(self.comment_spans)
+        )
 
     def _scan_token(self) -> None:
         template_end = _template_end(self.source, self.offset)
@@ -403,6 +407,7 @@ class _SqlMasker:
         if pair in {"--", "/*"}:
             scanned = _scan_source_comment(self.source, self.offset, pair)
             self.comments.append(scanned.comment)
+            self.comment_spans.append((self.offset, scanned.end))
             self._mask(scanned.end)
             return
         if ch in {"'", '"'}:
@@ -456,8 +461,18 @@ def mask_sql(source: str, *, mask_dollar_literals: bool = False) -> str:
     return (_scan(source, mask_dollar_literals=True) if mask_dollar_literals else _scan(source)).masked_source
 
 
-def mask_sql_literals_and_comments(source: str) -> str:
-    return _scan(source, preserve_quoted_identifiers=True).masked_source
+def mask_sql_comments(source: str) -> str:
+    chunks: list[str] = []
+    chunk_start = 0
+    for start, end in _scan(source, preserve_quoted_identifiers=True, mask_dollar_literals="$" in source).comment_spans:
+        _append_masked_chunk(chunks, source, chunk_start, start, end)
+        chunk_start = end
+    chunks.append(source[chunk_start:])
+    return "".join(chunks)
+
+
+def mask_sql_literals_and_comments(source: str, *, mask_dollar_literals: bool = False) -> str:
+    return _scan(source, preserve_quoted_identifiers=True, mask_dollar_literals=mask_dollar_literals).masked_source
 
 
 def sql_comments(source: str) -> tuple[SourceComment, ...]:

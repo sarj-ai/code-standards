@@ -1,0 +1,2602 @@
+[
+  {
+    "rule": "duplicate-test-body",
+    "name": "copied-sibling-tests-callee-non-null",
+    "files": [
+      {
+        "path": "src/user.test.ts",
+        "source": "(test!)('accepts a', () => { const value = 'a'; const result = (parse!)(value); (expect(result.ok).toBe!)(true); (expect(result.value).toBe!)(value); });\n(test!)('accepts b', () => { const value = 'b'; const result = (parse!)(value); (expect(result.ok).toBe!)(true); (expect(result.value).toBe!)(value); });"
+      }
+    ],
+    "focusPath": "src/user.test.ts",
+    "expected": 1
+  },
+  {
+    "rule": "duplicate-test-body",
+    "name": "copied-sibling-tests-argument-const",
+    "files": [
+      {
+        "path": "src/user.test.ts",
+        "source": "test(('accepts a' as const), () => { const value = 'a'; const result = parse(value); expect(result.ok).toBe(true); expect(result.value).toBe(value); });\ntest(('accepts b' as const), () => { const value = 'b'; const result = parse(value); expect(result.ok).toBe(true); expect(result.value).toBe(value); });"
+      }
+    ],
+    "focusPath": "src/user.test.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-bare-return-from-test-catch",
+    "name": "bare-return-callee-as",
+    "files": [
+      {
+        "path": "src/codec.test.ts",
+        "source": "(test as typeof test)('decodes', () => { try { (decode as typeof decode)(); } catch { return; } (expect as typeof expect)((result as typeof result)()).toBe('ok'); });"
+      }
+    ],
+    "focusPath": "src/codec.test.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-bare-return-from-test-catch",
+    "name": "bare-return-callee-satisfies",
+    "files": [
+      {
+        "path": "src/codec.test.ts",
+        "source": "(test satisfies typeof test)('decodes', () => { try { (decode satisfies typeof decode)(); } catch { return; } (expect satisfies typeof expect)((result satisfies typeof result)()).toBe('ok'); });"
+      }
+    ],
+    "focusPath": "src/codec.test.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-bare-return-from-test-catch",
+    "name": "bare-return-callee-non-null",
+    "files": [
+      {
+        "path": "src/codec.test.ts",
+        "source": "(test!)('decodes', () => { try { (decode!)(); } catch { return; } (expect!)((result!)()).toBe('ok'); });"
+      }
+    ],
+    "focusPath": "src/codec.test.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-bare-return-from-test-catch",
+    "name": "bare-return-callee-combined",
+    "files": [
+      {
+        "path": "src/codec.test.ts",
+        "source": "((test!) as typeof test)('decodes', () => { try { ((decode!) as typeof decode)(); } catch { return; } ((expect!) as typeof expect)(((result!) as typeof result)()).toBe('ok'); });"
+      }
+    ],
+    "focusPath": "src/codec.test.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-bespoke-api-case-conversion",
+    "name": "bespoke-wire-case-conversion-object-key-string",
+    "files": [
+      {
+        "path": "src/user-adapter.ts",
+        "source": "import type { User } from './api-contract';\nexport const toUser = (raw: User) => ({ [\"displayName\"]: raw.display_name });"
+      }
+    ],
+    "focusPath": "src/user-adapter.ts",
+    "expected": 0
+  },
+  {
+    "rule": "no-bespoke-api-case-conversion",
+    "name": "bespoke-wire-case-conversion-object-key-template",
+    "files": [
+      {
+        "path": "src/user-adapter.ts",
+        "source": "import type { User } from './api-contract';\nexport const toUser = (raw: User) => ({ [`displayName`]: raw.display_name });"
+      }
+    ],
+    "focusPath": "src/user-adapter.ts",
+    "expected": 0
+  },
+  {
+    "rule": "no-client-side-data-fetching",
+    "name": "fetch-inside-effect-callee-as",
+    "files": [
+      {
+        "path": "src/users.tsx",
+        "source": "(useEffect as typeof useEffect)(() => { (fetch as typeof fetch)('/api/users'); }, []);"
+      }
+    ],
+    "focusPath": "src/users.tsx",
+    "expected": 1
+  },
+  {
+    "rule": "no-client-side-data-fetching",
+    "name": "fetch-inside-effect-callee-satisfies",
+    "files": [
+      {
+        "path": "src/users.tsx",
+        "source": "(useEffect satisfies typeof useEffect)(() => { (fetch satisfies typeof fetch)('/api/users'); }, []);"
+      }
+    ],
+    "focusPath": "src/users.tsx",
+    "expected": 1
+  },
+  {
+    "rule": "no-client-side-data-fetching",
+    "name": "fetch-inside-effect-callee-non-null",
+    "files": [
+      {
+        "path": "src/users.tsx",
+        "source": "(useEffect!)(() => { (fetch!)('/api/users'); }, []);"
+      }
+    ],
+    "focusPath": "src/users.tsx",
+    "expected": 1
+  },
+  {
+    "rule": "no-client-side-data-fetching",
+    "name": "fetch-inside-effect-callee-combined",
+    "files": [
+      {
+        "path": "src/users.tsx",
+        "source": "((useEffect!) as typeof useEffect)(() => { ((fetch!) as typeof fetch)('/api/users'); }, []);"
+      }
+    ],
+    "focusPath": "src/users.tsx",
+    "expected": 1
+  },
+  {
+    "rule": "no-cors-wildcard-with-credentials",
+    "name": "wildcard-origin-with-credentials-callee-as",
+    "files": [
+      {
+        "path": "src/server.ts",
+        "source": "(app.use as typeof app.use)((cors as typeof cors)({ origin: '*', credentials: true }));"
+      }
+    ],
+    "focusPath": "src/server.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-cors-wildcard-with-credentials",
+    "name": "wildcard-origin-with-credentials-callee-satisfies",
+    "files": [
+      {
+        "path": "src/server.ts",
+        "source": "(app.use satisfies typeof app.use)((cors satisfies typeof cors)({ origin: '*', credentials: true }));"
+      }
+    ],
+    "focusPath": "src/server.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-cors-wildcard-with-credentials",
+    "name": "wildcard-origin-with-credentials-callee-non-null",
+    "files": [
+      {
+        "path": "src/server.ts",
+        "source": "(app.use!)((cors!)({ origin: '*', credentials: true }));"
+      }
+    ],
+    "focusPath": "src/server.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-cors-wildcard-with-credentials",
+    "name": "wildcard-origin-with-credentials-callee-combined",
+    "files": [
+      {
+        "path": "src/server.ts",
+        "source": "((app.use!) as typeof app.use)(((cors!) as typeof cors)({ origin: '*', credentials: true }));"
+      }
+    ],
+    "focusPath": "src/server.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-cors-wildcard-with-credentials",
+    "name": "wildcard-origin-with-credentials-object-key-string",
+    "files": [
+      {
+        "path": "src/server.ts",
+        "source": "app.use(cors({ [\"origin\"]: '*', [\"credentials\"]: true }));"
+      }
+    ],
+    "focusPath": "src/server.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-cors-wildcard-with-credentials",
+    "name": "wildcard-origin-with-credentials-object-key-template",
+    "files": [
+      {
+        "path": "src/server.ts",
+        "source": "app.use(cors({ [`origin`]: '*', [`credentials`]: true }));"
+      }
+    ],
+    "focusPath": "src/server.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-dangerously-allow-svg",
+    "name": "svg-enabled-object-key-string",
+    "files": [
+      {
+        "path": "next.config.mjs",
+        "source": "export default { [\"images\"]: { [\"dangerouslyAllowSVG\"]: true } };\n"
+      }
+    ],
+    "focusPath": "next.config.mjs",
+    "expected": 1
+  },
+  {
+    "rule": "no-dangerously-allow-svg",
+    "name": "svg-enabled-object-key-template",
+    "files": [
+      {
+        "path": "next.config.mjs",
+        "source": "export default { [`images`]: { [`dangerouslyAllowSVG`]: true } };\n"
+      }
+    ],
+    "focusPath": "next.config.mjs",
+    "expected": 1
+  },
+  {
+    "rule": "no-duplicate-lifecycle-refresh-listeners",
+    "name": "duplicate-lifecycle-signals-callee-as",
+    "files": [
+      {
+        "path": "src/refresh.ts",
+        "source": "import { useRouter } from \"next/navigation\"; const router = (useRouter as typeof useRouter)(); const refresh = () => (router.refresh as typeof router.refresh)(); (window.addEventListener as typeof window.addEventListener)(\"focus\", refresh); (document.addEventListener as typeof document.addEventListener)(\"visibilitychange\", refresh);"
+      }
+    ],
+    "focusPath": "src/refresh.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-duplicate-lifecycle-refresh-listeners",
+    "name": "duplicate-lifecycle-signals-callee-satisfies",
+    "files": [
+      {
+        "path": "src/refresh.ts",
+        "source": "import { useRouter } from \"next/navigation\"; const router = (useRouter satisfies typeof useRouter)(); const refresh = () => (router.refresh satisfies typeof router.refresh)(); (window.addEventListener satisfies typeof window.addEventListener)(\"focus\", refresh); (document.addEventListener satisfies typeof document.addEventListener)(\"visibilitychange\", refresh);"
+      }
+    ],
+    "focusPath": "src/refresh.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-duplicate-lifecycle-refresh-listeners",
+    "name": "duplicate-lifecycle-signals-callee-non-null",
+    "files": [
+      {
+        "path": "src/refresh.ts",
+        "source": "import { useRouter } from \"next/navigation\"; const router = (useRouter!)(); const refresh = () => (router.refresh!)(); (window.addEventListener!)(\"focus\", refresh); (document.addEventListener!)(\"visibilitychange\", refresh);"
+      }
+    ],
+    "focusPath": "src/refresh.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-duplicate-lifecycle-refresh-listeners",
+    "name": "duplicate-lifecycle-signals-callee-combined",
+    "files": [
+      {
+        "path": "src/refresh.ts",
+        "source": "import { useRouter } from \"next/navigation\"; const router = ((useRouter!) as typeof useRouter)(); const refresh = () => ((router.refresh!) as typeof router.refresh)(); ((window.addEventListener!) as typeof window.addEventListener)(\"focus\", refresh); ((document.addEventListener!) as typeof document.addEventListener)(\"visibilitychange\", refresh);"
+      }
+    ],
+    "focusPath": "src/refresh.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-duplicate-lifecycle-refresh-listeners",
+    "name": "duplicate-lifecycle-signals-argument-const",
+    "files": [
+      {
+        "path": "src/refresh.ts",
+        "source": "import { useRouter } from \"next/navigation\"; const router = useRouter(); const refresh = () => router.refresh(); window.addEventListener((\"focus\" as const), refresh); document.addEventListener((\"visibilitychange\" as const), refresh);"
+      }
+    ],
+    "focusPath": "src/refresh.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-dynamic-sql",
+    "name": "interpolated-sql-value-callee-as",
+    "files": [
+      {
+        "path": "src/users.ts",
+        "source": "(db.prepare as typeof db.prepare)(`select * from users where id = '${userId}'`);"
+      }
+    ],
+    "focusPath": "src/users.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-dynamic-sql",
+    "name": "interpolated-sql-value-callee-satisfies",
+    "files": [
+      {
+        "path": "src/users.ts",
+        "source": "(db.prepare satisfies typeof db.prepare)(`select * from users where id = '${userId}'`);"
+      }
+    ],
+    "focusPath": "src/users.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-dynamic-sql",
+    "name": "interpolated-sql-value-callee-non-null",
+    "files": [
+      {
+        "path": "src/users.ts",
+        "source": "(db.prepare!)(`select * from users where id = '${userId}'`);"
+      }
+    ],
+    "focusPath": "src/users.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-dynamic-sql",
+    "name": "interpolated-sql-value-callee-combined",
+    "files": [
+      {
+        "path": "src/users.ts",
+        "source": "((db.prepare!) as typeof db.prepare)(`select * from users where id = '${userId}'`);"
+      }
+    ],
+    "focusPath": "src/users.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-first-party-module-mock",
+    "name": "relative-module-mock-callee-as",
+    "files": [
+      {
+        "path": "action.test.ts",
+        "source": "import { vi } from 'vitest'; (vi.mock as typeof vi.mock)('./service', () => ({ run: (vi.fn as typeof vi.fn)() }));"
+      }
+    ],
+    "focusPath": "action.test.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-first-party-module-mock",
+    "name": "relative-module-mock-callee-satisfies",
+    "files": [
+      {
+        "path": "action.test.ts",
+        "source": "import { vi } from 'vitest'; (vi.mock satisfies typeof vi.mock)('./service', () => ({ run: (vi.fn satisfies typeof vi.fn)() }));"
+      }
+    ],
+    "focusPath": "action.test.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-first-party-module-mock",
+    "name": "relative-module-mock-callee-non-null",
+    "files": [
+      {
+        "path": "action.test.ts",
+        "source": "import { vi } from 'vitest'; (vi.mock!)('./service', () => ({ run: (vi.fn!)() }));"
+      }
+    ],
+    "focusPath": "action.test.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-first-party-module-mock",
+    "name": "relative-module-mock-callee-combined",
+    "files": [
+      {
+        "path": "action.test.ts",
+        "source": "import { vi } from 'vitest'; ((vi.mock!) as typeof vi.mock)('./service', () => ({ run: ((vi.fn!) as typeof vi.fn)() }));"
+      }
+    ],
+    "focusPath": "action.test.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-first-party-module-mock",
+    "name": "relative-module-mock-argument-const",
+    "files": [
+      {
+        "path": "action.test.ts",
+        "source": "import { vi } from 'vitest'; vi.mock(('./service' as const), () => ({ run: vi.fn() }));"
+      }
+    ],
+    "focusPath": "action.test.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-hand-rolled-sleep",
+    "name": "uncancellable-sleep-callee-as",
+    "files": [
+      {
+        "path": "src/lib/queue.ts",
+        "source": "await new Promise((resolve) => (setTimeout as typeof setTimeout)(resolve, 500));\nexport {};\n"
+      }
+    ],
+    "focusPath": "src/lib/queue.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-hand-rolled-sleep",
+    "name": "uncancellable-sleep-callee-satisfies",
+    "files": [
+      {
+        "path": "src/lib/queue.ts",
+        "source": "await new Promise((resolve) => (setTimeout satisfies typeof setTimeout)(resolve, 500));\nexport {};\n"
+      }
+    ],
+    "focusPath": "src/lib/queue.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-hand-rolled-sleep",
+    "name": "uncancellable-sleep-callee-non-null",
+    "files": [
+      {
+        "path": "src/lib/queue.ts",
+        "source": "await new Promise((resolve) => (setTimeout!)(resolve, 500));\nexport {};\n"
+      }
+    ],
+    "focusPath": "src/lib/queue.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-hand-rolled-sleep",
+    "name": "uncancellable-sleep-callee-combined",
+    "files": [
+      {
+        "path": "src/lib/queue.ts",
+        "source": "await new Promise((resolve) => ((setTimeout!) as typeof setTimeout)(resolve, 500));\nexport {};\n"
+      }
+    ],
+    "focusPath": "src/lib/queue.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-impossible-zod-literal-bounds",
+    "name": "contradictory-number-bounds-callee-non-null",
+    "files": [
+      {
+        "path": "src/schema.ts",
+        "source": "import { z } from \"zod\"; const S = (z.number().min(5).max!)(4);"
+      }
+    ],
+    "focusPath": "src/schema.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-insecure-random-id",
+    "name": "predictable-token-callee-as",
+    "files": [
+      {
+        "path": "src/session.ts",
+        "source": "const sessionToken = (Math.random as typeof Math.random)();"
+      }
+    ],
+    "focusPath": "src/session.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-insecure-random-id",
+    "name": "predictable-token-callee-satisfies",
+    "files": [
+      {
+        "path": "src/session.ts",
+        "source": "const sessionToken = (Math.random satisfies typeof Math.random)();"
+      }
+    ],
+    "focusPath": "src/session.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-insecure-random-id",
+    "name": "predictable-token-callee-non-null",
+    "files": [
+      {
+        "path": "src/session.ts",
+        "source": "const sessionToken = (Math.random!)();"
+      }
+    ],
+    "focusPath": "src/session.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-insecure-random-id",
+    "name": "predictable-token-callee-combined",
+    "files": [
+      {
+        "path": "src/session.ts",
+        "source": "const sessionToken = ((Math.random!) as typeof Math.random)();"
+      }
+    ],
+    "focusPath": "src/session.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-json-stringify-error",
+    "name": "stringified-error-callee-as",
+    "files": [
+      {
+        "path": "src/report.ts",
+        "source": "try { (f as typeof f)(); } catch (err) { (JSON.stringify as typeof JSON.stringify)({ error: err }); }"
+      }
+    ],
+    "focusPath": "src/report.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-json-stringify-error",
+    "name": "stringified-error-callee-satisfies",
+    "files": [
+      {
+        "path": "src/report.ts",
+        "source": "try { (f satisfies typeof f)(); } catch (err) { (JSON.stringify satisfies typeof JSON.stringify)({ error: err }); }"
+      }
+    ],
+    "focusPath": "src/report.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-json-stringify-error",
+    "name": "stringified-error-callee-non-null",
+    "files": [
+      {
+        "path": "src/report.ts",
+        "source": "try { (f!)(); } catch (err) { (JSON.stringify!)({ error: err }); }"
+      }
+    ],
+    "focusPath": "src/report.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-json-stringify-error",
+    "name": "stringified-error-callee-combined",
+    "files": [
+      {
+        "path": "src/report.ts",
+        "source": "try { ((f!) as typeof f)(); } catch (err) { ((JSON.stringify!) as typeof JSON.stringify)({ error: err }); }"
+      }
+    ],
+    "focusPath": "src/report.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-json-stringify-error",
+    "name": "stringified-error-object-key-string",
+    "files": [
+      {
+        "path": "src/report.ts",
+        "source": "try { f(); } catch (err) { JSON.stringify({ [\"error\"]: err }); }"
+      }
+    ],
+    "focusPath": "src/report.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-json-stringify-error",
+    "name": "stringified-error-object-key-template",
+    "files": [
+      {
+        "path": "src/report.ts",
+        "source": "try { f(); } catch (err) { JSON.stringify({ [`error`]: err }); }"
+      }
+    ],
+    "focusPath": "src/report.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-json-stringify-object-equality",
+    "name": "serialized-object-equality-callee-as",
+    "files": [
+      {
+        "path": "src/compare.ts",
+        "source": "const same = (JSON.stringify as typeof JSON.stringify)({ id: '1', state: 'ready' }) === (JSON.stringify as typeof JSON.stringify)({ state: 'ready', id: '1' });"
+      }
+    ],
+    "focusPath": "src/compare.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-json-stringify-object-equality",
+    "name": "serialized-object-equality-callee-satisfies",
+    "files": [
+      {
+        "path": "src/compare.ts",
+        "source": "const same = (JSON.stringify satisfies typeof JSON.stringify)({ id: '1', state: 'ready' }) === (JSON.stringify satisfies typeof JSON.stringify)({ state: 'ready', id: '1' });"
+      }
+    ],
+    "focusPath": "src/compare.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-json-stringify-object-equality",
+    "name": "serialized-object-equality-callee-non-null",
+    "files": [
+      {
+        "path": "src/compare.ts",
+        "source": "const same = (JSON.stringify!)({ id: '1', state: 'ready' }) === (JSON.stringify!)({ state: 'ready', id: '1' });"
+      }
+    ],
+    "focusPath": "src/compare.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-json-stringify-object-equality",
+    "name": "serialized-object-equality-callee-combined",
+    "files": [
+      {
+        "path": "src/compare.ts",
+        "source": "const same = ((JSON.stringify!) as typeof JSON.stringify)({ id: '1', state: 'ready' }) === ((JSON.stringify!) as typeof JSON.stringify)({ state: 'ready', id: '1' });"
+      }
+    ],
+    "focusPath": "src/compare.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-log-only-catch",
+    "name": "log-and-swallow-callee-as",
+    "files": [
+      {
+        "path": "src/task.ts",
+        "source": "try { (run as typeof run)(); } catch (error) { (console.error as typeof console.error)(error); }"
+      }
+    ],
+    "focusPath": "src/task.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-log-only-catch",
+    "name": "log-and-swallow-callee-satisfies",
+    "files": [
+      {
+        "path": "src/task.ts",
+        "source": "try { (run satisfies typeof run)(); } catch (error) { (console.error satisfies typeof console.error)(error); }"
+      }
+    ],
+    "focusPath": "src/task.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-log-only-catch",
+    "name": "log-and-swallow-callee-non-null",
+    "files": [
+      {
+        "path": "src/task.ts",
+        "source": "try { (run!)(); } catch (error) { (console.error!)(error); }"
+      }
+    ],
+    "focusPath": "src/task.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-log-only-catch",
+    "name": "log-and-swallow-callee-combined",
+    "files": [
+      {
+        "path": "src/task.ts",
+        "source": "try { ((run!) as typeof run)(); } catch (error) { ((console.error!) as typeof console.error)(error); }"
+      }
+    ],
+    "focusPath": "src/task.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-production-browser-source-maps",
+    "name": "public-source-maps-object-key-string",
+    "files": [
+      {
+        "path": "next.config.mjs",
+        "source": "export default { [\"productionBrowserSourceMaps\"]: true };\n"
+      }
+    ],
+    "focusPath": "next.config.mjs",
+    "expected": 1
+  },
+  {
+    "rule": "no-production-browser-source-maps",
+    "name": "public-source-maps-object-key-template",
+    "files": [
+      {
+        "path": "next.config.mjs",
+        "source": "export default { [`productionBrowserSourceMaps`]: true };\n"
+      }
+    ],
+    "focusPath": "next.config.mjs",
+    "expected": 1
+  },
+  {
+    "rule": "no-raw-fetch-outside-clients",
+    "name": "raw-fetch-callee-as",
+    "files": [
+      {
+        "path": "src/routes/handler.ts",
+        "source": "const response = await (fetch as typeof fetch)('/api/invoices');\nexport {};\n"
+      }
+    ],
+    "focusPath": "src/routes/handler.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-raw-fetch-outside-clients",
+    "name": "raw-fetch-callee-satisfies",
+    "files": [
+      {
+        "path": "src/routes/handler.ts",
+        "source": "const response = await (fetch satisfies typeof fetch)('/api/invoices');\nexport {};\n"
+      }
+    ],
+    "focusPath": "src/routes/handler.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-raw-fetch-outside-clients",
+    "name": "raw-fetch-callee-non-null",
+    "files": [
+      {
+        "path": "src/routes/handler.ts",
+        "source": "const response = await (fetch!)('/api/invoices');\nexport {};\n"
+      }
+    ],
+    "focusPath": "src/routes/handler.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-raw-fetch-outside-clients",
+    "name": "raw-fetch-callee-combined",
+    "files": [
+      {
+        "path": "src/routes/handler.ts",
+        "source": "const response = await ((fetch!) as typeof fetch)('/api/invoices');\nexport {};\n"
+      }
+    ],
+    "focusPath": "src/routes/handler.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-redundant-optional-array-default",
+    "name": "optional-array-default-callee-as",
+    "files": [
+      {
+        "path": "src/schema.ts",
+        "source": "import { z } from \"zod\"; const Items = (z.array as typeof z.array)((z.string as typeof z.string)()).optional().default([]);"
+      }
+    ],
+    "focusPath": "src/schema.ts",
+    "expected": 1,
+    "fixedSource": "import { z } from \"zod\"; const Items = (z.array as typeof z.array)((z.string as typeof z.string)()).default([]);"
+  },
+  {
+    "rule": "no-redundant-optional-array-default",
+    "name": "optional-array-default-callee-satisfies",
+    "files": [
+      {
+        "path": "src/schema.ts",
+        "source": "import { z } from \"zod\"; const Items = (z.array satisfies typeof z.array)((z.string satisfies typeof z.string)()).optional().default([]);"
+      }
+    ],
+    "focusPath": "src/schema.ts",
+    "expected": 1,
+    "fixedSource": "import { z } from \"zod\"; const Items = (z.array satisfies typeof z.array)((z.string satisfies typeof z.string)()).default([]);"
+  },
+  {
+    "rule": "no-redundant-optional-array-default",
+    "name": "optional-array-default-callee-non-null",
+    "files": [
+      {
+        "path": "src/schema.ts",
+        "source": "import { z } from \"zod\"; const Items = (z.array!)((z.string!)()).optional().default([]);"
+      }
+    ],
+    "focusPath": "src/schema.ts",
+    "expected": 1,
+    "fixedSource": "import { z } from \"zod\"; const Items = (z.array!)((z.string!)()).default([]);"
+  },
+  {
+    "rule": "no-redundant-optional-array-default",
+    "name": "optional-array-default-callee-combined",
+    "files": [
+      {
+        "path": "src/schema.ts",
+        "source": "import { z } from \"zod\"; const Items = ((z.array!) as typeof z.array)(((z.string!) as typeof z.string)()).optional().default([]);"
+      }
+    ],
+    "focusPath": "src/schema.ts",
+    "expected": 1,
+    "fixedSource": "import { z } from \"zod\"; const Items = ((z.array!) as typeof z.array)(((z.string!) as typeof z.string)()).default([]);"
+  },
+  {
+    "rule": "no-restricted-library-load",
+    "name": "runtime-load-callee-as",
+    "files": [
+      {
+        "path": "src/client.ts",
+        "source": "const client = (require as typeof require)('axios');"
+      }
+    ],
+    "focusPath": "src/client.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-restricted-library-load",
+    "name": "runtime-load-callee-satisfies",
+    "files": [
+      {
+        "path": "src/client.ts",
+        "source": "const client = (require satisfies typeof require)('axios');"
+      }
+    ],
+    "focusPath": "src/client.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-restricted-library-load",
+    "name": "runtime-load-callee-non-null",
+    "files": [
+      {
+        "path": "src/client.ts",
+        "source": "const client = (require!)('axios');"
+      }
+    ],
+    "focusPath": "src/client.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-restricted-library-load",
+    "name": "runtime-load-callee-combined",
+    "files": [
+      {
+        "path": "src/client.ts",
+        "source": "const client = ((require!) as typeof require)('axios');"
+      }
+    ],
+    "focusPath": "src/client.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-restricted-library-load",
+    "name": "runtime-load-argument-const",
+    "files": [
+      {
+        "path": "src/client.ts",
+        "source": "const client = require(('axios' as const));"
+      }
+    ],
+    "focusPath": "src/client.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-router-refresh-polling",
+    "name": "poll-router-refresh-callee-as",
+    "files": [
+      {
+        "path": "src/status.tsx",
+        "source": "\"use client\"; import { useEffect } from \"react\"; import { useRouter } from \"next/navigation\"; function Status() { const router = (useRouter as typeof useRouter)(); (useEffect as typeof useEffect)(() => { const timer = (setInterval as typeof setInterval)(() => (router.refresh as typeof router.refresh)(), POLLING_INTERVAL_MS); return () => (clearInterval as typeof clearInterval)(timer); }, [router]); return null; }"
+      }
+    ],
+    "focusPath": "src/status.tsx",
+    "expected": 1
+  },
+  {
+    "rule": "no-router-refresh-polling",
+    "name": "poll-router-refresh-callee-satisfies",
+    "files": [
+      {
+        "path": "src/status.tsx",
+        "source": "\"use client\"; import { useEffect } from \"react\"; import { useRouter } from \"next/navigation\"; function Status() { const router = (useRouter satisfies typeof useRouter)(); (useEffect satisfies typeof useEffect)(() => { const timer = (setInterval satisfies typeof setInterval)(() => (router.refresh satisfies typeof router.refresh)(), POLLING_INTERVAL_MS); return () => (clearInterval satisfies typeof clearInterval)(timer); }, [router]); return null; }"
+      }
+    ],
+    "focusPath": "src/status.tsx",
+    "expected": 1
+  },
+  {
+    "rule": "no-router-refresh-polling",
+    "name": "poll-router-refresh-callee-non-null",
+    "files": [
+      {
+        "path": "src/status.tsx",
+        "source": "\"use client\"; import { useEffect } from \"react\"; import { useRouter } from \"next/navigation\"; function Status() { const router = (useRouter!)(); (useEffect!)(() => { const timer = (setInterval!)(() => (router.refresh!)(), POLLING_INTERVAL_MS); return () => (clearInterval!)(timer); }, [router]); return null; }"
+      }
+    ],
+    "focusPath": "src/status.tsx",
+    "expected": 1
+  },
+  {
+    "rule": "no-router-refresh-polling",
+    "name": "poll-router-refresh-callee-combined",
+    "files": [
+      {
+        "path": "src/status.tsx",
+        "source": "\"use client\"; import { useEffect } from \"react\"; import { useRouter } from \"next/navigation\"; function Status() { const router = ((useRouter!) as typeof useRouter)(); ((useEffect!) as typeof useEffect)(() => { const timer = ((setInterval!) as typeof setInterval)(() => ((router.refresh!) as typeof router.refresh)(), POLLING_INTERVAL_MS); return () => ((clearInterval!) as typeof clearInterval)(timer); }, [router]); return null; }"
+      }
+    ],
+    "focusPath": "src/status.tsx",
+    "expected": 1
+  },
+  {
+    "rule": "no-secret-in-log",
+    "name": "logged-secret-callee-as",
+    "files": [
+      {
+        "path": "src/auth.ts",
+        "source": "(logger.error as typeof logger.error)('auth failed', { token });"
+      }
+    ],
+    "focusPath": "src/auth.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-secret-in-log",
+    "name": "logged-secret-callee-satisfies",
+    "files": [
+      {
+        "path": "src/auth.ts",
+        "source": "(logger.error satisfies typeof logger.error)('auth failed', { token });"
+      }
+    ],
+    "focusPath": "src/auth.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-secret-in-log",
+    "name": "logged-secret-callee-non-null",
+    "files": [
+      {
+        "path": "src/auth.ts",
+        "source": "(logger.error!)('auth failed', { token });"
+      }
+    ],
+    "focusPath": "src/auth.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-secret-in-log",
+    "name": "logged-secret-callee-combined",
+    "files": [
+      {
+        "path": "src/auth.ts",
+        "source": "((logger.error!) as typeof logger.error)('auth failed', { token });"
+      }
+    ],
+    "focusPath": "src/auth.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-sentinel-return-on-catch",
+    "name": "reported-fallback-callee-as",
+    "files": [
+      {
+        "path": "src/load.ts",
+        "source": "function load() { try { return (read as typeof read)(); } catch (error) { (logger.warn as typeof logger.warn)('load failed', error); return null; } }"
+      }
+    ],
+    "focusPath": "src/load.ts",
+    "expected": 0
+  },
+  {
+    "rule": "no-sentinel-return-on-catch",
+    "name": "reported-fallback-callee-satisfies",
+    "files": [
+      {
+        "path": "src/load.ts",
+        "source": "function load() { try { return (read satisfies typeof read)(); } catch (error) { (logger.warn satisfies typeof logger.warn)('load failed', error); return null; } }"
+      }
+    ],
+    "focusPath": "src/load.ts",
+    "expected": 0
+  },
+  {
+    "rule": "no-sentinel-return-on-catch",
+    "name": "reported-fallback-callee-non-null",
+    "files": [
+      {
+        "path": "src/load.ts",
+        "source": "function load() { try { return (read!)(); } catch (error) { (logger.warn!)('load failed', error); return null; } }"
+      }
+    ],
+    "focusPath": "src/load.ts",
+    "expected": 0
+  },
+  {
+    "rule": "no-sentinel-return-on-catch",
+    "name": "reported-fallback-callee-combined",
+    "files": [
+      {
+        "path": "src/load.ts",
+        "source": "function load() { try { return ((read!) as typeof read)(); } catch (error) { ((logger.warn!) as typeof logger.warn)('load failed', error); return null; } }"
+      }
+    ],
+    "focusPath": "src/load.ts",
+    "expected": 0
+  },
+  {
+    "rule": "no-silent-promise-catch",
+    "name": "silent-rejection-callee-non-null",
+    "files": [
+      {
+        "path": "src/load.ts",
+        "source": "(load().catch!)(() => null);"
+      }
+    ],
+    "focusPath": "src/load.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-sleep-in-test-body",
+    "name": "fixed-sleep-callee-as",
+    "files": [
+      {
+        "path": "src/retry.test.ts",
+        "source": "(it as typeof it)('retries', async () => { await (sleep as typeof sleep)(50); (expect as typeof expect)((done as typeof done)()).toBe(true); });\nexport {};\n"
+      }
+    ],
+    "focusPath": "src/retry.test.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-sleep-in-test-body",
+    "name": "fixed-sleep-callee-satisfies",
+    "files": [
+      {
+        "path": "src/retry.test.ts",
+        "source": "(it satisfies typeof it)('retries', async () => { await (sleep satisfies typeof sleep)(50); (expect satisfies typeof expect)((done satisfies typeof done)()).toBe(true); });\nexport {};\n"
+      }
+    ],
+    "focusPath": "src/retry.test.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-sleep-in-test-body",
+    "name": "fixed-sleep-callee-non-null",
+    "files": [
+      {
+        "path": "src/retry.test.ts",
+        "source": "(it!)('retries', async () => { await (sleep!)(50); (expect!)((done!)()).toBe(true); });\nexport {};\n"
+      }
+    ],
+    "focusPath": "src/retry.test.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-sleep-in-test-body",
+    "name": "fixed-sleep-callee-combined",
+    "files": [
+      {
+        "path": "src/retry.test.ts",
+        "source": "((it!) as typeof it)('retries', async () => { await ((sleep!) as typeof sleep)(50); ((expect!) as typeof expect)(((done!) as typeof done)()).toBe(true); });\nexport {};\n"
+      }
+    ],
+    "focusPath": "src/retry.test.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-storage-in-stateless-modules",
+    "name": "private-storage-callee-as",
+    "files": [
+      {
+        "path": "src/engineer-digest/post.ts",
+        "source": "export {}; await (kv.put as typeof kv.put)('digest:last', timestamp);"
+      }
+    ],
+    "focusPath": "src/engineer-digest/post.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-storage-in-stateless-modules",
+    "name": "private-storage-callee-satisfies",
+    "files": [
+      {
+        "path": "src/engineer-digest/post.ts",
+        "source": "export {}; await (kv.put satisfies typeof kv.put)('digest:last', timestamp);"
+      }
+    ],
+    "focusPath": "src/engineer-digest/post.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-storage-in-stateless-modules",
+    "name": "private-storage-callee-non-null",
+    "files": [
+      {
+        "path": "src/engineer-digest/post.ts",
+        "source": "export {}; await (kv.put!)('digest:last', timestamp);"
+      }
+    ],
+    "focusPath": "src/engineer-digest/post.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-storage-in-stateless-modules",
+    "name": "private-storage-callee-combined",
+    "files": [
+      {
+        "path": "src/engineer-digest/post.ts",
+        "source": "export {}; await ((kv.put!) as typeof kv.put)('digest:last', timestamp);"
+      }
+    ],
+    "focusPath": "src/engineer-digest/post.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-tautological-expect",
+    "name": "literal-only-assertion-callee-as",
+    "files": [
+      {
+        "path": "src/add.test.ts",
+        "source": "(it as typeof it)('works', () => { (expect as typeof expect)(true).toBe(true); });"
+      }
+    ],
+    "focusPath": "src/add.test.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-tautological-expect",
+    "name": "literal-only-assertion-callee-satisfies",
+    "files": [
+      {
+        "path": "src/add.test.ts",
+        "source": "(it satisfies typeof it)('works', () => { (expect satisfies typeof expect)(true).toBe(true); });"
+      }
+    ],
+    "focusPath": "src/add.test.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-tautological-expect",
+    "name": "literal-only-assertion-callee-non-null",
+    "files": [
+      {
+        "path": "src/add.test.ts",
+        "source": "(it!)('works', () => { (expect!)(true).toBe(true); });"
+      }
+    ],
+    "focusPath": "src/add.test.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-tautological-expect",
+    "name": "literal-only-assertion-callee-combined",
+    "files": [
+      {
+        "path": "src/add.test.ts",
+        "source": "((it!) as typeof it)('works', () => { ((expect!) as typeof expect)(true).toBe(true); });"
+      }
+    ],
+    "focusPath": "src/add.test.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-unlocalized-toast",
+    "name": "literal-message-callee-as",
+    "files": [
+      {
+        "path": "src/message.tsx",
+        "source": "import { toast } from \"sonner\"; (toast.success as typeof toast.success)(\"Saved\");"
+      }
+    ],
+    "focusPath": "src/message.tsx",
+    "expected": 1
+  },
+  {
+    "rule": "no-unlocalized-toast",
+    "name": "literal-message-callee-satisfies",
+    "files": [
+      {
+        "path": "src/message.tsx",
+        "source": "import { toast } from \"sonner\"; (toast.success satisfies typeof toast.success)(\"Saved\");"
+      }
+    ],
+    "focusPath": "src/message.tsx",
+    "expected": 1
+  },
+  {
+    "rule": "no-unlocalized-toast",
+    "name": "literal-message-callee-non-null",
+    "files": [
+      {
+        "path": "src/message.tsx",
+        "source": "import { toast } from \"sonner\"; (toast.success!)(\"Saved\");"
+      }
+    ],
+    "focusPath": "src/message.tsx",
+    "expected": 1
+  },
+  {
+    "rule": "no-unlocalized-toast",
+    "name": "literal-message-callee-combined",
+    "files": [
+      {
+        "path": "src/message.tsx",
+        "source": "import { toast } from \"sonner\"; ((toast.success!) as typeof toast.success)(\"Saved\");"
+      }
+    ],
+    "focusPath": "src/message.tsx",
+    "expected": 1
+  },
+  {
+    "rule": "no-unlocalized-toast",
+    "name": "literal-message-argument-const",
+    "files": [
+      {
+        "path": "src/message.tsx",
+        "source": "import { toast } from \"sonner\"; toast.success((\"Saved\" as const));"
+      }
+    ],
+    "focusPath": "src/message.tsx",
+    "expected": 1
+  },
+  {
+    "rule": "no-unsafe-test-double-cast",
+    "name": "mock-backed-double-cast-callee-as",
+    "files": [
+      {
+        "path": "service.test.ts",
+        "source": "import { vi } from 'vitest'; const client = { read: (vi.fn as typeof vi.fn)() } as unknown as Client;"
+      }
+    ],
+    "focusPath": "service.test.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-unsafe-test-double-cast",
+    "name": "mock-backed-double-cast-callee-satisfies",
+    "files": [
+      {
+        "path": "service.test.ts",
+        "source": "import { vi } from 'vitest'; const client = { read: (vi.fn satisfies typeof vi.fn)() } as unknown as Client;"
+      }
+    ],
+    "focusPath": "service.test.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-unsafe-test-double-cast",
+    "name": "mock-backed-double-cast-callee-non-null",
+    "files": [
+      {
+        "path": "service.test.ts",
+        "source": "import { vi } from 'vitest'; const client = { read: (vi.fn!)() } as unknown as Client;"
+      }
+    ],
+    "focusPath": "service.test.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-unsafe-test-double-cast",
+    "name": "mock-backed-double-cast-callee-combined",
+    "files": [
+      {
+        "path": "service.test.ts",
+        "source": "import { vi } from 'vitest'; const client = { read: ((vi.fn!) as typeof vi.fn)() } as unknown as Client;"
+      }
+    ],
+    "focusPath": "service.test.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-zod-native-enum",
+    "name": "zod-native-enum-callee-as",
+    "files": [
+      {
+        "path": "src/status.ts",
+        "source": "import { z } from \"zod\"; const S = (z.nativeEnum as typeof z.nativeEnum)({ Active: \"active\", Inactive: \"inactive\" });"
+      }
+    ],
+    "focusPath": "src/status.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-zod-native-enum",
+    "name": "zod-native-enum-callee-satisfies",
+    "files": [
+      {
+        "path": "src/status.ts",
+        "source": "import { z } from \"zod\"; const S = (z.nativeEnum satisfies typeof z.nativeEnum)({ Active: \"active\", Inactive: \"inactive\" });"
+      }
+    ],
+    "focusPath": "src/status.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-zod-native-enum",
+    "name": "zod-native-enum-callee-non-null",
+    "files": [
+      {
+        "path": "src/status.ts",
+        "source": "import { z } from \"zod\"; const S = (z.nativeEnum!)({ Active: \"active\", Inactive: \"inactive\" });"
+      }
+    ],
+    "focusPath": "src/status.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-zod-native-enum",
+    "name": "zod-native-enum-callee-combined",
+    "files": [
+      {
+        "path": "src/status.ts",
+        "source": "import { z } from \"zod\"; const S = ((z.nativeEnum!) as typeof z.nativeEnum)({ Active: \"active\", Inactive: \"inactive\" });"
+      }
+    ],
+    "focusPath": "src/status.ts",
+    "expected": 1
+  },
+  {
+    "rule": "prefer-millisecond-control-duration-schema",
+    "name": "second-timeout-schema-callee-as",
+    "files": [
+      {
+        "path": "src/request.ts",
+        "source": "import { z } from 'zod';\nexport const RequestSchema = (z.object as typeof z.object)({ timeout_seconds: (z.number as typeof z.number)().int().min(1).max(300).default(30) });"
+      }
+    ],
+    "focusPath": "src/request.ts",
+    "expected": 1
+  },
+  {
+    "rule": "prefer-millisecond-control-duration-schema",
+    "name": "second-timeout-schema-callee-satisfies",
+    "files": [
+      {
+        "path": "src/request.ts",
+        "source": "import { z } from 'zod';\nexport const RequestSchema = (z.object satisfies typeof z.object)({ timeout_seconds: (z.number satisfies typeof z.number)().int().min(1).max(300).default(30) });"
+      }
+    ],
+    "focusPath": "src/request.ts",
+    "expected": 1
+  },
+  {
+    "rule": "prefer-millisecond-control-duration-schema",
+    "name": "second-timeout-schema-callee-non-null",
+    "files": [
+      {
+        "path": "src/request.ts",
+        "source": "import { z } from 'zod';\nexport const RequestSchema = (z.object!)({ timeout_seconds: (z.number!)().int().min(1).max(300).default(30) });"
+      }
+    ],
+    "focusPath": "src/request.ts",
+    "expected": 1
+  },
+  {
+    "rule": "prefer-millisecond-control-duration-schema",
+    "name": "second-timeout-schema-callee-combined",
+    "files": [
+      {
+        "path": "src/request.ts",
+        "source": "import { z } from 'zod';\nexport const RequestSchema = ((z.object!) as typeof z.object)({ timeout_seconds: ((z.number!) as typeof z.number)().int().min(1).max(300).default(30) });"
+      }
+    ],
+    "focusPath": "src/request.ts",
+    "expected": 1
+  },
+  {
+    "rule": "prefer-millisecond-control-duration-schema",
+    "name": "second-timeout-schema-object-key-string",
+    "files": [
+      {
+        "path": "src/request.ts",
+        "source": "import { z } from 'zod';\nexport const RequestSchema = z.object({ [\"timeout_seconds\"]: z.number().int().min(1).max(300).default(30) });"
+      }
+    ],
+    "focusPath": "src/request.ts",
+    "expected": 0
+  },
+  {
+    "rule": "prefer-millisecond-control-duration-schema",
+    "name": "second-timeout-schema-object-key-template",
+    "files": [
+      {
+        "path": "src/request.ts",
+        "source": "import { z } from 'zod';\nexport const RequestSchema = z.object({ [`timeout_seconds`]: z.number().int().min(1).max(300).default(30) });"
+      }
+    ],
+    "focusPath": "src/request.ts",
+    "expected": 0
+  },
+  {
+    "rule": "prefer-module-level-constant",
+    "name": "local-collection-callee-as",
+    "files": [
+      {
+        "path": "src/keys.ts",
+        "source": "function isAllowed(key: string) { const KEYS = ['a', 'b', 'c']; return (KEYS.includes as typeof KEYS.includes)(key); }"
+      }
+    ],
+    "focusPath": "src/keys.ts",
+    "expected": 1
+  },
+  {
+    "rule": "prefer-module-level-constant",
+    "name": "local-collection-callee-satisfies",
+    "files": [
+      {
+        "path": "src/keys.ts",
+        "source": "function isAllowed(key: string) { const KEYS = ['a', 'b', 'c']; return (KEYS.includes satisfies typeof KEYS.includes)(key); }"
+      }
+    ],
+    "focusPath": "src/keys.ts",
+    "expected": 1
+  },
+  {
+    "rule": "prefer-module-level-constant",
+    "name": "local-collection-callee-combined",
+    "files": [
+      {
+        "path": "src/keys.ts",
+        "source": "function isAllowed(key: string) { const KEYS = ['a', 'b', 'c']; return ((KEYS.includes!) as typeof KEYS.includes)(key); }"
+      }
+    ],
+    "focusPath": "src/keys.ts",
+    "expected": 1
+  },
+  {
+    "rule": "prefer-module-level-refined-schema",
+    "name": "local-refinement-callee-as",
+    "files": [
+      {
+        "path": "src/options.ts",
+        "source": "import { z } from 'zod'; export function parse(value: unknown) { return (z.string as typeof z.string)().trim().min(1).max(128).parse(value); }"
+      }
+    ],
+    "focusPath": "src/options.ts",
+    "expected": 1
+  },
+  {
+    "rule": "prefer-module-level-refined-schema",
+    "name": "local-refinement-callee-satisfies",
+    "files": [
+      {
+        "path": "src/options.ts",
+        "source": "import { z } from 'zod'; export function parse(value: unknown) { return (z.string satisfies typeof z.string)().trim().min(1).max(128).parse(value); }"
+      }
+    ],
+    "focusPath": "src/options.ts",
+    "expected": 1
+  },
+  {
+    "rule": "prefer-module-level-refined-schema",
+    "name": "local-refinement-callee-non-null",
+    "files": [
+      {
+        "path": "src/options.ts",
+        "source": "import { z } from 'zod'; export function parse(value: unknown) { return (z.string!)().trim().min(1).max(128).parse(value); }"
+      }
+    ],
+    "focusPath": "src/options.ts",
+    "expected": 1
+  },
+  {
+    "rule": "prefer-module-level-refined-schema",
+    "name": "local-refinement-callee-combined",
+    "files": [
+      {
+        "path": "src/options.ts",
+        "source": "import { z } from 'zod'; export function parse(value: unknown) { return ((z.string!) as typeof z.string)().trim().min(1).max(128).parse(value); }"
+      }
+    ],
+    "focusPath": "src/options.ts",
+    "expected": 1
+  },
+  {
+    "rule": "prefer-module-level-schema",
+    "name": "local-schema-callee-as",
+    "files": [
+      {
+        "path": "src/handler.ts",
+        "source": "import { z } from 'zod'; export function handle(raw: unknown) { const ZBody = (z.object as typeof z.object)({ id: (z.string as typeof z.string)(), name: (z.string as typeof z.string)() }); return (ZBody.parse as typeof ZBody.parse)(raw); }"
+      }
+    ],
+    "focusPath": "src/handler.ts",
+    "expected": 1
+  },
+  {
+    "rule": "prefer-module-level-schema",
+    "name": "local-schema-callee-satisfies",
+    "files": [
+      {
+        "path": "src/handler.ts",
+        "source": "import { z } from 'zod'; export function handle(raw: unknown) { const ZBody = (z.object satisfies typeof z.object)({ id: (z.string satisfies typeof z.string)(), name: (z.string satisfies typeof z.string)() }); return (ZBody.parse satisfies typeof ZBody.parse)(raw); }"
+      }
+    ],
+    "focusPath": "src/handler.ts",
+    "expected": 1
+  },
+  {
+    "rule": "prefer-module-level-schema",
+    "name": "local-schema-callee-non-null",
+    "files": [
+      {
+        "path": "src/handler.ts",
+        "source": "import { z } from 'zod'; export function handle(raw: unknown) { const ZBody = (z.object!)({ id: (z.string!)(), name: (z.string!)() }); return (ZBody.parse!)(raw); }"
+      }
+    ],
+    "focusPath": "src/handler.ts",
+    "expected": 1
+  },
+  {
+    "rule": "prefer-module-level-schema",
+    "name": "local-schema-callee-combined",
+    "files": [
+      {
+        "path": "src/handler.ts",
+        "source": "import { z } from 'zod'; export function handle(raw: unknown) { const ZBody = ((z.object!) as typeof z.object)({ id: ((z.string!) as typeof z.string)(), name: ((z.string!) as typeof z.string)() }); return ((ZBody.parse!) as typeof ZBody.parse)(raw); }"
+      }
+    ],
+    "focusPath": "src/handler.ts",
+    "expected": 1
+  },
+  {
+    "rule": "prefer-multi-value-zod-literal",
+    "name": "literal-union-callee-as",
+    "files": [
+      {
+        "path": "src/schema.ts",
+        "source": "import { z } from 'zod/v4'; export const Version = (z.union as typeof z.union)([(z.literal as typeof z.literal)(1), (z.literal as typeof z.literal)(2), (z.literal as typeof z.literal)(3)]);"
+      }
+    ],
+    "focusPath": "src/schema.ts",
+    "expected": 1
+  },
+  {
+    "rule": "prefer-multi-value-zod-literal",
+    "name": "literal-union-callee-satisfies",
+    "files": [
+      {
+        "path": "src/schema.ts",
+        "source": "import { z } from 'zod/v4'; export const Version = (z.union satisfies typeof z.union)([(z.literal satisfies typeof z.literal)(1), (z.literal satisfies typeof z.literal)(2), (z.literal satisfies typeof z.literal)(3)]);"
+      }
+    ],
+    "focusPath": "src/schema.ts",
+    "expected": 1
+  },
+  {
+    "rule": "prefer-multi-value-zod-literal",
+    "name": "literal-union-callee-non-null",
+    "files": [
+      {
+        "path": "src/schema.ts",
+        "source": "import { z } from 'zod/v4'; export const Version = (z.union!)([(z.literal!)(1), (z.literal!)(2), (z.literal!)(3)]);"
+      }
+    ],
+    "focusPath": "src/schema.ts",
+    "expected": 1
+  },
+  {
+    "rule": "prefer-multi-value-zod-literal",
+    "name": "literal-union-callee-combined",
+    "files": [
+      {
+        "path": "src/schema.ts",
+        "source": "import { z } from 'zod/v4'; export const Version = ((z.union!) as typeof z.union)([((z.literal!) as typeof z.literal)(1), ((z.literal!) as typeof z.literal)(2), ((z.literal!) as typeof z.literal)(3)]);"
+      }
+    ],
+    "focusPath": "src/schema.ts",
+    "expected": 1
+  },
+  {
+    "rule": "prefer-native-random-uuid",
+    "name": "uuid-v4-package-callee-as",
+    "files": [
+      {
+        "path": "src/id.ts",
+        "source": "import { v4 } from 'uuid'; const id = (v4 as typeof v4)();"
+      }
+    ],
+    "focusPath": "src/id.ts",
+    "expected": 1
+  },
+  {
+    "rule": "prefer-native-random-uuid",
+    "name": "uuid-v4-package-callee-satisfies",
+    "files": [
+      {
+        "path": "src/id.ts",
+        "source": "import { v4 } from 'uuid'; const id = (v4 satisfies typeof v4)();"
+      }
+    ],
+    "focusPath": "src/id.ts",
+    "expected": 1
+  },
+  {
+    "rule": "prefer-native-random-uuid",
+    "name": "uuid-v4-package-callee-non-null",
+    "files": [
+      {
+        "path": "src/id.ts",
+        "source": "import { v4 } from 'uuid'; const id = (v4!)();"
+      }
+    ],
+    "focusPath": "src/id.ts",
+    "expected": 1
+  },
+  {
+    "rule": "prefer-native-random-uuid",
+    "name": "uuid-v4-package-callee-combined",
+    "files": [
+      {
+        "path": "src/id.ts",
+        "source": "import { v4 } from 'uuid'; const id = ((v4!) as typeof v4)();"
+      }
+    ],
+    "focusPath": "src/id.ts",
+    "expected": 1
+  },
+  {
+    "rule": "prefer-node-crypto-hash",
+    "name": "mutable-one-shot-chain-callee-as",
+    "files": [
+      {
+        "path": "case.ts",
+        "source": "import { createHash } from 'node:crypto'; export const digest = (createHash as typeof createHash)('sha256').update('value').digest('hex');"
+      }
+    ],
+    "focusPath": "case.ts",
+    "expected": 1
+  },
+  {
+    "rule": "prefer-node-crypto-hash",
+    "name": "mutable-one-shot-chain-callee-satisfies",
+    "files": [
+      {
+        "path": "case.ts",
+        "source": "import { createHash } from 'node:crypto'; export const digest = (createHash satisfies typeof createHash)('sha256').update('value').digest('hex');"
+      }
+    ],
+    "focusPath": "case.ts",
+    "expected": 1
+  },
+  {
+    "rule": "prefer-node-crypto-hash",
+    "name": "mutable-one-shot-chain-callee-non-null",
+    "files": [
+      {
+        "path": "case.ts",
+        "source": "import { createHash } from 'node:crypto'; export const digest = (createHash!)('sha256').update('value').digest('hex');"
+      }
+    ],
+    "focusPath": "case.ts",
+    "expected": 1
+  },
+  {
+    "rule": "prefer-node-crypto-hash",
+    "name": "mutable-one-shot-chain-callee-combined",
+    "files": [
+      {
+        "path": "case.ts",
+        "source": "import { createHash } from 'node:crypto'; export const digest = ((createHash!) as typeof createHash)('sha256').update('value').digest('hex');"
+      }
+    ],
+    "focusPath": "case.ts",
+    "expected": 1
+  },
+  {
+    "rule": "prefer-node-crypto-hash",
+    "name": "mutable-one-shot-chain-argument-const",
+    "files": [
+      {
+        "path": "case.ts",
+        "source": "import { createHash } from 'node:crypto'; export const digest = createHash(('sha256' as const)).update(('value' as const)).digest(('hex' as const));"
+      }
+    ],
+    "focusPath": "case.ts",
+    "expected": 1
+  },
+  {
+    "rule": "prefer-nullish-filter-predicate",
+    "name": "boolean-nullish-filter-callee-as",
+    "files": [
+      {
+        "path": "src/users.ts",
+        "source": "declare const users: readonly ({ id: string } | null)[];\nconst present = (users.filter as typeof users.filter)(Boolean);"
+      }
+    ],
+    "focusPath": "src/users.ts",
+    "expected": 1
+  },
+  {
+    "rule": "prefer-nullish-filter-predicate",
+    "name": "boolean-nullish-filter-callee-satisfies",
+    "files": [
+      {
+        "path": "src/users.ts",
+        "source": "declare const users: readonly ({ id: string } | null)[];\nconst present = (users.filter satisfies typeof users.filter)(Boolean);"
+      }
+    ],
+    "focusPath": "src/users.ts",
+    "expected": 1
+  },
+  {
+    "rule": "prefer-nullish-filter-predicate",
+    "name": "boolean-nullish-filter-callee-non-null",
+    "files": [
+      {
+        "path": "src/users.ts",
+        "source": "declare const users: readonly ({ id: string } | null)[];\nconst present = (users.filter!)(Boolean);"
+      }
+    ],
+    "focusPath": "src/users.ts",
+    "expected": 1
+  },
+  {
+    "rule": "prefer-nullish-filter-predicate",
+    "name": "boolean-nullish-filter-callee-combined",
+    "files": [
+      {
+        "path": "src/users.ts",
+        "source": "declare const users: readonly ({ id: string } | null)[];\nconst present = ((users.filter!) as typeof users.filter)(Boolean);"
+      }
+    ],
+    "focusPath": "src/users.ts",
+    "expected": 1
+  },
+  {
+    "rule": "prefer-server-actions",
+    "name": "api-mutation-callee-as",
+    "files": [
+      {
+        "path": "app/tasks/page.tsx",
+        "source": "'use client'; await (fetch as typeof fetch)('/api/tasks', { method: 'POST', body });\nexport {};\n"
+      }
+    ],
+    "focusPath": "app/tasks/page.tsx",
+    "expected": 1
+  },
+  {
+    "rule": "prefer-server-actions",
+    "name": "api-mutation-callee-satisfies",
+    "files": [
+      {
+        "path": "app/tasks/page.tsx",
+        "source": "'use client'; await (fetch satisfies typeof fetch)('/api/tasks', { method: 'POST', body });\nexport {};\n"
+      }
+    ],
+    "focusPath": "app/tasks/page.tsx",
+    "expected": 1
+  },
+  {
+    "rule": "prefer-server-actions",
+    "name": "api-mutation-callee-non-null",
+    "files": [
+      {
+        "path": "app/tasks/page.tsx",
+        "source": "'use client'; await (fetch!)('/api/tasks', { method: 'POST', body });\nexport {};\n"
+      }
+    ],
+    "focusPath": "app/tasks/page.tsx",
+    "expected": 1
+  },
+  {
+    "rule": "prefer-server-actions",
+    "name": "api-mutation-callee-combined",
+    "files": [
+      {
+        "path": "app/tasks/page.tsx",
+        "source": "'use client'; await ((fetch!) as typeof fetch)('/api/tasks', { method: 'POST', body });\nexport {};\n"
+      }
+    ],
+    "focusPath": "app/tasks/page.tsx",
+    "expected": 1
+  },
+  {
+    "rule": "prefer-server-actions",
+    "name": "api-mutation-object-key-string",
+    "files": [
+      {
+        "path": "app/tasks/page.tsx",
+        "source": "'use client'; await fetch('/api/tasks', { [\"method\"]: 'POST', body });\nexport {};\n"
+      }
+    ],
+    "focusPath": "app/tasks/page.tsx",
+    "expected": 1
+  },
+  {
+    "rule": "prefer-server-actions",
+    "name": "api-mutation-object-key-template",
+    "files": [
+      {
+        "path": "app/tasks/page.tsx",
+        "source": "'use client'; await fetch('/api/tasks', { [`method`]: 'POST', body });\nexport {};\n"
+      }
+    ],
+    "focusPath": "app/tasks/page.tsx",
+    "expected": 1
+  },
+  {
+    "rule": "prefer-server-actions",
+    "name": "api-mutation-argument-const",
+    "files": [
+      {
+        "path": "app/tasks/page.tsx",
+        "source": "'use client'; await fetch(('/api/tasks' as const), { method: 'POST', body });\nexport {};\n"
+      }
+    ],
+    "focusPath": "app/tasks/page.tsx",
+    "expected": 1
+  },
+  {
+    "rule": "prefer-shared-zod-enum",
+    "name": "inline-provider-callee-as",
+    "files": [
+      {
+        "path": "src/provider.ts",
+        "source": "import { z } from 'zod'; const JobSchema = (z.object as typeof z.object)({ provider: (z.enum as typeof z.enum)(['agy', 'claude', 'sol']) }); const StatusSchema = (z.object as typeof z.object)({ provider: (z.enum as typeof z.enum)(['agy', 'claude', 'sol']).optional() });"
+      }
+    ],
+    "focusPath": "src/provider.ts",
+    "expected": 2
+  },
+  {
+    "rule": "prefer-shared-zod-enum",
+    "name": "inline-provider-callee-satisfies",
+    "files": [
+      {
+        "path": "src/provider.ts",
+        "source": "import { z } from 'zod'; const JobSchema = (z.object satisfies typeof z.object)({ provider: (z.enum satisfies typeof z.enum)(['agy', 'claude', 'sol']) }); const StatusSchema = (z.object satisfies typeof z.object)({ provider: (z.enum satisfies typeof z.enum)(['agy', 'claude', 'sol']).optional() });"
+      }
+    ],
+    "focusPath": "src/provider.ts",
+    "expected": 2
+  },
+  {
+    "rule": "prefer-shared-zod-enum",
+    "name": "inline-provider-callee-non-null",
+    "files": [
+      {
+        "path": "src/provider.ts",
+        "source": "import { z } from 'zod'; const JobSchema = (z.object!)({ provider: (z.enum!)(['agy', 'claude', 'sol']) }); const StatusSchema = (z.object!)({ provider: (z.enum!)(['agy', 'claude', 'sol']).optional() });"
+      }
+    ],
+    "focusPath": "src/provider.ts",
+    "expected": 2
+  },
+  {
+    "rule": "prefer-shared-zod-enum",
+    "name": "inline-provider-callee-combined",
+    "files": [
+      {
+        "path": "src/provider.ts",
+        "source": "import { z } from 'zod'; const JobSchema = ((z.object!) as typeof z.object)({ provider: ((z.enum!) as typeof z.enum)(['agy', 'claude', 'sol']) }); const StatusSchema = ((z.object!) as typeof z.object)({ provider: ((z.enum!) as typeof z.enum)(['agy', 'claude', 'sol']).optional() });"
+      }
+    ],
+    "focusPath": "src/provider.ts",
+    "expected": 2
+  },
+  {
+    "rule": "prefer-whole-object-assertion",
+    "name": "member-run-callee-as",
+    "files": [
+      {
+        "path": "src/user.test.ts",
+        "source": "(expect as typeof expect)(user.id).toBe(1);\n(expect as typeof expect)(user.name).toBe('Ada');"
+      }
+    ],
+    "focusPath": "src/user.test.ts",
+    "expected": 1
+  },
+  {
+    "rule": "prefer-whole-object-assertion",
+    "name": "member-run-callee-satisfies",
+    "files": [
+      {
+        "path": "src/user.test.ts",
+        "source": "(expect satisfies typeof expect)(user.id).toBe(1);\n(expect satisfies typeof expect)(user.name).toBe('Ada');"
+      }
+    ],
+    "focusPath": "src/user.test.ts",
+    "expected": 1
+  },
+  {
+    "rule": "prefer-whole-object-assertion",
+    "name": "member-run-callee-non-null",
+    "files": [
+      {
+        "path": "src/user.test.ts",
+        "source": "(expect!)(user.id).toBe(1);\n(expect!)(user.name).toBe('Ada');"
+      }
+    ],
+    "focusPath": "src/user.test.ts",
+    "expected": 1
+  },
+  {
+    "rule": "prefer-whole-object-assertion",
+    "name": "member-run-callee-combined",
+    "files": [
+      {
+        "path": "src/user.test.ts",
+        "source": "((expect!) as typeof expect)(user.id).toBe(1);\n((expect!) as typeof expect)(user.name).toBe('Ada');"
+      }
+    ],
+    "focusPath": "src/user.test.ts",
+    "expected": 1
+  },
+  {
+    "rule": "prefer-whole-object-assertion",
+    "name": "member-run-argument-const",
+    "files": [
+      {
+        "path": "src/user.test.ts",
+        "source": "expect(user.id).toBe(1);\nexpect(user.name).toBe(('Ada' as const));"
+      }
+    ],
+    "focusPath": "src/user.test.ts",
+    "expected": 1
+  },
+  {
+    "rule": "prefer-zod-infer",
+    "name": "handwritten-twin-callee-as",
+    "files": [
+      {
+        "path": "src/user.ts",
+        "source": "import { z } from \"zod\"; const UserSchema = (z.object as typeof z.object)({ id: (z.string as typeof z.string)() }); interface User { id: string }"
+      }
+    ],
+    "focusPath": "src/user.ts",
+    "expected": 1
+  },
+  {
+    "rule": "prefer-zod-infer",
+    "name": "handwritten-twin-callee-satisfies",
+    "files": [
+      {
+        "path": "src/user.ts",
+        "source": "import { z } from \"zod\"; const UserSchema = (z.object satisfies typeof z.object)({ id: (z.string satisfies typeof z.string)() }); interface User { id: string }"
+      }
+    ],
+    "focusPath": "src/user.ts",
+    "expected": 1
+  },
+  {
+    "rule": "prefer-zod-infer",
+    "name": "handwritten-twin-callee-non-null",
+    "files": [
+      {
+        "path": "src/user.ts",
+        "source": "import { z } from \"zod\"; const UserSchema = (z.object!)({ id: (z.string!)() }); interface User { id: string }"
+      }
+    ],
+    "focusPath": "src/user.ts",
+    "expected": 1
+  },
+  {
+    "rule": "prefer-zod-infer",
+    "name": "handwritten-twin-callee-combined",
+    "files": [
+      {
+        "path": "src/user.ts",
+        "source": "import { z } from \"zod\"; const UserSchema = ((z.object!) as typeof z.object)({ id: ((z.string!) as typeof z.string)() }); interface User { id: string }"
+      }
+    ],
+    "focusPath": "src/user.ts",
+    "expected": 1
+  },
+  {
+    "rule": "prefer-zod-infer",
+    "name": "handwritten-twin-object-key-string",
+    "files": [
+      {
+        "path": "src/user.ts",
+        "source": "import { z } from \"zod\"; const UserSchema = z.object({ [\"id\"]: z.string() }); interface User { id: string }"
+      }
+    ],
+    "focusPath": "src/user.ts",
+    "expected": 1
+  },
+  {
+    "rule": "prefer-zod-infer",
+    "name": "handwritten-twin-object-key-template",
+    "files": [
+      {
+        "path": "src/user.ts",
+        "source": "import { z } from \"zod\"; const UserSchema = z.object({ [`id`]: z.string() }); interface User { id: string }"
+      }
+    ],
+    "focusPath": "src/user.ts",
+    "expected": 1
+  },
+  {
+    "rule": "prefer-zod-parse-output-type",
+    "name": "hand-written-parsed-return-callee-as",
+    "files": [
+      {
+        "path": "src/contracts.ts",
+        "source": "export interface ParsedRow { id: string }"
+      },
+      {
+        "path": "src/row.ts",
+        "source": "import { z } from \"zod\"; import type { ParsedRow } from \"./contracts.js\"; const RowSchema = (z.object as typeof z.object)({ id: (z.string as typeof z.string)() }); function load(): ParsedRow { return (RowSchema.parse as typeof RowSchema.parse)({}); }"
+      }
+    ],
+    "focusPath": "src/row.ts",
+    "expected": 1
+  },
+  {
+    "rule": "prefer-zod-parse-output-type",
+    "name": "hand-written-parsed-return-callee-satisfies",
+    "files": [
+      {
+        "path": "src/contracts.ts",
+        "source": "export interface ParsedRow { id: string }"
+      },
+      {
+        "path": "src/row.ts",
+        "source": "import { z } from \"zod\"; import type { ParsedRow } from \"./contracts.js\"; const RowSchema = (z.object satisfies typeof z.object)({ id: (z.string satisfies typeof z.string)() }); function load(): ParsedRow { return (RowSchema.parse satisfies typeof RowSchema.parse)({}); }"
+      }
+    ],
+    "focusPath": "src/row.ts",
+    "expected": 1
+  },
+  {
+    "rule": "prefer-zod-parse-output-type",
+    "name": "hand-written-parsed-return-callee-non-null",
+    "files": [
+      {
+        "path": "src/contracts.ts",
+        "source": "export interface ParsedRow { id: string }"
+      },
+      {
+        "path": "src/row.ts",
+        "source": "import { z } from \"zod\"; import type { ParsedRow } from \"./contracts.js\"; const RowSchema = (z.object!)({ id: (z.string!)() }); function load(): ParsedRow { return (RowSchema.parse!)({}); }"
+      }
+    ],
+    "focusPath": "src/row.ts",
+    "expected": 1
+  },
+  {
+    "rule": "prefer-zod-parse-output-type",
+    "name": "hand-written-parsed-return-callee-combined",
+    "files": [
+      {
+        "path": "src/contracts.ts",
+        "source": "export interface ParsedRow { id: string }"
+      },
+      {
+        "path": "src/row.ts",
+        "source": "import { z } from \"zod\"; import type { ParsedRow } from \"./contracts.js\"; const RowSchema = ((z.object!) as typeof z.object)({ id: ((z.string!) as typeof z.string)() }); function load(): ParsedRow { return ((RowSchema.parse!) as typeof RowSchema.parse)({}); }"
+      }
+    ],
+    "focusPath": "src/row.ts",
+    "expected": 1
+  },
+  {
+    "rule": "repeated-static-call-cases",
+    "name": "repeated-callee-as",
+    "files": [
+      {
+        "path": "src/parser.test.ts",
+        "source": "(test as typeof test)('parses', () => { (expect as typeof expect)((parse as typeof parse)('a')).toBe(true); (expect as typeof expect)((parse as typeof parse)('b')).toBe(false); (expect as typeof expect)((parse as typeof parse)('c')).toBe(true); });"
+      }
+    ],
+    "focusPath": "src/parser.test.ts",
+    "expected": 1
+  },
+  {
+    "rule": "repeated-static-call-cases",
+    "name": "repeated-callee-satisfies",
+    "files": [
+      {
+        "path": "src/parser.test.ts",
+        "source": "(test satisfies typeof test)('parses', () => { (expect satisfies typeof expect)((parse satisfies typeof parse)('a')).toBe(true); (expect satisfies typeof expect)((parse satisfies typeof parse)('b')).toBe(false); (expect satisfies typeof expect)((parse satisfies typeof parse)('c')).toBe(true); });"
+      }
+    ],
+    "focusPath": "src/parser.test.ts",
+    "expected": 1
+  },
+  {
+    "rule": "repeated-static-call-cases",
+    "name": "repeated-callee-non-null",
+    "files": [
+      {
+        "path": "src/parser.test.ts",
+        "source": "(test!)('parses', () => { (expect!)((parse!)('a')).toBe(true); (expect!)((parse!)('b')).toBe(false); (expect!)((parse!)('c')).toBe(true); });"
+      }
+    ],
+    "focusPath": "src/parser.test.ts",
+    "expected": 1
+  },
+  {
+    "rule": "repeated-static-call-cases",
+    "name": "repeated-callee-combined",
+    "files": [
+      {
+        "path": "src/parser.test.ts",
+        "source": "((test!) as typeof test)('parses', () => { ((expect!) as typeof expect)(((parse!) as typeof parse)('a')).toBe(true); ((expect!) as typeof expect)(((parse!) as typeof parse)('b')).toBe(false); ((expect!) as typeof expect)(((parse!) as typeof parse)('c')).toBe(true); });"
+      }
+    ],
+    "focusPath": "src/parser.test.ts",
+    "expected": 1
+  },
+  {
+    "rule": "require-fetch-timeout",
+    "name": "unbounded-fetch-callee-as",
+    "files": [
+      {
+        "path": "src/client.ts",
+        "source": "await (fetch as typeof fetch)('https://api.example.com/items');\nexport {};\n"
+      }
+    ],
+    "focusPath": "src/client.ts",
+    "expected": 1
+  },
+  {
+    "rule": "require-fetch-timeout",
+    "name": "unbounded-fetch-callee-satisfies",
+    "files": [
+      {
+        "path": "src/client.ts",
+        "source": "await (fetch satisfies typeof fetch)('https://api.example.com/items');\nexport {};\n"
+      }
+    ],
+    "focusPath": "src/client.ts",
+    "expected": 1
+  },
+  {
+    "rule": "require-fetch-timeout",
+    "name": "unbounded-fetch-callee-non-null",
+    "files": [
+      {
+        "path": "src/client.ts",
+        "source": "await (fetch!)('https://api.example.com/items');\nexport {};\n"
+      }
+    ],
+    "focusPath": "src/client.ts",
+    "expected": 1
+  },
+  {
+    "rule": "require-fetch-timeout",
+    "name": "unbounded-fetch-callee-combined",
+    "files": [
+      {
+        "path": "src/client.ts",
+        "source": "await ((fetch!) as typeof fetch)('https://api.example.com/items');\nexport {};\n"
+      }
+    ],
+    "focusPath": "src/client.ts",
+    "expected": 1
+  },
+  {
+    "rule": "require-fetch-timeout",
+    "name": "unbounded-fetch-argument-const",
+    "files": [
+      {
+        "path": "src/client.ts",
+        "source": "await fetch(('https://api.example.com/items' as const));\nexport {};\n"
+      }
+    ],
+    "focusPath": "src/client.ts",
+    "expected": 1
+  },
+  {
+    "rule": "require-pascal-case-zod-schema-name",
+    "name": "screaming-schema-name-callee-as",
+    "files": [
+      {
+        "path": "src/user.ts",
+        "source": "import { z } from 'zod';\nexport const USER_SCHEMA = (z.object as typeof z.object)({ id: (z.string as typeof z.string)() });"
+      }
+    ],
+    "focusPath": "src/user.ts",
+    "expected": 1
+  },
+  {
+    "rule": "require-pascal-case-zod-schema-name",
+    "name": "screaming-schema-name-callee-satisfies",
+    "files": [
+      {
+        "path": "src/user.ts",
+        "source": "import { z } from 'zod';\nexport const USER_SCHEMA = (z.object satisfies typeof z.object)({ id: (z.string satisfies typeof z.string)() });"
+      }
+    ],
+    "focusPath": "src/user.ts",
+    "expected": 1
+  },
+  {
+    "rule": "require-pascal-case-zod-schema-name",
+    "name": "screaming-schema-name-callee-non-null",
+    "files": [
+      {
+        "path": "src/user.ts",
+        "source": "import { z } from 'zod';\nexport const USER_SCHEMA = (z.object!)({ id: (z.string!)() });"
+      }
+    ],
+    "focusPath": "src/user.ts",
+    "expected": 1
+  },
+  {
+    "rule": "require-pascal-case-zod-schema-name",
+    "name": "screaming-schema-name-callee-combined",
+    "files": [
+      {
+        "path": "src/user.ts",
+        "source": "import { z } from 'zod';\nexport const USER_SCHEMA = ((z.object!) as typeof z.object)({ id: ((z.string!) as typeof z.string)() });"
+      }
+    ],
+    "focusPath": "src/user.ts",
+    "expected": 1
+  },
+  {
+    "rule": "require-sql-access-class",
+    "name": "free-query-callee-as",
+    "files": [
+      {
+        "path": "src/users.ts",
+        "source": "export function find(database: Database.Database, id: string) { return (database.prepare as typeof database.prepare)('SELECT id FROM user WHERE id = ?').get(id); }"
+      }
+    ],
+    "focusPath": "src/users.ts",
+    "expected": 1
+  },
+  {
+    "rule": "require-sql-access-class",
+    "name": "free-query-callee-satisfies",
+    "files": [
+      {
+        "path": "src/users.ts",
+        "source": "export function find(database: Database.Database, id: string) { return (database.prepare satisfies typeof database.prepare)('SELECT id FROM user WHERE id = ?').get(id); }"
+      }
+    ],
+    "focusPath": "src/users.ts",
+    "expected": 1
+  },
+  {
+    "rule": "require-sql-access-class",
+    "name": "free-query-callee-non-null",
+    "files": [
+      {
+        "path": "src/users.ts",
+        "source": "export function find(database: Database.Database, id: string) { return (database.prepare!)('SELECT id FROM user WHERE id = ?').get(id); }"
+      }
+    ],
+    "focusPath": "src/users.ts",
+    "expected": 1
+  },
+  {
+    "rule": "require-sql-access-class",
+    "name": "free-query-callee-combined",
+    "files": [
+      {
+        "path": "src/users.ts",
+        "source": "export function find(database: Database.Database, id: string) { return ((database.prepare!) as typeof database.prepare)('SELECT id FROM user WHERE id = ?').get(id); }"
+      }
+    ],
+    "focusPath": "src/users.ts",
+    "expected": 1
+  },
+  {
+    "rule": "require-use-form-default-values",
+    "name": "controlled-field-without-default-callee-as",
+    "files": [
+      {
+        "path": "profile-form.tsx",
+        "source": "'use client'; import { Controller, useForm } from 'react-hook-form'; function ProfileForm() { const form = (useForm as typeof useForm)(); return <Controller control={form.control} name='name' render={() => null} />; }"
+      }
+    ],
+    "focusPath": "profile-form.tsx",
+    "expected": 1
+  },
+  {
+    "rule": "require-use-form-default-values",
+    "name": "controlled-field-without-default-callee-satisfies",
+    "files": [
+      {
+        "path": "profile-form.tsx",
+        "source": "'use client'; import { Controller, useForm } from 'react-hook-form'; function ProfileForm() { const form = (useForm satisfies typeof useForm)(); return <Controller control={form.control} name='name' render={() => null} />; }"
+      }
+    ],
+    "focusPath": "profile-form.tsx",
+    "expected": 1
+  },
+  {
+    "rule": "require-use-form-default-values",
+    "name": "controlled-field-without-default-callee-non-null",
+    "files": [
+      {
+        "path": "profile-form.tsx",
+        "source": "'use client'; import { Controller, useForm } from 'react-hook-form'; function ProfileForm() { const form = (useForm!)(); return <Controller control={form.control} name='name' render={() => null} />; }"
+      }
+    ],
+    "focusPath": "profile-form.tsx",
+    "expected": 1
+  },
+  {
+    "rule": "require-use-form-default-values",
+    "name": "controlled-field-without-default-callee-combined",
+    "files": [
+      {
+        "path": "profile-form.tsx",
+        "source": "'use client'; import { Controller, useForm } from 'react-hook-form'; function ProfileForm() { const form = ((useForm!) as typeof useForm)(); return <Controller control={form.control} name='name' render={() => null} />; }"
+      }
+    ],
+    "focusPath": "profile-form.tsx",
+    "expected": 1
+  },
+  {
+    "rule": "require-zod-form-validation",
+    "name": "raw-form-value-callee-as",
+    "files": [
+      {
+        "path": "src/action.ts",
+        "source": "const name = (formData.get as typeof formData.get)('name');"
+      }
+    ],
+    "focusPath": "src/action.ts",
+    "expected": 1
+  },
+  {
+    "rule": "require-zod-form-validation",
+    "name": "raw-form-value-callee-satisfies",
+    "files": [
+      {
+        "path": "src/action.ts",
+        "source": "const name = (formData.get satisfies typeof formData.get)('name');"
+      }
+    ],
+    "focusPath": "src/action.ts",
+    "expected": 1
+  },
+  {
+    "rule": "require-zod-form-validation",
+    "name": "raw-form-value-callee-non-null",
+    "files": [
+      {
+        "path": "src/action.ts",
+        "source": "const name = (formData.get!)('name');"
+      }
+    ],
+    "focusPath": "src/action.ts",
+    "expected": 1
+  },
+  {
+    "rule": "require-zod-form-validation",
+    "name": "raw-form-value-callee-combined",
+    "files": [
+      {
+        "path": "src/action.ts",
+        "source": "const name = ((formData.get!) as typeof formData.get)('name');"
+      }
+    ],
+    "focusPath": "src/action.ts",
+    "expected": 1
+  },
+  {
+    "rule": "source-coupled-test",
+    "name": "workflow-substring-contract-callee-as",
+    "files": [
+      {
+        "path": "src/policy.test.ts",
+        "source": "import { readFileSync } from 'node:fs'; (test as typeof test)('policy', () => { const source = (readFileSync as typeof readFileSync)('workflow.yml', 'utf8'); (expect as typeof expect)(source).toMatch(/permissions/); });"
+      }
+    ],
+    "focusPath": "src/policy.test.ts",
+    "expected": 1
+  },
+  {
+    "rule": "source-coupled-test",
+    "name": "workflow-substring-contract-callee-satisfies",
+    "files": [
+      {
+        "path": "src/policy.test.ts",
+        "source": "import { readFileSync } from 'node:fs'; (test satisfies typeof test)('policy', () => { const source = (readFileSync satisfies typeof readFileSync)('workflow.yml', 'utf8'); (expect satisfies typeof expect)(source).toMatch(/permissions/); });"
+      }
+    ],
+    "focusPath": "src/policy.test.ts",
+    "expected": 1
+  },
+  {
+    "rule": "source-coupled-test",
+    "name": "workflow-substring-contract-callee-non-null",
+    "files": [
+      {
+        "path": "src/policy.test.ts",
+        "source": "import { readFileSync } from 'node:fs'; (test!)('policy', () => { const source = (readFileSync!)('workflow.yml', 'utf8'); (expect!)(source).toMatch(/permissions/); });"
+      }
+    ],
+    "focusPath": "src/policy.test.ts",
+    "expected": 1
+  },
+  {
+    "rule": "source-coupled-test",
+    "name": "workflow-substring-contract-callee-combined",
+    "files": [
+      {
+        "path": "src/policy.test.ts",
+        "source": "import { readFileSync } from 'node:fs'; ((test!) as typeof test)('policy', () => { const source = ((readFileSync!) as typeof readFileSync)('workflow.yml', 'utf8'); ((expect!) as typeof expect)(source).toMatch(/permissions/); });"
+      }
+    ],
+    "focusPath": "src/policy.test.ts",
+    "expected": 1
+  },
+  {
+    "rule": "test-loops-over-literal-cases",
+    "name": "looped-cases-callee-as",
+    "files": [
+      {
+        "path": "src/parser.test.ts",
+        "source": "(test as typeof test)('parses', () => { for (const value of ['a', 'b']) { (expect as typeof expect)((parse as typeof parse)(value)).toBe(value); } });"
+      }
+    ],
+    "focusPath": "src/parser.test.ts",
+    "expected": 1
+  },
+  {
+    "rule": "test-loops-over-literal-cases",
+    "name": "looped-cases-callee-satisfies",
+    "files": [
+      {
+        "path": "src/parser.test.ts",
+        "source": "(test satisfies typeof test)('parses', () => { for (const value of ['a', 'b']) { (expect satisfies typeof expect)((parse satisfies typeof parse)(value)).toBe(value); } });"
+      }
+    ],
+    "focusPath": "src/parser.test.ts",
+    "expected": 1
+  },
+  {
+    "rule": "test-loops-over-literal-cases",
+    "name": "looped-cases-callee-non-null",
+    "files": [
+      {
+        "path": "src/parser.test.ts",
+        "source": "(test!)('parses', () => { for (const value of ['a', 'b']) { (expect!)((parse!)(value)).toBe(value); } });"
+      }
+    ],
+    "focusPath": "src/parser.test.ts",
+    "expected": 1
+  },
+  {
+    "rule": "test-loops-over-literal-cases",
+    "name": "looped-cases-callee-combined",
+    "files": [
+      {
+        "path": "src/parser.test.ts",
+        "source": "((test!) as typeof test)('parses', () => { for (const value of ['a', 'b']) { ((expect!) as typeof expect)(((parse!) as typeof parse)(value)).toBe(value); } });"
+      }
+    ],
+    "focusPath": "src/parser.test.ts",
+    "expected": 1
+  },
+  {
+    "rule": "prefer-module-level-constant",
+    "name": "wrapped-mutation",
+    "files": [
+      {
+        "path": "src/keys.ts",
+        "source": "function f() { const KEYS = [\"a\", \"b\", \"c\"]; (KEYS.push as typeof KEYS.push)(\"d\"); return KEYS.length; }"
+      }
+    ],
+    "focusPath": "src/keys.ts",
+    "expected": 0
+  },
+  {
+    "rule": "prefer-module-level-constant",
+    "name": "wrapped-non-null-mutation",
+    "files": [
+      {
+        "path": "src/keys.ts",
+        "source": "function f() { const KEYS = [\"a\", \"b\", \"c\"]; (KEYS.push!)(\"d\"); return KEYS.length; }"
+      }
+    ],
+    "focusPath": "src/keys.ts",
+    "expected": 0
+  },
+  {
+    "rule": "prefer-module-level-constant",
+    "name": "foreign-freeze",
+    "files": [
+      {
+        "path": "src/keys.ts",
+        "source": "function f(Object: { freeze: (items: string[]) => string[] }) { const KEYS = Object.freeze([\"a\", \"b\", \"c\"]); return KEYS.includes(\"a\"); }"
+      }
+    ],
+    "focusPath": "src/keys.ts",
+    "expected": 0
+  },
+  {
+    "rule": "require-fetch-timeout",
+    "name": "shadowed-call-target",
+    "files": [
+      {
+        "path": "src/client.ts",
+        "source": "function load(fetch: (url: string) => Promise<void>) { return (fetch as typeof fetch)(\"https://api.example.com\"); }"
+      }
+    ],
+    "focusPath": "src/client.ts",
+    "expected": 0
+  },
+  {
+    "rule": "no-json-stringify-object-equality",
+    "name": "foreign-json-call-target",
+    "files": [
+      {
+        "path": "src/equality.ts",
+        "source": "function compare(JSON: { stringify: (value: unknown) => string }, left: object, right: object) { return (JSON.stringify as typeof JSON.stringify)(left) === (JSON.stringify as typeof JSON.stringify)(right); }"
+      }
+    ],
+    "focusPath": "src/equality.ts",
+    "expected": 0
+  },
+  {
+    "rule": "no-first-party-module-mock",
+    "name": "foreign-mock-call-target",
+    "files": [
+      {
+        "path": "src/unit.test.ts",
+        "source": "const vi = { mock: (name: string) => name }; (vi.mock as typeof vi.mock)(\"./module\");"
+      }
+    ],
+    "focusPath": "src/unit.test.ts",
+    "expected": 0
+  },
+  {
+    "rule": "no-production-browser-source-maps",
+    "name": "unknown-overriding-key",
+    "files": [
+      {
+        "path": "next.config.ts",
+        "source": "declare const key: string; export default { [\"productionBrowserSourceMaps\"]: true, [key]: false };"
+      }
+    ],
+    "focusPath": "next.config.ts",
+    "expected": 0
+  },
+  {
+    "rule": "no-dangerously-allow-svg",
+    "name": "static-later-disabled-value",
+    "files": [
+      {
+        "path": "next.config.ts",
+        "source": "export default { [\"images\"]: { [\"dangerouslyAllowSVG\"]: true, dangerouslyAllowSVG: false } };"
+      }
+    ],
+    "focusPath": "next.config.ts",
+    "expected": 0
+  },
+  {
+    "rule": "no-dangerously-allow-svg",
+    "name": "dynamic-later-policy",
+    "files": [
+      {
+        "path": "next.config.ts",
+        "source": "declare const key: string; export default { images: { [\"dangerouslyAllowSVG\"]: true, [key]: false } };"
+      }
+    ],
+    "focusPath": "next.config.ts",
+    "expected": 0
+  },
+  {
+    "rule": "no-cors-wildcard-with-credentials",
+    "name": "safe-static-origin",
+    "files": [
+      {
+        "path": "src/response.ts",
+        "source": "const headers = { [\"Access-Control-Allow-Origin\"]: \"https://example.com\", [\"Access-Control-Allow-Credentials\"]: \"true\" };"
+      }
+    ],
+    "focusPath": "src/response.ts",
+    "expected": 0
+  },
+  {
+    "rule": "prefer-server-actions",
+    "name": "safe-static-read-method",
+    "files": [
+      {
+        "path": "app/page.tsx",
+        "source": "\"use client\"; await fetch(\"/api/items\", { [\"method\"]: \"GET\" });\nexport {};"
+      }
+    ],
+    "focusPath": "app/page.tsx",
+    "expected": 0
+  },
+  {
+    "rule": "prefer-zod-infer",
+    "name": "dynamic-schema-key",
+    "files": [
+      {
+        "path": "src/schema.ts",
+        "source": "import { z } from \"zod\"; declare const key: string; const RowSchema = z.object({ [key]: z.string() }); interface Row { id: string };"
+      }
+    ],
+    "focusPath": "src/schema.ts",
+    "expected": 0
+  }
+]

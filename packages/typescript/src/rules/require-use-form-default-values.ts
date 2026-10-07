@@ -85,7 +85,8 @@ export default createRule<Options, MessageIds>({
         (value.type === AST_NODE_TYPES.Identifier && value.name === "undefined" && (bindingOf(value)?.defs.length ?? 0) === 0);
     };
     const uninitializedUseFormCall = (node: TSESTree.Node): boolean => {
-      if (node.type !== AST_NODE_TYPES.CallExpression || node.callee.type !== AST_NODE_TYPES.Identifier || importedKind(node.callee) !== "useForm") return false;
+      const unwrappedNodeCallee = node.type === "CallExpression" || node.type === "NewExpression" ? unwrapExpression(node.callee) : null;
+      if (node.type !== AST_NODE_TYPES.CallExpression || unwrappedNodeCallee?.type !== AST_NODE_TYPES.Identifier || importedKind(unwrappedNodeCallee) !== "useForm") return false;
       const options = node.arguments[0];
       return options?.type !== AST_NODE_TYPES.SpreadElement && initializationState(options) === "uninitialized";
     };
@@ -177,7 +178,8 @@ export default createRule<Options, MessageIds>({
         }
       },
       CallExpression(node): void {
-        if (node.callee.type !== AST_NODE_TYPES.Identifier || importedKind(node.callee) !== "useController" ||
+        const unwrappedNodeCallee = unwrapExpression(node.callee);
+        if (unwrappedNodeCallee.type !== AST_NODE_TYPES.Identifier || importedKind(unwrappedNodeCallee) !== "useController" ||
           !fieldOptionsNeedDefault(node.arguments[0]?.type === AST_NODE_TYPES.SpreadElement ? undefined : node.arguments[0])) return;
         context.report({ node, messageId: "requireUseFormDefaultValues" });
       },

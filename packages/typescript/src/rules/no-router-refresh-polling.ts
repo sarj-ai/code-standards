@@ -55,6 +55,7 @@ function isIntervalCallee(
   sourceCode: Readonly<{ getScope(node: TSESTree.Node): TSESLint.Scope.Scope }>,
   node: TSESTree.Expression,
 ): boolean {
+  node = unwrapExpression(node);
   return node.type === AST_NODE_TYPES.Identifier && node.name === "setInterval" &&
       isUnshadowedGlobal(sourceCode, node) ||
     node.type === AST_NODE_TYPES.MemberExpression &&
@@ -101,19 +102,21 @@ export default createRule<Options, MessageIds>({
       VariableDeclarator(node): void {
         if (
           node.id.type === AST_NODE_TYPES.Identifier &&
-          node.init?.type === AST_NODE_TYPES.CallExpression &&
-          node.init.callee.type === AST_NODE_TYPES.Identifier
+          node.init?.type === AST_NODE_TYPES.CallExpression
         ) {
-          const hook = ASTUtils.findVariable(context.sourceCode.getScope(node.init.callee), node.init.callee.name);
+          const hookCallee = unwrapExpression(node.init.callee);
+          if (hookCallee.type !== AST_NODE_TYPES.Identifier) return;
+          const hook = ASTUtils.findVariable(context.sourceCode.getScope(hookCallee), hookCallee.name);
           const router = ASTUtils.findVariable(context.sourceCode.getScope(node.id), node.id.name);
           if (hook !== null && router !== null && routerHooks.has(hook)) routers.add(router);
         }
       },
       CallExpression(node): void {
-        const receiver = node.callee.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(node.callee.object) : node.callee;
+        const unwrappedNodeCallee = unwrapExpression(node.callee);
+        const receiver = unwrappedNodeCallee.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(unwrappedNodeCallee.object) : unwrappedNodeCallee;
         if (
-          node.callee.type !== AST_NODE_TYPES.MemberExpression || receiver.type !== AST_NODE_TYPES.Identifier ||
-          ASTUtils.getPropertyName(node.callee) === null || (ASTUtils.getPropertyName(node.callee) ?? "") !== "refresh"
+          unwrappedNodeCallee.type !== AST_NODE_TYPES.MemberExpression || receiver.type !== AST_NODE_TYPES.Identifier ||
+          ASTUtils.getPropertyName(unwrappedNodeCallee) === null || (ASTUtils.getPropertyName(unwrappedNodeCallee) ?? "") !== "refresh"
         ) return;
         const router = ASTUtils.findVariable(
           context.sourceCode.getScope(receiver),

@@ -52,6 +52,7 @@ export const LOGGING_OPTION_PROPERTIES = {
 
 /** The static callee name of a call (free function or method), or null. */
 export function calleeName(callee: TSESTree.Node): string | null {
+  callee = unwrapExpression(callee);
   if (callee.type === "Identifier") {
     return callee.name;
   }
@@ -94,7 +95,7 @@ export function createLogMatcher(options: LoggingOptions = {}): LogMatcher {
         return isLoggerReceiver(object);
       }
       case "CallExpression": {
-        const callee = expr.callee;
+        const callee = unwrapExpression(expr.callee);
         const name = callee.type === "MemberExpression" ? ASTUtils.getPropertyName(callee) : null;
         if (name !== null && LOGGER_FACTORIES.has(name.toLowerCase())) {
           return true;
@@ -124,7 +125,7 @@ export function createLogMatcher(options: LoggingOptions = {}): LogMatcher {
     if (isLogFunctionCall(expr)) {
       return true;
     }
-    const callee = expr.callee;
+    const callee = unwrapExpression(expr.callee);
     const calleeReceiver = callee.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(callee.object) : callee;
     if (callee.type !== "MemberExpression") return false;
     const name = ASTUtils.getPropertyName(callee);

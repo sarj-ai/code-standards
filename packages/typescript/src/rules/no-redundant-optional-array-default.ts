@@ -122,7 +122,7 @@ export default createRule<Options, MessageIds>({
 
     function isArraySchemaExpression(node: TSESTree.Node): boolean {
       if (node.type !== AST_NODE_TYPES.CallExpression) return false;
-      const { callee } = node;
+      const callee = unwrapExpression(node.callee);
       const calleeReceiver = callee.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(callee.object) : callee;
       if (callee.type === AST_NODE_TYPES.Identifier) {
         return arrayConstructors.has(callee.name) && resolvesToTrackedImport(callee);
@@ -142,7 +142,7 @@ export default createRule<Options, MessageIds>({
 
     function isZodSchemaExpression(node: TSESTree.Node): boolean {
       if (node.type !== AST_NODE_TYPES.CallExpression) return false;
-      const { callee } = node;
+      const callee = unwrapExpression(node.callee);
       const calleeReceiver = callee.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(callee.object) : callee;
       if (callee.type === AST_NODE_TYPES.Identifier) {
         return resolvesToTrackedImport(callee);
@@ -183,7 +183,8 @@ export default createRule<Options, MessageIds>({
         }
       },
       CallExpression(node: TSESTree.CallExpression): void {
-        const defaultCallee = node.callee;
+        const defaultCallee = unwrapExpression(node.callee);
+
         const defaultCalleeReceiver = defaultCallee.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(defaultCallee.object) : defaultCallee;
         if (
           defaultCallee.type !== AST_NODE_TYPES.MemberExpression ||
@@ -193,7 +194,7 @@ export default createRule<Options, MessageIds>({
           return;
         }
         const optionalCall = defaultCalleeReceiver;
-        const optionalCallee = optionalCall.callee;
+        const optionalCallee = unwrapExpression(optionalCall.callee);
         const optionalCalleeReceiver = optionalCallee.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(optionalCallee.object) : optionalCallee;
         if (
           optionalCallee.type !== AST_NODE_TYPES.MemberExpression ||

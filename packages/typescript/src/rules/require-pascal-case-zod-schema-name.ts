@@ -109,7 +109,7 @@ const calleeChainRoot = (node: TSESTree.Node): TSESTree.Identifier | null => {
       continue;
     }
     if (current.type === AST_NODE_TYPES.CallExpression) {
-      current = current.callee;
+      current = unwrapExpression(current.callee);
       continue;
     }
     return null;
@@ -128,7 +128,7 @@ const chainMemberNames = (node: TSESTree.Node): readonly string[] => {
       continue;
     }
     if (current.type === AST_NODE_TYPES.CallExpression) {
-      current = current.callee;
+      current = unwrapExpression(current.callee);
       continue;
     }
     break;
@@ -179,18 +179,20 @@ export default createRule<Options, MessageIds>({
     function isConfirmedSchema(expression: TSESTree.Expression): boolean {
       const init = unwrapExpression(expression);
       if (init.type === AST_NODE_TYPES.Identifier) return isSchemaBinding(init);
-      if (init.type !== AST_NODE_TYPES.CallExpression || init.callee.type !== AST_NODE_TYPES.MemberExpression) {
+      if (init.type !== AST_NODE_TYPES.CallExpression) return false;
+      const callee = unwrapExpression(init.callee);
+      if (callee.type !== AST_NODE_TYPES.MemberExpression) {
         return false;
       }
-      const terminal = terminalMethodName(init.callee);
+      const terminal = terminalMethodName(callee);
       if (terminal === null || NON_SCHEMA_TERMINALS.has(terminal)) return false;
-      const names = chainMemberNames(init.callee);
+      const names = chainMemberNames(callee);
       if (names.length === 0) return false;
-      if (isZodChain(init.callee)) {
+      if (isZodChain(callee)) {
         return ZOD_SCHEMA_FACTORIES.has(names[0] ?? "") ||
           (ZOD_FACTORY_NAMESPACES.has(names[0] ?? "") && ZOD_SCHEMA_FACTORIES.has(names[1] ?? ""));
       }
-      const root = calleeChainRoot(init.callee);
+      const root = calleeChainRoot(callee);
       return root !== null && isSchemaBinding(root) && SCHEMA_RETURNING_METHODS.has(terminal);
     }
 

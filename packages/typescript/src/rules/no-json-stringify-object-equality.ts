@@ -81,7 +81,7 @@ function jsonStringifyArgument(
 ): TSESTree.Expression | null {
   const expression = unwrapComparisonExpression(node);
   if (expression.type !== AST_NODE_TYPES.CallExpression) return null;
-  const { callee } = expression;
+  const callee = unwrapExpression(expression.callee);
   const calleeReceiver = callee.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(callee.object) : callee;
   if (
     callee.type !== AST_NODE_TYPES.MemberExpression ||

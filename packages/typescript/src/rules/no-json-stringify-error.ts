@@ -107,11 +107,12 @@ function instanceofErrorSubject(
 function typeGuardSubject(
   test: TSESTree.Expression,
 ): TSESTree.Expression | null {
+  const unwrappedTestCallee = test.type === "CallExpression" || test.type === "NewExpression" ? unwrapExpression(test.callee) : null;
   const arg = test.type === "CallExpression" ? test.arguments[0] : undefined;
   if (
     test.type === "CallExpression" &&
-    test.callee.type === "Identifier" &&
-    TYPE_GUARD_PATTERN.test(test.callee.name) &&
+    unwrappedTestCallee?.type === "Identifier" &&
+    TYPE_GUARD_PATTERN.test(unwrappedTestCallee.name) &&
     test.arguments.length === 1 &&
     arg !== undefined &&
     arg.type !== "SpreadElement"
@@ -212,7 +213,7 @@ function directLiteralValues(
 ): readonly TSESTree.Expression[] {
   if (argument.type === "ObjectExpression") {
     return argument.properties.flatMap((property) => {
-      if (property.type !== "Property" || property.computed) return [];
+      if (property.type !== "Property" || ASTUtils.getPropertyName(property) === null) return [];
       const value = property.value;
       if (
         value.type === "AssignmentPattern" ||
@@ -237,14 +238,15 @@ function expressionSuggestsError(
   expression: TSESTree.Expression,
   scope: Scope.Scope,
 ): boolean {
+  const unwrappedExpressionCallee = expression.type === "CallExpression" || expression.type === "NewExpression" ? unwrapExpression(expression.callee) : null;
   if (expression.type === "Identifier") {
     return identifierIsProvenError(expression, scope);
   }
   if (
     expression.type === "NewExpression" &&
-    expression.callee.type === "Identifier"
+    unwrappedExpressionCallee?.type === "Identifier"
   ) {
-    return BUILTIN_ERROR_CONSTRUCTORS.has(expression.callee.name) && isGlobalIdentifier(expression.callee.name, scope);
+    return BUILTIN_ERROR_CONSTRUCTORS.has(unwrappedExpressionCallee.name) && isGlobalIdentifier(unwrappedExpressionCallee.name, scope);
   }
   return (
     expression.type === "MemberExpression" &&
@@ -296,7 +298,8 @@ export default createRule<Options, MessageIds>({
   create(context) {
     return {
       CallExpression(node: TSESTree.CallExpression): void {
-        if (!isJsonStringify(node.callee)) {
+        const unwrappedNodeCallee = unwrapExpression(node.callee);
+        if (!isJsonStringify(unwrappedNodeCallee)) {
           return;
         }
 

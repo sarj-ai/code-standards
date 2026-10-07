@@ -63,6 +63,7 @@ interface Assertion {
 }
 
 function literalText(node: TSESTree.Node, getText: (node: TSESTree.Node) => string): string | null {
+  node = unwrapExpression(node);
   switch (node.type) {
     case AST_NODE_TYPES.Literal:
       return "regex" in node ? null : getText(node);
@@ -274,22 +275,23 @@ export default createRule<Options, MessageIds>({
       if (call.type !== AST_NODE_TYPES.CallExpression) {
         return null;
       }
-      const callee = call.callee;
+      const callee = unwrapExpression(call.callee);
       const calleeReceiver = callee.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(callee.object) : callee;
       if (callee.type !== AST_NODE_TYPES.MemberExpression) return null;
       const matcher = ASTUtils.getPropertyName(callee);
       if (matcher === null) return null;
       const expectCall = calleeReceiver;
+      const expectCallee = expectCall.type === AST_NODE_TYPES.CallExpression ? unwrapExpression(expectCall.callee) : null;
       if (
         expectCall.type !== AST_NODE_TYPES.CallExpression ||
-        expectCall.callee.type !== AST_NODE_TYPES.Identifier ||
-        expectCall.callee.name !== "expect" ||
+        expectCallee?.type !== AST_NODE_TYPES.Identifier ||
+        expectCallee.name !== "expect" ||
         expectCall.arguments.length !== 1
       ) {
         return null;
       }
       const actual = expectCall.arguments[0];
-      if (!isTestExpect(expectCall.callee)) return null;
+      if (!isTestExpect(expectCallee)) return null;
       if (actual === undefined || actual.type !== AST_NODE_TYPES.MemberExpression || actual.optional) {
         return null;
       }

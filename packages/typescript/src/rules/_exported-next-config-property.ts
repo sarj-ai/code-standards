@@ -27,7 +27,7 @@ export function exportedNextConfigProperty(
   let current: TSESTree.Node | null = resolve(exported);
   let selected: TSESTree.Property | null = null;
   for (const name of path) {
-    if (current?.type !== "ObjectExpression" || current.properties.some((property) => property.type !== "Property" || property.computed || property.kind !== "init")) return null;
+    if (current?.type !== "ObjectExpression" || current.properties.some((property) => property.type !== "Property" || ASTUtils.getPropertyName(property) === null || property.kind !== "init")) return null;
     selected = objectProperty(current, name);
     if (selected === null) return null;
     current = resolve(selected.value);
@@ -53,7 +53,7 @@ function objectProperty(node: TSESTree.ObjectExpression, name: string): TSESTree
   let selected: TSESTree.Property | null = null;
   for (const property of node.properties) {
     if (property.type !== "Property") continue;
-    const key = property.key.type === "Identifier" ? property.key.name : property.key.type === "Literal" ? property.key.value : null;
+    const key = ASTUtils.getPropertyName(property);
     if (key === name) selected = property;
   }
   return selected;

@@ -324,6 +324,7 @@ export default createRule<Options, MessageIds>({
     )
       return {};
     function knownNonDatabase(node: TSESTree.Node, seen = new Set<TSESTree.Node>()): boolean {
+      const unwrappedNodeCallee = node.type === "CallExpression" || node.type === "NewExpression" ? unwrapExpression(node.callee) : null;
       if (seen.has(node)) return false;
       seen.add(node);
       if (node.type === AST_NODE_TYPES.Identifier) {
@@ -332,26 +333,27 @@ export default createRule<Options, MessageIds>({
         const definition = binding.defs[0];
         return definition?.type === "Variable" && definition.node.init !== null && knownNonDatabase(definition.node.init, seen);
       }
-      return node.type === AST_NODE_TYPES.NewExpression && node.callee.type === AST_NODE_TYPES.Identifier &&
-        ["Map", "WeakMap", "URLSearchParams"].includes(node.callee.name) &&
-        (ASTUtils.findVariable(context.sourceCode.getScope(node.callee), node.callee.name)?.defs.length ?? 0) === 0;
+      return node.type === AST_NODE_TYPES.NewExpression && unwrappedNodeCallee?.type === AST_NODE_TYPES.Identifier &&
+        ["Map", "WeakMap", "URLSearchParams"].includes(unwrappedNodeCallee.name) &&
+        (ASTUtils.findVariable(context.sourceCode.getScope(unwrappedNodeCallee), unwrappedNodeCallee.name)?.defs.length ?? 0) === 0;
     }
     return {
       CallExpression(node): void {
+        const unwrappedNodeCallee = unwrapExpression(node.callee);
         if (
-          node.callee.type !== AST_NODE_TYPES.MemberExpression
+          unwrappedNodeCallee.type !== AST_NODE_TYPES.MemberExpression
         )
           return;
-        const method = ASTUtils.getPropertyName(node.callee);
-        if (knownNonDatabase(node.callee.object)) return;
+        const method = ASTUtils.getPropertyName(unwrappedNodeCallee);
+        if (knownNonDatabase(unwrappedNodeCallee.object)) return;
         if (
           method === null ||
-          !isDatabaseOperation(method, node.callee.object)
+          !isDatabaseOperation(method, unwrappedNodeCallee.object)
         )
           return;
         const owner = owningClass(node);
         if (owner !== null) {
-          const root = databaseRootMember(node.callee.object);
+          const root = databaseRootMember(unwrappedNodeCallee.object);
           if (root !== null && injectedMembers(owner).has(root)) return;
         }
         context.report({ node, messageId: "moveSqlIntoClass" });

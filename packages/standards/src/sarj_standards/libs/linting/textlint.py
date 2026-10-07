@@ -137,6 +137,9 @@ _TEXT_SUFFIXES: Final = frozenset(
     }
 )
 _TEXT_NAMES: Final = frozenset({"dockerfile", "gnumakefile", "justfile", "makefile"})
+_TEXT_ENCODINGS: Final[dict[str, str]] = dict.fromkeys(
+    (".md", ".markdown", ".json", ".jsonc", ".yaml", ".yml"), "utf-8-sig"
+)
 _OPERATIONAL_ROOTS: Final = frozenset(
     {"cloudbuild", "deploy", "deployments", "iac", "infra", "k8s", "scripts", "terraform", "tools"}
 )
@@ -1037,7 +1040,7 @@ def check_paths(
     for raw in paths:
         path = Path(raw)
         try:
-            source = path.read_text(encoding="utf-8")
+            source = path.read_text(encoding=_TEXT_ENCODINGS.get(path.suffix.casefold(), "utf-8"))
         except UnicodeDecodeError:
             continue
         relative = _relative(path.resolve(), base)

@@ -6,6 +6,8 @@
 
 import { ASTUtils, AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 
+import { unwrapExpression } from "./_unwrap-expression.js";
+
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { sqlSingleQuotedRanges, stripSqlNoise } from "./_sql.js";
 
@@ -223,7 +225,8 @@ function statementMethodName(
   node: TSESTree.CallExpression,
   methods: ReadonlySet<string>,
 ): string | null {
-  const callee = node.callee;
+  const callee = unwrapExpression(node.callee);
+
   if (
     callee.type !== AST_NODE_TYPES.MemberExpression ||
     ASTUtils.getPropertyName(callee) === null

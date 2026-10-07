@@ -12,6 +12,8 @@ import {
   type TSESTree,
   type TSESLint,
 } from "@typescript-eslint/utils";
+
+import { unwrapExpression } from "./_unwrap-expression.js";
 import ts from "typescript";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
@@ -185,7 +187,8 @@ export default createRule<Options, MessageIds>({
     if (services === null) return {};
     return {
       CallExpression(node): void {
-        const callee = node.callee;
+        const callee = unwrapExpression(node.callee);
+
         const callback = node.arguments[0];
         if (
           node.arguments.length !== 1 ||
