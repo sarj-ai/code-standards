@@ -106,12 +106,18 @@ def test_release_conditions_reference_declared_dependencies() -> None:
         assert referenced.issubset(dependencies), f"{name}: undeclared needs {referenced.difference(dependencies)}"
 
 
-def test_release_status_reports_queue_time_and_latest_attempt(tmp_path: Path) -> None:
+@pytest.mark.parametrize("latest_conclusion", ["success", "failure", ""])
+@pytest.mark.parametrize("duplicate_conclusion", ["cancelled", "skipped"])
+def test_release_status_reports_queue_time_and_latest_attempt(
+    tmp_path: Path,
+    latest_conclusion: str,
+    duplicate_conclusion: str,
+) -> None:
     runs = [
         {
             "databaseId": identifier,
             "workflowName": "release",
-            "status": "completed",
+            "status": "completed" if conclusion else "in_progress",
             "conclusion": conclusion,
             "createdAt": created,
             "updatedAt": "2026-10-07T15:00:00Z",
@@ -120,7 +126,8 @@ def test_release_status_reports_queue_time_and_latest_attempt(tmp_path: Path) ->
         }
         for identifier, conclusion, created in (
             (1, "failure", "2026-10-07T14:00:00Z"),
-            (2, "success", "2026-10-07T14:30:00Z"),
+            (2, latest_conclusion, "2026-10-07T14:30:00Z"),
+            (3, duplicate_conclusion, "2026-10-07T14:45:00Z"),
         )
     ]
 
@@ -151,7 +158,7 @@ def test_release_status_reports_queue_time_and_latest_attempt(tmp_path: Path) ->
 
     report = release_status(tmp_path, runner=runner, now=datetime(2026, 10, 7, 15, tzinfo=UTC))
     stage = next(item for item in report.workflows if item.workflow == "release")
-    assert stage.status == "success"
+    assert stage.status == (latest_conclusion or "in_progress")
     assert stage.elapsed_seconds == 1800
     assert stage.queue_seconds == 600
     assert stage.jobs[0].elapsed_seconds == 600

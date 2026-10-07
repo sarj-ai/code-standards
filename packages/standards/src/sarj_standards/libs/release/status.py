@@ -97,7 +97,11 @@ def release_status(
     )
     runs = _Runs.model_validate_json(result.stdout).root
     latest: dict[str, _Run] = {}
-    for run in sorted(runs, key=lambda item: item.created_at, reverse=True):
+    for run in sorted(
+        runs,
+        key=lambda item: (item.conclusion not in {"cancelled", "skipped"}, item.created_at),
+        reverse=True,
+    ):
         if run.head_sha == sha and run.workflow_name in _WORKFLOWS:
             latest.setdefault(run.workflow_name, run)
     current = datetime.now(UTC) if now is None else now
