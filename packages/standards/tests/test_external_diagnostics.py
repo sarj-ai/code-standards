@@ -48,9 +48,13 @@ def _write_detekt_report(command: Sequence[str], payload: str = '{"runs":[]}') -
     return path
 
 
-def _eslint_clean_payload(argv: Sequence[str], cwd: Path) -> str:
+def _eslint_files(argv: Sequence[str]) -> Sequence[str]:
     boundary = max(index for index, value in enumerate(argv) if value == "--") + 1
-    return json.dumps([{"filePath": str((cwd / value).resolve()), "messages": []} for value in argv[boundary:]])
+    return argv[boundary:]
+
+
+def _eslint_clean_payload(argv: Sequence[str], cwd: Path) -> str:
+    return json.dumps([{"filePath": str((cwd / value).resolve()), "messages": []} for value in _eslint_files(argv)])
 
 
 def test_eslint_passes_on_unpruned_suppressions_only_when_requested() -> None:
@@ -229,20 +233,33 @@ def test_deptry_skips_python_without_dependency_metadata(tmp_path: Path) -> None
 
 
 @pytest.mark.parametrize("select_directories", [False, True])
-def test_eslint_batches_preserve_every_file_and_project_boundary(tmp_path: Path, select_directories: bool) -> None:
+@pytest.mark.parametrize(
+    ("separate_configs", "expected_counts", "expected_projects"),
+    [(False, [250, 2], [{"alpha"}, {"alpha", "beta"}]), (True, [250, 1, 1], [{"alpha"}, {"alpha"}, {"beta"}])],
+)
+def test_eslint_batches_preserve_every_file_and_configuration_owner(
+    tmp_path: Path,
+    select_directories: bool,
+    separate_configs: bool,
+    expected_counts: list[int],
+    expected_projects: list[set[str]],
+) -> None:
     for project in ("apps/alpha", "apps/beta"):
         directory = tmp_path / project
         directory.mkdir(parents=True)
         (directory / "tsconfig.json").write_text("{}\n", encoding="utf-8")
+        if separate_configs:
+            (directory / "eslint.config.mjs").write_text("export default [];\n", encoding="utf-8")
     (tmp_path / "eslint.config.mjs").write_text("export default [];\n", encoding="utf-8")
     paths = [*(f"apps/alpha/item-{index:03}.ts" for index in range(251)), "apps/beta/item.ts"]
     for relative in paths:
         (tmp_path / relative).write_text("export const value = 1;\n", encoding="utf-8")
-    calls: list[tuple[str, ...]] = []
+    calls: list[tuple[Path, tuple[str, ...]]] = []
+    expected_cwds = {tmp_path / "apps/alpha", tmp_path / "apps/beta"} if separate_configs else {tmp_path}
 
     def run(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
-        assert cwd == tmp_path
-        calls.append(tuple(argv))
+        assert cwd in expected_cwds
+        calls.append((cwd, tuple(argv)))
         return ProcessOutput(0, _eslint_clean_payload(argv, cwd), "")
 
     selection = ["apps/alpha", "apps/beta"] if select_directories else paths
@@ -255,12 +272,12 @@ def test_eslint_batches_preserve_every_file_and_project_boundary(tmp_path: Path,
         grouped=GroupedPaths(typescript=selection),
     )
 
-    selected = [list(argv[max(index for index, value in enumerate(argv) if value == "--") + 1 :]) for argv in calls]
+    selected = [[(cwd / file).relative_to(tmp_path).as_posix() for file in _eslint_files(argv)] for cwd, argv in calls]
     assert sorted(file for batch in selected for file in batch) == sorted(paths)
-    assert sorted(map(len, selected)) == [1, 1, 250]
-    assert all(len({Path(file).parts[1] for file in batch}) == 1 for batch in selected)
-    assert len({report.invocation_id for report in reports}) == 3
-    assert [report.file_count for report in reports] == [250, 1, 1]
+    assert list(map(len, selected)) == expected_counts
+    assert [{Path(file).parts[1] for file in batch} for batch in selected] == expected_projects
+    assert len({report.invocation_id for report in reports}) == len(expected_counts)
+    assert [report.file_count for report in reports] == expected_counts
     assert all(report.completion is Completion.COMPLETE for report in reports)
 
 
