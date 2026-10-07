@@ -109,20 +109,23 @@ def test_release_waits_for_exact_revision_safety_checks() -> None:
     assert (
         "timed out waiting for $expected_name" in release
     )  # sarj-noqa: SARJ402 -- workflow text is the release-gate contract
-    assert (
-        release.count("needs: [detect, release-safety]") == 5
-    )  # sarj-noqa: SARJ402 -- workflow text is the release-gate contract
-    assert (
-        "needs.release-safety.result == 'success'" in release
-    )  # sarj-noqa: SARJ402 -- workflow text is the release-gate contract
+    for package in ("typescript", "bootstrap", "contracts", "python", "sql", "iac", "standards", "tsconfig"):
+        publisher = re.search(rf"(?ms)^  publish-{package}:\n.*?(?=^  [a-zA-Z0-9_-]+:\n|\Z)", release)
+        assert publisher is not None
+        assert (  # sarj-noqa: SARJ402 -- exact-revision safety now gates every publisher
+            "release-safety" in publisher[0]
+        )
+        assert (  # sarj-noqa: SARJ402 -- a failed exact-revision check must prevent publication
+            "needs.release-safety.result == 'success'" in publisher[0]
+        )
+        assert (  # sarj-noqa: SARJ402 -- publication must retain successful artifact verification
+            f"needs.build-{package}.result == 'success'" in publisher[0]
+        )
     for package in ("python", "sql", "iac"):
         job = re.search(rf"(?ms)^  build-{package}:\n.*?(?=^  [a-zA-Z0-9_-]+:\n|\Z)", release)
         assert job is not None
         assert (  # sarj-noqa: SARJ402 -- workflow text is the core publication gate contract
-            "needs: [detect, release-safety, publish-contracts]" in job[0]
-        )
-        assert (  # sarj-noqa: SARJ402 -- workflow text is the core publication gate contract
-            "needs.release-safety.result == 'success'" in job[0]
+            "needs: [detect, publish-contracts]" in job[0]
         )
         assert (  # sarj-noqa: SARJ402 -- workflow text is the core publication gate contract
             "needs.publish-contracts.result == 'success' || needs.publish-contracts.result == 'skipped'" in job[0]

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import timedelta
 import json
@@ -57,6 +58,25 @@ class PublicationChecker(Protocol):
 _EXACT_DEPENDENCY = re.compile(r"^(?P<name>[A-Za-z0-9_.-]+)==(?P<version>[^;\s]+)$")
 _HTTP_OK = 200
 _HTTP_NOT_FOUND = 404
+
+
+def publication_results(
+    requirements: Sequence[RegistryRequirement],
+    *,
+    checker: PublicationChecker,
+) -> dict[RegistryRequirement, bool | OSError]:
+    unique = tuple(dict.fromkeys(requirements))
+    if not unique:
+        return {}
+
+    def probe(requirement: RegistryRequirement) -> bool | OSError:
+        try:
+            return checker(requirement)
+        except OSError as exc:
+            return exc
+
+    with ThreadPoolExecutor(max_workers=min(4, len(unique))) as executor:
+        return dict(zip(unique, executor.map(probe, unique), strict=True))
 
 
 def target_requirement(root: Path, target_name: str) -> RegistryRequirement:
@@ -192,8 +212,12 @@ def require_lint_config_dependencies(
     checker: PublicationChecker = publication_exists,
 ) -> tuple[RegistryRequirement, ...]:
     requirements = lint_config_requirements(root)
-    for requirement in requirements:
-        require_publication(requirement, checker=checker)
+    for requirement, result in publication_results(requirements, checker=checker).items():
+        if isinstance(result, OSError):
+            raise result
+        if not result:
+            msg = f"{requirement.registry} publication is unavailable: {requirement.name}@{requirement.version}"
+            raise ValueError(msg)
     return requirements
 
 
@@ -216,11 +240,9 @@ def wait_for_lint_config_dependencies(
     missing = set(requirements)
     last_errors: dict[RegistryRequirement, str] = {}
     for attempt in range(attempts):
-        for requirement in tuple(sorted(missing)):
-            try:
-                available = checker(requirement)
-            except OSError as exc:
-                last_errors[requirement] = f"{type(exc).__name__}: {exc}"
+        for requirement, available in publication_results(tuple(sorted(missing)), checker=checker).items():
+            if isinstance(available, OSError):
+                last_errors[requirement] = f"{type(available).__name__}: {available}"
                 continue
             if available:
                 missing.remove(requirement)

@@ -129,7 +129,7 @@ def _run_release_tag_preflight(
 
 def test_lint_config_release_waits_for_typescript_and_preflights_registry() -> None:
     workflow = (REPO_ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
-    lint_config_job = workflow.split("  build-standards:", 1)[1].split("  publish-standards:", 1)[0]
+    lint_config_job = workflow.split("  publish-standards:", 1)[1].split("  build-tsconfig:", 1)[0]
 
     assert "- publish-typescript" in lint_config_job
     assert "- publish-bootstrap" in lint_config_job
