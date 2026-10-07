@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from sarj_python_lint.rule_base import Severity
+from sarj_python_lint.rule_base import AutofixPolicy, Severity
 from sarj_python_lint.rules.prefer_collection_comprehension import PreferCollectionComprehension
 
 
@@ -388,3 +388,280 @@ def test_comprehension_local_names_do_not_leak(projection: str, placement: str) 
 def test_comprehension_outer_reads_and_walrus_bindings_remain_observable(projection: str) -> None:
     source = f"def views(rows):\n    ids = {projection}\n    result = {{}}\n    for row in rows:\n        result[row.id] = Entry(row.id)\n    return result\n"
     assert _check(source) == []
+
+
+@pytest.mark.parametrize("observer", ["locals().get('row')", "vars().get('row')", "eval('row')"])
+def test_excludes_observed_local_namespace(observer: str) -> None:
+    source = f"def build(rows):\n    result = {{}}\n    for row in rows:\n        result[row.id] = Entry(row.id)\n    return result, {observer}\n"
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    "constructor", ["def Entry(value):\n        return len(result)", "Entry = lambda value: len(result)"]
+)
+def test_excludes_constructor_capturing_destination(constructor: str) -> None:
+    source = f"def build(rows):\n    {constructor}\n    result = {{}}\n    for row in rows:\n        result[row.id] = Entry(row)\n    return result\n"
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    "statement",
+    [
+        "result[row.id] = {expression}",
+        "result[{expression}] = Entry(row.id)",
+        "result[row.id] = Entry(raw={expression})",
+    ],
+)
+def test_deep_projection_does_not_crash(statement: str) -> None:
+    expression = "row" + ".value" * 500
+    source = f"def build(rows):\n    result = {{}}\n    for row in rows:\n        {statement.format(expression=expression)}\n    return result\n"
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize("placement", ["before", "after"])
+def test_first_generator_binding_stays_local_in_later_generators(placement: str) -> None:
+    statement = "    ids = [row.id for row in rows for tag in row.tags]\n"
+    before = statement if placement == "before" else ""
+    after = statement if placement == "after" else ""
+    source = f"def build(rows):\n{before}    result = {{}}\n    for row in rows:\n        result[row.id] = Entry(row.id)\n{after}    return result\n"
+    assert len(_check(source)) == 1
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "Entry(row.id)",
+        "Entry(first=row.id, second=row.name, third=row.phone, fourth=row.cap, fifth=row.active, sixth=row.status)",
+    ],
+)
+def test_conditional_iterable_serializes_as_valid_comprehension(value: str) -> None:
+    source = f"def build(rows, others, flag):\n    result = {{}}\n    for row in (rows if flag else others):\n        result[row.id] = {value}\n    return result\n"
+    assert len(_check(source)) == 1
+
+
+@pytest.mark.parametrize("value", ["row.value", "Entry(row.value)"])
+@pytest.mark.parametrize(
+    "body",
+    [
+        "if row.active:\n            result[row.id] = {value}",
+        "if not row.active:\n            continue\n        result[row.id] = {value}",
+    ],
+    ids=["if", "continue"],
+)
+def test_flags_filtered_dictionary_projections(value: str, body: str) -> None:
+    source = f"def build(rows):\n    result = {{}}\n    for row in rows:\n        {body.format(value=value)}\n    return result\n"
+
+    assert [(finding.line, finding.message) for finding in _check(source)] == [
+        (3, "This loop only filters and populates fresh dict 'result' — prefer a filtered dict comprehension."),
+    ]
+
+
+def test_flags_filtered_set_continue_guard() -> None:
+    source = """def build(rows):
+    result = set()
+    for row in rows:
+        if not row.active:
+            continue
+        result.add(row.id)
+    return result
+"""
+
+    assert [(finding.line, finding.code) for finding in _check(source)] == [(3, "SARJ430")]
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "if result.get(row.id):\n            result[row.id] = Entry(row)",
+        "if enabled := row.active:\n            result[row.id] = Entry(row)",
+        "if row.active:\n            result[row.id] = Entry(row)\n        else:\n            audit(row)",
+        "if not row.active:\n            audit(row)\n            continue\n        result[row.id] = Entry(row)",
+        "if not row.active:\n            continue\n        if row.valid:\n            result[row.id] = Entry(row)",
+    ],
+)
+def test_excludes_filtered_dictionary_guards_with_additional_behavior(body: str) -> None:
+    source = f"def build(rows):\n    result = {{}}\n    for row in rows:\n        {body}\n    return result\n"
+
+    assert _check(source) == []
+
+
+def test_filtered_constructor_width_gate_includes_guard() -> None:
+    guard = "row." + "requires_a_deliberately_oversized_guard_" * 4
+    source = (
+        "def build(rows):\n"
+        "    result = {}\n"
+        "    for row in rows:\n"
+        f"        if {guard}:\n"
+        "            result[row.id] = Entry(first=row.value, second=row.id, third=row.active, fourth=row.valid)\n"
+        "    return result\n"
+    )
+
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    ("imports", "observer"),
+    [
+        ("from builtins import locals as snapshot", "snapshot()"),
+        ("from builtins import vars as snapshot", "snapshot()"),
+        ("from builtins import eval as evaluate", "evaluate('row')"),
+        ("import builtins", "builtins.locals()"),
+        ("import builtins as runtime", "runtime.vars()"),
+    ],
+    ids=["aliased-locals", "aliased-vars", "aliased-eval", "qualified-locals", "aliased-module-vars"],
+)
+def test_excludes_aliased_and_qualified_namespace_observers(imports: str, observer: str) -> None:
+    source = (
+        f"{imports}\n"
+        "def build(rows):\n"
+        "    result = {}\n"
+        "    for row in rows:\n"
+        "        result[row.id] = Entry(row.id)\n"
+        f"    return result, {observer}\n"
+    )
+
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    ("imports", "observer"),
+    [
+        ("from builtins import locals as snapshot", "snapshot()"),
+        ("import builtins as runtime", "runtime.locals()"),
+    ],
+    ids=["local-symbol-alias", "local-module-alias"],
+)
+def test_excludes_function_local_namespace_imports(imports: str, observer: str) -> None:
+    source = (
+        "def build(rows):\n"
+        f"    {imports}\n"
+        "    result = {}\n"
+        "    for row in rows:\n"
+        "        result[row.id] = Entry(row.id)\n"
+        f"    return result, {observer}\n"
+    )
+
+    assert _check(source) == []
+
+
+def test_unrelated_parameter_shadow_does_not_hide_namespace_alias() -> None:
+    source = """from builtins import locals as snapshot
+def unrelated(snapshot):
+    return snapshot()
+
+def build(rows):
+    result = {}
+    for row in rows:
+        result[row.id] = Entry(row.id)
+    return result, snapshot()
+"""
+
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    ("initializer", "target", "body"),
+    [
+        ("{}", "row", "if row.active if flag else row.valid:\n            result[row.id] = Entry(row.value)"),
+        (
+            "{}",
+            "row",
+            "if row.active if flag else row.valid:\n            continue\n        result[row.id] = row.value",
+        ),
+        ("[]", "key, value", "if key if flag else value:\n            result.append((key, value))"),
+        ("[]", "key, value", "if key if flag else value:\n            continue\n        result.append((key, value))"),
+        ("set()", "row", "if row.active if flag else row.valid:\n            result.add(row.id)"),
+        ("set()", "row", "if row.active if flag else row.valid:\n            continue\n        result.add(row.id)"),
+    ],
+    ids=["dict-if", "dict-continue", "list-if", "list-continue", "set-if", "set-continue"],
+)
+def test_conditional_filters_and_iterables_serialize_as_valid_comprehensions(
+    initializer: str, target: str, body: str
+) -> None:
+    source = (
+        "def build(rows, others, flag):\n"
+        f"    result = {initializer}\n"
+        f"    for {target} in (rows if flag else others):\n"
+        f"        {body}\n"
+        "    return result\n"
+    )
+
+    assert len(_check(source)) == 1
+
+
+@pytest.mark.parametrize(
+    ("values", "expected"),
+    [([], []), ([None, 0, False, 2], [0, False, 2]), ([3, 3, 3], [3, 3, 3])],
+    ids=["empty", "none-versus-falsy", "duplicates"],
+)
+def test_computed_none_filter_preserves_values_and_single_evaluation(
+    values: list[int | None], expected: list[int]
+) -> None:
+    source = """def build(values):
+    result = []
+    for value in values:
+        candidate = parse(value)
+        if candidate is not None:
+            result.append(candidate)
+    return result
+"""
+    replacement = (
+        "def build(values):\n    return [candidate for value in values if (candidate := parse(value)) is not None]\n"
+    )
+    assert len(_check(source)) == 1
+    assert _check(replacement) == []
+    calls: list[int | None] = []
+
+    def parse(value: int | None) -> int | None:
+        calls.append(value)
+        return value
+
+    for implementation in (source, replacement):
+        calls.clear()
+        namespace: dict[str, object] = {"values": values, "expected": expected, "parse": parse}
+        executable = implementation + "\nassert build(values) == expected\n"
+        exec(compile(executable, "<semantic-fixture>", "exec"), namespace)  # ruff: ignore[exec-builtin] -- execute authored semantic fixtures without external inputs.
+        assert calls == values
+
+
+@pytest.mark.parametrize("rows", [[], [(1, 5), (1, 8)]], ids=["empty", "duplicate-keys"])
+def test_constructor_dictionary_preserves_empty_inputs_and_duplicate_keys(rows: list[tuple[int, int]]) -> None:
+    source = """def build(rows):
+    result = {}
+    for key, value in rows:
+        result[key] = Entry(value)
+    return result
+"""
+    replacement = "def build(rows):\n    return {key: Entry(value) for key, value in rows}\n"
+    assert len(_check(source)) == 1
+    assert _check(replacement) == []
+    for implementation in (source, replacement):
+        namespace: dict[str, object] = {"rows": rows}
+        executable = "def Entry(value):\n    return value\n" + implementation
+        executable += "\nassert build(rows) == dict(rows)\n"
+        exec(compile(executable, "<semantic-fixture>", "exec"), namespace)  # ruff: ignore[exec-builtin] -- execute authored semantic fixtures without external inputs.
+
+
+def test_dictionary_evaluation_order_requires_manual_review() -> None:
+    source = """def build(rows):
+    result = {}
+    for row in rows:
+        result[row.id] = Entry(row)
+    return result
+"""
+    replacement = "def build(rows):\n    return {row.id: Entry(row) for row in rows}\n"
+    assert len(_check(source)) == 1
+    assert _check(replacement) == []
+    documentation = PreferCollectionComprehension.documentation
+    assert documentation is not None
+    assert documentation.autofix is AutofixPolicy.NONE
+    for implementation, expected in ((source, {2: 2}), (replacement, {1: 2})):
+        executable = (
+            "from types import SimpleNamespace\n"
+            "def Entry(row):\n"
+            "    row.id += 1\n"
+            "    return row.id\n"
+            f"{implementation}\n"
+            "assert build([SimpleNamespace(id=1)]) == expected\n"
+        )
+        exec(compile(executable, "<evaluation-order-fixture>", "exec"), {"expected": expected})  # ruff: ignore[exec-builtin] -- prove the documented no-autofix evaluation-order boundary.
