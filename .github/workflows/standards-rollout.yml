@@ -5,7 +5,7 @@ name: Standards rollout
 # the conclusion of the release or release-tags workflows.
 on:
   schedule:
-    - cron: '17 * * * *'
+    - cron: '7,22,37,52 * * * *'
   workflow_dispatch:
     inputs:
       version:
@@ -40,6 +40,8 @@ jobs:
       - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
           version: '0.12.18'
+          enable-cache: true
+          cache-dependency-glob: 'packages/**/uv.lock'
       - name: Resolve the exact bundle version
         id: version
         env:
@@ -75,7 +77,6 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           VERSION: ${{ steps.version.outputs.version }}
-          EVENT_NAME: ${{ github.event_name }}
           REGISTRY_TOML: ${{ vars.STANDARDS_ROLLOUT_REGISTRY_TOML }}
         run: |
           set -uo pipefail
@@ -99,13 +100,14 @@ jobs:
             echo "rollout App token was not minted" | tee -a "$log"
             plan_status=1
           else
-            consumers="$(uv run --project packages/standards --frozen python -m sarj_standards.libs.release.rollout --registry "$registry" consumers 2> "$RUNNER_TEMP/consumers.err")" || {
-              plan_status=$?
-              consumers='[]'
-            }
-            tee -a "$log" < "$RUNNER_TEMP/consumers.err" >&2
-            if (( plan_status == 0 )) && [[ "$EVENT_NAME" != schedule ]]; then
-              run_and_log uv run --project packages/standards --frozen python -m sarj_standards.libs.release.rollout --registry "$registry" plan --version "$VERSION" || plan_status=$?
+            matrix_output="$RUNNER_TEMP/rollout-plan.outputs"
+            run_and_log uv run --project packages/standards --frozen python -m sarj_standards.libs.release.rollout --registry "$registry" --jobs 4 --github-output "$matrix_output" plan --version "$VERSION" || plan_status=$?
+            if (( plan_status == 0 )); then
+              consumers="$(sed -n 's/^consumers=//p' "$matrix_output")"
+              if [[ -z "$consumers" ]]; then
+                consumers='[]'
+                plan_status=2
+              fi
             fi
           fi
           {
@@ -126,7 +128,7 @@ jobs:
   # the fleet takes as long as its slowest consumer instead of their sum.
   rollout:
     needs: plan
-    if: needs.plan.outputs.plan_status == '0'
+    if: needs.plan.outputs.plan_status == '0' && needs.plan.outputs.consumers != '[]'
     name: rollout (${{ matrix.consumer.name }})
     runs-on: ubuntu-latest
     timeout-minutes: 50
@@ -147,6 +149,8 @@ jobs:
       - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
           version: '0.12.18'
+          enable-cache: true
+          cache-dependency-glob: 'packages/**/uv.lock'
       - name: Install the pinned mise bootstrap
         env:
           MISE_VERSION: '2026.8.8'
@@ -240,6 +244,8 @@ jobs:
       - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
           version: '0.12.18'
+          enable-cache: true
+          cache-dependency-glob: 'packages/**/uv.lock'
       - name: Mint the fleet rollout token
         id: app-token
         continue-on-error: true
@@ -292,13 +298,15 @@ jobs:
             fi
           done
           # A leg that failed before recording its status still fails the rollout.
-          if (( operation_status == 0 )) && [[ "$ROLLOUT_RESULT" != success ]]; then
+          if (( operation_status == 0 )) && [[ "$ROLLOUT_RESULT" != success ]] && [[ "$CONSUMERS" != '[]' ]]; then
             operation_status=1
           fi
           status_status=0
-          run_and_log uv run --project packages/standards --frozen python -m sarj_standards.libs.release.rollout --registry "$registry" status --version "$VERSION" || status_status=$?
-          if (( operation_status != 0 || status_status != 0 )); then
+          run_and_log uv run --project packages/standards --frozen python -m sarj_standards.libs.release.rollout --registry "$registry" --jobs 4 status --version "$VERSION" || status_status=$?
+          if (( operation_status != 0 || status_status > 1 )); then
             result=failure
+          elif (( status_status == 1 )); then
+            result=pending
           else
             result=success
           fi
@@ -354,7 +362,7 @@ jobs:
             gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" --body-file "$body"
           fi
       - name: Enforce the rollout result
-        if: steps.rollout.outputs.result != 'success'
+        if: steps.rollout.outputs.result == 'failure'
         run: |
           echo "::error::Standards rollout is incomplete; see the durable rollout issue"
           exit 1

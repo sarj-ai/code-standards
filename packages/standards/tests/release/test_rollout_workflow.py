@@ -57,13 +57,13 @@ def _controller_literals() -> frozenset[str]:
     )
 
 
-def test_rollout_is_downstream_of_release_and_reconciles_hourly() -> None:
+def test_rollout_is_downstream_of_release_and_reconciles_every_fifteen_minutes() -> None:
     workflow = _workflow()
     trigger = workflow.get("on")
     assert _is_object(trigger)
 
     assert set(trigger) == {"schedule", "workflow_dispatch"}
-    assert trigger["schedule"] == [{"cron": "17 * * * *"}]
+    assert trigger["schedule"] == [{"cron": "7,22,37,52 * * * *"}]
     dispatch = trigger["workflow_dispatch"]
     assert _is_object(dispatch)
     inputs = dispatch["inputs"]
@@ -84,11 +84,14 @@ def test_rollout_uses_one_deterministic_interface_for_every_entrypoint() -> None
     workflow = _rendered_workflow()
 
     module = "python -m sarj_standards.libs.release.rollout"
-    assert f'{module} --registry "$registry" plan --version "$VERSION"' in workflow
+    assert (
+        f'{module} --registry "$registry" --jobs 4 --github-output "$matrix_output" plan --version "$VERSION"'
+        in workflow
+    )
     assert f'{module} --registry "$registry" apply --version "$VERSION"' in workflow
     assert f'{module} --registry "$registry" reconcile --version "$VERSION"' in workflow
     assert "--refresh-package code-standards --from code-standards" in workflow
-    assert f'{module} --registry "$registry" status --version "$VERSION"' in workflow
+    assert f'{module} --registry "$registry" --jobs 4 status --version "$VERSION"' in workflow
     assert "github.sha" in workflow
     assert "an exact published Standards version is required" in workflow
     assert "gh auth setup-git" in workflow
@@ -134,7 +137,9 @@ def test_failure_is_reported_durably_without_blocking_publication() -> None:
     assert "gh issue edit" in workflow
     assert "gh issue reopen" in workflow
     assert "gh issue close" in workflow
-    assert "operation_status != 0 || status_status != 0" in workflow
+    assert "operation_status != 0 || status_status > 1" in workflow
+    assert "result=pending" in workflow
+    assert "steps.rollout.outputs.result == 'failure'" in workflow
     assert 'gh issue edit "$issue_number" --repo "$GITHUB_REPOSITORY" --body-file "$body"' in workflow
     assert 'tail -c 40000 "$log"' in workflow
     assert "GITHUB_STEP_SUMMARY" in workflow

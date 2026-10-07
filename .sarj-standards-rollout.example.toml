@@ -12,3 +12,6 @@ channel = "canary"
 baseline_rules = ["eslint:@sarj/example-promoted-rule"]
 requires_approval = true
 auto_merge = false
+# Enable blob filtering for verification that uses the checkout and its base;
+# full clones support verification that reads arbitrary historical blobs.
+partial_clone = false
