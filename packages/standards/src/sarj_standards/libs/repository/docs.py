@@ -136,7 +136,7 @@ def _root_readme(
             "Preview affected test files with `make test-plan BASE=origin/main`, then run them against fresh "
             "local wheels with `make test-standards-changed BASE=origin/main`. Ordinary PR and main CI select "
             "affected packages and test cohorts; shared code, dependencies, workflows, missing comparisons, "
-            "and unknown paths fall back to full coverage. Manual and weekly CI run every package and test. "
+            "unknown paths, and uncertified comparison bases fall back to full coverage. Manual and weekly CI run every package and test. "
             "Test plans record selected files, fallback reasons, and elapsed time in the job summary. "
             "Publication reuses the successful exact-main CI artifact after checking its repository, event, "
             "commit, job result, and archive digest; missing/expired artifacts receive a fresh build and full "

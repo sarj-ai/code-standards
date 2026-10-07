@@ -35,9 +35,13 @@ jobs:
 
   changes:
     name: Detect affected checks
+    permissions:
+      contents: read
+      actions: read
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
+      test-event: ${{ steps.scope.outputs.test-event }}
       bootstrap: ${{ steps.scope.outputs.bootstrap }}
       python: ${{ steps.scope.outputs.python }}
       sql: ${{ steps.scope.outputs.sql }}
@@ -62,10 +66,20 @@ jobs:
       - name: Select affected package checks
         id: scope
         env:
+          GH_TOKEN: ${{ github.token }}
           EVENT_NAME: ${{ github.event_name }}
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-        run: bash .github/scripts/ci-scope.sh "$EVENT_NAME" "$BASE_SHA" "$HEAD_SHA" "$GITHUB_OUTPUT"
+        run: |
+          routing_event="$EVENT_NAME"
+          if [[ "$EVENT_NAME" == push || "$EVENT_NAME" == pull_request ]]; then
+            if ! bash .github/scripts/ci-base-certified.sh "$GITHUB_REPOSITORY" "$BASE_SHA"; then
+              routing_event=uncertified-base
+              echo "Full validation: comparison base has no successful exact-main CI certificate."
+            fi
+          fi
+          bash .github/scripts/ci-scope.sh "$routing_event" "$BASE_SHA" "$HEAD_SHA" "$GITHUB_OUTPUT"
+          echo "test-event=$routing_event" >> "$GITHUB_OUTPUT"
 
   bootstrap:
     needs: changes
@@ -685,7 +699,7 @@ jobs:
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-          EVENT_NAME: ${{ github.event_name }}
+          EVENT_NAME: ${{ needs.changes.outputs.test-event }}
         run: >-
           uv run --no-project python -m sarj_standards.libs.release.test_selection
           --root ../.. --base "$BASE_SHA" --head "$HEAD_SHA" --event "$EVENT_NAME"

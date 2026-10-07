@@ -132,6 +132,9 @@ jobs:
   # Existing `needs` edges publish siblings before the Standards bundle that
   # pins them.
   detect:
+    permissions:
+      contents: read
+      actions: read
     runs-on: ubuntu-latest
     timeout-minutes: 10
     outputs:
@@ -164,10 +167,14 @@ jobs:
       - name: Select consumer portability impact
         id: impact
         env:
+          GH_TOKEN: ${{ github.token }}
           BEFORE: ${{ github.event.before }}
           AFTER: ${{ github.sha }}
           EVENT_NAME: ${{ github.event_name }}
         run: |
+          if [[ "$EVENT_NAME" == push ]] && ! bash .github/scripts/ci-base-certified.sh "$GITHUB_REPOSITORY" "$BEFORE"; then
+            EVENT_NAME=uncertified-base
+          fi
           uv run --project packages/standards --frozen python -m sarj_standards.libs.release.test_selection             --root . --base "$BEFORE" --head "$AFTER" --event "$EVENT_NAME" --report "$RUNNER_TEMP/impact.json"
           echo "portability=$(jq -r '.full' "$RUNNER_TEMP/impact.json")" >> "$GITHUB_OUTPUT"
 

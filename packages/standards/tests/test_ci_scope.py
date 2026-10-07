@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 import subprocess
 from typing import ClassVar
@@ -8,6 +9,8 @@ from typing import ClassVar
 from pydantic import BaseModel, ConfigDict, Field
 import pytest
 import yaml
+
+from sarj_standards.libs.release.process import credential_free_environment
 
 
 SCRIPT = Path(__file__).resolve().parents[3] / ".github/scripts/ci-scope.sh"
@@ -419,7 +422,7 @@ def test_scheduled_ci_audits_every_package(repository: Path) -> None:
 
 def test_ci_detects_changes_once_and_never_deploys_on_schedule() -> None:
     workflows = SCRIPT.parents[1] / "workflows"
-    assert sum(path.read_text().count("run: bash .github/scripts/ci-scope.sh") for path in workflows.glob("*.yml")) == 1
+    assert sum(path.read_text().count("bash .github/scripts/ci-scope.sh") for path in workflows.glob("*.yml")) == 1
     jobs = workflow("ci.yml").jobs
     assert jobs["changes"].name == "Detect affected checks"
     deploy = jobs["docs-deploy"]
@@ -427,6 +430,44 @@ def test_ci_detects_changes_once_and_never_deploys_on_schedule() -> None:
     assert deploy.condition == (
         "github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')"
     )
+
+
+@pytest.mark.parametrize(
+    "case", ["success", "failed", "pending", "fork", "wrong-sha", "pr", "missing", "latest-failed"]
+)
+def test_incremental_checks_require_successful_exact_main_baseline(tmp_path: Path, case: str) -> None:
+    sha = "a" * 40
+    run = {
+        "id": 1,
+        "head_sha": "b" * 40 if case == "wrong-sha" else sha,
+        "event": "pull_request" if case == "pr" else "push",
+        "head_branch": "main",
+        "head_repository": {"full_name": "fork/repo" if case == "fork" else "owner/repo"},
+        "path": ".github/workflows/ci.yml",
+        "conclusion": {"failed": "failure", "pending": None}.get(case, "success"),
+    }
+    runs = [] if case == "missing" else [run]
+    if case == "latest-failed":
+        runs.append({**run, "id": 2, "conclusion": "failure"})
+    response = tmp_path / "response.json"
+    response.write_text(json.dumps({"workflow_runs": runs}), encoding="utf-8")
+    executable = tmp_path / "bin/gh"
+    executable.parent.mkdir()
+    executable.write_text('#!/usr/bin/env bash\ncat "$CI_TEST_RESPONSE"\n', encoding="utf-8")
+    executable.chmod(0o755)
+    environment = credential_free_environment()
+    environment["PATH"] = str(executable.parent) + os.pathsep + environment.get("PATH", os.defpath)
+    environment["CI_TEST_RESPONSE"] = str(response)
+    result = subprocess.run(
+        ("bash", str(SCRIPT.with_name("ci-base-certified.sh")), "owner/repo", sha),
+        env=environment,
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert (result.returncode == 0) is (case == "success")
+    assert not result.stdout
 
 
 @pytest.mark.parametrize(

@@ -198,7 +198,7 @@ def select_tests(
         return TestPlan(full=True, reason=reason, changed_files=changed, tests=all_tests, total_files=len(tests))
 
     if event not in {"local", "pull_request", "push"}:
-        return full("scheduled/manual full audit")
+        return full("scheduled/manual audit or uncertified comparison base")
     if not base or base.startswith("-") or head.startswith("-"):
         return full("missing or invalid comparison; full fallback")
     try:
