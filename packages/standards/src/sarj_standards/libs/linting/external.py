@@ -204,6 +204,7 @@ class _ReactDoctorProject(_ReactDoctorProtocolModel):
 class _ReactDoctorDiff(_ReactDoctorProtocolModel):
     base_branch: str = Field(alias="baseBranch", min_length=1)
     changed_file_count: int = Field(alias="changedFileCount", ge=0)
+    is_current_changes: bool | None = Field(default=None, alias="isCurrentChanges")
 
 
 class _ReactDoctorReport(_ReactDoctorProtocolModel):
@@ -1359,11 +1360,14 @@ def _parse_react_doctor_staged_with_full_fallback(
     full_argv: Sequence[str],
 ) -> tuple[Diagnostic, ...]:
     report = _ReactDoctorReport.model_validate_json(payload)
+    scoped_projects = _react_doctor_scoped_project_set(
+        report, expected_projects=expected_projects, root=root, runner=runner, scope_root=cwd, staged=True
+    )
     if report.react_detected is not False:
         return _parse_react_doctor_report(
             report,
             root=root,
-            expected_projects=expected_projects,
+            expected_projects=scoped_projects,
             allow_empty_projects=allow_empty_projects,
             include_warnings=False,
             require_react_detection=True,
@@ -1374,7 +1378,7 @@ def _parse_react_doctor_staged_with_full_fallback(
     _parse_react_doctor_report(
         report,
         root=root,
-        expected_projects=expected_projects,
+        expected_projects=scoped_projects,
         allow_empty_projects=allow_empty_projects,
         include_warnings=False,
         require_react_detection=False,
@@ -1415,11 +1419,46 @@ def _parse_react_doctor_changed_scope(
     return _parse_react_doctor_report(
         report,
         root=root,
-        expected_projects=expected_projects,
+        expected_projects=_react_doctor_scoped_project_set(
+            report, expected_projects=expected_projects, root=root, runner=runner, scope_root=scope_root, staged=False
+        ),
         allow_empty_projects=allow_empty_projects,
         include_warnings=False,
         require_react_detection=True,
     )
+
+
+def _react_doctor_scoped_project_set(
+    report: _ReactDoctorReport,
+    *,
+    expected_projects: frozenset[Path],
+    root: Path,
+    runner: ProcessRunner,
+    scope_root: Path,
+    staged: bool,
+) -> frozenset[Path]:
+    # Scoped scans intentionally omit untouched workspaces. Prove that every
+    # omission is source-free using Git, independently of the analyzer's output.
+    reported_projects = frozenset(_contained_report_directory(item, root) for item in report.projects)
+    if not reported_projects or not reported_projects < expected_projects:
+        return expected_projects
+    if not staged and (report.diff is None or report.diff.is_current_changes is not False):
+        return expected_projects
+    requested_base = change_scope_base()
+    if not staged and requested_base and report.diff is not None and report.diff.base_branch != requested_base:
+        return expected_projects
+    if _react_doctor_scope_has_no_source(
+        tuple(expected_projects - reported_projects),
+        root=root,
+        runner=runner,
+        staged=staged,
+        scope_root=scope_root,
+        reported_base=None if staged or report.diff is None else report.diff.base_branch,
+        reported_changed_file_count=None if staged or report.diff is None else report.diff.changed_file_count,
+        include_type_changes=True,
+    ):
+        return reported_projects
+    return expected_projects
 
 
 def _react_doctor_degraded_scope_has_no_source(
@@ -1561,9 +1600,11 @@ def _react_doctor_scope_has_no_source(
     scope_root: Path | None = None,
     reported_base: str | None = None,
     reported_changed_file_count: int | None = None,
+    include_type_changes: bool = False,
 ) -> bool:
+    diff_filter = "--diff-filter=ACMRT" if include_type_changes else "--diff-filter=ACMR"
     if staged:
-        diff_args = ("git", "diff", "--cached", "--name-only", "--diff-filter=ACMR", "-z", "--")
+        diff_args = ("git", "diff", "--cached", "--name-only", diff_filter, "-z", "--")
     else:
         base = reported_base or change_scope_base()
         if not base:
@@ -1573,7 +1614,7 @@ def _react_doctor_scope_has_no_source(
             if verified_base is None:
                 return False
             base = verified_base
-        diff_args = ("git", "diff", f"{base}...HEAD", "--name-only", "--diff-filter=ACMR", "-z", "--")
+        diff_args = ("git", "diff", f"{base}...HEAD", "--name-only", diff_filter, "-z", "--")
     changed = runner(
         diff_args,
         cwd=root,

@@ -48,7 +48,7 @@
   "overrides": {
     "postcss-selector-parser": "7.1.6",
     "http-cache-semantics": "https://codeload.github.com/kornelski/http-cache-semantics/tar.gz/11fb104275349bbd84bf21eafd40b18220c29c46",
-    "sharp": "0.35.4",
+    "sharp": "0.35.5",
     "miniflare": {
       "undici": "7.29.1"
     }
