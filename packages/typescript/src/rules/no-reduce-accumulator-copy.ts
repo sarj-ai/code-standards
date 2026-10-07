@@ -28,12 +28,6 @@ export const NO_REDUCE_ACCUMULATOR_COPY_DOCUMENTATION = {
 
 const COPY_METHODS: ReadonlySet<string> = new Set(["concat", "slice", "toSpliced", "toSorted", "toReversed", "with"]);
 
-function methodName(node: TSESTree.MemberExpression): string | null {
-  if (!node.computed && node.property.type === AST_NODE_TYPES.Identifier) return node.property.name;
-  if (node.computed && node.property.type === AST_NODE_TYPES.Literal && typeof node.property.value === "string") return node.property.value;
-  return null;
-}
-
 export default createRule<[], "copy">({
   name: "no-reduce-accumulator-copy",
   documentation: NO_REDUCE_ACCUMULATOR_COPY_DOCUMENTATION,
@@ -51,7 +45,7 @@ export default createRule<[], "copy">({
     return {
       CallExpression(node): void {
         if (node.callee.type !== AST_NODE_TYPES.MemberExpression ||
-          !["reduce", "reduceRight"].includes(methodName(node.callee) ?? "") ||
+          !["reduce", "reduceRight"].includes(ASTUtils.getPropertyName(node.callee) ?? "") ||
           node.arguments.length !== 2) return;
         const seed = node.arguments[1];
         const arraySeed = seed?.type === AST_NODE_TYPES.ArrayExpression && seed.elements.length === 0;
@@ -82,7 +76,7 @@ export default createRule<[], "copy">({
         const inspectCall = (current: TSESTree.CallExpression): void => {
           if (current.callee.type !== AST_NODE_TYPES.MemberExpression) return;
           const member = current.callee;
-          const name = methodName(member);
+          const name = ASTUtils.getPropertyName(member);
           const directCopy = arraySeed && name !== null && COPY_METHODS.has(name) && referencesAccumulator(member.object);
           const globalArray = member.object.type === AST_NODE_TYPES.Identifier && member.object.name === "Array" &&
             !(ASTUtils.findVariable(context.sourceCode.getScope(member.object), "Array")?.defs.length);

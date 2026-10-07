@@ -20,6 +20,7 @@ from sarj_sql_lint.rule_base import (
     is_dump_file,
     is_postgres_migration,
     mask_sql,
+    source_location,
 )
 
 
@@ -167,7 +168,7 @@ def _section_boundary_events(source: str) -> list[_SectionBoundaryEvent]:
     return [
         _SectionBoundaryEvent(boundary_offset, "SECTION_BOUNDARY", match)
         for match in SECTION_BOUNDARY_PATTERN.finditer(source)
-        if source.count("\n", 0, (boundary_offset := match.start())) + 1 not in dollar_lines
+        if source_location(source, (boundary_offset := match.start())).line not in dollar_lines
     ]
 
 

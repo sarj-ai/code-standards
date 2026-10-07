@@ -12,6 +12,7 @@ import {
 } from "@typescript-eslint/utils";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
+import { unwrapExpression } from "./_unwrap-expression.js";
 import { isGeneratedFile, isTestFile } from "./_paths.js";
 import { isZodModule } from "./_zod.js";
 
@@ -109,36 +110,38 @@ export default createRule<Options, MessageIds>({
 
     function isZodObjectCall(node: TSESTree.CallExpression): boolean {
       const callee = node.callee;
+      const calleeReceiver = callee.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(callee.object) : callee;
       if (callee.type === AST_NODE_TYPES.Identifier) {
         const variable = binding(callee);
         return variable !== null && objectFactories.has(variable);
       }
       if (
         callee.type !== AST_NODE_TYPES.MemberExpression ||
-        callee.object.type !== AST_NODE_TYPES.Identifier ||
+        calleeReceiver.type !== AST_NODE_TYPES.Identifier ||
         ASTUtils.getPropertyName(callee) === null ||
         ((ASTUtils.getPropertyName(callee) ?? "") !== "object" && (ASTUtils.getPropertyName(callee) ?? "") !== "strictObject")
       ) {
         return false;
       }
-      const variable = binding(callee.object);
+      const variable = binding(calleeReceiver);
       return variable !== null && zodNamespaces.has(variable);
     }
 
     function isNumericSchema(node: TSESTree.Node): boolean {
       if (node.type !== AST_NODE_TYPES.CallExpression) return false;
       const callee = node.callee;
+      const calleeReceiver = callee.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(callee.object) : callee;
       if (callee.type === AST_NODE_TYPES.Identifier) {
         const variable = binding(callee);
         return variable !== null && numberFactories.has(variable);
       }
       if (callee.type !== AST_NODE_TYPES.MemberExpression || ASTUtils.getPropertyName(callee) === null) return false;
-      if (callee.object.type === AST_NODE_TYPES.Identifier) {
-        const variable = binding(callee.object);
+      if (calleeReceiver.type === AST_NODE_TYPES.Identifier) {
+        const variable = binding(calleeReceiver);
         return (ASTUtils.getPropertyName(callee) ?? "") === "number" && variable !== null && zodNamespaces.has(variable);
       }
       return ["int", "min", "max", "positive", "nonnegative", "finite", "multipleOf", "optional", "nullable", "nullish", "default", "describe", "brand", "readonly"].includes((ASTUtils.getPropertyName(callee) ?? "")) &&
-        isNumericSchema(callee.object);
+        isNumericSchema(calleeReceiver);
     }
 
     return {

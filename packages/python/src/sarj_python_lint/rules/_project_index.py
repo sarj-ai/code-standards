@@ -11,6 +11,7 @@ import re
 from types import MappingProxyType
 from typing import TYPE_CHECKING, final
 
+from sarj_python_lint._source import read_python_source
 from sarj_python_lint.rules._ast_index import walk as walk_ast
 from sarj_python_lint.rules._first_party import FirstPartyFacts, project_root
 from sarj_python_lint.rules._paths import is_generated
@@ -532,7 +533,7 @@ def _read_bounded_source(root: Path, path: Path) -> LoadedSource | None:
             return None
         resolved = path.resolve()
         resolved.relative_to(root.resolve())
-        return LoadedSource(resolved, resolved.read_text(encoding="utf-8", errors="replace"))
+        return LoadedSource(resolved, read_python_source(resolved))
     except OSError, ValueError:
         return None
 

@@ -4,17 +4,15 @@
 
 import { ASTUtils, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
 
-function unwrap(node: TSESTree.Node): TSESTree.Node {
-  while (node.type === "TSAsExpression" || node.type === "TSSatisfiesExpression" || node.type === "TSTypeAssertion" || node.type === "TSNonNullExpression") node = node.expression;
-  return node;
-}
+import { unwrapExpression } from "./_unwrap-expression.js";
+
 
 export function exportedNextConfigProperty(
   sourceCode: Readonly<TSESLint.SourceCode>,
   path: readonly string[],
 ): TSESTree.Property | null {
   const resolve = (input: TSESTree.Node, seen = new Set<TSESTree.Node>()): TSESTree.Node | null => {
-    const node = unwrap(input);
+    const node = unwrapExpression(input);
     if (node.type !== "Identifier") return node;
     if (seen.has(node)) return null;
     seen.add(node);

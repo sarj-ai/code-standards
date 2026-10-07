@@ -7,6 +7,7 @@
 import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
+import { unwrapExpression } from "./_unwrap-expression.js";
 import { isGeneratedFile, isTestFile } from "./_paths.js";
 
 type MessageIds = "combineAssertions" | "assertArrayOnce";
@@ -77,6 +78,7 @@ function literalText(node: TSESTree.Node, getText: (node: TSESTree.Node) => stri
 }
 
 function isPureReceiver(node: TSESTree.Node): boolean {
+      node = unwrapExpression(node);
   switch (node.type) {
     case AST_NODE_TYPES.Identifier:
     case AST_NODE_TYPES.ThisExpression:
@@ -108,13 +110,12 @@ function propertyAccess(
   const path: string[] = [];
   let current: TSESTree.Expression = node;
   while (current.type === AST_NODE_TYPES.MemberExpression && !current.optional) {
+    const name = ASTUtils.getPropertyName(current);
     if (
-      ASTUtils.getPropertyName(current) === null ||
-      COLLECTION_PROPERTIES.has((ASTUtils.getPropertyName(current) ?? "")) ||
-      LITERAL_KEY_HAZARDS.has((ASTUtils.getPropertyName(current) ?? ""))
+      name === null || COLLECTION_PROPERTIES.has(name) || LITERAL_KEY_HAZARDS.has(name)
     ) return null;
-    path.unshift((ASTUtils.getPropertyName(current) ?? ""));
-    current = current.object;
+    path.unshift(name);
+    current = unwrapExpression(current.object);
   }
   return path.length > 0 && isPureReceiver(current) ? { receiver: current, path } : null;
 }
@@ -274,14 +275,11 @@ export default createRule<Options, MessageIds>({
         return null;
       }
       const callee = call.callee;
-      if (
-        callee.type !== AST_NODE_TYPES.MemberExpression ||
-        ASTUtils.getPropertyName(callee) === null
-      ) {
-        return null;
-      }
-      const matcher = (ASTUtils.getPropertyName(callee) ?? "");
-      const expectCall = callee.object;
+      const calleeReceiver = callee.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(callee.object) : callee;
+      if (callee.type !== AST_NODE_TYPES.MemberExpression) return null;
+      const matcher = ASTUtils.getPropertyName(callee);
+      if (matcher === null) return null;
+      const expectCall = calleeReceiver;
       if (
         expectCall.type !== AST_NODE_TYPES.CallExpression ||
         expectCall.callee.type !== AST_NODE_TYPES.Identifier ||

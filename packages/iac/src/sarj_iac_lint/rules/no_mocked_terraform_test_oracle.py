@@ -4,7 +4,7 @@ from pathlib import PurePosixPath
 import re
 from typing import TYPE_CHECKING, ClassVar, NamedTuple, final, override
 
-from sarj_iac_lint._hcl import blocks, tokens
+from sarj_iac_lint._hcl import blocks, strip_outer_parentheses, tokens
 from sarj_iac_lint.json_boundary import parse_json
 from sarj_iac_lint.rule_base import (
     AutofixPolicy,
@@ -28,7 +28,6 @@ _IDENTIFIER_RE = re.compile(r"[A-Za-z_][\w-]*")
 _NUMBER_RE = re.compile(r"-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?")
 _STRING_RE = re.compile(r'"(?:\\.|[^"\\])*"')
 _TEMPLATE_RE = re.compile(r"(?<!\$)\$\{|(?<!%)%\{")
-_PARENTHESIS_PAIR_LENGTH = 2
 
 
 class _InjectedLiteral(NamedTuple):
@@ -249,7 +248,7 @@ def _run_assertion_findings(
 
 
 def _directly_reasserts(condition: str, injected: _InjectedLiteral) -> bool:
-    condition_tokens = _strip_parentheses(tokens(condition))
+    condition_tokens = strip_outer_parentheses(tokens(condition))
     depth = 0
     for index, part in enumerate(condition_tokens):
         if part in {"(", "[", "{"}:
@@ -258,25 +257,9 @@ def _directly_reasserts(condition: str, injected: _InjectedLiteral) -> bool:
             depth -= 1
         elif part == "==" and depth == 0:
             operands = (
-                _strip_parentheses(condition_tokens[:index]),
-                _strip_parentheses(condition_tokens[index + 1 :]),
+                strip_outer_parentheses(condition_tokens[:index]),
+                strip_outer_parentheses(condition_tokens[index + 1 :]),
             )
             expected = (tokens(injected.expression), tokens(injected.literal))
             return operands in {expected, tuple(reversed(expected))}
     return False
-
-
-def _strip_parentheses(expression: tuple[str, ...]) -> tuple[str, ...]:
-    while len(expression) >= _PARENTHESIS_PAIR_LENGTH and expression[0] == "(" and expression[-1] == ")":
-        depth = 0
-        for index, part in enumerate(expression):
-            if part == "(":
-                depth += 1
-            elif part == ")":
-                depth -= 1
-                if depth == 0:
-                    if index != len(expression) - 1:
-                        return expression
-                    break
-        expression = expression[1:-1]
-    return expression

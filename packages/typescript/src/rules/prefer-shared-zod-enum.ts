@@ -7,6 +7,7 @@
 import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
+import { unwrapExpression } from "./_unwrap-expression.js";
 import { isGeneratedFile, isTestFile } from "./_paths.js";
 import { isZodModule } from "./_zod.js";
 
@@ -100,13 +101,14 @@ export default createRule<Options, MessageIds>({
         }
       },
       CallExpression(node): void {
+        const receiver = node.callee.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(node.callee.object) : node.callee;
         if (
           node.callee.type !== AST_NODE_TYPES.MemberExpression ||
-          node.callee.object.type !== AST_NODE_TYPES.Identifier ||
+          receiver.type !== AST_NODE_TYPES.Identifier ||
           ASTUtils.getPropertyName(node.callee) === null ||
           (ASTUtils.getPropertyName(node.callee) ?? "") !== "enum"
         ) return;
-        const binding = bindingOf(node.callee.object);
+        const binding = bindingOf(receiver);
         if (binding === null || !zodBindings.has(binding)) return;
         const domain = literalDomain(node);
         if (domain === null) return;

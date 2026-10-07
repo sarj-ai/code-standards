@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, NamedTuple, final, override
 
+from sarj_python_lint._source import read_python_source
 from sarj_python_lint.rule_base import (
     AutofixPolicy,
     Diagnostic,
@@ -688,7 +689,7 @@ def _read_module(path: Path) -> ast.Module | None:
     try:
         if path.stat().st_size > _MAX_IMPORTED_MODULE_BYTES:
             return None
-        tree = ast.parse(path.read_text(encoding="utf-8", errors="replace"), filename=str(path))
+        tree = ast.parse(read_python_source(path), filename=str(path))
     except OSError, SyntaxError:
         return None
     return tree

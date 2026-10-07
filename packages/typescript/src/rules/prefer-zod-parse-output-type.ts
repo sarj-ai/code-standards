@@ -15,6 +15,7 @@ import {
 import ts from "typescript";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
+import { unwrapExpression } from "./_unwrap-expression.js";
 import { isGeneratedFile, isStoryFile, isTestFile } from "./_paths.js";
 import { isZodModule } from "./_zod.js";
 import {
@@ -121,19 +122,20 @@ function isLocalZodObjectSchema(
   let current = node;
   while (current.type === AST_NODE_TYPES.CallExpression) {
     const { callee } = current;
+    const calleeReceiver = callee.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(callee.object) : callee;
     if (
       callee.type !== AST_NODE_TYPES.MemberExpression ||
       ASTUtils.getPropertyName(callee) === null
     ) {
       return false;
     }
-    if (callee.object.type === AST_NODE_TYPES.Identifier) {
+    if (calleeReceiver.type === AST_NODE_TYPES.Identifier) {
       return (
-        namespaces.has(callee.object.name) &&
+        namespaces.has(calleeReceiver.name) &&
         ((ASTUtils.getPropertyName(callee) ?? "") === "object" || (ASTUtils.getPropertyName(callee) ?? "") === "strictObject")
       );
     }
-    current = callee.object;
+    current = calleeReceiver;
   }
   return false;
 }
@@ -146,9 +148,10 @@ interface ZodParseCall {
 
 function zodParseCall(node: TSESTree.CallExpression): ZodParseCall | null {
   const { callee } = node;
+  const calleeReceiver = callee.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(callee.object) : callee;
   if (
     callee.type !== AST_NODE_TYPES.MemberExpression ||
-    callee.object.type !== AST_NODE_TYPES.Identifier ||
+    calleeReceiver.type !== AST_NODE_TYPES.Identifier ||
     ASTUtils.getPropertyName(callee) === null
   ) {
     return null;
@@ -158,7 +161,7 @@ function zodParseCall(node: TSESTree.CallExpression): ZodParseCall | null {
   return {
     call: node,
     method,
-    schema: callee.object,
+    schema: calleeReceiver,
   };
 }
 

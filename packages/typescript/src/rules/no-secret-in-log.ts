@@ -97,7 +97,7 @@ function hasRedactionMarker(name: string): boolean {
 
 function valueName(node: TSESTree.Node): string | null {
   if (node.type === "Identifier") return node.name;
-  return node.type === "MemberExpression" && ASTUtils.getPropertyName(node) !== null ? (ASTUtils.getPropertyName(node) ?? "") : null;
+  return node.type === "MemberExpression" ? ASTUtils.getPropertyName(node) : null;
 }
 
 function isRawSecretValue(prop: TSESTree.Property): boolean {
@@ -156,22 +156,19 @@ function rawBlobValueName(value: TSESTree.Node): string | null {
   if (value.type === "Identifier") {
     return isRawBlobName(value.name) ? value.name : null;
   }
-  if (
-    value.type === "MemberExpression" &&
-    ASTUtils.getPropertyName(value) !== null
-  ) {
-    return isRawBlobName((ASTUtils.getPropertyName(value) ?? "")) ? (ASTUtils.getPropertyName(value) ?? "") : null;
+  if (value.type === "MemberExpression") {
+    const name = ASTUtils.getPropertyName(value);
+    return name !== null && isRawBlobName(name) ? name : null;
   }
   if (
     value.type === "CallExpression" &&
     value.arguments.length === 0 &&
     value.callee.type === "MemberExpression" &&
     value.callee.object.type === "Identifier" &&
-    /^(?:res|response|\w+Response)$/.test(value.callee.object.name) &&
-    ASTUtils.getPropertyName(value.callee) !== null &&
-    ((ASTUtils.getPropertyName(value.callee) ?? "") === "json" || (ASTUtils.getPropertyName(value.callee) ?? "") === "text")
+    /^(?:res|response|\w+Response)$/.test(value.callee.object.name)
   ) {
-    return `${value.callee.object.name}.${(ASTUtils.getPropertyName(value.callee) ?? "")}()`;
+    const name = ASTUtils.getPropertyName(value.callee);
+    return name === "json" || name === "text" ? `${value.callee.object.name}.${name}()` : null;
   }
   return null;
 }

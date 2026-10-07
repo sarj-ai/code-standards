@@ -18,6 +18,7 @@ from sarj_sql_lint.rule_base import (
     is_postgres_source,
     mask_sql,
     redirect_to_model,
+    source_location,
 )
 
 
@@ -36,9 +37,18 @@ _CLOSES_LIST_ITEM = frozenset(",)")
 
 
 def _is_column_reference(source: str, start: int, end: int) -> bool:
-    before = source[:start].rstrip()
-    after = source[end:].lstrip()
-    return bool(before) and before[-1] in _OPENS_LIST_ITEM and bool(after) and after[0] in _CLOSES_LIST_ITEM
+    before = start - 1
+    while before >= 0 and source[before].isspace():
+        before -= 1
+    after = end
+    while after < len(source) and source[after].isspace():
+        after += 1
+    return (
+        before >= 0
+        and source[before] in _OPENS_LIST_ITEM
+        and after < len(source)
+        and source[after] in _CLOSES_LIST_ITEM
+    )
 
 
 @final
@@ -96,11 +106,12 @@ class EnforceTimestamptz(Rule):
             start = match.start()
             if _is_column_reference(masked, start, match.end()):
                 continue
+            location = source_location(source, start)
             diags.append(
                 Diagnostic(
                     path=path,
-                    line=masked.count("\n", 0, start) + 1,
-                    col=start - masked.rfind("\n", 0, start),
+                    line=location.line,
+                    col=location.column,
                     code=self.code,
                     message=(
                         "Use `TIMESTAMPTZ` (or `TIMESTAMP WITH TIME ZONE`) — "

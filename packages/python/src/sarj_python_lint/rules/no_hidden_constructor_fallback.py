@@ -7,6 +7,7 @@ import os
 from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, ClassVar, NamedTuple, final, override
 
+from sarj_python_lint._source import read_python_source
 from sarj_python_lint.rule_base import (
     Diagnostic,
     ExampleFile,
@@ -718,7 +719,7 @@ def _read_module(path: Path, facts: RuntimeConfigFacts) -> ast.Module:
     if cached is not None:
         return cached
     try:
-        tree = ast.parse(path.read_text(encoding="utf-8", errors="replace"), filename=str(path))
+        tree = ast.parse(read_python_source(path), filename=str(path))
     except OSError, SyntaxError:
         tree = ast.Module(body=[], type_ignores=[])
     facts.modules[path] = tree
@@ -781,7 +782,7 @@ def _candidate_calls_class(
     if is_test_path(candidate):
         return False
     try:
-        source = candidate.read_text(encoding="utf-8", errors="replace")
+        source = read_python_source(candidate)
     except OSError:
         return False
     if class_name not in source or is_generated(candidate, source):

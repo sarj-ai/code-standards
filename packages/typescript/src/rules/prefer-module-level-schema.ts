@@ -7,6 +7,7 @@
 import { ASTUtils, AST_NODE_TYPES, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
+import { unwrapExpression } from "./_unwrap-expression.js";
 import { isGeneratedFile, isTestFile } from "./_paths.js";
 import { isZodModule } from "./_zod.js";
 
@@ -219,13 +220,14 @@ function buildsLocalizedText(node: TSESTree.Node): boolean {
       return false;
     }
     const { callee } = inner;
+    const calleeReceiver = callee.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(callee.object) : callee;
     if (callee.type === AST_NODE_TYPES.Identifier) {
       return I18N_CALLEE_NAMES.has(callee.name);
     }
     return (
       callee.type === AST_NODE_TYPES.MemberExpression &&
-      callee.object.type === AST_NODE_TYPES.Identifier &&
-      I18N_RECEIVER_NAMES.has(callee.object.name)
+      calleeReceiver.type === AST_NODE_TYPES.Identifier &&
+      I18N_RECEIVER_NAMES.has(calleeReceiver.name)
     );
   });
 }
@@ -304,19 +306,22 @@ export default createRule<Options, MessageIds>({
     const zodNamespaces = new Set<string>();
 
     function isZodCall(node: TSESTree.Node): node is TSESTree.CallExpression {
+      if (node.type !== AST_NODE_TYPES.CallExpression || node.callee.type !== AST_NODE_TYPES.MemberExpression) return false;
+      const receiver = unwrapExpression(node.callee.object);
       return (
         node.type === AST_NODE_TYPES.CallExpression &&
         node.callee.type === AST_NODE_TYPES.MemberExpression &&
         ASTUtils.getPropertyName(node.callee) !== null &&
-        node.callee.object.type === AST_NODE_TYPES.Identifier &&
-        zodNamespaces.has(node.callee.object.name)
+        receiver.type === AST_NODE_TYPES.Identifier &&
+        zodNamespaces.has(receiver.name)
       );
     }
 
     function isSchemaConstruction(node: TSESTree.CallExpression): boolean {
       const callee = node.callee;
+      const calleeReceiver = callee.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(callee.object) : callee;
       if (callee.type !== AST_NODE_TYPES.MemberExpression || ASTUtils.getPropertyName(callee) === null || TERMINAL_METHODS.has((ASTUtils.getPropertyName(callee) ?? ""))) return false;
-      if (callee.object.type === AST_NODE_TYPES.CallExpression) return isSchemaConstruction(callee.object);
+      if (calleeReceiver.type === AST_NODE_TYPES.CallExpression) return isSchemaConstruction(calleeReceiver);
       return isZodCall(node) && CONSTRUCTION_FACTORIES.has((ASTUtils.getPropertyName(callee) ?? ""));
     }
 

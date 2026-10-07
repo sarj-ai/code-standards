@@ -14,6 +14,7 @@ import {
 } from "@typescript-eslint/utils";
 import ts from "typescript";
 
+import { unwrapExpression } from "./_unwrap-expression.js";
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile, isTestFile } from "./_paths.js";
 
@@ -66,15 +67,10 @@ const PRIMITIVE_FLAGS =
   ts.TypeFlags.Undefined |
   ts.TypeFlags.Void;
 
-function unwrapExpression(node: TSESTree.Expression): TSESTree.Expression {
-  let current = node;
-  while (
-    current.type === AST_NODE_TYPES.ChainExpression ||
-    current.type === AST_NODE_TYPES.TSAsExpression ||
-    current.type === AST_NODE_TYPES.TSNonNullExpression ||
-    current.type === AST_NODE_TYPES.TSTypeAssertion
-  ) {
-    current = current.expression;
+function unwrapComparisonExpression(node: TSESTree.Expression): TSESTree.Expression {
+  let current = unwrapExpression(node);
+  while (current.type === AST_NODE_TYPES.ChainExpression) {
+    current = unwrapExpression(current.expression);
   }
   return current;
 }
@@ -83,20 +79,19 @@ function jsonStringifyArgument(
   node: TSESTree.Expression,
   sourceCode: Readonly<TSESLint.SourceCode>,
 ): TSESTree.Expression | null {
-  const expression = unwrapExpression(node);
+  const expression = unwrapComparisonExpression(node);
   if (expression.type !== AST_NODE_TYPES.CallExpression) return null;
   const { callee } = expression;
+  const calleeReceiver = callee.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(callee.object) : callee;
   if (
     callee.type !== AST_NODE_TYPES.MemberExpression ||
-    callee.object.type !== AST_NODE_TYPES.Identifier ||
-    callee.object.name !== "JSON" ||
-    (!callee.computed
-      ? callee.property.type !== AST_NODE_TYPES.Identifier || callee.property.name !== "stringify"
-      : callee.property.type !== AST_NODE_TYPES.Literal || callee.property.value !== "stringify")
+    calleeReceiver.type !== AST_NODE_TYPES.Identifier ||
+    calleeReceiver.name !== "JSON" ||
+    ASTUtils.getPropertyName(callee) !== "stringify"
   ) {
     return null;
   }
-  const variable = ASTUtils.findVariable(sourceCode.getScope(callee.object), "JSON");
+  const variable = ASTUtils.findVariable(sourceCode.getScope(calleeReceiver), "JSON");
   if (variable !== null && variable.defs.length > 0) return null;
   const argument = expression.arguments[0];
   return argument !== undefined && argument.type !== AST_NODE_TYPES.SpreadElement
@@ -125,7 +120,7 @@ function typeMayContainObject(type: ts.Type, checker: ts.TypeChecker): boolean {
 }
 
 function syntaxMayContainObject(node: TSESTree.Expression): boolean | null {
-  const expression = unwrapExpression(node);
+  const expression = unwrapComparisonExpression(node);
   if (expression.type === AST_NODE_TYPES.ObjectExpression) return true;
   if (expression.type !== AST_NODE_TYPES.ArrayExpression) return null;
   for (const element of expression.elements) {

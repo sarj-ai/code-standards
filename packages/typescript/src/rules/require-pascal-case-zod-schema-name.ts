@@ -11,6 +11,8 @@ import {
   ASTUtils,
 } from "@typescript-eslint/utils";
 
+import { unwrapExpression } from "./_unwrap-expression.js";
+
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile, isTestFile } from "./_paths.js";
 import { isZodModule } from "./_zod.js";
@@ -98,6 +100,7 @@ const calleeChainRoot = (node: TSESTree.Node): TSESTree.Identifier | null => {
   let current: TSESTree.Node = node;
 
   for (;;) {
+    current = unwrapExpression(current);
     if (current.type === AST_NODE_TYPES.Identifier) {
       return current;
     }
@@ -117,6 +120,7 @@ const chainMemberNames = (node: TSESTree.Node): readonly string[] => {
   const names: string[] = [];
   let current = node;
   for (;;) {
+    current = unwrapExpression(current);
     if (current.type === AST_NODE_TYPES.MemberExpression) {
       if (ASTUtils.getPropertyName(current) === null) return [];
       names.push((ASTUtils.getPropertyName(current) ?? ""));
@@ -133,18 +137,6 @@ const chainMemberNames = (node: TSESTree.Node): readonly string[] => {
   return names;
 };
 
-const unwrapExpression = (node: TSESTree.Expression): TSESTree.Expression => {
-  let current = node;
-  while (
-    current.type === AST_NODE_TYPES.TSAsExpression ||
-    current.type === AST_NODE_TYPES.TSSatisfiesExpression ||
-    current.type === AST_NODE_TYPES.TSNonNullExpression ||
-    current.type === AST_NODE_TYPES.TSTypeAssertion
-  ) {
-    current = current.expression;
-  }
-  return current;
-};
 
 const isModuleDeclarator = (node: TSESTree.VariableDeclarator): boolean => {
   const declaration = node.parent;

@@ -11,6 +11,7 @@ import {
 } from "@typescript-eslint/utils";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
+import { unwrapExpression } from "./_unwrap-expression.js";
 import { isGeneratedFile, isTestFile } from "./_paths.js";
 import { isZodModule } from "./_zod.js";
 
@@ -146,14 +147,15 @@ export default createRule<Options, MessageIds>({
       binding: TSESLint.Scope.Variable,
       method: string,
     ): boolean {
+      const receiver = node.callee.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(node.callee.object) : node.callee;
       if (
         node.callee.type !== AST_NODE_TYPES.MemberExpression ||
-        node.callee.object.type !== AST_NODE_TYPES.Identifier ||
+        receiver.type !== AST_NODE_TYPES.Identifier ||
         ASTUtils.getPropertyName(node.callee) === null ||
         (ASTUtils.getPropertyName(node.callee) ?? "") !== method
       )
         return false;
-      return resolvedBinding(node.callee.object) === binding;
+      return resolvedBinding(receiver) === binding;
     }
 
     return {
@@ -177,12 +179,13 @@ export default createRule<Options, MessageIds>({
         }
       },
       CallExpression(node): void {
+        const receiver = node.callee.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(node.callee.object) : node.callee;
         if (
           node.callee.type !== AST_NODE_TYPES.MemberExpression ||
-          node.callee.object.type !== AST_NODE_TYPES.Identifier
+          receiver.type !== AST_NODE_TYPES.Identifier
         )
           return;
-        const binding = resolvedBinding(node.callee.object);
+        const binding = resolvedBinding(receiver);
         if (
           binding === null ||
           !zodBindings.has(binding) ||
@@ -213,7 +216,7 @@ export default createRule<Options, MessageIds>({
         }
         if (values.every(isStaticString)) return;
 
-        const namespace = node.callee.object.name;
+        const namespace = receiver.name;
         context.report({
           node,
           messageId: "useMultiValueLiteral",

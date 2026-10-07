@@ -7,6 +7,7 @@
 import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
+import { unwrapExpression } from "./_unwrap-expression.js";
 import { isGeneratedFile, isTestFile } from "./_paths.js";
 
 type MessageIds = "routerRefreshPolling";
@@ -60,8 +61,7 @@ function isIntervalCallee(
       node.object.type === AST_NODE_TYPES.Identifier &&
       (node.object.name === "window" || node.object.name === "globalThis") &&
       isUnshadowedGlobal(sourceCode, node.object) &&
-      ASTUtils.getPropertyName(node) !== null &&
-      (ASTUtils.getPropertyName(node) ?? "") === "setInterval";
+      ASTUtils.getPropertyName(node) === "setInterval";
 }
 
 function isUnshadowedGlobal(
@@ -110,13 +110,14 @@ export default createRule<Options, MessageIds>({
         }
       },
       CallExpression(node): void {
+        const receiver = node.callee.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(node.callee.object) : node.callee;
         if (
-          node.callee.type !== AST_NODE_TYPES.MemberExpression || node.callee.object.type !== AST_NODE_TYPES.Identifier ||
+          node.callee.type !== AST_NODE_TYPES.MemberExpression || receiver.type !== AST_NODE_TYPES.Identifier ||
           ASTUtils.getPropertyName(node.callee) === null || (ASTUtils.getPropertyName(node.callee) ?? "") !== "refresh"
         ) return;
         const router = ASTUtils.findVariable(
-          context.sourceCode.getScope(node.callee.object),
-          node.callee.object.name,
+          context.sourceCode.getScope(receiver),
+          receiver.name,
         );
         if (router === null || !routers.has(router) || router.references.some((reference) => reference.isWrite() && reference.init !== true)) return;
         const callback = enclosingIntervalCallback(context.sourceCode, node);

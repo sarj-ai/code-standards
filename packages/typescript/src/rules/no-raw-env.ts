@@ -4,9 +4,10 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-raw-env.test.ts
  */
 
-import { ASTUtils, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
+import { ASTUtils, AST_NODE_TYPES, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
+import { unwrapExpression } from "./_unwrap-expression.js";
 import { isScriptFile, isTestFile } from "./_paths.js";
 
 type MessageIds = "noRawEnv";
@@ -36,9 +37,10 @@ function isProcessEnv(
   node: TSESTree.MemberExpression,
   context: Readonly<TSESLint.RuleContext<MessageIds, Options>>,
 ): boolean {
-  if (node.object.type !== "Identifier" || ASTUtils.getPropertyName(node) !== "env") return false;
-  const binding = ASTUtils.findVariable(context.sourceCode.getScope(node.object), node.object.name);
-  if (binding === null || binding.defs.length === 0) return node.object.name === "process";
+  const receiver = unwrapExpression(node.object);
+  if (receiver.type !== "Identifier" || ASTUtils.getPropertyName(node) !== "env") return false;
+  const binding = ASTUtils.findVariable(context.sourceCode.getScope(receiver), receiver.name);
+  if (binding === null || binding.defs.length === 0) return receiver.name === "process";
   return binding.defs.every((definition) =>
     definition.type === "ImportBinding" &&
     definition.parent.type === "ImportDeclaration" &&
@@ -51,8 +53,7 @@ function isProcessEnv(
 /** True for the `import.meta.env` member node (dotted or as the base of `import.meta.env[key]`). */
 function isImportMetaEnv(node: TSESTree.MemberExpression): boolean {
   return (
-    ASTUtils.getPropertyName(node) !== null &&
-    (ASTUtils.getPropertyName(node) ?? "") === "env" &&
+    ASTUtils.getPropertyName(node) === "env" &&
     node.object.type === "MetaProperty" &&
     node.object.meta.name === "import" &&
     node.object.property.name === "meta"
@@ -79,13 +80,9 @@ const PLATFORM_MARKERS: ReadonlySet<string> = new Set([
 /** Match named bundler constants and host-owned platform markers. */
 function isExemptVariableAccess(node: TSESTree.MemberExpression): boolean {
   const parent = node.parent;
-  return (
-    parent.type === "MemberExpression" &&
-    parent.object === node &&
-    ASTUtils.getPropertyName(parent) !== null &&
-    (BUILD_TIME_CONSTANTS.has((ASTUtils.getPropertyName(parent) ?? "")) ||
-      PLATFORM_MARKERS.has((ASTUtils.getPropertyName(parent) ?? "")))
-  );
+  if (parent.type !== "MemberExpression" || parent.object !== node) return false;
+  const name = ASTUtils.getPropertyName(parent);
+  return name !== null && (BUILD_TIME_CONSTANTS.has(name) || PLATFORM_MARKERS.has(name));
 }
 
 /** Match assignment and deletion targets, which do not read configuration. */
@@ -139,7 +136,16 @@ export default createRule<Options, MessageIds>({
       CallExpression(node: TSESTree.CallExpression): void {
         if (!boundaryFile) return;
         const callee = node.callee;
-        if ((callee.type === "Identifier" && callee.name === "createEnv") || (callee.type === "MemberExpression" && ASTUtils.getPropertyName(callee) !== null && (["parse", "safeParse"].includes((ASTUtils.getPropertyName(callee) ?? "")) || ((ASTUtils.getPropertyName(callee) ?? "") === "object" && callee.object.type === "Identifier" && callee.object.name === "z")))) hasValidationCall = true;
+        const calleeReceiver = callee.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(callee.object) : callee;
+        if (callee.type === "Identifier" && callee.name === "createEnv") {
+          hasValidationCall = true;
+        } else if (callee.type === "MemberExpression") {
+          const name = ASTUtils.getPropertyName(callee);
+          if (name === "parse" || name === "safeParse" ||
+            (name === "object" && calleeReceiver.type === "Identifier" && calleeReceiver.name === "z")) {
+            hasValidationCall = true;
+          }
+        }
       },
       MemberExpression(node: TSESTree.MemberExpression): void {
         if (

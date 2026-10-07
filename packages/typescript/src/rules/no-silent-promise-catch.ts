@@ -89,8 +89,7 @@ function isCancelledWebShare(node: TSESTree.Expression): boolean {
     node.callee.type === AST_NODE_TYPES.MemberExpression &&
     node.callee.object.type === AST_NODE_TYPES.Identifier &&
     node.callee.object.name === "navigator" &&
-    ASTUtils.getPropertyName(node.callee) !== null &&
-    (ASTUtils.getPropertyName(node.callee) ?? "") === "share"
+    ASTUtils.getPropertyName(node.callee) === "share"
   );
 }
 
@@ -257,8 +256,7 @@ export default createRule<Options, MessageIds>({
         if (
           node.parent.type === AST_NODE_TYPES.MemberExpression &&
           node.parent.object === node &&
-          ASTUtils.getPropertyName(node.parent) !== null &&
-          (ASTUtils.getPropertyName(node.parent) ?? "") === "then"
+          ASTUtils.getPropertyName(node.parent) === "then"
         ) {
           return;
         }

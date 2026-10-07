@@ -4,13 +4,14 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-impossible-zod-literal-bounds.test.ts
  */
 
-import {
+import { ASTUtils,
   AST_NODE_TYPES,
   type TSESLint,
   type TSESTree,
 } from "@typescript-eslint/utils";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
+import { unwrapExpression } from "./_unwrap-expression.js";
 import { isGeneratedFile, isTestFile } from "./_paths.js";
 import { isZodModule } from "./_zod.js";
 
@@ -100,20 +101,6 @@ function importedName(specifier: TSESTree.ImportSpecifier): string | null {
     : typeof specifier.imported.value === "string"
       ? specifier.imported.value
       : null;
-}
-
-function memberName(node: TSESTree.MemberExpression): string | null {
-  if (!node.computed && node.property.type === AST_NODE_TYPES.Identifier) {
-    return node.property.name;
-  }
-  if (
-    node.computed &&
-    node.property.type === AST_NODE_TYPES.Literal &&
-    typeof node.property.value === "string"
-  ) {
-    return node.property.value;
-  }
-  return null;
 }
 
 function finiteNumber(node: TSESTree.CallExpressionArgument | undefined): number | null {
@@ -223,21 +210,23 @@ export default createRule<Options, MessageIds>({
         const kind = baseKind(current);
         if (kind !== null) return { calls, kind };
         const callee = current.callee;
+        const calleeReceiver = callee.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(callee.object) : callee;
         if (
           callee.type !== AST_NODE_TYPES.MemberExpression ||
-          callee.object.type !== AST_NODE_TYPES.CallExpression
+          calleeReceiver.type !== AST_NODE_TYPES.CallExpression
         ) {
           return null;
         }
-        const method = memberName(callee);
+        const method = ASTUtils.getPropertyName(callee);
         if (method === null) return null;
         calls.push({ method, node: current });
-        current = callee.object;
+        current = calleeReceiver;
       }
     }
 
     function baseKind(node: TSESTree.CallExpression): SchemaKind | null {
       const callee = node.callee;
+      const calleeReceiver = callee.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(callee.object) : callee;
       if (callee.type === AST_NODE_TYPES.Identifier) {
         return resolvesToTrackedImport(callee)
           ? constructors.get(callee.name) ?? null
@@ -245,13 +234,13 @@ export default createRule<Options, MessageIds>({
       }
       if (
         callee.type !== AST_NODE_TYPES.MemberExpression ||
-        callee.object.type !== AST_NODE_TYPES.Identifier ||
-        !namespaces.has(callee.object.name) ||
-        !resolvesToTrackedImport(callee.object)
+        calleeReceiver.type !== AST_NODE_TYPES.Identifier ||
+        !namespaces.has(calleeReceiver.name) ||
+        !resolvesToTrackedImport(calleeReceiver)
       ) {
         return null;
       }
-      const name = memberName(callee);
+      const name = ASTUtils.getPropertyName(callee);
       return name !== null && KINDS.has(name as SchemaKind)
         ? (name as SchemaKind)
         : null;
@@ -263,13 +252,14 @@ export default createRule<Options, MessageIds>({
       while (parent !== undefined && parent.type !== AST_NODE_TYPES.Program) {
         if (parent.type === AST_NODE_TYPES.CallExpression) {
           const callee = parent.callee;
+          const calleeReceiver = callee.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(callee.object) : callee;
           if (
             callee.type === AST_NODE_TYPES.MemberExpression &&
-            RESHAPING_METHODS.has(memberName(callee) ?? "") &&
-            (callee.object.type === AST_NODE_TYPES.CallExpression ||
-              (callee.object.type === AST_NODE_TYPES.Identifier &&
-                namespaces.has(callee.object.name) &&
-                resolvesToTrackedImport(callee.object)))
+            RESHAPING_METHODS.has(ASTUtils.getPropertyName(callee) ?? "") &&
+            (calleeReceiver.type === AST_NODE_TYPES.CallExpression ||
+              (calleeReceiver.type === AST_NODE_TYPES.Identifier &&
+                namespaces.has(calleeReceiver.name) &&
+                resolvesToTrackedImport(calleeReceiver)))
           ) {
             return true;
           }

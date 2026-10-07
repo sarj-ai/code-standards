@@ -7,6 +7,7 @@
 import { ASTUtils, type TSESTree } from "@typescript-eslint/utils";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
+import { unwrapExpression } from "./_unwrap-expression.js";
 import type { Scope, SourceCode } from "@typescript-eslint/utils/ts-eslint";
 
 type MessageIds = "noJsonStringifyError";
@@ -195,12 +196,13 @@ function nodeWithin(node: TSESTree.Node, container: TSESTree.Node | null): boole
 }
 
 function isJsonStringify(callee: TSESTree.Expression): boolean {
+  if (callee.type !== "MemberExpression") return false;
+  const receiver = unwrapExpression(callee.object);
   return (
     callee.type === "MemberExpression" &&
-    callee.object.type === "Identifier" &&
-    callee.object.name === "JSON" &&
-    ASTUtils.getPropertyName(callee) !== null &&
-    (ASTUtils.getPropertyName(callee) ?? "") === "stringify"
+    receiver.type === "Identifier" &&
+    receiver.name === "JSON" &&
+    ASTUtils.getPropertyName(callee) === "stringify"
   );
 }
 
@@ -258,8 +260,7 @@ function memberSuggestsError(
   member: TSESTree.MemberExpression,
   scope: Scope.Scope,
 ): boolean {
-  const propName =
-    ASTUtils.getPropertyName(member) !== null ? (ASTUtils.getPropertyName(member) ?? "") : null;
+  const propName = ASTUtils.getPropertyName(member);
 
   const base = member.object;
   const baseSuggestsError =

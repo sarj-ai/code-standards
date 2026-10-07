@@ -6,6 +6,8 @@
 
 import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
 
+import { unwrapExpression } from "./_unwrap-expression.js";
+
 import { createRule, type RuleDocumentation } from "./_docs.js";
 
 type MessageIds = "requireUseFormDefaultValues";
@@ -51,15 +53,6 @@ function staticPropertyName(property: TSESTree.Property): string | null {
   return null;
 }
 
-function unwrapExpression(node: TSESTree.Node): TSESTree.Node {
-  if (
-    node.type === AST_NODE_TYPES.TSAsExpression ||
-    node.type === AST_NODE_TYPES.TSSatisfiesExpression ||
-    node.type === AST_NODE_TYPES.TSNonNullExpression ||
-    node.type === AST_NODE_TYPES.TSTypeAssertion
-  ) return unwrapExpression(node.expression);
-  return node;
-}
 
 export default createRule<Options, MessageIds>({
   name: "require-use-form-default-values",
@@ -110,11 +103,13 @@ export default createRule<Options, MessageIds>({
       return [...initialization.values()].some(Boolean) ? "initialized" : "uninitialized";
     };
     const isUninitializedForm = (node: TSESTree.Node): boolean => {
+      node = unwrapExpression(node);
       if (node.type !== AST_NODE_TYPES.Identifier) return false;
       const variable = bindingOf(node);
       return variable !== null && stable(variable) && uninitializedForms.has(variable);
     };
     const isUninitializedControl = (node: TSESTree.Node): boolean => {
+      node = unwrapExpression(node);
       if (node.type === AST_NODE_TYPES.Identifier) {
         const variable = bindingOf(node);
         return variable !== null && stable(variable) && uninitializedControls.has(variable);

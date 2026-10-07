@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from bisect import bisect_right
 from dataclasses import dataclass, replace
 from functools import lru_cache
 from pathlib import Path
@@ -31,6 +32,17 @@ type Statement = list[StatementFragment]
 class SourceLocation(NamedTuple):
     line: int
     column: int
+
+
+@lru_cache(maxsize=1)
+def _line_starts(source: str) -> tuple[int, ...]:
+    return (0, *(match.end() for match in re.finditer(r"\n", source)))
+
+
+def source_location(source: str, offset: int) -> SourceLocation:
+    starts = _line_starts(source)
+    line = bisect_right(starts, offset)
+    return SourceLocation(line, offset - starts[line - 1] + 1)
 
 
 class _ScanResult(NamedTuple):
@@ -164,7 +176,7 @@ def declared_dialect(source: str) -> str | None:
 def has_dbmate_directive(source: str, directive: str) -> bool:
     dollar_lines = dollar_quoted_lines(source)
     return any(
-        match.group(1).lower() == directive and source.count("\n", 0, match.start()) + 1 not in dollar_lines
+        match.group(1).lower() == directive and source_location(source, match.start()).line not in dollar_lines
         for match in _DBMATE_DIRECTIVE_RE.finditer(source)
     )
 
@@ -269,6 +281,7 @@ def is_generated_migration(path: Path, source: str) -> bool:
 
 def clear_path_caches() -> None:
     _has_generated_marker.cache_clear()
+    _line_starts.cache_clear()
 
 
 def is_suppressed(source_lines: list[str], line: int, code: str) -> bool:
@@ -457,10 +470,10 @@ def dollar_quoted_lines(source: str) -> frozenset[int]:
         return frozenset()
     inside: set[int] = set()
     for start, end in spans:
-        first = source.count("\n", 0, start) + 1
+        first = source_location(source, start).line
         # `end - 1` is the span's last character: an unterminated body runs to
         # end-of-file, and its trailing newline must not add a phantom line.
-        last = first + source.count("\n", start, end - 1)
+        last = source_location(source, end - 1).line
         inside.update(range(first, last + 1))
     return frozenset(inside)
 
@@ -571,11 +584,12 @@ def _scan_source_comment(source: str, start: int, pair: str) -> _CommentScan:
     else:
         end = _scan_block_comment(source, start)
         body_end = end - 2 if end < len(source) or source.endswith("*/") else end
+    location = source_location(source, start)
     return _CommentScan(
         end=end,
         comment=SourceComment(
-            line=source.count("\n", 0, start) + 1,
-            column=start - source.rfind("\n", 0, start),
+            line=location.line,
+            column=location.column,
             body=source[start + 2 : body_end].strip(),
             block=pair == "/*",
         ),
