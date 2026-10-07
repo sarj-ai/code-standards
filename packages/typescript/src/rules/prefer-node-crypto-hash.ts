@@ -31,18 +31,6 @@ export const PREFER_NODE_CRYPTO_HASH_DOCUMENTATION = {
 
 type ScopeVariable = TSESLint.Scope.Variable;
 
-function memberName(node: TSESTree.MemberExpression): string | null {
-  if (!node.computed && node.property.type === AST_NODE_TYPES.Identifier) return node.property.name;
-  if (
-    node.computed &&
-    node.property.type === AST_NODE_TYPES.Literal &&
-    typeof node.property.value === "string"
-  ) {
-    return node.property.value;
-  }
-  return null;
-}
-
 function isCryptoLoader(
   node: TSESTree.Expression,
   resolve: (identifier: TSESTree.Identifier) => ScopeVariable | null,
@@ -67,7 +55,7 @@ function isCryptoLoader(
     node.callee.object.type === AST_NODE_TYPES.Identifier &&
     node.callee.object.name === "process" &&
     isUnshadowedBuiltinIdentifier(node.callee.object, resolve) &&
-    memberName(node.callee) === "getBuiltinModule"
+    ASTUtils.getPropertyName(node.callee) === "getBuiltinModule"
   );
 }
 
@@ -199,7 +187,7 @@ function isMemberCall(
 } {
   return (
     node.callee.type === AST_NODE_TYPES.MemberExpression &&
-    memberName(node.callee) === name
+    ASTUtils.getPropertyName(node.callee) === name
   );
 }
 
@@ -215,7 +203,7 @@ function isCreateHashCall(
   }
   if (
     node.callee.type !== AST_NODE_TYPES.MemberExpression ||
-    memberName(node.callee) !== "createHash"
+    ASTUtils.getPropertyName(node.callee) !== "createHash"
   ) {
     return false;
   }

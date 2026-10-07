@@ -8,6 +8,7 @@ from typing import NamedTuple
 
 _HEREDOC_RE = re.compile(r"<<-?\s*([A-Za-z_]\w*)")
 _MAX_BLOCK_DEPTH = 128
+_PARENTHESIS_PAIR_LENGTH = 2
 
 
 def strip_inline_comment(line: str) -> str:
@@ -145,6 +146,24 @@ _CLOSERS = frozenset(")]}")
 
 def tokens(text: str) -> tuple[str, ...]:
     return tuple(m.group(0) for m in _TOKEN_RE.finditer(text))
+
+
+def strip_outer_parentheses(value: tuple[str, ...]) -> tuple[str, ...]:
+    while len(value) >= _PARENTHESIS_PAIR_LENGTH and value[0] == "(" and value[-1] == ")":
+        depth = 0
+        for index, part in enumerate(value):
+            if part == "(":
+                depth += 1
+            elif part == ")":
+                depth -= 1
+                if depth == 0:
+                    if index != len(value) - 1:
+                        return value
+                    break
+        if depth != 0:
+            return value
+        value = value[1:-1]
+    return value
 
 
 class _Tok(NamedTuple):

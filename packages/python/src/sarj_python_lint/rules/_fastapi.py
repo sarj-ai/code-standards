@@ -5,6 +5,7 @@ from collections import Counter
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal, NamedTuple
 
+from sarj_python_lint._source import read_python_source
 from sarj_python_lint.rules._ast_index import walk as walk_ast
 from sarj_python_lint.rules._imports import ImportIndex
 
@@ -839,7 +840,7 @@ def _read_module(path: Path, cache: dict[Path, ast.Module | None]) -> ast.Module
         if path.stat().st_size > _MAX_IMPORTED_MODULE_BYTES:
             tree = None
         else:
-            tree = ast.parse(path.read_text(encoding="utf-8", errors="replace"), filename=str(path))
+            tree = ast.parse(read_python_source(path), filename=str(path))
     except OSError, SyntaxError:
         tree = None
     cache[path] = tree

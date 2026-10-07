@@ -7,6 +7,7 @@
 import { ASTUtils, AST_NODE_TYPES, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
+import { unwrapExpression } from "./_unwrap-expression.js";
 import { isGeneratedFile, isTestFile } from "./_paths.js";
 import { importedTestMockNamespace, isUnshadowedTestMockGlobal } from "./_test-mock-provenance.js";
 
@@ -46,10 +47,12 @@ function containsMockFactory(node: TSESTree.Node, source: TSESLint.SourceCode): 
 }
 
 function isMockFactory(node: TSESTree.Node, source: TSESLint.SourceCode): boolean {
+  if (node.type !== AST_NODE_TYPES.CallExpression || node.callee.type !== AST_NODE_TYPES.MemberExpression) return false;
+  const receiver = unwrapExpression(node.callee.object);
   return node.type === AST_NODE_TYPES.CallExpression &&
     node.callee.type === AST_NODE_TYPES.MemberExpression &&
-    node.callee.object.type === AST_NODE_TYPES.Identifier &&
-    (importedTestMockNamespace(source, node.callee.object) !== null || isUnshadowedTestMockGlobal(source, node.callee.object)) &&
+    receiver.type === AST_NODE_TYPES.Identifier &&
+    (importedTestMockNamespace(source, receiver) !== null || isUnshadowedTestMockGlobal(source, receiver)) &&
     ASTUtils.getPropertyName(node.callee) !== null &&
     ["fn", "spyOn"].includes((ASTUtils.getPropertyName(node.callee) ?? ""));
 }

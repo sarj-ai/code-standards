@@ -4,13 +4,14 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-redundant-optional-array-default.test.ts
  */
 
-import {
+import { ASTUtils,
   AST_NODE_TYPES,
   type TSESLint,
   type TSESTree,
 } from "@typescript-eslint/utils";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
+import { unwrapExpression } from "./_unwrap-expression.js";
 import { isGeneratedFile, isTestFile } from "./_paths.js";
 import { isZodModule } from "./_zod.js";
 
@@ -76,20 +77,6 @@ function importedName(specifier: TSESTree.ImportSpecifier): string | null {
       : null;
 }
 
-function memberName(node: TSESTree.MemberExpression): string | null {
-  if (!node.computed && node.property.type === AST_NODE_TYPES.Identifier) {
-    return node.property.name;
-  }
-  if (
-    node.computed &&
-    node.property.type === AST_NODE_TYPES.Literal &&
-    typeof node.property.value === "string"
-  ) {
-    return node.property.value;
-  }
-  return null;
-}
-
 export default createRule<Options, MessageIds>({
   name: "no-redundant-optional-array-default",
   documentation: NO_REDUNDANT_OPTIONAL_ARRAY_DEFAULT_DOCUMENTATION,
@@ -136,37 +123,39 @@ export default createRule<Options, MessageIds>({
     function isArraySchemaExpression(node: TSESTree.Node): boolean {
       if (node.type !== AST_NODE_TYPES.CallExpression) return false;
       const { callee } = node;
+      const calleeReceiver = callee.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(callee.object) : callee;
       if (callee.type === AST_NODE_TYPES.Identifier) {
         return arrayConstructors.has(callee.name) && resolvesToTrackedImport(callee);
       }
       if (callee.type !== AST_NODE_TYPES.MemberExpression) return false;
-      const method = memberName(callee);
+      const method = ASTUtils.getPropertyName(callee);
       if (
         method === "array" &&
-        (callee.object.type === AST_NODE_TYPES.Identifier
-          ? namespaces.has(callee.object.name) && resolvesToTrackedImport(callee.object)
-          : isZodSchemaExpression(callee.object))
+        (calleeReceiver.type === AST_NODE_TYPES.Identifier
+          ? namespaces.has(calleeReceiver.name) && resolvesToTrackedImport(calleeReceiver)
+          : isZodSchemaExpression(calleeReceiver))
       ) {
         return true;
       }
-      return isArraySchemaExpression(callee.object);
+      return isArraySchemaExpression(calleeReceiver);
     }
 
     function isZodSchemaExpression(node: TSESTree.Node): boolean {
       if (node.type !== AST_NODE_TYPES.CallExpression) return false;
       const { callee } = node;
+      const calleeReceiver = callee.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(callee.object) : callee;
       if (callee.type === AST_NODE_TYPES.Identifier) {
         return resolvesToTrackedImport(callee);
       }
       if (callee.type !== AST_NODE_TYPES.MemberExpression) return false;
       if (
-        callee.object.type === AST_NODE_TYPES.Identifier &&
-        namespaces.has(callee.object.name) &&
-        resolvesToTrackedImport(callee.object)
+        calleeReceiver.type === AST_NODE_TYPES.Identifier &&
+        namespaces.has(calleeReceiver.name) &&
+        resolvesToTrackedImport(calleeReceiver)
       ) {
         return true;
       }
-      return isZodSchemaExpression(callee.object);
+      return isZodSchemaExpression(calleeReceiver);
     }
 
     return {
@@ -195,20 +184,22 @@ export default createRule<Options, MessageIds>({
       },
       CallExpression(node: TSESTree.CallExpression): void {
         const defaultCallee = node.callee;
+        const defaultCalleeReceiver = defaultCallee.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(defaultCallee.object) : defaultCallee;
         if (
           defaultCallee.type !== AST_NODE_TYPES.MemberExpression ||
-          memberName(defaultCallee) !== "default" ||
-          defaultCallee.object.type !== AST_NODE_TYPES.CallExpression
+          ASTUtils.getPropertyName(defaultCallee) !== "default" ||
+          defaultCalleeReceiver.type !== AST_NODE_TYPES.CallExpression
         ) {
           return;
         }
-        const optionalCall = defaultCallee.object;
+        const optionalCall = defaultCalleeReceiver;
         const optionalCallee = optionalCall.callee;
+        const optionalCalleeReceiver = optionalCallee.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(optionalCallee.object) : optionalCallee;
         if (
           optionalCallee.type !== AST_NODE_TYPES.MemberExpression ||
-          memberName(optionalCallee) !== "optional" ||
+          ASTUtils.getPropertyName(optionalCallee) !== "optional" ||
           optionalCall.arguments.length !== 0 ||
-          !isArraySchemaExpression(optionalCallee.object) ||
+          !isArraySchemaExpression(optionalCalleeReceiver) ||
           sourceCode.getCommentsInside(optionalCall).length > 0
         ) {
           return;
@@ -217,7 +208,7 @@ export default createRule<Options, MessageIds>({
           node: optionalCall,
           messageId: "redundantOptionalArrayDefault",
           fix: (fixer) =>
-            fixer.replaceText(optionalCall, sourceCode.getText(optionalCallee.object)),
+            fixer.replaceText(optionalCall, sourceCode.getText(optionalCalleeReceiver)),
         });
       },
     };

@@ -11,6 +11,7 @@ import {
 } from "@typescript-eslint/utils";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
+import { unwrapExpression } from "./_unwrap-expression.js";
 import { isGeneratedFile, isTestFile } from "./_paths.js";
 import { isZodModule } from "./_zod.js";
 
@@ -164,12 +165,13 @@ function buildsLocalizedText(node: TSESTree.Node): boolean {
     if (inner.type === AST_NODE_TYPES.TaggedTemplateExpression) return true;
     if (inner.type !== AST_NODE_TYPES.CallExpression) return false;
     const { callee } = inner;
+    const calleeReceiver = callee.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(callee.object) : callee;
     if (callee.type === AST_NODE_TYPES.Identifier)
       return I18N_CALLEE_NAMES.has(callee.name);
     return (
       callee.type === AST_NODE_TYPES.MemberExpression &&
-      callee.object.type === AST_NODE_TYPES.Identifier &&
-      I18N_RECEIVER_NAMES.has(callee.object.name)
+      calleeReceiver.type === AST_NODE_TYPES.Identifier &&
+      I18N_RECEIVER_NAMES.has(calleeReceiver.name)
     );
   });
 }
@@ -177,6 +179,7 @@ function buildsLocalizedText(node: TSESTree.Node): boolean {
 function calleeChainRoot(node: TSESTree.Node): TSESTree.Identifier | null {
   let current = node;
   for (;;) {
+    current = unwrapExpression(current);
     if (current.type === AST_NODE_TYPES.Identifier) return current;
     if (current.type === AST_NODE_TYPES.MemberExpression) {
       current = current.object;
@@ -194,6 +197,7 @@ function chainMemberNames(node: TSESTree.Node): readonly string[] {
   const names: string[] = [];
   let current = node;
   for (;;) {
+    current = unwrapExpression(current);
     if (current.type === AST_NODE_TYPES.MemberExpression) {
       if (ASTUtils.getPropertyName(current) === null)
         return [];
@@ -302,8 +306,9 @@ export default createRule<Options, MessageIds>({
 
     function isSchemaConstruction(node: TSESTree.CallExpression): boolean {
       const callee = node.callee;
+      const calleeReceiver = callee.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(callee.object) : callee;
       if (callee.type !== AST_NODE_TYPES.MemberExpression || ASTUtils.getPropertyName(callee) === null || NON_SCHEMA_TERMINALS.has((ASTUtils.getPropertyName(callee) ?? ""))) return false;
-      if (callee.object.type === AST_NODE_TYPES.CallExpression) return isSchemaConstruction(callee.object);
+      if (calleeReceiver.type === AST_NODE_TYPES.CallExpression) return isSchemaConstruction(calleeReceiver);
       return factoryName(node, FACTORIES) !== null || factoryName(node, COMPOSITE_FACTORIES) !== null;
     }
 

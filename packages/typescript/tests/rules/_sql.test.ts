@@ -38,6 +38,22 @@ function dispatched(code: string): string[] {
 }
 
 describe("createSqlListener hands each whole statement over exactly once", () => {
+  it.each([
+    'void "SELECT * FROM users";',
+    'void ("SELECT " + "* FROM users");',
+    'void ("SELECT * FROM users" as string);',
+    'void `SELECT * FROM users`;',
+  ])("ignores discarded SQL text: %s", code => {
+    expect(dispatched(code)).toEqual([]);
+  });
+
+  it.each([
+    'void db.query("SELECT * FROM users");',
+    'void `${db.query("SELECT * FROM users")}`;',
+  ])("still scans executed queries: %s", code => {
+    expect(dispatched(code)).toEqual(["SELECT * FROM users"]);
+  });
+
   it("reports a two-operand concatenation once", () => {
     expect(dispatched(`db.prepare("SELECT a " + "FROM t");`)).toEqual(["SELECT a FROM t"]);
   });

@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, TypeGuard, final
 from packaging.requirements import InvalidRequirement, Requirement
 from packaging.utils import canonicalize_name
 
+from sarj_python_lint._source import PYTHON_SOURCE_ENCODING
 from sarj_python_lint.rules._first_party import distribution_root
 from sarj_python_lint.rules._imports import ImportIndex
 from sarj_python_lint.rules._paths import is_generated
@@ -264,7 +265,7 @@ def _source(path: Path) -> NominalSource | None:
     try:
         if path.is_symlink() or path.stat().st_size > _MAX_BYTES:
             return None
-        text = path.read_text(encoding="utf-8")
+        text = path.read_text(encoding=PYTHON_SOURCE_ENCODING)
         if is_generated(path, text):
             return None
     except OSError, UnicodeError:

@@ -6,6 +6,8 @@
 
 import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 
+import { unwrapExpression } from "./_unwrap-expression.js";
+
 import { createRule, type RuleDocumentation } from "./_docs.js";
 
 type MessageIds = "dynamicMatcher";
@@ -26,17 +28,6 @@ export const REQUIRE_STATIC_NEXT_MATCHER_DOCUMENTATION = {
 
 const NEXT_ENTRY_FILE = /(?:^|[/\\])(?:middleware|proxy)\.[cm]?[jt]sx?$/u;
 
-function unwrapExpression(node: TSESTree.Node): TSESTree.Node {
-  if (
-    node.type === AST_NODE_TYPES.TSAsExpression ||
-    node.type === AST_NODE_TYPES.TSSatisfiesExpression ||
-    node.type === AST_NODE_TYPES.TSNonNullExpression ||
-    node.type === AST_NODE_TYPES.TSTypeAssertion
-  ) {
-    return unwrapExpression(node.expression);
-  }
-  return node;
-}
 
 function isStaticValue(node: TSESTree.Node): boolean {
   const value = unwrapExpression(node);

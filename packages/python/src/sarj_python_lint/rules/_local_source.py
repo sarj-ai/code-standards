@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, final
 
+from sarj_python_lint._source import PYTHON_SOURCE_ENCODING
 from sarj_python_lint.rules._imports import ImportIndex
 
 
@@ -113,7 +114,7 @@ def _read_module(path: Path) -> LocalModule | None:
             data = stream.read(_MAX_MODULE_BYTES + 1)
         if len(data) > _MAX_MODULE_BYTES:
             return None
-        source = data.decode("utf-8")
+        source = data.decode(PYTHON_SOURCE_ENCODING)
         tree = ast.parse(source, filename=str(path))
     except OSError, UnicodeError, SyntaxError:
         return None

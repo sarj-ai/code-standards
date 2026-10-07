@@ -7,6 +7,7 @@
 import { ASTUtils, type TSESTree } from "@typescript-eslint/utils";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
+import { unwrapExpression } from "./_unwrap-expression.js";
 import { isTestFile } from "./_paths.js";
 
 type MessageIds = "insecureRandomId";
@@ -84,7 +85,7 @@ function isMathRandomCall(node: TSESTree.Node): node is TSESTree.CallExpression 
   if (callee.type !== "MemberExpression") {
     return false;
   }
-  const { object } = callee;
+  const object = unwrapExpression(callee.object);
   return (
     object.type === "Identifier" &&
     object.name === "Math" &&

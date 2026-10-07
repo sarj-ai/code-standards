@@ -6,6 +6,7 @@
 import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
+import { unwrapExpression } from "./_unwrap-expression.js";
 import { isGeneratedFile, isTestFile } from "./_paths.js";
 
 type MessageIds = "moveSqlIntoClass";
@@ -119,18 +120,6 @@ export const REQUIRE_SQL_ACCESS_CLASS_DOCUMENTATION = {
   ],
 } as const satisfies RuleDocumentation;
 
-function memberName(node: TSESTree.MemberExpression): string | null {
-  if (!node.computed && node.property.type === AST_NODE_TYPES.Identifier)
-    return node.property.name;
-  if (
-    node.computed &&
-    node.property.type === AST_NODE_TYPES.Literal &&
-    typeof node.property.value === "string"
-  )
-    return node.property.value;
-  return null;
-}
-
 function isDatabaseOperation(
   method: string,
   receiver: TSESTree.Expression,
@@ -146,25 +135,19 @@ function isDatabaseOperation(
 }
 
 function databaseReceiver(node: TSESTree.Expression): boolean {
+      node = unwrapExpression(node);
   if (node.type === AST_NODE_TYPES.Identifier)
     return DATABASE_NAMES.test(node.name);
   if (node.type !== AST_NODE_TYPES.MemberExpression) return false;
-  const name = memberName(node);
+  const name = ASTUtils.getPropertyName(node);
   return name === "DB" || (name !== null && DATABASE_NAMES.test(name));
 }
 
 function databaseRootMember(node: TSESTree.Expression): string | null {
   let current = node;
   for (;;) {
+    current = unwrapExpression(current);
     if (current.type === AST_NODE_TYPES.ChainExpression) {
-      current = current.expression;
-      continue;
-    }
-    if (
-      current.type === AST_NODE_TYPES.TSAsExpression ||
-      current.type === AST_NODE_TYPES.TSNonNullExpression ||
-      current.type === AST_NODE_TYPES.TSTypeAssertion
-    ) {
       current = current.expression;
       continue;
     }
@@ -175,7 +158,7 @@ function databaseRootMember(node: TSESTree.Expression): string | null {
     }
     if (current.type === AST_NODE_TYPES.MemberExpression) {
       if (current.object.type === AST_NODE_TYPES.ThisExpression)
-        return memberName(current);
+        return ASTUtils.getPropertyName(current);
       current = current.object;
       continue;
     }
@@ -186,15 +169,8 @@ function databaseRootMember(node: TSESTree.Expression): string | null {
 function expressionHasDatabaseMarker(node: TSESTree.Expression): boolean {
   let current: TSESTree.Expression = node;
   for (;;) {
+    current = unwrapExpression(current);
     if (current.type === AST_NODE_TYPES.ChainExpression) {
-      current = current.expression;
-      continue;
-    }
-    if (
-      current.type === AST_NODE_TYPES.TSAsExpression ||
-      current.type === AST_NODE_TYPES.TSNonNullExpression ||
-      current.type === AST_NODE_TYPES.TSTypeAssertion
-    ) {
       current = current.expression;
       continue;
     }
@@ -204,7 +180,7 @@ function expressionHasDatabaseMarker(node: TSESTree.Expression): boolean {
       continue;
     }
     if (current.type === AST_NODE_TYPES.MemberExpression) {
-      const name = memberName(current);
+      const name = ASTUtils.getPropertyName(current);
       if (name === "DB" || (name !== null && DATABASE_NAMES.test(name)))
         return true;
       current = current.object;
@@ -217,21 +193,14 @@ function expressionHasDatabaseMarker(node: TSESTree.Expression): boolean {
 function expressionCallsBuilder(node: TSESTree.Expression): boolean {
   let current: TSESTree.Expression = node;
   for (;;) {
+    current = unwrapExpression(current);
     if (current.type === AST_NODE_TYPES.ChainExpression) {
-      current = current.expression;
-      continue;
-    }
-    if (
-      current.type === AST_NODE_TYPES.TSAsExpression ||
-      current.type === AST_NODE_TYPES.TSNonNullExpression ||
-      current.type === AST_NODE_TYPES.TSTypeAssertion
-    ) {
       current = current.expression;
       continue;
     }
     if (current.type === AST_NODE_TYPES.CallExpression) {
       if (current.callee.type !== AST_NODE_TYPES.MemberExpression) return false;
-      const name = memberName(current.callee);
+      const name = ASTUtils.getPropertyName(current.callee);
       if (name !== null && BUILDER_METHODS.has(name)) return true;
       current = current.callee.object;
       continue;
@@ -304,7 +273,7 @@ function thisRootMember(node: TSESTree.Expression): string | null {
   let current = node;
   let root: string | null = null;
   while (current.type === AST_NODE_TYPES.MemberExpression) {
-    const name = memberName(current);
+    const name = ASTUtils.getPropertyName(current);
     if (name === null) return null;
     root = name;
     current = current.object;
@@ -373,7 +342,7 @@ export default createRule<Options, MessageIds>({
           node.callee.type !== AST_NODE_TYPES.MemberExpression
         )
           return;
-        const method = memberName(node.callee);
+        const method = ASTUtils.getPropertyName(node.callee);
         if (knownNonDatabase(node.callee.object)) return;
         if (
           method === null ||

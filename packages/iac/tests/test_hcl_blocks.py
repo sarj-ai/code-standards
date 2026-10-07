@@ -4,7 +4,7 @@ import pytest
 
 # `_hcl` is package-private by design; the walker is exercised directly because
 # its guards (masking, nesting, value rejoining) are what the rules depend on.
-from sarj_iac_lint._hcl import blocks, document, tokens
+from sarj_iac_lint._hcl import blocks, document, strip_outer_parentheses, tokens
 
 
 def test_tokens_keeps_an_interpolated_string_whole():
@@ -14,6 +14,21 @@ def test_tokens_keeps_an_interpolated_string_whole():
 def test_tokens_keeps_multichar_operators_whole():
     assert tokens('var.env=="prod"') == ("var.env", "==", '"prod"')
     assert tokens('var.env != "prod"') == ("var.env", "!=", '"prod"')
+
+
+@pytest.mark.parametrize(
+    ("source", "expected"),
+    [
+        ("((var.value))", "var.value"),
+        ('("literal (value)")', '"literal (value)"'),
+        ("(var.left) == (var.right)", "(var.left) == (var.right)"),
+        ("((var.value)", "((var.value)"),
+        ("(var.value))", "(var.value))"),
+        ("((var.value) == (1))", "(var.value) == (1)"),
+    ],
+)
+def test_parentheses_are_removed_only_when_they_enclose_the_whole_expression(source: str, expected: str) -> None:
+    assert strip_outer_parentheses(tokens(source)) == tokens(expected)
 
 
 def test_parses_type_labels_and_position():

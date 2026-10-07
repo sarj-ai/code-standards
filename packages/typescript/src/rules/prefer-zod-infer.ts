@@ -7,6 +7,7 @@
 import { ASTUtils, AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
+import { unwrapExpression } from "./_unwrap-expression.js";
 import { isGeneratedFile, isStoryFile, isTestFile } from "./_paths.js";
 import { isZodModule } from "./_zod.js";
 
@@ -484,6 +485,7 @@ function twinCallChain(
   let current: TSESTree.Node = node;
   while (current.type === AST_NODE_TYPES.CallExpression) {
     const callee = current.callee;
+    const calleeReceiver = callee.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(callee.object) : callee;
     if (
       callee.type !== AST_NODE_TYPES.MemberExpression ||
       ASTUtils.getPropertyName(callee) === null
@@ -491,10 +493,10 @@ function twinCallChain(
       return null;
     }
     chain.push(current);
-    if (callee.object.type === AST_NODE_TYPES.Identifier) {
-      return zodNamespaces.has(callee.object.name) ? chain.reverse() : null;
+    if (calleeReceiver.type === AST_NODE_TYPES.Identifier) {
+      return zodNamespaces.has(calleeReceiver.name) ? chain.reverse() : null;
     }
-    current = callee.object;
+    current = calleeReceiver;
   }
   return null;
 }
@@ -542,13 +544,14 @@ function twinSchemaField(
   let leafCall: TSESTree.CallExpression | null = null;
   while (current.type === AST_NODE_TYPES.CallExpression) {
     const callee = current.callee;
+    const calleeReceiver = callee.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(callee.object) : callee;
     if (
       callee.type !== AST_NODE_TYPES.MemberExpression ||
       ASTUtils.getPropertyName(callee) === null
     ) {
       break;
     }
-    const receiver = callee.object;
+    const receiver = calleeReceiver;
     if (receiver.type === AST_NODE_TYPES.Identifier && zodNamespaces.has(receiver.name)) {
       leaf = (ASTUtils.getPropertyName(callee) ?? "");
       leafCall = current;

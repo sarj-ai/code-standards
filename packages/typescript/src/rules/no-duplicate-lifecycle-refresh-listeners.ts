@@ -5,6 +5,7 @@
  */
 
 import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
+import { unwrapExpression } from "./_unwrap-expression.js";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile, isTestFile } from "./_paths.js";
@@ -36,9 +37,10 @@ function registration(
   sourceCode: Readonly<{ getScope(node: TSESTree.Node): TSESLint.Scope.Scope }>,
   node: TSESTree.CallExpression,
 ): { operation: ListenerOperation; event: LifecycleEvent; callback: TSESTree.Identifier } | null {
+  const receiver = node.callee.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(node.callee.object) : node.callee;
   if (
-    node.callee.type !== AST_NODE_TYPES.MemberExpression || node.callee.object.type !== AST_NODE_TYPES.Identifier ||
-    !isUnshadowedGlobal(sourceCode, node.callee.object) ||
+    node.callee.type !== AST_NODE_TYPES.MemberExpression || receiver.type !== AST_NODE_TYPES.Identifier ||
+    !isUnshadowedGlobal(sourceCode, receiver) ||
     ASTUtils.getPropertyName(node.callee) === null ||
     ((ASTUtils.getPropertyName(node.callee) ?? "") !== "addEventListener" && (ASTUtils.getPropertyName(node.callee) ?? "") !== "removeEventListener") ||
     node.arguments.length < 2
@@ -48,8 +50,8 @@ function registration(
   if (event === undefined || callback === undefined) return null;
   if (event.type !== AST_NODE_TYPES.Literal || typeof event.value !== "string" || callback.type !== AST_NODE_TYPES.Identifier) return null;
   const operation = (ASTUtils.getPropertyName(node.callee) ?? "") === "addEventListener" ? "add" : "remove";
-  if (node.callee.object.name === "window" && event.value === "focus") return { operation, event: "focus", callback };
-  if (node.callee.object.name === "document" && event.value === "visibilitychange") return { operation, event: "visibilitychange", callback };
+  if (receiver.name === "window" && event.value === "focus") return { operation, event: "focus", callback };
+  if (receiver.name === "document" && event.value === "visibilitychange") return { operation, event: "visibilitychange", callback };
   return null;
 }
 
@@ -145,11 +147,12 @@ export default createRule<Options, MessageIds>({
           }
         }
 
+        const receiver = node.callee.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(node.callee.object) : node.callee;
         if (
-          node.callee.type !== AST_NODE_TYPES.MemberExpression || node.callee.object.type !== AST_NODE_TYPES.Identifier ||
+          node.callee.type !== AST_NODE_TYPES.MemberExpression || receiver.type !== AST_NODE_TYPES.Identifier ||
           ASTUtils.getPropertyName(node.callee) === null || (ASTUtils.getPropertyName(node.callee) ?? "") !== "refresh"
         ) return;
-        const router = ASTUtils.findVariable(context.sourceCode.getScope(node.callee.object), node.callee.object.name);
+        const router = ASTUtils.findVariable(context.sourceCode.getScope(receiver), receiver.name);
         if (router === null || !routers.has(router)) return;
         const fn = enclosingFunction(context.sourceCode, node);
         if (fn === null) return;

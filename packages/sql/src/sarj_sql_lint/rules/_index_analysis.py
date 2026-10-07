@@ -11,6 +11,7 @@ from sarj_sql_lint.rule_base import (
     is_generated_migration,
     is_migration_source,
     mask_sql_literals_and_comments,
+    source_location,
 )
 
 
@@ -180,12 +181,12 @@ def parse_indexes(source: str) -> tuple[IndexDefinition, ...]:
         predicate = ""
         if suffix.where_start is not None:
             predicate = _normalize_sql(source[suffix.where_start : statement_end])
-        line_start = source.rfind("\n", 0, match.start()) + 1
+        location = source_location(source, match.start())
         indexes.append(
             IndexDefinition(
                 start=match.start(),
-                line=source.count("\n", 0, match.start()) + 1,
-                column=match.start() - line_start + 1,
+                line=location.line,
+                column=location.column,
                 name=_normalize_identifier(match.group("name") or "<unnamed>"),
                 table=_normalize_identifier(match.group("table")),
                 method=_normalize_identifier(match.group("method") or "btree"),

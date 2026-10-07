@@ -7,6 +7,9 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING, final, override
 import weakref
 
+import pytest
+from sarj_rule_contracts import RuleId
+
 from sarj_python_lint.__main__ import analyze, check_source
 from sarj_python_lint._analysis_session import AnalysisSession
 from sarj_python_lint._file_context import PythonFileContext
@@ -51,6 +54,55 @@ def test_syntax_errors_do_not_poison_the_next_context() -> None:
     path = Path("app.py")
     assert PythonFileContext(path, "def broken(:").tree is None
     assert PythonFileContext(path, "answer = 42\n").tree is not None
+
+
+@pytest.mark.parametrize("encoding", ["utf-8", "utf-8-sig"])
+def test_runner_accepts_python_utf8_signature_without_moving_findings(tmp_path: Path, encoding: str) -> None:
+    path = tmp_path / "app.py"
+    path.write_text('__all__ = ["record"]\nrecord = 1\n', encoding=encoding)
+    compile(path.read_bytes(), str(path), "exec")
+    findings = analyze(["no-dunder-all"], [path])
+    assert [(finding.code, finding.line, finding.col) for finding in findings] == [("SARJ438", 1, 1)]
+
+
+def test_utf8_signature_does_not_remove_embedded_characters_or_suppressions(tmp_path: Path) -> None:
+    path = tmp_path / "app.py"
+    path.write_text('value = "\ufeff"\n__all__ = ["value"]  # sarj-noqa: SARJ438\n', encoding="utf-8-sig")
+    assert analyze(["no-dunder-all"], [path]) == []
+
+
+def test_project_scan_accepts_utf8_signature_in_dependency(tmp_path: Path) -> None:
+    (tmp_path / "pyproject.toml").write_text('[project]\nname = "sample"\nversion = "0.1.0"\n', encoding="utf-8")
+    path = tmp_path / "consumer.py"
+    source = "from models import Record\n"
+    path.write_text(source, encoding="utf-8")
+    dependency = tmp_path / "models.py"
+    dependency.write_text('class Record:\n    value: str = "\ufeff"\n', encoding="utf-8-sig")
+    index = ProjectIndexSet.build([path], {path: source})
+    unit = index.unit(dependency)
+    assert unit is not None
+    assert unit.tree is not None
+    assert ast.unparse(unit.tree) == "class Record:\n    value: str = '\\ufeff'"
+
+
+@pytest.mark.parametrize(
+    ("rule_id", "example_id"),
+    [
+        (RuleId("no-hidden-constructor-fallback"), "ambient-settings-fallback"),
+        (RuleId("prefer-pytest-fixture-injection"), "manual-shared-generic-pool"),
+        (RuleId("prefer-pytest-fixture-injection"), "manual-pool-with-application-lifespan"),
+    ],
+)
+def test_imported_rule_facts_accept_utf8_signatures(tmp_path: Path, rule_id: RuleId, example_id: str) -> None:
+    case = next(item for item in REGISTRY[rule_id].public_examples() if item.example_id == example_id)
+    (tmp_path / ".git").mkdir()
+    for file in case.files:
+        path = tmp_path / file.path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(file.source, encoding="utf-8-sig" if path.suffix == ".py" else "utf-8")
+    if not (tmp_path / "pyproject.toml").exists():
+        (tmp_path / "pyproject.toml").write_text('[project]\nname = "sample"\nversion = "0.1.0"\n', encoding="utf-8")
+    assert len(analyze([rule_id], [tmp_path / case.focus_path])) == case.expected_count
 
 
 def test_context_and_ast_are_collectable_after_file_checks() -> None:

@@ -7,6 +7,7 @@
 import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
+import { unwrapExpression } from "./_unwrap-expression.js";
 import { isGeneratedFile, isTestFile } from "./_paths.js";
 
 type MessageIds = "rawSourceOracle";
@@ -92,12 +93,6 @@ export const SOURCE_COUPLED_TEST_DOCUMENTATION = {
     },
   ],
 } as const satisfies RuleDocumentation;
-
-function staticMemberName(node: TSESTree.MemberExpression): string | null {
-  if (!node.computed && node.property.type === AST_NODE_TYPES.Identifier) return node.property.name;
-  if (node.computed && node.property.type === AST_NODE_TYPES.Literal && typeof node.property.value === "string") return node.property.value;
-  return null;
-}
 
 function unwrap(node: TSESTree.Node): TSESTree.Node {
   if (node.type === AST_NODE_TYPES.AwaitExpression) return unwrap(node.argument);
@@ -214,12 +209,13 @@ export function createSourceCoupledRule(
       const current = unwrap(node);
       if (current.type !== AST_NODE_TYPES.CallExpression || current.arguments.length === 0) return false;
       const callee = unwrap(current.callee);
+      const calleeReceiver = callee.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(callee.object) : callee;
       if (callee.type === AST_NODE_TYPES.Identifier) {
         return visible("fsReaders", callee) && sourcePath(current.arguments[0] as TSESTree.Node);
       }
       if (callee.type !== AST_NODE_TYPES.MemberExpression) return false;
-      const name = staticMemberName(callee);
-      const object = unwrap(callee.object);
+      const name = ASTUtils.getPropertyName(callee);
+      const object = unwrap(calleeReceiver);
       return name !== null && FS_READERS.has(name) && object.type === AST_NODE_TYPES.Identifier && visible("fsObjects", object) && sourcePath(current.arguments[0] as TSESTree.Node);
     };
     const rawOrigins = (node: TSESTree.Node): Set<string> => {
@@ -227,12 +223,13 @@ export function createSourceCoupledRule(
       if (current.type === AST_NODE_TYPES.Identifier) return visibleRawOrigins(current);
       if (rawRead(current)) return new Set([`${current.range[0]}:${current.range[1]}`]);
       if (current.type === AST_NODE_TYPES.BinaryExpression && current.operator === "+") return new Set([...rawOrigins(current.left), ...rawOrigins(current.right)]);
-      if (current.type === AST_NODE_TYPES.MemberExpression && staticMemberName(current) === "length") return rawOrigins(current.object);
+      if (current.type === AST_NODE_TYPES.MemberExpression && ASTUtils.getPropertyName(current) === "length") return rawOrigins(current.object);
       if (current.type !== AST_NODE_TYPES.CallExpression) return new Set();
       const callee = unwrap(current.callee);
+      const calleeReceiver = callee.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(callee.object) : callee;
       if (callee.type !== AST_NODE_TYPES.MemberExpression) return new Set();
-      const name = staticMemberName(callee);
-      return name !== null && TEXT_TRANSFORMS.has(name) ? rawOrigins(callee.object) : new Set();
+      const name = ASTUtils.getPropertyName(callee);
+      return name !== null && TEXT_TRANSFORMS.has(name) ? rawOrigins(calleeReceiver) : new Set();
     };
     const evidenceOrigins = (node: TSESTree.Node): Set<string> => {
       const current = unwrap(node);
@@ -242,22 +239,24 @@ export function createSourceCoupledRule(
       if (current.type === AST_NODE_TYPES.UnaryExpression) return evidenceOrigins(current.argument);
       if (current.type !== AST_NODE_TYPES.CallExpression) return new Set();
       const callee = unwrap(current.callee);
+      const calleeReceiver = callee.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(callee.object) : callee;
       if (callee.type !== AST_NODE_TYPES.MemberExpression) return new Set();
-      const name = staticMemberName(callee);
-      if (name !== null && TEXT_PREDICATES.has(name)) return rawOrigins(callee.object);
+      const name = ASTUtils.getPropertyName(callee);
+      if (name !== null && TEXT_PREDICATES.has(name)) return rawOrigins(calleeReceiver);
       if (name !== null && REGEXP_PREDICATES.has(name)) return new Set(current.arguments.flatMap((argument) => argument.type === AST_NODE_TYPES.SpreadElement ? [] : [...rawOrigins(argument)]));
       return new Set();
     };
     const rawAssertionOrigins = (node: TSESTree.CallExpression): Set<string> => {
       const callee = unwrap(node.callee);
+      const calleeReceiver = callee.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(callee.object) : callee;
       if (callee.type === AST_NODE_TYPES.Identifier && assertionKind(callee) === "assert") {
         return new Set(node.arguments.flatMap((argument) => argument.type === AST_NODE_TYPES.SpreadElement ? [] : [...evidenceOrigins(argument)]));
       }
       if (callee.type !== AST_NODE_TYPES.MemberExpression) return new Set();
-      const matcher = staticMemberName(callee);
+      const matcher = ASTUtils.getPropertyName(callee);
       if (matcher === null) return new Set();
-      let receiver = unwrap(callee.object);
-      while (receiver.type === AST_NODE_TYPES.MemberExpression && EXPECT_MODIFIERS.has(staticMemberName(receiver) ?? "")) receiver = unwrap(receiver.object);
+      let receiver = unwrap(calleeReceiver);
+      while (receiver.type === AST_NODE_TYPES.MemberExpression && EXPECT_MODIFIERS.has(ASTUtils.getPropertyName(receiver) ?? "")) receiver = unwrap(receiver.object);
       if (receiver.type === AST_NODE_TYPES.CallExpression && receiver.callee.type === AST_NODE_TYPES.Identifier && assertionKind(receiver.callee) === "expect") {
         if (!EXPECT_MATCHERS.has(matcher)) return new Set();
         return new Set([...receiver.arguments, ...node.arguments].flatMap((argument) => argument.type === AST_NODE_TYPES.SpreadElement ? [] : [...evidenceOrigins(argument)]));

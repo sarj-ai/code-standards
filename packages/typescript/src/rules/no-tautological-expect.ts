@@ -159,13 +159,9 @@ export default createRule<Options, MessageIds>({
     return {
       CallExpression(node: TSESTree.CallExpression): void {
         const callee = node.callee;
-        if (callee.type !== AST_NODE_TYPES.MemberExpression || ASTUtils.getPropertyName(callee) === null) {
-          return;
-        }
-        if (ASTUtils.getPropertyName(callee) === null) {
-          return;
-        }
-        const matcher = (ASTUtils.getPropertyName(callee) ?? "");
+        if (callee.type !== AST_NODE_TYPES.MemberExpression) return;
+        const matcher = ASTUtils.getPropertyName(callee);
+        if (matcher === null) return;
         if (callee.object.type !== AST_NODE_TYPES.CallExpression || callee.object.callee.type !== AST_NODE_TYPES.Identifier) return;
         const expectIdentifier = callee.object.callee;
         const variable = ASTUtils.findVariable(context.sourceCode.getScope(expectIdentifier), expectIdentifier.name);

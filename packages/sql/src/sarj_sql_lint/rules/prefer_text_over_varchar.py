@@ -18,6 +18,7 @@ from sarj_sql_lint.rule_base import (
     is_postgres,
     mask_sql,
     redirect_to_model,
+    source_location,
 )
 
 
@@ -83,12 +84,12 @@ class PreferTextOverVarchar(Rule):
 
         diags: list[Diagnostic] = []
         for match in PATTERN.finditer(masked):
-            start = match.start()
+            location = source_location(source, match.start())
             diags.append(
                 Diagnostic(
                     path=path,
-                    line=masked.count("\n", 0, start) + 1,
-                    col=start - masked.rfind("\n", 0, start),
+                    line=location.line,
+                    col=location.column,
                     code=self.code,
                     message=(
                         "Use TEXT (+ CHECK length if needed) — VARCHAR(n) has "

@@ -17,6 +17,7 @@ from sarj_sql_lint.rule_base import (
     is_generated_migration,
     mask_sql,
     redirect_to_model,
+    source_location,
 )
 
 
@@ -82,16 +83,16 @@ class PreferUuidv7Default(Rule):
             return []
         model_owned = is_generated_migration(path, source)
         masked = mask_sql(source)
-        return redirect_to_model(
-            [
+        diags: list[Diagnostic] = []
+        for match in PATTERN.finditer(masked):
+            location = source_location(source, match.start())
+            diags.append(
                 Diagnostic(
                     path=path,
-                    line=masked.count("\n", 0, match.start()) + 1,
-                    col=match.start() - masked.rfind("\n", 0, match.start()),
+                    line=location.line,
+                    col=location.column,
                     code=self.code,
                     message=_MESSAGE,
                 )
-                for match in PATTERN.finditer(masked)
-            ],
-            model_owned=model_owned,
-        )
+            )
+        return redirect_to_model(diags, model_owned=model_owned)

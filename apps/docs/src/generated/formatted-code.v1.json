@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "63391ade335aa15ac8d57b6f26c0255ddeca55256531a1ef0ea45260cf57b775",
-  "cliSha256": "801806b6cce3a7281fbe1f83ac608d3b2d067b8231fe70689cd3df4a806419f9",
+  "catalogSha256": "54dc7e2f5e32a74f3a81ed66f64f07b84e04c0f99e57d207c77046cf909695ff",
+  "cliSha256": "c261d225d96bbf2ff8d0c7fd8e0a7283e48cf36512f0dc50a958ec08e4453521",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -1893,7 +1893,7 @@
           "files": [
             {
               "path": "src/engineer-digest/post.ts",
-              "source": "await kv.put(\"digest:last\", timestamp);\n"
+              "source": "export {};\nawait kv.put(\"digest:last\", timestamp);\n"
             }
           ],
           "fixedFiles": [],

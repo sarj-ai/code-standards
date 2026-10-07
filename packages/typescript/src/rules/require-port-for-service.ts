@@ -4,10 +4,11 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/require-port-for-service.test.ts
  */
 
-import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
+import { ASTUtils, AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 
 import { forEachOwnAstChild } from "./_for-each-own-ast-child.js";
 import { createRule, type RuleDocumentation } from "./_docs.js";
+import { unwrapExpression } from "./_unwrap-expression.js";
 import { isGeneratedFile, isScriptFile, isStoryFile, isTestFile } from "./_paths.js";
 
 type MessageIds = "requireInterface";
@@ -67,12 +68,7 @@ interface Collaborator {
 
 const staticMemberName = (member: TSESTree.MemberExpression): string | null => {
   if (member.property.type === AST_NODE_TYPES.PrivateIdentifier) return `#${member.property.name}`;
-  if (!member.computed && member.property.type === AST_NODE_TYPES.Identifier) return member.property.name;
-  return member.computed &&
-    member.property.type === AST_NODE_TYPES.Literal &&
-    typeof member.property.value === "string"
-    ? member.property.value
-    : null;
+  return ASTUtils.getPropertyName(member);
 };
 
 const detachedValueExports = (program: TSESTree.Program): ReadonlySet<string> => {
@@ -515,6 +511,7 @@ const invokedInstanceField = (call: TSESTree.CallExpression): string | null => {
   const direct = instanceField(call.callee);
   if (direct !== null) return direct;
   let callee: TSESTree.Node = call.callee;
+  const calleeReceiver = callee.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(callee.object) : callee;
   while (
     callee.type === AST_NODE_TYPES.ChainExpression ||
     callee.type === AST_NODE_TYPES.TSAsExpression ||
@@ -522,7 +519,7 @@ const invokedInstanceField = (call: TSESTree.CallExpression): string | null => {
     callee.type === AST_NODE_TYPES.TSSatisfiesExpression ||
     callee.type === AST_NODE_TYPES.TSTypeAssertion
   ) callee = callee.expression;
-  return callee.type === AST_NODE_TYPES.MemberExpression ? instanceField(callee.object) : null;
+  return callee.type === AST_NODE_TYPES.MemberExpression ? instanceField(calleeReceiver) : null;
 };
 
 const instanceField = (candidate: TSESTree.Node): string | null => {

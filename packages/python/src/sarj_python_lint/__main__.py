@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ast
 from collections import Counter
+from contextlib import suppress
 from dataclasses import dataclass
 from fnmatch import fnmatch
 import json
@@ -16,6 +17,7 @@ from sarj_python_lint import __version__
 from sarj_python_lint._analysis_session import AnalysisSession
 from sarj_python_lint._file_context import PythonFileContext
 from sarj_python_lint._filesystem import atomic_write_text
+from sarj_python_lint._source import read_python_source
 from sarj_python_lint.json_boundary import is_object_mapping, parse_json
 from sarj_python_lint.rule_base import Diagnostic, ProjectRule, Rule, Severity, is_suppressed
 from sarj_python_lint.rules import REGISTRY
@@ -110,7 +112,7 @@ def _check(rule_ids: list[str], paths: list[Path]) -> list[Diagnostic]:
     loaded: dict[Path, str] = {}
     for path in expanded:
         try:
-            loaded[path] = path.read_text(encoding="utf-8", errors="replace")
+            loaded[path] = read_python_source(path)
         except OSError:
             continue
     project_rules = [rule for rule in rules if isinstance(rule, ProjectRule)]
@@ -138,6 +140,7 @@ def check_source(
             if diagnostic.code == "SARJ419" or not is_suppressed(source_lines, diagnostic.line, diagnostic.code)
         ],
         source=source,
+        context=context,
     )
 
 
@@ -187,21 +190,27 @@ class _OwnerLocation(NamedTuple):
     column: int
 
 
-def deduplicate_diagnostics(diags: list[Diagnostic], *, source: str | None = None) -> list[Diagnostic]:
-    diags = _deduplicate_test_composition(diags, source)
+def deduplicate_diagnostics(
+    diags: list[Diagnostic], *, source: str | None = None, context: PythonFileContext | None = None
+) -> list[Diagnostic]:
     codes = frozenset(diagnostic.code for diagnostic in diags)
     needs_docstring_owners = ("SARJ092" in codes and not codes.isdisjoint(_DIAGNOSTIC_PRECEDENCE["SARJ092"])) or (
         "SARJ420" in codes and not codes.isdisjoint(_DOCSTRING_PRECEDENCE_CODES)
     )
-    docstring_owners = _docstring_owner_locations(source) if source is not None and needs_docstring_owners else {}
     needs_signature_owners = (
         ("SARJ093" in codes and "SARJ034" in codes)
         or ("SARJ447" in codes and "SARJ008" in codes)
         or ("SARJ094" in codes and not codes.isdisjoint(_DIAGNOSTIC_PRECEDENCE["SARJ094"]))
     )
-    signature_owners = (
-        _function_signature_owner_locations(source) if source is not None and needs_signature_owners else {}
+    needs_composition_owners = {"SARJ066", "SARJ457"} <= codes
+    tree = (
+        _diagnostic_owner_tree(source, context)
+        if needs_docstring_owners or needs_signature_owners or needs_composition_owners
+        else None
     )
+    diags = _deduplicate_test_composition(diags, tree)
+    docstring_owners = _docstring_owner_locations(tree) if needs_docstring_owners else {}
+    signature_owners = _function_signature_owner_locations(tree) if needs_signature_owners else {}
 
     def owner_location(diagnostic: Diagnostic) -> _OwnerLocation:
         if diagnostic.code in {"SARJ008", "SARJ034", "SARJ093", "SARJ094", "SARJ447"}:
@@ -236,13 +245,19 @@ def deduplicate_diagnostics(diags: list[Diagnostic], *, source: str | None = Non
     ]
 
 
-def _deduplicate_test_composition(diags: list[Diagnostic], source: str | None) -> list[Diagnostic]:
+def _diagnostic_owner_tree(source: str | None, context: PythonFileContext | None) -> ast.Module | None:
+    if source is None:
+        return None
+    if context is not None and context.source == source:
+        return context.tree
+    with suppress(SyntaxError):
+        return ast.parse(source)
+    return None
+
+
+def _deduplicate_test_composition(diags: list[Diagnostic], tree: ast.Module | None) -> list[Diagnostic]:
     codes = {diagnostic.code for diagnostic in diags}
-    if source is None or not {"SARJ066", "SARJ457"} <= codes:
-        return diags
-    try:
-        tree = ast.parse(source)
-    except SyntaxError:
+    if tree is None or not {"SARJ066", "SARJ457"} <= codes:
         return diags
     whole_tests = {
         (diagnostic.path, diagnostic.line): diagnostic.severity for diagnostic in diags if diagnostic.code == "SARJ066"
@@ -312,10 +327,8 @@ def _typed_docstring_warning_is_superseded(codes: dict[str, set[Severity]]) -> b
     return any(Severity.ERROR in codes.get(generic, set()) for generic in ("SARJ086", "SARJ087"))
 
 
-def _function_signature_owner_locations(source: str) -> dict[int, _OwnerLocation]:
-    try:
-        tree = ast.parse(source)
-    except SyntaxError:
+def _function_signature_owner_locations(tree: ast.Module | None) -> dict[int, _OwnerLocation]:
+    if tree is None:
         return {}
     owners: dict[int, _OwnerLocation] = {}
     for node in ast.walk(tree):
@@ -327,11 +340,7 @@ def _function_signature_owner_locations(source: str) -> dict[int, _OwnerLocation
     return owners
 
 
-def _docstring_owner_locations(source: str) -> dict[int, _OwnerLocation]:
-    try:
-        tree = ast.parse(source)
-    except SyntaxError:
-        tree = None
+def _docstring_owner_locations(tree: ast.Module | None) -> dict[int, _OwnerLocation]:
     if tree is None:
         return {}
     owners: dict[int, _OwnerLocation] = {}

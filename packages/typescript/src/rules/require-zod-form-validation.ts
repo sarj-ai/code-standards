@@ -12,6 +12,7 @@ import {
 import type { RuleContext, Scope } from "@typescript-eslint/utils/ts-eslint";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
+import { unwrapExpression } from "./_unwrap-expression.js";
 import { isTestFile } from "./_paths.js";
 import { isZodModule, ZOD_SCHEMA_NAME_RE } from "./_zod.js";
 
@@ -72,8 +73,7 @@ const isFormDataMethodCall = (node: TSESTree.Node): boolean => {
   const callee = current.callee;
   return (
     callee.type === AST_NODE_TYPES.MemberExpression &&
-    ASTUtils.getPropertyName(callee) !== null &&
-    (ASTUtils.getPropertyName(callee) ?? "") === "formData"
+    ASTUtils.getPropertyName(callee) === "formData"
   );
 };
 
@@ -110,6 +110,7 @@ export default createRule<Options, MessageIds>({
 
     const isFormDataGetCall = (node: TSESTree.CallExpression): boolean => {
       const callee = node.callee;
+      const calleeReceiver = callee.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(callee.object) : callee;
       if (callee.type !== AST_NODE_TYPES.MemberExpression) return false;
       if (
         ASTUtils.getPropertyName(callee) === null ||
@@ -117,11 +118,12 @@ export default createRule<Options, MessageIds>({
       ) {
         return false;
       }
-      return isFormSourceIdentifier(callee.object);
+      return isFormSourceIdentifier(calleeReceiver);
     };
 
     // Recognize conventional names and bindings initialized by `.formData()`.
     const isFormSourceIdentifier = (node: TSESTree.Node): boolean => {
+      node = unwrapExpression(node);
       if (node.type !== AST_NODE_TYPES.Identifier) return false;
       const conventionalName = /formdata/i.test(node.name);
 
@@ -155,7 +157,7 @@ export default createRule<Options, MessageIds>({
           parent = parent.parent;
           continue;
         }
-        if (parent.type === AST_NODE_TYPES.CallExpression && parent.callee.type === AST_NODE_TYPES.MemberExpression && parent.callee.object.type === AST_NODE_TYPES.Identifier && parent.callee.object.name === "Object" && ASTUtils.getPropertyName(parent.callee) !== null && (ASTUtils.getPropertyName(parent.callee) ?? "") === "fromEntries" && (resolvedBinding(parent.callee.object)?.defs.length ?? 0) === 0) {
+        if (parent.type === AST_NODE_TYPES.CallExpression && parent.callee.type === AST_NODE_TYPES.MemberExpression && parent.callee.object.type === AST_NODE_TYPES.Identifier && parent.callee.object.name === "Object" && ASTUtils.getPropertyName(parent.callee) === "fromEntries" && (resolvedBinding(parent.callee.object)?.defs.length ?? 0) === 0) {
           parent = parent.parent;
           continue;
         }
@@ -168,6 +170,7 @@ export default createRule<Options, MessageIds>({
     const isZodParseCall = (node: TSESTree.Node): boolean => {
       if (node.type !== AST_NODE_TYPES.CallExpression) return false;
       const callee = node.callee;
+      const calleeReceiver = callee.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(callee.object) : callee;
       if (
         callee.type !== AST_NODE_TYPES.MemberExpression ||
         ASTUtils.getPropertyName(callee) === null ||
@@ -175,7 +178,7 @@ export default createRule<Options, MessageIds>({
       ) {
         return false;
       }
-      const root = zodReceiverRoot(callee.object);
+      const root = zodReceiverRoot(calleeReceiver);
       if (root === null) return false;
       const binding = resolvedBinding(root);
       return (

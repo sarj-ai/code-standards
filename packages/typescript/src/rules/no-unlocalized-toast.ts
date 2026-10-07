@@ -7,6 +7,7 @@
 import { ASTUtils, AST_NODE_TYPES } from "@typescript-eslint/utils";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
+import { unwrapExpression } from "./_unwrap-expression.js";
 import {
   COMPONENT_IMPORT_SCHEMA,
   type ComponentImport,
@@ -118,14 +119,15 @@ export default createRule<Options, "unlocalized">({
     return {
       CallExpression(node): void {
         const callee = node.callee;
+        const calleeReceiver = callee.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(callee.object) : callee;
         const receiver =
           callee.type === AST_NODE_TYPES.Identifier
             ? callee
             : callee.type === AST_NODE_TYPES.MemberExpression &&
-                callee.object.type === AST_NODE_TYPES.Identifier &&
+                calleeReceiver.type === AST_NODE_TYPES.Identifier &&
                 ASTUtils.getPropertyName(callee) !== null &&
                 methods.includes((ASTUtils.getPropertyName(callee) ?? ""))
-              ? callee.object
+              ? calleeReceiver
               : null;
         if (receiver === null) return;
         const imported = importedComponent(receiver, context.sourceCode);

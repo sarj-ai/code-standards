@@ -5,6 +5,8 @@
 
 import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
 
+import { unwrapExpression } from "./_unwrap-expression.js";
+
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { duplicateTestBodyCandidate } from "./duplicate-test-body.js";
 import { isGeneratedFile, isTestFile } from "./_paths.js";
@@ -48,12 +50,6 @@ interface PendingFinding {
   readonly statement: TSESTree.ExpressionStatement;
 }
 
-function staticMemberName(node: TSESTree.MemberExpression): string | null {
-  if (ASTUtils.getPropertyName(node) !== null) return (ASTUtils.getPropertyName(node) ?? "");
-  if (node.computed && node.property.type === AST_NODE_TYPES.Literal && typeof node.property.value === "string") return node.property.value;
-  return null;
-}
-
 function importedName(identifier: TSESTree.Identifier, context: Context, modules: ReadonlySet<string>): string | null {
   const variable = ASTUtils.findVariable(context.sourceCode.getScope(identifier), identifier.name);
   if (variable === null || variable.defs.length === 0) return identifier.name;
@@ -78,12 +74,12 @@ function isDirectTestCallback(node: TSESTree.Node, context: Context): node is Fu
 function testRoot(callee: TSESTree.Node): TSESTree.Identifier | null {
   if (callee.type === AST_NODE_TYPES.Identifier) return callee;
   if (callee.type !== AST_NODE_TYPES.MemberExpression) return null;
-  const modifier = staticMemberName(callee);
+  const modifier = ASTUtils.getPropertyName(callee);
   return modifier !== null && TEST_MODIFIERS.has(modifier) ? testRoot(callee.object) : null;
 }
 
-function isStatic(node: TSESTree.Node): boolean {
-  if (node.type === AST_NODE_TYPES.TSAsExpression || node.type === AST_NODE_TYPES.TSTypeAssertion || node.type === AST_NODE_TYPES.TSSatisfiesExpression || node.type === AST_NODE_TYPES.TSNonNullExpression) return isStatic(node.expression);
+function isStatic(input: TSESTree.Node): boolean {
+  const node = unwrapExpression(input);
   switch (node.type) {
     case AST_NODE_TYPES.Literal: return true;
     case AST_NODE_TYPES.TemplateLiteral: return node.expressions.length === 0;
@@ -95,8 +91,8 @@ function isStatic(node: TSESTree.Node): boolean {
 }
 
 /** Preserve literal container/operator structure while replacing the values. */
-function staticShape(node: TSESTree.Node): string {
-  if (node.type === AST_NODE_TYPES.TSAsExpression || node.type === AST_NODE_TYPES.TSTypeAssertion || node.type === AST_NODE_TYPES.TSSatisfiesExpression || node.type === AST_NODE_TYPES.TSNonNullExpression) return staticShape(node.expression);
+function staticShape(input: TSESTree.Node): string {
+  const node = unwrapExpression(input);
   switch (node.type) {
     case AST_NODE_TYPES.Literal: return `literal:${typeof node.value}`;
     case AST_NODE_TYPES.TemplateLiteral: return "template";
@@ -136,7 +132,7 @@ function expectCallFromMatcher(node: TSESTree.MemberExpression): { call: TSESTre
   const modifiers: string[] = [];
   let receiver: TSESTree.Expression = node.object;
   while (receiver.type === AST_NODE_TYPES.MemberExpression) {
-    const modifier = staticMemberName(receiver);
+    const modifier = ASTUtils.getPropertyName(receiver);
     if (modifier === null || !EXPECT_MODIFIERS.has(modifier)) return null;
     modifiers.unshift(modifier);
     receiver = receiver.object;
