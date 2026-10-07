@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "97c8b9bafc7777348edde6ea55c736fc49f14f463bd64d39a8051ff03e470683",
-  "cliSha256": "4d1513c43783c67182728961cb4eb1a061d59944a13f923c3c4ce85da8c6fedf",
+  "catalogSha256": "83cd3c5371bac2a3cd1659a48c295e6ccc20627f0cc5498beb9cb66de4964de3",
+  "cliSha256": "4631d5801f9bf949a0af21e837ce2ddf5545b524e6f3bb529186fcc854995896",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -8317,6 +8317,36 @@
           "outcome": "reject",
           "scenarioId": "computed-filter",
           "title": "Compute and filter a list candidate directly"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/views.py",
+              "source": "def views(rows, labels):\n    return {row.id: EntryView(id=row.id, label=labels.get(row.id)) for row in rows}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/views.py",
+          "id": "constructor-dict-comprehension",
+          "outcome": "accept",
+          "scenarioId": "constructor-dict",
+          "title": "Keep constructor-valued dictionaries declarative"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/views.py",
+              "source": "def views(rows, labels):\n    result = {}\n    for row in rows:\n        result[row.id] = EntryView(id=row.id, label=labels.get(row.id))\n    return result\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/views.py",
+          "id": "constructor-dict-projection-loop",
+          "outcome": "reject",
+          "scenarioId": "constructor-dict",
+          "title": "Build constructor-valued dictionaries directly"
         },
         {
           "expectedCount": 1,
