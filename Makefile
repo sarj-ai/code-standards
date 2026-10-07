@@ -8,20 +8,31 @@ ROLLOUT := uv run --project packages/standards --frozen python -m sarj_standards
 VERSION ?=
 CHANNEL ?= stable
 REGISTRY ?= .sarj-standards-rollout.toml
+JOBS ?= 4
+CONSUMER ?=
+DRY_RUN ?=
+ROLLOUT_OPTIONS = --registry "$(REGISTRY)" --jobs "$(JOBS)"
+ROLLOUT_TARGET = --channel "$(CHANNEL)" $(if $(CONSUMER),--consumer "$(CONSUMER)")
 
-.PHONY: help setup build verify doctor docs-artifacts-check docs-code-sync docs-check test lint dogfood dogfood-python dogfood-typescript format-check typecheck repo-check check-no-private-refs check-file-conventions check-versions-synced release-check release-check-lock-age release-check-tags release-check-typescript sync-rule-ledger rollout
+.PHONY: help setup build verify doctor docs-artifacts-check docs-code-sync docs-check test lint dogfood dogfood-python dogfood-typescript format-check typecheck repo-check check-no-private-refs check-file-conventions check-versions-synced release-check release-check-lock-age release-check-tags release-check-typescript sync-rule-ledger rollout rollout-plan rollout-status rollout-reconcile
 
 help:
 	@echo "Targets: setup | verify | doctor | build | test | lint | dogfood | typecheck"
 	@echo "         check-{versions-synced,no-private-refs,file-conventions} | release-check"
-	@echo "         rollout VERSION=<published-version>"
+	@echo "         rollout[-plan|-status|-reconcile] VERSION=<published-version>"
+	@echo "         Optional: CONSUMER=owner/repo@branch JOBS=4 DRY_RUN=1 CHANNEL=stable"
 	@echo "Releases are published only after a version-changing merge to main."
 
 rollout:
 	@test -n "$(VERSION)" || { echo "usage: make rollout VERSION=<published-version>" >&2; exit 2; }
-	$(ROLLOUT) --registry "$(REGISTRY)" plan --version "$(VERSION)" --channel "$(CHANNEL)"
-	$(ROLLOUT) --registry "$(REGISTRY)" apply --version "$(VERSION)" --channel "$(CHANNEL)"
-	$(ROLLOUT) --registry "$(REGISTRY)" status --version "$(VERSION)" --channel "$(CHANNEL)"
+	$(ROLLOUT) $(ROLLOUT_OPTIONS) apply --version "$(VERSION)" $(ROLLOUT_TARGET) $(if $(DRY_RUN),--dry-run)
+
+rollout-plan rollout-status:
+	@test -n "$(VERSION)" || { echo "usage: make $@ VERSION=<published-version>" >&2; exit 2; }
+	$(ROLLOUT) $(ROLLOUT_OPTIONS) $(patsubst rollout-%,%,$@) --version "$(VERSION)" $(ROLLOUT_TARGET)
+
+rollout-reconcile:
+	$(ROLLOUT) $(ROLLOUT_OPTIONS) reconcile $(if $(VERSION),--version "$(VERSION)") $(ROLLOUT_TARGET) $(if $(DRY_RUN),--dry-run)
 
 setup:
 	$(STANDARDS) --root . maintain setup

@@ -46,6 +46,20 @@ code-standards --root . maintain rules changes --before origin/main --after HEAD
 
 Fleet calibration and downstream PR creation run automatically after review and release.
 
+### Fleet rollout
+
+Copy `.sarj-standards-rollout.example.toml` to the ignored `.sarj-standards-rollout.toml` and register authorized consumers. Use an exact published bundle version:
+
+```bash
+make rollout-plan VERSION=<published-version>
+make rollout VERSION=<published-version>
+make rollout-status VERSION=<published-version>
+```
+
+Add `CONSUMER=owner/repository@branch` to inspect or retry one consumer, `DRY_RUN=1` to preview an apply, and `JOBS=1` to serialize local work (default: 4). `make rollout-reconcile` resolves the latest published bundle when VERSION is omitted. Canary, early, and stable waves advance only after earlier waves merge; targeted retries retain that gate. The apply command reports PR creation independently of adoption.
+
+Hosted reconciliation runs every 15 minutes and starts jobs only for consumers requiring work. Open verified PRs wait for their existing approvals. Pending adoption appears as pending in the durable issue; verification and transport failures still fail the workflow. Status exits 0 for complete adoption, 1 for pending adoption, and 2 for blocked or failed reads. Progress goes to stderr; stdout stays JSON with elapsedSeconds per consumer. The controller accepts `--jobs` (1 to 16) and `--command-timeout` (seconds, default: 900) before its subcommand. Registry consumers may opt into `partial_clone = true` when verification uses the checkout and its base. Full clones remain the default for verification that reads arbitrary history.
+
 ### Rule implementation
 
 `sarj-rule-contracts` owns immutable metadata and executable example contracts. Each rule owns its documentation and positive/negative examples; generated catalogs and docs consume those declarations. Verification executes all examples, including private and multi-file cases, with the owning engine and runs the focused test file. A detector that always reports or never reports fails. TypeScript examples can also verify fixes and a clean second pass.

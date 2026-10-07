@@ -306,14 +306,23 @@ def test_later_wave_is_blocked_until_prior_wave_merges(
         _version: str,
         _consumers: Sequence[rollout.Consumer],
         _runner: rollout.CommandRunner,
+        *,
+        jobs: int = 1,
     ) -> tuple[rollout.Outcome, ...]:
+        assert jobs == 1
         return (rollout.Outcome(canary, rollout.OutcomeState.PR_OPEN),)
+
+    def fake_status_one(target: rollout.Consumer, _version: str, _runner: rollout.CommandRunner) -> rollout.Outcome:
+        return rollout.Outcome(target, rollout.OutcomeState.PR_OPEN)
 
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- test records release verification without querying registries
         rollout, "verify_release", fake_verify_release
     )
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- test supplies deterministic repository rollout status
         rollout, "status", fake_status
+    )
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- test supplies the same remote PR state for a selected prior consumer
+        rollout, "status_one", fake_status_one
     )
 
     outcomes = rollout.apply("9.0.0", (canary, early), FakeRunner(), consumer=selected)
