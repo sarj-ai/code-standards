@@ -11,6 +11,9 @@ REGISTRY ?= .sarj-standards-rollout.toml
 JOBS ?= 4
 CONSUMER ?=
 DRY_RUN ?=
+TEST_JOBS ?= 4
+PYTEST_ARGS ?=
+COMMIT ?= HEAD
 ROLLOUT_OPTIONS = --registry "$(REGISTRY)" --jobs "$(JOBS)"
 ROLLOUT_TARGET = --channel "$(CHANNEL)" $(if $(CONSUMER),--consumer "$(CONSUMER)")
 
@@ -21,6 +24,8 @@ help:
 	@echo "         check-{versions-synced,no-private-refs,file-conventions} | release-check"
 	@echo "         rollout[-plan|-status|-reconcile] VERSION=<published-version>"
 	@echo "         Optional: CONSUMER=owner/repo@branch JOBS=4 DRY_RUN=1 CHANNEL=stable"
+	@echo "         test-standards TEST_JOBS=4 PYTEST_ARGS='-k release' | test -j4"
+	@echo "         release-status COMMIT=origin/main"
 	@echo "Releases are published only after a version-changing merge to main."
 
 rollout:
@@ -82,28 +87,36 @@ build:
 	cd packages/standards   && uv build
 	cd packages/standards-compat && uv build
 
-test: check-versions-synced
+test: check-versions-synced test-typescript test-bootstrap test-contracts test-python test-sql test-iac test-standards test-tsconfig
+
+.PHONY: test-typescript test-bootstrap test-contracts test-python test-sql test-iac test-standards test-tsconfig release-status
+
+test-typescript:
 	cd packages/typescript     && npm test
+
+test-bootstrap:
 	cd packages/bootstrap      && uv run pytest -q
+
+test-contracts:
 	cd packages/contracts      && uv run pytest -q
+
+test-python:
 	cd packages/python         && uv run pytest -q
+
+test-sql:
 	cd packages/sql            && uv run pytest -q
+
+test-iac:
 	cd packages/iac            && uv run pytest -q
-	# Sibling wheels are built and installed alongside, mirroring ci.yml.
-	# `code-standards` pins its siblings exactly, so resolving them from PyPI fails
-	# for the whole window between bumping a pin and publishing that version -- which
-	# is exactly when this target most needs to run. Building them locally keeps
-	# `make test` usable on a version-bump branch.
-	cd packages/standards   && rm -rf dist \
-	  && uv build --wheel >/dev/null \
-	  && uv build --wheel --project ../contracts --out-dir dist/deps >/dev/null \
-	  && uv build --wheel --project ../python --out-dir dist/deps >/dev/null \
-	  && uv build --wheel --project ../sql    --out-dir dist/deps >/dev/null \
-	  && uv build --wheel --project ../iac    --out-dir dist/deps >/dev/null \
-	  && uv venv --quiet --clear dist/test-venv \
-	  && uv pip install --quiet --python dist/test-venv/bin/python pytest==9.1.1 jsonschema==4.25.1 ./dist/deps/*.whl ./dist/code_standards-*.whl \
-	  && PATH="$$PWD/dist/test-venv/bin:$$PATH" dist/test-venv/bin/python -m pytest -q tests/
+
+test-standards:
+	uv run --project packages/standards --frozen python -m sarj_standards.libs.release.wheel_tests --root . --jobs "$(TEST_JOBS)" $(PYTEST_ARGS)
+
+test-tsconfig:
 	cd packages/tsconfig       && node -e "JSON.parse(require('fs').readFileSync('base.json','utf8'))" && node -e "JSON.parse(require('fs').readFileSync('strict.json','utf8'))"
+
+release-status:
+	$(STANDARDS) --root . maintain release status --commit "$(COMMIT)"
 
 # Each package runs its native type-aware lint gate.
 lint:

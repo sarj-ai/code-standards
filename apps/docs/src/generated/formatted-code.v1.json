@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "catalogSha256": "de6235ea6feaac77576af78caa51a0cf7c3d961727a6ebc6cbeb1e52e2044c35",
-  "cliSha256": "6462dce8948cc77fa466d80d0a08f381a7ac7ca9948f4184002f82bc397dc666",
+  "cliSha256": "e8a0f668b75d693fc9ac9c7c330caa0969e6cd4ba4ea2cb2232b718193141147",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -12247,7 +12247,7 @@
       "maintain/check": "code-standards maintain check [-h] [--only REPO_ONLY ...] [--commits COMMITS] [--policy-root POLICY_DEST] [--private-refs-file PRIVATE_REFS_FILE] [--quiet]\n",
       "maintain/sync-ledger": "code-standards maintain sync-ledger [-h] [--check]\n",
       "maintain/comment-corpus": "code-standards maintain comment-corpus [-h] ROOTS ... [--include-text PRIVATE_JSONL]\n",
-      "maintain/release": "code-standards maintain release [-h] {check-tag,verify-tags,create-tags,changes,causality,lock-age,typescript,verify-wheel,verify-publications,publish}\n",
+      "maintain/release": "code-standards maintain release [-h] {check-tag,verify-tags,create-tags,changes,causality,lock-age,typescript,verify-wheel,status,verify-publications,publish}\n",
       "maintain/release/check-tag": "code-standards maintain release check-tag [-h] TAG\n",
       "maintain/release/verify-tags": "code-standards maintain release verify-tags [-h] [--commit RELEASE_COMMIT]\n",
       "maintain/release/create-tags": "code-standards maintain release create-tags [-h] RELEASE_TARGETS ... --commit RELEASE_COMMIT [--attempts ATTEMPTS] [--delay-seconds DELAY_SECONDS]\n",
@@ -12256,6 +12256,7 @@
       "maintain/release/lock-age": "code-standards maintain release lock-age [-h] LOCKFILE [--minimum-days MINIMUM_AGE] [--exclude RELEASE_EXCLUDE ...] [--exclude-file RELEASE_EXCLUDE_FILE ...]\n",
       "maintain/release/typescript": "code-standards maintain release typescript [-h] RELEASE_MODE [--output OUTPUT]\n",
       "maintain/release/verify-wheel": "code-standards maintain release verify-wheel [-h] WHEELS ...\n",
+      "maintain/release/status": "code-standards maintain release status [-h] [--commit RELEASE_COMMIT] [--format OUTPUT_FORMAT]\n",
       "maintain/release/verify-publications": "code-standards maintain release verify-publications [-h] [--attempts ATTEMPTS] [--delay-seconds DELAY_SECONDS]\n",
       "maintain/release/publish": "code-standards maintain release publish [-h] RELEASE_TARGET\n",
       "maintain/docs": "code-standards maintain docs [-h] {check,sync}\n",

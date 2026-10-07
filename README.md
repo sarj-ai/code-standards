@@ -23,6 +23,8 @@ make setup
 make verify
 ```
 
+Run independent package suites with `make test -j4`, or focus on the fresh Standards wheel with `make test-standards PYTEST_ARGS='-k release'`. `TEST_JOBS=1` serializes wheel tests (default: 4, maximum: 16). Wheel tests build local exact sibling versions in a temporary wheelhouse and leave existing distribution output intact. Use `make release-status COMMIT=origin/main` to inspect exact-revision checks, publication, tagging, and rollout with queue and job durations. The underlying `maintain release status --commit REV --format json` command provides JSON. Release builds and portability checks overlap safety checks; publication still requires every check, exact public sibling version, verified artifact digest, and trusted-publisher attestation.
+
 Create a rule with `maintain rules new ENGINE:ID --category CATEGORY --summary TEXT --apply`. Without `--apply`, the command shows its plan. Creation writes the detector and executable test, registers the rule, and reserves its identifier atomically. New rules default to warning. Run authoring commands through `uv run --project packages/standards --frozen code-standards` to use the source and dependencies of the checkout being edited. Implement the detector and replace the example placeholders, then verify and prepare it:
 
 ```bash

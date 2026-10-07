@@ -4,7 +4,12 @@ import re
 from typing import TYPE_CHECKING
 
 from sarj_standards.libs.release.process import ProcessRunner, run_process
-from sarj_standards.libs.release.registry import PublicationChecker, publication_exists, target_requirements
+from sarj_standards.libs.release.registry import (
+    PublicationChecker,
+    publication_exists,
+    publication_results,
+    target_requirements,
+)
 from sarj_standards.libs.release.tags import (
     RELEASE_TARGETS,
     ReleaseTargetId,
@@ -51,16 +56,22 @@ def changed_release_targets(
 def pending_release_targets(
     root: Path,
     *,
-    before: str,
+    before: str,  # ruff: ignore[unused-function-argument] -- retained CLI compatibility; pending state uses current manifests.
     after: str,
     runner: ProcessRunner = run_process,
     checker: PublicationChecker = publication_exists,
     tag_verifier: ReleaseTagVerifier = verify_remote_release_tags,
 ) -> Mapping[str, bool]:
-    changed_release_targets(root, before=before, after=after, runner=runner)
     missing_tags = set(tag_verifier(root, commit=after, runner=runner))
+    requirements = {name: target_requirements(root, name) for name in RELEASE_TARGETS}
+    publications = publication_results(
+        tuple(item for values in requirements.values() for item in values), checker=checker
+    )
+    for result in publications.values():
+        if isinstance(result, OSError):
+            raise result
     return {
         name: current_release_tag(ReleaseTargetId(name), root) in missing_tags
-        or not all(checker(item) for item in target_requirements(root, name))
+        or not all(publications[item] for item in requirements[name])
         for name in RELEASE_TARGETS
     }

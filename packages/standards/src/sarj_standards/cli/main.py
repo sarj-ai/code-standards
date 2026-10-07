@@ -3490,6 +3490,24 @@ def build_app(handler: Callable[[_Args], int] = _dispatch) -> typer.Typer:
             )
         )
 
+    @group_maintain_release.command("status", help="show release stages and queue time for an exact revision")
+    def command_maintain_release_status(
+        ctx: typer.Context,
+        *,
+        release_commit: Annotated[str, typer.Option("--commit")] = "HEAD",
+        output_format: Annotated[_JsonTextFormat, typer.Option("--format")] = _JsonTextFormat.TEXT,
+    ) -> int:
+        return handler(
+            _Args(
+                dest=_command_root(ctx),
+                cmd="maintain",
+                repo_cmd="release",
+                release_cmd="status",
+                release_commit=release_commit,
+                output_format=output_format.value,
+            )
+        )
+
     @group_maintain_release.command(
         "verify-publications", help="wait for every exact sibling publication required by Standards"
     )
@@ -3998,6 +4016,10 @@ def _run_repo_release(args: _Args) -> int:
     from sarj_standards.libs import release  # ruff: ignore[import-outside-top-level] -- lazy route
 
     root = _resolve_dest(args.dest)
+    if args.release_cmd == "status":
+        from sarj_standards.libs.release.status import print_release_status  # ruff: ignore[import-outside-top-level]
+
+        return print_release_status(root, commit=args.release_commit, output_format=args.output_format)
     if args.release_cmd == "check-tag":
         validated = release.validate_release_tag(args.tag, root)
         print(f"{validated.tag} exactly matches {validated.manifest}")
