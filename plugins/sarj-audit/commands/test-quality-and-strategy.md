@@ -18,6 +18,13 @@ Before adding tests, inspect existing coverage, identify the changed contract,
 and choose the cheapest faithful boundary. Reuse maintained fakes and fixtures
 before introducing support abstractions.
 
+Prefer the smallest suite that distinguishes the required contracts. Each new
+case must add a concrete regression, boundary, interaction, or lifecycle check;
+delete an identical case or strengthen an existing oracle before adding another
+test. A passing test of a library default, trivial accessor, or unchanged
+forwarder needs a demonstrated compatibility or application contract to earn
+ongoing maintenance. Coverage targets alone do not supply that contract.
+
 Trace actual CI test selections and their effective pytest roots/configuration,
 coverage collection, skips and prerequisites, retries, and optional lanes before
 assessing which contracts execute. Establish the intended lane and available
@@ -82,7 +89,10 @@ the weakness:
     gates alongside the tests they induce. Coverage is useful discovery evidence,
     but a test added only to execute a forwarding line still needs an independent
     contract oracle. Recommend mutation review for new logic instead of treating
-    line or branch execution as proof of test value.
+    line or branch execution as proof of test value. Keep generated artifacts
+    and static fixture/demo data outside the application-logic denominator;
+    verify their actual callers and ownership before changing coverage scope,
+    and never exclude maintained runtime behavior to silence a failing gate.
 14. **Resource lifecycle** — Establish ownership and release behavior from the
     concrete API or helper contract. After a successful acquisition, cleanup must
     cover setup failures before a fixture yields; independent cleanup must still
@@ -127,6 +137,13 @@ test. These defaults complement the judgment checks above:
 - Parameterize cases sharing the same action and assertion contract. Separate
   behaviors whose setup or assertions need branches; name table rows when their
   distinction is not obvious from the values.
+- Keep tables sparse: stack parameter dimensions only when their interaction is
+  the contract. Put independent dimensions in separate tables, construct fresh
+  mutable inputs per case, and preserve case-specific marks and regression IDs.
+- Assert one coherent result directly, using ordinary pytest assertion diffs.
+  Remove setup defaults, explanatory prose, and intermediate aliases that merely
+  repeat visible code. Retain comments explaining a surprising boundary or bug;
+  concision must leave the action and independent oracle readable.
 - Use scoped monkeypatching for process boundaries such as environment, clocks,
   or unavoidable third-party globals. Prefer constructor injection for service
   dependencies. A scoped patch may replace an existing constructor-injected
@@ -137,6 +154,28 @@ test. These defaults complement the judgment checks above:
   Replacing `subject.method` still bypasses the behavior being tested. Do not
   convert scoped patches to bare assignment just to silence the rule; restoration
   alone also does not justify a patch.
+
+## Writing TypeScript tests
+
+- Use `it.each` or `test.each` for one action and oracle with varying inputs.
+  Prefer short tuples for scalar cases and typed named records for structured
+  cases; use an informative case title and avoid branches in the test callback.
+- Use a local typed factory for varying data and a shared factory when multiple
+  suites need it. Use `satisfies` or the real constructor/schema instead of
+  assertions that cast an incomplete fixture into the collaborator type.
+- Create mutable collaborators, query clients, and request handlers per test.
+  Keep immutable case data shared; restore timers, spies, globals, and handlers
+  through the framework's cleanup hooks. Avoid hidden setup in a distant global
+  hook when only one suite needs it.
+- Assert the complete relevant value with `toEqual` or `toStrictEqual`, or a
+  deliberate `toMatchObject` for a partial contract. Keep identity, ordering,
+  negative controls, and adapter interactions when those are the behavior.
+- For UI contracts, query by role and accessible name and await observable state
+  with the existing Testing Library helpers. Reuse provider/render helpers;
+  avoid fixed sleeps, implementation snapshots, and duplicate rendering layers.
+- Apply the same case-admission and sparse-table rules as pytest. Do not replace
+  a clear two-line test with a generic runner, assertion helper, or new framework
+  that hides which production operation and regression the case exercises.
 
 ### A small language switch harness
 
