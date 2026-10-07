@@ -31,15 +31,20 @@ function arrayConstants(source: ts.SourceFile): Map<string, ts.ArrayLiteralExpre
     if (
       ts.isVariableDeclaration(node) &&
       ts.isIdentifier(node.name) &&
-      node.initializer !== undefined &&
-      ts.isArrayLiteralExpression(node.initializer)
+      node.initializer !== undefined
     ) {
-      found.set(node.name.text, node.initializer);
+      const initializer = unwrap(node.initializer);
+      if (ts.isArrayLiteralExpression(initializer)) found.set(node.name.text, initializer);
     }
     ts.forEachChild(node, visit);
   };
   ts.forEachChild(source, visit);
   return found;
+}
+
+function unwrap(value: ts.Expression): ts.Expression {
+  while (ts.isParenthesizedExpression(value) || ts.isAsExpression(value) || ts.isSatisfiesExpression(value)) value = value.expression;
+  return value;
 }
 
 /**
@@ -53,14 +58,19 @@ function countCases(
   value: ts.Expression,
   constants: Map<string, ts.ArrayLiteralExpression>,
 ): number | undefined {
+  value = unwrap(value);
   if (ts.isIdentifier(value)) {
     const target = constants.get(value.text);
     return target === undefined ? undefined : countCases(target, constants);
+  }
+  if (ts.isCallExpression(value) && ts.isPropertyAccessExpression(value.expression) && value.expression.name.text === "map" && value.arguments.length > 0) {
+    return countCases(value.expression.expression, constants);
   }
   if (!ts.isArrayLiteralExpression(value)) return undefined;
 
   let total = 0;
   for (const element of value.elements) {
+    if (ts.isOmittedExpression(element)) return undefined;
     if (ts.isSpreadElement(element)) {
       const spread = countCases(element.expression, constants);
       if (spread === undefined) return undefined;
@@ -71,6 +81,30 @@ function countCases(
   }
   return total;
 }
+
+it.each([
+  ["literal", "[1, 2]", 2],
+  ["empty", "[]", 0],
+  ["local const", "CASES", 2],
+  ["spread", "[...CASES, 3]", 3],
+  ["const assertion", "([1, 2] as const)", 2],
+  ["satisfies", "([1, 2] satisfies readonly number[])", 2],
+  ["map literal", "([1, 2] as const).map(value => ({code: String(value)}))", 2],
+  ["map local const", "CASES.map(value => ({code: String(value)}))", 2],
+  ["filter changes cardinality", "CASES.filter(Boolean)", undefined],
+  ["flatMap changes cardinality", "CASES.flatMap(value => [value, value])", undefined],
+  ["unknown input", "IMPORTED.map(value => value)", undefined],
+  ["unknown factory", "makeCases().map(value => value)", undefined],
+  ["custom map", "({map: custom}).map(value => value)", undefined],
+  ["sparse array", "[, 1]", undefined],
+])("counts %s without executing fixture code", (_name, expression, expected) => {
+  const source = ts.createSourceFile("cases.ts", `const CASES = [1, 2] as const; const RESULT = ${expression};`, ts.ScriptTarget.ESNext, true);
+  const statement = source.statements[1];
+  if (statement === undefined || !ts.isVariableStatement(statement)) throw new Error("missing expression fixture");
+  const value = statement.declarationList.declarations[0]?.initializer;
+  if (value === undefined) throw new Error("missing expression initializer");
+  expect(countCases(value, arrayConstants(source))).toBe(expected);
+});
 
 interface CaseCounts {
   readonly valid: number | undefined;

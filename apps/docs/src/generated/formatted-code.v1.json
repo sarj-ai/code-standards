@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "9cf61893b299be8c4f7d3a24a36f28843805284566e3d8347b502608227dd162",
-  "cliSha256": "28b2d2230d1ebfc8258a944e92e535b1156cdf7b2d6ae7beac9c2df10341a74a",
+  "catalogSha256": "b58c24b1ed727d9df3e622d240e5cecdf33cfe9d45e310fae12c021241bb3fe2",
+  "cliSha256": "534d3b6e0a9debe27e364bd9b55e4c8335bb8783f65bc2491a3978cbf38bbbc1",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -567,6 +567,41 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Listen to one lifecycle signal"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "eslint:no-duplicate-test-case": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/format.test.ts",
+              "source": "import { it } from \"vitest\";\nit.each([\n  [0, \"0ms\"],\n  [1, \"1ms\"],\n])(\"%s\", (input, expected) => {\n  expect(format(input)).toBe(expected);\n});\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/format.test.ts",
+          "id": "distinct-boundary",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Distinct inputs have independent rows"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/format.test.ts",
+              "source": "import { it } from \"vitest\";\nit.each([\n  [0, \"0ms\"],\n  [0, \"0ms\"],\n])(\"%s\", (input, expected) => {\n  expect(format(input)).toBe(expected);\n});\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/format.test.ts",
+          "id": "duplicate-row",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A copied row misses the intended boundary"
         }
       ],
       "optionsSchemaSource": null
@@ -1977,6 +2012,21 @@
           "expectedCount": 0,
           "files": [
             {
+              "path": "src/service.test.ts",
+              "source": "it(\"works\", () => {\n  const status = serviceStatus();\n  expect(status).toBe(\"ok\");\n});\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/service.test.ts",
+          "id": "produced-scalar-oracle",
+          "outcome": "accept",
+          "scenarioId": "setup-only",
+          "title": "A runtime scalar result remains a valid observation"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
               "path": "src/add.test.ts",
               "source": "it(\"adds\", () => {\n  expect(add(1, 1)).toBe(2);\n});\n"
             }
@@ -1987,6 +2037,21 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Assert on a produced value"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/service.test.ts",
+              "source": "it(\"works\", () => {\n  const status = \"ok\";\n  expect(status).toBe(\"ok\");\n});\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/service.test.ts",
+          "id": "setup-only-oracle",
+          "outcome": "reject",
+          "scenarioId": "setup-only",
+          "title": "A const setup assertion never observes the application"
         }
       ],
       "optionsSchemaSource": null
@@ -7658,6 +7723,21 @@
           "files": [
             {
               "path": "tests/test_service.py",
+              "source": "def test_service():\n    status = service_status()\n    assert status == \"ok\"\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_service.py",
+          "id": "produced-scalar-oracle",
+          "outcome": "accept",
+          "scenarioId": "setup-only",
+          "title": "Assert on a value returned by the application"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "tests/test_service.py",
               "source": "def test_service(response):\n    assert response.status_code == 200\n"
             }
           ],
@@ -7667,6 +7747,21 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Assertion checks runtime output"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "tests/test_service.py",
+              "source": "def test_service():\n    status = \"ok\"\n    assert status == \"ok\"\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_service.py",
+          "id": "setup-only-oracle",
+          "outcome": "reject",
+          "scenarioId": "setup-only",
+          "title": "A test asserts only on its own fixed setup"
         }
       ],
       "optionsSchemaSource": null

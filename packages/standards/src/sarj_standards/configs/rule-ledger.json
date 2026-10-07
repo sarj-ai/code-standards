@@ -210,6 +210,7 @@
       "no-declaration-comment-wall",
       "no-detached-global-fetch",
       "no-duplicate-lifecycle-refresh-listeners",
+      "no-duplicate-test-case",
       "no-dynamic-sql",
       "no-enum",
       "no-excessive-cognitive-complexity",
