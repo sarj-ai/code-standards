@@ -96,7 +96,7 @@ class PreferCollectionComprehension(Rule):
             "Only function-local, adjacent empty initializers and one synchronous single-purpose loop are checked.",
             (
                 "The rule fills gaps left by Ruff PERF401, PERF403, and FURB142: derived dict projections, "
-                "destructured list projections, narrowly filtered computed list candidates, and filtered set "
+                "constructor-valued dict projections, destructured list projections, narrowly filtered computed list candidates, and filtered set "
                 "builders."
             ),
             (
@@ -115,6 +115,41 @@ class PreferCollectionComprehension(Rule):
             ),
         ),
         examples=(
+            RuleExample(
+                example_id="constructor-dict-projection-loop",
+                title="Build constructor-valued dictionaries directly",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/views.py",
+                        "def views(rows, labels):\n"
+                        "    result = {}\n"
+                        "    for row in rows:\n"
+                        "        result[row.id] = EntryView(id=row.id, label=labels.get(row.id))\n"
+                        "    return result\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/views.py"),
+                expected_count=1,
+                public=True,
+                scenario="constructor-dict",
+            ),
+            RuleExample(
+                example_id="constructor-dict-comprehension",
+                title="Keep constructor-valued dictionaries declarative",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/views.py",
+                        "def views(rows, labels):\n"
+                        "    return {row.id: EntryView(id=row.id, label=labels.get(row.id)) for row in rows}\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/views.py"),
+                expected_count=0,
+                public=True,
+                scenario="constructor-dict",
+            ),
             RuleExample(
                 example_id="derived-dict-projection-loop",
                 title="Build a projected dictionary directly",
@@ -331,6 +366,7 @@ def _loop_replacement(
                         _CollectionKind.DICT,
                         f"{{{ast.unparse(key)}: {ast.unparse(value)} for {ast.unparse(loop.target)} "
                         f"in {ast.unparse(loop.iter)}}}",
+                        allow_multiline=isinstance(value, ast.Call),
                     )
             case _:
                 pass
@@ -520,8 +556,20 @@ def _valid_dict_projection(key: ast.expr, value: ast.expr, name: str, bound_name
         return False
     return (
         _simple_projection(key, bound_names)
-        and _simple_projection(value, bound_names)
-        and (_is_derived(key) or _is_derived(value))
+        and (_simple_projection(value, bound_names) or _constructor_projection(value))
+        and (_is_derived(key) or _is_derived(value) or isinstance(value, ast.Call))
+    )
+
+
+def _constructor_projection(node: ast.expr) -> bool:
+    if not isinstance(node, ast.Call) or _contains_prohibited_expression(node):
+        return False
+    return all(
+        _dotted_name(call.func)
+        and not any(isinstance(argument, ast.Starred) for argument in call.args)
+        and all(keyword.arg is not None for keyword in call.keywords)
+        for call in walk_ast(node)
+        if isinstance(call, ast.Call)
     )
 
 
@@ -553,9 +601,12 @@ def _target_binding_is_observable(owner: _Callable, names: frozenset[str], loop:
     if _declares_external(owner, names) or any(_loads_name(loop.iter, name) for name in names):
         return True
     end_line = loop.end_lineno or loop.lineno
+    comprehension_locals = _comprehension_local_nodes(owner, names)
     for node in walk_ast(owner):
         if isinstance(node, ast.arg) and node.arg in names:
             return True
+        if id(node) in comprehension_locals:
+            continue
         if (
             isinstance(node, ast.Name)
             and node.id in names
@@ -566,6 +617,29 @@ def _target_binding_is_observable(owner: _Callable, names: frozenset[str], loop:
         ):
             return True
     return False
+
+
+def _comprehension_local_nodes(owner: _Callable, names: frozenset[str]) -> set[int]:
+    local_nodes: set[int] = set()
+    for node in walk_ast(owner):
+        if not isinstance(node, (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)):
+            continue
+        # Multiple generators can read an outer binding before a later generator shadows it.
+        if len(node.generators) != 1:
+            continue
+        bound = _bound_names(node.generators[0].target) & names
+        if not bound:
+            continue
+        # The first iterable runs in the surrounding scope; targets and remaining expressions are local.
+        scoped: list[ast.AST] = [node.generators[0].target, *node.generators[0].ifs]
+        scoped.extend((node.key, node.value) if isinstance(node, ast.DictComp) else (node.elt,))
+        local_nodes.update(
+            id(child)
+            for expression in scoped
+            for child in walk_ast(expression)
+            if isinstance(child, ast.Name) and child.id in bound
+        )
+    return local_nodes
 
 
 def _declares_external(owner: _Callable, names: frozenset[str]) -> bool:
@@ -604,7 +678,24 @@ def _replacement_fits(init: _Init, name: str, expression: str, *, allow_multilin
         prefix = f"{name}: {ast.unparse(init.annotation)} = "
     if init.col_offset + len(prefix) + len(expression) <= _MAX_REPLACEMENT_WIDTH:
         return True
-    if not allow_multiline or not (expression.startswith("[") and expression.endswith("]")):
+    if not allow_multiline:
+        return False
+    if expression.startswith("{"):
+        comprehension = ast.parse(expression, mode="eval").body
+        if not isinstance(comprehension, ast.DictComp) or not isinstance(comprehension.value, ast.Call):
+            return False
+        call = comprehension.value
+        generator = comprehension.generators[0]
+        lines = (
+            f"{ast.unparse(comprehension.key)}: {ast.unparse(call.func)}(",
+            *(f"    {ast.unparse(argument)}," for argument in call.args),
+            *(f"    {keyword.arg}={ast.unparse(keyword.value)}," for keyword in call.keywords),
+            f"for {ast.unparse(generator.target)} in {ast.unparse(generator.iter)}",
+        )
+        return init.col_offset + len(prefix) + 1 <= _MAX_REPLACEMENT_WIDTH and all(
+            init.col_offset + 4 + len(line) <= _MAX_REPLACEMENT_WIDTH for line in lines
+        )
+    if not (expression.startswith("[") and expression.endswith("]")):
         return False
     content = expression[1:-1]
     return (

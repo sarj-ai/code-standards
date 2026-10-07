@@ -303,3 +303,88 @@ def test_filtered_replacement_width_gate_is_bounded() -> None:
 """
 
     assert _check(source) == []
+
+
+def test_flags_multiline_dictionary_constructor_projection() -> None:
+    source = """def views(rows, counts, states, names, empty):
+    ids = [row.id for row in rows]
+    result: dict[str, EntryView] = {}
+    for row in rows:
+        result[row.id] = EntryView(
+            history=counts.get(row.phone, empty) if row.phone is not None else empty,
+            name=names.get(row.id),
+            flags=states.result()[row.id] if states is not None else [],
+            active=row.id in states.result(),
+        )
+    return result
+"""
+    findings = _check(source)
+    assert [(finding.code, finding.line) for finding in findings] == [("SARJ430", 4)]
+
+
+@pytest.mark.parametrize(
+    "value",
+    ["Entry(row.id)", "views.Entry(id=row.id, name=names.get(row.id))"],
+)
+def test_flags_dictionary_constructor_values(value: str) -> None:
+    source = f"def views(rows, names):\n    result = {{}}\n    for row in rows:\n        result[row.id] = {value}\n    return result\n"
+    assert len(_check(source)) == 1
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "Entry(raw=result)",
+        "Entry(raw=await load(row))",
+        "Entry(raw=(value := row.value))",
+        "Entry(raw=[part for part in row.parts])",
+        "Entry(raw=lambda: row.value)",
+        "Entry(*row.parts)",
+        "Entry(**row.fields)",
+        "Entry(raw=merge(*row.parts))",
+        "Entry(raw=merge(**row.fields))",
+        "make_factory()(row)",
+    ],
+)
+def test_excludes_unsafe_dictionary_constructor_values(value: str) -> None:
+    source = f"async def views(rows):\n    result = {{}}\n    for row in rows:\n        result[row.id] = {value}\n    return result\n"
+    assert _check(source) == []
+
+
+def test_constructor_comprehension_is_already_compliant() -> None:
+    source = "def views(rows, names):\n    return {row.id: Entry(id=row.id, name=names.get(row.id)) for row in rows}\n"
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    "projection",
+    [
+        "[row.id for row in rows]",
+        "{row.id for row in rows}",
+        "{row.id: row.value for row in rows}",
+        "(row.id for row in rows)",
+    ],
+)
+@pytest.mark.parametrize("placement", ["before", "after"])
+def test_comprehension_local_names_do_not_leak(projection: str, placement: str) -> None:
+    statement = f"    ids = {projection}\n"
+    before = statement if placement == "before" else ""
+    after = statement if placement == "after" else ""
+    source = f"def views(rows):\n{before}    result = {{}}\n    for row in rows:\n        result[row.id] = Entry(row.id)\n{after}    return result\n"
+    assert len(_check(source)) == 1
+
+
+@pytest.mark.parametrize(
+    "projection",
+    [
+        "[row.id for row in row]",
+        "[value for value in row]",
+        "[value for value in rows if (row := value)]",
+        "[row.id for other in rows]",
+        "[row.id for other in rows for row in row]",
+        "[row.id for other in rows if row.active for row in other]",
+    ],
+)
+def test_comprehension_outer_reads_and_walrus_bindings_remain_observable(projection: str) -> None:
+    source = f"def views(rows):\n    ids = {projection}\n    result = {{}}\n    for row in rows:\n        result[row.id] = Entry(row.id)\n    return result\n"
+    assert _check(source) == []
