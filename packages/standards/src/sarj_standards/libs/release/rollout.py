@@ -188,6 +188,7 @@ class RolloutArgs:
     version: str | None = None
     dry_run: bool = False
     channel: RolloutChannel = RolloutChannel.STABLE
+    consumer: str | None = None
 
 
 class CommandRunner(Protocol):
@@ -227,6 +228,10 @@ class Consumer:
     baseline_rules: tuple[str, ...] = ()
     baseline_paths: tuple[str, ...] = ()
     baseline_update: tuple[str, ...] = ()
+
+    @property
+    def identity(self) -> str:
+        return f"{self.repository}@{self.branch}"
 
 
 class OutcomeState(StrEnum):
@@ -309,6 +314,16 @@ def load_registry(path: Path) -> tuple[Consumer, ...]:
 def select_channel(consumers: Sequence[Consumer], channel: RolloutChannel) -> tuple[Consumer, ...]:
     ceiling = ROLLOUT_CHANNELS.index(channel)
     return tuple(item for item in consumers if ROLLOUT_CHANNELS.index(item.channel) <= ceiling)
+
+
+def select_consumer(consumers: Sequence[Consumer], identity: str | None) -> tuple[Consumer, ...]:
+    if identity is None:
+        return tuple(consumers)
+    selected = tuple(item for item in consumers if item.identity == identity)
+    if not selected:
+        msg = f"rollout consumer {identity!r} is not in the selected channel"
+        raise RolloutError(msg)
+    return selected
 
 
 def validate_version(version: str) -> str:
@@ -1369,8 +1384,19 @@ def apply(
     runner: CommandRunner,
     *,
     dry_run: bool = False,
+    consumer: str | None = None,
 ) -> tuple[Outcome, ...]:
     verify_release(version, runner)
+    targets = select_consumer(consumers, consumer)
+    gated = closed_wave_outcomes(version, consumers, runner)
+    if gated is None:
+        return _apply_consumers(targets, version, runner, dry_run=dry_run)
+    return tuple(item for item in gated if item.consumer in targets)
+
+
+def closed_wave_outcomes(
+    version: str, consumers: Sequence[Consumer], runner: CommandRunner
+) -> tuple[Outcome, ...] | None:
     selected_channel = max((ROLLOUT_CHANNELS.index(item.channel) for item in consumers), default=0)
     prior = tuple(item for item in consumers if ROLLOUT_CHANNELS.index(item.channel) < selected_channel)
     if prior:
@@ -1382,7 +1408,7 @@ def apply(
                 if item not in prior
             )
             return (*prior_status, *blocked)
-    return _apply_consumers(consumers, version, runner, dry_run=dry_run)
+    return None
 
 
 def latest_version(runner: CommandRunner) -> str:
@@ -1431,6 +1457,19 @@ def print_outcomes(version: str, outcomes: Sequence[Outcome], *, source_sha: str
     )
 
 
+def list_consumers(registry: Path, channel: RolloutChannel) -> int:
+    try:
+        consumers = select_channel(load_registry(registry), channel)
+    except (OSError, RolloutError) as exc:
+        sys.stderr.write(f"standards-rollout: {exc}\n")
+        return 2
+    if not consumers:
+        sys.stderr.write(f"standards-rollout: rollout channel {channel!r} selects no consumers\n")
+        return 2
+    sys.stdout.write(json.dumps([{"name": item.name, "identity": item.identity} for item in consumers]) + "\n")
+    return 0
+
+
 def execute(args: RolloutArgs, runner: CommandRunner) -> int:
     consumers = select_channel(load_registry(args.registry), args.channel)
     if not consumers:
@@ -1449,7 +1488,7 @@ def execute(args: RolloutArgs, runner: CommandRunner) -> int:
                 0 if all(item.state in {OutcomeState.MERGED, OutcomeState.ALREADY_CURRENT} for item in outcomes) else 1
             )
         case RolloutCommand.APPLY | RolloutCommand.RECONCILE:
-            outcomes = apply(version, consumers, runner, dry_run=args.dry_run)
+            outcomes = apply(version, consumers, runner, dry_run=args.dry_run, consumer=args.consumer)
             print_outcomes(version, outcomes)
             if any(item.state in {OutcomeState.BLOCKED, OutcomeState.ERROR} for item in outcomes):
                 return 1
@@ -1474,12 +1513,20 @@ def main(argv: Sequence[str] | None = None, *, runner: CommandRunner | None = No
     def configure(registry: Annotated[Path, typer.Option("--registry")] = DEFAULT_REGISTRY) -> None:
         args.registry = registry
 
-    def run(command: RolloutCommand, version: str | None, channel: RolloutChannel, *, dry_run: bool = False) -> None:
+    def run(
+        command: RolloutCommand,
+        version: str | None,
+        channel: RolloutChannel,
+        *,
+        dry_run: bool = False,
+        consumer: str | None = None,
+    ) -> None:
         nonlocal exit_code
         args.command = command
         args.version = version
         args.channel = channel
         args.dry_run = dry_run
+        args.consumer = consumer
         exit_code = _execute_cli(args, runner or SubprocessRunner())
 
     @app.command("plan")
@@ -1495,8 +1542,11 @@ def main(argv: Sequence[str] | None = None, *, runner: CommandRunner | None = No
         version: Annotated[str, typer.Option("--version")],
         channel: Annotated[RolloutChannel, typer.Option("--channel")] = RolloutChannel.STABLE,
         dry_run: Annotated[bool, typer.Option("--dry-run")] = False,
+        consumer: Annotated[
+            str | None, typer.Option("--consumer", help="repository@branch; default: every consumer")
+        ] = None,
     ) -> None:
-        run(RolloutCommand.APPLY, version, channel, dry_run=dry_run)
+        run(RolloutCommand.APPLY, version, channel, dry_run=dry_run, consumer=consumer)
 
     @app.command("status")
     def status_command(
@@ -1505,14 +1555,24 @@ def main(argv: Sequence[str] | None = None, *, runner: CommandRunner | None = No
     ) -> None:
         run(RolloutCommand.STATUS, version, channel)
 
+    @app.command("consumers")
+    def consumers_command(
+        channel: Annotated[RolloutChannel, typer.Option("--channel")] = RolloutChannel.STABLE,
+    ) -> None:
+        nonlocal exit_code
+        exit_code = list_consumers(args.registry, channel)
+
     @app.command("reconcile")
     def reconcile_command(
         *,
         version: Annotated[str | None, typer.Option("--version", help="default: latest published version")] = None,
         channel: Annotated[RolloutChannel, typer.Option("--channel")] = RolloutChannel.STABLE,
         dry_run: Annotated[bool, typer.Option("--dry-run")] = False,
+        consumer: Annotated[
+            str | None, typer.Option("--consumer", help="repository@branch; default: every consumer")
+        ] = None,
     ) -> None:
-        run(RolloutCommand.RECONCILE, version, channel, dry_run=dry_run)
+        run(RolloutCommand.RECONCILE, version, channel, dry_run=dry_run, consumer=consumer)
 
     try:
         app(args=None if argv is None else list(argv), prog_name="standards-rollout")
