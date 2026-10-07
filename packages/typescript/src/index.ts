@@ -63,6 +63,7 @@ import noSilentPromiseCatch from "./rules/no-silent-promise-catch.js";
 import noSleepInTestBody from "./rules/no-sleep-in-test-body.js";
 import noStorageInStatelessModules from "./rules/no-storage-in-stateless-modules.js";
 import noStringConcatInLoop from "./rules/no-string-concat-in-loop.js";
+import noDuplicateTestCase from "./rules/no-duplicate-test-case.js";
 import noTautologicalExpect from "./rules/no-tautological-expect.js";
 import noTypedDocSections from "./rules/no-typed-doc-sections.js";
 import noTrailingValueNarration from "./rules/no-trailing-value-narration.js";
@@ -187,6 +188,7 @@ const RULES = {
   "no-storage-in-stateless-modules": noStorageInStatelessModules,
   "no-string-concat-in-loop": noStringConcatInLoop,
   "no-tautological-expect": noTautologicalExpect,
+  "no-duplicate-test-case": noDuplicateTestCase,
   "no-typed-doc-sections": noTypedDocSections,
   "no-trailing-value-narration": noTrailingValueNarration,
   "no-declaration-comment-wall": noDeclarationCommentWall,
@@ -246,7 +248,7 @@ const RULES = {
 
 const meta = {
   name: "@sarj/eslint-plugin",
-  version: "16.3.3",
+  version: "16.4.0",
 } as const;
 
 /** @deprecated All repositories use one policy; retained for import compatibility. */
@@ -261,6 +263,7 @@ const LIBRARY_IMPORT_POLICY = ["error", {
 const ADVISORY_RULES = [
   "@sarj/excessive-commentary",
   "@sarj/no-bespoke-api-case-conversion",
+  "@sarj/no-duplicate-test-case",
   "@sarj/no-json-stringify-object-equality",
   "@sarj/no-restated-comment",
   "@sarj/no-restated-jsdoc",
@@ -341,6 +344,7 @@ const RECOMMENDED_RULES = {
   "@sarj/no-sleep-in-test-body": "error",
   "@sarj/no-string-concat-in-loop": "error",
   "@sarj/no-tautological-expect": "error",
+  "@sarj/no-duplicate-test-case": "warn",
   "@sarj/no-typed-doc-sections": "error",
   "@sarj/no-trailing-value-narration": "error",
   "@sarj/no-declaration-comment-wall": "error",
@@ -462,6 +466,7 @@ const STRICT_RULES = {
   "@sarj/no-storage-in-stateless-modules": "error",
   "@sarj/no-string-concat-in-loop": "error",
   "@sarj/no-tautological-expect": "error",
+  "@sarj/no-duplicate-test-case": "warn",
   "@sarj/no-typed-doc-sections": "error",
   "@sarj/no-trailing-value-narration": "error",
   "@sarj/no-declaration-comment-wall": "error",

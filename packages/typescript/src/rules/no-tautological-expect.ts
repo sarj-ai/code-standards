@@ -4,7 +4,7 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-tautological-expect.test.ts
  */
 
-import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
+import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
 
 import { unwrapExpression } from "./_unwrap-expression.js";
 
@@ -16,13 +16,14 @@ type Options = readonly [];
 
 export const NO_TAUTOLOGICAL_EXPECT_DOCUMENTATION = {
   summary:
-    "Disallow supported literal-only assertions that are statically known to pass.",
+    "Disallow supported assertions known to pass from literals or immutable scalar setup.",
   rationale:
     "An assertion determined entirely by literals does not observe the code under test and can keep passing after that code is removed.",
   remediation: "Assert on a value produced by the behavior under test, or remove the assertion.",
   category: "testing",
   limitations: [
     "Only direct supported `expect` matcher calls in recognized test files are inspected. Local expect bindings, regular expressions, and unsupported coercions are excluded; failing constant assertions are not tautologies.",
+    "Scalar const bindings and aliases resolve through lexical scope; mutable bindings, objects, arrays, destructuring, runtime initializers and forward references are excluded.",
   ],
   examples: [
     {
@@ -41,6 +42,26 @@ export const NO_TAUTOLOGICAL_EXPECT_DOCUMENTATION = {
       files: [{ path: "src/add.test.ts", source: "it('works', () => { expect(true).toBe(true); });" }],
       focusPath: "src/add.test.ts",
       expectedCount: 1,
+      public: true,
+    },
+    {
+      id: "setup-only-oracle",
+      scenarioId: "setup-only",
+      title: "A const setup assertion never observes the application",
+      outcome: "match",
+      files: [{path: "src/service.test.ts", source: "it('works', () => { const status = 'ok'; expect(status).toBe('ok'); });"}],
+      focusPath: "src/service.test.ts",
+      expectedCount: 1,
+      public: true,
+    },
+    {
+      id: "produced-scalar-oracle",
+      scenarioId: "setup-only",
+      title: "A runtime scalar result remains a valid observation",
+      outcome: "no-match",
+      files: [{path: "src/service.test.ts", source: "it('works', () => { const status = serviceStatus(); expect(status).toBe('ok'); });"}],
+      focusPath: "src/service.test.ts",
+      expectedCount: 0,
       public: true,
     },
   ],
@@ -64,6 +85,27 @@ const OPERAND_PREVIEW_CHARS = 40;
 
 /** Sign prefixes: `-1` is a unary expression, not a literal, but it is constant. */
 const NUMERIC_SIGNS: ReadonlySet<string> = new Set(["-", "+"]);
+
+function resolveLiteral(
+  node: TSESTree.Node,
+  sourceCode: Readonly<TSESLint.SourceCode>,
+  seen: Set<TSESTree.Node> = new Set(),
+): TSESTree.Node | null {
+  node = unwrapExpression(node);
+  if (isLiteral(node)) return node;
+  if (node.type !== AST_NODE_TYPES.Identifier || seen.has(node)) return null;
+  seen.add(node);
+  const variable = ASTUtils.findVariable(sourceCode.getScope(node), node.name);
+  if (variable?.defs.length !== 1) return null;
+  const definition = variable.defs[0];
+  if (definition?.node.type !== AST_NODE_TYPES.VariableDeclarator ||
+      definition.node.id.type !== AST_NODE_TYPES.Identifier ||
+      definition.node.parent.kind !== "const" || definition.node.init === null ||
+      definition.node.init.range[1] > node.range[0] ||
+      variable.references.some((reference) => reference.isWrite() && !reference.init)) return null;
+  const value = resolveLiteral(definition.node.init, sourceCode, seen);
+  return value !== null && !isStructuralLiteral(value) ? value : null;
+}
 
 function isLiteral(node: TSESTree.Node): boolean {
   switch (node.type) {
@@ -137,12 +179,12 @@ export default createRule<Options, MessageIds>({
     type: "problem",
     docs: {
       description:
-        "Disallow supported literal-only assertions that are statically known to pass.",
+        NO_TAUTOLOGICAL_EXPECT_DOCUMENTATION.summary,
     },
     schema: [],
     messages: {
       tautologicalComparison:
-        "`expect({{operand}}).{{matcher}}({{operand}})` compares an identical literal and does not observe behavior. Assert on a produced value or remove only the redundant assertion, preserving other coverage.",
+        "`expect({{operand}}).{{matcher}}({{operand}})` is fixed by literal setup and does not observe behavior. Assert on a produced value or remove only the redundant assertion, preserving other coverage.",
       tautologicalMatcher:
         "`expect({{operand}}).{{matcher}}()` is statically known to pass. Assert on a produced value or remove only the redundant assertion, preserving other coverage.",
     },
@@ -179,24 +221,25 @@ export default createRule<Options, MessageIds>({
             !["vitest", "@jest/globals", "@playwright/test", "bun:test"].includes(String(declaration.source.value)) ||
             (imported.type === AST_NODE_TYPES.Identifier ? imported.name : imported.value) !== "expect";
         })) return;
-        const operand = expectOperand(callee);
-        if (operand === null || !isLiteral(operand)) {
+        const writtenOperand = expectOperand(callee);
+        const operand = writtenOperand === null ? null : resolveLiteral(writtenOperand, context.sourceCode);
+        if (operand === null) {
           return;
         }
         if (ZERO_ARG_MATCHERS.has(matcher) && node.arguments.length === 0 && passesZeroArgumentMatcher(operand, matcher)) {
           context.report({
             node,
             messageId: "tautologicalMatcher",
-            data: { operand: preview(operand), matcher },
+            data: { operand: preview(writtenOperand ?? operand), matcher },
           });
           return;
         }
-        const expected = node.arguments[0];
+        const writtenExpected = node.arguments[0];
+        const expected = writtenExpected === undefined ? null : resolveLiteral(writtenExpected, context.sourceCode);
         if (
           !EQUALITY_MATCHERS.has(matcher) ||
           node.arguments.length !== 1 ||
-          expected === undefined ||
-          !isLiteral(expected)
+          expected === null
         ) {
           return;
         }
@@ -211,7 +254,7 @@ export default createRule<Options, MessageIds>({
         context.report({
           node,
           messageId: "tautologicalComparison",
-          data: { operand: preview(operand), matcher },
+          data: { operand: preview(writtenOperand ?? operand), matcher },
         });
       },
     };

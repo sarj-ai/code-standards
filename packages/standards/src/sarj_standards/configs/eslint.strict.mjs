@@ -1347,6 +1347,7 @@ export function createConfig(options = {}) {
       "@sarj/no-type-member-comment-wall": "error",
       "@sarj/no-repeated-string-literal": "error",
       "@sarj/no-tautological-expect": "error",
+      "@sarj/no-duplicate-test-case": "warn",
       "@sarj/no-typed-doc-sections": "error",
       "@sarj/require-port-for-service": "error",
       "@sarj/no-unsafe-mock-casting": "error",
