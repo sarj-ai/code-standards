@@ -130,7 +130,8 @@ jobs:
     needs: plan
     if: needs.plan.outputs.plan_status == '0' && needs.plan.outputs.consumers != '[]'
     name: rollout (${{ matrix.consumer.name }})
-    runs-on: ubuntu-latest
+    # Large consumer analysis must complete within the unchanged tool deadline.
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 50
     strategy:
       fail-fast: false
