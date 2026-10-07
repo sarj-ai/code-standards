@@ -6,6 +6,8 @@ import rule, {
   PREFER_MILLISECOND_CONTROL_DURATION_SCHEMA_DOCUMENTATION,
 } from "../../src/rules/prefer-millisecond-control-duration-schema.js";
 
+import { verifyRuleExamples } from "../../src/verify-rule-examples.js";
+
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
 RuleTester.it = it;
@@ -95,4 +97,38 @@ RULE_TESTER.run("prefer-millisecond-control-duration-schema", rule, {
       errors: [ERROR],
     },
   ],
+});
+
+
+it("preserves outcomes for static member access and unknown member keys", async () => {
+  const documentation = rule.documentation;
+  if (documentation === undefined) throw new Error("Missing rule documentation");
+  await verifyRuleExamples({ ...rule, documentation: { ...documentation, examples: [
+  {
+    "id": "second-timeout-schema-static-member",
+    "title": "Static member access preserves the rule outcome",
+    "outcome": "match",
+    "focusPath": "src/request.ts",
+    "expectedCount": 1,
+    "files": [
+      {
+        "path": "src/request.ts",
+        "source": "import { z } from 'zod';\nexport const RequestSchema = z[\"object\"]({ timeout_seconds: z[\"number\"]()[\"int\"]()[\"min\"](1)[\"max\"](300)[\"default\"](30) });"
+      }
+    ]
+  },
+  {
+    "id": "second-timeout-schema-dynamic-member",
+    "title": "Unknown member access does not establish API identity",
+    "outcome": "no-match",
+    "focusPath": "src/request.ts",
+    "expectedCount": 0,
+    "files": [
+      {
+        "path": "src/request.ts",
+        "source": "import { z } from 'zod';\nexport const RequestSchema = z[auditDynamicMember]({ timeout_seconds: z[auditDynamicMember]()[auditDynamicMember]()[auditDynamicMember](1)[auditDynamicMember](300)[auditDynamicMember](30) });"
+      }
+    ]
+  }
+] } });
 });

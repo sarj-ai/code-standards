@@ -4,7 +4,7 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-first-party-module-mock.test.ts
  */
 
-import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
+import { ASTUtils, AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile, isTestFile } from "./_paths.js";
@@ -43,7 +43,7 @@ export default createRule<Options, MessageIds>({
     if (!isTestFile(context.filename) || isGeneratedFile(context.filename, context.sourceCode.text)) return {};
     return {
       CallExpression(node: TSESTree.CallExpression): void {
-        if (node.callee.type !== AST_NODE_TYPES.MemberExpression || node.callee.computed || node.callee.object.type !== AST_NODE_TYPES.Identifier || node.callee.property.type !== AST_NODE_TYPES.Identifier || !["mock", "doMock"].includes(node.callee.property.name)) return;
+        if (node.callee.type !== AST_NODE_TYPES.MemberExpression || node.callee.object.type !== AST_NODE_TYPES.Identifier || ASTUtils.getPropertyName(node.callee) === null || !["mock", "doMock"].includes((ASTUtils.getPropertyName(node.callee) ?? ""))) return;
         const framework = importedTestMockNamespace(context.sourceCode, node.callee.object);
         if (framework === null || (framework === "jest" && mayBeVirtual(node.arguments[2]))) return;
         const argument = node.arguments[0];

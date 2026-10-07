@@ -4,7 +4,7 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-dynamic-sql.test.ts
  */
 
-import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
+import { ASTUtils, AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { sqlSingleQuotedRanges, stripSqlNoise } from "./_sql.js";
@@ -86,10 +86,9 @@ function isStaticFragment(expression: TSESTree.Expression): boolean {
   }
   if (
     expression.type === AST_NODE_TYPES.MemberExpression &&
-    !expression.computed &&
-    expression.property.type === AST_NODE_TYPES.Identifier
+    ASTUtils.getPropertyName(expression) !== null
   ) {
-    return CONSTANT_CASE_RE.test(expression.property.name);
+    return CONSTANT_CASE_RE.test((ASTUtils.getPropertyName(expression) ?? ""));
   }
   if (expression.type === AST_NODE_TYPES.Literal) {
     return typeof expression.value === "string";
@@ -227,12 +226,11 @@ function statementMethodName(
   const callee = node.callee;
   if (
     callee.type !== AST_NODE_TYPES.MemberExpression ||
-    callee.computed ||
-    callee.property.type !== AST_NODE_TYPES.Identifier
+    ASTUtils.getPropertyName(callee) === null
   ) {
     return null;
   }
-  const name = callee.property.name;
+  const name = (ASTUtils.getPropertyName(callee) ?? "");
   return methods.has(name) ? name : null;
 }
 

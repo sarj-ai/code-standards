@@ -192,9 +192,8 @@ export default createRule<Options, MessageIds>({
           callback?.type !== AST_NODE_TYPES.Identifier ||
           callback.name !== "Boolean" ||
           callee.type !== AST_NODE_TYPES.MemberExpression ||
-          callee.computed ||
-          callee.property.type !== AST_NODE_TYPES.Identifier ||
-          callee.property.name !== "filter" ||
+          ASTUtils.getPropertyName(callee) === null ||
+          (ASTUtils.getPropertyName(callee) ?? "") !== "filter" ||
           !isUnshadowedBoolean(callback, context) ||
           !isBuiltinArrayFilter(callee, services)
         ) return;

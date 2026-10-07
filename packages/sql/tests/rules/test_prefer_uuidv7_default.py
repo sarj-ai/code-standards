@@ -49,6 +49,8 @@ def _legacy_uuid_sql(template: str) -> str:
         ),
         pytest.param(f"SELECT {_LEGACY_UUID_CALL.upper()};", id="uppercase"),
         pytest.param(f"SELECT {_LEGACY_UUID_CALL.replace('(', ' (')};", id="space-before-paren"),
+        pytest.param(f"SELECT {_LEGACY_UUID_CALL.replace('(', '\n (')};", id="newline-before-paren"),
+        pytest.param(f"SELECT {_LEGACY_UUID_CALL.replace('(', ' /* call */\n (')};", id="comment-before-paren"),
     ],
 )
 def test_flags_gen_random_uuid(source: str):
@@ -85,6 +87,19 @@ def test_dollar_quoted_body_is_masked():
 
 def test_column_is_one_based():
     assert _check(f"SELECT {_LEGACY_UUID_CALL};")[0].col == 8
+
+
+def test_multiline_call_keeps_the_function_name_location() -> None:
+    source = f"SELECT\n  {_LEGACY_UUID_CALL.replace('(', '\n (')};"
+    assert [(item.line, item.col) for item in _check(source)] == [(2, 3)]
+
+
+@pytest.mark.parametrize(
+    "source",
+    ["SELECT 'gen_random_uuid\n ()';", 'SELECT "gen_random_uuid\n ()" FROM t;', "/* gen_random_uuid\n () */ SELECT 1;"],
+)
+def test_multiline_call_text_in_noncode_is_preserved(source: str) -> None:
+    assert _check(source) == []
 
 
 def test_flags_schema_qualified_gen_random_uuid():

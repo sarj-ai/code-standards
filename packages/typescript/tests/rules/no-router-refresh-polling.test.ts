@@ -5,6 +5,8 @@ import { afterAll, describe, it } from "vitest";
 
 import rule, { NO_ROUTER_REFRESH_POLLING_DOCUMENTATION } from "../../src/rules/no-router-refresh-polling.js";
 
+import { verifyRuleExamples } from "../../src/verify-rule-examples.js";
+
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
 RuleTester.itOnly = it.only;
@@ -45,4 +47,38 @@ RULE_TESTER.run("no-router-refresh-polling", rule, {
       errors: [{ messageId: "routerRefreshPolling" }],
     },
   ],
+});
+
+
+it("preserves outcomes for static member access and unknown member keys", async () => {
+  const documentation = rule.documentation;
+  if (documentation === undefined) throw new Error("Missing rule documentation");
+  await verifyRuleExamples({ ...rule, documentation: { ...documentation, examples: [
+  {
+    "id": "poll-router-refresh-static-member",
+    "title": "Static member access preserves the rule outcome",
+    "outcome": "match",
+    "focusPath": "src/status.tsx",
+    "expectedCount": 1,
+    "files": [
+      {
+        "path": "src/status.tsx",
+        "source": "\"use client\"; import { useEffect } from \"react\"; import { useRouter } from \"next/navigation\"; function Status() { const router = useRouter(); useEffect(() => { const timer = setInterval(() => router[\"refresh\"](), POLLING_INTERVAL_MS); return () => clearInterval(timer); }, [router]); return null; }"
+      }
+    ]
+  },
+  {
+    "id": "poll-router-refresh-dynamic-member",
+    "title": "Unknown member access does not establish API identity",
+    "outcome": "no-match",
+    "focusPath": "src/status.tsx",
+    "expectedCount": 0,
+    "files": [
+      {
+        "path": "src/status.tsx",
+        "source": "\"use client\"; import { useEffect } from \"react\"; import { useRouter } from \"next/navigation\"; function Status() { const router = useRouter(); useEffect(() => { const timer = setInterval(() => router[auditDynamicMember](), POLLING_INTERVAL_MS); return () => clearInterval(timer); }, [router]); return null; }"
+      }
+    ]
+  }
+] } });
 });

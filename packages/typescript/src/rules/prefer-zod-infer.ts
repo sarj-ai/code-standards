@@ -4,7 +4,7 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/prefer-zod-infer.test.ts
  */
 
-import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
+import { ASTUtils, AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile, isStoryFile, isTestFile } from "./_paths.js";
@@ -486,8 +486,7 @@ function twinCallChain(
     const callee = current.callee;
     if (
       callee.type !== AST_NODE_TYPES.MemberExpression ||
-      callee.computed ||
-      callee.property.type !== AST_NODE_TYPES.Identifier
+      ASTUtils.getPropertyName(callee) === null
     ) {
       return null;
     }
@@ -503,8 +502,8 @@ function twinCallChain(
 function twinMethodName(call: TSESTree.CallExpression): string {
   const callee = call.callee;
   return callee.type === AST_NODE_TYPES.MemberExpression &&
-    callee.property.type === AST_NODE_TYPES.Identifier
-    ? callee.property.name
+    ASTUtils.getPropertyName(callee) !== null
+    ? (ASTUtils.getPropertyName(callee) ?? "")
     : "";
 }
 
@@ -545,18 +544,17 @@ function twinSchemaField(
     const callee = current.callee;
     if (
       callee.type !== AST_NODE_TYPES.MemberExpression ||
-      callee.computed ||
-      callee.property.type !== AST_NODE_TYPES.Identifier
+      ASTUtils.getPropertyName(callee) === null
     ) {
       break;
     }
     const receiver = callee.object;
     if (receiver.type === AST_NODE_TYPES.Identifier && zodNamespaces.has(receiver.name)) {
-      leaf = callee.property.name;
+      leaf = (ASTUtils.getPropertyName(callee) ?? "");
       leafCall = current;
       break;
     }
-    modifiers.push(callee.property.name);
+    modifiers.push((ASTUtils.getPropertyName(callee) ?? ""));
     current = receiver;
   }
   return {
@@ -850,11 +848,11 @@ export default createRule<Options, MessageIds>({
       },
 
       /** Records `XSchema.transform(...)` and equivalent module-level reshaping. */
-      "MemberExpression[computed=false]"(node: TSESTree.MemberExpression): void {
+      "MemberExpression"(node: TSESTree.MemberExpression): void {
         if (
           node.object.type === AST_NODE_TYPES.Identifier &&
-          node.property.type === AST_NODE_TYPES.Identifier &&
-          isPreferZodInferModuleReshaper(node.property.name)
+          ASTUtils.getPropertyName(node) !== null &&
+          isPreferZodInferModuleReshaper(ASTUtils.getPropertyName(node) ?? "")
         ) {
           reshapedSchemaNames.add(node.object.name);
         }

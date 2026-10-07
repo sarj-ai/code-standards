@@ -4,6 +4,8 @@ import { afterAll, describe, it } from "vitest";
 
 import rule, { NO_FIRST_PARTY_MODULE_MOCK_DOCUMENTATION } from "../../src/rules/no-first-party-module-mock.js";
 
+import { verifyRuleExamples } from "../../src/verify-rule-examples.js";
+
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
 RuleTester.it = it;
@@ -38,4 +40,38 @@ RULE_TESTER.run("no-first-party-module-mock", rule, {
     { name: "supports aliased Vitest imports", filename: "action.test.ts", code: "import { vi as mocks } from 'vitest'; mocks.mock('./service');", errors: [{ messageId: "noFirstPartyModuleMock", data: { module: "./service" } }] },
     { name: "supports Jest globals imports", filename: "action.test.ts", code: "import { jest } from '@jest/globals'; jest.mock('./service');", errors: [{ messageId: "noFirstPartyModuleMock", data: { module: "./service" } }] },
   ],
+});
+
+
+it("preserves outcomes for static member access and unknown member keys", async () => {
+  const documentation = rule.documentation;
+  if (documentation === undefined) throw new Error("Missing rule documentation");
+  await verifyRuleExamples({ ...rule, documentation: { ...documentation, examples: [
+  {
+    "id": "relative-module-mock-static-member",
+    "title": "Static member access preserves the rule outcome",
+    "outcome": "match",
+    "focusPath": "action.test.ts",
+    "expectedCount": 1,
+    "files": [
+      {
+        "path": "action.test.ts",
+        "source": "import { vi } from 'vitest'; vi[\"mock\"]('./service', () => ({ run: vi[\"fn\"]() }));"
+      }
+    ]
+  },
+  {
+    "id": "relative-module-mock-dynamic-member",
+    "title": "Unknown member access does not establish API identity",
+    "outcome": "no-match",
+    "focusPath": "action.test.ts",
+    "expectedCount": 0,
+    "files": [
+      {
+        "path": "action.test.ts",
+        "source": "import { vi } from 'vitest'; vi[auditDynamicMember]('./service', () => ({ run: vi[auditDynamicMember]() }));"
+      }
+    ]
+  }
+] } });
 });

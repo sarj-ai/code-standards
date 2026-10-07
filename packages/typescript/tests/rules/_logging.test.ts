@@ -28,6 +28,9 @@ describe("createLogMatcher", () => {
     "this.logger.info(error)",
     "logger.bind({ requestId }).error(error)",
     'logging.getLogger("api").debug(error)',
+    'console["error"](error)',
+    'this["logger"]["warn"](error)',
+    'logging["getLogger"]("api")["debug"](error)',
   ])("recognizes receiver-shaped logging call %s", (source) => {
     expect(matcher.isLoggingCall(expression(source))).toBe(true);
   });
@@ -35,7 +38,7 @@ describe("createLogMatcher", () => {
   it.each([
     "metrics.error(error)",
     "logger.flush(error)",
-    'console["error"](error)',
+    "console[method](error)",
     "logEvent(error)",
   ])("does not infer that %s is a logging call", (source) => {
     expect(matcher.isLoggingCall(expression(source))).toBe(false);
@@ -47,8 +50,9 @@ describe("createLogMatcher", () => {
     expect(configured.isLoggingCall(expression("logEvent(error)"))).toBe(true);
     expect(configured.isLoggingCall(expression("events.logEvent(error)"))).toBe(true);
     expect(configured.isLoggingCall(expression("auditEvent(error)"))).toBe(false);
-    expect(configured.isLoggingCall(expression('events["logEvent"](error)'))).toBe(false);
+    expect(configured.isLoggingCall(expression('events["logEvent"](error)'))).toBe(true);
     expect(matcher.isLoggingCall(expression("logEvent(error)"))).toBe(false);
+    expect(configured.isLoggingCall(expression("events[method](error)"))).toBe(false);
   });
 
   it("extends receiver names without changing the defaults", () => {

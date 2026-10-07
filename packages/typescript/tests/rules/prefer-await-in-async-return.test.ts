@@ -8,6 +8,8 @@ import rule, {
   PREFER_AWAIT_IN_ASYNC_RETURN_DOCUMENTATION,
 } from "../../src/rules/prefer-await-in-async-return.js";
 
+import { verifyRuleExamples } from "../../src/verify-rule-examples.js";
+
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
 RuleTester.it = it;
@@ -324,4 +326,38 @@ UNTYPED_RULE_TESTER.run("prefer-await-in-async-return without type services", ru
     },
   ],
   invalid: [],
+});
+
+
+it("preserves outcomes for static member access and unknown member keys", async () => {
+  const documentation = rule.documentation;
+  if (documentation === undefined) throw new Error("Missing rule documentation");
+  await verifyRuleExamples({ ...rule, documentation: { ...documentation, examples: [
+  {
+    "id": "returned-then-transform-static-member",
+    "title": "Static member access preserves the rule outcome",
+    "outcome": "match",
+    "focusPath": "src/load.ts",
+    "expectedCount": 1,
+    "files": [
+      {
+        "path": "src/load.ts",
+        "source": "async function load() { return Promise[\"resolve\"](1)[\"then\"]((value) => value + 1); }"
+      }
+    ]
+  },
+  {
+    "id": "returned-then-transform-dynamic-member",
+    "title": "Unknown member access does not establish API identity",
+    "outcome": "no-match",
+    "focusPath": "src/load.ts",
+    "expectedCount": 0,
+    "files": [
+      {
+        "path": "src/load.ts",
+        "source": "async function load() { return Promise[auditDynamicMember](1)[auditDynamicMember]((value) => value + 1); }"
+      }
+    ]
+  }
+] } });
 });

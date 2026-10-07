@@ -72,9 +72,8 @@ const isFormDataMethodCall = (node: TSESTree.Node): boolean => {
   const callee = current.callee;
   return (
     callee.type === AST_NODE_TYPES.MemberExpression &&
-    !callee.computed &&
-    callee.property.type === AST_NODE_TYPES.Identifier &&
-    callee.property.name === "formData"
+    ASTUtils.getPropertyName(callee) !== null &&
+    (ASTUtils.getPropertyName(callee) ?? "") === "formData"
   );
 };
 
@@ -113,8 +112,8 @@ export default createRule<Options, MessageIds>({
       const callee = node.callee;
       if (callee.type !== AST_NODE_TYPES.MemberExpression) return false;
       if (
-        callee.property.type !== AST_NODE_TYPES.Identifier ||
-        !FORM_VALUE_METHODS.has(callee.property.name)
+        ASTUtils.getPropertyName(callee) === null ||
+        !FORM_VALUE_METHODS.has((ASTUtils.getPropertyName(callee) ?? ""))
       ) {
         return false;
       }
@@ -156,7 +155,7 @@ export default createRule<Options, MessageIds>({
           parent = parent.parent;
           continue;
         }
-        if (parent.type === AST_NODE_TYPES.CallExpression && parent.callee.type === AST_NODE_TYPES.MemberExpression && !parent.callee.computed && parent.callee.object.type === AST_NODE_TYPES.Identifier && parent.callee.object.name === "Object" && parent.callee.property.type === AST_NODE_TYPES.Identifier && parent.callee.property.name === "fromEntries" && (resolvedBinding(parent.callee.object)?.defs.length ?? 0) === 0) {
+        if (parent.type === AST_NODE_TYPES.CallExpression && parent.callee.type === AST_NODE_TYPES.MemberExpression && parent.callee.object.type === AST_NODE_TYPES.Identifier && parent.callee.object.name === "Object" && ASTUtils.getPropertyName(parent.callee) !== null && (ASTUtils.getPropertyName(parent.callee) ?? "") === "fromEntries" && (resolvedBinding(parent.callee.object)?.defs.length ?? 0) === 0) {
           parent = parent.parent;
           continue;
         }
@@ -171,9 +170,8 @@ export default createRule<Options, MessageIds>({
       const callee = node.callee;
       if (
         callee.type !== AST_NODE_TYPES.MemberExpression ||
-        callee.computed ||
-        callee.property.type !== AST_NODE_TYPES.Identifier ||
-        !ZOD_PARSE_METHODS.has(callee.property.name)
+        ASTUtils.getPropertyName(callee) === null ||
+        !ZOD_PARSE_METHODS.has((ASTUtils.getPropertyName(callee) ?? ""))
       ) {
         return false;
       }
@@ -338,9 +336,8 @@ export default createRule<Options, MessageIds>({
     ): string | null => {
       const callee = call.callee;
       return callee.type === AST_NODE_TYPES.MemberExpression &&
-        !callee.computed &&
-        callee.property.type === AST_NODE_TYPES.Identifier
-        ? callee.property.name
+        ASTUtils.getPropertyName(callee) !== null
+        ? (ASTUtils.getPropertyName(callee) ?? "")
         : null;
     };
 

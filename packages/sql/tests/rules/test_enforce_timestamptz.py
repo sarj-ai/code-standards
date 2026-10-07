@@ -50,6 +50,24 @@ CREATE TABLE orders (
     assert _check(src) == []
 
 
+@pytest.mark.parametrize(
+    "source",
+    [
+        "CREATE TABLE events (created_at TIMESTAMP\n WITH TIME ZONE);",
+        "CREATE TABLE events (created_at TIMESTAMP\n (3) WITH\n TIME ZONE);",
+        "CREATE TABLE events (created_at TIMESTAMP /* precision */\n WITH TIME ZONE);",
+        "SELECT date_trunc('day', created_at) FROM events GROUP BY (\n timestamp\n );",
+    ],
+)
+def test_multiline_zoned_type_and_column_reference_are_preserved(source: str) -> None:
+    assert _check(source) == []
+
+
+def test_multiline_naive_type_reports_its_keyword_location() -> None:
+    source = "CREATE TABLE events (\n    created_at TIMESTAMP\n WITHOUT TIME ZONE);"
+    assert [(item.line, item.col) for item in _check(source)] == [(2, 16)]
+
+
 def test_allows_timestamptz_keyword():
     src = """
 CREATE TABLE orders (

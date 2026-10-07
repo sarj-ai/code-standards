@@ -3,6 +3,8 @@ import { afterAll, describe, it } from "vitest";
 
 import rule, { NO_RAW_ENV_DOCUMENTATION } from "../../src/rules/no-raw-env.js";
 
+import { verifyRuleExamples } from "../../src/verify-rule-examples.js";
+
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
 RuleTester.it = it;
@@ -12,6 +14,10 @@ const RULE_TESTER = new RuleTester();
 
 RULE_TESTER.run("no-raw-env", rule, {
   valid: [
+    { name: "does not infer process from a foreign default import", code: 'import proc from "./process"; const key = proc["env"].KEY;' },
+    { name: "preserves a shadowed Node process alias", code: 'import proc from "node:process"; function read(proc: {env: {KEY: string}}) { return proc.env.KEY; }' },
+    { name: "does not infer a value from a type-only Node namespace", code: 'import type * as proc from "node:process"; const key = proc.env.KEY;' },
+    { name: "preserves platform exemptions under a Node alias", code: 'import proc from "node:process"; const runtime = proc["env"]["NODE_ENV"];' },
     { name: "does not confuse injected config with Node process", code: "function read(process: {env: {KEY: string}}) { return process.env.KEY; }" },
     { name: "accepts the documented validated environment", code: NO_RAW_ENV_DOCUMENTATION.examples[0].files[0].source },
     // Reading from a validated env module is the prescribed pattern.
@@ -20,9 +26,8 @@ RULE_TESTER.run("no-raw-env", rule, {
     { code: "const x = process.cwd();" },
     // A property named `env` on something other than `process` is fine.
     { code: "const x = config.env;" },
-    // `process["env"]` (computed on `process`) yields the env object as a whole,
-    // not a specific unvalidated var — out of scope.
-    { code: "const x = process['env'];" },
+    // An unknown property cannot establish the raw environment boundary.
+    { code: "const x = process[member];" },
     // `import.meta.env` on a non-import meta base is unrelated.
     { code: "const x = config.meta.env;" },
     // Build-time constants are statically replaced by the bundler — there is no
@@ -134,6 +139,9 @@ RULE_TESTER.run("no-raw-env", rule, {
     },
   ],
   invalid: [
+    { name: "reports a default Node process alias", code: 'import proc from "node:process"; const key = proc.env.KEY;', errors: [{ messageId: "noRawEnv" }] },
+    { name: "reports a namespace process alias with static bracket access", code: 'import * as proc from "process"; const key = proc["env"]["KEY"];', errors: [{ messageId: "noRawEnv" }] },
+    { name: "reports a static bracket read of the raw environment object", code: "const x = process['env'];", errors: [{ messageId: "noRawEnv" }] },
     { name: "does not treat a comment as environment validation", filename: "src/env.ts", code: "// z.object({ KEY: z.string() }).parse(process.env)\nexport const key = process.env.KEY;", errors: [{messageId: "noRawEnv"}] },
     { name: "does not treat string payload as environment validation", filename: "src/env.ts", code: "const example = 'z.object({}).parse(process.env)'; export const key = process.env.KEY;", errors: [{messageId: "noRawEnv"}] },
     { name: "reports the documented raw environment read", code: NO_RAW_ENV_DOCUMENTATION.examples[1].files[0].source, errors: [{ messageId: "noRawEnv" }] },
@@ -193,4 +201,38 @@ RULE_TESTER.run("no-raw-env", rule, {
       errors: [{ messageId: "noRawEnv" }],
     },
   ],
+});
+
+
+it("preserves outcomes for static member access and unknown member keys", async () => {
+  const documentation = rule.documentation;
+  if (documentation === undefined) throw new Error("Missing rule documentation");
+  await verifyRuleExamples({ ...rule, documentation: { ...documentation, examples: [
+  {
+    "id": "raw-environment-read-static-member",
+    "title": "Static member access preserves the rule outcome",
+    "outcome": "match",
+    "focusPath": "src/database.ts",
+    "expectedCount": 1,
+    "files": [
+      {
+        "path": "src/database.ts",
+        "source": "const url = process[\"env\"][\"DATABASE_URL\"];"
+      }
+    ]
+  },
+  {
+    "id": "raw-environment-read-dynamic-member",
+    "title": "Unknown member access does not establish API identity",
+    "outcome": "no-match",
+    "focusPath": "src/database.ts",
+    "expectedCount": 0,
+    "files": [
+      {
+        "path": "src/database.ts",
+        "source": "const url = process[auditDynamicMember][auditDynamicMember];"
+      }
+    ]
+  }
+] } });
 });

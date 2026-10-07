@@ -148,10 +148,9 @@ export default createRule<Options, MessageIds>({
     ): boolean {
       if (
         node.callee.type !== AST_NODE_TYPES.MemberExpression ||
-        node.callee.computed ||
         node.callee.object.type !== AST_NODE_TYPES.Identifier ||
-        node.callee.property.type !== AST_NODE_TYPES.Identifier ||
-        node.callee.property.name !== method
+        ASTUtils.getPropertyName(node.callee) === null ||
+        (ASTUtils.getPropertyName(node.callee) ?? "") !== method
       )
         return false;
       return resolvedBinding(node.callee.object) === binding;

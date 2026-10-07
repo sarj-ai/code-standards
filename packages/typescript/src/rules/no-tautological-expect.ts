@@ -159,13 +159,13 @@ export default createRule<Options, MessageIds>({
     return {
       CallExpression(node: TSESTree.CallExpression): void {
         const callee = node.callee;
-        if (callee.type !== AST_NODE_TYPES.MemberExpression || callee.computed) {
+        if (callee.type !== AST_NODE_TYPES.MemberExpression || ASTUtils.getPropertyName(callee) === null) {
           return;
         }
-        if (callee.property.type !== AST_NODE_TYPES.Identifier) {
+        if (ASTUtils.getPropertyName(callee) === null) {
           return;
         }
-        const matcher = callee.property.name;
+        const matcher = (ASTUtils.getPropertyName(callee) ?? "");
         if (callee.object.type !== AST_NODE_TYPES.CallExpression || callee.object.callee.type !== AST_NODE_TYPES.Identifier) return;
         const expectIdentifier = callee.object.callee;
         const variable = ASTUtils.findVariable(context.sourceCode.getScope(expectIdentifier), expectIdentifier.name);

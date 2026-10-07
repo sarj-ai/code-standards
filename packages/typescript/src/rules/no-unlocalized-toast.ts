@@ -4,7 +4,7 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-unlocalized-toast.test.ts
  */
 
-import { AST_NODE_TYPES } from "@typescript-eslint/utils";
+import { ASTUtils, AST_NODE_TYPES } from "@typescript-eslint/utils";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import {
@@ -122,10 +122,9 @@ export default createRule<Options, "unlocalized">({
           callee.type === AST_NODE_TYPES.Identifier
             ? callee
             : callee.type === AST_NODE_TYPES.MemberExpression &&
-                !callee.computed &&
                 callee.object.type === AST_NODE_TYPES.Identifier &&
-                callee.property.type === AST_NODE_TYPES.Identifier &&
-                methods.includes(callee.property.name)
+                ASTUtils.getPropertyName(callee) !== null &&
+                methods.includes((ASTUtils.getPropertyName(callee) ?? ""))
               ? callee.object
               : null;
         if (receiver === null) return;

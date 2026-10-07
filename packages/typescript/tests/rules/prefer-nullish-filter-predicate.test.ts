@@ -8,6 +8,8 @@ import rule, {
   PREFER_NULLISH_FILTER_PREDICATE_DOCUMENTATION,
 } from "../../src/rules/prefer-nullish-filter-predicate.js";
 
+import { verifyRuleExamples } from "../../src/verify-rule-examples.js";
+
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
 RuleTester.it = it;
@@ -70,4 +72,38 @@ RULE_TESTER.run("prefer-nullish-filter-predicate", rule, {
       errors: [{ messageId: "preferNullishPredicate", suggestions: 1 }],
     },
   ],
+});
+
+
+it("preserves outcomes for static member access and unknown member keys", async () => {
+  const documentation = rule.documentation;
+  if (documentation === undefined) throw new Error("Missing rule documentation");
+  await verifyRuleExamples({ ...rule, documentation: { ...documentation, examples: [
+  {
+    "id": "boolean-nullish-filter-static-member",
+    "title": "Static member access preserves the rule outcome",
+    "outcome": "match",
+    "focusPath": "src/users.ts",
+    "expectedCount": 1,
+    "files": [
+      {
+        "path": "src/users.ts",
+        "source": "declare const users: readonly ({ id: string } | null)[];\nconst present = users[\"filter\"](Boolean);"
+      }
+    ]
+  },
+  {
+    "id": "boolean-nullish-filter-dynamic-member",
+    "title": "Unknown member access does not establish API identity",
+    "outcome": "no-match",
+    "focusPath": "src/users.ts",
+    "expectedCount": 0,
+    "files": [
+      {
+        "path": "src/users.ts",
+        "source": "declare const users: readonly ({ id: string } | null)[];\nconst present = users[auditDynamicMember](Boolean);"
+      }
+    ]
+  }
+] } });
 });

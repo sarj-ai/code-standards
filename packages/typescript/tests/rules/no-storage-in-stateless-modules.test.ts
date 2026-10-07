@@ -109,7 +109,7 @@ RULE_TESTER.run("no-storage-in-stateless-modules", rule, {
     },
     {
       name: "allows computed method names that cannot be resolved statically",
-      code: "store['put'](k, v);",
+      code: "store[method](k, v);",
       filename: STATELESS_MODULE_FILENAME,
       options: STATELESS_MODULE_OPTIONS,
     },
@@ -129,6 +129,7 @@ RULE_TESTER.run("no-storage-in-stateless-modules", rule, {
     },
   ],
   invalid: [
+    { name: "reports static bracket storage in a configured stateless module", filename: STATELESS_MODULE_FILENAME, options: STATELESS_MODULE_OPTIONS, code: "store['put'](k, v);", errors: [{ messageId: "storageInStatelessModule" }] },
     { name: "reports the documented private storage", filename: NO_STORAGE_IN_STATELESS_MODULES_DOCUMENTATION.examples[1].focusPath, code: NO_STORAGE_IN_STATELESS_MODULES_DOCUMENTATION.examples[1].files[0].source, options: STATELESS_MODULE_OPTIONS, errors: [{ messageId: "storageInStatelessModule" }] },
     {
       name: "reports SQL prepare inside a configured stateless module",

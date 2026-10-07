@@ -106,10 +106,9 @@ function promiseThenReceiver(
   const callee = node.callee;
   if (
     callee.type !== AST_NODE_TYPES.MemberExpression ||
-    callee.computed ||
     callee.optional ||
-    callee.property.type !== AST_NODE_TYPES.Identifier ||
-    callee.property.name !== "then" ||
+    ASTUtils.getPropertyName(callee) === null ||
+    (ASTUtils.getPropertyName(callee) ?? "") !== "then" ||
     node.optional ||
     node.arguments.length !== 1
   ) {

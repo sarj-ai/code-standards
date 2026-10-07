@@ -5,6 +5,8 @@ import { afterAll, describe, it } from "vitest";
 
 import rule, { NO_JSON_STRINGIFY_ERROR_DOCUMENTATION } from "../../src/rules/no-json-stringify-error.js";
 
+import { verifyRuleExamples } from "../../src/verify-rule-examples.js";
+
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
 RuleTester.it = it;
@@ -236,4 +238,38 @@ RULE_TESTER.run("no-json-stringify-error", rule, {
       errors: [{ messageId: "noJsonStringifyError" }],
     },
   ],
+});
+
+
+it("preserves outcomes for static member access and unknown member keys", async () => {
+  const documentation = rule.documentation;
+  if (documentation === undefined) throw new Error("Missing rule documentation");
+  await verifyRuleExamples({ ...rule, documentation: { ...documentation, examples: [
+  {
+    "id": "stringified-error-static-member",
+    "title": "Static member access preserves the rule outcome",
+    "outcome": "match",
+    "focusPath": "src/report.ts",
+    "expectedCount": 1,
+    "files": [
+      {
+        "path": "src/report.ts",
+        "source": "try { f(); } catch (err) { JSON[\"stringify\"]({ error: err }); }"
+      }
+    ]
+  },
+  {
+    "id": "stringified-error-dynamic-member",
+    "title": "Unknown member access does not establish API identity",
+    "outcome": "no-match",
+    "focusPath": "src/report.ts",
+    "expectedCount": 0,
+    "files": [
+      {
+        "path": "src/report.ts",
+        "source": "try { f(); } catch (err) { JSON[auditDynamicMember]({ error: err }); }"
+      }
+    ]
+  }
+] } });
 });

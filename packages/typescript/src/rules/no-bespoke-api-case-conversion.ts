@@ -81,12 +81,11 @@ function memberName(node: TSESTree.Node): string | null {
   }
   if (
     current.type !== AST_NODE_TYPES.MemberExpression ||
-    current.computed ||
-    current.property.type !== AST_NODE_TYPES.Identifier
+    ASTUtils.getPropertyName(current) === null
   ) {
     return null;
   }
-  return current.property.name;
+  return (ASTUtils.getPropertyName(current) ?? "");
 }
 
 function isDirectCaseTranslation(left: string, right: string): boolean {

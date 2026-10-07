@@ -82,18 +82,18 @@ class PreferTextOverVarchar(Rule):
             return []
 
         diags: list[Diagnostic] = []
-        for lineno, line in enumerate(masked.splitlines(), start=1):
-            diags.extend(
+        for match in PATTERN.finditer(masked):
+            start = match.start()
+            diags.append(
                 Diagnostic(
                     path=path,
-                    line=lineno,
-                    col=match.start() + 1,
+                    line=masked.count("\n", 0, start) + 1,
+                    col=start - masked.rfind("\n", 0, start),
                     code=self.code,
                     message=(
                         "Use TEXT (+ CHECK length if needed) — VARCHAR(n) has "
                         "no benefit in Postgres and hides a business rule in DDL."
                     ),
                 )
-                for match in PATTERN.finditer(line)
             )
         return redirect_to_model(diags, model_owned=model_owned)

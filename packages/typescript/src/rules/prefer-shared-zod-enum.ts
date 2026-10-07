@@ -102,10 +102,9 @@ export default createRule<Options, MessageIds>({
       CallExpression(node): void {
         if (
           node.callee.type !== AST_NODE_TYPES.MemberExpression ||
-          node.callee.computed ||
           node.callee.object.type !== AST_NODE_TYPES.Identifier ||
-          node.callee.property.type !== AST_NODE_TYPES.Identifier ||
-          node.callee.property.name !== "enum"
+          ASTUtils.getPropertyName(node.callee) === null ||
+          (ASTUtils.getPropertyName(node.callee) ?? "") !== "enum"
         ) return;
         const binding = bindingOf(node.callee.object);
         if (binding === null || !zodBindings.has(binding)) return;

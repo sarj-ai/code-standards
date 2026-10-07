@@ -6,6 +6,8 @@ import { afterAll, describe, expect, it } from "vitest";
 
 import rule, { PREFER_WHOLE_OBJECT_ASSERTION_DOCUMENTATION } from "../../src/rules/prefer-whole-object-assertion.js";
 
+import { verifyRuleExamples } from "../../src/verify-rule-examples.js";
+
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
 RuleTester.it = it;
@@ -22,6 +24,21 @@ const FILENAME = "src/user.test.ts";
 
 RULE_TESTER.run("prefer-whole-object-assertion", rule, {
   valid: [
+    {
+      name: "preserves dotted absent-property assertions",
+      filename: FILENAME,
+      code: 'expect(user.name).toBe("Ada"); expect(user.deletedAt).toBeUndefined();',
+    },
+    {
+      name: "preserves bracket absent-property assertions",
+      filename: FILENAME,
+      code: 'expect(user["first-name"]).toBeUndefined(); expect(user["last-name"]).toBeUndefined();',
+    },
+    {
+      name: "does not introduce property presence into a mixed literal run",
+      filename: FILENAME,
+      code: 'expect(user.name).toBe("Ada"); expect(user["deleted-at"]).toBeUndefined(); expect(user.active).toBe(true);',
+    },
     { name: "preserves a locally supplied custom expect", filename: FILENAME, code: "function check(expect: CustomAssertion) { expect(obj.a).toBe(1); expect(obj.b).toBe(2); }" },
     { name: "preserves a non-runner imported expect", filename: FILENAME, code: "import { expect } from './custom'; expect(obj.a).toBe(1); expect(obj.b).toBe(2);" },
     { name: "accepts the documented whole-object assertion", filename: FILENAME, code: PREFER_WHOLE_OBJECT_ASSERTION_DOCUMENTATION.examples[0].files[0].source },
@@ -356,6 +373,18 @@ RULE_TESTER.run("prefer-whole-object-assertion", rule, {
   ],
   invalid: [
     {
+      name: "renders a non-identifier common prefix as bracket access",
+      filename: FILENAME,
+      code: 'expect(obj["account-id"]["first-name"]).toBe("Ada"); expect(obj["account-id"]["last-name"]).toBe("Lovelace");',
+      errors: [{ messageId: "combineAssertions", data: { count: "2", receiver: 'obj["account-id"]' } }],
+    },
+    {
+      name: "renders an indexed common receiver without invalid dotted syntax",
+      filename: FILENAME,
+      code: 'expect(obj[0].a).toBe(1); expect(obj[0].b).toBe(2);',
+      errors: [{ messageId: "combineAssertions", data: { count: "2", receiver: 'obj["0"]' } }],
+    },
+    {
       name: "combines distinct literal leaf paths under their pure common ancestor",
       filename: FILENAME,
       code: `expect(config.tts.model).toBe("eleven");
@@ -370,13 +399,6 @@ expect(config.stt.model).toBe("nova");`,
       code: `expect(config.tts.model).toBe("eleven");
 // STT intentionally uses a separate provider.
 expect(config.stt.model).toBe("nova");`,
-      output: null,
-      errors: [{ messageId: "combineAssertions" }],
-    },
-    {
-      name: "combines undefined property assertions",
-      filename: "/repo/src/user.test.ts",
-      code: `expect(user.name).toBe("Ada");\nexpect(user.deletedAt).toBeUndefined();`,
       output: null,
       errors: [{ messageId: "combineAssertions" }],
     },
@@ -660,4 +682,38 @@ describe("prefer-whole-object-assertion autofix soundness", () => {
       `expect(o.a).toBe(1);\nexpect(o.b).toBe(2);\n`,
     );
   });
+});
+
+
+it("preserves outcomes for static member access and unknown member keys", async () => {
+  const documentation = rule.documentation;
+  if (documentation === undefined) throw new Error("Missing rule documentation");
+  await verifyRuleExamples({ ...rule, documentation: { ...documentation, examples: [
+  {
+    "id": "member-run-static-member",
+    "title": "Static member access preserves the rule outcome",
+    "outcome": "match",
+    "focusPath": "src/user.test.ts",
+    "expectedCount": 1,
+    "files": [
+      {
+        "path": "src/user.test.ts",
+        "source": "expect(user[\"id\"])[\"toBe\"](1);\nexpect(user[\"name\"])[\"toBe\"]('Ada');"
+      }
+    ]
+  },
+  {
+    "id": "member-run-dynamic-member",
+    "title": "Unknown member access does not establish API identity",
+    "outcome": "no-match",
+    "focusPath": "src/user.test.ts",
+    "expectedCount": 0,
+    "files": [
+      {
+        "path": "src/user.test.ts",
+        "source": "expect(user[auditDynamicMember])[auditDynamicMember](1);\nexpect(user[auditDynamicMember])[auditDynamicMember]('Ada');"
+      }
+    ]
+  }
+] } });
 });

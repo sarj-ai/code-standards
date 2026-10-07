@@ -37,6 +37,28 @@ def test_flags_character_varying_with_length():
     assert len(_check(src)) == 1
 
 
+@pytest.mark.parametrize(
+    "type_source",
+    ["CHARACTER\n VARYING(255)", "VARCHAR\n (255)", "CHARACTER /* type */\n VARYING\n (255)"],
+)
+def test_multiline_bounded_type_reports_its_keyword_location(type_source: str) -> None:
+    source = f"CREATE TABLE users (\n  name {type_source});"
+    assert [(item.line, item.col) for item in _check(source)] == [(2, 8)]
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "CREATE TABLE users (name CHARACTER\n VARYING);",
+        "SELECT 'VARCHAR\n (255)';",
+        "/* CHARACTER\n VARYING(255) */ SELECT 1;",
+        "-- dialect: mysql\nCREATE TABLE users (name VARCHAR\n (255));",
+    ],
+)
+def test_multiline_non_bounded_or_non_postgres_source_is_preserved(source: str) -> None:
+    assert _check(source) == []
+
+
 def test_is_case_insensitive_and_tolerates_spacing():
     src = "name varchar (64) not null"
     assert len(_check(src)) == 1

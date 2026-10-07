@@ -49,7 +49,7 @@ interface PendingFinding {
 }
 
 function staticMemberName(node: TSESTree.MemberExpression): string | null {
-  if (!node.computed && node.property.type === AST_NODE_TYPES.Identifier) return node.property.name;
+  if (ASTUtils.getPropertyName(node) !== null) return (ASTUtils.getPropertyName(node) ?? "");
   if (node.computed && node.property.type === AST_NODE_TYPES.Literal && typeof node.property.value === "string") return node.property.value;
   return null;
 }
@@ -115,8 +115,8 @@ function staticShape(node: TSESTree.Node): string {
 function assertionShape(statement: TSESTree.Statement, context: Context, callback: FunctionNode): AssertionShape | null {
   if (statement.type !== AST_NODE_TYPES.ExpressionStatement || statement.expression.type !== AST_NODE_TYPES.CallExpression) return null;
   const matcherCall = statement.expression;
-  if (matcherCall.callee.type !== AST_NODE_TYPES.MemberExpression || matcherCall.callee.computed || matcherCall.callee.property.type !== AST_NODE_TYPES.Identifier || matcherCall.arguments.length !== 1) return null;
-  const matcher = matcherCall.callee.property.name;
+  if (matcherCall.callee.type !== AST_NODE_TYPES.MemberExpression || ASTUtils.getPropertyName(matcherCall.callee) === null || matcherCall.arguments.length !== 1) return null;
+  const matcher = (ASTUtils.getPropertyName(matcherCall.callee) ?? "");
   if (SNAPSHOT_MATCHERS.test(matcher)) return null;
   const chain = expectCallFromMatcher(matcherCall.callee);
   if (chain === null || chain.call.callee.type !== AST_NODE_TYPES.Identifier || importedName(chain.call.callee, context, ASSERTION_MODULES) !== "expect" || chain.call.arguments.length !== 1) return null;

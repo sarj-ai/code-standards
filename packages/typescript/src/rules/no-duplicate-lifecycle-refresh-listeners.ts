@@ -37,18 +37,17 @@ function registration(
   node: TSESTree.CallExpression,
 ): { operation: ListenerOperation; event: LifecycleEvent; callback: TSESTree.Identifier } | null {
   if (
-    node.callee.type !== AST_NODE_TYPES.MemberExpression || node.callee.computed ||
-    node.callee.object.type !== AST_NODE_TYPES.Identifier ||
+    node.callee.type !== AST_NODE_TYPES.MemberExpression || node.callee.object.type !== AST_NODE_TYPES.Identifier ||
     !isUnshadowedGlobal(sourceCode, node.callee.object) ||
-    node.callee.property.type !== AST_NODE_TYPES.Identifier ||
-    (node.callee.property.name !== "addEventListener" && node.callee.property.name !== "removeEventListener") ||
+    ASTUtils.getPropertyName(node.callee) === null ||
+    ((ASTUtils.getPropertyName(node.callee) ?? "") !== "addEventListener" && (ASTUtils.getPropertyName(node.callee) ?? "") !== "removeEventListener") ||
     node.arguments.length < 2
   ) return null;
   const event = node.arguments[0];
   const callback = node.arguments[1];
   if (event === undefined || callback === undefined) return null;
   if (event.type !== AST_NODE_TYPES.Literal || typeof event.value !== "string" || callback.type !== AST_NODE_TYPES.Identifier) return null;
-  const operation = node.callee.property.name === "addEventListener" ? "add" : "remove";
+  const operation = (ASTUtils.getPropertyName(node.callee) ?? "") === "addEventListener" ? "add" : "remove";
   if (node.callee.object.name === "window" && event.value === "focus") return { operation, event: "focus", callback };
   if (node.callee.object.name === "document" && event.value === "visibilitychange") return { operation, event: "visibilitychange", callback };
   return null;
@@ -147,9 +146,8 @@ export default createRule<Options, MessageIds>({
         }
 
         if (
-          node.callee.type !== AST_NODE_TYPES.MemberExpression || node.callee.computed ||
-          node.callee.object.type !== AST_NODE_TYPES.Identifier ||
-          node.callee.property.type !== AST_NODE_TYPES.Identifier || node.callee.property.name !== "refresh"
+          node.callee.type !== AST_NODE_TYPES.MemberExpression || node.callee.object.type !== AST_NODE_TYPES.Identifier ||
+          ASTUtils.getPropertyName(node.callee) === null || (ASTUtils.getPropertyName(node.callee) ?? "") !== "refresh"
         ) return;
         const router = ASTUtils.findVariable(context.sourceCode.getScope(node.callee.object), node.callee.object.name);
         if (router === null || !routers.has(router)) return;

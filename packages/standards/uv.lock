@@ -276,7 +276,7 @@ wheels = [
 
 [[package]]
 name = "code-standards"
-version = "8.36.1"
+version = "8.36.2"
 source = { editable = "." }
 dependencies = [
     { name = "basedpyright" },
@@ -1266,7 +1266,7 @@ wheels = [
 
 [[package]]
 name = "sarj-iac-lint"
-version = "0.18.0"
+version = "0.18.1"
 source = { editable = "../iac" }
 dependencies = [
     { name = "sarj-rule-contracts" },
@@ -1288,7 +1288,7 @@ dev = [
 
 [[package]]
 name = "sarj-python-lint"
-version = "1.25.2"
+version = "1.25.3"
 source = { editable = "../python" }
 dependencies = [
     { name = "packaging" },
@@ -1330,7 +1330,7 @@ dev = [
 
 [[package]]
 name = "sarj-sql-lint"
-version = "0.18.9"
+version = "0.18.10"
 source = { editable = "../sql" }
 dependencies = [
     { name = "sarj-rule-contracts" },

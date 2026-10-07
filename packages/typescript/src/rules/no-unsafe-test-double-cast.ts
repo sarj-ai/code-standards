@@ -4,7 +4,7 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-unsafe-test-double-cast.test.ts
  */
 
-import { AST_NODE_TYPES, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
+import { ASTUtils, AST_NODE_TYPES, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile, isTestFile } from "./_paths.js";
@@ -48,11 +48,10 @@ function containsMockFactory(node: TSESTree.Node, source: TSESLint.SourceCode): 
 function isMockFactory(node: TSESTree.Node, source: TSESLint.SourceCode): boolean {
   return node.type === AST_NODE_TYPES.CallExpression &&
     node.callee.type === AST_NODE_TYPES.MemberExpression &&
-    !node.callee.computed &&
     node.callee.object.type === AST_NODE_TYPES.Identifier &&
     (importedTestMockNamespace(source, node.callee.object) !== null || isUnshadowedTestMockGlobal(source, node.callee.object)) &&
-    node.callee.property.type === AST_NODE_TYPES.Identifier &&
-    ["fn", "spyOn"].includes(node.callee.property.name);
+    ASTUtils.getPropertyName(node.callee) !== null &&
+    ["fn", "spyOn"].includes((ASTUtils.getPropertyName(node.callee) ?? ""));
 }
 
 export default createRule<[], MessageIds>({

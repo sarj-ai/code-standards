@@ -50,9 +50,8 @@ function isBodyParseCall(node: TSESTree.Expression): boolean {
     node.type === AST_NODE_TYPES.CallExpression &&
     node.arguments.length === 0 &&
     node.callee.type === AST_NODE_TYPES.MemberExpression &&
-    !node.callee.computed &&
-    node.callee.property.type === AST_NODE_TYPES.Identifier &&
-    BODY_PARSE_METHODS.has(node.callee.property.name)
+    ASTUtils.getPropertyName(node.callee) !== null &&
+    BODY_PARSE_METHODS.has((ASTUtils.getPropertyName(node.callee) ?? ""))
   );
 }
 
@@ -78,9 +77,8 @@ function isTeardownCall(node: TSESTree.Expression): boolean {
   return (
     node.type === AST_NODE_TYPES.CallExpression &&
     node.callee.type === AST_NODE_TYPES.MemberExpression &&
-    !node.callee.computed &&
-    node.callee.property.type === AST_NODE_TYPES.Identifier &&
-    TEARDOWN_METHODS.has(node.callee.property.name)
+    ASTUtils.getPropertyName(node.callee) !== null &&
+    TEARDOWN_METHODS.has((ASTUtils.getPropertyName(node.callee) ?? ""))
   );
 }
 
@@ -89,11 +87,10 @@ function isCancelledWebShare(node: TSESTree.Expression): boolean {
   return (
     node.type === AST_NODE_TYPES.CallExpression &&
     node.callee.type === AST_NODE_TYPES.MemberExpression &&
-    !node.callee.computed &&
     node.callee.object.type === AST_NODE_TYPES.Identifier &&
     node.callee.object.name === "navigator" &&
-    node.callee.property.type === AST_NODE_TYPES.Identifier &&
-    node.callee.property.name === "share"
+    ASTUtils.getPropertyName(node.callee) !== null &&
+    (ASTUtils.getPropertyName(node.callee) ?? "") === "share"
   );
 }
 
@@ -184,9 +181,10 @@ export default createRule<Options, MessageIds>({
           definition.node.init !== null && isZodSchema(definition.node.init, seen);
       }
       if (node.type !== AST_NODE_TYPES.CallExpression || node.callee.type !== AST_NODE_TYPES.MemberExpression ||
-        node.callee.computed || node.callee.property.type !== AST_NODE_TYPES.Identifier) return false;
-      const { object, property } = node.callee;
-      if (object.type === AST_NODE_TYPES.Identifier && ZOD_CONSTRUCTORS.has(property.name)) {
+        ASTUtils.getPropertyName(node.callee) === null) return false;
+      const { object } = node.callee;
+      const method = ASTUtils.getPropertyName(node.callee);
+      if (object.type === AST_NODE_TYPES.Identifier && method !== null && ZOD_CONSTRUCTORS.has(method)) {
         const binding = ASTUtils.findVariable(context.sourceCode.getScope(object), object.name);
         if (binding?.defs.some((definition) => {
           const specifier = definition.node;
@@ -195,7 +193,7 @@ export default createRule<Options, MessageIds>({
             specifier.parent.type === AST_NODE_TYPES.ImportDeclaration && isZodModule(String(specifier.parent.source.value));
         })) return true;
       }
-      return ZOD_CHAIN_METHODS.has(property.name) && isZodSchema(object, seen);
+      return method !== null && ZOD_CHAIN_METHODS.has(method) && isZodSchema(object, seen);
     }
 
     const hasExplanatoryComment = (
@@ -232,13 +230,12 @@ export default createRule<Options, MessageIds>({
       CallExpression(node: TSESTree.CallExpression): void {
         if (
           node.callee.type !== AST_NODE_TYPES.MemberExpression ||
-          node.callee.computed ||
-          node.callee.property.type !== AST_NODE_TYPES.Identifier
+          ASTUtils.getPropertyName(node.callee) === null
         ) {
           return;
         }
 
-        const method = node.callee.property.name;
+        const method = (ASTUtils.getPropertyName(node.callee) ?? "");
         const handlerIndex = method === "catch" ? 0 : method === "then" ? 1 : null;
         if (handlerIndex === null) return;
         if (method === "catch" && isZodSchema(node.callee.object)) return;
@@ -260,9 +257,8 @@ export default createRule<Options, MessageIds>({
         if (
           node.parent.type === AST_NODE_TYPES.MemberExpression &&
           node.parent.object === node &&
-          !node.parent.computed &&
-          node.parent.property.type === AST_NODE_TYPES.Identifier &&
-          node.parent.property.name === "then"
+          ASTUtils.getPropertyName(node.parent) !== null &&
+          (ASTUtils.getPropertyName(node.parent) ?? "") === "then"
         ) {
           return;
         }

@@ -4,7 +4,7 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/prefer-module-level-schema.test.ts
  */
 
-import { AST_NODE_TYPES, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
+import { ASTUtils, AST_NODE_TYPES, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile, isTestFile } from "./_paths.js";
@@ -125,9 +125,8 @@ function schemaExpression(node: TSESTree.CallExpression): TSESTree.Node {
     if (
       parent.type === AST_NODE_TYPES.MemberExpression &&
       parent.object === current &&
-      !parent.computed &&
-      parent.property.type === AST_NODE_TYPES.Identifier &&
-      TERMINAL_METHODS.has(parent.property.name)
+      ASTUtils.getPropertyName(parent) !== null &&
+      TERMINAL_METHODS.has((ASTUtils.getPropertyName(parent) ?? ""))
     ) {
       return current;
     }
@@ -225,7 +224,6 @@ function buildsLocalizedText(node: TSESTree.Node): boolean {
     }
     return (
       callee.type === AST_NODE_TYPES.MemberExpression &&
-      !callee.computed &&
       callee.object.type === AST_NODE_TYPES.Identifier &&
       I18N_RECEIVER_NAMES.has(callee.object.name)
     );
@@ -309,7 +307,7 @@ export default createRule<Options, MessageIds>({
       return (
         node.type === AST_NODE_TYPES.CallExpression &&
         node.callee.type === AST_NODE_TYPES.MemberExpression &&
-        !node.callee.computed &&
+        ASTUtils.getPropertyName(node.callee) !== null &&
         node.callee.object.type === AST_NODE_TYPES.Identifier &&
         zodNamespaces.has(node.callee.object.name)
       );
@@ -317,10 +315,9 @@ export default createRule<Options, MessageIds>({
 
     function isSchemaConstruction(node: TSESTree.CallExpression): boolean {
       const callee = node.callee;
-      if (callee.type !== AST_NODE_TYPES.MemberExpression || callee.computed ||
-        callee.property.type !== AST_NODE_TYPES.Identifier || TERMINAL_METHODS.has(callee.property.name)) return false;
+      if (callee.type !== AST_NODE_TYPES.MemberExpression || ASTUtils.getPropertyName(callee) === null || TERMINAL_METHODS.has((ASTUtils.getPropertyName(callee) ?? ""))) return false;
       if (callee.object.type === AST_NODE_TYPES.CallExpression) return isSchemaConstruction(callee.object);
-      return isZodCall(node) && CONSTRUCTION_FACTORIES.has(callee.property.name);
+      return isZodCall(node) && CONSTRUCTION_FACTORIES.has((ASTUtils.getPropertyName(callee) ?? ""));
     }
 
     function hasEagerComputation(node: TSESTree.Node): boolean {
@@ -337,8 +334,8 @@ export default createRule<Options, MessageIds>({
           current !== node &&
           isZodCall(current) &&
           current.callee.type === AST_NODE_TYPES.MemberExpression &&
-          current.callee.property.type === AST_NODE_TYPES.Identifier &&
-          factories.has(current.callee.property.name)
+          ASTUtils.getPropertyName(current.callee) !== null &&
+          factories.has((ASTUtils.getPropertyName(current.callee) ?? ""))
         ) {
           return true;
         }
@@ -347,9 +344,8 @@ export default createRule<Options, MessageIds>({
           ((current.callee.type === AST_NODE_TYPES.Identifier &&
             memoCallees.has(current.callee.name)) ||
             (current.callee.type === AST_NODE_TYPES.MemberExpression &&
-              !current.callee.computed &&
-              current.callee.property.type === AST_NODE_TYPES.Identifier &&
-              memoCallees.has(current.callee.property.name)))
+              ASTUtils.getPropertyName(current.callee) !== null &&
+              memoCallees.has((ASTUtils.getPropertyName(current.callee) ?? ""))))
         ) {
           return true;
         }
@@ -397,9 +393,8 @@ export default createRule<Options, MessageIds>({
       const { callee } = node;
       const isCombinator =
         callee.type === AST_NODE_TYPES.MemberExpression &&
-        !callee.computed &&
-        callee.property.type === AST_NODE_TYPES.Identifier &&
-        ZOD_COMBINATOR_METHODS.has(callee.property.name);
+        ASTUtils.getPropertyName(callee) !== null &&
+        ZOD_COMBINATOR_METHODS.has((ASTUtils.getPropertyName(callee) ?? ""));
       return isCombinator || isZodCall(node);
     }
 
@@ -506,10 +501,10 @@ export default createRule<Options, MessageIds>({
           return;
         }
         const callee = node.callee as TSESTree.MemberExpression;
-        if (callee.property.type !== AST_NODE_TYPES.Identifier) {
+        if (ASTUtils.getPropertyName(callee) === null) {
           return;
         }
-        const factory = callee.property.name;
+        const factory = (ASTUtils.getPropertyName(callee) ?? "");
         if (!factories.has(factory)) {
           return;
         }

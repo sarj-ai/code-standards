@@ -5,6 +5,8 @@ import { afterAll, describe, it } from "vitest";
 
 import rule, { PREFER_SHARED_ZOD_ENUM_DOCUMENTATION } from "../../src/rules/prefer-shared-zod-enum.js";
 
+import { verifyRuleExamples } from "../../src/verify-rule-examples.js";
+
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
 RuleTester.it = it;
@@ -45,4 +47,38 @@ RULE_TESTER.run("prefer-shared-zod-enum", rule, {
       errors: [{ messageId: "shareEnumDomain" }, { messageId: "shareEnumDomain" }],
     },
   ],
+});
+
+
+it("preserves outcomes for static member access and unknown member keys", async () => {
+  const documentation = rule.documentation;
+  if (documentation === undefined) throw new Error("Missing rule documentation");
+  await verifyRuleExamples({ ...rule, documentation: { ...documentation, examples: [
+  {
+    "id": "inline-provider-static-member",
+    "title": "Static member access preserves the rule outcome",
+    "outcome": "match",
+    "focusPath": "src/provider.ts",
+    "expectedCount": 2,
+    "files": [
+      {
+        "path": "src/provider.ts",
+        "source": "import { z } from 'zod'; const JobSchema = z[\"object\"]({ provider: z[\"enum\"](['agy', 'claude', 'sol']) }); const StatusSchema = z[\"object\"]({ provider: z[\"enum\"](['agy', 'claude', 'sol'])[\"optional\"]() });"
+      }
+    ]
+  },
+  {
+    "id": "inline-provider-dynamic-member",
+    "title": "Unknown member access does not establish API identity",
+    "outcome": "no-match",
+    "focusPath": "src/provider.ts",
+    "expectedCount": 0,
+    "files": [
+      {
+        "path": "src/provider.ts",
+        "source": "import { z } from 'zod'; const JobSchema = z[auditDynamicMember]({ provider: z[auditDynamicMember](['agy', 'claude', 'sol']) }); const StatusSchema = z[auditDynamicMember]({ provider: z[auditDynamicMember](['agy', 'claude', 'sol'])[auditDynamicMember]() });"
+      }
+    ]
+  }
+] } });
 });
