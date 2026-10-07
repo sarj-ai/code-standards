@@ -2917,14 +2917,11 @@ def _eslint_batches(commands: Sequence[Command], *, root: Path) -> tuple[tuple[C
     for command in commands:
         boundary = max(index for index, value in enumerate(command.argv) if value == "--") + 1
         prefix = tuple(command.argv[:boundary])
-        projects: dict[Path, list[str]] = {}
-        for relative in command.argv[boundary:]:
-            project = _nearest_project((command.cwd / relative).parent, root, ("tsconfig.json", "package.json"))
-            projects.setdefault(project, []).append(relative)
+        # Selection already separates configuration owners. Repartitioning by
+        # package directory repeats type-program setup for a shared config.
+        paths = command.argv[boundary:]
         chunks = [
-            tuple(paths[start : start + _ESLINT_BATCH_SIZE])
-            for _project, paths in sorted(projects.items())
-            for start in range(0, len(paths), _ESLINT_BATCH_SIZE)
+            tuple(paths[start : start + _ESLINT_BATCH_SIZE]) for start in range(0, len(paths), _ESLINT_BATCH_SIZE)
         ]
         identifier = command.cwd.relative_to(root).as_posix() or "."
         for index, paths in enumerate(chunks, start=1):
