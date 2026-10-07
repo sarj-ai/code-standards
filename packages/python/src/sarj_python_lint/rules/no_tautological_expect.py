@@ -15,6 +15,7 @@ from sarj_python_lint.rule_base import (
     Severity,
 )
 from sarj_python_lint.rules._ast_index import walk as walk_ast
+from sarj_python_lint.rules._paths import is_test_path
 
 
 if TYPE_CHECKING:
@@ -32,13 +33,14 @@ _FAIL = "fail"
 
 # Enough of the operand to identify it in the message without pasting a screenful.
 _OPERAND_PREVIEW_CHARS = 40
+_UNKNOWN = object()
 
 
 class NoTautologicalExpect(Rule):
     id: str = "no-statically-truthy-assertion"
     code: str = "SARJ057"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        summary="A bare assertion condition is statically truthy.",
+        summary="An assertion condition is statically truthy, including test-local scalar setup.",
         rationale=(
             "A condition that stays truthy whenever evaluation succeeds cannot reject an incorrect result and often "
             "means the intended condition was wrapped in a container or placed in the message slot."
@@ -51,10 +53,40 @@ class NoTautologicalExpect(Rule):
         aliases=("no-tautological-expect",),
         limitations=(
             "Detection covers truthy scalar constants and definitely non-empty list, set, and dict displays.",
+            "Test-local immutable scalar bindings and their aliases are tracked only through straight-line assignments; calls, control flow, mutable values, and global/nonlocal writes invalidate tracking.",
             "Ruff owns asserted strings and tuples, literal comparisons and identity, and unittest-style assertion methods.",
             "Generated files, always-failing assertions, deliberate match-arm success markers, and runtime-value comparisons are excluded.",
         ),
         examples=(
+            RuleExample(
+                example_id="setup-only-oracle",
+                scenario="setup-only",
+                title="A test asserts only on its own fixed setup",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "tests/test_service.py", "def test_service():\n    status = 'ok'\n    assert status == 'ok'\n"
+                    ),
+                ),
+                focus_path=PurePosixPath("tests/test_service.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="produced-scalar-oracle",
+                scenario="setup-only",
+                title="Assert on a value returned by the application",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "tests/test_service.py",
+                        "def test_service():\n    status = service_status()\n    assert status == 'ok'\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("tests/test_service.py"),
+                expected_count=0,
+                public=True,
+            ),
             RuleExample(
                 example_id="condition-in-message-slot",
                 title="The intended condition became an assertion message",
@@ -96,6 +128,9 @@ class NoTautologicalExpect(Rule):
         if tree is None:
             return []
         exempt = _exempt_nodes(tree, node_index=context.node_index)
+        tautologies = _tautologies(tree, exempt, node_index=context.node_index)
+        if is_test_path(path) and path.name != "conftest.py":
+            tautologies.extend(_bound_tautologies(context))
         diags = [
             Diagnostic(
                 path=path,
@@ -105,10 +140,91 @@ class NoTautologicalExpect(Rule):
                 message=_message(node, reason),
                 severity=Severity.ERROR,
             )
-            for node, reason in _tautologies(tree, exempt, node_index=context.node_index)
+            for node, reason in tautologies
         ]
         diags.sort(key=lambda d: (d.line, d.col))
         return diags
+
+
+def _bound_tautologies(context: PythonFileContext) -> list[_Tautology]:
+    found: list[_Tautology] = []
+    external_writes = context.nodes(ast.Global, ast.Nonlocal)
+    for function in context.nodes(ast.FunctionDef, ast.AsyncFunctionDef):
+        if not function.name.startswith("test_"):
+            continue
+        if any(function.lineno <= node.lineno <= (function.end_lineno or function.lineno) for node in external_writes):
+            continue
+        found.extend(_function_bound_tautologies(function))
+    return found
+
+
+def _function_bound_tautologies(function: ast.FunctionDef | ast.AsyncFunctionDef) -> list[_Tautology]:
+    found: list[_Tautology] = []
+    bindings: dict[str, object] = {}
+    for statement in function.body:
+        if _record_scalar_assignment(statement, bindings):
+            continue
+        if isinstance(statement, ast.Assert):
+            references_setup = any(
+                isinstance(node, ast.Name) and node.id in bindings for node in ast.walk(statement.test)
+            )
+            if references_setup and _scalar_condition(statement.test, bindings) is True:
+                found.append(_Tautology(statement, "the condition follows only from unchanged scalar setup"))
+        bindings.clear()
+    return found
+
+
+def _record_scalar_assignment(statement: ast.stmt, bindings: dict[str, object]) -> bool:
+    match statement:
+        case (
+            ast.Assign(targets=[ast.Name(id=name)], value=value) | ast.AnnAssign(target=ast.Name(id=name), value=value)
+        ) if value is not None:
+            scalar = _scalar_value(value, bindings)
+            if scalar is not _UNKNOWN:
+                bindings[name] = scalar
+                return True
+        case _:
+            pass
+    return False
+
+
+def _scalar_value(node: ast.expr, bindings: dict[str, object]) -> object:
+    if isinstance(node, ast.Name):
+        return bindings.get(node.id, _UNKNOWN)
+    if isinstance(node, ast.Constant):
+        value: object = node.value
+        return value if value is None or isinstance(value, (bool, int, float, str, bytes)) else _UNKNOWN
+    if isinstance(node, ast.UnaryOp):
+        value = _scalar_value(node.operand, bindings)
+        if isinstance(node.op, ast.Not) and value is not _UNKNOWN:
+            return not value
+        if isinstance(value, (int, float)):
+            if isinstance(node.op, ast.USub):
+                return -value
+            if isinstance(node.op, ast.UAdd):
+                return +value
+    return _UNKNOWN
+
+
+def _scalar_condition(node: ast.expr, bindings: dict[str, object]) -> bool | None:
+    if isinstance(node, ast.Compare) and len(node.ops) == 1:
+        left = _scalar_value(node.left, bindings)
+        right = _scalar_value(node.comparators[0], bindings)
+        if left is _UNKNOWN or right is _UNKNOWN:
+            return None
+        match node.ops[0]:
+            case ast.Eq():
+                return left == right
+            case ast.NotEq():
+                return left != right
+            case ast.Is() if left is None or isinstance(left, bool):
+                return left is right
+            case ast.IsNot() if left is None or isinstance(left, bool):
+                return left is not right
+            case _:
+                return None
+    value = _scalar_value(node, bindings)
+    return None if value is _UNKNOWN else bool(value)
 
 
 def _exempt_nodes(tree: ast.Module, *, node_index: NodeIndex | None = None) -> set[ast.AST]:
