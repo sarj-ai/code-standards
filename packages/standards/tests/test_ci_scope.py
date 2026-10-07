@@ -11,6 +11,7 @@ import pytest
 import yaml
 
 from sarj_standards.libs.release.process import credential_free_environment
+from sarj_standards.libs.release.reviewed_analysis import AnalysisProof, CheckKind
 
 
 SCRIPT = Path(__file__).resolve().parents[3] / ".github/scripts/ci-scope.sh"
@@ -480,7 +481,7 @@ def test_ci_completion_covers_every_job_and_rejects_failures(result: str, accept
     assert isinstance(terminal.needs, list)
     assert set(terminal.needs) == set(jobs) - {"complete"}
     assert terminal.condition == "always()"
-    [step] = [step for step in terminal.steps if step.run]
+    [step] = [step for step in terminal.steps if step.run and step.name == "Require all selected checks to succeed"]
     results = {key: {"result": "success"} for key in jobs if key != "complete"}
     for key in results:
         candidate = results | {key: {"result": result}}
@@ -493,3 +494,80 @@ def test_ci_completion_covers_every_job_and_rejects_failures(result: str, accept
             timeout=10,
         )
         assert process.returncode == (0 if accepted else 1), (key, process.stderr)
+
+
+@pytest.mark.parametrize("kind", list(CheckKind))
+def test_analysis_certificate_records_checked_tree_and_comparison_base(repository: Path, kind: CheckKind) -> None:
+    base = git(repository, "rev-parse", "HEAD")
+    (repository / "source.py").write_text("VALUE = 1\n")
+    git(repository, "add", "source.py")
+    git(repository, "commit", "-qm", "checked source")
+    event = repository / "event.json"
+    event.write_text(json.dumps({"pull_request": {"base": {"sha": base}}}))
+    destination = repository / "certificate"
+    environment = credential_free_environment()
+    environment.update(
+        {
+            "GITHUB_REPOSITORY": "owner/repo",
+            "GITHUB_EVENT_PATH": str(event),
+            "GITHUB_RUN_ID": "7",
+            "GITHUB_RUN_ATTEMPT": "2",
+        }
+    )
+    subprocess.run(
+        ("bash", str(SCRIPT.with_name("ci-record-analysis.sh")), kind, str(destination)),
+        cwd=repository,
+        env=environment,
+        check=True,
+        capture_output=True,
+        timeout=30,
+    )
+    proof = AnalysisProof.model_validate_json((destination / "proof.json").read_text())
+    assert proof.source_commit == git(repository, "rev-parse", "HEAD")
+    assert proof.tree == git(repository, "rev-parse", "HEAD^{tree}")
+    assert proof.comparison_base == base
+    assert proof.kind == kind
+    assert proof.run_id == 7
+    assert proof.run_attempt == 2
+
+
+@pytest.mark.parametrize("failed", ["none", "ruff", "types", "dogfood"])
+def test_parallel_static_gate_propagates_every_background_failure(tmp_path: Path, failed: str) -> None:
+    [step] = [
+        step
+        for step in workflow("ci.yml").jobs["static-analysis"].steps
+        if step.name == "Lint + typecheck (dogfood the strict config)"
+    ]
+    executable = tmp_path / "bin/uv"
+    executable.parent.mkdir()
+    executable.write_text(
+        "#!/usr/bin/env bash\n"
+        'case "$*" in\n'
+        '  "run ruff check src/ tests/") label=ruff ;;\n'
+        '  "run basedpyright") label=types ;;\n'
+        '  "run code-standards --root ../.. check --jobs 2 .") label=dogfood ;;\n'
+        "  *) exit 99 ;;\n"
+        "esac\n"
+        '[[ "$label" != "$FAILED" ]]\n'
+    )
+    executable.chmod(0o755)
+    summary = tmp_path / "summary"
+    environment = credential_free_environment()
+    environment.update(
+        {
+            "PATH": str(executable.parent) + os.pathsep + environment.get("PATH", os.defpath),
+            "FAILED": failed,
+            "GITHUB_STEP_SUMMARY": str(summary),
+        }
+    )
+    result = subprocess.run(
+        ("bash", "-eu", "-o", "pipefail", "-c", step.run),
+        cwd=tmp_path,
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=30,
+    )
+    assert result.returncode == (0 if failed == "none" else 1), result.stderr
+    assert len(summary.read_text().splitlines()) == 3

@@ -223,6 +223,8 @@ def extract_verified_archive(archive: Path, destination: Path, *, digest: str, s
             if path.suffix not in {".whl", ".gz"} and str(path) not in {
                 "SHA256SUMS",
                 "SOURCE_COMMIT",
+                "SOURCE_TREE",
+                "REVIEWED_SOURCE.json",
                 "test-plan.json",
             }:
                 msg = "unexpected file in tested artifact"

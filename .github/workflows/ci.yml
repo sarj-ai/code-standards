@@ -38,22 +38,30 @@ jobs:
     permissions:
       contents: read
       actions: read
+      pull-requests: read
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
       test-event: ${{ steps.scope.outputs.test-event }}
-      bootstrap: ${{ steps.scope.outputs.bootstrap }}
-      python: ${{ steps.scope.outputs.python }}
-      sql: ${{ steps.scope.outputs.sql }}
-      iac: ${{ steps.scope.outputs.iac }}
-      typescript: ${{ steps.scope.outputs.typescript }}
-      tsconfig: ${{ steps.scope.outputs.tsconfig }}
+      bootstrap: ${{ steps.reviewed.outputs.reviewed-ci == 'true' && 'false' || steps.scope.outputs.bootstrap }}
+      python: ${{ steps.reviewed.outputs.reviewed-ci == 'true' && 'false' || steps.scope.outputs.python }}
+      sql: ${{ steps.reviewed.outputs.reviewed-ci == 'true' && 'false' || steps.scope.outputs.sql }}
+      iac: ${{ steps.reviewed.outputs.reviewed-ci == 'true' && 'false' || steps.scope.outputs.iac }}
+      typescript: ${{ steps.reviewed.outputs.reviewed-ci == 'true' && 'false' || steps.scope.outputs.typescript }}
+      tsconfig: ${{ steps.reviewed.outputs.reviewed-ci == 'true' && 'false' || steps.scope.outputs.tsconfig }}
       standards: ${{ steps.scope.outputs.standards }}
       docs: ${{ steps.scope.outputs.docs }}
-      mobile: ${{ steps.scope.outputs.mobile }}
+      mobile: ${{ steps.reviewed.outputs.reviewed-ci == 'true' && 'false' || steps.scope.outputs.mobile }}
       codeql-python: ${{ steps.scope.outputs.codeql-python }}
       codeql-javascript-typescript: ${{ steps.scope.outputs.codeql-javascript-typescript }}
-      docs-audit: ${{ steps.scope.outputs.docs-audit }}
+      docs-audit: ${{ steps.reviewed.outputs.reviewed-ci == 'true' && 'false' || steps.scope.outputs.docs-audit }}
+      reviewed-static: ${{ steps.reviewed.outputs.reviewed-static }}
+      reviewed-docs: ${{ steps.reviewed.outputs.reviewed-docs }}
+      reviewed-codeql-python: ${{ steps.reviewed.outputs.reviewed-codeql-python }}
+      reviewed-codeql-javascript-typescript: ${{ steps.reviewed.outputs.reviewed-codeql-javascript-typescript }}
+      reviewed-run: ${{ steps.reviewed.outputs.reviewed-run }}
+      reviewed-wheels: ${{ steps.reviewed.outputs.reviewed-wheels }}
+      reviewed-ci: ${{ steps.reviewed.outputs.reviewed-ci }}
     steps:
       - name: Harden the runner
         uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
@@ -80,6 +88,31 @@ jobs:
           fi
           bash .github/scripts/ci-scope.sh "$routing_event" "$BASE_SHA" "$HEAD_SHA" "$GITHUB_OUTPUT"
           echo "test-event=$routing_event" >> "$GITHUB_OUTPUT"
+      - if: github.event_name == 'push'
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: '0.12.18'
+          enable-cache: false
+      - name: Verify analysis of the identical reviewed tree
+        if: github.event_name == 'push'
+        id: reviewed
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BASE_SHA: ${{ github.event.before }}
+          ROUTING_EVENT: ${{ steps.scope.outputs.test-event }}
+        run: >-
+          bash .github/scripts/ci-reviewed-analysis.sh
+          --root . --repository "$GITHUB_REPOSITORY" --commit "$GITHUB_SHA" --base "$BASE_SHA" --event "$ROUTING_EVENT"
+          --destination "$RUNNER_TEMP/reviewed-analysis"
+          --github-output "$GITHUB_OUTPUT" --summary "$GITHUB_STEP_SUMMARY"
+      - name: Share verified analysis results with this exact main run
+        if: steps.reviewed.outputs.reviewed-run != ''
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: reviewed-analysis-main-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/reviewed-analysis
+          if-no-files-found: error
+          retention-days: 1
 
   bootstrap:
     needs: changes
@@ -607,35 +640,71 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+      - if: needs.changes.outputs.reviewed-static != 'true'
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
           version: '0.12.18'
           enable-cache: true
           cache-dependency-glob: 'packages/**/uv.lock'
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+      - if: needs.changes.outputs.reviewed-static != 'true'
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: '24'
           cache: 'npm'
           cache-dependency-path: packages/typescript/package-lock.json
-      - run: uv python install 3.14
-      - run: uv sync --locked --dev
-      - run: uv audit --locked
+      - if: needs.changes.outputs.reviewed-static != 'true'
+        run: uv python install 3.14
+      - if: needs.changes.outputs.reviewed-static != 'true'
+        run: uv sync --locked --dev
+      - if: needs.changes.outputs.reviewed-static != 'true'
+        run: uv audit --locked
       # The global root selects the adopted repository for every command.
       # Install the root adoption's locked JS toolchain so this job neither asks
       # npx to download an unpinned ESLint nor accidentally tests network state.
-      - run: npm --prefix ../typescript ci --ignore-scripts --no-audit --no-fund
+      - if: needs.changes.outputs.reviewed-static != 'true'
+        run: npm --prefix ../typescript ci --ignore-scripts --no-audit --no-fund
+      - name: Reuse successful reviewed static analysis
+        if: needs.changes.outputs.reviewed-static == 'true'
+        env:
+          REVIEWED_RUN: ${{ needs.changes.outputs.reviewed-run }}
+        run: echo "Identical checked Git tree; static analysis already passed in CI $REVIEWED_RUN." >> "$GITHUB_STEP_SUMMARY"
       - name: Lint + typecheck (dogfood the strict config)
+        if: needs.changes.outputs.reviewed-static != 'true'
         run: |
-          uv run ruff check src/ tests/
-          uv run basedpyright
-          # Standards is developed from this package directory,
-          # but Standards is adopted at the repository root. Dogfood that real
-          # manifest and its verification paths instead of treating the package
-          # subdirectory as an unadopted consumer.
-          # Passing the repository root explicitly prevents GitHub pull-request
-          # metadata from silently reducing this required dogfood gate to only
-          # changed files. PR and push runs must exercise the same full scope.
-          uv run code-standards --root ../.. check --jobs 2 .
+          run_check() {
+            label="$1"; shift
+            started=$SECONDS
+            "$@" && result=0 || result=$?
+            printf '%s: %ss (exit %s)\n' "$label" "$((SECONDS - started))" "$result" >> "$GITHUB_STEP_SUMMARY"
+            return "$result"
+          }
+          run_check Ruff uv run ruff check src/ tests/ & ruff_pid=$!
+          run_check Typecheck uv run basedpyright & types_pid=$!
+          # Explicit root and paths retain full dogfood coverage on fresh runs.
+          (
+            started=$SECONDS
+            set +e
+            uv run code-standards --root ../.. check --jobs 2 .
+            result=$?
+            printf 'Dogfood: %ss (exit %s)\n' "$((SECONDS - started))" "$result" >> "$GITHUB_STEP_SUMMARY"
+            exit "$result"
+          ) & dogfood_pid=$!
+          result=0
+          wait "$ruff_pid" || result=1
+          wait "$types_pid" || result=1
+          wait "$dogfood_pid" || result=1
+          exit "$result"
+      - name: Record the successfully checked PR tree
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        run: bash ../../.github/scripts/ci-record-analysis.sh static "$RUNNER_TEMP/reviewed-static"
+      - name: Keep immutable reviewed static proof
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: reviewed-static-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/reviewed-static
+          if-no-files-found: error
+          retention-days: 1
 
   package-tests:
     needs: changes
@@ -665,25 +734,32 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+      - if: needs.changes.outputs.reviewed-wheels != 'true'
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
           version: '0.12.18'
           enable-cache: true
           cache-dependency-glob: 'packages/**/uv.lock'
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+      - if: needs.changes.outputs.reviewed-wheels != 'true'
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: '24'
           cache: 'npm'
           cache-dependency-path: packages/typescript/package-lock.json
-      - run: uv python install 3.14
-      - run: uv sync --locked --dev
-      - run: npm --prefix ../typescript ci --ignore-scripts --no-audit --no-fund
+      - if: needs.changes.outputs.reviewed-wheels != 'true'
+        run: uv python install 3.14
+      - if: needs.changes.outputs.reviewed-wheels != 'true'
+        run: uv sync --locked --dev
+      - if: needs.changes.outputs.reviewed-wheels != 'true'
+        run: npm --prefix ../typescript ci --ignore-scripts --no-audit --no-fund
       - name: Install pinned formatter for generated-manifest integration tests
+        if: needs.changes.outputs.reviewed-wheels != 'true'
         run: |
           npm --prefix "$RUNNER_TEMP/taplo" install --ignore-scripts --no-audit --no-fund --no-save @taplo/cli@0.7.0
           test -x "$RUNNER_TEMP/taplo/node_modules/.bin/taplo"
           echo "$RUNNER_TEMP/taplo/node_modules/.bin" >> "$GITHUB_PATH"
       - name: Build release distributions and exact dependency wheels
+        if: needs.changes.outputs.reviewed-wheels != 'true'
         run: |
           uv build
           uv build --project ../standards-compat --out-dir dist
@@ -692,12 +768,15 @@ jobs:
           uv build --wheel --project ../sql --out-dir dist/deps
           uv build --wheel --project ../iac --out-dir dist/deps
       - name: Verify wheel licenses
+        if: needs.changes.outputs.reviewed-wheels != 'true'
         run: uv run --frozen code-standards maintain release verify-wheel dist/*.whl dist/deps/*.whl
       - name: Install built wheel + test deps into a fresh venv
+        if: needs.changes.outputs.reviewed-wheels != 'true'
         run: |
           uv venv --clear --python 3.14 --seed
           uv pip install ./dist/deps/*.whl ./dist/code_standards-*.whl pytest==9.1.1 pytest-xdist==3.8.0 jsonschema==4.25.1 ruff
       - name: Run affected wheel tests (full on shared changes or scheduled/manual audits)
+        if: needs.changes.outputs.reviewed-wheels != 'true'
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
@@ -707,14 +786,42 @@ jobs:
           --root ../.. --base "$BASE_SHA" --head "$HEAD_SHA" --event "$EVENT_NAME"
           --run --jobs 4 --report dist/test-plan.json --summary "$GITHUB_STEP_SUMMARY"
       - name: Smoke test release source distributions
+        if: needs.changes.outputs.reviewed-wheels != 'true'
         run: |
           uv venv --python 3.14 "$RUNNER_TEMP/standards-sdist"
           uv pip install --python "$RUNNER_TEMP/standards-sdist/bin/python" --find-links dist/deps dist/*.tar.gz
           "$RUNNER_TEMP/standards-sdist/bin/code-standards" --help
+      - name: Download the verified reviewed distributions
+        if: needs.changes.outputs.reviewed-wheels == 'true'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: reviewed-analysis-main-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/reviewed-analysis
+      - name: Preserve the exact wheel bytes tested on the reviewed tree
+        if: needs.changes.outputs.reviewed-wheels == 'true'
+        env:
+          REVIEWED_RUN: ${{ needs.changes.outputs.reviewed-run }}
+        run: |
+          mkdir -p dist
+          cp -R "$RUNNER_TEMP/reviewed-analysis/wheels/". dist/
+          mv dist/proof.json dist/REVIEWED_SOURCE.json
+          echo "Exact reviewed wheel bytes from CI $REVIEWED_RUN; checked tree and comparison base match." >> "$GITHUB_STEP_SUMMARY"
       - name: Bind tested distributions to this exact commit
         run: |
           printf '%s\n' "$GITHUB_SHA" > dist/SOURCE_COMMIT
+          git rev-parse 'HEAD^{tree}' > dist/SOURCE_TREE
           (cd dist && sha256sum ./*.whl ./*.tar.gz > SHA256SUMS)
+      - name: Record the successfully tested PR wheel bytes
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        run: bash ../../.github/scripts/ci-record-analysis.sh wheels dist
+      - name: Keep immutable reviewed distributions
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: reviewed-wheels-${{ github.run_attempt }}
+          path: packages/standards/dist/
+          if-no-files-found: error
+          retention-days: 1
       - name: Upload tested distributions for exact-main publication reuse
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -853,12 +960,14 @@ jobs:
           cache-dependency-path: |
             apps/docs/package-lock.json
             packages/typescript/package-lock.json
-      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+      - if: needs.changes.outputs.reviewed-docs != 'true'
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
           version: '0.12.18'
           enable-cache: true
           cache-dependency-glob: 'packages/**/uv.lock'
       - name: Install pinned Terraform CLI
+        if: needs.changes.outputs.reviewed-docs != 'true'
         env:
           TERRAFORM_SHA256: d25ce7b6902013ad905db3d2eab0be4cd905887fe88b81a6171b8d5503c31f3d
           TERRAFORM_VERSION: '1.15.8'
@@ -873,6 +982,7 @@ jobs:
           unzip -q "$archive" -d "$install_dir"
           echo "$install_dir" >> "$GITHUB_PATH"
       - name: Install locked documentation toolchains
+        if: needs.changes.outputs.reviewed-docs != 'true'
         working-directory: .
         run: |
           uv python install 3.14
@@ -880,10 +990,36 @@ jobs:
           npm --prefix packages/typescript ci --ignore-scripts --no-audit --no-fund
           npm --prefix apps/docs ci --ignore-scripts --no-audit --no-fund
       - name: Verify source artifacts and build site
+        if: needs.changes.outputs.reviewed-docs != 'true'
         working-directory: .
         env:
           WORKERS_CI_COMMIT_SHA: ${{ github.sha }}
         run: make docs-check
+      - name: Build fresh deployment from the reviewed source tree
+        if: needs.changes.outputs.reviewed-docs == 'true'
+        working-directory: .
+        env:
+          WORKERS_CI_COMMIT_SHA: ${{ github.sha }}
+          REVIEWED_RUN: ${{ needs.changes.outputs.reviewed-run }}
+        run: |
+          echo "Source validation passed on the identical tree in CI $REVIEWED_RUN." >> "$GITHUB_STEP_SUMMARY"
+          npm --prefix apps/docs ci --ignore-scripts --no-audit --no-fund
+          # Source/formatter/lint/type gates passed on this exact tree. Build
+          # the main revision afresh and verify the deployed catalog contents.
+          npm --prefix apps/docs --ignore-scripts run build
+          node apps/docs/scripts/verify-third-party-catalog.mjs --dist
+      - name: Record the validated documentation tree
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        working-directory: .
+        run: bash .github/scripts/ci-record-analysis.sh docs "$RUNNER_TEMP/reviewed-docs"
+      - name: Keep immutable reviewed documentation proof
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: reviewed-docs-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/reviewed-docs
+          if-no-files-found: error
+          retention-days: 1
       - name: Upload generated site
         if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -1015,6 +1151,7 @@ jobs:
     permissions:
       contents: read
       security-events: write
+      actions: read
     strategy:
       fail-fast: false
       matrix:
@@ -1033,13 +1170,47 @@ jobs:
         with:
           persist-credentials: false
       - name: Initialize CodeQL
-        if: needs.changes.outputs[format('codeql-{0}', matrix.language)] != 'false'
+        if: needs.changes.outputs[format('codeql-{0}', matrix.language)] != 'false' && needs.changes.outputs[format('reviewed-codeql-{0}', matrix.language)] != 'true'
         uses: github/codeql-action/init@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
         with:
           languages: ${{ matrix.language }}
       - name: Analyze
-        if: needs.changes.outputs[format('codeql-{0}', matrix.language)] != 'false'
+        id: analyze
+        if: needs.changes.outputs[format('codeql-{0}', matrix.language)] != 'false' && needs.changes.outputs[format('reviewed-codeql-{0}', matrix.language)] != 'true'
         uses: github/codeql-action/analyze@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
+
+      - name: Download verified reviewed results
+        if: needs.changes.outputs[format('codeql-{0}', matrix.language)] != 'false' && needs.changes.outputs[format('reviewed-codeql-{0}', matrix.language)] == 'true'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: reviewed-analysis-main-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/reviewed-analysis
+      - name: Upload reviewed CodeQL results for this main commit
+        if: needs.changes.outputs[format('codeql-{0}', matrix.language)] != 'false' && needs.changes.outputs[format('reviewed-codeql-{0}', matrix.language)] == 'true'
+        uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
+        with:
+          sarif_file: ${{ runner.temp }}/reviewed-analysis/codeql-${{ matrix.language }}
+          ref: ${{ github.ref }}
+          sha: ${{ github.sha }}
+          wait-for-processing: true
+      - name: Record the analyzed PR tree and CodeQL results
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && steps.analyze.conclusion == 'success'
+        env:
+          LANGUAGE: ${{ matrix.language }}
+          SARIF_OUTPUT: ${{ steps.analyze.outputs.sarif-output }}
+        run: |
+          destination="$RUNNER_TEMP/reviewed-codeql-$LANGUAGE"
+          mkdir -p "$destination"
+          cp "$SARIF_OUTPUT"/*.sarif "$destination/"
+          bash .github/scripts/ci-record-analysis.sh "codeql-$LANGUAGE" "$destination"
+      - name: Keep immutable reviewed CodeQL proof
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && steps.analyze.conclusion == 'success'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: reviewed-codeql-${{ matrix.language }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/reviewed-codeql-${{ matrix.language }}
+          if-no-files-found: error
+          retention-days: 1
 
   scorecard:
     if: github.event_name != 'pull_request'
@@ -1083,3 +1254,19 @@ jobs:
         env:
           RESULTS: ${{ toJSON(needs) }}
         run: jq --exit-status 'all(.[]; .result == "success" or .result == "skipped")' <<< "$RESULTS"
+      - name: Check out the exact reviewed tree
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Record successful complete validation of the reviewed tree
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        run: bash .github/scripts/ci-record-analysis.sh ci "$RUNNER_TEMP/reviewed-ci"
+      - name: Keep immutable complete CI proof
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: reviewed-ci-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/reviewed-ci
+          if-no-files-found: error
+          retention-days: 1
