@@ -21,6 +21,9 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
 
 
+from sarj_standards.libs.release.test_selection import select_tests
+
+
 _MAX_TEST_JOBS = 16
 _TEST_PACKAGES = ("contracts", "python", "sql", "iac", "standards")
 
@@ -30,6 +33,8 @@ def run_wheel_tests(
     *,
     jobs: int = 4,
     pytest_args: Sequence[str] = (),
+    changed: bool = False,
+    base: str = "origin/main",
     runner: ProcessRunner = run_process,
 ) -> None:
     if not 1 <= jobs <= _MAX_TEST_JOBS:
@@ -37,6 +42,11 @@ def run_wheel_tests(
         raise ValueError(msg)
     root = root.resolve()
     package = root / "packages/standards"
+    tests = ("tests/",)
+    if changed:
+        plan = select_tests(root, base=base)
+        tests = plan.tests
+        sys.stdout.write(f"Standards: {len(tests)}/{plan.total_files} test files; {plan.reason}\n")
     with TemporaryDirectory(prefix="sarj-wheel-tests-") as directory:
         destination = Path(directory)
         wheels = destination / "wheels"
@@ -70,7 +80,7 @@ def run_wheel_tests(
         environment = credential_free_environment()
         environment["PATH"] = str(bin_path) + os.pathsep + environment.get("PATH", "")
         run_process_environment(
-            (str(python), "-m", "pytest", "-q", "-n", str(jobs), "--dist", "worksteal", "tests/", *pytest_args),
+            (str(python), "-m", "pytest", "-q", "-n", str(jobs), "--dist", "worksteal", *tests, *pytest_args),
             cwd=package,
             environment=environment,
         )
@@ -83,12 +93,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     @app.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
     def check(
         ctx: typer.Context,
+        *,
         root: Annotated[Path, typer.Option("--root")] = Path(),
         jobs: Annotated[int, typer.Option("--jobs", min=1, max=_MAX_TEST_JOBS)] = 4,
+        changed: Annotated[bool, typer.Option("--changed")] = False,
+        base: Annotated[str, typer.Option("--base")] = "origin/main",
     ) -> None:
         nonlocal exit_code
         try:
-            run_wheel_tests(root, jobs=jobs, pytest_args=ctx.args)
+            run_wheel_tests(root, jobs=jobs, pytest_args=ctx.args, changed=changed, base=base)
         except ProcessFailureError as exc:
             exit_code = exc.returncode
         except (OSError, ValueError) as exc:

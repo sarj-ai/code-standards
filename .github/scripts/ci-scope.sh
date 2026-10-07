@@ -50,22 +50,25 @@ sys.exit(0 if documents[0] == documents[1] else 1)
 PY
 }
 
-if [[ "$event" == schedule ]]; then
-  # Weekly security coverage does not rebuild packages or deploy documentation.
-  select_scopes codeql-python codeql-javascript-typescript docs-audit
-elif [[ "$event" != pull_request ]]; then
-  # Releases wait for complete validation of their exact main revision.
+if [[ "$event" != pull_request && "$event" != push ]]; then
+  # Manual and weekly runs audit every package, even when nothing changed.
+  select_scopes "${scopes[@]}"
+elif [[ "$event" == push && ( -z "$base" || "$base" == 0000000000000000000000000000000000000000 ) ]]; then
+  # First pushes and missing webhook comparisons conservatively validate everything.
   select_scopes "${scopes[@]}"
 else
   [[ "$base" =~ ^[0-9a-f]{40}$ && "$head" =~ ^[0-9a-f]{40}$ ]] || {
-    echo 'PR routing requires base and head commit SHAs' >&2
+    echo 'routing requires base and head commit SHAs' >&2
     exit 1
   }
   changed=$(mktemp)
   trap 'rm -f "$changed"' EXIT
   # Disable rename detection so BOTH the old and new package owners run.
   # A failed diff must abort before any false outputs can be published.
-  comparison_base=$(git merge-base "$base" "$head")
+  comparison_base="$base"
+  if [[ "$event" == pull_request ]]; then
+    comparison_base=$(git merge-base "$base" "$head")
+  fi
   git diff --no-renames --name-only -z "$comparison_base" "$head" -- > "$changed"
   while IFS= read -r -d '' path; do
     case "$path" in
@@ -100,6 +103,8 @@ else
         select_scopes typescript standards docs ;;
       packages/tsconfig/*)
         select_scopes tsconfig standards docs ;;
+      packages/standards/src/sarj_standards/libs/release/*)
+        select_scopes standards docs ;;
       packages/standards/tests/*)
         select_scopes standards ;;
       packages/standards/src/sarj_standards/schemas/rule-catalog.v1.json|packages/standards/src/sarj_standards/libs/linting/textlint.py)

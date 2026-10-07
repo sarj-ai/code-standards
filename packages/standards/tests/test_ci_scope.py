@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 import subprocess
 from typing import ClassVar
@@ -8,6 +9,8 @@ from typing import ClassVar
 from pydantic import BaseModel, ConfigDict, Field
 import pytest
 import yaml
+
+from sarj_standards.libs.release.process import credential_free_environment
 
 
 SCRIPT = Path(__file__).resolve().parents[3] / ".github/scripts/ci-scope.sh"
@@ -99,6 +102,11 @@ def route(root: Path, base: str, head: str, *, event: str = "pull_request") -> f
             {"standards", "docs", "mobile", "codeql-python"},
             id="runner-mobile-dependency",
         ),
+        pytest.param(
+            "packages/standards/src/sarj_standards/libs/release/status.py",
+            {"standards", "docs", "codeql-python"},
+            id="release-no-mobile",
+        ),
         pytest.param("packages/standards/tests/test_api.py", {"standards", "codeql-python"}, id="runner-test-only"),
         pytest.param("packages/standards/src/sarj_standards/configs/ruff.strict.toml", SCOPES, id="shared-config"),
         pytest.param(".github/scripts/ci-scope.sh", SCOPES, id="routing-change"),
@@ -117,14 +125,15 @@ def route(root: Path, base: str, head: str, *, event: str = "pull_request") -> f
         ),
     ],
 )
-def test_pr_selects_owners_and_consumers(repository: Path, path: str, expected: set[str]) -> None:
+@pytest.mark.parametrize("event", ["pull_request", "push"])
+def test_pr_selects_owners_and_consumers(repository: Path, path: str, expected: set[str], event: str) -> None:
     base = git(repository, "rev-parse", "HEAD")
     source = repository / path
     source.parent.mkdir(parents=True, exist_ok=True)
     source.write_text("fixture\n")
     git(repository, "add", "--", path)
     git(repository, "commit", "-qm", "change")
-    assert route(repository, base, git(repository, "rev-parse", "HEAD")) == expected
+    assert route(repository, base, git(repository, "rev-parse", "HEAD"), event=event) == expected
 
 
 def test_cross_package_rename_checks_old_and_new_owners(repository: Path) -> None:
@@ -256,7 +265,7 @@ def test_dependency_changes_or_comparison_errors_keep_mobile(
     assert "mobile" in route(repository, base, git(repository, "rev-parse", "HEAD"))
 
 
-@pytest.mark.parametrize("event", ["push", "workflow_dispatch"])
+@pytest.mark.parametrize("event", ["push", "workflow_dispatch", "schedule"])
 def test_non_pr_events_keep_complete_validation(repository: Path, event: str) -> None:
     assert route(repository, "", "", event=event) == SCOPES
 
@@ -373,7 +382,7 @@ def test_required_standards_gate_requires_both_lanes_and_routing() -> None:
 
 def test_required_matrix_checks_keep_their_names_when_unaffected() -> None:
     typescript = workflow("ci.yml").jobs["typescript"]
-    assert typescript.condition == "always() && github.event_name != 'schedule'"
+    assert typescript.condition == "always()"
     for step in typescript.steps[2:]:
         assert "needs.changes.outputs.typescript != 'false'" in step.condition
     assert workflow("ci.yml").jobs["portability-smoke"].name == "standards portability (ubuntu-latest)"
@@ -407,17 +416,13 @@ def test_private_reference_fetch_excludes_existing_main_history(repository: Path
     assert git(candidate, "rev-parse", "--is-shallow-repository") == "false"
 
 
-def test_scheduled_ci_selects_only_security(repository: Path) -> None:
-    assert route(repository, "", "", event="schedule") == {
-        "codeql-python",
-        "codeql-javascript-typescript",
-        "docs-audit",
-    }
+def test_scheduled_ci_audits_every_package(repository: Path) -> None:
+    assert route(repository, "", "", event="schedule") == SCOPES
 
 
 def test_ci_detects_changes_once_and_never_deploys_on_schedule() -> None:
     workflows = SCRIPT.parents[1] / "workflows"
-    assert sum(path.read_text().count("run: bash .github/scripts/ci-scope.sh") for path in workflows.glob("*.yml")) == 1
+    assert sum(path.read_text().count("bash .github/scripts/ci-scope.sh") for path in workflows.glob("*.yml")) == 1
     jobs = workflow("ci.yml").jobs
     assert jobs["changes"].name == "Detect affected checks"
     deploy = jobs["docs-deploy"]
@@ -425,6 +430,44 @@ def test_ci_detects_changes_once_and_never_deploys_on_schedule() -> None:
     assert deploy.condition == (
         "github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')"
     )
+
+
+@pytest.mark.parametrize(
+    "case", ["success", "failed", "pending", "fork", "wrong-sha", "pr", "missing", "latest-failed"]
+)
+def test_incremental_checks_require_successful_exact_main_baseline(tmp_path: Path, case: str) -> None:
+    sha = "a" * 40
+    run = {
+        "id": 1,
+        "head_sha": "b" * 40 if case == "wrong-sha" else sha,
+        "event": "pull_request" if case == "pr" else "push",
+        "head_branch": "main",
+        "head_repository": {"full_name": "fork/repo" if case == "fork" else "owner/repo"},
+        "path": ".github/workflows/ci.yml",
+        "conclusion": {"failed": "failure", "pending": None}.get(case, "success"),
+    }
+    runs = [] if case == "missing" else [run]
+    if case == "latest-failed":
+        runs.append({**run, "id": 2, "conclusion": "failure"})
+    response = tmp_path / "response.json"
+    response.write_text(json.dumps({"workflow_runs": runs}), encoding="utf-8")
+    executable = tmp_path / "bin/gh"
+    executable.parent.mkdir()
+    executable.write_text('#!/usr/bin/env bash\ncat "$CI_TEST_RESPONSE"\n', encoding="utf-8")
+    executable.chmod(0o755)
+    environment = credential_free_environment()
+    environment["PATH"] = str(executable.parent) + os.pathsep + environment.get("PATH", os.defpath)
+    environment["CI_TEST_RESPONSE"] = str(response)
+    result = subprocess.run(
+        ("bash", str(SCRIPT.with_name("ci-base-certified.sh")), "owner/repo", sha),
+        env=environment,
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert (result.returncode == 0) is (case == "success")
+    assert not result.stdout
 
 
 @pytest.mark.parametrize(
