@@ -32,6 +32,10 @@ def _lookup(
     artifact_sha: str = SHA,
     artifact_run: int = 1,
     expired: bool = False,
+    run_conclusion: str | None = None,
+    job_name: str = "standards wheel and integration",
+    run_attempt: int = 1,
+    artifact_name: str = "tested-standards-1",
 ) -> ArtifactLookup:
     responses = [
         {
@@ -42,21 +46,22 @@ def _lookup(
                     "head_branch": "main",
                     "event": event,
                     "path": ".github/workflows/ci.yml",
-                    "conclusion": None,
+                    "conclusion": run_conclusion,
+                    "run_attempt": run_attempt,
                     "head_repository": {"full_name": repository},
                 }
             ]
         },
         {
             "total_count": 1,
-            "jobs": [{"name": "standards wheel and integration", "status": job_status, "conclusion": conclusion}],
+            "jobs": [{"name": job_name, "status": job_status, "conclusion": conclusion}],
         },
         {
             "total_count": 1,
             "artifacts": [
                 {
                     "id": 2,
-                    "name": "tested-standards",
+                    "name": artifact_name,
                     "expired": expired,
                     "digest": digest,
                     "workflow_run": {
@@ -128,6 +133,20 @@ def test_expired_artifact_uses_full_fallback(tmp_path: Path) -> None:
     lookup = _lookup(tmp_path, expired=True)
     assert lookup.waiting is False
     assert lookup.artifact is None
+
+
+def test_completed_partial_rerun_with_missing_job_uses_full_fallback(tmp_path: Path) -> None:
+    lookup = _lookup(tmp_path, run_conclusion="success", job_name="codeql")
+    assert not lookup.waiting
+    assert lookup.artifact is None
+
+
+def test_rerun_artifact_is_immutable_and_bound_to_its_attempt(tmp_path: Path) -> None:
+    lookup = _lookup(tmp_path, run_attempt=2, artifact_name="tested-standards-2")
+    assert lookup.artifact is not None
+    old_attempt = _lookup(tmp_path, run_attempt=2)
+    assert not old_attempt.waiting
+    assert old_attempt.artifact is None
 
 
 @dataclass(frozen=True)

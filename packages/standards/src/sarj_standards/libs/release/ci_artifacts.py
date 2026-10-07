@@ -38,6 +38,7 @@ class _Repository(BaseModel):
 class _Run(BaseModel):
     model_config: ClassVar[ConfigDict] = ConfigDict(extra="ignore")
     run_id: WorkflowRunId = Field(alias="id", gt=0)
+    run_attempt: int = Field(default=1, ge=1)
     head_sha: str
     head_branch: str
     event: str
@@ -114,10 +115,17 @@ def find_tested_artifact(
         raise ValueError(msg)
     status = _standards_job_status(root, repository, run.run_id, runner)
     if status == "pending":
-        return ArtifactLookup(waiting=True)
+        # A successful partial rerun can omit previously completed jobs.
+        # Fall back instead of waiting for a job that will never appear.
+        return ArtifactLookup(waiting=run.conclusion != "success")
     if status == "skipped":
         return ArtifactLookup(waiting=False)
-    return ArtifactLookup(waiting=False, artifact=_artifact_for_run(root, repository, sha, run.run_id, runner))
+    return ArtifactLookup(
+        waiting=False,
+        artifact=_artifact_for_run(
+            root, repository, sha, run.run_id, runner, artifact_name=f"{_ARTIFACT_NAME}-{run.run_attempt}"
+        ),
+    )
 
 
 def _is_exact_run(run: _Run, repository: str, sha: str) -> bool:
@@ -153,7 +161,7 @@ def _standards_job_status(root: Path, repository: str, run_id: WorkflowRunId, ru
 
 
 def _artifact_for_run(
-    root: Path, repository: str, sha: str, run_id: WorkflowRunId, runner: ProcessRunner
+    root: Path, repository: str, sha: str, run_id: WorkflowRunId, runner: ProcessRunner, *, artifact_name: str
 ) -> TestedArtifact | None:
     artifacts = _Artifacts.model_validate_json(
         _api(root, f"repos/{repository}/actions/runs/{run_id}/artifacts?per_page=100", runner)
@@ -161,9 +169,7 @@ def _artifact_for_run(
     if artifacts.total_count != len(artifacts.artifacts):
         msg = "incomplete artifact response"
         raise ValueError(msg)
-    matching = [
-        artifact for artifact in artifacts.artifacts if artifact.name == _ARTIFACT_NAME and not artifact.expired
-    ]
+    matching = [artifact for artifact in artifacts.artifacts if artifact.name == artifact_name and not artifact.expired]
     if not matching:
         return None
     if len(matching) != 1:
