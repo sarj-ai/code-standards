@@ -2,7 +2,7 @@
  * @fileoverview _logging — shared recognition of logging / error-reporting calls, so the catch rules and the secret rule cannot disagree.
  */
 
-import { type TSESTree } from "@typescript-eslint/utils";
+import { ASTUtils, type TSESTree } from "@typescript-eslint/utils";
 
 export const LOG_METHODS: ReadonlySet<string> = new Set([
   "debug",
@@ -56,10 +56,9 @@ export function calleeName(callee: TSESTree.Node): string | null {
   }
   if (
     callee.type === "MemberExpression" &&
-    !callee.computed &&
-    callee.property.type === "Identifier"
+    ASTUtils.getPropertyName(callee) !== null
   ) {
-    return callee.property.name;
+    return (ASTUtils.getPropertyName(callee) ?? "");
   }
   return null;
 }
@@ -88,9 +87,10 @@ export function createLogMatcher(options: LoggingOptions = {}): LogMatcher {
       case "Identifier":
         return loggerNames.has(expr.name.toLowerCase());
       case "MemberExpression": {
-        const { property, object } = expr;
-        if (!expr.computed && property.type === "Identifier") {
-          const lowered = property.name.toLowerCase();
+        const { object } = expr;
+        const property = ASTUtils.getPropertyName(expr);
+        if (property !== null) {
+          const lowered = property.toLowerCase();
           if (loggerNames.has(lowered) || LOGGER_FACTORIES.has(lowered)) {
             return true;
           }
@@ -101,9 +101,8 @@ export function createLogMatcher(options: LoggingOptions = {}): LogMatcher {
         const callee = expr.callee;
         if (
           callee.type === "MemberExpression" &&
-          !callee.computed &&
-          callee.property.type === "Identifier" &&
-          LOGGER_FACTORIES.has(callee.property.name.toLowerCase())
+          ASTUtils.getPropertyName(callee) !== null &&
+          LOGGER_FACTORIES.has((ASTUtils.getPropertyName(callee) ?? "").toLowerCase())
         ) {
           return true;
         }
@@ -135,12 +134,11 @@ export function createLogMatcher(options: LoggingOptions = {}): LogMatcher {
     const callee = expr.callee;
     if (
       callee.type !== "MemberExpression" ||
-      callee.computed ||
-      callee.property.type !== "Identifier"
+      ASTUtils.getPropertyName(callee) === null
     ) {
       return false;
     }
-    if (!LOG_METHODS.has(callee.property.name.toLowerCase())) {
+    if (!LOG_METHODS.has((ASTUtils.getPropertyName(callee) ?? "").toLowerCase())) {
       return false;
     }
     return isLoggerReceiver(callee.object);

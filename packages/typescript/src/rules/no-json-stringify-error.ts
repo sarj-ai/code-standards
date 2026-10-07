@@ -197,11 +197,10 @@ function nodeWithin(node: TSESTree.Node, container: TSESTree.Node | null): boole
 function isJsonStringify(callee: TSESTree.Expression): boolean {
   return (
     callee.type === "MemberExpression" &&
-    !callee.computed &&
     callee.object.type === "Identifier" &&
     callee.object.name === "JSON" &&
-    callee.property.type === "Identifier" &&
-    callee.property.name === "stringify"
+    ASTUtils.getPropertyName(callee) !== null &&
+    (ASTUtils.getPropertyName(callee) ?? "") === "stringify"
   );
 }
 
@@ -260,7 +259,7 @@ function memberSuggestsError(
   scope: Scope.Scope,
 ): boolean {
   const propName =
-    !member.computed && member.property.type === "Identifier" ? member.property.name : null;
+    ASTUtils.getPropertyName(member) !== null ? (ASTUtils.getPropertyName(member) ?? "") : null;
 
   const base = member.object;
   const baseSuggestsError =

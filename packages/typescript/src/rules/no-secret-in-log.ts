@@ -4,7 +4,7 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-secret-in-log.test.ts
  */
 
-import { type TSESTree } from "@typescript-eslint/utils";
+import { ASTUtils, type TSESTree } from "@typescript-eslint/utils";
 
 import {
   createLogMatcher,
@@ -97,7 +97,7 @@ function hasRedactionMarker(name: string): boolean {
 
 function valueName(node: TSESTree.Node): string | null {
   if (node.type === "Identifier") return node.name;
-  return node.type === "MemberExpression" && !node.computed && node.property.type === "Identifier" ? node.property.name : null;
+  return node.type === "MemberExpression" && ASTUtils.getPropertyName(node) !== null ? (ASTUtils.getPropertyName(node) ?? "") : null;
 }
 
 function isRawSecretValue(prop: TSESTree.Property): boolean {
@@ -158,22 +158,20 @@ function rawBlobValueName(value: TSESTree.Node): string | null {
   }
   if (
     value.type === "MemberExpression" &&
-    !value.computed &&
-    value.property.type === "Identifier"
+    ASTUtils.getPropertyName(value) !== null
   ) {
-    return isRawBlobName(value.property.name) ? value.property.name : null;
+    return isRawBlobName((ASTUtils.getPropertyName(value) ?? "")) ? (ASTUtils.getPropertyName(value) ?? "") : null;
   }
   if (
     value.type === "CallExpression" &&
     value.arguments.length === 0 &&
     value.callee.type === "MemberExpression" &&
-    !value.callee.computed &&
     value.callee.object.type === "Identifier" &&
     /^(?:res|response|\w+Response)$/.test(value.callee.object.name) &&
-    value.callee.property.type === "Identifier" &&
-    (value.callee.property.name === "json" || value.callee.property.name === "text")
+    ASTUtils.getPropertyName(value.callee) !== null &&
+    ((ASTUtils.getPropertyName(value.callee) ?? "") === "json" || (ASTUtils.getPropertyName(value.callee) ?? "") === "text")
   ) {
-    return `${value.callee.object.name}.${value.callee.property.name}()`;
+    return `${value.callee.object.name}.${(ASTUtils.getPropertyName(value.callee) ?? "")}()`;
   }
   return null;
 }

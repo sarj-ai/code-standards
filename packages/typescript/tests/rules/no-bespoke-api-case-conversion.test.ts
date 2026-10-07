@@ -6,6 +6,8 @@ import rule, {
   NO_BESPOKE_API_CASE_CONVERSION_DOCUMENTATION,
 } from "../../src/rules/no-bespoke-api-case-conversion.js";
 
+import { verifyRuleExamples } from "../../src/verify-rule-examples.js";
+
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
 RuleTester.it = it;
@@ -92,4 +94,38 @@ RULE_TESTER.run("no-bespoke-api-case-conversion", rule, {
       errors: [ERROR],
     },
   ],
+});
+
+
+it("preserves outcomes for static member access and unknown member keys", async () => {
+  const documentation = rule.documentation;
+  if (documentation === undefined) throw new Error("Missing rule documentation");
+  await verifyRuleExamples({ ...rule, documentation: { ...documentation, examples: [
+  {
+    "id": "bespoke-wire-case-conversion-static-member",
+    "title": "Static member access preserves the rule outcome",
+    "outcome": "match",
+    "focusPath": "src/user-adapter.ts",
+    "expectedCount": 1,
+    "files": [
+      {
+        "path": "src/user-adapter.ts",
+        "source": "import type { User } from './api-contract';\nexport const toUser = (raw: User) => ({ displayName: raw[\"display_name\"] });"
+      }
+    ]
+  },
+  {
+    "id": "bespoke-wire-case-conversion-dynamic-member",
+    "title": "Unknown member access does not establish API identity",
+    "outcome": "no-match",
+    "focusPath": "src/user-adapter.ts",
+    "expectedCount": 0,
+    "files": [
+      {
+        "path": "src/user-adapter.ts",
+        "source": "import type { User } from './api-contract';\nexport const toUser = (raw: User) => ({ displayName: raw[auditDynamicMember] });"
+      }
+    ]
+  }
+] } });
 });

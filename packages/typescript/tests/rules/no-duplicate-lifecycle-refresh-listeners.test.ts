@@ -5,6 +5,8 @@ import { afterAll, describe, it } from "vitest";
 
 import rule, { NO_DUPLICATE_LIFECYCLE_REFRESH_LISTENERS_DOCUMENTATION } from "../../src/rules/no-duplicate-lifecycle-refresh-listeners.js";
 
+import { verifyRuleExamples } from "../../src/verify-rule-examples.js";
+
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
 RuleTester.itOnly = it.only;
@@ -50,4 +52,38 @@ RULE_TESTER.run("no-duplicate-lifecycle-refresh-listeners", rule, {
       errors: [{ messageId: "duplicateLifecycleRefresh" }],
     },
   ],
+});
+
+
+it("preserves outcomes for static member access and unknown member keys", async () => {
+  const documentation = rule.documentation;
+  if (documentation === undefined) throw new Error("Missing rule documentation");
+  await verifyRuleExamples({ ...rule, documentation: { ...documentation, examples: [
+  {
+    "id": "duplicate-lifecycle-signals-static-member",
+    "title": "Static member access preserves the rule outcome",
+    "outcome": "match",
+    "focusPath": "src/refresh.ts",
+    "expectedCount": 1,
+    "files": [
+      {
+        "path": "src/refresh.ts",
+        "source": "import { useRouter } from \"next/navigation\"; const router = useRouter(); const refresh = () => router[\"refresh\"](); window[\"addEventListener\"](\"focus\", refresh); document[\"addEventListener\"](\"visibilitychange\", refresh);"
+      }
+    ]
+  },
+  {
+    "id": "duplicate-lifecycle-signals-dynamic-member",
+    "title": "Unknown member access does not establish API identity",
+    "outcome": "no-match",
+    "focusPath": "src/refresh.ts",
+    "expectedCount": 0,
+    "files": [
+      {
+        "path": "src/refresh.ts",
+        "source": "import { useRouter } from \"next/navigation\"; const router = useRouter(); const refresh = () => router[auditDynamicMember](); window[auditDynamicMember](\"focus\", refresh); document[auditDynamicMember](\"visibilitychange\", refresh);"
+      }
+    ]
+  }
+] } });
 });

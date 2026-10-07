@@ -4,7 +4,7 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-raw-env.test.ts
  */
 
-import { ASTUtils, type TSESTree } from "@typescript-eslint/utils";
+import { ASTUtils, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isScriptFile, isTestFile } from "./_paths.js";
@@ -32,22 +32,27 @@ const ENV_BOUNDARY_FILE_RE =
   /(^|[\\/])(?:env|client-env|server-env|client-settings|server-settings)\.[cm]?[jt]sx?$/;
 
 /** True for the `process.env` member node (dotted or as the base of `process.env[key]`). */
-function isProcessEnv(node: TSESTree.MemberExpression): boolean {
-  return (
-    !node.computed &&
-    node.object.type === "Identifier" &&
-    node.object.name === "process" &&
-    node.property.type === "Identifier" &&
-    node.property.name === "env"
+function isProcessEnv(
+  node: TSESTree.MemberExpression,
+  context: Readonly<TSESLint.RuleContext<MessageIds, Options>>,
+): boolean {
+  if (node.object.type !== "Identifier" || ASTUtils.getPropertyName(node) !== "env") return false;
+  const binding = ASTUtils.findVariable(context.sourceCode.getScope(node.object), node.object.name);
+  if (binding === null || binding.defs.length === 0) return node.object.name === "process";
+  return binding.defs.every((definition) =>
+    definition.type === "ImportBinding" &&
+    definition.parent.type === "ImportDeclaration" &&
+    definition.parent.importKind !== "type" &&
+    ["node:process", "process"].includes(definition.parent.source.value) &&
+    ["ImportDefaultSpecifier", "ImportNamespaceSpecifier"].includes(definition.node.type),
   );
 }
 
 /** True for the `import.meta.env` member node (dotted or as the base of `import.meta.env[key]`). */
 function isImportMetaEnv(node: TSESTree.MemberExpression): boolean {
   return (
-    !node.computed &&
-    node.property.type === "Identifier" &&
-    node.property.name === "env" &&
+    ASTUtils.getPropertyName(node) !== null &&
+    (ASTUtils.getPropertyName(node) ?? "") === "env" &&
     node.object.type === "MetaProperty" &&
     node.object.meta.name === "import" &&
     node.object.property.name === "meta"
@@ -77,10 +82,9 @@ function isExemptVariableAccess(node: TSESTree.MemberExpression): boolean {
   return (
     parent.type === "MemberExpression" &&
     parent.object === node &&
-    !parent.computed &&
-    parent.property.type === "Identifier" &&
-    (BUILD_TIME_CONSTANTS.has(parent.property.name) ||
-      PLATFORM_MARKERS.has(parent.property.name))
+    ASTUtils.getPropertyName(parent) !== null &&
+    (BUILD_TIME_CONSTANTS.has((ASTUtils.getPropertyName(parent) ?? "")) ||
+      PLATFORM_MARKERS.has((ASTUtils.getPropertyName(parent) ?? "")))
   );
 }
 
@@ -135,15 +139,11 @@ export default createRule<Options, MessageIds>({
       CallExpression(node: TSESTree.CallExpression): void {
         if (!boundaryFile) return;
         const callee = node.callee;
-        if ((callee.type === "Identifier" && callee.name === "createEnv") || (callee.type === "MemberExpression" && !callee.computed && callee.property.type === "Identifier" && (["parse", "safeParse"].includes(callee.property.name) || (callee.property.name === "object" && callee.object.type === "Identifier" && callee.object.name === "z")))) hasValidationCall = true;
+        if ((callee.type === "Identifier" && callee.name === "createEnv") || (callee.type === "MemberExpression" && ASTUtils.getPropertyName(callee) !== null && (["parse", "safeParse"].includes((ASTUtils.getPropertyName(callee) ?? "")) || ((ASTUtils.getPropertyName(callee) ?? "") === "object" && callee.object.type === "Identifier" && callee.object.name === "z")))) hasValidationCall = true;
       },
       MemberExpression(node: TSESTree.MemberExpression): void {
-        if (isProcessEnv(node) && node.object.type === "Identifier") {
-          const binding = ASTUtils.findVariable(context.sourceCode.getScope(node), node.object.name);
-          if (binding !== null && binding.defs.length > 0 && !binding.defs.every((definition) => definition.type === "ImportBinding" && definition.parent.type === "ImportDeclaration" && ["node:process", "process"].includes(definition.parent.source.value) && ["ImportDefaultSpecifier", "ImportNamespaceSpecifier"].includes(definition.node.type))) return;
-        }
         if (
-          (isProcessEnv(node) || isImportMetaEnv(node)) &&
+          (isProcessEnv(node, context) || isImportMetaEnv(node)) &&
           !isExemptVariableAccess(node) &&
           !isWriteTarget(node) &&
           !isWholeEnvSpread(node)

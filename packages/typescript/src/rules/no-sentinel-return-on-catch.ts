@@ -232,10 +232,9 @@ function isParseShapedNode(node: TSESTree.Node): boolean {
   if (
     node.type === AST_NODE_TYPES.CallExpression &&
     node.callee.type === AST_NODE_TYPES.MemberExpression &&
-    !node.callee.computed &&
-    node.callee.property.type === AST_NODE_TYPES.Identifier
+    ASTUtils.getPropertyName(node.callee) !== null
   ) {
-    return node.callee.property.name === "parse";
+    return (ASTUtils.getPropertyName(node.callee) ?? "") === "parse";
   }
   if (
     node.type === AST_NODE_TYPES.NewExpression &&
@@ -257,9 +256,8 @@ function isBodyDecodeNode(node: TSESTree.Node): boolean {
   return (
     node.type === AST_NODE_TYPES.CallExpression &&
     node.callee.type === AST_NODE_TYPES.MemberExpression &&
-    !node.callee.computed &&
-    node.callee.property.type === AST_NODE_TYPES.Identifier &&
-    BODY_DECODE_METHODS.has(node.callee.property.name)
+    ASTUtils.getPropertyName(node.callee) !== null &&
+    BODY_DECODE_METHODS.has((ASTUtils.getPropertyName(node.callee) ?? ""))
   );
 }
 
@@ -268,19 +266,18 @@ function isSafeParseSupportCall(node: TSESTree.CallExpression): boolean {
   const callee = node.callee;
   if (
     callee.type !== AST_NODE_TYPES.MemberExpression ||
-    callee.computed ||
-    callee.property.type !== AST_NODE_TYPES.Identifier
+    ASTUtils.getPropertyName(callee) === null
   ) {
     return false;
   }
   if (
-    callee.property.name === "isArray" &&
+    (ASTUtils.getPropertyName(callee) ?? "") === "isArray" &&
     callee.object.type === AST_NODE_TYPES.Identifier &&
     callee.object.name === "Array"
   ) {
     return true;
   }
-  if (callee.property.name !== "getItem") return false;
+  if ((ASTUtils.getPropertyName(callee) ?? "") !== "getItem") return false;
   if (
     callee.object.type === AST_NODE_TYPES.Identifier &&
     (callee.object.name === "localStorage" ||
@@ -290,13 +287,12 @@ function isSafeParseSupportCall(node: TSESTree.CallExpression): boolean {
   }
   return (
     callee.object.type === AST_NODE_TYPES.MemberExpression &&
-    !callee.object.computed &&
     callee.object.object.type === AST_NODE_TYPES.Identifier &&
     (callee.object.object.name === "window" ||
       callee.object.object.name === "globalThis") &&
-    callee.object.property.type === AST_NODE_TYPES.Identifier &&
-    (callee.object.property.name === "localStorage" ||
-      callee.object.property.name === "sessionStorage")
+    ASTUtils.getPropertyName(callee.object) !== null &&
+    ((ASTUtils.getPropertyName(callee.object) ?? "") === "localStorage" ||
+      (ASTUtils.getPropertyName(callee.object) ?? "") === "sessionStorage")
   );
 }
 

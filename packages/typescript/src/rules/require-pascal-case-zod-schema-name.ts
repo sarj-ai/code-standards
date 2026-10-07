@@ -89,8 +89,8 @@ const SCHEMA_RETURNING_METHODS: ReadonlySet<string> = new Set([
 
 /** Return the final method name in a call chain. */
 const terminalMethodName = (callee: TSESTree.MemberExpression): string | null =>
-  !callee.computed && callee.property.type === AST_NODE_TYPES.Identifier
-    ? callee.property.name
+  ASTUtils.getPropertyName(callee) !== null
+    ? (ASTUtils.getPropertyName(callee) ?? "")
     : null;
 
 /** Return the identifier at the root of a fluent call/member chain. */
@@ -118,8 +118,8 @@ const chainMemberNames = (node: TSESTree.Node): readonly string[] => {
   let current = node;
   for (;;) {
     if (current.type === AST_NODE_TYPES.MemberExpression) {
-      if (current.computed || current.property.type !== AST_NODE_TYPES.Identifier) return [];
-      names.push(current.property.name);
+      if (ASTUtils.getPropertyName(current) === null) return [];
+      names.push((ASTUtils.getPropertyName(current) ?? ""));
       current = current.object;
       continue;
     }

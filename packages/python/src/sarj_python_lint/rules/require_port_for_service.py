@@ -369,7 +369,7 @@ class RequirePortForService(ProjectRule):
         source_lines = context.source_lines
         data_names = {node.name for node in classes if is_data_type(node)}
         local_class_names = {node.name for node in classes}
-        local_port_names = _local_port_names(classes)
+        local_port_names = _local_port_names(classes, imports)
         factory_facts = _factory_class_facts(tree, classes, context.module_imports)
 
         diags: list[Diagnostic] = []
@@ -823,7 +823,9 @@ def _factory_class_identity(node: ast.ClassDef, imports: ImportIndex) -> bool:
 
 def _factory_interface(node: ast.ClassDef, imports: ImportIndex) -> bool:
     return any(
-        imports.resolves(base, sources=TYPING_SOURCES, symbol="Protocol")
+        imports.resolves(
+            base.value if isinstance(base, ast.Subscript) else base, sources=TYPING_SOURCES, symbol="Protocol"
+        )
         or imports.resolves(base, sources=ABC_SOURCES, symbol="ABC")
         for base in node.bases
     ) or any(
@@ -1246,12 +1248,17 @@ def _dotted_tail(node: ast.expr) -> str | None:
             return None
 
 
-def _local_port_names(classes: list[ast.ClassDef]) -> set[str]:
+def _local_port_names(classes: list[ast.ClassDef], imports: ImportIndex) -> set[str]:
     local_port_names = {
         node.name
         for node in classes
         if _BASE_NAME_RE.match(node.name)
         or _declares_interface(node)
+        or _factory_interface(node, imports)
+        or any(
+            keyword.arg == "metaclass" and imports.resolves(keyword.value, sources=ABC_SOURCES, symbol="ABCMeta")
+            for keyword in node.keywords
+        )
         or any(_dotted_tail(base) in {"ABC", "Protocol"} for base in node.bases)
         or any(keyword.arg == "metaclass" and _dotted_tail(keyword.value) == "ABCMeta" for keyword in node.keywords)
     }

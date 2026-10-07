@@ -119,8 +119,7 @@ export default createRule<Options, MessageIds>({
         const variable = bindingOf(node);
         return variable !== null && stable(variable) && uninitializedControls.has(variable);
       }
-      return node.type === AST_NODE_TYPES.MemberExpression && !node.computed &&
-        node.property.type === AST_NODE_TYPES.Identifier && node.property.name === "control" && isUninitializedForm(node.object);
+      return node.type === AST_NODE_TYPES.MemberExpression && ASTUtils.getPropertyName(node) !== null && (ASTUtils.getPropertyName(node) ?? "") === "control" && isUninitializedForm(node.object);
     };
     const fieldOptionsNeedDefault = (node: TSESTree.Node | undefined): boolean => {
       if (node?.type !== AST_NODE_TYPES.ObjectExpression) return false;
@@ -177,8 +176,7 @@ export default createRule<Options, MessageIds>({
           trackDestructuredControl(node.id);
           return;
         }
-        if (node.id.type === AST_NODE_TYPES.Identifier && node.init.type === AST_NODE_TYPES.MemberExpression && !node.init.computed &&
-          node.init.property.type === AST_NODE_TYPES.Identifier && node.init.property.name === "control" && isUninitializedForm(node.init.object)) {
+        if (node.id.type === AST_NODE_TYPES.Identifier && node.init.type === AST_NODE_TYPES.MemberExpression && ASTUtils.getPropertyName(node.init) !== null && (ASTUtils.getPropertyName(node.init) ?? "") === "control" && isUninitializedForm(node.init.object)) {
           const variable = bindingOf(node.id);
           if (variable !== null) uninitializedControls.add(variable);
         }

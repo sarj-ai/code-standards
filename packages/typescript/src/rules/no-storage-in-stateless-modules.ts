@@ -4,7 +4,7 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-storage-in-stateless-modules.test.ts
  */
 
-import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
+import { ASTUtils, AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isTestFile } from "./_paths.js";
@@ -63,12 +63,11 @@ function storageMethodName(
   const callee = node.callee;
   if (
     callee.type !== AST_NODE_TYPES.MemberExpression ||
-    callee.computed ||
-    callee.property.type !== AST_NODE_TYPES.Identifier
+    ASTUtils.getPropertyName(callee) === null
   ) {
     return null;
   }
-  const name = callee.property.name;
+  const name = (ASTUtils.getPropertyName(callee) ?? "");
   if (!methods.has(name)) {
     return null;
   }
@@ -95,9 +94,8 @@ function isStorageLikeReceiver(
     return false;
   }
   if (
-    !node.computed &&
-    node.property.type === AST_NODE_TYPES.Identifier &&
-    isStorageIdentifier(node.property.name)
+    ASTUtils.getPropertyName(node) !== null &&
+    isStorageIdentifier((ASTUtils.getPropertyName(node) ?? ""))
   ) {
     return true;
   }
@@ -187,7 +185,7 @@ function hasSqlPreparationEvidence(node: TSESTree.CallExpression, callee: TSESTr
     if (!/^\s*(?:SELECT|WITH|INSERT|UPDATE|DELETE|REPLACE|CREATE|ALTER|DROP|PRAGMA|EXPLAIN)\b/iu.test(stripSqlNoise(text))) return false;
   } else {
     const receiver = callee.object;
-    const receiverName = receiver.type === AST_NODE_TYPES.Identifier ? receiver.name : receiver.type === AST_NODE_TYPES.MemberExpression && !receiver.computed && receiver.property.type === AST_NODE_TYPES.Identifier ? receiver.property.name : "";
+    const receiverName = receiver.type === AST_NODE_TYPES.Identifier ? receiver.name : receiver.type === AST_NODE_TYPES.MemberExpression && ASTUtils.getPropertyName(receiver) !== null ? (ASTUtils.getPropertyName(receiver) ?? "") : "";
     if (!/^(?:db|database|connection)$/iu.test(receiverName)) return false;
   }
 

@@ -5,6 +5,7 @@
  */
 
 import {
+  ASTUtils,
   AST_NODE_TYPES,
   ESLintUtils,
   type ParserServicesWithTypeInformation,
@@ -122,15 +123,14 @@ function isLocalZodObjectSchema(
     const { callee } = current;
     if (
       callee.type !== AST_NODE_TYPES.MemberExpression ||
-      callee.computed ||
-      callee.property.type !== AST_NODE_TYPES.Identifier
+      ASTUtils.getPropertyName(callee) === null
     ) {
       return false;
     }
     if (callee.object.type === AST_NODE_TYPES.Identifier) {
       return (
         namespaces.has(callee.object.name) &&
-        (callee.property.name === "object" || callee.property.name === "strictObject")
+        ((ASTUtils.getPropertyName(callee) ?? "") === "object" || (ASTUtils.getPropertyName(callee) ?? "") === "strictObject")
       );
     }
     current = callee.object;
@@ -148,16 +148,16 @@ function zodParseCall(node: TSESTree.CallExpression): ZodParseCall | null {
   const { callee } = node;
   if (
     callee.type !== AST_NODE_TYPES.MemberExpression ||
-    callee.computed ||
     callee.object.type !== AST_NODE_TYPES.Identifier ||
-    callee.property.type !== AST_NODE_TYPES.Identifier ||
-    (callee.property.name !== "parse" && callee.property.name !== "safeParse")
+    ASTUtils.getPropertyName(callee) === null
   ) {
     return null;
   }
+  const method = ASTUtils.getPropertyName(callee);
+  if (method !== "parse" && method !== "safeParse") return null;
   return {
     call: node,
-    method: callee.property.name,
+    method,
     schema: callee.object,
   };
 }
@@ -217,9 +217,8 @@ function localParseReturnCandidates(
         ? identifier
         : parent.type === AST_NODE_TYPES.MemberExpression &&
           parent.object === identifier &&
-          !parent.computed &&
-          parent.property.type === AST_NODE_TYPES.Identifier &&
-          parent.property.name === "data"
+          ASTUtils.getPropertyName(parent) !== null &&
+          (ASTUtils.getPropertyName(parent) ?? "") === "data"
           ? parent
           : null;
     if (output === null) continue;
@@ -573,7 +572,7 @@ export default createRule<Options, MessageIds>({
         const candidate = directParseReturnCandidate(node);
         if (candidate !== null) candidates.push(candidate);
       },
-      "MemberExpression[computed=false]"(node: TSESTree.MemberExpression): void {
+      "MemberExpression"(node: TSESTree.MemberExpression): void {
         if (
           node.object.type === AST_NODE_TYPES.Identifier &&
           node.property.type === AST_NODE_TYPES.Identifier &&

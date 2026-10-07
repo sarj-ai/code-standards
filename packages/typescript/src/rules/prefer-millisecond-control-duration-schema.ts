@@ -115,10 +115,9 @@ export default createRule<Options, MessageIds>({
       }
       if (
         callee.type !== AST_NODE_TYPES.MemberExpression ||
-        callee.computed ||
         callee.object.type !== AST_NODE_TYPES.Identifier ||
-        callee.property.type !== AST_NODE_TYPES.Identifier ||
-        (callee.property.name !== "object" && callee.property.name !== "strictObject")
+        ASTUtils.getPropertyName(callee) === null ||
+        ((ASTUtils.getPropertyName(callee) ?? "") !== "object" && (ASTUtils.getPropertyName(callee) ?? "") !== "strictObject")
       ) {
         return false;
       }
@@ -133,13 +132,12 @@ export default createRule<Options, MessageIds>({
         const variable = binding(callee);
         return variable !== null && numberFactories.has(variable);
       }
-      if (callee.type !== AST_NODE_TYPES.MemberExpression || callee.computed ||
-          callee.property.type !== AST_NODE_TYPES.Identifier) return false;
+      if (callee.type !== AST_NODE_TYPES.MemberExpression || ASTUtils.getPropertyName(callee) === null) return false;
       if (callee.object.type === AST_NODE_TYPES.Identifier) {
         const variable = binding(callee.object);
-        return callee.property.name === "number" && variable !== null && zodNamespaces.has(variable);
+        return (ASTUtils.getPropertyName(callee) ?? "") === "number" && variable !== null && zodNamespaces.has(variable);
       }
-      return ["int", "min", "max", "positive", "nonnegative", "finite", "multipleOf", "optional", "nullable", "nullish", "default", "describe", "brand", "readonly"].includes(callee.property.name) &&
+      return ["int", "min", "max", "positive", "nonnegative", "finite", "multipleOf", "optional", "nullable", "nullish", "default", "describe", "brand", "readonly"].includes((ASTUtils.getPropertyName(callee) ?? "")) &&
         isNumericSchema(callee.object);
     }
 

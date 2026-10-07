@@ -7,6 +7,8 @@ import rule, {
   NO_TAUTOLOGICAL_EXPECT_DOCUMENTATION,
 } from "../../src/rules/no-tautological-expect.js";
 
+import { verifyRuleExamples } from "../../src/verify-rule-examples.js";
+
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
 RuleTester.it = it;
@@ -247,4 +249,38 @@ RULE_TESTER.run("no-tautological-expect", rule, {
       errors: [{ messageId: "tautologicalComparison" }],
     },
   ],
+});
+
+
+it("preserves outcomes for static member access and unknown member keys", async () => {
+  const documentation = rule.documentation;
+  if (documentation === undefined) throw new Error("Missing rule documentation");
+  await verifyRuleExamples({ ...rule, documentation: { ...documentation, examples: [
+  {
+    "id": "literal-only-assertion-static-member",
+    "title": "Static member access preserves the rule outcome",
+    "outcome": "match",
+    "focusPath": "src/add.test.ts",
+    "expectedCount": 1,
+    "files": [
+      {
+        "path": "src/add.test.ts",
+        "source": "it('works', () => { expect(true)[\"toBe\"](true); });"
+      }
+    ]
+  },
+  {
+    "id": "literal-only-assertion-dynamic-member",
+    "title": "Unknown member access does not establish API identity",
+    "outcome": "no-match",
+    "focusPath": "src/add.test.ts",
+    "expectedCount": 0,
+    "files": [
+      {
+        "path": "src/add.test.ts",
+        "source": "it('works', () => { expect(true)[auditDynamicMember](true); });"
+      }
+    ]
+  }
+] } });
 });

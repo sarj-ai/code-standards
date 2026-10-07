@@ -15,7 +15,6 @@ type Options = readonly [];
 const MERGEABLE_MATCHERS: ReadonlySet<string> = new Set(["toBe", "toEqual", "toStrictEqual"]);
 const SYNTHETIC_LITERAL_MATCHERS: ReadonlyMap<string, string> = new Map([
   ["toBeNull", "null"],
-  ["toBeUndefined", "undefined"],
 ]);
 
 const ARRAY_MATCHERS: ReadonlySet<string> = new Set(["toEqual", "toStrictEqual"]);
@@ -38,7 +37,7 @@ export const PREFER_WHOLE_OBJECT_ASSERTION_DOCUMENTATION = {
   category: "testing",
   aliases: ["strict-test-assertions"],
   autofix: "none",
-  limitations: ["No automatic rewrite: whole-object matching can require previously absent properties and change observable getter or proxy reads."],
+  limitations: ["Undefined-property assertions are excluded because whole-object matching can require previously absent properties. No automatic rewrite: grouping can change observable getter or proxy reads."],
   examples: [
     { id: "whole-object", title: "Assert the object once", outcome: "no-match", files: [{ path: "src/user.test.ts", source: "expect(user).toMatchObject({ id: 1, name: 'Ada' });" }], focusPath: "src/user.test.ts", expectedCount: 0, public: true },
     { id: "member-run", title: "Consider grouping related data properties", outcome: "match", files: [{ path: "src/user.test.ts", source: "expect(user.id).toBe(1);\nexpect(user.name).toBe('Ada');" }], focusPath: "src/user.test.ts", expectedCount: 1, public: true },
@@ -108,13 +107,13 @@ function propertyAccess(
 ): { readonly receiver: TSESTree.Expression; readonly path: readonly string[] } | null {
   const path: string[] = [];
   let current: TSESTree.Expression = node;
-  while (current.type === AST_NODE_TYPES.MemberExpression && !current.computed && !current.optional) {
+  while (current.type === AST_NODE_TYPES.MemberExpression && !current.optional) {
     if (
-      current.property.type !== AST_NODE_TYPES.Identifier ||
-      COLLECTION_PROPERTIES.has(current.property.name) ||
-      LITERAL_KEY_HAZARDS.has(current.property.name)
+      ASTUtils.getPropertyName(current) === null ||
+      COLLECTION_PROPERTIES.has((ASTUtils.getPropertyName(current) ?? "")) ||
+      LITERAL_KEY_HAZARDS.has((ASTUtils.getPropertyName(current) ?? ""))
     ) return null;
-    path.unshift(current.property.name);
+    path.unshift((ASTUtils.getPropertyName(current) ?? ""));
     current = current.object;
   }
   return path.length > 0 && isPureReceiver(current) ? { receiver: current, path } : null;
@@ -196,7 +195,7 @@ export default createRule<Options, MessageIds>({
       if (first === undefined) {
         return;
       }
-      const receiverText = `${sourceCode.getText(first.receiver)}${commonPrefix.map((name) => `.${name}`).join("")}`;
+      const receiverText = `${sourceCode.getText(first.receiver)}${commonPrefix.map((name) => /^[A-Za-z_$][\w$]*$/u.test(name) ? `.${name}` : `[${JSON.stringify(name)}]`).join("")}`;
       context.report({
         node: first.statement,
         messageId: "combineAssertions",
@@ -277,12 +276,11 @@ export default createRule<Options, MessageIds>({
       const callee = call.callee;
       if (
         callee.type !== AST_NODE_TYPES.MemberExpression ||
-        callee.computed ||
-        callee.property.type !== AST_NODE_TYPES.Identifier
+        ASTUtils.getPropertyName(callee) === null
       ) {
         return null;
       }
-      const matcher = callee.property.name;
+      const matcher = (ASTUtils.getPropertyName(callee) ?? "");
       const expectCall = callee.object;
       if (
         expectCall.type !== AST_NODE_TYPES.CallExpression ||
@@ -303,11 +301,8 @@ export default createRule<Options, MessageIds>({
 
       let key: AssertionKey;
       let receiver: TSESTree.Expression;
-      if (actual.computed) {
-        const index = literalIndex(actual.property);
-        if (index === null) {
-          return null;
-        }
+      const index = actual.computed ? literalIndex(actual.property) : null;
+      if (index !== null) {
         key = { kind: "index", index };
         receiver = actual.object;
       } else {

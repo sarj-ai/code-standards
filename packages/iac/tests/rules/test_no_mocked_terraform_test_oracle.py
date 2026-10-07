@@ -28,6 +28,16 @@ def _check(source: str, name: str = "routing.tftest.hcl"):
             '(module.routing.route == "private")',
             "module.routing.route",
         ),
+        (
+            'override_module {\n  target = module.routing\n  outputs = { route = "private" }\n}',
+            '((module.routing.route)) == (("private"))',
+            "module.routing.route",
+        ),
+        (
+            'override_module {\n  target = module.routing\n  outputs = { route = "private" }\n}',
+            '((("private") == (module.routing.route)))',
+            "module.routing.route",
+        ),
     ],
 )
 def test_flags_direct_override_literal_reassertions(override: str, condition: str, expression: str) -> None:
@@ -35,6 +45,25 @@ def test_flags_direct_override_literal_reassertions(override: str, condition: st
     diagnostics = _check(source)
     assert [(item.code, item.suppressible, item.baselineable) for item in diagnostics] == [("SARJ206", True, True)]
     assert expression in diagnostics[0].message
+
+
+@pytest.mark.parametrize(
+    "condition",
+    [
+        '(module.routing.route == "private") && (var.enabled)',
+        '(module.routing.route == "private") || (var.enabled)',
+        '(module.routing.route) != ("private")',
+        'upper(module.routing.route) == ("PRIVATE")',
+        "(module.routing.route) == (var.expected)",
+        '(module.routing.route) == ("private" + var.suffix)',
+    ],
+)
+def test_parentheses_do_not_hide_an_additional_assertion(condition: str) -> None:
+    source = (
+        'override_module {\n target = module.routing\n outputs = { route = "private" }\n}\n'
+        f'run "routing" {{\n assert {{\n condition = {condition}\n }}\n}}\n'
+    )
+    assert _check(source) == []
 
 
 def test_flags_run_local_override_only_in_its_run() -> None:

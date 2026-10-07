@@ -57,12 +57,11 @@ function isIntervalCallee(
   return node.type === AST_NODE_TYPES.Identifier && node.name === "setInterval" &&
       isUnshadowedGlobal(sourceCode, node) ||
     node.type === AST_NODE_TYPES.MemberExpression &&
-      !node.computed &&
       node.object.type === AST_NODE_TYPES.Identifier &&
       (node.object.name === "window" || node.object.name === "globalThis") &&
       isUnshadowedGlobal(sourceCode, node.object) &&
-      node.property.type === AST_NODE_TYPES.Identifier &&
-      node.property.name === "setInterval";
+      ASTUtils.getPropertyName(node) !== null &&
+      (ASTUtils.getPropertyName(node) ?? "") === "setInterval";
 }
 
 function isUnshadowedGlobal(
@@ -112,9 +111,8 @@ export default createRule<Options, MessageIds>({
       },
       CallExpression(node): void {
         if (
-          node.callee.type !== AST_NODE_TYPES.MemberExpression || node.callee.computed ||
-          node.callee.object.type !== AST_NODE_TYPES.Identifier ||
-          node.callee.property.type !== AST_NODE_TYPES.Identifier || node.callee.property.name !== "refresh"
+          node.callee.type !== AST_NODE_TYPES.MemberExpression || node.callee.object.type !== AST_NODE_TYPES.Identifier ||
+          ASTUtils.getPropertyName(node.callee) === null || (ASTUtils.getPropertyName(node.callee) ?? "") !== "refresh"
         ) return;
         const router = ASTUtils.findVariable(
           context.sourceCode.getScope(node.callee.object),

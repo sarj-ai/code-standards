@@ -81,17 +81,17 @@ class PreferUuidv7Default(Rule):
         if is_dump_file(source, path):
             return []
         model_owned = is_generated_migration(path, source)
+        masked = mask_sql(source)
         return redirect_to_model(
             [
                 Diagnostic(
                     path=path,
-                    line=lineno,
-                    col=match.start() + 1,
+                    line=masked.count("\n", 0, match.start()) + 1,
+                    col=match.start() - masked.rfind("\n", 0, match.start()),
                     code=self.code,
                     message=_MESSAGE,
                 )
-                for lineno, line in enumerate(mask_sql(source).splitlines(), start=1)
-                for match in PATTERN.finditer(line)
+                for match in PATTERN.finditer(masked)
             ],
             model_owned=model_owned,
         )

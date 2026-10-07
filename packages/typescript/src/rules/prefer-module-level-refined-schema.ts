@@ -168,7 +168,6 @@ function buildsLocalizedText(node: TSESTree.Node): boolean {
       return I18N_CALLEE_NAMES.has(callee.name);
     return (
       callee.type === AST_NODE_TYPES.MemberExpression &&
-      !callee.computed &&
       callee.object.type === AST_NODE_TYPES.Identifier &&
       I18N_RECEIVER_NAMES.has(callee.object.name)
     );
@@ -196,9 +195,9 @@ function chainMemberNames(node: TSESTree.Node): readonly string[] {
   let current = node;
   for (;;) {
     if (current.type === AST_NODE_TYPES.MemberExpression) {
-      if (current.computed || current.property.type !== AST_NODE_TYPES.Identifier)
+      if (ASTUtils.getPropertyName(current) === null)
         return [];
-      names.push(current.property.name);
+      names.push((ASTUtils.getPropertyName(current) ?? ""));
       current = current.object;
       continue;
     }
@@ -219,12 +218,11 @@ function schemaExpression(node: TSESTree.CallExpression): TSESTree.Node {
     if (
       parent?.type === AST_NODE_TYPES.MemberExpression &&
       parent.object === current &&
-      !parent.computed &&
-      parent.property.type === AST_NODE_TYPES.Identifier &&
+      ASTUtils.getPropertyName(parent) !== null &&
       parent.parent?.type === AST_NODE_TYPES.CallExpression &&
       parent.parent.callee === parent
     ) {
-      if (NON_SCHEMA_TERMINALS.has(parent.property.name)) return current;
+      if (NON_SCHEMA_TERMINALS.has((ASTUtils.getPropertyName(parent) ?? ""))) return current;
       current = parent.parent;
       continue;
     }
@@ -304,8 +302,7 @@ export default createRule<Options, MessageIds>({
 
     function isSchemaConstruction(node: TSESTree.CallExpression): boolean {
       const callee = node.callee;
-      if (callee.type !== AST_NODE_TYPES.MemberExpression || callee.computed ||
-        callee.property.type !== AST_NODE_TYPES.Identifier || NON_SCHEMA_TERMINALS.has(callee.property.name)) return false;
+      if (callee.type !== AST_NODE_TYPES.MemberExpression || ASTUtils.getPropertyName(callee) === null || NON_SCHEMA_TERMINALS.has((ASTUtils.getPropertyName(callee) ?? ""))) return false;
       if (callee.object.type === AST_NODE_TYPES.CallExpression) return isSchemaConstruction(callee.object);
       return factoryName(node, FACTORIES) !== null || factoryName(node, COMPOSITE_FACTORIES) !== null;
     }
@@ -357,9 +354,8 @@ export default createRule<Options, MessageIds>({
           ((current.callee.type === AST_NODE_TYPES.Identifier &&
             MEMO_CALLEES.has(current.callee.name)) ||
             (current.callee.type === AST_NODE_TYPES.MemberExpression &&
-              !current.callee.computed &&
-              current.callee.property.type === AST_NODE_TYPES.Identifier &&
-              MEMO_CALLEES.has(current.callee.property.name)))
+              ASTUtils.getPropertyName(current.callee) !== null &&
+              MEMO_CALLEES.has((ASTUtils.getPropertyName(current.callee) ?? ""))))
         )
           return true;
         current = current.parent ?? undefined;

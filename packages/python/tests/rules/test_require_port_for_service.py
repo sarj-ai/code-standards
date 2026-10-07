@@ -63,6 +63,34 @@ def test_flags_concrete_service_with_injected_collaborator() -> None:
     assert diags[0].severity is Severity.WARNING
 
 
+@pytest.mark.parametrize(
+    "declaration",
+    [
+        "from typing import Protocol as Contract\nclass ThingServicePort(Contract):",
+        "from typing import Protocol as Contract\nclass ThingServicePort[T](Contract[T]):",
+        "from typing_extensions import Protocol as Contract\nclass ThingServicePort[T](Contract[T]):",
+        "from typing_extensions import Protocol as Contract\nclass ThingServicePort(Contract):",
+        "from abc import ABC as Contract\nclass ThingServicePort(Contract):",
+        "from abc import ABCMeta as Contract\nclass ThingServicePort(metaclass=Contract):",
+    ],
+)
+def test_aliased_local_interface_satisfies_the_service_port(declaration: str) -> None:
+    source = (
+        declaration
+        + "\n    def read(self, key: str) -> str: ...\n    def write(self, key: str, value: str) -> None: ...\n"
+        + _SERVICE
+    )
+    assert _check(source) == []
+
+
+def test_unrelated_aliased_base_does_not_manufacture_a_local_port() -> None:
+    source = (
+        "from framework import Protocol as Contract\nclass ThingServicePort(Contract):\n"
+        "    def read(self, key: str) -> str: ...\n    def write(self, key: str, value: str) -> None: ...\n"
+    ) + _SERVICE
+    assert len(_check(source)) == 1
+
+
 def test_project_evidence_flags_suffixless_concrete_dependency(tmp_path: Path) -> None:
     root = tmp_path / "project"
     package = root / "app"

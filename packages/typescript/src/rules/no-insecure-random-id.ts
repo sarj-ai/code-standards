@@ -81,15 +81,14 @@ function isMathRandomCall(node: TSESTree.Node): node is TSESTree.CallExpression 
     return false;
   }
   const callee = node.callee;
-  if (callee.type !== "MemberExpression" || callee.computed) {
+  if (callee.type !== "MemberExpression") {
     return false;
   }
-  const { object, property } = callee;
+  const { object } = callee;
   return (
     object.type === "Identifier" &&
     object.name === "Math" &&
-    property.type === "Identifier" &&
-    property.name === "random"
+    ASTUtils.getPropertyName(callee) === "random"
   );
 }
 
@@ -184,7 +183,7 @@ function climbValueChain(node: TSESTree.Node): TSESTree.Node {
     if (
       parent.type === "MemberExpression" &&
       parent.object === current &&
-      !parent.computed
+      ASTUtils.getPropertyName(parent) !== null
     ) {
       current = parent;
       parent = current.parent;
@@ -285,8 +284,8 @@ function appendPropertyName(property: TSESTree.Property | TSESTree.PropertyDefin
 
 function appendAssignedName(assignment: TSESTree.AssignmentExpression, directBinding: boolean, names: string[]): void {
   if (directBinding && assignment.left.type === "Identifier") names.push(assignment.left.name);
-  if (directBinding && assignment.left.type === "MemberExpression" && !assignment.left.computed && assignment.left.property.type === "Identifier") {
-    names.push(assignment.left.property.name);
+  if (directBinding && assignment.left.type === "MemberExpression" && ASTUtils.getPropertyName(assignment.left) !== null) {
+    names.push((ASTUtils.getPropertyName(assignment.left) ?? ""));
   }
 }
 

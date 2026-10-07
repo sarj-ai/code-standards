@@ -42,6 +42,15 @@ new RuleTester({ languageOptions: { parser: tsParser } }).run(
 TYPED_RULE_TESTER.run("prefer-zod-parse-output-type", rule, {
   valid: [
     {
+      name: "unknown member access does not establish parse identity",
+      filename: "zod-parse-output-dynamic-member.ts",
+      code: `${IMPORT}
+        import type { TrialChannelRecord } from "./zod-infer-cross-module-contracts.js";
+        const RowSchema = z.object({ applicationId: z.string(), channelId: z.string().nullable() });
+        declare const method: string;
+        function get(): TrialChannelRecord { return RowSchema[method]({}); }`,
+    },
+    {
       name: "accepts the documented schema-derived return",
       filename: "zod-parse-output-derived.ts",
       code: PREFER_ZOD_PARSE_OUTPUT_TYPE_DOCUMENTATION.examples[0].files[0].source,
@@ -185,6 +194,15 @@ TYPED_RULE_TESTER.run("prefer-zod-parse-output-type", rule, {
     },
   ],
   invalid: [
+    {
+      name: "preserves outcomes for static member access",
+      filename: "zod-parse-output-static-member.ts",
+      code: `${IMPORT}
+        import type { TrialChannelRecord } from "./zod-infer-cross-module-contracts.js";
+        const RowSchema = z["object"]({ applicationId: z["string"](), channelId: z["string"]()["nullable"]() });
+        function get(): TrialChannelRecord { return RowSchema["parse"]({}); }`,
+      errors: [{ messageId: "handWrittenParsedOutput" }],
+    },
     {
       name: "reports the documented hand-written parsed return",
       filename: "zod-parse-output-documented.ts",

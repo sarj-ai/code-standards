@@ -5,6 +5,8 @@ import { afterAll, describe, it } from "vitest";
 
 import rule, { NO_UNSAFE_TEST_DOUBLE_CAST_DOCUMENTATION } from "../../src/rules/no-unsafe-test-double-cast.js";
 
+import { verifyRuleExamples } from "../../src/verify-rule-examples.js";
+
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
 RuleTester.it = it;
@@ -37,4 +39,38 @@ RULE_TESTER.run("no-unsafe-test-double-cast", rule, {
     { name: "reports Jest mock factories", filename: "service.spec.ts", code: "const client = { read: jest.fn() } as unknown as Client;", errors: [{ messageId: "noUnsafeTestDoubleCast" }] },
     { name: "reports angle-bracket double assertions", filename: "service.test.ts", code: "import { vi } from 'vitest'; const client = <Client><unknown>{ read: vi.fn() };", errors: [{ messageId: "noUnsafeTestDoubleCast" }] },
   ],
+});
+
+
+it("preserves outcomes for static member access and unknown member keys", async () => {
+  const documentation = rule.documentation;
+  if (documentation === undefined) throw new Error("Missing rule documentation");
+  await verifyRuleExamples({ ...rule, documentation: { ...documentation, examples: [
+  {
+    "id": "mock-backed-double-cast-static-member",
+    "title": "Static member access preserves the rule outcome",
+    "outcome": "match",
+    "focusPath": "service.test.ts",
+    "expectedCount": 1,
+    "files": [
+      {
+        "path": "service.test.ts",
+        "source": "import { vi } from 'vitest'; const client = { read: vi[\"fn\"]() } as unknown as Client;"
+      }
+    ]
+  },
+  {
+    "id": "mock-backed-double-cast-dynamic-member",
+    "title": "Unknown member access does not establish API identity",
+    "outcome": "no-match",
+    "focusPath": "service.test.ts",
+    "expectedCount": 0,
+    "files": [
+      {
+        "path": "service.test.ts",
+        "source": "import { vi } from 'vitest'; const client = { read: vi[auditDynamicMember]() } as unknown as Client;"
+      }
+    ]
+  }
+] } });
 });

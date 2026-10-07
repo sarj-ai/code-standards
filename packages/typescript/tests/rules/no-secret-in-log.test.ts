@@ -5,6 +5,8 @@ import { afterAll, describe, it } from "vitest";
 
 import rule, { NO_SECRET_IN_LOG_DOCUMENTATION } from "../../src/rules/no-secret-in-log.js";
 
+import { verifyRuleExamples } from "../../src/verify-rule-examples.js";
+
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
 RuleTester.it = it;
@@ -187,11 +189,12 @@ RULE_TESTER.run("no-secret-in-log", rule, {
       filename: "tests/fixtures/ashby.ts",
     },
     {
-      name: "ignores computed member access because the property is not statically known",
-      code: 'logger.info("resp", res["body"]);',
+      name: "ignores unknown member access",
+      code: 'logger.info("resp", res[member]);',
     },
   ],
   invalid: [
+    { name: "reports static bracket access to the whole response body", code: 'logger.info("resp", res["body"]);', errors: [{ messageId: "noRawBodyInLog" }] },
     { name: "unmasked is not a redaction", code: 'logger.info("auth", { unmaskedToken });', errors: [{ messageId: "noSecretInLog" }] },
     { name: "unredacted is not a redaction", code: 'logger.info("request", { unredactedBody });', errors: [{ messageId: "noRawBodyInLog" }] },
     { name: "unsafe secret value under a secret key", code: 'logger.info("auth", { token: unmaskedToken });', errors: [{ messageId: "noSecretInLog" }] },
@@ -428,4 +431,38 @@ RULE_TESTER.run("no-secret-in-log", rule, {
       errors: [{ messageId: "noSecretInLog" }, { messageId: "noRawBodyInLog" }],
     },
   ],
+});
+
+
+it("preserves outcomes for static member access and unknown member keys", async () => {
+  const documentation = rule.documentation;
+  if (documentation === undefined) throw new Error("Missing rule documentation");
+  await verifyRuleExamples({ ...rule, documentation: { ...documentation, examples: [
+  {
+    "id": "logged-secret-static-member",
+    "title": "Static member access preserves the rule outcome",
+    "outcome": "match",
+    "focusPath": "src/auth.ts",
+    "expectedCount": 1,
+    "files": [
+      {
+        "path": "src/auth.ts",
+        "source": "logger[\"error\"]('auth failed', { token });"
+      }
+    ]
+  },
+  {
+    "id": "logged-secret-dynamic-member",
+    "title": "Unknown member access does not establish API identity",
+    "outcome": "no-match",
+    "focusPath": "src/auth.ts",
+    "expectedCount": 0,
+    "files": [
+      {
+        "path": "src/auth.ts",
+        "source": "logger[auditDynamicMember]('auth failed', { token });"
+      }
+    ]
+  }
+] } });
 });
