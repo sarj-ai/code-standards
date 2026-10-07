@@ -64,6 +64,19 @@ def run_process(
     return run_process_environment(argv, cwd=cwd, capture_output=capture_output, environment=None)
 
 
+def run_process_to_file(argv: tuple[str, ...], *, cwd: Path, destination: Path) -> None:
+    with destination.open("wb") as stream:
+        completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- fixed argv; no shell or command interpolation.
+            argv,
+            cwd=cwd,
+            check=False,
+            stdout=stream,
+            timeout=120,
+        )
+    if completed.returncode != 0:
+        raise ProcessFailureError(argv, completed.returncode)
+
+
 def run_process_environment(
     argv: tuple[str, ...],
     *,

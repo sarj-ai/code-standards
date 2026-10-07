@@ -143,6 +143,7 @@ jobs:
       iac: ${{ steps.c.outputs.iac }}
       standards: ${{ steps.c.outputs.standards }}
       tsconfig: ${{ steps.c.outputs.tsconfig }}
+      portability: ${{ steps.impact.outputs.portability }}
     steps:
       - name: Harden the runner
         uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
@@ -160,6 +161,16 @@ jobs:
           BEFORE: ${{ github.event.before || github.sha }}
           AFTER: ${{ github.sha }}
         run: uv run --project packages/standards --frozen code-standards --root . maintain release changes --before "$BEFORE" --after "$AFTER" --github-output "$GITHUB_OUTPUT"
+      - name: Select consumer portability impact
+        id: impact
+        env:
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.sha }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          uv run --project packages/standards --frozen python -m sarj_standards.libs.release.test_selection             --root . --base "$BEFORE" --head "$AFTER" --event "$EVENT_NAME" --report "$RUNNER_TEMP/impact.json"
+          echo "portability=$(jq -r '.full' "$RUNNER_TEMP/impact.json")" >> "$GITHUB_OUTPUT"
+
 
   build-typescript:
     needs: detect
@@ -830,7 +841,7 @@ jobs:
 
   portability-standards:
     needs: detect
-    if: needs.detect.outputs.standards == 'true'
+    if: needs.detect.outputs.standards == 'true' && needs.detect.outputs.portability != 'false'
     strategy:
       fail-fast: false
       matrix:
@@ -895,6 +906,7 @@ jobs:
     timeout-minutes: 40
     permissions:
       contents: read
+      actions: read
     outputs:
       artifact_sha256: ${{ steps.artifact_identity.outputs.sha256 }}
     defaults:
@@ -919,8 +931,18 @@ jobs:
           enable-cache: true
           cache-dependency-glob: 'packages/**/uv.lock'
       - run: uv python install 3.14
+      - name: Reuse artifact tested by the exact main push
+        id: reuse
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          uv run --frozen python -m sarj_standards.libs.release.ci_artifacts
+          --root ../.. --repository "$GITHUB_REPOSITORY" --commit "$GITHUB_SHA"
+          --destination dist --github-output "$GITHUB_OUTPUT"
       - run: uv audit --locked
+        if: steps.reuse.outputs.reused != 'true'
       - name: Build package and exact local dependency wheels
+        if: steps.reuse.outputs.reused != 'true'
         run: |
           uv build
           uv build --project ../standards-compat --out-dir dist
@@ -930,19 +952,23 @@ jobs:
           uv build --wheel --project ../iac --out-dir dist/deps
       - name: Verify wheel licenses
         run: uv run --frozen code-standards maintain release verify-wheel dist/*.whl dist/deps/*.whl
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+      - if: steps.reuse.outputs.reused != 'true'
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: '24'
           cache: 'npm'
           cache-dependency-path: packages/typescript/package-lock.json
       - name: Install the rule authoring parser
+        if: steps.reuse.outputs.reused != 'true'
         run: npm --prefix ../typescript ci --ignore-scripts --no-audit --no-fund
       - name: Test against the built wheel
+        if: steps.reuse.outputs.reused != 'true'
         run: |
           uv venv --clear --python 3.14 --seed
           uv pip install ./dist/deps/*.whl ./dist/code_standards-*.whl pytest==9.1.1 jsonschema==4.25.1 ruff pytest-xdist==3.8.0
           uv run --no-project pytest -q -n 4 --dist worksteal tests/
       - name: Smoke test the source distribution
+        if: steps.reuse.outputs.reused != 'true'
         run: |
           uv venv --python 3.14 "$RUNNER_TEMP/standards-sdist"
           uv pip install --python "$RUNNER_TEMP/standards-sdist/bin/python" --find-links dist/deps dist/*.tar.gz
@@ -984,7 +1010,8 @@ jobs:
       (needs.publish-python.result == 'success' || needs.publish-python.result == 'skipped') &&
       (needs.publish-sql.result == 'success' || needs.publish-sql.result == 'skipped') &&
       (needs.publish-iac.result == 'success' || needs.publish-iac.result == 'skipped') &&
-      needs.portability-standards.result == 'success' &&
+      (needs.portability-standards.result == 'success' ||
+        (needs.portability-standards.result == 'skipped' && needs.detect.outputs.portability == 'false')) &&
       needs.detect.outputs.standards == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10

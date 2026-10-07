@@ -99,6 +99,11 @@ def route(root: Path, base: str, head: str, *, event: str = "pull_request") -> f
             {"standards", "docs", "mobile", "codeql-python"},
             id="runner-mobile-dependency",
         ),
+        pytest.param(
+            "packages/standards/src/sarj_standards/libs/release/status.py",
+            {"standards", "docs", "codeql-python"},
+            id="release-no-mobile",
+        ),
         pytest.param("packages/standards/tests/test_api.py", {"standards", "codeql-python"}, id="runner-test-only"),
         pytest.param("packages/standards/src/sarj_standards/configs/ruff.strict.toml", SCOPES, id="shared-config"),
         pytest.param(".github/scripts/ci-scope.sh", SCOPES, id="routing-change"),
@@ -117,14 +122,15 @@ def route(root: Path, base: str, head: str, *, event: str = "pull_request") -> f
         ),
     ],
 )
-def test_pr_selects_owners_and_consumers(repository: Path, path: str, expected: set[str]) -> None:
+@pytest.mark.parametrize("event", ["pull_request", "push"])
+def test_pr_selects_owners_and_consumers(repository: Path, path: str, expected: set[str], event: str) -> None:
     base = git(repository, "rev-parse", "HEAD")
     source = repository / path
     source.parent.mkdir(parents=True, exist_ok=True)
     source.write_text("fixture\n")
     git(repository, "add", "--", path)
     git(repository, "commit", "-qm", "change")
-    assert route(repository, base, git(repository, "rev-parse", "HEAD")) == expected
+    assert route(repository, base, git(repository, "rev-parse", "HEAD"), event=event) == expected
 
 
 def test_cross_package_rename_checks_old_and_new_owners(repository: Path) -> None:
@@ -256,7 +262,7 @@ def test_dependency_changes_or_comparison_errors_keep_mobile(
     assert "mobile" in route(repository, base, git(repository, "rev-parse", "HEAD"))
 
 
-@pytest.mark.parametrize("event", ["push", "workflow_dispatch"])
+@pytest.mark.parametrize("event", ["push", "workflow_dispatch", "schedule"])
 def test_non_pr_events_keep_complete_validation(repository: Path, event: str) -> None:
     assert route(repository, "", "", event=event) == SCOPES
 
@@ -373,7 +379,7 @@ def test_required_standards_gate_requires_both_lanes_and_routing() -> None:
 
 def test_required_matrix_checks_keep_their_names_when_unaffected() -> None:
     typescript = workflow("ci.yml").jobs["typescript"]
-    assert typescript.condition == "always() && github.event_name != 'schedule'"
+    assert typescript.condition == "always()"
     for step in typescript.steps[2:]:
         assert "needs.changes.outputs.typescript != 'false'" in step.condition
     assert workflow("ci.yml").jobs["portability-smoke"].name == "standards portability (ubuntu-latest)"
@@ -407,12 +413,8 @@ def test_private_reference_fetch_excludes_existing_main_history(repository: Path
     assert git(candidate, "rev-parse", "--is-shallow-repository") == "false"
 
 
-def test_scheduled_ci_selects_only_security(repository: Path) -> None:
-    assert route(repository, "", "", event="schedule") == {
-        "codeql-python",
-        "codeql-javascript-typescript",
-        "docs-audit",
-    }
+def test_scheduled_ci_audits_every_package(repository: Path) -> None:
+    assert route(repository, "", "", event="schedule") == SCOPES
 
 
 def test_ci_detects_changes_once_and_never_deploys_on_schedule() -> None:

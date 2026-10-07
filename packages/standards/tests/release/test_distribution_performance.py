@@ -92,6 +92,8 @@ def test_standards_publication_retains_portability_and_sibling_gates() -> None:
     assert jobs["portability-standards"].needs == "detect"
     publisher = jobs["publish-standards"]
     assert "needs.portability-standards.result == 'success'" in publisher.condition
+    assert "needs.detect.outputs.portability == 'false'" in publisher.condition
+    assert "needs.detect.outputs.portability != 'false'" in jobs["portability-standards"].condition
     for sibling in ("bootstrap", "contracts", "typescript", "python", "sql", "iac"):
         assert f"publish-{sibling}" in publisher.needs
         assert f"needs.publish-{sibling}.result == 'success'" in publisher.condition

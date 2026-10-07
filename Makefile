@@ -13,6 +13,7 @@ CONSUMER ?=
 DRY_RUN ?=
 TEST_JOBS ?= 4
 PYTEST_ARGS ?=
+BASE ?= origin/main
 COMMIT ?= HEAD
 ROLLOUT_OPTIONS = --registry "$(REGISTRY)" --jobs "$(JOBS)"
 ROLLOUT_TARGET = --channel "$(CHANNEL)" $(if $(CONSUMER),--consumer "$(CONSUMER)")
@@ -25,6 +26,7 @@ help:
 	@echo "         rollout[-plan|-status|-reconcile] VERSION=<published-version>"
 	@echo "         Optional: CONSUMER=owner/repo@branch JOBS=4 DRY_RUN=1 CHANNEL=stable"
 	@echo "         test-standards TEST_JOBS=4 PYTEST_ARGS='-k release' | test -j4"
+	@echo "         test-plan | test-standards-changed BASE=origin/main"
 	@echo "         release-status COMMIT=origin/main"
 	@echo "Releases are published only after a version-changing merge to main."
 
@@ -89,7 +91,7 @@ build:
 
 test: check-versions-synced test-typescript test-bootstrap test-contracts test-python test-sql test-iac test-standards test-tsconfig
 
-.PHONY: test-typescript test-bootstrap test-contracts test-python test-sql test-iac test-standards test-tsconfig release-status
+.PHONY: test-typescript test-bootstrap test-contracts test-python test-sql test-iac test-standards test-tsconfig release-status test-plan test-standards-changed
 
 test-typescript:
 	cd packages/typescript     && npm test
@@ -111,6 +113,12 @@ test-iac:
 
 test-standards:
 	uv run --project packages/standards --frozen python -m sarj_standards.libs.release.wheel_tests --root . --jobs "$(TEST_JOBS)" $(PYTEST_ARGS)
+
+test-plan:
+	uv run --project packages/standards --frozen python -m sarj_standards.libs.release.test_selection --root . --base "$(BASE)"
+
+test-standards-changed:
+	uv run --project packages/standards --frozen python -m sarj_standards.libs.release.wheel_tests --root . --jobs "$(TEST_JOBS)" --changed --base "$(BASE)" $(PYTEST_ARGS)
 
 test-tsconfig:
 	cd packages/tsconfig       && node -e "JSON.parse(require('fs').readFileSync('base.json','utf8'))" && node -e "JSON.parse(require('fs').readFileSync('strict.json','utf8'))"
