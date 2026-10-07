@@ -17,6 +17,86 @@ def _check(source: str, path: str = "app/service.py") -> list[Diagnostic]:
     return PreferCollectionComprehension().check(Path(path), source)
 
 
+@pytest.mark.parametrize("local_import", [False, True])
+@pytest.mark.parametrize(
+    ("import_statement", "frame"),
+    [
+        ("import inspect", "inspect.currentframe()"),
+        ("import inspect as frames", "frames.currentframe()"),
+        ("from inspect import currentframe", "currentframe()"),
+        ("from inspect import currentframe as frame", "frame()"),
+        ("import sys", "sys._getframe()"),
+        ("import sys as frames", "frames._getframe()"),
+        ("from sys import _getframe", "_getframe()"),
+        ("from sys import _getframe as frame", "frame()"),
+    ],
+)
+def test_keeps_builders_when_explicit_frame_access_can_observe_loop_bindings(
+    import_statement: str, frame: str, *, local_import: bool
+) -> None:
+    import_source = f"    {import_statement}\n" if local_import else ""
+    source = (
+        ("" if local_import else f"{import_statement}\n")
+        + "def build(rows):\n"
+        + import_source
+        + "    result = {}\n"
+        + "    for row in rows:\n"
+        + "        result[row.id] = row.value\n"
+        + f"    return result, {frame}.f_locals\n"
+    )
+
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    ("imports", "expression"),
+    [
+        ("", "currentframe()"),
+        ("", "_getframe()"),
+        ("", "provider.currentframe()"),
+        ("import providers as inspect\n", "inspect.currentframe()"),
+        ("from providers import currentframe\n", "currentframe()"),
+        ("import inspect\n", "provider.currentframe()"),
+        ("import sys\n", "provider._getframe()"),
+    ],
+)
+def test_unrelated_frame_names_do_not_hide_builder_findings(imports: str, expression: str) -> None:
+    source = (
+        imports
+        + "def build(rows, provider):\n"
+        + f"    observation = {expression}\n"
+        + "    result = {}\n"
+        + "    for row in rows:\n"
+        + "        result[row.id] = row.value\n"
+        + "    return result, observation\n"
+    )
+
+    assert len(_check(source)) == 1
+
+
+def test_frame_import_aliases_remain_conservative_when_reused_in_other_scopes() -> None:
+    source = """def inspect_rows(rows):
+    import inspect as tools
+    result = {}
+    for row in rows:
+        result[row.id] = row.value
+    return result, tools.currentframe().f_locals
+
+def sys_rows(rows):
+    import sys as tools
+    result = {}
+    for row in rows:
+        result[row.id] = row.value
+    return result, tools._getframe().f_locals
+
+def unrelated():
+    import builtins as tools
+    return tools.locals()
+"""
+
+    assert _check(source) == []
+
+
 _PUBLIC_EXAMPLES = PreferCollectionComprehension.public_examples()
 
 
