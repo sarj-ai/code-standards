@@ -6,6 +6,8 @@
 
 import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
 
+import { unwrapExpression } from "./_unwrap-expression.js";
+
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isScriptFile, isTestFile } from "./_paths.js";
 
@@ -96,7 +98,8 @@ function isGlobalFetchCall(
   node: TSESTree.CallExpression,
   resolvesToGlobal: (identifier: TSESTree.Identifier) => boolean,
 ): boolean {
-  const callee = node.callee;
+  const callee = unwrapExpression(node.callee);
+
 
   if (callee.type === "Identifier") {
     return callee.name === "fetch" && resolvesToGlobal(callee);
@@ -135,7 +138,8 @@ function isConstructedArgumentHandoff(
 }
 
 function effectOwns(node: TSESTree.CallExpression): boolean {
-  if (node.callee.type !== AST_NODE_TYPES.Identifier) return false;
+  const unwrappedNodeCallee = unwrapExpression(node.callee);
+  if (unwrappedNodeCallee.type !== AST_NODE_TYPES.Identifier) return false;
   const method = readDirectMethod(node);
   if (method !== null && method !== "GET") return false;
 
@@ -164,7 +168,7 @@ function effectOwns(node: TSESTree.CallExpression): boolean {
     current = current.parent
   ) {
     if (current.type !== AST_NODE_TYPES.CallExpression) continue;
-    const callee = current.callee;
+    const callee = unwrapExpression(current.callee);
     const isEffect =
       (callee.type === AST_NODE_TYPES.Identifier &&
         (callee.name === "useEffect" || callee.name === "useLayoutEffect")) ||
@@ -342,8 +346,9 @@ export default createRule<Options, MessageIds>({
 
 
     function serverActionOwns(node: TSESTree.CallExpression): boolean {
+      const unwrappedNodeCallee = unwrapExpression(node.callee);
       if (
-        node.callee.type !== AST_NODE_TYPES.Identifier ||
+        unwrappedNodeCallee.type !== AST_NODE_TYPES.Identifier ||
         !hasUseClientDirective ||
         hasUseServerDirective ||
         importsServerOnly ||

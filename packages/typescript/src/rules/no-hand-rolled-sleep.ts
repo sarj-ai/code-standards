@@ -6,6 +6,8 @@
 
 import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
 
+import { unwrapExpression } from "./_unwrap-expression.js";
+
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile, isScriptFile, isTestFile } from "./_paths.js";
 
@@ -81,6 +83,7 @@ function matchesAnyPattern(filename: string, patterns: readonly string[]): boole
 }
 
 function isSetTimeoutCallee(callee: TSESTree.Node): boolean {
+  callee = unwrapExpression(callee);
   if (callee.type === AST_NODE_TYPES.Identifier) {
     return callee.name === "setTimeout";
   }
@@ -131,11 +134,12 @@ function settlesWithoutValue(callback: TSESTree.Node, name: string): boolean {
     return false;
   }
   const call = soleCall(callback);
+  const callee = call === null ? null : unwrapExpression(call.callee);
   return (
     call !== null &&
     call.arguments.length === 0 &&
-    call.callee.type === AST_NODE_TYPES.Identifier &&
-    call.callee.name === name
+    callee?.type === AST_NODE_TYPES.Identifier &&
+    callee.name === name
   );
 }
 
@@ -150,10 +154,11 @@ function rejectsInCallback(callback: TSESTree.Node, name: string): boolean {
     return false;
   }
   const call = soleCall(callback);
+  const callee = call === null ? null : unwrapExpression(call.callee);
   return (
     call !== null &&
-    call.callee.type === AST_NODE_TYPES.Identifier &&
-    call.callee.name === name
+    callee?.type === AST_NODE_TYPES.Identifier &&
+    callee.name === name
   );
 }
 
@@ -238,6 +243,7 @@ export default createRule<Options, MessageIds>({
     const bindingOf = (identifier: TSESTree.Identifier) => ASTUtils.findVariable(sourceCode.getScope(identifier), identifier.name);
     const isGlobal = (identifier: TSESTree.Identifier): boolean => (bindingOf(identifier)?.defs.length ?? 0) === 0;
     const isBuiltinTimer = (callee: TSESTree.Node): boolean => {
+      callee = unwrapExpression(callee);
       if (!isSetTimeoutCallee(callee)) return false;
       if (callee.type === AST_NODE_TYPES.MemberExpression && callee.object.type === AST_NODE_TYPES.Identifier) return isGlobal(callee.object);
       if (callee.type !== AST_NODE_TYPES.Identifier) return false;
@@ -291,7 +297,8 @@ export default createRule<Options, MessageIds>({
 
     return {
       NewExpression(node: TSESTree.NewExpression): void {
-        if (node.callee.type !== AST_NODE_TYPES.Identifier || node.callee.name !== "Promise" || !isGlobal(node.callee)) {
+        const unwrappedNodeCallee = unwrapExpression(node.callee);
+        if (unwrappedNodeCallee?.type !== AST_NODE_TYPES.Identifier || unwrappedNodeCallee.name !== "Promise" || !isGlobal(unwrappedNodeCallee)) {
           return;
         }
         const executor = node.arguments[0];

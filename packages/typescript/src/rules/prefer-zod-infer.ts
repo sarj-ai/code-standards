@@ -484,7 +484,7 @@ function twinCallChain(
   const chain: TSESTree.CallExpression[] = [];
   let current: TSESTree.Node = node;
   while (current.type === AST_NODE_TYPES.CallExpression) {
-    const callee = current.callee;
+    const callee = unwrapExpression(current.callee);
     const calleeReceiver = callee.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(callee.object) : callee;
     if (
       callee.type !== AST_NODE_TYPES.MemberExpression ||
@@ -502,7 +502,8 @@ function twinCallChain(
 }
 
 function twinMethodName(call: TSESTree.CallExpression): string {
-  const callee = call.callee;
+  const callee = unwrapExpression(call.callee);
+
   return callee.type === AST_NODE_TYPES.MemberExpression &&
     ASTUtils.getPropertyName(callee) !== null
     ? (ASTUtils.getPropertyName(callee) ?? "")
@@ -524,10 +525,8 @@ function twinSchemaFields(
   if (shape === undefined || shape.type !== AST_NODE_TYPES.ObjectExpression) return null;
   const fields = new Map<string, SchemaField>();
   for (const property of shape.properties) {
-    if (property.type !== AST_NODE_TYPES.Property || property.computed) return null;
-    const { key } = property;
-    const name =
-      staticFieldName(key);
+    if (property.type !== AST_NODE_TYPES.Property) return null;
+    const name = ASTUtils.getPropertyName(property);
     if (name === null) return null;
     fields.set(name, twinSchemaField(property.value, zodNamespaces));
   }
@@ -543,7 +542,7 @@ function twinSchemaField(
   let leaf: string | null = null;
   let leafCall: TSESTree.CallExpression | null = null;
   while (current.type === AST_NODE_TYPES.CallExpression) {
-    const callee = current.callee;
+    const callee = unwrapExpression(current.callee);
     const calleeReceiver = callee.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(callee.object) : callee;
     if (
       callee.type !== AST_NODE_TYPES.MemberExpression ||

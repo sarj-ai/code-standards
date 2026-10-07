@@ -20,6 +20,7 @@ from sarj_sql_lint.rule_base import (
     is_dump_file,
     is_postgres_migration,
     mask_sql,
+    mask_sql_comments,
     source_location,
 )
 
@@ -127,7 +128,7 @@ class RequireLockTimeout(Rule):
                 has_timeout = any(active_global_timeouts.values()) or any(active_local_timeouts.values())
                 if not has_timeout and not reported_for_current_state:
                     reported_for_current_state = True
-                    lineno = masked[:pos].count("\n") + 1
+                    lineno = source_location(source, pos).line
                     diags.append(
                         Diagnostic(
                             path=path,
@@ -150,7 +151,7 @@ class RequireLockTimeout(Rule):
 def _timeout_events(source: str, masked: str) -> list[tuple[int, str, re.Match[str]]]:
     events: list[tuple[int, str, re.Match[str]]] = []
     # Match raw quoted values, then require the assignment's offset to remain live after masking SQL noise.
-    for match in ASSIGNMENT_PATTERN.finditer(source):
+    for match in ASSIGNMENT_PATTERN.finditer(mask_sql_comments(source)):
         start_pos = match.start()
         if masked[start_pos : start_pos + 3].strip():
             events.append((start_pos, "ASSIGNMENT", match))

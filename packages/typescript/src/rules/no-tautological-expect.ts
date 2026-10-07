@@ -6,6 +6,8 @@
 
 import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
 
+import { unwrapExpression } from "./_unwrap-expression.js";
+
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isTestFile } from "./_paths.js";
 
@@ -115,11 +117,12 @@ function passesZeroArgumentMatcher(node: TSESTree.Node, matcher: string): boolea
 
 /** The `expect(<single argument>)` call a matcher hangs directly off, if any. */
 function expectOperand(callee: TSESTree.MemberExpression): TSESTree.Node | null {
-  const receiver = callee.object;
+  const receiver = unwrapExpression(callee.object);
+  const expectCallee = receiver.type === AST_NODE_TYPES.CallExpression ? unwrapExpression(receiver.callee) : null;
   if (
     receiver.type !== AST_NODE_TYPES.CallExpression ||
-    receiver.callee.type !== AST_NODE_TYPES.Identifier ||
-    receiver.callee.name !== "expect" ||
+    expectCallee?.type !== AST_NODE_TYPES.Identifier ||
+    expectCallee.name !== "expect" ||
     receiver.arguments.length !== 1
   ) {
     return null;
@@ -158,12 +161,15 @@ export default createRule<Options, MessageIds>({
     };
     return {
       CallExpression(node: TSESTree.CallExpression): void {
-        const callee = node.callee;
+        const callee = unwrapExpression(node.callee);
+
         if (callee.type !== AST_NODE_TYPES.MemberExpression) return;
         const matcher = ASTUtils.getPropertyName(callee);
         if (matcher === null) return;
-        if (callee.object.type !== AST_NODE_TYPES.CallExpression || callee.object.callee.type !== AST_NODE_TYPES.Identifier) return;
-        const expectIdentifier = callee.object.callee;
+        const receiver = unwrapExpression(callee.object);
+        if (receiver.type !== AST_NODE_TYPES.CallExpression) return;
+        const expectIdentifier = unwrapExpression(receiver.callee);
+        if (expectIdentifier.type !== AST_NODE_TYPES.Identifier) return;
         const variable = ASTUtils.findVariable(context.sourceCode.getScope(expectIdentifier), expectIdentifier.name);
         if (variable !== null && variable.defs.some((definition) => {
           if (definition.node.type !== AST_NODE_TYPES.ImportSpecifier) return true;

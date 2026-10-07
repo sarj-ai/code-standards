@@ -95,14 +95,12 @@ export const SOURCE_COUPLED_TEST_DOCUMENTATION = {
 } as const satisfies RuleDocumentation;
 
 function unwrap(node: TSESTree.Node): TSESTree.Node {
-  if (node.type === AST_NODE_TYPES.AwaitExpression) return unwrap(node.argument);
-  if (node.type === AST_NODE_TYPES.ChainExpression) return unwrap(node.expression);
-  if (
-    node.type === AST_NODE_TYPES.TSAsExpression ||
-    node.type === AST_NODE_TYPES.TSNonNullExpression ||
-    node.type === AST_NODE_TYPES.TSTypeAssertion
-  ) return unwrap(node.expression);
-  return node;
+  for (;;) {
+    node = unwrapExpression(node);
+    if (node.type === AST_NODE_TYPES.AwaitExpression) node = node.argument;
+    else if (node.type === AST_NODE_TYPES.ChainExpression) node = node.expression;
+    else return node;
+  }
 }
 
 function stringValue(node: TSESTree.Node): string | null {
@@ -194,7 +192,7 @@ export function createSourceCoupledRule(
       if (value !== null) return sourceSuffixRe.test(value);
       if (current.type === AST_NODE_TYPES.Identifier) return visible("paths", current);
       if (current.type === AST_NODE_TYPES.CallExpression || current.type === AST_NODE_TYPES.NewExpression) {
-        const callee = current.callee;
+        const callee = unwrapExpression(current.callee);
         const first = current.arguments[0];
         if (first === undefined || first.type === AST_NODE_TYPES.SpreadElement) return false;
         if (current.type === AST_NODE_TYPES.NewExpression && callee.type === AST_NODE_TYPES.Identifier && callee.name === "URL" && (bindingOf(callee)?.defs.length ?? 0) === 0) return sourcePath(first);
@@ -257,7 +255,8 @@ export function createSourceCoupledRule(
       if (matcher === null) return new Set();
       let receiver = unwrap(calleeReceiver);
       while (receiver.type === AST_NODE_TYPES.MemberExpression && EXPECT_MODIFIERS.has(ASTUtils.getPropertyName(receiver) ?? "")) receiver = unwrap(receiver.object);
-      if (receiver.type === AST_NODE_TYPES.CallExpression && receiver.callee.type === AST_NODE_TYPES.Identifier && assertionKind(receiver.callee) === "expect") {
+      const expectCallee = receiver.type === AST_NODE_TYPES.CallExpression ? unwrapExpression(receiver.callee) : null;
+      if (receiver.type === AST_NODE_TYPES.CallExpression && expectCallee?.type === AST_NODE_TYPES.Identifier && assertionKind(expectCallee) === "expect") {
         if (!EXPECT_MATCHERS.has(matcher)) return new Set();
         return new Set([...receiver.arguments, ...node.arguments].flatMap((argument) => argument.type === AST_NODE_TYPES.SpreadElement ? [] : [...evidenceOrigins(argument)]));
       }

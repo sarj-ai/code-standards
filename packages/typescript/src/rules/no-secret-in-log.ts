@@ -6,6 +6,8 @@
 
 import { ASTUtils, type TSESTree } from "@typescript-eslint/utils";
 
+import { unwrapExpression } from "./_unwrap-expression.js";
+
 import {
   createLogMatcher,
   LOGGING_OPTION_PROPERTIES,
@@ -151,6 +153,7 @@ const BLOB_SAFE_TOKENS: ReadonlySet<string> = new Set([
 ]);
 
 function rawBlobValueName(value: TSESTree.Node): string | null {
+  const unwrappedValueCallee = value.type === "CallExpression" || value.type === "NewExpression" ? unwrapExpression(value.callee) : null;
   if (value.type === "AwaitExpression") return rawBlobValueName(value.argument);
   if (value.type === "ChainExpression") return rawBlobValueName(value.expression);
   if (value.type === "Identifier") {
@@ -163,12 +166,12 @@ function rawBlobValueName(value: TSESTree.Node): string | null {
   if (
     value.type === "CallExpression" &&
     value.arguments.length === 0 &&
-    value.callee.type === "MemberExpression" &&
-    value.callee.object.type === "Identifier" &&
-    /^(?:res|response|\w+Response)$/.test(value.callee.object.name)
+    unwrappedValueCallee?.type === "MemberExpression" &&
+    unwrappedValueCallee.object.type === "Identifier" &&
+    /^(?:res|response|\w+Response)$/.test(unwrappedValueCallee.object.name)
   ) {
-    const name = ASTUtils.getPropertyName(value.callee);
-    return name === "json" || name === "text" ? `${value.callee.object.name}.${name}()` : null;
+    const name = ASTUtils.getPropertyName(unwrappedValueCallee);
+    return name === "json" || name === "text" ? `${unwrappedValueCallee.object.name}.${name}()` : null;
   }
   return null;
 }

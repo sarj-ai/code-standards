@@ -20,7 +20,7 @@ export const NO_PRODUCTION_BROWSER_SOURCE_MAPS_DOCUMENTATION = {
     "Leave productionBrowserSourceMaps disabled and upload private source maps directly to the error-monitoring service during the build.",
   category: "security",
   limitations: [
-    "Only a literal true in the effective property of a directly exported object, unescaped const alias, or isolated module.exports object is reported. Wrappers, factories, spreads, computed keys and mutations are not inferred.",
+    "Only a literal true in the effective property of a directly exported object, unescaped const alias, or isolated module.exports object is reported. Wrappers, factories, spreads, dynamic computed keys and mutations are not inferred.",
   ],
   examples: [
     {

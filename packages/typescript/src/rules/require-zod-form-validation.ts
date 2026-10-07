@@ -70,7 +70,7 @@ const isFormDataMethodCall = (node: TSESTree.Node): boolean => {
     current = current.argument;
   }
   if (current.type !== AST_NODE_TYPES.CallExpression) return false;
-  const callee = current.callee;
+  const callee = unwrapExpression(current.callee);
   return (
     callee.type === AST_NODE_TYPES.MemberExpression &&
     ASTUtils.getPropertyName(callee) === "formData"
@@ -109,7 +109,8 @@ export default createRule<Options, MessageIds>({
       );
 
     const isFormDataGetCall = (node: TSESTree.CallExpression): boolean => {
-      const callee = node.callee;
+      const callee = unwrapExpression(node.callee);
+
       const calleeReceiver = callee.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(callee.object) : callee;
       if (callee.type !== AST_NODE_TYPES.MemberExpression) return false;
       if (
@@ -169,7 +170,7 @@ export default createRule<Options, MessageIds>({
 
     const isZodParseCall = (node: TSESTree.Node): boolean => {
       if (node.type !== AST_NODE_TYPES.CallExpression) return false;
-      const callee = node.callee;
+      const callee = unwrapExpression(node.callee);
       const calleeReceiver = callee.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(callee.object) : callee;
       if (
         callee.type !== AST_NODE_TYPES.MemberExpression ||
@@ -337,7 +338,8 @@ export default createRule<Options, MessageIds>({
     const zodParseMethod = (
       call: TSESTree.CallExpression,
     ): string | null => {
-      const callee = call.callee;
+      const callee = unwrapExpression(call.callee);
+
       return callee.type === AST_NODE_TYPES.MemberExpression &&
         ASTUtils.getPropertyName(callee) !== null
         ? (ASTUtils.getPropertyName(callee) ?? "")

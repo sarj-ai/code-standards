@@ -121,7 +121,7 @@ function isLocalZodObjectSchema(
 ): boolean {
   let current = node;
   while (current.type === AST_NODE_TYPES.CallExpression) {
-    const { callee } = current;
+    const callee = unwrapExpression(current.callee);
     const calleeReceiver = callee.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(callee.object) : callee;
     if (
       callee.type !== AST_NODE_TYPES.MemberExpression ||
@@ -147,7 +147,7 @@ interface ZodParseCall {
 }
 
 function zodParseCall(node: TSESTree.CallExpression): ZodParseCall | null {
-  const { callee } = node;
+  const callee = unwrapExpression(node.callee);
   const calleeReceiver = callee.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(callee.object) : callee;
   if (
     callee.type !== AST_NODE_TYPES.MemberExpression ||

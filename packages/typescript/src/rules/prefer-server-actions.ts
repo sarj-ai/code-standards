@@ -5,6 +5,8 @@
  */
 
 import { ASTUtils, type TSESTree } from "@typescript-eslint/utils";
+
+import { unwrapExpression } from "./_unwrap-expression.js";
 import type { RuleContext, Scope } from "@typescript-eslint/utils/ts-eslint";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
@@ -64,6 +66,7 @@ function resolveNode(
   node: TSESTree.Node | null | undefined,
   context: Ctx,
 ): TSESTree.Node | null {
+  node = node == null ? node : unwrapExpression(node);
   if (!node) return null;
   if (node.type !== "Identifier") return node;
 
@@ -208,18 +211,10 @@ function getPropertyNode(
   propName: string,
 ): TSESTree.Node | null {
   if (!objNode || objNode.type !== "ObjectExpression") return null;
-  if (objNode.properties.some((property) => property.type === "SpreadElement" || property.computed)) return null;
+  if (objNode.properties.some((property) => property.type === "SpreadElement" || ASTUtils.getPropertyName(property) === null)) return null;
   for (const prop of [...objNode.properties].reverse()) {
     if (prop.type !== "Property") continue;
-    let keyName: string | null = null;
-    if (prop.key.type === "Identifier" && !prop.computed) {
-      keyName = prop.key.name;
-    } else if (
-      prop.key.type === "Literal" &&
-      typeof prop.key.value === "string"
-    ) {
-      keyName = prop.key.value;
-    }
+    const keyName = ASTUtils.getPropertyName(prop);
     if (keyName === propName) {
       // Skip destructuring patterns — they're not valid as config values.
       if (
@@ -360,29 +355,30 @@ export default createRule<Options, MessageIds>({
 
     return {
       CallExpression(node) {
+        const unwrappedNodeCallee = unwrapExpression(node.callee);
         if (isNonReactFramework) return;
         let isMutation = false;
 
         // 1. Standard fetch('/api/orders', { method: 'POST' })
         if (
-          node.callee.type === "Identifier" &&
-          node.callee.name === "fetch" &&
-          resolvesToGlobalFetch(context, node.callee)
+          unwrappedNodeCallee.type === "Identifier" &&
+          unwrappedNodeCallee.name === "fetch" &&
+          resolvesToGlobalFetch(context, unwrappedNodeCallee)
         ) {
           isMutation = isFetchMutation(node);
         }
         // Axios method calls require import or instance provenance.
         else if (
-          node.callee.type === "MemberExpression" &&
-          node.callee.property.type === "Identifier" &&
-          !node.callee.computed && isAxiosClient(node.callee.object, context)
+          unwrappedNodeCallee.type === "MemberExpression" &&
+          unwrappedNodeCallee.property.type === "Identifier" &&
+          !unwrappedNodeCallee.computed && isAxiosClient(unwrappedNodeCallee.object, context)
         ) {
-          isMutation = isAxiosMethodMutation(node, node.callee.property.name);
+          isMutation = isAxiosMethodMutation(node, unwrappedNodeCallee.property.name);
         }
         // 3. Direct axios/request call: axios({ method: 'post', url: '/api/orders' })
         else if (
-          node.callee.type === "Identifier" &&
-          isAxiosClient(node.callee, context)
+          unwrappedNodeCallee.type === "Identifier" &&
+          isAxiosClient(unwrappedNodeCallee, context)
         ) {
           isMutation = isAxiosConfigMutation(node);
         }

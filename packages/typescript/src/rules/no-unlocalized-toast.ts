@@ -118,7 +118,8 @@ export default createRule<Options, "unlocalized">({
     ];
     return {
       CallExpression(node): void {
-        const callee = node.callee;
+        const callee = unwrapExpression(node.callee);
+
         const calleeReceiver = callee.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(callee.object) : callee;
         const receiver =
           callee.type === AST_NODE_TYPES.Identifier

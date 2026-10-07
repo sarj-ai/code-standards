@@ -11,6 +11,8 @@ import {
   type TSESTree,
 } from "@typescript-eslint/utils";
 
+import { unwrapExpression } from "./_unwrap-expression.js";
+
 import { forEachOwnAstChild } from "./_for-each-own-ast-child.js";
 import { createRule, type RuleDocumentation } from "./_docs.js";
 
@@ -72,17 +74,7 @@ function isStarLiteral(node: TSESTree.Node): boolean {
  * Returns the (non-computed) string name of a property key, or `undefined`.
  */
 function propertyKeyName(prop: TSESTree.Property): string | undefined {
-  if (prop.computed) {
-    return undefined;
-  }
-  const key = prop.key;
-  if (key.type === "Identifier") {
-    return key.name;
-  }
-  if (key.type === "Literal" && typeof key.value === "string") {
-    return key.value;
-  }
-  return undefined;
+  return ASTUtils.getPropertyName(prop) ?? undefined;
 }
 
 function isCorsWildcardCredentialsCall(
@@ -136,7 +128,8 @@ function subtreeContainsStarLiteral(node: TSESTree.Node): boolean {
 function calleeName(
   node: TSESTree.CallExpression | TSESTree.NewExpression,
 ): string | undefined {
-  const callee = node.callee;
+  const callee = unwrapExpression(node.callee);
+
   if (callee.type === "Identifier") {
     return callee.name;
   }
@@ -188,7 +181,8 @@ type HeaderSetKind = "origin" | "credentials";
 function classifyHeaderSetCall(
   node: TSESTree.CallExpression,
 ): HeaderSetKind | undefined {
-  const callee = node.callee;
+  const callee = unwrapExpression(node.callee);
+
   if (
     callee.type !== "MemberExpression" ||
     callee.computed ||
@@ -262,8 +256,9 @@ export default createRule<Options, MessageIds>({
       node: TSESTree.CallExpression,
       kind: HeaderSetKind,
     ): void {
-      if (node.callee.type !== AST_NODE_TYPES.MemberExpression) return;
-      const receiver = receiverIdentity(node.callee.object);
+      const unwrappedNodeCallee = unwrapExpression(node.callee);
+      if (unwrappedNodeCallee.type !== AST_NODE_TYPES.MemberExpression) return;
+      const receiver = receiverIdentity(unwrappedNodeCallee.object);
       if (receiver === null) return;
       const key = enclosingScope(node) ?? "module";
       let receivers = scopeHeaderSets.get(key);

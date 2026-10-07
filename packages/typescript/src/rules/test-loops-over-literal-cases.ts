@@ -6,6 +6,8 @@
 
 import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
 
+import { unwrapExpression } from "./_unwrap-expression.js";
+
 import { forEachOwnAstChild } from "./_for-each-own-ast-child.js";
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isTestFile } from "./_paths.js";
@@ -44,6 +46,7 @@ const TEST_MODULES: ReadonlySet<string> = new Set(["@jest/globals", "@playwright
 const ASSERTION_MODULES: ReadonlySet<string> = new Set([...TEST_MODULES, "node:assert", "node:assert/strict"]);
 
 function rootIdentifier(callee: TSESTree.Node): TSESTree.Identifier | null {
+  callee = unwrapExpression(callee);
   if (callee.type === AST_NODE_TYPES.Identifier) return callee;
   if (callee.type === AST_NODE_TYPES.MemberExpression) return rootIdentifier(callee.object);
   if (callee.type === AST_NODE_TYPES.CallExpression) return rootIdentifier(callee.callee);
@@ -72,6 +75,7 @@ function isTestBody(node: TSESTree.Node, isFrameworkTest: (identifier: TSESTree.
 }
 
 function isTestCaller(callee: TSESTree.Node): boolean {
+  callee = unwrapExpression(callee);
   if (callee.type === AST_NODE_TYPES.Identifier) return TEST_CALLERS.has(callee.name);
   if (callee.type !== AST_NODE_TYPES.MemberExpression) return false;
   const member = staticMemberName(callee);
@@ -140,6 +144,7 @@ function isAssertion(
 }
 
 function callerName(callee: TSESTree.Node): string | null {
+  callee = unwrapExpression(callee);
   if (callee.type === AST_NODE_TYPES.Identifier) {
     return callee.name;
   }
@@ -159,7 +164,7 @@ function opensSubtest(node: TSESTree.Node, callbackParameters: ReadonlySet<strin
   if (node.type !== AST_NODE_TYPES.CallExpression) {
     return false;
   }
-  const callee = node.callee;
+  const callee = unwrapExpression(node.callee);
   return callee.type === AST_NODE_TYPES.MemberExpression &&
     staticMemberName(callee) === "test" &&
     callee.object.type === AST_NODE_TYPES.Identifier &&
@@ -259,15 +264,3 @@ export default createRule<Options, MessageIds>({
     };
   },
 });
-
-function unwrapExpression(node: TSESTree.Expression): TSESTree.Expression {
-  if (
-    node.type === AST_NODE_TYPES.TSAsExpression ||
-    node.type === AST_NODE_TYPES.TSTypeAssertion ||
-    node.type === AST_NODE_TYPES.TSSatisfiesExpression ||
-    node.type === AST_NODE_TYPES.TSNonNullExpression
-  ) {
-    return unwrapExpression(node.expression);
-  }
-  return node;
-}

@@ -6,6 +6,8 @@
 
 import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
 
+import { unwrapExpression } from "./_unwrap-expression.js";
+
 import { createRule, type RuleDocumentation } from "./_docs.js";
 
 export interface RestrictedLibrary {
@@ -35,6 +37,7 @@ export const NO_RESTRICTED_LIBRARY_LOAD_DOCUMENTATION = {
 } as const satisfies RuleDocumentation;
 
 function staticModule(node: TSESTree.Node | undefined): string | null {
+  node = node === undefined ? undefined : unwrapExpression(node);
   if (node?.type === AST_NODE_TYPES.Literal && typeof node.value === "string") {
     return node.value;
   }
@@ -129,19 +132,20 @@ export default createRule<Options, MessageIds>({
         if (source !== null) report(node.source, source);
       },
       CallExpression(node: TSESTree.CallExpression): void {
+        const unwrappedNodeCallee = unwrapExpression(node.callee);
         let requireIdentifier: TSESTree.Identifier | null = null;
         if (
-          node.callee.type === AST_NODE_TYPES.Identifier &&
-          node.callee.name === "require"
+          unwrappedNodeCallee.type === AST_NODE_TYPES.Identifier &&
+          unwrappedNodeCallee.name === "require"
         ) {
-          requireIdentifier = node.callee;
+          requireIdentifier = unwrappedNodeCallee;
         } else if (
-          node.callee.type === AST_NODE_TYPES.MemberExpression &&
-          node.callee.object.type === AST_NODE_TYPES.Identifier &&
-          node.callee.object.name === "require" &&
-          staticMemberName(node.callee) === "resolve"
+          unwrappedNodeCallee.type === AST_NODE_TYPES.MemberExpression &&
+          unwrappedNodeCallee.object.type === AST_NODE_TYPES.Identifier &&
+          unwrappedNodeCallee.object.name === "require" &&
+          staticMemberName(unwrappedNodeCallee) === "resolve"
         ) {
-          requireIdentifier = node.callee.object;
+          requireIdentifier = unwrappedNodeCallee.object;
         }
         if (requireIdentifier === null || !isUnshadowedRequire(requireIdentifier)) return;
         const source = staticModule(node.arguments[0]);

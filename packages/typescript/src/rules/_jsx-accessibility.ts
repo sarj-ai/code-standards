@@ -10,6 +10,8 @@ import {
   type TSESTree,
 } from "@typescript-eslint/utils";
 
+import { unwrapExpression } from "./_unwrap-expression.js";
+
 export interface ComponentImport {
   readonly module: string;
   readonly export: string;
@@ -84,6 +86,7 @@ export function importedComponent(
 }
 
 export function staticText(node: TSESTree.Node): string | null {
+  node = unwrapExpression(node);
   if (node.type === AST_NODE_TYPES.Literal) {
     if (typeof node.value === "string" || typeof node.value === "number")
       return String(node.value);

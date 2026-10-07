@@ -109,7 +109,8 @@ export default createRule<Options, MessageIds>({
     }
 
     function isZodObjectCall(node: TSESTree.CallExpression): boolean {
-      const callee = node.callee;
+      const callee = unwrapExpression(node.callee);
+
       const calleeReceiver = callee.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(callee.object) : callee;
       if (callee.type === AST_NODE_TYPES.Identifier) {
         const variable = binding(callee);
@@ -129,7 +130,7 @@ export default createRule<Options, MessageIds>({
 
     function isNumericSchema(node: TSESTree.Node): boolean {
       if (node.type !== AST_NODE_TYPES.CallExpression) return false;
-      const callee = node.callee;
+      const callee = unwrapExpression(node.callee);
       const calleeReceiver = callee.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(callee.object) : callee;
       if (callee.type === AST_NODE_TYPES.Identifier) {
         const variable = binding(callee);

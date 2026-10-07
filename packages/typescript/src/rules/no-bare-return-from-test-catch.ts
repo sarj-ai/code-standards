@@ -5,6 +5,8 @@
 
 import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
 
+import { unwrapExpression } from "./_unwrap-expression.js";
+
 import { forEachOwnAstChild } from "./_for-each-own-ast-child.js";
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile, isTestFile } from "./_paths.js";
@@ -60,6 +62,7 @@ function importedName(identifier: TSESTree.Identifier, context: Context, modules
 }
 
 function rootIdentifier(callee: TSESTree.Node): TSESTree.Identifier | null {
+  callee = unwrapExpression(callee);
   if (callee.type === AST_NODE_TYPES.Identifier) return callee;
   if (callee.type === AST_NODE_TYPES.MemberExpression || callee.type === AST_NODE_TYPES.CallExpression) return rootIdentifier(callee.type === AST_NODE_TYPES.MemberExpression ? callee.object : callee.callee);
   return null;
@@ -74,6 +77,7 @@ function isDirectTestCallback(node: TSESTree.Node, context: Context): node is Fu
 }
 
 function testRoot(callee: TSESTree.Node): TSESTree.Identifier | null {
+  callee = unwrapExpression(callee);
   if (callee.type === AST_NODE_TYPES.Identifier) return callee;
   if (callee.type !== AST_NODE_TYPES.MemberExpression) return null;
   const modifier = staticMemberName(callee);
@@ -98,8 +102,9 @@ function isAssertion(node: TSESTree.Node, context: Context): boolean {
 }
 
 function isExplicitSkip(node: TSESTree.Node, context: Context): boolean {
-  if (node.type !== AST_NODE_TYPES.CallExpression || node.callee.type !== AST_NODE_TYPES.MemberExpression || staticMemberName(node.callee) !== "skip") return false;
-  const root = rootIdentifier(node.callee.object);
+  const unwrappedNodeCallee = node.type === "CallExpression" || node.type === "NewExpression" ? unwrapExpression(node.callee) : null;
+  if (node.type !== AST_NODE_TYPES.CallExpression || unwrappedNodeCallee?.type !== AST_NODE_TYPES.MemberExpression || staticMemberName(unwrappedNodeCallee) !== "skip") return false;
+  const root = rootIdentifier(unwrappedNodeCallee.object);
   return root !== null && TEST_NAMES.has(importedName(root, context, TEST_MODULES) ?? "");
 }
 

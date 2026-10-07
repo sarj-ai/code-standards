@@ -81,7 +81,7 @@ function isMathRandomCall(node: TSESTree.Node): node is TSESTree.CallExpression 
   if (node.type !== "CallExpression") {
     return false;
   }
-  const callee = node.callee;
+  const callee = unwrapExpression(node.callee);
   if (callee.type !== "MemberExpression") {
     return false;
   }

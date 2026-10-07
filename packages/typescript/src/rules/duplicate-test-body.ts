@@ -6,6 +6,8 @@
 
 import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
 
+import { unwrapExpression } from "./_unwrap-expression.js";
+
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile, isTestFile } from "./_paths.js";
 
@@ -71,6 +73,7 @@ export const DUPLICATE_TEST_BODY_DOCUMENTATION = {
 } as const satisfies RuleDocumentation;
 
 function rootIdentifier(callee: TSESTree.Node): TSESTree.Identifier | null {
+  callee = unwrapExpression(callee);
   if (callee.type === AST_NODE_TYPES.Identifier) return callee;
   if (callee.type === AST_NODE_TYPES.MemberExpression) return rootIdentifier(callee.object);
   if (callee.type === AST_NODE_TYPES.CallExpression) return rootIdentifier(callee.callee);
@@ -121,7 +124,8 @@ function normalizedAst(value: unknown, preserveLiteral = false): unknown {
 }
 
 function isAssertionCall(node: TSESTree.CallExpression): boolean {
-  const root = rootIdentifier(node.callee);
+  const unwrappedNodeCallee = unwrapExpression(node.callee);
+  const root = rootIdentifier(unwrappedNodeCallee);
   return root !== null && ["assert", "expect"].includes(root.name);
 }
 
@@ -162,10 +166,11 @@ export function duplicateTestBodyCandidate(
   call: TSESTree.CallExpression,
   sourceCode: Readonly<TSESLint.SourceCode>,
 ): DuplicateTestBodyCandidate | null {
+  const unwrappedCallCallee = unwrapExpression(call.callee);
   if (call.parent?.type !== AST_NODE_TYPES.ExpressionStatement) return null;
   const container = call.parent.parent;
   if (container?.type !== AST_NODE_TYPES.Program && container?.type !== AST_NODE_TYPES.BlockStatement) return null;
-  const root = rootIdentifier(call.callee);
+  const root = rootIdentifier(unwrappedCallCallee);
   if (root === null || !isDuplicateTestFrameworkIdentifier(root, sourceCode)) return null;
   const candidate = testBody(call);
   if (candidate === null) return null;
@@ -194,11 +199,12 @@ function testBody(call: TSESTree.CallExpression): {
   readonly body: TSESTree.FunctionExpression | TSESTree.ArrowFunctionExpression;
   readonly signature: string;
 } | null {
-  const signature = testCallerSignature(call.callee);
-  if (signature === null || hasEachMember(call.callee)) {
+  const unwrappedCallCallee = unwrapExpression(call.callee);
+  const signature = testCallerSignature(unwrappedCallCallee);
+  if (signature === null || hasEachMember(unwrappedCallCallee)) {
     return null;
   }
-  const title = call.arguments[0];
+  const title = call.arguments[0] === undefined ? undefined : unwrapExpression(call.arguments[0]);
   if (
     title?.type !== AST_NODE_TYPES.Literal &&
     title?.type !== AST_NODE_TYPES.TemplateLiteral
@@ -216,6 +222,7 @@ function testBody(call: TSESTree.CallExpression): {
 }
 
 function testCallerSignature(callee: TSESTree.Node): string | null {
+  callee = unwrapExpression(callee);
   if (callee.type === AST_NODE_TYPES.Identifier) {
     return TEST_CALLERS.has(callee.name) ? callee.name : null;
   }
@@ -234,6 +241,7 @@ function testCallerSignature(callee: TSESTree.Node): string | null {
 }
 
 function hasEachMember(callee: TSESTree.Node): boolean {
+  callee = unwrapExpression(callee);
   if (callee.type === AST_NODE_TYPES.MemberExpression) {
     if (staticMemberName(callee) === "each") {
       return true;

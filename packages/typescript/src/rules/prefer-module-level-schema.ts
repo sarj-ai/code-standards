@@ -219,7 +219,7 @@ function buildsLocalizedText(node: TSESTree.Node): boolean {
     if (inner.type !== AST_NODE_TYPES.CallExpression) {
       return false;
     }
-    const { callee } = inner;
+    const callee = unwrapExpression(inner.callee);
     const calleeReceiver = callee.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(callee.object) : callee;
     if (callee.type === AST_NODE_TYPES.Identifier) {
       return I18N_CALLEE_NAMES.has(callee.name);
@@ -306,19 +306,21 @@ export default createRule<Options, MessageIds>({
     const zodNamespaces = new Set<string>();
 
     function isZodCall(node: TSESTree.Node): node is TSESTree.CallExpression {
-      if (node.type !== AST_NODE_TYPES.CallExpression || node.callee.type !== AST_NODE_TYPES.MemberExpression) return false;
-      const receiver = unwrapExpression(node.callee.object);
+      const unwrappedNodeCallee = node.type === "CallExpression" || node.type === "NewExpression" ? unwrapExpression(node.callee) : null;
+      if (node.type !== AST_NODE_TYPES.CallExpression || unwrappedNodeCallee?.type !== AST_NODE_TYPES.MemberExpression) return false;
+      const receiver = unwrapExpression(unwrappedNodeCallee.object);
       return (
         node.type === AST_NODE_TYPES.CallExpression &&
-        node.callee.type === AST_NODE_TYPES.MemberExpression &&
-        ASTUtils.getPropertyName(node.callee) !== null &&
+        unwrappedNodeCallee?.type === AST_NODE_TYPES.MemberExpression &&
+        ASTUtils.getPropertyName(unwrappedNodeCallee) !== null &&
         receiver.type === AST_NODE_TYPES.Identifier &&
         zodNamespaces.has(receiver.name)
       );
     }
 
     function isSchemaConstruction(node: TSESTree.CallExpression): boolean {
-      const callee = node.callee;
+      const callee = unwrapExpression(node.callee);
+
       const calleeReceiver = callee.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(callee.object) : callee;
       if (callee.type !== AST_NODE_TYPES.MemberExpression || ASTUtils.getPropertyName(callee) === null || TERMINAL_METHODS.has((ASTUtils.getPropertyName(callee) ?? ""))) return false;
       if (calleeReceiver.type === AST_NODE_TYPES.CallExpression) return isSchemaConstruction(calleeReceiver);
@@ -395,7 +397,7 @@ export default createRule<Options, MessageIds>({
       // The combinator test runs FIRST: `isZodCall` is a type predicate, so
       // putting it on the left of `||` narrows `node` to `never` in the right
       // operand and the member access stops compiling.
-      const { callee } = node;
+      const callee = unwrapExpression(node.callee);
       const isCombinator =
         callee.type === AST_NODE_TYPES.MemberExpression &&
         ASTUtils.getPropertyName(callee) !== null &&
@@ -502,10 +504,11 @@ export default createRule<Options, MessageIds>({
         }
       },
       CallExpression(node): void {
+        const unwrappedNodeCallee = unwrapExpression(node.callee);
         if (zodNamespaces.size === 0 || !isZodCall(node)) {
           return;
         }
-        const callee = node.callee as TSESTree.MemberExpression;
+        const callee = unwrappedNodeCallee as TSESTree.MemberExpression;
         if (ASTUtils.getPropertyName(callee) === null) {
           return;
         }

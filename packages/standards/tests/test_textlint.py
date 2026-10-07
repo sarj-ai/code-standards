@@ -1,6 +1,7 @@
 from pathlib import Path, PurePosixPath
 
 import pytest
+from sarj_rule_contracts import RuleId
 
 from sarj_standards.libs.linting import runner as linting_runner, textlint
 from sarj_standards.libs.rules.contracts import (
@@ -2821,3 +2822,39 @@ def test_bug_hunt_name_requires_complete_filename_tokens(tmp_path: Path, filenam
     document = docs / filename
     document.write_text("# Maintained reference\n")
     assert _codes(document, root=tmp_path) == []
+
+
+@pytest.mark.parametrize(
+    "rule_id",
+    [
+        RuleId("config-comment-wall"),
+        RuleId("ephemeral-execution-artifact"),
+        RuleId("hidden-markdown-heading"),
+        RuleId("no-unsafe-command-argument-interpolation"),
+        RuleId("no-wildcard-secret-read-permission"),
+    ],
+    ids=str,
+)
+def test_utf8_signatures_preserve_text_rule_outcomes(tmp_path: Path, rule_id: RuleId) -> None:
+    rule = textlint.REGISTRY[rule_id]
+    for example in rule.examples:
+        for file in example.files:
+            path = tmp_path / file.path
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(file.source, encoding="utf-8-sig")
+        findings = textlint.check_paths(
+            [str(tmp_path / example.focus_path)], root=tmp_path, rule_ids=frozenset({rule_id})
+        )
+        assert len(findings) == example.expected_count
+
+
+def test_utf8_signature_keeps_embedded_config_characters(tmp_path: Path) -> None:
+    path = tmp_path / ".claude/settings.json"
+    path.parent.mkdir()
+    path.write_text(
+        '{"permissions":{"allow":["Bash(gcloud secrets versions access --secret=\\ufeff*)"]}}', encoding="utf-8-sig"
+    )
+    assert (
+        textlint.check_paths([str(path)], root=tmp_path, rule_ids=frozenset({"no-wildcard-secret-read-permission"}))
+        == []
+    )
