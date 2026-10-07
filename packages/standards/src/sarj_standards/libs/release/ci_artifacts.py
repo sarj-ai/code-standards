@@ -145,6 +145,10 @@ def _standards_job_status(root: Path, repository: str, run_id: WorkflowRunId, ru
         raise ValueError(msg)
     matches = [job for job in jobs.jobs if job.name == _TEST_JOB]
     if not matches:
+        if any(
+            job.name == "CI complete" and job.status == "completed" and job.conclusion == "success" for job in jobs.jobs
+        ):
+            return "skipped"
         return "pending"
     if len(matches) != 1:
         msg = "ambiguous Standards test job"

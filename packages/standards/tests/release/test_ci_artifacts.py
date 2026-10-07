@@ -141,6 +141,12 @@ def test_completed_partial_rerun_with_missing_job_uses_full_fallback(tmp_path: P
     assert lookup.artifact is None
 
 
+def test_partial_rerun_terminal_job_avoids_outer_finalization_wait(tmp_path: Path) -> None:
+    lookup = _lookup(tmp_path, job_name="CI complete")
+    assert not lookup.waiting
+    assert lookup.artifact is None
+
+
 def test_rerun_artifact_is_immutable_and_bound_to_its_attempt(tmp_path: Path) -> None:
     lookup = _lookup(tmp_path, run_attempt=2, artifact_name="tested-standards-2")
     assert lookup.artifact is not None
