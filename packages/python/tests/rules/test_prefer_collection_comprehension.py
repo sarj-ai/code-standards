@@ -97,6 +97,106 @@ def unrelated():
     assert _check(source) == []
 
 
+@pytest.mark.parametrize("local_import", [False, True])
+@pytest.mark.parametrize("import_style", ["module", "module_alias", "symbol", "symbol_alias"])
+@pytest.mark.parametrize("observer", ["stack", "trace", "getouterframes", "getinnerframes", "getargvalues"])
+def test_keeps_builders_with_known_inspect_observers(observer: str, import_style: str, *, local_import: bool) -> None:
+    imports, expression = {
+        "module": ("import inspect", f"inspect.{observer}(frame)"),
+        "module_alias": ("import inspect as frames", f"frames.{observer}(frame)"),
+        "symbol": (f"from inspect import {observer}", f"{observer}(frame)"),
+        "symbol_alias": (f"from inspect import {observer} as observe", "observe(frame)"),
+    }[import_style]
+    source = (
+        ("" if local_import else f"{imports}\n")
+        + "def build(rows, frame):\n"
+        + (f"    {imports}\n" if local_import else "")
+        + "    result = {}\n"
+        + "    for row in rows:\n"
+        + "        result[row.id] = row.value\n"
+        + f"    return result, {expression}\n"
+    )
+
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    "observer", ["currentframe", "stack", "trace", "getouterframes", "getinnerframes", "getargvalues"]
+)
+def test_keeps_builders_with_inspect_wildcard_observers(observer: str) -> None:
+    source = (
+        "from inspect import *\n"
+        "def build(rows):\n"
+        "    result = {}\n"
+        "    for row in rows:\n"
+        "        result[row.id] = row.value\n"
+        f"    return result, {observer}()\n"
+    )
+
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    ("imports", "expression"),
+    [
+        ("", "provider.stack()"),
+        ("", "provider.trace()"),
+        ("", "provider.getouterframes()"),
+        ("", "provider.getinnerframes()"),
+        ("", "provider.getargvalues()"),
+        ("", "stack()"),
+        ("import providers as inspect\n", "inspect.stack()"),
+        ("from providers import stack\n", "stack()"),
+        ("from .inspect import currentframe\n", "currentframe()"),
+        ("from .inspect import stack\n", "stack()"),
+        ("from .inspect import *\n", "stack()"),
+        ("from sys import *\n", "_getframe()"),
+        ("import inspect\n", "inspect.getframeinfo(frame)"),
+        ("", "compile('row', 'probe', 'eval')"),
+        ("import inspect\nframes = inspect.stack\n", "frames()"),
+    ],
+)
+def test_other_inspect_names_do_not_hide_builder_findings(imports: str, expression: str) -> None:
+    source = (
+        imports
+        + "def build(rows, provider, frame):\n"
+        + "    result = {}\n"
+        + "    for row in rows:\n"
+        + "        result[row.id] = row.value\n"
+        + f"    return result, {expression}\n"
+    )
+
+    assert len(_check(source)) == 1
+
+
+@pytest.mark.parametrize(
+    "expression",
+    [
+        "currentframe().f_locals",
+        "stack(context=0)[0].frame.f_locals",
+        "trace(context=0)[0].frame.f_locals",
+        "getouterframes(error.__traceback__.tb_frame, context=0)[0].frame.f_locals",
+        "getinnerframes(error.__traceback__, context=0)[0].frame.f_locals",
+        "getargvalues(error.__traceback__.tb_frame).locals",
+    ],
+)
+def test_inspect_observers_can_see_the_removed_loop_binding(expression: str) -> None:
+    loop = "    result = {}\n    for row in rows:\n        result[row[0]] = row[1]\n"
+    comprehension = "    result = {row[0]: row[1] for row in rows}\n"
+    for builder, expected in ((loop, True), (comprehension, False)):
+        source = (
+            "from inspect import *\n"
+            "def build(rows):\n"
+            + builder
+            + "    try:\n"
+            + "        raise ValueError()\n"
+            + "    except ValueError as error:\n"
+            + f"        return result, 'row' in {expression}\n"
+            + "assert build([(1, 2)]) == ({1: 2}, expected)\n"
+        )
+        exec(compile(source, "<frame-observer-fixture>", "exec"), {"expected": expected})  # ruff: ignore[exec-builtin] -- execute authored before/after namespace-observer fixtures.
+
+
 _PUBLIC_EXAMPLES = PreferCollectionComprehension.public_examples()
 
 

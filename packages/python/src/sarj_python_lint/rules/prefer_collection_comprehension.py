@@ -113,7 +113,8 @@ class PreferCollectionComprehension(Rule):
                 "Comments, loop-target leakage, try blocks, aliases, complex projections, and replacements that "
                 "do not fit a 120-column line or a simple formatter-style multiline comprehension are excluded. "
                 "Namespace observers, explicit inspect/sys frame access, and collections referenced by nested functions "
-                "are excluded. No autofix is offered because dict key/value evaluation order can differ."
+                "are excluded. Dynamic function aliases and helper-hidden frame reads are not resolved. "
+                "No autofix is offered because dict key/value evaluation order can differ."
             ),
             (
                 "Attribute projections can invoke properties or descriptors, so reviewers should keep the loop "
@@ -675,7 +676,7 @@ def _owner_bindings(owner: _Callable, namespace_observers: frozenset[int]) -> _O
 def _namespace_observer_calls(context: PythonFileContext) -> frozenset[int]:
     observers = {
         "builtins": {"locals", "vars", "eval", "exec"},
-        "inspect": {"currentframe"},
+        "inspect": {"currentframe", "stack", "trace", "getouterframes", "getinnerframes", "getargvalues"},
         "sys": {"_getframe"},
     }
     # Explicit aliases remain conservative exclusions even when another scope shadows them.
@@ -686,12 +687,19 @@ def _namespace_observer_calls(context: PythonFileContext) -> frozenset[int]:
             if alias.name in observers:
                 modules[alias.asname or alias.name].update(observers[alias.name])
     for node in context.nodes(ast.ImportFrom):
-        if node.module not in observers:
-            continue
-        symbols.update(alias.asname or alias.name for alias in node.names if alias.name in observers[node.module])
+        symbols.update(_observer_import_symbols(node, observers))
     return frozenset(
         id(call) for call in context.nodes(ast.Call) if _is_namespace_observer(call.func, symbols, modules)
     )
+
+
+def _observer_import_symbols(node: ast.ImportFrom, observers: dict[str, set[str]]) -> set[str]:
+    if node.level or node.module not in observers:
+        return set()
+    # These inspect observers are public wildcard exports; sys._getframe is not.
+    if node.module == "inspect" and any(alias.name == "*" for alias in node.names):
+        return observers["inspect"]
+    return {alias.asname or alias.name for alias in node.names if alias.name in observers[node.module]}
 
 
 def _is_namespace_observer(function: ast.expr, symbols: set[str], modules: dict[str, set[str]]) -> bool:
