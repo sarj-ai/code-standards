@@ -1146,6 +1146,7 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
         class AutofixingRunner:
             def __init__(self) -> None:
                 self.verification_runs = 0
+                self.doctor_runs = 0
                 self.commands: list[tuple[str, ...]] = []
                 self.push_environments: list[Mapping[str, str] | None] = []
 
@@ -1211,6 +1212,7 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
                         (repo / relative).write_bytes(contents)
                     return subprocess.CompletedProcess(rendered, 0, "", "")
                 if rendered[-1:] == ("doctor",):
+                    self.doctor_runs += 1
                     return subprocess.CompletedProcess(rendered, 0, "", "")
                 if rendered == ("mise", "exec", "--", *selected_consumer.verify):
                     self.verification_runs += 1
@@ -1329,6 +1331,7 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
         if early_move:
             with pytest.raises(rollout.RolloutError, match=r"base moved.*before verification"):
                 rollout.apply_one(selected_consumer, "5.8.1", runner)
+            assert runner.doctor_runs == 0
             assert runner.verification_runs == 0
             assert runner.push_environments == []
             assert runner.commands[-1] == ("gh", "api", "repos/example/consumer/git/ref/heads%2Fmain")

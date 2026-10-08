@@ -18,3 +18,5 @@ partial_clone = false
 # Opt in when verification needs only the target branch's complete history.
 # Other branches and tags are omitted; existing managed rollout heads are fetched.
 single_branch = false
+# Bound baseline workers to the consumer runner; use 1 for serial debugging.
+baseline_jobs = 2

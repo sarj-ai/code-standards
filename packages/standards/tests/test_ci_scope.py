@@ -111,6 +111,12 @@ def route(root: Path, base: str, head: str, *, event: str = "pull_request") -> f
         pytest.param("packages/standards/tests/test_api.py", {"standards", "codeql-python"}, id="runner-test-only"),
         pytest.param("packages/standards/src/sarj_standards/configs/ruff.strict.toml", SCOPES, id="shared-config"),
         pytest.param(".github/scripts/ci-scope.sh", SCOPES, id="routing-change"),
+        pytest.param(".github/workflows/ci.yml", SCOPES, id="shared-ci"),
+        pytest.param(".github/workflows/commit-policy.yml", {"standards", "docs"}, id="commit-policy"),
+        pytest.param(".github/workflows/standards-rollout.yml", {"standards", "docs"}, id="fleet-workflow"),
+        pytest.param(".github/scripts/dispatch-standards-rollout.sh", {"standards", "docs"}, id="fleet-dispatch"),
+        pytest.param(".github/workflows/private-refs.yml", {"standards", "docs"}, id="private-probe"),
+        pytest.param(".github/workflows/ruff-freshness.yml", {"standards", "docs"}, id="freshness-probe"),
         pytest.param(".sarj-standards.toml", {"standards", "docs"}, id="bundle-manifest"),
         pytest.param("packages/standards/uv.lock", {"standards", "docs", "mobile"}, id="runner-dependencies"),
         pytest.param(

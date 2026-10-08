@@ -260,6 +260,7 @@ class Consumer:
     baseline_update: tuple[str, ...] = ()
     partial_clone: bool = False
     single_branch: bool = False
+    baseline_jobs: int = 2
 
     @property
     def identity(self) -> str:
@@ -1420,6 +1421,7 @@ def _apply_one(  # ruff: ignore[too-many-locals] - one transaction binds verific
         except subprocess.CalledProcessError as exc:
             msg = f"{consumer.name}: dependency installation failed before a coherent rollout patch was prepared:\n"
             raise RolloutError(msg + process_failure_detail(exc)) from exc
+        assert_consumer_base_current(consumer, base_sha, runner)
         report("refreshing scoped baselines")
         baseline_rules = rollout_baseline_rules(
             consumer,
@@ -1883,6 +1885,7 @@ def _registry_consumer(entry_value: object) -> Consumer:
         "baseline_update",
         "partial_clone",
         "single_branch",
+        "baseline_jobs",
     }:
         msg = f"invalid registry entry keys: {entry_value!r}"
         raise RolloutError(msg)
@@ -1917,11 +1920,20 @@ def _registry_consumer(entry_value: object) -> Consumer:
         auto_merge=auto_merge,
         partial_clone=optional_bool(entry, "partial_clone"),
         single_branch=optional_bool(entry, "single_branch"),
+        baseline_jobs=_baseline_jobs(entry),
         channel=RolloutChannel(channel_value),
         baseline_rules=_registry_strings(baseline_rules_value),
         baseline_paths=baseline_paths,
         baseline_update=_registry_strings(baseline_update_value),
     )
+
+
+def _baseline_jobs(entry: dict[str, object]) -> int:
+    value = entry.get("baseline_jobs", 2)
+    if type(value) is not int or value not in {1, 2}:
+        msg = "baseline_jobs must be 1 or 2"
+        raise RolloutError(msg)
+    return value
 
 
 def _validated_baseline_paths(
@@ -2211,7 +2223,7 @@ def _prepare_rollout_baseline(
             baseline_relative,
             "--trust-repository-code",
             "--jobs",
-            "2",
+            str(consumer.baseline_jobs),
         ]
         for selector in baseline_rules:
             baseline_command.extend(("--rule", selector))

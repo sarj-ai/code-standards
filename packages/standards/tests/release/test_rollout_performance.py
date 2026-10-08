@@ -401,3 +401,29 @@ def test_reduced_clone_scope_requires_registry_opt_in(single_branch: bool, tmp_p
     assert ("--single-branch" in command) is single_branch
     assert ("--no-tags" in command) is single_branch
     assert "--depth" not in command
+
+
+@pytest.mark.parametrize("jobs", [1, 2])
+def test_baseline_worker_budget_is_explicit_and_bounded(tmp_path: Path, jobs: int) -> None:
+    registry = fleet_registry(tmp_path)
+    registry.write_text(registry.read_text() + f"\nbaseline_jobs = {jobs}\n")
+    target = rollout.load_registry(registry)[-1]
+    assert target.baseline_jobs == jobs
+    (tmp_path / ".sarj-standards.toml").write_text(
+        'schema = 4\nbundle = "8.32.0"\n[baseline]\ndiagnostics = "diagnostic-baseline.json"\n'
+    )
+    (tmp_path / "diagnostic-baseline.json").write_text("{}\n")
+    runner = FakeRolloutRunner()
+    rollout._prepare_rollout_baseline(  # pyright: ignore[reportPrivateUsage] -- command-boundary regression. # ruff: ignore[private-member-access]
+        target, tmp_path, runner, ("python:SARJ001",), (), tool=("code-standards",), environment={}
+    )
+    command = runner.commands[-1]
+    assert command[command.index("--jobs") + 1] == str(jobs)
+
+
+@pytest.mark.parametrize("value", ["true", "0", "3", "4", '"2"'])
+def test_invalid_baseline_budget_is_rejected_before_work(tmp_path: Path, value: str) -> None:
+    registry = fleet_registry(tmp_path)
+    registry.write_text(registry.read_text() + f"\nbaseline_jobs = {value}\n")
+    with pytest.raises(rollout.RolloutError, match="baseline_jobs"):
+        rollout.load_registry(registry)
