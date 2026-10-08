@@ -1197,6 +1197,8 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
                 if rendered == ("gh", "api", "repos/example/consumer/git/ref/heads%2Fmain"):
                     live_sha = "c" * 40 if target_moves else base_sha
                     return subprocess.CompletedProcess(rendered, 0, live_base_ref_payload(live_sha), "")
+                if "uvx" in rendered and rendered[-1] == "--version":
+                    return subprocess.CompletedProcess(rendered, 0, "code-standards 5.8.1", "")
                 if "update" in rendered:
                     manifest.write_text('schema = 4\nbundle = "5.8.1"\n', encoding="utf-8")
                     for relative, contents in retired_expected.items():
