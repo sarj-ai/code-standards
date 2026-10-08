@@ -7,7 +7,7 @@ schema = 1
 name = "example-consumer"
 repository = "example/consumer"
 branch = "main"
-verify = ["make check"]
+verify = ["make", "check"]
 channel = "canary"
 baseline_rules = ["eslint:@sarj/example-promoted-rule"]
 requires_approval = true
@@ -20,3 +20,9 @@ partial_clone = false
 single_branch = false
 # Bound baseline workers to the consumer runner; use 1 for serial debugging.
 baseline_jobs = 2
+# Optional independent checks run after `verify` succeeds. Keep formatters and
+# setup in `verify`; checks must not mutate shared inputs. Every check must pass.
+# This allows a reviewed standards-only cohort or overlapping the full gate.
+# Existing registries continue to execute exactly their `verify` command.
+verify_checks = []
+verify_jobs = 2 # 1 for serial debugging; 2 or 4 for independent checks.

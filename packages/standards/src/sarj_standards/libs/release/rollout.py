@@ -261,6 +261,8 @@ class Consumer:
     partial_clone: bool = False
     single_branch: bool = False
     baseline_jobs: int = 2
+    verify_checks: tuple[tuple[str, ...], ...] = ()
+    verify_jobs: int = 2
 
     @property
     def identity(self) -> str:
@@ -1886,6 +1888,8 @@ def _registry_consumer(entry_value: object) -> Consumer:
         "partial_clone",
         "single_branch",
         "baseline_jobs",
+        "verify_checks",
+        "verify_jobs",
     }:
         msg = f"invalid registry entry keys: {entry_value!r}"
         raise RolloutError(msg)
@@ -1921,11 +1925,38 @@ def _registry_consumer(entry_value: object) -> Consumer:
         partial_clone=optional_bool(entry, "partial_clone"),
         single_branch=optional_bool(entry, "single_branch"),
         baseline_jobs=_baseline_jobs(entry),
+        verify_checks=_verification_checks(entry),
+        verify_jobs=_verification_jobs(entry),
         channel=RolloutChannel(channel_value),
         baseline_rules=_registry_strings(baseline_rules_value),
         baseline_paths=baseline_paths,
         baseline_update=_registry_strings(baseline_update_value),
     )
+
+
+_MAX_VERIFICATION_CHECKS = 16
+
+
+def _verification_checks(entry: dict[str, object]) -> tuple[tuple[str, ...], ...]:
+    checks = entry.get("verify_checks", [])
+    if not is_array(checks) or len(checks) > _MAX_VERIFICATION_CHECKS:
+        msg = "verify_checks must contain at most 16 independent argv commands"
+        raise RolloutError(msg)
+    commands: list[tuple[str, ...]] = []
+    for check in checks:
+        if not is_array(check) or not check or not all(isinstance(item, str) and item for item in check):
+            msg = "verify_checks must contain nonempty argv commands"
+            raise RolloutError(msg)
+        commands.append(tuple(item for item in check if isinstance(item, str)))
+    return tuple(commands)
+
+
+def _verification_jobs(entry: dict[str, object]) -> int:
+    value = entry.get("verify_jobs", 2)
+    if type(value) is not int or value not in {1, 2, 4}:
+        msg = "verify_jobs must be 1, 2 or 4"
+        raise RolloutError(msg)
+    return value
 
 
 def _baseline_jobs(entry: dict[str, object]) -> int:
@@ -2259,11 +2290,12 @@ def _verify_rollout_patch(
     for attempt in range(MAX_VERIFICATION_ATTEMPTS):
         progress(consumer, f"verification attempt {attempt + 1}/{MAX_VERIFICATION_ATTEMPTS}")
         started = time.monotonic()
-        verification = runner.run(
-            (*tool_prefix, *consumer.verify),
-            cwd=repo,
-            env=consumer_verification_environment(environment, base_sha),
-            check=False,
+        verification = run_consumer_verification(
+            consumer,
+            repo,
+            runner,
+            tool_prefix,
+            environment=consumer_verification_environment(environment, base_sha),
         )
         progress(
             consumer,
@@ -2288,6 +2320,38 @@ def _verify_rollout_patch(
             verification_failure_detail += "\nconsumer verification did not converge after safe auto-fixes"
         break
     return verification_failure_detail
+
+
+def run_consumer_verification(
+    consumer: Consumer,
+    repo: Path,
+    runner: CommandRunner,
+    tool_prefix: tuple[str, ...],
+    *,
+    environment: Mapping[str, str],
+) -> subprocess.CompletedProcess[str]:
+    def run(index: int, command: tuple[str, ...]) -> subprocess.CompletedProcess[str]:
+        started = time.monotonic()
+        try:
+            result = runner.run((*tool_prefix, *command), cwd=repo, env=environment, check=False)
+        finally:
+            progress(consumer, f"verification command {index} finished in {time.monotonic() - started:.2f}s")
+        return result
+
+    # Preparation may format or synchronize files. Finish it before independent,
+    # explicitly registered checks start reading the resulting candidate tree.
+    preparation = run(0, consumer.verify)
+    if preparation.returncode != 0 or not consumer.verify_checks:
+        return preparation
+    with ThreadPoolExecutor(max_workers=consumer.verify_jobs) as executor:
+        futures = [executor.submit(run, index, command) for index, command in enumerate(consumer.verify_checks, 1)]
+        results = [future.result() for future in futures]
+    failures = [
+        f"verification command {index} failed (exit {result.returncode}):\n{verification_detail(result)}"
+        for index, result in enumerate(results, 1)
+        if result.returncode != 0
+    ]
+    return subprocess.CompletedProcess(consumer.verify, 1 if failures else 0, "\n\n".join(failures), "")
 
 
 def _update_consumer_baselines(

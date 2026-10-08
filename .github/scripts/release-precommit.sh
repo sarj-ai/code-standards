@@ -12,7 +12,7 @@ printf 'SELECT 1;\n' > "$consumer/smoke.sql"
 python -c 'import json,os,pathlib,sys; pathlib.Path(sys.argv[1]).write_text(json.dumps({"repos":[{"repo":pathlib.Path(os.environ["GITHUB_WORKSPACE"]).resolve().as_uri(),"rev":os.environ["GITHUB_SHA"],"hooks":[{"id":"sarj-standards"}]}]}),encoding="utf-8")' "$consumer/.pre-commit-config.yaml"
 git -C "$consumer" add .
 git -C "$consumer" commit -qm fixture
-pc=(uv run --project "$root/packages/standards" --frozen pre-commit)
+pc=(uv run --project "$root/packages/standards" --no-sync pre-commit)
 (cd "$consumer" && "${pc[@]}" run sarj-standards --color never --files smoke.py smoke.sql smoke.tf)
 (cd "$consumer" && "${pc[@]}" run sarj-standards --color never --files smoke.py smoke.sql smoke.tf) 2>&1 | tee "$1/pre-commit-warm.log"
 if grep -q 'Installing environment' "$1/pre-commit-warm.log"; then
