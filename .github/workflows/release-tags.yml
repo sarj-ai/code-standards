@@ -249,4 +249,5 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           STANDARDS_TAG: ${{ needs.preflight.outputs.standards_tag }}
+          PUBLISHED_SHA: ${{ github.event.workflow_run.head_sha }}
         run: bash .github/scripts/dispatch-standards-rollout.sh

@@ -243,12 +243,12 @@ gh() {
     environment = {
         "PATH": f"{Path(jq).parent}{os.pathsep}{os.defpath}",
         "GITHUB_REPOSITORY": "example/standards",
-        "STANDARDS_TAG": "standards-v8.38.3",
-        "PUBLISHED_SHA": published,
         "RUNS": str(runs),
         "EVENTS": str(events),
         "FAILURE": failure,
     }
+
+    environment.update(_dispatch_step_environment(published))
 
     result = subprocess.run(
         ("bash", "-c", stub + _release_dispatch_command()),
@@ -270,3 +270,28 @@ gh() {
 
 def _release_dispatch_command() -> str:
     return (REPO_ROOT / ".github/scripts/dispatch-standards-rollout.sh").read_text(encoding="utf-8")
+
+
+def _dispatch_step_environment(published: str) -> dict[str, str]:
+    workflow = _load_yaml(REPO_ROOT / ".github/workflows/release-tags.yml")
+    assert _is_object(workflow)
+    jobs = workflow["jobs"]
+    assert _is_object(jobs)
+    dispatch = jobs["dispatch-rollout"]
+    assert _is_object(dispatch)
+    steps = dispatch["steps"]
+    assert _is_array(steps)
+    step = steps[-1]
+    assert _is_object(step)
+    step_environment = step["env"]
+    assert _is_object(step_environment)
+    context = {
+        "${{ github.token }}": "fixture-token",
+        "${{ needs.preflight.outputs.standards_tag }}": "standards-v8.38.4",
+        "${{ github.event.workflow_run.head_sha }}": published,
+    }
+    environment: dict[str, str] = {}
+    for name, expression in step_environment.items():
+        assert isinstance(expression, str)
+        environment[name] = context[expression]
+    return environment
