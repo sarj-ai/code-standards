@@ -879,13 +879,19 @@ jobs:
           save-cache: false
           cache-dependency-glob: 'packages/**/uv.lock'
       - run: uv python install 3.14
-      - run: uv sync --locked --dev
+      - name: Cache pip dependencies for fresh hook installs
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/portability-pip-cache
+          key: portability-pip-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('packages/**/uv.lock', 'uv.lock') }}
+          restore-keys: portability-pip-${{ runner.os }}-${{ runner.arch }}-
       - name: Consumer CLI and fresh pre-commit portability in parallel
         shell: bash
         timeout-minutes: 10
         env:
           PRE_COMMIT_HOME: ${{ runner.temp }}/sarj-pre-commit
           PORTABILITY_REPORT_DIR: ${{ runner.temp }}/portability-reports
+          PIP_CACHE_DIR: ${{ runner.temp }}/portability-pip-cache
         run: bash "$GITHUB_WORKSPACE/.github/scripts/release-portability.sh"
       - name: Keep portability timings and failure logs
         if: always()
