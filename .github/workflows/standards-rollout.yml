@@ -51,7 +51,7 @@ jobs:
           set -euo pipefail
           version="$REQUESTED_VERSION"
           if [[ -z "$version" && "$EVENT_NAME" == schedule ]]; then
-            version="$(uvx --no-config --isolated --python 3.14 --refresh-package code-standards --from code-standards code-standards --version | sed -E 's/.* ([0-9][^ ]*)$/\1/')"
+            version="$(uvx --no-config --isolated --python 3.14 --refresh --from code-standards code-standards --version | sed -E 's/.* ([0-9][^ ]*)$/\1/')"
           fi
           if [[ -z "$version" ]]; then
             echo "::error::an exact published Standards version is required"

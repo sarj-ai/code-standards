@@ -42,9 +42,9 @@ def test_consumer_install_refreshes_its_provisioned_uv_and_reuses_successful_res
 
     assert len(runner.commands) == 3
     assert runner.commands[0] == runner.commands[1]
-    assert "--refresh-package" not in runner.commands[2]
+    assert "--refresh" not in runner.commands[2]
     command = runner.commands[0]
-    assert command[:6] == ("mise", "exec", "--", "uvx", "--refresh-package", "code-standards")
+    assert command[:5] == ("mise", "exec", "--", "uvx", "--refresh")
     assert command[-1] == "--version"
     assert runner.commands[2][-3:] == ("update", "--to", VERSION)
     assert runner.environments == [environment] * 3

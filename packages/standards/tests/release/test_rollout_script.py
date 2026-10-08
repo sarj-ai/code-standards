@@ -936,8 +936,7 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
                 "--isolated",
                 "--python",
                 "3.14",
-                "--refresh-package",
-                "code-standards",
+                "--refresh",
                 "--from",
                 "code-standards",
                 "code-standards",
@@ -959,7 +958,7 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
 
         assert rollout.verify_release("5.8.1", runner) == sha
         assert "code-standards==5.8.1" in runner.commands[0]
-        assert "--refresh-package" in runner.commands[0]
+        assert "--refresh" in runner.commands[0]
         assert "refs/tags/standards-v5.8.1^{}" in runner.commands[1]
 
     def test_release_verification_waits_for_pypi_edge_visibility(self) -> None:

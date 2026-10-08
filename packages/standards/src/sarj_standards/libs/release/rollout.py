@@ -432,8 +432,7 @@ def verify_release(
                 "--isolated",
                 "--python",
                 "3.14",
-                "--refresh-package",
-                "code-standards",
+                "--refresh",
                 "--from",
                 f"code-standards=={version}",
                 "code-standards",
@@ -1439,8 +1438,9 @@ def update_consumer_bundle(
     sleep: Callable[[float], None] = time.sleep,
 ) -> None:
     # A consumer can provision a different uv than the release probe used.
-    # Refresh its package metadata once; subsequent commands reuse that cache.
-    command = (*tool_prefix, tool[0], "--refresh-package", launcher.PACKAGE, *tool[1:], "--version")
+    # Refresh the dependency graph once; sibling releases can also be absent
+    # from cached index metadata. Subsequent commands reuse that cache.
+    command = (*tool_prefix, tool[0], "--refresh", *tool[1:], "--version")
     for attempt in range(RELEASE_VISIBILITY_ATTEMPTS):
         result = runner.run(command, cwd=repo, env=environment, check=False)
         if result.returncode == 0:
@@ -1557,8 +1557,7 @@ def latest_version(runner: CommandRunner) -> str:
             "--isolated",
             "--python",
             "3.14",
-            "--refresh-package",
-            "code-standards",
+            "--refresh",
             "--from",
             "code-standards",
             "code-standards",
