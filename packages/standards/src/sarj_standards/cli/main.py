@@ -2304,6 +2304,13 @@ def _baseline_analysis_reports(args: _Args, root: Path, selected: list[str] | No
                 rules=scoped_rules,
                 include_react_doctor=False,
                 pass_on_unpruned_eslint_suppressions=args.baseline_cmd == "update" and bool(args.baseline_rules),
+                jobs=args.jobs
+                if not (
+                    upstream_eslint
+                    or _react_doctor_rules_for_baseline(args.baseline_rules)
+                    or _shellcheck_rules_for_baseline(args.baseline_rules)
+                )
+                else 1,
             )
         )
     if upstream_eslint:
@@ -2312,10 +2319,10 @@ def _baseline_analysis_reports(args: _Args, root: Path, selected: list[str] | No
         operations.append(partial(_react_doctor_baseline_report, root, selected, trust, _baseline_corpus_policy(root)))
     if _shellcheck_rules_for_baseline(args.baseline_rules):
         operations.append(partial(_baseline_external_report, root, selected, trust, "shellcheck"))
-    if args.jobs == 1:
+    if args.jobs == 1 or len(operations) <= 1:
         return [operation() for operation in operations]
-    # One bounded pool owns baseline concurrency; analyzers keep their serial
-    # defaults and every result is checked before any baseline is written.
+    # Multiple operations share one bounded pool with serial inner analyzers;
+    # a single operation uses its own worker budget. Check every result first.
     with ThreadPoolExecutor(max_workers=args.jobs, thread_name_prefix="baseline") as workers:
         pending = [workers.submit(operation) for operation in operations]
         return [result.result() for result in pending]
@@ -2891,8 +2898,11 @@ def build_app(handler: Callable[[_Args], int] = _dispatch) -> typer.Typer:
             ),
         ] = False,
         jobs: Annotated[
-            int, typer.Option("--jobs", min=1, max=2, help="overlap native and external analysis (default: 1)")
-        ] = 1,
+            int,
+            typer.Option(
+                "--jobs", min=1, max=2, help="overlap native and external analysis (default: 2; 1 for serial debugging)"
+            ),
+        ] = 2,
         skip_python_type_check: Annotated[
             bool,
             typer.Option(

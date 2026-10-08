@@ -338,3 +338,66 @@ def test_progress_reports_phase_and_total_time_even_when_a_phase_fails(
     output = capsys.readouterr().err
     assert "finished baseline in 2.50s" in output
     assert "ended verification after 3.50s; total 6.00s" in output
+
+
+@pytest.mark.parametrize("failed", ["", "uv", "npm"])
+def test_bootstrap_overlaps_locked_environments_but_waits_before_custom_commands(tmp_path: Path, failed: str) -> None:
+    (tmp_path / "backend").mkdir()
+    (tmp_path / "backend/uv.lock").write_text("version = 1\n")
+    (tmp_path / "primary").mkdir()
+    (tmp_path / "secondary").mkdir()
+    (tmp_path / "secondary/package-lock.json").write_text("{}\n")
+    (tmp_path / ".sarj-standards.toml").write_text(
+        'schema = 4\nbundle = "8.32.0"\n[dest]\npython = "backend"\ntypescript = "primary"\n'
+        '[ci]\nbootstrap = ["generate", "typegen"]\n'
+    )
+    ready = Barrier(2, timeout=5)
+    finished: set[str] = set()
+    lock = Lock()
+    bootstrap: list[str] = []
+
+    @final
+    class Runner:
+        def run(
+            self,
+            command: Sequence[str],
+            *,
+            cwd: Path | None = None,
+            check: bool = True,
+            env: Mapping[str, str] | None = None,
+        ) -> subprocess.CompletedProcess[str]:
+            assert cwd is not None
+            assert not check
+            assert env == {"PATH": "/tools"}
+            tool = command[0]
+            if tool in {"uv", "npm"}:
+                ready.wait()
+                with lock:
+                    finished.add(tool)
+                code = 7 if tool == failed else 0
+                return subprocess.CompletedProcess(command, code, tool, "")
+            assert finished == {"uv", "npm"}
+            bootstrap.append(command[-1])
+            return subprocess.CompletedProcess(command, 0, "", "")
+
+    result = rollout.run_consumer_bootstrap(tmp_path, (), Runner(), {"PATH": "/tools"})
+    assert finished == {"uv", "npm"}
+    assert bootstrap == ([] if failed else ["generate", "typegen"])
+    assert (result is None) is (not failed)
+
+
+@pytest.mark.parametrize("single_branch", [False, True])
+def test_reduced_clone_scope_requires_registry_opt_in(single_branch: bool, tmp_path: Path) -> None:
+    path = tmp_path / "fleet.toml"
+    path.write_text(
+        'schema = 1\n[[consumer]]\nname = "Example"\nrepository = "example/consumer"\n'
+        'branch = "main"\nverify = ["true"]\n' + f"single_branch = {str(single_branch).lower()}\n"
+    )
+    target = rollout.load_registry(path)[0]
+    runner = FakeRolloutRunner([(0, "[]"), (1, "HTTP 404")])
+    with pytest.raises(rollout.RolloutError, match="cloned base"):
+        rollout.apply_one(target, VERSION, runner)
+    command = next(command for command in runner.commands if command[:3] == ("gh", "repo", "clone"))
+    assert ("--single-branch" in command) is single_branch
+    assert ("--no-tags" in command) is single_branch
+    assert "--depth" not in command

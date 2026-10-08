@@ -645,7 +645,9 @@ def managed_open_pr_payload(
     )
 
 
-def live_base_ref_payload(base_sha: str) -> str:
+def live_base_ref_payload(base_sha: str, *, moves: bool = False, runs: int = 1, early: bool = False) -> str:
+    if moves and (runs or early):
+        base_sha = "c" * 40
     return json.dumps({"ref": "refs/heads/main", "object": {"type": "commit", "sha": base_sha}})
 
 
@@ -1072,15 +1074,17 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
             "auto_merge",
             "expected_state",
             "expected_verification_runs",
+            "early_move",
         ),
         [
-            ((1, 0), frozenset({1}), False, True, False, "pr-open", 2),
-            ((1,), frozenset[int](), False, True, False, "blocked", 1),
-            ((0, 0), frozenset({1}), False, True, False, "pr-open", 2),
-            ((0, 0), frozenset({1, 2}), False, True, False, "blocked", 2),
-            ((0,), frozenset[int](), True, True, True, "missing", 1),
-            ((0,), frozenset[int](), False, False, True, "missing", 1),
-            ((0,), frozenset[int](), False, True, True, "pr-open", 1),
+            ((1, 0), frozenset({1}), False, True, False, "pr-open", 2, False),
+            ((1,), frozenset[int](), False, True, False, "blocked", 1, False),
+            ((0, 0), frozenset({1}), False, True, False, "pr-open", 2, False),
+            ((0, 0), frozenset({1, 2}), False, True, False, "blocked", 2, False),
+            ((0,), frozenset[int](), True, True, True, "missing", 1, False),
+            ((0,), frozenset[int](), False, False, True, "missing", 1, False),
+            ((0,), frozenset[int](), False, True, True, "pr-open", 1, False),
+            ((0,), frozenset[int](), True, True, True, "error", 0, True),
         ],
     )
     def test_verification_autofix_amends_a_clean_candidate_once(
@@ -1095,6 +1099,7 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
         auto_merge: bool,
         expected_state: str,
         expected_verification_runs: int,
+        early_move: bool,
     ) -> None:
         selected_consumer = rollout.Consumer(
             "Consumer",
@@ -1194,8 +1199,10 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
                         "",
                     )
                 if rendered == ("gh", "api", "repos/example/consumer/git/ref/heads%2Fmain"):
-                    live_sha = "c" * 40 if target_moves else base_sha
-                    return subprocess.CompletedProcess(rendered, 0, live_base_ref_payload(live_sha), "")
+                    payload = live_base_ref_payload(
+                        base_sha, moves=target_moves, runs=self.verification_runs, early=early_move
+                    )
+                    return subprocess.CompletedProcess(rendered, 0, payload, "")
                 if "uvx" in rendered and rendered[-1] == "--version":
                     return subprocess.CompletedProcess(rendered, 0, "code-standards 5.8.1", "")
                 if "update" in rendered:
@@ -1318,6 +1325,14 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
         monkeypatch.setattr(  # sarj-noqa: SARJ445 -- test records pull-request publication without remote writes
             rollout, "pull_request", managed_pull_request
         )
+
+        if early_move:
+            with pytest.raises(rollout.RolloutError, match=r"base moved.*before verification"):
+                rollout.apply_one(selected_consumer, "5.8.1", runner)
+            assert runner.verification_runs == 0
+            assert runner.push_environments == []
+            assert runner.commands[-1] == ("gh", "api", "repos/example/consumer/git/ref/heads%2Fmain")
+            return
 
         result = rollout.apply_one(selected_consumer, "5.8.1", runner)
 
