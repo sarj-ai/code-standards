@@ -119,6 +119,7 @@ export function createLogMatcher(options: LoggingOptions = {}): LogMatcher {
   }
 
   function isLoggingCall(expr: TSESTree.Node): boolean {
+    expr = unwrapExpression(expr);
     if (expr.type !== "CallExpression") {
       return false;
     }

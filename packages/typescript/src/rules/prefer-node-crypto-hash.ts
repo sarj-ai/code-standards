@@ -7,6 +7,7 @@
 import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
 
 import { unwrapExpression } from "./_unwrap-expression.js";
+import { staticString } from "./_static-string.js";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 
@@ -152,7 +153,7 @@ export default createRule<Options, MessageIds>({
       CallExpression(node): void {
         const unwrappedNodeCallee = unwrapExpression(node.callee);
         if (unwrappedNodeCallee.type !== AST_NODE_TYPES.MemberExpression || !isMemberCall(node, "digest")) return;
-        const update = unwrappedNodeCallee.object;
+        const update = unwrapExpression(unwrappedNodeCallee.object);
         if (
           update.type !== AST_NODE_TYPES.CallExpression ||
           update.arguments.length !== 1 ||
@@ -161,13 +162,12 @@ export default createRule<Options, MessageIds>({
           return;
         const updateCallee = unwrapExpression(update.callee);
         if (updateCallee.type !== AST_NODE_TYPES.MemberExpression) return;
-        const create = updateCallee.object;
+        const create = unwrapExpression(updateCallee.object);
         const algorithm = create.type === AST_NODE_TYPES.CallExpression && create.arguments[0] !== undefined ? unwrapExpression(create.arguments[0]) : null;
         if (
           create.type !== AST_NODE_TYPES.CallExpression ||
           create.arguments.length !== 1 ||
-          algorithm?.type !== AST_NODE_TYPES.Literal ||
-          typeof algorithm.value !== "string" ||
+          staticString(algorithm ?? undefined) === null ||
           !isCreateHashCall(
             create,
             directBindings,

@@ -1157,3 +1157,59 @@ def test_repeated_checks_observe_sibling_file_changes(tmp_path: Path) -> None:
     (root / "env" / "prod" / _TFVARS_NAME).write_text("enabled = false\n", encoding="utf-8")
 
     assert _check_env(root, "dev") == []
+
+
+@pytest.mark.parametrize("label", [r'"\u0072egion"', r'"\U00000072egion"'])
+def test_escaped_variable_label_does_not_create_orphan_inputs(tmp_path: Path, label: str) -> None:
+    root = _write_root(
+        tmp_path,
+        f"variable {label} {{\n  type = string\n}}\n",
+        {"dev": 'region = "east"\n', "prod": 'region = "west"\n'},
+    )
+    assert _check_env(root, "dev") == []
+    assert _check_env(root, "prod") == []
+
+
+@pytest.mark.parametrize(
+    ("type_name", "value"), [("bool", "((false))"), ("number", "((123))"), ("string", '("false")')]
+)
+def test_grouped_constant_inputs_keep_the_declared_scalar_type(tmp_path: Path, type_name: str, value: str) -> None:
+    root = _write_root(
+        tmp_path,
+        f'variable "setting" {{\n  type = {type_name}\n}}\n',
+        {"dev": f"setting = {value}\n", "prod": f"setting = {value}\n"},
+    )
+    findings = _check_env(root, "dev")
+    assert len(findings) == 1
+    assert "required-but-constant" in findings[0].message
+
+
+def test_grouped_distinct_string_inputs_are_not_collapsed_to_booleans(tmp_path: Path) -> None:
+    root = _write_root(
+        tmp_path,
+        'variable "setting" {\n  type = string\n}\n',
+        {"dev": 'setting = ("false")\n', "prod": 'setting = ("0")\n'},
+    )
+    assert _check_env(root, "dev") == []
+
+
+def test_grouped_quoted_numeric_input_is_never_echoed(tmp_path: Path) -> None:
+    root = _write_root(
+        tmp_path,
+        'variable "account" {\n  type = number\n}\n',
+        {"dev": 'account = (("123456789012"))\n', "prod": 'account = (("123456789012"))\n'},
+    )
+    findings = _check_env(root, "dev")
+    assert len(findings) == 1
+    assert "123456789012" not in findings[0].message
+
+
+def test_hcl_long_unicode_escape_is_a_known_constant_input(tmp_path: Path) -> None:
+    root = _write_root(
+        tmp_path,
+        'variable "region" {\n  type = string\n  default = "east"\n}\n',
+        {"dev": r'region = "\U00000077est"' + "\n", "prod": 'region = "west"\n'},
+    )
+    findings = _check_env(root, "dev")
+    assert len(findings) == 1
+    assert "constant-everywhere" in findings[0].message

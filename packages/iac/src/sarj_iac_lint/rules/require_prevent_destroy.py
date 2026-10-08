@@ -4,7 +4,7 @@ from pathlib import PurePosixPath
 from types import MappingProxyType
 from typing import TYPE_CHECKING, NamedTuple, final, override
 
-from sarj_iac_lint._hcl import blocks
+from sarj_iac_lint._hcl import blocks, literal_string, literal_token
 from sarj_iac_lint.rule_base import (
     AutofixPolicy,
     DefaultLevel,
@@ -222,7 +222,7 @@ def _violation(block: Block) -> str | None:
         return "has a lifecycle block without prevent_destroy"
     return (
         None
-        if _literal(guard.value) == "true"
+        if literal_token(guard.value) == "true"
         else f"sets prevent_destroy = {guard.value.strip()}, which is not literal true"
     )
 
@@ -233,30 +233,16 @@ def _provider_guard(block: Block) -> _ProviderGuardResult:
     if resource_type in _GOOGLE_DELETION_POLICY_TYPES:
         policy = block.attribute(_DELETION_POLICY)
         if policy is not None:
-            if _quoted_literal(policy.value) == "PREVENT":
+            if literal_string(policy.value) == "PREVENT":
                 return _ProviderGuardResult(protected=True, problem=None)
             problems.append(f"sets deletion_policy = {policy.value.strip()}, which is not literal PREVENT")
     if resource_type in _GOOGLE_DELETION_PROTECTION_TYPES:
         protection = block.attribute(_DELETION_PROTECTION)
         if protection is not None:
-            if _literal(protection.value) == "true":
+            if literal_token(protection.value) == "true":
                 return _ProviderGuardResult(protected=True, problem=None)
             problems.append(f"sets deletion_protection = {protection.value.strip()}, which is not literal true")
     return _ProviderGuardResult(protected=False, problem="; and ".join(problems) if problems else None)
-
-
-def _literal(value: str) -> str:
-    text = value.strip().rstrip(",").strip()
-    while text.startswith("(") and text.endswith(")"):
-        text = text[1:-1].strip()
-    return text
-
-
-def _quoted_literal(value: str) -> str | None:
-    text = value.strip().rstrip(",").strip()
-    while text.startswith("(") and text.endswith(")"):
-        text = text[1:-1].strip()
-    return text[1:-1] if text.startswith('"') and text.endswith('"') else None
 
 
 def _destructive_problem(block: Block) -> str | None:
@@ -264,9 +250,9 @@ def _destructive_problem(block: Block) -> str | None:
         attribute = block.attribute(name)
         if attribute is None:
             continue
-        if _literal(attribute.value) == "true":
+        if literal_token(attribute.value) == "true":
             return f"sets {name} = true, allowing contained data to be deleted during destroy"
-        if _literal(attribute.value) != "false":
+        if literal_token(attribute.value) != "false":
             return f"sets {name} = {attribute.value.strip()}, whose destructive behavior is unresolved"
     return None
 

@@ -85,6 +85,7 @@ export default createRule<Options, MessageIds>({
         (value.type === AST_NODE_TYPES.Identifier && value.name === "undefined" && (bindingOf(value)?.defs.length ?? 0) === 0);
     };
     const uninitializedUseFormCall = (node: TSESTree.Node): boolean => {
+      node = unwrapExpression(node);
       const unwrappedNodeCallee = node.type === "CallExpression" || node.type === "NewExpression" ? unwrapExpression(node.callee) : null;
       if (node.type !== AST_NODE_TYPES.CallExpression || unwrappedNodeCallee?.type !== AST_NODE_TYPES.Identifier || importedKind(unwrappedNodeCallee) !== "useForm") return false;
       const options = node.arguments[0];

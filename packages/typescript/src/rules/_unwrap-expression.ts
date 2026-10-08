@@ -17,7 +17,9 @@ export function unwrapExpression(node: TSESTree.Node): TSESTree.Node {
 }
 
 /** Return the outermost erased wrapper that still denotes this expression. */
-export function outerExpression(node: TSESTree.Expression): TSESTree.Expression {
+export function outerExpression(node: TSESTree.Expression): TSESTree.Expression;
+export function outerExpression(node: TSESTree.Node): TSESTree.Node;
+export function outerExpression(node: TSESTree.Node): TSESTree.Node {
   while (node.parent !== undefined && node.parent !== null && isErasedExpression(node.parent) && node.parent.expression === node) node = node.parent;
   return node;
 }

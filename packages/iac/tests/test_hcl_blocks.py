@@ -4,7 +4,7 @@ import pytest
 
 # `_hcl` is package-private by design; the walker is exercised directly because
 # its guards (masking, nesting, value rejoining) are what the rules depend on.
-from sarj_iac_lint._hcl import blocks, document, strip_outer_parentheses, tokens
+from sarj_iac_lint._hcl import blocks, document, literal_string, literal_token, strip_outer_parentheses, tokens
 
 
 def test_tokens_keeps_an_interpolated_string_whole():
@@ -228,3 +228,49 @@ def test_excessive_nesting_fails_with_a_controlled_parse_error() -> None:
 
     with pytest.raises(ValueError, match="nesting exceeds"):
         blocks(source)
+
+
+@pytest.mark.parametrize("label", [r'"\u0061ws_db_instance"', r'"\U00000061ws_db_instance"'])
+def test_escaped_block_labels_preserve_resource_identity(label: str) -> None:
+    (block,) = blocks(f'resource {label} "main" {{\n  engine = "postgres"\n}}\n')
+    assert block.labels == ("aws_db_instance", "main")
+    assert (block.line, block.col) == (1, 1)
+
+
+@pytest.mark.parametrize("value", [r'"\u0050REVENT"', r'"\U00000050REVENT"', '( ( "PREVENT" ) )'])
+def test_literal_string_decodes_only_a_single_static_value(value: str) -> None:
+    assert literal_string(value) == "PREVENT"
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        '"${var.policy}"',
+        '"%{ if true }PREVENT%{ endif }"',
+        r'"\bPREVENT"',
+        r'"\uD800"',
+        r'"\uD83D\uDE00"',
+        r'"\U00110000"',
+        '"PREVENT" + "other"',
+        '(("PREVENT")',
+        '("PREVENT"))',
+    ],
+)
+def test_unresolved_or_invalid_strings_do_not_prove_protection(value: str) -> None:
+    assert literal_string(value) is None
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"), [("((true))", "true"), ("(false)", "false"), ("(true) && (false)", None), ("t rue", None)]
+)
+def test_literal_token_requires_a_complete_single_token(value: str, expected: str | None) -> None:
+    assert literal_token(value) == expected
+
+
+def test_deep_parentheses_and_sibling_groups_preserve_expression_boundaries() -> None:
+    assert strip_outer_parentheses(tokens("(" * 3000 + "true" + ")" * 3000)) == ("true",)
+    assert strip_outer_parentheses(tokens("((left)(right))")) == tokens("(left)(right)")
+
+
+def test_escaped_backslash_does_not_start_a_unicode_escape() -> None:
+    assert literal_string(r'"\\U00000050REVENT"') == r"\U00000050REVENT"

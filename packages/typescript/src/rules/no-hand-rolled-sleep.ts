@@ -101,7 +101,8 @@ function soleCall(fn: TSESTree.ArrowFunctionExpression | TSESTree.FunctionExpres
   | TSESTree.CallExpression
   | null {
   if (fn.body.type !== AST_NODE_TYPES.BlockStatement) {
-    return fn.body.type === AST_NODE_TYPES.CallExpression ? fn.body : null;
+    const body = unwrapExpression(fn.body);
+    return body.type === AST_NODE_TYPES.CallExpression ? body : null;
   }
   if (fn.body.body.length !== 1) {
     return null;
@@ -110,13 +111,15 @@ function soleCall(fn: TSESTree.ArrowFunctionExpression | TSESTree.FunctionExpres
   if (only?.type !== AST_NODE_TYPES.ExpressionStatement) {
     return null;
   }
-  return only.expression.type === AST_NODE_TYPES.CallExpression ? only.expression : null;
+  const expression = unwrapExpression(only.expression);
+  return expression.type === AST_NODE_TYPES.CallExpression ? expression : null;
 }
 
 function isTimedDelay(delay: TSESTree.Node | undefined): boolean {
   if (delay === undefined) {
     return false;
   }
+  delay = unwrapExpression(delay);
   if (delay.type === AST_NODE_TYPES.Literal && typeof delay.value === "number") {
     return delay.value !== 0;
   }
@@ -124,6 +127,7 @@ function isTimedDelay(delay: TSESTree.Node | undefined): boolean {
 }
 
 function settlesWithoutValue(callback: TSESTree.Node, name: string): boolean {
+  callback = unwrapExpression(callback);
   if (callback.type === AST_NODE_TYPES.Identifier) {
     return callback.name === name;
   }
@@ -144,6 +148,7 @@ function settlesWithoutValue(callback: TSESTree.Node, name: string): boolean {
 }
 
 function rejectsInCallback(callback: TSESTree.Node, name: string): boolean {
+  callback = unwrapExpression(callback);
   if (callback.type === AST_NODE_TYPES.Identifier) {
     return callback.name === name;
   }
@@ -255,6 +260,7 @@ export default createRule<Options, MessageIds>({
         ["node:timers", "timers"].includes(String(definition.node.parent.source.value)));
     };
     const settlesParameter = (callback: TSESTree.Node, executor: TSESTree.ArrowFunctionExpression | TSESTree.FunctionExpression, index: number): boolean => {
+      callback = unwrapExpression(callback);
       const parameter = executor.params[index];
       if (parameter?.type !== AST_NODE_TYPES.Identifier) return false;
       const callee = callback.type === AST_NODE_TYPES.Identifier ? callback :

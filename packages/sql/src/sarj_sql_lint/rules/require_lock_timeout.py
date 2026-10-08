@@ -47,7 +47,7 @@ SECTION_BOUNDARY_PATTERN = re.compile(
 
 # Match SET/RESET/set_config assignments for lock_timeout or statement_timeout.
 ASSIGNMENT_PATTERN = re.compile(
-    r"\b(?:SET\s+(?:(?:LOCAL|SESSION)\s+)?|RESET\s+)(lock_timeout|statement_timeout)\b(?:\s*(?:=|\bTO\b)\s*('[\s\S]*?'|\"[^\"]*\"|[^\s;]+))?|set_config\s*\(\s*'?(lock_timeout|statement_timeout)'?\s*,\s*('[\s\S]*?'|\"[^\"]*\"|[^\s,;]+)\s*,\s*(true|false)\s*\)",
+    r"\b(?:SET\s+(?:(?:LOCAL|SESSION)\s+)?|RESET\s+)((?:lock_timeout|statement_timeout)\b|(?-i:\"(?:lock_timeout|statement_timeout)\"))(?:\s*(?:=|\bTO\b)\s*('[\s\S]*?'|\"[^\"]*\"|[^\s;]+))?|set_config\s*\(\s*'?(lock_timeout|statement_timeout)'?\s*,\s*('[\s\S]*?'|\"[^\"]*\"|[^\s,;]+)\s*,\s*(true|false)\s*\)",
     re.IGNORECASE,
 )
 POSITIVE_VAL_PATTERN = re.compile(r"^['\"]?\s*(?P<number>[0-9]*\.?[0-9]+)\s*(?:[a-zA-Z]+\s*)?['\"]?$", re.IGNORECASE)
@@ -182,7 +182,7 @@ def _apply_timeout_assignment(
 ) -> None:
     cmd = match.group(0).upper()
     is_local = "LOCAL" in cmd or (match.group(5) or "").lower() == "true"
-    target_var = (match.group(1) or match.group(3) or "").lower()
+    target_var = (match.group(1) or match.group(3) or "").strip('"').lower()
     val = (match.group(2) or match.group(4) or "").strip().strip(";")
 
     is_active = False if "RESET" in cmd else (bool(val) and _positive_timeout(val))

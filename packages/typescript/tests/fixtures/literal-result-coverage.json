@@ -1,0 +1,2234 @@
+[
+  {
+    "rule": "no-cors-wildcard-with-credentials",
+    "name": "trusted-origin-with-credentials / literal-unicode",
+    "files": [
+      {
+        "path": "src/server.ts",
+        "source": "app.use(cors({ origin: \"\\u0068ttps://app.example.com\", credentials: true }));"
+      }
+    ],
+    "focusPath": "src/server.ts",
+    "expected": 0
+  },
+  {
+    "rule": "no-cors-wildcard-with-credentials",
+    "name": "trusted-origin-with-credentials / argument-non-null",
+    "files": [
+      {
+        "path": "src/server.ts",
+        "source": "app.use(cors(({ origin: 'https://app.example.com', credentials: true }!)));"
+      }
+    ],
+    "focusPath": "src/server.ts",
+    "expected": 0
+  },
+  {
+    "rule": "no-cors-wildcard-with-credentials",
+    "name": "trusted-origin-with-credentials / member-key-assertion",
+    "files": [
+      {
+        "path": "src/server.ts",
+        "source": "app[(\"use\" as const)](cors({ origin: 'https://app.example.com', credentials: true }));"
+      }
+    ],
+    "focusPath": "src/server.ts",
+    "expected": 0
+  },
+  {
+    "rule": "no-cors-wildcard-with-credentials",
+    "name": "trusted-origin-with-credentials / receiver-combined",
+    "files": [
+      {
+        "path": "src/server.ts",
+        "source": "((app!) satisfies typeof app).use(cors({ origin: 'https://app.example.com', credentials: true }));"
+      }
+    ],
+    "focusPath": "src/server.ts",
+    "expected": 0
+  },
+  {
+    "rule": "no-cors-wildcard-with-credentials",
+    "name": "trusted-origin-with-credentials / call-result-assertion",
+    "files": [
+      {
+        "path": "src/server.ts",
+        "source": "app.use((cors({ origin: 'https://app.example.com', credentials: true }) as ReturnType<typeof cors>));"
+      }
+    ],
+    "focusPath": "src/server.ts",
+    "expected": 0
+  },
+  {
+    "rule": "no-cors-wildcard-with-credentials",
+    "name": "wildcard-origin-with-credentials / argument-non-null",
+    "files": [
+      {
+        "path": "src/server.ts",
+        "source": "app.use(cors(({ origin: '*', credentials: true }!)));"
+      }
+    ],
+    "focusPath": "src/server.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-cors-wildcard-with-credentials",
+    "name": "wildcard-origin-with-credentials / member-key-assertion",
+    "files": [
+      {
+        "path": "src/server.ts",
+        "source": "app[(\"use\" as const)](cors({ origin: '*', credentials: true }));"
+      }
+    ],
+    "focusPath": "src/server.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-cors-wildcard-with-credentials",
+    "name": "wildcard-origin-with-credentials / receiver-combined",
+    "files": [
+      {
+        "path": "src/server.ts",
+        "source": "((app!) satisfies typeof app).use(cors({ origin: '*', credentials: true }));"
+      }
+    ],
+    "focusPath": "src/server.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-cors-wildcard-with-credentials",
+    "name": "wildcard-origin-with-credentials / call-result-assertion",
+    "files": [
+      {
+        "path": "src/server.ts",
+        "source": "app.use((cors({ origin: '*', credentials: true }) as ReturnType<typeof cors>));"
+      }
+    ],
+    "focusPath": "src/server.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-duplicate-lifecycle-refresh-listeners",
+    "name": "single-lifecycle-signal / literal-unicode",
+    "files": [
+      {
+        "path": "src/refresh.ts",
+        "source": "import { useRouter } from \"\\u006eext/navigation\"; const router = useRouter(); const refresh = () => router.refresh(); window.addEventListener(\"\\u0066ocus\", refresh);"
+      }
+    ],
+    "focusPath": "src/refresh.ts",
+    "expected": 0
+  },
+  {
+    "rule": "no-duplicate-lifecycle-refresh-listeners",
+    "name": "single-lifecycle-signal / argument-template",
+    "files": [
+      {
+        "path": "src/refresh.ts",
+        "source": "import { useRouter } from \"next/navigation\"; const router = useRouter(); const refresh = () => router.refresh(); window.addEventListener(`focus`, refresh);"
+      }
+    ],
+    "focusPath": "src/refresh.ts",
+    "expected": 0
+  },
+  {
+    "rule": "no-duplicate-lifecycle-refresh-listeners",
+    "name": "single-lifecycle-signal / argument-non-null",
+    "files": [
+      {
+        "path": "src/refresh.ts",
+        "source": "import { useRouter } from \"next/navigation\"; const router = useRouter(); const refresh = () => router.refresh(); window.addEventListener((\"focus\"!), (refresh!));"
+      }
+    ],
+    "focusPath": "src/refresh.ts",
+    "expected": 0
+  },
+  {
+    "rule": "no-duplicate-lifecycle-refresh-listeners",
+    "name": "single-lifecycle-signal / member-key-assertion",
+    "files": [
+      {
+        "path": "src/refresh.ts",
+        "source": "import { useRouter } from \"next/navigation\"; const router = useRouter(); const refresh = () => router[(\"refresh\" as const)](); window[(\"addEventListener\" as const)](\"focus\", refresh);"
+      }
+    ],
+    "focusPath": "src/refresh.ts",
+    "expected": 0
+  },
+  {
+    "rule": "no-duplicate-lifecycle-refresh-listeners",
+    "name": "single-lifecycle-signal / receiver-combined",
+    "files": [
+      {
+        "path": "src/refresh.ts",
+        "source": "import { useRouter } from \"next/navigation\"; const router = useRouter(); const refresh = () => ((router!) satisfies typeof router).refresh(); ((window!) satisfies typeof window).addEventListener(\"focus\", refresh);"
+      }
+    ],
+    "focusPath": "src/refresh.ts",
+    "expected": 0
+  },
+  {
+    "rule": "no-duplicate-lifecycle-refresh-listeners",
+    "name": "single-lifecycle-signal / call-result-assertion",
+    "files": [
+      {
+        "path": "src/refresh.ts",
+        "source": "import { useRouter } from \"next/navigation\"; const router = (useRouter() as ReturnType<typeof useRouter>); const refresh = () => (router.refresh() as ReturnType<typeof router.refresh>); (window.addEventListener(\"focus\", refresh) as ReturnType<typeof window.addEventListener>);"
+      }
+    ],
+    "focusPath": "src/refresh.ts",
+    "expected": 0
+  },
+  {
+    "rule": "no-duplicate-lifecycle-refresh-listeners",
+    "name": "duplicate-lifecycle-signals / literal-unicode",
+    "files": [
+      {
+        "path": "src/refresh.ts",
+        "source": "import { useRouter } from \"\\u006eext/navigation\"; const router = useRouter(); const refresh = () => router.refresh(); window.addEventListener(\"\\u0066ocus\", refresh); document.addEventListener(\"\\u0076isibilitychange\", refresh);"
+      }
+    ],
+    "focusPath": "src/refresh.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-duplicate-lifecycle-refresh-listeners",
+    "name": "duplicate-lifecycle-signals / argument-template",
+    "files": [
+      {
+        "path": "src/refresh.ts",
+        "source": "import { useRouter } from \"next/navigation\"; const router = useRouter(); const refresh = () => router.refresh(); window.addEventListener(`focus`, refresh); document.addEventListener(`visibilitychange`, refresh);"
+      }
+    ],
+    "focusPath": "src/refresh.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-duplicate-lifecycle-refresh-listeners",
+    "name": "duplicate-lifecycle-signals / argument-non-null",
+    "files": [
+      {
+        "path": "src/refresh.ts",
+        "source": "import { useRouter } from \"next/navigation\"; const router = useRouter(); const refresh = () => router.refresh(); window.addEventListener((\"focus\"!), (refresh!)); document.addEventListener((\"visibilitychange\"!), (refresh!));"
+      }
+    ],
+    "focusPath": "src/refresh.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-duplicate-lifecycle-refresh-listeners",
+    "name": "duplicate-lifecycle-signals / member-key-assertion",
+    "files": [
+      {
+        "path": "src/refresh.ts",
+        "source": "import { useRouter } from \"next/navigation\"; const router = useRouter(); const refresh = () => router[(\"refresh\" as const)](); window[(\"addEventListener\" as const)](\"focus\", refresh); document[(\"addEventListener\" as const)](\"visibilitychange\", refresh);"
+      }
+    ],
+    "focusPath": "src/refresh.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-duplicate-lifecycle-refresh-listeners",
+    "name": "duplicate-lifecycle-signals / receiver-combined",
+    "files": [
+      {
+        "path": "src/refresh.ts",
+        "source": "import { useRouter } from \"next/navigation\"; const router = useRouter(); const refresh = () => ((router!) satisfies typeof router).refresh(); ((window!) satisfies typeof window).addEventListener(\"focus\", refresh); ((document!) satisfies typeof document).addEventListener(\"visibilitychange\", refresh);"
+      }
+    ],
+    "focusPath": "src/refresh.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-duplicate-lifecycle-refresh-listeners",
+    "name": "duplicate-lifecycle-signals / call-result-assertion",
+    "files": [
+      {
+        "path": "src/refresh.ts",
+        "source": "import { useRouter } from \"next/navigation\"; const router = (useRouter() as ReturnType<typeof useRouter>); const refresh = () => (router.refresh() as ReturnType<typeof router.refresh>); (window.addEventListener(\"focus\", refresh) as ReturnType<typeof window.addEventListener>); (document.addEventListener(\"visibilitychange\", refresh) as ReturnType<typeof document.addEventListener>);"
+      }
+    ],
+    "focusPath": "src/refresh.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-dynamic-sql",
+    "name": "bound-sql-parameter / literal-unicode",
+    "files": [
+      {
+        "path": "src/users.ts",
+        "source": "db.prepare(\"\\u0073elect * from users where id = ?\").bind(userId);"
+      }
+    ],
+    "focusPath": "src/users.ts",
+    "expected": 0
+  },
+  {
+    "rule": "no-dynamic-sql",
+    "name": "bound-sql-parameter / argument-template",
+    "files": [
+      {
+        "path": "src/users.ts",
+        "source": "db.prepare(`select * from users where id = ?`).bind(userId);"
+      }
+    ],
+    "focusPath": "src/users.ts",
+    "expected": 0
+  },
+  {
+    "rule": "no-dynamic-sql",
+    "name": "bound-sql-parameter / argument-non-null",
+    "files": [
+      {
+        "path": "src/users.ts",
+        "source": "db.prepare(('select * from users where id = ?'!)).bind((userId!));"
+      }
+    ],
+    "focusPath": "src/users.ts",
+    "expected": 0
+  },
+  {
+    "rule": "no-dynamic-sql",
+    "name": "bound-sql-parameter / member-key-assertion",
+    "files": [
+      {
+        "path": "src/users.ts",
+        "source": "db[(\"prepare\" as const)]('select * from users where id = ?').bind(userId);"
+      }
+    ],
+    "focusPath": "src/users.ts",
+    "expected": 0
+  },
+  {
+    "rule": "no-dynamic-sql",
+    "name": "bound-sql-parameter / receiver-combined",
+    "files": [
+      {
+        "path": "src/users.ts",
+        "source": "((db!) satisfies typeof db).prepare('select * from users where id = ?').bind(userId);"
+      }
+    ],
+    "focusPath": "src/users.ts",
+    "expected": 0
+  },
+  {
+    "rule": "no-dynamic-sql",
+    "name": "bound-sql-parameter / call-result-assertion",
+    "files": [
+      {
+        "path": "src/users.ts",
+        "source": "(db.prepare('select * from users where id = ?') as ReturnType<typeof db.prepare>).bind(userId);"
+      }
+    ],
+    "focusPath": "src/users.ts",
+    "expected": 0
+  },
+  {
+    "rule": "no-dynamic-sql",
+    "name": "interpolated-sql-value / argument-non-null",
+    "files": [
+      {
+        "path": "src/users.ts",
+        "source": "db.prepare((`select * from users where id = '${userId}'`!));"
+      }
+    ],
+    "focusPath": "src/users.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-dynamic-sql",
+    "name": "interpolated-sql-value / member-key-assertion",
+    "files": [
+      {
+        "path": "src/users.ts",
+        "source": "db[(\"prepare\" as const)](`select * from users where id = '${userId}'`);"
+      }
+    ],
+    "focusPath": "src/users.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-dynamic-sql",
+    "name": "interpolated-sql-value / receiver-combined",
+    "files": [
+      {
+        "path": "src/users.ts",
+        "source": "((db!) satisfies typeof db).prepare(`select * from users where id = '${userId}'`);"
+      }
+    ],
+    "focusPath": "src/users.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-dynamic-sql",
+    "name": "interpolated-sql-value / call-result-assertion",
+    "files": [
+      {
+        "path": "src/users.ts",
+        "source": "(db.prepare(`select * from users where id = '${userId}'`) as ReturnType<typeof db.prepare>);"
+      }
+    ],
+    "focusPath": "src/users.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-dynamic-sql",
+    "name": "bound-unquoted-value / literal-unicode",
+    "files": [
+      {
+        "path": "src/users.ts",
+        "source": "db.prepare(\"\\u0073elect id from users where id = ?\").bind(userId);"
+      }
+    ],
+    "focusPath": "src/users.ts",
+    "expected": 0
+  },
+  {
+    "rule": "no-dynamic-sql",
+    "name": "bound-unquoted-value / argument-template",
+    "files": [
+      {
+        "path": "src/users.ts",
+        "source": "db.prepare(`select id from users where id = ?`).bind(userId);"
+      }
+    ],
+    "focusPath": "src/users.ts",
+    "expected": 0
+  },
+  {
+    "rule": "no-dynamic-sql",
+    "name": "bound-unquoted-value / argument-non-null",
+    "files": [
+      {
+        "path": "src/users.ts",
+        "source": "db.prepare(('select id from users where id = ?'!)).bind((userId!));"
+      }
+    ],
+    "focusPath": "src/users.ts",
+    "expected": 0
+  },
+  {
+    "rule": "no-dynamic-sql",
+    "name": "bound-unquoted-value / member-key-assertion",
+    "files": [
+      {
+        "path": "src/users.ts",
+        "source": "db[(\"prepare\" as const)]('select id from users where id = ?').bind(userId);"
+      }
+    ],
+    "focusPath": "src/users.ts",
+    "expected": 0
+  },
+  {
+    "rule": "no-dynamic-sql",
+    "name": "bound-unquoted-value / receiver-combined",
+    "files": [
+      {
+        "path": "src/users.ts",
+        "source": "((db!) satisfies typeof db).prepare('select id from users where id = ?').bind(userId);"
+      }
+    ],
+    "focusPath": "src/users.ts",
+    "expected": 0
+  },
+  {
+    "rule": "no-dynamic-sql",
+    "name": "bound-unquoted-value / call-result-assertion",
+    "files": [
+      {
+        "path": "src/users.ts",
+        "source": "(db.prepare('select id from users where id = ?') as ReturnType<typeof db.prepare>).bind(userId);"
+      }
+    ],
+    "focusPath": "src/users.ts",
+    "expected": 0
+  },
+  {
+    "rule": "no-dynamic-sql",
+    "name": "unquoted-runtime-fragment / argument-non-null",
+    "files": [
+      {
+        "path": "src/users.ts",
+        "source": "db.prepare((`select id from users where id = ${userId}`!));"
+      }
+    ],
+    "focusPath": "src/users.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-dynamic-sql",
+    "name": "unquoted-runtime-fragment / member-key-assertion",
+    "files": [
+      {
+        "path": "src/users.ts",
+        "source": "db[(\"prepare\" as const)](`select id from users where id = ${userId}`);"
+      }
+    ],
+    "focusPath": "src/users.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-dynamic-sql",
+    "name": "unquoted-runtime-fragment / receiver-combined",
+    "files": [
+      {
+        "path": "src/users.ts",
+        "source": "((db!) satisfies typeof db).prepare(`select id from users where id = ${userId}`);"
+      }
+    ],
+    "focusPath": "src/users.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-dynamic-sql",
+    "name": "unquoted-runtime-fragment / call-result-assertion",
+    "files": [
+      {
+        "path": "src/users.ts",
+        "source": "(db.prepare(`select id from users where id = ${userId}`) as ReturnType<typeof db.prepare>);"
+      }
+    ],
+    "focusPath": "src/users.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-first-party-module-mock",
+    "name": "injected-service / argument-non-null",
+    "files": [
+      {
+        "path": "action.test.ts",
+        "source": "const result = await runAction(({ service: recordingService }!));\nexport {};\n"
+      }
+    ],
+    "focusPath": "action.test.ts",
+    "expected": 0
+  },
+  {
+    "rule": "no-first-party-module-mock",
+    "name": "injected-service / call-result-assertion",
+    "files": [
+      {
+        "path": "action.test.ts",
+        "source": "const result = await (runAction({ service: recordingService }) as ReturnType<typeof runAction>);\nexport {};\n"
+      }
+    ],
+    "focusPath": "action.test.ts",
+    "expected": 0
+  },
+  {
+    "rule": "no-first-party-module-mock",
+    "name": "relative-module-mock / literal-unicode",
+    "files": [
+      {
+        "path": "action.test.ts",
+        "source": "import { vi } from \"\\u0076itest\"; vi.mock('./service', () => ({ run: vi.fn() }));"
+      }
+    ],
+    "focusPath": "action.test.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-first-party-module-mock",
+    "name": "relative-module-mock / argument-template",
+    "files": [
+      {
+        "path": "action.test.ts",
+        "source": "import { vi } from 'vitest'; vi.mock(`./service`, () => ({ run: vi.fn() }));"
+      }
+    ],
+    "focusPath": "action.test.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-first-party-module-mock",
+    "name": "relative-module-mock / argument-non-null",
+    "files": [
+      {
+        "path": "action.test.ts",
+        "source": "import { vi } from 'vitest'; vi.mock(('./service'!), () => ({ run: vi.fn() }));"
+      }
+    ],
+    "focusPath": "action.test.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-first-party-module-mock",
+    "name": "relative-module-mock / member-key-assertion",
+    "files": [
+      {
+        "path": "action.test.ts",
+        "source": "import { vi } from 'vitest'; vi[(\"mock\" as const)]('./service', () => ({ run: vi[(\"fn\" as const)]() }));"
+      }
+    ],
+    "focusPath": "action.test.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-first-party-module-mock",
+    "name": "relative-module-mock / receiver-combined",
+    "files": [
+      {
+        "path": "action.test.ts",
+        "source": "import { vi } from 'vitest'; ((vi!) satisfies typeof vi).mock('./service', () => ({ run: ((vi!) satisfies typeof vi).fn() }));"
+      }
+    ],
+    "focusPath": "action.test.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-first-party-module-mock",
+    "name": "relative-module-mock / call-result-assertion",
+    "files": [
+      {
+        "path": "action.test.ts",
+        "source": "import { vi } from 'vitest'; vi.mock('./service', () => ({ run: (vi.fn() as ReturnType<typeof vi.fn>) }));"
+      }
+    ],
+    "focusPath": "action.test.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-hand-rolled-sleep",
+    "name": "cancellable-node-timer / literal-unicode",
+    "files": [
+      {
+        "path": "src/lib/queue.ts",
+        "source": "import { setTimeout as sleep } from \"\\u006eode:timers/promises\";\nawait sleep(500, undefined, { signal });"
+      }
+    ],
+    "focusPath": "src/lib/queue.ts",
+    "expected": 0
+  },
+  {
+    "rule": "no-hand-rolled-sleep",
+    "name": "cancellable-node-timer / argument-non-null",
+    "files": [
+      {
+        "path": "src/lib/queue.ts",
+        "source": "import { setTimeout as sleep } from \"node:timers/promises\";\nawait sleep((500!), (undefined!), ({ signal }!));"
+      }
+    ],
+    "focusPath": "src/lib/queue.ts",
+    "expected": 0
+  },
+  {
+    "rule": "no-hand-rolled-sleep",
+    "name": "cancellable-node-timer / call-result-assertion",
+    "files": [
+      {
+        "path": "src/lib/queue.ts",
+        "source": "import { setTimeout as sleep } from \"node:timers/promises\";\nawait (sleep(500, undefined, { signal }) as ReturnType<typeof sleep>);"
+      }
+    ],
+    "focusPath": "src/lib/queue.ts",
+    "expected": 0
+  },
+  {
+    "rule": "no-hand-rolled-sleep",
+    "name": "uncancellable-sleep / argument-non-null",
+    "files": [
+      {
+        "path": "src/lib/queue.ts",
+        "source": "await new Promise((resolve) => setTimeout((resolve!), (500!)));\nexport {};\n"
+      }
+    ],
+    "focusPath": "src/lib/queue.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-hand-rolled-sleep",
+    "name": "uncancellable-sleep / call-result-assertion",
+    "files": [
+      {
+        "path": "src/lib/queue.ts",
+        "source": "await new Promise((resolve) => (setTimeout(resolve, 500) as ReturnType<typeof setTimeout>));\nexport {};\n"
+      }
+    ],
+    "focusPath": "src/lib/queue.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-impossible-zod-literal-bounds",
+    "name": "compatible-number-bounds / literal-unicode",
+    "files": [
+      {
+        "path": "src/schema.ts",
+        "source": "import { z } from \"\\u007aod\"; const S = z.number().gte(3).lte(3);"
+      }
+    ],
+    "focusPath": "src/schema.ts",
+    "expected": 0
+  },
+  {
+    "rule": "no-impossible-zod-literal-bounds",
+    "name": "compatible-number-bounds / argument-non-null",
+    "files": [
+      {
+        "path": "src/schema.ts",
+        "source": "import { z } from \"zod\"; const S = z.number().gte((3!)).lte((3!));"
+      }
+    ],
+    "focusPath": "src/schema.ts",
+    "expected": 0
+  },
+  {
+    "rule": "no-impossible-zod-literal-bounds",
+    "name": "compatible-number-bounds / member-key-assertion",
+    "files": [
+      {
+        "path": "src/schema.ts",
+        "source": "import { z } from \"zod\"; const S = z[(\"number\" as const)]().gte(3).lte(3);"
+      }
+    ],
+    "focusPath": "src/schema.ts",
+    "expected": 0
+  },
+  {
+    "rule": "no-impossible-zod-literal-bounds",
+    "name": "compatible-number-bounds / receiver-combined",
+    "files": [
+      {
+        "path": "src/schema.ts",
+        "source": "import { z } from \"zod\"; const S = ((z!) satisfies typeof z).number().gte(3).lte(3);"
+      }
+    ],
+    "focusPath": "src/schema.ts",
+    "expected": 0
+  },
+  {
+    "rule": "no-impossible-zod-literal-bounds",
+    "name": "compatible-number-bounds / call-result-assertion",
+    "files": [
+      {
+        "path": "src/schema.ts",
+        "source": "import { z } from \"zod\"; const S = (z.number() as ReturnType<typeof z.number>).gte(3).lte(3);"
+      }
+    ],
+    "focusPath": "src/schema.ts",
+    "expected": 0
+  },
+  {
+    "rule": "no-impossible-zod-literal-bounds",
+    "name": "contradictory-number-bounds / literal-unicode",
+    "files": [
+      {
+        "path": "src/schema.ts",
+        "source": "import { z } from \"\\u007aod\"; const S = z.number().min(5).max(4);"
+      }
+    ],
+    "focusPath": "src/schema.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-impossible-zod-literal-bounds",
+    "name": "contradictory-number-bounds / argument-non-null",
+    "files": [
+      {
+        "path": "src/schema.ts",
+        "source": "import { z } from \"zod\"; const S = z.number().min((5!)).max((4!));"
+      }
+    ],
+    "focusPath": "src/schema.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-impossible-zod-literal-bounds",
+    "name": "contradictory-number-bounds / member-key-assertion",
+    "files": [
+      {
+        "path": "src/schema.ts",
+        "source": "import { z } from \"zod\"; const S = z[(\"number\" as const)]().min(5).max(4);"
+      }
+    ],
+    "focusPath": "src/schema.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-impossible-zod-literal-bounds",
+    "name": "contradictory-number-bounds / receiver-combined",
+    "files": [
+      {
+        "path": "src/schema.ts",
+        "source": "import { z } from \"zod\"; const S = ((z!) satisfies typeof z).number().min(5).max(4);"
+      }
+    ],
+    "focusPath": "src/schema.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-impossible-zod-literal-bounds",
+    "name": "contradictory-number-bounds / call-result-assertion",
+    "files": [
+      {
+        "path": "src/schema.ts",
+        "source": "import { z } from \"zod\"; const S = (z.number() as ReturnType<typeof z.number>).min(5).max(4);"
+      }
+    ],
+    "focusPath": "src/schema.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-json-stringify-error",
+    "name": "explicit-error-message / argument-non-null",
+    "files": [
+      {
+        "path": "src/report.ts",
+        "source": "try { f(); } catch (err) { JSON.stringify({ error: err instanceof Error ? err.message : String((err!)) }); }"
+      }
+    ],
+    "focusPath": "src/report.ts",
+    "expected": 0
+  },
+  {
+    "rule": "no-json-stringify-error",
+    "name": "explicit-error-message / member-key-assertion",
+    "files": [
+      {
+        "path": "src/report.ts",
+        "source": "try { f(); } catch (err) { JSON[(\"stringify\" as const)]({ error: err instanceof Error ? err[(\"message\" as const)] : String(err) }); }"
+      }
+    ],
+    "focusPath": "src/report.ts",
+    "expected": 0
+  },
+  {
+    "rule": "no-json-stringify-error",
+    "name": "explicit-error-message / receiver-combined",
+    "files": [
+      {
+        "path": "src/report.ts",
+        "source": "try { f(); } catch (err) { ((JSON!) satisfies typeof JSON).stringify({ error: err instanceof Error ? ((err!) satisfies typeof err).message : String(err) }); }"
+      }
+    ],
+    "focusPath": "src/report.ts",
+    "expected": 0
+  },
+  {
+    "rule": "no-json-stringify-error",
+    "name": "explicit-error-message / call-result-assertion",
+    "files": [
+      {
+        "path": "src/report.ts",
+        "source": "try { (f() as ReturnType<typeof f>); } catch (err) { JSON.stringify({ error: err instanceof Error ? err.message : (String(err) as ReturnType<typeof String>) }); }"
+      }
+    ],
+    "focusPath": "src/report.ts",
+    "expected": 0
+  },
+  {
+    "rule": "no-json-stringify-error",
+    "name": "stringified-error / argument-non-null",
+    "files": [
+      {
+        "path": "src/report.ts",
+        "source": "try { f(); } catch (err) { JSON.stringify(({ error: err }!)); }"
+      }
+    ],
+    "focusPath": "src/report.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-json-stringify-error",
+    "name": "stringified-error / member-key-assertion",
+    "files": [
+      {
+        "path": "src/report.ts",
+        "source": "try { f(); } catch (err) { JSON[(\"stringify\" as const)]({ error: err }); }"
+      }
+    ],
+    "focusPath": "src/report.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-json-stringify-error",
+    "name": "stringified-error / receiver-combined",
+    "files": [
+      {
+        "path": "src/report.ts",
+        "source": "try { f(); } catch (err) { ((JSON!) satisfies typeof JSON).stringify({ error: err }); }"
+      }
+    ],
+    "focusPath": "src/report.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-json-stringify-error",
+    "name": "stringified-error / call-result-assertion",
+    "files": [
+      {
+        "path": "src/report.ts",
+        "source": "try { (f() as ReturnType<typeof f>); } catch (err) { (JSON.stringify({ error: err }) as ReturnType<typeof JSON.stringify>); }"
+      }
+    ],
+    "focusPath": "src/report.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-log-only-catch",
+    "name": "rethrow-after-log / argument-non-null",
+    "files": [
+      {
+        "path": "src/task.ts",
+        "source": "try { run(); } catch (error) { console.error((error!)); throw error; }"
+      }
+    ],
+    "focusPath": "src/task.ts",
+    "expected": 0
+  },
+  {
+    "rule": "no-log-only-catch",
+    "name": "rethrow-after-log / member-key-assertion",
+    "files": [
+      {
+        "path": "src/task.ts",
+        "source": "try { run(); } catch (error) { console[(\"error\" as const)](error); throw error; }"
+      }
+    ],
+    "focusPath": "src/task.ts",
+    "expected": 0
+  },
+  {
+    "rule": "no-log-only-catch",
+    "name": "rethrow-after-log / receiver-combined",
+    "files": [
+      {
+        "path": "src/task.ts",
+        "source": "try { run(); } catch (error) { ((console!) satisfies typeof console).error(error); throw error; }"
+      }
+    ],
+    "focusPath": "src/task.ts",
+    "expected": 0
+  },
+  {
+    "rule": "no-log-only-catch",
+    "name": "rethrow-after-log / call-result-assertion",
+    "files": [
+      {
+        "path": "src/task.ts",
+        "source": "try { (run() as ReturnType<typeof run>); } catch (error) { (console.error(error) as ReturnType<typeof console.error>); throw error; }"
+      }
+    ],
+    "focusPath": "src/task.ts",
+    "expected": 0
+  },
+  {
+    "rule": "no-log-only-catch",
+    "name": "log-and-swallow / argument-non-null",
+    "files": [
+      {
+        "path": "src/task.ts",
+        "source": "try { run(); } catch (error) { console.error((error!)); }"
+      }
+    ],
+    "focusPath": "src/task.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-log-only-catch",
+    "name": "log-and-swallow / member-key-assertion",
+    "files": [
+      {
+        "path": "src/task.ts",
+        "source": "try { run(); } catch (error) { console[(\"error\" as const)](error); }"
+      }
+    ],
+    "focusPath": "src/task.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-log-only-catch",
+    "name": "log-and-swallow / receiver-combined",
+    "files": [
+      {
+        "path": "src/task.ts",
+        "source": "try { run(); } catch (error) { ((console!) satisfies typeof console).error(error); }"
+      }
+    ],
+    "focusPath": "src/task.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-log-only-catch",
+    "name": "log-and-swallow / call-result-assertion",
+    "files": [
+      {
+        "path": "src/task.ts",
+        "source": "try { (run() as ReturnType<typeof run>); } catch (error) { (console.error(error) as ReturnType<typeof console.error>); }"
+      }
+    ],
+    "focusPath": "src/task.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-router-refresh-polling",
+    "name": "poll-named-action / literal-unicode",
+    "files": [
+      {
+        "path": "src/status.tsx",
+        "source": "\"use client\"; import { useEffect } from \"\\u0072eact\"; function Status() { useEffect(() => { const timer = setInterval(() => fetchStatus(), POLLING_INTERVAL_MS); return () => clearInterval(timer); }, []); return null; }"
+      }
+    ],
+    "focusPath": "src/status.tsx",
+    "expected": 0
+  },
+  {
+    "rule": "no-router-refresh-polling",
+    "name": "poll-named-action / argument-non-null",
+    "files": [
+      {
+        "path": "src/status.tsx",
+        "source": "\"use client\"; import { useEffect } from \"react\"; function Status() { useEffect(() => { const timer = setInterval(() => fetchStatus(), (POLLING_INTERVAL_MS!)); return () => clearInterval((timer!)); }, ([]!)); return null; }"
+      }
+    ],
+    "focusPath": "src/status.tsx",
+    "expected": 0
+  },
+  {
+    "rule": "no-router-refresh-polling",
+    "name": "poll-named-action / call-result-assertion",
+    "files": [
+      {
+        "path": "src/status.tsx",
+        "source": "\"use client\"; import { useEffect } from \"react\"; function Status() { useEffect(() => { const timer = setInterval(() => (fetchStatus() as ReturnType<typeof fetchStatus>), POLLING_INTERVAL_MS); return () => (clearInterval(timer) as ReturnType<typeof clearInterval>); }, []); return null; }"
+      }
+    ],
+    "focusPath": "src/status.tsx",
+    "expected": 0
+  },
+  {
+    "rule": "no-router-refresh-polling",
+    "name": "poll-router-refresh / literal-unicode",
+    "files": [
+      {
+        "path": "src/status.tsx",
+        "source": "\"use client\"; import { useEffect } from \"\\u0072eact\"; import { useRouter } from \"\\u006eext/navigation\"; function Status() { const router = useRouter(); useEffect(() => { const timer = setInterval(() => router.refresh(), POLLING_INTERVAL_MS); return () => clearInterval(timer); }, [router]); return null; }"
+      }
+    ],
+    "focusPath": "src/status.tsx",
+    "expected": 1
+  },
+  {
+    "rule": "no-router-refresh-polling",
+    "name": "poll-router-refresh / argument-non-null",
+    "files": [
+      {
+        "path": "src/status.tsx",
+        "source": "\"use client\"; import { useEffect } from \"react\"; import { useRouter } from \"next/navigation\"; function Status() { const router = useRouter(); useEffect(() => { const timer = setInterval(() => router.refresh(), (POLLING_INTERVAL_MS!)); return () => clearInterval((timer!)); }, ([router]!)); return null; }"
+      }
+    ],
+    "focusPath": "src/status.tsx",
+    "expected": 1
+  },
+  {
+    "rule": "no-router-refresh-polling",
+    "name": "poll-router-refresh / member-key-assertion",
+    "files": [
+      {
+        "path": "src/status.tsx",
+        "source": "\"use client\"; import { useEffect } from \"react\"; import { useRouter } from \"next/navigation\"; function Status() { const router = useRouter(); useEffect(() => { const timer = setInterval(() => router[(\"refresh\" as const)](), POLLING_INTERVAL_MS); return () => clearInterval(timer); }, [router]); return null; }"
+      }
+    ],
+    "focusPath": "src/status.tsx",
+    "expected": 1
+  },
+  {
+    "rule": "no-router-refresh-polling",
+    "name": "poll-router-refresh / receiver-combined",
+    "files": [
+      {
+        "path": "src/status.tsx",
+        "source": "\"use client\"; import { useEffect } from \"react\"; import { useRouter } from \"next/navigation\"; function Status() { const router = useRouter(); useEffect(() => { const timer = setInterval(() => ((router!) satisfies typeof router).refresh(), POLLING_INTERVAL_MS); return () => clearInterval(timer); }, [router]); return null; }"
+      }
+    ],
+    "focusPath": "src/status.tsx",
+    "expected": 1
+  },
+  {
+    "rule": "no-router-refresh-polling",
+    "name": "poll-router-refresh / call-result-assertion",
+    "files": [
+      {
+        "path": "src/status.tsx",
+        "source": "\"use client\"; import { useEffect } from \"react\"; import { useRouter } from \"next/navigation\"; function Status() { const router = (useRouter() as ReturnType<typeof useRouter>); useEffect(() => { const timer = setInterval(() => (router.refresh() as ReturnType<typeof router.refresh>), POLLING_INTERVAL_MS); return () => (clearInterval(timer) as ReturnType<typeof clearInterval>); }, [router]); return null; }"
+      }
+    ],
+    "focusPath": "src/status.tsx",
+    "expected": 1
+  },
+  {
+    "rule": "no-secret-in-log",
+    "name": "redacted-secret / literal-unicode",
+    "files": [
+      {
+        "path": "src/auth.ts",
+        "source": "logger.info(\"\\u0061uth\", { requestId });"
+      }
+    ],
+    "focusPath": "src/auth.ts",
+    "expected": 0
+  },
+  {
+    "rule": "no-secret-in-log",
+    "name": "redacted-secret / argument-template",
+    "files": [
+      {
+        "path": "src/auth.ts",
+        "source": "logger.info(`auth`, { requestId });"
+      }
+    ],
+    "focusPath": "src/auth.ts",
+    "expected": 0
+  },
+  {
+    "rule": "no-secret-in-log",
+    "name": "redacted-secret / argument-non-null",
+    "files": [
+      {
+        "path": "src/auth.ts",
+        "source": "logger.info(('auth'!), ({ requestId }!));"
+      }
+    ],
+    "focusPath": "src/auth.ts",
+    "expected": 0
+  },
+  {
+    "rule": "no-secret-in-log",
+    "name": "redacted-secret / member-key-assertion",
+    "files": [
+      {
+        "path": "src/auth.ts",
+        "source": "logger[(\"info\" as const)]('auth', { requestId });"
+      }
+    ],
+    "focusPath": "src/auth.ts",
+    "expected": 0
+  },
+  {
+    "rule": "no-secret-in-log",
+    "name": "redacted-secret / receiver-combined",
+    "files": [
+      {
+        "path": "src/auth.ts",
+        "source": "((logger!) satisfies typeof logger).info('auth', { requestId });"
+      }
+    ],
+    "focusPath": "src/auth.ts",
+    "expected": 0
+  },
+  {
+    "rule": "no-secret-in-log",
+    "name": "redacted-secret / call-result-assertion",
+    "files": [
+      {
+        "path": "src/auth.ts",
+        "source": "(logger.info('auth', { requestId }) as ReturnType<typeof logger.info>);"
+      }
+    ],
+    "focusPath": "src/auth.ts",
+    "expected": 0
+  },
+  {
+    "rule": "no-secret-in-log",
+    "name": "logged-secret / literal-unicode",
+    "files": [
+      {
+        "path": "src/auth.ts",
+        "source": "logger.error(\"\\u0061uth failed\", { token });"
+      }
+    ],
+    "focusPath": "src/auth.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-secret-in-log",
+    "name": "logged-secret / argument-template",
+    "files": [
+      {
+        "path": "src/auth.ts",
+        "source": "logger.error(`auth failed`, { token });"
+      }
+    ],
+    "focusPath": "src/auth.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-secret-in-log",
+    "name": "logged-secret / argument-non-null",
+    "files": [
+      {
+        "path": "src/auth.ts",
+        "source": "logger.error(('auth failed'!), ({ token }!));"
+      }
+    ],
+    "focusPath": "src/auth.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-secret-in-log",
+    "name": "logged-secret / member-key-assertion",
+    "files": [
+      {
+        "path": "src/auth.ts",
+        "source": "logger[(\"error\" as const)]('auth failed', { token });"
+      }
+    ],
+    "focusPath": "src/auth.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-secret-in-log",
+    "name": "logged-secret / receiver-combined",
+    "files": [
+      {
+        "path": "src/auth.ts",
+        "source": "((logger!) satisfies typeof logger).error('auth failed', { token });"
+      }
+    ],
+    "focusPath": "src/auth.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-secret-in-log",
+    "name": "logged-secret / call-result-assertion",
+    "files": [
+      {
+        "path": "src/auth.ts",
+        "source": "(logger.error('auth failed', { token }) as ReturnType<typeof logger.error>);"
+      }
+    ],
+    "focusPath": "src/auth.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-sleep-in-test-body",
+    "name": "fake-timer / literal-unicode",
+    "files": [
+      {
+        "path": "src/retry.test.ts",
+        "source": "it(\"\\u0072etries\", async () => { vi.useFakeTimers(); try { const result = retry(); await vi.advanceTimersByTimeAsync(50); await result; } finally { vi.useRealTimers(); } });\nexport {};\n"
+      }
+    ],
+    "focusPath": "src/retry.test.ts",
+    "expected": 0
+  },
+  {
+    "rule": "no-sleep-in-test-body",
+    "name": "fake-timer / argument-template",
+    "files": [
+      {
+        "path": "src/retry.test.ts",
+        "source": "it(`retries`, async () => { vi.useFakeTimers(); try { const result = retry(); await vi.advanceTimersByTimeAsync(50); await result; } finally { vi.useRealTimers(); } });\nexport {};\n"
+      }
+    ],
+    "focusPath": "src/retry.test.ts",
+    "expected": 0
+  },
+  {
+    "rule": "no-sleep-in-test-body",
+    "name": "fake-timer / argument-non-null",
+    "files": [
+      {
+        "path": "src/retry.test.ts",
+        "source": "it(('retries'!), async () => { vi.useFakeTimers(); try { const result = retry(); await vi.advanceTimersByTimeAsync((50!)); await result; } finally { vi.useRealTimers(); } });\nexport {};\n"
+      }
+    ],
+    "focusPath": "src/retry.test.ts",
+    "expected": 0
+  },
+  {
+    "rule": "no-sleep-in-test-body",
+    "name": "fake-timer / member-key-assertion",
+    "files": [
+      {
+        "path": "src/retry.test.ts",
+        "source": "it('retries', async () => { vi[(\"useFakeTimers\" as const)](); try { const result = retry(); await vi[(\"advanceTimersByTimeAsync\" as const)](50); await result; } finally { vi[(\"useRealTimers\" as const)](); } });\nexport {};\n"
+      }
+    ],
+    "focusPath": "src/retry.test.ts",
+    "expected": 0
+  },
+  {
+    "rule": "no-sleep-in-test-body",
+    "name": "fake-timer / receiver-combined",
+    "files": [
+      {
+        "path": "src/retry.test.ts",
+        "source": "it('retries', async () => { ((vi!) satisfies typeof vi).useFakeTimers(); try { const result = retry(); await ((vi!) satisfies typeof vi).advanceTimersByTimeAsync(50); await result; } finally { ((vi!) satisfies typeof vi).useRealTimers(); } });\nexport {};\n"
+      }
+    ],
+    "focusPath": "src/retry.test.ts",
+    "expected": 0
+  },
+  {
+    "rule": "no-sleep-in-test-body",
+    "name": "fake-timer / call-result-assertion",
+    "files": [
+      {
+        "path": "src/retry.test.ts",
+        "source": "it('retries', async () => { (vi.useFakeTimers() as ReturnType<typeof vi.useFakeTimers>); try { const result = (retry() as ReturnType<typeof retry>); await (vi.advanceTimersByTimeAsync(50) as ReturnType<typeof vi.advanceTimersByTimeAsync>); await result; } finally { (vi.useRealTimers() as ReturnType<typeof vi.useRealTimers>); } });\nexport {};\n"
+      }
+    ],
+    "focusPath": "src/retry.test.ts",
+    "expected": 0
+  },
+  {
+    "rule": "no-sleep-in-test-body",
+    "name": "fixed-sleep / literal-unicode",
+    "files": [
+      {
+        "path": "src/retry.test.ts",
+        "source": "it(\"\\u0072etries\", async () => { await sleep(50); expect(done()).toBe(true); });\nexport {};\n"
+      }
+    ],
+    "focusPath": "src/retry.test.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-sleep-in-test-body",
+    "name": "fixed-sleep / argument-template",
+    "files": [
+      {
+        "path": "src/retry.test.ts",
+        "source": "it(`retries`, async () => { await sleep(50); expect(done()).toBe(true); });\nexport {};\n"
+      }
+    ],
+    "focusPath": "src/retry.test.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-sleep-in-test-body",
+    "name": "fixed-sleep / argument-non-null",
+    "files": [
+      {
+        "path": "src/retry.test.ts",
+        "source": "it(('retries'!), async () => { await sleep((50!)); expect((done()!)).toBe((true!)); });\nexport {};\n"
+      }
+    ],
+    "focusPath": "src/retry.test.ts",
+    "expected": 1
+  },
+  {
+    "rule": "no-sleep-in-test-body",
+    "name": "fixed-sleep / call-result-assertion",
+    "files": [
+      {
+        "path": "src/retry.test.ts",
+        "source": "it('retries', async () => { await (sleep(50) as ReturnType<typeof sleep>); expect((done() as ReturnType<typeof done>)).toBe(true); });\nexport {};\n"
+      }
+    ],
+    "focusPath": "src/retry.test.ts",
+    "expected": 1
+  },
+  {
+    "rule": "prefer-multi-value-zod-literal",
+    "name": "multi-value / literal-unicode",
+    "files": [
+      {
+        "path": "src/schema.ts",
+        "source": "import { z } from \"\\u007aod/v4\"; export const Version = z.literal([1, 2, 3]);"
+      }
+    ],
+    "focusPath": "src/schema.ts",
+    "expected": 0
+  },
+  {
+    "rule": "prefer-multi-value-zod-literal",
+    "name": "multi-value / argument-non-null",
+    "files": [
+      {
+        "path": "src/schema.ts",
+        "source": "import { z } from 'zod/v4'; export const Version = z.literal(([1, 2, 3]!));"
+      }
+    ],
+    "focusPath": "src/schema.ts",
+    "expected": 0
+  },
+  {
+    "rule": "prefer-multi-value-zod-literal",
+    "name": "multi-value / member-key-assertion",
+    "files": [
+      {
+        "path": "src/schema.ts",
+        "source": "import { z } from 'zod/v4'; export const Version = z[(\"literal\" as const)]([1, 2, 3]);"
+      }
+    ],
+    "focusPath": "src/schema.ts",
+    "expected": 0
+  },
+  {
+    "rule": "prefer-multi-value-zod-literal",
+    "name": "multi-value / receiver-combined",
+    "files": [
+      {
+        "path": "src/schema.ts",
+        "source": "import { z } from 'zod/v4'; export const Version = ((z!) satisfies typeof z).literal([1, 2, 3]);"
+      }
+    ],
+    "focusPath": "src/schema.ts",
+    "expected": 0
+  },
+  {
+    "rule": "prefer-multi-value-zod-literal",
+    "name": "multi-value / call-result-assertion",
+    "files": [
+      {
+        "path": "src/schema.ts",
+        "source": "import { z } from 'zod/v4'; export const Version = (z.literal([1, 2, 3]) as ReturnType<typeof z.literal>);"
+      }
+    ],
+    "focusPath": "src/schema.ts",
+    "expected": 0
+  },
+  {
+    "rule": "prefer-multi-value-zod-literal",
+    "name": "literal-union / literal-unicode",
+    "files": [
+      {
+        "path": "src/schema.ts",
+        "source": "import { z } from \"\\u007aod/v4\"; export const Version = z.union([z.literal(1), z.literal(2), z.literal(3)]);"
+      }
+    ],
+    "focusPath": "src/schema.ts",
+    "expected": 1
+  },
+  {
+    "rule": "prefer-multi-value-zod-literal",
+    "name": "literal-union / argument-non-null",
+    "files": [
+      {
+        "path": "src/schema.ts",
+        "source": "import { z } from 'zod/v4'; export const Version = z.union([z.literal((1!)), z.literal((2!)), z.literal((3!))]);"
+      }
+    ],
+    "focusPath": "src/schema.ts",
+    "expected": 1
+  },
+  {
+    "rule": "prefer-multi-value-zod-literal",
+    "name": "literal-union / member-key-assertion",
+    "files": [
+      {
+        "path": "src/schema.ts",
+        "source": "import { z } from 'zod/v4'; export const Version = z[(\"union\" as const)]([z[(\"literal\" as const)](1), z[(\"literal\" as const)](2), z[(\"literal\" as const)](3)]);"
+      }
+    ],
+    "focusPath": "src/schema.ts",
+    "expected": 1
+  },
+  {
+    "rule": "prefer-multi-value-zod-literal",
+    "name": "literal-union / receiver-combined",
+    "files": [
+      {
+        "path": "src/schema.ts",
+        "source": "import { z } from 'zod/v4'; export const Version = ((z!) satisfies typeof z).union([((z!) satisfies typeof z).literal(1), ((z!) satisfies typeof z).literal(2), ((z!) satisfies typeof z).literal(3)]);"
+      }
+    ],
+    "focusPath": "src/schema.ts",
+    "expected": 1
+  },
+  {
+    "rule": "prefer-multi-value-zod-literal",
+    "name": "literal-union / call-result-assertion",
+    "files": [
+      {
+        "path": "src/schema.ts",
+        "source": "import { z } from 'zod/v4'; export const Version = z.union([(z.literal(1) as ReturnType<typeof z.literal>), (z.literal(2) as ReturnType<typeof z.literal>), (z.literal(3) as ReturnType<typeof z.literal>)]);"
+      }
+    ],
+    "focusPath": "src/schema.ts",
+    "expected": 1
+  },
+  {
+    "rule": "prefer-node-crypto-hash",
+    "name": "one-shot-hash / literal-unicode",
+    "files": [
+      {
+        "path": "case.ts",
+        "source": "import { hash } from \"\\u006eode:crypto\"; export const digest = hash(\"\\u0073ha256\", \"\\u0076alue\", \"\\u0068ex\");"
+      }
+    ],
+    "focusPath": "case.ts",
+    "expected": 0
+  },
+  {
+    "rule": "prefer-node-crypto-hash",
+    "name": "one-shot-hash / argument-template",
+    "files": [
+      {
+        "path": "case.ts",
+        "source": "import { hash } from 'node:crypto'; export const digest = hash(`sha256`, `value`, `hex`);"
+      }
+    ],
+    "focusPath": "case.ts",
+    "expected": 0
+  },
+  {
+    "rule": "prefer-node-crypto-hash",
+    "name": "one-shot-hash / argument-non-null",
+    "files": [
+      {
+        "path": "case.ts",
+        "source": "import { hash } from 'node:crypto'; export const digest = hash(('sha256'!), ('value'!), ('hex'!));"
+      }
+    ],
+    "focusPath": "case.ts",
+    "expected": 0
+  },
+  {
+    "rule": "prefer-node-crypto-hash",
+    "name": "one-shot-hash / call-result-assertion",
+    "files": [
+      {
+        "path": "case.ts",
+        "source": "import { hash } from 'node:crypto'; export const digest = (hash('sha256', 'value', 'hex') as ReturnType<typeof hash>);"
+      }
+    ],
+    "focusPath": "case.ts",
+    "expected": 0
+  },
+  {
+    "rule": "prefer-node-crypto-hash",
+    "name": "mutable-one-shot-chain / literal-unicode",
+    "files": [
+      {
+        "path": "case.ts",
+        "source": "import { createHash } from \"\\u006eode:crypto\"; export const digest = createHash(\"\\u0073ha256\").update(\"\\u0076alue\").digest(\"\\u0068ex\");"
+      }
+    ],
+    "focusPath": "case.ts",
+    "expected": 1
+  },
+  {
+    "rule": "prefer-node-crypto-hash",
+    "name": "mutable-one-shot-chain / argument-template",
+    "files": [
+      {
+        "path": "case.ts",
+        "source": "import { createHash } from 'node:crypto'; export const digest = createHash(`sha256`).update(`value`).digest(`hex`);"
+      }
+    ],
+    "focusPath": "case.ts",
+    "expected": 1
+  },
+  {
+    "rule": "prefer-node-crypto-hash",
+    "name": "mutable-one-shot-chain / argument-non-null",
+    "files": [
+      {
+        "path": "case.ts",
+        "source": "import { createHash } from 'node:crypto'; export const digest = createHash(('sha256'!)).update(('value'!)).digest(('hex'!));"
+      }
+    ],
+    "focusPath": "case.ts",
+    "expected": 1
+  },
+  {
+    "rule": "prefer-node-crypto-hash",
+    "name": "mutable-one-shot-chain / call-result-assertion",
+    "files": [
+      {
+        "path": "case.ts",
+        "source": "import { createHash } from 'node:crypto'; export const digest = (createHash('sha256') as ReturnType<typeof createHash>).update('value').digest('hex');"
+      }
+    ],
+    "focusPath": "case.ts",
+    "expected": 1
+  },
+  {
+    "rule": "prefer-nullish-filter-predicate",
+    "name": "explicit-nullish-predicate / member-key-assertion",
+    "files": [
+      {
+        "path": "src/users.ts",
+        "source": "declare const users: readonly ({ id: string } | null)[];\nconst present = users[(\"filter\" as const)]((user) => user !== null && user !== undefined);"
+      }
+    ],
+    "focusPath": "src/users.ts",
+    "expected": 0
+  },
+  {
+    "rule": "prefer-nullish-filter-predicate",
+    "name": "explicit-nullish-predicate / receiver-combined",
+    "files": [
+      {
+        "path": "src/users.ts",
+        "source": "declare const users: readonly ({ id: string } | null)[];\nconst present = ((users!) satisfies typeof users).filter((user) => user !== null && user !== undefined);"
+      }
+    ],
+    "focusPath": "src/users.ts",
+    "expected": 0
+  },
+  {
+    "rule": "prefer-nullish-filter-predicate",
+    "name": "explicit-nullish-predicate / call-result-assertion",
+    "files": [
+      {
+        "path": "src/users.ts",
+        "source": "declare const users: readonly ({ id: string } | null)[];\nconst present = (users.filter((user) => user !== null && user !== undefined) as ReturnType<typeof users.filter>);"
+      }
+    ],
+    "focusPath": "src/users.ts",
+    "expected": 0
+  },
+  {
+    "rule": "prefer-nullish-filter-predicate",
+    "name": "boolean-nullish-filter / argument-non-null",
+    "files": [
+      {
+        "path": "src/users.ts",
+        "source": "declare const users: readonly ({ id: string } | null)[];\nconst present = users.filter((Boolean!));"
+      }
+    ],
+    "focusPath": "src/users.ts",
+    "expected": 1
+  },
+  {
+    "rule": "prefer-nullish-filter-predicate",
+    "name": "boolean-nullish-filter / member-key-assertion",
+    "files": [
+      {
+        "path": "src/users.ts",
+        "source": "declare const users: readonly ({ id: string } | null)[];\nconst present = users[(\"filter\" as const)](Boolean);"
+      }
+    ],
+    "focusPath": "src/users.ts",
+    "expected": 1
+  },
+  {
+    "rule": "prefer-nullish-filter-predicate",
+    "name": "boolean-nullish-filter / receiver-combined",
+    "files": [
+      {
+        "path": "src/users.ts",
+        "source": "declare const users: readonly ({ id: string } | null)[];\nconst present = ((users!) satisfies typeof users).filter(Boolean);"
+      }
+    ],
+    "focusPath": "src/users.ts",
+    "expected": 1
+  },
+  {
+    "rule": "prefer-nullish-filter-predicate",
+    "name": "boolean-nullish-filter / call-result-assertion",
+    "files": [
+      {
+        "path": "src/users.ts",
+        "source": "declare const users: readonly ({ id: string } | null)[];\nconst present = (users.filter(Boolean) as ReturnType<typeof users.filter>);"
+      }
+    ],
+    "focusPath": "src/users.ts",
+    "expected": 1
+  },
+  {
+    "rule": "prefer-shared-zod-enum",
+    "name": "shared-provider / literal-unicode",
+    "files": [
+      {
+        "path": "src/provider.ts",
+        "source": "import { z } from \"\\u007aod\"; const ProviderSchema = z.enum([\"\\u0061gy\", \"\\u0063laude\", \"\\u0073ol\"]); const JobSchema = z.object({ provider: ProviderSchema }); const StatusSchema = z.object({ provider: ProviderSchema.optional() });"
+      }
+    ],
+    "focusPath": "src/provider.ts",
+    "expected": 0
+  },
+  {
+    "rule": "prefer-shared-zod-enum",
+    "name": "shared-provider / argument-non-null",
+    "files": [
+      {
+        "path": "src/provider.ts",
+        "source": "import { z } from 'zod'; const ProviderSchema = z.enum((['agy', 'claude', 'sol']!)); const JobSchema = z.object(({ provider: ProviderSchema }!)); const StatusSchema = z.object(({ provider: ProviderSchema.optional() }!));"
+      }
+    ],
+    "focusPath": "src/provider.ts",
+    "expected": 0
+  },
+  {
+    "rule": "prefer-shared-zod-enum",
+    "name": "shared-provider / member-key-assertion",
+    "files": [
+      {
+        "path": "src/provider.ts",
+        "source": "import { z } from 'zod'; const ProviderSchema = z[(\"enum\" as const)](['agy', 'claude', 'sol']); const JobSchema = z[(\"object\" as const)]({ provider: ProviderSchema }); const StatusSchema = z[(\"object\" as const)]({ provider: ProviderSchema[(\"optional\" as const)]() });"
+      }
+    ],
+    "focusPath": "src/provider.ts",
+    "expected": 0
+  },
+  {
+    "rule": "prefer-shared-zod-enum",
+    "name": "shared-provider / receiver-combined",
+    "files": [
+      {
+        "path": "src/provider.ts",
+        "source": "import { z } from 'zod'; const ProviderSchema = ((z!) satisfies typeof z).enum(['agy', 'claude', 'sol']); const JobSchema = ((z!) satisfies typeof z).object({ provider: ProviderSchema }); const StatusSchema = ((z!) satisfies typeof z).object({ provider: ((ProviderSchema!) satisfies typeof ProviderSchema).optional() });"
+      }
+    ],
+    "focusPath": "src/provider.ts",
+    "expected": 0
+  },
+  {
+    "rule": "prefer-shared-zod-enum",
+    "name": "shared-provider / call-result-assertion",
+    "files": [
+      {
+        "path": "src/provider.ts",
+        "source": "import { z } from 'zod'; const ProviderSchema = (z.enum(['agy', 'claude', 'sol']) as ReturnType<typeof z.enum>); const JobSchema = (z.object({ provider: ProviderSchema }) as ReturnType<typeof z.object>); const StatusSchema = z.object({ provider: (ProviderSchema.optional() as ReturnType<typeof ProviderSchema.optional>) });"
+      }
+    ],
+    "focusPath": "src/provider.ts",
+    "expected": 0
+  },
+  {
+    "rule": "prefer-shared-zod-enum",
+    "name": "inline-provider / literal-unicode",
+    "files": [
+      {
+        "path": "src/provider.ts",
+        "source": "import { z } from \"\\u007aod\"; const JobSchema = z.object({ provider: z.enum([\"\\u0061gy\", \"\\u0063laude\", \"\\u0073ol\"]) }); const StatusSchema = z.object({ provider: z.enum([\"\\u0061gy\", \"\\u0063laude\", \"\\u0073ol\"]).optional() });"
+      }
+    ],
+    "focusPath": "src/provider.ts",
+    "expected": 2
+  },
+  {
+    "rule": "prefer-shared-zod-enum",
+    "name": "inline-provider / argument-non-null",
+    "files": [
+      {
+        "path": "src/provider.ts",
+        "source": "import { z } from 'zod'; const JobSchema = z.object({ provider: z.enum((['agy', 'claude', 'sol']!)) }); const StatusSchema = z.object({ provider: z.enum((['agy', 'claude', 'sol']!)).optional() });"
+      }
+    ],
+    "focusPath": "src/provider.ts",
+    "expected": 2
+  },
+  {
+    "rule": "prefer-shared-zod-enum",
+    "name": "inline-provider / member-key-assertion",
+    "files": [
+      {
+        "path": "src/provider.ts",
+        "source": "import { z } from 'zod'; const JobSchema = z[(\"object\" as const)]({ provider: z[(\"enum\" as const)](['agy', 'claude', 'sol']) }); const StatusSchema = z[(\"object\" as const)]({ provider: z[(\"enum\" as const)](['agy', 'claude', 'sol']).optional() });"
+      }
+    ],
+    "focusPath": "src/provider.ts",
+    "expected": 2
+  },
+  {
+    "rule": "prefer-shared-zod-enum",
+    "name": "inline-provider / receiver-combined",
+    "files": [
+      {
+        "path": "src/provider.ts",
+        "source": "import { z } from 'zod'; const JobSchema = ((z!) satisfies typeof z).object({ provider: ((z!) satisfies typeof z).enum(['agy', 'claude', 'sol']) }); const StatusSchema = ((z!) satisfies typeof z).object({ provider: ((z!) satisfies typeof z).enum(['agy', 'claude', 'sol']).optional() });"
+      }
+    ],
+    "focusPath": "src/provider.ts",
+    "expected": 2
+  },
+  {
+    "rule": "prefer-shared-zod-enum",
+    "name": "inline-provider / call-result-assertion",
+    "files": [
+      {
+        "path": "src/provider.ts",
+        "source": "import { z } from 'zod'; const JobSchema = z.object({ provider: (z.enum(['agy', 'claude', 'sol']) as ReturnType<typeof z.enum>) }); const StatusSchema = z.object({ provider: (z.enum(['agy', 'claude', 'sol']) as ReturnType<typeof z.enum>).optional() });"
+      }
+    ],
+    "focusPath": "src/provider.ts",
+    "expected": 2
+  },
+  {
+    "rule": "prefer-whole-object-assertion",
+    "name": "whole-object / literal-unicode",
+    "files": [
+      {
+        "path": "src/user.test.ts",
+        "source": "expect(user).toMatchObject({ id: 1, name: \"\\u0041da\" });"
+      }
+    ],
+    "focusPath": "src/user.test.ts",
+    "expected": 0
+  },
+  {
+    "rule": "prefer-whole-object-assertion",
+    "name": "whole-object / argument-non-null",
+    "files": [
+      {
+        "path": "src/user.test.ts",
+        "source": "expect((user!)).toMatchObject(({ id: 1, name: 'Ada' }!));"
+      }
+    ],
+    "focusPath": "src/user.test.ts",
+    "expected": 0
+  },
+  {
+    "rule": "prefer-whole-object-assertion",
+    "name": "whole-object / call-result-assertion",
+    "files": [
+      {
+        "path": "src/user.test.ts",
+        "source": "(expect(user) as ReturnType<typeof expect>).toMatchObject({ id: 1, name: 'Ada' });"
+      }
+    ],
+    "focusPath": "src/user.test.ts",
+    "expected": 0
+  },
+  {
+    "rule": "prefer-whole-object-assertion",
+    "name": "member-run / literal-unicode",
+    "files": [
+      {
+        "path": "src/user.test.ts",
+        "source": "expect(user.id).toBe(1);\nexpect(user.name).toBe(\"\\u0041da\");"
+      }
+    ],
+    "focusPath": "src/user.test.ts",
+    "expected": 1
+  },
+  {
+    "rule": "prefer-whole-object-assertion",
+    "name": "member-run / argument-template",
+    "files": [
+      {
+        "path": "src/user.test.ts",
+        "source": "expect(user.id).toBe(1);\nexpect(user.name).toBe(`Ada`);"
+      }
+    ],
+    "focusPath": "src/user.test.ts",
+    "expected": 1
+  },
+  {
+    "rule": "prefer-whole-object-assertion",
+    "name": "member-run / argument-non-null",
+    "files": [
+      {
+        "path": "src/user.test.ts",
+        "source": "expect((user.id!)).toBe((1!));\nexpect((user.name!)).toBe(('Ada'!));"
+      }
+    ],
+    "focusPath": "src/user.test.ts",
+    "expected": 1
+  },
+  {
+    "rule": "prefer-whole-object-assertion",
+    "name": "member-run / member-key-assertion",
+    "files": [
+      {
+        "path": "src/user.test.ts",
+        "source": "expect(user[(\"id\" as const)]).toBe(1);\nexpect(user[(\"name\" as const)]).toBe('Ada');"
+      }
+    ],
+    "focusPath": "src/user.test.ts",
+    "expected": 1
+  },
+  {
+    "rule": "prefer-whole-object-assertion",
+    "name": "member-run / receiver-combined",
+    "files": [
+      {
+        "path": "src/user.test.ts",
+        "source": "expect(((user!) satisfies typeof user).id).toBe(1);\nexpect(((user!) satisfies typeof user).name).toBe('Ada');"
+      }
+    ],
+    "focusPath": "src/user.test.ts",
+    "expected": 1
+  },
+  {
+    "rule": "prefer-whole-object-assertion",
+    "name": "member-run / call-result-assertion",
+    "files": [
+      {
+        "path": "src/user.test.ts",
+        "source": "(expect(user.id) as ReturnType<typeof expect>).toBe(1);\n(expect(user.name) as ReturnType<typeof expect>).toBe('Ada');"
+      }
+    ],
+    "focusPath": "src/user.test.ts",
+    "expected": 1
+  },
+  {
+    "rule": "prefer-zod-infer",
+    "name": "inferred-type / literal-unicode",
+    "files": [
+      {
+        "path": "src/user.ts",
+        "source": "import { z } from \"\\u007aod\"; const UserSchema = z.object({ id: z.string() }); type User = z.infer<typeof UserSchema>;"
+      }
+    ],
+    "focusPath": "src/user.ts",
+    "expected": 0
+  },
+  {
+    "rule": "prefer-zod-infer",
+    "name": "inferred-type / argument-non-null",
+    "files": [
+      {
+        "path": "src/user.ts",
+        "source": "import { z } from \"zod\"; const UserSchema = z.object(({ id: z.string() }!)); type User = z.infer<typeof UserSchema>;"
+      }
+    ],
+    "focusPath": "src/user.ts",
+    "expected": 0
+  },
+  {
+    "rule": "prefer-zod-infer",
+    "name": "inferred-type / member-key-assertion",
+    "files": [
+      {
+        "path": "src/user.ts",
+        "source": "import { z } from \"zod\"; const UserSchema = z[(\"object\" as const)]({ id: z[(\"string\" as const)]() }); type User = z.infer<typeof UserSchema>;"
+      }
+    ],
+    "focusPath": "src/user.ts",
+    "expected": 0
+  },
+  {
+    "rule": "prefer-zod-infer",
+    "name": "inferred-type / receiver-combined",
+    "files": [
+      {
+        "path": "src/user.ts",
+        "source": "import { z } from \"zod\"; const UserSchema = ((z!) satisfies typeof z).object({ id: ((z!) satisfies typeof z).string() }); type User = z.infer<typeof UserSchema>;"
+      }
+    ],
+    "focusPath": "src/user.ts",
+    "expected": 0
+  },
+  {
+    "rule": "prefer-zod-infer",
+    "name": "inferred-type / call-result-assertion",
+    "files": [
+      {
+        "path": "src/user.ts",
+        "source": "import { z } from \"zod\"; const UserSchema = z.object({ id: (z.string() as ReturnType<typeof z.string>) }); type User = z.infer<typeof UserSchema>;"
+      }
+    ],
+    "focusPath": "src/user.ts",
+    "expected": 0
+  },
+  {
+    "rule": "prefer-zod-infer",
+    "name": "handwritten-twin / literal-unicode",
+    "files": [
+      {
+        "path": "src/user.ts",
+        "source": "import { z } from \"\\u007aod\"; const UserSchema = z.object({ id: z.string() }); interface User { id: string }"
+      }
+    ],
+    "focusPath": "src/user.ts",
+    "expected": 1
+  },
+  {
+    "rule": "prefer-zod-infer",
+    "name": "handwritten-twin / argument-non-null",
+    "files": [
+      {
+        "path": "src/user.ts",
+        "source": "import { z } from \"zod\"; const UserSchema = z.object(({ id: z.string() }!)); interface User { id: string }"
+      }
+    ],
+    "focusPath": "src/user.ts",
+    "expected": 1
+  },
+  {
+    "rule": "prefer-zod-infer",
+    "name": "handwritten-twin / member-key-assertion",
+    "files": [
+      {
+        "path": "src/user.ts",
+        "source": "import { z } from \"zod\"; const UserSchema = z[(\"object\" as const)]({ id: z[(\"string\" as const)]() }); interface User { id: string }"
+      }
+    ],
+    "focusPath": "src/user.ts",
+    "expected": 1
+  },
+  {
+    "rule": "prefer-zod-infer",
+    "name": "handwritten-twin / receiver-combined",
+    "files": [
+      {
+        "path": "src/user.ts",
+        "source": "import { z } from \"zod\"; const UserSchema = ((z!) satisfies typeof z).object({ id: ((z!) satisfies typeof z).string() }); interface User { id: string }"
+      }
+    ],
+    "focusPath": "src/user.ts",
+    "expected": 1
+  },
+  {
+    "rule": "prefer-zod-infer",
+    "name": "handwritten-twin / call-result-assertion",
+    "files": [
+      {
+        "path": "src/user.ts",
+        "source": "import { z } from \"zod\"; const UserSchema = z.object({ id: (z.string() as ReturnType<typeof z.string>) }); interface User { id: string }"
+      }
+    ],
+    "focusPath": "src/user.ts",
+    "expected": 1
+  },
+  {
+    "rule": "repeated-static-call-cases",
+    "name": "parameterized / literal-unicode",
+    "files": [
+      {
+        "path": "src/parser.test.ts",
+        "source": "test.each([[\"\\u0061\", true], [\"\\u0062\", false], [\"\\u0063\", true]])(\"\\u0070arses %s\", (input, expected) => { expect(parse(input)).toBe(expected); });"
+      }
+    ],
+    "focusPath": "src/parser.test.ts",
+    "expected": 0
+  },
+  {
+    "rule": "repeated-static-call-cases",
+    "name": "parameterized / argument-template",
+    "files": [
+      {
+        "path": "src/parser.test.ts",
+        "source": "test.each([['a', true], ['b', false], ['c', true]])(`parses %s`, (input, expected) => { expect(parse(input)).toBe(expected); });"
+      }
+    ],
+    "focusPath": "src/parser.test.ts",
+    "expected": 0
+  },
+  {
+    "rule": "repeated-static-call-cases",
+    "name": "parameterized / argument-non-null",
+    "files": [
+      {
+        "path": "src/parser.test.ts",
+        "source": "test.each(([['a', true], ['b', false], ['c', true]]!))(('parses %s'!), (input, expected) => { expect(parse((input!))).toBe((expected!)); });"
+      }
+    ],
+    "focusPath": "src/parser.test.ts",
+    "expected": 0
+  },
+  {
+    "rule": "repeated-static-call-cases",
+    "name": "parameterized / member-key-assertion",
+    "files": [
+      {
+        "path": "src/parser.test.ts",
+        "source": "test[(\"each\" as const)]([['a', true], ['b', false], ['c', true]])('parses %s', (input, expected) => { expect(parse(input)).toBe(expected); });"
+      }
+    ],
+    "focusPath": "src/parser.test.ts",
+    "expected": 0
+  },
+  {
+    "rule": "repeated-static-call-cases",
+    "name": "parameterized / receiver-combined",
+    "files": [
+      {
+        "path": "src/parser.test.ts",
+        "source": "((test!) satisfies typeof test).each([['a', true], ['b', false], ['c', true]])('parses %s', (input, expected) => { expect(parse(input)).toBe(expected); });"
+      }
+    ],
+    "focusPath": "src/parser.test.ts",
+    "expected": 0
+  },
+  {
+    "rule": "repeated-static-call-cases",
+    "name": "parameterized / call-result-assertion",
+    "files": [
+      {
+        "path": "src/parser.test.ts",
+        "source": "(test.each([['a', true], ['b', false], ['c', true]]) as ReturnType<typeof test.each>)('parses %s', (input, expected) => { expect((parse(input) as ReturnType<typeof parse>)).toBe(expected); });"
+      }
+    ],
+    "focusPath": "src/parser.test.ts",
+    "expected": 0
+  },
+  {
+    "rule": "repeated-static-call-cases",
+    "name": "repeated / literal-unicode",
+    "files": [
+      {
+        "path": "src/parser.test.ts",
+        "source": "test(\"\\u0070arses\", () => { expect(parse(\"\\u0061\")).toBe(true); expect(parse(\"\\u0062\")).toBe(false); expect(parse(\"\\u0063\")).toBe(true); });"
+      }
+    ],
+    "focusPath": "src/parser.test.ts",
+    "expected": 1
+  },
+  {
+    "rule": "repeated-static-call-cases",
+    "name": "repeated / argument-template",
+    "files": [
+      {
+        "path": "src/parser.test.ts",
+        "source": "test(`parses`, () => { expect(parse(`a`)).toBe(true); expect(parse(`b`)).toBe(false); expect(parse(`c`)).toBe(true); });"
+      }
+    ],
+    "focusPath": "src/parser.test.ts",
+    "expected": 1
+  },
+  {
+    "rule": "repeated-static-call-cases",
+    "name": "repeated / argument-non-null",
+    "files": [
+      {
+        "path": "src/parser.test.ts",
+        "source": "test(('parses'!), () => { expect(parse(('a'!))).toBe((true!)); expect(parse(('b'!))).toBe((false!)); expect(parse(('c'!))).toBe((true!)); });"
+      }
+    ],
+    "focusPath": "src/parser.test.ts",
+    "expected": 1
+  },
+  {
+    "rule": "repeated-static-call-cases",
+    "name": "repeated / call-result-assertion",
+    "files": [
+      {
+        "path": "src/parser.test.ts",
+        "source": "test('parses', () => { expect((parse('a') as ReturnType<typeof parse>)).toBe(true); expect((parse('b') as ReturnType<typeof parse>)).toBe(false); expect((parse('c') as ReturnType<typeof parse>)).toBe(true); });"
+      }
+    ],
+    "focusPath": "src/parser.test.ts",
+    "expected": 1
+  },
+  {
+    "rule": "require-use-form-default-values",
+    "name": "controlled-field-with-form-defaults / literal-unicode",
+    "files": [
+      {
+        "path": "profile-form.tsx",
+        "source": "'use client'; import { Controller, useForm } from \"\\u0072eact-hook-form\"; function ProfileForm() { const form = useForm({ defaultValues: { name: '' } }); return <Controller control={form.control} name='name' render={() => null} />; }"
+      }
+    ],
+    "focusPath": "profile-form.tsx",
+    "expected": 0
+  },
+  {
+    "rule": "require-use-form-default-values",
+    "name": "controlled-field-with-form-defaults / argument-non-null",
+    "files": [
+      {
+        "path": "profile-form.tsx",
+        "source": "'use client'; import { Controller, useForm } from 'react-hook-form'; function ProfileForm() { const form = useForm(({ defaultValues: { name: '' } }!)); return <Controller control={form.control} name='name' render={() => null} />; }"
+      }
+    ],
+    "focusPath": "profile-form.tsx",
+    "expected": 0
+  },
+  {
+    "rule": "require-use-form-default-values",
+    "name": "controlled-field-with-form-defaults / member-key-assertion",
+    "files": [
+      {
+        "path": "profile-form.tsx",
+        "source": "'use client'; import { Controller, useForm } from 'react-hook-form'; function ProfileForm() { const form = useForm({ defaultValues: { name: '' } }); return <Controller control={form[(\"control\" as const)]} name='name' render={() => null} />; }"
+      }
+    ],
+    "focusPath": "profile-form.tsx",
+    "expected": 0
+  },
+  {
+    "rule": "require-use-form-default-values",
+    "name": "controlled-field-with-form-defaults / receiver-combined",
+    "files": [
+      {
+        "path": "profile-form.tsx",
+        "source": "'use client'; import { Controller, useForm } from 'react-hook-form'; function ProfileForm() { const form = useForm({ defaultValues: { name: '' } }); return <Controller control={((form!) satisfies typeof form).control} name='name' render={() => null} />; }"
+      }
+    ],
+    "focusPath": "profile-form.tsx",
+    "expected": 0
+  },
+  {
+    "rule": "require-use-form-default-values",
+    "name": "controlled-field-with-form-defaults / call-result-assertion",
+    "files": [
+      {
+        "path": "profile-form.tsx",
+        "source": "'use client'; import { Controller, useForm } from 'react-hook-form'; function ProfileForm() { const form = (useForm({ defaultValues: { name: '' } }) as ReturnType<typeof useForm>); return <Controller control={form.control} name='name' render={() => null} />; }"
+      }
+    ],
+    "focusPath": "profile-form.tsx",
+    "expected": 0
+  },
+  {
+    "rule": "require-use-form-default-values",
+    "name": "controlled-field-without-default / literal-unicode",
+    "files": [
+      {
+        "path": "profile-form.tsx",
+        "source": "'use client'; import { Controller, useForm } from \"\\u0072eact-hook-form\"; function ProfileForm() { const form = useForm(); return <Controller control={form.control} name='name' render={() => null} />; }"
+      }
+    ],
+    "focusPath": "profile-form.tsx",
+    "expected": 1
+  },
+  {
+    "rule": "require-use-form-default-values",
+    "name": "controlled-field-without-default / member-key-assertion",
+    "files": [
+      {
+        "path": "profile-form.tsx",
+        "source": "'use client'; import { Controller, useForm } from 'react-hook-form'; function ProfileForm() { const form = useForm(); return <Controller control={form[(\"control\" as const)]} name='name' render={() => null} />; }"
+      }
+    ],
+    "focusPath": "profile-form.tsx",
+    "expected": 1
+  },
+  {
+    "rule": "require-use-form-default-values",
+    "name": "controlled-field-without-default / receiver-combined",
+    "files": [
+      {
+        "path": "profile-form.tsx",
+        "source": "'use client'; import { Controller, useForm } from 'react-hook-form'; function ProfileForm() { const form = useForm(); return <Controller control={((form!) satisfies typeof form).control} name='name' render={() => null} />; }"
+      }
+    ],
+    "focusPath": "profile-form.tsx",
+    "expected": 1
+  },
+  {
+    "rule": "require-use-form-default-values",
+    "name": "controlled-field-without-default / call-result-assertion",
+    "files": [
+      {
+        "path": "profile-form.tsx",
+        "source": "'use client'; import { Controller, useForm } from 'react-hook-form'; function ProfileForm() { const form = (useForm() as ReturnType<typeof useForm>); return <Controller control={form.control} name='name' render={() => null} />; }"
+      }
+    ],
+    "focusPath": "profile-form.tsx",
+    "expected": 1
+  },
+  {
+    "rule": "no-hand-rolled-sleep",
+    "name": "wrapped zero-delay yield stays exempt",
+    "files": [
+      {
+        "path": "src/yield.ts",
+        "source": "const yieldTurn = () => new Promise<void>((resolve) => setTimeout((resolve!), (0!)));"
+      }
+    ],
+    "focusPath": "src/yield.ts",
+    "expected": 0
+  },
+  {
+    "rule": "no-first-party-module-mock",
+    "name": "dynamic module template stays unknown",
+    "files": [
+      {
+        "path": "src/module.test.ts",
+        "source": "import { vi } from \"vitest\"; const part = getPart(); vi.mock(`./${part}`, () => ({}));"
+      }
+    ],
+    "focusPath": "src/module.test.ts",
+    "expected": 0
+  },
+  {
+    "rule": "prefer-node-crypto-hash",
+    "name": "dynamic algorithm template stays unknown",
+    "files": [
+      {
+        "path": "src/hash.ts",
+        "source": "import { createHash } from \"node:crypto\"; const algorithm = getAlgorithm(); const digest = (createHash(`sha${algorithm}`).update(\"value\") as ReturnType<typeof createHash>).digest(\"hex\");"
+      }
+    ],
+    "focusPath": "src/hash.ts",
+    "expected": 0
+  }
+]

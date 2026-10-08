@@ -243,6 +243,7 @@ export default createRule<Options, MessageIds>({
 
 
     function inspectLoggedValue(value: TSESTree.Node): void {
+      value = unwrapExpression(value);
       if (value.type === "ObjectExpression") {
         for (const property of literalProperties(value)) {
           if (reportSecretProperty(property) || reportRawBlob(property, property.value)) continue;

@@ -100,11 +100,12 @@ export default createRule<Options, MessageIds>({
         }
       },
       VariableDeclarator(node): void {
+        const initializer = node.init === null ? null : unwrapExpression(node.init);
         if (
           node.id.type === AST_NODE_TYPES.Identifier &&
-          node.init?.type === AST_NODE_TYPES.CallExpression
+          initializer?.type === AST_NODE_TYPES.CallExpression
         ) {
-          const hookCallee = unwrapExpression(node.init.callee);
+          const hookCallee = unwrapExpression(initializer.callee);
           if (hookCallee.type !== AST_NODE_TYPES.Identifier) return;
           const hook = ASTUtils.findVariable(context.sourceCode.getScope(hookCallee), hookCallee.name);
           const router = ASTUtils.findVariable(context.sourceCode.getScope(node.id), node.id.name);

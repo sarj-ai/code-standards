@@ -6,7 +6,7 @@
 
 import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
 
-import { unwrapExpression } from "./_unwrap-expression.js";
+import { outerExpression, unwrapExpression } from "./_unwrap-expression.js";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isTestFile } from "./_paths.js";
@@ -45,6 +45,7 @@ const FUNCTION_TYPES: ReadonlySet<AST_NODE_TYPES> = new Set([
 
 /** True for a nonzero numeric literal — the timing guess, as opposed to a `0` yield. */
 function isNonzeroNumericLiteral(node: TSESTree.Node | undefined): boolean {
+  node = node === undefined ? undefined : unwrapExpression(node);
   return node?.type === AST_NODE_TYPES.Literal && typeof node.value === "number" && node.value !== 0;
 }
 
@@ -113,7 +114,7 @@ function nearestEnclosingFunction(node: TSESTree.Node): TSESTree.Node | null {
 
 /** True when the sleep itself controls the test body rather than serving as injected test data. */
 function isImmediatelyConsumedSleep(node: TSESTree.Node): boolean {
-  const parent = node.parent;
+  const parent = outerExpression(node).parent;
   if (parent?.type === AST_NODE_TYPES.AwaitExpression ||
       parent?.type === AST_NODE_TYPES.ReturnStatement ||
       parent?.type === AST_NODE_TYPES.ExpressionStatement) {

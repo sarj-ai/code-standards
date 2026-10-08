@@ -10,7 +10,7 @@ import re
 from types import MappingProxyType
 from typing import TYPE_CHECKING, NamedTuple, final, override
 
-from sarj_iac_lint._hcl import Block, document
+from sarj_iac_lint._hcl import Block, document, literal_string, ungrouped_expression
 from sarj_iac_lint.json_boundary import is_object_mapping, parse_json
 from sarj_iac_lint.rule_base import (
     AutofixPolicy,
@@ -452,7 +452,12 @@ def _constant_everywhere(analysis: _RootAnalysis, environment: str, name: str, c
 
 def _display(canon: _Canon | None, value: str, *, sensitive: bool) -> str:
     text = " ".join(value.split())
-    if sensitive or canon is None or canon.tag not in _PRINTABLE_TAGS or text.startswith(('"', "'")):
+    if (
+        sensitive
+        or canon is None
+        or canon.tag not in _PRINTABLE_TAGS
+        or ungrouped_expression(text).lstrip().startswith(('"', "'"))
+    ):
         return ""
     return f" ({text})" if len(text) <= _MAX_VALUE_DISPLAY else ""
 
@@ -782,6 +787,7 @@ def _tfvars_secret(entry: object) -> str | None:
 
 
 def _canonical_for_type(text: str, scalar_type: _ScalarType) -> _Canon | None:
+    text = ungrouped_expression(text)
     canon = _canonical(text)
     if canon is None:
         return None
@@ -792,7 +798,7 @@ def _canonical_for_type(text: str, scalar_type: _ScalarType) -> _Canon | None:
 
     stripped = text.strip()
     if stripped.startswith('"'):
-        literal = _literal_string(stripped)
+        literal = literal_string(stripped)
         return None if literal is None else _Canon("str", literal)
     if canon.tag == "bool":
         return _Canon("str", "true" if canon.value is True else "false")
@@ -804,6 +810,7 @@ def _canonical_for_type(text: str, scalar_type: _ScalarType) -> _Canon | None:
 def _canonical(text: str) -> _Canon | None:
     if "${" in text or "%{" in text or "<<" in text:
         return None
+    text = ungrouped_expression(text)
     parsed = _parse_value(text, _skip_ws(text, 0))
     return parsed.value if parsed.value is not None and _skip_ws(text, parsed.next_index) == len(text) else None
 
@@ -841,18 +848,10 @@ def _parse_string(text: str, index: int) -> _ValueParseResult:
             cursor += 2
             continue
         if char == '"':
-            literal = _literal_string(text[index : cursor + 1])
+            literal = literal_string(text[index : cursor + 1])
             return _ValueParseResult(None if literal is None else _string_scalar(literal), cursor + 1)
         cursor += 1
     return _ValueParseResult(None, index)
-
-
-def _literal_string(text: str) -> str | None:
-    try:
-        value = parse_json(text)
-    except json.JSONDecodeError:
-        return None
-    return value if isinstance(value, str) else None
 
 
 def _string_scalar(inner: str) -> _Canon:

@@ -1,0 +1,5684 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-10-07",
+  "round": 3,
+  "request": "Twenty additional catalog-wide review passes after PR 1286; improve reliable coverage, consolidate owning facts and measure cost.",
+  "baselineCommit": "9d21550b08d9561a9754489c510365723950949a",
+  "integrationBaseCommit": "fc735a4ef57196d22878c4ddccc73119571d3823",
+  "familyCounts": {
+    "iac": 9,
+    "sql": 20,
+    "text": 11,
+    "python": 135,
+    "typescript": 118
+  },
+  "reviewScope": "All 293 rules are evaluated against each review lens. Executable mutations apply only where the language and owner contract support equivalence; no-op and inapplicable cases retain documented boundaries.",
+  "passes": [
+    {
+      "pass": 1,
+      "focus": "Catalog, owners and admission",
+      "scope": "all",
+      "reviewedRules": 293,
+      "probeVariants": [
+        "baseline"
+      ],
+      "applicableProbeCases": 712,
+      "evidence": "Enumerate every source-owned rule, positive/negative contract, parser, severity and limitation. No new rules or severity changes."
+    },
+    {
+      "pass": 2,
+      "focus": "Scope-aware Python import aliases",
+      "scope": "python",
+      "reviewedRules": 293,
+      "probeVariants": [
+        "import-alias"
+      ],
+      "applicableProbeCases": 245,
+      "evidence": "Rename only resolved imported bindings; skip local writes, parameters or source contracts that cannot preserve identity."
+    },
+    {
+      "pass": 3,
+      "focus": "Python numeric spellings",
+      "scope": "python",
+      "reviewedRules": 293,
+      "probeVariants": [
+        "integer-base"
+      ],
+      "applicableProbeCases": 60,
+      "evidence": "AST-equivalent integer spellings preserve the same value; source-comment and prose owners retain their scope."
+    },
+    {
+      "pass": 4,
+      "focus": "Python decoded string values",
+      "scope": "python",
+      "reviewedRules": 293,
+      "probeVariants": [
+        "literal-unicode"
+      ],
+      "applicableProbeCases": 294,
+      "evidence": "Unicode escapes are admitted only when the Python AST agrees with the original fixture."
+    },
+    {
+      "pass": 5,
+      "focus": "TypeScript import provenance",
+      "scope": "typescript",
+      "reviewedRules": 293,
+      "probeVariants": [
+        "import-alias"
+      ],
+      "applicableProbeCases": 245,
+      "evidence": "Use ESLint scope references for declaration/read aliases, shorthand properties and exports."
+    },
+    {
+      "pass": 6,
+      "focus": "TypeScript decoded string values",
+      "scope": "typescript",
+      "reviewedRules": 293,
+      "probeVariants": [
+        "literal-unicode"
+      ],
+      "applicableProbeCases": 294,
+      "evidence": "Ordinary decoded literals preserve outcomes; directives and raw JSX attributes are excluded."
+    },
+    {
+      "pass": 7,
+      "focus": "Static call-argument templates",
+      "scope": "typescript",
+      "reviewedRules": 293,
+      "probeVariants": [
+        "argument-template"
+      ],
+      "applicableProbeCases": 47,
+      "evidence": "No-substitution template values extend existing static-value owners; dynamic templates remain unknown. Textual identity policy retains its representation gate."
+    },
+    {
+      "pass": 8,
+      "focus": "Non-null call arguments",
+      "scope": "typescript",
+      "reviewedRules": 293,
+      "probeVariants": [
+        "argument-non-null"
+      ],
+      "applicableProbeCases": 113,
+      "evidence": "Existing argument recognizers strip erased wrappers at their owning boundary; spreads, scope and mutation guards stay intact."
+    },
+    {
+      "pass": 9,
+      "focus": "Asserted static member keys",
+      "scope": "typescript",
+      "reviewedRules": 293,
+      "probeVariants": [
+        "member-key-assertion"
+      ],
+      "applicableProbeCases": 96,
+      "evidence": "Preserve method identity through literal assertions; typed array-filter provenance uses the receiver symbol when computed-key lookup has no symbol."
+    },
+    {
+      "pass": 10,
+      "focus": "Combined erased receivers",
+      "scope": "typescript",
+      "reviewedRules": 293,
+      "probeVariants": [
+        "receiver-combined"
+      ],
+      "applicableProbeCases": 96,
+      "evidence": "Nested non-null/satisfies expressions retain original nodes for binding and type-service lookups."
+    },
+    {
+      "pass": 11,
+      "focus": "Erased call-result wrappers",
+      "scope": "typescript",
+      "reviewedRules": 293,
+      "probeVariants": [
+        "call-result-assertion"
+      ],
+      "applicableProbeCases": 127,
+      "evidence": "Calls remain visible through ReturnType assertions in initializers, chains and statements. Type-fact owners are excluded when the transformation changes their contract."
+    },
+    {
+      "pass": 12,
+      "focus": "Nested SQL comments",
+      "scope": "sql",
+      "reviewedRules": 293,
+      "probeVariants": [
+        "nested-comments"
+      ],
+      "applicableProbeCases": 42,
+      "evidence": "Nested block comments preserve token boundaries and authored outcomes."
+    },
+    {
+      "pass": 13,
+      "focus": "Quoted SQL identifiers",
+      "scope": "sql",
+      "reviewedRules": 293,
+      "probeVariants": [
+        "identifier-quotes"
+      ],
+      "applicableProbeCases": 40,
+      "evidence": "Quote lowercase identifier tokens without changing their PostgreSQL identity. Case-sensitive and keyword-like quoted names remain negative controls."
+    },
+    {
+      "pass": 14,
+      "focus": "SQL statement and identifier boundaries",
+      "scope": "sql",
+      "reviewedRules": 293,
+      "probeVariants": [],
+      "applicableProbeCases": 0,
+      "evidence": "Quoted semicolons do not create statements; quoted punctuation and spaces do not collapse distinct table identities or create duplicate-index advice. Keyword whitespace normalization remains independent of quoted identifier contents."
+    },
+    {
+      "pass": 15,
+      "focus": "HCL decoded labels and strings",
+      "scope": "iac",
+      "reviewedRules": 293,
+      "probeVariants": [
+        "quoted-unicode"
+      ],
+      "applicableProbeCases": 35,
+      "evidence": "Decode short and long Unicode escapes at the maintained HCL boundary; invalid escapes, templates and surrogate scalars abstain."
+    },
+    {
+      "pass": 16,
+      "focus": "Grouped HCL scalar values",
+      "scope": "iac",
+      "reviewedRules": 293,
+      "probeVariants": [
+        "scalar-parentheses"
+      ],
+      "applicableProbeCases": 11,
+      "evidence": "Whole-expression groups preserve declared scalar types; quoted numeric inputs remain absent from diagnostic values."
+    },
+    {
+      "pass": 17,
+      "focus": "Structured text decoded JSON values",
+      "scope": "text",
+      "reviewedRules": 293,
+      "probeVariants": [
+        "json-escaped-keys"
+      ],
+      "applicableProbeCases": 2,
+      "evidence": "Escaped JSON spellings preserve decoded values for applicable structured owners. No filename-only findings are introduced."
+    },
+    {
+      "pass": 18,
+      "focus": "Input framing and inert syntax",
+      "scope": "all",
+      "reviewedRules": 293,
+      "probeVariants": [
+        "crlf",
+        "bom",
+        "comment-noise",
+        "string-noise"
+      ],
+      "applicableProbeCases": 1400,
+      "evidence": "Preserve source line endings and signatures; TypeScript inert comment/string variants retain negative outcomes outside prose owners."
+    },
+    {
+      "pass": 19,
+      "focus": "Shared facts, diagnostics and fixes",
+      "scope": "all",
+      "reviewedRules": 293,
+      "probeVariants": [],
+      "applicableProbeCases": 0,
+      "evidence": "Reuse erased-expression, static-string, SQL identifier and HCL literal facts. Existing coordinate/duplicate checks and fix convergence fixtures continue to pass. Parenthesis equivalence is exhaustive over 29,524 token sequences."
+    },
+    {
+      "pass": 20,
+      "focus": "Corpus, performance and integration",
+      "scope": "all",
+      "reviewedRules": 293,
+      "probeVariants": [],
+      "applicableProbeCases": 0,
+      "evidence": "Verify local immutable pins in fresh bounded processes, compare every diagnostic with multiplicity, measure paired timings/RSS, run all owning suites and make verify, then exact-revision PR CI."
+    }
+  ],
+  "decisions": {
+    "retain": 262,
+    "equivalent-source-coverage": 29,
+    "false-positive-fix": 2
+  },
+  "labels": {
+    "cases": 3320,
+    "positiveCases": 1409,
+    "negativeCases": 1911,
+    "FP": 0,
+    "FN": 0,
+    "exactDuplicateProbeDiagnostics": 0
+  },
+  "baselineEvidence": {
+    "mismatchesByFamily": {
+      "iac": 15,
+      "sql": 6,
+      "text": 0,
+      "python": 0,
+      "typescript": 28
+    },
+    "diagnosticErrors": {
+      "FP": 9,
+      "FN": 42
+    },
+    "typescriptAffectedRules": 19,
+    "supplementalReproductions": [
+      "Distinct quoted SQL table names produced one false duplicate-index finding.",
+      "An HCL long Unicode escape hid one constant-input finding.",
+      "Quoted-semicolon statement and grouped-quoted-input privacy controls were labeled before their owning fixes."
+    ],
+    "fixtureCorrections": "JSX raw attributes and directive prologues do not use ordinary decoded-string equivalence. Textual assertion-identity policy retains spelling sensitivity; one Zod type-fact lens is excluded. Two temporary disk-space execution errors were rerun and are not counted as rule gaps."
+  },
+  "admission": {
+    "routing": "sarj-ai/code-standards: source/configuration semantics and lint-engine shared facts",
+    "failureMode": "Equivalent HCL labels/literals, SQL identifiers and erased TypeScript expressions concealed existing diagnostics or produced false orphan, timeout and duplicate-index warnings.",
+    "owners": "All changes refine existing owners and their shared parsers. Upstream linter configuration cannot fix these custom recognizers.",
+    "harm": "Current resource/test/API coverage can be bypassed by equivalent source spelling; false diagnostics can advise removing declared inputs or a useful index.",
+    "validity": "No policy freezes a current filename, constant or repository arrangement; dynamic, foreign, shadowed and type-sensitive states retain existing exclusions.",
+    "boundary": "Reuse original ESLint AST nodes, scope/type services, bounded SQL scans and the shared HCL parser.",
+    "beforeImplementation": "All new transformed fixtures and supplemental owning regressions were labeled before their corresponding fixes.",
+    "fixPolicy": "No new automatic fix is introduced. Existing fix-output and second-pass convergence cases remain in the shared 495-case harness."
+  },
+  "regressions": {
+    "typescriptNewCases": 186,
+    "typescriptHarnessCases": 495,
+    "finalReviewSqlWhitespaceCases": 12,
+    "nativeAdditionalCases": "Escaped labels, Unicode scalar validation, grouped values, privacy, quoted identifiers/keywords, case-sensitive tables, statement punctuation and multiline keyword/constraint boundaries live in their owning tests."
+  },
+  "corpusPins": [
+    {
+      "name": "standards",
+      "files": 459,
+      "bytes": 5851710,
+      "revision": "1df5f4645e768136bca34013a33880b274665470",
+      "digest": "sha256:4b46e025fcf655a715b84ef8a24b24fa4c73389608feb84da8ff7e2033f1baa0"
+    },
+    {
+      "name": "<private-corpus>",
+      "files": 357,
+      "bytes": 3201667
+    },
+    {
+      "name": "<private-corpus>",
+      "files": 1012,
+      "bytes": 9016055
+    },
+    {
+      "name": "<private-corpus>",
+      "files": 968,
+      "bytes": 4421639
+    },
+    {
+      "name": "<private-corpus>",
+      "files": 361,
+      "bytes": 2766370
+    },
+    {
+      "name": "<private-corpus>",
+      "files": 351,
+      "bytes": 1835919
+    },
+    {
+      "name": "<private-corpus>",
+      "files": 64,
+      "bytes": 272256
+    },
+    {
+      "name": "<private-corpus>",
+      "files": 43,
+      "bytes": 64711
+    },
+    {
+      "name": "<private-corpus>",
+      "files": 139,
+      "bytes": 781866
+    },
+    {
+      "name": "<private-corpus>",
+      "files": 152,
+      "bytes": 500002
+    }
+  ],
+  "corpusResults": [
+    {
+      "family": "native",
+      "files": 2087,
+      "bytes": 18360284,
+      "beforeFindings": 7143,
+      "afterFindings": 7143,
+      "introduced": 0,
+      "removed": 0,
+      "engineSeconds": {
+        "baseline": 135.799011209514,
+        "candidate": 177.04855720861815
+      },
+      "processSeconds": {
+        "baseline": 162.447687,
+        "candidate": 216.716804
+      }
+    },
+    {
+      "family": "typescript",
+      "files": 1819,
+      "bytes": 10351911,
+      "beforeFindings": 16526,
+      "afterFindings": 16526,
+      "introduced": 0,
+      "removed": 0,
+      "engineSeconds": {
+        "baseline": 15.48147275,
+        "candidate": 12.900587833
+      },
+      "processSeconds": {
+        "baseline": 24.324498,
+        "candidate": 22.355345
+      }
+    }
+  ],
+  "postReviewAffectedCorpus": {
+    "files": 398,
+    "bytes": 1618835,
+    "introduced": 0,
+    "removed": 0,
+    "scope": "All SQL and IaC owners rescanned after the final shared identifier/Unicode refinements using the same pinned manifests."
+  },
+  "corpusInspection": {
+    "introducedFindingsInspected": 0,
+    "introducedFindings": 0,
+    "removedFindings": 0,
+    "exactDuplicates": {
+      "native": 0,
+      "typescript": 0
+    },
+    "classification": "Every finding, message and multiplicity is unchanged. Previously calibrated findings are not newly adjudicated as true positives.",
+    "limits": "Corpus scans exercise all 164 native owners and 113 TypeScript owners without mandatory type services. Five mandatory type-service owners and all 11 text owners retain typed/authored probes and full owning suites. Private identity, paths, snippets and hashes are omitted."
+  },
+  "performance": {
+    "pairedFreshProcesses": {
+      "native": {
+        "files": 100,
+        "bytes": 1068323,
+        "samples": {
+          "baseline": [
+            {
+              "files": 100,
+              "bytes": 1068323,
+              "seconds": 9.526346208062023,
+              "peak": 416825344
+            },
+            {
+              "files": 100,
+              "bytes": 1068323,
+              "seconds": 10.082063958980143,
+              "peak": 412368896
+            },
+            {
+              "files": 100,
+              "bytes": 1068323,
+              "seconds": 10.408852874999866,
+              "peak": 417611776
+            }
+          ],
+          "candidate": [
+            {
+              "files": 100,
+              "bytes": 1068323,
+              "seconds": 16.56769245886244,
+              "peak": 411009024
+            },
+            {
+              "files": 100,
+              "bytes": 1068323,
+              "seconds": 10.056250666966662,
+              "peak": 416808960
+            },
+            {
+              "files": 100,
+              "bytes": 1068323,
+              "seconds": 10.07472624978982,
+              "peak": 417398784
+            }
+          ]
+        },
+        "medians": {
+          "baseline": 10.082063958980143,
+          "candidate": 10.07472624978982
+        }
+      },
+      "typescript": {
+        "files": 100,
+        "bytes": 812551,
+        "samples": {
+          "baseline": [
+            {
+              "files": 100,
+              "bytes": 812551,
+              "seconds": 0.7779470000000002,
+              "peak": 408567808
+            },
+            {
+              "files": 100,
+              "bytes": 812551,
+              "seconds": 3.410927583,
+              "peak": 393756672
+            },
+            {
+              "files": 100,
+              "bytes": 812551,
+              "seconds": 4.501037041000001,
+              "peak": 374587392
+            }
+          ],
+          "candidate": [
+            {
+              "files": 100,
+              "bytes": 812551,
+              "seconds": 1.2531572500000001,
+              "peak": 411189248
+            },
+            {
+              "files": 100,
+              "bytes": 812551,
+              "seconds": 5.572543041,
+              "peak": 379338752
+            },
+            {
+              "files": 100,
+              "bytes": 812551,
+              "seconds": 3.1101577920000003,
+              "peak": 404635648
+            }
+          ]
+        },
+        "medians": {
+          "baseline": 3.410927583,
+          "candidate": 3.1101577920000003
+        }
+      }
+    },
+    "hclParentheses": {
+      "before": {
+        "mode": "baseline",
+        "rows": [
+          {
+            "groups": 100,
+            "coldSeconds": 0.00020174984820187092,
+            "warmMedianSeconds": 0.00019660405814647675,
+            "samples": [
+              0.00020174984820187092,
+              0.0001962080132216215,
+              0.00019512511789798737,
+              0.00019975006580352783,
+              0.00019700010307133198
+            ]
+          },
+          {
+            "groups": 1000,
+            "coldSeconds": 0.0216001661028713,
+            "warmMedianSeconds": 0.025935082929208875,
+            "samples": [
+              0.0216001661028713,
+              0.026037915842607617,
+              0.08016783301718533,
+              0.025832250015810132,
+              0.021357540972530842
+            ]
+          },
+          {
+            "groups": 3000,
+            "coldSeconds": 0.638203457929194,
+            "warmMedianSeconds": 0.4583841455169022,
+            "samples": [
+              0.638203457929194,
+              0.4047377910465002,
+              0.772725832881406,
+              0.3955339170061052,
+              0.5120304999873042
+            ]
+          }
+        ]
+      },
+      "after": {
+        "mode": "candidate",
+        "rows": [
+          {
+            "groups": 100,
+            "coldSeconds": 1.35831069201231e-05,
+            "warmMedianSeconds": 9.228941053152084e-06,
+            "samples": [
+              1.35831069201231e-05,
+              1.0417075827717781e-05,
+              9.416835382580757e-06,
+              8.916947990655899e-06,
+              9.041046723723412e-06
+            ]
+          },
+          {
+            "groups": 1000,
+            "coldSeconds": 0.00010750000365078449,
+            "warmMedianSeconds": 0.00010381254833191633,
+            "samples": [
+              0.00010750000365078449,
+              0.00010537495836615562,
+              0.00010400009341537952,
+              0.00010362500324845314,
+              0.00010337494313716888
+            ]
+          },
+          {
+            "groups": 3000,
+            "coldSeconds": 0.00031554209999740124,
+            "warmMedianSeconds": 0.00031800055876374245,
+            "samples": [
+              0.00031554209999740124,
+              0.0003186250105500221,
+              0.0003184590023010969,
+              0.000317542115226388,
+              0.0003148750402033329
+            ]
+          }
+        ],
+        "equivalenceCases": 29524
+      },
+      "recipe": "Construct ( as a token repeated N times, true, and ) repeated N times, for N=100,1000,3000; run strip_outer_parentheses five times per size in each fresh baseline/candidate process. Exhaustive equivalence uses all token products of (, ), x of lengths zero through nine."
+    },
+    "interpretation": "Whole-catalog paired medians do not establish a general speedup. HCL group removal changes from repeated rescanning to one scan; the focused deeply nested stress improves substantially while exhaustive boundary outcomes agree.",
+    "protocol": "Three fresh baseline/candidate process pairs per family scan the same 100 public-corpus files. HCL reports the first cold call and the median of four warm calls. SQL and IaC owning performance gates also pass.",
+    "cacheBounds": "SQL/HCL source-fact caches retain 32 entries; line indexing retains one. No path-only cache is added. SQL quote membership uses binary search and the unquoted path avoids rescanning.",
+    "memory": "Native peak RSS is reported in bytes on macOS; TypeScript RSS is sampled at completion, not claimed as peak.",
+    "timingLimit": "Local concurrent load influences timings; the claim is limited to algorithmic HCL group removal."
+  },
+  "release": {
+    "python": "1.25.5 (unchanged)",
+    "iac": "0.18.3",
+    "sql": "0.18.13",
+    "typescript": "16.4.1",
+    "standards": "8.38.4",
+    "compat": "8.38.4",
+    "immutableTags": "Affected versions and exact sibling pins advance. No immutable tag is retargeted."
+  },
+  "references": [
+    "https://developer.hashicorp.com/terraform/language/expressions/strings",
+    "https://github.com/hashicorp/hcl/blob/main/hclsyntax/parser.go",
+    "https://www.postgresql.org/docs/current/sql-syntax-lexical.html",
+    "https://www.typescriptlang.org/docs/handbook/2/everyday-types.html",
+    "https://www.typescriptlang.org/docs/handbook/release-notes/typescript-4-9.html"
+  ],
+  "limitationsReference": "packages/standards/src/sarj_standards/schemas/rule-catalog.v1.json",
+  "validation": {
+    "makeVerify": "passed",
+    "testCounts": {
+      "typescript": 7104,
+      "bootstrap": 15,
+      "contracts": 13,
+      "python": 11859,
+      "sql": 1035,
+      "iac": 741,
+      "standardsFreshWheel": 3317
+    },
+    "skippedStandardsTests": 9,
+    "totalPassed": 24084
+  },
+  "commands": [
+    "make verify",
+    "cd packages/typescript && npm test",
+    "uv run --project packages/standards pytest packages/sql/tests -q",
+    "uv run --project packages/standards pytest packages/iac/tests -q",
+    "code-standards --root . maintain rules changes --before origin/main --after HEAD"
+  ],
+  "rules": [
+    {
+      "key": "iac:no-comment-cruft",
+      "implementation": "packages/iac/src/sarj_iac_lint/rules/no_comment_cruft.py",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 7,
+      "negativeProbes": 6,
+      "variants": [
+        "baseline",
+        "crlf",
+        "quoted-unicode",
+        "scalar-parentheses"
+      ]
+    },
+    {
+      "key": "iac:no-dead-environment-input",
+      "implementation": "packages/iac/src/sarj_iac_lint/rules/no_dead_environment_input.py",
+      "severity": "warning",
+      "decision": "equivalent-source-coverage",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 9,
+      "positiveProbes": 19,
+      "negativeProbes": 18,
+      "variants": [
+        "baseline",
+        "crlf",
+        "quoted-unicode",
+        "scalar-parentheses"
+      ]
+    },
+    {
+      "key": "iac:no-environment-conditional",
+      "implementation": "packages/iac/src/sarj_iac_lint/rules/no_environment_conditional.py",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 12,
+      "negativeProbes": 11,
+      "variants": [
+        "baseline",
+        "crlf",
+        "quoted-unicode"
+      ]
+    },
+    {
+      "key": "iac:no-mocked-terraform-test-oracle",
+      "implementation": "packages/iac/src/sarj_iac_lint/rules/no_mocked_terraform_test_oracle.py",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 3,
+      "variants": [
+        "baseline",
+        "crlf",
+        "quoted-unicode"
+      ]
+    },
+    {
+      "key": "iac:no-redundant-variable-validation",
+      "implementation": "packages/iac/src/sarj_iac_lint/rules/no_redundant_variable_validation.py",
+      "severity": "error",
+      "decision": "equivalent-source-coverage",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 2,
+      "positiveProbes": 7,
+      "negativeProbes": 6,
+      "variants": [
+        "baseline",
+        "crlf",
+        "quoted-unicode",
+        "scalar-parentheses"
+      ]
+    },
+    {
+      "key": "iac:no-restated-comment",
+      "implementation": "packages/iac/src/sarj_iac_lint/rules/no_restated_comment.py",
+      "severity": "warning",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 6,
+      "negativeProbes": 6,
+      "variants": [
+        "baseline",
+        "crlf"
+      ]
+    },
+    {
+      "key": "iac:no-terraform-data-condition",
+      "implementation": "packages/iac/src/sarj_iac_lint/rules/no_terraform_data_condition.py",
+      "severity": "error",
+      "decision": "equivalent-source-coverage",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 1,
+      "positiveProbes": 3,
+      "negativeProbes": 3,
+      "variants": [
+        "baseline",
+        "crlf",
+        "quoted-unicode"
+      ]
+    },
+    {
+      "key": "iac:require-deletion-protection",
+      "implementation": "packages/iac/src/sarj_iac_lint/rules/require_deletion_protection.py",
+      "severity": "warning",
+      "decision": "equivalent-source-coverage",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 1,
+      "positiveProbes": 3,
+      "negativeProbes": 3,
+      "variants": [
+        "baseline",
+        "crlf",
+        "quoted-unicode"
+      ]
+    },
+    {
+      "key": "iac:require-prevent-destroy-on-irreplaceable",
+      "implementation": "packages/iac/src/sarj_iac_lint/rules/require_prevent_destroy.py",
+      "severity": "warning",
+      "decision": "equivalent-source-coverage",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 2,
+      "positiveProbes": 7,
+      "negativeProbes": 7,
+      "variants": [
+        "baseline",
+        "crlf",
+        "quoted-unicode",
+        "scalar-parentheses"
+      ]
+    },
+    {
+      "key": "sql:enforce-timestamptz",
+      "implementation": "packages/sql/src/sarj_sql_lint/rules/enforce_timestamptz.py",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 4,
+      "negativeProbes": 4,
+      "variants": [
+        "baseline",
+        "crlf",
+        "identifier-quotes",
+        "nested-comments"
+      ]
+    },
+    {
+      "key": "sql:excess-migration-index-requires-justification",
+      "implementation": "packages/sql/src/sarj_sql_lint/rules/index_budget.py",
+      "severity": "warning",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 4,
+      "negativeProbes": 4,
+      "variants": [
+        "baseline",
+        "crlf",
+        "identifier-quotes",
+        "nested-comments"
+      ]
+    },
+    {
+      "key": "sql:existing-table-check-or-foreign-key-requires-not-valid",
+      "implementation": "packages/sql/src/sarj_sql_lint/rules/add_constraint_requires_not_valid.py",
+      "severity": "warning",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 4,
+      "negativeProbes": 4,
+      "variants": [
+        "baseline",
+        "crlf",
+        "identifier-quotes",
+        "nested-comments"
+      ]
+    },
+    {
+      "key": "sql:idempotent-ddl",
+      "implementation": "packages/sql/src/sarj_sql_lint/rules/idempotent_ddl.py",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 4,
+      "negativeProbes": 4,
+      "variants": [
+        "baseline",
+        "crlf",
+        "identifier-quotes",
+        "nested-comments"
+      ]
+    },
+    {
+      "key": "sql:index-concurrently",
+      "implementation": "packages/sql/src/sarj_sql_lint/rules/index_concurrently.py",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 4,
+      "negativeProbes": 4,
+      "variants": [
+        "baseline",
+        "crlf",
+        "identifier-quotes",
+        "nested-comments"
+      ]
+    },
+    {
+      "key": "sql:insert-requires-replay-policy",
+      "implementation": "packages/sql/src/sarj_sql_lint/rules/insert_requires_on_conflict.py",
+      "severity": "error",
+      "decision": "equivalent-source-coverage",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 1,
+      "positiveProbes": 4,
+      "negativeProbes": 4,
+      "variants": [
+        "baseline",
+        "crlf",
+        "identifier-quotes",
+        "nested-comments"
+      ]
+    },
+    {
+      "key": "sql:mixed-migration-phases",
+      "implementation": "packages/sql/src/sarj_sql_lint/rules/mixed_migration_phases.py",
+      "severity": "warning",
+      "decision": "equivalent-source-coverage",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 1,
+      "positiveProbes": 4,
+      "negativeProbes": 4,
+      "variants": [
+        "baseline",
+        "crlf",
+        "identifier-quotes",
+        "nested-comments"
+      ]
+    },
+    {
+      "key": "sql:no-application-schema-check",
+      "implementation": "packages/sql/src/sarj_sql_lint/rules/no_application_schema_check.py",
+      "severity": "warning",
+      "decision": "equivalent-source-coverage",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 1,
+      "positiveProbes": 8,
+      "negativeProbes": 8,
+      "variants": [
+        "baseline",
+        "crlf",
+        "identifier-quotes",
+        "nested-comments"
+      ]
+    },
+    {
+      "key": "sql:no-database-functions",
+      "implementation": "packages/sql/src/sarj_sql_lint/rules/no_database_functions.py",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 4,
+      "negativeProbes": 4,
+      "variants": [
+        "baseline",
+        "crlf",
+        "identifier-quotes",
+        "nested-comments"
+      ]
+    },
+    {
+      "key": "sql:no-database-triggers",
+      "implementation": "packages/sql/src/sarj_sql_lint/rules/no_create_trigger.py",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 4,
+      "negativeProbes": 4,
+      "variants": [
+        "baseline",
+        "crlf",
+        "identifier-quotes",
+        "nested-comments"
+      ]
+    },
+    {
+      "key": "sql:no-duplicate-index",
+      "implementation": "packages/sql/src/sarj_sql_lint/rules/no_duplicate_index.py",
+      "severity": "warning",
+      "decision": "false-positive-fix",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 4,
+      "negativeProbes": 4,
+      "variants": [
+        "baseline",
+        "crlf",
+        "identifier-quotes",
+        "nested-comments"
+      ]
+    },
+    {
+      "key": "sql:no-long-migration-narration",
+      "implementation": "packages/sql/src/sarj_sql_lint/rules/excessive_commentary.py",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 4,
+      "negativeProbes": 4,
+      "variants": [
+        "baseline",
+        "crlf",
+        "identifier-quotes",
+        "nested-comments"
+      ]
+    },
+    {
+      "key": "sql:no-migration-comment-cruft",
+      "implementation": "packages/sql/src/sarj_sql_lint/rules/no_comment_cruft.py",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 3,
+      "variants": [
+        "baseline",
+        "crlf",
+        "nested-comments"
+      ]
+    },
+    {
+      "key": "sql:no-offset-pagination",
+      "implementation": "packages/sql/src/sarj_sql_lint/rules/no_offset_pagination.py",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 4,
+      "negativeProbes": 4,
+      "variants": [
+        "baseline",
+        "crlf",
+        "identifier-quotes",
+        "nested-comments"
+      ]
+    },
+    {
+      "key": "sql:no-pg-enum",
+      "implementation": "packages/sql/src/sarj_sql_lint/rules/no_pg_enum.py",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 4,
+      "negativeProbes": 4,
+      "variants": [
+        "baseline",
+        "crlf",
+        "identifier-quotes",
+        "nested-comments"
+      ]
+    },
+    {
+      "key": "sql:prefer-jsonb",
+      "implementation": "packages/sql/src/sarj_sql_lint/rules/prefer_jsonb.py",
+      "severity": "error",
+      "decision": "equivalent-source-coverage",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 1,
+      "positiveProbes": 4,
+      "negativeProbes": 4,
+      "variants": [
+        "baseline",
+        "crlf",
+        "identifier-quotes",
+        "nested-comments"
+      ]
+    },
+    {
+      "key": "sql:prefer-text-over-varchar",
+      "implementation": "packages/sql/src/sarj_sql_lint/rules/prefer_text_over_varchar.py",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 4,
+      "negativeProbes": 4,
+      "variants": [
+        "baseline",
+        "crlf",
+        "identifier-quotes",
+        "nested-comments"
+      ]
+    },
+    {
+      "key": "sql:prefer-uuidv7-default",
+      "implementation": "packages/sql/src/sarj_sql_lint/rules/prefer_uuidv7_default.py",
+      "severity": "error",
+      "decision": "equivalent-source-coverage",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 1,
+      "positiveProbes": 4,
+      "negativeProbes": 4,
+      "variants": [
+        "baseline",
+        "crlf",
+        "identifier-quotes",
+        "nested-comments"
+      ]
+    },
+    {
+      "key": "sql:require-fk-index",
+      "implementation": "packages/sql/src/sarj_sql_lint/rules/require_fk_index.py",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 4,
+      "negativeProbes": 4,
+      "variants": [
+        "baseline",
+        "crlf",
+        "identifier-quotes",
+        "nested-comments"
+      ]
+    },
+    {
+      "key": "sql:require-lock-timeout",
+      "implementation": "packages/sql/src/sarj_sql_lint/rules/require_lock_timeout.py",
+      "severity": "error",
+      "decision": "false-positive-fix",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 1,
+      "positiveProbes": 4,
+      "negativeProbes": 4,
+      "variants": [
+        "baseline",
+        "crlf",
+        "identifier-quotes",
+        "nested-comments"
+      ]
+    },
+    {
+      "key": "text:commented-out-config",
+      "implementation": "packages/standards/src/sarj_standards/libs/linting/textlint.py",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 2,
+      "negativeProbes": 2,
+      "variants": [
+        "baseline",
+        "crlf"
+      ]
+    },
+    {
+      "key": "text:config-comment-wall",
+      "implementation": "packages/standards/src/sarj_standards/libs/linting/textlint.py",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 2,
+      "negativeProbes": 2,
+      "variants": [
+        "baseline",
+        "crlf"
+      ]
+    },
+    {
+      "key": "text:declarative-deployment-boundary",
+      "implementation": "packages/standards/src/sarj_standards/libs/linting/textlint.py",
+      "severity": "warning",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 8,
+      "negativeProbes": 8,
+      "variants": [
+        "baseline",
+        "crlf"
+      ]
+    },
+    {
+      "key": "text:ephemeral-execution-artifact",
+      "implementation": "packages/standards/src/sarj_standards/libs/linting/textlint.py",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 2,
+      "negativeProbes": 2,
+      "variants": [
+        "baseline",
+        "crlf"
+      ]
+    },
+    {
+      "key": "text:exact-config-comment-restatement",
+      "implementation": "packages/standards/src/sarj_standards/libs/linting/textlint.py",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 2,
+      "negativeProbes": 2,
+      "variants": [
+        "baseline",
+        "crlf"
+      ]
+    },
+    {
+      "key": "text:hidden-markdown-heading",
+      "implementation": "packages/standards/src/sarj_standards/libs/linting/textlint.py",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 2,
+      "negativeProbes": 2,
+      "variants": [
+        "baseline",
+        "crlf"
+      ]
+    },
+    {
+      "key": "text:iac-source-coupled-test",
+      "implementation": "packages/standards/src/sarj_standards/libs/linting/textlint.py",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 2,
+      "negativeProbes": 2,
+      "variants": [
+        "baseline",
+        "crlf"
+      ]
+    },
+    {
+      "key": "text:large-shell-program",
+      "implementation": "packages/standards/src/sarj_standards/libs/linting/textlint.py",
+      "severity": "warning",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 2,
+      "negativeProbes": 2,
+      "variants": [
+        "baseline",
+        "crlf"
+      ]
+    },
+    {
+      "key": "text:no-unsafe-command-argument-interpolation",
+      "implementation": "packages/standards/src/sarj_standards/libs/linting/textlint.py",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 2,
+      "negativeProbes": 2,
+      "variants": [
+        "baseline",
+        "crlf"
+      ]
+    },
+    {
+      "key": "text:no-wildcard-secret-read-permission",
+      "implementation": "packages/standards/src/sarj_standards/libs/linting/textlint.py",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 3,
+      "variants": [
+        "baseline",
+        "crlf",
+        "json-escaped-keys"
+      ]
+    },
+    {
+      "key": "text:workflow-embedded-program",
+      "implementation": "packages/standards/src/sarj_standards/libs/linting/textlint.py",
+      "severity": "warning",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 2,
+      "negativeProbes": 2,
+      "variants": [
+        "baseline",
+        "crlf"
+      ]
+    },
+    {
+      "key": "python:async-cleanup-registered-synchronously",
+      "implementation": "packages/python/src/sarj_python_lint/rules/async_cleanup_registered_synchronously.py",
+      "severity": "warning",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 3,
+      "variants": [
+        "baseline",
+        "crlf",
+        "import-alias"
+      ]
+    },
+    {
+      "key": "python:async-mock-call-without-await-assertion",
+      "implementation": "packages/python/src/sarj_python_lint/rules/async_mock_call_without_await_assertion.py",
+      "severity": "warning",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 8,
+      "negativeProbes": 7,
+      "variants": [
+        "baseline",
+        "crlf",
+        "import-alias",
+        "integer-base",
+        "literal-unicode"
+      ]
+    },
+    {
+      "key": "python:complex-postgres-query-requires-architecture-review",
+      "implementation": "packages/python/src/sarj_python_lint/rules/complex_postgres_query_requires_architecture_review.py",
+      "severity": "warning",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 8,
+      "negativeProbes": 8,
+      "variants": [
+        "baseline",
+        "crlf",
+        "import-alias",
+        "literal-unicode"
+      ]
+    },
+    {
+      "key": "python:defect-xfail-requires-explicit-strict",
+      "implementation": "packages/python/src/sarj_python_lint/rules/defect_xfail_requires_explicit_strict.py",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 5,
+      "negativeProbes": 5,
+      "variants": [
+        "baseline",
+        "crlf",
+        "import-alias",
+        "integer-base",
+        "literal-unicode"
+      ]
+    },
+    {
+      "key": "python:docstring-args-restate-signature",
+      "implementation": "packages/python/src/sarj_python_lint/rules/docstring_args_restate_signature.py",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 2,
+      "negativeProbes": 2,
+      "variants": [
+        "baseline",
+        "crlf"
+      ]
+    },
+    {
+      "key": "python:docstring-returns-restate-signature",
+      "implementation": "packages/python/src/sarj_python_lint/rules/docstring_returns_restate_signature.py",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 2,
+      "negativeProbes": 2,
+      "variants": [
+        "baseline",
+        "crlf"
+      ]
+    },
+    {
+      "key": "python:excessive-commentary",
+      "implementation": "packages/python/src/sarj_python_lint/rules/excessive_commentary.py",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 2,
+      "negativeProbes": 2,
+      "variants": [
+        "baseline",
+        "crlf"
+      ]
+    },
+    {
+      "key": "python:fakes-in-shared-location",
+      "implementation": "packages/python/src/sarj_python_lint/rules/fakes_in_shared_location.py",
+      "severity": "warning",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 2,
+      "negativeProbes": 5,
+      "variants": [
+        "baseline",
+        "crlf",
+        "integer-base"
+      ]
+    },
+    {
+      "key": "python:fastapi-class-router-contract",
+      "implementation": "packages/python/src/sarj_python_lint/rules/fastapi_class_router_contract.py",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 3,
+      "variants": [
+        "baseline",
+        "crlf",
+        "import-alias"
+      ]
+    },
+    {
+      "key": "python:fastapi-explicit-openapi-contract",
+      "implementation": "packages/python/src/sarj_python_lint/rules/fastapi_explicit_openapi_contract.py",
+      "severity": "warning",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 14,
+      "negativeProbes": 15,
+      "variants": [
+        "baseline",
+        "crlf",
+        "import-alias",
+        "integer-base",
+        "literal-unicode"
+      ]
+    },
+    {
+      "key": "python:iac-source-coupled-test",
+      "implementation": "packages/python/src/sarj_python_lint/rules/iac_source_coupled_test.py",
+      "severity": "warning",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 4,
+      "negativeProbes": 4,
+      "variants": [
+        "baseline",
+        "crlf",
+        "import-alias",
+        "integer-base",
+        "literal-unicode"
+      ]
+    },
+    {
+      "key": "python:invalid-pydantic-field-default",
+      "implementation": "packages/python/src/sarj_python_lint/rules/invalid_pydantic_field_default.py",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 7,
+      "negativeProbes": 7,
+      "variants": [
+        "baseline",
+        "crlf",
+        "import-alias",
+        "integer-base"
+      ]
+    },
+    {
+      "key": "python:mock-without-spec",
+      "implementation": "packages/python/src/sarj_python_lint/rules/mock_without_spec.py",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 7,
+      "negativeProbes": 7,
+      "variants": [
+        "baseline",
+        "crlf",
+        "import-alias",
+        "literal-unicode"
+      ]
+    },
+    {
+      "key": "python:named-record-at-boundaries",
+      "implementation": "packages/python/src/sarj_python_lint/rules/named_record_at_boundaries.py",
+      "severity": "warning",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 4,
+      "variants": [
+        "baseline",
+        "crlf",
+        "import-alias",
+        "literal-unicode"
+      ]
+    },
+    {
+      "key": "python:negative-only-http-status-assertion",
+      "implementation": "packages/python/src/sarj_python_lint/rules/negative_only_http_status_assertion.py",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 4,
+      "negativeProbes": 4,
+      "variants": [
+        "baseline",
+        "crlf",
+        "integer-base",
+        "literal-unicode"
+      ]
+    },
+    {
+      "key": "python:no-analytical-aggregation-in-postgres-store",
+      "implementation": "packages/python/src/sarj_python_lint/rules/no_analytical_aggregation_in_postgres_store.py",
+      "severity": "warning",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 4,
+      "negativeProbes": 4,
+      "variants": [
+        "baseline",
+        "crlf",
+        "import-alias",
+        "literal-unicode"
+      ]
+    },
+    {
+      "key": "python:no-any-mapping-types",
+      "implementation": "packages/python/src/sarj_python_lint/rules/no_any_mapping_types.py",
+      "severity": "warning",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 3,
+      "variants": [
+        "baseline",
+        "crlf",
+        "import-alias"
+      ]
+    },
+    {
+      "key": "python:no-bare-test-phase-comments",
+      "implementation": "packages/python/src/sarj_python_lint/rules/phase_label_comment.py",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 2,
+      "negativeProbes": 2,
+      "variants": [
+        "baseline",
+        "crlf"
+      ]
+    },
+    {
+      "key": "python:no-before-validator-input-mutation",
+      "implementation": "packages/python/src/sarj_python_lint/rules/no_before_validator_input_mutation.py",
+      "severity": "warning",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 8,
+      "negativeProbes": 8,
+      "variants": [
+        "baseline",
+        "crlf",
+        "import-alias",
+        "literal-unicode"
+      ]
+    },
+    {
+      "key": "python:no-broad-keyword-capture",
+      "implementation": "packages/python/src/sarj_python_lint/rules/no_broad_keyword_capture.py",
+      "severity": "warning",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 7,
+      "negativeProbes": 8,
+      "variants": [
+        "baseline",
+        "crlf",
+        "import-alias",
+        "integer-base"
+      ]
+    },
+    {
+      "key": "python:no-comment-cruft",
+      "implementation": "packages/python/src/sarj_python_lint/rules/no_comment_cruft.py",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 2,
+      "negativeProbes": 2,
+      "variants": [
+        "baseline",
+        "crlf"
+      ]
+    },
+    {
+      "key": "python:no-conftest-test-module-import",
+      "implementation": "packages/python/src/sarj_python_lint/rules/no_conftest_test_module_import.py",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 3,
+      "variants": [
+        "baseline",
+        "crlf",
+        "import-alias"
+      ]
+    },
+    {
+      "key": "python:no-copied-inherited-docstring",
+      "implementation": "packages/python/src/sarj_python_lint/rules/no_copied_inherited_docstring.py",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 2,
+      "negativeProbes": 2,
+      "variants": [
+        "baseline",
+        "crlf"
+      ]
+    },
+    {
+      "key": "python:no-cors-wildcard-with-credentials",
+      "implementation": "packages/python/src/sarj_python_lint/rules/no_cors_wildcard_with_credentials.py",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 4,
+      "negativeProbes": 4,
+      "variants": [
+        "baseline",
+        "crlf",
+        "import-alias",
+        "literal-unicode"
+      ]
+    },
+    {
+      "key": "python:no-database-programmability",
+      "implementation": "packages/python/src/sarj_python_lint/rules/no_database_programmability.py",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 3,
+      "variants": [
+        "baseline",
+        "crlf",
+        "literal-unicode"
+      ]
+    },
+    {
+      "key": "python:no-delete-statement",
+      "implementation": "packages/python/src/sarj_python_lint/rules/no_delete_statement.py",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 3,
+      "variants": [
+        "baseline",
+        "crlf",
+        "literal-unicode"
+      ]
+    },
+    {
+      "key": "python:no-docstring-type-restatement",
+      "implementation": "packages/python/src/sarj_python_lint/rules/no_typed_doc_sections.py",
+      "severity": "warning",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 2,
+      "negativeProbes": 2,
+      "variants": [
+        "baseline",
+        "crlf"
+      ]
+    },
+    {
+      "key": "python:no-dunder-all",
+      "implementation": "packages/python/src/sarj_python_lint/rules/no_dunder_all.py",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 3,
+      "variants": [
+        "baseline",
+        "crlf",
+        "import-alias",
+        "literal-unicode"
+      ]
+    },
+    {
+      "key": "python:no-duplicate-dunder-all-entry",
+      "implementation": "packages/python/src/sarj_python_lint/rules/no_duplicate_dunder_all_entry.py",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 3,
+      "variants": [
+        "baseline",
+        "crlf",
+        "literal-unicode"
+      ]
+    },
+    {
+      "key": "python:no-excessive-cognitive-complexity",
+      "implementation": "packages/python/src/sarj_python_lint/rules/no_excessive_cognitive_complexity.py",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 5,
+      "negativeProbes": 5,
+      "variants": [
+        "baseline",
+        "crlf",
+        "integer-base"
+      ]
+    },
+    {
+      "key": "python:no-fastapi-on-event",
+      "implementation": "packages/python/src/sarj_python_lint/rules/no_fastapi_on_event.py",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 4,
+      "negativeProbes": 3,
+      "variants": [
+        "baseline",
+        "crlf",
+        "import-alias",
+        "literal-unicode"
+      ]
+    },
+    {
+      "key": "python:no-file-level-escape-hatch-suppression",
+      "implementation": "packages/python/src/sarj_python_lint/rules/no_file_level_escape_hatch_suppression.py",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 3,
+      "variants": [
+        "baseline",
+        "crlf",
+        "import-alias"
+      ]
+    },
+    {
+      "key": "python:no-first-party-private-import",
+      "implementation": "packages/python/src/sarj_python_lint/rules/no_first_party_private_import.py",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 4,
+      "negativeProbes": 4,
+      "variants": [
+        "baseline",
+        "crlf",
+        "import-alias",
+        "literal-unicode"
+      ]
+    },
+    {
+      "key": "python:no-fixed-sleep-before-assert",
+      "implementation": "packages/python/src/sarj_python_lint/rules/no_fixed_sleep_before_assert.py",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 8,
+      "negativeProbes": 9,
+      "variants": [
+        "baseline",
+        "crlf",
+        "import-alias",
+        "integer-base",
+        "literal-unicode"
+      ]
+    },
+    {
+      "key": "python:no-frozen-after-validator-field-write",
+      "implementation": "packages/python/src/sarj_python_lint/rules/no_frozen_after_validator_field_write.py",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 4,
+      "negativeProbes": 4,
+      "variants": [
+        "baseline",
+        "crlf",
+        "import-alias",
+        "literal-unicode"
+      ]
+    },
+    {
+      "key": "python:no-generic-single-export-module",
+      "implementation": "packages/python/src/sarj_python_lint/rules/no_generic_single_export_module.py",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 2,
+      "negativeProbes": 2,
+      "variants": [
+        "baseline",
+        "crlf"
+      ]
+    },
+    {
+      "key": "python:no-hidden-constructor-fallback",
+      "implementation": "packages/python/src/sarj_python_lint/rules/no_hidden_constructor_fallback.py",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 4,
+      "negativeProbes": 4,
+      "variants": [
+        "baseline",
+        "crlf",
+        "import-alias",
+        "literal-unicode"
+      ]
+    },
+    {
+      "key": "python:no-injected-module-loader",
+      "implementation": "packages/python/src/sarj_python_lint/rules/no_injected_module_loader.py",
+      "severity": "warning",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 4,
+      "negativeProbes": 3,
+      "variants": [
+        "baseline",
+        "crlf",
+        "import-alias",
+        "literal-unicode"
+      ]
+    },
+    {
+      "key": "python:no-input-model-mutation",
+      "implementation": "packages/python/src/sarj_python_lint/rules/no_input_model_mutation.py",
+      "severity": "warning",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 12,
+      "negativeProbes": 8,
+      "variants": [
+        "baseline",
+        "crlf",
+        "import-alias",
+        "literal-unicode"
+      ]
+    },
+    {
+      "key": "python:no-invalid-argument-name-suppression",
+      "implementation": "packages/python/src/sarj_python_lint/rules/no_invalid_argument_name_suppression.py",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 2,
+      "negativeProbes": 4,
+      "variants": [
+        "baseline",
+        "crlf",
+        "import-alias",
+        "literal-unicode"
+      ]
+    },
+    {
+      "key": "python:no-mocked-pydantic-value-object",
+      "implementation": "packages/python/src/sarj_python_lint/rules/no_mocked_pydantic_value_object.py",
+      "severity": "warning",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 4,
+      "negativeProbes": 8,
+      "variants": [
+        "baseline",
+        "crlf",
+        "import-alias",
+        "literal-unicode"
+      ]
+    },
+    {
+      "key": "python:no-nested-pydantic-field-validator",
+      "implementation": "packages/python/src/sarj_python_lint/rules/no_nested_pydantic_field_validator.py",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 4,
+      "negativeProbes": 4,
+      "variants": [
+        "baseline",
+        "crlf",
+        "import-alias",
+        "literal-unicode"
+      ]
+    },
+    {
+      "key": "python:no-nullable-dependency-fallback",
+      "implementation": "packages/python/src/sarj_python_lint/rules/no_nullable_dependency_fallback.py",
+      "severity": "warning",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 2,
+      "negativeProbes": 2,
+      "variants": [
+        "baseline",
+        "crlf"
+      ]
+    },
+    {
+      "key": "python:no-offset-pagination",
+      "implementation": "packages/python/src/sarj_python_lint/rules/no_offset_pagination.py",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 3,
+      "variants": [
+        "baseline",
+        "crlf",
+        "literal-unicode"
+      ]
+    },
+    {
+      "key": "python:no-positional-psycopg-row-escape",
+      "implementation": "packages/python/src/sarj_python_lint/rules/no_positional_psycopg_row_escape.py",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 4,
+      "negativeProbes": 4,
+      "variants": [
+        "baseline",
+        "crlf",
+        "import-alias",
+        "literal-unicode"
+      ]
+    },
+    {
+      "key": "python:no-positional-tuple-record",
+      "implementation": "packages/python/src/sarj_python_lint/rules/prefer_namedtuple_over_tuple_return.py",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 4,
+      "negativeProbes": 5,
+      "variants": [
+        "baseline",
+        "crlf",
+        "import-alias",
+        "integer-base",
+        "literal-unicode"
+      ]
+    },
+    {
+      "key": "python:no-provably-dead-mock-configuration",
+      "implementation": "packages/python/src/sarj_python_lint/rules/unused_mock_setup.py",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 4,
+      "negativeProbes": 4,
+      "variants": [
+        "baseline",
+        "crlf",
+        "import-alias",
+        "integer-base"
+      ]
+    },
+    {
+      "key": "python:no-psycopg-execution-outside-injected-owner",
+      "implementation": "packages/python/src/sarj_python_lint/rules/no_psycopg_execution_outside_injected_owner.py",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 4,
+      "negativeProbes": 4,
+      "variants": [
+        "baseline",
+        "crlf",
+        "import-alias",
+        "literal-unicode"
+      ]
+    },
+    {
+      "key": "python:no-random-uuid-in-sql",
+      "implementation": "packages/python/src/sarj_python_lint/rules/no_random_uuid_in_sql.py",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 3,
+      "variants": [
+        "baseline",
+        "crlf",
+        "literal-unicode"
+      ]
+    },
+    {
+      "key": "python:no-raw-connection-in-tests",
+      "implementation": "packages/python/src/sarj_python_lint/rules/no_raw_connection_in_tests.py",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 4,
+      "negativeProbes": 2,
+      "variants": [
+        "baseline",
+        "crlf",
+        "import-alias",
+        "literal-unicode"
+      ]
+    },
+    {
+      "key": "python:no-raw-source-text-test-oracle",
+      "implementation": "packages/python/src/sarj_python_lint/rules/no_raw_source_text_test_oracle.py",
+      "severity": "warning",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 4,
+      "negativeProbes": 4,
+      "variants": [
+        "baseline",
+        "crlf",
+        "import-alias",
+        "literal-unicode"
+      ]
+    },
+    {
+      "key": "python:no-redundant-module-alias-exports",
+      "implementation": "packages/python/src/sarj_python_lint/rules/no_redundant_module_alias_exports.py",
+      "severity": "warning",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 5,
+      "negativeProbes": 5,
+      "variants": [
+        "baseline",
+        "crlf",
+        "import-alias"
+      ]
+    },
+    {
+      "key": "python:no-repeated-structured-string-literal",
+      "implementation": "packages/python/src/sarj_python_lint/rules/no_repeated_string_literal.py",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 3,
+      "variants": [
+        "baseline",
+        "crlf",
+        "literal-unicode"
+      ]
+    },
+    {
+      "key": "python:no-repeated-test-body",
+      "implementation": "packages/python/src/sarj_python_lint/rules/no_repeated_test_body.py",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 6,
+      "negativeProbes": 7,
+      "variants": [
+        "baseline",
+        "crlf",
+        "import-alias",
+        "integer-base",
+        "literal-unicode"
+      ]
+    },
+    {
+      "key": "python:no-repeated-unseeded-stdlib-random-in-test",
+      "implementation": "packages/python/src/sarj_python_lint/rules/uncontrolled_randomness_in_test.py",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 4,
+      "negativeProbes": 4,
+      "variants": [
+        "baseline",
+        "crlf",
+        "import-alias",
+        "integer-base"
+      ]
+    },
+    {
+      "key": "python:no-restated-closed-domain-description",
+      "implementation": "packages/python/src/sarj_python_lint/rules/no_redundant_literal_description.py",
+      "severity": "warning",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 4,
+      "negativeProbes": 4,
+      "variants": [
+        "baseline",
+        "crlf",
+        "import-alias",
+        "literal-unicode"
+      ]
+    },
+    {
+      "key": "python:no-restated-comment",
+      "implementation": "packages/python/src/sarj_python_lint/rules/no_restated_comment.py",
+      "severity": "warning",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 2,
+      "negativeProbes": 2,
+      "variants": [
+        "baseline",
+        "crlf"
+      ]
+    },
+    {
+      "key": "python:no-secret-in-log",
+      "implementation": "packages/python/src/sarj_python_lint/rules/no_secret_in_log.py",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 3,
+      "variants": [
+        "baseline",
+        "crlf",
+        "literal-unicode"
+      ]
+    },
+    {
+      "key": "python:no-select-star",
+      "implementation": "packages/python/src/sarj_python_lint/rules/no_select_star.py",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 3,
+      "variants": [
+        "baseline",
+        "crlf",
+        "literal-unicode"
+      ]
+    },
+    {
+      "key": "python:no-service-behavior-in-settings",
+      "implementation": "packages/python/src/sarj_python_lint/rules/no_service_behavior_in_settings.py",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 2,
+      "negativeProbes": 3,
+      "variants": [
+        "baseline",
+        "crlf",
+        "import-alias"
+      ]
+    },
+    {
+      "key": "python:no-shallow-container-type-guard",
+      "implementation": "packages/python/src/sarj_python_lint/rules/no_shallow_container_type_guard.py",
+      "severity": "warning",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 3,
+      "variants": [
+        "baseline",
+        "crlf",
+        "import-alias"
+      ]
+    },
+    {
+      "key": "python:no-statically-truthy-assertion",
+      "implementation": "packages/python/src/sarj_python_lint/rules/no_tautological_expect.py",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 6,
+      "negativeProbes": 6,
+      "variants": [
+        "baseline",
+        "crlf",
+        "integer-base",
+        "literal-unicode"
+      ]
+    },
+    {
+      "key": "python:no-string-concat-in-loop",
+      "implementation": "packages/python/src/sarj_python_lint/rules/no_string_concat_in_loop.py",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 2,
+      "negativeProbes": 2,
+      "variants": [
+        "baseline",
+        "crlf"
+      ]
+    },
+    {
+      "key": "python:no-swallowed-asyncio-cancellation",
+      "implementation": "packages/python/src/sarj_python_lint/rules/no_swallowed_asyncio_cancellation.py",
+      "severity": "warning",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 4,
+      "negativeProbes": 4,
+      "variants": [
+        "baseline",
+        "crlf",
+        "import-alias",
+        "integer-base"
+      ]
+    },
+    {
+      "key": "python:no-test-method-grafting",
+      "implementation": "packages/python/src/sarj_python_lint/rules/no_test_method_grafting.py",
+      "severity": "warning",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 8,
+      "variants": [
+        "baseline",
+        "crlf",
+        "import-alias",
+        "literal-unicode"
+      ]
+    },
+    {
+      "key": "python:no-trailing-numeric-unit-assignment-comment",
+      "implementation": "packages/python/src/sarj_python_lint/rules/trailing_value_narration.py",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 2,
+      "negativeProbes": 2,
+      "variants": [
+        "baseline",
+        "crlf"
+      ]
+    },
+    {
+      "key": "python:no-unique-violation-message-match",
+      "implementation": "packages/python/src/sarj_python_lint/rules/no_unique_violation_message_match.py",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 4,
+      "negativeProbes": 4,
+      "variants": [
+        "baseline",
+        "crlf",
+        "import-alias",
+        "literal-unicode"
+      ]
+    },
+    {
+      "key": "python:no-unnecessary-docstring",
+      "implementation": "packages/python/src/sarj_python_lint/rules/no_unnecessary_docstring.py",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 2,
+      "negativeProbes": 2,
+      "variants": [
+        "baseline",
+        "crlf"
+      ]
+    },
+    {
+      "key": "python:no-unused-copy-result",
+      "implementation": "packages/python/src/sarj_python_lint/rules/no_unused_copy_result.py",
+      "severity": "warning",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 8,
+      "negativeProbes": 8,
+      "variants": [
+        "baseline",
+        "crlf",
+        "import-alias",
+        "literal-unicode"
+      ]
+    },
+    {
+      "key": "python:no-unused-underscored-keyword-parameter",
+      "implementation": "packages/python/src/sarj_python_lint/rules/no_unused_underscored_keyword_parameter.py",
+      "severity": "warning",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 3,
+      "variants": [
+        "baseline",
+        "crlf",
+        "literal-unicode"
+      ]
+    },
+    {
+      "key": "python:no-unused-value-marker",
+      "implementation": "packages/python/src/sarj_python_lint/rules/no_unused_value_marker.py",
+      "severity": "warning",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 8,
+      "negativeProbes": 6,
+      "variants": [
+        "baseline",
+        "crlf",
+        "integer-base",
+        "literal-unicode"
+      ]
+    },
+    {
+      "key": "python:no-vague-suppression-description",
+      "implementation": "packages/python/src/sarj_python_lint/rules/no_vague_suppression_description.py",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 2,
+      "negativeProbes": 2,
+      "variants": [
+        "baseline",
+        "crlf"
+      ]
+    },
+    {
+      "key": "python:no-whole-request-response-payload-in-log",
+      "implementation": "packages/python/src/sarj_python_lint/rules/no_whole_request_response_payload_in_log.py",
+      "severity": "warning",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 3,
+      "variants": [
+        "baseline",
+        "crlf",
+        "literal-unicode"
+      ]
+    },
+    {
+      "key": "python:opaque-parametrize-case-needs-id",
+      "implementation": "packages/python/src/sarj_python_lint/rules/opaque_parametrize_case_needs_id.py",
+      "severity": "warning",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 4,
+      "negativeProbes": 4,
+      "variants": [
+        "baseline",
+        "crlf",
+        "import-alias",
+        "literal-unicode"
+      ]
+    },
+    {
+      "key": "python:over-mocked-test",
+      "implementation": "packages/python/src/sarj_python_lint/rules/over_mocked_test.py",
+      "severity": "warning",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 4,
+      "negativeProbes": 4,
+      "variants": [
+        "baseline",
+        "crlf",
+        "import-alias",
+        "literal-unicode"
+      ]
+    },
+    {
+      "key": "python:prefer-autospec-for-callable-mock",
+      "implementation": "packages/python/src/sarj_python_lint/rules/prefer_autospec_for_callable_mock.py",
+      "severity": "warning",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 4,
+      "negativeProbes": 4,
+      "variants": [
+        "baseline",
+        "crlf",
+        "import-alias",
+        "literal-unicode"
+      ]
+    },
+    {
+      "key": "python:prefer-class-row",
+      "implementation": "packages/python/src/sarj_python_lint/rules/prefer_class_row.py",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 4,
+      "negativeProbes": 3,
+      "variants": [
+        "baseline",
+        "crlf",
+        "import-alias",
+        "literal-unicode"
+      ]
+    },
+    {
+      "key": "python:prefer-collection-comprehension",
+      "implementation": "packages/python/src/sarj_python_lint/rules/prefer_collection_comprehension.py",
+      "severity": "warning",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 6,
+      "negativeProbes": 6,
+      "variants": [
+        "baseline",
+        "crlf"
+      ]
+    },
+    {
+      "key": "python:prefer-constant-time-secret-compare",
+      "implementation": "packages/python/src/sarj_python_lint/rules/prefer_constant_time_secret_compare.py",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 4,
+      "variants": [
+        "baseline",
+        "crlf",
+        "import-alias",
+        "literal-unicode"
+      ]
+    },
+    {
+      "key": "python:prefer-fstring-over-concat",
+      "implementation": "packages/python/src/sarj_python_lint/rules/prefer_fstring_over_concat.py",
+      "severity": "warning",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 2,
+      "variants": [
+        "baseline",
+        "crlf",
+        "literal-unicode"
+      ]
+    },
+    {
+      "key": "python:prefer-immutable-module-constant",
+      "implementation": "packages/python/src/sarj_python_lint/rules/prefer_immutable_module_constant.py",
+      "severity": "warning",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 9,
+      "negativeProbes": 11,
+      "variants": [
+        "baseline",
+        "crlf",
+        "import-alias",
+        "literal-unicode"
+      ]
+    },
+    {
+      "key": "python:prefer-injected-dependency-over-monkeypatch",
+      "implementation": "packages/python/src/sarj_python_lint/rules/prefer_injected_dependency_over_monkeypatch.py",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 7,
+      "negativeProbes": 6,
+      "variants": [
+        "baseline",
+        "crlf",
+        "import-alias",
+        "literal-unicode"
+      ]
+    },
+    {
+      "key": "python:prefer-library-fake",
+      "implementation": "packages/python/src/sarj_python_lint/rules/prefer_library_fake.py",
+      "severity": "warning",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 4,
+      "negativeProbes": 4,
+      "variants": [
+        "baseline",
+        "crlf",
+        "import-alias",
+        "integer-base",
+        "literal-unicode"
+      ]
+    },
+    {
+      "key": "python:prefer-match-assert-never",
+      "implementation": "packages/python/src/sarj_python_lint/rules/prefer_match_assert_never.py",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 4,
+      "negativeProbes": 4,
+      "variants": [
+        "baseline",
+        "crlf",
+        "import-alias",
+        "literal-unicode"
+      ]
+    },
+    {
+      "key": "python:prefer-match-exception-dispatch",
+      "implementation": "packages/python/src/sarj_python_lint/rules/prefer_match_exception_dispatch.py",
+      "severity": "warning",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 5,
+      "negativeProbes": 5,
+      "variants": [
+        "baseline",
+        "crlf",
+        "import-alias",
+        "integer-base",
+        "literal-unicode"
+      ]
+    },
+    {
+      "key": "python:prefer-match-type-dispatch",
+      "implementation": "packages/python/src/sarj_python_lint/rules/prefer_match_type_dispatch.py",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 8,
+      "negativeProbes": 8,
+      "variants": [
+        "baseline",
+        "crlf",
+        "import-alias"
+      ]
+    },
+    {
+      "key": "python:prefer-match-value-dispatch",
+      "implementation": "packages/python/src/sarj_python_lint/rules/prefer_match_value_dispatch.py",
+      "severity": "warning",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 6,
+      "negativeProbes": 6,
+      "variants": [
+        "baseline",
+        "crlf",
+        "literal-unicode"
+      ]
+    },
+    {
+      "key": "python:prefer-module-level-constant",
+      "implementation": "packages/python/src/sarj_python_lint/rules/prefer_module_level_constant.py",
+      "severity": "warning",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 7,
+      "negativeProbes": 8,
+      "variants": [
+        "baseline",
+        "crlf",
+        "import-alias",
+        "integer-base",
+        "literal-unicode"
+      ]
+    },
+    {
+      "key": "python:prefer-monkeypatch-for-process-state-in-test",
+      "implementation": "packages/python/src/sarj_python_lint/rules/prefer_monkeypatch_for_process_state_in_test.py",
+      "severity": "warning",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 4,
+      "negativeProbes": 4,
+      "variants": [
+        "baseline",
+        "crlf",
+        "import-alias",
+        "literal-unicode"
+      ]
+    },
+    {
+      "key": "python:prefer-monotonic-for-elapsed-time",
+      "implementation": "packages/python/src/sarj_python_lint/rules/prefer_monotonic_for_elapsed_time.py",
+      "severity": "warning",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 3,
+      "variants": [
+        "baseline",
+        "crlf",
+        "import-alias"
+      ]
+    },
+    {
+      "key": "python:prefer-native-string-check",
+      "implementation": "packages/python/src/sarj_python_lint/rules/prefer_native_string_check.py",
+      "severity": "warning",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 8,
+      "negativeProbes": 7,
+      "variants": [
+        "baseline",
+        "crlf",
+        "import-alias",
+        "literal-unicode"
+      ]
+    },
+    {
+      "key": "python:prefer-nominal-id-types",
+      "implementation": "packages/python/src/sarj_python_lint/rules/prefer_nominal_id_types.py",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 2,
+      "negativeProbes": 4,
+      "variants": [
+        "baseline",
+        "crlf",
+        "import-alias",
+        "literal-unicode"
+      ]
+    },
+    {
+      "key": "python:prefer-non-nullable-collection",
+      "implementation": "packages/python/src/sarj_python_lint/rules/prefer_non_nullable_collection.py",
+      "severity": "warning",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 2,
+      "negativeProbes": 3,
+      "variants": [
+        "baseline",
+        "crlf",
+        "import-alias"
+      ]
+    },
+    {
+      "key": "python:prefer-or-pattern",
+      "implementation": "packages/python/src/sarj_python_lint/rules/prefer_or_pattern.py",
+      "severity": "warning",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 3,
+      "variants": [
+        "baseline",
+        "crlf",
+        "literal-unicode"
+      ]
+    },
+    {
+      "key": "python:prefer-pydantic-json-value",
+      "implementation": "packages/python/src/sarj_python_lint/rules/prefer_pydantic_json_value.py",
+      "severity": "warning",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 3,
+      "variants": [
+        "baseline",
+        "crlf",
+        "import-alias",
+        "literal-unicode"
+      ]
+    },
+    {
+      "key": "python:prefer-pytest-fixture-injection",
+      "implementation": "packages/python/src/sarj_python_lint/rules/prefer_pytest_fixture_injection.py",
+      "severity": "warning",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 6,
+      "negativeProbes": 6,
+      "variants": [
+        "baseline",
+        "crlf",
+        "import-alias"
+      ]
+    },
+    {
+      "key": "python:prefer-regex-fullmatch",
+      "implementation": "packages/python/src/sarj_python_lint/rules/prefer_regex_fullmatch.py",
+      "severity": "warning",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 4,
+      "negativeProbes": 4,
+      "variants": [
+        "baseline",
+        "crlf",
+        "import-alias",
+        "literal-unicode"
+      ]
+    },
+    {
+      "key": "python:prefer-required-constructor-parameters",
+      "implementation": "packages/python/src/sarj_python_lint/rules/prefer_required_constructor_parameters.py",
+      "severity": "warning",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 2,
+      "negativeProbes": 2,
+      "variants": [
+        "baseline",
+        "crlf"
+      ]
+    },
+    {
+      "key": "python:prefer-self-documenting-constant",
+      "implementation": "packages/python/src/sarj_python_lint/rules/prefer_self_documenting_constant.py",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 6,
+      "negativeProbes": 6,
+      "variants": [
+        "baseline",
+        "crlf",
+        "import-alias",
+        "integer-base"
+      ]
+    },
+    {
+      "key": "python:prefer-self-type-annotation",
+      "implementation": "packages/python/src/sarj_python_lint/rules/prefer_self_type_annotation.py",
+      "severity": "warning",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 6,
+      "negativeProbes": 6,
+      "variants": [
+        "baseline",
+        "crlf",
+        "import-alias",
+        "literal-unicode"
+      ]
+    },
+    {
+      "key": "python:prefer-set-isdisjoint",
+      "implementation": "packages/python/src/sarj_python_lint/rules/prefer_set_isdisjoint.py",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 3,
+      "variants": [
+        "baseline",
+        "crlf",
+        "literal-unicode"
+      ]
+    },
+    {
+      "key": "python:prefer-str-enum",
+      "implementation": "packages/python/src/sarj_python_lint/rules/prefer_str_enum.py",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 6,
+      "negativeProbes": 7,
+      "variants": [
+        "baseline",
+        "crlf",
+        "import-alias",
+        "literal-unicode"
+      ]
+    },
+    {
+      "key": "python:prefer-struct-over-namedtuple",
+      "implementation": "packages/python/src/sarj_python_lint/rules/prefer_struct_over_namedtuple.py",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 4,
+      "negativeProbes": 5,
+      "variants": [
+        "baseline",
+        "crlf",
+        "import-alias",
+        "integer-base",
+        "literal-unicode"
+      ]
+    },
+    {
+      "key": "python:prefer-walrus-awaited-none-guard",
+      "implementation": "packages/python/src/sarj_python_lint/rules/prefer_walrus_awaited_none_guard.py",
+      "severity": "warning",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 2,
+      "negativeProbes": 2,
+      "variants": [
+        "baseline",
+        "crlf"
+      ]
+    },
+    {
+      "key": "python:prefer-walrus-comprehension-filter",
+      "implementation": "packages/python/src/sarj_python_lint/rules/prefer_walrus_comprehension_filter.py",
+      "severity": "warning",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 2,
+      "negativeProbes": 2,
+      "variants": [
+        "baseline",
+        "crlf"
+      ]
+    },
+    {
+      "key": "python:prefer-walrus-regex-match",
+      "implementation": "packages/python/src/sarj_python_lint/rules/prefer_walrus_regex_match.py",
+      "severity": "warning",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 4,
+      "negativeProbes": 4,
+      "variants": [
+        "baseline",
+        "crlf",
+        "import-alias",
+        "integer-base"
+      ]
+    },
+    {
+      "key": "python:prefer-walrus-stream-loop",
+      "implementation": "packages/python/src/sarj_python_lint/rules/prefer_walrus_stream_loop.py",
+      "severity": "warning",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 5,
+      "negativeProbes": 5,
+      "variants": [
+        "baseline",
+        "crlf",
+        "integer-base"
+      ]
+    },
+    {
+      "key": "python:production-derived-test-cases",
+      "implementation": "packages/python/src/sarj_python_lint/rules/production_derived_test_cases.py",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 4,
+      "negativeProbes": 4,
+      "variants": [
+        "baseline",
+        "crlf",
+        "import-alias",
+        "literal-unicode"
+      ]
+    },
+    {
+      "key": "python:pytest-fixture-returns-bare-tuple",
+      "implementation": "packages/python/src/sarj_python_lint/rules/pytest_fixture_returns_bare_tuple.py",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 4,
+      "negativeProbes": 4,
+      "variants": [
+        "baseline",
+        "crlf",
+        "import-alias",
+        "literal-unicode"
+      ]
+    },
+    {
+      "key": "python:redundant-class-docstring",
+      "implementation": "packages/python/src/sarj_python_lint/rules/redundant_class_docstring.py",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 2,
+      "negativeProbes": 2,
+      "variants": [
+        "baseline",
+        "crlf"
+      ]
+    },
+    {
+      "key": "python:redundant-docstring",
+      "implementation": "packages/python/src/sarj_python_lint/rules/redundant_docstring.py",
+      "severity": "warning",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 2,
+      "negativeProbes": 2,
+      "variants": [
+        "baseline",
+        "crlf"
+      ]
+    },
+    {
+      "key": "python:redundant-module-docstring",
+      "implementation": "packages/python/src/sarj_python_lint/rules/redundant_module_docstring.py",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 2,
+      "negativeProbes": 2,
+      "variants": [
+        "baseline",
+        "crlf"
+      ]
+    },
+    {
+      "key": "python:repeated-kwarg-heavy-call-in-test",
+      "implementation": "packages/python/src/sarj_python_lint/rules/repeated_kwarg_heavy_call_in_test.py",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 4,
+      "negativeProbes": 4,
+      "variants": [
+        "baseline",
+        "crlf",
+        "integer-base",
+        "literal-unicode"
+      ]
+    },
+    {
+      "key": "python:repeated-static-call-cases",
+      "implementation": "packages/python/src/sarj_python_lint/rules/repeated_static_call_cases.py",
+      "severity": "warning",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 4,
+      "negativeProbes": 4,
+      "variants": [
+        "baseline",
+        "crlf",
+        "integer-base",
+        "literal-unicode"
+      ]
+    },
+    {
+      "key": "python:repeated-test-composition",
+      "implementation": "packages/python/src/sarj_python_lint/rules/repeated_test_composition.py",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 4,
+      "negativeProbes": 3,
+      "variants": [
+        "baseline",
+        "crlf",
+        "import-alias",
+        "literal-unicode"
+      ]
+    },
+    {
+      "key": "python:replay-contract-insert-requires-duplicate-policy",
+      "implementation": "packages/python/src/sarj_python_lint/rules/store_insert_requires_on_conflict.py",
+      "severity": "warning",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 3,
+      "variants": [
+        "baseline",
+        "crlf",
+        "literal-unicode"
+      ]
+    },
+    {
+      "key": "python:require-explicit-contract-implementation",
+      "implementation": "packages/python/src/sarj_python_lint/rules/require_explicit_contract_implementation.py",
+      "severity": "warning",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 6,
+      "variants": [
+        "baseline",
+        "crlf",
+        "import-alias"
+      ]
+    },
+    {
+      "key": "python:require-explicit-psycopg-transaction",
+      "implementation": "packages/python/src/sarj_python_lint/rules/require_explicit_psycopg_transaction.py",
+      "severity": "warning",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 4,
+      "negativeProbes": 4,
+      "variants": [
+        "baseline",
+        "crlf",
+        "import-alias",
+        "literal-unicode"
+      ]
+    },
+    {
+      "key": "python:require-explicit-service-contract",
+      "implementation": "packages/python/src/sarj_python_lint/rules/require_explicit_service_contract.py",
+      "severity": "warning",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 2,
+      "negativeProbes": 6,
+      "variants": [
+        "baseline",
+        "crlf",
+        "import-alias"
+      ]
+    },
+    {
+      "key": "python:require-keyword-only-swap-prone-params",
+      "implementation": "packages/python/src/sarj_python_lint/rules/require_keyword_only_swap_prone_params.py",
+      "severity": "warning",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 3,
+      "variants": [
+        "baseline",
+        "crlf",
+        "literal-unicode"
+      ]
+    },
+    {
+      "key": "python:require-nodecode-for-splitting-settings-field",
+      "implementation": "packages/python/src/sarj_python_lint/rules/require_nodecode_for_splitting_settings_field.py",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 4,
+      "negativeProbes": 4,
+      "variants": [
+        "baseline",
+        "crlf",
+        "import-alias",
+        "literal-unicode"
+      ]
+    },
+    {
+      "key": "python:require-port-for-service",
+      "implementation": "packages/python/src/sarj_python_lint/rules/require_port_for_service.py",
+      "severity": "warning",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 7,
+      "negativeProbes": 8,
+      "variants": [
+        "baseline",
+        "crlf",
+        "import-alias",
+        "literal-unicode"
+      ]
+    },
+    {
+      "key": "python:require-precise-factory-signature",
+      "implementation": "packages/python/src/sarj_python_lint/rules/require_precise_factory_signature.py",
+      "severity": "warning",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 4,
+      "negativeProbes": 4,
+      "variants": [
+        "baseline",
+        "crlf",
+        "import-alias",
+        "integer-base"
+      ]
+    },
+    {
+      "key": "python:require-public-dependency-contract",
+      "implementation": "packages/python/src/sarj_python_lint/rules/require_public_dependency_contract.py",
+      "severity": "warning",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 3,
+      "variants": [
+        "baseline",
+        "crlf",
+        "import-alias"
+      ]
+    },
+    {
+      "key": "python:require-pydantic-for-external-json",
+      "implementation": "packages/python/src/sarj_python_lint/rules/require_pydantic_for_external_json.py",
+      "severity": "warning",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 8,
+      "negativeProbes": 9,
+      "variants": [
+        "baseline",
+        "crlf",
+        "import-alias",
+        "integer-base",
+        "literal-unicode"
+      ]
+    },
+    {
+      "key": "python:require-pydantic-for-structured-payload",
+      "implementation": "packages/python/src/sarj_python_lint/rules/require_pydantic_for_structured_payload.py",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 4,
+      "negativeProbes": 4,
+      "variants": [
+        "baseline",
+        "crlf",
+        "import-alias",
+        "literal-unicode"
+      ]
+    },
+    {
+      "key": "python:require-pydantic-ordinal-lower-bound",
+      "implementation": "packages/python/src/sarj_python_lint/rules/require_pydantic_ordinal_lower_bound.py",
+      "severity": "warning",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 5,
+      "negativeProbes": 5,
+      "variants": [
+        "baseline",
+        "crlf",
+        "import-alias",
+        "integer-base",
+        "literal-unicode"
+      ]
+    },
+    {
+      "key": "python:restated-test-docstring",
+      "implementation": "packages/python/src/sarj_python_lint/rules/restated_test_docstring.py",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 2,
+      "negativeProbes": 2,
+      "variants": [
+        "baseline",
+        "crlf"
+      ]
+    },
+    {
+      "key": "python:shared-mutable-pydantic-factory",
+      "implementation": "packages/python/src/sarj_python_lint/rules/shared_mutable_pydantic_factory.py",
+      "severity": "warning",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 3,
+      "variants": [
+        "baseline",
+        "crlf",
+        "import-alias"
+      ]
+    },
+    {
+      "key": "python:stepdown",
+      "implementation": "packages/python/src/sarj_python_lint/rules/stepdown.py",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 2,
+      "negativeProbes": 2,
+      "variants": [
+        "baseline",
+        "crlf"
+      ]
+    },
+    {
+      "key": "python:store-get-delegates-to-bulk-read",
+      "implementation": "packages/python/src/sarj_python_lint/rules/store_get_delegates_to_bulk_read.py",
+      "severity": "warning",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 5,
+      "negativeProbes": 5,
+      "variants": [
+        "baseline",
+        "crlf",
+        "integer-base",
+        "literal-unicode"
+      ]
+    },
+    {
+      "key": "python:subprocess-kill-without-reap",
+      "implementation": "packages/python/src/sarj_python_lint/rules/subprocess_kill_without_reap.py",
+      "severity": "warning",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 4,
+      "negativeProbes": 4,
+      "variants": [
+        "baseline",
+        "crlf",
+        "import-alias",
+        "integer-base"
+      ]
+    },
+    {
+      "key": "python:timestamp-order-requires-tiebreaker",
+      "implementation": "packages/python/src/sarj_python_lint/rules/timestamp_order_requires_tiebreaker.py",
+      "severity": "warning",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 2,
+      "negativeProbes": 2,
+      "variants": [
+        "baseline",
+        "crlf"
+      ]
+    },
+    {
+      "key": "python:typed-error-reasons",
+      "implementation": "packages/python/src/sarj_python_lint/rules/typed_error_reasons.py",
+      "severity": "warning",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 6,
+      "negativeProbes": 7,
+      "variants": [
+        "baseline",
+        "crlf",
+        "import-alias",
+        "literal-unicode"
+      ]
+    },
+    {
+      "key": "python:unused-test-factory-option",
+      "implementation": "packages/python/src/sarj_python_lint/rules/unused_test_factory_option.py",
+      "severity": "warning",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 6,
+      "negativeProbes": 6,
+      "variants": [
+        "baseline",
+        "crlf",
+        "integer-base",
+        "literal-unicode"
+      ]
+    },
+    {
+      "key": "eslint:duplicate-test-body",
+      "implementation": "packages/typescript/src/rules/duplicate-test-body.ts",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 9,
+      "negativeProbes": 13,
+      "variants": [
+        "argument-non-null",
+        "argument-template",
+        "baseline",
+        "bom",
+        "call-result-assertion",
+        "comment-noise",
+        "crlf",
+        "literal-unicode",
+        "member-key-assertion",
+        "receiver-combined",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:enforce-file-structure",
+      "implementation": "packages/typescript/src/rules/enforce-file-structure.ts",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 5,
+      "negativeProbes": 12,
+      "variants": [
+        "baseline",
+        "bom",
+        "call-result-assertion",
+        "comment-noise",
+        "crlf",
+        "import-alias",
+        "literal-unicode",
+        "member-key-assertion",
+        "receiver-combined",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:excessive-commentary",
+      "implementation": "packages/typescript/src/rules/excessive-commentary.ts",
+      "severity": "warning",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 4,
+      "negativeProbes": 3,
+      "variants": [
+        "baseline",
+        "bom",
+        "crlf",
+        "import-alias"
+      ]
+    },
+    {
+      "key": "eslint:iac-source-coupled-test",
+      "implementation": "packages/typescript/src/rules/iac-source-coupled-test.ts",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 8,
+      "negativeProbes": 14,
+      "variants": [
+        "argument-non-null",
+        "argument-template",
+        "baseline",
+        "bom",
+        "call-result-assertion",
+        "comment-noise",
+        "crlf",
+        "import-alias",
+        "literal-unicode",
+        "member-key-assertion",
+        "receiver-combined",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:interface-contract-members-private",
+      "implementation": "packages/typescript/src/rules/interface-contract-members-private.ts",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 7,
+      "variants": [
+        "baseline",
+        "bom",
+        "comment-noise",
+        "crlf",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:no-bare-return-from-test-catch",
+      "implementation": "packages/typescript/src/rules/no-bare-return-from-test-catch.ts",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 7,
+      "negativeProbes": 11,
+      "variants": [
+        "argument-non-null",
+        "argument-template",
+        "baseline",
+        "bom",
+        "call-result-assertion",
+        "comment-noise",
+        "crlf",
+        "literal-unicode",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:no-bespoke-api-case-conversion",
+      "implementation": "packages/typescript/src/rules/no-bespoke-api-case-conversion.ts",
+      "severity": "warning",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 6,
+      "negativeProbes": 10,
+      "variants": [
+        "baseline",
+        "bom",
+        "comment-noise",
+        "crlf",
+        "import-alias",
+        "member-key-assertion",
+        "receiver-combined",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:no-broad-return-type",
+      "implementation": "packages/typescript/src/rules/no-broad-return-type.ts",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 7,
+      "variants": [
+        "baseline",
+        "bom",
+        "comment-noise",
+        "crlf",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:no-client-side-data-fetching",
+      "implementation": "packages/typescript/src/rules/no-client-side-data-fetching.ts",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 6,
+      "negativeProbes": 14,
+      "variants": [
+        "argument-non-null",
+        "argument-template",
+        "baseline",
+        "bom",
+        "call-result-assertion",
+        "comment-noise",
+        "crlf",
+        "import-alias",
+        "literal-unicode",
+        "member-key-assertion",
+        "receiver-combined",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:no-comment-cruft",
+      "implementation": "packages/typescript/src/rules/no-comment-cruft.ts",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 3,
+      "variants": [
+        "baseline",
+        "bom",
+        "crlf"
+      ]
+    },
+    {
+      "key": "eslint:no-conditional-empty-object-spread",
+      "implementation": "packages/typescript/src/rules/no-conditional-empty-object-spread.ts",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 9,
+      "variants": [
+        "baseline",
+        "bom",
+        "comment-noise",
+        "crlf",
+        "member-key-assertion",
+        "receiver-combined",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:no-cors-wildcard-with-credentials",
+      "implementation": "packages/typescript/src/rules/no-cors-wildcard-with-credentials.ts",
+      "severity": "error",
+      "decision": "equivalent-source-coverage",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 1,
+      "positiveProbes": 7,
+      "negativeProbes": 12,
+      "variants": [
+        "argument-non-null",
+        "baseline",
+        "bom",
+        "call-result-assertion",
+        "comment-noise",
+        "crlf",
+        "literal-unicode",
+        "member-key-assertion",
+        "receiver-combined",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:no-dangerously-allow-svg",
+      "implementation": "packages/typescript/src/rules/no-dangerously-allow-svg.ts",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 7,
+      "variants": [
+        "baseline",
+        "bom",
+        "comment-noise",
+        "crlf",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:no-declaration-comment-wall",
+      "implementation": "packages/typescript/src/rules/no-declaration-comment-wall.ts",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 3,
+      "variants": [
+        "baseline",
+        "bom",
+        "crlf"
+      ]
+    },
+    {
+      "key": "eslint:no-detached-global-fetch",
+      "implementation": "packages/typescript/src/rules/no-detached-global-fetch.ts",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 9,
+      "variants": [
+        "argument-non-null",
+        "baseline",
+        "bom",
+        "call-result-assertion",
+        "comment-noise",
+        "crlf",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:no-duplicate-lifecycle-refresh-listeners",
+      "implementation": "packages/typescript/src/rules/no-duplicate-lifecycle-refresh-listeners.ts",
+      "severity": "error",
+      "decision": "equivalent-source-coverage",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 3,
+      "positiveProbes": 10,
+      "negativeProbes": 14,
+      "variants": [
+        "argument-non-null",
+        "argument-template",
+        "baseline",
+        "bom",
+        "call-result-assertion",
+        "comment-noise",
+        "crlf",
+        "import-alias",
+        "literal-unicode",
+        "member-key-assertion",
+        "receiver-combined",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:no-duplicate-test-case",
+      "implementation": "packages/typescript/src/rules/no-duplicate-test-case.ts",
+      "severity": "warning",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 10,
+      "negativeProbes": 14,
+      "variants": [
+        "argument-non-null",
+        "argument-template",
+        "baseline",
+        "bom",
+        "call-result-assertion",
+        "comment-noise",
+        "crlf",
+        "import-alias",
+        "literal-unicode",
+        "member-key-assertion",
+        "receiver-combined",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:no-dynamic-sql",
+      "implementation": "packages/typescript/src/rules/no-dynamic-sql.ts",
+      "severity": "error",
+      "decision": "equivalent-source-coverage",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 2,
+      "positiveProbes": 14,
+      "negativeProbes": 26,
+      "variants": [
+        "argument-non-null",
+        "argument-template",
+        "baseline",
+        "bom",
+        "call-result-assertion",
+        "comment-noise",
+        "crlf",
+        "literal-unicode",
+        "member-key-assertion",
+        "receiver-combined",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:no-enum",
+      "implementation": "packages/typescript/src/rules/no-enum.ts",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 8,
+      "variants": [
+        "baseline",
+        "bom",
+        "comment-noise",
+        "crlf",
+        "literal-unicode",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:no-excessive-cognitive-complexity",
+      "implementation": "packages/typescript/src/rules/no-excessive-cognitive-complexity.ts",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 9,
+      "negativeProbes": 9,
+      "variants": [
+        "baseline",
+        "bom",
+        "crlf"
+      ]
+    },
+    {
+      "key": "eslint:no-fat-try-blocks",
+      "implementation": "packages/typescript/src/rules/no-fat-try-blocks.ts",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 5,
+      "negativeProbes": 9,
+      "variants": [
+        "argument-non-null",
+        "baseline",
+        "bom",
+        "call-result-assertion",
+        "comment-noise",
+        "crlf",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:no-first-party-module-mock",
+      "implementation": "packages/typescript/src/rules/no-first-party-module-mock.ts",
+      "severity": "error",
+      "decision": "equivalent-source-coverage",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 1,
+      "positiveProbes": 10,
+      "negativeProbes": 9,
+      "variants": [
+        "argument-non-null",
+        "argument-template",
+        "baseline",
+        "bom",
+        "call-result-assertion",
+        "comment-noise",
+        "crlf",
+        "import-alias",
+        "literal-unicode",
+        "member-key-assertion",
+        "receiver-combined",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:no-generic-single-export-module",
+      "implementation": "packages/typescript/src/rules/no-generic-single-export-module.ts",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 7,
+      "variants": [
+        "baseline",
+        "bom",
+        "comment-noise",
+        "crlf",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:no-hand-rolled-sleep",
+      "implementation": "packages/typescript/src/rules/no-hand-rolled-sleep.ts",
+      "severity": "error",
+      "decision": "equivalent-source-coverage",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 2,
+      "positiveProbes": 5,
+      "negativeProbes": 11,
+      "variants": [
+        "argument-non-null",
+        "baseline",
+        "bom",
+        "call-result-assertion",
+        "comment-noise",
+        "crlf",
+        "import-alias",
+        "literal-unicode",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:no-hand-rolled-spinner",
+      "implementation": "packages/typescript/src/rules/no-hand-rolled-spinner.ts",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 7,
+      "variants": [
+        "baseline",
+        "bom",
+        "comment-noise",
+        "crlf",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:no-impossible-zod-literal-bounds",
+      "implementation": "packages/typescript/src/rules/no-impossible-zod-literal-bounds.ts",
+      "severity": "error",
+      "decision": "equivalent-source-coverage",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 1,
+      "positiveProbes": 9,
+      "negativeProbes": 13,
+      "variants": [
+        "argument-non-null",
+        "baseline",
+        "bom",
+        "call-result-assertion",
+        "comment-noise",
+        "crlf",
+        "import-alias",
+        "literal-unicode",
+        "member-key-assertion",
+        "receiver-combined",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:no-in-operator-on-built-in-collections",
+      "implementation": "packages/typescript/src/rules/no-in-operator-on-built-in-collections.ts",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 5,
+      "negativeProbes": 12,
+      "variants": [
+        "argument-non-null",
+        "baseline",
+        "bom",
+        "call-result-assertion",
+        "comment-noise",
+        "crlf",
+        "literal-unicode",
+        "member-key-assertion",
+        "receiver-combined",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:no-insecure-random-id",
+      "implementation": "packages/typescript/src/rules/no-insecure-random-id.ts",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 6,
+      "negativeProbes": 10,
+      "variants": [
+        "baseline",
+        "bom",
+        "call-result-assertion",
+        "comment-noise",
+        "crlf",
+        "member-key-assertion",
+        "receiver-combined",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:no-json-stringify-error",
+      "implementation": "packages/typescript/src/rules/no-json-stringify-error.ts",
+      "severity": "error",
+      "decision": "equivalent-source-coverage",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 1,
+      "positiveProbes": 7,
+      "negativeProbes": 11,
+      "variants": [
+        "argument-non-null",
+        "baseline",
+        "bom",
+        "call-result-assertion",
+        "comment-noise",
+        "crlf",
+        "member-key-assertion",
+        "receiver-combined",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:no-json-stringify-object-equality",
+      "implementation": "packages/typescript/src/rules/no-json-stringify-object-equality.ts",
+      "severity": "warning",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 8,
+      "negativeProbes": 9,
+      "variants": [
+        "argument-non-null",
+        "baseline",
+        "bom",
+        "call-result-assertion",
+        "comment-noise",
+        "crlf",
+        "literal-unicode",
+        "member-key-assertion",
+        "receiver-combined",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:no-known-value-widening",
+      "implementation": "packages/typescript/src/rules/no-known-value-widening.ts",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 7,
+      "variants": [
+        "baseline",
+        "bom",
+        "comment-noise",
+        "crlf",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:no-log-only-catch",
+      "implementation": "packages/typescript/src/rules/no-log-only-catch.ts",
+      "severity": "error",
+      "decision": "equivalent-source-coverage",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 1,
+      "positiveProbes": 7,
+      "negativeProbes": 11,
+      "variants": [
+        "argument-non-null",
+        "baseline",
+        "bom",
+        "call-result-assertion",
+        "comment-noise",
+        "crlf",
+        "member-key-assertion",
+        "receiver-combined",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:no-long-comment",
+      "implementation": "packages/typescript/src/rules/no-long-comment.ts",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 3,
+      "variants": [
+        "baseline",
+        "bom",
+        "crlf"
+      ]
+    },
+    {
+      "key": "eslint:no-offset-pagination",
+      "implementation": "packages/typescript/src/rules/no-offset-pagination.ts",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 7,
+      "negativeProbes": 11,
+      "variants": [
+        "argument-non-null",
+        "baseline",
+        "bom",
+        "call-result-assertion",
+        "comment-noise",
+        "crlf",
+        "member-key-assertion",
+        "receiver-combined",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:no-positional-tuple-return",
+      "implementation": "packages/typescript/src/rules/no-positional-tuple-return.ts",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 4,
+      "negativeProbes": 8,
+      "variants": [
+        "baseline",
+        "bom",
+        "call-result-assertion",
+        "comment-noise",
+        "crlf",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:no-production-browser-source-maps",
+      "implementation": "packages/typescript/src/rules/no-production-browser-source-maps.ts",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 7,
+      "variants": [
+        "baseline",
+        "bom",
+        "comment-noise",
+        "crlf",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:no-raw-env",
+      "implementation": "packages/typescript/src/rules/no-raw-env.ts",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 5,
+      "negativeProbes": 10,
+      "variants": [
+        "baseline",
+        "bom",
+        "comment-noise",
+        "crlf",
+        "import-alias",
+        "member-key-assertion",
+        "receiver-combined",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:no-raw-fetch-outside-clients",
+      "implementation": "packages/typescript/src/rules/no-raw-fetch-outside-clients.ts",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 6,
+      "negativeProbes": 11,
+      "variants": [
+        "argument-non-null",
+        "argument-template",
+        "baseline",
+        "bom",
+        "call-result-assertion",
+        "comment-noise",
+        "crlf",
+        "member-key-assertion",
+        "receiver-combined",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:no-reduce-accumulator-copy",
+      "implementation": "packages/typescript/src/rules/no-reduce-accumulator-copy.ts",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 7,
+      "variants": [
+        "baseline",
+        "bom",
+        "comment-noise",
+        "crlf",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:no-redundant-optional-array-default",
+      "implementation": "packages/typescript/src/rules/no-redundant-optional-array-default.ts",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 9,
+      "negativeProbes": 13,
+      "variants": [
+        "argument-non-null",
+        "baseline",
+        "bom",
+        "call-result-assertion",
+        "comment-noise",
+        "crlf",
+        "import-alias",
+        "literal-unicode",
+        "member-key-assertion",
+        "receiver-combined",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:no-repeated-string-literal",
+      "implementation": "packages/typescript/src/rules/no-repeated-string-literal.ts",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 4,
+      "negativeProbes": 8,
+      "variants": [
+        "baseline",
+        "bom",
+        "comment-noise",
+        "crlf",
+        "literal-unicode",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:no-restated-comment",
+      "implementation": "packages/typescript/src/rules/no-restated-comment.ts",
+      "severity": "warning",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 3,
+      "variants": [
+        "baseline",
+        "bom",
+        "crlf"
+      ]
+    },
+    {
+      "key": "eslint:no-restated-jsdoc",
+      "implementation": "packages/typescript/src/rules/no-restated-jsdoc.ts",
+      "severity": "warning",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 6,
+      "negativeProbes": 6,
+      "variants": [
+        "baseline",
+        "bom",
+        "crlf"
+      ]
+    },
+    {
+      "key": "eslint:no-restricted-library-load",
+      "implementation": "packages/typescript/src/rules/no-restricted-library-load.ts",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 7,
+      "negativeProbes": 9,
+      "variants": [
+        "argument-non-null",
+        "argument-template",
+        "baseline",
+        "bom",
+        "call-result-assertion",
+        "comment-noise",
+        "crlf",
+        "import-alias",
+        "literal-unicode",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:no-router-refresh-polling",
+      "implementation": "packages/typescript/src/rules/no-router-refresh-polling.ts",
+      "severity": "error",
+      "decision": "equivalent-source-coverage",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 1,
+      "positiveProbes": 9,
+      "negativeProbes": 11,
+      "variants": [
+        "argument-non-null",
+        "baseline",
+        "bom",
+        "call-result-assertion",
+        "comment-noise",
+        "crlf",
+        "import-alias",
+        "literal-unicode",
+        "member-key-assertion",
+        "receiver-combined",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:no-secret-in-log",
+      "implementation": "packages/typescript/src/rules/no-secret-in-log.ts",
+      "severity": "error",
+      "decision": "equivalent-source-coverage",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 1,
+      "positiveProbes": 9,
+      "negativeProbes": 13,
+      "variants": [
+        "argument-non-null",
+        "argument-template",
+        "baseline",
+        "bom",
+        "call-result-assertion",
+        "comment-noise",
+        "crlf",
+        "literal-unicode",
+        "member-key-assertion",
+        "receiver-combined",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:no-select-star",
+      "implementation": "packages/typescript/src/rules/no-select-star.ts",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 7,
+      "negativeProbes": 11,
+      "variants": [
+        "argument-non-null",
+        "baseline",
+        "bom",
+        "call-result-assertion",
+        "comment-noise",
+        "crlf",
+        "member-key-assertion",
+        "receiver-combined",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:no-sentinel-return-on-catch",
+      "implementation": "packages/typescript/src/rules/no-sentinel-return-on-catch.ts",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 4,
+      "negativeProbes": 13,
+      "variants": [
+        "argument-non-null",
+        "argument-template",
+        "baseline",
+        "bom",
+        "call-result-assertion",
+        "comment-noise",
+        "crlf",
+        "literal-unicode",
+        "member-key-assertion",
+        "receiver-combined",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:no-server-env-in-client-component",
+      "implementation": "packages/typescript/src/rules/no-server-env-in-client-component.ts",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 6,
+      "negativeProbes": 10,
+      "variants": [
+        "baseline",
+        "bom",
+        "comment-noise",
+        "crlf",
+        "import-alias",
+        "member-key-assertion",
+        "receiver-combined",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:no-silent-promise-catch",
+      "implementation": "packages/typescript/src/rules/no-silent-promise-catch.ts",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 4,
+      "negativeProbes": 13,
+      "variants": [
+        "argument-non-null",
+        "argument-template",
+        "baseline",
+        "bom",
+        "call-result-assertion",
+        "comment-noise",
+        "crlf",
+        "literal-unicode",
+        "member-key-assertion",
+        "receiver-combined",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:no-sleep-in-test-body",
+      "implementation": "packages/typescript/src/rules/no-sleep-in-test-body.ts",
+      "severity": "error",
+      "decision": "equivalent-source-coverage",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 2,
+      "positiveProbes": 7,
+      "negativeProbes": 13,
+      "variants": [
+        "argument-non-null",
+        "argument-template",
+        "baseline",
+        "bom",
+        "call-result-assertion",
+        "comment-noise",
+        "crlf",
+        "literal-unicode",
+        "member-key-assertion",
+        "receiver-combined",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:no-storage-in-stateless-modules",
+      "implementation": "packages/typescript/src/rules/no-storage-in-stateless-modules.ts",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 9,
+      "negativeProbes": 10,
+      "variants": [
+        "argument-non-null",
+        "argument-template",
+        "baseline",
+        "bom",
+        "call-result-assertion",
+        "comment-noise",
+        "crlf",
+        "literal-unicode",
+        "member-key-assertion",
+        "receiver-combined",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:no-string-concat-in-loop",
+      "implementation": "packages/typescript/src/rules/no-string-concat-in-loop.ts",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 12,
+      "variants": [
+        "argument-non-null",
+        "argument-template",
+        "baseline",
+        "bom",
+        "call-result-assertion",
+        "comment-noise",
+        "crlf",
+        "member-key-assertion",
+        "receiver-combined",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:no-tautological-expect",
+      "implementation": "packages/typescript/src/rules/no-tautological-expect.ts",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 12,
+      "negativeProbes": 20,
+      "variants": [
+        "argument-non-null",
+        "baseline",
+        "bom",
+        "call-result-assertion",
+        "comment-noise",
+        "crlf",
+        "literal-unicode",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:no-trailing-value-narration",
+      "implementation": "packages/typescript/src/rules/no-trailing-value-narration.ts",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 7,
+      "variants": [
+        "baseline",
+        "bom",
+        "comment-noise",
+        "crlf",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:no-type-member-comment-wall",
+      "implementation": "packages/typescript/src/rules/no-type-member-comment-wall.ts",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 3,
+      "variants": [
+        "baseline",
+        "bom",
+        "crlf"
+      ]
+    },
+    {
+      "key": "eslint:no-typed-doc-sections",
+      "implementation": "packages/typescript/src/rules/no-typed-doc-sections.ts",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 7,
+      "variants": [
+        "baseline",
+        "bom",
+        "comment-noise",
+        "crlf",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:no-union-in-comment",
+      "implementation": "packages/typescript/src/rules/no-union-in-comment.ts",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 3,
+      "variants": [
+        "baseline",
+        "bom",
+        "crlf"
+      ]
+    },
+    {
+      "key": "eslint:no-unlocalized-jsx-attributes",
+      "implementation": "packages/typescript/src/rules/no-unlocalized-jsx-attributes.ts",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 11,
+      "variants": [
+        "argument-non-null",
+        "argument-template",
+        "baseline",
+        "bom",
+        "call-result-assertion",
+        "comment-noise",
+        "crlf",
+        "literal-unicode",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:no-unlocalized-jsx-text",
+      "implementation": "packages/typescript/src/rules/no-unlocalized-jsx-text.ts",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 11,
+      "variants": [
+        "argument-non-null",
+        "argument-template",
+        "baseline",
+        "bom",
+        "call-result-assertion",
+        "comment-noise",
+        "crlf",
+        "literal-unicode",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:no-unlocalized-toast",
+      "implementation": "packages/typescript/src/rules/no-unlocalized-toast.ts",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 10,
+      "negativeProbes": 14,
+      "variants": [
+        "argument-non-null",
+        "argument-template",
+        "baseline",
+        "bom",
+        "call-result-assertion",
+        "comment-noise",
+        "crlf",
+        "import-alias",
+        "literal-unicode",
+        "member-key-assertion",
+        "receiver-combined",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:no-unnecessary-use-client",
+      "implementation": "packages/typescript/src/rules/no-unnecessary-use-client.ts",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 11,
+      "variants": [
+        "argument-non-null",
+        "baseline",
+        "bom",
+        "call-result-assertion",
+        "comment-noise",
+        "crlf",
+        "import-alias",
+        "literal-unicode",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:no-unsafe-mock-casting",
+      "implementation": "packages/typescript/src/rules/no-unsafe-mock-casting.ts",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 5,
+      "negativeProbes": 14,
+      "variants": [
+        "argument-non-null",
+        "argument-template",
+        "baseline",
+        "bom",
+        "call-result-assertion",
+        "comment-noise",
+        "crlf",
+        "import-alias",
+        "literal-unicode",
+        "member-key-assertion",
+        "receiver-combined",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:no-unsafe-test-double-cast",
+      "implementation": "packages/typescript/src/rules/no-unsafe-test-double-cast.ts",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 8,
+      "negativeProbes": 8,
+      "variants": [
+        "baseline",
+        "bom",
+        "call-result-assertion",
+        "comment-noise",
+        "crlf",
+        "import-alias",
+        "literal-unicode",
+        "member-key-assertion",
+        "receiver-combined",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:no-vague-suppression-description",
+      "implementation": "packages/typescript/src/rules/no-vague-suppression-description.ts",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 5,
+      "negativeProbes": 9,
+      "variants": [
+        "baseline",
+        "bom",
+        "comment-noise",
+        "crlf",
+        "member-key-assertion",
+        "receiver-combined",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:no-zod-native-enum",
+      "implementation": "packages/typescript/src/rules/no-zod-native-enum.ts",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 9,
+      "negativeProbes": 13,
+      "variants": [
+        "argument-non-null",
+        "baseline",
+        "bom",
+        "call-result-assertion",
+        "comment-noise",
+        "crlf",
+        "import-alias",
+        "literal-unicode",
+        "member-key-assertion",
+        "receiver-combined",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:prefer-await-in-async-return",
+      "implementation": "packages/typescript/src/rules/prefer-await-in-async-return.ts",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 7,
+      "negativeProbes": 11,
+      "variants": [
+        "argument-non-null",
+        "baseline",
+        "bom",
+        "call-result-assertion",
+        "comment-noise",
+        "crlf",
+        "member-key-assertion",
+        "receiver-combined",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:prefer-constant-time-secret-compare",
+      "implementation": "packages/typescript/src/rules/prefer-constant-time-secret-compare.ts",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 4,
+      "negativeProbes": 9,
+      "variants": [
+        "argument-non-null",
+        "baseline",
+        "bom",
+        "call-result-assertion",
+        "comment-noise",
+        "crlf",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:prefer-discriminated-union",
+      "implementation": "packages/typescript/src/rules/prefer-discriminated-union.ts",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 7,
+      "variants": [
+        "baseline",
+        "bom",
+        "comment-noise",
+        "crlf",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:prefer-ecmascript-private-members",
+      "implementation": "packages/typescript/src/rules/prefer-ecmascript-private-members.ts",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 7,
+      "variants": [
+        "baseline",
+        "bom",
+        "comment-noise",
+        "crlf",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:prefer-immutable-module-constant",
+      "implementation": "packages/typescript/src/rules/prefer-immutable-module-constant.ts",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 6,
+      "negativeProbes": 14,
+      "variants": [
+        "baseline",
+        "bom",
+        "comment-noise",
+        "crlf",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:prefer-input-group-search",
+      "implementation": "packages/typescript/src/rules/prefer-input-group-search.ts",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 5,
+      "negativeProbes": 9,
+      "variants": [
+        "baseline",
+        "bom",
+        "comment-noise",
+        "crlf",
+        "import-alias",
+        "literal-unicode",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:prefer-logical-tailwind-utilities",
+      "implementation": "packages/typescript/src/rules/prefer-logical-tailwind-utilities.ts",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 7,
+      "variants": [
+        "baseline",
+        "bom",
+        "comment-noise",
+        "crlf",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:prefer-millisecond-control-duration-schema",
+      "implementation": "packages/typescript/src/rules/prefer-millisecond-control-duration-schema.ts",
+      "severity": "warning",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 9,
+      "negativeProbes": 13,
+      "variants": [
+        "argument-non-null",
+        "baseline",
+        "bom",
+        "call-result-assertion",
+        "comment-noise",
+        "crlf",
+        "import-alias",
+        "literal-unicode",
+        "member-key-assertion",
+        "receiver-combined",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:prefer-module-level-constant",
+      "implementation": "packages/typescript/src/rules/prefer-module-level-constant.ts",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 8,
+      "negativeProbes": 12,
+      "variants": [
+        "argument-non-null",
+        "baseline",
+        "bom",
+        "call-result-assertion",
+        "comment-noise",
+        "crlf",
+        "literal-unicode",
+        "member-key-assertion",
+        "receiver-combined",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:prefer-module-level-refined-schema",
+      "implementation": "packages/typescript/src/rules/prefer-module-level-refined-schema.ts",
+      "severity": "warning",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 9,
+      "negativeProbes": 13,
+      "variants": [
+        "argument-non-null",
+        "baseline",
+        "bom",
+        "call-result-assertion",
+        "comment-noise",
+        "crlf",
+        "import-alias",
+        "literal-unicode",
+        "member-key-assertion",
+        "receiver-combined",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:prefer-module-level-schema",
+      "implementation": "packages/typescript/src/rules/prefer-module-level-schema.ts",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 9,
+      "negativeProbes": 13,
+      "variants": [
+        "argument-non-null",
+        "baseline",
+        "bom",
+        "call-result-assertion",
+        "comment-noise",
+        "crlf",
+        "import-alias",
+        "literal-unicode",
+        "member-key-assertion",
+        "receiver-combined",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:prefer-multi-value-zod-literal",
+      "implementation": "packages/typescript/src/rules/prefer-multi-value-zod-literal.ts",
+      "severity": "warning",
+      "decision": "equivalent-source-coverage",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 2,
+      "positiveProbes": 9,
+      "negativeProbes": 13,
+      "variants": [
+        "argument-non-null",
+        "baseline",
+        "bom",
+        "call-result-assertion",
+        "comment-noise",
+        "crlf",
+        "import-alias",
+        "literal-unicode",
+        "member-key-assertion",
+        "receiver-combined",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:prefer-named-callback-domain",
+      "implementation": "packages/typescript/src/rules/prefer-named-callback-domain.ts",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 4,
+      "negativeProbes": 8,
+      "variants": [
+        "baseline",
+        "bom",
+        "comment-noise",
+        "crlf",
+        "literal-unicode",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:prefer-named-complex-return-type",
+      "implementation": "packages/typescript/src/rules/prefer-named-complex-return-type.ts",
+      "severity": "warning",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 4,
+      "negativeProbes": 8,
+      "variants": [
+        "baseline",
+        "bom",
+        "comment-noise",
+        "crlf",
+        "literal-unicode",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:prefer-native-random-uuid",
+      "implementation": "packages/typescript/src/rules/prefer-native-random-uuid.ts",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 6,
+      "negativeProbes": 10,
+      "variants": [
+        "baseline",
+        "bom",
+        "call-result-assertion",
+        "comment-noise",
+        "crlf",
+        "import-alias",
+        "literal-unicode",
+        "member-key-assertion",
+        "receiver-combined",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:prefer-node-crypto-hash",
+      "implementation": "packages/typescript/src/rules/prefer-node-crypto-hash.ts",
+      "severity": "warning",
+      "decision": "equivalent-source-coverage",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 2,
+      "positiveProbes": 8,
+      "negativeProbes": 12,
+      "variants": [
+        "argument-non-null",
+        "argument-template",
+        "baseline",
+        "bom",
+        "call-result-assertion",
+        "comment-noise",
+        "crlf",
+        "import-alias",
+        "literal-unicode",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:prefer-node-fs-promises",
+      "implementation": "packages/typescript/src/rules/prefer-node-fs-promises.ts",
+      "severity": "warning",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 8,
+      "negativeProbes": 12,
+      "variants": [
+        "argument-non-null",
+        "argument-template",
+        "baseline",
+        "bom",
+        "call-result-assertion",
+        "comment-noise",
+        "crlf",
+        "import-alias",
+        "literal-unicode",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:prefer-nominal-id-types",
+      "implementation": "packages/typescript/src/rules/prefer-nominal-id-types.ts",
+      "severity": "warning",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 7,
+      "variants": [
+        "baseline",
+        "bom",
+        "comment-noise",
+        "crlf",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:prefer-non-nullable-collection",
+      "implementation": "packages/typescript/src/rules/prefer-non-nullable-collection.ts",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 5,
+      "negativeProbes": 9,
+      "variants": [
+        "baseline",
+        "bom",
+        "comment-noise",
+        "crlf",
+        "member-key-assertion",
+        "receiver-combined",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:prefer-nullish-filter-predicate",
+      "implementation": "packages/typescript/src/rules/prefer-nullish-filter-predicate.ts",
+      "severity": "error",
+      "decision": "equivalent-source-coverage",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 2,
+      "positiveProbes": 7,
+      "negativeProbes": 10,
+      "variants": [
+        "argument-non-null",
+        "baseline",
+        "bom",
+        "call-result-assertion",
+        "comment-noise",
+        "crlf",
+        "member-key-assertion",
+        "receiver-combined",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:prefer-schema-for-api-payload",
+      "implementation": "packages/typescript/src/rules/prefer-schema-for-api-payload.ts",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 6,
+      "negativeProbes": 11,
+      "variants": [
+        "argument-non-null",
+        "baseline",
+        "bom",
+        "call-result-assertion",
+        "comment-noise",
+        "crlf",
+        "member-key-assertion",
+        "receiver-combined",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:prefer-semantic-colors",
+      "implementation": "packages/typescript/src/rules/prefer-semantic-colors.ts",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 7,
+      "variants": [
+        "baseline",
+        "bom",
+        "comment-noise",
+        "crlf",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:prefer-server-actions",
+      "implementation": "packages/typescript/src/rules/prefer-server-actions.ts",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 7,
+      "negativeProbes": 10,
+      "variants": [
+        "argument-non-null",
+        "argument-template",
+        "baseline",
+        "bom",
+        "call-result-assertion",
+        "comment-noise",
+        "crlf",
+        "import-alias",
+        "literal-unicode",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:prefer-shadcn-primitives",
+      "implementation": "packages/typescript/src/rules/prefer-shadcn-primitives.ts",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 4,
+      "negativeProbes": 8,
+      "variants": [
+        "baseline",
+        "bom",
+        "comment-noise",
+        "crlf",
+        "import-alias",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:prefer-shared-zod-enum",
+      "implementation": "packages/typescript/src/rules/prefer-shared-zod-enum.ts",
+      "severity": "warning",
+      "decision": "equivalent-source-coverage",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 1,
+      "positiveProbes": 9,
+      "negativeProbes": 13,
+      "variants": [
+        "argument-non-null",
+        "baseline",
+        "bom",
+        "call-result-assertion",
+        "comment-noise",
+        "crlf",
+        "import-alias",
+        "literal-unicode",
+        "member-key-assertion",
+        "receiver-combined",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:prefer-switch-for-repeated-equality",
+      "implementation": "packages/typescript/src/rules/prefer-switch-for-repeated-equality.ts",
+      "severity": "warning",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 5,
+      "negativeProbes": 9,
+      "variants": [
+        "baseline",
+        "bom",
+        "call-result-assertion",
+        "comment-noise",
+        "crlf",
+        "literal-unicode",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:prefer-typed-reflection",
+      "implementation": "packages/typescript/src/rules/prefer-typed-reflection.ts",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 4,
+      "negativeProbes": 7,
+      "variants": [
+        "baseline",
+        "bom",
+        "comment-noise",
+        "crlf",
+        "literal-unicode",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:prefer-whole-object-assertion",
+      "implementation": "packages/typescript/src/rules/prefer-whole-object-assertion.ts",
+      "severity": "warning",
+      "decision": "equivalent-source-coverage",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 1,
+      "positiveProbes": 9,
+      "negativeProbes": 10,
+      "variants": [
+        "argument-non-null",
+        "argument-template",
+        "baseline",
+        "bom",
+        "call-result-assertion",
+        "comment-noise",
+        "crlf",
+        "literal-unicode",
+        "member-key-assertion",
+        "receiver-combined",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:prefer-zod-infer",
+      "implementation": "packages/typescript/src/rules/prefer-zod-infer.ts",
+      "severity": "error",
+      "decision": "equivalent-source-coverage",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 2,
+      "positiveProbes": 9,
+      "negativeProbes": 13,
+      "variants": [
+        "argument-non-null",
+        "baseline",
+        "bom",
+        "call-result-assertion",
+        "comment-noise",
+        "crlf",
+        "import-alias",
+        "literal-unicode",
+        "member-key-assertion",
+        "receiver-combined",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:prefer-zod-parse-output-type",
+      "implementation": "packages/typescript/src/rules/prefer-zod-parse-output-type.ts",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 8,
+      "negativeProbes": 12,
+      "variants": [
+        "argument-non-null",
+        "baseline",
+        "bom",
+        "comment-noise",
+        "crlf",
+        "import-alias",
+        "literal-unicode",
+        "member-key-assertion",
+        "receiver-combined",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:repeated-static-call-cases",
+      "implementation": "packages/typescript/src/rules/repeated-static-call-cases.ts",
+      "severity": "error",
+      "decision": "equivalent-source-coverage",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 1,
+      "positiveProbes": 7,
+      "negativeProbes": 13,
+      "variants": [
+        "argument-non-null",
+        "argument-template",
+        "baseline",
+        "bom",
+        "call-result-assertion",
+        "comment-noise",
+        "crlf",
+        "literal-unicode",
+        "member-key-assertion",
+        "receiver-combined",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:require-assert-never",
+      "implementation": "packages/typescript/src/rules/require-assert-never.ts",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 4,
+      "negativeProbes": 10,
+      "variants": [
+        "argument-non-null",
+        "baseline",
+        "bom",
+        "call-result-assertion",
+        "comment-noise",
+        "crlf",
+        "literal-unicode",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:require-button-accessible-name",
+      "implementation": "packages/typescript/src/rules/require-button-accessible-name.ts",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 7,
+      "variants": [
+        "baseline",
+        "bom",
+        "comment-noise",
+        "crlf",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:require-camelcase-properties",
+      "implementation": "packages/typescript/src/rules/require-camelcase-properties.ts",
+      "severity": "warning",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 7,
+      "variants": [
+        "baseline",
+        "bom",
+        "comment-noise",
+        "crlf",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:require-explicit-contract-implementation",
+      "implementation": "packages/typescript/src/rules/require-explicit-contract-implementation.ts",
+      "severity": "warning",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 4,
+      "negativeProbes": 8,
+      "variants": [
+        "baseline",
+        "bom",
+        "comment-noise",
+        "crlf",
+        "literal-unicode",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:require-explicit-service-contract",
+      "implementation": "packages/typescript/src/rules/require-explicit-service-contract.ts",
+      "severity": "warning",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 7,
+      "variants": [
+        "baseline",
+        "bom",
+        "comment-noise",
+        "crlf",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:require-fetch-timeout",
+      "implementation": "packages/typescript/src/rules/require-fetch-timeout.ts",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 7,
+      "negativeProbes": 11,
+      "variants": [
+        "argument-non-null",
+        "argument-template",
+        "baseline",
+        "bom",
+        "call-result-assertion",
+        "comment-noise",
+        "crlf",
+        "literal-unicode",
+        "member-key-assertion",
+        "receiver-combined",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:require-interface-for-exported-class",
+      "implementation": "packages/typescript/src/rules/require-interface-for-exported-class.ts",
+      "severity": "warning",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 7,
+      "variants": [
+        "baseline",
+        "bom",
+        "comment-noise",
+        "crlf",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:require-pascal-case-zod-schema-name",
+      "implementation": "packages/typescript/src/rules/require-pascal-case-zod-schema-name.ts",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 9,
+      "negativeProbes": 13,
+      "variants": [
+        "argument-non-null",
+        "baseline",
+        "bom",
+        "call-result-assertion",
+        "comment-noise",
+        "crlf",
+        "import-alias",
+        "literal-unicode",
+        "member-key-assertion",
+        "receiver-combined",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:require-port-for-service",
+      "implementation": "packages/typescript/src/rules/require-port-for-service.ts",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 7,
+      "variants": [
+        "baseline",
+        "bom",
+        "comment-noise",
+        "crlf",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:require-sql-access-class",
+      "implementation": "packages/typescript/src/rules/require-sql-access-class.ts",
+      "severity": "warning",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 9,
+      "negativeProbes": 10,
+      "variants": [
+        "argument-non-null",
+        "argument-template",
+        "baseline",
+        "bom",
+        "call-result-assertion",
+        "comment-noise",
+        "crlf",
+        "literal-unicode",
+        "member-key-assertion",
+        "receiver-combined",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:require-static-next-matcher",
+      "implementation": "packages/typescript/src/rules/require-static-next-matcher.ts",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 7,
+      "variants": [
+        "baseline",
+        "bom",
+        "comment-noise",
+        "crlf",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:require-svg-accessible-name",
+      "implementation": "packages/typescript/src/rules/require-svg-accessible-name.ts",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 7,
+      "variants": [
+        "baseline",
+        "bom",
+        "comment-noise",
+        "crlf",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:require-use-form-default-values",
+      "implementation": "packages/typescript/src/rules/require-use-form-default-values.ts",
+      "severity": "error",
+      "decision": "equivalent-source-coverage",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 1,
+      "positiveProbes": 8,
+      "negativeProbes": 13,
+      "variants": [
+        "argument-non-null",
+        "baseline",
+        "bom",
+        "call-result-assertion",
+        "comment-noise",
+        "crlf",
+        "import-alias",
+        "literal-unicode",
+        "member-key-assertion",
+        "receiver-combined",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:require-use-server-in-actions-file",
+      "implementation": "packages/typescript/src/rules/require-use-server-in-actions-file.ts",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 7,
+      "variants": [
+        "baseline",
+        "bom",
+        "comment-noise",
+        "crlf",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:require-zod-form-validation",
+      "implementation": "packages/typescript/src/rules/require-zod-form-validation.ts",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 9,
+      "negativeProbes": 13,
+      "variants": [
+        "argument-non-null",
+        "argument-template",
+        "baseline",
+        "bom",
+        "call-result-assertion",
+        "comment-noise",
+        "crlf",
+        "literal-unicode",
+        "member-key-assertion",
+        "receiver-combined",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:sole-export-matches-filename",
+      "implementation": "packages/typescript/src/rules/sole-export-matches-filename.ts",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 7,
+      "variants": [
+        "baseline",
+        "bom",
+        "comment-noise",
+        "crlf",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:source-coupled-test",
+      "implementation": "packages/typescript/src/rules/source-coupled-test.ts",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 8,
+      "negativeProbes": 14,
+      "variants": [
+        "argument-non-null",
+        "argument-template",
+        "baseline",
+        "bom",
+        "call-result-assertion",
+        "comment-noise",
+        "crlf",
+        "import-alias",
+        "literal-unicode",
+        "member-key-assertion",
+        "receiver-combined",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:stepdown",
+      "implementation": "packages/typescript/src/rules/stepdown.ts",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 3,
+      "variants": [
+        "baseline",
+        "bom",
+        "crlf"
+      ]
+    },
+    {
+      "key": "eslint:store-insert-requires-on-conflict",
+      "implementation": "packages/typescript/src/rules/store-insert-requires-on-conflict.ts",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 7,
+      "negativeProbes": 11,
+      "variants": [
+        "argument-non-null",
+        "baseline",
+        "bom",
+        "call-result-assertion",
+        "comment-noise",
+        "crlf",
+        "member-key-assertion",
+        "receiver-combined",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:test-loops-over-literal-cases",
+      "implementation": "packages/typescript/src/rules/test-loops-over-literal-cases.ts",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 7,
+      "negativeProbes": 13,
+      "variants": [
+        "argument-non-null",
+        "argument-template",
+        "baseline",
+        "bom",
+        "call-result-assertion",
+        "comment-noise",
+        "crlf",
+        "literal-unicode",
+        "member-key-assertion",
+        "receiver-combined",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:test-phase-label-comment",
+      "implementation": "packages/typescript/src/rules/test-phase-label-comment.ts",
+      "severity": "error",
+      "decision": "retain",
+      "reviewedPassCount": 20,
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 3,
+      "variants": [
+        "baseline",
+        "bom",
+        "crlf"
+      ]
+    }
+  ]
+}

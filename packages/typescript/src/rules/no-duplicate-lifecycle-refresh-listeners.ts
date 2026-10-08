@@ -5,7 +5,8 @@
  */
 
 import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
-import { unwrapExpression } from "./_unwrap-expression.js";
+import { outerExpression, unwrapExpression } from "./_unwrap-expression.js";
+import { staticString } from "./_static-string.js";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile, isTestFile } from "./_paths.js";
@@ -47,12 +48,13 @@ function registration(
     node.arguments.length < 2
   ) return null;
   const event = node.arguments[0] === undefined ? undefined : unwrapExpression(node.arguments[0]);
-  const callback = node.arguments[1];
+  const callback = node.arguments[1] === undefined ? undefined : unwrapExpression(node.arguments[1]);
   if (event === undefined || callback === undefined) return null;
-  if (event.type !== AST_NODE_TYPES.Literal || typeof event.value !== "string" || callback.type !== AST_NODE_TYPES.Identifier) return null;
+  const eventName = staticString(event);
+  if (eventName === null || callback.type !== AST_NODE_TYPES.Identifier) return null;
   const operation = (ASTUtils.getPropertyName(unwrappedNodeCallee) ?? "") === "addEventListener" ? "add" : "remove";
-  if (receiver.name === "window" && event.value === "focus") return { operation, event: "focus", callback };
-  if (receiver.name === "document" && event.value === "visibilitychange") return { operation, event: "visibilitychange", callback };
+  if (receiver.name === "window" && eventName === "focus") return { operation, event: "focus", callback };
+  if (receiver.name === "document" && eventName === "visibilitychange") return { operation, event: "visibilitychange", callback };
   return null;
 }
 
@@ -65,7 +67,7 @@ function isUnshadowedGlobal(
 }
 
 function statementContainer(node: TSESTree.CallExpression): TSESTree.Program | TSESTree.BlockStatement | null {
-  const statement = node.parent;
+  const statement = outerExpression(node).parent;
   if (statement.type !== AST_NODE_TYPES.ExpressionStatement) return null;
   const container = statement.parent;
   return container.type === AST_NODE_TYPES.Program || container.type === AST_NODE_TYPES.BlockStatement
@@ -118,14 +120,15 @@ export default createRule<Options, MessageIds>({
         }
       },
       VariableDeclarator(node): void {
+        const initializer = node.init === null ? null : unwrapExpression(node.init);
         if (node.id.type !== AST_NODE_TYPES.Identifier) return;
         const variable = ASTUtils.findVariable(context.sourceCode.getScope(node.id), node.id.name);
         if (variable === null || variable.references.some((reference) => reference.isWrite() && !reference.init)) return;
         if (node.init?.type === AST_NODE_TYPES.ArrowFunctionExpression || node.init?.type === AST_NODE_TYPES.FunctionExpression) {
           functionCallbacks.set(node.init, variable);
         }
-        if (node.init?.type !== AST_NODE_TYPES.CallExpression) return;
-        const hookCallee = unwrapExpression(node.init.callee);
+        if (initializer?.type !== AST_NODE_TYPES.CallExpression) return;
+        const hookCallee = unwrapExpression(initializer.callee);
         if (hookCallee.type !== AST_NODE_TYPES.Identifier) return;
         const hook = ASTUtils.findVariable(context.sourceCode.getScope(hookCallee), hookCallee.name);
         if (hook !== null && routerHooks.has(hook)) routers.add(variable);

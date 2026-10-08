@@ -277,7 +277,7 @@ export default createRule<Options, MessageIds>({
           return;
         }
 
-        const statement = node.arguments[0];
+        const statement = node.arguments[0] === undefined ? undefined : unwrapExpression(node.arguments[0]);
         if (statement === undefined || !looksLikeSql(statement)) {
           return;
         }

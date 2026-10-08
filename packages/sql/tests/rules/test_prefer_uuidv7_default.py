@@ -104,3 +104,17 @@ def test_multiline_call_text_in_noncode_is_preserved(source: str) -> None:
 
 def test_flags_schema_qualified_gen_random_uuid():
     assert len(_check(f"SELECT public.{_LEGACY_UUID_CALL};")) == 1
+
+
+def test_quoted_builtin_function_preserves_detection_and_position() -> None:
+    source = 'SELECT "gen_random_uuid"();'
+    findings = _check(source)
+    assert len(findings) == 1
+    assert (findings[0].line, findings[0].col) == (1, 8)
+
+
+@pytest.mark.parametrize(
+    "source", ['SELECT "GEN_RANDOM_UUID"();', 'SELECT "gen_random_uuid()" FROM note;', "SELECT 'gen_random_uuid()';"]
+)
+def test_case_sensitive_function_and_quoted_call_decoys_are_inert(source: str) -> None:
+    assert _check(source) == []
