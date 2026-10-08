@@ -5,7 +5,7 @@
 
 import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
 
-import { unwrapExpression } from "./_unwrap-expression.js";
+import { directArgumentCall, unwrapExpression } from "./_unwrap-expression.js";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { duplicateTestBodyCandidate } from "./duplicate-test-body.js";
@@ -65,8 +65,8 @@ function importedName(identifier: TSESTree.Identifier, context: Context, modules
 
 function isDirectTestCallback(node: TSESTree.Node, context: Context): node is FunctionNode {
   if (node.type !== AST_NODE_TYPES.ArrowFunctionExpression && node.type !== AST_NODE_TYPES.FunctionExpression) return false;
-  const call = node.parent;
-  if (call?.type !== AST_NODE_TYPES.CallExpression || !call.arguments.includes(node)) return false;
+  const call = directArgumentCall(node);
+  if (call === null) return false;
   const root = testRoot(call.callee);
   return root !== null && TEST_NAMES.has(importedName(root, context, TEST_MODULES) ?? "");
 }
@@ -161,9 +161,9 @@ export default createRule<Options, MessageIds>({
     const duplicateGroups = new Map<TSESTree.Node, Map<string, FunctionNode[]>>();
     const pending: PendingFinding[] = [];
     return {
-      "CallExpression > ArrowFunctionExpression, CallExpression > FunctionExpression"(node: FunctionNode): void {
-        const call = node.parent;
-        if (call?.type === AST_NODE_TYPES.CallExpression) {
+      "ArrowFunctionExpression, FunctionExpression"(node: FunctionNode): void {
+        const call = directArgumentCall(node);
+        if (call !== null) {
           const duplicate = duplicateTestBodyCandidate(call, sourceCode);
           if (duplicate !== null && duplicate.body === node) {
             const groups = duplicateGroups.get(duplicate.container) ?? new Map<string, FunctionNode[]>();

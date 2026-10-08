@@ -139,7 +139,7 @@ def _cached_heredoc_body_mask(lines: tuple[str, ...]) -> tuple[bool, ...]:
 _TOKEN_RE = re.compile(
     # Keep the interpolation, escape, ordinary-dollar, and ordinary-character
     # branches disjoint so hostile strings cannot induce regex backtracking.
-    r'"(?:\\.|\$(?!\{)|\$\{(?:[^{}"]|"(?:\\.|[^"\\])*")*\}|[^"$\\])*"'
+    r'"(?:\\.|\$\$\{|\$(?!\{|\$\{)|\$\{(?:[^{}"]|"(?:\\.|[^"\\])*")*\}|[^"$\\])*"'
     r"|[A-Za-z_][\w.\-]*"
     r"|==|!=|<=|>=|&&|\|\||[{}()\[\]=,]"
     r"|\S"
@@ -196,13 +196,18 @@ def literal_token(value: str) -> str | None:
 
 
 _HCL_STRING_RE = re.compile(r'"(?:[^"\\\x00-\x1f]|\\(?:[nrt"\\]|u[0-9A-Fa-f]{4}|U[0-9A-Fa-f]{8}))*"')
+_HCL_TEMPLATE_RE = re.compile(r"\$\$\{|%%\{|(?P<dynamic>\$\{|%\{)")
 _HCL_ESCAPE_RE = re.compile(r'\\(?:[nrt"\\]|(?P<short>u[0-9A-Fa-f]{4})|(?P<long>U[0-9A-Fa-f]{8}))')
 
 
 def literal_string(value: str) -> str | None:
     token = literal_token(value)
-    if token is None or _HCL_STRING_RE.fullmatch(token) is None or "${" in token or "%{" in token:
+    if token is None or _HCL_STRING_RE.fullmatch(token) is None:
         return None
+    if "${" in token or "%{" in token:
+        if any(match.group("dynamic") is not None for match in _HCL_TEMPLATE_RE.finditer(token)):
+            return None
+        token = token.replace("$${", "${").replace("%%{", "%{")
     try:
         if "\\" not in token:
             return token[1:-1]

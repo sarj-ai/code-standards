@@ -7,6 +7,8 @@
 import { type TSESTree } from "@typescript-eslint/utils";
 import type { Scope } from "@typescript-eslint/utils/ts-eslint";
 
+import { unwrapExpression } from "./_unwrap-expression.js";
+
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile } from "./_paths.js";
 
@@ -121,6 +123,7 @@ function isStringLiteralInit(node: TSESTree.Expression | null): boolean {
   if (node === null) {
     return false;
   }
+  node = unwrapExpression(node);
   if (node.type === "TemplateLiteral") {
     return true;
   }

@@ -211,7 +211,7 @@ function testBody(call: TSESTree.CallExpression): {
   ) {
     return null;
   }
-  const callback = call.arguments.find(
+  const callback = call.arguments.map(unwrapExpression).find(
     (argument): argument is TSESTree.FunctionExpression | TSESTree.ArrowFunctionExpression =>
       argument.type !== AST_NODE_TYPES.SpreadElement && FUNCTION_TYPES.has(argument.type),
   );

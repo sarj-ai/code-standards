@@ -7,7 +7,7 @@
 import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
-import { unwrapExpression } from "./_unwrap-expression.js";
+import { directArgumentCall, outerExpression, unwrapExpression } from "./_unwrap-expression.js";
 import { isGeneratedFile, isTestFile } from "./_paths.js";
 
 type MessageIds = "routerRefreshPolling";
@@ -44,8 +44,8 @@ function enclosingIntervalCallback(
       ancestor?.type !== AST_NODE_TYPES.ArrowFunctionExpression &&
       ancestor?.type !== AST_NODE_TYPES.FunctionExpression
     ) continue;
-    const parent = ancestor.parent;
-    return parent.type === AST_NODE_TYPES.CallExpression && parent.arguments[0] === ancestor &&
+    const parent = directArgumentCall(ancestor);
+    return parent !== null && parent.arguments[0] === outerExpression(ancestor) &&
       isIntervalCallee(sourceCode, parent.callee) ? ancestor : null;
   }
   return null;

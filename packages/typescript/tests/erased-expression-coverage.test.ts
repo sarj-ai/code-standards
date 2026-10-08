@@ -12,9 +12,10 @@ import { RULES } from "../src/index.js";
 import cases from "./fixtures/erased-expression-coverage.json";
 import literalCases from "./fixtures/literal-result-coverage.json";
 import callCases from "./fixtures/call-expression-coverage.json";
+import wrappedCases from "./fixtures/wrapped-callback-coverage.json";
 
 describe("erased receivers, static template keys and discarded SQL", () => {
-  it.each([...cases, ...callCases, ...literalCases])("$rule: $name", async (example) => {
+  it.each([...cases, ...callCases, ...literalCases, ...wrappedCases])("$rule: $name", async (example) => {
     const root = await mkdtemp(join(tmpdir(), "sarj-erased-expression-"));
     try {
       for (const file of example.files) {

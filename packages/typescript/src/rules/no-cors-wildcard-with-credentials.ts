@@ -55,6 +55,7 @@ const ACAC_HEADER = "access-control-allow-credentials";
 const HEADER_SET_METHODS: ReadonlySet<string> = new Set(["setheader", "set", "append"]);
 
 function isCredentialsTrueValue(node: TSESTree.Node): boolean {
+  node = unwrapExpression(node);
   if (node.type === "Literal") {
     if (node.value === true) {
       return true;
@@ -110,6 +111,7 @@ function isCorsWildcardCredentialsCall(
  * True only for the boolean literal `true` (not `1`, not a truthy expression).
  */
 function isTrueLiteral(node: TSESTree.Node): boolean {
+  node = unwrapExpression(node);
   return node.type === "Literal" && node.value === true;
 }
 

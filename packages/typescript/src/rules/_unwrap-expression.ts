@@ -24,6 +24,14 @@ export function outerExpression(node: TSESTree.Node): TSESTree.Node {
   return node;
 }
 
+/** Resolve only a direct call argument, including erased wrappers around it. */
+export function directArgumentCall(node: TSESTree.Node): TSESTree.CallExpression | null {
+  const argument = outerExpression(node);
+  const call = argument.parent;
+  return call?.type === AST_NODE_TYPES.CallExpression && call.arguments.some(item => item === argument)
+    ? call : null;
+}
+
 function isErasedExpression(node: TSESTree.Node): node is TSESTree.TSAsExpression | TSESTree.TSSatisfiesExpression | TSESTree.TSNonNullExpression | TSESTree.TSTypeAssertion {
   return node.type === AST_NODE_TYPES.TSAsExpression || node.type === AST_NODE_TYPES.TSSatisfiesExpression ||
     node.type === AST_NODE_TYPES.TSNonNullExpression || node.type === AST_NODE_TYPES.TSTypeAssertion;

@@ -6,6 +6,8 @@
 
 import { ASTUtils, AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 
+import { importSpecifierName } from "./_import-specifier-name.js";
+
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { unwrapExpression } from "./_unwrap-expression.js";
 import { isGeneratedFile, isStoryFile, isTestFile } from "./_paths.js";
@@ -701,8 +703,7 @@ export default createRule<Options, MessageIds>({
           specifier.type === AST_NODE_TYPES.ImportNamespaceSpecifier ||
           specifier.type === AST_NODE_TYPES.ImportDefaultSpecifier ||
           (specifier.type === AST_NODE_TYPES.ImportSpecifier &&
-            specifier.imported.type === AST_NODE_TYPES.Identifier &&
-            specifier.imported.name === "z")
+            importSpecifierName(specifier) === "z")
         ) {
           zodNamespaces.add(specifier.local.name);
         }

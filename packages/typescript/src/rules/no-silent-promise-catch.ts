@@ -272,11 +272,12 @@ export default createRule<Options, MessageIds>({
         if (node.arguments.length !== expectedArguments) {
           return;
         }
-        const handler = node.arguments[handlerIndex];
+        const argument = node.arguments[handlerIndex];
+        if (argument === undefined) return;
+        const handler = unwrapExpression(argument);
         if (
-          handler === undefined ||
-          (handler.type !== AST_NODE_TYPES.ArrowFunctionExpression &&
-            handler.type !== AST_NODE_TYPES.FunctionExpression)
+          handler.type !== AST_NODE_TYPES.ArrowFunctionExpression &&
+          handler.type !== AST_NODE_TYPES.FunctionExpression
         ) {
           return;
         }
