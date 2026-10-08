@@ -31,7 +31,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - name: Measure pull-request size
-        uses: sarj-ai/repo-standards@b006f6922cd849a6a22ebbf118e2092e393cef65 # v6.3.9
+        uses: sarj-ai/repo-standards@f8974db36c4e78f3f3da8628b51cfbedc90eb9a6 # v6.3.10
 
   changes:
     name: Detect affected checks

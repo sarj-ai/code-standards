@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import replace
 import json
 import subprocess
+import sys
 from threading import Barrier
 from typing import TYPE_CHECKING
 
@@ -88,6 +89,26 @@ def test_existing_registry_command_runs_once_without_extra_checks(tmp_path: Path
         environment={},
     )
     assert result.stdout == "original output"
+
+
+def test_parallel_timeout_retains_context_and_collects_other_failures(tmp_path: Path) -> None:
+    consumer = replace(
+        rollout.Consumer("Example", "example/consumer", "main", (sys.executable, "-c", "print('ready')")),
+        verify_checks=(
+            (sys.executable, "-c", "import time; print('frontend test reached',flush=True); time.sleep(10)"),
+            (sys.executable, "-c", "print('backend passed')"),
+            (sys.executable, "-c", "import sys; sys.stderr.write('iac failure'); sys.exit(3)"),
+        ),
+    )
+    result = rollout.run_consumer_verification(
+        consumer, tmp_path, rollout.SubprocessRunner(command_timeout=0.5), (), environment={}
+    )
+    assert result.returncode == 1
+    assert "verification command 1 failed (exit 124)" in result.stdout
+    assert "frontend test reached" in result.stdout
+    assert "0.5s command timeout" in result.stdout
+    assert "verification command 3 failed (exit 3)" in result.stdout
+    assert "iac failure" in result.stdout
 
 
 @pytest.mark.parametrize("value", [True, 0, 3, 8, "2"])

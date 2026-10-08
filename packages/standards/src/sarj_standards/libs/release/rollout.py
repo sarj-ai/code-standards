@@ -243,7 +243,20 @@ class SubprocessRunner:
             )
         except subprocess.TimeoutExpired as exc:
             msg = f"{command[0]} exceeded the {self.command_timeout:g}s command timeout"
-            raise RolloutError(msg) from exc
+            stdout = _timeout_output_tail(exc.stdout)
+            stderr = _timeout_output_tail(exc.stderr)
+            if not check:
+                return subprocess.CompletedProcess(list(command), 124, stdout, f"{stderr}\n{msg}".strip())
+            detail = "\n".join(value for value in (msg, stdout, stderr) if value)
+            raise RolloutError(detail) from exc
+
+
+def _timeout_output_tail(output: str | bytes | None) -> str:
+    if isinstance(output, bytes):
+        # TimeoutExpired may contain bytes even when text=True. A partial UTF-8
+        # sequence must not conceal the original command failure.
+        return output[-4000:].decode("utf-8", errors="replace")
+    return output[-4000:] if output else ""
 
 
 @dataclass(frozen=True)
