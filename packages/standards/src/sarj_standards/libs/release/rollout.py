@@ -70,6 +70,7 @@ class RolloutChannel(StrEnum):
 
 
 class RolloutCommand(StrEnum):
+    VERIFY_RELEASE = "verify-release"
     APPLY = "apply"
     PLAN = "plan"
     RECONCILE = "reconcile"
@@ -448,14 +449,29 @@ def verify_release(
     else:
         msg = f"PyPI artifact did not report version {version}"
         raise RolloutError(msg)
+    return _published_tag_sha(version, runner, sleep=sleep)
+
+
+def _published_tag_sha(version: str, runner: CommandRunner, *, sleep: Callable[[float], None]) -> str:
     tag = f"refs/tags/standards-v{version}"
     peeled = tag + "^{}"
-    remote = runner.run(("git", "ls-remote", SOURCE_REPOSITORY, tag, peeled))
+    command = ("git", "ls-remote", SOURCE_REPOSITORY, tag, peeled)
+    remote = runner.run(command)
+    for _attempt in range(1, RELEASE_VISIBILITY_ATTEMPTS):
+        if stdout(remote):
+            break
+        sys.stderr.write(f"Waiting for immutable Standards tag standards-v{version}\n")
+        sleep(RELEASE_VISIBILITY_DELAY.total_seconds())
+        remote = runner.run(command)
     refs = {
         fields[1]: fields[0] for line in stdout(remote).splitlines() if len(fields := line.split()) == LS_REMOTE_FIELDS
     }
     sha = refs.get(peeled)
-    if len(refs) != LS_REMOTE_FIELDS or sha is None or not re.fullmatch(r"[0-9a-f]{40}", sha):
+    if (
+        set(refs) != {tag, peeled}
+        or sha is None
+        or any(not re.fullmatch(r"[0-9a-f]{40}", ref) for ref in refs.values())
+    ):
         msg = f"published tag standards-v{version} is absent or invalid"
         raise RolloutError(msg)
     return sha
@@ -1577,6 +1593,8 @@ def pending_matrix(outcomes: Sequence[Outcome]) -> list[dict[str, str]]:
 
 
 def execute(args: RolloutArgs, runner: CommandRunner) -> int:
+    if args.command is RolloutCommand.VERIFY_RELEASE:
+        return _print_verified_release(args.version, runner)
     consumers = select_channel(load_registry(args.registry), args.channel)
     if not consumers:
         msg = f"rollout channel {args.channel!r} selects no consumers"
@@ -1613,6 +1631,16 @@ def execute(args: RolloutArgs, runner: CommandRunner) -> int:
             raise RolloutError(msg)
         case unreachable:
             assert_never(unreachable)
+    return 0
+
+
+def _print_verified_release(version: str | None, runner: CommandRunner) -> int:
+    if version is None:
+        msg = "verify-release requires an exact published version"
+        raise RolloutError(msg)
+    version = validate_version(version)
+    sha = verify_release(version, runner)
+    sys.stdout.write(json.dumps({"version": version, "source_sha": sha}) + "\n")
     return 0
 
 
@@ -1666,6 +1694,11 @@ def main(argv: Sequence[str] | None = None, *, runner: CommandRunner | None = No
         consumer: Annotated[str | None, typer.Option("--consumer", help="repository@branch")] = None,
     ) -> None:
         run(RolloutCommand.PLAN, version, channel, consumer=consumer)
+
+    @app.command("verify-release")
+    def verify_release_command(version: Annotated[str, typer.Option("--version")]) -> None:
+        """Verify the published CLI and immutable tag without a consumer registry."""
+        run(RolloutCommand.VERIFY_RELEASE, version, RolloutChannel.STABLE)
 
     @app.command("apply")
     def apply_command(

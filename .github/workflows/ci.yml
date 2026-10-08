@@ -31,7 +31,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - name: Measure pull-request size
-        uses: sarj-ai/repo-standards@ce394189df46f9ca10d46ee57ea52545c0d01dad # v6.3.2
+        uses: sarj-ai/repo-standards@f904a4d7f2f56f5365c247f58bd57e48b8bc4a1e # v6.3.3
 
   changes:
     name: Detect affected checks
@@ -1058,17 +1058,18 @@ jobs:
         with:
           node-version: '24'
           cache: npm
-          cache-dependency-path: apps/docs/package-lock.json
+          cache-dependency-path: .github/deploy/package-lock.json
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: code-standards-site
           path: apps/docs/dist
-      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Install locked deployment toolchain
+        run: npm --prefix ../../.github/deploy ci --ignore-scripts --no-audit --no-fund
       - name: Deploy immutable build to Cloudflare Workers
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-        run: npm run deploy
+        run: ../../.github/deploy/node_modules/.bin/wrangler deploy --config wrangler.jsonc
       - name: Verify deployed revision and catalog
         env:
           EXPECTED_COMMIT: ${{ github.sha }}
@@ -1142,6 +1143,8 @@ jobs:
           cache-dependency-path: apps/docs/package-lock.json
       - run: npm ci --ignore-scripts --no-audit --no-fund
       - run: npm run audit:dependencies
+      - name: Audit locked deployment toolchain
+        run: npm --prefix ../../.github/deploy audit --omit=dev --audit-level=moderate
 
   codeql:
     needs: changes
