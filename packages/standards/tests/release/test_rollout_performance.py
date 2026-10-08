@@ -5,6 +5,7 @@ import json
 import subprocess
 import sys
 from threading import Barrier, Lock
+import time
 from typing import TYPE_CHECKING, final
 
 import pytest
@@ -312,3 +313,28 @@ def test_git_metadata_batches_tracking_and_rejects_untracked_executables(tmp_pat
 
     assert runner.commands[-1] == ("git", "ls-files", "-z", "--", "tracked.toml", "script.sh")
     assert len(runner.commands) == 3
+
+
+@pytest.mark.parametrize("failed", [False, True])
+def test_progress_reports_phase_and_total_time_even_when_a_phase_fails(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], failed: bool
+) -> None:
+    values = iter((10.0, 10.0, 12.5, 16.0))
+    monkeypatch.setattr(time, "monotonic", lambda: next(values))  # sarj-noqa: SARJ445 -- deterministic phase clock
+    target = rollout.Consumer("Example", "example/consumer", "main", ("true",))
+
+    def fail() -> None:
+        msg = "failure"
+        raise ValueError(msg)
+
+    try:
+        with rollout.timed_progress(target) as report:
+            report("baseline")
+            report("verification")
+            if failed:
+                fail()
+    except ValueError:
+        assert failed
+    output = capsys.readouterr().err
+    assert "finished baseline in 2.50s" in output
+    assert "ended verification after 3.50s; total 6.00s" in output

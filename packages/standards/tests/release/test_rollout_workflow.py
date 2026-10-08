@@ -199,7 +199,7 @@ def test_release_tags_dispatches_rollout_from_the_immutable_release_tag() -> Non
 
 
 @pytest.mark.parametrize("failure", ["", "list", "compare", "cancel", "published"])
-def test_publication_supersedes_only_older_scheduled_controllers(tmp_path: Path, failure: str) -> None:
+def test_publication_supersedes_only_older_automatic_controllers(tmp_path: Path, failure: str) -> None:
     published = "invalid" if failure == "published" else "e" * 40
     records = [
         {"databaseId": 1, "event": "schedule", "status": "in_progress", "headSha": "a" * 40},
@@ -211,6 +211,9 @@ def test_publication_supersedes_only_older_scheduled_controllers(tmp_path: Path,
         {"databaseId": 7, "event": "schedule", "status": "pending", "headSha": "invalid"},
         {"databaseId": "invalid", "event": "schedule", "status": "pending", "headSha": "a" * 40},
         {"databaseId": 8, "event": "schedule", "status": "pending", "headSha": "a" * 40},
+        {"databaseId": 9, "event": "workflow_dispatch", "status": "in_progress", "headSha": "a" * 40},
+        {"databaseId": 10, "event": "workflow_dispatch", "status": "in_progress", "headSha": "a" * 40},
+        {"databaseId": 11, "event": "workflow_dispatch", "status": "in_progress", "headSha": "a" * 40},
     ]
     runs = tmp_path / "runs.json"
     runs.write_text(json.dumps(records), encoding="utf-8")
@@ -223,6 +226,9 @@ gh() {
   elif [[ "$1" == api ]]; then
     [[ "$FAILURE" != compare ]] || return 19
     case "$2" in
+      */actions/runs/9) printf '{"event":"workflow_dispatch","head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","head_branch":"standards-v8.38.3","actor":{"login":"github-actions[bot]"},"triggering_actor":{"login":"github-actions[bot]"},"run_attempt":1}\n' ;;
+      */actions/runs/10) printf '{"event":"workflow_dispatch","head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","head_branch":"standards-v8.38.3","actor":{"login":"github-actions[bot]"},"triggering_actor":{"login":"human"},"run_attempt":2}\n' ;;
+      */actions/runs/11) printf '{"event":"workflow_dispatch","head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","head_branch":"main","actor":{"login":"github-actions[bot]"},"triggering_actor":{"login":"github-actions[bot]"},"run_attempt":1}\n' ;;
       *"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa...$PUBLISHED_SHA") printf 'ahead\n' ;;
       *"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb...$PUBLISHED_SHA") printf 'behind\n' ;;
       *"cccccccccccccccccccccccccccccccccccccccc...$PUBLISHED_SHA") printf 'diverged\n' ;;
@@ -261,7 +267,11 @@ gh() {
     )
 
     assert result.returncode == 0, result.stderr
-    expected = ["dispatch"] if failure in {"list", "compare", "published"} else ["cancel 1", "cancel 8", "dispatch"]
+    expected = (
+        ["dispatch"]
+        if failure in {"list", "compare", "published"}
+        else ["cancel 1", "cancel 8", "cancel 9", "dispatch"]
+    )
     assert events.read_text(encoding="utf-8").splitlines() == expected
     concurrency = _workflow()["concurrency"]
     assert _is_object(concurrency)
