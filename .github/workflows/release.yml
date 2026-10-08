@@ -875,6 +875,8 @@ jobs:
         with:
           version: '0.12.18'
           enable-cache: true
+          # CI populates dependency caches; release consumers only restore them.
+          save-cache: false
           cache-dependency-glob: 'packages/**/uv.lock'
       - run: uv python install 3.14
       - run: uv sync --locked --dev

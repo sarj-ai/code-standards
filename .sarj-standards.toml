@@ -1,5 +1,5 @@
 schema = 4
-bundle = "8.38.1"
+bundle = "8.38.2"
 rule_profile = "all"
 
 [capabilities]
@@ -239,6 +239,7 @@ manifests = [
   "packages/typescript/package.json",
 ]
 locks = [
+  ".github/deploy/package-lock.json",
   "packages/contracts/uv.lock",
   "apps/docs/package-lock.json",
   "packages/bootstrap/uv.lock",

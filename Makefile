@@ -28,11 +28,22 @@ help:
 	@echo "         test-standards TEST_JOBS=4 PYTEST_ARGS='-k release' | test -j4"
 	@echo "         test-plan | test-standards-changed BASE=origin/main"
 	@echo "         release-status COMMIT=origin/main | release-portability"
+	@echo "         rollout-check VERSION=<published-version> | docs-deploy-check"
 	@echo "Releases are published only after a version-changing merge to main."
 
 rollout:
 	@test -n "$(VERSION)" || { echo "usage: make rollout VERSION=<published-version>" >&2; exit 2; }
 	$(ROLLOUT) $(ROLLOUT_OPTIONS) apply --version "$(VERSION)" $(ROLLOUT_TARGET) $(if $(DRY_RUN),--dry-run)
+
+.PHONY: rollout-check docs-deploy-check
+rollout-check:
+	@test -n "$(VERSION)" || { echo "usage: make rollout-check VERSION=<published-version>"; exit 2; }
+	$(ROLLOUT) verify-release --version "$(VERSION)"
+
+docs-deploy-check:
+	@test -f apps/docs/dist/index.html || { echo "build the documentation before checking deployment"; exit 2; }
+	npm --prefix .github/deploy ci --ignore-scripts --no-audit --no-fund
+	.github/deploy/node_modules/.bin/wrangler deploy --config apps/docs/wrangler.jsonc --dry-run --outdir "$(CURDIR)/.github/deploy/dist"
 
 rollout-plan rollout-status:
 	@test -n "$(VERSION)" || { echo "usage: make $@ VERSION=<published-version>" >&2; exit 2; }

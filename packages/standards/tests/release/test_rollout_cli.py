@@ -14,6 +14,65 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
+def test_release_probe_needs_no_registry_and_reports_immutable_source(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    sha = "a" * 40
+    runner = FakeRolloutRunner(
+        [
+            (0, "code-standards 8.38.1"),
+            (0, f"{'b' * 40}\trefs/tags/standards-v8.38.1\n{sha}\trefs/tags/standards-v8.38.1^{{}}\n"),
+        ]
+    )
+    assert (
+        rollout.main(
+            ["--registry", str(tmp_path / "absent.toml"), "verify-release", "--version", "8.38.1"], runner=runner
+        )
+        == 0
+    )
+    assert parse_json(capsys.readouterr().out) == {"version": "8.38.1", "source_sha": sha}
+    assert len(runner.commands) == 2
+
+
+def test_release_verification_waits_for_tag_without_reinstalling_published_cli() -> None:
+    sha = "a" * 40
+    runner = FakeRolloutRunner(
+        [
+            (0, "code-standards 8.38.1"),
+            (0, ""),
+            (0, f"{'b' * 40}\trefs/tags/standards-v8.38.1\n{sha}\trefs/tags/standards-v8.38.1^{{}}\n"),
+        ]
+    )
+    sleeps: list[float] = []
+    assert rollout.verify_release("8.38.1", runner, sleep=sleeps.append) == sha
+    assert sleeps == [rollout.RELEASE_VISIBILITY_DELAY.total_seconds()]
+    assert runner.commands[1] == runner.commands[2]
+    assert sum(command[0] == "uvx" for command in runner.commands) == 1
+
+
+def test_release_verification_bounds_missing_tag_wait() -> None:
+    runner = FakeRolloutRunner([(0, "code-standards 8.38.1"), *[(0, "")] * rollout.RELEASE_VISIBILITY_ATTEMPTS])
+    sleeps: list[float] = []
+    with pytest.raises(rollout.RolloutError, match="absent or invalid"):
+        rollout.verify_release("8.38.1", runner, sleep=sleeps.append)
+    assert len(sleeps) == rollout.RELEASE_VISIBILITY_ATTEMPTS - 1
+
+
+@pytest.mark.parametrize("refs", ["lightweight", "malformed", "unrelated"])
+def test_release_verification_rejects_invalid_tags_without_waiting(refs: str) -> None:
+    tag = "refs/tags/standards-v8.38.1"
+    output = {
+        "lightweight": f"{'a' * 40}\t{tag}\n",
+        "malformed": f"invalid\t{tag}\n{'a' * 40}\t{tag}^{{}}\n",
+        "unrelated": f"{'a' * 40}\trefs/tags/other\n{'a' * 40}\t{tag}^{{}}\n",
+    }[refs]
+    runner = FakeRolloutRunner([(0, "code-standards 8.38.1"), (0, output)])
+    sleeps: list[float] = []
+    with pytest.raises(rollout.RolloutError, match="absent or invalid"):
+        rollout.verify_release("8.38.1", runner, sleep=sleeps.append)
+    assert not sleeps
+
+
 @pytest.mark.parametrize("command", ["plan", "apply", "status", "reconcile"])
 def test_rollout_cli_preserves_command_options(command: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     calls: list[rollout.RolloutArgs] = []
