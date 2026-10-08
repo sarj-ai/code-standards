@@ -235,7 +235,7 @@ def test_deptry_skips_python_without_dependency_metadata(tmp_path: Path) -> None
 @pytest.mark.parametrize("select_directories", [False, True])
 @pytest.mark.parametrize(
     ("separate_configs", "expected_counts", "expected_projects"),
-    [(False, [250, 2], [{"alpha"}, {"alpha", "beta"}]), (True, [250, 1, 1], [{"alpha"}, {"alpha"}, {"beta"}])],
+    [(False, [252], [{"alpha", "beta"}]), (True, [251, 1], [{"alpha"}, {"beta"}])],
 )
 def test_eslint_batches_preserve_every_file_and_configuration_owner(
     tmp_path: Path,
@@ -281,7 +281,33 @@ def test_eslint_batches_preserve_every_file_and_configuration_owner(
     assert all(report.completion is Completion.COMPLETE for report in reports)
 
 
-def test_eslint_batch_failure_keeps_partial_findings_and_fails_closed(tmp_path: Path) -> None:
+@pytest.mark.parametrize("platform", ["linux", "win32"])
+def test_eslint_large_batches_are_bounded_by_encoded_arguments(monkeypatch: pytest.MonkeyPatch, platform: str) -> None:
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- check both platform encodings without a platform-specific runtime.
+        sys, "platform", platform
+    )
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- exercise an explicit portable command-line bound.
+        external_module, "_ESLINT_ARGV_BUDGET", 24 * 1024
+    )
+    prefix = ("eslint", "--")
+    paths = tuple(f"src/{'unicode-λ-' * 20}{index}.ts" for index in range(1_200))
+    batches = external_module._eslint_path_batches(prefix, paths)  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+    assert tuple(path for batch in batches for path in batch) == paths
+    encoding = "utf-16-le" if platform == "win32" else "utf-8"
+    assert all(len(batch) <= 1_000 for batch in batches)
+    assert all(
+        sum(len(value.encode(encoding)) + 2 for value in (*prefix, *batch)) + 8 * 1024 <= 24 * 1024 for batch in batches
+    )
+    with pytest.raises(ValueError, match="command-line budget"):
+        external_module._eslint_path_batches(prefix, ("x" * (24 * 1024),))  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+
+
+def test_eslint_batch_failure_keeps_partial_findings_and_fails_closed(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- exercise a multi-batch failure without a thousand fixture files.
+        external_module, "_ESLINT_ANALYSIS_BATCH_SIZE", 250
+    )
     (tmp_path / "eslint.config.mjs").write_text("export default [];\n", encoding="utf-8")
     paths = [f"item-{index:03}.ts" for index in range(251)]
     for relative in paths:
@@ -372,6 +398,9 @@ def test_eslint_final_batch_over_deadline_keeps_findings_and_fails(
 
 
 def test_eslint_batches_pass_only_remaining_time_to_subprocess(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- keep two transport calls to verify deadline sharing.
+        external_module, "_ESLINT_ANALYSIS_BATCH_SIZE", 250
+    )
     (tmp_path / "eslint.config.mjs").write_text("export default [];\n", encoding="utf-8")
     binary = tmp_path / "node_modules" / ".bin" / "eslint"
     binary.parent.mkdir(parents=True)
