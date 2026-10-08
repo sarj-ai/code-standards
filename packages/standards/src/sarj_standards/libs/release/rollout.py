@@ -6,6 +6,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from datetime import timedelta
 from enum import StrEnum
+from functools import partial
 import json
 import os
 from pathlib import Path
@@ -258,6 +259,7 @@ class Consumer:
     baseline_paths: tuple[str, ...] = ()
     baseline_update: tuple[str, ...] = ()
     partial_clone: bool = False
+    single_branch: bool = False
 
     @property
     def identity(self) -> str:
@@ -896,6 +898,16 @@ def assert_consumer_base_unchanged(
         raise RolloutError(msg)
 
 
+def assert_consumer_base_current(consumer: Consumer, expected_sha: str, runner: CommandRunner) -> None:
+    current_sha = live_consumer_base_sha(consumer, runner)
+    if current_sha != expected_sha:
+        msg = (
+            f"{consumer.name}: consumer base moved from {expected_sha} to {current_sha} before verification; "
+            "reconcile will retry from the refreshed base"
+        )
+        raise RolloutError(msg)
+
+
 def unauthenticated_environment() -> dict[str, str]:
     environment = dict(os.environ)  # ruff: ignore[banned-api] — copy before scrubbing auth
     environment.pop("GH_TOKEN", None)
@@ -1032,25 +1044,31 @@ def run_consumer_bootstrap(
     adopted = load_consumer_manifest(repo)
     if adopted is None:
         return None
+    installs: list[Callable[[], subprocess.CompletedProcess[str] | None]] = []
     python_install = adoption_scaffold.python_ci_install_argv(repo, adopted.python_dest)
     if python_install:
         python_root = repo / adopted.python_dest
         compatible_install = adoption_uvtool.argv(python_root, *python_install[1:])
-        result = runner.run((*tool_prefix, *compatible_install), cwd=repo, env=environment, check=False)
-        if result.returncode != 0:
-            return result
+        installs.append(
+            partial(runner.run, (*tool_prefix, *compatible_install), cwd=repo, env=environment, check=False)
+        )
     primary_typescript_root = adoption_packagemanager.workspace_root(
         repo / adopted.typescript_dest,
         repo,
     )
-    for javascript_root in secondary_javascript_roots(repo, primary_typescript_root):
-        manager = adoption_packagemanager.detect(javascript_root)
-        install = adoption_packagemanager.frozen_install_argv(
-            manager,
-            yarn=adoption_packagemanager.yarn_variant(javascript_root),
-        )
-        result = runner.run((*tool_prefix, *install), cwd=javascript_root, env=environment, check=False)
-        if result.returncode != 0:
+    javascript_roots = secondary_javascript_roots(repo, primary_typescript_root)
+    if javascript_roots:
+        installs.append(partial(_install_secondary_javascript, javascript_roots, tool_prefix, runner, environment))
+    if len(installs) > 1:
+        # Python and JavaScript own separate environment trees. JavaScript roots
+        # stay serial because nested workspaces may share dependency directories.
+        with ThreadPoolExecutor(max_workers=2, thread_name_prefix="bootstrap") as workers:
+            pending = [workers.submit(install) for install in installs]
+            results = [future.result() for future in pending]
+    else:
+        results = [install() for install in installs]
+    for result in results:
+        if result is not None and result.returncode != 0:
             return result
     for command in adopted.ci_bootstrap:
         result = runner.run(
@@ -1059,6 +1077,24 @@ def run_consumer_bootstrap(
             env=environment,
             check=False,
         )
+        if result.returncode != 0:
+            return result
+    return None
+
+
+def _install_secondary_javascript(
+    roots: Sequence[Path],
+    tool_prefix: tuple[str, ...],
+    runner: CommandRunner,
+    environment: Mapping[str, str],
+) -> subprocess.CompletedProcess[str] | None:
+    for javascript_root in roots:
+        manager = adoption_packagemanager.detect(javascript_root)
+        install = adoption_packagemanager.frozen_install_argv(
+            manager,
+            yarn=adoption_packagemanager.yarn_variant(javascript_root),
+        )
+        result = runner.run((*tool_prefix, *install), cwd=javascript_root, env=environment, check=False)
         if result.returncode != 0:
             return result
     return None
@@ -1342,6 +1378,7 @@ def _apply_one(  # ruff: ignore[too-many-locals] - one transaction binds verific
                 "--",
                 "--branch",
                 consumer.branch,
+                *(("--single-branch", "--no-tags") if consumer.single_branch else ()),
                 *(("--filter=blob:none",) if consumer.partial_clone else ()),
             )
         )
@@ -1419,6 +1456,7 @@ def _apply_one(  # ruff: ignore[too-many-locals] - one transaction binds verific
         if bootstrap is not None:
             failures.append("consumer bootstrap failed:\n" + verification_detail(bootstrap))
         else:
+            assert_consumer_base_current(consumer, base_sha, runner)
             report("verifying candidate patch")
             verification_failure_detail = _verify_rollout_patch(
                 consumer,
@@ -1844,6 +1882,7 @@ def _registry_consumer(entry_value: object) -> Consumer:
         "baseline_paths",
         "baseline_update",
         "partial_clone",
+        "single_branch",
     }:
         msg = f"invalid registry entry keys: {entry_value!r}"
         raise RolloutError(msg)
@@ -1877,6 +1916,7 @@ def _registry_consumer(entry_value: object) -> Consumer:
         requires_approval=requires_approval,
         auto_merge=auto_merge,
         partial_clone=optional_bool(entry, "partial_clone"),
+        single_branch=optional_bool(entry, "single_branch"),
         channel=RolloutChannel(channel_value),
         baseline_rules=_registry_strings(baseline_rules_value),
         baseline_paths=baseline_paths,

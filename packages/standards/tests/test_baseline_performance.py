@@ -40,6 +40,7 @@ def test_mixed_baseline_scans_overlap_once_and_preserve_selected_debt(
 
     def analyze(_self: api.Standards, _paths: object = None, **kwargs: object) -> AnalysisReport:
         assert kwargs["rules"] == ["python:no-dunder-all"]
+        assert kwargs["jobs"] == 1
         calls.append("native")
         ready.wait()
         return report_from_tools(tmp_path, ())
@@ -112,3 +113,19 @@ def test_combining_eslint_scans_still_rejects_unknown_custom_selectors(tmp_path:
         == 2
     )
     assert path.read_text() == "unchanged"
+
+
+@pytest.mark.parametrize("jobs", [1, 2])
+def test_single_baseline_operation_uses_requested_analysis_workers(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, jobs: int
+) -> None:
+    seen: list[int] = []
+
+    def analyze(_self: api.Standards, _paths: object = None, **kwargs: object) -> AnalysisReport:
+        assert kwargs["jobs"] == jobs
+        seen.append(jobs)
+        return report_from_tools(tmp_path, ())
+
+    monkeypatch.setattr(api.Standards, "analyze", analyze)  # sarj-noqa: SARJ445 -- observes the analyzer worker budget
+    assert cli_main(["--root", str(tmp_path), "baseline", "init", "--jobs", str(jobs)]) == 0
+    assert seen == [jobs]

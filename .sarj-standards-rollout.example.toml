@@ -15,3 +15,6 @@ auto_merge = false
 # Enable blob filtering for verification that uses the checkout and its base;
 # full clones support verification that reads arbitrary historical blobs.
 partial_clone = false
+# Opt in when verification needs only the target branch's complete history.
+# Other branches and tags are omitted; existing managed rollout heads are fetched.
+single_branch = false
