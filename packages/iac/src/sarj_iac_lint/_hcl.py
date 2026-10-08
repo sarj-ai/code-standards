@@ -2,13 +2,18 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from functools import lru_cache
+import json
 import re
 from typing import NamedTuple
+
+from sarj_iac_lint.json_boundary import parse_json
 
 
 _HEREDOC_RE = re.compile(r"<<-?\s*([A-Za-z_]\w*)")
 _MAX_BLOCK_DEPTH = 128
 _PARENTHESIS_PAIR_LENGTH = 2
+_SURROGATE_START = 0xD800
+_SURROGATE_END = 0xDFFF
 
 
 def strip_inline_comment(line: str) -> str:
@@ -149,21 +154,76 @@ def tokens(text: str) -> tuple[str, ...]:
 
 
 def strip_outer_parentheses(value: tuple[str, ...]) -> tuple[str, ...]:
-    while len(value) >= _PARENTHESIS_PAIR_LENGTH and value[0] == "(" and value[-1] == ")":
-        depth = 0
-        for index, part in enumerate(value):
-            if part == "(":
-                depth += 1
-            elif part == ")":
-                depth -= 1
-                if depth == 0:
-                    if index != len(value) - 1:
-                        return value
-                    break
-        if depth != 0:
-            return value
-        value = value[1:-1]
-    return value
+    if len(value) < _PARENTHESIS_PAIR_LENGTH or value[0] != "(" or value[-1] != ")":
+        return value
+    leading = 0
+    while leading < len(value) and value[leading] == "(":
+        leading += 1
+    closing = [-1] * leading
+    depth = 0
+    for index, part in enumerate(value):
+        if part == "(":
+            depth += 1
+        elif part == ")":
+            depth -= 1
+            if depth < 0:
+                return value
+            if depth < leading and closing[depth] == -1:
+                closing[depth] = index
+    if depth != 0:
+        return value
+    removed = 0
+    while removed < leading and closing[removed] == len(value) - removed - 1:
+        removed += 1
+    return value[removed : len(value) - removed]
+
+
+def ungrouped_expression(value: str) -> str:
+    if not value.lstrip().startswith("("):
+        return value
+    matches = tuple(_TOKEN_RE.finditer(value))
+    parts = tuple(match.group(0) for match in matches)
+    unwrapped = strip_outer_parentheses(parts)
+    removed = (len(parts) - len(unwrapped)) // _PARENTHESIS_PAIR_LENGTH
+    if removed == 0:
+        return value
+    return value[matches[removed].start() : matches[-removed - 1].end()] if unwrapped else ""
+
+
+def literal_token(value: str) -> str | None:
+    parts = strip_outer_parentheses(tokens(value.strip().rstrip(",")))
+    return parts[0] if len(parts) == 1 else None
+
+
+_HCL_STRING_RE = re.compile(r'"(?:[^"\\\x00-\x1f]|\\(?:[nrt"\\]|u[0-9A-Fa-f]{4}|U[0-9A-Fa-f]{8}))*"')
+_HCL_ESCAPE_RE = re.compile(r'\\(?:[nrt"\\]|(?P<short>u[0-9A-Fa-f]{4})|(?P<long>U[0-9A-Fa-f]{8}))')
+
+
+def literal_string(value: str) -> str | None:
+    token = literal_token(value)
+    if token is None or _HCL_STRING_RE.fullmatch(token) is None or "${" in token or "%{" in token:
+        return None
+    try:
+        if "\\" not in token:
+            return token[1:-1]
+        normalized = _HCL_ESCAPE_RE.sub(_json_unicode_escape, token)
+        decoded = parse_json(normalized)
+    except ValueError, OverflowError:
+        return None
+    if not isinstance(decoded, str) or any(_SURROGATE_START <= ord(char) <= _SURROGATE_END for char in decoded):
+        return None
+    return decoded
+
+
+def _json_unicode_escape(match: re.Match[str]) -> str:
+    escape = match.group("short") or match.group("long")
+    if escape is None:
+        return match.group(0)
+    codepoint = int(escape[1:], 16)
+    if _SURROGATE_START <= codepoint <= _SURROGATE_END:
+        msg = "HCL escapes must encode Unicode scalar values"
+        raise ValueError(msg)
+    return json.dumps(chr(codepoint))[1:-1] if escape.startswith("U") else match.group(0)
 
 
 class _Tok(NamedTuple):
@@ -260,7 +320,7 @@ def _parse_body(toks: list[_Tok], i: int, depth: int, lines: list[str]) -> _Body
             continue
         labels: list[str] = []
         while j < len(toks) and (toks[j].text[:1].isalnum() or toks[j].text[:1] in {'"', "_"}):
-            labels.append(toks[j].text.strip('"'))
+            labels.append(_block_label(toks[j].text))
             j += 1
         if j < len(toks) and toks[j].text == "{":
             parsed_body = _parse_body(toks, j + 1, depth + 1, lines)
@@ -282,6 +342,16 @@ def _parse_body(toks: list[_Tok], i: int, depth: int, lines: list[str]) -> _Body
             continue
         i += 1
     return _BodyParseResult(tuple(attrs), tuple(found), i)
+
+
+def _block_label(token: str) -> str:
+    if not token.startswith('"'):
+        return token
+    label = literal_string(token)
+    if label is None:
+        msg = "HCL block labels must be static strings with valid escapes"
+        raise ValueError(msg)
+    return label
 
 
 def _read_value(toks: list[_Tok], i: int, lines: list[str]) -> _ValueParseResult:

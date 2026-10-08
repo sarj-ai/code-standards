@@ -290,7 +290,7 @@ export default createRule<Options, MessageIds>({
       ) {
         return null;
       }
-      const actual = expectCall.arguments[0];
+      const actual = expectCall.arguments[0] === undefined ? undefined : unwrapExpression(expectCall.arguments[0]);
       if (!isTestExpect(expectCallee)) return null;
       if (actual === undefined || actual.type !== AST_NODE_TYPES.MemberExpression || actual.optional) {
         return null;

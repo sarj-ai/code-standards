@@ -4,7 +4,7 @@ from pathlib import PurePosixPath
 from types import MappingProxyType
 from typing import TYPE_CHECKING, final, override
 
-from sarj_iac_lint._hcl import blocks
+from sarj_iac_lint._hcl import blocks, literal_string, literal_token
 from sarj_iac_lint.rule_base import (
     AutofixPolicy,
     DefaultLevel,
@@ -236,7 +236,7 @@ def _violation(block: Block) -> str | None:
     lifecycle = block.child(_LIFECYCLE)
     if lifecycle is not None:
         guard = lifecycle.attribute(_PREVENT_DESTROY)
-        if guard is not None and _literal(guard.value) == "true":
+        if guard is not None and literal_token(guard.value) == "true":
             return None
     resource_type = block.labels[0]
     if resource_type == "google_sql_database_instance" and _has_nested_literal_protection(block):
@@ -245,13 +245,13 @@ def _violation(block: Block) -> str | None:
     if resource_type in _DELETION_POLICY_TYPES:
         policy = block.attribute(_DELETION_POLICY)
         if policy is not None:
-            if _quoted_literal(policy.value) == "PREVENT":
+            if literal_string(policy.value) == "PREVENT":
                 return None
             policy_problem = f"deletion_policy = {policy.value.strip()} is not literal PREVENT"
     attrs = _RESOURCE_PROTECTION_ATTRS[resource_type]
     attr = block.attribute(*attrs)
     if attr is not None:
-        literal = _literal(attr.value)
+        literal = literal_token(attr.value)
         if literal == "true":
             return None
         if literal == "false":
@@ -273,7 +273,7 @@ def _violation(block: Block) -> str | None:
 def _nested_protection(block: Block) -> str | None:
     for child in block.blocks:
         attr = child.attribute("deletion_protection", "deletion_protection_enabled")
-        if attr is not None and _literal(attr.value) != "false":
+        if attr is not None and literal_token(attr.value) != "false":
             return child.type
         deeper = _nested_protection(child)
         if deeper is not None:
@@ -284,23 +284,9 @@ def _nested_protection(block: Block) -> str | None:
 def _has_nested_literal_protection(block: Block) -> bool:
     for child in block.blocks:
         attr = child.attribute("deletion_protection_enabled")
-        if (attr is not None and _literal(attr.value) == "true") or _has_nested_literal_protection(child):
+        if (attr is not None and literal_token(attr.value) == "true") or _has_nested_literal_protection(child):
             return True
     return False
-
-
-def _literal(value: str) -> str:
-    text = value.strip().rstrip(",").strip()
-    while text.startswith("(") and text.endswith(")"):
-        text = text[1:-1].strip()
-    return text
-
-
-def _quoted_literal(value: str) -> str | None:
-    text = value.strip().rstrip(",").strip()
-    while text.startswith("(") and text.endswith(")"):
-        text = text[1:-1].strip()
-    return text[1:-1] if text.startswith('"') and text.endswith('"') else None
 
 
 def _remediation_for(resource_type: str) -> str:

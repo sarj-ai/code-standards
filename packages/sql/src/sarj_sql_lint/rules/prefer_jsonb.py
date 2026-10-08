@@ -17,9 +17,10 @@ from sarj_sql_lint.rule_base import (
     is_generated_migration,
     is_postgres_source,
     locate,
-    mask_sql,
+    mask_sql_literals_and_comments,
     redirect_to_model,
     split_statements,
+    sql_code_matches,
 )
 
 
@@ -97,10 +98,10 @@ class PreferJsonb(Rule):
         model_owned = is_generated_migration(path, source)
 
         diags: list[Diagnostic] = []
-        for statement in split_statements(mask_sql(source)):
+        for statement in split_statements(mask_sql_literals_and_comments(source)):
             text = "\n".join(fragment for _, fragment in statement)
-            create_table = _CREATE_TABLE_RE.search(text) is not None
-            alter_table = _ALTER_TABLE_RE.search(text) is not None
+            create_table = next(sql_code_matches(_CREATE_TABLE_RE, text), None) is not None
+            alter_table = next(sql_code_matches(_ALTER_TABLE_RE, text), None) is not None
             patterns = [_ALTER_JSON_RE]
             if create_table:
                 patterns.append(_TABLE_JSON_RE)
@@ -108,7 +109,7 @@ class PreferJsonb(Rule):
                 patterns.append(_JSON_CAST_RE)
             seen: set[int] = set()
             for pattern in patterns:
-                for match in pattern.finditer(text):
+                for match in sql_code_matches(pattern, text, group="json"):
                     position = match.start("json")
                     if position in seen:
                         continue

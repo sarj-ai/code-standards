@@ -19,8 +19,10 @@ from sarj_sql_lint.rule_base import (
     is_postgres_source,
     locate,
     mask_sql,
+    mask_sql_literals_and_comments,
     redirect_to_model,
     split_statements,
+    sql_code_matches,
 )
 
 
@@ -31,25 +33,28 @@ if TYPE_CHECKING:
 _CHECK_START = re.compile(r"\bCHECK\s*\(", re.IGNORECASE)
 _JSON_SHAPE_FUNCTION = re.compile(r"\bJSONB?_(?:TYPEOF|ARRAY_LENGTH)\s*\(", re.IGNORECASE)
 _CLOSED_TEXT_VALUES = re.compile(
-    r"^\s*[A-Za-z_][A-Za-z0-9_]*\s+IN\s*\(\s+,\s+(?:,\s+)*\)\s*$",
+    r'^\s*(?:[A-Za-z_][A-Za-z0-9_]*|"(?:""|[^"\n])+")\s+IN\s*\(\s+,\s+(?:,\s+)*\)\s*$',
     re.IGNORECASE | re.DOTALL,
 )
 
 
 def _application_schema_checks(source: str) -> list[int]:
     findings: list[int] = []
-    for match in _CHECK_START.finditer(source):
+    code = mask_sql(source) if '"' in source else source
+    for match in sql_code_matches(_CHECK_START, source):
         opening_parenthesis = match.end() - 1
         depth = 0
         for index in range(opening_parenthesis, len(source)):
-            character = source[index]
+            character = code[index]
             if character == "(":
                 depth += 1
             elif character == ")":
                 depth -= 1
                 if depth == 0:
                     expression = source[opening_parenthesis + 1 : index]
-                    if _JSON_SHAPE_FUNCTION.search(expression) or _CLOSED_TEXT_VALUES.fullmatch(expression):
+                    if next(sql_code_matches(_JSON_SHAPE_FUNCTION, expression), None) or _CLOSED_TEXT_VALUES.fullmatch(
+                        expression
+                    ):
                         findings.append(match.start())
                     break
     return findings
@@ -158,7 +163,7 @@ class NoApplicationSchemaCheck(Rule):
             return []
         model_owned = is_generated_migration(path, source)
         diagnostics: list[Diagnostic] = []
-        for statement in split_statements(mask_sql(source)):
+        for statement in split_statements(mask_sql_literals_and_comments(source)):
             text = "\n".join(fragment for _, fragment in statement)
             for offset in _application_schema_checks(text):
                 line, col = locate(statement, offset)

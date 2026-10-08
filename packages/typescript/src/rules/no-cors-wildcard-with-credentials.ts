@@ -84,7 +84,7 @@ function isCorsWildcardCredentialsCall(
   if (name === undefined || name.toLowerCase() !== "cors") {
     return false;
   }
-  const options = node.arguments.find(
+  const options = node.arguments.map(unwrapExpression).find(
     (arg): arg is TSESTree.ObjectExpression => arg.type === "ObjectExpression",
   );
   if (options === undefined) {

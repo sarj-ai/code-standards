@@ -211,6 +211,7 @@ function isJsonStringify(callee: TSESTree.Expression): boolean {
 function directLiteralValues(
   argument: TSESTree.CallExpressionArgument,
 ): readonly TSESTree.Expression[] {
+  argument = unwrapExpression(argument);
   if (argument.type === "ObjectExpression") {
     return argument.properties.flatMap((property) => {
       if (property.type !== "Property" || ASTUtils.getPropertyName(property) === null) return [];
@@ -238,6 +239,7 @@ function expressionSuggestsError(
   expression: TSESTree.Expression,
   scope: Scope.Scope,
 ): boolean {
+  expression = unwrapExpression(expression);
   const unwrappedExpressionCallee = expression.type === "CallExpression" || expression.type === "NewExpression" ? unwrapExpression(expression.callee) : null;
   if (expression.type === "Identifier") {
     return identifierIsProvenError(expression, scope);
@@ -310,7 +312,7 @@ export default createRule<Options, MessageIds>({
 
         const scope = context.sourceCode.getScope(firstArg);
         if (!isGlobalIdentifier("JSON", scope)) return;
-        const replacer = node.arguments[1];
+        const replacer = node.arguments[1] === undefined ? undefined : unwrapExpression(node.arguments[1]);
         if (replacer !== undefined && !(replacer.type === "Literal" && replacer.value === null) && !(replacer.type === "Identifier" && replacer.name === "undefined" && isGlobalIdentifier("undefined", scope))) return;
         const unsafeValue = directLiteralValues(firstArg).find(
           (value) =>

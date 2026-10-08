@@ -66,6 +66,7 @@ function isStaticPrimitive(
   node: TSESTree.CallExpressionArgument,
   context: TSESLint.RuleContext<MessageIds, Options>,
 ): boolean {
+  node = unwrapExpression(node);
   if (node.type === AST_NODE_TYPES.Literal) {
     return (
       node.value === null ||
@@ -93,6 +94,7 @@ function isStaticPrimitive(
 }
 
 function isStaticString(node: TSESTree.CallExpressionArgument): boolean {
+  node = unwrapExpression(node);
   return (
     (node.type === AST_NODE_TYPES.Literal &&
       typeof node.value === "string") ||
@@ -196,7 +198,7 @@ export default createRule<Options, MessageIds>({
           node.arguments.length !== 1
         )
           return;
-        const [argument] = node.arguments;
+        const argument = node.arguments[0] === undefined ? undefined : unwrapExpression(node.arguments[0]);
         if (
           argument?.type !== AST_NODE_TYPES.ArrayExpression ||
           argument.elements.length < 2
@@ -204,7 +206,8 @@ export default createRule<Options, MessageIds>({
           return;
 
         const values: TSESTree.CallExpressionArgument[] = [];
-        for (const element of argument.elements) {
+        for (const writtenElement of argument.elements) {
+          const element = writtenElement === null ? null : unwrapExpression(writtenElement);
           if (
             element === null ||
             element.type !== AST_NODE_TYPES.CallExpression ||

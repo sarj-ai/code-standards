@@ -8,6 +8,7 @@ import { ASTUtils, AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/util
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { unwrapExpression } from "./_unwrap-expression.js";
+import { staticString } from "./_static-string.js";
 import { isGeneratedFile, isTestFile } from "./_paths.js";
 import { importedTestMockNamespace } from "./_test-mock-provenance.js";
 
@@ -50,9 +51,10 @@ export default createRule<Options, MessageIds>({
         const framework = importedTestMockNamespace(context.sourceCode, receiver);
         if (framework === null || (framework === "jest" && mayBeVirtual(node.arguments[2]))) return;
         const argument = node.arguments[0] === undefined ? undefined : unwrapExpression(node.arguments[0]);
-        if (argument?.type !== AST_NODE_TYPES.Literal || typeof argument.value !== "string") return;
-        if (!isFirstParty(argument.value, options.additionalModulePrefixes ?? [])) return;
-        context.report({ node: argument, messageId: "noFirstPartyModuleMock", data: { module: argument.value } });
+        const moduleName = staticString(argument);
+        if (argument === undefined || moduleName === null) return;
+        if (!isFirstParty(moduleName, options.additionalModulePrefixes ?? [])) return;
+        context.report({ node: argument, messageId: "noFirstPartyModuleMock", data: { module: moduleName } });
       },
     };
   },

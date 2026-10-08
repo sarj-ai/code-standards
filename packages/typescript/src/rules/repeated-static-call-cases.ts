@@ -110,8 +110,9 @@ function staticShape(input: TSESTree.Node): string {
 }
 
 function assertionShape(statement: TSESTree.Statement, context: Context, callback: FunctionNode): AssertionShape | null {
-  if (statement.type !== AST_NODE_TYPES.ExpressionStatement || statement.expression.type !== AST_NODE_TYPES.CallExpression) return null;
-  const matcherCall = statement.expression;
+  if (statement.type !== AST_NODE_TYPES.ExpressionStatement) return null;
+  const matcherCall = unwrapExpression(statement.expression);
+  if (matcherCall.type !== AST_NODE_TYPES.CallExpression) return null;
   const matcherCallee = unwrapExpression(matcherCall.callee);
   if (matcherCallee.type !== AST_NODE_TYPES.MemberExpression || ASTUtils.getPropertyName(matcherCallee) === null || matcherCall.arguments.length !== 1) return null;
   const matcher = (ASTUtils.getPropertyName(matcherCallee) ?? "");
@@ -119,7 +120,7 @@ function assertionShape(statement: TSESTree.Statement, context: Context, callbac
   const chain = expectCallFromMatcher(matcherCallee);
   const expectCallee = chain === null ? null : unwrapExpression(chain.call.callee);
   if (chain === null || expectCallee?.type !== AST_NODE_TYPES.Identifier || importedName(expectCallee, context, ASSERTION_MODULES) !== "expect" || chain.call.arguments.length !== 1) return null;
-  const observed = chain.call.arguments[0];
+  const observed = chain.call.arguments[0] === undefined ? undefined : unwrapExpression(chain.call.arguments[0]);
   const expected = matcherCall.arguments[0];
   const observedCallee = observed?.type === AST_NODE_TYPES.CallExpression ? unwrapExpression(observed.callee) : null;
   if (observed?.type !== AST_NODE_TYPES.CallExpression || observedCallee?.type !== AST_NODE_TYPES.Identifier || observed.arguments.length === 0 || observed.arguments.some((arg) => arg.type === AST_NODE_TYPES.SpreadElement || !isStatic(arg)) || expected?.type === AST_NODE_TYPES.SpreadElement || expected === undefined || !isStatic(expected)) return null;

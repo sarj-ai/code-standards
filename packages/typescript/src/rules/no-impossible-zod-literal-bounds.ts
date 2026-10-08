@@ -104,6 +104,7 @@ function importedName(specifier: TSESTree.ImportSpecifier): string | null {
 }
 
 function finiteNumber(node: TSESTree.CallExpressionArgument | undefined): number | null {
+  node = node === undefined ? undefined : unwrapExpression(node);
   if (node?.type === AST_NODE_TYPES.Literal && typeof node.value === "number") {
     return Number.isFinite(node.value) ? node.value : null;
   }

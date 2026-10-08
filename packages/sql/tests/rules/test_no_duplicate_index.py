@@ -358,3 +358,9 @@ def test_comment_shaped_literal_values_remain_distinct(value: str) -> None:
 def test_commas_inside_comments_do_not_split_index_keys() -> None:
     source = "CREATE INDEX a ON event(owner_id);\nCREATE INDEX b ON event(owner_id /* (, ) */);"
     assert len(_check(source)) == 1
+
+
+@pytest.mark.parametrize(("left", "right"), [('"a . b"', '"a.b"'), ('"Status"', "status"), ('"a.b"', "a.b")])
+def test_distinct_quoted_tables_do_not_share_an_index_signature(left: str, right: str) -> None:
+    source = f"CREATE INDEX first_idx ON {left} (id); CREATE INDEX second_idx ON {right} (id);"
+    assert _check(source) == []

@@ -19,7 +19,9 @@ from sarj_sql_lint.rule_base import (
     is_dump_file,
     is_generated_migration,
     is_migration_source,
+    mask_sql,
     mask_sql_literals_and_comments,
+    normalize_sql_identifier,
     split_statements,
     sql_comments,
 )
@@ -35,11 +37,13 @@ _IDENT = (
     r'(?:(?:"(?:""|[^"\n])+")|[A-Za-z_][A-Za-z0-9_$]*)(?:\s*\.\s*(?:(?:"(?:""|[^"\n])+")|[A-Za-z_][A-Za-z0-9_$]*))*'
 )
 _CREATE_TABLE = re.compile(
-    rf"^\s*CREATE\s+(?:OR\s+REPLACE\s+)?TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?P<table>{_IDENT})\b", re.IGNORECASE
+    rf"^\s*CREATE\s+(?:OR\s+REPLACE\s+)?TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?P<table>{_IDENT})(?=\s|\(|;|$)",
+    re.IGNORECASE,
 )
-_INSERT = re.compile(rf"^\s*(?:INSERT\s+INTO|COPY)\s+(?P<table>{_IDENT})\b", re.IGNORECASE)
+_INSERT = re.compile(rf"^\s*(?:INSERT\s+INTO|COPY)\s+(?P<table>{_IDENT})(?=\s|\(|;|$)", re.IGNORECASE)
 _ALTER_TABLE = re.compile(
-    rf"^\s*ALTER\s+TABLE\s+(?:IF\s+EXISTS\s+)?(?:ONLY\s+)?(?P<table>{_IDENT})\b(?P<body>[\s\S]*)", re.IGNORECASE
+    rf"^\s*ALTER\s+TABLE\s+(?:IF\s+EXISTS\s+)?(?:ONLY\s+)?(?P<table>{_IDENT})(?=\s|\(|;|$)(?P<body>[\s\S]*)",
+    re.IGNORECASE,
 )
 _NORMALIZE_SPACE = re.compile(r"\s+")
 _PHASE_REVIEW_LIMIT = 3
@@ -244,14 +248,14 @@ def _mask_dollar_bodies(source: str, masked: str) -> str:
 
 
 def _classify(statement: str, fresh_tables: set[str]) -> _Phase | None:
-    normalized = _NORMALIZE_SPACE.sub(" ", statement).strip()
-    upper = normalized.upper()
+    normalized = statement.strip()
+    upper = _NORMALIZE_SPACE.sub(" ", normalized).upper()
     if match := _CREATE_TABLE.match(normalized):
-        if "IF NOT EXISTS" not in upper[: match.end()]:
-            fresh_tables.add(_normalize_identifier(match.group("table")))
+        if "IF NOT EXISTS" not in _NORMALIZE_SPACE.sub(" ", normalized[: match.start("table")]).upper():
+            fresh_tables.add(normalize_sql_identifier(match.group("table")))
         return _Phase.EXPAND
     if match := _INSERT.match(normalized):
-        return _Phase.EXPAND if _normalize_identifier(match.group("table")) in fresh_tables else _Phase.BACKFILL
+        return _Phase.EXPAND if normalize_sql_identifier(match.group("table")) in fresh_tables else _Phase.BACKFILL
     if upper.startswith(("UPDATE ", "DELETE ", "MERGE ")):
         return _Phase.BACKFILL
     if upper.startswith(("EXCHANGE TABLES ", "RENAME TABLE ")):
@@ -269,13 +273,9 @@ def _classify(statement: str, fresh_tables: set[str]) -> _Phase | None:
     return None
 
 
-def _normalize_identifier(value: str) -> str:
-    return re.sub(r"\s*\.\s*", ".", value).replace('"', "").casefold()
-
-
 def _alter_phase(match: re.Match[str], fresh_tables: set[str]) -> _Phase:
-    table = _normalize_identifier(match.group("table"))
-    body = match.group("body").upper()
+    table = normalize_sql_identifier(match.group("table"))
+    body = _NORMALIZE_SPACE.sub(" ", mask_sql(match.group("body"))).upper()
     if table in fresh_tables:
         return _Phase.EXPAND
     if re.search(r"\b(?:DROP|RENAME)\b|\b(?:ALTER\s+COLUMN\s+)?TYPE\b|\bSET\s+DATA\s+TYPE\b", body):

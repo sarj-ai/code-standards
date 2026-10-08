@@ -6,7 +6,7 @@ from dataclasses import dataclass, replace
 from functools import lru_cache
 from pathlib import Path
 import re
-from typing import ClassVar, NamedTuple, final
+from typing import TYPE_CHECKING, ClassVar, NamedTuple, final
 
 from sarj_rule_contracts import (
     AutofixPolicy as AutofixPolicy,
@@ -18,6 +18,10 @@ from sarj_rule_contracts import (
     RuleDocumentation as RuleDocumentation,
     RuleExample as RuleExample,
 )
+
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 
 class StatementFragment(NamedTuple):
@@ -50,6 +54,7 @@ class _ScanResult(NamedTuple):
     executable_spans: list[tuple[int, int]]
     comments: list[SourceComment]
     comment_spans: tuple[tuple[int, int], ...]
+    identifier_spans: tuple[tuple[int, int], ...]
 
 
 class SourceComment(NamedTuple):
@@ -381,6 +386,7 @@ class _SqlMasker:
         self.bodies = _DollarBodies()
         self.comments: list[SourceComment] = []
         self.comment_spans: list[tuple[int, int]] = []
+        self.identifier_spans: list[tuple[int, int]] = []
         self.statement = _StatementContext()
         self.offset = 0
         self.chunk_start = 0
@@ -391,7 +397,11 @@ class _SqlMasker:
         if self.chunk_start < len(self.source):
             self.out.append(self.source[self.chunk_start :])
         return _ScanResult(
-            "".join(self.out), self.bodies.finish(len(self.source)), self.comments, tuple(self.comment_spans)
+            "".join(self.out),
+            self.bodies.finish(len(self.source)),
+            self.comments,
+            tuple(self.comment_spans),
+            tuple(self.identifier_spans),
         )
 
     def _scan_token(self) -> None:
@@ -420,7 +430,11 @@ class _SqlMasker:
 
     def _scan_literal(self, quote: str) -> None:
         if quote == '"' and self.preserve_quoted_identifiers:
-            self.offset = _scan_quoted(self.source, self.offset, quote)
+            end = _scan_quoted(self.source, self.offset, quote)
+            self.identifier_spans.append((self.offset, end))
+            self.offset = end
+            if self.mask_dollar_literals and not self.bodies.tags:
+                self.statement.record("<quoted>")
             return
         self._mask(_scan_literal(self.source, self.offset, quote))
         if self.mask_dollar_literals and not self.bodies.tags:
@@ -475,6 +489,45 @@ def mask_sql_literals_and_comments(source: str, *, mask_dollar_literals: bool = 
     return _scan(source, preserve_quoted_identifiers=True, mask_dollar_literals=mask_dollar_literals).masked_source
 
 
+def quoted_identifier_spans(source: str) -> tuple[tuple[int, int], ...]:
+    return _scan(source, preserve_quoted_identifiers=True).identifier_spans if '"' in source else ()
+
+
+def sql_code_matches(pattern: re.Pattern[str], source: str, *, group: str | int = 0) -> Iterator[re.Match[str]]:
+    # The caller supplies a literal/comment-masked view that preserves identifiers.
+    spans = quoted_identifier_spans(source)
+    starts = tuple(start for start, _ in spans)
+    for match in pattern.finditer(source):
+        position = match.start(group)
+        preceding = bisect_right(starts, position) - 1
+        if preceding >= 0:
+            start, end = spans[preceding]
+            if position < end and (position != start or match.end(group) < end):
+                continue
+        yield match
+
+
+_SQL_IDENTIFIER = r'(?:[A-Za-z_][A-Za-z0-9_$]*|"(?:""|[^"\n])+")'
+_SQL_IDENTIFIER_PART = re.compile(_SQL_IDENTIFIER)
+_SQL_QUALIFIED_IDENTIFIER = re.compile(rf"\s*{_SQL_IDENTIFIER}(?:\s*\.\s*{_SQL_IDENTIFIER})*\s*")
+_SAFE_SQL_IDENTIFIER = re.compile(r"[a-z_][a-z0-9_$]*")
+
+
+def normalize_sql_identifier(value: str, *, unqualified: bool = False) -> str:
+    if _SQL_QUALIFIED_IDENTIFIER.fullmatch(value) is None:
+        return value.strip()
+    parts: list[str] = []
+    for match in _SQL_IDENTIFIER_PART.finditer(value):
+        token = match.group(0)
+        if not token.startswith('"'):
+            parts.append(token.lower())
+        elif _SAFE_SQL_IDENTIFIER.fullmatch(token[1:-1]) is not None:
+            parts.append(token[1:-1])
+        else:
+            parts.append(token)
+    return parts[-1] if unqualified else ".".join(parts)
+
+
 def sql_comments(source: str) -> tuple[SourceComment, ...]:
     return tuple(_scan(source).comments)
 
@@ -500,15 +553,24 @@ def dollar_quoted_spans(source: str) -> tuple[tuple[int, int], ...]:
 def split_statements(masked: str) -> list[Statement]:
     statements: list[Statement] = []
     current: Statement = []
-    for lineno, raw in enumerate(masked.splitlines(), start=1):
-        line = raw
-        while ";" in line:
-            head, _, line = line.partition(";")
-            current.append(StatementFragment(lineno, head))
+    spans = quoted_identifier_spans(masked)
+    starts = tuple(start for start, _ in spans)
+    line_offset = 0
+    for lineno, raw_with_ending in enumerate(masked.splitlines(keepends=True), start=1):
+        raw = raw_with_ending.splitlines()[0]
+        fragment_start = 0
+        for separator in re.finditer(r";", raw):
+            position = line_offset + separator.start()
+            preceding = bisect_right(starts, position) - 1
+            if preceding >= 0 and position < spans[preceding][1]:
+                continue
+            current.append(StatementFragment(lineno, raw[fragment_start : separator.start()]))
             statements.append(current)
             current = []
-        if line:
-            current.append(StatementFragment(lineno, line))
+            fragment_start = separator.end()
+        if fragment_start < len(raw):
+            current.append(StatementFragment(lineno, raw[fragment_start:]))
+        line_offset += len(raw_with_ending)
     if current:
         statements.append(current)
     return statements

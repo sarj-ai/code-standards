@@ -82,7 +82,8 @@ function isBuiltinArrayFilter(
 ): boolean {
   const checker = services.program.getTypeChecker();
   const property = services.esTreeNodeToTSNodeMap.get(node.property);
-  const symbol = checker.getSymbolAtLocation(property);
+  const symbol = checker.getSymbolAtLocation(property) ??
+    checker.getTypeAtLocation(services.esTreeNodeToTSNodeMap.get(node.object)).getProperty("filter");
   return symbol?.declarations?.some((declaration) => {
     const owner = declaration.parent;
     return (
@@ -189,7 +190,7 @@ export default createRule<Options, MessageIds>({
       CallExpression(node): void {
         const callee = unwrapExpression(node.callee);
 
-        const callback = node.arguments[0];
+        const callback = node.arguments[0] === undefined ? undefined : unwrapExpression(node.arguments[0]);
         if (
           node.arguments.length !== 1 ||
           callback?.type !== AST_NODE_TYPES.Identifier ||

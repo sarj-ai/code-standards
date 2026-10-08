@@ -359,3 +359,21 @@ def test_comments_do_not_hide_positive_timeout_assignments(assignment: str) -> N
 )
 def test_comment_normalization_retains_unprotected_ddl(assignment: str) -> None:
     assert len(_check(f"{assignment}\nALTER TABLE users ADD COLUMN note TEXT;\n")) == 1
+
+
+@pytest.mark.parametrize("name", ["lock_timeout", "statement_timeout"])
+def test_quoted_timeout_assignment_is_live(name: str) -> None:
+    assert _check(f"SET \"{name}\" = '3s'; ALTER TABLE users ADD COLUMN note TEXT;") == []
+
+
+def test_quoted_timeout_reset_removes_protection() -> None:
+    source = 'SET "lock_timeout" = \'3s\'; RESET "lock_timeout"; ALTER TABLE users ADD COLUMN note TEXT;'
+    assert len(_check(source)) == 1
+
+
+@pytest.mark.parametrize(
+    "assignment",
+    ["SET \"LOCK_TIMEOUT\" = '3s';", 'SELECT \'SET "lock_timeout" = "3s"\';', 'SELECT "SET lock_timeout = 3s";'],
+)
+def test_quoted_timeout_decoys_do_not_grant_protection(assignment: str) -> None:
+    assert len(_check(assignment + " ALTER TABLE users ADD COLUMN note TEXT;")) == 1

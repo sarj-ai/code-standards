@@ -93,3 +93,20 @@ INSERT INTO docs (body) VALUES ('CHECK (JSONB_ARRAY_LENGTH(payload) > 0)');
 def test_excludes_postgres_dump() -> None:
     source = "-- PostgreSQL database dump\nCREATE TABLE item (payload JSONB CHECK (JSONB_TYPEOF(payload) = 'object'));"
     assert _check(source, Path("schema.sql")) == []
+
+
+def test_quoted_column_in_closed_string_set_is_detected() -> None:
+    assert len(_check("CREATE TABLE item (\"status\" TEXT CHECK (\"status\" IN ('ready', 'done')));")) == 1
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        'CREATE TABLE item ("CHECK (JSONB_TYPEOF(payload))" TEXT);',
+        "CREATE TABLE item (payload JSONB CHECK (\"JSONB_TYPEOF(payload)\" = 'ok'));",
+        'CREATE TABLE item ("status" TEXT CHECK ("status" IN (1, 2)));',
+        'CREATE TABLE item ("a)b" TEXT CHECK (length("a)b") > 0));',
+    ],
+)
+def test_quoted_check_and_function_decoys_are_inert(source: str) -> None:
+    assert _check(source) == []

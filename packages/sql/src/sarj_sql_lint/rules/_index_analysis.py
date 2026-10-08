@@ -12,6 +12,8 @@ from sarj_sql_lint.rule_base import (
     is_migration_source,
     mask_sql_comments,
     mask_sql_literals_and_comments,
+    normalize_sql_identifier,
+    quoted_identifier_spans,
     source_location,
 )
 
@@ -40,8 +42,6 @@ _DROP_INDEX_RE = re.compile(
     r"\bDROP\s+INDEX\s+(?:CONCURRENTLY\s+)?(?:IF\s+EXISTS\s+)?",
     re.IGNORECASE,
 )
-_QUOTED_IDENTIFIER_RE = re.compile(r'"(?P<body>(?:""|[^"\n])+)"')
-_SAFE_UNQUOTED_IDENTIFIER_RE = re.compile(r"[a-z_][a-z0-9_$]*")
 _DOLLAR_QUOTE_START_RE = re.compile(r"\$(?:[A-Za-z_][A-Za-z0-9_]*)?\$")
 _AFTER_NULLS_STAGE = 2
 _AFTER_WITH_STAGE = 3
@@ -164,10 +164,10 @@ def parse_indexes(source: str) -> tuple[IndexDefinition, ...]:
         source, mask_sql_literals_and_comments(source, mask_dollar_literals="$" in source)
     )
     uncommented = mask_sql_comments(source)
-    quoted_identifier_spans = _quoted_identifier_spans(masked)
+    identifier_spans = quoted_identifier_spans(masked)
     indexes: list[IndexDefinition] = []
     for match in _CREATE_INDEX_RE.finditer(masked):
-        if _inside_spans(match.start(), quoted_identifier_spans):
+        if _inside_spans(match.start(), identifier_spans):
             continue
         unique = match.group("unique") is not None
         opening = match.end() - 1
@@ -193,9 +193,9 @@ def parse_indexes(source: str) -> tuple[IndexDefinition, ...]:
                 start=match.start(),
                 line=location.line,
                 column=location.column,
-                name=_normalize_identifier(match.group("name") or "<unnamed>"),
-                table=_normalize_identifier(match.group("table")),
-                method=_normalize_identifier(match.group("method") or "btree"),
+                name=normalize_sql_identifier(match.group("name") or "<unnamed>"),
+                table=normalize_sql_identifier(match.group("table")),
+                method=normalize_sql_identifier(match.group("method") or "btree"),
                 only=match.group("only") is not None,
                 keys=_split_elements(uncommented[opening + 1 : closing]),
                 include=include,
@@ -227,17 +227,17 @@ def _mask_dollar_quoted_bodies(source: str, masked: str) -> str:
 
 
 def _parse_drops(masked: str) -> tuple[IndexDrop, ...]:
-    quoted_identifier_spans = _quoted_identifier_spans(masked)
+    identifier_spans = quoted_identifier_spans(masked)
     drops: list[IndexDrop] = []
     for match in _DROP_INDEX_RE.finditer(masked):
-        if _inside_spans(match.start(), quoted_identifier_spans):
+        if _inside_spans(match.start(), identifier_spans):
             continue
         statement_end = _statement_end(masked, match.end())
         body = re.sub(r"\s+(?:CASCADE|RESTRICT)\s*$", "", masked[match.end() : statement_end], flags=re.IGNORECASE)
         raw_names = _split_identifier_list(body)
         if not raw_names or any(re.fullmatch(_QUALIFIED_IDENTIFIER, name) is None for name in raw_names):
             continue
-        drops.append(IndexDrop(match.start(), tuple(_normalize_identifier(name) for name in raw_names)))
+        drops.append(IndexDrop(match.start(), tuple(normalize_sql_identifier(name) for name in raw_names)))
     return tuple(drops)
 
 
@@ -360,20 +360,6 @@ def _closed_quoted_identifier_end(value: str, start: int, end: int) -> int | Non
     return None
 
 
-def _quoted_identifier_spans(value: str) -> tuple[tuple[int, int], ...]:
-    spans: list[tuple[int, int]] = []
-    cursor = 0
-    while cursor < len(value):
-        if value[cursor] != '"':
-            cursor += 1
-            continue
-        quoted_end = _closed_quoted_identifier_end(value, cursor, len(value))
-        end = len(value) if quoted_end is None else quoted_end
-        spans.append((cursor, end))
-        cursor = end
-    return tuple(spans)
-
-
 def _inside_spans(position: int, spans: tuple[tuple[int, int], ...]) -> bool:
     return any(start < position < end for start, end in spans)
 
@@ -487,16 +473,6 @@ def _is_identifier_character(char: str) -> bool:
     return char.isalnum() or char in {"_", "$"}
 
 
-def _normalize_identifier(value: str) -> str:
-    normalized = re.sub(r"\s*\.\s*", ".", _normalize_sql(value))
-
-    def unquote_when_equivalent(match: re.Match[str]) -> str:
-        body = match.group("body")
-        return body if _SAFE_UNQUOTED_IDENTIFIER_RE.fullmatch(body) is not None else match.group(0)
-
-    return _QUOTED_IDENTIFIER_RE.sub(unquote_when_equivalent, normalized)
-
-
 def _identifier_components(value: str) -> tuple[str, ...]:
     return tuple(match.group(0) for match in _IDENTIFIER_PART_RE.finditer(value))
 
@@ -580,7 +556,7 @@ class _IndexSuffixParser:
             if self.stage > _AFTER_WITH_STAGE:
                 return False
             self.cursor = match.end()
-            self.tablespace = _normalize_identifier(match.group("tablespace"))
+            self.tablespace = normalize_sql_identifier(match.group("tablespace"))
             self.stage = 4
             return True
         return False

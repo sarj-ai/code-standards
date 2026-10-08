@@ -122,3 +122,32 @@ def test_reports_each_json_column_type() -> None:
     source = "CREATE TABLE document (metadata JSON, settings JSON);"
 
     assert [finding.col for finding in _check(source)] == [33, 48]
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        'CREATE TABLE "document" ("metadata" JSON NOT NULL);',
+        'ALTER TABLE "document" ADD COLUMN "metadata" JSON;',
+        'ALTER TABLE "document" ALTER COLUMN "metadata" TYPE JSON;',
+    ],
+)
+def test_quoted_column_names_preserve_json_type_detection(source: str) -> None:
+    assert len(_check(source)) == 1
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        'SELECT "CREATE TABLE note (metadata JSON)";',
+        'CREATE TABLE note ("metadata JSON" TEXT);',
+        'CREATE TABLE note ("x::JSON" TEXT);',
+        "SELECT 'CREATE TABLE note (metadata JSON)';",
+    ],
+)
+def test_quoted_type_and_statement_decoys_are_inert(source: str) -> None:
+    assert _check(source) == []
+
+
+def test_semicolon_in_quoted_identifier_does_not_create_table_ddl() -> None:
+    assert _check('SELECT "notes; CREATE TABLE note (metadata JSON)";') == []

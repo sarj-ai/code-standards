@@ -29,7 +29,7 @@ export const PREFER_SHARED_ZOD_ENUM_DOCUMENTATION = {
 
 function literalDomain(node: TSESTree.CallExpression): readonly string[] | null {
   if (node.arguments.length !== 1) return null;
-  const [argument] = node.arguments;
+  const argument = node.arguments[0] === undefined ? undefined : unwrapExpression(node.arguments[0]);
   if (argument?.type !== AST_NODE_TYPES.ArrayExpression || argument.elements.length < 2) return null;
   const values: string[] = [];
   for (const element of argument.elements) {

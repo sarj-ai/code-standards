@@ -143,3 +143,49 @@ EXCHANGE TABLES audit AND audit_new;
 """
     [finding] = _check(source, Path("clickhouse/migrations/004.sql"))
     assert "CONTRACT" in finding.message
+
+
+def test_quoted_tables_preserve_mixed_phase_detection() -> None:
+    assert len(_check(MIXED_PHASES.replace("credential", '"credential"'))) == 1
+
+
+def test_quoted_lowercase_fresh_table_matches_unquoted_seed() -> None:
+    assert (
+        _check(
+            'CREATE TABLE "status" (id INT); INSERT INTO status VALUES (1); ALTER TABLE "status" ADD COLUMN note TEXT;'
+        )
+        == []
+    )
+
+
+def test_quoted_case_sensitive_fresh_table_is_not_a_different_seed_target() -> None:
+    source = 'CREATE TABLE "Status" (id INT); INSERT INTO status VALUES (1); ALTER TABLE status DROP COLUMN old;'
+    assert len(_check(source)) == 1
+
+
+def test_quoted_contract_keyword_does_not_change_phase() -> None:
+    assert _check('ALTER TABLE "credential" ADD COLUMN "DROP old" TEXT; CREATE TABLE helper (id INT);') == []
+
+
+@pytest.mark.parametrize("separator", ["\n", "\t", "  ", "\r\n"])
+def test_keyword_whitespace_preserves_mixed_phase_findings(separator: str) -> None:
+    source = MIXED_PHASES.replace(" ", separator)
+    assert len(_check(source)) == 1
+
+
+@pytest.mark.parametrize("separator", ["\n", "\t", "  ", "\r\n"])
+def test_conditional_table_creation_does_not_claim_existing_table_is_fresh(separator: str) -> None:
+    source = (
+        'CREATE TABLE IF NOT EXISTS "status" (id INT);\nINSERT INTO "status" VALUES (1);\nDROP TABLE "legacy_status";\n'
+    ).replace(" ", separator)
+    assert len(_check(source)) == 1
+
+
+@pytest.mark.parametrize("separator", ["\n", "\t", "  ", "\r\n"])
+def test_multiline_constraint_enforcement_remains_a_distinct_phase(separator: str) -> None:
+    source = (
+        'ALTER TABLE "account" ADD COLUMN normalized TEXT;\n'
+        'UPDATE "account" SET normalized = name;\n'
+        'ALTER TABLE "account" ADD CONSTRAINT normalized_unique UNIQUE (normalized);\n'
+    ).replace(" ", separator)
+    assert len(_check(source)) == 1

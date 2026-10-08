@@ -276,3 +276,37 @@ def test_every_supported_sql_dialect_requires_replay_policy(path: Path, source: 
 )
 def test_positive_migration_and_postgres_evidence_preserves_detection(path: Path, source: str) -> None:
     assert len(_check(source, path)) == 1
+
+
+@pytest.mark.parametrize("table", ['"plan"', '"billing" . "plan"', '"ON CONFLICT"', '"plan with spaces"'])
+def test_quoted_insert_target_requires_its_own_replay_policy(table: str) -> None:
+    findings = _check(f"INSERT INTO {table} (name) VALUES ('free');")  # ruff: ignore[hardcoded-sql-expression] -- literal table-name parser fixtures
+    assert len(findings) == 1
+    assert (findings[0].line, findings[0].col) == (1, 1)
+
+
+def test_quoted_target_specific_replay_guard_is_recognized() -> None:
+    assert (
+        _check(
+            'INSERT INTO "plan" SELECT name FROM pending WHERE NOT EXISTS (SELECT 1 FROM "plan" WHERE id = pending.id);'
+        )
+        == []
+    )
+
+
+def test_quoted_sql_keywords_are_inert() -> None:
+    assert _check('SELECT "INSERT INTO plan VALUES", "ON CONFLICT" FROM notes;') == []
+
+
+def test_semicolon_in_quoted_identifier_does_not_create_an_insert() -> None:
+    assert _check('SELECT "notes; INSERT INTO plan VALUES (1)";') == []
+
+
+@pytest.mark.parametrize(
+    ("target", "guard"), [("public.plan", "plan"), ('"public" . "plan"', '"plan"'), ('"plan.dot"', '"plan.dot"')]
+)
+def test_qualified_replay_targets_retain_the_existing_basename_guard(target: str, guard: str) -> None:
+    source = (
+        f"INSERT INTO {target} SELECT name FROM pending WHERE NOT EXISTS (SELECT 1 FROM {guard} WHERE id = pending.id);"  # ruff: ignore[hardcoded-sql-expression] -- static replay-guard parser fixtures
+    )
+    assert _check(source) == []
