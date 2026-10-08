@@ -174,14 +174,23 @@ def test_release_tags_dispatches_rollout_from_the_immutable_release_tag() -> Non
     assert "needs.tag.result == 'success'" in condition
     steps = dispatch.get("steps")
     assert _is_array(steps)
-    assert len(steps) == 2
+    assert len(steps) == 3
     harden = steps[0]
     assert _is_object(harden)
     assert harden.get("uses") == "step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1"
-    step = steps[1]
+    checkout = steps[1]
+    assert _is_object(checkout)
+    assert checkout["uses"] == "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"
+    options = checkout["with"]
+    assert _is_object(options)
+    assert options["ref"] == "${{ github.sha }}"
+    assert options["persist-credentials"] == "false"
+    step = steps[2]
     assert _is_object(step)
     command = step.get("run")
     assert isinstance(command, str)
+    assert command == "bash .github/scripts/dispatch-standards-rollout.sh"
+    command = _release_dispatch_command()
     assert 'version="${STANDARDS_TAG#standards-v}"' in command
     assert "gh workflow run standards-rollout.yml" in command
     assert '--repo "$GITHUB_REPOSITORY"' in command
@@ -189,9 +198,9 @@ def test_release_tags_dispatches_rollout_from_the_immutable_release_tag() -> Non
     assert '-f version="$version"' in command
 
 
-@pytest.mark.parametrize("failure", ["", "list", "compare", "cancel"])
+@pytest.mark.parametrize("failure", ["", "list", "compare", "cancel", "published"])
 def test_publication_supersedes_only_older_scheduled_controllers(tmp_path: Path, failure: str) -> None:
-    published = "e" * 40
+    published = "invalid" if failure == "published" else "e" * 40
     records = [
         {"databaseId": 1, "event": "schedule", "status": "in_progress", "headSha": "a" * 40},
         {"databaseId": 2, "event": "schedule", "status": "pending", "headSha": published},
@@ -252,7 +261,7 @@ gh() {
     )
 
     assert result.returncode == 0, result.stderr
-    expected = ["dispatch"] if failure in {"list", "compare"} else ["cancel 1", "cancel 8", "dispatch"]
+    expected = ["dispatch"] if failure in {"list", "compare", "published"} else ["cancel 1", "cancel 8", "dispatch"]
     assert events.read_text(encoding="utf-8").splitlines() == expected
     concurrency = _workflow()["concurrency"]
     assert _is_object(concurrency)
@@ -260,16 +269,4 @@ gh() {
 
 
 def _release_dispatch_command() -> str:
-    workflow = _load_yaml(REPO_ROOT / ".github/workflows/release-tags.yml")
-    assert _is_object(workflow)
-    jobs = workflow["jobs"]
-    assert _is_object(jobs)
-    dispatch = jobs["dispatch-rollout"]
-    assert _is_object(dispatch)
-    steps = dispatch["steps"]
-    assert _is_array(steps)
-    step = steps[-1]
-    assert _is_object(step)
-    command = step["run"]
-    assert isinstance(command, str)
-    return command
+    return (REPO_ROOT / ".github/scripts/dispatch-standards-rollout.sh").read_text(encoding="utf-8")
