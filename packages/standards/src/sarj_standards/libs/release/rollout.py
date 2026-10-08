@@ -1345,7 +1345,7 @@ def apply_one(  # ruff: ignore[too-many-locals] - one transaction keeps verifica
         failures: list[str] = []
         progress(consumer, "updating bundle and dependencies")
         try:
-            runner.run((*tool_prefix, *tool, "update", "--to", version), cwd=repo, env=unauthenticated)
+            update_consumer_bundle(repo, version, runner, tool_prefix, tool, environment=unauthenticated)
         except subprocess.CalledProcessError as exc:
             msg = f"{consumer.name}: dependency installation failed before a coherent rollout patch was prepared:\n"
             raise RolloutError(msg + process_failure_detail(exc)) from exc
@@ -1426,6 +1426,39 @@ def apply_one(  # ruff: ignore[too-many-locals] - one transaction keeps verifica
     return _publish_rollout_pull(
         consumer, version, runner, branch, pushed_head_sha=pushed_head_sha, verification_failure=verification_failure
     )
+
+
+def update_consumer_bundle(
+    repo: Path,
+    version: str,
+    runner: CommandRunner,
+    tool_prefix: tuple[str, ...],
+    tool: tuple[str, ...],
+    *,
+    environment: Mapping[str, str],
+    sleep: Callable[[float], None] = time.sleep,
+) -> None:
+    # A consumer can provision a different uv than the release probe used.
+    # Refresh its package metadata once; subsequent commands reuse that cache.
+    command = (*tool_prefix, tool[0], "--refresh-package", launcher.PACKAGE, *tool[1:], "--version")
+    for attempt in range(RELEASE_VISIBILITY_ATTEMPTS):
+        result = runner.run(command, cwd=repo, env=environment, check=False)
+        if result.returncode == 0:
+            if stdout(result) != f"code-standards {version}":
+                msg = f"consumer package probe did not report Code Standards {version}"
+                raise RolloutError(msg)
+            break
+        detail = verification_detail(result)
+        missing_release = (
+            "No solution found when resolving tool dependencies" in detail
+            and re.search(rf"there is no version of code-standards=={re.escape(version)}(?:\s|$)", detail) is not None
+        )
+        # Only the read-only probe retries. The mutating update executes once.
+        if not missing_release or attempt + 1 == RELEASE_VISIBILITY_ATTEMPTS:
+            result.check_returncode()
+        sys.stderr.write(f"Waiting for Code Standards {version} in the consumer package index\n")
+        sleep(RELEASE_VISIBILITY_DELAY.total_seconds())
+    runner.run((*tool_prefix, *tool, "update", "--to", version), cwd=repo, env=environment)
 
 
 def push_rollout_head(

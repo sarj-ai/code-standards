@@ -16,7 +16,8 @@ if TYPE_CHECKING:
 
 @final
 class FakeRolloutRunner:
-    def __init__(self, responses: list[tuple[int, str]] | None = None) -> None:
+    def __init__(self, responses: list[tuple[int, str]] | None = None, *, probe_consumer_release: bool = True) -> None:
+        self.probe_consumer_release = probe_consumer_release
         self.responses: list[tuple[int, str]] = list(responses or [])
         self.commands: list[tuple[str, ...]] = []
         self.environments: list[Mapping[str, str] | None] = []
@@ -34,7 +35,11 @@ class FakeRolloutRunner:
         self.commands.append(rendered)
         self.environments.append(env)
         self.working_directories.append(cwd)
-        returncode, stdout = self.responses.pop(0) if self.responses else (0, "")
+        if self.probe_consumer_release and cwd is not None and command[-1] == "--version" and "uvx" in command:
+            version = command[command.index("--from") + 1].removeprefix("code-standards==")
+            returncode, stdout = 0, f"code-standards {version}"
+        else:
+            returncode, stdout = self.responses.pop(0) if self.responses else (0, "")
         result = subprocess.CompletedProcess(rendered, returncode, stdout, "")
         if check and returncode:
             raise subprocess.CalledProcessError(returncode, rendered, output=stdout)

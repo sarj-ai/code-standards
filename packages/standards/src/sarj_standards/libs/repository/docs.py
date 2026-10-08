@@ -192,6 +192,8 @@ def _root_readme(
             "to preview an apply, and `JOBS=1` to serialize local work (default: 4). "
             "`make rollout-reconcile` resolves the latest published bundle when VERSION is omitted. "
             "`make rollout-check` verifies the published CLI and immutable source tag without a consumer registry. "
+            "Consumer installs refresh only Code Standards metadata and retry a newly published version's "
+            "index visibility with up to six 10-second waits; other install errors fail immediately. "
             "The planner briefly waits for a new tag to become visible after PyPI publication. "
             "Canary, early, and stable waves advance only after earlier waves merge; targeted retries "
             "retain that gate. The apply command reports PR creation independently of adoption.\n\n"
