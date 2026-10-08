@@ -1,9 +1,14 @@
 from __future__ import annotations
 
 import ast
+import json
+import os
 from pathlib import Path
+import shutil
+import subprocess
 from typing import TypeGuard
 
+import pytest
 import yaml
 
 
@@ -182,3 +187,89 @@ def test_release_tags_dispatches_rollout_from_the_immutable_release_tag() -> Non
     assert '--repo "$GITHUB_REPOSITORY"' in command
     assert '--ref "$STANDARDS_TAG"' in command
     assert '-f version="$version"' in command
+
+
+@pytest.mark.parametrize("failure", ["", "list", "compare", "cancel"])
+def test_publication_supersedes_only_older_scheduled_controllers(tmp_path: Path, failure: str) -> None:
+    published = "e" * 40
+    records = [
+        {"databaseId": 1, "event": "schedule", "status": "in_progress", "headSha": "a" * 40},
+        {"databaseId": 2, "event": "schedule", "status": "pending", "headSha": published},
+        {"databaseId": 3, "event": "schedule", "status": "in_progress", "headSha": "b" * 40},
+        {"databaseId": 4, "event": "schedule", "status": "queued", "headSha": "c" * 40},
+        {"databaseId": 5, "event": "workflow_dispatch", "status": "in_progress", "headSha": "a" * 40},
+        {"databaseId": 6, "event": "schedule", "status": "completed", "headSha": "a" * 40},
+        {"databaseId": 7, "event": "schedule", "status": "pending", "headSha": "invalid"},
+        {"databaseId": "invalid", "event": "schedule", "status": "pending", "headSha": "a" * 40},
+        {"databaseId": 8, "event": "schedule", "status": "pending", "headSha": "a" * 40},
+    ]
+    runs = tmp_path / "runs.json"
+    runs.write_text(json.dumps(records), encoding="utf-8")
+    events = tmp_path / "events.txt"
+    stub = r"""
+gh() {
+  if [[ "$1 $2" == 'run list' ]]; then
+    [[ "$FAILURE" != list ]] || return 17
+    cat "$RUNS"
+  elif [[ "$1" == api ]]; then
+    [[ "$FAILURE" != compare ]] || return 19
+    case "$2" in
+      *"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa...$PUBLISHED_SHA") printf 'ahead\n' ;;
+      *"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb...$PUBLISHED_SHA") printf 'behind\n' ;;
+      *"cccccccccccccccccccccccccccccccccccccccc...$PUBLISHED_SHA") printf 'diverged\n' ;;
+      *) return 23 ;;
+    esac
+  elif [[ "$1 $2" == 'run cancel' ]]; then
+    printf 'cancel %s\n' "$3" >> "$EVENTS"
+    [[ "$FAILURE" != cancel ]] || return 21
+  elif [[ "$1 $2" == 'workflow run' ]]; then
+    printf 'dispatch\n' >> "$EVENTS"
+  else
+    return 29
+  fi
+}
+"""
+    jq = shutil.which("jq")
+    assert jq is not None
+    environment = {
+        "PATH": f"{Path(jq).parent}{os.pathsep}{os.defpath}",
+        "GITHUB_REPOSITORY": "example/standards",
+        "STANDARDS_TAG": "standards-v8.38.3",
+        "PUBLISHED_SHA": published,
+        "RUNS": str(runs),
+        "EVENTS": str(events),
+        "FAILURE": failure,
+    }
+
+    result = subprocess.run(
+        ("bash", "-c", stub + _release_dispatch_command()),
+        cwd=tmp_path,
+        env=environment,
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=20,
+    )
+
+    assert result.returncode == 0, result.stderr
+    expected = ["dispatch"] if failure in {"list", "compare"} else ["cancel 1", "cancel 8", "dispatch"]
+    assert events.read_text(encoding="utf-8").splitlines() == expected
+    concurrency = _workflow()["concurrency"]
+    assert _is_object(concurrency)
+    assert concurrency["cancel-in-progress"] == "false"
+
+
+def _release_dispatch_command() -> str:
+    workflow = _load_yaml(REPO_ROOT / ".github/workflows/release-tags.yml")
+    assert _is_object(workflow)
+    jobs = workflow["jobs"]
+    assert _is_object(jobs)
+    dispatch = jobs["dispatch-rollout"]
+    assert _is_object(dispatch)
+    steps = dispatch["steps"]
+    assert _is_array(steps)
+    step = steps[-1]
+    assert _is_object(step)
+    command = step["run"]
+    assert isinstance(command, str)
+    return command
