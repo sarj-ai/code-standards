@@ -37,6 +37,7 @@ if TYPE_CHECKING:
 
     from sarj_standards.libs.adoption import doctor, lifecycle, service, upgrade
     from sarj_standards.libs.diagnostics import AnalysisReport, Diagnostic, ExecutionIssue
+    from sarj_standards.libs.linting.external import UpstreamESLintRules
     from sarj_standards.libs.repository import rule_catalog_artifact
 
 
@@ -2314,7 +2315,7 @@ def _baseline_analysis_reports(args: _Args, root: Path, selected: list[str] | No
             )
         )
     if upstream_eslint:
-        operations.append(partial(_baseline_external_report, root, selected, trust, "eslint"))
+        operations.append(partial(_baseline_eslint_report, args, root, selected, trust))
     if _react_doctor_rules_for_baseline(args.baseline_rules):
         operations.append(partial(_react_doctor_baseline_report, root, selected, trust, _baseline_corpus_policy(root)))
     if _shellcheck_rules_for_baseline(args.baseline_rules):
@@ -2338,7 +2339,7 @@ def _baseline_scan_rules(args: _Args) -> _BaselineScanRules:
     scoped_rules = _analysis_rules_for_baseline(args.baseline_rules) if args.baseline_cmd == "update" else None
     upstream_eslint = bool(_upstream_eslint_rules_for_baseline(args.baseline_rules))
     if upstream_eslint and scoped_rules is not None:
-        # The unrestricted ESLint scan below covers both upstream and custom
+        # One selected ESLint scan below covers both upstream and custom
         # findings. Validate custom selectors before removing that duplicate scan.
         for selector in scoped_rules:
             if (
@@ -2351,11 +2352,33 @@ def _baseline_scan_rules(args: _Args) -> _BaselineScanRules:
     return _BaselineScanRules(scoped_rules, upstream_eslint)
 
 
+def _baseline_eslint_report(args: _Args, root: Path, selected: list[str] | None, trust: str) -> AnalysisReport:
+    from sarj_standards.libs.linting.external import UpstreamESLintRules  # ruff: ignore[import-outside-top-level]
+
+    custom = frozenset(
+        selector.removeprefix("eslint:")
+        for selector in (_analysis_rules_for_baseline(args.baseline_rules) or [])
+        if selector.startswith("eslint:")
+    )
+    upstream = UpstreamESLintRules(
+        frozenset(
+            selector.removeprefix("eslint:") for selector in _upstream_eslint_rules_for_baseline(args.baseline_rules)
+        )
+    )
+    return _baseline_external_report(root, selected, trust, "eslint", rule_ids=custom, upstream_rules=upstream)
+
+
 def _baseline_external_report(
-    root: Path, selected: Sequence[str] | None, trust: str, capability: str
+    root: Path,
+    selected: Sequence[str] | None,
+    trust: str,
+    capability: str,
+    *,
+    rule_ids: frozenset[str] | None = None,
+    upstream_rules: UpstreamESLintRules | None = None,
 ) -> AnalysisReport:
     from sarj_standards.libs.linting.analysis import report_from_tools  # ruff: ignore[import-outside-top-level]
-    from sarj_standards.libs.linting.external import analyze_external  # ruff: ignore[import-outside-top-level]
+    from sarj_standards.libs.linting.external import UpstreamESLintRules, analyze_external  # ruff: ignore[import-outside-top-level]
 
     return report_from_tools(
         root,
@@ -2367,6 +2390,8 @@ def _baseline_external_report(
             capabilities=frozenset({capability}),
             include_react_doctor=False,
             pass_on_unpruned_eslint_suppressions=capability == "eslint",
+            rule_ids=rule_ids,
+            upstream_rules=upstream_rules or UpstreamESLintRules(),
         ),
     )
 

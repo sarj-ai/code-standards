@@ -165,9 +165,11 @@ def test_release_status_reports_queue_time_and_latest_attempt(
     assert next(item for item in report.workflows if item.workflow == "CI").status == "not-started"
 
 
+@pytest.mark.parametrize("jobs", [1, 2])
 def test_wheel_tests_preserve_existing_distributions_and_use_fresh_local_wheels(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    jobs: int,
 ) -> None:
     existing = tmp_path / "packages/standards/dist/keep.whl"
     existing.parent.mkdir(parents=True)
@@ -180,7 +182,7 @@ def test_wheel_tests_preserve_existing_distributions_and_use_fresh_local_wheels(
         assert cwd == tmp_path
         assert not capture_output
         if argv[1] == "build":
-            if Path(argv[4]).name in {"contracts", "python"}:
+            if jobs == 2 and Path(argv[4]).name in {"contracts", "python"}:
                 ready.wait()
             destination = Path(argv[-1])
             destination.mkdir(exist_ok=True)
@@ -202,7 +204,7 @@ def test_wheel_tests_preserve_existing_distributions_and_use_fresh_local_wheels(
         assert "GH_TOKEN" not in environment
         assert "-k" in argv
         assert "release" in argv
-        assert argv[argv.index("-n") + 1] == "2"
+        assert ("-n" in argv) is (jobs == 2)
         test_paths.append(Path(argv[0]))
         return ProcessResult(0)
 
@@ -212,7 +214,7 @@ def test_wheel_tests_preserve_existing_distributions_and_use_fresh_local_wheels(
         "run_process_environment",
         execute,
     )
-    wheel_tests.run_wheel_tests(tmp_path, jobs=2, pytest_args=("-k", "release"), runner=runner)
+    wheel_tests.run_wheel_tests(tmp_path, jobs=jobs, pytest_args=("-k", "release"), runner=runner)
     assert existing.read_text() == "existing artifact"
     assert len([item for item in installed if item.endswith(".whl")]) == 5
     assert all(str(existing) != item for item in installed)

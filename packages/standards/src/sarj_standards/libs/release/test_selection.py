@@ -304,10 +304,17 @@ def execute_plan(root: Path, plan: TestPlan, *, jobs: int = 4, runner: ProcessRu
     if not 1 <= jobs <= _MAX_JOBS:
         msg = "test jobs must be between 1 and 16"
         raise ValueError(msg)
-    parallel = (
-        ("-n", str(jobs), "--dist", "worksteal") if jobs > 1 and len(plan.tests) >= _PARALLEL_FILE_THRESHOLD else ()
-    )
+    parallel = pytest_parallel_arguments(jobs, files=len(plan.tests))
     runner((sys.executable, "-m", "pytest", "-q", *parallel, *plan.tests), cwd=root / _PACKAGE)
+
+
+def pytest_parallel_arguments(jobs: int, *, files: int | None = None) -> tuple[str, ...]:
+    if not 1 <= jobs <= _MAX_JOBS:
+        msg = "test jobs must be between 1 and 16"
+        raise ValueError(msg)
+    if jobs == 1 or (files is not None and files < _PARALLEL_FILE_THRESHOLD):
+        return ()
+    return ("-n", str(jobs), "--dist", "worksteal")
 
 
 def main(argv: Sequence[str] | None = None) -> int:

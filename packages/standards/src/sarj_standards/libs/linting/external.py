@@ -67,6 +67,14 @@ class _PreparedInputs(NamedTuple):
     grouped: GroupedPaths
 
 
+@dataclass(frozen=True, slots=True)
+class UpstreamESLintRules:
+    ids: frozenset[str] = frozenset()
+
+
+_NO_UPSTREAM_ESLINT_RULES = UpstreamESLintRules()
+
+
 _TIMEOUT = timedelta(minutes=15)
 _ESLINT_ERROR = 2
 _DETEKT_FINDINGS = 2
@@ -77,6 +85,8 @@ _PACKAGED_MOBILE_CONFIGS = Path(__file__).resolve().parents[2] / "configs"
 _READ_BYTES = 64 * 1024
 _MAX_ESLINT_PROJECTS = 32
 _ESLINT_BATCH_SIZE = 250
+_ESLINT_ANALYSIS_BATCH_SIZE = 1_000
+_ESLINT_ARGV_BUDGET = 24 * 1024 if sys.platform == "win32" else 64 * 1024
 _MAX_PYTHON_PROJECTS = 32
 _SHELLCHECK_BATCH_SIZE = 250
 _SHELLCHECK_VERSION: Final = "0.11.0"
@@ -315,6 +325,7 @@ def analyze_external(
     react_doctor_full_scan: bool = False,
     pass_on_unpruned_eslint_suppressions: bool = False,
     rule_ids: frozenset[str] | None = None,
+    upstream_rules: UpstreamESLintRules = _NO_UPSTREAM_ESLINT_RULES,
     security_selection: RuleSelection | None = None,
     python_type_check: bool = True,
 ) -> tuple[ToolReport, ...]:
@@ -461,10 +472,11 @@ def analyze_external(
                     "eslint",
                     _selected_eslint_argv(
                         command,
-                        rule_ids,
+                        rule_ids or frozenset(),
+                        upstream_rules=upstream_rules,
                         pass_on_unpruned_suppressions=pass_on_unpruned_eslint_suppressions,
                     )
-                    if rule_ids is not None
+                    if rule_ids is not None or upstream_rules.ids
                     else _local_eslint_argv(
                         _eslint_json_argv(
                             command.argv,
@@ -2920,14 +2932,37 @@ def _eslint_batches(commands: Sequence[Command], *, root: Path) -> tuple[tuple[C
         # Selection already separates configuration owners. Repartitioning by
         # package directory repeats type-program setup for a shared config.
         paths = command.argv[boundary:]
-        chunks = [
-            tuple(paths[start : start + _ESLINT_BATCH_SIZE]) for start in range(0, len(paths), _ESLINT_BATCH_SIZE)
-        ]
+        chunks = _eslint_path_batches(prefix, paths)
         identifier = command.cwd.relative_to(root).as_posix() or "."
         for index, paths in enumerate(chunks, start=1):
             invocation_id = identifier if len(chunks) == 1 else f"{identifier}:batch-{index}"
             batches.append((Command(command.label, (*prefix, *paths), command.cwd), invocation_id))
     return tuple(batches)
+
+
+def _eslint_path_batches(prefix: Sequence[str], paths: Sequence[str]) -> list[tuple[str, ...]]:
+    def size(value: str) -> int:
+        # Windows limits command-line UTF-16; POSIX counts encoded argv bytes.
+        return len(value.encode("utf-16-le" if sys.platform == "win32" else "utf-8")) + 2
+
+    # Leave room for the selected-rule request and formatter arguments.
+    fixed = sum(size(value) for value in prefix) + 8 * 1024
+    current: list[str] = []
+    used = fixed
+    batches: list[tuple[str, ...]] = []
+    for path in paths:
+        length = size(path)
+        if fixed + length > _ESLINT_ARGV_BUDGET:
+            msg = "ESLint path exceeds the bounded command-line budget"
+            raise ValueError(msg)
+        if current and (len(current) >= _ESLINT_ANALYSIS_BATCH_SIZE or used + length > _ESLINT_ARGV_BUDGET):
+            batches.append(tuple(current))
+            current, used = [], fixed
+        current.append(path)
+        used += length
+    if current:
+        batches.append(tuple(current))
+    return batches
 
 
 def _eslint_selected_files(command: Command) -> frozenset[Path]:
@@ -2936,12 +2971,21 @@ def _eslint_selected_files(command: Command) -> frozenset[Path]:
 
 
 def _selected_eslint_argv(
-    command: Command, rule_ids: frozenset[str], *, pass_on_unpruned_suppressions: bool = False
+    command: Command,
+    rule_ids: frozenset[str],
+    *,
+    upstream_rules: UpstreamESLintRules = _NO_UPSTREAM_ESLINT_RULES,
+    pass_on_unpruned_suppressions: bool = False,
 ) -> tuple[str, ...]:
     boundary = max(index for index, value in enumerate(command.argv) if value == "--")
     config = command.argv[command.argv.index("--config") + 1] if "--config" in command.argv else None
     request = json.dumps(
-        {"rules": sorted(rule_ids), "config": config, "passOnUnpruned": pass_on_unpruned_suppressions},
+        {
+            "rules": sorted(rule_ids),
+            "upstreamRules": sorted(upstream_rules.ids),
+            "config": config,
+            "passOnUnpruned": pass_on_unpruned_suppressions,
+        },
         separators=(",", ":"),
     )
     tail = (str(_ESLINT_SELECTED_RUNNER), request, "--", *command.argv[boundary + 1 :])
