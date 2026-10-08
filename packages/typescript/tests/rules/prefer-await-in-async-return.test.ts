@@ -30,6 +30,27 @@ const TYPED_RULE_TESTER = new RuleTester({
 TYPED_RULE_TESTER.run("prefer-await-in-async-return", rule, {
   valid: [
     {
+      name: "allows an erased React lazy loader and transform",
+      code: `
+        import { lazy as reactLazy } from "react";
+        (reactLazy! )((async () => Promise.resolve({ Page: 1 }).then(((module) => ({ default: module.Page }))!))!);
+      `,
+    },
+    {
+      name: "allows an erased next dynamic loader and transform",
+      code: `
+        import loadDynamic from "next/dynamic";
+        (loadDynamic!)((async () => Promise.resolve({ Page: 1 }).then(((module) => module.Page)!))!);
+      `,
+    },
+    {
+      name: "retains custom thenable exclusion through erased callee and callback",
+      code: `
+        const value = { then(callback: (input: number) => number) { return callback(1); } };
+        async function load() { return (value.then!)(((input) => input + 1)!); }
+      `,
+    },
+    {
       name: "accepts the documented explicit await",
       code: PREFER_AWAIT_IN_ASYNC_RETURN_DOCUMENTATION.examples[0].files[0].source,
     },

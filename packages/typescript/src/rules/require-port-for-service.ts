@@ -508,18 +508,11 @@ const subtreeHas = (root: TSESTree.Node, found: (node: TSESTree.Node) => boolean
 };
 
 const invokedInstanceField = (call: TSESTree.CallExpression): string | null => {
-  const direct = instanceField(call.callee);
+  let callee: TSESTree.Node = unwrapExpression(call.callee);
+  while (callee.type === AST_NODE_TYPES.ChainExpression) callee = unwrapExpression(callee.expression);
+  const direct = instanceField(callee);
   if (direct !== null) return direct;
-  let callee: TSESTree.Node = call.callee;
-  const calleeReceiver = callee.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(callee.object) : callee;
-  while (
-    callee.type === AST_NODE_TYPES.ChainExpression ||
-    callee.type === AST_NODE_TYPES.TSAsExpression ||
-    callee.type === AST_NODE_TYPES.TSNonNullExpression ||
-    callee.type === AST_NODE_TYPES.TSSatisfiesExpression ||
-    callee.type === AST_NODE_TYPES.TSTypeAssertion
-  ) callee = callee.expression;
-  return callee.type === AST_NODE_TYPES.MemberExpression ? instanceField(calleeReceiver) : null;
+  return callee.type === AST_NODE_TYPES.MemberExpression ? instanceField(unwrapExpression(callee.object)) : null;
 };
 
 const instanceField = (candidate: TSESTree.Node): string | null => {

@@ -274,3 +274,18 @@ def test_deep_parentheses_and_sibling_groups_preserve_expression_boundaries() ->
 
 def test_escaped_backslash_does_not_start_a_unicode_escape() -> None:
     assert literal_string(r'"\\U00000050REVENT"') == r"\U00000050REVENT"
+
+
+@pytest.mark.parametrize(
+    ("source", "expected"),
+    [
+        ('"$${var.fixture}"', "${var.fixture}"),
+        ('"%%{if true}"', "%{if true}"),
+        (r'"\u0024\u0024{"', "$${"),
+        (r'"\u0024$${"', "$${"),
+        ('"$${literal}${var.dynamic}"', None),
+        ('"%%{literal}%{if true}dynamic%{endif}"', None),
+    ],
+)
+def test_static_template_escapes_keep_lexical_decoding_order(source: str, expected: str | None) -> None:
+    assert literal_string(source) == expected

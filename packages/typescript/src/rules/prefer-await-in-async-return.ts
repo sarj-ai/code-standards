@@ -13,6 +13,8 @@ import {
 } from "@typescript-eslint/utils";
 import * as ts from "typescript";
 
+import { directArgumentCall, outerExpression, unwrapExpression } from "./_unwrap-expression.js";
+
 import { createRule, type RuleDocumentation } from "./_docs.js";
 
 type MessageIds = "preferAwait" | "preferAwaitCall";
@@ -103,7 +105,7 @@ function isRuntimeFunction(node: TSESTree.Node): node is RuntimeFunction {
 function promiseThenReceiver(
   node: TSESTree.CallExpression,
 ): TSESTree.Expression | null {
-  const callee = node.callee;
+  const callee = unwrapExpression(node.callee);
   if (
     callee.type !== AST_NODE_TYPES.MemberExpression ||
     callee.optional ||
@@ -114,7 +116,8 @@ function promiseThenReceiver(
   ) {
     return null;
   }
-  const callback = node.arguments[0];
+  const argument = node.arguments[0];
+  const callback = argument === undefined ? undefined : unwrapExpression(argument);
   if (
     callback === undefined ||
     (callback.type !== AST_NODE_TYPES.ArrowFunctionExpression &&
@@ -126,7 +129,7 @@ function promiseThenReceiver(
 }
 
 function directThenReceiver(node: TSESTree.CallExpression): TSESTree.Expression | null {
-  const callee = node.callee;
+  const callee = unwrapExpression(node.callee);
   if (callee.type !== AST_NODE_TYPES.MemberExpression) return null;
   const property = callee.property;
   const isThen = callee.computed
@@ -211,13 +214,11 @@ export default createRule<Options, MessageIds>({
       if (variable !== null) frameworkLoaders.add(variable);
     };
     const isFrameworkLoaderCallback = (owner: RuntimeFunction): boolean => {
-      const parent = owner.parent;
-      if (
-        parent.type !== AST_NODE_TYPES.CallExpression ||
-        parent.arguments[0] !== owner ||
-        parent.callee.type !== AST_NODE_TYPES.Identifier
-      ) return false;
-      const variable = ASTUtils.findVariable(context.sourceCode.getScope(parent.callee), parent.callee.name);
+      const parent = directArgumentCall(owner);
+      if (parent === null || parent.arguments[0] !== outerExpression(owner)) return false;
+      const callee = unwrapExpression(parent.callee);
+      if (callee.type !== AST_NODE_TYPES.Identifier) return false;
+      const variable = ASTUtils.findVariable(context.sourceCode.getScope(callee), callee.name);
       return variable !== null && frameworkLoaders.has(variable);
     };
 

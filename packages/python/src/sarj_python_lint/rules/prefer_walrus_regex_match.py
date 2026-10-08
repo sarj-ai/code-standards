@@ -54,7 +54,7 @@ class _BodyState(NamedTuple):
     binding_counts: dict[str, int]
 
 
-_CALL_CANDIDATE_RE = re.compile(r"\.(?:search|match|fullmatch)\s*\(")
+_CALL_CANDIDATE_RE = re.compile(r"\.\s*(?:search|match|fullmatch)\b")
 _MATCH_METHODS = frozenset({"search", "match", "fullmatch"})
 _MAX_REWRITE_COLUMNS = 100
 

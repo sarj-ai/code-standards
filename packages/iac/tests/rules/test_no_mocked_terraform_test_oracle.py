@@ -379,3 +379,36 @@ run "configuration" {{
 }}
 """
     assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    ("values", "condition"),
+    [
+        ('(\n { arn = "fixture-arn" }\n)', 'module.storage.arn == "fixture-arn"'),
+        ('(( { arn = (("fixture-arn")) } ))', 'module.storage.arn == "fixture-arn"'),
+        (r'{ arn = "\u0066ixture-arn" }', 'module.storage.arn == "fixture-arn"'),
+        (r'{ "\U00000061rn" = "fixture-arn" }', 'module.storage.arn == "fixture-arn"'),
+        ("{ size = (1e3) }", "module.storage.size == 1000"),
+        ("{ size = -12.50 }", "module.storage.size == (-12.5)"),
+        (r'{ arn = "$${var.fixture}" }', r'module.storage.arn == "\u0024{var.fixture}"'),
+    ],
+)
+def test_equivalent_static_override_values_remain_self_repeating(values: str, condition: str) -> None:
+    source = f'override_module {{\n target = module.storage\n outputs = {values}\n}}\nrun "routing" {{\n assert {{\n condition = {condition}\n }}\n}}\n'
+    assert len(_check(source)) == 1
+
+
+@pytest.mark.parametrize(
+    ("values", "condition"),
+    [
+        ('({ arn = "fixture-arn" }).arn', 'module.storage.arn == "fixture-arn"'),
+        ("{ size = true }", "module.storage.size == 1"),
+        ('{ size = "1000" }', "module.storage.size == 1000"),
+        ("{ size = (1e3 + var.extra) }", "module.storage.size == 1000"),
+        (r'{ arn = "\uD800" }', r'module.storage.arn == "\uD800"'),
+        ('{ arn = "$${literal}${var.suffix}" }', 'module.storage.arn == "$${literal}${var.suffix}"'),
+    ],
+)
+def test_static_equivalence_does_not_cross_types_or_dynamic_expressions(values: str, condition: str) -> None:
+    source = f'override_module {{\n target = module.storage\n outputs = {values}\n}}\nrun "routing" {{\n assert {{\n condition = {condition}\n }}\n}}\n'
+    assert _check(source) == []

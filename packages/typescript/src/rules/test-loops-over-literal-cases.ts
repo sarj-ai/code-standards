@@ -6,7 +6,7 @@
 
 import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
 
-import { unwrapExpression } from "./_unwrap-expression.js";
+import { directArgumentCall, unwrapExpression } from "./_unwrap-expression.js";
 
 import { forEachOwnAstChild } from "./_for-each-own-ast-child.js";
 import { createRule, type RuleDocumentation } from "./_docs.js";
@@ -63,11 +63,10 @@ function staticMemberName(member: TSESTree.MemberExpression): string | null {
 }
 
 function isTestBody(node: TSESTree.Node, isFrameworkTest: (identifier: TSESTree.Identifier) => boolean): boolean {
-  const call = node.parent;
-  const root = call?.type === AST_NODE_TYPES.CallExpression ? rootIdentifier(call.callee) : null;
+  const call = directArgumentCall(node);
+  const root = call === null ? null : rootIdentifier(call.callee);
   return (
-    call?.type === AST_NODE_TYPES.CallExpression &&
-    call.arguments.some((argument) => argument === node) &&
+    call !== null &&
     isTestCaller(call.callee) &&
     root !== null &&
     isFrameworkTest(root)

@@ -1,11 +1,11 @@
 from __future__ import annotations
 
+from decimal import Decimal, InvalidOperation
 from pathlib import PurePosixPath
 import re
 from typing import TYPE_CHECKING, ClassVar, NamedTuple, final, override
 
-from sarj_iac_lint._hcl import blocks, strip_outer_parentheses, tokens
-from sarj_iac_lint.json_boundary import parse_json
+from sarj_iac_lint._hcl import blocks, literal_string, strip_outer_parentheses, tokens
 from sarj_iac_lint.rule_base import (
     AutofixPolicy,
     Diagnostic,
@@ -26,14 +26,17 @@ if TYPE_CHECKING:
 _TEST_SUFFIX = ".tftest.hcl"
 _IDENTIFIER_RE = re.compile(r"[A-Za-z_][\w-]*")
 _NUMBER_RE = re.compile(r"-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?")
-_STRING_RE = re.compile(r'"(?:\\.|[^"\\])*"')
-_TEMPLATE_RE = re.compile(r"(?<!\$)\$\{|(?<!%)%\{")
+
+
+class _LiteralValue(NamedTuple):
+    kind: str
+    value: str | Decimal
 
 
 class _InjectedLiteral(NamedTuple):
     target: str
     expression: str
-    literal: str
+    literal: _LiteralValue
 
 
 @final
@@ -154,11 +157,11 @@ def _injected_literals(items: tuple[Block, ...]) -> tuple[_InjectedLiteral, ...]
     return tuple(injected)
 
 
-def _direct_literal_entries(value: str) -> tuple[tuple[str, str], ...]:
-    value_tokens = tokens(value)
+def _direct_literal_entries(value: str) -> tuple[tuple[str, _LiteralValue], ...]:
+    value_tokens = strip_outer_parentheses(tokens(value))
     if not value_tokens or value_tokens[0] != "{" or value_tokens[-1] != "}":
         return ()
-    entries: list[tuple[str, str]] = []
+    entries: list[tuple[str, _LiteralValue]] = []
     index = 1
     while index < len(value_tokens) - 1:
         key = _entry_key(value_tokens[index])
@@ -198,27 +201,27 @@ def _entry_expression_end(value_tokens: tuple[str, ...], start: int) -> int | No
 
 def _entry_key(token: str) -> str | None:
     if token.startswith('"'):
-        try:
-            decoded = parse_json(token)
-        except ValueError:
-            return None
-        if not isinstance(decoded, str):
+        decoded = literal_string(token)
+        if decoded is None:
             return None
         token = decoded
     return token if _IDENTIFIER_RE.fullmatch(token) else None
 
 
-def _literal_value(expression: tuple[str, ...]) -> str | None:
+def _literal_value(expression: tuple[str, ...]) -> _LiteralValue | None:
+    expression = strip_outer_parentheses(expression)
     literal = "".join(expression)
     if _NUMBER_RE.fullmatch(literal):
-        return literal
+        try:
+            return _LiteralValue("number", Decimal(literal))
+        except InvalidOperation:
+            return None
     if len(expression) != 1:
         return None
     if literal in {"true", "false", "null"}:
-        return literal
-    if _STRING_RE.fullmatch(literal) and not _TEMPLATE_RE.search(literal):
-        return literal
-    return None
+        return _LiteralValue("keyword", literal)
+    decoded = literal_string(literal)
+    return None if decoded is None else _LiteralValue("string", decoded)
 
 
 def _run_assertion_findings(
@@ -260,6 +263,9 @@ def _directly_reasserts(condition: str, injected: _InjectedLiteral) -> bool:
                 strip_outer_parentheses(condition_tokens[:index]),
                 strip_outer_parentheses(condition_tokens[index + 1 :]),
             )
-            expected = (tokens(injected.expression), tokens(injected.literal))
-            return operands in {expected, tuple(reversed(expected))}
+            reference = tokens(injected.expression)
+            return any(
+                candidate == reference and _literal_value(literal) == injected.literal
+                for candidate, literal in (operands, tuple(reversed(operands)))
+            )
     return False

@@ -30,6 +30,7 @@ function isUnknown(node: TSESTree.TypeNode): boolean {
 }
 
 function containsMockFactory(node: TSESTree.Node, source: TSESLint.SourceCode): boolean {
+  node = unwrapExpression(node);
   if (isMockFactory(node, source)) return true;
   if (node.type === AST_NODE_TYPES.ObjectExpression) {
     return node.properties.some((property) =>
@@ -39,9 +40,6 @@ function containsMockFactory(node: TSESTree.Node, source: TSESLint.SourceCode): 
   }
   if (node.type === AST_NODE_TYPES.ArrayExpression) {
     return node.elements.some((element) => element !== null && containsMockFactory(element, source));
-  }
-  if (node.type === AST_NODE_TYPES.TSAsExpression || node.type === AST_NODE_TYPES.TSTypeAssertion) {
-    return containsMockFactory(node.expression, source);
   }
   return false;
 }

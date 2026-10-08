@@ -11,6 +11,8 @@ import {
   type TSESTree,
 } from "@typescript-eslint/utils";
 
+import { importSpecifierName } from "./_import-specifier-name.js";
+
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { unwrapExpression } from "./_unwrap-expression.js";
 import { isGeneratedFile, isTestFile } from "./_paths.js";
@@ -129,6 +131,7 @@ export default createRule<Options, MessageIds>({
     }
 
     function isNumericSchema(node: TSESTree.Node): boolean {
+      node = unwrapExpression(node);
       if (node.type !== AST_NODE_TYPES.CallExpression) return false;
       const callee = unwrapExpression(node.callee);
       const calleeReceiver = callee.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(callee.object) : callee;
@@ -149,22 +152,15 @@ export default createRule<Options, MessageIds>({
       ImportDeclaration(node: TSESTree.ImportDeclaration): void {
         if (!isZodModule(node.source.value)) return;
         for (const specifier of node.specifiers) {
-          if (specifier.type === AST_NODE_TYPES.ImportSpecifier && specifier.imported.type === AST_NODE_TYPES.Identifier && specifier.imported.name === "number") {
-            record(numberFactories, specifier.local);
-          }
+          const importedName = specifier.type === AST_NODE_TYPES.ImportSpecifier ? importSpecifierName(specifier) : null;
+          if (importedName === "number") record(numberFactories, specifier.local);
           if (
             specifier.type === AST_NODE_TYPES.ImportNamespaceSpecifier ||
             specifier.type === AST_NODE_TYPES.ImportDefaultSpecifier ||
-            (specifier.type === AST_NODE_TYPES.ImportSpecifier &&
-              specifier.imported.type === AST_NODE_TYPES.Identifier &&
-              specifier.imported.name === "z")
+            importedName === "z"
           ) {
             record(zodNamespaces, specifier.local);
-          } else if (
-            specifier.type === AST_NODE_TYPES.ImportSpecifier &&
-            specifier.imported.type === AST_NODE_TYPES.Identifier &&
-            (specifier.imported.name === "object" || specifier.imported.name === "strictObject")
-          ) {
+          } else if (importedName === "object" || importedName === "strictObject") {
             record(objectFactories, specifier.local);
           }
         }

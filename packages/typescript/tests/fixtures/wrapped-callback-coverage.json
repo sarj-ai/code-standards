@@ -1,0 +1,546 @@
+[
+  {
+    "rule": "duplicate-test-body",
+    "name": "parameterized-cases/function-argument",
+    "focusPath": "src/user.test.ts",
+    "files": [
+      {
+        "path": "src/user.test.ts",
+        "source": "test.each(['a', 'b'])('accepts %s', (((value) => { const result = parse(value); expect(result.ok).toBe(true); expect(result.value).toBe(value); })!));"
+      }
+    ],
+    "expected": 0
+  },
+  {
+    "rule": "duplicate-test-body",
+    "name": "copied-sibling-tests/function-argument",
+    "focusPath": "src/user.test.ts",
+    "files": [
+      {
+        "path": "src/user.test.ts",
+        "source": "test('accepts a', ((() => { const value = 'a'; const result = parse(value); expect(result.ok).toBe(true); expect(result.value).toBe(value); })!));\ntest('accepts b', ((() => { const value = 'b'; const result = parse(value); expect(result.ok).toBe(true); expect(result.value).toBe(value); })!));"
+      }
+    ],
+    "expected": 1
+  },
+  {
+    "rule": "no-bare-return-from-test-catch",
+    "name": "rethrow/function-argument",
+    "focusPath": "src/codec.test.ts",
+    "files": [
+      {
+        "path": "src/codec.test.ts",
+        "source": "test('decodes', ((() => { try { decode(); } catch (error) { throw error; } expect(result()).toBe('ok'); })!));"
+      }
+    ],
+    "expected": 0
+  },
+  {
+    "rule": "no-bare-return-from-test-catch",
+    "name": "bare-return/function-argument",
+    "focusPath": "src/codec.test.ts",
+    "files": [
+      {
+        "path": "src/codec.test.ts",
+        "source": "test('decodes', ((() => { try { decode(); } catch { return; } expect(result()).toBe('ok'); })!));"
+      }
+    ],
+    "expected": 1
+  },
+  {
+    "rule": "no-cors-wildcard-with-credentials",
+    "name": "trusted-origin-with-credentials/property-value-non-null",
+    "focusPath": "src/server.ts",
+    "files": [
+      {
+        "path": "src/server.ts",
+        "source": "app.use(cors({ origin: (('https://app.example.com')!), credentials: ((true)!) }));"
+      }
+    ],
+    "expected": 0
+  },
+  {
+    "rule": "no-cors-wildcard-with-credentials",
+    "name": "wildcard-origin-with-credentials/property-value-non-null",
+    "focusPath": "src/server.ts",
+    "files": [
+      {
+        "path": "src/server.ts",
+        "source": "app.use(cors({ origin: (('*')!), credentials: ((true)!) }));"
+      }
+    ],
+    "expected": 1
+  },
+  {
+    "rule": "no-duplicate-lifecycle-refresh-listeners",
+    "name": "single-lifecycle-signal/initializer-non-null",
+    "focusPath": "src/refresh.ts",
+    "files": [
+      {
+        "path": "src/refresh.ts",
+        "source": "import { useRouter } from \"next/navigation\"; const router = ((useRouter())!); const refresh = ((() => router.refresh())!); window.addEventListener(\"focus\", refresh);"
+      }
+    ],
+    "expected": 0
+  },
+  {
+    "rule": "no-duplicate-lifecycle-refresh-listeners",
+    "name": "duplicate-lifecycle-signals/initializer-non-null",
+    "focusPath": "src/refresh.ts",
+    "files": [
+      {
+        "path": "src/refresh.ts",
+        "source": "import { useRouter } from \"next/navigation\"; const router = ((useRouter())!); const refresh = ((() => router.refresh())!); window.addEventListener(\"focus\", refresh); document.addEventListener(\"visibilitychange\", refresh);"
+      }
+    ],
+    "expected": 1
+  },
+  {
+    "rule": "no-router-refresh-polling",
+    "name": "poll-named-action/function-argument",
+    "focusPath": "src/status.tsx",
+    "files": [
+      {
+        "path": "src/status.tsx",
+        "source": "\"use client\"; import { useEffect } from \"react\"; function Status() { useEffect(() => { const timer = setInterval(((() => fetchStatus())!), POLLING_INTERVAL_MS); return () => clearInterval(timer); }, []); return null; }"
+      }
+    ],
+    "expected": 0
+  },
+  {
+    "rule": "no-router-refresh-polling",
+    "name": "poll-router-refresh/function-argument",
+    "focusPath": "src/status.tsx",
+    "files": [
+      {
+        "path": "src/status.tsx",
+        "source": "\"use client\"; import { useEffect } from \"react\"; import { useRouter } from \"next/navigation\"; function Status() { const router = useRouter(); useEffect(() => { const timer = setInterval(((() => router.refresh())!), POLLING_INTERVAL_MS); return () => clearInterval(timer); }, [router]); return null; }"
+      }
+    ],
+    "expected": 1
+  },
+  {
+    "rule": "no-silent-promise-catch",
+    "name": "reported-rejection/function-argument",
+    "focusPath": "src/load.ts",
+    "files": [
+      {
+        "path": "src/load.ts",
+        "source": "load().catch((((error) => logger.error({ error }, 'load failed'))!));"
+      }
+    ],
+    "expected": 0
+  },
+  {
+    "rule": "no-silent-promise-catch",
+    "name": "silent-rejection/function-argument",
+    "focusPath": "src/load.ts",
+    "files": [
+      {
+        "path": "src/load.ts",
+        "source": "load().catch(((() => null)!));"
+      }
+    ],
+    "expected": 1
+  },
+  {
+    "rule": "no-sleep-in-test-body",
+    "name": "fake-timer/function-argument",
+    "focusPath": "src/retry.test.ts",
+    "files": [
+      {
+        "path": "src/retry.test.ts",
+        "source": "it('retries', ((async () => { vi.useFakeTimers(); try { const result = retry(); await vi.advanceTimersByTimeAsync(50); await result; } finally { vi.useRealTimers(); } })!));\nexport {};\n"
+      }
+    ],
+    "expected": 0
+  },
+  {
+    "rule": "no-sleep-in-test-body",
+    "name": "fixed-sleep/function-argument",
+    "focusPath": "src/retry.test.ts",
+    "files": [
+      {
+        "path": "src/retry.test.ts",
+        "source": "it('retries', ((async () => { await sleep(50); expect(done()).toBe(true); })!));\nexport {};\n"
+      }
+    ],
+    "expected": 1
+  },
+  {
+    "rule": "no-string-concat-in-loop",
+    "name": "join-fragments/initializer-non-null",
+    "focusPath": "src/render.ts",
+    "files": [
+      {
+        "path": "src/render.ts",
+        "source": "const parts = (([])!); for (const item of items) { parts.push(item); } const output = ((parts.join(\"\"))!);"
+      }
+    ],
+    "expected": 0
+  },
+  {
+    "rule": "no-string-concat-in-loop",
+    "name": "rebuild-string/initializer-non-null",
+    "focusPath": "src/render.ts",
+    "files": [
+      {
+        "path": "src/render.ts",
+        "source": "let output = (('')!); for (const item of items) { output = `${output}${item}`; }"
+      }
+    ],
+    "expected": 1
+  },
+  {
+    "rule": "no-unsafe-test-double-cast",
+    "name": "typed-recording-fake/property-value-non-null",
+    "focusPath": "service.test.ts",
+    "files": [
+      {
+        "path": "service.test.ts",
+        "source": "const client = { read: async () => ({ id: (('1')!) }) } satisfies Pick<Client, 'read'>;"
+      }
+    ],
+    "expected": 0
+  },
+  {
+    "rule": "no-unsafe-test-double-cast",
+    "name": "mock-backed-double-cast/property-value-non-null",
+    "focusPath": "service.test.ts",
+    "files": [
+      {
+        "path": "service.test.ts",
+        "source": "import { vi } from 'vitest'; const client = { read: ((vi.fn())!) } as unknown as Client;"
+      }
+    ],
+    "expected": 1
+  },
+  {
+    "rule": "prefer-await-in-async-return",
+    "name": "explicit-async-transform/callee-non-null",
+    "focusPath": "src/load.ts",
+    "files": [
+      {
+        "path": "src/load.ts",
+        "source": "async function load() { const value = await ((Promise.resolve)!)(1); return value + 1; }\nexport {};\n"
+      }
+    ],
+    "expected": 0
+  },
+  {
+    "rule": "prefer-await-in-async-return",
+    "name": "returned-then-transform/function-argument",
+    "focusPath": "src/load.ts",
+    "files": [
+      {
+        "path": "src/load.ts",
+        "source": "async function load() { return Promise.resolve(1).then((((value) => value + 1)!)); }"
+      }
+    ],
+    "expected": 1
+  },
+  {
+    "rule": "prefer-await-in-async-return",
+    "name": "returned-then-transform/callee-non-null",
+    "focusPath": "src/load.ts",
+    "files": [
+      {
+        "path": "src/load.ts",
+        "source": "async function load() { return ((Promise.resolve(1).then)!)((value) => value + 1); }"
+      }
+    ],
+    "expected": 1
+  },
+  {
+    "rule": "prefer-millisecond-control-duration-schema",
+    "name": "millisecond-timeout-schema/property-value-non-null",
+    "focusPath": "src/request.ts",
+    "files": [
+      {
+        "path": "src/request.ts",
+        "source": "import { z } from 'zod';\nexport const RequestSchema = z.object({ timeoutMs: ((z.number().int().min(1000).max(300000).default(30000))!) });"
+      }
+    ],
+    "expected": 0
+  },
+  {
+    "rule": "prefer-millisecond-control-duration-schema",
+    "name": "millisecond-timeout-schema/quoted-import-name",
+    "focusPath": "src/request.ts",
+    "files": [
+      {
+        "path": "src/request.ts",
+        "source": "import { \"z\" as z } from 'zod';\nexport const RequestSchema = z.object({ timeoutMs: z.number().int().min(1000).max(300000).default(30000) });"
+      }
+    ],
+    "expected": 0
+  },
+  {
+    "rule": "prefer-millisecond-control-duration-schema",
+    "name": "second-timeout-schema/property-value-non-null",
+    "focusPath": "src/request.ts",
+    "files": [
+      {
+        "path": "src/request.ts",
+        "source": "import { z } from 'zod';\nexport const RequestSchema = z.object({ timeout_seconds: ((z.number().int().min(1).max(300).default(30))!) });"
+      }
+    ],
+    "expected": 1
+  },
+  {
+    "rule": "prefer-millisecond-control-duration-schema",
+    "name": "second-timeout-schema/quoted-import-name",
+    "focusPath": "src/request.ts",
+    "files": [
+      {
+        "path": "src/request.ts",
+        "source": "import { \"z\" as z } from 'zod';\nexport const RequestSchema = z.object({ timeout_seconds: z.number().int().min(1).max(300).default(30) });"
+      }
+    ],
+    "expected": 1
+  },
+  {
+    "rule": "prefer-module-level-schema",
+    "name": "module-schema/quoted-import-name",
+    "focusPath": "src/handler.ts",
+    "files": [
+      {
+        "path": "src/handler.ts",
+        "source": "import { \"z\" as z } from 'zod'; const ZBody = z.object({ id: z.string(), name: z.string() }); export function handle(raw: unknown) { return ZBody.parse(raw); }"
+      }
+    ],
+    "expected": 0
+  },
+  {
+    "rule": "prefer-module-level-schema",
+    "name": "local-schema/quoted-import-name",
+    "focusPath": "src/handler.ts",
+    "files": [
+      {
+        "path": "src/handler.ts",
+        "source": "import { \"z\" as z } from 'zod'; export function handle(raw: unknown) { const ZBody = z.object({ id: z.string(), name: z.string() }); return ZBody.parse(raw); }"
+      }
+    ],
+    "expected": 1
+  },
+  {
+    "rule": "prefer-node-fs-promises",
+    "name": "async-read/quoted-import-name",
+    "focusPath": "src/store.ts",
+    "files": [
+      {
+        "path": "src/store.ts",
+        "source": "import { \"readFile\" as readFile } from 'node:fs/promises'; export async function load(path: string) { return readFile(path, 'utf8'); }"
+      }
+    ],
+    "expected": 0
+  },
+  {
+    "rule": "prefer-node-fs-promises",
+    "name": "sync-read/quoted-import-name",
+    "focusPath": "src/store.ts",
+    "files": [
+      {
+        "path": "src/store.ts",
+        "source": "import { \"readFileSync\" as readFileSync } from 'node:fs'; export function load(path: string) { return readFileSync(path, 'utf8'); }"
+      }
+    ],
+    "expected": 1
+  },
+  {
+    "rule": "prefer-non-nullable-collection",
+    "name": "non-null-array/destructure-key-quotes",
+    "focusPath": "src/search.ts",
+    "files": [
+      {
+        "path": "src/search.ts",
+        "source": "interface Input { items: string[] } function search({ \"items\": items }: Input) { return items.length; }"
+      }
+    ],
+    "expected": 0
+  },
+  {
+    "rule": "prefer-non-nullable-collection",
+    "name": "defaulted-nullish-array/destructure-key-quotes",
+    "focusPath": "src/search.ts",
+    "files": [
+      {
+        "path": "src/search.ts",
+        "source": "interface Input { items: string[] | undefined } function search({ \"items\": items = [] }: Input) { return items.length; }"
+      }
+    ],
+    "expected": 1
+  },
+  {
+    "rule": "prefer-shared-zod-enum",
+    "name": "shared-provider/quoted-import-name",
+    "focusPath": "src/provider.ts",
+    "files": [
+      {
+        "path": "src/provider.ts",
+        "source": "import { \"z\" as z } from 'zod'; const ProviderSchema = z.enum(['agy', 'claude', 'sol']); const JobSchema = z.object({ provider: ProviderSchema }); const StatusSchema = z.object({ provider: ProviderSchema.optional() });"
+      }
+    ],
+    "expected": 0
+  },
+  {
+    "rule": "prefer-shared-zod-enum",
+    "name": "inline-provider/quoted-import-name",
+    "focusPath": "src/provider.ts",
+    "files": [
+      {
+        "path": "src/provider.ts",
+        "source": "import { \"z\" as z } from 'zod'; const JobSchema = z.object({ provider: z.enum(['agy', 'claude', 'sol']) }); const StatusSchema = z.object({ provider: z.enum(['agy', 'claude', 'sol']).optional() });"
+      }
+    ],
+    "expected": 2
+  },
+  {
+    "rule": "prefer-zod-infer",
+    "name": "inferred-type/quoted-import-name",
+    "focusPath": "src/user.ts",
+    "files": [
+      {
+        "path": "src/user.ts",
+        "source": "import { \"z\" as z } from \"zod\"; const UserSchema = z.object({ id: z.string() }); type User = z.infer<typeof UserSchema>;"
+      }
+    ],
+    "expected": 0
+  },
+  {
+    "rule": "prefer-zod-infer",
+    "name": "handwritten-twin/quoted-import-name",
+    "focusPath": "src/user.ts",
+    "files": [
+      {
+        "path": "src/user.ts",
+        "source": "import { \"z\" as z } from \"zod\"; const UserSchema = z.object({ id: z.string() }); interface User { id: string }"
+      }
+    ],
+    "expected": 1
+  },
+  {
+    "rule": "prefer-zod-parse-output-type",
+    "name": "schema-derived-return/quoted-import-name",
+    "focusPath": "src/row.ts",
+    "files": [
+      {
+        "path": "src/row.ts",
+        "source": "import { \"z\" as z } from \"zod\"; const RowSchema = z.object({ id: z.string() }); type Row = z.output<typeof RowSchema>; function load(): Row { return RowSchema.parse({}); }"
+      }
+    ],
+    "expected": 0
+  },
+  {
+    "rule": "prefer-zod-parse-output-type",
+    "name": "hand-written-parsed-return/quoted-import-name",
+    "focusPath": "src/row.ts",
+    "files": [
+      {
+        "path": "src/contracts.ts",
+        "source": "export interface ParsedRow { id: string }"
+      },
+      {
+        "path": "src/row.ts",
+        "source": "import { \"z\" as z } from \"zod\"; import type { \"ParsedRow\" as ParsedRow } from \"./contracts.js\"; const RowSchema = z.object({ id: z.string() }); function load(): ParsedRow { return RowSchema.parse({}); }"
+      }
+    ],
+    "expected": 1
+  },
+  {
+    "rule": "repeated-static-call-cases",
+    "name": "parameterized/function-argument",
+    "focusPath": "src/parser.test.ts",
+    "files": [
+      {
+        "path": "src/parser.test.ts",
+        "source": "test.each([['a', true], ['b', false], ['c', true]])('parses %s', (((input, expected) => { expect(parse(input)).toBe(expected); })!));"
+      }
+    ],
+    "expected": 0
+  },
+  {
+    "rule": "repeated-static-call-cases",
+    "name": "repeated/function-argument",
+    "focusPath": "src/parser.test.ts",
+    "files": [
+      {
+        "path": "src/parser.test.ts",
+        "source": "test('parses', ((() => { expect(parse('a')).toBe(true); expect(parse('b')).toBe(false); expect(parse('c')).toBe(true); })!));"
+      }
+    ],
+    "expected": 1
+  },
+  {
+    "rule": "require-explicit-service-contract",
+    "name": "single-operation-service-without-contract/callee-non-null",
+    "focusPath": "src/service.ts",
+    "files": [
+      {
+        "path": "src/service.ts",
+        "source": "class OrchestratorService { constructor(private readonly worker: Worker) {} run(): void { ((this.worker.run)!)(); } }"
+      }
+    ],
+    "expected": 1
+  },
+  {
+    "rule": "require-explicit-service-contract",
+    "name": "explicit-single-operation-contract/callee-non-null",
+    "focusPath": "src/service.ts",
+    "files": [
+      {
+        "path": "src/service.ts",
+        "source": "interface Runner { run(): void } class OrchestratorService implements Runner { constructor(private readonly worker: Worker) {} run(): void { ((this.worker.run)!)(); } }"
+      }
+    ],
+    "expected": 0
+  },
+  {
+    "rule": "require-port-for-service",
+    "name": "declared-service-port/callee-non-null",
+    "focusPath": "src/service.ts",
+    "files": [
+      {
+        "path": "src/service.ts",
+        "source": "interface Handler { handle(): void }\nexport class RequestHandler implements Handler { constructor(private readonly store: TaskStore) {} handle(): void { ((this.store.handle)!)(); } }"
+      }
+    ],
+    "expected": 0
+  },
+  {
+    "rule": "require-port-for-service",
+    "name": "concrete-injected-service/callee-non-null",
+    "focusPath": "src/service.ts",
+    "files": [
+      {
+        "path": "src/service.ts",
+        "source": "export class RequestHandler { constructor(private readonly store: TaskStore) {} handle(): void { ((this.store.handle)!)(); } }"
+      }
+    ],
+    "expected": 1
+  },
+  {
+    "rule": "test-loops-over-literal-cases",
+    "name": "parameterized-cases/function-argument",
+    "focusPath": "src/parser.test.ts",
+    "files": [
+      {
+        "path": "src/parser.test.ts",
+        "source": "test.each(['a', 'b'])('parses %s', (((value) => { expect(parse(value)).toBe(value); })!));"
+      }
+    ],
+    "expected": 0
+  },
+  {
+    "rule": "test-loops-over-literal-cases",
+    "name": "looped-cases/function-argument",
+    "focusPath": "src/parser.test.ts",
+    "files": [
+      {
+        "path": "src/parser.test.ts",
+        "source": "test('parses', ((() => { for (const value of ['a', 'b']) { expect(parse(value)).toBe(value); } })!));"
+      }
+    ],
+    "expected": 1
+  }
+]

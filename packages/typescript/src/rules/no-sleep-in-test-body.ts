@@ -6,7 +6,7 @@
 
 import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
 
-import { outerExpression, unwrapExpression } from "./_unwrap-expression.js";
+import { directArgumentCall, outerExpression, unwrapExpression } from "./_unwrap-expression.js";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isTestFile } from "./_paths.js";
@@ -125,13 +125,8 @@ function isImmediatelyConsumedSleep(node: TSESTree.Node): boolean {
 
 /** True when `fn` is the callback argument of an `it`/`test`/per-test-hook call. */
 function isTestBody(fn: TSESTree.Node): boolean {
-  const call = fn.parent;
-  if (
-    call?.type !== AST_NODE_TYPES.CallExpression ||
-    !call.arguments.some((argument) => argument === fn)
-  ) {
-    return false;
-  }
+  const call = directArgumentCall(fn);
+  if (call === null) return false;
   const name = testCallerName(call.callee);
   return name !== null && TEST_CALLERS.has(name);
 }

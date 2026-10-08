@@ -353,3 +353,22 @@ def test_requires_if_to_check_assigned_name_directly() -> None:
         consume(match)
     """
     assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    "call", ["(re.search)(pattern, text)", "((re.match))(pattern, text)", "re . fullmatch(pattern, text)"]
+)
+def test_equivalent_callee_spelling_keeps_import_provenance(call: str) -> None:
+    source = f"import re\nresult = {call}\nif result:\n    consume(result)\n"
+    assert len(_check(source)) == 1
+
+
+@pytest.mark.parametrize("call", ["(custom.search)(text)", "custom . match(text)", "((custom.fullmatch))(text)"])
+def test_equivalent_callee_spelling_does_not_guess_custom_regex_receivers(call: str) -> None:
+    source = f"result = {call}\nif result:\n    consume(result)\n"
+    assert _check(source) == []
+
+
+def test_parenthesized_compiled_regex_callee_remains_proven() -> None:
+    source = 'import re\npattern = re.compile("x")\nresult = (pattern.search)(text)\nif result:\n    consume(result)\n'
+    assert len(_check(source)) == 1

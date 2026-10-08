@@ -124,8 +124,8 @@ export default createRule<Options, MessageIds>({
         if (node.id.type !== AST_NODE_TYPES.Identifier) return;
         const variable = ASTUtils.findVariable(context.sourceCode.getScope(node.id), node.id.name);
         if (variable === null || variable.references.some((reference) => reference.isWrite() && !reference.init)) return;
-        if (node.init?.type === AST_NODE_TYPES.ArrowFunctionExpression || node.init?.type === AST_NODE_TYPES.FunctionExpression) {
-          functionCallbacks.set(node.init, variable);
+        if (initializer?.type === AST_NODE_TYPES.ArrowFunctionExpression || initializer?.type === AST_NODE_TYPES.FunctionExpression) {
+          functionCallbacks.set(initializer, variable);
         }
         if (initializer?.type !== AST_NODE_TYPES.CallExpression) return;
         const hookCallee = unwrapExpression(initializer.callee);

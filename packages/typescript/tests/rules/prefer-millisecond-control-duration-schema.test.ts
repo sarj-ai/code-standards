@@ -19,6 +19,8 @@ const zod = (code: string): string => `import { z } from "zod";\n${code}`;
 
 RULE_TESTER.run("prefer-millisecond-control-duration-schema", rule, {
   valid: [
+    { name: "does not infer quoted factory imports from a different library", code: 'import { "object" as shape, "number" as numeric } from "other"; const Schema = shape({ timeout_seconds: numeric() });' },
+    { name: "does not infer a shadowed quoted factory binding", code: 'import { "strictObject" as shape, "number" as numeric } from "zod"; function build(shape: Builder) { return shape({ timeout_seconds: numeric() }); }' },
     { name: "preserves nonnumeric feature flags", code: zod("const Schema = z.object({ timeoutSeconds: z.boolean() });") },
     { name: "preserves unrelated string contracts", code: zod("const Schema = z.object({ timeoutSeconds: z.string().optional() });") },
     { name: "does not infer an unknown schema alias", code: zod("const Schema = z.object({ timeoutSeconds: customSchema });") },
@@ -65,6 +67,8 @@ RULE_TESTER.run("prefer-millisecond-control-duration-schema", rule, {
     },
   ],
   invalid: [
+    { name: "supports quoted direct object factory imports", code: 'import { "object" as shape, "number" as numeric } from "zod"; const Schema = shape({ timeout_seconds: numeric() });', errors: [ERROR] },
+    { name: "supports quoted direct strict object factory imports", code: 'import { "strictObject" as shape, "number" as numeric } from "zod/v4"; const Schema = shape({ timeout_seconds: numeric() });', errors: [ERROR] },
     {
       name: "reports the documented seconds field",
       filename: PREFER_MILLISECOND_CONTROL_DURATION_SCHEMA_DOCUMENTATION.examples[1].focusPath,
