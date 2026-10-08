@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass, field
 from datetime import timedelta
 from enum import StrEnum
-from functools import lru_cache
+from functools import lru_cache, partial
 import json
 import os
 from pathlib import Path
@@ -2289,11 +2290,13 @@ def _baseline_analysis_reports(args: _Args, root: Path, selected: list[str] | No
     from sarj_standards.api import AnalysisMode, Standards, TrustMode  # ruff: ignore[import-outside-top-level]
 
     trust = TrustMode.TRUSTED if args.trust_repository_code else TrustMode.SAFE
-    reports: list[AnalysisReport] = []
-    scoped_rules = _analysis_rules_for_baseline(args.baseline_rules) if args.baseline_cmd == "update" else None
+    operations: list[Callable[[], AnalysisReport]] = []
+    selection = _baseline_scan_rules(args)
+    scoped_rules, upstream_eslint = selection.rules, selection.upstream_eslint
     if scoped_rules is None or scoped_rules:
-        reports.append(
-            Standards(root).analyze(
+        operations.append(
+            partial(
+                Standards(root).analyze,
                 selected,
                 external=True,
                 trust=trust,
@@ -2303,52 +2306,62 @@ def _baseline_analysis_reports(args: _Args, root: Path, selected: list[str] | No
                 pass_on_unpruned_eslint_suppressions=args.baseline_cmd == "update" and bool(args.baseline_rules),
             )
         )
-    upstream_eslint = _upstream_eslint_rules_for_baseline(args.baseline_rules)
     if upstream_eslint:
-        from sarj_standards.libs.linting.analysis import (  # ruff: ignore[import-outside-top-level]
-            report_from_tools,
-        )
-        from sarj_standards.libs.linting.external import (  # ruff: ignore[import-outside-top-level]
-            analyze_external,
-        )
-
-        external = report_from_tools(
-            root,
-            analyze_external(
-                selected or [str(root)],
-                root=root,
-                trust=trust,
-                policy=_baseline_corpus_policy(root),
-                capabilities=frozenset({"eslint"}),
-                include_react_doctor=False,
-                pass_on_unpruned_eslint_suppressions=True,
-            ),
-        )
-        reports.append(external)
+        operations.append(partial(_baseline_external_report, root, selected, trust, "eslint"))
     if _react_doctor_rules_for_baseline(args.baseline_rules):
-        reports.append(_react_doctor_baseline_report(root, selected, trust, _baseline_corpus_policy(root)))
+        operations.append(partial(_react_doctor_baseline_report, root, selected, trust, _baseline_corpus_policy(root)))
     if _shellcheck_rules_for_baseline(args.baseline_rules):
-        from sarj_standards.libs.linting.analysis import (  # ruff: ignore[import-outside-top-level]
-            report_from_tools,
-        )
-        from sarj_standards.libs.linting.external import (  # ruff: ignore[import-outside-top-level]
-            analyze_external,
-        )
+        operations.append(partial(_baseline_external_report, root, selected, trust, "shellcheck"))
+    if args.jobs == 1:
+        return [operation() for operation in operations]
+    # One bounded pool owns baseline concurrency; analyzers keep their serial
+    # defaults and every result is checked before any baseline is written.
+    with ThreadPoolExecutor(max_workers=args.jobs, thread_name_prefix="baseline") as workers:
+        pending = [workers.submit(operation) for operation in operations]
+        return [result.result() for result in pending]
 
-        reports.append(
-            report_from_tools(
-                root,
-                analyze_external(
-                    selected or [str(root)],
-                    root=root,
-                    trust=trust,
-                    policy=_baseline_corpus_policy(root),
-                    capabilities=frozenset({"shellcheck"}),
-                    include_react_doctor=False,
-                ),
-            )
-        )
-    return reports
+
+@dataclass(frozen=True, slots=True)
+class _BaselineScanRules:
+    rules: list[str] | None
+    upstream_eslint: bool
+
+
+def _baseline_scan_rules(args: _Args) -> _BaselineScanRules:
+    scoped_rules = _analysis_rules_for_baseline(args.baseline_rules) if args.baseline_cmd == "update" else None
+    upstream_eslint = bool(_upstream_eslint_rules_for_baseline(args.baseline_rules))
+    if upstream_eslint and scoped_rules is not None:
+        # The unrestricted ESLint scan below covers both upstream and custom
+        # findings. Validate custom selectors before removing that duplicate scan.
+        for selector in scoped_rules:
+            if (
+                selector.startswith("eslint:")
+                and str(RuleSelector.parse(selector)) not in _baseline_catalog_selectors()
+            ):
+                msg = f"unknown or invalid rule selector: {selector}"
+                raise ValueError(msg)
+        scoped_rules = [selector for selector in scoped_rules if not selector.startswith("eslint:")]
+    return _BaselineScanRules(scoped_rules, upstream_eslint)
+
+
+def _baseline_external_report(
+    root: Path, selected: Sequence[str] | None, trust: str, capability: str
+) -> AnalysisReport:
+    from sarj_standards.libs.linting.analysis import report_from_tools  # ruff: ignore[import-outside-top-level]
+    from sarj_standards.libs.linting.external import analyze_external  # ruff: ignore[import-outside-top-level]
+
+    return report_from_tools(
+        root,
+        analyze_external(
+            selected or [str(root)],
+            root=root,
+            trust=trust,
+            policy=_baseline_corpus_policy(root),
+            capabilities=frozenset({capability}),
+            include_react_doctor=False,
+            pass_on_unpruned_eslint_suppressions=capability == "eslint",
+        ),
+    )
 
 
 def _baseline_selected_paths(root: Path, files: Sequence[str], *, scoped: bool) -> list[str] | None:
@@ -3024,6 +3037,7 @@ def build_app(handler: Callable[[_Args], int] = _dispatch) -> typer.Typer:
     def command_baseline_init(
         ctx: typer.Context,
         *,
+        jobs: Annotated[int, typer.Option("--jobs", min=1, max=2, help="overlap independent baseline scans")] = 1,
         output: Annotated[
             Path | None, typer.Option("--output", help="baseline JSON (default: diagnostic-baseline.json)")
         ] = None,
@@ -3040,6 +3054,7 @@ def build_app(handler: Callable[[_Args], int] = _dispatch) -> typer.Typer:
                 dest=_command_root(ctx),
                 cmd="baseline",
                 baseline_cmd="init",
+                jobs=jobs,
                 output=output if output is not None else None,
                 trust_repository_code=trust_repository_code,
                 files=files if files is not None else [],
@@ -3050,6 +3065,7 @@ def build_app(handler: Callable[[_Args], int] = _dispatch) -> typer.Typer:
     def command_baseline_update(
         ctx: typer.Context,
         *,
+        jobs: Annotated[int, typer.Option("--jobs", min=1, max=2, help="overlap independent baseline scans")] = 1,
         output: Annotated[
             Path | None, typer.Option("--output", help="baseline JSON (default: diagnostic-baseline.json)")
         ] = None,
@@ -3073,6 +3089,7 @@ def build_app(handler: Callable[[_Args], int] = _dispatch) -> typer.Typer:
                 dest=_command_root(ctx),
                 cmd="baseline",
                 baseline_cmd="update",
+                jobs=jobs,
                 output=output if output is not None else None,
                 trust_repository_code=trust_repository_code,
                 baseline_rules=baseline_rules if baseline_rules is not None else [],

@@ -172,6 +172,7 @@ def test_wheel_tests_preserve_existing_distributions_and_use_fresh_local_wheels(
     existing = tmp_path / "packages/standards/dist/keep.whl"
     existing.parent.mkdir(parents=True)
     existing.write_text("existing artifact")
+    ready = Barrier(2, timeout=10)
     installed: list[str] = []
     test_paths: list[Path] = []
 
@@ -179,6 +180,8 @@ def test_wheel_tests_preserve_existing_distributions_and_use_fresh_local_wheels(
         assert cwd == tmp_path
         assert not capture_output
         if argv[1] == "build":
+            if Path(argv[4]).name in {"contracts", "python"}:
+                ready.wait()
             destination = Path(argv[-1])
             destination.mkdir(exist_ok=True)
             (destination / (Path(argv[4]).name + ".whl")).write_text("fresh")

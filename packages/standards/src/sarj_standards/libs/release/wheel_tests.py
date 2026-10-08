@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 import os
 from pathlib import Path
 import sys
@@ -50,11 +51,20 @@ def run_wheel_tests(
     with TemporaryDirectory(prefix="sarj-wheel-tests-") as directory:
         destination = Path(directory)
         wheels = destination / "wheels"
-        for name in _TEST_PACKAGES:
-            runner(
-                ("uv", "build", "--wheel", "--project", str(root / "packages" / name), "--out-dir", str(wheels)),
-                cwd=root,
-            )
+        wheels.mkdir()
+        with ThreadPoolExecutor(
+            max_workers=min(jobs, len(_TEST_PACKAGES)), thread_name_prefix="wheel-build"
+        ) as workers:
+            pending = [
+                workers.submit(
+                    runner,
+                    ("uv", "build", "--wheel", "--project", str(root / "packages" / name), "--out-dir", str(wheels)),
+                    cwd=root,
+                )
+                for name in _TEST_PACKAGES
+            ]
+            for result in pending:
+                result.result()
         artifacts = tuple(sorted(wheels.glob("*.whl")))
         if len(artifacts) != len(_TEST_PACKAGES):
             msg = f"expected five fresh local wheels, found {len(artifacts)}"

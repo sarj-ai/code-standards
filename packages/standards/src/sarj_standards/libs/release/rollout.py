@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from datetime import timedelta
 from enum import StrEnum
@@ -39,7 +40,7 @@ from sarj_standards.libs.yaml_boundary import parse_yaml
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Mapping, Sequence
+    from collections.abc import Callable, Generator, Mapping, Sequence
 
 DEFAULT_REGISTRY = Path(".sarj-standards-rollout.toml")
 MAX_CONCURRENT_CONSUMERS = 16
@@ -1271,14 +1272,48 @@ def rollout_baseline_rules(
     return tuple(dict.fromkeys(selectors))
 
 
-def apply_one(  # ruff: ignore[too-many-locals] - one transaction keeps verification and mutation state bound
+def apply_one(
     consumer: Consumer,
     version: str,
     runner: CommandRunner,
     *,
     dry_run: bool = False,
 ) -> Outcome:
-    progress(consumer, "checking current adoption")
+    with timed_progress(consumer) as report:
+        return _apply_one(consumer, version, runner, dry_run=dry_run, report=report)
+
+
+@contextmanager
+def timed_progress(consumer: Consumer) -> Generator[Callable[[str], None]]:
+    started = time.monotonic()
+    phase_started = started
+    phase = ""
+
+    def report(next_phase: str) -> None:
+        nonlocal phase, phase_started
+        now = time.monotonic()
+        if phase:
+            progress(consumer, f"finished {phase} in {now - phase_started:.2f}s")
+        progress(consumer, next_phase)
+        phase, phase_started = next_phase, now
+
+    try:
+        yield report
+    finally:
+        now = time.monotonic()
+        if phase:
+            progress(consumer, f"ended {phase} after {now - phase_started:.2f}s; total {now - started:.2f}s")
+
+
+def _apply_one(  # ruff: ignore[too-many-locals] - one transaction binds verification and mutation state
+    consumer: Consumer,
+    version: str,
+    runner: CommandRunner,
+    *,
+    dry_run: bool,
+    report: Callable[[str], None],
+) -> Outcome:
+    report("checking current adoption")
     existing = status_one(consumer, version, runner)
     retry_verification = existing.state is OutcomeState.BLOCKED and existing.detail.startswith(
         "consumer verification failed"
@@ -1296,7 +1331,7 @@ def apply_one(  # ruff: ignore[too-many-locals] - one transaction keeps verifica
     # the rollout outcome or prevent later consumers from being reconciled.
     with tempfile.TemporaryDirectory(prefix="standards-rollout-", ignore_cleanup_errors=True) as temporary:
         repo = Path(temporary) / "repo"
-        progress(consumer, "cloning consumer")
+        report("cloning consumer")
         runner.run(
             (
                 "gh",
@@ -1328,7 +1363,7 @@ def apply_one(  # ruff: ignore[too-many-locals] - one transaction keeps verifica
             "--root",
             ".",
         )
-        progress(consumer, "provisioning declared tools")
+        report("provisioning declared tools")
         unauthenticated, tool_prefix = provision_consumer_tools(
             repo,
             Path(temporary) / "corepack-bin",
@@ -1342,13 +1377,13 @@ def apply_one(  # ruff: ignore[too-many-locals] - one transaction keeps verifica
         except ValueError as exc:
             raise RolloutError(str(exc)) from exc
         failures: list[str] = []
-        progress(consumer, "updating bundle and dependencies")
+        report("updating bundle and dependencies")
         try:
             update_consumer_bundle(repo, version, runner, tool_prefix, tool, environment=unauthenticated)
         except subprocess.CalledProcessError as exc:
             msg = f"{consumer.name}: dependency installation failed before a coherent rollout patch was prepared:\n"
             raise RolloutError(msg + process_failure_detail(exc)) from exc
-        progress(consumer, "refreshing scoped baselines")
+        report("refreshing scoped baselines")
         baseline_rules = rollout_baseline_rules(
             consumer,
             previous_react_doctor_policy,
@@ -1357,7 +1392,7 @@ def apply_one(  # ruff: ignore[too-many-locals] - one transaction keeps verifica
         allowed_baseline_paths, baseline_path, expected_baseline = _prepare_rollout_baseline(
             consumer, repo, runner, baseline_rules, tool_prefix, tool=tool, environment=unauthenticated
         )
-        progress(consumer, "diagnosing adoption and bootstrapping consumer")
+        report("diagnosing adoption and bootstrapping consumer")
         doctor = runner.run((*tool_prefix, *tool, "doctor"), cwd=repo, env=unauthenticated, check=False)
         if doctor.returncode != 0:
             failures.append("Standards doctor failed:\n" + verification_detail(doctor))
@@ -1384,7 +1419,7 @@ def apply_one(  # ruff: ignore[too-many-locals] - one transaction keeps verifica
         if bootstrap is not None:
             failures.append("consumer bootstrap failed:\n" + verification_detail(bootstrap))
         else:
-            progress(consumer, "verifying candidate patch")
+            report("verifying candidate patch")
             verification_failure_detail = _verify_rollout_patch(
                 consumer,
                 repo,
@@ -1419,9 +1454,9 @@ def apply_one(  # ruff: ignore[too-many-locals] - one transaction keeps verifica
             runner,
             comparison=f"origin/{consumer.branch}...HEAD",
         )
-        progress(consumer, "validating and pushing managed head")
+        report("validating and pushing managed head")
         pushed_head_sha = push_rollout_head(repo, consumer, preparation, base_sha, runner, environment=unauthenticated)
-    progress(consumer, "publishing pull request")
+    report("publishing pull request")
     return _publish_rollout_pull(
         consumer, version, runner, branch, pushed_head_sha=pushed_head_sha, verification_failure=verification_failure
     )
@@ -2135,6 +2170,8 @@ def _prepare_rollout_baseline(
             "--output",
             baseline_relative,
             "--trust-repository-code",
+            "--jobs",
+            "2",
         ]
         for selector in baseline_rules:
             baseline_command.extend(("--rule", selector))
@@ -2168,11 +2205,17 @@ def _verify_rollout_patch(
 ) -> str:
     verification_failure_detail = ""
     for attempt in range(MAX_VERIFICATION_ATTEMPTS):
+        progress(consumer, f"verification attempt {attempt + 1}/{MAX_VERIFICATION_ATTEMPTS}")
+        started = time.monotonic()
         verification = runner.run(
             (*tool_prefix, *consumer.verify),
             cwd=repo,
             env=consumer_verification_environment(environment, base_sha),
             check=False,
+        )
+        progress(
+            consumer,
+            f"verification attempt {attempt + 1} finished in {time.monotonic() - started:.2f}s (exit {verification.returncode})",
         )
         assert_baseline_unchanged(baseline_path, expected_baseline)
         assert_baselines_unchanged(consumer_baselines)
