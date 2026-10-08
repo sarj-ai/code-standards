@@ -1,12 +1,12 @@
 {
   "schemaVersion": 1,
   "catalogSha256": "b58c24b1ed727d9df3e622d240e5cecdf33cfe9d45e310fae12c021241bb3fe2",
-  "cliSha256": "a24e5b100201fefd652782d2394c7dd628cfa992cd5c93110d9f354d5af5c1aa",
+  "cliSha256": "c2412429c5407f913527c40b179e07b9ba7ba35cbc2bf083a286caa5afada267",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
     "prettierPluginToml": "2.0.6",
-    "ruff": "0.16.9",
+    "ruff": "0.16.10",
     "sqlFormatter": "15.8.2",
     "terraform": "1.15.8"
   },
