@@ -1,9 +1,14 @@
 from __future__ import annotations
 
 import ast
+import json
+import os
 from pathlib import Path
+import shutil
+import subprocess
 from typing import TypeGuard
 
+import pytest
 import yaml
 
 
@@ -169,16 +174,99 @@ def test_release_tags_dispatches_rollout_from_the_immutable_release_tag() -> Non
     assert "needs.tag.result == 'success'" in condition
     steps = dispatch.get("steps")
     assert _is_array(steps)
-    assert len(steps) == 2
+    assert len(steps) == 3
     harden = steps[0]
     assert _is_object(harden)
     assert harden.get("uses") == "step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1"
-    step = steps[1]
+    checkout = steps[1]
+    assert _is_object(checkout)
+    assert checkout["uses"] == "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"
+    options = checkout["with"]
+    assert _is_object(options)
+    assert options["ref"] == "${{ github.sha }}"
+    assert options["persist-credentials"] == "false"
+    step = steps[2]
     assert _is_object(step)
     command = step.get("run")
     assert isinstance(command, str)
+    assert command == "bash .github/scripts/dispatch-standards-rollout.sh"
+    command = _release_dispatch_command()
     assert 'version="${STANDARDS_TAG#standards-v}"' in command
     assert "gh workflow run standards-rollout.yml" in command
     assert '--repo "$GITHUB_REPOSITORY"' in command
     assert '--ref "$STANDARDS_TAG"' in command
     assert '-f version="$version"' in command
+
+
+@pytest.mark.parametrize("failure", ["", "list", "compare", "cancel", "published"])
+def test_publication_supersedes_only_older_scheduled_controllers(tmp_path: Path, failure: str) -> None:
+    published = "invalid" if failure == "published" else "e" * 40
+    records = [
+        {"databaseId": 1, "event": "schedule", "status": "in_progress", "headSha": "a" * 40},
+        {"databaseId": 2, "event": "schedule", "status": "pending", "headSha": published},
+        {"databaseId": 3, "event": "schedule", "status": "in_progress", "headSha": "b" * 40},
+        {"databaseId": 4, "event": "schedule", "status": "queued", "headSha": "c" * 40},
+        {"databaseId": 5, "event": "workflow_dispatch", "status": "in_progress", "headSha": "a" * 40},
+        {"databaseId": 6, "event": "schedule", "status": "completed", "headSha": "a" * 40},
+        {"databaseId": 7, "event": "schedule", "status": "pending", "headSha": "invalid"},
+        {"databaseId": "invalid", "event": "schedule", "status": "pending", "headSha": "a" * 40},
+        {"databaseId": 8, "event": "schedule", "status": "pending", "headSha": "a" * 40},
+    ]
+    runs = tmp_path / "runs.json"
+    runs.write_text(json.dumps(records), encoding="utf-8")
+    events = tmp_path / "events.txt"
+    stub = r"""
+gh() {
+  if [[ "$1 $2" == 'run list' ]]; then
+    [[ "$FAILURE" != list ]] || return 17
+    cat "$RUNS"
+  elif [[ "$1" == api ]]; then
+    [[ "$FAILURE" != compare ]] || return 19
+    case "$2" in
+      *"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa...$PUBLISHED_SHA") printf 'ahead\n' ;;
+      *"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb...$PUBLISHED_SHA") printf 'behind\n' ;;
+      *"cccccccccccccccccccccccccccccccccccccccc...$PUBLISHED_SHA") printf 'diverged\n' ;;
+      *) return 23 ;;
+    esac
+  elif [[ "$1 $2" == 'run cancel' ]]; then
+    printf 'cancel %s\n' "$3" >> "$EVENTS"
+    [[ "$FAILURE" != cancel ]] || return 21
+  elif [[ "$1 $2" == 'workflow run' ]]; then
+    printf 'dispatch\n' >> "$EVENTS"
+  else
+    return 29
+  fi
+}
+"""
+    jq = shutil.which("jq")
+    assert jq is not None
+    environment = {
+        "PATH": f"{Path(jq).parent}{os.pathsep}{os.defpath}",
+        "GITHUB_REPOSITORY": "example/standards",
+        "STANDARDS_TAG": "standards-v8.38.3",
+        "PUBLISHED_SHA": published,
+        "RUNS": str(runs),
+        "EVENTS": str(events),
+        "FAILURE": failure,
+    }
+
+    result = subprocess.run(
+        ("bash", "-c", stub + _release_dispatch_command()),
+        cwd=tmp_path,
+        env=environment,
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=20,
+    )
+
+    assert result.returncode == 0, result.stderr
+    expected = ["dispatch"] if failure in {"list", "compare", "published"} else ["cancel 1", "cancel 8", "dispatch"]
+    assert events.read_text(encoding="utf-8").splitlines() == expected
+    concurrency = _workflow()["concurrency"]
+    assert _is_object(concurrency)
+    assert concurrency["cancel-in-progress"] == "false"
+
+
+def _release_dispatch_command() -> str:
+    return (REPO_ROOT / ".github/scripts/dispatch-standards-rollout.sh").read_text(encoding="utf-8")
