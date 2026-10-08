@@ -77,6 +77,15 @@ else
     esac
     case "$path" in
       packages/*/README.md) select_scopes docs standards ;;
+      .github/workflows/commit-policy.yml)
+        # Repository delivery policy has no dependency on native linter units.
+        select_scopes standards docs ;;
+      .github/workflows/standards-rollout.yml|.github/scripts/dispatch-standards-rollout.sh)
+        # The SDK cohort owns the fleet controller and dispatch contracts.
+        select_scopes standards docs ;;
+      .github/workflows/private-refs.yml|.github/workflows/ruff-freshness.yml)
+        # Repository probes do not import or build language packages.
+        select_scopes standards docs ;;
       .github/*)
         select_scopes "${scopes[@]}" ;;
       .sarj-standards.toml)
