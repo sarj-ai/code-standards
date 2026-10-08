@@ -239,6 +239,7 @@ manifests = [
   "packages/typescript/package.json",
 ]
 locks = [
+  ".github/deploy/package-lock.json",
   "packages/contracts/uv.lock",
   "apps/docs/package-lock.json",
   "packages/bootstrap/uv.lock",
