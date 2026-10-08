@@ -37,7 +37,7 @@ const cliSource = await readFile(cliPath, "utf8");
 const catalog = JSON.parse(catalogSource);
 const cli = JSON.parse(cliSource);
 const cache = new Map();
-const ruffVersion = "0.16.9";
+const ruffVersion = "0.16.10";
 
 assert.equal(
   execFileSync(
