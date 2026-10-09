@@ -212,12 +212,20 @@ def test_windows_gating_preserves_duplicate_environment_check(tmp_path: Path) ->
     assert [finding.code for finding in findings] == ["duplicate-env-var"]
 
 
-def test_ignore_annotations_cannot_disable_shared_policy(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    "annotation",
+    [
+        "ignore-check.kube-linter.io/all",
+        "ignore-check.kube-linter.io/explicit-privilege-escalation-disabled",
+        "kube-linter.io/ignore-all",
+    ],
+)
+def test_ignore_annotations_cannot_disable_shared_policy(annotation: str, tmp_path: Path) -> None:
     resource = _pod()
     resource["metadata"] = {
         "name": "test",
         "namespace": "work",
-        "annotations": {"ignore-check.kube-linter.io/all": "skip", "example.com/owner": "team"},
+        "annotations": {annotation: "skip", "example.com/owner": "team"},
     }
     resource["spec"] = {"containers": [{"name": "app", "image": "test", "securityContext": {"runAsNonRoot": True}}]}
     original = deepcopy(resource)
@@ -226,10 +234,18 @@ def test_ignore_annotations_cannot_disable_shared_policy(tmp_path: Path) -> None
     )
     assert [finding.code for finding in findings] == [OMISSION_CHECK]
     assert resource == original
+    assert _object(_object(policy_resource(resource)["metadata"])["annotations"]) == {"example.com/owner": "team"}
 
 
-def test_exception_is_exact_for_one_check_and_one_container(tmp_path: Path) -> None:
+@pytest.mark.parametrize("native_blanket_waiver", [False, True])
+def test_exception_is_exact_for_one_check_and_one_container(tmp_path: Path, *, native_blanket_waiver: bool) -> None:
     resource = _pod()
+    if native_blanket_waiver:
+        resource["metadata"] = {
+            "name": "test",
+            "namespace": "work",
+            "annotations": {"kube-linter.io/ignore-all": "Native blanket waiver is not an exact receipt exception."},
+        }
     resource["spec"] = {
         "containers": [
             {"name": name, "image": "test", "securityContext": {"runAsNonRoot": True}} for name in ["app", "worker"]
@@ -313,3 +329,28 @@ def test_ambiguous_container_attribution_cannot_be_suppressed() -> None:
     }
     with pytest.raises(ValueError, match="ambiguous"):
         build_config(resource)
+
+
+@pytest.mark.parametrize(
+    ("annotation", "removed"),
+    [
+        pytest.param("ignore-check.kube-linter.io/run-as-non-root", True, id="qualified-check-waiver"),
+        pytest.param("kube-linter.io/ignore-all", True, id="exact-blanket-waiver"),
+        pytest.param("ignore-check.kube-linter.io", False, id="unqualified-name"),
+        pytest.param("ignore-check.kube-linter.io.example.com/run-as-non-root", False, id="different-namespace"),
+        pytest.param("example.com/ignore-check.kube-linter.io", False, id="ordinary-name"),
+        pytest.param("https://ignore-check.kube-linter.io/run-as-non-root", False, id="url-shaped-data"),
+        pytest.param("kube-linter.io/ignore-all-extra", False, id="different-blanket-name"),
+    ],
+)
+def test_policy_projection_removes_only_native_waiver_namespaces(annotation: str, *, removed: bool) -> None:
+    resource = _pod()
+    resource["metadata"] = {
+        "name": "test",
+        "annotations": {annotation: "documented value", "example.com/owner": "team"},
+    }
+    original = deepcopy(resource)
+    projected = _object(_object(policy_resource(resource)["metadata"])["annotations"])
+    assert (annotation not in projected) is removed
+    assert projected["example.com/owner"] == "team"
+    assert resource == original

@@ -343,6 +343,8 @@ def _render_helm(directory: Path, target: Mapping[str, object], *, root: Path, r
             "lint",
             "--strict",
             "--with-subcharts",
+            "--namespace",
+            _text(target, "namespace"),
             "--kube-version",
             _text(target, "kubernetes_version"),
             str(archive),
