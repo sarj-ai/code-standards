@@ -2481,7 +2481,8 @@ def run_consumer_verification(
         )
     ):
         progress(consumer, "proved bundle/provenance-only diff; running full Standards check and metadata verification")
-        standards = run(0, (*standards_tool, "check", "--trust-repository-code"))
+        # An explicit root overrides the base-SHA environment's changed-file scope.
+        standards = run(0, (*standards_tool, "check", "--trust-repository-code", "."))
         if standards.returncode != 0:
             return standards
         return run(1, consumer.verify_metadata)
