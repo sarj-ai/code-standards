@@ -53,6 +53,7 @@ from sarj_python_lint.rules.no_first_party_private_import import (
     NoFirstPartyPrivateImport,
 )
 from sarj_python_lint.rules.no_fixed_sleep_before_assert import NoFixedSleepBeforeAssert
+from sarj_python_lint.rules.no_fixed_sleep_in_loop import NoFixedSleepInLoop
 from sarj_python_lint.rules.no_frozen_after_validator_field_write import (
     NoFrozenAfterValidatorFieldWrite,
 )
@@ -169,6 +170,7 @@ from sarj_python_lint.rules.repeated_test_composition import RepeatedTestComposi
 from sarj_python_lint.rules.require_explicit_contract_implementation import RequireExplicitContractImplementation
 from sarj_python_lint.rules.require_explicit_psycopg_transaction import RequireExplicitPsycopgTransaction
 from sarj_python_lint.rules.require_explicit_service_contract import RequireExplicitServiceContract
+from sarj_python_lint.rules.require_injectable_retry_sleep import RequireInjectableRetrySleep
 from sarj_python_lint.rules.require_keyword_only_swap_prone_params import (
     RequireKeywordOnlySwapProneParams,
 )
@@ -208,6 +210,8 @@ if TYPE_CHECKING:
 
 REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
     {
+        RequireInjectableRetrySleep.id: RequireInjectableRetrySleep,
+        NoFixedSleepInLoop.id: NoFixedSleepInLoop,
         NoInterpreterSourceArguments.id: NoInterpreterSourceArguments,
         NoUnusedCopyResult.id: NoUnusedCopyResult,
         NoBeforeValidatorInputMutation.id: NoBeforeValidatorInputMutation,
