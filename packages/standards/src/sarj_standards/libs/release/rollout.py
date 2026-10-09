@@ -140,6 +140,8 @@ WORKFLOW_TOOL_ACTIONS = MappingProxyType({"hashicorp/setup-terraform": ("terrafo
 MANAGED_DELETIONS = frozenset({launcher.RETIRED_REPOSITORY_LAUNCHER.as_posix()})
 RELEASE_VISIBILITY_ATTEMPTS = 7
 RELEASE_VISIBILITY_DELAY = timedelta(seconds=10)
+PUSHED_HEAD_VISIBILITY_ATTEMPTS = 6
+PUSHED_HEAD_VISIBILITY_DELAY = timedelta(seconds=1)
 SECONDARY_JAVASCRIPT_ROOT_EXCLUSIONS = frozenset(
     {
         ".cache",
@@ -2174,8 +2176,11 @@ def _publish_rollout_pull(
     *,
     pushed_head_sha: str,
     verification_failure: str,
+    sleep: Callable[[float], None] = time.sleep,
 ) -> Outcome:
     pull = pull_request(consumer, version, runner)
+    if pull is not None:
+        pull = _wait_for_pushed_pull_head(consumer, version, runner, pull, pushed_head_sha=pushed_head_sha, sleep=sleep)
     if pull is not None and pull.get("headRefOid") != pushed_head_sha:
         return Outcome(
             consumer,
@@ -2245,6 +2250,9 @@ def _publish_rollout_pull(
             url,
             "managed rollout PR could not be read after create or edit",
         )
+    refreshed_pull = _wait_for_pushed_pull_head(
+        consumer, version, runner, refreshed_pull, pushed_head_sha=pushed_head_sha, sleep=sleep
+    )
     refreshed_url = str(refreshed_pull.get("url", url))
     if not pull_identity_matches(consumer, version, refreshed_pull):
         return Outcome(
@@ -2282,6 +2290,32 @@ def _publish_rollout_pull(
     if verification_failure:
         return Outcome(consumer, OutcomeState.BLOCKED, url, "consumer verification failed; PR opened for remediation")
     return Outcome(consumer, OutcomeState.PR_OPEN, url)
+
+
+def _wait_for_pushed_pull_head(
+    consumer: Consumer,
+    version: str,
+    runner: CommandRunner,
+    pull: dict[str, object],
+    *,
+    pushed_head_sha: str,
+    sleep: Callable[[float], None],
+) -> dict[str, object]:
+    for attempt in range(PUSHED_HEAD_VISIBILITY_ATTEMPTS):
+        if pull.get("headRefOid") == pushed_head_sha or not pull_identity_matches(consumer, version, pull):
+            break
+        try:
+            reject_rollout_downgrade(desired_version(str(pull.get("body", ""))), version)
+        except RolloutError:
+            break
+        if attempt + 1 == PUSHED_HEAD_VISIBILITY_ATTEMPTS:
+            break
+        sleep(PUSHED_HEAD_VISIBILITY_DELAY.total_seconds())
+        observed = pull_request(consumer, version, runner)
+        # A transient empty list must not turn a known PR into permission to create another.
+        if observed is not None:
+            pull = observed
+    return pull
 
 
 class _RolloutBaseline(NamedTuple):

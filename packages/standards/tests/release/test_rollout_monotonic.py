@@ -256,3 +256,92 @@ def test_publisher_can_advance_or_refresh_owned_pr_metadata(previous: str) -> No
     assert outcome.state is rollout.OutcomeState.PR_OPEN
     edit = next(command for command in runner.commands if command[:3] == ("gh", "pr", "edit"))
     assert rollout.desired_marker("8.2.1") in edit[edit.index("--body") + 1]
+
+
+@pytest.mark.parametrize("stage", ["before-edit", "after-edit", "empty-read"])
+def test_publisher_waits_for_verified_push_without_repeating_verification(stage: str) -> None:
+    fresh = pull_payload(rollout.desired_marker("8.2.1"))
+    stale = pull_payload(rollout.desired_marker("8.2.0"), head_sha="d" * 40)
+    commit = json.dumps(
+        {
+            "parents": [{"sha": "b" * 40}],
+            "commit": {
+                "message": rollout.managed_commit_message("8.2.1", "c" * 40),
+                "tree": {"sha": "c" * 40},
+            },
+        }
+    )
+    responses = [(0, fresh)]
+    if stage == "before-edit":
+        responses = [(0, stale), (0, fresh)]
+    elif stage == "empty-read":
+        responses = [(0, stale), (0, "[]"), (0, fresh)]
+    responses += [(0, ""), (0, fresh)]
+    if stage == "after-edit":
+        responses[-1:] = [(0, stale), (0, fresh)]
+    responses += [(0, commit), (0, json.dumps({"object": {"type": "commit", "sha": "b" * 40}}))]
+    runner = FakeRolloutRunner(responses)
+    waits: list[float] = []
+
+    outcome = rollout._publish_rollout_pull(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- test the publication transport boundary
+        consumer(),
+        "8.2.1",
+        runner,
+        "standards-rollout/current",
+        pushed_head_sha="a" * 40,
+        verification_failure="",
+        sleep=waits.append,
+    )
+
+    assert outcome.state is rollout.OutcomeState.PR_OPEN
+    assert waits == ([1.0, 1.0] if stage == "empty-read" else [1.0])
+    assert sum(command[:3] == ("gh", "pr", "edit") for command in runner.commands) == 1
+    merge = next(command for command in runner.commands if command[:3] == ("gh", "pr", "merge"))
+    assert merge[merge.index("--match-head-commit") + 1] == "a" * 40
+    assert all(command[0] == "gh" for command in runner.commands)
+
+
+@pytest.mark.parametrize("disappears", [False, True])
+def test_unresolved_push_visibility_is_bounded_and_never_creates_or_edits(*, disappears: bool) -> None:
+    stale = pull_payload(rollout.desired_marker("8.2.1"), head_sha="d" * 40)
+    runner = FakeRolloutRunner([(0, stale), *[(0, "[]" if disappears else stale)] * 5])
+    waits: list[float] = []
+
+    outcome = rollout._publish_rollout_pull(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- test failure at the publication boundary
+        consumer(),
+        "8.2.1",
+        runner,
+        "standards-rollout/current",
+        pushed_head_sha="a" * 40,
+        verification_failure="",
+        sleep=waits.append,
+    )
+
+    assert outcome.state is rollout.OutcomeState.MISSING
+    assert waits == [1.0] * 5
+    assert len(runner.commands) == 6
+    assert all(command[:3] == ("gh", "pr", "list") for command in runner.commands)
+
+
+@pytest.mark.parametrize("changed", ["ownership", "newer-target"])
+def test_push_visibility_wait_preserves_concurrent_pr_changes(changed: str) -> None:
+    stale = pull_payload(rollout.desired_marker("8.2.1"), head_sha="d" * 40)
+    observed = pull_payload(rollout.desired_marker("8.2.2" if changed == "newer-target" else "8.2.1"))
+    if changed == "ownership":
+        observed = observed.replace(rollout.pr_marker(consumer(), "8.2.1"), "")
+    runner = FakeRolloutRunner([(0, stale), (0, observed)])
+    waits: list[float] = []
+
+    outcome = rollout._publish_rollout_pull(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- test a competing update during transport delay
+        consumer(),
+        "8.2.1",
+        runner,
+        "standards-rollout/current",
+        pushed_head_sha="a" * 40,
+        verification_failure="",
+        sleep=waits.append,
+    )
+
+    assert outcome.state is rollout.OutcomeState.BLOCKED
+    assert waits == [1.0]
+    assert all(command[:3] == ("gh", "pr", "list") for command in runner.commands)
