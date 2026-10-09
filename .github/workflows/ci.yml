@@ -677,6 +677,12 @@ jobs:
       - name: Install built wheel + test deps into a fresh venv
         if: needs.changes.outputs.reviewed-wheels != 'true'
         run: bash ../../.github/scripts/ci-install-test-wheels.sh
+      - name: Install the pinned native tool bootstrap
+        if: needs.changes.outputs.reviewed-wheels != 'true'
+        run: uv run --no-project python -m sarj_standards.libs.adoption.native_bootstrap
+      - name: Install and attest integration native tools
+        if: needs.changes.outputs.reviewed-wheels != 'true'
+        run: uv run --no-project python -m sarj_standards.libs.release.native_test_setup --root ../..
       - name: Run affected wheel tests (full on shared changes or scheduled/manual audits)
         if: needs.changes.outputs.reviewed-wheels != 'true'
         env:

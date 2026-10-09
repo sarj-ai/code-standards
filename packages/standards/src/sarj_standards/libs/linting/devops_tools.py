@@ -154,19 +154,29 @@ def _mise_tool(tool: NativeTool, *, root: Path, runner: ProcessRunner) -> Native
         raise NativeToolError(msg)
     installation = Path(lines[0]).resolve(strict=True)
     binary = "docker-compose" if tool.name == "docker" else tool.name
-    candidates: set[Path] = set()
-    for relative in (binary, f"bin/{binary}"):
-        candidate = installation / relative
-        if not candidate.exists():
-            continue
-        resolved = candidate.resolve(strict=True)
-        resolved.relative_to(installation)
-        if stat.S_ISREG(resolved.stat().st_mode):
-            candidates.add(resolved)
-    if len(candidates) != 1:
+    output = runner(
+        (
+            mise,
+            "--no-config",
+            "--no-env",
+            "--no-hooks",
+            "which",
+            "--tool",
+            f"{MISE_REFS[tool.name]}@{tool.version}",
+            binary,
+        ),
+        cwd=root,
+    )
+    lines = output.stdout.strip().splitlines()
+    if output.returncode or len(lines) != 1 or not Path(lines[0]).is_absolute():
+        msg = f"mise has no unambiguous installed {tool.name} executable; run explicit setup"
+        raise NativeToolError(msg)
+    resolved = Path(lines[0]).resolve(strict=True)
+    resolved.relative_to(installation)
+    if not stat.S_ISREG(resolved.stat().st_mode):
         msg = f"mise's installed {tool.name} does not expose one regular native executable"
         raise NativeToolError(msg)
-    return replace(tool, executable=candidates.pop(), standalone_compose=tool.name == "docker")
+    return replace(tool, executable=resolved, standalone_compose=tool.name == "docker")
 
 
 def _argv(tool: NativeTool, args: tuple[str, ...]) -> tuple[str, ...]:

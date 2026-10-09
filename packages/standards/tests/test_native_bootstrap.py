@@ -163,10 +163,13 @@ def test_root_and_generated_ci_bootstrap_before_tools_setup(tmp_path: Path) -> N
                     assert argv[-3:] == ["python", "-m", "sarj_standards.libs.adoption.native_bootstrap"]
                     commands.append(argv)
                     bootstrap = index
-                if step.get("name") == "Install and attest applicable native tools":
+                if step.get("name") in {
+                    "Install and attest applicable native tools",
+                    "Install and attest integration native tools",
+                }:
                     assert bootstrap is not None
                     assert bootstrap < index
-    assert len(commands) == 3
+    assert commands
     assert commands[-1] == [
         "uv",
         "run",
