@@ -6,7 +6,10 @@
 
 import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
 
+import { importSpecifierName } from "./_import-specifier-name.js";
+
 import { createRule, type RuleDocumentation } from "./_docs.js";
+import { unwrapExpression } from "./_unwrap-expression.js";
 import { isGeneratedFile, isTestFile } from "./_paths.js";
 import { isZodModule } from "./_zod.js";
 
@@ -28,7 +31,7 @@ export const PREFER_SHARED_ZOD_ENUM_DOCUMENTATION = {
 
 function literalDomain(node: TSESTree.CallExpression): readonly string[] | null {
   if (node.arguments.length !== 1) return null;
-  const [argument] = node.arguments;
+  const argument = node.arguments[0] === undefined ? undefined : unwrapExpression(node.arguments[0]);
   if (argument?.type !== AST_NODE_TYPES.ArrayExpression || argument.elements.length < 2) return null;
   const values: string[] = [];
   for (const element of argument.elements) {
@@ -91,8 +94,7 @@ export default createRule<Options, MessageIds>({
             specifier.type === AST_NODE_TYPES.ImportNamespaceSpecifier ||
             specifier.type === AST_NODE_TYPES.ImportDefaultSpecifier ||
             (specifier.type === AST_NODE_TYPES.ImportSpecifier &&
-              specifier.imported.type === AST_NODE_TYPES.Identifier &&
-              specifier.imported.name === "z")
+              importSpecifierName(specifier) === "z")
           ) {
             const binding = bindingOf(specifier.local);
             if (binding !== null) zodBindings.add(binding);
@@ -100,14 +102,15 @@ export default createRule<Options, MessageIds>({
         }
       },
       CallExpression(node): void {
+        const unwrappedNodeCallee = unwrapExpression(node.callee);
+        const receiver = unwrappedNodeCallee.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(unwrappedNodeCallee.object) : unwrappedNodeCallee;
         if (
-          node.callee.type !== AST_NODE_TYPES.MemberExpression ||
-          node.callee.computed ||
-          node.callee.object.type !== AST_NODE_TYPES.Identifier ||
-          node.callee.property.type !== AST_NODE_TYPES.Identifier ||
-          node.callee.property.name !== "enum"
+          unwrappedNodeCallee.type !== AST_NODE_TYPES.MemberExpression ||
+          receiver.type !== AST_NODE_TYPES.Identifier ||
+          ASTUtils.getPropertyName(unwrappedNodeCallee) === null ||
+          (ASTUtils.getPropertyName(unwrappedNodeCallee) ?? "") !== "enum"
         ) return;
-        const binding = bindingOf(node.callee.object);
+        const binding = bindingOf(receiver);
         if (binding === null || !zodBindings.has(binding)) return;
         const domain = literalDomain(node);
         if (domain === null) return;

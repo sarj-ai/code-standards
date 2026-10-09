@@ -116,7 +116,9 @@ function occurrences(source, pattern) {
 }
 
 async function response(path, init) {
-  return globalThis.fetch(new URL(path, base), {
+  const target = new URL(path, base);
+  target.searchParams.set('commit', expectedCommit);
+  return globalThis.fetch(target, {
     cache: 'no-store',
     signal: globalThis.AbortSignal.timeout(10_000),
     ...init,

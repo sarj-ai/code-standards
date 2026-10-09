@@ -11,7 +11,10 @@ import {
   type TSESTree,
 } from "@typescript-eslint/utils";
 
+import { importSpecifierName } from "./_import-specifier-name.js";
+
 import { createRule, type RuleDocumentation } from "./_docs.js";
+import { unwrapExpression } from "./_unwrap-expression.js";
 import { isGeneratedFile, isTestFile } from "./_paths.js";
 import { isZodModule } from "./_zod.js";
 
@@ -108,61 +111,56 @@ export default createRule<Options, MessageIds>({
     }
 
     function isZodObjectCall(node: TSESTree.CallExpression): boolean {
-      const callee = node.callee;
+      const callee = unwrapExpression(node.callee);
+
+      const calleeReceiver = callee.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(callee.object) : callee;
       if (callee.type === AST_NODE_TYPES.Identifier) {
         const variable = binding(callee);
         return variable !== null && objectFactories.has(variable);
       }
       if (
         callee.type !== AST_NODE_TYPES.MemberExpression ||
-        callee.computed ||
-        callee.object.type !== AST_NODE_TYPES.Identifier ||
-        callee.property.type !== AST_NODE_TYPES.Identifier ||
-        (callee.property.name !== "object" && callee.property.name !== "strictObject")
+        calleeReceiver.type !== AST_NODE_TYPES.Identifier ||
+        ASTUtils.getPropertyName(callee) === null ||
+        ((ASTUtils.getPropertyName(callee) ?? "") !== "object" && (ASTUtils.getPropertyName(callee) ?? "") !== "strictObject")
       ) {
         return false;
       }
-      const variable = binding(callee.object);
+      const variable = binding(calleeReceiver);
       return variable !== null && zodNamespaces.has(variable);
     }
 
     function isNumericSchema(node: TSESTree.Node): boolean {
+      node = unwrapExpression(node);
       if (node.type !== AST_NODE_TYPES.CallExpression) return false;
-      const callee = node.callee;
+      const callee = unwrapExpression(node.callee);
+      const calleeReceiver = callee.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(callee.object) : callee;
       if (callee.type === AST_NODE_TYPES.Identifier) {
         const variable = binding(callee);
         return variable !== null && numberFactories.has(variable);
       }
-      if (callee.type !== AST_NODE_TYPES.MemberExpression || callee.computed ||
-          callee.property.type !== AST_NODE_TYPES.Identifier) return false;
-      if (callee.object.type === AST_NODE_TYPES.Identifier) {
-        const variable = binding(callee.object);
-        return callee.property.name === "number" && variable !== null && zodNamespaces.has(variable);
+      if (callee.type !== AST_NODE_TYPES.MemberExpression || ASTUtils.getPropertyName(callee) === null) return false;
+      if (calleeReceiver.type === AST_NODE_TYPES.Identifier) {
+        const variable = binding(calleeReceiver);
+        return (ASTUtils.getPropertyName(callee) ?? "") === "number" && variable !== null && zodNamespaces.has(variable);
       }
-      return ["int", "min", "max", "positive", "nonnegative", "finite", "multipleOf", "optional", "nullable", "nullish", "default", "describe", "brand", "readonly"].includes(callee.property.name) &&
-        isNumericSchema(callee.object);
+      return ["int", "min", "max", "positive", "nonnegative", "finite", "multipleOf", "optional", "nullable", "nullish", "default", "describe", "brand", "readonly"].includes((ASTUtils.getPropertyName(callee) ?? "")) &&
+        isNumericSchema(calleeReceiver);
     }
 
     return {
       ImportDeclaration(node: TSESTree.ImportDeclaration): void {
         if (!isZodModule(node.source.value)) return;
         for (const specifier of node.specifiers) {
-          if (specifier.type === AST_NODE_TYPES.ImportSpecifier && specifier.imported.type === AST_NODE_TYPES.Identifier && specifier.imported.name === "number") {
-            record(numberFactories, specifier.local);
-          }
+          const importedName = specifier.type === AST_NODE_TYPES.ImportSpecifier ? importSpecifierName(specifier) : null;
+          if (importedName === "number") record(numberFactories, specifier.local);
           if (
             specifier.type === AST_NODE_TYPES.ImportNamespaceSpecifier ||
             specifier.type === AST_NODE_TYPES.ImportDefaultSpecifier ||
-            (specifier.type === AST_NODE_TYPES.ImportSpecifier &&
-              specifier.imported.type === AST_NODE_TYPES.Identifier &&
-              specifier.imported.name === "z")
+            importedName === "z"
           ) {
             record(zodNamespaces, specifier.local);
-          } else if (
-            specifier.type === AST_NODE_TYPES.ImportSpecifier &&
-            specifier.imported.type === AST_NODE_TYPES.Identifier &&
-            (specifier.imported.name === "object" || specifier.imported.name === "strictObject")
-          ) {
+          } else if (importedName === "object" || importedName === "strictObject") {
             record(objectFactories, specifier.local);
           }
         }

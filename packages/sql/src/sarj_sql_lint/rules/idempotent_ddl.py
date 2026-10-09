@@ -44,12 +44,12 @@ _CHECKS = (
             r"\bCREATE\s+(?:(?:GLOBAL|LOCAL)\s+)?(?:(?:TEMP(?:ORARY)?|UNLOGGED)\s+)?TABLE(?>\s+)(?!IF\s+NOT\s+EXISTS\b)",
             re.IGNORECASE,
         ),
-        "`CREATE TABLE` without `IF NOT EXISTS` — migrations must be safe to re-run.",
+        "`CREATE TABLE` without `IF NOT EXISTS` — use the supported existence guard.",
         mysql_supported=True,
     ),
     _DdlCheck(
         re.compile(r"\bADD\s+COLUMN(?>\s+)(?!IF\s+NOT\s+EXISTS\b)", re.IGNORECASE),
-        "`ADD COLUMN` without `IF NOT EXISTS` — migrations must be safe to re-run.",
+        "`ADD COLUMN` without `IF NOT EXISTS` — use the supported existence guard.",
         mysql_supported=False,
         sqlite_supported=False,
     ),
@@ -58,7 +58,7 @@ _CHECKS = (
             r"\bCREATE\s+(?:UNIQUE\s+)?INDEX(?>\s+)(?!(?:CONCURRENTLY\s+)?IF\s+NOT\s+EXISTS\b)",
             re.IGNORECASE,
         ),
-        "`CREATE INDEX` without `IF NOT EXISTS` — migrations must be safe to re-run.",
+        "`CREATE INDEX` without `IF NOT EXISTS` — use the supported existence guard.",
         mysql_supported=False,
     ),
     _DdlCheck(
@@ -66,17 +66,17 @@ _CHECKS = (
             r"\bCREATE\s+(?:EXTENSION|SCHEMA|SEQUENCE)(?>\s+)(?!IF\s+NOT\s+EXISTS\b)",
             re.IGNORECASE,
         ),
-        "`CREATE EXTENSION`/`SCHEMA`/`SEQUENCE` without `IF NOT EXISTS` — migrations must be safe to re-run.",
+        "`CREATE EXTENSION`/`SCHEMA`/`SEQUENCE` without `IF NOT EXISTS` — use the supported existence guard.",
         mysql_supported=True,
     ),
     _DdlCheck(
         re.compile(r"\bDROP\s+TABLE(?>\s+)(?!IF\s+EXISTS\b)", re.IGNORECASE),
-        "`DROP TABLE`/`DROP INDEX` without `IF EXISTS` — migrations must be safe to re-run.",
+        "`DROP TABLE`/`DROP INDEX` without `IF EXISTS` — use the supported existence guard.",
         mysql_supported=True,
     ),
     _DdlCheck(
         re.compile(r"\bDROP\s+INDEX(?>\s+)(?!(?:CONCURRENTLY\s+)?IF\s+EXISTS\b)", re.IGNORECASE),
-        "`DROP TABLE`/`DROP INDEX` without `IF EXISTS` — migrations must be safe to re-run.",
+        "`DROP TABLE`/`DROP INDEX` without `IF EXISTS` — use the supported existence guard.",
         mysql_supported=False,
     ),
 )
@@ -87,9 +87,9 @@ class IdempotentDdl(Rule):
     id = "idempotent-ddl"
     code = "SARJ102"
     documentation = RuleDocumentation(
-        summary="DDL without IF [NOT] EXISTS — migrations must be safe to re-run.",
-        rationale="A partially applied migration may be retried, so unconditional object creation or removal can fail before recovery completes.",
-        remediation="Use the supported IF NOT EXISTS or IF EXISTS form for the DDL statement.",
+        summary="DDL omits a supported IF [NOT] EXISTS guard.",
+        rationale="Supported existence guards help replay DDL after partial application. A transactional migration runner such as dbmate owns version tracking and rollback; this rule does not require every statement to be independently replayable.",
+        remediation="Use the native IF NOT EXISTS or IF EXISTS form where this rule supports it. Keep ADD CONSTRAINT as plain DDL in versioned transactional migrations; do not synthesize catalog-query DO blocks or catch duplicate-object errors solely for replay.",
         category=RuleCategory.CORRECTNESS,
         autofix=AutofixPolicy.NONE,
         limitations=("Dialect-specific DDL forms are checked only where the guard syntax is supported.",),

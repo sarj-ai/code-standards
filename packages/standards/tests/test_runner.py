@@ -37,7 +37,7 @@ def test_directories_expand_by_suffix_and_skip_generated_trees(tmp_path: Path) -
         python=[str(tmp_path / "app.py")],
         sql=[str(tmp_path / "migration.sql")],
         iac=[str(tmp_path / "main.tf")],
-        text=[],
+        text=[str(tmp_path / "main.tf")],
     )
 
 
@@ -47,6 +47,17 @@ def test_terraform_test_files_route_to_iac(name: str, tmp_path: Path) -> None:
     source.write_text("{}\n", encoding="utf-8")
 
     assert runner.group_paths([str(tmp_path)]).iac == [str(source)]
+
+
+def test_json_variable_files_route_to_iac_without_routing_other_json(tmp_path: Path) -> None:
+    variables = tmp_path / "dev.tfvars.json"
+    variables.write_text('{"enabled": true}\n', encoding="utf-8")
+    unrelated = tmp_path / "settings.json"
+    unrelated.write_text('{"enabled": true}\n', encoding="utf-8")
+
+    assert runner.group_paths([str(variables)]).iac == [str(variables)]
+    assert runner.group_paths([str(tmp_path)]).iac == [str(variables)]
+    assert runner.accepts_hook_path(variables, root=tmp_path)
 
 
 def test_shell_files_route_to_shellcheck_and_text(tmp_path: Path) -> None:
@@ -308,7 +319,7 @@ def test_mixed_files_are_grouped_by_tool(
         python=["app.py"],
         sql=["migration.SQL"],
         iac=["main.tf", "values.yaml"],
-        text=["values.yaml", "README.md"],
+        text=["main.tf", "values.yaml", "README.md"],
     )
 
 
@@ -548,9 +559,8 @@ def test_highest_status_is_propagated(
         _registry: Mapping[str, type[object]],
         _files: Sequence[str],
         *,
-        extra_args: Sequence[str] = (),
+        extra_args: Sequence[str] = (),  # ruff: ignore[unused-function-argument] -- The lint runner fixes this keyword.
     ) -> int:
-        _ = extra_args
         return next(statuses)
 
     def clean_text(_files: Sequence[str]) -> int:
@@ -621,9 +631,8 @@ def test_noise_only_selects_comment_and_docstring_rules(monkeypatch: pytest.Monk
         registry: Mapping[str, type[object]],
         _files: Sequence[str],
         *,
-        extra_args: Sequence[str] = (),
+        extra_args: Sequence[str] = (),  # ruff: ignore[unused-function-argument] -- The lint runner fixes this keyword.
     ) -> int:
-        _ = extra_args
         selected.append(set(registry))
         return 0
 

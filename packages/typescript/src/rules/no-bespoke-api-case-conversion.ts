@@ -6,6 +6,7 @@
 
 import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
 
+import { unwrapExpression } from "./_unwrap-expression.js";
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile, isTestFile } from "./_paths.js";
 
@@ -71,22 +72,14 @@ function propertyName(node: TSESTree.PropertyName): string | null {
 }
 
 function memberName(node: TSESTree.Node): string | null {
-  let current = node;
-  while (
-    current.type === AST_NODE_TYPES.TSAsExpression ||
-    current.type === AST_NODE_TYPES.TSNonNullExpression ||
-    current.type === AST_NODE_TYPES.TSTypeAssertion
-  ) {
-    current = current.expression;
-  }
+  const current = unwrapExpression(node);
   if (
     current.type !== AST_NODE_TYPES.MemberExpression ||
-    current.computed ||
-    current.property.type !== AST_NODE_TYPES.Identifier
+    ASTUtils.getPropertyName(current) === null
   ) {
     return null;
   }
-  return current.property.name;
+  return (ASTUtils.getPropertyName(current) ?? "");
 }
 
 function isDirectCaseTranslation(left: string, right: string): boolean {
@@ -130,8 +123,8 @@ export default createRule<Options, MessageIds>({
     const hasApiReceiver = (value: TSESTree.Node): boolean => {
       let current = value;
       while (true) {
+        current = unwrapExpression(current);
         if (current.type === AST_NODE_TYPES.MemberExpression) current = current.object;
-        else if (current.type === AST_NODE_TYPES.TSAsExpression || current.type === AST_NODE_TYPES.TSNonNullExpression || current.type === AST_NODE_TYPES.TSTypeAssertion) current = current.expression;
         else break;
       }
       if (current.type !== AST_NODE_TYPES.Identifier) return false;

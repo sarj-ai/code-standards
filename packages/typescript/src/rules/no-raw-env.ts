@@ -4,9 +4,10 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-raw-env.test.ts
  */
 
-import { ASTUtils, type TSESTree } from "@typescript-eslint/utils";
+import { ASTUtils, AST_NODE_TYPES, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
+import { unwrapExpression } from "./_unwrap-expression.js";
 import { isScriptFile, isTestFile } from "./_paths.js";
 
 type MessageIds = "noRawEnv";
@@ -32,22 +33,27 @@ const ENV_BOUNDARY_FILE_RE =
   /(^|[\\/])(?:env|client-env|server-env|client-settings|server-settings)\.[cm]?[jt]sx?$/;
 
 /** True for the `process.env` member node (dotted or as the base of `process.env[key]`). */
-function isProcessEnv(node: TSESTree.MemberExpression): boolean {
-  return (
-    !node.computed &&
-    node.object.type === "Identifier" &&
-    node.object.name === "process" &&
-    node.property.type === "Identifier" &&
-    node.property.name === "env"
+function isProcessEnv(
+  node: TSESTree.MemberExpression,
+  context: Readonly<TSESLint.RuleContext<MessageIds, Options>>,
+): boolean {
+  const receiver = unwrapExpression(node.object);
+  if (receiver.type !== "Identifier" || ASTUtils.getPropertyName(node) !== "env") return false;
+  const binding = ASTUtils.findVariable(context.sourceCode.getScope(receiver), receiver.name);
+  if (binding === null || binding.defs.length === 0) return receiver.name === "process";
+  return binding.defs.every((definition) =>
+    definition.type === "ImportBinding" &&
+    definition.parent.type === "ImportDeclaration" &&
+    definition.parent.importKind !== "type" &&
+    ["node:process", "process"].includes(definition.parent.source.value) &&
+    ["ImportDefaultSpecifier", "ImportNamespaceSpecifier"].includes(definition.node.type),
   );
 }
 
 /** True for the `import.meta.env` member node (dotted or as the base of `import.meta.env[key]`). */
 function isImportMetaEnv(node: TSESTree.MemberExpression): boolean {
   return (
-    !node.computed &&
-    node.property.type === "Identifier" &&
-    node.property.name === "env" &&
+    ASTUtils.getPropertyName(node) === "env" &&
     node.object.type === "MetaProperty" &&
     node.object.meta.name === "import" &&
     node.object.property.name === "meta"
@@ -74,14 +80,9 @@ const PLATFORM_MARKERS: ReadonlySet<string> = new Set([
 /** Match named bundler constants and host-owned platform markers. */
 function isExemptVariableAccess(node: TSESTree.MemberExpression): boolean {
   const parent = node.parent;
-  return (
-    parent.type === "MemberExpression" &&
-    parent.object === node &&
-    !parent.computed &&
-    parent.property.type === "Identifier" &&
-    (BUILD_TIME_CONSTANTS.has(parent.property.name) ||
-      PLATFORM_MARKERS.has(parent.property.name))
-  );
+  if (parent.type !== "MemberExpression" || parent.object !== node) return false;
+  const name = ASTUtils.getPropertyName(parent);
+  return name !== null && (BUILD_TIME_CONSTANTS.has(name) || PLATFORM_MARKERS.has(name));
 }
 
 /** Match assignment and deletion targets, which do not read configuration. */
@@ -135,15 +136,20 @@ export default createRule<Options, MessageIds>({
       CallExpression(node: TSESTree.CallExpression): void {
         if (!boundaryFile) return;
         const callee = node.callee;
-        if ((callee.type === "Identifier" && callee.name === "createEnv") || (callee.type === "MemberExpression" && !callee.computed && callee.property.type === "Identifier" && (["parse", "safeParse"].includes(callee.property.name) || (callee.property.name === "object" && callee.object.type === "Identifier" && callee.object.name === "z")))) hasValidationCall = true;
+        const calleeReceiver = callee.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(callee.object) : callee;
+        if (callee.type === "Identifier" && callee.name === "createEnv") {
+          hasValidationCall = true;
+        } else if (callee.type === "MemberExpression") {
+          const name = ASTUtils.getPropertyName(callee);
+          if (name === "parse" || name === "safeParse" ||
+            (name === "object" && calleeReceiver.type === "Identifier" && calleeReceiver.name === "z")) {
+            hasValidationCall = true;
+          }
+        }
       },
       MemberExpression(node: TSESTree.MemberExpression): void {
-        if (isProcessEnv(node) && node.object.type === "Identifier") {
-          const binding = ASTUtils.findVariable(context.sourceCode.getScope(node), node.object.name);
-          if (binding !== null && binding.defs.length > 0 && !binding.defs.every((definition) => definition.type === "ImportBinding" && definition.parent.type === "ImportDeclaration" && ["node:process", "process"].includes(definition.parent.source.value) && ["ImportDefaultSpecifier", "ImportNamespaceSpecifier"].includes(definition.node.type))) return;
-        }
         if (
-          (isProcessEnv(node) || isImportMetaEnv(node)) &&
+          (isProcessEnv(node, context) || isImportMetaEnv(node)) &&
           !isExemptVariableAccess(node) &&
           !isWriteTarget(node) &&
           !isWholeEnvSpread(node)

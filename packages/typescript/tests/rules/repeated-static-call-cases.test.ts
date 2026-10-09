@@ -1,3 +1,4 @@
+// vitest: shared-module-graph
 import * as tsParser from "@typescript-eslint/parser";
 import { RuleTester } from "@typescript-eslint/rule-tester";
 import { Linter } from "eslint";
@@ -5,6 +6,8 @@ import { afterAll, describe, expect, it } from "vitest";
 
 import duplicateTestBody from "../../src/rules/duplicate-test-body.js";
 import rule, { REPEATED_STATIC_CALL_CASES_DOCUMENTATION } from "../../src/rules/repeated-static-call-cases.js";
+
+import { verifyRuleExamples } from "../../src/verify-rule-examples.js";
 
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
@@ -69,4 +72,38 @@ test('second', () => { const family = 'numbers'; expect(parse('1')).toBe(1); exp
     },
   ], "src/parser.test.ts");
   expect(messages.map((message) => message.ruleId)).toEqual(["local/duplicate-test-body"]);
+});
+
+
+it("preserves outcomes for static member access and unknown member keys", async () => {
+  const documentation = rule.documentation;
+  if (documentation === undefined) throw new Error("Missing rule documentation");
+  await verifyRuleExamples({ ...rule, documentation: { ...documentation, examples: [
+  {
+    "id": "repeated-static-member",
+    "title": "Static member access preserves the rule outcome",
+    "outcome": "match",
+    "focusPath": "src/parser.test.ts",
+    "expectedCount": 1,
+    "files": [
+      {
+        "path": "src/parser.test.ts",
+        "source": "test('parses', () => { expect(parse('a'))[\"toBe\"](true); expect(parse('b'))[\"toBe\"](false); expect(parse('c'))[\"toBe\"](true); });"
+      }
+    ]
+  },
+  {
+    "id": "repeated-dynamic-member",
+    "title": "Unknown member access does not establish API identity",
+    "outcome": "no-match",
+    "focusPath": "src/parser.test.ts",
+    "expectedCount": 0,
+    "files": [
+      {
+        "path": "src/parser.test.ts",
+        "source": "test('parses', () => { expect(parse('a'))[auditDynamicMember](true); expect(parse('b'))[auditDynamicMember](false); expect(parse('c'))[auditDynamicMember](true); });"
+      }
+    ]
+  }
+] } });
 });

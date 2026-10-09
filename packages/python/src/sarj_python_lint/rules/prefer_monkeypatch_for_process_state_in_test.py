@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ast
 from pathlib import PurePosixPath
+from types import MappingProxyType
 from typing import TYPE_CHECKING, ClassVar, NamedTuple, final, override
 
 from sarj_python_lint.rule_base import (
@@ -53,13 +54,17 @@ class PreferMonkeypatchForProcessStateInTest(Rule):
             "mutation can survive an assertion or setup failure, making later tests depend on execution order."
         ),
         remediation=(
-            "Use pytest's monkeypatch.chdir, monkeypatch.syspath_prepend, monkeypatch.setitem, or "
-            "monkeypatch.delitem so teardown restores the previous state even when the test fails. A deliberate "
-            "manual restoration may remain when it is enclosed by a matching try/finally."
+            "Establish restoration in setup with pytest's monkeypatch.chdir, monkeypatch.syspath_prepend, "
+            "monkeypatch.setitem, or monkeypatch.delitem so the original state is recorded before the mutation. "
+            "Alternatively, explicitly restore the original state with a matching try/finally. Adding monkeypatch "
+            "operations only during teardown can undo intended cleanup: undoing a teardown deletion can reinstall "
+            "a temporary sys.modules entry. Intentional cleanup with established ownership may use a local, "
+            "reasoned SARJ446 suppression."
         ),
         category=RuleCategory.TESTING,
         autofix=AutofixPolicy.NONE,
         limitations=(
+            "Teardown ownership and original-state restoration across yield are not inferred. Valid cleanup or restoration may still warn and require a reasoned local suppression.",
             "Only maintained test paths are analyzed; generated files, production code, and module/class bootstrap mutations are excluded.",
             "The rule covers os.chdir, sys.path.insert(0, ...), and direct sys.modules set, delete, or unused pop operations with an equivalent pytest restoring helper.",
             "Environment variables remain owned by Ruff TID251/B003; argv, locale, timezone, warning filters, and process APIs without an equivalent helper are outside this rule.",
@@ -108,11 +113,10 @@ class PreferMonkeypatchForProcessStateInTest(Rule):
         if tree is None:
             return []
 
-        module_imports = context.module_imports
         mutations = [
             mutation
             for function in _functions(tree, node_index=context.node_index)
-            for mutation in _function_mutations(function, module_imports)
+            for mutation in _function_mutations(function, _enclosing_imports(function, context))
         ]
         diagnostics = [
             Diagnostic(
@@ -122,7 +126,8 @@ class PreferMonkeypatchForProcessStateInTest(Rule):
                 code=self.code,
                 message=(
                     f"Direct {mutation.subject} mutation can leak into later tests when this scope exits early. "
-                    f"Use {mutation.remedy} so pytest restores the previous process state automatically."
+                    f"Establish restoration before the setup mutation using {mutation.remedy}, or explicitly restore "
+                    "the original state. Teardown-only monkeypatch use can undo intended cleanup."
                 ),
                 severity=Severity.WARNING,
             )
@@ -130,6 +135,30 @@ class PreferMonkeypatchForProcessStateInTest(Rule):
         ]
         diagnostics.sort(key=lambda diagnostic: (diagnostic.line, diagnostic.col))
         return diagnostics
+
+
+def _enclosing_imports(function: ast.FunctionDef | ast.AsyncFunctionDef, context: PythonFileContext) -> ImportIndex:
+    scopes: list[ast.FunctionDef | ast.AsyncFunctionDef] = []
+    parent = context.parents.get(function)
+    while parent is not None:
+        if isinstance(parent, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            scopes.append(parent)
+        parent = context.parents.get(parent)
+    imports = context.module_imports
+    for scope in reversed(scopes):
+        local = _local_imports(scope)
+        bindings = {name: target for name, target in imports.bindings.items() if name not in local.shadowed_names}
+        bindings.update(local.bindings)
+        imports = ImportIndex(MappingProxyType(bindings), imports.shadowed_names | local.shadowed_names)
+    return imports
+
+
+def _local_imports(function: ast.FunctionDef | ast.AsyncFunctionDef) -> ImportIndex:
+    imports = ImportIndex.from_tree(ast.Module(body=[function, *function.body], type_ignores=[]))
+    imported_names = {
+        node.asname or node.name.partition(".")[0] for node in _lexical_nodes(function) if isinstance(node, ast.alias)
+    }
+    return ImportIndex(imports.bindings, imports.shadowed_names | (imported_names - imports.bindings.keys()))
 
 
 def _functions(
@@ -144,8 +173,7 @@ def _function_mutations(
     function: ast.FunctionDef | ast.AsyncFunctionDef,
     module_imports: ImportIndex,
 ) -> list[_Mutation]:
-    local_tree = ast.Module(body=function.body, type_ignores=[])
-    local_imports = ImportIndex.from_tree(local_tree)
+    local_imports = _local_imports(function)
     nodes = tuple(_lexical_nodes(function))
     parents = {child: parent for parent in nodes for child in ast.iter_child_nodes(parent)}
     mutations: list[_Mutation] = []
@@ -265,11 +293,12 @@ def _resolves(
     sources: frozenset[str],
     symbol: str,
 ) -> bool:
-    return module_imports.resolves(node, sources=sources, symbol=symbol) or local_imports.resolves(
-        node,
-        sources=sources,
-        symbol=symbol,
-    )
+    root = node
+    while isinstance(root, ast.Attribute):
+        root = root.value
+    if isinstance(root, ast.Name) and (root.id in local_imports.bindings or root.id in local_imports.shadowed_names):
+        return local_imports.resolves(node, sources=sources, symbol=symbol)
+    return module_imports.resolves(node, sources=sources, symbol=symbol)
 
 
 def _import_root_rebound_before(

@@ -19,6 +19,8 @@ const TEST_FILE = "/repo/src/worker.test.ts";
 
 RULE_TESTER.run("no-sleep-in-test-body", rule, {
   valid: [
+    { name: "allows zero-delay yielding in an erased test callback", filename: TEST_FILE, code: "test('flushes', (async () => { await sleep(0); })!);" },
+    { name: "retains nested helper exclusion in an erased test callback", filename: TEST_FILE, code: "test('latency input', (async () => { const delayed = async () => { await sleep(50); }; await consume(delayed); })!);" },
     { filename: TEST_FILE, code: "test('operation', async () => { await new Promise((resolve, reject) => { start(resolve); setTimeout(reject, 50); }); });" },
     { filename: TEST_FILE, code: "test('operation', async () => { await new Promise((resolve) => { start(resolve); setTimeout(resolve, 50); }); });" },
     { filename: TEST_FILE, code: "test('deadline', async () => { await new Promise((resolve, reject) => setTimeout(reject, 50)); });" },

@@ -334,3 +334,33 @@ DROP INDEX "a,b;index";
 CREATE INDEX replacement ON event(owner_id);
 """
     assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    "second",
+    [
+        "CREATE INDEX b ON event(owner_id /* owner */ DESC) INCLUDE (payload /* included */) WHERE status = /* active */ 'open';",
+        "CREATE /* start */ INDEX b ON event(owner_id DESC) INCLUDE (/* data */ payload) WHERE /* filter */ status = 'open';",
+        "CREATE INDEX b ON event(owner_id DESC) INCLUDE (payload) WHERE status = 'open' /* different comment */;",
+    ],
+)
+def test_comments_do_not_change_index_signature(second: str) -> None:
+    source = "CREATE INDEX a ON event(owner_id DESC) INCLUDE (payload) WHERE status = 'open';\n" + second
+    assert len(_check(source)) == 1
+
+
+@pytest.mark.parametrize("value", ["'/* not a comment */'", "'-- not a comment'", "$tag$/* data */$tag$"])
+def test_comment_shaped_literal_values_remain_distinct(value: str) -> None:
+    source = f"CREATE INDEX a ON event(owner_id) WHERE status = {value};\nCREATE INDEX b ON event(owner_id) WHERE status = 'open';"
+    assert _check(source) == []
+
+
+def test_commas_inside_comments_do_not_split_index_keys() -> None:
+    source = "CREATE INDEX a ON event(owner_id);\nCREATE INDEX b ON event(owner_id /* (, ) */);"
+    assert len(_check(source)) == 1
+
+
+@pytest.mark.parametrize(("left", "right"), [('"a . b"', '"a.b"'), ('"Status"', "status"), ('"a.b"', "a.b")])
+def test_distinct_quoted_tables_do_not_share_an_index_signature(left: str, right: str) -> None:
+    source = f"CREATE INDEX first_idx ON {left} (id); CREATE INDEX second_idx ON {right} (id);"
+    assert _check(source) == []

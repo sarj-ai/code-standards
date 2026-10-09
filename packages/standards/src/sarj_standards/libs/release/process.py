@@ -45,6 +45,10 @@ class ProcessRunner(Protocol):
     ) -> ProcessResult: ...
 
 
+class ProcessFileRunner(Protocol):
+    def __call__(self, argv: tuple[str, ...], *, cwd: Path, destination: Path) -> None: ...
+
+
 class ProcessFailureError(RuntimeError):
     argv: tuple[str, ...]
     returncode: int
@@ -62,6 +66,22 @@ def run_process(
     capture_output: bool = False,
 ) -> ProcessResult:
     return run_process_environment(argv, cwd=cwd, capture_output=capture_output, environment=None)
+
+
+def run_process_to_file(argv: tuple[str, ...], *, cwd: Path, destination: Path) -> None:
+    with destination.open("wb") as stream:
+        try:
+            completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- fixed argv; no shell or command interpolation.
+                argv,
+                cwd=cwd,
+                check=False,
+                stdout=stream,
+                timeout=120,
+            )
+        except subprocess.TimeoutExpired as error:
+            raise ProcessFailureError(argv, 124) from error
+    if completed.returncode != 0:
+        raise ProcessFailureError(argv, completed.returncode)
 
 
 def run_process_environment(

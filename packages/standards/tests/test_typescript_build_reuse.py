@@ -42,6 +42,6 @@ def test_full_verification_shares_one_typescript_build_between_catalog_docs_and_
     result = subprocess.run(
         (make, "--dry-run", "verify"), cwd=root, check=True, capture_output=True, text=True, timeout=10
     )
-    assert sum(line.strip() == "cd packages/typescript && npm run build" for line in result.stdout.splitlines()) == 1
+    assert sum(line.strip() == "npm --prefix packages/typescript run build" for line in result.stdout.splitlines()) == 1
     assert "maintain catalog check --typescript-built" in result.stdout
-    assert "npm run dogfood:built" in result.stdout
+    assert "run dogfood:built" in result.stdout

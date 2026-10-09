@@ -15,6 +15,9 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
     from pathlib import Path
 
+    from sarj_python_lint.rules._copy_on_write import CopyOnWriteAnalysis
+    from sarj_python_lint.rules._test_provenance import TestProvenance
+
 
 @final
 class PythonFileContext:
@@ -65,9 +68,21 @@ class PythonFileContext:
     def fastapi(self) -> FastapiIndex:
         return FastapiIndex(self._valid_tree(), path=self.path)
 
+    @cached_property
+    def test_provenance(self) -> TestProvenance:
+        from sarj_python_lint.rules._test_provenance import TestProvenance  # ruff: ignore[import-outside-top-level] — defer test analysis until requested
+
+        return TestProvenance(self)
+
     def _valid_tree(self) -> ast.Module:
         tree = self.tree
         if tree is None:
             msg = "syntax-dependent facts require a successfully parsed source file"
             raise ValueError(msg)
         return tree
+
+    @cached_property
+    def copy_on_write(self) -> CopyOnWriteAnalysis:
+        from sarj_python_lint.rules._copy_on_write import CopyOnWriteAnalysis  # ruff: ignore[import-outside-top-level] — share ownership analysis only when requested
+
+        return CopyOnWriteAnalysis(self)

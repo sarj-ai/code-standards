@@ -28,6 +28,23 @@ def test_required_tools_match_dockerfile_variants_and_skip_ignore_files(tmp_path
     assert devops.install_commands(tmp_path, (ignored,), capabilities=("hadolint",)) == ()
 
 
+def test_disabled_source_controls_do_not_provision_shell_parser(tmp_path: Path) -> None:
+    workflow = tmp_path / ".github/workflows/ci.yml"
+    workflow.parent.mkdir(parents=True)
+    workflow.write_text(
+        "on: push\njobs:\n  check:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo fixture\n",
+        encoding="utf-8",
+    )
+    assert devops.required_tools(tmp_path, (workflow,), capabilities=("yamllint",)) == ()
+    assert devops.install_commands(tmp_path, (workflow,), capabilities=()) == ()
+    assert devops.required_tools(tmp_path, (workflow,), capabilities=("shellcheck",)) == ("shfmt",)
+    assert devops.required_tools(tmp_path, (workflow,), capabilities=("actionlint",)) == (
+        "actionlint",
+        "shellcheck",
+        "shfmt",
+    )
+
+
 def test_consumer_compose_version_changes_attestation_and_setup(tmp_path: Path) -> None:
     def runner(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
         assert argv == ("docker", "compose", "version", "--format", "json")

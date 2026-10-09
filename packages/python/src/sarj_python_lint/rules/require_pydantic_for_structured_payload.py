@@ -34,10 +34,7 @@ class RequirePydanticForStructuredPayload(Rule):
             "A validated outer request does not validate the shape of an open nested mapping; fixed-key reads bypass the "
             "route's declared contract."
         ),
-        remediation=(
-            "Validate the nested value with `PayloadModel.model_validate(...)` or `TypeAdapter(PayloadModel).validate_python(...)`, "
-            "then use typed attributes."
-        ),
+        remediation=("Validate the nested value with `PayloadModel.model_validate(...)`, then use typed attributes."),
         category=RuleCategory.CORRECTNESS,
         autofix=AutofixPolicy.NONE,
         limitations=("Tests, generated sources, dynamic-key access, and non-FastAPI functions are excluded.",),

@@ -9,7 +9,7 @@ from sarj_python_lint.rule_base import (
     Diagnostic,
     ExampleFile,
     ExampleOutcome,
-    Rule,
+    ProjectRule,
     RuleCategory,
     RuleDocumentation,
     RuleExample,
@@ -17,6 +17,9 @@ from sarj_python_lint.rule_base import (
     is_suppressed,
 )
 from sarj_python_lint.rules._ast_index import walk as walk_ast
+from sarj_python_lint.rules._dict_key_views import proven_dict_key_views
+from sarj_python_lint.rules._project_index import ProjectIndexSet
+from sarj_python_lint.rules._set_fields import declared_set_fields
 
 
 if TYPE_CHECKING:
@@ -45,30 +48,32 @@ _TRACKED_BUILTINS = frozenset(
 
 
 @final
-class PreferSetIsdisjoint(Rule):
+class PreferSetIsdisjoint(ProjectRule):
     id = "prefer-set-isdisjoint"
     code = "SARJ431"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        default_level=Severity.WARNING,
+        default_level=Severity.ERROR,
         summary="Prefer `set.isdisjoint` when a built-in set intersection is used only as a boolean predicate.",
         rationale="`isdisjoint` names the overlap predicate directly and avoids allocating an intersection that is immediately discarded.",
         remediation="Use `left.isdisjoint(right)` and negate it when the condition requires overlap.",
         category=RuleCategory.STYLE,
         autofix=AutofixPolicy.SUGGESTION,
         limitations=(
-            "Built-in set identity must be proven from a literal, comprehension, constructor, or one dominating local assignment.",
-            "For binary `&`, the left operand must be a proven built-in set and the right operand must be a literal, comprehension, built-in iterable constructor, standard no-argument collection view, or proven set; annotations, parameters, attributes, subclasses, branch-merged bindings, stored intersections, and generated files are excluded.",
+            "Set receivers must come from a literal, comprehension, constructor, dominating local assignment, or an unchanged parameter's directly declared first-party set/frozenset field.",
+            "Dictionary key-view receivers require a literal/comprehension/constructor or one unreassigned, dominating local binding. Custom mappings and unproven parameters are excluded.",
+            "Declared fields rely on the annotated contract. Unknown or union field types, properties, explicit owner/field reassignment, branch-merged bindings, stored intersections, and generated files are excluded. The other operand must be a known iterable.",
             "The suggestion is intentionally not an autofix because short-circuiting may make custom element equality or hashing side effects observable.",
         ),
         examples=(
             RuleExample(
                 example_id="discarded-intersection",
-                title="Set intersection is used only for an emptiness test",
+                title="A declared set field is used only for an overlap test",
                 outcome=ExampleOutcome.MATCH,
                 files=(
+                    ExampleFile(PurePosixPath("pyproject.toml"), '[project]\nname = "example"\nversion = "0.1.0"\n'),
                     ExampleFile.python(
                         "app/policy.py",
-                        "allowed = {'read', 'write'}\nrequested = set(scopes)\nif not (allowed & requested):\n    deny()\n",
+                        "class AccessCase:\n    tags: frozenset[str]\n\ndef accepts(case: AccessCase):\n    if case.tags & {'read', 'write'}:\n        allow()\n",
                     ),
                 ),
                 focus_path=PurePosixPath("app/policy.py"),
@@ -102,7 +107,13 @@ class PreferSetIsdisjoint(Rule):
         tree = context.tree
         if tree is None:
             return []
-        scanner = _Scanner(path, context.source_lines, _shadowed_builtins(tree, node_index=context.node_index))
+        project = context.session.project or ProjectIndexSet.single(path, source)
+        fields = {
+            node: declared_set_fields(node, project, context)
+            for node in context.nodes(ast.FunctionDef, ast.AsyncFunctionDef)
+        }
+        shadowed = _shadowed_builtins(tree, node_index=context.node_index)
+        scanner = _Scanner(path, context.source_lines, shadowed, fields, proven_dict_key_views(tree, shadowed))
         scanner.scan_body(tree.body, set())
         scanner.diagnostics.sort(key=lambda item: (item.line, item.col))
         return scanner.diagnostics
@@ -110,12 +121,21 @@ class PreferSetIsdisjoint(Rule):
 
 @final
 class _Scanner:
-    def __init__(self, path: Path, source_lines: list[str], shadowed: frozenset[str]) -> None:
+    def __init__(
+        self,
+        path: Path,
+        source_lines: list[str],
+        shadowed: frozenset[str],
+        fields: dict[ast.FunctionDef | ast.AsyncFunctionDef, set[str]],
+        key_views: set[ast.Call],
+    ) -> None:
         self.path = path
         self.source_lines = source_lines
         self.shadowed = shadowed
         self.diagnostics: list[Diagnostic] = []
         self.reported: set[int] = set()
+        self.fields = fields
+        self.key_views = key_views
 
     def scan_body(self, body: list[ast.stmt], exact: set[str]) -> None:
         local = set(exact)
@@ -139,7 +159,9 @@ class _Scanner:
             case ast.Assert(test=test):
                 self._scan_boolean(test, exact)
                 self._scan_embedded(test, exact)
-            case ast.FunctionDef() | ast.AsyncFunctionDef() | ast.ClassDef():
+            case ast.FunctionDef() | ast.AsyncFunctionDef():
+                self.scan_body(statement.body, self.fields.get(statement, set()))
+            case ast.ClassDef():
                 self.scan_body(statement.body, set())
             case ast.For() | ast.AsyncFor():
                 self._scan_embedded(statement.iter, exact)
@@ -211,7 +233,7 @@ class _Scanner:
             candidate = expression.operand
         if isinstance(candidate, ast.Call) and _is_builtin_bool_call(candidate, self.shadowed):
             candidate = candidate.args[0]
-        if _is_intersection(candidate, safe_exact, self.shadowed):
+        if _is_intersection(candidate, safe_exact, self.shadowed, self.key_views):
             self._report(candidate, negated=negated)
 
     def _report(self, node: ast.expr, *, negated: bool) -> None:
@@ -267,9 +289,11 @@ class _Scanner:
                 pass
 
 
-def _is_intersection(node: ast.expr, exact: set[str], shadowed: frozenset[str]) -> bool:
+def _is_intersection(node: ast.expr, exact: set[str], shadowed: frozenset[str], key_views: set[ast.Call]) -> bool:
     if isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitAnd):
-        return _is_exact_set(node.left, exact, shadowed) and _is_proven_iterable(node.right, exact, shadowed)
+        return (_is_exact_set(node.left, exact, shadowed) or node.left in key_views) and _is_proven_iterable(
+            node.right, exact, shadowed
+        )
     return (
         isinstance(node, ast.Call)
         and isinstance(node.func, ast.Attribute)
@@ -292,6 +316,8 @@ def _is_builtin_bool_call(node: ast.expr, shadowed: frozenset[str]) -> bool:
 
 
 def _is_exact_set(node: ast.expr, exact: set[str], shadowed: frozenset[str]) -> bool:
+    if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name):
+        return f"{node.value.id}.{node.attr}" in exact
     if isinstance(node, ast.Set | ast.SetComp):
         return True
     if isinstance(node, ast.Name):
@@ -356,6 +382,14 @@ def _shadowed_builtins(tree: ast.Module, *, node_index: NodeIndex | None = None)
     for node in walk_ast(tree, index=node_index):
         if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store) and node.id in _TRACKED_BUILTINS:
             shadowed.add(node.id)
+        elif isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef) and node.name in _TRACKED_BUILTINS:
+            shadowed.add(node.name)
+        elif isinstance(node, ast.ImportFrom) and any(alias.name == "*" for alias in node.names):
+            shadowed.update(_TRACKED_BUILTINS)
+        elif isinstance(node, ast.ExceptHandler | ast.MatchAs | ast.MatchStar) and node.name in _TRACKED_BUILTINS:
+            shadowed.add(node.name)
+        elif isinstance(node, ast.MatchMapping) and node.rest in _TRACKED_BUILTINS:
+            shadowed.add(node.rest)
         elif isinstance(node, ast.arg) and node.arg in _TRACKED_BUILTINS:
             shadowed.add(node.arg)
         elif isinstance(node, ast.alias) and (node.asname or node.name.split(".")[0]) in _TRACKED_BUILTINS:

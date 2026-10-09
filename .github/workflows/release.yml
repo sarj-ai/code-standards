@@ -61,77 +61,22 @@ jobs:
         uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
         with:
           egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
       - name: Require successful checks for this exact revision
         env:
           GH_TOKEN: ${{ github.token }}
           TARGET_SHA: ${{ github.sha }}
-        run: |
-          set -euo pipefail
-          deadline=$((SECONDS + 2700))
-          for specification in \
-            'repo-ci.yml|release-ready' \
-            'private-refs.yml|private references' \
-            'ci.yml|CI'; do
-            IFS='|' read -r workflow expected_name <<< "$specification"
-            while (( SECONDS < deadline )); do
-              response="$(gh api --method GET \
-                "repos/$GITHUB_REPOSITORY/actions/workflows/$workflow/runs" \
-                -f head_sha="$TARGET_SHA" -f event=push -f per_page=10)"
-              run="$(jq -c --arg sha "$TARGET_SHA" --arg repo "$GITHUB_REPOSITORY" \
-                '[.workflow_runs[] | select(.head_sha == $sha and .event == "push" and .head_repository.full_name == $repo)] | first // empty' \
-                <<< "$response")"
-              if [[ -z "$run" ]]; then
-                echo "waiting for $expected_name push run at $TARGET_SHA"
-                sleep 15
-                continue
-              fi
-              conclusion="$(jq -r '.conclusion // empty' <<< "$run")"
-              if [[ "$conclusion" == success ]]; then
-                echo "$expected_name succeeded for $TARGET_SHA"
-                break
-              fi
-              if [[ -n "$conclusion" ]]; then
-                echo "::error::$expected_name concluded $conclusion for $TARGET_SHA"
-                exit 1
-              fi
-              # GitHub can finish every job successfully while leaving the
-              # outer workflow-run record indefinitely in_progress. Derive the
-              # same terminal result from the exact run's jobs so publishing is
-              # not coupled to that eventual-consistency finalizer.
-              run_id="$(jq -r '.id' <<< "$run")"
-              jobs="$(gh api --method GET \
-                "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/jobs" \
-                -f per_page=100)"
-              failed_jobs="$(jq '[.jobs[] | select(.status == "completed" and .conclusion != "success" and .conclusion != "skipped" and .conclusion != "neutral")] | length' <<< "$jobs")"
-              pending_jobs="$(jq '[.jobs[] | select(.status != "completed")] | length' <<< "$jobs")"
-              successful_jobs="$(jq '[.jobs[] | select(.conclusion == "success")] | length' <<< "$jobs")"
-              if (( failed_jobs > 0 )); then
-                jq -r '.jobs[] | select(.status == "completed" and .conclusion != "success" and .conclusion != "skipped" and .conclusion != "neutral") | "::error::\(.name) concluded \(.conclusion)"' <<< "$jobs"
-                exit 1
-              fi
-              # CI's terminal job depends on the entire graph. A routing-only
-              # jobs response must never count as completed validation.
-              terminal_complete=true
-              if [[ "$workflow" == ci.yml ]]; then
-                terminal_complete="$(jq 'any(.jobs[]; .name == "CI complete" and .status == "completed" and .conclusion == "success")' <<< "$jobs")"
-              fi
-              if [[ "$terminal_complete" == true ]] && (( pending_jobs == 0 && successful_jobs > 0 )); then
-                echo "$expected_name jobs succeeded for $TARGET_SHA; outer run finalization is still pending"
-                break
-              fi
-              echo "waiting for $expected_name to complete at $TARGET_SHA"
-              sleep 15
-            done
-            if (( SECONDS >= deadline )); then
-              echo "::error::timed out waiting for $expected_name at $TARGET_SHA"
-              exit 1
-            fi
-          done
-
+        run: bash .github/scripts/release-require-checks.sh
   # Detects current versions lacking publication or a durable verification tag.
   # Existing `needs` edges publish siblings before the Standards bundle that
   # pins them.
   detect:
+    permissions:
+      contents: read
+      actions: read
     runs-on: ubuntu-latest
     timeout-minutes: 10
     outputs:
@@ -143,6 +88,7 @@ jobs:
       iac: ${{ steps.c.outputs.iac }}
       standards: ${{ steps.c.outputs.standards }}
       tsconfig: ${{ steps.c.outputs.tsconfig }}
+      portability: ${{ steps.impact.outputs.portability }}
     steps:
       - name: Harden the runner
         uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
@@ -155,14 +101,22 @@ jobs:
       - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
           version: '0.12.18'
+          enable-cache: false
       - id: c
         env:
           BEFORE: ${{ github.event.before || github.sha }}
           AFTER: ${{ github.sha }}
-        run: uv run --project packages/standards --frozen code-standards --root . maintain release changes --before "$BEFORE" --after "$AFTER" --github-output "$GITHUB_OUTPUT"
-
+        run: bash .github/scripts/release-python.sh -m sarj_standards.libs.release.release_detect --root . --before "$BEFORE" --after "$AFTER" --github-output "$GITHUB_OUTPUT"
+      - name: Select consumer portability impact
+        id: impact
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.sha }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: bash .github/scripts/release-impact.sh
   build-typescript:
-    needs: [detect, release-safety]
+    needs: detect
     if: needs.detect.outputs.typescript == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -190,6 +144,8 @@ jobs:
         with:
           node-version: '24'
           registry-url: 'https://registry.npmjs.org'
+          cache: 'npm'
+          cache-dependency-path: packages/typescript/package-lock.json
       - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
           version: '0.12.18'
@@ -205,14 +161,10 @@ jobs:
       - name: Pack publishable artifact
         run: uv run --project ../standards --frozen code-standards --root ../.. maintain release typescript pack --output "$RUNNER_TEMP/npm-artifacts"
       - name: Normalize the single verified artifact name
-        run: >-
-          node -e "const fs=require('node:fs'),d=process.env.RUNNER_TEMP+'/npm-artifacts',
-          f=fs.readdirSync(d).filter(x=>x.endsWith('.tgz'));
-          if(f.length!==1)throw new Error('expected exactly one npm artifact');
-          fs.renameSync(d+'/'+f[0],d+'/package.tgz')"
+        run: bash ../../.github/scripts/release-normalize-npm-artifact.sh "$RUNNER_TEMP/npm-artifacts"
       - name: Bind artifact digest to the build job
         id: artifact_identity
-        run: echo "sha256=$(sha256sum "$RUNNER_TEMP/npm-artifacts/package.tgz" | cut -d ' ' -f1)" >> "$GITHUB_OUTPUT"
+        run: bash ../../.github/scripts/release-bind-artifacts.sh npm
       - name: Upload publishable artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -221,7 +173,8 @@ jobs:
           if-no-files-found: error
 
   publish-typescript:
-    needs: build-typescript
+    needs: [build-typescript, release-safety]
+    if: always() && needs.build-typescript.result == 'success' && needs.release-safety.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     environment: npm-typescript-release
@@ -241,6 +194,8 @@ jobs:
         with:
           node-version: '24'
           registry-url: 'https://registry.npmjs.org'
+          cache: 'npm'
+          cache-dependency-path: packages/typescript/package-lock.json
       - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
           version: '0.12.18'
@@ -252,7 +207,7 @@ jobs:
       - name: Verify build-bound artifact digest
         env:
           EXPECTED_SHA256: ${{ needs.build-typescript.outputs.artifact_sha256 }}
-        run: echo "$EXPECTED_SHA256  $RUNNER_TEMP/npm-artifacts/package.tgz" | sha256sum --check --strict
+        run: bash .github/scripts/release-verify-distributions.sh
       - name: Publish and verify registry bytes and source-bound provenance
         env:
           EXPECTED_COMMIT: ${{ github.sha }}
@@ -263,7 +218,7 @@ jobs:
           --commit "$EXPECTED_COMMIT" --environment npm-typescript-release
 
   build-bootstrap:
-    needs: [detect, release-safety]
+    needs: detect
     if: needs.detect.outputs.bootstrap == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -286,7 +241,8 @@ jobs:
       - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
           version: '0.12.18'
-          enable-cache: false
+          enable-cache: true
+          cache-dependency-glob: 'packages/**/uv.lock'
       - run: uv python install 3.14
       - run: uv sync --locked --dev
       - run: uv audit --locked
@@ -297,31 +253,12 @@ jobs:
       - name: Verify wheel license
         run: uv run --project ../standards --frozen code-standards maintain release verify-wheel dist/*.whl
       - name: Smoke test the exact wheel
-        run: |
-          uv venv --python 3.14 "$RUNNER_TEMP/bootstrap-wheel"
-          uv pip install --python "$RUNNER_TEMP/bootstrap-wheel/bin/python" dist/*.whl
-          "$RUNNER_TEMP/bootstrap-wheel/bin/python" -c "import sarj_standards_bootstrap"
-          mkdir -p "$RUNNER_TEMP/fake-bin"
-          printf '%s\n' '#!/bin/sh' \
-            "printf \"%s\\n\" \"\$@\" > \"\$BOOTSTRAP_CAPTURE\"" > "$RUNNER_TEMP/fake-bin/uvx"
-          chmod +x "$RUNNER_TEMP/fake-bin/uvx"
-          BOOTSTRAP_CAPTURE="$RUNNER_TEMP/wheel-argv" PATH="$RUNNER_TEMP/fake-bin:$PATH" \
-            "$RUNNER_TEMP/bootstrap-wheel/bin/code-standards" --root "$GITHUB_WORKSPACE" check
-          grep -Fx -- 'code-standards' "$RUNNER_TEMP/wheel-argv"
-          grep -E '^code-standards==[0-9]+\.[0-9]+\.[0-9]+$' "$RUNNER_TEMP/wheel-argv"
+        run: bash ../../.github/scripts/release-smoke-distribution.sh bootstrap wheel
       - name: Smoke test the source distribution
-        run: |
-          uv venv --python 3.14 "$RUNNER_TEMP/bootstrap-sdist"
-          uv pip install --python "$RUNNER_TEMP/bootstrap-sdist/bin/python" dist/*.tar.gz
-          BOOTSTRAP_CAPTURE="$RUNNER_TEMP/sdist-argv" PATH="$RUNNER_TEMP/fake-bin:$PATH" \
-            "$RUNNER_TEMP/bootstrap-sdist/bin/code-standards" --root "$GITHUB_WORKSPACE" check
-          grep -Fx -- 'code-standards' "$RUNNER_TEMP/sdist-argv"
-          grep -E '^code-standards==[0-9]+\.[0-9]+\.[0-9]+$' "$RUNNER_TEMP/sdist-argv"
+        run: bash ../../.github/scripts/release-smoke-distribution.sh bootstrap sdist
       - name: Bind artifact digest to the build job
         id: artifact_identity
-        run: |
-          (cd dist && sha256sum ./*.whl ./*.tar.gz > SHA256SUMS)
-          echo "sha256=$(sha256sum dist/SHA256SUMS | cut -d ' ' -f1)" >> "$GITHUB_OUTPUT"
+        run: bash ../../.github/scripts/release-bind-artifacts.sh python
       - name: Upload publishable artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -333,7 +270,8 @@ jobs:
           if-no-files-found: error
 
   publish-bootstrap:
-    needs: build-bootstrap
+    needs: [build-bootstrap, release-safety]
+    if: always() && needs.build-bootstrap.result == 'success' && needs.release-safety.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment: pypi-bootstrap-release
@@ -359,13 +297,9 @@ jobs:
       - name: Verify build-bound artifact digest
         env:
           EXPECTED_SHA256: ${{ needs.build-bootstrap.outputs.artifact_sha256 }}
-        run: |
-          echo "$EXPECTED_SHA256  verified-dist/SHA256SUMS" | sha256sum --check --strict
-          (cd verified-dist && sha256sum --check --strict SHA256SUMS)
+        run: bash .github/scripts/release-verify-distributions.sh
       - name: Stage verified distributions for publication
-        run: |
-          mkdir publish-dist
-          cp verified-dist/*.whl verified-dist/*.tar.gz publish-dist/
+        run: bash .github/scripts/release-stage-distributions.sh
       - name: Publish wheel and sdist with PyPI trusted publishing and attestations
         uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
         with:
@@ -378,7 +312,7 @@ jobs:
           --environment pypi-bootstrap-release
 
   build-contracts:
-    needs: [detect, release-safety]
+    needs: detect
     if: needs.detect.outputs.contracts == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -405,7 +339,8 @@ jobs:
       - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
           version: '0.12.18'
-          enable-cache: false
+          enable-cache: true
+          cache-dependency-glob: 'packages/**/uv.lock'
       - run: uv python install 3.14
       - run: uv sync --locked --dev
       - run: uv audit --locked
@@ -414,20 +349,12 @@ jobs:
       - name: Verify wheel license
         run: uv run --project ../standards --frozen code-standards maintain release verify-wheel dist/*.whl
       - name: Smoke test the exact wheel
-        run: |
-          uv venv --python 3.14 "$RUNNER_TEMP/contracts-wheel"
-          uv pip install --python "$RUNNER_TEMP/contracts-wheel/bin/python" dist/*.whl
-          "$RUNNER_TEMP/contracts-wheel/bin/python" -c "import sarj_rule_contracts"
+        run: bash ../../.github/scripts/release-smoke-distribution.sh contracts wheel
       - name: Smoke test the source distribution
-        run: |
-          uv venv --python 3.14 "$RUNNER_TEMP/contracts-sdist"
-          uv pip install --python "$RUNNER_TEMP/contracts-sdist/bin/python" dist/*.tar.gz
-          "$RUNNER_TEMP/contracts-sdist/bin/python" -c "import sarj_rule_contracts"
+        run: bash ../../.github/scripts/release-smoke-distribution.sh contracts sdist
       - name: Bind artifact digest to the build job
         id: artifact_identity
-        run: |
-          (cd dist && sha256sum ./*.whl ./*.tar.gz > SHA256SUMS)
-          echo "sha256=$(sha256sum dist/SHA256SUMS | cut -d ' ' -f1)" >> "$GITHUB_OUTPUT"
+        run: bash ../../.github/scripts/release-bind-artifacts.sh python
       - name: Upload publishable artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -439,7 +366,8 @@ jobs:
           if-no-files-found: error
 
   publish-contracts:
-    needs: build-contracts
+    needs: [build-contracts, release-safety]
+    if: always() && needs.build-contracts.result == 'success' && needs.release-safety.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment: pypi-contracts-release
@@ -465,13 +393,9 @@ jobs:
       - name: Verify build-bound artifact digest
         env:
           EXPECTED_SHA256: ${{ needs.build-contracts.outputs.artifact_sha256 }}
-        run: |
-          echo "$EXPECTED_SHA256  verified-dist/SHA256SUMS" | sha256sum --check --strict
-          (cd verified-dist && sha256sum --check --strict SHA256SUMS)
+        run: bash .github/scripts/release-verify-distributions.sh
       - name: Stage verified distributions for publication
-        run: |
-          mkdir publish-dist
-          cp verified-dist/*.whl verified-dist/*.tar.gz publish-dist/
+        run: bash .github/scripts/release-stage-distributions.sh
       - name: Publish wheel and sdist with PyPI trusted publishing and attestations
         uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
         with:
@@ -484,9 +408,9 @@ jobs:
           --environment pypi-contracts-release
 
   build-python:
-    needs: [detect, release-safety, publish-contracts]
+    needs: [detect, publish-contracts]
     if: >-
-      always() && needs.release-safety.result == 'success' &&
+      always() &&
       (needs.publish-contracts.result == 'success' || needs.publish-contracts.result == 'skipped') &&
       needs.detect.outputs.python == 'true'
     runs-on: ubuntu-latest
@@ -514,7 +438,8 @@ jobs:
       - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
           version: '0.12.18'
-          enable-cache: false
+          enable-cache: true
+          cache-dependency-glob: 'packages/**/uv.lock'
       - run: uv python install 3.14
       - run: uv sync --locked --dev
       - run: uv audit --locked
@@ -523,21 +448,12 @@ jobs:
       - name: Verify wheel license
         run: uv run --project ../standards --frozen code-standards maintain release verify-wheel dist/*.whl
       - name: Smoke test the exact wheel
-        run: |
-          uv venv --python 3.14 "$RUNNER_TEMP/python-wheel"
-          uv pip install --python "$RUNNER_TEMP/python-wheel/bin/python" dist/*.whl
-          "$RUNNER_TEMP/python-wheel/bin/python" -c "import sarj_python_lint"
-          "$RUNNER_TEMP/python-wheel/bin/sarj-python-lint" --help
+        run: bash ../../.github/scripts/release-smoke-distribution.sh python wheel
       - name: Smoke test the source distribution
-        run: |
-          uv venv --python 3.14 "$RUNNER_TEMP/python-sdist"
-          uv pip install --python "$RUNNER_TEMP/python-sdist/bin/python" dist/*.tar.gz
-          "$RUNNER_TEMP/python-sdist/bin/sarj-python-lint" --help
+        run: bash ../../.github/scripts/release-smoke-distribution.sh python sdist
       - name: Bind artifact digest to the build job
         id: artifact_identity
-        run: |
-          (cd dist && sha256sum ./*.whl ./*.tar.gz > SHA256SUMS)
-          echo "sha256=$(sha256sum dist/SHA256SUMS | cut -d ' ' -f1)" >> "$GITHUB_OUTPUT"
+        run: bash ../../.github/scripts/release-bind-artifacts.sh python
       - name: Upload publishable artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -549,7 +465,8 @@ jobs:
           if-no-files-found: error
 
   publish-python:
-    needs: build-python
+    needs: [build-python, release-safety]
+    if: always() && needs.build-python.result == 'success' && needs.release-safety.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment: pypi-python-release
@@ -575,13 +492,9 @@ jobs:
       - name: Verify build-bound artifact digest
         env:
           EXPECTED_SHA256: ${{ needs.build-python.outputs.artifact_sha256 }}
-        run: |
-          echo "$EXPECTED_SHA256  verified-dist/SHA256SUMS" | sha256sum --check --strict
-          (cd verified-dist && sha256sum --check --strict SHA256SUMS)
+        run: bash .github/scripts/release-verify-distributions.sh
       - name: Stage verified distributions for publication
-        run: |
-          mkdir publish-dist
-          cp verified-dist/*.whl verified-dist/*.tar.gz publish-dist/
+        run: bash .github/scripts/release-stage-distributions.sh
       - name: Publish wheel and sdist with PyPI trusted publishing and attestations
         uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
         with:
@@ -594,9 +507,9 @@ jobs:
           --environment pypi-python-release
 
   build-sql:
-    needs: [detect, release-safety, publish-contracts]
+    needs: [detect, publish-contracts]
     if: >-
-      always() && needs.release-safety.result == 'success' &&
+      always() &&
       (needs.publish-contracts.result == 'success' || needs.publish-contracts.result == 'skipped') &&
       needs.detect.outputs.sql == 'true'
     runs-on: ubuntu-latest
@@ -624,7 +537,8 @@ jobs:
       - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
           version: '0.12.18'
-          enable-cache: false
+          enable-cache: true
+          cache-dependency-glob: 'packages/**/uv.lock'
       - run: uv python install 3.14
       - run: uv sync --locked --dev
       - run: uv audit --locked
@@ -633,21 +547,12 @@ jobs:
       - name: Verify wheel license
         run: uv run --project ../standards --frozen code-standards maintain release verify-wheel dist/*.whl
       - name: Smoke test the exact wheel
-        run: |
-          uv venv --python 3.14 "$RUNNER_TEMP/sql-wheel"
-          uv pip install --python "$RUNNER_TEMP/sql-wheel/bin/python" dist/*.whl
-          "$RUNNER_TEMP/sql-wheel/bin/python" -c "import sarj_sql_lint"
-          "$RUNNER_TEMP/sql-wheel/bin/sarj-sql-lint" --help
+        run: bash ../../.github/scripts/release-smoke-distribution.sh sql wheel
       - name: Smoke test the source distribution
-        run: |
-          uv venv --python 3.14 "$RUNNER_TEMP/sql-sdist"
-          uv pip install --python "$RUNNER_TEMP/sql-sdist/bin/python" dist/*.tar.gz
-          "$RUNNER_TEMP/sql-sdist/bin/sarj-sql-lint" --help
+        run: bash ../../.github/scripts/release-smoke-distribution.sh sql sdist
       - name: Bind artifact digest to the build job
         id: artifact_identity
-        run: |
-          (cd dist && sha256sum ./*.whl ./*.tar.gz > SHA256SUMS)
-          echo "sha256=$(sha256sum dist/SHA256SUMS | cut -d ' ' -f1)" >> "$GITHUB_OUTPUT"
+        run: bash ../../.github/scripts/release-bind-artifacts.sh python
       - name: Upload publishable artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -659,7 +564,8 @@ jobs:
           if-no-files-found: error
 
   publish-sql:
-    needs: build-sql
+    needs: [build-sql, release-safety]
+    if: always() && needs.build-sql.result == 'success' && needs.release-safety.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment: pypi-sql-release
@@ -685,13 +591,9 @@ jobs:
       - name: Verify build-bound artifact digest
         env:
           EXPECTED_SHA256: ${{ needs.build-sql.outputs.artifact_sha256 }}
-        run: |
-          echo "$EXPECTED_SHA256  verified-dist/SHA256SUMS" | sha256sum --check --strict
-          (cd verified-dist && sha256sum --check --strict SHA256SUMS)
+        run: bash .github/scripts/release-verify-distributions.sh
       - name: Stage verified distributions for publication
-        run: |
-          mkdir publish-dist
-          cp verified-dist/*.whl verified-dist/*.tar.gz publish-dist/
+        run: bash .github/scripts/release-stage-distributions.sh
       - name: Publish wheel and sdist with PyPI trusted publishing and attestations
         uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
         with:
@@ -704,9 +606,9 @@ jobs:
           --environment pypi-sql-release
 
   build-iac:
-    needs: [detect, release-safety, publish-contracts]
+    needs: [detect, publish-contracts]
     if: >-
-      always() && needs.release-safety.result == 'success' &&
+      always() &&
       (needs.publish-contracts.result == 'success' || needs.publish-contracts.result == 'skipped') &&
       needs.detect.outputs.iac == 'true'
     runs-on: ubuntu-latest
@@ -734,7 +636,8 @@ jobs:
       - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
           version: '0.12.18'
-          enable-cache: false
+          enable-cache: true
+          cache-dependency-glob: 'packages/**/uv.lock'
       - run: uv python install 3.14
       - run: uv sync --locked --dev
       - run: uv audit --locked
@@ -743,21 +646,12 @@ jobs:
       - name: Verify wheel license
         run: uv run --project ../standards --frozen code-standards maintain release verify-wheel dist/*.whl
       - name: Smoke test the exact wheel
-        run: |
-          uv venv --python 3.14 "$RUNNER_TEMP/iac-wheel"
-          uv pip install --python "$RUNNER_TEMP/iac-wheel/bin/python" dist/*.whl
-          "$RUNNER_TEMP/iac-wheel/bin/python" -c "import sarj_iac_lint"
-          "$RUNNER_TEMP/iac-wheel/bin/sarj-iac-lint" --help
+        run: bash ../../.github/scripts/release-smoke-distribution.sh iac wheel
       - name: Smoke test the source distribution
-        run: |
-          uv venv --python 3.14 "$RUNNER_TEMP/iac-sdist"
-          uv pip install --python "$RUNNER_TEMP/iac-sdist/bin/python" dist/*.tar.gz
-          "$RUNNER_TEMP/iac-sdist/bin/sarj-iac-lint" --help
+        run: bash ../../.github/scripts/release-smoke-distribution.sh iac sdist
       - name: Bind artifact digest to the build job
         id: artifact_identity
-        run: |
-          (cd dist && sha256sum ./*.whl ./*.tar.gz > SHA256SUMS)
-          echo "sha256=$(sha256sum dist/SHA256SUMS | cut -d ' ' -f1)" >> "$GITHUB_OUTPUT"
+        run: bash ../../.github/scripts/release-bind-artifacts.sh python
       - name: Upload publishable artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -769,7 +663,8 @@ jobs:
           if-no-files-found: error
 
   publish-iac:
-    needs: build-iac
+    needs: [build-iac, release-safety]
+    if: always() && needs.build-iac.result == 'success' && needs.release-safety.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment: pypi-iac-release
@@ -795,13 +690,9 @@ jobs:
       - name: Verify build-bound artifact digest
         env:
           EXPECTED_SHA256: ${{ needs.build-iac.outputs.artifact_sha256 }}
-        run: |
-          echo "$EXPECTED_SHA256  verified-dist/SHA256SUMS" | sha256sum --check --strict
-          (cd verified-dist && sha256sum --check --strict SHA256SUMS)
+        run: bash .github/scripts/release-verify-distributions.sh
       - name: Stage verified distributions for publication
-        run: |
-          mkdir publish-dist
-          cp verified-dist/*.whl verified-dist/*.tar.gz publish-dist/
+        run: bash .github/scripts/release-stage-distributions.sh
       - name: Publish wheel and sdist with PyPI trusted publishing and attestations
         uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
         with:
@@ -814,8 +705,8 @@ jobs:
           --environment pypi-iac-release
 
   portability-standards:
-    needs: [detect, release-safety]
-    if: needs.detect.outputs.standards == 'true'
+    needs: detect
+    if: needs.detect.outputs.standards == 'true' && needs.detect.outputs.portability != 'false'
     strategy:
       fail-fast: false
       matrix:
@@ -840,63 +731,43 @@ jobs:
         with:
           version: '0.12.18'
           enable-cache: true
+          # CI populates dependency caches; release consumers only restore them.
+          save-cache: false
           cache-dependency-glob: 'packages/**/uv.lock'
       - run: uv python install 3.14
-      - run: uv sync --locked --dev
-      - name: CLI, adoption, paths, and package-manager smoke
-        run: uv run pytest -q tests/test_cli_startup.py tests/test_lifecycle.py tests/test_package_managers.py tests/test_consumer_cli.py
-      - name: Revision-local pre-commit bundle installs and reuses its environment
+      - name: Cache pip dependencies for fresh hook installs
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/portability-pip-cache
+          key: portability-pip-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('packages/**/uv.lock', 'uv.lock') }}
+          restore-keys: portability-pip-${{ runner.os }}-${{ runner.arch }}-
+      - name: Consumer CLI and fresh pre-commit portability in parallel
         shell: bash
-        timeout-minutes: 6
+        timeout-minutes: 10
         env:
           PRE_COMMIT_HOME: ${{ runner.temp }}/sarj-pre-commit
-        run: |
-          set -euo pipefail
-          consumer="$RUNNER_TEMP/sarj-pre-commit-consumer"
-          mkdir -p "$consumer"
-          git -C "$consumer" init -q
-          git -C "$consumer" config user.name "Standards Release"
-          git -C "$consumer" config user.email "standards-release@example.invalid"
-          printf 'VALUE: int = 1\n' > "$consumer/smoke.py"
-          printf 'SELECT 1;\n' > "$consumer/smoke.sql"
-          : > "$consumer/smoke.tf"
-          python -c 'import json,os,pathlib,sys; pathlib.Path(sys.argv[1]).write_text(json.dumps({"repos":[{"repo":pathlib.Path(os.environ["GITHUB_WORKSPACE"]).resolve().as_uri(),"rev":os.environ["GITHUB_SHA"],"hooks":[{"id":"sarj-standards"}]}]}),encoding="utf-8")' "$consumer/.pre-commit-config.yaml"
-          git -C "$consumer" add .
-          git -C "$consumer" commit -qm fixture
-          pc=(uv run --project "$GITHUB_WORKSPACE/packages/standards" --frozen pre-commit)
-          (cd "$consumer" && "${pc[@]}" run sarj-standards --color never --files smoke.py smoke.sql smoke.tf)
-          (cd "$consumer" && "${pc[@]}" run sarj-standards --color never --files smoke.py smoke.sql smoke.tf) 2>&1 | tee "$RUNNER_TEMP/pre-commit-warm.log"
-          if grep -q 'Installing environment' "$RUNNER_TEMP/pre-commit-warm.log"; then
-            echo "warm pre-commit execution rebuilt its environment" >&2
-            exit 1
-          fi
+          PORTABILITY_REPORT_DIR: ${{ runner.temp }}/portability-reports
+          PIP_CACHE_DIR: ${{ runner.temp }}/portability-pip-cache
+        run: bash "$GITHUB_WORKSPACE/.github/scripts/release-portability.sh"
+      - name: Keep portability timings and failure logs
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-portability-${{ matrix.os }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/portability-reports
+          if-no-files-found: warn
+          retention-days: 7
 
+  # Build and test local sibling wheels while exact-SHA safety, portability,
+  # and dependency publication proceed independently. Only publish has credentials.
   build-standards:
-    needs:
-      - detect
-      - release-safety
-      - portability-standards
-      - publish-bootstrap
-      - publish-contracts
-      - publish-typescript
-      - publish-python
-      - publish-sql
-      - publish-iac
-    if: >-
-      always() &&
-      needs.release-safety.result == 'success' &&
-      (needs.publish-bootstrap.result == 'success' || needs.publish-bootstrap.result == 'skipped') &&
-      (needs.publish-contracts.result == 'success' || needs.publish-contracts.result == 'skipped') &&
-      (needs.publish-typescript.result == 'success' || needs.publish-typescript.result == 'skipped') &&
-      (needs.publish-python.result == 'success' || needs.publish-python.result == 'skipped') &&
-      (needs.publish-sql.result == 'success' || needs.publish-sql.result == 'skipped') &&
-      (needs.publish-iac.result == 'success' || needs.publish-iac.result == 'skipped') &&
-      needs.portability-standards.result == 'success' &&
-      needs.detect.outputs.standards == 'true'
+    needs: detect
+    if: needs.detect.outputs.standards == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 40
     permissions:
       contents: read
+      actions: read
     outputs:
       artifact_sha256: ${{ steps.artifact_identity.outputs.sha256 }}
     defaults:
@@ -918,43 +789,42 @@ jobs:
       - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
           version: '0.12.18'
-          enable-cache: false
+          enable-cache: true
+          cache-dependency-glob: 'packages/**/uv.lock'
       - run: uv python install 3.14
-      - name: Require every exact Standards sibling to be public
-        run: uv run --frozen code-standards --root ../.. maintain release verify-publications
+      - name: Reuse artifact tested by the exact main push
+        id: reuse
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          uv run --frozen python -m sarj_standards.libs.release.ci_artifacts
+          --root ../.. --repository "$GITHUB_REPOSITORY" --commit "$GITHUB_SHA"
+          --destination dist --github-output "$GITHUB_OUTPUT"
       - run: uv audit --locked
+        if: steps.reuse.outputs.reused != 'true'
       - name: Build package and exact local dependency wheels
-        run: |
-          uv build
-          uv build --project ../standards-compat --out-dir dist
-          uv build --wheel --project ../contracts --out-dir dist/deps
-          uv build --wheel --project ../python --out-dir dist/deps
-          uv build --wheel --project ../sql --out-dir dist/deps
-          uv build --wheel --project ../iac --out-dir dist/deps
+        if: steps.reuse.outputs.reused != 'true'
+        run: bash ../../.github/scripts/ci-build-release-distributions.sh
       - name: Verify wheel licenses
         run: uv run --frozen code-standards maintain release verify-wheel dist/*.whl dist/deps/*.whl
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+      - if: steps.reuse.outputs.reused != 'true'
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: '24'
           cache: 'npm'
           cache-dependency-path: packages/typescript/package-lock.json
       - name: Install the rule authoring parser
+        if: steps.reuse.outputs.reused != 'true'
         run: npm --prefix ../typescript ci --ignore-scripts --no-audit --no-fund
       - name: Test against the built wheel
-        run: |
-          uv venv --clear --python 3.14 --seed
-          uv pip install ./dist/deps/*.whl ./dist/code_standards-*.whl pytest==9.1.1 jsonschema==4.25.1 ruff
-          uv run --no-project pytest -q tests/
+        if: steps.reuse.outputs.reused != 'true'
+        run: bash ../../.github/scripts/release-test-wheel.sh
       - name: Smoke test the source distribution
-        run: |
-          uv venv --python 3.14 "$RUNNER_TEMP/standards-sdist"
-          uv pip install --python "$RUNNER_TEMP/standards-sdist/bin/python" --find-links dist/deps dist/*.tar.gz
-          "$RUNNER_TEMP/standards-sdist/bin/code-standards" --help
+        if: steps.reuse.outputs.reused != 'true'
+        run: bash ../../.github/scripts/release-smoke-distribution.sh standards sdist
       - name: Bind artifact digest to the build job
         id: artifact_identity
-        run: |
-          (cd dist && sha256sum ./*.whl ./*.tar.gz > SHA256SUMS)
-          echo "sha256=$(sha256sum dist/SHA256SUMS | cut -d ' ' -f1)" >> "$GITHUB_OUTPUT"
+        run: bash ../../.github/scripts/release-bind-artifacts.sh python
       - name: Upload publishable artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -966,8 +836,30 @@ jobs:
           if-no-files-found: error
 
   publish-standards:
-    needs: build-standards
-    if: always() && needs.build-standards.result == 'success'
+    needs:
+      - detect
+      - build-standards
+      - release-safety
+      - portability-standards
+      - publish-bootstrap
+      - publish-contracts
+      - publish-typescript
+      - publish-python
+      - publish-sql
+      - publish-iac
+    if: >-
+      always() &&
+      needs.build-standards.result == 'success' &&
+      needs.release-safety.result == 'success' &&
+      (needs.publish-bootstrap.result == 'success' || needs.publish-bootstrap.result == 'skipped') &&
+      (needs.publish-contracts.result == 'success' || needs.publish-contracts.result == 'skipped') &&
+      (needs.publish-typescript.result == 'success' || needs.publish-typescript.result == 'skipped') &&
+      (needs.publish-python.result == 'success' || needs.publish-python.result == 'skipped') &&
+      (needs.publish-sql.result == 'success' || needs.publish-sql.result == 'skipped') &&
+      (needs.publish-iac.result == 'success' || needs.publish-iac.result == 'skipped') &&
+      (needs.portability-standards.result == 'success' ||
+        (needs.portability-standards.result == 'skipped' && needs.detect.outputs.portability == 'false')) &&
+      needs.detect.outputs.standards == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment: pypi-standards-release
@@ -985,6 +877,8 @@ jobs:
       - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
           version: '0.12.18'
+      - name: Require every exact Standards sibling to be public
+        run: uv run --project packages/standards --frozen code-standards --root . maintain release verify-publications
       - name: Download publishable artifacts
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
@@ -993,13 +887,9 @@ jobs:
       - name: Verify build-bound artifact digest
         env:
           EXPECTED_SHA256: ${{ needs.build-standards.outputs.artifact_sha256 }}
-        run: |
-          echo "$EXPECTED_SHA256  verified-dist/SHA256SUMS" | sha256sum --check --strict
-          (cd verified-dist && sha256sum --check --strict SHA256SUMS)
+        run: bash .github/scripts/release-verify-distributions.sh
       - name: Stage verified distributions for publication
-        run: |
-          mkdir publish-dist
-          cp verified-dist/*.whl verified-dist/*.tar.gz publish-dist/
+        run: bash .github/scripts/release-stage-distributions.sh
       - name: Publish wheel and sdist with PyPI trusted publishing and attestations
         uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
         with:
@@ -1012,7 +902,7 @@ jobs:
           --environment pypi-standards-release
 
   build-tsconfig:
-    needs: [detect, release-safety]
+    needs: detect
     if: needs.detect.outputs.tsconfig == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -1040,31 +930,18 @@ jobs:
         with:
           node-version: '24'
           registry-url: 'https://registry.npmjs.org'
+          cache: 'npm'
+          cache-dependency-path: packages/typescript/package-lock.json
       - run: npm install --global npm@12.1.0 --ignore-scripts
       - name: Validate JSON
-        run: |
-          node -e "JSON.parse(require('fs').readFileSync('base.json','utf8'))"
-          node -e "JSON.parse(require('fs').readFileSync('strict.json','utf8'))"
+        run: node ../../.github/scripts/ci-validate-tsconfig.mjs
       - name: Pack publishable artifact
-        run: |
-          install -d -m 700 "$RUNNER_TEMP/npm-artifacts"
-          npm pack --pack-destination "$RUNNER_TEMP/npm-artifacts" --ignore-scripts
+        run: bash ../../.github/scripts/release-pack-npm.sh
       - name: Normalize the single artifact name
-        run: >-
-          node -e "const fs=require('node:fs'),d=process.env.RUNNER_TEMP+'/npm-artifacts',
-          f=fs.readdirSync(d).filter(x=>x.endsWith('.tgz'));
-          if(f.length!==1)throw new Error('expected exactly one npm artifact');
-          fs.renameSync(d+'/'+f[0],d+'/package.tgz')"
+        run: bash ../../.github/scripts/release-normalize-npm-artifact.sh "$RUNNER_TEMP/npm-artifacts"
       - name: Verify artifact identity and bind digest
         id: artifact_identity
-        run: |
-          manifest="$(tar -xOf "$RUNNER_TEMP/npm-artifacts/package.tgz" package/package.json)"
-          actual_name="$(printf '%s' "$manifest" | node -e "const fs=require('node:fs');process.stdout.write(JSON.parse(fs.readFileSync(0,'utf8')).name)")"
-          actual_version="$(printf '%s' "$manifest" | node -e "const fs=require('node:fs');process.stdout.write(JSON.parse(fs.readFileSync(0,'utf8')).version)")"
-          expected_version="$(node -p "require('./package.json').version")"
-          test "$actual_name" = '@sarj/tsconfig'
-          test "$actual_version" = "$expected_version"
-          echo "sha256=$(sha256sum "$RUNNER_TEMP/npm-artifacts/package.tgz" | cut -d ' ' -f1)" >> "$GITHUB_OUTPUT"
+        run: bash ../../.github/scripts/release-verify-tsconfig.sh
       - name: Upload publishable artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -1073,7 +950,8 @@ jobs:
           if-no-files-found: error
 
   publish-tsconfig:
-    needs: build-tsconfig
+    needs: [build-tsconfig, release-safety]
+    if: always() && needs.build-tsconfig.result == 'success' && needs.release-safety.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     environment: npm-tsconfig-release
@@ -1093,6 +971,8 @@ jobs:
         with:
           node-version: '24'
           registry-url: 'https://registry.npmjs.org'
+          cache: 'npm'
+          cache-dependency-path: packages/typescript/package-lock.json
       - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
           version: '0.12.18'
@@ -1104,7 +984,7 @@ jobs:
       - name: Verify build-bound artifact digest
         env:
           EXPECTED_SHA256: ${{ needs.build-tsconfig.outputs.artifact_sha256 }}
-        run: echo "$EXPECTED_SHA256  $RUNNER_TEMP/npm-artifacts/package.tgz" | sha256sum --check --strict
+        run: bash .github/scripts/release-verify-distributions.sh
       - name: Publish and verify registry bytes and source-bound provenance
         env:
           EXPECTED_COMMIT: ${{ github.sha }}

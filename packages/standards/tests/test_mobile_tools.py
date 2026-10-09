@@ -5,15 +5,19 @@ import io
 from pathlib import Path
 import tarfile
 
-from pydantic import TypeAdapter
+from pydantic import RootModel
 import pytest
 
 from sarj_standards.libs.linting import mobile_tools
 
 
+class _MobileToolVersions(RootModel[dict[str, str]]):
+    pass
+
+
 def test_managed_mobile_tool_pins_match_the_shipped_version_manifest() -> None:
     versions_path = Path(mobile_tools.__file__).parents[2] / "configs" / "mobile-tools.versions.json"
-    versions = TypeAdapter(dict[str, str]).validate_json(versions_path.read_text(encoding="utf-8"))
+    versions = _MobileToolVersions.model_validate_json(versions_path.read_text(encoding="utf-8")).root
 
     assert {
         name: artifact.version

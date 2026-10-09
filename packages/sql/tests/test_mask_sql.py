@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 from sarj_sql_lint.__main__ import main
-from sarj_sql_lint.rule_base import dollar_quoted_lines, mask_sql, split_statements
+from sarj_sql_lint.rule_base import dollar_quoted_lines, mask_sql, normalize_sql_identifier, split_statements
 
 
 if TYPE_CHECKING:
@@ -29,6 +29,29 @@ def test_bare_dollar_body_is_kept_as_sql() -> None:
     assert "UPDATE batch SET x = 1;" in masked
     # the delimiters themselves are blanked, so no stray `$` reaches a rule
     assert "$" not in masked
+
+
+def test_opt_in_masks_scalar_dollar_strings_and_preserves_shape() -> None:
+    source = "SELECT $doc$; CREATE FUNCTION example()\n$doc$;\nSELECT 1;"
+    masked = mask_sql(source, mask_dollar_literals=True)
+    _assert_shape(source, masked)
+    assert "CREATE FUNCTION" not in masked
+    assert "SELECT 1;" in masked
+
+
+def test_opt_in_keeps_executable_do_but_masks_nested_dollar_values() -> None:
+    source = "DO $$ BEGIN RAISE NOTICE $doc$CREATE TRIGGER example$doc$; CREATE TRIGGER audit AFTER INSERT ON batch EXECUTE FUNCTION audit(); END $$;"
+    masked = mask_sql(source, mask_dollar_literals=True)
+    _assert_shape(source, masked)
+    assert "CREATE TRIGGER example" not in masked
+    assert "CREATE TRIGGER audit" in masked
+
+
+def test_opt_in_does_not_change_the_legacy_masking_mode() -> None:
+    source = "SELECT $$CREATE TRIGGER example$$;"
+    assert "CREATE TRIGGER example" in mask_sql(source)
+    assert "CREATE TRIGGER example" not in mask_sql(source, mask_dollar_literals=True)
+    assert "CREATE TRIGGER example" in mask_sql(source)
 
 
 def test_tagged_dollar_body_is_kept_as_sql() -> None:
@@ -278,3 +301,27 @@ def test_dollar_quoted_lines_unterminated_runs_to_end_of_file() -> None:
 
 def test_dollar_quoted_lines_empty_when_there_are_none() -> None:
     assert dollar_quoted_lines("SELECT $1, total$amount FROM t;\n") == frozenset()
+
+
+@pytest.mark.parametrize("ending", ["\n", "\r\n"])
+def test_statement_boundaries_ignore_semicolons_inside_quoted_identifiers(ending: str) -> None:
+    source = ending.join(['SELECT "a;b";', 'SELECT "escaped"";name";'])
+    statements = split_statements(source)
+    assert len(statements) == 2
+    assert statements[0] == [(1, 'SELECT "a;b"')]
+    assert statements[1] == [(2, 'SELECT "escaped"";name"')]
+
+
+@pytest.mark.parametrize(
+    ("source", "expected"),
+    [
+        ('"a . b"', '"a . b"'),
+        ('"A"."b"', '"A".b'),
+        (' PUBLIC . "plan" ', "public.plan"),
+        ("<unnamed>", "<unnamed>"),
+        ("a-b", "a-b"),
+        ("a..b", "a..b"),
+    ],
+)
+def test_identifier_normalization_preserves_quoted_identity_and_unparsed_text(source: str, expected: str) -> None:
+    assert normalize_sql_identifier(source) == expected

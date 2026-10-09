@@ -3,6 +3,7 @@ import textwrap
 from typing import TYPE_CHECKING
 
 import pytest
+from sarj_rule_contracts import EvaluationCase, ExpectedOutcome, Language
 
 from sarj_python_lint.__main__ import analyze
 from sarj_python_lint.rules.prefer_injected_dependency_over_monkeypatch import (
@@ -25,6 +26,69 @@ def _check(source: str, path: str | PurePosixPath = TEST_PATH) -> list[Diagnosti
 
 
 _PUBLIC_EXAMPLES = PreferMonkeypatchForProcessStateInTest.public_examples()
+
+_DESTRUCTIVE_TEARDOWN_CASES = tuple(
+    EvaluationCase(
+        case_id=case_id,
+        language=Language.PYTHON,
+        source=(f"import sys\nimport pytest\n\n@pytest.fixture\ndef registry_entry():\n    yield\n    {statement}\n"),
+        expected=ExpectedOutcome.MATCH,
+        path=PurePosixPath(TEST_PATH),
+    )
+    for case_id, statement in (
+        ("teardown-pop-can-delete-preexisting-entry", 'sys.modules.pop("optional", None)'),
+        ("teardown-delete-can-delete-preexisting-entry", 'del sys.modules["optional"]'),
+        ("teardown-assignment-can-overwrite-preexisting-entry", 'sys.modules["optional"] = fake'),
+        ("teardown-insertion-can-leak-import-path", "sys.path.insert(0, plugin_path)"),
+    )
+)
+
+
+@pytest.mark.parametrize(
+    "case", _DESTRUCTIVE_TEARDOWN_CASES, ids=tuple(case.case_id for case in _DESTRUCTIVE_TEARDOWN_CASES)
+)
+def test_fixture_teardown_does_not_prove_process_state_restoration(case: EvaluationCase) -> None:
+    diagnostics = _check(case.source, case.path)
+    assert len(diagnostics) == 1
+    assert diagnostics[0].code == "SARJ446"
+    assert diagnostics[0].severity.value == "warning"
+    assert diagnostics[0].line == 7
+
+
+def test_diagnostic_establishes_restoration_before_mutation() -> None:
+    diagnostics = _check("import sys\n\ndef helper():\n    del sys.modules['optional']\n")
+    assert len(diagnostics) == 1
+    assert "before the setup mutation" in diagnostics[0].message
+    assert "original state" in diagnostics[0].message
+
+
+def test_teardown_monkeypatch_can_reinstall_a_temporary_entry(request: pytest.FixtureRequest) -> None:
+    temporary = object()
+    registry = {"optional": temporary}
+    patcher = pytest.MonkeyPatch()
+
+    def verify_final_state() -> None:
+        assert registry["optional"] is temporary
+
+    request.addfinalizer(verify_final_state)
+    request.addfinalizer(patcher.undo)
+    patcher.delitem(registry, "optional")
+    assert "optional" not in registry
+
+
+def test_setup_monkeypatch_restores_the_original_entry_after_failure() -> None:
+    original = object()
+    registry = {"optional": original}
+
+    def fail_setup() -> None:
+        with pytest.MonkeyPatch.context() as patcher:
+            patcher.setitem(registry, "optional", object())
+            message = "setup failed"
+            raise RuntimeError(message)
+
+    with pytest.raises(RuntimeError, match="setup failed"):
+        fail_setup()
+    assert registry["optional"] is original
 
 
 @pytest.mark.parametrize("example", _PUBLIC_EXAMPLES, ids=tuple(example.example_id for example in _PUBLIC_EXAMPLES))
@@ -171,15 +235,17 @@ def test_ignores_shadowed_or_rebound_imports(source: str) -> None:
     assert _check(source) == []
 
 
-def test_reports_use_before_later_rebinding() -> None:
-    diagnostics = _check("""
+def test_ignores_statically_local_name_before_later_assignment() -> None:
+    assert (
+        _check("""
         import sys
 
         def helper():
             sys.modules["optional"] = fake
             sys = registry
     """)
-    assert len(diagnostics) == 1
+        == []
+    )
 
 
 def test_nested_helper_is_analyzed_once() -> None:
@@ -272,3 +338,103 @@ def test_non_test_generated_and_malformed_files_are_ignored() -> None:
     assert _check(source, "python/service/runtime.py") == []
     assert _check(f"# Generated file; do not edit\n{source}") == []
     assert _check("def broken(") == []
+
+
+_TEARDOWN_CASES = (
+    EvaluationCase(
+        "fixture-loop-cleanup",
+        Language.PYTHON,
+        "import pytest, sys\n@pytest.fixture(autouse=True)\ndef loaded():\n    yield\n    for key in keys:\n        sys.modules.pop(key, None)\n",
+        ExpectedOutcome.MATCH,
+    ),
+    EvaluationCase(
+        "async-fixture",
+        Language.PYTHON,
+        "import pytest_asyncio as pa, os\n@pa.fixture\nasync def loaded():\n    yield\n    os.chdir(previous)\n",
+        ExpectedOutcome.MATCH,
+    ),
+    EvaluationCase(
+        "setup-still-reports",
+        Language.PYTHON,
+        "import pytest, sys\n@pytest.fixture\ndef loaded():\n    sys.modules.pop('temporary', None)\n    yield\n    sys.modules.pop('temporary', None)\n",
+        ExpectedOutcome.MATCH,
+    ),
+    EvaluationCase(
+        "nested-helper-not-teardown-proof",
+        Language.PYTHON,
+        "import pytest, sys\n@pytest.fixture\ndef loaded():\n    yield\n    def cleanup():\n        sys.modules.pop('temporary', None)\n    cleanup()\n",
+        ExpectedOutcome.MATCH,
+    ),
+)
+
+
+@pytest.mark.parametrize("case", _TEARDOWN_CASES, ids=tuple(case.case_id for case in _TEARDOWN_CASES))
+def test_yield_does_not_establish_cleanup_ownership(case: EvaluationCase) -> None:
+    assert len(_check(case.source)) == (2 if case.case_id == "setup-still-reports" else 1)
+
+
+_IMPORT_PROVENANCE_CASES = (
+    EvaluationCase(
+        "conflicting-local-imports",
+        Language.PYTHON,
+        "import sys\ndef test_registry():\n    import custom_registry as sys\n    import other_registry as sys\n    sys.modules['entry'] = object()\n",
+    ),
+    EvaluationCase(
+        "conditional-local-import",
+        Language.PYTHON,
+        "import sys\ndef test_registry():\n    if enabled:\n        import custom_registry as sys\n    sys.modules['entry'] = object()\n",
+    ),
+    EvaluationCase(
+        "nested-fixture-shadow",
+        Language.PYTHON,
+        "import sys\ndef test_registry(sys):\n    def mutate():\n        sys.modules['entry'] = object()\n    mutate()\n",
+    ),
+    EvaluationCase(
+        "nested-import-shadow",
+        Language.PYTHON,
+        "import sys\ndef test_registry():\n    import custom_registry as sys\n    def mutate():\n        sys.modules['entry'] = object()\n    mutate()\n",
+    ),
+    EvaluationCase(
+        "nested-standard-import",
+        Language.PYTHON,
+        "def test_registry():\n    import sys\n    def mutate():\n        sys.modules['entry'] = object()\n    mutate()\n",
+        ExpectedOutcome.MATCH,
+    ),
+    EvaluationCase(
+        "local-replacement-import",
+        Language.PYTHON,
+        "import sys\ndef test_registry():\n    import custom_registry as sys\n    sys.modules['entry'] = object()\n",
+    ),
+    EvaluationCase(
+        "local-pattern-capture",
+        Language.PYTHON,
+        "import sys\ndef test_registry(source):\n    match source:\n        case sys:\n            sys.modules['entry'] = object()\n",
+    ),
+    EvaluationCase(
+        "local-exception-capture",
+        Language.PYTHON,
+        "import sys\ndef test_registry():\n    try:\n        action()\n    except Exception as sys:\n        sys.modules['entry'] = object()\n",
+    ),
+    EvaluationCase(
+        "module-pattern-capture",
+        Language.PYTHON,
+        "import sys\nmatch source:\n    case sys:\n        pass\ndef test_registry():\n    sys.modules['entry'] = object()\n",
+    ),
+    EvaluationCase(
+        "local-standard-import",
+        Language.PYTHON,
+        "import sys\ndef test_registry():\n    import sys\n    sys.modules['entry'] = object()\n",
+        ExpectedOutcome.MATCH,
+    ),
+    EvaluationCase(
+        "unrelated-capture",
+        Language.PYTHON,
+        "import sys\ndef test_registry(source):\n    match source:\n        case other:\n            sys.modules['entry'] = object()\n",
+        ExpectedOutcome.MATCH,
+    ),
+)
+
+
+@pytest.mark.parametrize("case", _IMPORT_PROVENANCE_CASES, ids=tuple(case.case_id for case in _IMPORT_PROVENANCE_CASES))
+def test_process_mutation_requires_standard_import_provenance(case: EvaluationCase) -> None:
+    assert bool(_check(case.source)) is (case.expected is ExpectedOutcome.MATCH)

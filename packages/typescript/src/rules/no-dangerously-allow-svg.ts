@@ -20,7 +20,7 @@ export const NO_DANGEROUSLY_ALLOW_SVG_DOCUMENTATION = {
     "Keep dangerouslyAllowSVG disabled. If SVG optimization is required, retain attachment disposition and set the image Content-Security-Policy to `script-src 'none'; sandbox;`.",
   category: "security",
   limitations: [
-    "Only literal effective properties of a directly exported object, unescaped const alias, or isolated module.exports object are analyzed. Wrappers, factories, spreads, computed keys, dynamic policies and mutations are not inferred.",
+    "Only literal effective properties of a directly exported object, unescaped const alias, or isolated module.exports object are analyzed. Wrappers, factories, spreads, dynamic computed keys, dynamic policies and mutations are not inferred.",
   ],
   examples: [
     {

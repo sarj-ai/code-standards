@@ -2,7 +2,7 @@
 import ReferencePage from '../../../components/ReferencePage.astro';
 import RuleTable from '../../../components/RuleTable.astro';
 import { ENGINES, catalog, engineLabel, rulesForEngine, type Engine } from '../../../lib/catalog';
-import { referenceSidebar } from '../../../lib/navigation';
+import { referenceSidebar } from '../../../lib/reference-sidebar';
 
 export function getStaticPaths() {
   return ENGINES.filter((engine) => catalog.rules.some((rule) => rule.engine === engine)).map((engine) => ({

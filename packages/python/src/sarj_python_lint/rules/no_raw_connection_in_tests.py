@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ast
 from pathlib import PurePosixPath
+import re
 from typing import TYPE_CHECKING, ClassVar, final, override
 
 from sarj_python_lint.rule_base import (
@@ -14,9 +15,12 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
+    is_suppressed,
 )
 from sarj_python_lint.rules._ast_index import walk as walk_ast
 from sarj_python_lint.rules._paths import is_test_path, is_test_support_path
+from sarj_python_lint.rules._sql import sql_string_value, strip_sql_noise
+from sarj_python_lint.rules.no_psycopg_execution_outside_injected_owner import psycopg_execution_calls
 
 
 if TYPE_CHECKING:
@@ -26,6 +30,17 @@ if TYPE_CHECKING:
 
 
 _POOL_TYPES = frozenset({"AsyncConnectionPool", "ConnectionPool"})
+_SQL_METHODS = frozenset(
+    {"execute", "executemany", "executescript", "exec_driver_sql", "fetch", "fetchrow", "fetchval", "query", "command"}
+)
+_QUERY_KEYWORDS = frozenset({"query", "sql", "statement", "command", "operation"})
+_SQL_START = re.compile(
+    r"\A\s*(?:SELECT\b|WITH\s+\S+[\s\S]*?\bAS\s*\(|INSERT\s+INTO\b|"
+    r"UPDATE\s+\S+[\s\S]*?\bSET\b|DELETE\s+FROM\b|TRUNCATE\b|"
+    r"(?:CREATE|ALTER|DROP)\s+(?:TABLE|INDEX|SCHEMA|VIEW|FUNCTION|TRIGGER)\b|"
+    r"LOCK\s+TABLE\b|SET\s+(?:LOCAL|TRANSACTION)\b)",
+    re.IGNORECASE,
+)
 
 
 @final
@@ -33,35 +48,36 @@ class NoRawConnectionInTests(Rule):
     id = "no-raw-connection-in-tests"
     code = "SARJ429"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        default_level=Severity.WARNING,
-        summary="Do not acquire raw database connections in tests.",
+        default_level=Severity.ERROR,
+        summary="Do not execute raw SQL or acquire raw database connections in tests.",
         rationale=(
             "Tests that reach through a pool couple assertions and setup to persistence internals, bypass the "
             "application boundary, and duplicate transaction ownership."
         ),
         remediation=(
-            "Exercise the owning store/service API or expose a narrow test-support fixture. Use an exact SARJ429 "
-            "suppression for a test whose purpose is explicitly connection or transaction behavior."
+            "Exercise the owning store/service API. Do not move SQL into a test-only probe to hide it. Use an exact "
+            "SARJ429 suppression for deliberate database bootstrap, migration or transaction fault testing."
         ),
         category=RuleCategory.TESTING,
         autofix=AutofixPolicy.NONE,
+        aliases=("no-raw-sql-in-tests",),
         limitations=(
-            "Only collected test modules outside conftest.py, conventional shared test-support modules, and migration-test trees are inspected.",
-            "A receiver is reported only when a parameter, annotated local, or constructor call proves it is a psycopg ConnectionPool or AsyncConnectionPool.",
-            "Pytest fixtures may use a connection internally for setup and cleanup, but fixtures that return or yield the connection remain reportable.",
+            "Raw SQL execution is checked in tests, conftest.py, shared test-support helpers and migration tests; generated code is excluded. Standalone SQL examples and store/service calls are not execution.",
+            "Import-proven Psycopg connection/pool flows, including constructor-injected members, aliases and dynamic query arguments, are followed. SQL-shaped literals in execute/query/fetch-like calls are also checked across drivers, including concatenation, f-strings and import-proven SQL/text constructors.",
+            "Opaque non-Psycopg builders and interprocedural receiver flows are not inferred. Raw connection acquisition keeps its existing fixture/support exclusions when no SQL execution is found in that scope.",
         ),
         examples=(
             RuleExample(
-                example_id="test-acquires-pool-connection",
-                title="A test helper reaches directly through its pool",
+                example_id="test-probe-executes-sql",
+                title="An injected test probe still bypasses the owning store",
                 outcome=ExampleOutcome.MATCH,
                 files=(
                     ExampleFile.python(
-                        "tests/test_orders.py",
-                        "async def load_rows(pool: AsyncConnectionPool):\n    async with pool.connection() as conn:\n        return await conn.execute('SELECT 1')\n",
+                        "tests/fixtures/probe.py",
+                        "from psycopg_pool import AsyncConnectionPool\n\nclass Probe:\n    def __init__(self, pool: AsyncConnectionPool):\n        self._pool = pool\n\n    async def seed(self):\n        async with self._pool.connection() as conn:\n            await conn.execute('INSERT INTO jobs (id) VALUES (%s)', (job_id,))\n",
                     ),
                 ),
-                focus_path=PurePosixPath("tests/test_orders.py"),
+                focus_path=PurePosixPath("tests/fixtures/probe.py"),
                 expected_count=1,
                 public=True,
             ),
@@ -86,6 +102,20 @@ class NoRawConnectionInTests(Rule):
     @override
     def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
         path = context.path
+        if context.generated or context.tree is None:
+            return []
+        sql_calls = _test_sql_calls(context)
+        diagnostics = [
+            Diagnostic(
+                path=path,
+                line=node.lineno,
+                col=node.col_offset + 1,
+                code=self.code,
+                message="test code executes raw SQL; use the owning store/service API or an exact SARJ429 exception for deliberate database-level testing",
+            )
+            for node in sql_calls
+            if not is_suppressed(context.source_lines, node.lineno, self.code)
+        ]
         excluded_path = any(
             (
                 not is_test_path(path),
@@ -95,17 +125,19 @@ class NoRawConnectionInTests(Rule):
                 _is_migration_test(path),
             )
         )
-        if excluded_path or context.generated:
-            return []
+        if excluded_path:
+            return sorted(diagnostics, key=lambda item: (item.line, item.col))
         tree = context.tree
         if tree is None:
             return []
-        diagnostics: list[Diagnostic] = []
+        sql_scopes = {_containing_scope(context, node) for node in sql_calls}
         scopes: list[ast.Module | ast.FunctionDef | ast.AsyncFunctionDef] = [
             tree,
             *(node for node in context.nodes(ast.AST) if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))),
         ]
         for scope in scopes:
+            if scope in sql_scopes:
+                continue
             pool_names = _proven_pool_names(scope)
             diagnostics.extend(
                 Diagnostic(
@@ -127,6 +159,63 @@ class NoRawConnectionInTests(Rule):
                 and not _is_internal_fixture_connection(scope, node)
             )
         return sorted(diagnostics, key=lambda item: (item.line, item.col))
+
+
+def _test_sql_calls(context: PythonFileContext) -> list[ast.Call]:
+    path = context.path
+    if not (is_test_path(path) or is_test_support_path(path) or "test_support" in path.parts):
+        return []
+    candidates = [
+        node
+        for node in context.nodes(ast.Call)
+        if isinstance(node.func, ast.Attribute) and node.func.attr in _SQL_METHODS
+    ]
+    if not candidates:
+        return []
+    calls: list[ast.Call] = []
+    for node in candidates:
+        value = _execution_sql(node, context)
+        if value is not None and _SQL_START.search(strip_sql_noise(value)):
+            calls.append(node)
+    if any(
+        isinstance(node.func, ast.Attribute) and node.func.attr in {"execute", "executemany"} and node not in calls
+        for node in candidates
+    ):
+        calls.extend(psycopg_execution_calls(context, include_injected=True, include_probes=True))
+    unique = {(call.lineno, call.col_offset): call for call in calls}
+    return sorted(unique.values(), key=lambda item: (item.lineno, item.col_offset))
+
+
+def _execution_sql(call: ast.Call, context: PythonFileContext) -> str | None:
+    if call.args:
+        return _literal_sql(call.args[0], context)
+    for keyword in call.keywords:
+        if keyword.arg in _QUERY_KEYWORDS:
+            return _literal_sql(keyword.value, context)
+    return None
+
+
+def _literal_sql(node: ast.expr | None, context: PythonFileContext) -> str | None:
+    if node is None:
+        return None
+    if isinstance(node, ast.Call):
+        if isinstance(node.func, ast.Attribute) and node.func.attr == "format":
+            return _literal_sql(node.func.value, context)
+        if node.args and (
+            context.imports.resolves(node.func, sources=frozenset({"psycopg.sql"}), symbol="SQL")
+            or context.imports.resolves(node.func, sources=frozenset({"sqlalchemy"}), symbol="text")
+        ):
+            return sql_string_value(node.args[0])
+    return sql_string_value(node)
+
+
+def _containing_scope(context: PythonFileContext, node: ast.AST) -> ast.AST:
+    current = node
+    while (parent := context.parents.get(current)) is not None:
+        if isinstance(parent, (ast.Module, ast.FunctionDef, ast.AsyncFunctionDef)):
+            return parent
+        current = parent
+    return current
 
 
 def _is_non_collected_test_support(path: Path) -> bool:

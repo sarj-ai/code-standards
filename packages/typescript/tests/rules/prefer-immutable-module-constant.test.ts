@@ -1,3 +1,4 @@
+// vitest: shared-module-graph
 import * as tsParser from "@typescript-eslint/parser";
 import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, it } from "vitest";
@@ -40,6 +41,23 @@ RULE_TESTER.run("prefer-immutable-module-constant", rule, {
     "const VALUES = ([1, 2] as const)!;",
     "type Routes = readonly string[]; export const routes: Routes = [];",
     "type Routes = ReadonlyArray<string>; export const routes: Routes = [];",
+    "type Readonly = readonly string[]; export const VALUES: Readonly = ['a'];",
+    "type Readonly = { readonly a: string }; export const LABELS: Readonly = { a: 'A' };",
+    "type Readonly = {}; export const LABELS: Readonly = { a: 'A' };",
+    "type Labels = { readonly [key: string]: string }; export const LABELS: Labels = { a: 'A' };",
+    "type Readonly<T> = readonly T[]; export const VALUES: Readonly<string> = ['a'];",
+    "type Surface<T> = Readonly<T>; export const LABELS: Surface<{ a: string }> = { a: 'A' };",
+    "type Readonly<T> = T; export const LABELS: Readonly<{ readonly a: string }> = { a: 'A' };",
+    "type Identity<T> = T; export const VALUES: Identity<Identity<readonly string[]>> = ['a'];",
+    "type Surface<T = readonly string[]> = T; export const VALUES: Surface = ['a'];",
+    "const Readonly = 1; export const LABELS: Readonly<{ a: string }> = { a: 'A' };",
+    "function unrelated<Readonly>() {} export const LABELS: Readonly<{ a: string }> = { a: 'A' };",
+    "import type { Readonly } from './types'; export const LABELS: Readonly = { a: 'A' };",
+    "import type { Readonly } from './types'; export const LABELS = { a: 'A' } as Readonly;",
+    "import type { Surface } from './types'; type Readonly = Surface; export const LABELS: Readonly = { a: 'A' };",
+    "import type * as Types from './types'; type Readonly = Types.Surface; export const LABELS: Readonly = { a: 'A' };",
+    "type Readonly = Other; type Other = Readonly; export const LABELS: Readonly = { a: 'A' };",
+    "interface Readonly { readonly a: string } export const LABELS: Readonly = { a: 'A' };",
     { code: "export const routes = ['home'];", filename: "src/routes.js" },
     { code: "export const routes = ['home'];", filename: "src/routes.mjs" },
     "function build() { const VALUES = [1, 2, 3]; return VALUES; }",
@@ -62,6 +80,38 @@ RULE_TESTER.run("prefer-immutable-module-constant", rule, {
     "const Object = { freeze: <T>(value: T): T => value }; const VALUES = Object.freeze([1, 2, 3]);",
   ],
   invalid: [
+    {
+      code: "type Readonly<T> = readonly T[]; type Surface<Readonly> = Readonly; export const LABELS: Surface<{ a: string }> = { a: 'A' };",
+      errors: [{ messageId: "preferAsConst", data: { name: "LABELS" } }],
+    },
+    {
+      code: "type Readonly = { a: string }; export const LABELS: Readonly = { a: 'A' };",
+      errors: [{ messageId: "preferAsConst", data: { name: "LABELS" } }],
+    },
+    {
+      code: "type Readonly<T> = T; export const LABELS: Readonly<{ a: string }> = { a: 'A' };",
+      errors: [{ messageId: "preferAsConst", data: { name: "LABELS" } }],
+    },
+    {
+      code: "type Readonly = { a: string }; type Surface = Readonly; export const LABELS: Surface = { a: 'A' };",
+      errors: [{ messageId: "preferAsConst", data: { name: "LABELS" } }],
+    },
+    {
+      code: "export const LABELS = { a: 'A' } as Readonly; type Readonly = { a: string };",
+      errors: [{ messageId: "preferAsConst", data: { name: "LABELS" } }],
+    },
+    {
+      code: "type ReadonlyArray<T> = T[]; export const VALUES: ReadonlyArray<string> = ['a'];",
+      errors: [{ messageId: "preferAsConst", data: { name: "VALUES" } }],
+    },
+    {
+      code: "type ReadonlySet<T> = Set<T>; export const KINDS: ReadonlySet<string> = new Set(['a']);",
+      errors: [{ messageId: "preferReadonlyCollection", data: { name: "KINDS", kind: "Set" } }],
+    },
+    {
+      code: "type ReadonlyMap<K, V> = Map<K, V>; export const LOOKUP: ReadonlyMap<string, number> = new Map([['a', 1]]);",
+      errors: [{ messageId: "preferReadonlyCollection", data: { name: "LOOKUP", kind: "Map" } }],
+    },
     {
       code: PREFER_IMMUTABLE_MODULE_CONSTANT_DOCUMENTATION.examples[1].files[0].source,
       errors: [{ messageId: "preferAsConst", data: { name: "VALUES" } }],

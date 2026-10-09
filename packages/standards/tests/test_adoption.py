@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+from dataclasses import replace
 import json
 import os
 from pathlib import Path
 import re
+import shutil
 import subprocess
 import sys
 import tomllib
@@ -72,8 +74,11 @@ def test_doctor_leaves_maintainer_repository_policy_to_maintain_check(
     def clean(_args: object) -> int:
         return 0
 
-    def sync_cleanly(_args: object, *, next_steps: bool) -> int:
-        _ = next_steps
+    def sync_cleanly(
+        _args: object,
+        *,
+        next_steps: bool,  # ruff: ignore[unused-function-argument] -- The sync dispatcher fixes this keyword.
+    ) -> int:
         return 0
 
     def no_custom_rules(_root: Path, *, paths: Iterable[str]) -> int:
@@ -196,11 +201,13 @@ def test_eslint_config_degrades_cleanly_without_a_type_project(config_name: str)
     assert '"**/eslint.config.mjs"' in text
 
 
-def test_peer_pins_are_exact_versions() -> None:
+def test_peer_pins_are_exact_versions_or_official_compiler_aliases() -> None:
     peers = manifest.eslint_peers()
     assert len(peers) >= 9, "every package eslint.strict.mjs imports must be pinned"
     for name, pin in peers.items():
-        assert re.fullmatch(r"\d+\.\d+\.\d+", pin), f"{name} must be pinned exactly, got {pin}"
+        assert re.fullmatch(r"(?:npm:(?:@typescript/typescript6|typescript)@)?\d+\.\d+\.\d+", pin), (
+            f"{name} must be pinned exactly, got {pin}"
+        )
 
 
 def test_react_doctor_config_is_offline_blocking_and_non_overlapping() -> None:
@@ -330,6 +337,97 @@ def test_manifest_rejects_unsafe_ci_bootstrap_shape(tmp_path: Path, command: str
         manifest.load(tmp_path)
 
 
+def test_manifest_round_trips_ci_runner_beside_bootstrap(tmp_path: Path) -> None:
+    written = manifest.Manifest(
+        version="1.2.3",
+        configs=("ruff",),
+        python_dest=".",
+        typescript_dest=".",
+        ci_bootstrap=("yarn generate",),
+        ci_runner="blacksmith-2vcpu-ubuntu-2404",
+    )
+    (tmp_path / manifest.MANIFEST_NAME).write_text(written.render())
+    assert manifest.load(tmp_path) == written
+
+
+@pytest.mark.parametrize("label", ["", "two labels", "-leading", "runner\nnext", "a" * 101])
+def test_manifest_rejects_malformed_ci_runner(tmp_path: Path, label: str) -> None:
+    (tmp_path / manifest.MANIFEST_NAME).write_text(
+        f'schema = 4\nbundle = "1.2.3"\n[ci]\nrunner = {json.dumps(label)}\n',
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="one GitHub Actions runner label"):
+        manifest.load(tmp_path)
+
+
+def test_manifest_rejects_non_string_ci_runner(tmp_path: Path) -> None:
+    (tmp_path / manifest.MANIFEST_NAME).write_text(
+        'schema = 4\nbundle = "1.2.3"\n[ci]\nrunner = ["blacksmith-2vcpu-ubuntu-2404"]\n',
+        encoding="utf-8",
+    )
+
+    with pytest.raises(TypeError, match=r"\[ci\]\.runner must be a string"):
+        manifest.load(tmp_path)
+
+
+def test_setup_renders_managed_workflows_on_the_configured_runner(tmp_path: Path) -> None:
+    _python_repo(tmp_path)
+    assert _cli("--root", str(tmp_path), "setup", "--no-install").returncode == 0
+    manifest_file = tmp_path / manifest.MANIFEST_NAME
+    manifest_file.write_text(
+        manifest_file.read_text(encoding="utf-8") + '\n[ci]\nrunner = "blacksmith-2vcpu-ubuntu-2404"\n',
+        encoding="utf-8",
+    )
+
+    rerun = _cli("--root", str(tmp_path), "setup", "--no-install")
+
+    assert rerun.returncode == 0, rerun.stdout + rerun.stderr
+    workflows = tmp_path / ".github" / "workflows"
+    for name in ("standards.yml", "commit-policy.yml"):
+        assert "    runs-on: blacksmith-2vcpu-ubuntu-2404\n" in (workflows / name).read_text(encoding="utf-8")
+    assert 'runner = "blacksmith-2vcpu-ubuntu-2404"' in manifest_file.read_text(encoding="utf-8")
+
+
+def test_doctor_reports_commit_policy_drift_after_a_runner_change(tmp_path: Path) -> None:
+    subprocess.run(("git", "init", "-q"), cwd=tmp_path, check=True, env={})
+    _python_repo(tmp_path)
+    assert _cli("--root", str(tmp_path), "setup", "--no-install").returncode == 0
+    stale = "the canonical exact-base commit-policy workflow is missing or stale"
+    assert stale not in _cli("--root", str(tmp_path), "doctor", "--no-install").stdout
+    manifest_file = tmp_path / manifest.MANIFEST_NAME
+    manifest_file.write_text(
+        manifest_file.read_text(encoding="utf-8") + '\n[ci]\nrunner = "blacksmith-2vcpu-ubuntu-2404"\n',
+        encoding="utf-8",
+    )
+
+    assert stale in _cli("--root", str(tmp_path), "doctor", "--no-install").stdout
+
+
+def test_generated_workflows_default_to_github_hosted_linux(tmp_path: Path) -> None:
+    _python_repo(tmp_path)
+
+    for workflow in (scaffold.github_ci_workflow(tmp_path), scaffold.commit_policy_github_workflow()):
+        assert "    runs-on: ubuntu-latest\n" in workflow
+        assert _first_step(workflow) == "      - name: Harden the runner"
+
+
+def test_generated_workflows_on_blacksmith_start_at_checkout(tmp_path: Path) -> None:
+    _python_repo(tmp_path)
+    runner = "blacksmith-2vcpu-ubuntu-2404"
+    (tmp_path / manifest.MANIFEST_NAME).write_text(
+        f'schema = 4\nbundle = "1.2.3"\n[ci]\nrunner = "{runner}"\n', encoding="utf-8"
+    )
+
+    for workflow in (scaffold.github_ci_workflow(tmp_path), scaffold.commit_policy_github_workflow(runner)):
+        assert "harden-runner" not in workflow
+        assert _first_step(workflow).startswith("      - uses: actions/checkout@")
+
+
+def _first_step(workflow: str) -> str:
+    return workflow.partition("    steps:\n")[2].splitlines()[0]
+
+
 def test_manifest_rejects_custom_verification_path_escape(tmp_path: Path) -> None:
     (tmp_path / manifest.MANIFEST_NAME).write_text('schema = 4\nbundle = "1.2.3"\n[verify]\npaths = ["../outside"]\n')
 
@@ -389,11 +487,141 @@ def test_manifest_renders_as_valid_toml() -> None:
         "shellcheck",
         "taplo",
         "yamllint",
+        "zizmor",
+        "checkov",
     ]
 
 
 def test_missing_manifest_is_not_an_error(tmp_path: Path) -> None:
     assert manifest.load(tmp_path) is None
+
+
+def test_manifest_renders_formatter_stable_owned_fields(tmp_path: Path) -> None:
+    adopted = manifest.Manifest(
+        version=manifest.adopted_version(),
+        configs=manifest.ALL_CONFIGS,
+        python_dest=".",
+        typescript_dest=".",
+        excluded_paths=("generated/**",),
+        exclusion_overrides=(manifest.ExclusionOverride(("tests/**",), ("python:SARJ012",), "legacy fixture"),),
+        durable_artifacts=("docs/" + "x" * 70, "docs/short"),
+    )
+    rendered = adopted.render()
+    expected = (
+        "# Managed by `code-standards setup`; commit this file.\n"
+        f'bundle = "{manifest.adopted_version()}"\nrule_profile = "all"\nschema = 4\n\n'
+        "[capabilities]\ndisable = []\n\n"
+        '[artifacts]\ndurable = [\n  "docs/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",\n'
+        '  "docs/short",\n]\n\n'
+        '[dest]\nkotlin = "."\npython = "."\nswift = "."\ntypescript = "."\n\n'
+        '[hooks]\nmanager = "pre-commit"\n\n'
+        '[exclude]\npaths = ["generated/**"]\nrules = []\n\n'
+        '[[exclude.overrides]]\npaths = ["tests/**"]\nreason = "legacy fixture"\nrules = ["python:SARJ012"]\n'
+    )
+    assert rendered == expected
+    (tmp_path / manifest.MANIFEST_NAME).write_text(rendered, encoding="utf-8")
+    reloaded = manifest.load(tmp_path)
+    assert reloaded is not None
+    assert reloaded == adopted
+    assert reloaded.render() == rendered
+
+
+@pytest.mark.parametrize("operation", ["setup", "update"])
+def test_manifest_setup_and_update_preserve_extensions_and_formatting(tmp_path: Path, operation: str) -> None:
+    _exercise_manifest_formatting(tmp_path, operation)
+
+
+def _exercise_manifest_formatting(tmp_path: Path, operation: str) -> None:
+    assert _cli("--root", str(tmp_path), "setup", "--config", "taplo", "--no-install").returncode == 0
+    path = tmp_path / manifest.MANIFEST_NAME
+    extension = '\n# Consumer-maintained values stay byte-for-byte intact.\n[repository]\ncustom = "fixture"\n'
+    original = path.read_text(encoding="utf-8")
+    path.write_text(original.replace(manifest.adopted_version(), "0.0.1") + extension, encoding="utf-8")
+    options = ("--config", "taplo") if operation == "setup" else ("--offline",)
+
+    first = _cli("--root", str(tmp_path), operation, *options, "--no-install")
+
+    assert first.returncode == 0, first.stderr
+    updated = path.read_text(encoding="utf-8")
+    assert updated.endswith(extension)
+    adopted = manifest.load(tmp_path)
+    assert adopted is not None
+    assert updated == adopted.render() + extension
+    repeated = _cli("--root", str(tmp_path), operation, *options, "--no-install")
+    assert repeated.returncode == 0, repeated.stderr
+    assert path.read_text(encoding="utf-8") == updated
+
+
+@pytest.mark.parametrize("operation", ["setup", "update"])
+def test_generated_manifest_passes_real_taplo(tmp_path: Path, operation: str) -> None:
+    taplo = shutil.which("taplo")
+    if taplo is None:
+        pytest.skip("requires the Taplo formatter")
+    _exercise_manifest_formatting(tmp_path, operation)
+    path = tmp_path / manifest.MANIFEST_NAME
+    before = path.read_text(encoding="utf-8")
+
+    formatted = subprocess.run(
+        (taplo, "fmt", "--check", manifest.MANIFEST_NAME), cwd=tmp_path, capture_output=True, text=True, check=False
+    )
+
+    assert formatted.returncode == 0, formatted.stderr
+    assert path.read_text(encoding="utf-8") == before
+
+
+@pytest.mark.parametrize("length", [65, 66, 67])
+def test_manifest_array_wrap_boundary(tmp_path: Path, length: int) -> None:
+    adopted = manifest.Manifest("8.1.4", ("taplo",), ".", ".", durable_artifacts=("x" * length,))
+    rendered = adopted.render()
+    multiline = length == 67
+    assert ("durable = [\n" in rendered) is multiline
+    (tmp_path / manifest.MANIFEST_NAME).write_text(rendered, encoding="utf-8")
+    assert manifest.load(tmp_path) == adopted
+
+
+def test_manifest_string_literals_round_trip_without_reformatting_extensions(tmp_path: Path) -> None:
+    values = ('docs/café/😀/"quoted"', "docs/back\\slash", "docs/line\nbreak", "docs/delete\x7fcharacter")
+    adopted = manifest.Manifest(
+        "8.1.4",
+        ("taplo",),
+        'src/😀/"quoted"',
+        ".",
+        durable_artifacts=values,
+        exclusion_overrides=(manifest.ExclusionOverride(("tests/**",), ("python:SARJ012",), 'Reason 😀 "quoted"'),),
+    )
+    rendered = adopted.render()
+    assert "café/😀" in rendered
+    assert r"\u007f" in rendered
+    assert r"\"quoted\"" in rendered
+    (tmp_path / manifest.MANIFEST_NAME).write_text(rendered, encoding="utf-8")
+    assert manifest.load(tmp_path) == adopted
+
+
+@pytest.mark.parametrize(
+    "values",
+    [
+        pytest.param(("x" * 65,), id="below-width"),
+        pytest.param(("x" * 66,), id="exact-width"),
+        pytest.param(("x" * 67,), id="above-width"),
+        pytest.param(('café/😀/"quoted"', "back\\slash"), id="escaped-unicode"),
+        pytest.param(("é" * 35,), id="multibyte-character-width"),
+        pytest.param(("😀" * 20,), id="non-bmp-character-width"),
+        pytest.param(("delete\x7fcharacter",), id="escaped-delete-character"),
+    ],
+)
+def test_manifest_literals_pass_real_taplo(tmp_path: Path, values: tuple[str, ...]) -> None:
+    taplo = shutil.which("taplo")
+    if taplo is None:
+        pytest.skip("requires the Taplo formatter")
+    adopted = manifest.Manifest("8.1.4", ("taplo",), ".", ".", durable_artifacts=values)
+    (tmp_path / manifest.MANIFEST_NAME).write_text(adopted.render(), encoding="utf-8")
+    (tmp_path / ".taplo.toml").write_bytes((CONFIGS_DIR / "taplo.strict.toml").read_bytes())
+
+    formatted = subprocess.run(
+        (taplo, "fmt", "--check", manifest.MANIFEST_NAME), cwd=tmp_path, capture_output=True, text=True, check=False
+    )
+
+    assert formatted.returncode == 0, formatted.stderr
 
 
 def test_malformed_manifest_is_reported_not_ignored(tmp_path: Path) -> None:
@@ -978,11 +1206,9 @@ def test_setup_preserves_every_supported_manifest_policy_section(tmp_path: Path)
     first = _cli("--root", str(tmp_path), "setup", "--config", "markdownlint", "--no-install")
     assert first.returncode == 0, first.stderr
     path = tmp_path / manifest.MANIFEST_NAME
-    default_durable = ", ".join(json.dumps(value) for value in manifest.DEFAULT_DURABLE_ARTIFACTS)
-    current = path.read_text(encoding="utf-8").replace(
-        f"[artifacts]\ndurable = [{default_durable}]",
-        '[artifacts]\ndurable = ["evidence/**"]',
-    )
+    adopted = manifest.load(tmp_path)
+    assert adopted is not None
+    current = replace(adopted, durable_artifacts=("evidence/**",)).render()
     path.write_text(
         f'{current}\n[text]\nexclude = ["templates/**"]\n\n[doctor]\nexclude = ["tests/fixtures/**"]\n'
         '\n[baseline]\ndiagnostics = "quality/diagnostics.json"\n'
@@ -1320,8 +1546,8 @@ def test_init_on_an_empty_directory_adopts_repository_wide_policy(tmp_path: Path
     commit_policy = tmp_path / ".github" / "workflows" / "commit-policy.yml"
     assert commit_policy.is_file()
     assert (
-        "sarj-ai/repo-standards/pull-request-commits@bac8511f40968ca16f4cf0f649aa96fae4b7be08 # v6.0.1"
-        in commit_policy.read_text(encoding="utf-8")
+        f"sarj-ai/repo-standards/pull-request-commits@{manifest.REPO_STANDARDS_REVISION}"
+        f" # v{manifest.REPO_STANDARDS_VERSION}" in commit_policy.read_text(encoding="utf-8")
     )
 
 

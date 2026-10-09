@@ -6,7 +6,7 @@ import re
 from types import MappingProxyType
 from typing import TYPE_CHECKING, final, override
 
-from sarj_iac_lint._hcl import document, tokens
+from sarj_iac_lint._hcl import document, strip_outer_parentheses, tokens
 from sarj_iac_lint.rule_base import (
     AutofixPolicy,
     Diagnostic,
@@ -30,7 +30,6 @@ _MIN_CALL_TOKENS = 4
 _BINARY_PART_COUNT = 2
 _MIN_CONTAINS_TOKENS = 7
 _MIN_BOOLEAN_LIST_TOKENS = 5
-_MIN_WRAPPED_TOKENS = 2
 
 
 class _TypeKind(StrEnum):
@@ -197,7 +196,7 @@ class NoRedundantVariableValidation(Rule):
                 continue
             name = variable.labels[0]
             nullable = variable.attribute("nullable")
-            forbids_null = nullable is not None and _strip_outer(tokens(nullable.value)) == ("false",)
+            forbids_null = nullable is not None and strip_outer_parentheses(tokens(nullable.value)) == ("false",)
             for validation in variable.blocks:
                 if validation.type != "validation" or (condition := validation.attribute("condition")) is None:
                     continue
@@ -218,7 +217,7 @@ class NoRedundantVariableValidation(Rule):
 
 
 def _type_kind(value: tuple[str, ...]) -> _TypeKind | None:
-    normalized = _strip_outer(value)
+    normalized = strip_outer_parentheses(value)
     if len(normalized) == 1:
         try:
             kind = _TypeKind(normalized[0])
@@ -247,10 +246,10 @@ def _restates_type(
     *,
     forbids_null: bool,
 ) -> bool:
-    normalized = _strip_outer(condition)
+    normalized = strip_outer_parentheses(condition)
     variable = f"var.{variable_name}"
     if (can_argument := _unary_call(normalized, "can")) is not None:
-        can_argument = _strip_outer(can_argument)
+        can_argument = strip_outer_parentheses(can_argument)
         if can_argument == (variable,):
             return True
         conversion = _CONVERSION_FOR_TYPE.get(type_kind)
@@ -271,13 +270,13 @@ def _restates_type(
 
 
 def _unary_call(value: tuple[str, ...], function: str) -> tuple[str, ...] | None:
-    normalized = _strip_outer(value)
+    normalized = strip_outer_parentheses(value)
     if len(normalized) < _MIN_CALL_TOKENS or normalized[:2] != (function, "(") or normalized[-1] != ")":
         return None
     if _matching_closer(normalized, 1) != len(normalized) - 1:
         return None
     argument = normalized[2:-1]
-    return _strip_outer(argument) if _top_level_split(argument, ",") is None else None
+    return strip_outer_parentheses(argument) if _top_level_split(argument, ",") is None else None
 
 
 def _is_exhaustive_boolean_equality(value: tuple[str, ...], variable: str) -> bool:
@@ -286,10 +285,10 @@ def _is_exhaustive_boolean_equality(value: tuple[str, ...], variable: str) -> bo
         return False
     literals: set[str] = set()
     for part in parts:
-        equality = _top_level_split(_strip_outer(part), "==")
+        equality = _top_level_split(strip_outer_parentheses(part), "==")
         if equality is None or len(equality) != _BINARY_PART_COUNT:
             return False
-        left, right = (_strip_outer(item) for item in equality)
+        left, right = (strip_outer_parentheses(item) for item in equality)
         if left == (variable,) and right in {("true",), ("false",)}:
             literals.add(right[0])
         elif right == (variable,) and left in {("true",), ("false",)}:
@@ -300,19 +299,23 @@ def _is_exhaustive_boolean_equality(value: tuple[str, ...], variable: str) -> bo
 
 
 def _is_exhaustive_boolean_contains(value: tuple[str, ...], variable: str) -> bool:
-    normalized = _strip_outer(value)
+    normalized = strip_outer_parentheses(value)
     if len(normalized) < _MIN_CONTAINS_TOKENS or normalized[:2] != ("contains", "(") or normalized[-1] != ")":
         return False
     if _matching_closer(normalized, 1) != len(normalized) - 1:
         return False
     arguments = _top_level_split(normalized[2:-1], ",")
-    if arguments is None or len(arguments) != _BINARY_PART_COUNT or _strip_outer(arguments[1]) != (variable,):
+    if (
+        arguments is None
+        or len(arguments) != _BINARY_PART_COUNT
+        or strip_outer_parentheses(arguments[1]) != (variable,)
+    ):
         return False
-    collection = _strip_outer(arguments[0])
+    collection = strip_outer_parentheses(arguments[0])
     if len(collection) < _MIN_BOOLEAN_LIST_TOKENS or collection[0] != "[" or collection[-1] != "]":
         return False
     items = _top_level_split(collection[1:-1], ",")
-    return items is not None and {_strip_outer(item) for item in items} == {("true",), ("false",)}
+    return items is not None and {strip_outer_parentheses(item) for item in items} == {("true",), ("false",)}
 
 
 def _top_level_split(value: tuple[str, ...], delimiter: str) -> tuple[tuple[str, ...], ...] | None:
@@ -336,12 +339,6 @@ def _top_level_split(value: tuple[str, ...], delimiter: str) -> tuple[tuple[str,
     ends = [start - 1 for start in starts[1:]] + [len(value)]
     parts = tuple(value[start:end] for start, end in zip(starts, ends, strict=True))
     return parts if all(parts) else None
-
-
-def _strip_outer(value: tuple[str, ...]) -> tuple[str, ...]:
-    while len(value) >= _MIN_WRAPPED_TOKENS and value[0] == "(" and _matching_closer(value, 0) == len(value) - 1:
-        value = value[1:-1]
-    return value
 
 
 def _matching_closer(value: tuple[str, ...], opener_index: int) -> int | None:

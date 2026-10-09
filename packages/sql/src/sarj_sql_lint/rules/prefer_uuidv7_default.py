@@ -15,8 +15,10 @@ from sarj_sql_lint.rule_base import (
     RuleExample,
     is_dump_file,
     is_generated_migration,
-    mask_sql,
+    mask_sql_literals_and_comments,
     redirect_to_model,
+    source_location,
+    sql_code_matches,
 )
 
 
@@ -24,7 +26,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-PATTERN = re.compile(r"\bgen_random_uuid\s*\(", re.IGNORECASE)
+PATTERN = re.compile(r'(?:\bgen_random_uuid|(?-i:"gen_random_uuid"))\s*\(', re.IGNORECASE)
 
 _MESSAGE = (
     "`gen_random_uuid()` generates a random UUIDv4 — use `uuidv7()` (Postgres 18). "
@@ -81,17 +83,16 @@ class PreferUuidv7Default(Rule):
         if is_dump_file(source, path):
             return []
         model_owned = is_generated_migration(path, source)
-        return redirect_to_model(
-            [
+        diags: list[Diagnostic] = []
+        for match in sql_code_matches(PATTERN, mask_sql_literals_and_comments(source)):
+            location = source_location(source, match.start())
+            diags.append(
                 Diagnostic(
                     path=path,
-                    line=lineno,
-                    col=match.start() + 1,
+                    line=location.line,
+                    col=location.column,
                     code=self.code,
                     message=_MESSAGE,
                 )
-                for lineno, line in enumerate(mask_sql(source).splitlines(), start=1)
-                for match in PATTERN.finditer(line)
-            ],
-            model_owned=model_owned,
-        )
+            )
+        return redirect_to_model(diags, model_owned=model_owned)

@@ -5,6 +5,8 @@
 
 import { AST_NODE_TYPES, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
 
+import { unwrapExpression } from "./_unwrap-expression.js";
+
 import { forEachOwnAstChild } from "./_for-each-own-ast-child.js";
 
 /** Mask SQL values and comments without changing text or line lengths. */
@@ -174,7 +176,7 @@ export function createSqlListener(
   const consumed = new WeakSet<TSESTree.Node>();
 
   const visit = (node: TSESTree.Node): void => {
-    if (consumed.has(node)) {
+    if (consumed.has(node) || isDiscardedSqlText(node)) {
       return;
     }
     const text = sqlTextOf(node);
@@ -201,4 +203,20 @@ export function createSqlListener(
       visit(node);
     },
   };
+}
+
+/** Ignore discarded text while still visiting query calls in its interpolations. */
+function isDiscardedSqlText(node: TSESTree.Node): boolean {
+  let current = node;
+  let parent = current.parent;
+  while (parent !== undefined && parent !== null) {
+    if (unwrapExpression(parent) === current ||
+        (parent.type === AST_NODE_TYPES.BinaryExpression && parent.operator === "+")) {
+      current = parent;
+      parent = current.parent;
+      continue;
+    }
+    return parent.type === AST_NODE_TYPES.UnaryExpression && parent.operator === "void";
+  }
+  return false;
 }

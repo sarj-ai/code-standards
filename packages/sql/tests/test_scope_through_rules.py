@@ -10,6 +10,7 @@ from sarj_sql_lint.rules.enforce_timestamptz import EnforceTimestamptz
 from sarj_sql_lint.rules.idempotent_ddl import IdempotentDdl
 from sarj_sql_lint.rules.no_application_schema_check import NoApplicationSchemaCheck
 from sarj_sql_lint.rules.no_create_trigger import NoCreateTrigger
+from sarj_sql_lint.rules.no_database_functions import NoDatabaseFunctions
 from sarj_sql_lint.rules.no_pg_enum import NoPgEnum
 from sarj_sql_lint.rules.prefer_jsonb import PreferJsonb
 from sarj_sql_lint.rules.prefer_text_over_varchar import PreferTextOverVarchar
@@ -30,7 +31,8 @@ if TYPE_CHECKING:
 # long implementation narrative, SARJ116 the fourth child-table index, and
 # SARJ117 one duplicate child-table index shape, and SARJ118 an application-owned
 # closed text value set repeated as a database CHECK, and SARJ119 the existing-
-# table constraint plus data write mixed with the surrounding expand phase.
+# table constraint plus data write mixed with the surrounding expand phase,
+# and SARJ120 a stored SQL function.
 _LEGACY_UUID_DEFAULT = "gen_random_uuid()"
 _ALL_RULES_TEMPLATE = """CREATE TYPE mood AS ENUM ('sad', 'ok');
 -- Create the children table used by the application in this database.
@@ -58,6 +60,7 @@ ALTER TABLE accounts ADD CONSTRAINT chk_name CHECK (name <> '');
 INSERT INTO children (id) VALUES ('a');
 SELECT * FROM children LIMIT 10 OFFSET 100;
 CREATE TRIGGER audit_child AFTER INSERT ON children EXECUTE FUNCTION audit_child();
+CREATE FUNCTION audit_child() RETURNS int LANGUAGE SQL AS $$ SELECT 1 $$;
 """
 ALL_RULES = _ALL_RULES_TEMPLATE.replace("__LEGACY_UUID_DEFAULT__", _LEGACY_UUID_DEFAULT)
 
@@ -74,6 +77,7 @@ MODEL_REDIRECTING = (
     PreferJsonb,
     PreferUuidv7Default,
     NoCreateTrigger,
+    NoDatabaseFunctions,
     NoApplicationSchemaCheck,
 )
 
@@ -89,7 +93,7 @@ def _total(path: Path, source: str) -> int:
 def test_the_shared_source_fires_every_migration_rule_exactly_once() -> None:
     fired = {cls.code: len(cls().check(HAND_WRITTEN, ALL_RULES)) for cls in MIGRATION_RULES}
     assert fired == dict.fromkeys(fired, 1)
-    assert len(fired) == 18
+    assert len(fired) == 19
 
 
 @pytest.mark.parametrize("rule_cls", DUMP_EXEMPT, ids=_ids(DUMP_EXEMPT))
@@ -99,7 +103,7 @@ def test_each_rule_takes_the_dump_exemption(rule_cls: type[Rule]) -> None:
 
 
 def test_the_dump_exemption_suppresses_all_migration_findings() -> None:
-    assert _total(HAND_WRITTEN, ALL_RULES) == 18
+    assert _total(HAND_WRITTEN, ALL_RULES) == 19
     assert _total(Path("db/structure.sql"), ALL_RULES) == 0
 
 
@@ -117,7 +121,7 @@ def test_a_restore_directory_is_a_dump_signal() -> None:
 
 
 def test_a_hand_written_migration_next_to_those_names_is_still_judged() -> None:
-    assert _total(Path("db/migrations/schema_changes.sql"), ALL_RULES) == 18
+    assert _total(Path("db/migrations/schema_changes.sql"), ALL_RULES) == 19
 
 
 GENERATED = f"--> statement-breakpoint\n{ALL_RULES}"

@@ -16,7 +16,10 @@ from sarj_sql_lint.rule_base import (
     dollar_quoted_lines,
     is_dump_file,
     mask_sql,
+    mask_sql_literals_and_comments,
+    normalize_sql_identifier,
     split_statements,
+    sql_code_matches,
 )
 
 
@@ -24,9 +27,11 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
+_IDENT = r'(?:[A-Za-z_][\w$]*|"(?:""|[^"\n])+")(?:\s*\.\s*(?:[A-Za-z_][\w$]*|"(?:""|[^"\n])+"))*'
+
 # A real insert write pattern matching INSERT INTO with optional column list and write verb.
 INSERT_PATTERN = re.compile(
-    r"\bINSERT\s+(?:OR\s+\w+\s+)?INTO\s+[\w.\"'`?$:@-]+\s*(?:\([^)]*\)\s*)?(?:VALUES|SELECT|DEFAULT\s+VALUES)\b",
+    rf"\bINSERT\s+(?:OR\s+\w+\s+)?INTO\s+(?:{_IDENT}|[\w.`?$:@-]+)\s*(?:\([^)]*\)\s*)?(?:VALUES|SELECT|DEFAULT\s+VALUES)\b",
     re.IGNORECASE,
 )
 
@@ -43,7 +48,7 @@ ON_CONFLICT_PATTERN = re.compile(
 # for the row itself and skips, so `ON CONFLICT` would be dead code.
 REPLAY_GUARD_PATTERN = re.compile(r"\bIF\s+(?:NOT\s+)?EXISTS\s*\(", re.IGNORECASE)
 INSERT_SELECT_TARGET_PATTERN = re.compile(
-    r"\bINSERT\s+INTO\s+(?P<target>[A-Za-z_][\w$]*(?:\s*\.\s*[A-Za-z_][\w$]*)?)\b[\s\S]*?\bSELECT\b",
+    rf"\bINSERT\s+INTO\s+(?P<target>{_IDENT})(?=\s|\()[\s\S]*?\bSELECT\b",
     re.IGNORECASE,
 )
 
@@ -73,15 +78,16 @@ def _guarded_dollar_body_lines(masked: str, source: str) -> frozenset[int]:
 
 
 def _select_filters_existing_target(statement: str) -> bool:
-    match = INSERT_SELECT_TARGET_PATTERN.search(statement)
+    match = next(sql_code_matches(INSERT_SELECT_TARGET_PATTERN, statement), None)
     if match is None:
         return False
-    target = re.sub(r"\s+", "", match.group("target")).split(".")[-1]
-    guard = re.compile(
-        rf"\bWHERE\s+NOT\s+EXISTS\s*\([\s\S]*?\bFROM\s+(?:[A-Za-z_][\w$]*\s*\.\s*)?{re.escape(target)}\b",
-        re.IGNORECASE,
-    )
-    return guard.search(statement, match.end()) is not None
+    target = normalize_sql_identifier(match.group("target"), unqualified=True)
+    guard = re.compile(rf"\bWHERE\s+NOT\s+EXISTS\s*\([\s\S]*?\bFROM\s+(?P<target>{_IDENT})(?=\s|\)|$)", re.IGNORECASE)
+    for candidate in sql_code_matches(guard, statement[match.end() :]):
+        existing = normalize_sql_identifier(candidate.group("target"), unqualified=True)
+        if existing == target:
+            return True
+    return False
 
 
 @final
@@ -138,14 +144,14 @@ class InsertRequiresOnConflict(Rule):
         if is_dump_file(source, path):
             return []
 
-        masked = mask_sql(source)
-        exempt = _guarded_dollar_body_lines(masked, source)
+        masked = mask_sql_literals_and_comments(source)
+        exempt = _guarded_dollar_body_lines(mask_sql(source), source)
         diags: list[Diagnostic] = []
         for statement in split_statements(masked):
             text = "\n".join(line for _, line in statement)
             if (
-                INSERT_PATTERN.search(text) is None
-                or ON_CONFLICT_PATTERN.search(text)
+                next(sql_code_matches(INSERT_PATTERN, text), None) is None
+                or next(sql_code_matches(ON_CONFLICT_PATTERN, text), None)
                 or _select_filters_existing_target(text)
             ):
                 continue

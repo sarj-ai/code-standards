@@ -11,6 +11,7 @@ import {
 } from "@typescript-eslint/utils";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
+import { unwrapExpression } from "./_unwrap-expression.js";
 import { isGeneratedFile, isTestFile } from "./_paths.js";
 import { isZodModule } from "./_zod.js";
 
@@ -65,6 +66,7 @@ function isStaticPrimitive(
   node: TSESTree.CallExpressionArgument,
   context: TSESLint.RuleContext<MessageIds, Options>,
 ): boolean {
+  node = unwrapExpression(node);
   if (node.type === AST_NODE_TYPES.Literal) {
     return (
       node.value === null ||
@@ -92,6 +94,7 @@ function isStaticPrimitive(
 }
 
 function isStaticString(node: TSESTree.CallExpressionArgument): boolean {
+  node = unwrapExpression(node);
   return (
     (node.type === AST_NODE_TYPES.Literal &&
       typeof node.value === "string") ||
@@ -146,15 +149,16 @@ export default createRule<Options, MessageIds>({
       binding: TSESLint.Scope.Variable,
       method: string,
     ): boolean {
+      const unwrappedNodeCallee = unwrapExpression(node.callee);
+      const receiver = unwrappedNodeCallee.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(unwrappedNodeCallee.object) : unwrappedNodeCallee;
       if (
-        node.callee.type !== AST_NODE_TYPES.MemberExpression ||
-        node.callee.computed ||
-        node.callee.object.type !== AST_NODE_TYPES.Identifier ||
-        node.callee.property.type !== AST_NODE_TYPES.Identifier ||
-        node.callee.property.name !== method
+        unwrappedNodeCallee.type !== AST_NODE_TYPES.MemberExpression ||
+        receiver.type !== AST_NODE_TYPES.Identifier ||
+        ASTUtils.getPropertyName(unwrappedNodeCallee) === null ||
+        (ASTUtils.getPropertyName(unwrappedNodeCallee) ?? "") !== method
       )
         return false;
-      return resolvedBinding(node.callee.object) === binding;
+      return resolvedBinding(receiver) === binding;
     }
 
     return {
@@ -178,12 +182,14 @@ export default createRule<Options, MessageIds>({
         }
       },
       CallExpression(node): void {
+        const unwrappedNodeCallee = unwrapExpression(node.callee);
+        const receiver = unwrappedNodeCallee.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(unwrappedNodeCallee.object) : unwrappedNodeCallee;
         if (
-          node.callee.type !== AST_NODE_TYPES.MemberExpression ||
-          node.callee.object.type !== AST_NODE_TYPES.Identifier
+          unwrappedNodeCallee.type !== AST_NODE_TYPES.MemberExpression ||
+          receiver.type !== AST_NODE_TYPES.Identifier
         )
           return;
-        const binding = resolvedBinding(node.callee.object);
+        const binding = resolvedBinding(receiver);
         if (
           binding === null ||
           !zodBindings.has(binding) ||
@@ -192,7 +198,7 @@ export default createRule<Options, MessageIds>({
           node.arguments.length !== 1
         )
           return;
-        const [argument] = node.arguments;
+        const argument = node.arguments[0] === undefined ? undefined : unwrapExpression(node.arguments[0]);
         if (
           argument?.type !== AST_NODE_TYPES.ArrayExpression ||
           argument.elements.length < 2
@@ -200,7 +206,8 @@ export default createRule<Options, MessageIds>({
           return;
 
         const values: TSESTree.CallExpressionArgument[] = [];
-        for (const element of argument.elements) {
+        for (const writtenElement of argument.elements) {
+          const element = writtenElement === null ? null : unwrapExpression(writtenElement);
           if (
             element === null ||
             element.type !== AST_NODE_TYPES.CallExpression ||
@@ -214,7 +221,7 @@ export default createRule<Options, MessageIds>({
         }
         if (values.every(isStaticString)) return;
 
-        const namespace = node.callee.object.name;
+        const namespace = receiver.name;
         context.report({
           node,
           messageId: "useMultiValueLiteral",

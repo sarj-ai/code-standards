@@ -358,8 +358,7 @@ export default createRule<Options, MessageIds>({
             (entry): entry is TSESTree.Property =>
               entry.type === AST_NODE_TYPES.Property &&
               !entry.computed &&
-              entry.key.type === AST_NODE_TYPES.Identifier &&
-              entry.key.name === property.name,
+              ASTUtils.getPropertyName(entry) === property.name,
           );
           if (bindingProperty === undefined) continue;
           const value = bindingProperty.value;

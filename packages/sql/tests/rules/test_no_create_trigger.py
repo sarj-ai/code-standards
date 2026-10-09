@@ -59,6 +59,12 @@ def test_reports_trigger_reenablement(source: str) -> None:
         "DROP TRIGGER IF EXISTS update_timestamp ON calls;",
         "ALTER TABLE calls DISABLE TRIGGER audit_call;",
         "CREATE TABLE trigger_audit (id uuid PRIMARY KEY);",
+        "SELECT $$CREATE TRIGGER example$$;",
+        "SELECT $doc$; CREATE TRIGGER example$doc$;",
+        "INSERT INTO docs VALUES ($doc$CREATE TRIGGER example$doc$);",
+        "COMMENT ON TABLE docs IS $$ALTER TABLE batch ENABLE TRIGGER example$$;",
+        "DO $$ BEGIN RAISE NOTICE $doc$CREATE TRIGGER example$doc$; END $$;",
+        "CREATE FUNCTION docs() RETURNS text AS $body$ SELECT $doc$CREATE TRIGGER example$doc$; $body$ LANGUAGE SQL;",
     ],
 )
 def test_ignores_non_executable_trigger_creation(source: str) -> None:
@@ -75,3 +81,17 @@ CREATE TRIGGER first AFTER INSERT ON calls EXECUTE FUNCTION first_fn();
 CREATE TRIGGER second AFTER UPDATE ON calls EXECUTE FUNCTION second_fn();
 """
     assert [finding.line for finding in _check(source)] == [2, 3]
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "DO $$ BEGIN CREATE TRIGGER audit AFTER INSERT ON batch EXECUTE FUNCTION audit(); END $$;",
+        "DO LANGUAGE plpgsql $body$ BEGIN ALTER TABLE batch ENABLE TRIGGER audit; END $body$;",
+        "DO LANGUAGE 'plpgsql' $body$ BEGIN ALTER TABLE batch ENABLE TRIGGER audit; END $body$;",
+        'DO /* code */ LANGUAGE "plpgsql" $body$ BEGIN CREATE TRIGGER audit AFTER INSERT ON batch EXECUTE FUNCTION audit(); END $body$;',
+        "SELECT $doc$CREATE TRIGGER example$doc$; CREATE TRIGGER audit AFTER INSERT ON batch EXECUTE FUNCTION audit();",
+    ],
+)
+def test_genuine_trigger_ddl_survives_dollar_literal_masking(source: str) -> None:
+    assert len(_check(source)) == 1

@@ -18,6 +18,7 @@ from sarj_sql_lint.rule_base import (
     is_postgres_source,
     mask_sql,
     redirect_to_model,
+    source_location,
 )
 
 
@@ -35,10 +36,19 @@ _OPENS_LIST_ITEM = frozenset("(,")
 _CLOSES_LIST_ITEM = frozenset(",)")
 
 
-def _is_column_reference(line: str, start: int, end: int) -> bool:
-    before = line[:start].rstrip()
-    after = line[end:].lstrip()
-    return bool(before) and before[-1] in _OPENS_LIST_ITEM and bool(after) and after[0] in _CLOSES_LIST_ITEM
+def _is_column_reference(source: str, start: int, end: int) -> bool:
+    before = start - 1
+    while before >= 0 and source[before].isspace():
+        before -= 1
+    after = end
+    while after < len(source) and source[after].isspace():
+        after += 1
+    return (
+        before >= 0
+        and source[before] in _OPENS_LIST_ITEM
+        and after < len(source)
+        and source[after] in _CLOSES_LIST_ITEM
+    )
 
 
 @final
@@ -91,19 +101,22 @@ class EnforceTimestamptz(Rule):
         model_owned = is_generated_migration(path, source)
 
         diags: list[Diagnostic] = []
-        for lineno, line in enumerate(mask_sql(source).splitlines(), start=1):
-            diags.extend(
+        masked = mask_sql(source)
+        for match in PATTERN.finditer(masked):
+            start = match.start()
+            if _is_column_reference(masked, start, match.end()):
+                continue
+            location = source_location(source, start)
+            diags.append(
                 Diagnostic(
                     path=path,
-                    line=lineno,
-                    col=start + 1,
+                    line=location.line,
+                    col=location.column,
                     code=self.code,
                     message=(
                         "Use `TIMESTAMPTZ` (or `TIMESTAMP WITH TIME ZONE`) — "
                         "naive TIMESTAMP discards offset and is rarely correct."
                     ),
                 )
-                for match in PATTERN.finditer(line)
-                if not _is_column_reference(line, start := match.start(), match.end())
             )
         return redirect_to_model(diags, model_owned=model_owned)

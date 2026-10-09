@@ -4,14 +4,17 @@ import ast
 from collections.abc import Mapping
 from contextlib import suppress
 from dataclasses import dataclass
+from functools import cached_property
 import os
 from pathlib import Path
 import re
 from types import MappingProxyType
 from typing import TYPE_CHECKING, final
 
+from sarj_python_lint._source import read_python_source
 from sarj_python_lint.rules._ast_index import walk as walk_ast
 from sarj_python_lint.rules._first_party import FirstPartyFacts, project_root
+from sarj_python_lint.rules._paths import is_generated
 
 
 if TYPE_CHECKING:
@@ -77,8 +80,9 @@ class LoadedSource:
 
 @final
 class ProjectIndexSet:
-    def __init__(self, units: Mapping[Path, SourceUnit]) -> None:
+    def __init__(self, units: Mapping[Path, SourceUnit], roots: Sequence[Path] = ()) -> None:
         self._units = MappingProxyType(dict(units))
+        self._roots = tuple(roots)
         by_module = {unit.module: unit for unit in units.values() if unit.module is not None}
         self._by_module = MappingProxyType(by_module)
         classes: dict[SymbolRef, ClassSummary] = {}
@@ -104,7 +108,7 @@ class ProjectIndexSet:
                 continue
         for root in roots:
             _load_root_sources(root, sources)
-        return cls(_units(sources, roots))
+        return cls(_units(sources, roots), roots)
 
     @classmethod
     def single(cls, path: Path, source: str) -> Self:
@@ -118,6 +122,21 @@ class ProjectIndexSet:
             return self._units.get(path.resolve())
         except OSError:
             return None
+
+    def unit_or_source(self, path: Path, source: str, tree: ast.Module) -> SourceUnit | None:
+        indexed = self.unit(path)
+        if indexed is not None:
+            return indexed
+        module = _module_name(path, self._roots)
+        if module is None:
+            return None
+        return SourceUnit(
+            path=path,
+            module=module,
+            source=source,
+            tree=tree,
+            imports=MappingProxyType(_imports(module, tree, is_package=path.name == "__init__.py")),
+        )
 
     def nominal_for_field(self, name: str) -> SymbolRef | None:
         matches = self._nominals.get(name)
@@ -162,6 +181,27 @@ class ProjectIndexSet:
                 continue
             consumers.update(_unit_constructor_consumers(candidate, candidate.tree, target))
         return frozenset(consumers)
+
+    def constructor_operations(self, unit: SourceUnit, name: str) -> frozenset[tuple[Path, str]]:
+        if unit.module is None:
+            return frozenset()
+        return self._constructor_operations.get(SymbolRef(unit.module, name), frozenset())
+
+    @cached_property
+    def _constructor_operations(self) -> Mapping[SymbolRef, frozenset[tuple[Path, str]]]:
+        module_counts: dict[str, int] = {}
+        for unit in self._units.values():
+            if unit.module is not None:
+                module_counts[unit.module] = module_counts.get(unit.module, 0) + 1
+        owned_modules = frozenset(module for module, count in module_counts.items() if count == 1)
+        operations: dict[SymbolRef, set[tuple[Path, str]]] = {}
+        for unit in self._units.values():
+            if unit.tree is None or unit.module not in owned_modules or is_generated(unit.path, unit.source):
+                continue
+            for symbol, operation in _unit_constructor_operations(unit, unit.tree, owned_modules):
+                if symbol.module in owned_modules and symbol in self._classes:
+                    operations.setdefault(symbol, set()).add((unit.path, operation))
+        return MappingProxyType({symbol: frozenset(calls) for symbol, calls in operations.items()})
 
     def direct_subclasses(self, unit: SourceUnit, name: str) -> frozenset[tuple[Path, str]]:
         if unit.module is None:
@@ -493,7 +533,7 @@ def _read_bounded_source(root: Path, path: Path) -> LoadedSource | None:
             return None
         resolved = path.resolve()
         resolved.relative_to(root.resolve())
-        return LoadedSource(resolved, resolved.read_text(encoding="utf-8", errors="replace"))
+        return LoadedSource(resolved, read_python_source(resolved))
     except OSError, ValueError:
         return None
 
@@ -536,6 +576,160 @@ def _unit_constructor_consumers(
             if parameter.arg != "self"
         ):
             yield (candidate.path, owner.name)
+
+
+def _unit_constructor_operations(
+    unit: SourceUnit, tree: ast.Module, owned_modules: frozenset[str]
+) -> Iterator[tuple[SymbolRef, str]]:
+    if any(
+        isinstance(item, ast.ImportFrom) and any(alias.name == "*" for alias in item.names) for item in walk_ast(tree)
+    ):
+        return
+    rebound = _module_constructor_rebindings(tree)
+    for owner in tree.body:
+        self_symbol = SymbolRef(unit.module or "", owner.name) if isinstance(owner, ast.ClassDef) else None
+        for method in _direct_functions(owner):
+            for symbol, operation in _function_constructor_operations(unit, method, rebound, owned_modules):
+                if symbol != self_symbol:
+                    yield symbol, operation
+
+
+def _module_constructor_rebindings(tree: ast.Module) -> frozenset[str]:
+    names: set[str] = set()
+    declarations: dict[str, int] = {}
+    for statement in tree.body:
+        for name in _module_constructor_declarations(statement):
+            declarations[name] = declarations.get(name, 0) + 1
+        if isinstance(statement, ast.FunctionDef | ast.AsyncFunctionDef):
+            names.add(statement.name)
+        elif not isinstance(statement, ast.ClassDef | ast.Import | ast.ImportFrom):
+            names.update(_bound_constructor_names(statement))
+    names.update(name for name, count in declarations.items() if count > 1)
+    return frozenset(names)
+
+
+def _module_constructor_declarations(statement: ast.stmt) -> frozenset[str]:
+    if isinstance(statement, ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef):
+        return frozenset({statement.name})
+    return _bound_constructor_names(statement)
+
+
+def _direct_functions(owner: ast.stmt) -> tuple[ast.FunctionDef | ast.AsyncFunctionDef, ...]:
+    if isinstance(owner, ast.FunctionDef | ast.AsyncFunctionDef):
+        return (owner,)
+    if isinstance(owner, ast.ClassDef):
+        return tuple(item for item in owner.body if isinstance(item, ast.FunctionDef | ast.AsyncFunctionDef))
+    return ()
+
+
+def _function_constructor_operations(
+    unit: SourceUnit,
+    method: ast.FunctionDef | ast.AsyncFunctionDef,
+    rebound: frozenset[str],
+    owned_modules: frozenset[str],
+) -> Iterator[tuple[SymbolRef, str]]:
+    shadowed = _bound_constructor_names(method) | rebound
+    for statement in method.body:
+        if isinstance(statement, ast.Expr | ast.Assign | ast.AnnAssign | ast.Return):
+            operation = _direct_constructor_operation(unit, statement.value, shadowed, owned_modules)
+            if operation is not None:
+                yield operation
+        if isinstance(
+            statement,
+            ast.Return
+            | ast.Raise
+            | ast.If
+            | ast.For
+            | ast.AsyncFor
+            | ast.While
+            | ast.Try
+            | ast.TryStar
+            | ast.With
+            | ast.AsyncWith
+            | ast.Match,
+        ):
+            break
+
+
+def _direct_constructor_operation(
+    unit: SourceUnit, value: ast.expr | None, shadowed: frozenset[str], owned_modules: frozenset[str]
+) -> tuple[SymbolRef, str] | None:
+    if isinstance(value, ast.Await):
+        value = value.value
+    if not isinstance(value, ast.Call) or not isinstance(value.func, ast.Attribute):
+        return None
+    if not isinstance(value.func.value, ast.Call):
+        return None
+    constructor = value.func.value.func
+    root = constructor
+    while isinstance(root, ast.Attribute):
+        root = root.value
+    if not isinstance(root, ast.Name) or root.id in shadowed:
+        return None
+    symbol = _owned_constructor_symbol(unit, constructor, owned_modules)
+    return (symbol, value.func.attr) if symbol is not None else None
+
+
+def _owned_constructor_symbol(
+    unit: SourceUnit, expression: ast.expr, owned_modules: frozenset[str]
+) -> SymbolRef | None:
+    if isinstance(expression, ast.Name):
+        return _resolve(unit, expression)
+    parts: list[str] = []
+    current = expression
+    while isinstance(current, ast.Attribute):
+        parts.append(current.attr)
+        current = current.value
+    if not isinstance(current, ast.Name) or not parts:
+        return None
+    imported = unit.imports.get(current.id)
+    if imported is None or imported.name:
+        return None
+    ordered = list(reversed(parts))
+    module = ".".join((imported.module, *ordered[:-1]))
+    if len(ordered) > 1 and not _explicit_constructor_module(unit, module):
+        return None
+    return SymbolRef(module, ordered[-1]) if module in owned_modules else None
+
+
+def _explicit_constructor_module(unit: SourceUnit, module: str) -> bool:
+    if unit.tree is None:
+        return False
+    return any(
+        alias.name == module and alias.asname is None
+        for statement in _module_import_statements(unit.tree)
+        if isinstance(statement, ast.Import)
+        for alias in statement.names
+    )
+
+
+def _bound_constructor_names(node: ast.AST) -> frozenset[str]:
+    names: set[str] = set()
+    for item in walk_ast(node):
+        match item:
+            case (
+                ast.Name(id=name, ctx=(ast.Store() | ast.Del()))
+                | ast.arg(arg=name)
+                | ast.ClassDef(name=name)
+                | ast.FunctionDef(name=name)
+                | ast.AsyncFunctionDef(name=name)
+                | ast.ExceptHandler(name=str(name))
+                | ast.MatchAs(name=str(name))
+                | ast.MatchStar(name=str(name))
+                | ast.MatchMapping(rest=str(name))
+            ):
+                names.add(name)
+            case ast.Import(names=aliases) | ast.ImportFrom(names=aliases):
+                names.update(alias.asname or alias.name.split(".", 1)[0] for alias in aliases)
+            case ast.Attribute(ctx=(ast.Store() | ast.Del())):
+                root = item.value
+                while isinstance(root, ast.Attribute):
+                    root = root.value
+                if isinstance(root, ast.Name):
+                    names.add(root.id)
+            case _:
+                pass
+    return frozenset(names)
 
 
 def _class_has_typed_dependency(unit: SourceUnit, owner: ast.ClassDef, target: SymbolRef) -> bool:

@@ -171,3 +171,29 @@ def test_verify_tags_process_failure_is_not_reported_as_recovery(
 
     assert status == 2
     assert capsys.readouterr().err == "error: git ls-remote failed with exit code 128\n"
+
+
+def test_bootstrap_release_detection_preserves_cli_revisions_and_output(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from sarj_standards.libs.release import release_detect  # ruff: ignore[import-outside-top-level] -- focused module boundary.
+
+    calls: list[tuple[Path, str, str]] = []
+
+    def pending(root: Path, *, before: str, after: str) -> dict[str, bool]:
+        calls.append((root, before, after))
+        return {"standards": True, "python": False}
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- inspect the release discovery boundary.
+        release_detect, "pending_release_targets", pending
+    )
+    output = tmp_path / "outputs"
+    output.write_text("previous=true\n")
+    assert (
+        release_detect.main(
+            ["--root", str(tmp_path), "--before", "old", "--after", "new", "--github-output", str(output)]
+        )
+        == 0
+    )
+    assert calls == [(tmp_path.resolve(), "old", "new")]
+    assert output.read_text() == "previous=true\nstandards=true\npython=false\n"

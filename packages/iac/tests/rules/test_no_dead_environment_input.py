@@ -329,7 +329,7 @@ def test_a_sibling_directory_without_tfvars_only_suppresses_comparison(tmp_path:
     assert _check_env(root, "dev") == []
 
 
-def test_a_json_tfvars_environment_is_skipped_not_half_read(tmp_path: Path) -> None:
+def test_json_environment_participates_in_mixed_format_comparison(tmp_path: Path) -> None:
     root = _write_root(
         tmp_path,
         _DECLARED_BOOL,
@@ -338,7 +338,7 @@ def test_a_json_tfvars_environment_is_skipped_not_half_read(tmp_path: Path) -> N
     staging = root / "env" / "staging"
     staging.mkdir()
     (staging / "terraform.tfvars.json").write_text('{"pagerduty_enabled": "false"}', encoding="utf-8")
-    assert _check_env(root, "dev") == []
+    assert len(_check_env(root, "dev")) == 1
 
 
 def test_blind_roots_keep_only_the_declaration_based_finding(tmp_path: Path) -> None:
@@ -566,7 +566,7 @@ def test_a_specimen_word_inside_a_longer_name_is_still_an_environment(tmp_path: 
     assert [d for d in _check_file(west) if "old-west, prod" in d.message]
 
 
-def test_a_json_only_root_is_skipped_until_json_is_supported(tmp_path: Path) -> None:
+def test_one_json_environment_with_no_default_is_not_compared(tmp_path: Path) -> None:
     root = tmp_path / "stack"
     root.mkdir()
     (root / "variables.tf").write_text(_DECLARED_REGION, encoding="utf-8")
@@ -574,6 +574,327 @@ def test_a_json_only_root_is_skipped_until_json_is_supported(tmp_path: Path) -> 
     json_tfvars.write_text('{"region": "me-central2"}', encoding="utf-8")
 
     assert _check_file(json_tfvars) == []
+
+
+def test_json_orphan_has_the_top_level_key_location(tmp_path: Path) -> None:
+    root = _write_root(tmp_path, _DECLARED_REGION, {})
+    path = root / "dev.tfvars.json"
+    path.write_text('{\n  "region": "west",\n  "ghost": {"region": "nested"}\n}\n', encoding="utf-8")
+
+    findings = _check_file(path)
+
+    assert len(findings) == 1
+    assert "orphaned-key: `ghost`" in findings[0].message
+    assert (findings[0].line, findings[0].col) == (3, 3)
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        '{"region":"west","region":"west"}',
+        '{"ghost":{"x":1,"x":2}}',
+        '{"ghost":',
+        "[1]",
+        '{"ghost":NaN}',
+        '{"ghost":Infinity}',
+        '{"ghost":1e9999999999999999999999}',
+        '\v{"ghost":true}',
+    ],
+)
+def test_invalid_json_abstains_and_blinds_other_environments(source: str, tmp_path: Path) -> None:
+    root = _write_root(tmp_path, _DECLARED_REGION, {"dev": _REGION_ASSIGNMENT, "prod": _REGION_ASSIGNMENT})
+    path = root / "staging.tfvars.json"
+    path.write_text(source, encoding="utf-8")
+
+    assert _check_file(path) == []
+    assert _check_env(root, "dev") == []
+
+
+@pytest.mark.parametrize(
+    ("scalar_type", "hcl", "native", "expected"),
+    [
+        ("bool", '"false"', False, 1),
+        ("number", '"01"', 1, 1),
+        ("number", "1.00000000000000000001", 1, 0),
+        ("string", '"01"', 1, 0),
+        ("bool", "true", 1, 0),
+        ("string", '"line\\nnext"', "line\nnext", 1),
+        ("string", '"${var.region}"', "${var.region}", 0),
+        ("string", "null", None, 0),
+        ("string", "1e100000000", 1, 0),
+        ("list(string)", '["west"]', ["west"], 0),
+    ],
+)
+def test_json_scalar_conversion_matches_declared_types(
+    scalar_type: str, hcl: str, native: object, expected: int, tmp_path: Path
+) -> None:
+    root = _write_root(tmp_path, f'variable "input" {{\n  type = {scalar_type}\n}}\n', {"dev": f"input = {hcl}\n"})
+    path = root / "prod.tfvars.json"
+    path.write_text(json.dumps({"input": native}), encoding="utf-8")
+
+    assert len(_check_file(path)) == expected
+    assert len(_check_env(root, "dev")) == expected
+
+
+def test_json_literal_template_looking_string_is_not_reinterpreted(tmp_path: Path) -> None:
+    root = _write_root(tmp_path, _DECLARED_REGION, {})
+    for env in ("dev", "prod"):
+        (root / f"{env}.tfvars.json").write_text('{"region":"${literal}"}', encoding="utf-8")
+
+    assert len(_check_file(root / "dev.tfvars.json")) == 1
+
+
+def test_json_sensitive_equals_default_never_prints_value(tmp_path: Path) -> None:
+    root = _write_root(
+        tmp_path, 'variable "token" {\n  type = string\n  sensitive = true\n  default = "secret-marker"\n}\n', {}
+    )
+    path = root / "dev.tfvars.json"
+    path.write_text('{"token":"secret-marker"}', encoding="utf-8")
+
+    findings = _check_file(path)
+
+    assert len(findings) == 1
+    assert "equals-default" in findings[0].message
+    assert "secret-marker" not in findings[0].message
+
+
+def test_json_decimal_precision_is_preserved(tmp_path: Path) -> None:
+    root = _write_root(tmp_path, 'variable "input" {\n  type = number\n}\n', {})
+    first = root / "dev.tfvars.json"
+    first.write_text('{"input":1.00000000000000000001}', encoding="utf-8")
+    (root / "prod.tfvars.json").write_text('{"input":1.00000000000000000002}', encoding="utf-8")
+
+    assert _check_file(first) == []
+
+
+def test_json_extreme_numeric_string_conversion_abstains(tmp_path: Path) -> None:
+    root = _write_root(tmp_path, 'variable "input" {\n  type = string\n}\n', {})
+    for env in ("dev", "prod"):
+        (root / f"{env}.tfvars.json").write_text('{"input":1e100000000}', encoding="utf-8")
+
+    assert _check_file(root / "dev.tfvars.json") == []
+
+
+@pytest.mark.parametrize("scalar_type", ["number", "bool", "string"])
+def test_quoted_unrepresentable_json_number_preserves_string_literals(scalar_type: str, tmp_path: Path) -> None:
+    root = _write_root(tmp_path, f'variable "input" {{\n  type = {scalar_type}\n}}\n', {})
+    for env in ("dev", "prod"):
+        (root / f"{env}.tfvars.json").write_text('{"input":"1e9999999999999999999999999"}', encoding="utf-8")
+
+    assert len(_check_file(root / "dev.tfvars.json")) == (1 if scalar_type == "string" else 0)
+
+
+@pytest.mark.parametrize("scalar_type", ["number", "bool", "string"])
+@pytest.mark.parametrize("quoted", [False, True])
+def test_unrepresentable_hcl_number_abstains_or_preserves_quoted_string(
+    scalar_type: str, quoted: bool, tmp_path: Path
+) -> None:
+    value = '"1e9999999999999999999999999"' if quoted else "1e9999999999999999999999999"
+    root = _write_root(
+        tmp_path,
+        f'variable "input" {{\n  type = {scalar_type}\n}}\n',
+        {"dev": f"input = {value}\n", "prod": f"input = {value}\n"},
+    )
+
+    assert len(_check_env(root, "dev")) == (1 if scalar_type == "string" and quoted else 0)
+
+
+def test_json_number_to_string_conversion_does_not_round(tmp_path: Path) -> None:
+    root = _write_root(
+        tmp_path, 'variable "input" {\n  type = string\n}\n', {"dev": "input = 123456789012345678901234567891\n"}
+    )
+    path = root / "prod.tfvars.json"
+    path.write_text('{"input":123456789012345678901234567892}', encoding="utf-8")
+
+    assert _check_file(path) == []
+    assert _check_env(root, "dev") == []
+
+
+@pytest.mark.parametrize("name", ["terraform.tfvars.json", "settings.auto.tfvars.json"])
+def test_json_auto_loaded_baseline_with_named_files_abstains(name: str, tmp_path: Path) -> None:
+    root = _write_root(tmp_path, _DECLARED_REGION, {"dev": _REGION_ASSIGNMENT, "prod": _REGION_ASSIGNMENT})
+    path = root / name
+    path.write_text('{"region":"me-central2"}', encoding="utf-8")
+
+    assert _check_file(path) == []
+    assert _check_env(root, "dev") == []
+
+
+def test_hcl_and_json_auto_files_form_one_environment(tmp_path: Path) -> None:
+    root = _write_root(tmp_path, _DECLARED_REGION, {})
+    (root / "a.auto.tfvars").write_text(_REGION_ASSIGNMENT, encoding="utf-8")
+    path = root / "b.auto.tfvars.json"
+    path.write_text('{"region":"me-central2"}', encoding="utf-8")
+
+    assert _check_file(path) == []
+
+
+def test_mixed_files_conflicting_for_one_environment_blind_comparisons(tmp_path: Path) -> None:
+    root = _write_root(tmp_path, _DECLARED_REGION, {"dev": _REGION_ASSIGNMENT, "prod": _REGION_ASSIGNMENT})
+    (root / "env" / "dev" / "terraform.tfvars.json").write_text('{"region":"east"}', encoding="utf-8")
+
+    assert _check_env(root, "prod") == []
+
+
+def test_json_unreadable_sibling_blinds_comparisons(tmp_path: Path) -> None:
+    root = _write_root(tmp_path, _DECLARED_REGION, {"dev": _REGION_ASSIGNMENT, "prod": _REGION_ASSIGNMENT})
+    path = root / "staging.tfvars.json"
+    path.write_text('{"region":"me-central2"}', encoding="utf-8")
+    path.chmod(0o000)
+    try:
+        assert _check_env(root, "prod") == []
+    finally:
+        path.chmod(0o600)
+
+
+def test_unreadable_sibling_directory_blinds_comparisons(tmp_path: Path) -> None:
+    root = _write_root(tmp_path, 'variable "region" {\n  type = string\n  default = "west"\n}\n', {})
+    live = root / "env" / "dev" / "terraform.tfvars.json"
+    live.parent.mkdir(parents=True)
+    live.write_text('{"region":"west"}', encoding="utf-8")
+    sibling = root / "env" / "prod"
+    sibling.mkdir()
+    sibling.chmod(0o000)
+    try:
+        assert _check_file(live) == []
+    finally:
+        sibling.chmod(0o700)
+
+
+@pytest.mark.parametrize("name", ["backend.tfvars.json", "backend-config.tfvars.json", "sample.tfvars.json"])
+def test_json_specimens_are_not_variable_environments(name: str, tmp_path: Path) -> None:
+    root = _write_root(tmp_path, _DECLARED_REGION, {})
+    path = root / name
+    path.write_text('{"ghost":true}', encoding="utf-8")
+
+    assert _check_file(path) == []
+
+
+@pytest.mark.parametrize("directory", ["fixture", "fixtures", "testdata"])
+def test_json_fixture_inputs_are_excluded(directory: str, tmp_path: Path) -> None:
+    root = _write_root(tmp_path, _DECLARED_REGION, {})
+    path = root / directory / "dev.tfvars.json"
+    path.parent.mkdir()
+    path.write_text('{"ghost":true}', encoding="utf-8")
+
+    assert _check_file(path) == []
+
+
+@pytest.mark.parametrize("suffix", [".tfvars", ".tfvars.json"])
+@pytest.mark.parametrize("directory", ["fixture", "fixtures", "testdata"])
+def test_fixture_files_do_not_invent_a_second_environment(suffix: str, directory: str, tmp_path: Path) -> None:
+    root = _write_root(tmp_path, _DECLARED_REGION, {})
+    source = '{"region":"west"}' if suffix.endswith(".json") else 'region = "west"\n'
+    live = root / f"dev{suffix}"
+    live.write_text(source, encoding="utf-8")
+    fixture = root / directory / f"prod{suffix}"
+    fixture.parent.mkdir()
+    fixture.write_text(source, encoding="utf-8")
+
+    assert _check_file(live) == []
+    assert _check_file(fixture) == []
+
+
+@pytest.mark.parametrize("suffix", [".tfvars", ".tfvars.json"])
+def test_fixture_sibling_does_not_hide_defaults_or_valid_orphan_check(suffix: str, tmp_path: Path) -> None:
+    root = _write_root(tmp_path, 'variable "region" {\n  type = string\n  default = "west"\n}\n', {})
+    live = root / "env" / "dev" / f"terraform{suffix}"
+    live.parent.mkdir(parents=True)
+    live.write_text(
+        '{"region":"west","ghost":true}' if suffix.endswith(".json") else 'region = "west"\nghost = true\n',
+        encoding="utf-8",
+    )
+    fixture = root / "env" / "fixtures" / f"terraform{suffix}"
+    fixture.parent.mkdir()
+    fixture.write_text('{"region":"east"}' if suffix.endswith(".json") else 'region = "east"\n', encoding="utf-8")
+
+    findings = _check_file(live)
+
+    assert len(findings) == 2
+    assert any("equals-default" in finding.message for finding in findings)
+    assert any("orphaned-key: `ghost`" in finding.message for finding in findings)
+
+
+@pytest.mark.parametrize("suffix", [".tfvars", ".tfvars.json"])
+def test_generated_files_are_excluded_from_environment_discovery(suffix: str, tmp_path: Path) -> None:
+    root = _write_root(tmp_path, 'variable "region" {\n  type = string\n  default = "west"\n}\n', {})
+    live = root / "env" / "dev" / f"terraform{suffix}"
+    live.parent.mkdir(parents=True)
+    source = '{"region":"west"}' if suffix.endswith(".json") else 'region = "west"\n'
+    live.write_text(source, encoding="utf-8")
+    generated = root / "env" / "prod" / f"terraform{suffix}"
+    generated.parent.mkdir()
+    generated.write_text("# Generated fixture. DO NOT EDIT.\n" + source, encoding="utf-8")
+
+    assert len(_check_file(live)) == 1
+    assert _check_file(generated) == []
+
+
+def test_generated_hcl_fixture_does_not_invent_a_second_environment(tmp_path: Path) -> None:
+    root = _write_root(tmp_path, _DECLARED_REGION, {"dev": 'region = "west"\n'})
+    (root / "prod.tfvars").write_text('# Generated fixture. DO NOT EDIT.\nregion = "west"\n', encoding="utf-8")
+
+    assert _check_env(root, "dev") == []
+
+
+def test_json_escaped_orphan_key_location_and_decoded_name(tmp_path: Path) -> None:
+    root = _write_root(tmp_path, _DECLARED_REGION, {})
+    path = root / "dev.tfvars.json"
+    path.write_text('{"region":{"ghost":true},"gh\\u006fst":true}', encoding="utf-8")
+
+    findings = _check_file(path)
+
+    assert len(findings) == 1
+    assert "`ghost`" in findings[0].message
+    assert (findings[0].line, findings[0].col) == (1, 26)
+
+
+def test_unreadable_declaration_suppresses_orphans_and_comparisons(tmp_path: Path) -> None:
+    root = _write_root(
+        tmp_path, _DECLARED_REGION, {"dev": _REGION_ASSIGNMENT + "hidden = true\n", "prod": _REGION_ASSIGNMENT}
+    )
+    hidden = root / "extra.tf"
+    hidden.write_text('variable "hidden" { type = bool }\n', encoding="utf-8")
+    hidden.chmod(0o000)
+    try:
+        assert _check_env(root, "dev") == []
+    finally:
+        hidden.chmod(0o600)
+
+
+def test_invalid_utf8_declaration_suppresses_orphans_and_comparisons(tmp_path: Path) -> None:
+    root = _write_root(
+        tmp_path,
+        _DECLARED_REGION,
+        {"dev": _REGION_ASSIGNMENT + "hidden = true\n", "prod": _REGION_ASSIGNMENT},
+    )
+    (root / "extra.tf").write_bytes(b'variable "hidden" { type = bool }\n\xff')
+
+    assert _check_env(root, "dev") == []
+
+
+def test_invalid_utf8_json_environment_blinds_comparisons(tmp_path: Path) -> None:
+    root = _write_root(tmp_path, _DECLARED_REGION, {"dev": _REGION_ASSIGNMENT, "prod": _REGION_ASSIGNMENT})
+    (root / "staging.tfvars.json").write_bytes(b'{"region":"me-central2","extra":"\xff"}')
+
+    assert _check_env(root, "dev") == []
+
+
+@pytest.mark.parametrize(
+    "name", ["override.tf", "settings_override.tf", "override.tf.json", "settings_override.tf.json"]
+)
+def test_override_declaration_semantics_are_not_guessed(name: str, tmp_path: Path) -> None:
+    root = _write_root(
+        tmp_path, 'variable "region" {\n  type = string\n  default = "west"\n}\n', {"dev": 'region = "east"\n'}
+    )
+    (root / name).write_text(
+        'variable "region" {\n  type = string\n  default = "east"\n}\n'
+        if name.endswith(".tf")
+        else '{"variable":{"region":{"default":"east"}}}',
+        encoding="utf-8",
+    )
+
+    assert _check_env(root, "dev") == []
 
 
 def test_an_unreadable_environment_suppresses_cross_environment_judgments(tmp_path: Path) -> None:
@@ -836,3 +1157,59 @@ def test_repeated_checks_observe_sibling_file_changes(tmp_path: Path) -> None:
     (root / "env" / "prod" / _TFVARS_NAME).write_text("enabled = false\n", encoding="utf-8")
 
     assert _check_env(root, "dev") == []
+
+
+@pytest.mark.parametrize("label", [r'"\u0072egion"', r'"\U00000072egion"'])
+def test_escaped_variable_label_does_not_create_orphan_inputs(tmp_path: Path, label: str) -> None:
+    root = _write_root(
+        tmp_path,
+        f"variable {label} {{\n  type = string\n}}\n",
+        {"dev": 'region = "east"\n', "prod": 'region = "west"\n'},
+    )
+    assert _check_env(root, "dev") == []
+    assert _check_env(root, "prod") == []
+
+
+@pytest.mark.parametrize(
+    ("type_name", "value"), [("bool", "((false))"), ("number", "((123))"), ("string", '("false")')]
+)
+def test_grouped_constant_inputs_keep_the_declared_scalar_type(tmp_path: Path, type_name: str, value: str) -> None:
+    root = _write_root(
+        tmp_path,
+        f'variable "setting" {{\n  type = {type_name}\n}}\n',
+        {"dev": f"setting = {value}\n", "prod": f"setting = {value}\n"},
+    )
+    findings = _check_env(root, "dev")
+    assert len(findings) == 1
+    assert "required-but-constant" in findings[0].message
+
+
+def test_grouped_distinct_string_inputs_are_not_collapsed_to_booleans(tmp_path: Path) -> None:
+    root = _write_root(
+        tmp_path,
+        'variable "setting" {\n  type = string\n}\n',
+        {"dev": 'setting = ("false")\n', "prod": 'setting = ("0")\n'},
+    )
+    assert _check_env(root, "dev") == []
+
+
+def test_grouped_quoted_numeric_input_is_never_echoed(tmp_path: Path) -> None:
+    root = _write_root(
+        tmp_path,
+        'variable "account" {\n  type = number\n}\n',
+        {"dev": 'account = (("123456789012"))\n', "prod": 'account = (("123456789012"))\n'},
+    )
+    findings = _check_env(root, "dev")
+    assert len(findings) == 1
+    assert "123456789012" not in findings[0].message
+
+
+def test_hcl_long_unicode_escape_is_a_known_constant_input(tmp_path: Path) -> None:
+    root = _write_root(
+        tmp_path,
+        'variable "region" {\n  type = string\n  default = "east"\n}\n',
+        {"dev": r'region = "\U00000077est"' + "\n", "prod": 'region = "west"\n'},
+    )
+    findings = _check_env(root, "dev")
+    assert len(findings) == 1
+    assert "constant-everywhere" in findings[0].message

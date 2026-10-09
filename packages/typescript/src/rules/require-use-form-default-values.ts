@@ -6,6 +6,8 @@
 
 import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
 
+import { unwrapExpression } from "./_unwrap-expression.js";
+
 import { createRule, type RuleDocumentation } from "./_docs.js";
 
 type MessageIds = "requireUseFormDefaultValues";
@@ -51,15 +53,6 @@ function staticPropertyName(property: TSESTree.Property): string | null {
   return null;
 }
 
-function unwrapExpression(node: TSESTree.Node): TSESTree.Node {
-  if (
-    node.type === AST_NODE_TYPES.TSAsExpression ||
-    node.type === AST_NODE_TYPES.TSSatisfiesExpression ||
-    node.type === AST_NODE_TYPES.TSNonNullExpression ||
-    node.type === AST_NODE_TYPES.TSTypeAssertion
-  ) return unwrapExpression(node.expression);
-  return node;
-}
 
 export default createRule<Options, MessageIds>({
   name: "require-use-form-default-values",
@@ -91,6 +84,14 @@ export default createRule<Options, MessageIds>({
       return (value.type === AST_NODE_TYPES.UnaryExpression && value.operator === "void") ||
         (value.type === AST_NODE_TYPES.Identifier && value.name === "undefined" && (bindingOf(value)?.defs.length ?? 0) === 0);
     };
+    const uninitializedUseFormCall = (node: TSESTree.Node): boolean => {
+      node = unwrapExpression(node);
+      const unwrappedNodeCallee = node.type === "CallExpression" || node.type === "NewExpression" ? unwrapExpression(node.callee) : null;
+      if (node.type !== AST_NODE_TYPES.CallExpression || unwrappedNodeCallee?.type !== AST_NODE_TYPES.Identifier || importedKind(unwrappedNodeCallee) !== "useForm") return false;
+      const options = node.arguments[0];
+      return options?.type !== AST_NODE_TYPES.SpreadElement && initializationState(options) === "uninitialized";
+    };
+
     const initializationState = (node: TSESTree.Node | undefined): "initialized" | "uninitialized" | "unknown" => {
       if (node === undefined) return "uninitialized";
       if (node.type !== AST_NODE_TYPES.ObjectExpression) return "unknown";
@@ -103,23 +104,19 @@ export default createRule<Options, MessageIds>({
       }
       return [...initialization.values()].some(Boolean) ? "initialized" : "uninitialized";
     };
-    const uninitializedUseFormCall = (node: TSESTree.Node): boolean => {
-      if (node.type !== AST_NODE_TYPES.CallExpression || node.callee.type !== AST_NODE_TYPES.Identifier || importedKind(node.callee) !== "useForm") return false;
-      const options = node.arguments[0];
-      return options?.type !== AST_NODE_TYPES.SpreadElement && initializationState(options) === "uninitialized";
-    };
     const isUninitializedForm = (node: TSESTree.Node): boolean => {
+      node = unwrapExpression(node);
       if (node.type !== AST_NODE_TYPES.Identifier) return false;
       const variable = bindingOf(node);
       return variable !== null && stable(variable) && uninitializedForms.has(variable);
     };
     const isUninitializedControl = (node: TSESTree.Node): boolean => {
+      node = unwrapExpression(node);
       if (node.type === AST_NODE_TYPES.Identifier) {
         const variable = bindingOf(node);
         return variable !== null && stable(variable) && uninitializedControls.has(variable);
       }
-      return node.type === AST_NODE_TYPES.MemberExpression && !node.computed &&
-        node.property.type === AST_NODE_TYPES.Identifier && node.property.name === "control" && isUninitializedForm(node.object);
+      return node.type === AST_NODE_TYPES.MemberExpression && ASTUtils.getPropertyName(node) !== null && (ASTUtils.getPropertyName(node) ?? "") === "control" && isUninitializedForm(node.object);
     };
     const fieldOptionsNeedDefault = (node: TSESTree.Node | undefined): boolean => {
       if (node?.type !== AST_NODE_TYPES.ObjectExpression) return false;
@@ -176,14 +173,14 @@ export default createRule<Options, MessageIds>({
           trackDestructuredControl(node.id);
           return;
         }
-        if (node.id.type === AST_NODE_TYPES.Identifier && node.init.type === AST_NODE_TYPES.MemberExpression && !node.init.computed &&
-          node.init.property.type === AST_NODE_TYPES.Identifier && node.init.property.name === "control" && isUninitializedForm(node.init.object)) {
+        if (node.id.type === AST_NODE_TYPES.Identifier && node.init.type === AST_NODE_TYPES.MemberExpression && ASTUtils.getPropertyName(node.init) !== null && (ASTUtils.getPropertyName(node.init) ?? "") === "control" && isUninitializedForm(node.init.object)) {
           const variable = bindingOf(node.id);
           if (variable !== null) uninitializedControls.add(variable);
         }
       },
       CallExpression(node): void {
-        if (node.callee.type !== AST_NODE_TYPES.Identifier || importedKind(node.callee) !== "useController" ||
+        const unwrappedNodeCallee = unwrapExpression(node.callee);
+        if (unwrappedNodeCallee.type !== AST_NODE_TYPES.Identifier || importedKind(unwrappedNodeCallee) !== "useController" ||
           !fieldOptionsNeedDefault(node.arguments[0]?.type === AST_NODE_TYPES.SpreadElement ? undefined : node.arguments[0])) return;
         context.report({ node, messageId: "requireUseFormDefaultValues" });
       },

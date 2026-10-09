@@ -5,6 +5,8 @@
  */
 
 import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
+import { outerExpression, unwrapExpression } from "./_unwrap-expression.js";
+import { staticString } from "./_static-string.js";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile, isTestFile } from "./_paths.js";
@@ -36,21 +38,23 @@ function registration(
   sourceCode: Readonly<{ getScope(node: TSESTree.Node): TSESLint.Scope.Scope }>,
   node: TSESTree.CallExpression,
 ): { operation: ListenerOperation; event: LifecycleEvent; callback: TSESTree.Identifier } | null {
+  const unwrappedNodeCallee = unwrapExpression(node.callee);
+  const receiver = unwrappedNodeCallee.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(unwrappedNodeCallee.object) : unwrappedNodeCallee;
   if (
-    node.callee.type !== AST_NODE_TYPES.MemberExpression || node.callee.computed ||
-    node.callee.object.type !== AST_NODE_TYPES.Identifier ||
-    !isUnshadowedGlobal(sourceCode, node.callee.object) ||
-    node.callee.property.type !== AST_NODE_TYPES.Identifier ||
-    (node.callee.property.name !== "addEventListener" && node.callee.property.name !== "removeEventListener") ||
+    unwrappedNodeCallee.type !== AST_NODE_TYPES.MemberExpression || receiver.type !== AST_NODE_TYPES.Identifier ||
+    !isUnshadowedGlobal(sourceCode, receiver) ||
+    ASTUtils.getPropertyName(unwrappedNodeCallee) === null ||
+    ((ASTUtils.getPropertyName(unwrappedNodeCallee) ?? "") !== "addEventListener" && (ASTUtils.getPropertyName(unwrappedNodeCallee) ?? "") !== "removeEventListener") ||
     node.arguments.length < 2
   ) return null;
-  const event = node.arguments[0];
-  const callback = node.arguments[1];
+  const event = node.arguments[0] === undefined ? undefined : unwrapExpression(node.arguments[0]);
+  const callback = node.arguments[1] === undefined ? undefined : unwrapExpression(node.arguments[1]);
   if (event === undefined || callback === undefined) return null;
-  if (event.type !== AST_NODE_TYPES.Literal || typeof event.value !== "string" || callback.type !== AST_NODE_TYPES.Identifier) return null;
-  const operation = node.callee.property.name === "addEventListener" ? "add" : "remove";
-  if (node.callee.object.name === "window" && event.value === "focus") return { operation, event: "focus", callback };
-  if (node.callee.object.name === "document" && event.value === "visibilitychange") return { operation, event: "visibilitychange", callback };
+  const eventName = staticString(event);
+  if (eventName === null || callback.type !== AST_NODE_TYPES.Identifier) return null;
+  const operation = (ASTUtils.getPropertyName(unwrappedNodeCallee) ?? "") === "addEventListener" ? "add" : "remove";
+  if (receiver.name === "window" && eventName === "focus") return { operation, event: "focus", callback };
+  if (receiver.name === "document" && eventName === "visibilitychange") return { operation, event: "visibilitychange", callback };
   return null;
 }
 
@@ -63,7 +67,7 @@ function isUnshadowedGlobal(
 }
 
 function statementContainer(node: TSESTree.CallExpression): TSESTree.Program | TSESTree.BlockStatement | null {
-  const statement = node.parent;
+  const statement = outerExpression(node).parent;
   if (statement.type !== AST_NODE_TYPES.ExpressionStatement) return null;
   const container = statement.parent;
   return container.type === AST_NODE_TYPES.Program || container.type === AST_NODE_TYPES.BlockStatement
@@ -116,14 +120,17 @@ export default createRule<Options, MessageIds>({
         }
       },
       VariableDeclarator(node): void {
+        const initializer = node.init === null ? null : unwrapExpression(node.init);
         if (node.id.type !== AST_NODE_TYPES.Identifier) return;
         const variable = ASTUtils.findVariable(context.sourceCode.getScope(node.id), node.id.name);
         if (variable === null || variable.references.some((reference) => reference.isWrite() && !reference.init)) return;
-        if (node.init?.type === AST_NODE_TYPES.ArrowFunctionExpression || node.init?.type === AST_NODE_TYPES.FunctionExpression) {
-          functionCallbacks.set(node.init, variable);
+        if (initializer?.type === AST_NODE_TYPES.ArrowFunctionExpression || initializer?.type === AST_NODE_TYPES.FunctionExpression) {
+          functionCallbacks.set(initializer, variable);
         }
-        if (node.init?.type !== AST_NODE_TYPES.CallExpression || node.init.callee.type !== AST_NODE_TYPES.Identifier) return;
-        const hook = ASTUtils.findVariable(context.sourceCode.getScope(node.init.callee), node.init.callee.name);
+        if (initializer?.type !== AST_NODE_TYPES.CallExpression) return;
+        const hookCallee = unwrapExpression(initializer.callee);
+        if (hookCallee.type !== AST_NODE_TYPES.Identifier) return;
+        const hook = ASTUtils.findVariable(context.sourceCode.getScope(hookCallee), hookCallee.name);
         if (hook !== null && routerHooks.has(hook)) routers.add(variable);
       },
       FunctionDeclaration(node): void {
@@ -132,6 +139,7 @@ export default createRule<Options, MessageIds>({
         if (variable !== null && !variable.references.some((reference) => reference.isWrite() && !reference.init)) functionCallbacks.set(node, variable);
       },
       CallExpression(node): void {
+        const unwrappedNodeCallee = unwrapExpression(node.callee);
         const item = registration(context.sourceCode, node);
         if (item !== null) {
           const callback = ASTUtils.findVariable(context.sourceCode.getScope(item.callback), item.callback.name);
@@ -146,12 +154,12 @@ export default createRule<Options, MessageIds>({
           }
         }
 
+        const receiver = unwrappedNodeCallee.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(unwrappedNodeCallee.object) : unwrappedNodeCallee;
         if (
-          node.callee.type !== AST_NODE_TYPES.MemberExpression || node.callee.computed ||
-          node.callee.object.type !== AST_NODE_TYPES.Identifier ||
-          node.callee.property.type !== AST_NODE_TYPES.Identifier || node.callee.property.name !== "refresh"
+          unwrappedNodeCallee.type !== AST_NODE_TYPES.MemberExpression || receiver.type !== AST_NODE_TYPES.Identifier ||
+          ASTUtils.getPropertyName(unwrappedNodeCallee) === null || (ASTUtils.getPropertyName(unwrappedNodeCallee) ?? "") !== "refresh"
         ) return;
-        const router = ASTUtils.findVariable(context.sourceCode.getScope(node.callee.object), node.callee.object.name);
+        const router = ASTUtils.findVariable(context.sourceCode.getScope(receiver), receiver.name);
         if (router === null || !routers.has(router)) return;
         const fn = enclosingFunction(context.sourceCode, node);
         if (fn === null) return;

@@ -8,6 +8,8 @@ import rule, {
   PREFER_AWAIT_IN_ASYNC_RETURN_DOCUMENTATION,
 } from "../../src/rules/prefer-await-in-async-return.js";
 
+import { verifyRuleExamples } from "../../src/verify-rule-examples.js";
+
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
 RuleTester.it = it;
@@ -27,6 +29,27 @@ const TYPED_RULE_TESTER = new RuleTester({
 
 TYPED_RULE_TESTER.run("prefer-await-in-async-return", rule, {
   valid: [
+    {
+      name: "allows an erased React lazy loader and transform",
+      code: `
+        import { lazy as reactLazy } from "react";
+        (reactLazy! )((async () => Promise.resolve({ Page: 1 }).then(((module) => ({ default: module.Page }))!))!);
+      `,
+    },
+    {
+      name: "allows an erased next dynamic loader and transform",
+      code: `
+        import loadDynamic from "next/dynamic";
+        (loadDynamic!)((async () => Promise.resolve({ Page: 1 }).then(((module) => module.Page)!))!);
+      `,
+    },
+    {
+      name: "retains custom thenable exclusion through erased callee and callback",
+      code: `
+        const value = { then(callback: (input: number) => number) { return callback(1); } };
+        async function load() { return (value.then!)(((input) => input + 1)!); }
+      `,
+    },
     {
       name: "accepts the documented explicit await",
       code: PREFER_AWAIT_IN_ASYNC_RETURN_DOCUMENTATION.examples[0].files[0].source,
@@ -168,12 +191,194 @@ const UNTYPED_RULE_TESTER = new RuleTester({
   languageOptions: { parser: tsParser },
 });
 
+TYPED_RULE_TESTER.run("prefer-await-in-async-return with all Promise calls", rule, {
+  valid: [
+    {
+      name: "reads JSON Schema conditional data",
+      code: `const schema = { then: { type: "string" } }; const type = schema.then.type;`,
+      options: [{ scope: "all-promise-calls" }],
+    },
+    {
+      name: "destructures JSON Schema conditional data",
+      code: `const schema = { then: { type: "string" } }; const { then: branch } = schema;`,
+      options: [{ scope: "all-promise-calls" }],
+    },
+    {
+      name: "allows a synchronous API with a then method",
+      code: `const flow = { then(value: number) { return value + 1; } }; flow.then(1);`,
+      options: [{ scope: "all-promise-calls" }],
+    },
+    {
+      name: "does not guess from an unknown receiver or computed property",
+      code: `declare const value: any; value.then(handle); declare const key: string; Promise.resolve(1)[key](handle);`,
+      options: [{ scope: "all-promise-calls" }],
+    },
+    {
+      name: "leaves Promise catch and finally available",
+      code: `Promise.resolve(1).catch(() => 0).finally(() => {});`,
+      options: [{ scope: "all-promise-calls" }],
+    },
+    {
+      name: "ignores a union with a custom synchronous then method",
+      code: `declare const value: Promise<number> | { then(callback: () => void): number }; value.then(() => {});`,
+      options: [{ scope: "all-promise-calls" }],
+    },
+    {
+      name: "does not treat a custom async thenable as built-in Promise",
+      code: `interface Thenable { then(callback: (value: number) => number): Promise<number>; }
+        declare const value: Thenable; value.then((input) => input + 1);`,
+      options: [{ scope: "all-promise-calls" }],
+    },
+    {
+      name: "does not infer a Promise from an unknown receiver",
+      code: `declare const value: unknown; value.then((input) => input + 1);`,
+      options: [{ scope: "all-promise-calls" }],
+    },
+    {
+      name: "does not infer a Promise from a never receiver",
+      code: `declare const value: never; value.then((input) => input + 1);`,
+      options: [{ scope: "all-promise-calls" }],
+    },
+    {
+      name: "does not borrow built-in identity for a custom then intersection",
+      code: `declare const value: Promise<number> & { then(value: number): number }; value.then(1);`,
+      options: [{ scope: "all-promise-calls" }],
+    },
+    {
+      name: "does not follow an extracted Promise method",
+      code: `const continuePromise = Promise.resolve(1).then; continuePromise((input) => input + 1);`,
+      options: [{ scope: "all-promise-calls" }],
+    },
+    {
+      name: "does not follow a destructured Promise method",
+      code: `const { then: continuePromise } = Promise.resolve(1); continuePromise((input) => input + 1);`,
+      options: [{ scope: "all-promise-calls" }],
+    },
+  ],
+  invalid: [
+    {
+      code: `Promise.resolve(1).then((value) => value + 1);`,
+      options: [{ scope: "all-promise-calls" }],
+      errors: [{ messageId: "preferAwaitCall" }],
+    },
+    {
+      code: `Promise.resolve(1)?.then((value) => value + 1);`,
+      options: [{ scope: "all-promise-calls" }],
+      errors: [{ messageId: "preferAwaitCall" }],
+    },
+    {
+      code: `Promise.resolve(1).then?.((value) => value + 1);`,
+      options: [{ scope: "all-promise-calls" }],
+      errors: [{ messageId: "preferAwaitCall" }],
+    },
+    {
+      code: `Promise.resolve(1)["then"]((value) => value + 1);`,
+      options: [{ scope: "all-promise-calls" }],
+      errors: [{ messageId: "preferAwaitCall" }],
+    },
+    {
+      code: `Promise.resolve(1)[\`then\`]((value) => value + 1);`,
+      options: [{ scope: "all-promise-calls" }],
+      errors: [{ messageId: "preferAwaitCall" }],
+    },
+    {
+      code: `declare const value: Promise<number> | undefined; value?.then((input) => input + 1);`,
+      options: [{ scope: "all-promise-calls" }],
+      errors: [{ messageId: "preferAwaitCall" }],
+    },
+    {
+      code: `declare const value: PromiseLike<number>; value.then((input) => input + 1);`,
+      options: [{ scope: "all-promise-calls" }],
+      errors: [{ messageId: "preferAwaitCall" }],
+    },
+    {
+      code: `declare function handle(value: number): number; Promise.resolve(1).then(handle);`,
+      options: [{ scope: "all-promise-calls" }],
+      errors: [{ messageId: "preferAwaitCall" }],
+    },
+    {
+      code: `Promise.resolve(1).then((value) => value + 1, () => 0);`,
+      options: [{ scope: "all-promise-calls" }],
+      errors: [{ messageId: "preferAwaitCall" }],
+    },
+    {
+      code: `async function load() { return Promise.resolve(1).then((value) => value + 1); }`,
+      options: [{ scope: "all-promise-calls" }],
+      errors: [{ messageId: "preferAwaitCall" }],
+    },
+    {
+      code: `async function load() { return await Promise.resolve(1).then((value) => value + 1); }`,
+      options: [{ scope: "all-promise-calls" }],
+      errors: [{ messageId: "preferAwaitCall" }],
+    },
+    {
+      name: "proves every member of an ordinary Promise union",
+      code: `declare const value: Promise<number> | Promise<string>; value.then((input) => input);`,
+      options: [{ scope: "all-promise-calls" }],
+      errors: [{ messageId: "preferAwaitCall" }],
+    },
+    {
+      name: "keeps inherited built-in Promise method identity",
+      code: `class Task extends Promise<number> {} declare const task: Task; task.then((input) => input + 1);`,
+      options: [{ scope: "all-promise-calls" }],
+      errors: [{ messageId: "preferAwaitCall" }],
+    },
+    {
+      name: "reports each Promise call exactly once in a chain",
+      code: `Promise.resolve(1).then((value) => value + 1).then((value) => value * 2);`,
+      options: [{ scope: "all-promise-calls" }],
+      errors: [{ messageId: "preferAwaitCall" }, { messageId: "preferAwaitCall" }],
+    },
+  ],
+});
+
 UNTYPED_RULE_TESTER.run("prefer-await-in-async-return without type services", rule, {
-  valid: [{
-    name: "stays silent when the parser has no type information",
-    code: `async function load() {
-      return Promise.resolve(1).then((value) => value + 1);
-    }`,
-  }],
+  valid: [
+    {
+      name: "stays silent when the parser has no type information",
+      code: `async function load() {
+        return Promise.resolve(1).then((value) => value + 1);
+      }`,
+    },
+    {
+      name: "broad policy also requires type information",
+      code: `Promise.resolve(1).then((value) => value + 1);`,
+      options: [{ scope: "all-promise-calls" }],
+    },
+  ],
   invalid: [],
+});
+
+
+it("preserves outcomes for static member access and unknown member keys", async () => {
+  const documentation = rule.documentation;
+  if (documentation === undefined) throw new Error("Missing rule documentation");
+  await verifyRuleExamples({ ...rule, documentation: { ...documentation, examples: [
+  {
+    "id": "returned-then-transform-static-member",
+    "title": "Static member access preserves the rule outcome",
+    "outcome": "match",
+    "focusPath": "src/load.ts",
+    "expectedCount": 1,
+    "files": [
+      {
+        "path": "src/load.ts",
+        "source": "async function load() { return Promise[\"resolve\"](1)[\"then\"]((value) => value + 1); }"
+      }
+    ]
+  },
+  {
+    "id": "returned-then-transform-dynamic-member",
+    "title": "Unknown member access does not establish API identity",
+    "outcome": "no-match",
+    "focusPath": "src/load.ts",
+    "expectedCount": 0,
+    "files": [
+      {
+        "path": "src/load.ts",
+        "source": "async function load() { return Promise[auditDynamicMember](1)[auditDynamicMember]((value) => value + 1); }"
+      }
+    ]
+  }
+] } });
 });

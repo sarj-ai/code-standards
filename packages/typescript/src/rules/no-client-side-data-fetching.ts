@@ -6,6 +6,8 @@
 
 import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 
+import { unwrapExpression } from "./_unwrap-expression.js";
+
 import { createRule, type RuleDocumentation } from "./_docs.js";
 
 type MessageIds = "noClientFetch";
@@ -72,7 +74,8 @@ const ANALYTICS_SEGMENTS: ReadonlySet<string> = new Set([
 ]);
 
 function isEffectHookCall(node: TSESTree.CallExpression): boolean {
-  const callee = node.callee;
+  const callee = unwrapExpression(node.callee);
+
 
   // useEffect(...) / useLayoutEffect(...)
   if (callee.type === AST_NODE_TYPES.Identifier) {
@@ -97,7 +100,8 @@ function isEffectHookCall(node: TSESTree.CallExpression): boolean {
 }
 
 function isFetchCall(node: TSESTree.CallExpression): boolean {
-  const callee = node.callee;
+  const callee = unwrapExpression(node.callee);
+
 
   if (
     callee.type === AST_NODE_TYPES.Identifier &&

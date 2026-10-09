@@ -7,7 +7,7 @@ from enum import StrEnum
 from functools import partial
 import json
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import re
 import shutil
 import signal
@@ -22,7 +22,8 @@ from typing import TYPE_CHECKING, ClassVar, Final, Literal, NamedTuple, Protocol
 import zipfile
 
 from pathspec import PathSpec
-from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
+from pydantic import BaseModel, ConfigDict, Field, RootModel
+from sarj_rule_contracts import RuleEngine, RuleSelection
 import yaml
 
 from sarj_standards.libs.adoption import manifest, packagemanager
@@ -45,7 +46,7 @@ from sarj_standards.libs.json_boundary import parse_json
 from sarj_standards.libs.typed_containers import is_object_list, is_object_mapping
 from sarj_standards.libs.yaml_boundary import parse_yaml
 
-from . import mobile_tools
+from . import mobile_tools, security_tools
 from .runner import GroupedPaths, group_paths
 
 
@@ -67,6 +68,14 @@ class _PreparedInputs(NamedTuple):
     grouped: GroupedPaths
 
 
+@dataclass(frozen=True, slots=True)
+class UpstreamESLintRules:
+    ids: frozenset[str] = frozenset()
+
+
+_NO_UPSTREAM_ESLINT_RULES = UpstreamESLintRules()
+
+
 _TIMEOUT = timedelta(minutes=15)
 _ESLINT_ERROR = 2
 _DETEKT_FINDINGS = 2
@@ -77,6 +86,8 @@ _PACKAGED_MOBILE_CONFIGS = Path(__file__).resolve().parents[2] / "configs"
 _READ_BYTES = 64 * 1024
 _MAX_ESLINT_PROJECTS = 32
 _ESLINT_BATCH_SIZE = 250
+_ESLINT_ANALYSIS_BATCH_SIZE = 1_000
+_ESLINT_ARGV_BUDGET = 24 * 1024 if sys.platform == "win32" else 64 * 1024
 _MAX_PYTHON_PROJECTS = 32
 _SHELLCHECK_BATCH_SIZE = 250
 _SHELLCHECK_VERSION: Final = "0.11.0"
@@ -93,10 +104,23 @@ _REACT_DOCTOR_SOURCE_SUFFIXES = frozenset(
     {".astro", ".cjs", ".cts", ".htm", ".html", ".js", ".jsx", ".mjs", ".mts", ".ts", ".tsx"}
 )
 _ESLINT_NODE_OPTIONS: Final = "--max-old-space-size=4096"
+_ESLINT_LARGE_NODE_OPTIONS: Final = "--max-old-space-size=8192"
+_ESLINT_LARGE_HOST_MEMORY: Final = 12 * 1024**3
+_CGROUP_ROOT: Final = Path("/sys/fs/cgroup")
+_PROCESS_CGROUPS: Final = Path("/proc/self/cgroup")
+_CGROUP_RECORD_FIELDS: Final = 3
+_CGROUP_MEMORY_LIMIT_FILES: Final = (
+    Path("/sys/fs/cgroup/memory.max"),
+    Path("/sys/fs/cgroup/memory/memory.limit_in_bytes"),
+)
 _ESLINT_FORMATTER: Final = Path(__file__).parents[2] / "configs" / "eslint-compact-formatter.mjs"
 _ESLINT_SELECTED_RUNNER: Final = Path(__file__).parents[2] / "configs" / "eslint-selected-rules.mjs"
-_JSON_OBJECT_ADAPTER = TypeAdapter(dict[str, object])
-_YAML_OBJECT_ADAPTER = TypeAdapter(object)
+
+
+class _JsonToolReport(RootModel[dict[str, object]]):
+    pass
+
+
 _REACT_RUNTIME_PACKAGES = frozenset(
     {
         "@astrojs/react",
@@ -158,6 +182,9 @@ _SAFE_ENVIRONMENT_KEYS = frozenset(
         "TMP",
         "TMPDIR",
         "WINDIR",
+        "UV_CACHE_DIR",
+        "UV_PYTHON_INSTALL_DIR",
+        "UV_TOOL_DIR",
     }
 )
 
@@ -197,6 +224,7 @@ class _ReactDoctorProject(_ReactDoctorProtocolModel):
 class _ReactDoctorDiff(_ReactDoctorProtocolModel):
     base_branch: str = Field(alias="baseBranch", min_length=1)
     changed_file_count: int = Field(alias="changedFileCount", ge=0)
+    is_current_changes: bool | None = Field(default=None, alias="isCurrentChanges")
 
 
 class _ReactDoctorReport(_ReactDoctorProtocolModel):
@@ -307,6 +335,9 @@ def analyze_external(
     react_doctor_full_scan: bool = False,
     pass_on_unpruned_eslint_suppressions: bool = False,
     rule_ids: frozenset[str] | None = None,
+    upstream_rules: UpstreamESLintRules = _NO_UPSTREAM_ESLINT_RULES,
+    security_selection: RuleSelection | None = None,
+    python_type_check: bool = True,
 ) -> tuple[ToolReport, ...]:
     execute = run_process if runner is None else runner
     try:
@@ -316,6 +347,15 @@ def analyze_external(
         issue = ExecutionIssue("external", "invalid-input", str(exc))
         return (ToolReport("external", Completion.FAILED, issues=(issue,)),)
     reports: list[ToolReport] = []
+    reports.extend(
+        _security_reports(
+            routed.iac,
+            root=root,
+            runner=execute,
+            capabilities=capabilities,
+            security_selection=security_selection,
+        )
+    )
     if capabilities is None or "shellcheck" in capabilities:
         reports.extend(_shellcheck_reports(routed, root=root, runner=execute, attest_version=runner is None))
     try:
@@ -350,7 +390,7 @@ def analyze_external(
                         runner=execute,
                     )
                 )
-            if capabilities is None or "pyright" in capabilities:
+            if python_type_check and (capabilities is None or "pyright" in capabilities):
                 reports.extend(
                     _invoke_python_projects(
                         "basedpyright",
@@ -457,10 +497,11 @@ def analyze_external(
                     "eslint",
                     _selected_eslint_argv(
                         command,
-                        rule_ids,
+                        rule_ids or frozenset(),
+                        upstream_rules=upstream_rules,
                         pass_on_unpruned_suppressions=pass_on_unpruned_eslint_suppressions,
                     )
-                    if rule_ids is not None
+                    if rule_ids is not None or upstream_rules.ids
                     else _local_eslint_argv(
                         _eslint_json_argv(
                             command.argv,
@@ -528,6 +569,118 @@ def analyze_external(
         )
         for report in reports
     )
+
+
+def _security_reports(
+    files: Sequence[str],
+    *,
+    root: Path,
+    runner: ProcessRunner,
+    capabilities: frozenset[str] | None,
+    security_selection: RuleSelection | None = None,
+) -> tuple[ToolReport, ...]:
+    if capabilities is not None and capabilities.isdisjoint({"zizmor", "checkov"}):
+        return ()
+    checkov_checks = security_selection.native_ids_for(RuleEngine.CHECKOV) if security_selection is not None else None
+    zizmor_selected = security_selection is not None and RuleEngine.ZIZMOR in security_selection.engines
+    try:
+        selected = security_tools.select_inputs(
+            files, root=root, capabilities=capabilities, checkov_rule_ids=checkov_checks
+        )
+    except (OSError, TypeError, ValueError) as exc:
+        issue = ExecutionIssue("security-tools", "invalid-input", _redact_message(str(exc), root))
+        return (ToolReport("security-tools", Completion.FAILED, issues=(issue,)),)
+    reports: list[ToolReport] = []
+    if selected.workflows and (capabilities is None or "zizmor" in capabilities):
+        for start in range(0, len(selected.workflows), _ESLINT_BATCH_SIZE):
+            batch = selected.workflows[start : start + _ESLINT_BATCH_SIZE]
+            reports.append(
+                _invoke(
+                    "zizmor",
+                    (
+                        *security_tools.command("zizmor"),
+                        "--offline",
+                        *(("--persona", "auditor") if zizmor_selected else ()),
+                        "--collect=all",
+                        "--format=sarif",
+                        "--no-exit-codes",
+                        "--strict-collection",
+                        "--no-ignores",
+                        "--config",
+                        str(_PACKAGED_MOBILE_CONFIGS / "zizmor.strict.yml"),
+                        "--",
+                        *batch,
+                    ),
+                    cwd=root,
+                    root=root,
+                    runner=partial(_security_runner, runner, name="zizmor"),
+                    parser=security_tools.parse_zizmor,
+                    version=security_tools.VERSIONS["zizmor"],
+                    invocation_id=f"batch-{start // _ESLINT_BATCH_SIZE + 1}",
+                    file_count=len(batch),
+                )
+            )
+    if capabilities is None or "checkov" in capabilities:
+        reports.extend(_checkov_reports(selected, root=root, runner=runner, checkov_checks=checkov_checks))
+    return tuple(reports)
+
+
+def _checkov_reports(
+    selected: security_tools.SecurityInputs,
+    *,
+    root: Path,
+    runner: ProcessRunner,
+    checkov_checks: frozenset[str] | None,
+) -> tuple[ToolReport, ...]:
+    reports: list[ToolReport] = []
+    for framework, paths in (("terraform", selected.terraform), ("kubernetes", selected.kubernetes)):
+        checks = security_tools.CHECKOV_CHECKS if checkov_checks is None else checkov_checks
+        if framework == "kubernetes":
+            checks = checks.intersection(security_tools.KUBERNETES_CHECKS)
+        if not checks:
+            continue
+        for start in range(0, len(paths), _ESLINT_BATCH_SIZE):
+            batch = paths[start : start + _ESLINT_BATCH_SIZE]
+            reports.append(
+                _invoke(
+                    "checkov",
+                    (
+                        *security_tools.command("checkov"),
+                        "--config-file",
+                        str(_PACKAGED_MOBILE_CONFIGS / "checkov.strict.yml"),
+                        "--framework",
+                        framework,
+                        "--check",
+                        ",".join(sorted(checks)),
+                        "--skip-download",
+                        "--output",
+                        "json",
+                        "--file",
+                        *batch,
+                    ),
+                    cwd=root,
+                    root=root,
+                    runner=partial(_security_runner, runner, name="checkov"),
+                    parser=security_tools.parse_checkov,
+                    version=security_tools.VERSIONS["checkov"],
+                    invocation_id=f"{framework}:batch-{start // _ESLINT_BATCH_SIZE + 1}",
+                    file_count=len(batch),
+                )
+            )
+
+    return tuple(reports)
+
+
+def _security_runner(runner: ProcessRunner, argv: Sequence[str], *, cwd: Path, name: str) -> ProcessOutput:
+    output = (
+        _run_process(argv, cwd=cwd, environment=_analysis_environment(), timeout_seconds=300)
+        if runner is run_process
+        else runner(argv, cwd=cwd)
+    )
+    if name == "zizmor" and output.returncode != 0:
+        msg = f"zizmor audit failed with exit {output.returncode}"
+        raise OSError(msg)
+    return output
 
 
 def _mobile_source_reports(
@@ -729,7 +882,7 @@ def _mobsfscan_argv(rules: Path, *, config: Path | None) -> tuple[str, ...]:
     )
     if config is None:
         return (*argv, "--severity", "WARNING", "--severity", "ERROR")
-    raw = _YAML_OBJECT_ADAPTER.validate_python(parse_yaml(_read_mobile_config(config)))
+    raw = parse_yaml(_read_mobile_config(config))
     entries = _array(raw, "mobsfscan config")
     if len(entries) != 1:
         msg = "mobsfscan config must contain exactly one mapping"
@@ -1245,11 +1398,14 @@ def _parse_react_doctor_staged_with_full_fallback(
     full_argv: Sequence[str],
 ) -> tuple[Diagnostic, ...]:
     report = _ReactDoctorReport.model_validate_json(payload)
+    scoped_projects = _react_doctor_scoped_project_set(
+        report, expected_projects=expected_projects, root=root, runner=runner, scope_root=cwd, staged=True
+    )
     if report.react_detected is not False:
         return _parse_react_doctor_report(
             report,
             root=root,
-            expected_projects=expected_projects,
+            expected_projects=scoped_projects,
             allow_empty_projects=allow_empty_projects,
             include_warnings=False,
             require_react_detection=True,
@@ -1260,7 +1416,7 @@ def _parse_react_doctor_staged_with_full_fallback(
     _parse_react_doctor_report(
         report,
         root=root,
-        expected_projects=expected_projects,
+        expected_projects=scoped_projects,
         allow_empty_projects=allow_empty_projects,
         include_warnings=False,
         require_react_detection=False,
@@ -1301,11 +1457,46 @@ def _parse_react_doctor_changed_scope(
     return _parse_react_doctor_report(
         report,
         root=root,
-        expected_projects=expected_projects,
+        expected_projects=_react_doctor_scoped_project_set(
+            report, expected_projects=expected_projects, root=root, runner=runner, scope_root=scope_root, staged=False
+        ),
         allow_empty_projects=allow_empty_projects,
         include_warnings=False,
         require_react_detection=True,
     )
+
+
+def _react_doctor_scoped_project_set(
+    report: _ReactDoctorReport,
+    *,
+    expected_projects: frozenset[Path],
+    root: Path,
+    runner: ProcessRunner,
+    scope_root: Path,
+    staged: bool,
+) -> frozenset[Path]:
+    # Scoped scans intentionally omit untouched workspaces. Prove that every
+    # omission is source-free using Git, independently of the analyzer's output.
+    reported_projects = frozenset(_contained_report_directory(item, root) for item in report.projects)
+    if not reported_projects or not reported_projects < expected_projects:
+        return expected_projects
+    if not staged and (report.diff is None or report.diff.is_current_changes is not False):
+        return expected_projects
+    requested_base = change_scope_base()
+    if not staged and requested_base and report.diff is not None and report.diff.base_branch != requested_base:
+        return expected_projects
+    if _react_doctor_scope_has_no_source(
+        tuple(expected_projects - reported_projects),
+        root=root,
+        runner=runner,
+        staged=staged,
+        scope_root=scope_root,
+        reported_base=None if staged or report.diff is None else report.diff.base_branch,
+        reported_changed_file_count=None if staged or report.diff is None else report.diff.changed_file_count,
+        include_type_changes=True,
+    ):
+        return reported_projects
+    return expected_projects
 
 
 def _react_doctor_degraded_scope_has_no_source(
@@ -1447,9 +1638,11 @@ def _react_doctor_scope_has_no_source(
     scope_root: Path | None = None,
     reported_base: str | None = None,
     reported_changed_file_count: int | None = None,
+    include_type_changes: bool = False,
 ) -> bool:
+    diff_filter = "--diff-filter=ACMRT" if include_type_changes else "--diff-filter=ACMR"
     if staged:
-        diff_args = ("git", "diff", "--cached", "--name-only", "--diff-filter=ACMR", "-z", "--")
+        diff_args = ("git", "diff", "--cached", "--name-only", diff_filter, "-z", "--")
     else:
         base = reported_base or change_scope_base()
         if not base:
@@ -1459,7 +1652,7 @@ def _react_doctor_scope_has_no_source(
             if verified_base is None:
                 return False
             base = verified_base
-        diff_args = ("git", "diff", f"{base}...HEAD", "--name-only", "--diff-filter=ACMR", "-z", "--")
+        diff_args = ("git", "diff", f"{base}...HEAD", "--name-only", diff_filter, "-z", "--")
     changed = runner(
         diff_args,
         cwd=root,
@@ -1993,8 +2186,74 @@ def _run_eslint_process(
     argv: Sequence[str], *, cwd: Path, timeout_seconds: float = _TIMEOUT.total_seconds()
 ) -> ProcessOutput:
     environment = _analysis_environment()
-    environment["NODE_OPTIONS"] = _ESLINT_NODE_OPTIONS
+    environment["NODE_OPTIONS"] = _eslint_node_options()
     return _run_process(argv, cwd=cwd, environment=environment, timeout_seconds=timeout_seconds)
+
+
+def _eslint_node_options() -> str:
+    memory = _physical_memory_bytes()
+    if memory is None:
+        return _ESLINT_NODE_OPTIONS
+    paths = _cgroup_memory_limit_files()
+    if paths is None:
+        return _ESLINT_NODE_OPTIONS
+    found_limit = False
+    for path in paths:
+        try:
+            text = path.read_text(encoding="utf-8").strip()
+        except FileNotFoundError:
+            continue
+        except OSError:
+            return _ESLINT_NODE_OPTIONS
+        found_limit = True
+        if text == "max":
+            continue
+        try:
+            limit = int(text)
+        except ValueError:
+            return _ESLINT_NODE_OPTIONS
+        if limit <= 0:
+            return _ESLINT_NODE_OPTIONS
+        memory = min(memory, limit)
+    if sys.platform == "linux" and not found_limit:
+        return _ESLINT_NODE_OPTIONS
+    return _ESLINT_LARGE_NODE_OPTIONS if memory >= _ESLINT_LARGE_HOST_MEMORY else _ESLINT_NODE_OPTIONS
+
+
+def _cgroup_memory_limit_files() -> list[Path] | None:
+    paths = list(_CGROUP_MEMORY_LIMIT_FILES)
+    if sys.platform != "linux":
+        return paths
+    try:
+        groups = _PROCESS_CGROUPS.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return None
+    for line in groups:
+        fields = line.split(":", 2)
+        if len(fields) != _CGROUP_RECORD_FIELDS:
+            return None
+        hierarchy, controllers, group = fields
+        if hierarchy == "0" and not controllers:
+            root, filename = _CGROUP_ROOT, "memory.max"
+        elif "memory" in controllers.split(","):
+            root, filename = _CGROUP_ROOT / "memory", "memory.limit_in_bytes"
+        else:
+            continue
+        relative = PurePosixPath(group)
+        if not relative.is_absolute() or ".." in relative.parts:
+            return None
+        directory = root.joinpath(*relative.parts[1:])
+        paths.extend(parent / filename for parent in (directory, *directory.parents) if parent.is_relative_to(root))
+    return list(dict.fromkeys(paths))
+
+
+def _physical_memory_bytes() -> int | None:
+    if sys.platform == "win32":
+        return None
+    try:
+        return os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES")
+    except AttributeError, OSError, ValueError:
+        return None
 
 
 def _run_process(
@@ -2166,6 +2425,7 @@ def _invoke(
     validator: ProtocolValidator | None = None,
     invocation_id: str | None = None,
     file_count: int,
+    version: str | None = None,
 ) -> ToolReport:
     started = time.monotonic()
     try:
@@ -2179,6 +2439,7 @@ def _invoke(
             invocation_id=InvocationId(name if invocation_id is None else f"{name}:{invocation_id}"),
             duration_ms=round((time.monotonic() - started) * 1_000),
             file_count=file_count,
+            version=version if report.completion is Completion.COMPLETE else None,
         )
     except (OSError, TypeError, ValueError, RecursionError, json.JSONDecodeError, subprocess.SubprocessError) as exc:
         message = _redact_message(f"{type(exc).__name__}: {exc}", root)
@@ -2418,7 +2679,7 @@ def parse_ktlint(  # ruff: ignore[too-many-locals] -- protocol normalization kee
 def parse_mobsfscan(  # ruff: ignore[too-many-locals] -- protocol normalization keeps untyped fields explicit.
     payload: str, *, root: Path, expected_paths: Sequence[str] | None = None
 ) -> tuple[Diagnostic, ...]:
-    report = _JSON_OBJECT_ADAPTER.validate_json(payload, strict=True)
+    report = _JsonToolReport.model_validate_json(payload, strict=True).root
     errors = _array(report.get("errors", []), "mobsfscan errors")
     if expected_paths is not None:
         _validate_mobsfscan_coverage(report, root, expected_paths)
@@ -2489,7 +2750,7 @@ def _is_tolerated_swift_partial_parsing(value: object) -> bool:
 def parse_sarif(  # ruff: ignore[too-many-locals] -- protocol normalization keeps SARIF containment explicit.
     payload: str, *, root: Path
 ) -> tuple[Diagnostic, ...]:
-    report = _JSON_OBJECT_ADAPTER.validate_json(payload, strict=True)
+    report = _JsonToolReport.model_validate_json(payload, strict=True).root
     diagnostics: list[Diagnostic] = []
     documents: dict[Path, SourceDocument | None] = {}
     for raw_run in _array(report.get("runs"), "SARIF runs"):
@@ -2759,16 +3020,49 @@ def _deptry_argv(project: Path, scoped_files: Sequence[str]) -> tuple[str, ...]:
 
 
 def _deptry_scan_roots(project: Path, scoped_files: Sequence[str]) -> tuple[str, ...]:
-    roots: set[str] = set()
+    # DEP002 compares project dependencies with its complete import graph. A
+    # selected maintenance script must also scan the package sources explicitly
+    # owned by this wheel, even when those sources have a nested pyproject.
+    roots = {path.relative_to(project).as_posix() for path in _deptry_declared_packages(project)}
     for raw_file in scoped_files:
         relative = Path(raw_file).resolve().relative_to(project)
         roots.add("." if len(relative.parts) == 1 else relative.parts[0])
-    return tuple(sorted(roots))
+    selected_roots = tuple(PurePosixPath(value) for value in roots)
+    return tuple(
+        sorted(
+            str(path)
+            for path in selected_roots
+            if not any(path != other and path.is_relative_to(other) for other in selected_roots)
+        )
+    )
+
+
+def _deptry_declared_packages(project: Path) -> tuple[Path, ...]:
+    pyproject = project / "pyproject.toml"
+    try:
+        parsed: object = tomllib.loads(pyproject.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return ()
+    table = manifest.as_table(parsed)
+    if manifest.table_field(table, "build-system").get("build-backend") != "hatchling.build":
+        return ()
+    for key in ("tool", "hatch", "build", "targets", "wheel"):
+        table = manifest.table_field(table, key)
+    packages: list[Path] = []
+    for value in manifest.list_field(table, "packages"):
+        if not isinstance(value, str):
+            continue
+        package = (project / value).resolve()
+        if not package.is_relative_to(project):
+            msg = "declared wheel package source must stay within its Python project"
+            raise ValueError(msg)
+        packages.append(package)
+    return tuple(packages)
 
 
 def _deptry_first_party_modules(project: Path) -> tuple[str, ...]:
     roots = (project / "src", project)
-    names: set[str] = set()
+    names = {path.name for path in _deptry_declared_packages(project) if path.name.isidentifier()}
     for source_root in roots:
         if not source_root.is_dir():
             continue
@@ -2785,20 +3079,40 @@ def _eslint_batches(commands: Sequence[Command], *, root: Path) -> tuple[tuple[C
     for command in commands:
         boundary = max(index for index, value in enumerate(command.argv) if value == "--") + 1
         prefix = tuple(command.argv[:boundary])
-        projects: dict[Path, list[str]] = {}
-        for relative in command.argv[boundary:]:
-            project = _nearest_project((command.cwd / relative).parent, root, ("tsconfig.json", "package.json"))
-            projects.setdefault(project, []).append(relative)
-        chunks = [
-            tuple(paths[start : start + _ESLINT_BATCH_SIZE])
-            for _project, paths in sorted(projects.items())
-            for start in range(0, len(paths), _ESLINT_BATCH_SIZE)
-        ]
+        # Selection already separates configuration owners. Repartitioning by
+        # package directory repeats type-program setup for a shared config.
+        paths = command.argv[boundary:]
+        chunks = _eslint_path_batches(prefix, paths)
         identifier = command.cwd.relative_to(root).as_posix() or "."
         for index, paths in enumerate(chunks, start=1):
             invocation_id = identifier if len(chunks) == 1 else f"{identifier}:batch-{index}"
             batches.append((Command(command.label, (*prefix, *paths), command.cwd), invocation_id))
     return tuple(batches)
+
+
+def _eslint_path_batches(prefix: Sequence[str], paths: Sequence[str]) -> list[tuple[str, ...]]:
+    def size(value: str) -> int:
+        # Windows limits command-line UTF-16; POSIX counts encoded argv bytes.
+        return len(value.encode("utf-16-le" if sys.platform == "win32" else "utf-8")) + 2
+
+    # Leave room for the selected-rule request and formatter arguments.
+    fixed = sum(size(value) for value in prefix) + 8 * 1024
+    current: list[str] = []
+    used = fixed
+    batches: list[tuple[str, ...]] = []
+    for path in paths:
+        length = size(path)
+        if fixed + length > _ESLINT_ARGV_BUDGET:
+            msg = "ESLint path exceeds the bounded command-line budget"
+            raise ValueError(msg)
+        if current and (len(current) >= _ESLINT_ANALYSIS_BATCH_SIZE or used + length > _ESLINT_ARGV_BUDGET):
+            batches.append(tuple(current))
+            current, used = [], fixed
+        current.append(path)
+        used += length
+    if current:
+        batches.append(tuple(current))
+    return batches
 
 
 def _eslint_selected_files(command: Command) -> frozenset[Path]:
@@ -2807,12 +3121,21 @@ def _eslint_selected_files(command: Command) -> frozenset[Path]:
 
 
 def _selected_eslint_argv(
-    command: Command, rule_ids: frozenset[str], *, pass_on_unpruned_suppressions: bool = False
+    command: Command,
+    rule_ids: frozenset[str],
+    *,
+    upstream_rules: UpstreamESLintRules = _NO_UPSTREAM_ESLINT_RULES,
+    pass_on_unpruned_suppressions: bool = False,
 ) -> tuple[str, ...]:
     boundary = max(index for index, value in enumerate(command.argv) if value == "--")
     config = command.argv[command.argv.index("--config") + 1] if "--config" in command.argv else None
     request = json.dumps(
-        {"rules": sorted(rule_ids), "config": config, "passOnUnpruned": pass_on_unpruned_suppressions},
+        {
+            "rules": sorted(rule_ids),
+            "upstreamRules": sorted(upstream_rules.ids),
+            "config": config,
+            "passOnUnpruned": pass_on_unpruned_suppressions,
+        },
         separators=(",", ":"),
     )
     tail = (str(_ESLINT_SELECTED_RUNNER), request, "--", *command.argv[boundary + 1 :])

@@ -4,9 +4,10 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-storage-in-stateless-modules.test.ts
  */
 
-import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
+import { ASTUtils, AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
+import { unwrapExpression } from "./_unwrap-expression.js";
 import { isTestFile } from "./_paths.js";
 import { sqlTextOf, stripSqlNoise } from "./_sql.js";
 
@@ -35,7 +36,7 @@ export const NO_STORAGE_IN_STATELESS_MODULES_DOCUMENTATION = {
   limitations: ["This opt-in architectural policy requires configured module paths and storage method names. Overloaded `put` requires storage-like receiver evidence; `prepare` requires SQL-shaped literal text or a conventional database receiver for dynamic text. These syntax heuristics do not prove database provenance or identify the system of record."],
   examples: [
     { id: "system-of-record", title: "Read from the system of record", outcome: "no-match", files: [{ path: "src/engineer-digest/post.ts", source: "const issues = await linear.listIssues();" }], focusPath: "src/engineer-digest/post.ts", expectedCount: 0, public: true },
-    { id: "private-storage", title: "Do not write private state in a stateless module", outcome: "match", files: [{ path: "src/engineer-digest/post.ts", source: "await kv.put('digest:last', timestamp);" }], focusPath: "src/engineer-digest/post.ts", expectedCount: 1, public: true },
+    { id: "private-storage", title: "Do not write private state in a stateless module", outcome: "match", files: [{ path: "src/engineer-digest/post.ts", source: "export {}; await kv.put('digest:last', timestamp);" }], focusPath: "src/engineer-digest/post.ts", expectedCount: 1, public: true },
   ],
 } as const satisfies RuleDocumentation;
 
@@ -60,16 +61,12 @@ function storageMethodName(
   node: TSESTree.CallExpression,
   methods: ReadonlySet<string>,
 ): string | null {
-  const callee = node.callee;
-  if (
-    callee.type !== AST_NODE_TYPES.MemberExpression ||
-    callee.computed ||
-    callee.property.type !== AST_NODE_TYPES.Identifier
-  ) {
-    return null;
-  }
-  const name = callee.property.name;
-  if (!methods.has(name)) {
+  const callee = unwrapExpression(node.callee);
+
+  const calleeReceiver = callee.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(callee.object) : callee;
+  if (callee.type !== AST_NODE_TYPES.MemberExpression) return null;
+  const name = ASTUtils.getPropertyName(callee);
+  if (name === null || !methods.has(name)) {
     return null;
   }
   if (node.arguments.length < (MIN_ARGUMENTS.get(name) ?? 1)) {
@@ -77,7 +74,7 @@ function storageMethodName(
   }
   // `put` is shared by HTTP clients, queues, builders, and KV stores. Require
   // receiver evidence before treating this ambiguous name as storage access.
-  if (name === "put" && !isStorageLikeReceiver(callee.object)) {
+  if (name === "put" && !isStorageLikeReceiver(calleeReceiver)) {
     return null;
   }
   if (name === "prepare" && !hasSqlPreparationEvidence(node, callee)) return null;
@@ -88,17 +85,15 @@ function storageMethodName(
 function isStorageLikeReceiver(
   node: TSESTree.Expression | TSESTree.Super,
 ): boolean {
+  node = unwrapExpression(node);
   if (node.type === AST_NODE_TYPES.Identifier) {
     return isStorageIdentifier(node.name);
   }
   if (node.type !== AST_NODE_TYPES.MemberExpression) {
     return false;
   }
-  if (
-    !node.computed &&
-    node.property.type === AST_NODE_TYPES.Identifier &&
-    isStorageIdentifier(node.property.name)
-  ) {
+  const name = ASTUtils.getPropertyName(node);
+  if (name !== null && isStorageIdentifier(name)) {
     return true;
   }
   return isStorageLikeReceiver(node.object);
@@ -187,7 +182,7 @@ function hasSqlPreparationEvidence(node: TSESTree.CallExpression, callee: TSESTr
     if (!/^\s*(?:SELECT|WITH|INSERT|UPDATE|DELETE|REPLACE|CREATE|ALTER|DROP|PRAGMA|EXPLAIN)\b/iu.test(stripSqlNoise(text))) return false;
   } else {
     const receiver = callee.object;
-    const receiverName = receiver.type === AST_NODE_TYPES.Identifier ? receiver.name : receiver.type === AST_NODE_TYPES.MemberExpression && !receiver.computed && receiver.property.type === AST_NODE_TYPES.Identifier ? receiver.property.name : "";
+    const receiverName = receiver.type === AST_NODE_TYPES.Identifier ? receiver.name : receiver.type === AST_NODE_TYPES.MemberExpression ? ASTUtils.getPropertyName(receiver) ?? "" : "";
     if (!/^(?:db|database|connection)$/iu.test(receiverName)) return false;
   }
 

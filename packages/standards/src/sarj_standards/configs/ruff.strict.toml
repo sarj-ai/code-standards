@@ -255,6 +255,10 @@ warns-extend-require-match-for = [
 "datetime.datetime.utcnow".msg        = "Deprecated in Python 3.12. Use `datetime.now(UTC)`."
 "pickle.load".msg                     = "Pickle deserializes arbitrary objects and is unsafe on untrusted input. Use JSON via Pydantic, or msgspec/orjson."
 "pickle.loads".msg                    = "Same — pickle is unsafe."
+"yaml.unsafe_load".msg                = "Unsafe YAML loading can execute arbitrary code. Use safe_load/safe_load_all; trusted Python-object serialization requires a local, reasoned TID251 suppression."
+"yaml.unsafe_load_all".msg            = "Unsafe YAML loading can execute arbitrary code. Use safe_load/safe_load_all; trusted Python-object serialization requires a local, reasoned TID251 suppression."
+"asyncio.create_subprocess_shell".msg = "Prefer create_subprocess_exec with separate arguments to avoid shell injection. Intentional shell grammar requires a local TID251 suppression explaining why the command and interpolated values are safe."
+"asyncio.subprocess.create_subprocess_shell".msg = "Prefer create_subprocess_exec with separate arguments to avoid shell injection. Intentional shell grammar requires a local TID251 suppression explaining why the command and interpolated values are safe."
 
 "os.environ".msg                      = "Use a Pydantic Settings class instead. If you genuinely need raw os.environ, add `# noqa: TID251 — <reason>` inline."
 "os.getenv".msg                       = "Same — use a Pydantic Settings class instead of os.getenv."
@@ -262,6 +266,12 @@ warns-extend-require-match-for = [
 "fastapi.UploadFile".msg              = "Use a pre-signed URL so the client uploads directly to object storage."
 "pydantic.alias_generators.to_camel".msg = "Don't camelCase API contracts in the backend. Keep snake_case; transform on the frontend with Zod."
 "typing.cast".msg                     = "Prefer discriminated unions or `isinstance` narrowing over `cast`."
+"typing_extensions.cast".msg          = "Prefer discriminated unions or `isinstance` narrowing over `cast`."
+"pydantic.TypeAdapter".msg            = "Define a named Pydantic BaseModel or RootModel and use model_validate/model_validate_json; use psycopg class_row for database rows. Generic schema infrastructure requires a local, reasoned TID251 suppression."
+"pydantic.type_adapter.TypeAdapter".msg = "Define a named Pydantic BaseModel or RootModel and use model_validate/model_validate_json; use psycopg class_row for database rows. Generic schema infrastructure requires a local, reasoned TID251 suppression."
+"pydantic.parse_obj_as".msg           = "Define a named Pydantic BaseModel or RootModel and use model_validate/model_validate_json. Generic schema infrastructure or a required compatibility boundary needs a local, reasoned TID251 suppression."
+"pydantic.tools.parse_obj_as".msg     = "Define a named Pydantic BaseModel or RootModel and use model_validate/model_validate_json. Generic schema infrastructure or a required compatibility boundary needs a local, reasoned TID251 suppression."
+"pydantic.deprecated.tools.parse_obj_as".msg = "Define a named Pydantic BaseModel or RootModel and use model_validate/model_validate_json. Generic schema infrastructure or a required compatibility boundary needs a local, reasoned TID251 suppression."
 "psycopg.sql.Literal".msg             = "Use parameterized queries (psycopg's `%s` placeholders) instead of sql.Literal."
 "uuid.uuid4".msg                      = "Use uuid.uuid7() — time-ordered, aligns with the DB uuidv7() default. For unguessable secrets use secrets.token_urlsafe(), not a UUID."
 

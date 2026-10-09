@@ -1,5 +1,15 @@
 import json
 
+from pydantic import JsonValue, RootModel
+
+
+class _JsonInstance(RootModel[JsonValue]):
+    pass
+
+
+def normalize_json_value(value: object) -> JsonValue:
+    return _JsonInstance.model_validate(value).root
+
 
 def parse_json(text: str) -> object:
     return json.loads(text)  # pyright: ignore[reportAny] -- untyped parser boundary.

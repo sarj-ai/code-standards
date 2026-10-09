@@ -641,6 +641,33 @@ def test_file_conventions_reject_extra_exact_config_copy(tmp_path: Path) -> None
     ]
 
 
+@pytest.mark.parametrize(
+    ("destination", "source"),
+    [(".checkov.yml", "checkov.strict.yml"), ("zizmor.yml", "zizmor.strict.yml")],
+)
+@pytest.mark.parametrize("state", ["current", "drift", "extra"])
+def test_file_conventions_validate_managed_security_configs(
+    tmp_path: Path, destination: str, source: str, state: str
+) -> None:
+    config = "policy: strict\n"
+    files = {
+        f"configs/{source}": config,
+        destination: "policy: relaxed\n" if state == "drift" else config,
+    }
+    if state == "extra":
+        files["package/copied.yml"] = config
+    _git_repo(tmp_path, files)
+
+    findings = repository.check_file_conventions(tmp_path, _policy())
+
+    expected = {
+        "current": [],
+        "drift": [(destination, f"generated config drifted from configs/{source}; run `code-standards setup`")],
+        "extra": [("package/copied.yml", f"duplicates configs/{source}; remove the unmanaged copy")],
+    }
+    assert [(finding.where, finding.message) for finding in findings] == expected[state]
+
+
 def test_version_references_detect_lock_drift(tmp_path: Path) -> None:
     _git_repo(
         tmp_path,
@@ -1268,7 +1295,7 @@ def test_live_rule_inventory_does_not_depend_on_consumer_repository_layout(tmp_p
 
 
 def test_retired_rename_sync_preserves_historical_aliases_outside_live_source(tmp_path: Path) -> None:
-    renames = tmp_path / "packages" / "typescript" / "src" / "rules" / "_renames.ts"
+    renames = tmp_path / "packages" / "typescript" / "src" / "rules" / "_renamed-rules.ts"
     renames.parent.mkdir(parents=True)
     renames.write_text("export const renames = {};\n", encoding="utf-8")
     previous = {

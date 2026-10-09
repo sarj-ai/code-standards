@@ -22,6 +22,8 @@ CONFIG_NAMES: Final[Mapping[str, tuple[str, str]]] = MappingProxyType(
         "taplo": ("taplo.strict.toml", ".taplo.toml"),
         "yamllint": ("yamllint.strict.yaml", ".yamllint.yaml"),
         "shellcheck": ("shellcheck.strict.rc", ".shellcheckrc"),
+        "zizmor": ("zizmor.strict.yml", "zizmor.yml"),
+        "checkov": ("checkov.strict.yml", ".checkov.yml"),
     }
 )
 

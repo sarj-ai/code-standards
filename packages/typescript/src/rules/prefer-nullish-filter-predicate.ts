@@ -12,6 +12,8 @@ import {
   type TSESTree,
   type TSESLint,
 } from "@typescript-eslint/utils";
+
+import { unwrapExpression } from "./_unwrap-expression.js";
 import ts from "typescript";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
@@ -80,7 +82,8 @@ function isBuiltinArrayFilter(
 ): boolean {
   const checker = services.program.getTypeChecker();
   const property = services.esTreeNodeToTSNodeMap.get(node.property);
-  const symbol = checker.getSymbolAtLocation(property);
+  const symbol = checker.getSymbolAtLocation(property) ??
+    checker.getTypeAtLocation(services.esTreeNodeToTSNodeMap.get(node.object)).getProperty("filter");
   return symbol?.declarations?.some((declaration) => {
     const owner = declaration.parent;
     return (
@@ -185,16 +188,16 @@ export default createRule<Options, MessageIds>({
     if (services === null) return {};
     return {
       CallExpression(node): void {
-        const callee = node.callee;
-        const callback = node.arguments[0];
+        const callee = unwrapExpression(node.callee);
+
+        const callback = node.arguments[0] === undefined ? undefined : unwrapExpression(node.arguments[0]);
         if (
           node.arguments.length !== 1 ||
           callback?.type !== AST_NODE_TYPES.Identifier ||
           callback.name !== "Boolean" ||
           callee.type !== AST_NODE_TYPES.MemberExpression ||
-          callee.computed ||
-          callee.property.type !== AST_NODE_TYPES.Identifier ||
-          callee.property.name !== "filter" ||
+          ASTUtils.getPropertyName(callee) === null ||
+          (ASTUtils.getPropertyName(callee) ?? "") !== "filter" ||
           !isUnshadowedBoolean(callback, context) ||
           !isBuiltinArrayFilter(callee, services)
         ) return;

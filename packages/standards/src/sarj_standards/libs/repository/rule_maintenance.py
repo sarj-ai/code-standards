@@ -241,7 +241,7 @@ def _retired(
                 "note": f"Replace sarj-{old} with sarj-{new} before upgrading.",
             }
         )
-    renames_path = root / "packages/typescript/src/rules/_renames.ts"
+    renames_path = root / "packages/typescript/src/rules/_renamed-rules.ts"
     for match in _RENAME_ENTRY.finditer(renames_path.read_text(encoding="utf-8")):
         old = match.group("old")
         new = match.group("new")

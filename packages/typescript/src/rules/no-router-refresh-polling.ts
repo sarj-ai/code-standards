@@ -7,6 +7,7 @@
 import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
+import { directArgumentCall, outerExpression, unwrapExpression } from "./_unwrap-expression.js";
 import { isGeneratedFile, isTestFile } from "./_paths.js";
 
 type MessageIds = "routerRefreshPolling";
@@ -43,8 +44,8 @@ function enclosingIntervalCallback(
       ancestor?.type !== AST_NODE_TYPES.ArrowFunctionExpression &&
       ancestor?.type !== AST_NODE_TYPES.FunctionExpression
     ) continue;
-    const parent = ancestor.parent;
-    return parent.type === AST_NODE_TYPES.CallExpression && parent.arguments[0] === ancestor &&
+    const parent = directArgumentCall(ancestor);
+    return parent !== null && parent.arguments[0] === outerExpression(ancestor) &&
       isIntervalCallee(sourceCode, parent.callee) ? ancestor : null;
   }
   return null;
@@ -54,15 +55,14 @@ function isIntervalCallee(
   sourceCode: Readonly<{ getScope(node: TSESTree.Node): TSESLint.Scope.Scope }>,
   node: TSESTree.Expression,
 ): boolean {
+  node = unwrapExpression(node);
   return node.type === AST_NODE_TYPES.Identifier && node.name === "setInterval" &&
       isUnshadowedGlobal(sourceCode, node) ||
     node.type === AST_NODE_TYPES.MemberExpression &&
-      !node.computed &&
       node.object.type === AST_NODE_TYPES.Identifier &&
       (node.object.name === "window" || node.object.name === "globalThis") &&
       isUnshadowedGlobal(sourceCode, node.object) &&
-      node.property.type === AST_NODE_TYPES.Identifier &&
-      node.property.name === "setInterval";
+      ASTUtils.getPropertyName(node) === "setInterval";
 }
 
 function isUnshadowedGlobal(
@@ -100,25 +100,28 @@ export default createRule<Options, MessageIds>({
         }
       },
       VariableDeclarator(node): void {
+        const initializer = node.init === null ? null : unwrapExpression(node.init);
         if (
           node.id.type === AST_NODE_TYPES.Identifier &&
-          node.init?.type === AST_NODE_TYPES.CallExpression &&
-          node.init.callee.type === AST_NODE_TYPES.Identifier
+          initializer?.type === AST_NODE_TYPES.CallExpression
         ) {
-          const hook = ASTUtils.findVariable(context.sourceCode.getScope(node.init.callee), node.init.callee.name);
+          const hookCallee = unwrapExpression(initializer.callee);
+          if (hookCallee.type !== AST_NODE_TYPES.Identifier) return;
+          const hook = ASTUtils.findVariable(context.sourceCode.getScope(hookCallee), hookCallee.name);
           const router = ASTUtils.findVariable(context.sourceCode.getScope(node.id), node.id.name);
           if (hook !== null && router !== null && routerHooks.has(hook)) routers.add(router);
         }
       },
       CallExpression(node): void {
+        const unwrappedNodeCallee = unwrapExpression(node.callee);
+        const receiver = unwrappedNodeCallee.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(unwrappedNodeCallee.object) : unwrappedNodeCallee;
         if (
-          node.callee.type !== AST_NODE_TYPES.MemberExpression || node.callee.computed ||
-          node.callee.object.type !== AST_NODE_TYPES.Identifier ||
-          node.callee.property.type !== AST_NODE_TYPES.Identifier || node.callee.property.name !== "refresh"
+          unwrappedNodeCallee.type !== AST_NODE_TYPES.MemberExpression || receiver.type !== AST_NODE_TYPES.Identifier ||
+          ASTUtils.getPropertyName(unwrappedNodeCallee) === null || (ASTUtils.getPropertyName(unwrappedNodeCallee) ?? "") !== "refresh"
         ) return;
         const router = ASTUtils.findVariable(
-          context.sourceCode.getScope(node.callee.object),
-          node.callee.object.name,
+          context.sourceCode.getScope(receiver),
+          receiver.name,
         );
         if (router === null || !routers.has(router) || router.references.some((reference) => reference.isWrite() && reference.init !== true)) return;
         const callback = enclosingIntervalCallback(context.sourceCode, node);

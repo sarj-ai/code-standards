@@ -89,7 +89,7 @@ def test_exact_suppression_and_error_level() -> None:
     [finding] = NoInterpreterSourceArguments().check(Path("tools/check.py"), source)
     assert (finding.line, finding.col, finding.severity) == (2, 1, Severity.ERROR)
     assert not NoInterpreterSourceArguments().check(
-        Path("tools/check.py"), f"{source.rstrip()}  # sarj-noqa: SARJ462 — validate literal argv classifier boundary\n"
+        Path("tools/check.py"), f"{source.rstrip()}  # sarj-noqa: SARJ484 — validate literal argv classifier boundary\n"
     )
 
 

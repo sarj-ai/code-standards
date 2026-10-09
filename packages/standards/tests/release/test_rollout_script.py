@@ -28,6 +28,36 @@ def consumer() -> rollout.Consumer:
     return rollout.Consumer("Consumer", "example/consumer", "main", ("make", "check"))
 
 
+@pytest.mark.parametrize(
+    ("failure", "expected_state"),
+    [
+        (rollout.ConsumerBaseMovedError("confirmed base movement"), rollout.OutcomeState.MISSING),
+        (rollout.RolloutError("remote evidence unavailable"), rollout.OutcomeState.ERROR),
+        (OSError("process could not start"), rollout.OutcomeState.ERROR),
+        (subprocess.CalledProcessError(1, ["check"]), rollout.OutcomeState.ERROR),
+    ],
+)
+def test_only_confirmed_base_movement_is_pending(failure: Exception, expected_state: rollout.OutcomeState) -> None:
+    def operation(_consumer: rollout.Consumer) -> rollout.Outcome:
+        raise failure
+
+    result = rollout.consumer_outcome(consumer(), operation)
+    assert result.state == expected_state
+    assert result.detail
+
+
+@pytest.mark.parametrize("custom_runner", [True, False])
+def test_unavailable_process_groups_retain_original_runner(
+    monkeypatch: pytest.MonkeyPatch, *, custom_runner: bool
+) -> None:
+    runner = FakeRunner([]) if custom_runner else rollout.SubprocessRunner()
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- exercises the portable fallback without changing the operating system.
+        rollout, "SUPPORTS_VERIFICATION_PROCESS_GROUPS", False
+    )
+    with rollout.consumer_verification_runner(consumer(), runner, "a" * 40) as selected:
+        assert selected is runner
+
+
 def registry_entry(index: int) -> str:
     branch = "dev" if index < 2 else "main"
     auto_merge = "true" if index == 0 else "false"
@@ -288,7 +318,14 @@ class TestRegistry:
             rollout.load_registry(path)
 
 
-def test_later_wave_is_blocked_until_prior_wave_merges(monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.parametrize(
+    ("selected", "expected"),
+    [(None, ["pr-open", "blocked"]), ("r/c@main", ["pr-open"]), ("r/e@main", ["blocked"])],
+    ids=("fleet", "selected-prior-wave", "selected-later-wave"),
+)
+def test_later_wave_is_blocked_until_prior_wave_merges(
+    selected: str | None, expected: list[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
     canary = rollout.Consumer("canary", "r/c", "main", ("true",), channel=rollout.RolloutChannel.CANARY)
     early = rollout.Consumer("early", "r/e", "main", ("true",), channel=rollout.RolloutChannel.EARLY)
 
@@ -299,8 +336,14 @@ def test_later_wave_is_blocked_until_prior_wave_merges(monkeypatch: pytest.Monke
         _version: str,
         _consumers: Sequence[rollout.Consumer],
         _runner: rollout.CommandRunner,
+        *,
+        jobs: int = 1,
     ) -> tuple[rollout.Outcome, ...]:
+        assert jobs == 1
         return (rollout.Outcome(canary, rollout.OutcomeState.PR_OPEN),)
+
+    def fake_status_one(target: rollout.Consumer, _version: str, _runner: rollout.CommandRunner) -> rollout.Outcome:
+        return rollout.Outcome(target, rollout.OutcomeState.PR_OPEN)
 
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- test records release verification without querying registries
         rollout, "verify_release", fake_verify_release
@@ -308,10 +351,43 @@ def test_later_wave_is_blocked_until_prior_wave_merges(monkeypatch: pytest.Monke
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- test supplies deterministic repository rollout status
         rollout, "status", fake_status
     )
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- test supplies the same remote PR state for a selected prior consumer
+        rollout, "status_one", fake_status_one
+    )
 
-    outcomes = rollout.apply("9.0.0", (canary, early), FakeRunner())
+    outcomes = rollout.apply("9.0.0", (canary, early), FakeRunner(), consumer=selected)
 
-    assert [item.state for item in outcomes] == ["pr-open", "blocked"]
+    assert [item.state for item in outcomes] == expected
+
+
+def test_selected_consumer_is_the_only_one_applied(monkeypatch: pytest.MonkeyPatch) -> None:
+    first = rollout.Consumer("Shared", "r/shared", "main", ("true",))
+    second = rollout.Consumer("Shared", "r/shared", "dev", ("true",))
+    applied: list[str] = []
+
+    def fake_verify_release(_version: str, _runner: rollout.CommandRunner) -> str:
+        return "a" * 64
+
+    def fake_apply_one(
+        item: rollout.Consumer, _version: str, _runner: rollout.CommandRunner, *, dry_run: bool
+    ) -> rollout.Outcome:
+        assert dry_run is False
+        applied.append(item.identity)
+        return rollout.Outcome(item, rollout.OutcomeState.PR_OPEN)
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- test records release verification without querying registries
+        rollout, "verify_release", fake_verify_release
+    )
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- test records which consumer would be mutated
+        rollout, "apply_one", fake_apply_one
+    )
+
+    outcomes = rollout.apply("9.0.0", (first, second), FakeRunner(), consumer="r/shared@dev")
+
+    assert applied == ["r/shared@dev"]
+    assert [item.consumer for item in outcomes] == [second]
+    with pytest.raises(rollout.RolloutError, match="'r/other@main' is not in the selected channel"):
+        rollout.apply("9.0.0", (first, second), FakeRunner(), consumer="r/other@main")
 
 
 class TestSafety:
@@ -527,6 +603,34 @@ class TestCanonicalCommitPolicyWorkflow:
                 allowed_workflow_paths=rollout.canonical_commit_policy_workflow_paths(tmp_path, (MANIFEST, relative)),
             )
 
+    def test_workflow_on_the_configured_runner_is_canonical(self, tmp_path: Path) -> None:
+        (tmp_path / MANIFEST).write_text(
+            'schema = 4\nbundle = "1.2.3"\n[ci]\nrunner = "blacksmith-2vcpu-ubuntu-2404"\n',
+            encoding="utf-8",
+        )
+        relative = rollout.COMMIT_POLICY_WORKFLOW_PATH
+        workflow = tmp_path / relative
+        workflow.parent.mkdir(parents=True)
+
+        workflow.write_text(
+            adoption_scaffold.commit_policy_github_workflow("blacksmith-2vcpu-ubuntu-2404"), encoding="utf-8"
+        )
+        assert rollout.canonical_commit_policy_workflow_paths(tmp_path, (MANIFEST, relative)) == frozenset({relative})
+
+        workflow.write_text(adoption_scaffold.commit_policy_github_workflow(), encoding="utf-8")
+        assert rollout.canonical_commit_policy_workflow_paths(tmp_path, (MANIFEST, relative)) == frozenset()
+
+    def test_workflow_under_an_unreadable_runner_is_not_canonical(self, tmp_path: Path) -> None:
+        (tmp_path / MANIFEST).write_text(
+            'schema = 4\nbundle = "1.2.3"\n[ci]\nrunner = "ubuntu-latest\\nfoo: bar"\n', encoding="utf-8"
+        )
+        relative = rollout.COMMIT_POLICY_WORKFLOW_PATH
+        workflow = tmp_path / relative
+        workflow.parent.mkdir(parents=True)
+        workflow.write_text(adoption_scaffold.commit_policy_github_workflow(), encoding="utf-8")
+
+        assert rollout.canonical_commit_policy_workflow_paths(tmp_path, (MANIFEST, relative)) == frozenset()
+
     def test_noncanonical_pin_is_not_prevalidated(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         relative = rollout.COMMIT_POLICY_WORKFLOW_PATH
         workflow = tmp_path / relative
@@ -571,7 +675,9 @@ def managed_open_pr_payload(
     )
 
 
-def live_base_ref_payload(base_sha: str) -> str:
+def live_base_ref_payload(base_sha: str, *, moves: bool = False, runs: int = 1, early: bool = False) -> str:
+    if moves and (runs or early):
+        base_sha = "c" * 40
     return json.dumps({"ref": "refs/heads/main", "object": {"type": "commit", "sha": base_sha}})
 
 
@@ -859,11 +965,11 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
         assert runner.commands == [
             (
                 "uvx",
+                "--no-config",
                 "--isolated",
                 "--python",
                 "3.14",
-                "--refresh-package",
-                "code-standards",
+                "--refresh",
                 "--from",
                 "code-standards",
                 "code-standards",
@@ -885,7 +991,7 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
 
         assert rollout.verify_release("5.8.1", runner) == sha
         assert "code-standards==5.8.1" in runner.commands[0]
-        assert "--refresh-package" in runner.commands[0]
+        assert "--refresh" in runner.commands[0]
         assert "refs/tags/standards-v5.8.1^{}" in runner.commands[1]
 
     def test_release_verification_waits_for_pypi_edge_visibility(self) -> None:
@@ -999,15 +1105,17 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
             "auto_merge",
             "expected_state",
             "expected_verification_runs",
+            "early_move",
         ),
         [
-            ((1, 0), frozenset({1}), False, True, False, "pr-open", 2),
-            ((1,), frozenset[int](), False, True, False, "blocked", 1),
-            ((0, 0), frozenset({1}), False, True, False, "pr-open", 2),
-            ((0, 0), frozenset({1, 2}), False, True, False, "blocked", 2),
-            ((0,), frozenset[int](), True, True, True, "missing", 1),
-            ((0,), frozenset[int](), False, False, True, "missing", 1),
-            ((0,), frozenset[int](), False, True, True, "pr-open", 1),
+            ((1, 0), frozenset({1}), False, True, False, "pr-open", 2, False),
+            ((1,), frozenset[int](), False, True, False, "blocked", 1, False),
+            ((0, 0), frozenset({1}), False, True, False, "pr-open", 2, False),
+            ((0, 0), frozenset({1, 2}), False, True, False, "blocked", 2, False),
+            ((0,), frozenset[int](), True, True, True, "missing", 1, False),
+            ((0,), frozenset[int](), False, False, True, "missing", 1, False),
+            ((0,), frozenset[int](), False, True, True, "pr-open", 1, False),
+            ((0,), frozenset[int](), True, True, True, "missing", 0, True),
         ],
     )
     def test_verification_autofix_amends_a_clean_candidate_once(
@@ -1022,6 +1130,7 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
         auto_merge: bool,
         expected_state: str,
         expected_verification_runs: int,
+        early_move: bool,
     ) -> None:
         selected_consumer = rollout.Consumer(
             "Consumer",
@@ -1068,6 +1177,7 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
         class AutofixingRunner:
             def __init__(self) -> None:
                 self.verification_runs = 0
+                self.doctor_runs = 0
                 self.commands: list[tuple[str, ...]] = []
                 self.push_environments: list[Mapping[str, str] | None] = []
 
@@ -1121,14 +1231,19 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
                         "",
                     )
                 if rendered == ("gh", "api", "repos/example/consumer/git/ref/heads%2Fmain"):
-                    live_sha = "c" * 40 if target_moves else base_sha
-                    return subprocess.CompletedProcess(rendered, 0, live_base_ref_payload(live_sha), "")
+                    payload = live_base_ref_payload(
+                        base_sha, moves=target_moves, runs=self.verification_runs, early=early_move
+                    )
+                    return subprocess.CompletedProcess(rendered, 0, payload, "")
+                if "uvx" in rendered and rendered[-1] == "--version":
+                    return subprocess.CompletedProcess(rendered, 0, "code-standards 5.8.1", "")
                 if "update" in rendered:
                     manifest.write_text('schema = 4\nbundle = "5.8.1"\n', encoding="utf-8")
                     for relative, contents in retired_expected.items():
                         (repo / relative).write_bytes(contents)
                     return subprocess.CompletedProcess(rendered, 0, "", "")
                 if rendered[-1:] == ("doctor",):
+                    self.doctor_runs += 1
                     return subprocess.CompletedProcess(rendered, 0, "", "")
                 if rendered == ("mise", "exec", "--", *selected_consumer.verify):
                     self.verification_runs += 1
@@ -1244,6 +1359,15 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
             rollout, "pull_request", managed_pull_request
         )
 
+        if early_move:
+            with pytest.raises(rollout.RolloutError, match=r"base moved.*before verification"):
+                rollout.apply_one(selected_consumer, "5.8.1", runner)
+            assert runner.doctor_runs == 0
+            assert runner.verification_runs == 0
+            assert runner.push_environments == []
+            assert runner.commands[-1] == ("gh", "api", "repos/example/consumer/git/ref/heads%2Fmain")
+            return
+
         result = rollout.apply_one(selected_consumer, "5.8.1", runner)
 
         assert result.state == expected_state
@@ -1332,6 +1456,57 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
         with pytest.raises(rollout.RolloutError, match="did not resolve to a full commit SHA"):
             rollout.assert_consumer_base_unchanged(tmp_path, consumer(), "a" * 40, runner)
 
+    def test_identical_patch_on_the_same_base_keeps_the_remote_head_without_pushing(self, tmp_path: Path) -> None:
+        base_sha, previous_sha, head_sha, tree_sha = "a" * 40, "b" * 40, "c" * 40, "d" * 40
+        preparation = rollout.BranchPreparation("standards-rollout/current", previous_sha, tree_sha, base_sha)
+        runner = FakeRunner([(0, ""), (0, base_sha), (0, head_sha), (0, tree_sha)])
+
+        pushed = rollout.push_rollout_head(tmp_path, consumer(), preparation, base_sha, runner, environment={})
+
+        assert pushed == previous_sha
+        assert not any("push" in command for command in runner.commands)
+
+    @pytest.mark.parametrize(
+        ("previous_sha", "previous_tree", "previous_base", "expected_lease"),
+        [
+            pytest.param(None, None, None, "", id="first-rollout-push"),
+            pytest.param("b" * 40, "e" * 40, "a" * 40, "b" * 40, id="patch-changed"),
+            pytest.param("b" * 40, "d" * 40, "f" * 40, "b" * 40, id="base-advanced"),
+        ],
+    )
+    def test_new_rollout_content_is_pushed_with_a_lease_on_the_previous_head(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+        *,
+        previous_sha: str | None,
+        previous_tree: str | None,
+        previous_base: str | None,
+        expected_lease: str,
+    ) -> None:
+        monkeypatch.setenv("GH_TOKEN", "push-secret")
+        monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+        base_sha, head_sha, tree_sha = "a" * 40, "c" * 40, "d" * 40
+        preparation = rollout.BranchPreparation("standards-rollout/current", previous_sha, previous_tree, previous_base)
+        runner = FakeRunner([(0, ""), (0, base_sha), (0, head_sha), (0, tree_sha), (0, "")])
+
+        pushed = rollout.push_rollout_head(
+            tmp_path, consumer(), preparation, base_sha, runner, environment={"PATH": "/tools"}
+        )
+
+        assert pushed == head_sha
+        assert runner.commands[-1] == (
+            "git",
+            "-c",
+            "core.hooksPath=/dev/null",
+            "push",
+            f"--force-with-lease=refs/heads/standards-rollout/current:{expected_lease}",
+            "-u",
+            "origin",
+            "standards-rollout/current",
+        )
+        assert runner.environments[-1] == {"PATH": "/tools", "GH_TOKEN": "push-secret"}
+
     def test_reuses_a_merged_managed_branch_without_amending_the_base(self, tmp_path: Path) -> None:
         old_sha = "a" * 40
         base_sha = "b" * 40
@@ -1374,6 +1549,7 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
         prepared = rollout.prepare_branch(tmp_path, "5.8.1", base_sha, runner)
 
         assert prepared.previous_sha == old_sha
+        assert (prepared.previous_tree, prepared.previous_base) == (tree_sha, old_base_sha)
         assert runner.commands[-1] == ("git", "switch", "-C", "standards-rollout/current", base_sha)
         assert ("git", "merge-base", "--is-ancestor", old_base_sha, base_sha) in runner.commands
         assert not any(command[:2] == ("git", "rebase") for command in runner.commands)

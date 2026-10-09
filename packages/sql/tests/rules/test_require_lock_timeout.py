@@ -332,3 +332,48 @@ def test_ambiguous_plain_migration_is_out_of_scope_without_postgres_evidence() -
 
 def test_extensionless_input_with_migration_directive_stays_in_scope() -> None:
     assert len(_check("-- migrate:up\nALTER TABLE users ADD COLUMN note TEXT;", Path("stdin"))) == 1
+
+
+@pytest.mark.parametrize(
+    "assignment",
+    [
+        "SET /* deployment */ lock_timeout /* value */ = /* bounded */ '3s';",
+        "SET /* deployment\n settings */ LOCAL lock_timeout TO '3s';",
+        "SELECT set_config(/* name */ 'lock_timeout', /* value */ '3s', false);",
+        "SET lock_timeout = '3s'; -- SET lock_timeout = 0;",
+    ],
+)
+def test_comments_do_not_hide_positive_timeout_assignments(assignment: str) -> None:
+    assert _check(f"{assignment}\nALTER TABLE users ADD COLUMN note TEXT;\n") == []
+
+
+@pytest.mark.parametrize(
+    "assignment",
+    [
+        "/* SET lock_timeout = '3s'; */",
+        "SET /* no protection */ lock_timeout = '0s';",
+        "SET lock_timeout = '3s'; RESET /* reset */ lock_timeout;",
+        "SELECT 'SET lock_timeout = ''3s'';';",
+        "SET lock_timeout = '3s'; -- migrate:down\n-- migrate:down",
+    ],
+)
+def test_comment_normalization_retains_unprotected_ddl(assignment: str) -> None:
+    assert len(_check(f"{assignment}\nALTER TABLE users ADD COLUMN note TEXT;\n")) == 1
+
+
+@pytest.mark.parametrize("name", ["lock_timeout", "statement_timeout"])
+def test_quoted_timeout_assignment_is_live(name: str) -> None:
+    assert _check(f"SET \"{name}\" = '3s'; ALTER TABLE users ADD COLUMN note TEXT;") == []
+
+
+def test_quoted_timeout_reset_removes_protection() -> None:
+    source = 'SET "lock_timeout" = \'3s\'; RESET "lock_timeout"; ALTER TABLE users ADD COLUMN note TEXT;'
+    assert len(_check(source)) == 1
+
+
+@pytest.mark.parametrize(
+    "assignment",
+    ["SET \"LOCK_TIMEOUT\" = '3s';", 'SELECT \'SET "lock_timeout" = "3s"\';', 'SELECT "SET lock_timeout = 3s";'],
+)
+def test_quoted_timeout_decoys_do_not_grant_protection(assignment: str) -> None:
+    assert len(_check(assignment + " ALTER TABLE users ADD COLUMN note TEXT;")) == 1

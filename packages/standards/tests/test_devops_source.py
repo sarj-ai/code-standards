@@ -12,7 +12,6 @@ from sarj_standards.libs.linting.devops_source import (
     parse_hadolint,
     parse_terraform,
     parse_tflint,
-    parse_zizmor,
 )
 from sarj_standards.libs.linting.external import ProcessOutput
 
@@ -150,31 +149,6 @@ def test_terraform_validate_counts_and_missing_providers(tmp_path: Path) -> None
         )
 
 
-def test_zizmor_preserves_exact_byte_region_and_ignored_findings(tmp_path: Path) -> None:
-    _file(tmp_path, "workflow.yml", "é x\n")
-    payload = json.dumps(
-        [
-            {
-                "ident": "unpinned-uses",
-                "desc": "pin",
-                "url": "https://docs.zizmor.sh/audits/",
-                "determinations": {"severity": "Low", "confidence": "High"},
-                "ignored": True,
-                "locations": [
-                    {
-                        "symbolic": {"kind": "Primary", "key": {"Local": {"verbatim_path": "workflow.yml"}}},
-                        "concrete": {"location": {"offset_span": {"start": 3, "end": 4}}},
-                    }
-                ],
-            }
-        ]
-    )
-    findings = parse_zizmor(payload, tmp_path)
-    assert findings[0].location.region is not None
-    assert findings[0].location.region.start.character == 2
-    assert findings[0].location.region.end.character == 3
-
-
 def test_untrusted_terraform_only_formats_and_never_initializes(tmp_path: Path) -> None:
     _file(tmp_path, "iac/main.tf")
     calls: list[tuple[str, ...]] = []
@@ -241,3 +215,23 @@ def test_reported_path_cannot_escape_repository(tmp_path: Path) -> None:
         parse_actionlint(
             '[{"kind":"syntax","message":"bad","filepath":"../outside.yml","line":1,"column":1}]', tmp_path
         )
+
+
+def test_zizmor_is_owned_by_the_canonical_security_adapter(tmp_path: Path) -> None:
+    _file(tmp_path, ".github/workflows/test.yml")
+    _file(tmp_path, "action.yml")
+    calls: list[tuple[str, ...]] = []
+
+    def runner(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
+        assert cwd == tmp_path
+        calls.append(tuple(argv))
+        return ProcessOutput(0, "", "")
+
+    reports = analyze_sources(
+        root=tmp_path,
+        paths=(".github/workflows/test.yml", "action.yml"),
+        selected=frozenset({"zizmor"}),
+        runner=runner,
+    )
+    assert reports == ()
+    assert calls == []

@@ -42,6 +42,7 @@ def test_upstream_compose_rules_fail_versionless_admission(tmp_path: Path) -> No
             "--quiet",
             "--strict",
             "--no-rewrite-rule-ids",
+            "--jobs=1",
             str(_FIXTURES / "modern-compose.yaml"),
             str(_FIXTURES / "legacy-compose.yaml"),
         ),
@@ -50,12 +51,21 @@ def test_upstream_compose_rules_fail_versionless_admission(tmp_path: Path) -> No
         capture_output=True,
         text=True,
         check=False,
-        timeout=30,
+        # Cold Semgrep startup exceeded 30 seconds during full-suite verification.
+        timeout=120,
     )
     assert process.returncode == 0, process.stderr
     report = parse_json(process.stdout)
     assert is_object_mapping(report)
     assert report["errors"] == []
+    paths = report["paths"]
+    assert is_object_mapping(paths)
+    scanned = paths["scanned"]
+    assert is_object_list(scanned)
+    assert set(scanned) == {
+        str(_FIXTURES / "legacy-compose.yaml"),
+        str(_FIXTURES / "modern-compose.yaml"),
+    }
     results = report["results"]
     assert is_object_list(results)
     hits: dict[str, set[str]] = {}

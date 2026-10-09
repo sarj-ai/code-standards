@@ -474,3 +474,40 @@ def test_flags_a_constant_assert_outside_the_match_that_has_a_failing_arm():
         "    assert True\n"
     )
     assert _count(src) == 1
+
+
+@pytest.mark.parametrize(
+    ("body", "lines"),
+    [
+        pytest.param("ready = True\nassert ready", [3], id="bound-boolean"),
+        pytest.param("count = 7\nassert count == 7", [3], id="bound-equality"),
+        pytest.param("original = 'ok'\ncopy = original\nassert copy == 'ok'", [4], id="scalar-alias"),
+        pytest.param("missing = None\nassert missing is None", [3], id="none-identity"),
+        pytest.param("ready = False\nassert not ready", [3], id="negated-scalar"),
+        pytest.param("count = -2\nassert count != 0", [3], id="negative-number"),
+        pytest.param("ready = read()\nassert ready", [], id="produced-value"),
+        pytest.param("ready = True\nready = read()\nassert ready", [], id="reassigned"),
+        pytest.param("ready = True\nrun()\nassert ready", [], id="unknown-call"),
+        pytest.param("ready = True\nif condition:\n    ready = False\nassert ready", [], id="branch"),
+        pytest.param("values = [1]\nassert values == [1]", [], id="mutable-input"),
+        pytest.param("ready = False\nassert ready", [], id="deliberate-failure"),
+        pytest.param("count = 1\nassert count == 2", [], id="failing-comparison"),
+        pytest.param("global ready\nready = True\nassert ready", [], id="global-state"),
+        pytest.param(
+            "ready = True\ndef mutate():\n    nonlocal ready\n    ready = False\nmutate()\nassert ready",
+            [],
+            id="closure-write",
+        ),
+        pytest.param("assert 1 == 1", [], id="ruff-owned-comparison"),
+    ],
+)
+def test_tracks_only_proven_local_scalar_assertions(body: str, lines: list[int]) -> None:
+    source = "def test_result():\n" + "\n".join("    " + line for line in body.splitlines()) + "\n"
+    findings = _check(source)
+    assert [finding.line for finding in findings] == lines
+    assert all(finding.code == "SARJ057" for finding in findings)
+
+
+@pytest.mark.parametrize("name", ["src/service.py", "tests/conftest.py"])
+def test_local_scalar_tracking_is_test_only(name: str) -> None:
+    assert _check("def test_result():\n    ready = True\n    assert ready\n", name) == []

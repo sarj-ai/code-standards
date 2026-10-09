@@ -1,0 +1,42 @@
+{
+  "schema": 1,
+  "corpus": "<private-corpus>",
+  "runtime": "Node 24.21.0, macOS arm64",
+  "measurement": "Fresh repository driver and fresh ESLint subprocess per bounded batch; repeat 1 includes first-use effects, repeats 2\u20133 use warmed filesystem caches. No concurrent heavy validation. Immutable corpus verified before and after each accepted run.",
+  "selected_maintained_files": 1454,
+  "baseline_batches": 15,
+  "candidate_batches": 6,
+  "batch_size": 250,
+  "heap_limit_mb": 4096,
+  "aggregate_analysis_deadline_seconds": 300,
+  "repeats": [
+    {
+      "repeat": 1,
+      "baseline_seconds": 177.064,
+      "candidate_seconds": 119.943,
+      "baseline_peak_child_rss_bytes": 3297198080,
+      "candidate_peak_child_rss_bytes": 3868180480,
+      "exact_per_file_json_equal": true
+    },
+    {
+      "repeat": 2,
+      "baseline_seconds": 135.437,
+      "candidate_seconds": 106.173,
+      "baseline_peak_child_rss_bytes": 3579035648,
+      "candidate_peak_child_rss_bytes": 3823222784,
+      "exact_per_file_json_equal": true
+    },
+    {
+      "repeat": 3,
+      "baseline_seconds": 127.455,
+      "candidate_seconds": 103.034,
+      "baseline_peak_child_rss_bytes": 3305439232,
+      "candidate_peak_child_rss_bytes": 3893166080,
+      "exact_per_file_json_equal": true
+    }
+  ],
+  "baseline_median_seconds": 135.437,
+  "candidate_median_seconds": 106.173,
+  "median_reduction_percent": 21.61,
+  "limitation": "Local timings do not establish fleet or Linux runner latency; hosted rollout qualification remains required. Benchmark corpus identities and paths are kept in a private local overlay."
+}

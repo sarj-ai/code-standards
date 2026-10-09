@@ -6,6 +6,8 @@
 
 import { type TSESTree, AST_NODE_TYPES, ASTUtils } from "@typescript-eslint/utils";
 
+import { unwrapExpression } from "./_unwrap-expression.js";
+
 import { forEachOwnAstChild } from "./_for-each-own-ast-child.js";
 import {
   createLogMatcher,
@@ -148,7 +150,6 @@ function walkWithinScope(
     });
   };
 
-
   recurse(node);
   return found;
 }
@@ -189,13 +190,6 @@ function bindsName(param: TSESTree.Node, name: string): boolean {
 function subtreeReadsName(node: TSESTree.Node, name: string): boolean {
   let found = false;
 
-  /** Whether this function rebinds `name`. */
-  const shadowsName = (fn: TSESTree.Node): boolean =>
-    isFunctionNode(fn) &&
-    fn.params.some((param) =>
-      bindsName(param, name),
-    );
-
   const recurse = (current: TSESTree.Node): void => {
     if (found) {
       return;
@@ -212,6 +206,13 @@ function subtreeReadsName(node: TSESTree.Node, name: string): boolean {
       return found;
     }, key => !isNonReadingProperty(current, key));
   };
+
+  /** Whether this function rebinds `name`. */
+  const shadowsName = (fn: TSESTree.Node): boolean =>
+    isFunctionNode(fn) &&
+    fn.params.some((param) =>
+      bindsName(param, name),
+    );
 
   recurse(node);
   return found;
@@ -230,19 +231,19 @@ function argsIncludeBinding(
 
 /** Whether a node is a parse-style call or constructor that throws on bad input. */
 function isParseShapedNode(node: TSESTree.Node): boolean {
+  const unwrappedNodeCallee = node.type === "CallExpression" || node.type === "NewExpression" ? unwrapExpression(node.callee) : null;
   if (
     node.type === AST_NODE_TYPES.CallExpression &&
-    node.callee.type === AST_NODE_TYPES.MemberExpression &&
-    !node.callee.computed &&
-    node.callee.property.type === AST_NODE_TYPES.Identifier
+    unwrappedNodeCallee?.type === AST_NODE_TYPES.MemberExpression &&
+    ASTUtils.getPropertyName(unwrappedNodeCallee) !== null
   ) {
-    return node.callee.property.name === "parse";
+    return (ASTUtils.getPropertyName(unwrappedNodeCallee) ?? "") === "parse";
   }
   if (
     node.type === AST_NODE_TYPES.NewExpression &&
-    node.callee.type === AST_NODE_TYPES.Identifier
+    unwrappedNodeCallee?.type === AST_NODE_TYPES.Identifier
   ) {
-    return SAFE_PARSE_CONSTRUCTORS.has(node.callee.name);
+    return SAFE_PARSE_CONSTRUCTORS.has(unwrappedNodeCallee.name);
   }
   return false;
 }
@@ -255,33 +256,33 @@ const SAFE_PARSE_CONSTRUCTORS: ReadonlySet<string> = new Set([
 ]);
 
 function isBodyDecodeNode(node: TSESTree.Node): boolean {
+  const unwrappedNodeCallee = node.type === "CallExpression" || node.type === "NewExpression" ? unwrapExpression(node.callee) : null;
   return (
     node.type === AST_NODE_TYPES.CallExpression &&
-    node.callee.type === AST_NODE_TYPES.MemberExpression &&
-    !node.callee.computed &&
-    node.callee.property.type === AST_NODE_TYPES.Identifier &&
-    BODY_DECODE_METHODS.has(node.callee.property.name)
+    unwrappedNodeCallee?.type === AST_NODE_TYPES.MemberExpression &&
+    ASTUtils.getPropertyName(unwrappedNodeCallee) !== null &&
+    BODY_DECODE_METHODS.has((ASTUtils.getPropertyName(unwrappedNodeCallee) ?? ""))
   );
 }
 
 /** Pure validation and optional browser-storage reads around JSON parsing. */
 function isSafeParseSupportCall(node: TSESTree.CallExpression): boolean {
-  const callee = node.callee;
+  const callee = unwrapExpression(node.callee);
+
   if (
     callee.type !== AST_NODE_TYPES.MemberExpression ||
-    callee.computed ||
-    callee.property.type !== AST_NODE_TYPES.Identifier
+    ASTUtils.getPropertyName(callee) === null
   ) {
     return false;
   }
   if (
-    callee.property.name === "isArray" &&
+    (ASTUtils.getPropertyName(callee) ?? "") === "isArray" &&
     callee.object.type === AST_NODE_TYPES.Identifier &&
     callee.object.name === "Array"
   ) {
     return true;
   }
-  if (callee.property.name !== "getItem") return false;
+  if ((ASTUtils.getPropertyName(callee) ?? "") !== "getItem") return false;
   if (
     callee.object.type === AST_NODE_TYPES.Identifier &&
     (callee.object.name === "localStorage" ||
@@ -291,13 +292,12 @@ function isSafeParseSupportCall(node: TSESTree.CallExpression): boolean {
   }
   return (
     callee.object.type === AST_NODE_TYPES.MemberExpression &&
-    !callee.object.computed &&
     callee.object.object.type === AST_NODE_TYPES.Identifier &&
     (callee.object.object.name === "window" ||
       callee.object.object.name === "globalThis") &&
-    callee.object.property.type === AST_NODE_TYPES.Identifier &&
-    (callee.object.property.name === "localStorage" ||
-      callee.object.property.name === "sessionStorage")
+    ASTUtils.getPropertyName(callee.object) !== null &&
+    ((ASTUtils.getPropertyName(callee.object) ?? "") === "localStorage" ||
+      (ASTUtils.getPropertyName(callee.object) ?? "") === "sessionStorage")
   );
 }
 

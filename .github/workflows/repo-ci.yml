@@ -34,10 +34,10 @@ jobs:
           version: '0.12.18'
           enable-cache: true
           cache-dependency-glob: 'packages/**/uv.lock'
+      - name: Install repository-policy Python
+        run: uv python install 3.14
       - name: Install repository-policy toolchain
-        run: |
-          uv python install 3.14
-          uv sync --project packages/standards --locked --dev
+        run: uv sync --project packages/standards --locked --dev
       - name: Cross-package repository policy
         run: make check-versions-synced check-file-conventions check-no-private-refs
       - name: Release causality

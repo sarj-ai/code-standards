@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from bisect import bisect_right
 from dataclasses import dataclass, replace
 from functools import lru_cache
 from pathlib import Path
 import re
-from typing import ClassVar, NamedTuple
+from typing import TYPE_CHECKING, ClassVar, NamedTuple, final
 
 from sarj_rule_contracts import (
     AutofixPolicy as AutofixPolicy,
@@ -17,6 +18,10 @@ from sarj_rule_contracts import (
     RuleDocumentation as RuleDocumentation,
     RuleExample as RuleExample,
 )
+
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 
 class StatementFragment(NamedTuple):
@@ -33,10 +38,23 @@ class SourceLocation(NamedTuple):
     column: int
 
 
+@lru_cache(maxsize=1)
+def _line_starts(source: str) -> tuple[int, ...]:
+    return (0, *(match.end() for match in re.finditer(r"\n", source)))
+
+
+def source_location(source: str, offset: int) -> SourceLocation:
+    starts = _line_starts(source)
+    line = bisect_right(starts, offset)
+    return SourceLocation(line, offset - starts[line - 1] + 1)
+
+
 class _ScanResult(NamedTuple):
     masked_source: str
     executable_spans: list[tuple[int, int]]
     comments: list[SourceComment]
+    comment_spans: tuple[tuple[int, int], ...]
+    identifier_spans: tuple[tuple[int, int], ...]
 
 
 class SourceComment(NamedTuple):
@@ -61,6 +79,7 @@ _NON_NEWLINE = re.compile(r"[^\n]")
 # A dollar-quote delimiter (`$$` or `$tag$`) where `tag` cannot start with a digit, preventing match with `$1`/`$2` positional parameters.
 _DOLLAR_DELIM_RE = re.compile(r"\$(?:[A-Za-z_][A-Za-z0-9_]*)?\$")
 _IDENT_CHAR_RE = re.compile(r"[A-Za-z0-9_]")
+_STATEMENT_HEAD_SIZE = 4
 
 
 def is_dump_file(source: str, path: Path | None = None) -> bool:
@@ -163,7 +182,7 @@ def declared_dialect(source: str) -> str | None:
 def has_dbmate_directive(source: str, directive: str) -> bool:
     dollar_lines = dollar_quoted_lines(source)
     return any(
-        match.group(1).lower() == directive and source.count("\n", 0, match.start()) + 1 not in dollar_lines
+        match.group(1).lower() == directive and source_location(source, match.start()).line not in dollar_lines
         for match in _DBMATE_DIRECTIVE_RE.finditer(source)
     )
 
@@ -268,6 +287,7 @@ def is_generated_migration(path: Path, source: str) -> bool:
 
 def clear_path_caches() -> None:
     _has_generated_marker.cache_clear()
+    _line_starts.cache_clear()
 
 
 def is_suppressed(source_lines: list[str], line: int, code: str) -> bool:
@@ -320,70 +340,192 @@ def _closing_depth(  # sarj-noqa: SARJ023 — scanner primitive stays above the 
     return depths[0] if depths else None
 
 
-@lru_cache(maxsize=32)
-def _scan(source: str, *, preserve_quoted_identifiers: bool = False) -> _ScanResult:
-    # Preserve offsets while recursively masking comments and literals inside executable dollar-quoted bodies.
-    out: list[str] = []
-    bodies = _DollarBodies()
-    comments: list[SourceComment] = []
-    i = 0
-    chunk_start = 0
-    n = len(source)
+@final
+class _StatementContext:
+    def __init__(self) -> None:
+        self.head: list[str] = []
+        self.tail = ""
 
-    while i < n:
-        ch = source[i]
-        template_end = _template_end(source, i)
+    def record(self, token: str) -> None:
+        self.tail = token
+        if len(self.head) < _STATEMENT_HEAD_SIZE:
+            self.head.append(token)
+
+    def consume(self, source: str, offset: int) -> int:
+        ch = source[offset]
+        if ch.isalpha() or ch == "_":
+            end = offset + 1
+            while end < len(source) and (source[end].isalnum() or source[end] in {"_", "$"}):
+                end += 1
+            self.record(source[offset:end].upper())
+            return end
+        if ch == ";":
+            self.head.clear()
+            self.tail = ""
+        elif not ch.isspace():
+            self.record(ch)
+        return offset + 1
+
+    def is_executable_body(self) -> bool:
+        match self.head:
+            case ["DO"] | ["DO", "LANGUAGE", _]:
+                return True
+            case ["CREATE", "FUNCTION" | "PROCEDURE", *_] | ["CREATE", "OR", "REPLACE", "FUNCTION" | "PROCEDURE"]:
+                return self.tail == "AS"
+            case _:
+                return False
+
+
+@final
+class _SqlMasker:
+    def __init__(self, source: str, *, preserve_quoted_identifiers: bool, mask_dollar_literals: bool) -> None:
+        self.source = source
+        self.preserve_quoted_identifiers = preserve_quoted_identifiers
+        self.mask_dollar_literals = mask_dollar_literals
+        self.out: list[str] = []
+        self.bodies = _DollarBodies()
+        self.comments: list[SourceComment] = []
+        self.comment_spans: list[tuple[int, int]] = []
+        self.identifier_spans: list[tuple[int, int]] = []
+        self.statement = _StatementContext()
+        self.offset = 0
+        self.chunk_start = 0
+
+    def scan(self) -> _ScanResult:
+        while self.offset < len(self.source):
+            self._scan_token()
+        if self.chunk_start < len(self.source):
+            self.out.append(self.source[self.chunk_start :])
+        return _ScanResult(
+            "".join(self.out),
+            self.bodies.finish(len(self.source)),
+            self.comments,
+            tuple(self.comment_spans),
+            tuple(self.identifier_spans),
+        )
+
+    def _scan_token(self) -> None:
+        template_end = _template_end(self.source, self.offset)
         if template_end is not None:
-            _append_masked_chunk(out, source, chunk_start, i, template_end)
-            i = template_end
-            chunk_start = i
-            continue
-        closed = bodies.close(source, i) if ch == "$" else None
-        if closed is not None:
-            _append_masked_chunk(out, source, chunk_start, i, closed)
-            i = closed
-            chunk_start = i
-            continue
-        pair = source[i : i + 2]
+            self._mask(template_end)
+            return
+        ch = self.source[self.offset]
+        if ch == "$":
+            self._scan_dollar()
+            return
+        pair = self.source[self.offset : self.offset + 2]
         if pair in {"--", "/*"}:
-            scanned = _scan_source_comment(source, i, pair)
-            end = scanned.end
-            comments.append(scanned.comment)
-        elif ch == '"' and preserve_quoted_identifiers:
-            i = _scan_quoted(source, i, ch)
-            continue
-        elif ch in {"'", '"'}:
-            end = _scan_literal(source, i, ch)
-        elif ch == "$":
-            tag = _dollar_open_tag(source, i)
-            if tag is None:
-                i += 1
-                continue
-            end = bodies.open(tag, i)
-            _append_masked_chunk(out, source, chunk_start, i, end)
-            i = end
-            chunk_start = i
-            continue
+            scanned = _scan_source_comment(self.source, self.offset, pair)
+            self.comments.append(scanned.comment)
+            self.comment_spans.append((self.offset, scanned.end))
+            self._mask(scanned.end)
+            return
+        if ch in {"'", '"'}:
+            self._scan_literal(ch)
+            return
+        if self.mask_dollar_literals and not self.bodies.tags:
+            self.offset = self.statement.consume(self.source, self.offset)
         else:
-            i += 1
-            continue
+            self.offset += 1
 
-        _append_masked_chunk(out, source, chunk_start, i, end)
-        i = end
-        chunk_start = i
+    def _scan_literal(self, quote: str) -> None:
+        if quote == '"' and self.preserve_quoted_identifiers:
+            end = _scan_quoted(self.source, self.offset, quote)
+            self.identifier_spans.append((self.offset, end))
+            self.offset = end
+            if self.mask_dollar_literals and not self.bodies.tags:
+                self.statement.record("<quoted>")
+            return
+        self._mask(_scan_literal(self.source, self.offset, quote))
+        if self.mask_dollar_literals and not self.bodies.tags:
+            self.statement.record("<quoted>")
 
-    if chunk_start < n:
-        out.append(source[chunk_start:n])
+    def _scan_dollar(self) -> None:
+        closed = self.bodies.close(self.source, self.offset)
+        if closed is not None:
+            self._mask(closed)
+            self.statement.tail = "<body>"
+            return
+        tag = _dollar_open_tag(self.source, self.offset)
+        if tag is None:
+            self.offset += 1
+            return
+        if self.mask_dollar_literals and (self.bodies.tags or not self.statement.is_executable_body()):
+            close = self.source.find(tag, self.offset + len(tag))
+            self._mask(len(self.source) if close < 0 else close + len(tag))
+            self.statement.tail = "<literal>"
+        else:
+            self._mask(self.bodies.open(tag, self.offset))
 
-    return _ScanResult("".join(out), bodies.finish(n), comments)
+    def _mask(self, end: int) -> None:
+        _append_masked_chunk(self.out, self.source, self.chunk_start, self.offset, end)
+        self.offset = end
+        self.chunk_start = end
 
 
-def mask_sql(source: str) -> str:
-    return _scan(source).masked_source
+@lru_cache(maxsize=32)
+def _scan(source: str, *, preserve_quoted_identifiers: bool = False, mask_dollar_literals: bool = False) -> _ScanResult:
+    # Preserve offsets while masking noise inside executable dollar-quoted bodies.
+    return _SqlMasker(
+        source, preserve_quoted_identifiers=preserve_quoted_identifiers, mask_dollar_literals=mask_dollar_literals
+    ).scan()
 
 
-def mask_sql_literals_and_comments(source: str) -> str:
-    return _scan(source, preserve_quoted_identifiers=True).masked_source
+def mask_sql(source: str, *, mask_dollar_literals: bool = False) -> str:
+    return (_scan(source, mask_dollar_literals=True) if mask_dollar_literals else _scan(source)).masked_source
+
+
+def mask_sql_comments(source: str) -> str:
+    chunks: list[str] = []
+    chunk_start = 0
+    for start, end in _scan(source, preserve_quoted_identifiers=True, mask_dollar_literals="$" in source).comment_spans:
+        _append_masked_chunk(chunks, source, chunk_start, start, end)
+        chunk_start = end
+    chunks.append(source[chunk_start:])
+    return "".join(chunks)
+
+
+def mask_sql_literals_and_comments(source: str, *, mask_dollar_literals: bool = False) -> str:
+    return _scan(source, preserve_quoted_identifiers=True, mask_dollar_literals=mask_dollar_literals).masked_source
+
+
+def quoted_identifier_spans(source: str) -> tuple[tuple[int, int], ...]:
+    return _scan(source, preserve_quoted_identifiers=True).identifier_spans if '"' in source else ()
+
+
+def sql_code_matches(pattern: re.Pattern[str], source: str, *, group: str | int = 0) -> Iterator[re.Match[str]]:
+    # The caller supplies a literal/comment-masked view that preserves identifiers.
+    spans = quoted_identifier_spans(source)
+    starts = tuple(start for start, _ in spans)
+    for match in pattern.finditer(source):
+        position = match.start(group)
+        preceding = bisect_right(starts, position) - 1
+        if preceding >= 0:
+            start, end = spans[preceding]
+            if position < end and (position != start or match.end(group) < end):
+                continue
+        yield match
+
+
+_SQL_IDENTIFIER = r'(?:[A-Za-z_][A-Za-z0-9_$]*|"(?:""|[^"\n])+")'
+_SQL_IDENTIFIER_PART = re.compile(_SQL_IDENTIFIER)
+_SQL_QUALIFIED_IDENTIFIER = re.compile(rf"\s*{_SQL_IDENTIFIER}(?:\s*\.\s*{_SQL_IDENTIFIER})*\s*")
+_SAFE_SQL_IDENTIFIER = re.compile(r"[a-z_][a-z0-9_$]*")
+
+
+def normalize_sql_identifier(value: str, *, unqualified: bool = False) -> str:
+    if _SQL_QUALIFIED_IDENTIFIER.fullmatch(value) is None:
+        return value.strip()
+    parts: list[str] = []
+    for match in _SQL_IDENTIFIER_PART.finditer(value):
+        token = match.group(0)
+        if not token.startswith('"'):
+            parts.append(token.lower())
+        elif _SAFE_SQL_IDENTIFIER.fullmatch(token[1:-1]) is not None:
+            parts.append(token[1:-1])
+        else:
+            parts.append(token)
+    return parts[-1] if unqualified else ".".join(parts)
 
 
 def sql_comments(source: str) -> tuple[SourceComment, ...]:
@@ -396,10 +538,10 @@ def dollar_quoted_lines(source: str) -> frozenset[int]:
         return frozenset()
     inside: set[int] = set()
     for start, end in spans:
-        first = source.count("\n", 0, start) + 1
+        first = source_location(source, start).line
         # `end - 1` is the span's last character: an unterminated body runs to
         # end-of-file, and its trailing newline must not add a phantom line.
-        last = first + source.count("\n", start, end - 1)
+        last = source_location(source, end - 1).line
         inside.update(range(first, last + 1))
     return frozenset(inside)
 
@@ -411,15 +553,24 @@ def dollar_quoted_spans(source: str) -> tuple[tuple[int, int], ...]:
 def split_statements(masked: str) -> list[Statement]:
     statements: list[Statement] = []
     current: Statement = []
-    for lineno, raw in enumerate(masked.splitlines(), start=1):
-        line = raw
-        while ";" in line:
-            head, _, line = line.partition(";")
-            current.append(StatementFragment(lineno, head))
+    spans = quoted_identifier_spans(masked)
+    starts = tuple(start for start, _ in spans)
+    line_offset = 0
+    for lineno, raw_with_ending in enumerate(masked.splitlines(keepends=True), start=1):
+        raw = raw_with_ending.splitlines()[0]
+        fragment_start = 0
+        for separator in re.finditer(r";", raw):
+            position = line_offset + separator.start()
+            preceding = bisect_right(starts, position) - 1
+            if preceding >= 0 and position < spans[preceding][1]:
+                continue
+            current.append(StatementFragment(lineno, raw[fragment_start : separator.start()]))
             statements.append(current)
             current = []
-        if line:
-            current.append(StatementFragment(lineno, line))
+            fragment_start = separator.end()
+        if fragment_start < len(raw):
+            current.append(StatementFragment(lineno, raw[fragment_start:]))
+        line_offset += len(raw_with_ending)
     if current:
         statements.append(current)
     return statements
@@ -510,11 +661,12 @@ def _scan_source_comment(source: str, start: int, pair: str) -> _CommentScan:
     else:
         end = _scan_block_comment(source, start)
         body_end = end - 2 if end < len(source) or source.endswith("*/") else end
+    location = source_location(source, start)
     return _CommentScan(
         end=end,
         comment=SourceComment(
-            line=source.count("\n", 0, start) + 1,
-            column=start - source.rfind("\n", 0, start),
+            line=location.line,
+            column=location.column,
             body=source[start + 2 : body_end].strip(),
             block=pair == "/*",
         ),

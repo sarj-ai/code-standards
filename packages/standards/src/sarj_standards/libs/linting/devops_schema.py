@@ -6,7 +6,6 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING
 
 from jsonschema import Draft7Validator
-from pydantic import JsonValue, TypeAdapter
 from referencing import Registry, Resource
 import yaml
 from yaml.nodes import MappingNode, Node, SequenceNode
@@ -20,7 +19,7 @@ from sarj_standards.libs.diagnostics import (
     SourceDocument,
     ToolReport,
 )
-from sarj_standards.libs.json_boundary import parse_json
+from sarj_standards.libs.json_boundary import normalize_json_value, parse_json
 from sarj_standards.libs.linting import cloudbuild
 from sarj_standards.libs.typed_containers import is_object_mapping
 from sarj_standards.libs.yaml_boundary import mapping_items, sequence_items
@@ -154,15 +153,14 @@ def _validate_document(root: Path, path: Path, source: str, node: MappingNode, v
         _validate_keys(node)
         loader = yaml.SafeLoader("")
         try:
-            instance: object = loader.construct_document(node)  # pyright: ignore[reportUnknownVariableType, reportUnknownMemberType] -- safe YAML constructor boundary.
+            instance = normalize_json_value(loader.construct_document(node))  # pyright: ignore[reportUnknownArgumentType, reportUnknownMemberType] -- normalize the untyped safe YAML constructor boundary.
         finally:
             loader.dispose()  # pyright: ignore[reportUnknownMemberType] -- PyYAML loader cleanup boundary.
         resource: Resource[Schema] = Resource.from_contents(schema)
         registry: Registry[Schema] = Registry()
         registry = registry.with_resource("urn:sarj:devops-source", resource)
         validator = Draft7Validator(schema, registry=registry)
-        normalized = TypeAdapter[JsonValue](JsonValue).validate_python(instance)
-        errors: Iterable[ValidationError] = validator.iter_errors(normalized)  # pyright: ignore[reportUnknownMemberType] -- jsonschema validation boundary.
+        errors: Iterable[ValidationError] = validator.iter_errors(instance)  # pyright: ignore[reportUnknownMemberType] -- jsonschema validation boundary.
         document = SourceDocument(path, source)
         findings = tuple(_schema_diagnostic(root, path, document, node, error, name=name) for error in errors)  # pyright: ignore[reportAny] -- external jsonschema iterator stub exposes validated errors as Any.
         return ToolReport(name, Completion.COMPLETE, diagnostics=findings, file_count=1)

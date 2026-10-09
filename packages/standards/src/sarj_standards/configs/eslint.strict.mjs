@@ -672,12 +672,18 @@ export function createConfig(options = {}) {
       "@typescript-eslint/no-unsafe-argument": "error",
       "@typescript-eslint/no-unsafe-call": "error",
       "@typescript-eslint/no-unsafe-return": "error",
-      "@typescript-eslint/no-floating-promises": "error",
+      "@typescript-eslint/no-floating-promises": ["error", { ignoreVoid: false }],
       "@typescript-eslint/await-thenable": "error",
-      "@typescript-eslint/no-misused-promises": "error",
+      // JSX event handlers own their errors with async/await and try/catch.
+      // Requiring a synchronous prop wrapper adds no protection to a handled callback.
+      "@typescript-eslint/no-misused-promises": [
+        "error",
+        { checksVoidReturn: { attributes: false } },
+      ],
       // The upstream rule flags every nested then/catch/finally call, including
       // deliberate fire-and-forget work and synchronous framework callbacks.
-      // The typed @sarj rule below owns only semantics-preserving async returns.
+      // The typed @sarj rule below bans proven Promise.then calls while retaining
+      // ordinary schema data and synchronous methods named then. Catch/finally stay available.
       "promise/prefer-await-to-then": "off",
       "@typescript-eslint/require-await": "error",
       // `isolatedDeclarations` requires annotations on exported values that
@@ -1238,17 +1244,20 @@ export function createConfig(options = {}) {
       // the paired tests, which its `meta.docs.url` points at.
       //
       "@sarj/require-pascal-case-zod-schema-name": "error",
+      "@sarj/require-explicit-contract-implementation": "warn",
+      "@sarj/require-explicit-service-contract": "warn",
       "@sarj/require-interface-for-exported-class": "warn",
       "@sarj/prefer-named-complex-return-type": "warn",
       "@sarj/prefer-module-level-refined-schema": "warn",
       "@sarj/prefer-multi-value-zod-literal": ["warn", { zodMajorVersion: 4 }],
       "@sarj/prefer-named-callback-domain": "error",
+      "@sarj/prefer-nominal-id-types": "warn",
       "@sarj/prefer-node-crypto-hash": "warn",
       "@sarj/prefer-node-fs-promises": "warn",
       "@sarj/prefer-shared-zod-enum": "warn",
       "@sarj/prefer-switch-for-repeated-equality": "warn",
       "@sarj/require-sql-access-class": "warn",
-      "@sarj/sole-export-matches-filename": "warn",
+      "@sarj/sole-export-matches-filename": "error",
       "@sarj/require-assert-never": "error",
       "@sarj/require-static-next-matcher": "error",
       "@sarj/require-zod-form-validation": "error",
@@ -1322,7 +1331,7 @@ export function createConfig(options = {}) {
       "@sarj/prefer-module-level-schema": "error",
       "@sarj/prefer-non-nullable-collection": "error",
       "@sarj/prefer-nullish-filter-predicate": "error",
-      "@sarj/prefer-await-in-async-return": "error",
+      "@sarj/prefer-await-in-async-return": ["error", { scope: "all-promise-calls" }],
       "@sarj/no-sleep-in-test-body": "error",
       "@sarj/iac-source-coupled-test": "error",
       "@sarj/repeated-static-call-cases": "error",
@@ -1338,6 +1347,7 @@ export function createConfig(options = {}) {
       "@sarj/no-type-member-comment-wall": "error",
       "@sarj/no-repeated-string-literal": "error",
       "@sarj/no-tautological-expect": "error",
+      "@sarj/no-duplicate-test-case": "warn",
       "@sarj/no-typed-doc-sections": "error",
       "@sarj/require-port-for-service": "error",
       "@sarj/no-unsafe-mock-casting": "error",
@@ -1475,6 +1485,14 @@ export function createConfig(options = {}) {
       "better-tailwindcss/no-unnecessary-whitespace": "error",
       "better-tailwindcss/enforce-shorthand-classes": "error",
       "better-tailwindcss/enforce-consistent-variable-syntax": ["warn", { syntax: "shorthand" }],
+    },
+  },
+  {
+    files: ["**/*.{jsx,tsx}"],
+    rules: {
+      // This rule has no JSX exception and would undo the async-handler policy.
+      // no-misused-promises still checks non-JSX promise callback boundaries.
+      "@typescript-eslint/strict-void-return": "off",
     },
   },
   // React component IDENTIFIERS must be PascalCase for JSX to distinguish them

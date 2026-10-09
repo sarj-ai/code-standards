@@ -36,9 +36,6 @@ TOOLS: Final = MappingProxyType(
             NativeTool("shfmt", "3.14.1", ("--version",), r"^v(?P<version>\d+\.\d+\.\d+)"),
             NativeTool("shellcheck", "0.11.0", ("--version",), r"^version:\s*(?P<version>\d+\.\d+\.\d+)"),
             NativeTool("actionlint", "1.7.12", ("-version",), r"^(?P<version>\d+\.\d+\.\d+)"),
-            NativeTool(
-                "zizmor", "1.30.1", ("--version",), r"zizmor (?P<version>\d+\.\d+\.\d+)", frozenset({11, 12, 13, 14})
-            ),
             NativeTool("hadolint", "2.15.1", ("--version",), r"v?(?P<version>\d+\.\d+\.\d+)"),
             NativeTool("terraform", "1.15.8", ("version",), r"Terraform v(?P<version>\d+\.\d+\.\d+)"),
             NativeTool(
@@ -67,7 +64,6 @@ MISE_REFS: Final = MappingProxyType(
         "shfmt": "aqua:mvdan/sh",
         "shellcheck": "aqua:koalaman/shellcheck",
         "actionlint": "aqua:rhysd/actionlint",
-        "zizmor": "aqua:zizmorcore/zizmor",
         "hadolint": "aqua:hadolint/hadolint",
         "terraform": "aqua:hashicorp/terraform",
         "tflint": "aqua:terraform-linters/tflint",

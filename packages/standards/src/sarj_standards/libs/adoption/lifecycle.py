@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING, NamedTuple
 
 from sarj_standards.libs.filesystem import is_link_like
 from sarj_standards.libs.json_boundary import parse_json
-from sarj_standards.libs.linting import runner
+from sarj_standards.libs.linting import runner, security_tools
 
 from . import manifest, packagemanager, scaffold, transaction
 
@@ -86,6 +86,12 @@ def install_commands(
                 prepared=bool(adopted.prepared_targets) if adopted is not None else False,
             )
         )
+    for name in security_tools.TOOLS:
+        enabled = ecosystems.actions if name == "zizmor" else ecosystems.infrastructure
+        if enabled:
+            commands.append(
+                Command(f"prepare pinned {name}", (*security_tools.command(name, offline=False), "--version"), root)
+            )
     if ecosystems.typescript_root is not None:
         install_root = ecosystems.typescript_install_root or ecosystems.typescript_root
         # Setup writes pnpm-workspace.yaml before this command executes because
@@ -111,7 +117,9 @@ def install_commands(
             )
         )
     git_metadata = root / ".git"
-    if (git_metadata.is_dir() or git_metadata.is_file()) and hook_manager == "pre-commit":
+    if not (git_metadata.is_dir() or git_metadata.is_file()):
+        return commands
+    if hook_manager == "pre-commit":
         hook_argv = (
             "uvx",
             "--no-config",
@@ -126,7 +134,7 @@ def install_commands(
             "--install-hooks",
         )
         commands.append(Command(_PRECOMMIT_HOOK_LABEL, hook_argv, root))
-    elif (git_metadata.is_dir() or git_metadata.is_file()) and hook_manager == "lefthook":
+    elif hook_manager == "lefthook":
         commands.append(
             Command(
                 "Lefthook repository hooks",
@@ -418,7 +426,7 @@ def execute(commands: Iterable[Command]) -> int:
                 [executable, *command.argv[1:]],
                 cwd=command.cwd,
                 check=False,
-                env=_command_environment(command),
+                env=_command_environment(),
                 timeout=_COMMAND_TIMEOUT.total_seconds(),
             )
         except subprocess.TimeoutExpired:
@@ -522,8 +530,7 @@ def _git_environment() -> dict[str, str]:
     }
 
 
-def _command_environment(command: Command) -> dict[str, str] | None:
-    _ = command
+def _command_environment() -> dict[str, str] | None:
     environment = os.environ.copy()  # ruff: ignore[banned-api] -- tools must not mistake the isolated runner for the consumer environment.
     environment.pop("VIRTUAL_ENV", None)
     return environment

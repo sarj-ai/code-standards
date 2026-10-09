@@ -11,6 +11,7 @@ import {
 } from "@typescript-eslint/utils";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
+import { unwrapExpression } from "./_unwrap-expression.js";
 import { isGeneratedFile, isTestFile } from "./_paths.js";
 import { isZodModule } from "./_zod.js";
 
@@ -163,14 +164,14 @@ function buildsLocalizedText(node: TSESTree.Node): boolean {
   return subtreeSome(node, (inner) => {
     if (inner.type === AST_NODE_TYPES.TaggedTemplateExpression) return true;
     if (inner.type !== AST_NODE_TYPES.CallExpression) return false;
-    const { callee } = inner;
+    const callee = unwrapExpression(inner.callee);
+    const calleeReceiver = callee.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(callee.object) : callee;
     if (callee.type === AST_NODE_TYPES.Identifier)
       return I18N_CALLEE_NAMES.has(callee.name);
     return (
       callee.type === AST_NODE_TYPES.MemberExpression &&
-      !callee.computed &&
-      callee.object.type === AST_NODE_TYPES.Identifier &&
-      I18N_RECEIVER_NAMES.has(callee.object.name)
+      calleeReceiver.type === AST_NODE_TYPES.Identifier &&
+      I18N_RECEIVER_NAMES.has(calleeReceiver.name)
     );
   });
 }
@@ -178,6 +179,7 @@ function buildsLocalizedText(node: TSESTree.Node): boolean {
 function calleeChainRoot(node: TSESTree.Node): TSESTree.Identifier | null {
   let current = node;
   for (;;) {
+    current = unwrapExpression(current);
     if (current.type === AST_NODE_TYPES.Identifier) return current;
     if (current.type === AST_NODE_TYPES.MemberExpression) {
       current = current.object;
@@ -195,10 +197,11 @@ function chainMemberNames(node: TSESTree.Node): readonly string[] {
   const names: string[] = [];
   let current = node;
   for (;;) {
+    current = unwrapExpression(current);
     if (current.type === AST_NODE_TYPES.MemberExpression) {
-      if (current.computed || current.property.type !== AST_NODE_TYPES.Identifier)
+      if (ASTUtils.getPropertyName(current) === null)
         return [];
-      names.push(current.property.name);
+      names.push((ASTUtils.getPropertyName(current) ?? ""));
       current = current.object;
       continue;
     }
@@ -219,12 +222,11 @@ function schemaExpression(node: TSESTree.CallExpression): TSESTree.Node {
     if (
       parent?.type === AST_NODE_TYPES.MemberExpression &&
       parent.object === current &&
-      !parent.computed &&
-      parent.property.type === AST_NODE_TYPES.Identifier &&
+      ASTUtils.getPropertyName(parent) !== null &&
       parent.parent?.type === AST_NODE_TYPES.CallExpression &&
       parent.parent.callee === parent
     ) {
-      if (NON_SCHEMA_TERMINALS.has(parent.property.name)) return current;
+      if (NON_SCHEMA_TERMINALS.has((ASTUtils.getPropertyName(parent) ?? ""))) return current;
       current = parent.parent;
       continue;
     }
@@ -285,12 +287,13 @@ export default createRule<Options, MessageIds>({
       node: TSESTree.CallExpression,
       allowed: ReadonlySet<string>,
     ): string | null {
-      if (node.callee.type !== AST_NODE_TYPES.MemberExpression) return null;
-      const root = calleeChainRoot(node.callee);
+      const unwrappedNodeCallee = unwrapExpression(node.callee);
+      if (unwrappedNodeCallee.type !== AST_NODE_TYPES.MemberExpression) return null;
+      const root = calleeChainRoot(unwrappedNodeCallee);
       if (root === null) return null;
       const binding = resolvedBinding(root);
       if (binding === null || !zodBindings.has(binding)) return null;
-      const names = chainMemberNames(node.callee);
+      const names = chainMemberNames(unwrappedNodeCallee);
       if (names.length === 1 && allowed.has(names[0] ?? ""))
         return names[0] ?? null;
       if (
@@ -303,10 +306,11 @@ export default createRule<Options, MessageIds>({
     }
 
     function isSchemaConstruction(node: TSESTree.CallExpression): boolean {
-      const callee = node.callee;
-      if (callee.type !== AST_NODE_TYPES.MemberExpression || callee.computed ||
-        callee.property.type !== AST_NODE_TYPES.Identifier || NON_SCHEMA_TERMINALS.has(callee.property.name)) return false;
-      if (callee.object.type === AST_NODE_TYPES.CallExpression) return isSchemaConstruction(callee.object);
+      const callee = unwrapExpression(node.callee);
+
+      const calleeReceiver = callee.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(callee.object) : callee;
+      if (callee.type !== AST_NODE_TYPES.MemberExpression || ASTUtils.getPropertyName(callee) === null || NON_SCHEMA_TERMINALS.has((ASTUtils.getPropertyName(callee) ?? ""))) return false;
+      if (calleeReceiver.type === AST_NODE_TYPES.CallExpression) return isSchemaConstruction(calleeReceiver);
       return factoryName(node, FACTORIES) !== null || factoryName(node, COMPOSITE_FACTORIES) !== null;
     }
 
@@ -357,9 +361,8 @@ export default createRule<Options, MessageIds>({
           ((current.callee.type === AST_NODE_TYPES.Identifier &&
             MEMO_CALLEES.has(current.callee.name)) ||
             (current.callee.type === AST_NODE_TYPES.MemberExpression &&
-              !current.callee.computed &&
-              current.callee.property.type === AST_NODE_TYPES.Identifier &&
-              MEMO_CALLEES.has(current.callee.property.name)))
+              ASTUtils.getPropertyName(current.callee) !== null &&
+              MEMO_CALLEES.has((ASTUtils.getPropertyName(current.callee) ?? ""))))
         )
           return true;
         current = current.parent ?? undefined;

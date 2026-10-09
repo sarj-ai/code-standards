@@ -1,8 +1,11 @@
+// vitest: shared-module-graph
 import * as tsParser from "@typescript-eslint/parser";
 import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, it } from "vitest";
 
 import rule, { NO_SENTINEL_RETURN_ON_CATCH_DOCUMENTATION } from "../../src/rules/no-sentinel-return-on-catch.js";
+
+import { verifyRuleExamples } from "../../src/verify-rule-examples.js";
 
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
@@ -621,4 +624,25 @@ RULE_TESTER.run("no-sentinel-return-on-catch", rule, {
       errors: [{ messageId: "noSentinelReturn" }],
     },
   ],
+});
+
+
+it("preserves outcomes for static member access and unknown member keys", async () => {
+  const documentation = rule.documentation;
+  if (documentation === undefined) throw new Error("Missing rule documentation");
+  await verifyRuleExamples({ ...rule, documentation: { ...documentation, examples: [
+  {
+    "id": "reported-fallback-static-member",
+    "title": "Static member access preserves the rule outcome",
+    "outcome": "no-match",
+    "focusPath": "src/load.ts",
+    "expectedCount": 0,
+    "files": [
+      {
+        "path": "src/load.ts",
+        "source": "function load() { try { return read(); } catch (error) { logger[\"warn\"]('load failed', error); return null; } }"
+      }
+    ]
+  }
+] } });
 });

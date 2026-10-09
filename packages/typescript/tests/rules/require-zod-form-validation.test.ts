@@ -1,9 +1,12 @@
+// vitest: shared-module-graph
 import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, it } from "vitest";
 
 import rule, { REQUIRE_ZOD_FORM_VALIDATION_DOCUMENTATION } from "../../src/rules/require-zod-form-validation.js";
 
 // Bind vitest to RuleTester for proper test reporting
+import { verifyRuleExamples } from "../../src/verify-rule-examples.js";
+
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
 RuleTester.it = it;
@@ -194,4 +197,38 @@ RULE_TESTER.run("require-zod-form-validation", rule, {
       errors: [{ messageId: "missingZodValidation" }],
     },
   ],
+});
+
+
+it("preserves outcomes for static member access and unknown member keys", async () => {
+  const documentation = rule.documentation;
+  if (documentation === undefined) throw new Error("Missing rule documentation");
+  await verifyRuleExamples({ ...rule, documentation: { ...documentation, examples: [
+  {
+    "id": "raw-form-value-static-member",
+    "title": "Static member access preserves the rule outcome",
+    "outcome": "match",
+    "focusPath": "src/action.ts",
+    "expectedCount": 1,
+    "files": [
+      {
+        "path": "src/action.ts",
+        "source": "const name = formData[\"get\"]('name');"
+      }
+    ]
+  },
+  {
+    "id": "raw-form-value-dynamic-member",
+    "title": "Unknown member access does not establish API identity",
+    "outcome": "no-match",
+    "focusPath": "src/action.ts",
+    "expectedCount": 0,
+    "files": [
+      {
+        "path": "src/action.ts",
+        "source": "const name = formData[auditDynamicMember]('name');"
+      }
+    ]
+  }
+] } });
 });

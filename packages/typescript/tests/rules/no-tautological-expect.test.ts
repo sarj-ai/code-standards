@@ -1,3 +1,4 @@
+// vitest: shared-module-graph
 import * as tsParser from "@typescript-eslint/parser";
 import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, it } from "vitest";
@@ -5,6 +6,8 @@ import { afterAll, describe, it } from "vitest";
 import rule, {
   NO_TAUTOLOGICAL_EXPECT_DOCUMENTATION,
 } from "../../src/rules/no-tautological-expect.js";
+
+import { verifyRuleExamples } from "../../src/verify-rule-examples.js";
 
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
@@ -21,6 +24,18 @@ const TEST_FILE = "/repo/src/tests/dummy.test.ts";
 
 RULE_TESTER.run("no-tautological-expect", rule, {
   valid: [
+    ...([
+      ["runtime result", "const value = read(); expect(value).toBe(true);"],
+      ["mutable binding", "let value = true; run(); expect(value).toBe(true);"],
+      ["mutable data", "const value = {ok: true}; run(value); expect(value).toEqual({ok: true});"],
+      ["parameter shadows constant", "const value = true; function check(value: boolean) { expect(value).toBe(true); }"],
+      ["destructured result", "const {value} = read(); expect(value).toBe(true);"],
+      ["failing comparison", "const value = true; expect(value).toBe(false);"],
+      ["failing matcher", "const value = null; expect(value).toBeUndefined();"],
+      ["use before initialization", "expect(value).toBe(true); const value = true;"],
+      ["custom expect", "const expect = custom; const value = true; expect(value).toBe(true);"],
+      ["regexp", "const value = /x/; expect(value).toBeDefined();"],
+    ] as const).map(([name, code]) => ({name, code, filename: TEST_FILE})),
     { filename: TEST_FILE, code: "expect(/x/).toBe(/x/);" },
     { filename: TEST_FILE, code: "expect(null).toBeUndefined();" },
     { filename: TEST_FILE, code: "expect([]).toBeFalsy();" },
@@ -140,6 +155,14 @@ RULE_TESTER.run("no-tautological-expect", rule, {
     },
   ],
   invalid: [
+    ...([
+      ["erased scalar setup", "const value = true as const; expect(value as boolean).toBe(true);", "tautologicalComparison"],
+      ["bound boolean", "const value = true; expect(value).toBe(true);", "tautologicalComparison"],
+      ["bound string", "const value = 'ok'; expect(value).toEqual('ok');", "tautologicalComparison"],
+      ["scalar aliases", "const initial = 7; const value = initial; expect(value).toStrictEqual(initial);", "tautologicalComparison"],
+      ["defined scalar", "const value = 7; expect(value).toBeDefined();", "tautologicalMatcher"],
+      ["constant survives action", "const value = true; run(value); expect(value).toBeTruthy();", "tautologicalMatcher"],
+    ] as const).map(([name, code, messageId]) => ({name, code, filename: TEST_FILE, errors: [{messageId}]})),
     {
       name: "reports a boolean placeholder assertion",
       filename: "/repo/apps/worker/test/handler.test.ts",
@@ -246,4 +269,38 @@ RULE_TESTER.run("no-tautological-expect", rule, {
       errors: [{ messageId: "tautologicalComparison" }],
     },
   ],
+});
+
+
+it("preserves outcomes for static member access and unknown member keys", async () => {
+  const documentation = rule.documentation;
+  if (documentation === undefined) throw new Error("Missing rule documentation");
+  await verifyRuleExamples({ ...rule, documentation: { ...documentation, examples: [
+  {
+    "id": "literal-only-assertion-static-member",
+    "title": "Static member access preserves the rule outcome",
+    "outcome": "match",
+    "focusPath": "src/add.test.ts",
+    "expectedCount": 1,
+    "files": [
+      {
+        "path": "src/add.test.ts",
+        "source": "it('works', () => { expect(true)[\"toBe\"](true); });"
+      }
+    ]
+  },
+  {
+    "id": "literal-only-assertion-dynamic-member",
+    "title": "Unknown member access does not establish API identity",
+    "outcome": "no-match",
+    "focusPath": "src/add.test.ts",
+    "expectedCount": 0,
+    "files": [
+      {
+        "path": "src/add.test.ts",
+        "source": "it('works', () => { expect(true)[auditDynamicMember](true); });"
+      }
+    ]
+  }
+] } });
 });

@@ -2,7 +2,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
+from sarj_rule_contracts import EvaluationCase, ExpectedOutcome, Language, RuleProblem
 
+from sarj_python_lint.__main__ import check_source
 from sarj_python_lint.rules.prefer_match_type_dispatch import PreferMatchTypeDispatch
 
 
@@ -12,6 +14,214 @@ if TYPE_CHECKING:
 
 def _check(source: str, path: str = "python/app/parser.py") -> list[Diagnostic]:
     return PreferMatchTypeDispatch().check(Path(path), source)
+
+
+_MIXED_PROBLEM = RuleProblem(
+    key="mixed-type-dispatch",
+    summary="A terminating type-check prefix and a two-arm if/elif tail repeat the same dispatch subject.",
+    harm="The structural alternatives are split between two adjacent dispatch idioms, making the branch order harder to read.",
+    languages=frozenset({Language.PYTHON}),
+    bad_examples=(
+        "if isinstance(value, str): return 'text'\nif isinstance(value, int): return 'number'\nelif isinstance(value, list): return 'list'\n",
+    ),
+    good_examples=(
+        "match value:\n    case str(): return 'text'\n    case int(): return 'number'\n    case list(): return 'list'\n",
+    ),
+    exclusions=(
+        "Non-terminating prefixes, unknown or repeated types, guarded type tests, and nonadjacent statements.",
+    ),
+)
+
+
+_MIXED_CASES = (
+    EvaluationCase(
+        "continue-prefix",
+        Language.PYTHON,
+        "def check(values):\n    for value in values:\n        if isinstance(value, str):\n            continue\n        if isinstance(value, int):\n            consume(value)\n        elif isinstance(value, list):\n            consume(value)\n",
+        ExpectedOutcome.MATCH,
+    ),
+    EvaluationCase(
+        "break-prefix",
+        Language.PYTHON,
+        "def check(values):\n    for value in values:\n        if isinstance(value, str):\n            break\n        if isinstance(value, int):\n            consume(value)\n        elif isinstance(value, list):\n            consume(value)\n",
+        ExpectedOutcome.MATCH,
+    ),
+    EvaluationCase(
+        "exact-shape",
+        Language.PYTHON,
+        "import ast\ndef check(parent, root):\n    if isinstance(parent, (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)):\n        return True\n    if isinstance(parent, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):\n        if root in bindings(parent):\n            return True\n    elif isinstance(parent, ast.ClassDef):\n        visit(parent)\n        if root in names(parent):\n            return True\n    return False\n",
+        ExpectedOutcome.MATCH,
+    ),
+    EvaluationCase(
+        "builtin-tail-fallthrough",
+        Language.PYTHON,
+        "def check(value, enabled):\n    if isinstance(value, str):\n        return 'text'\n    if isinstance(value, bool):\n        if enabled:\n            return 'bool'\n    elif isinstance(value, int):\n        return 'int'\n    return 'fallback'\n",
+        ExpectedOutcome.MATCH,
+    ),
+    EvaluationCase(
+        "multiple-terminal-prefixes",
+        Language.PYTHON,
+        "def check(value):\n    if isinstance(value, str):\n        return 'text'\n    if isinstance(value, bytes):\n        return 'bytes'\n    if isinstance(value, list):\n        consume(value)\n    elif isinstance(value, int):\n        consume(value)\n",
+        ExpectedOutcome.MATCH,
+    ),
+    EvaluationCase(
+        "tail-else",
+        Language.PYTHON,
+        "def check(value):\n    if isinstance(value, str):\n        return 'text'\n    if isinstance(value, list):\n        consume(value)\n    elif isinstance(value, int):\n        consume(value)\n    else:\n        reject(value)\n",
+        ExpectedOutcome.MATCH,
+    ),
+    EvaluationCase(
+        "module-alias",
+        Language.PYTHON,
+        "import ast as syntax\ndef check(value):\n    if isinstance(value, syntax.Name):\n        return True\n    if isinstance(value, syntax.FunctionDef):\n        visit(value)\n    elif isinstance(value, syntax.ClassDef):\n        visit(value)\n",
+        ExpectedOutcome.MATCH,
+    ),
+    EvaluationCase(
+        "symbol-alias",
+        Language.PYTHON,
+        "from ast import Name as N, FunctionDef as F, ClassDef as C\ndef check(value):\n    if isinstance(value, N):\n        return True\n    if isinstance(value, F):\n        visit(value)\n    elif isinstance(value, C):\n        visit(value)\n",
+        ExpectedOutcome.MATCH,
+    ),
+    EvaluationCase(
+        "non-terminating-prefix",
+        Language.PYTHON,
+        "def check(value):\n    if isinstance(value, str):\n        consume(value)\n    if isinstance(value, int):\n        consume(value)\n    elif isinstance(value, list):\n        consume(value)\n",
+    ),
+    EvaluationCase(
+        "conditionally-terminating-prefix",
+        Language.PYTHON,
+        "def check(value, enabled):\n    if isinstance(value, str):\n        if enabled:\n            return 'text'\n    if isinstance(value, int):\n        consume(value)\n    elif isinstance(value, list):\n        consume(value)\n",
+    ),
+    EvaluationCase(
+        "suppressing-context-manager",
+        Language.PYTHON,
+        "from contextlib import suppress\ndef check(value):\n    if isinstance(value, str):\n        with suppress(ValueError):\n            raise ValueError\n    if isinstance(value, int):\n        consume(value)\n    elif isinstance(value, list):\n        consume(value)\n",
+    ),
+    EvaluationCase(
+        "prefix-else",
+        Language.PYTHON,
+        "def check(value):\n    if isinstance(value, str):\n        return 'text'\n    else:\n        log(value)\n    if isinstance(value, int):\n        consume(value)\n    elif isinstance(value, list):\n        consume(value)\n",
+    ),
+    EvaluationCase(
+        "different-subject",
+        Language.PYTHON,
+        "def check(first, second):\n    if isinstance(first, str):\n        return 'text'\n    if isinstance(second, int):\n        consume(second)\n    elif isinstance(second, list):\n        consume(second)\n",
+    ),
+    EvaluationCase(
+        "intervening-effect",
+        Language.PYTHON,
+        "def check(value):\n    if isinstance(value, str):\n        return 'text'\n    log(value)\n    if isinstance(value, int):\n        consume(value)\n    elif isinstance(value, list):\n        consume(value)\n",
+    ),
+    EvaluationCase(
+        "repeated-type",
+        Language.PYTHON,
+        "def check(value):\n    if isinstance(value, str):\n        return 'text'\n    if isinstance(value, str):\n        consume(value)\n    elif isinstance(value, list):\n        consume(value)\n",
+    ),
+    EvaluationCase(
+        "unknown-import",
+        Language.PYTHON,
+        "from vendor import First, Second, Third\ndef check(value):\n    if isinstance(value, First):\n        return 'first'\n    if isinstance(value, Second):\n        consume(value)\n    elif isinstance(value, Third):\n        consume(value)\n",
+    ),
+    EvaluationCase(
+        "guarded-tail",
+        Language.PYTHON,
+        "def check(value, ready):\n    if isinstance(value, str):\n        return 'text'\n    if isinstance(value, int) and ready:\n        consume(value)\n    elif isinstance(value, list):\n        consume(value)\n",
+    ),
+    EvaluationCase(
+        "runtime-type-group",
+        Language.PYTHON,
+        "def check(value, types):\n    if isinstance(value, str):\n        return 'text'\n    if isinstance(value, types):\n        consume(value)\n    elif isinstance(value, list):\n        consume(value)\n",
+    ),
+    EvaluationCase(
+        "shadowed-isinstance",
+        Language.PYTHON,
+        "def check(value, isinstance):\n    if isinstance(value, str):\n        return 'text'\n    if isinstance(value, int):\n        consume(value)\n    elif isinstance(value, list):\n        consume(value)\n",
+    ),
+    EvaluationCase("malformed", Language.PYTHON, "if isinstance(value, str):\nif\n"),
+)
+
+
+@pytest.mark.parametrize("case", _MIXED_CASES, ids=tuple(case.case_id for case in _MIXED_CASES))
+def test_mixed_dispatch_cases(case: EvaluationCase) -> None:
+    diagnostics = _check(case.source)
+
+    assert bool(diagnostics) is (case.expected is ExpectedOutcome.MATCH)
+    assert len(diagnostics) <= 1
+
+
+_AST_CLASS_MUTATION_CASES = tuple(
+    EvaluationCase(
+        case_id,
+        Language.PYTHON,
+        "import ast as nodes\n"
+        + mutation
+        + "def parse(value):\n    if isinstance(value, nodes.Name):\n        return True\n"
+        "    if isinstance(value, nodes.Attribute):\n        consume(value)\n"
+        "    elif isinstance(value, nodes.Constant):\n        consume(value)\n",
+        expected,
+    )
+    for case_id, mutation, expected in (
+        ("assigned-ast-class", "nodes.Name = (str, int)\n", ExpectedOutcome.NO_MATCH),
+        ("deleted-ast-class", "del nodes.Name\n", ExpectedOutcome.NO_MATCH),
+        ("unrelated-ast-attribute", "nodes.custom = True\n", ExpectedOutcome.MATCH),
+        ("unchanged-ast-classes", "", ExpectedOutcome.MATCH),
+    )
+)
+
+
+@pytest.mark.parametrize(
+    "case", _AST_CLASS_MUTATION_CASES, ids=tuple(case.case_id for case in _AST_CLASS_MUTATION_CASES)
+)
+def test_mixed_dispatch_requires_stable_ast_class_attributes(case: EvaluationCase) -> None:
+    assert bool(_check(case.source)) is (case.expected is ExpectedOutcome.MATCH)
+
+
+@pytest.mark.parametrize(
+    "value", ["text", True, False, 1, [], None], ids=("text", "true", "false", "int", "list", "none")
+)
+@pytest.mark.parametrize("enabled", [False, True])
+def test_match_preserves_nested_guard_fallthrough(value: object, enabled: bool) -> None:
+    original = next(case.source for case in _MIXED_CASES if case.case_id == "builtin-tail-fallthrough")
+    replacement = "def check(value, enabled):\n    match value:\n        case str():\n            return 'text'\n        case bool():\n            if enabled:\n                return 'bool'\n        case int():\n            return 'int'\n    return 'fallback'\n"
+    source = (
+        original
+        + replacement.replace("def check(", "def replacement(")
+        + (
+            "assert check(value, enabled) == replacement(value, enabled)\n"
+            "if isinstance(value, bool) and not enabled:\n"
+            "    assert check(value, enabled) == 'fallback'\n"
+        )
+    )
+    exec(compile(source, "<reviewed-example>", "exec"), {"value": value, "enabled": enabled})  # ruff: ignore[exec-builtin] -- execute reviewed equivalence fixtures without external inputs.
+
+
+def test_invalid_tail_preserves_existing_prefix_diagnostic() -> None:
+    source = "from vendor import First, Second\ndef check(value):\n    if isinstance(value, str):\n        return 'text'\n    if isinstance(value, bytes):\n        return 'bytes'\n    if isinstance(value, int):\n        return 'int'\n    if isinstance(value, First):\n        consume(value)\n    elif isinstance(value, Second):\n        consume(value)\n"
+
+    diagnostics = _check(source)
+
+    assert len(diagnostics) == 1
+    assert diagnostics[0].line == 3
+    assert "3-branch terminating isinstance sequence" in diagnostics[0].message
+
+
+def test_mixed_dispatch_respects_exact_suppression() -> None:
+    source = next(case.source for case in _MIXED_CASES if case.case_id == "builtin-tail-fallthrough").replace(
+        "if isinstance(value, str):",
+        "if isinstance(value, str):  # sarj-noqa: SARJ080 — legacy visitor signature fixture",
+    )
+
+    assert check_source([PreferMatchTypeDispatch()], Path("app/parser.py"), source) == []
+
+
+def test_mixed_dispatch_excludes_generated_source() -> None:
+    assert _check(_MIXED_CASES[1].source, "generated/parser.py") == []
+
+
+def test_ordinary_two_arm_tail_remains_allowed() -> None:
+    source = "def check(value):\n    if isinstance(value, str):\n        consume(value)\n    elif isinstance(value, int):\n        consume(value)\n"
+
+    assert _check(source) == []
 
 
 @pytest.mark.parametrize(
@@ -550,6 +760,199 @@ def parse(value: object):
 """
 
     assert len(_check(source)) == 1
+
+
+_INHERITED_TYPE_GROUP = """
+class TypeGroup(type):
+    def __new__(mcls, name, bases, namespace):
+        if name == "Text":
+            return (str, bytes)
+        return super().__new__(mcls, name, bases, namespace)
+class Base(metaclass=TypeGroup): ...
+"""
+
+
+@pytest.mark.parametrize(
+    "declaration",
+    [
+        "def type_group(cls):\n    return (cls, bytes)\n\n@type_group\nclass Text: ...",
+        "class TypeGroup(type):\n    def __new__(mcls, name, bases, namespace):\n        return (str, bytes)\n\nclass Text(metaclass=TypeGroup): ...",
+        'class TypeGroup(type):\n    def __new__(mcls, name, bases, namespace):\n        return (str, bytes)\n\nclass Text(**{"metaclass": TypeGroup}): ...',
+        _INHERITED_TYPE_GROUP + "class Text(Base): ...",
+        _INHERITED_TYPE_GROUP + "class Intermediate(Base): ...\nclass Text(Intermediate): ...",
+        _INHERITED_TYPE_GROUP.replace("metaclass=TypeGroup", '**{"metaclass": TypeGroup}') + "class Text(Base): ...",
+        _INHERITED_TYPE_GROUP.replace("class Base(", "class Base[T](") + "class Text(Base[int]): ...",
+        _INHERITED_TYPE_GROUP.replace("class Base(metaclass=TypeGroup)", "type = TypeGroup\nclass Base(metaclass=type)")
+        + "class Text(Base): ...",
+        _INHERITED_TYPE_GROUP.replace(
+            "class Base(metaclass=TypeGroup): ...",
+            "class Replacement(metaclass=TypeGroup): ...\ndef expose(cls): return Replacement\n@expose\nclass Base: ...",
+        )
+        + "class Text(Base): ...",
+        "from app.parents import Base\nclass Text(Base): ...",
+        _INHERITED_TYPE_GROUP + "Alias = Base\nclass Text(Alias): ...",
+    ],
+    ids=(
+        "decorated-type-group",
+        "metaclass-type-group",
+        "unpacked-metaclass-type-group",
+        "inherited-metaclass-type-group",
+        "indirect-inherited-metaclass-type-group",
+        "inherited-unpacked-metaclass-type-group",
+        "parameterized-inherited-metaclass-type-group",
+        "shadowed-builtin-inherited-metaclass-type-group",
+        "decorated-base-changes-metaclass",
+        "external-base-metaclass-unknown",
+        "runtime-base-alias-metaclass-unknown",
+    ),
+)
+def test_allows_class_definitions_with_unproven_runtime_type(declaration: str) -> None:
+    source = f"""
+{declaration}
+class Binary: ...
+class Mapping: ...
+
+def parse(value: object):
+    if isinstance(value, Text):
+        return "text"
+    elif isinstance(value, Binary):
+        return "binary"
+    elif isinstance(value, Mapping):
+        return "mapping"
+    return None
+"""
+
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    "declaration",
+    [
+        "class Base: ...\nclass Text(Base): ...",
+        "class Base: ...\nclass Intermediate(Base): ...\nclass Text(Intermediate): ...",
+        "class Base(metaclass=type): ...\nclass Text(Base): ...",
+        "from builtins import type as nominal\nclass Base(metaclass=nominal): ...\nclass Text(Base): ...",
+        "class Base[T]: ...\nclass Text(Base): ...",
+        "from builtins import object as Base\nclass Text(Base): ...",
+        "import builtins as runtime\nclass Text(runtime.object): ...",
+        "import ast\nclass Text(ast.Name): ...",
+        "from ast import Name as Base\nclass Text(Base): ...",
+    ],
+    ids=(
+        "nominal-base",
+        "indirect-nominal-base",
+        "builtin-metaclass",
+        "aliased-builtin-metaclass",
+        "generic-class",
+        "aliased-builtin-base",
+        "qualified-builtin-base",
+        "qualified-stdlib-ast-base",
+        "aliased-stdlib-ast-base",
+    ),
+)
+def test_flags_stable_local_nominal_ancestry(declaration: str) -> None:
+    source = (
+        declaration
+        + """
+class Binary: ...
+class Mapping: ...
+def parse(value: object):
+    if isinstance(value, Text): return "text"
+    elif isinstance(value, Binary): return "binary"
+    elif isinstance(value, Mapping): return "mapping"
+    return None
+"""
+    )
+
+    assert len(_check(source)) == 1
+
+
+@pytest.mark.parametrize(
+    ("rebinding", "expected"),
+    [
+        ("", 1),
+        ("if configured:\n from builtins import type as nominal\n", 1),
+        ("if configured:\n from app.metas import Group as nominal\n", 0),
+        ("if configured:\n from .metas import Group as nominal\n", 0),
+        ("from .metas import Group as nominal\n", 0),
+    ],
+    ids=("stable-alias", "identical-conditional-import", "conflicting-import", "conditional-relative", "relative"),
+)
+def test_builtin_metaclass_alias_requires_stable_import_binding(rebinding: str, expected: int) -> None:
+    source = (
+        "from builtins import type as nominal\n"
+        + rebinding
+        + """
+class Base(metaclass=nominal): ...
+class Text(Base): ...
+class Binary: ...
+class Mapping: ...
+def parse(value: object):
+    if isinstance(value, Text): return "text"
+    elif isinstance(value, Binary): return "binary"
+    elif isinstance(value, Mapping): return "mapping"
+    return None
+"""
+    )
+
+    assert len(_check(source)) == expected
+
+
+@pytest.mark.parametrize(
+    "declaration",
+    [
+        "class Base[T]: ...\nclass Text(Base[int]): ...",
+        "class Base:\n @classmethod\n def __class_getitem__(cls, key): return external_base\nclass Text(Base[int]): ...",
+    ],
+    ids=("generic-base-expression", "custom-base-expression"),
+)
+def test_parameterized_bases_with_unproven_class_getitem_effects_are_excluded(declaration: str) -> None:
+    source = (
+        declaration
+        + """
+class Binary: ...
+class Mapping: ...
+def parse(value: object):
+    if isinstance(value, Text): return "text"
+    elif isinstance(value, Binary): return "binary"
+    elif isinstance(value, Mapping): return "mapping"
+    return None
+"""
+    )
+
+    assert _check(source) == []
+
+
+def test_inherited_metaclass_type_group_breaks_class_pattern_equivalence() -> None:
+    source = (
+        _INHERITED_TYPE_GROUP
+        + """
+class Text(Base): ...
+class Binary: ...
+class Mapping: ...
+def parse(value: object):
+    if isinstance(value, Text): return "text"
+    elif isinstance(value, Binary): return "binary"
+    elif isinstance(value, Mapping): return "mapping"
+    return None
+def replacement(value: object):
+    match value:
+        case Text(): return "text"
+        case Binary(): return "binary"
+        case Mapping(): return "mapping"
+    return None
+assert parse("value") == "text"
+try:
+    replacement("value")
+except TypeError as error:
+    assert "must be a class" in str(error)
+else:
+    raise AssertionError("A runtime type tuple cannot be a class pattern")
+"""
+    )
+
+    exec(compile(source, "<reviewed-metaclass-example>", "exec"), {})  # ruff: ignore[exec-builtin] -- execute the authored runtime-contract proof without external inputs.
+    assert _check(source) == []
 
 
 def test_allows_imported_class_like_runtime_bindings() -> None:

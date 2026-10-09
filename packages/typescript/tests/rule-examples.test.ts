@@ -1,7 +1,7 @@
 import { ESLintUtils } from "@typescript-eslint/utils";
 import { describe, expect, it } from "vitest";
 
-import { verifyRuleExamples } from "../src/rule-examples.js";
+import { verifyRuleExamples } from "../src/verify-rule-examples.js";
 import { createRule, type RuleDocumentation } from "../src/rules/_docs.js";
 
 const DOCUMENTATION: RuleDocumentation = {

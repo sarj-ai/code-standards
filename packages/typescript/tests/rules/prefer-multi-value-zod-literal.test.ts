@@ -1,3 +1,4 @@
+// vitest: shared-module-graph
 import * as tsParser from "@typescript-eslint/parser";
 import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, expect, it } from "vitest";
@@ -6,6 +7,8 @@ import { z } from "zod";
 import rule, {
   PREFER_MULTI_VALUE_ZOD_LITERAL_DOCUMENTATION,
 } from "../../src/rules/prefer-multi-value-zod-literal.js";
+
+import { verifyRuleExamples } from "../../src/verify-rule-examples.js";
 
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
@@ -119,4 +122,38 @@ RULE_TESTER.run("prefer-multi-value-zod-literal", rule, {
       errors: [ERROR],
     },
   ],
+});
+
+
+it("preserves outcomes for static member access and unknown member keys", async () => {
+  const documentation = rule.documentation;
+  if (documentation === undefined) throw new Error("Missing rule documentation");
+  await verifyRuleExamples({ ...rule, documentation: { ...documentation, examples: [
+  {
+    "id": "literal-union-static-member",
+    "title": "Static member access preserves the rule outcome",
+    "outcome": "match",
+    "focusPath": "src/schema.ts",
+    "expectedCount": 1,
+    "files": [
+      {
+        "path": "src/schema.ts",
+        "source": "import { z } from 'zod/v4'; export const Version = z[\"union\"]([z[\"literal\"](1), z[\"literal\"](2), z[\"literal\"](3)]);"
+      }
+    ]
+  },
+  {
+    "id": "literal-union-dynamic-member",
+    "title": "Unknown member access does not establish API identity",
+    "outcome": "no-match",
+    "focusPath": "src/schema.ts",
+    "expectedCount": 0,
+    "files": [
+      {
+        "path": "src/schema.ts",
+        "source": "import { z } from 'zod/v4'; export const Version = z[auditDynamicMember]([z[auditDynamicMember](1), z[auditDynamicMember](2), z[auditDynamicMember](3)]);"
+      }
+    ]
+  }
+] } });
 });

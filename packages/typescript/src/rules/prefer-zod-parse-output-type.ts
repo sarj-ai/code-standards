@@ -5,6 +5,7 @@
  */
 
 import {
+  ASTUtils,
   AST_NODE_TYPES,
   ESLintUtils,
   type ParserServicesWithTypeInformation,
@@ -13,7 +14,10 @@ import {
 } from "@typescript-eslint/utils";
 import ts from "typescript";
 
+import { importSpecifierName } from "./_import-specifier-name.js";
+
 import { createRule, type RuleDocumentation } from "./_docs.js";
+import { unwrapExpression } from "./_unwrap-expression.js";
 import { isGeneratedFile, isStoryFile, isTestFile } from "./_paths.js";
 import { isZodModule } from "./_zod.js";
 import {
@@ -119,21 +123,21 @@ function isLocalZodObjectSchema(
 ): boolean {
   let current = node;
   while (current.type === AST_NODE_TYPES.CallExpression) {
-    const { callee } = current;
+    const callee = unwrapExpression(current.callee);
+    const calleeReceiver = callee.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(callee.object) : callee;
     if (
       callee.type !== AST_NODE_TYPES.MemberExpression ||
-      callee.computed ||
-      callee.property.type !== AST_NODE_TYPES.Identifier
+      ASTUtils.getPropertyName(callee) === null
     ) {
       return false;
     }
-    if (callee.object.type === AST_NODE_TYPES.Identifier) {
+    if (calleeReceiver.type === AST_NODE_TYPES.Identifier) {
       return (
-        namespaces.has(callee.object.name) &&
-        (callee.property.name === "object" || callee.property.name === "strictObject")
+        namespaces.has(calleeReceiver.name) &&
+        ((ASTUtils.getPropertyName(callee) ?? "") === "object" || (ASTUtils.getPropertyName(callee) ?? "") === "strictObject")
       );
     }
-    current = callee.object;
+    current = calleeReceiver;
   }
   return false;
 }
@@ -145,20 +149,21 @@ interface ZodParseCall {
 }
 
 function zodParseCall(node: TSESTree.CallExpression): ZodParseCall | null {
-  const { callee } = node;
+  const callee = unwrapExpression(node.callee);
+  const calleeReceiver = callee.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(callee.object) : callee;
   if (
     callee.type !== AST_NODE_TYPES.MemberExpression ||
-    callee.computed ||
-    callee.object.type !== AST_NODE_TYPES.Identifier ||
-    callee.property.type !== AST_NODE_TYPES.Identifier ||
-    (callee.property.name !== "parse" && callee.property.name !== "safeParse")
+    calleeReceiver.type !== AST_NODE_TYPES.Identifier ||
+    ASTUtils.getPropertyName(callee) === null
   ) {
     return null;
   }
+  const method = ASTUtils.getPropertyName(callee);
+  if (method !== "parse" && method !== "safeParse") return null;
   return {
     call: node,
-    method: callee.property.name,
-    schema: callee.object,
+    method,
+    schema: calleeReceiver,
   };
 }
 
@@ -217,9 +222,8 @@ function localParseReturnCandidates(
         ? identifier
         : parent.type === AST_NODE_TYPES.MemberExpression &&
           parent.object === identifier &&
-          !parent.computed &&
-          parent.property.type === AST_NODE_TYPES.Identifier &&
-          parent.property.name === "data"
+          ASTUtils.getPropertyName(parent) !== null &&
+          (ASTUtils.getPropertyName(parent) ?? "") === "data"
           ? parent
           : null;
     if (output === null) continue;
@@ -330,8 +334,7 @@ function recordZodNamespaces(
         specifier.type === AST_NODE_TYPES.ImportNamespaceSpecifier ||
         specifier.type === AST_NODE_TYPES.ImportDefaultSpecifier ||
         (specifier.type === AST_NODE_TYPES.ImportSpecifier &&
-          specifier.imported.type === AST_NODE_TYPES.Identifier &&
-          specifier.imported.name === "z")
+          importSpecifierName(specifier) === "z")
       ) {
         namespaces.add(specifier.local.name);
       }
@@ -573,7 +576,7 @@ export default createRule<Options, MessageIds>({
         const candidate = directParseReturnCandidate(node);
         if (candidate !== null) candidates.push(candidate);
       },
-      "MemberExpression[computed=false]"(node: TSESTree.MemberExpression): void {
+      "MemberExpression"(node: TSESTree.MemberExpression): void {
         if (
           node.object.type === AST_NODE_TYPES.Identifier &&
           node.property.type === AST_NODE_TYPES.Identifier &&

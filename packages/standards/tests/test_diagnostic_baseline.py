@@ -16,6 +16,7 @@ from sarj_standards.libs.diagnostics import (
     Diagnostic,
     Location,
     Position,
+    Region,
     Severity,
     ToolReport,
     baseline,
@@ -27,6 +28,7 @@ from sarj_standards.libs.linting.policy import Policy
 
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
     from pathlib import Path
 
 
@@ -79,13 +81,13 @@ def test_policy_analysis_hides_only_exact_baselined_diagnostics(tmp_path: Path) 
 
 
 def test_mocked_terraform_test_can_be_ratcheted_without_hiding_new_files(tmp_path: Path) -> None:
-    test_source = """override_resource {
-  target = aws_s3_bucket.main
-  values = { arn = "fixture-arn" }
+    test_source = """override_module {
+  target = module.fixture
+  outputs = { arn = "fixture-arn" }
 }
 run "routing" {
   assert {
-    condition = aws_s3_bucket.main.arn == "fixture-arn"
+    condition = module.fixture.arn == "fixture-arn"
     error_message = "ARN mismatch"
   }
 }
@@ -128,6 +130,38 @@ def test_diagnostic_baseline_exposes_fingerprint_count_growth(tmp_path: Path) ->
     policy = api.Standards(tmp_path).analyze([str(source)])
 
     assert [item.code for item in policy.diagnostics] == ["SARJ012"]
+
+
+def _repeated_client_tests(count: int) -> str:
+    return "from httpx import ASGITransport, AsyncClient\n\n" + "\n".join(
+        f"async def test_response_{index}(app):\n"
+        "    async with AsyncClient(transport=ASGITransport(app=app), base_url='http://test') as client:\n"
+        f"        response = await client.get('/items/{index}')\n"
+        "    assert response.status_code == 200\n"
+        for index in range(count)
+    )
+
+
+def test_repeated_composition_baseline_does_not_absorb_another_test(tmp_path: Path) -> None:
+    source = tmp_path / "test_endpoints.py"
+    source.write_text(_repeated_client_tests(3), encoding="utf-8")
+    standards = api.Standards(tmp_path)
+    selectors = ["python:repeated-test-composition"]
+    raw = standards.analyze([str(source)], rules=selectors, mode=api.AnalysisMode.RAW)
+    assert raw.exit_code == 1
+    assert len(raw.diagnostics) == 3
+    baseline_path = tmp_path / "diagnostic-baseline.json"
+    baseline_path.write_text(_policy_baseline(raw.diagnostics), encoding="utf-8")
+    (tmp_path / MANIFEST_NAME).write_text(_manifest(baseline_path.name).render(), encoding="utf-8")
+
+    unchanged = standards.analyze([str(source)], rules=selectors)
+    assert unchanged.exit_code == 0
+    assert unchanged.diagnostics == ()
+
+    source.write_text(_repeated_client_tests(4), encoding="utf-8")
+    changed = standards.analyze([str(source)], rules=selectors)
+    assert changed.exit_code == 1
+    assert [item.code for item in changed.diagnostics] == ["SARJ457"]
 
 
 def test_manifest_round_trips_diagnostic_baseline(tmp_path: Path) -> None:
@@ -255,6 +289,87 @@ def test_staged_changed_lines_cannot_consume_baseline_allowance(tmp_path: Path) 
     assert baseline.touches_changed_lines(new, scope)
 
 
+@pytest.mark.parametrize(
+    ("before", "after", "boundaries"),
+    [
+        ("first\nsecond\nremove\nfourth\nfifth\n", "first\nsecond\nfourth\nfifth\n", {2, 3}),
+        ("remove\nsecond\nthird\nfourth\n", "second\nthird\nfourth\n", {1}),
+        ("first\nsecond\nthird\nremove\n", "first\nsecond\nthird\n", {3, 4}),
+        (
+            "first\nremove-one\nsecond\nthird\nfourth\nremove-two\nfifth\n",
+            "first\nsecond\nthird\nfourth\nfifth\n",
+            {1, 2, 4, 5},
+        ),
+    ],
+    ids=("middle", "start", "end", "multiple"),
+)
+def test_deletion_hunks_preserve_baselines_away_from_surviving_boundaries(
+    before: str, after: str, boundaries: set[int], tmp_path: Path
+) -> None:
+    subprocess.run(("git", "init", "-q"), cwd=tmp_path, check=True)
+    subprocess.run(("git", "config", "user.name", "Standards Test"), cwd=tmp_path, check=True)
+    subprocess.run(("git", "config", "user.email", "standards@example.com"), cwd=tmp_path, check=True)
+    source = tmp_path / "app.py"
+    source.write_text(before, encoding="utf-8")
+    subprocess.run(("git", "add", "app.py"), cwd=tmp_path, check=True)
+    subprocess.run(("git", "commit", "-qm", "base"), cwd=tmp_path, check=True)
+    source.write_text(after, encoding="utf-8")
+    subprocess.run(("git", "add", "app.py"), cwd=tmp_path, check=True)
+
+    scope = baseline.changed_line_scope(tmp_path, staged=True)
+    findings = tuple(
+        Diagnostic(
+            "X",
+            "existing",
+            Severity.ERROR,
+            "ruff",
+            Location("app.py", position=Position(index, 0, index)),
+            fingerprint=f"{index:064x}",
+        )
+        for index in range(len(after.splitlines()))
+    )
+    report = report_from_tools(tmp_path, (ToolReport("ruff", Completion.COMPLETE, findings),))
+    visible = api._without_baselined_diagnostics(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+        report,
+        {finding.fingerprint: 1 for finding in findings if finding.fingerprint is not None},
+        changed_scope=scope,
+    )
+
+    assert scope is not None
+    assert scope.lines == {"app.py": frozenset(boundaries)}
+    assert tuple(
+        finding.location.position.line + 1 for finding in visible.diagnostics if finding.location.position
+    ) == tuple(line for line in range(1, len(after.splitlines()) + 1) if line in boundaries)
+
+
+def test_deletion_boundaries_affect_spanning_regions_and_file_level_findings() -> None:
+    scope = baseline.ChangedLineScope(frozenset({"app.py"}), {"app.py": frozenset({3, 4})})
+    distant = Diagnostic(
+        "X", "old", Severity.ERROR, "ruff", Location("app.py", region=Region(Position(0, 0, 0), Position(1, 0, 1)))
+    )
+    spanning = replace(distant, location=Location("app.py", region=Region(Position(0, 0, 0), Position(4, 0, 4))))
+    whole_file = replace(distant, location=Location("app.py"))
+
+    assert not baseline.touches_changed_lines(distant, scope)
+    assert baseline.touches_changed_lines(spanning, scope)
+    assert baseline.touches_changed_lines(whole_file, scope)
+
+
+@pytest.mark.parametrize(
+    "scope",
+    [
+        baseline.ChangedLineScope(frozenset(), {}, failed=True),
+        baseline.ChangedLineScope(frozenset({"app.py"}), {}),
+        baseline.ChangedLineScope(frozenset({"app.py"}), {"app.py": frozenset()}),
+    ],
+    ids=("failed-diff", "missing-hunks", "empty-hunks"),
+)
+def test_missing_or_failed_diff_information_stays_conservative(scope: baseline.ChangedLineScope) -> None:
+    finding = Diagnostic("X", "existing", Severity.ERROR, "ruff", Location("app.py", position=Position(100, 0, 100)))
+
+    assert baseline.touches_changed_lines(finding, scope)
+
+
 def test_react_doctor_findings_are_baselineable_by_fingerprint() -> None:
     finding = Diagnostic(
         "react-doctor/no-array-index-as-key",
@@ -310,6 +425,28 @@ def _configure_authored_engine_baseline_fixture(root: Path, path: str | None = N
     (root / MANIFEST_NAME).write_text(adopted.render(), encoding="utf-8")
 
 
+@pytest.fixture
+def checkov_process(monkeypatch: pytest.MonkeyPatch) -> None:
+    original = external._run_process  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+    payload = json.dumps(
+        {"passed": 0, "failed": 0, "skipped": 0, "parsing_errors": 0, "resource_count": 0, "checkov_version": "3.3.20"}
+    )
+
+    def run(
+        argv: Sequence[str], *, cwd: Path, environment: dict[str, str], timeout_seconds: float = 900
+    ) -> external.ProcessOutput:
+        if "checkov==3.3.20" in argv:
+            assert "--offline" in argv
+            assert "--skip-download" in argv
+            return external.ProcessOutput(0, payload, "")
+        return original(argv, cwd=cwd, environment=environment, timeout_seconds=timeout_seconds)
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- replaces only Checkov's process response; CLI, parser, and baseline behavior run normally without a provisioned scanner cache.
+        external, "_run_process", run
+    )
+
+
+@pytest.mark.usefixtures("checkov_process")
 def test_baseline_init_records_todays_findings_for_every_authored_engine(tmp_path: Path) -> None:
     _configure_authored_engine_baseline_fixture(tmp_path)
     (tmp_path / "service.py").write_text("logger.info('request', token=token)\n", encoding="utf-8")
@@ -328,6 +465,7 @@ def test_baseline_init_records_todays_findings_for_every_authored_engine(tmp_pat
     assert sum(recorded.values()) == len(raw.diagnostics)
 
 
+@pytest.mark.usefixtures("checkov_process")
 def test_baselined_findings_stop_failing_but_a_new_one_still_does(tmp_path: Path) -> None:
     _configure_authored_engine_baseline_fixture(tmp_path)
     source = tmp_path / "main.tf"
@@ -351,6 +489,7 @@ def test_baselined_findings_stop_failing_but_a_new_one_still_does(tmp_path: Path
     assert "SARJ204" in [item.code for item in grown.diagnostics]
 
 
+@pytest.mark.usefixtures("checkov_process")
 def test_baseline_init_refuses_to_overwrite_and_update_replaces(tmp_path: Path) -> None:
     _configure_authored_engine_baseline_fixture(tmp_path)
     (tmp_path / "main.tf").write_text(
@@ -396,8 +535,11 @@ def test_scoped_baseline_update_normalizes_native_sarj_rule_source(
     )
     captured: list[tuple[object, object, object]] = []
 
-    def analyze(self: api.Standards, paths: object = None, **kwargs: object) -> AnalysisReport:
-        _ = self, paths
+    def analyze(
+        _self: api.Standards,
+        paths: object = None,  # ruff: ignore[unused-function-argument] -- Standards.analyze fixes this keyword.
+        **kwargs: object,
+    ) -> AnalysisReport:
         captured.append(
             (
                 kwargs.get("rules"),
@@ -569,8 +711,11 @@ def test_scoped_baseline_update_replaces_native_debt_for_canonical_selector(
         fingerprint="b" * 64,
     )
 
-    def analyze(self: api.Standards, paths: object = None, **kwargs: object) -> AnalysisReport:
-        _ = self, paths, kwargs
+    def analyze(
+        _self: api.Standards,
+        paths: object = None,  # ruff: ignore[unused-function-argument] -- Standards.analyze fixes this keyword.
+        **_kwargs: object,
+    ) -> AnalysisReport:
         return report_from_tools(tmp_path, (ToolReport(source, Completion.COMPLETE, (replacement,)),))
 
     monkeypatch.setattr(api.Standards, "analyze", analyze)  # sarj-noqa: SARJ445 -- intercepts baseline analyzer routing
@@ -628,8 +773,11 @@ def test_scoped_baseline_update_replaces_debt_recorded_under_a_catalogued_alias(
         fingerprint="b" * 64,
     )
 
-    def analyze(self: api.Standards, paths: object = None, **kwargs: object) -> AnalysisReport:
-        _ = self, paths, kwargs
+    def analyze(
+        _self: api.Standards,
+        paths: object = None,  # ruff: ignore[unused-function-argument] -- Standards.analyze fixes this keyword.
+        **_kwargs: object,
+    ) -> AnalysisReport:
         return report_from_tools(tmp_path, (ToolReport("sarj-iac-lint", Completion.COMPLETE, (replacement,)),))
 
     monkeypatch.setattr(api.Standards, "analyze", analyze)  # sarj-noqa: SARJ445 -- intercepts baseline analyzer routing
@@ -685,8 +833,11 @@ def test_scoped_baseline_update_replaces_plugin_qualified_eslint_alias_debt(
         fingerprint="b" * 64,
     )
 
-    def analyze(self: api.Standards, paths: object = None, **kwargs: object) -> AnalysisReport:
-        _ = self, paths, kwargs
+    def analyze(
+        _self: api.Standards,
+        paths: object = None,  # ruff: ignore[unused-function-argument] -- Standards.analyze fixes this keyword.
+        **_kwargs: object,
+    ) -> AnalysisReport:
         return report_from_tools(
             tmp_path,
             (ToolReport("eslint", Completion.COMPLETE, (replacement,)),),
@@ -889,8 +1040,7 @@ def test_scoped_baseline_update_uses_manifest_verification_paths(
     (tmp_path / MANIFEST_NAME).write_text(adopted.render(), encoding="utf-8")
     captured: list[object] = []
 
-    def analyze_eslint(files: object, **kwargs: object) -> tuple[ToolReport, ...]:
-        _ = kwargs
+    def analyze_eslint(files: object, **_kwargs: object) -> tuple[ToolReport, ...]:
         captured.append(files)
         return ()
 
@@ -949,8 +1099,7 @@ def test_scoped_baseline_update_includes_tracked_terraform_tests_outside_verific
     )
     captured: list[object] = []
 
-    def analyze(self: api.Standards, paths: object = None, **kwargs: object) -> AnalysisReport:
-        _ = self, kwargs
+    def analyze(_self: api.Standards, paths: object = None, **_kwargs: object) -> AnalysisReport:
         captured.append(paths)
         diagnostics = (finding,) if isinstance(paths, list) and str(source) in paths else ()
         return report_from_tools(tmp_path, (ToolReport("sarj-iac-lint", Completion.COMPLETE, diagnostics),))
@@ -999,8 +1148,7 @@ def test_scoped_baseline_update_runs_only_eslint_for_upstream_selector(
     (tmp_path / MANIFEST_NAME).write_text(adopted.render(), encoding="utf-8")
     captured: list[tuple[object, object]] = []
 
-    def analyze(self: api.Standards, paths: object = None, **kwargs: object) -> AnalysisReport:
-        _ = self, paths
+    def analyze(_self: api.Standards, paths: object = None, **kwargs: object) -> AnalysisReport:
         captured.append((paths, kwargs.get("rules")))
         return report_from_tools(tmp_path, ())
 

@@ -39,11 +39,9 @@ def required_tools(
 def _file_tools(path: Path, relative: str, selected: frozenset[str]) -> set[str]:
     names: set[str] = set()
     if path.suffix in {".yaml", ".yml"} and ".github/workflows/" in relative:
-        names.update(selected & {"actionlint", "zizmor"})
+        names.update(selected & {"actionlint"})
         if "actionlint" in selected:
             names.add("shellcheck")
-    if path.name in {"action.yaml", "action.yml"} and "zizmor" in selected:
-        names.add("zizmor")
     name = path.name.lower()
     if (
         not name.endswith(".dockerignore")
@@ -58,7 +56,7 @@ def _file_tools(path: Path, relative: str, selected: frozenset[str]) -> set[str]
         and "compose" in selected
     ):
         names.add("docker")
-    if _has_shell_input(path, relative):
+    if not selected.isdisjoint({"shellcheck", *manifest.DEVOPS_ANALYZERS}) and _has_shell_input(path, relative):
         names.add("shfmt")
     return names
 

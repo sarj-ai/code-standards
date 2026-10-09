@@ -413,3 +413,59 @@ def test_error_first_approval_is_exact_and_does_not_allow_disabled_rules(
         )
         == expected_status
     )
+
+
+@pytest.mark.parametrize(
+    "selector",
+    [
+        "iac:no-managed-service-account-key",
+        "iac:no-project-basic-privilege",
+        "text:cloudbuild-contract",
+        "python:no-interpreter-source-arguments",
+    ],
+)
+def test_explicit_devops_error_first_admission_preserves_exact_selector_scope(
+    repository: Path, capsys: pytest.CaptureFixture[str], selector: str
+) -> None:
+    engine, rule_id = selector.split(":", 1)
+    approved = {**_rule(rule_id, level="error"), "key": selector, "engine": engine}
+    before = _write_revision(repository, [], "base")
+    after = _write_revision(repository, [approved], "approved strict DevOps rule")
+    arguments = [
+        "--root",
+        str(repository),
+        "maintain",
+        "rules",
+        "changes",
+        "--before",
+        before,
+        "--after",
+        after,
+        "--require-added-level",
+        "warning",
+    ]
+    assert main(arguments) == 0
+    captured = capsys.readouterr()
+    assert not captured.err
+    assert selector in captured.out
+
+    wrong_engine = "eslint" if engine == "python" else "python"
+    foreign_key = f"{wrong_engine}:{rule_id}"
+    foreign = {**_rule(rule_id, level="error"), "key": foreign_key, "engine": wrong_engine}
+    similarly_named_key = f"{engine}:{rule_id}-heuristic"
+    similarly_named = {
+        **_rule(f"{rule_id}-heuristic", level="error"),
+        "key": similarly_named_key,
+        "engine": engine,
+    }
+    invalid_after = _write_revision(repository, [approved, foreign, similarly_named], "unapproved neighboring rules")
+    arguments[arguments.index("--after") + 1] = invalid_after
+    assert main(arguments) == 1
+    rejected = capsys.readouterr()
+    assert "new judgment rules must enter the fleet at warning level" in rejected.err
+    suggested = [
+        line.removeprefix("Run: code-standards --root . maintain rules stage-warning ")
+        for line in rejected.err.splitlines()
+        if line.startswith("Run:")
+    ]
+    assert sorted(suggested) == sorted([foreign_key, similarly_named_key])

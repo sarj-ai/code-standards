@@ -6,13 +6,20 @@ from __future__ import annotations
 from dataclasses import replace
 import json
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 import yaml
 
+from sarj_standards._meta import CONFIGS_DIR
 import sarj_standards.cli.main as cli
 from sarj_standards.libs.adoption import doctor, launcher, lifecycle, manifest, scaffold, transaction, upgrade
 from sarj_standards.libs.diagnostics import baseline
+from sarj_standards.libs.json_boundary import parse_json
+
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
 
 
 BOOTSTRAP_COMMAND = "uvx --no-config --isolated --python 3.14 --from sarj-standards-bootstrap code-standards"
@@ -75,7 +82,87 @@ def test_upgrade_preview_is_read_only_and_names_every_change(tmp_path: Path) -> 
     assert {path: path.read_bytes() for path in tmp_path.iterdir() if path.is_file()} == before
 
 
-def test_upgrade_transactionally_removes_retired_diagnostic_baseline_entries(tmp_path: Path) -> None:
+def test_upgrade_preserves_old_bundle_security_opt_out_without_unplanned_installs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (tmp_path / "main.tf").write_text('resource "terraform_data" "example" {}\n', encoding="utf-8")
+    workflow = tmp_path / ".github/workflows/ci.yml"
+    workflow.parent.mkdir(parents=True)
+    workflow.write_text("name: CI\non: push\njobs: {}\n", encoding="utf-8")
+    disabled = [name for name in manifest.ALL_CAPABILITIES if name not in {"yamllint", "zizmor", "checkov"}]
+    path = tmp_path / manifest.MANIFEST_NAME
+    path.write_text(
+        'schema = 4\nbundle = "8.12.1"\n[capabilities]\n'
+        f'disable = {json.dumps(disabled)}\n[hooks]\nmanager = "none"\n[consumer]\nkeep = true\n',
+        encoding="utf-8",
+    )
+    before = manifest.load(tmp_path)
+    assert before is not None
+    prepared: list[lifecycle.Command] = []
+
+    def capture(commands: Iterable[lifecycle.Command]) -> int:
+        prepared.extend(commands)
+        return 0
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- inspect upgrade installer dispatch to prove legacy opt-outs do not install tools.
+        lifecycle, "execute", capture
+    )
+
+    plan = upgrade.build_plan(tmp_path)
+    assert not plan.ecosystems.actions
+    assert not plan.ecosystems.infrastructure
+    assert upgrade.apply(plan) == 0
+    assert prepared == []
+
+    after = manifest.load(tmp_path)
+    assert after is not None
+    assert after.version == manifest.adopted_version()
+    assert after.enabled_capabilities == before.enabled_capabilities
+    assert not (tmp_path / "zizmor.yml").exists()
+    assert not (tmp_path / ".checkov.yml").exists()
+    assert "[consumer]\nkeep = true" in path.read_text()
+
+
+@pytest.mark.parametrize(
+    ("tool", "target", "source"),
+    [("zizmor", "zizmor.yml", "zizmor.strict.yml"), ("checkov", ".checkov.yml", "checkov.strict.yml")],
+)
+def test_upgrade_repairs_adopted_security_config_and_prepares_only_that_tool(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, tool: str, target: str, source: str
+) -> None:
+    (tmp_path / "main.tf").write_text('resource "terraform_data" "example" {}\n', encoding="utf-8")
+    workflow = tmp_path / ".github/workflows/ci.yml"
+    workflow.parent.mkdir(parents=True)
+    workflow.write_text("name: CI\non: push\njobs: {}\n", encoding="utf-8")
+    adopted = manifest.Manifest(
+        version=manifest.adopted_version(), configs=(tool,), python_dest=".", typescript_dest=".", hook_manager="none"
+    )
+    (tmp_path / manifest.MANIFEST_NAME).write_text(adopted.render(), encoding="utf-8")
+    (tmp_path / target).write_text("stale: true\n", encoding="utf-8")
+    prepared: list[lifecycle.Command] = []
+
+    def capture(commands: Iterable[lifecycle.Command]) -> int:
+        prepared.extend(commands)
+        return 0
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- inspect installer lookup; injection would skip upgrade routing.
+        lifecycle, "execute", capture
+    )
+    plan = upgrade.build_plan(tmp_path)
+
+    assert upgrade.apply(plan) == 0
+    assert (tmp_path / target).read_bytes() == (CONFIGS_DIR / source).read_bytes()
+    assert [command.label for command in prepared] == [f"prepare pinned {tool}"]
+    assert "--offline" not in prepared[0].argv
+    assert any(
+        finding.id == "doctor.config.current" and finding.where == target for finding in doctor.diagnose(tmp_path)
+    )
+
+
+@pytest.mark.parametrize("include_retired", [False, True])
+def test_upgrade_migrates_baseline_provenance_without_increasing_approved_debt(
+    tmp_path: Path, include_retired: bool, monkeypatch: pytest.MonkeyPatch
+) -> None:
     _outdated_python_repo(tmp_path)
     adopted = manifest.load(tmp_path)
     assert adopted is not None
@@ -89,6 +176,18 @@ def test_upgrade_transactionally_removes_retired_diagnostic_baseline_entries(tmp
         "path": ".github/workflows/check.yml",
         "count": 3,
     }
+    entries = [retained]
+    if include_retired:
+        entries.insert(
+            0,
+            {
+                "fingerprint": "1" * 64,
+                "source": "sarj-text-lint",
+                "ruleId": "unpinned-github-action",
+                "path": ".github/workflows/check.yml",
+                "count": 4,
+            },
+        )
     baseline_path.write_text(
         json.dumps(
             {
@@ -98,16 +197,7 @@ def test_upgrade_transactionally_removes_retired_diagnostic_baseline_entries(tmp
                     "consumerBaseSha": "0" * 40,
                     "catalogDigest": "1" * 64,
                 },
-                "diagnostics": [
-                    {
-                        "fingerprint": "1" * 64,
-                        "source": "sarj-text-lint",
-                        "ruleId": "unpinned-github-action",
-                        "path": ".github/workflows/check.yml",
-                        "count": 4,
-                    },
-                    retained,
-                ],
+                "diagnostics": entries,
             },
             indent=2,
         )
@@ -131,6 +221,14 @@ def test_upgrade_transactionally_removes_retired_diagnostic_baseline_entries(tmp
         "consumerBaseSha": "0" * 40,
         "catalogDigest": baseline.bundled_catalog_digest(),
     }
+    assert baseline.load(
+        baseline_path,
+        require_v2=True,
+        expected_bundle_version=manifest.adopted_version(),
+        expected_catalog_digest=baseline.bundled_catalog_digest(),
+    ) == {"2" * 64: 3}
+    monkeypatch.setenv("SARJ_STANDARDS_BASE", "3" * 40)
+    assert not upgrade.build_plan(tmp_path).baseline_writes
 
 
 def test_upgrade_rejects_a_concurrently_edited_diagnostic_baseline(tmp_path: Path) -> None:
@@ -665,6 +763,40 @@ def test_upgrade_preserves_workspace_plugin_ranges(tmp_path: Path) -> None:
     assert package.read_text(encoding="utf-8") == original
 
 
+def test_upgrade_composes_package_pins_with_peer_scaffolding(tmp_path: Path) -> None:
+    adopted = manifest.Manifest("0.0.1", ("eslint",), ".", ".", hook_manager="none")
+    (tmp_path / manifest.MANIFEST_NAME).write_text(adopted.render(), encoding="utf-8")
+    package = tmp_path / "package.json"
+    current = manifest.eslint_peers()["@sarj/eslint-plugin"]
+    old = f"{current.split('.')[0]}.0.0"
+    package.write_text(
+        json.dumps(
+            {
+                "name": "consumer",
+                "dependencies": {"@sarj/eslint-plugin": old, "application": "1.2.3"},
+                "devDependencies": {"@sarj/eslint-plugin": old, "test-tool": "4.5.6"},
+                "scripts": {"custom": "keep this"},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    plan = upgrade.build_plan(tmp_path)
+    assert package in {path for path, _contents in plan.scaffold_plan.writes}
+    assert upgrade.apply(plan, install=False) == 0
+
+    updated = package.read_text(encoding="utf-8")
+    data = manifest.as_table(parse_json(updated))
+    assert manifest.table_field(data, "dependencies") == {"@sarj/eslint-plugin": current, "application": "1.2.3"}
+    dev_dependencies = manifest.table_field(data, "devDependencies")
+    assert "@sarj/eslint-plugin" not in dev_dependencies
+    assert dev_dependencies["test-tool"] == "4.5.6"
+    assert manifest.table_field(data, "scripts") == {"custom": "keep this"}
+    assert package not in {update.path for update in doctor.plan_version_pin_updates(tmp_path)}
+    assert upgrade.apply(upgrade.build_plan(tmp_path), install=False) == 0
+    assert package.read_text(encoding="utf-8") == updated
+
+
 def test_upgrade_refreshes_a_secondary_javascript_lock_after_rewriting_its_pin(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -1192,6 +1324,43 @@ def test_update_rejects_invalid_repository_configuration(
     error = capsys.readouterr().err
     assert status == 2
     assert "doctor.package-json.invalid" in error
+
+
+@pytest.mark.parametrize("invalid", [False, True])
+def test_update_preview_reuses_the_plans_diagnosis_and_preserves_invalid_blockers(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], *, invalid: bool
+) -> None:
+    _outdated_python_repo(tmp_path)
+    if invalid:
+        (tmp_path / "package.json").write_text("", encoding="utf-8")
+    original = doctor.diagnose
+    observed: list[Path] = []
+
+    def diagnose(root: Path) -> list[doctor.Finding]:
+        observed.append(root)
+        return original(root)
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- observe the real diagnosis at the complete CLI boundary
+        doctor, "diagnose", diagnose
+    )
+
+    status = _main(["update", "--offline", "--check", str(tmp_path)])
+
+    assert observed == [tmp_path.resolve()]
+    assert status == (2 if invalid else 1)
+    if invalid:
+        assert "doctor.package-json.invalid" in capsys.readouterr().err
+
+
+def test_upgrade_plan_retains_findings_without_changing_the_drift_contract(tmp_path: Path) -> None:
+    _outdated_python_repo(tmp_path)
+
+    plan = upgrade.build_plan(tmp_path)
+
+    assert plan.preflight_findings
+    assert plan.preexisting_drift == frozenset(
+        (finding.id, finding.where) for finding in plan.preflight_findings if finding.level is doctor.Level.DRIFT
+    )
 
 
 def test_current_no_install_update_reports_selected_native_install_work(
@@ -1829,9 +1998,8 @@ def test_upgrade_surfaces_incomplete_rollback(monkeypatch: pytest.MonkeyPatch, t
         _plan: upgrade.UpgradePlan,
         _file_transaction: transaction.FileTransaction,
         *,
-        install: bool,
+        install: bool,  # ruff: ignore[unused-function-argument] -- The upgrade transaction fixes this keyword.
     ) -> int:
-        _ = install
         return 1
 
     def incomplete(_transaction: transaction.FileTransaction) -> transaction.RollbackReport:

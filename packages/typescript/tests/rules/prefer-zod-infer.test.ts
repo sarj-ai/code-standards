@@ -1,8 +1,11 @@
+// vitest: shared-module-graph
 import * as tsParser from "@typescript-eslint/parser";
 import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, it } from "vitest";
 
 import rule, { PREFER_ZOD_INFER_DOCUMENTATION } from "../../src/rules/prefer-zod-infer.js";
+
+import { verifyRuleExamples } from "../../src/verify-rule-examples.js";
 
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
@@ -292,4 +295,38 @@ RULE_TESTER.run("prefer-zod-infer", rule, {
       errors: [{ messageId: "handWrittenTwin" }],
     },
   ],
+});
+
+
+it("preserves outcomes for static member access and unknown member keys", async () => {
+  const documentation = rule.documentation;
+  if (documentation === undefined) throw new Error("Missing rule documentation");
+  await verifyRuleExamples({ ...rule, documentation: { ...documentation, examples: [
+  {
+    "id": "handwritten-twin-static-member",
+    "title": "Static member access preserves the rule outcome",
+    "outcome": "match",
+    "focusPath": "src/user.ts",
+    "expectedCount": 1,
+    "files": [
+      {
+        "path": "src/user.ts",
+        "source": "import { z } from \"zod\"; const UserSchema = z[\"object\"]({ id: z[\"string\"]() }); interface User { id: string }"
+      }
+    ]
+  },
+  {
+    "id": "handwritten-twin-dynamic-member",
+    "title": "Unknown member access does not establish API identity",
+    "outcome": "no-match",
+    "focusPath": "src/user.ts",
+    "expectedCount": 0,
+    "files": [
+      {
+        "path": "src/user.ts",
+        "source": "import { z } from \"zod\"; const UserSchema = z[auditDynamicMember]({ id: z[auditDynamicMember]() }); interface User { id: string }"
+      }
+    ]
+  }
+] } });
 });

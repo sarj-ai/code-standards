@@ -1,7 +1,7 @@
 import rawThirdPartyCatalog from "../generated/third-party-rules.v1.json";
 
 export const THIRD_PARTY_PROFILES = ["application", "standard"] as const;
-export const THIRD_PARTY_PAGE_SIZE = 36;
+export const THIRD_PARTY_PAGE_SIZE = 32;
 export type ThirdPartyProfile = (typeof THIRD_PARTY_PROFILES)[number];
 export type ThirdPartyLevel = "error" | "warning";
 export type ThirdPartyAutofix = "always" | "available" | "none" | "sometimes";

@@ -17,6 +17,7 @@ import yaml
 
 from sarj_standards.libs.filesystem import is_link_like
 from sarj_standards.libs.json_boundary import parse_json
+from sarj_standards.libs.linting import security_tools
 from sarj_standards.libs.typed_containers import is_object_list, is_object_mapping
 from sarj_standards.libs.yaml_boundary import parse_yaml
 
@@ -52,11 +53,13 @@ class Ecosystems:
     swift_root: Path | None = None
     kotlin_root: Path | None = None
     mobile_swift: bool = False
+    actions: bool = False
+    infrastructure: bool = False
 
     @property
     def any(self) -> bool:
         """Whether anything at all was detected."""
-        return self.python or self.typescript or self.swift or self.kotlin
+        return self.python or self.typescript or self.swift or self.kotlin or self.actions or self.infrastructure
 
     @property
     def mobile(self) -> bool:
@@ -81,6 +84,8 @@ def configured_ecosystems(ecosystems: Ecosystems, configs: Sequence[str]) -> Eco
         swift_root=ecosystems.swift_root if swift else None,
         kotlin_root=ecosystems.kotlin_root if kotlin else None,
         mobile_swift=ecosystems.mobile_swift and swift,
+        actions=ecosystems.actions and "zizmor" in configs,
+        infrastructure=ecosystems.infrastructure and "checkov" in configs,
     )
 
 
@@ -99,6 +104,7 @@ class Plan:
     errors: list[str] = field(default_factory=list)
 
 
+DEFAULT_CI_RUNNER: Final = "ubuntu-latest"
 _ESLINT_CONFIG: Final = "eslint.config.mjs"
 _ESLINT_CONFIG_NAMES: Final = (
     "eslint.config.js",
@@ -219,6 +225,7 @@ def detect(
     kotlin_root = _validated_mobile_override(root, kotlin_dest, language="Kotlin") or _kotlin_root(root)
     install_root = packagemanager.workspace_root(typescript_root, root) if typescript_root else None
     client = packagemanager.detect(install_root) if install_root else PackageManager.NPM
+    security = _detect_security_inputs(root)
     return Ecosystems(
         python=python_root is not None,
         typescript=typescript_root is not None,
@@ -236,6 +243,8 @@ def detect(
         swift_root=swift_root,
         kotlin_root=kotlin_root,
         mobile_swift=swift_root is not None and _swift_root_is_mobile(swift_root),
+        actions=bool(security.workflows),
+        infrastructure=bool(security.terraform or security.kubernetes),
     )
 
 
@@ -268,7 +277,23 @@ def detect_adopted(root: Path, adopted: manifest.Manifest) -> Ecosystems:
         swift_root=swift_root,
         kotlin_root=kotlin_root,
         mobile_swift=swift_root is not None and _swift_root_is_mobile(swift_root),
+        actions="zizmor" in adopted.enabled_capabilities,
+        infrastructure="checkov" in adopted.enabled_capabilities,
     )
+
+
+def _detect_security_inputs(root: Path) -> security_tools.SecurityInputs:
+    files: list[str] = []
+    for parent, directories, filenames in os.walk(root, topdown=True, followlinks=False):
+        directories[:] = sorted(
+            name for name in directories if name not in _SKIP_DIRS and not is_link_like(Path(parent) / name)
+        )
+        files.extend(
+            str(Path(parent) / name)
+            for name in filenames
+            if name.endswith((".tf", ".tf.json", ".yml", ".yaml")) and not is_link_like(Path(parent) / name)
+        )
+    return security_tools.select_inputs(files, root=root)
 
 
 def _override(root: Path, dest: str | None) -> Path | None:
@@ -575,6 +600,8 @@ def build_plan(
             has_swift=ecosystems.swift,
             has_kotlin=ecosystems.kotlin,
             has_mobile=ecosystems.mobile,
+            has_actions=ecosystems.actions,
+            has_infrastructure=ecosystems.infrastructure,
         )
     )
     selected_hook_manager: manifest.HookManager = hook_manager or hooks.detect_manager(root)
@@ -641,6 +668,8 @@ def _unsupported_configs(selected: Sequence[str], ecosystems: Ecosystems) -> tup
         or (name in manifest.SWIFT_CONFIGS and not ecosystems.swift)
         or (name in manifest.KOTLIN_CONFIGS and not ecosystems.kotlin)
         or (name in manifest.MOBILE_CONFIGS and not ecosystems.mobile)
+        or (name == "zizmor" and not ecosystems.actions)
+        or (name == "checkov" and not ecosystems.infrastructure)
     )
 
 
@@ -853,7 +882,7 @@ def _plan_lefthook_commit_message(root: Path, plan: Plan) -> None:
 
 def _plan_commit_policy_workflow(root: Path, plan: Plan, *, force: bool) -> None:
     path = root / ".github" / "workflows" / "commit-policy.yml"
-    contents = commit_policy_github_workflow()
+    contents = commit_policy_github_workflow(managed_ci_runner(root))
     if path.is_file() and path.read_text(encoding="utf-8").startswith("# Managed by code-standards commit policy;"):
         if path.read_text(encoding="utf-8") == contents:
             plan.skips.append((path, "already runs the canonical commit policy"))
@@ -1072,6 +1101,7 @@ def _desired_manifest(root: Path, plan: Plan, current: manifest.Manifest | None)
         ci_bootstrap=() if current is None else current.ci_bootstrap,
         prepared_targets=() if current is None else current.prepared_targets,
         compose_version=_new_compose_version(root) if current is None else current.compose_version,
+        ci_runner=None if current is None else current.ci_runner,
     )
 
 
@@ -1133,7 +1163,7 @@ def _render_manifest_preserving_extensions(  # ruff: ignore[too-many-locals] -- 
                 break
             start = previous_start
         end = matches[index + 1].start() if index + 1 < len(matches) else len(text)
-        preserved.append(text[start:end].rstrip())
+        preserved.append(text[start:end].strip("\n"))
     missing = extensions.difference(found)
     if missing:
         names = ", ".join(sorted(missing))
@@ -2228,6 +2258,7 @@ def github_ci_workflow(root: Path, *, ecosystems: Ecosystems | None = None) -> s
         ecosystems = _workflow_ecosystems(root, adopted)
     install_root = ecosystems.typescript_install_root or ecosystems.typescript_root
     runner = launcher.repository_command()
+    runs_on = "macos-15" if ecosystems.swift else _configured_runner(adopted)
     lines = [
         "# Managed by code-standards; regenerate with `code-standards show ci --output .github/workflows/standards.yml`.",
         "name: Standards",
@@ -2246,18 +2277,27 @@ def github_ci_workflow(root: Path, *, ecosystems: Ecosystems | None = None) -> s
         "",
         "jobs:",
         "  standards:",
-        f"    runs-on: {'macos-15' if ecosystems.swift else 'ubuntu-latest'}",
+        f"    runs-on: {runs_on}",
         f"    timeout-minutes: {60 if ecosystems.mobile else 15}",
         "    steps:",
-        "      - name: Harden the runner",
-        "        uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2",
-        "        with:",
-        "          egress-policy: audit",
-        "      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7",
-        "        with:",
-        "          fetch-depth: 0",
-        "          persist-credentials: false",
     ]
+    if _harden_runner_supported(runs_on):
+        lines.extend(
+            (
+                "      - name: Harden the runner",
+                "        uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2",
+                "        with:",
+                "          egress-policy: audit",
+            )
+        )
+    lines.extend(
+        (
+            "      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7",
+            "        with:",
+            "          fetch-depth: 0",
+            "          persist-credentials: false",
+        )
+    )
     if ecosystems.kotlin:
         lines.extend(
             (
@@ -2279,7 +2319,13 @@ def github_ci_workflow(root: Path, *, ecosystems: Ecosystems | None = None) -> s
         )
     )
     if ecosystems.typescript:
-        _append_javascript_ci(lines, root, ecosystems, install_root)
+        _append_javascript_ci(
+            lines,
+            root,
+            ecosystems,
+            install_root,
+            configured_runner=not ecosystems.swift and runs_on != DEFAULT_CI_RUNNER,
+        )
     if ecosystems.python:
         python_install = python_ci_install_argv(root, python_dest)
         if python_install:
@@ -2298,6 +2344,7 @@ def github_ci_workflow(root: Path, *, ecosystems: Ecosystems | None = None) -> s
             f"        run: {runner} setup --tools-only",
         )
     )
+    _append_security_ci(lines, ecosystems)
     for index, command in enumerate(() if adopted is None else adopted.ci_bootstrap, start=1):
         label = "Bootstrap analysis inputs" if index == 1 else f"Bootstrap analysis inputs ({index})"
         lines.extend((f"      - name: {label}", "        run: |", f"          {command}"))
@@ -2333,19 +2380,32 @@ def _workflow_ecosystems(root: Path, adopted: manifest.Manifest | None) -> Ecosy
         if adopted is None or not any(name in adopted.configs for name in manifest.KOTLIN_CONFIGS)
         else adopted.kotlin_dest
     )
-    return detect(
+    detected = detect(
         root,
         python_dest=python_override,
         typescript_dest=typescript_override,
         swift_dest=swift_override,
         kotlin_dest=kotlin_override,
     )
+    return detected if adopted is None else configured_ecosystems(detected, adopted.enabled_capabilities)
 
 
-def _append_javascript_ci(lines: list[str], root: Path, ecosystems: Ecosystems, install_root: Path | None) -> None:
+def _append_security_ci(lines: list[str], ecosystems: Ecosystems) -> None:
+    for name in security_tools.TOOLS:
+        enabled = ecosystems.actions if name == "zizmor" else ecosystems.infrastructure
+        if enabled:
+            argv = (*security_tools.command(name, offline=False), "--version")
+            lines.extend((f"      - name: Prepare pinned {name}", f"        run: {shlex.join(argv)}"))
+
+
+def _append_javascript_ci(
+    lines: list[str], root: Path, ecosystems: Ecosystems, install_root: Path | None, *, configured_runner: bool
+) -> None:
     if ecosystems.client is PackageManager.BUN:
         lines.append("      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2")
-    else:
+    # Bun projects rely on the runner image's Node for Node-based analyzers. GitHub's image ships a current
+    # Node; other runner images may not, so a configured runner gets the same pinned Node as npm projects.
+    if ecosystems.client is not PackageManager.BUN or configured_runner:
         lines.extend(
             (
                 "      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7",
@@ -2353,6 +2413,10 @@ def _append_javascript_ci(lines: list[str], root: Path, ecosystems: Ecosystems, 
                 "          node-version: 24",
             )
         )
+        # setup-node prefers the image's cached Node 24, which on other runner images can predate the
+        # declared npm's engine floor; resolving the newest 24.x keeps the configured runner image-independent.
+        if configured_runner:
+            lines.append("          check-latest: true")
     if (
         ecosystems.client is PackageManager.NPM
         and install_root is not None
@@ -2494,8 +2558,35 @@ def _launcher_options_are_valid(
     return True
 
 
-def commit_policy_github_workflow() -> str:
-    return """\
+def managed_ci_runner(root: Path) -> str:
+    return _configured_runner(manifest.load_for_setup(root))
+
+
+def _configured_runner(adopted: manifest.Manifest | None) -> str:
+    if adopted is None or adopted.ci_runner is None:
+        return DEFAULT_CI_RUNNER
+    return adopted.ci_runner
+
+
+def _harden_runner_supported(runner: str) -> bool:
+    # On Blacksmith, Harden Runner installs its agent only for StepSecurity organizations with TLS inspection
+    # enabled. Without it the job gets no monitoring, yet the post step still polls 10 seconds for the agent.
+    return not runner.startswith("blacksmith-")
+
+
+def commit_policy_github_workflow(runner: str = DEFAULT_CI_RUNNER) -> str:
+    harden = (
+        """\
+      - name: Harden the runner
+        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        with:
+          egress-policy: audit
+"""
+        if _harden_runner_supported(runner)
+        else ""
+    )
+    return (
+        """\
 # Managed by code-standards commit policy; regenerate with `code-standards setup`.
 name: Commit policy
 
@@ -2514,19 +2605,22 @@ concurrency:
 
 jobs:
   commit-policy-v1:
-    runs-on: ubuntu-latest
+"""
+        f"    runs-on: {runner}\n"
+        """\
     timeout-minutes: 5
     steps:
-      - name: Harden the runner
-        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
-        with:
-          egress-policy: audit
+"""
+        f"{harden}"
+        """\
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: sarj-ai/repo-standards/pull-request-commits@bac8511f40968ca16f4cf0f649aa96fae4b7be08 # v6.0.1
 """
+        f"      - uses: sarj-ai/repo-standards/pull-request-commits@{manifest.REPO_STANDARDS_REVISION}"
+        f" # v{manifest.REPO_STANDARDS_VERSION}\n"
+    )
 
 
 def _migrate_legacy_workflow_gate(path: Path) -> str | None:

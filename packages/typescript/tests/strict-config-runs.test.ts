@@ -69,6 +69,79 @@ function severity(setting: unknown): unknown {
 const ESLINT_MAJOR = Number.parseInt(ESLint.version.split(".")[0] ?? "0", 10);
 
 describe("the shipped eslint.strict.mjs can actually lint", () => {
+  it.each(CONFIG_FACTORIES)(
+    "%s rejects void-discarded promises while retaining handled promises",
+    async (_name, createConfig) => {
+      const ruleId = "@typescript-eslint/no-floating-promises";
+      const focused = createConfig({ tsconfigRootDir: FIXTURE_DIR }).map((entry) => ({
+        ...entry,
+        rules: Object.fromEntries(
+          Object.entries(entry.rules ?? {}).filter(([id]) => id === ruleId),
+        ),
+      }));
+      const eslint = new ESLint({
+        cwd: FIXTURE_DIR,
+        overrideConfigFile: true,
+        overrideConfig: [...focused, { rules: { [ruleId]: "error" } }],
+      });
+      const [result] = await eslint.lintText(
+        [
+          "declare function start(): Promise<void>;",
+          "declare function handleError(error: unknown): void;",
+          "void start();",
+          "void start().then(() => {});",
+          "void start().catch(handleError);",
+          "void start().then(() => {}, handleError);",
+          "await start();",
+          "function returned() { return start(); }",
+          "void 0;",
+        ].join("\n"),
+        { filePath: resolve(FIXTURE_DIR, "example.ts") },
+      );
+      expect(result?.messages.map(({ ruleId: id, line, severity: level }) => ({ id, line, level }))).toEqual([
+        { id: ruleId, line: 3, level: 2 },
+        { id: ruleId, line: 4, level: 2 },
+      ]);
+    },
+  );
+
+  it.each(CONFIG_FACTORIES)(
+    "%s allows async JSX handlers without weakening other promise boundaries",
+    async (_name, createConfig) => {
+      const promiseRules = new Set([
+        "@typescript-eslint/no-floating-promises",
+        "@typescript-eslint/no-misused-promises",
+        "@typescript-eslint/strict-void-return",
+      ]);
+      const eslint = new ESLint({
+        cwd: FIXTURE_DIR,
+        overrideConfigFile: true,
+        overrideConfig: createConfig({ tsconfigRootDir: FIXTURE_DIR }),
+      });
+      const [result] = await eslint.lintText([
+        "declare function Button(props: { onClick: () => void }): null;",
+        "declare function save(): Promise<void>;",
+        "declare function report(error: unknown): void;",
+        "async function handleClick() { try { await save(); } catch (error) { report(error); } }",
+        "const named = <Button onClick={handleClick} />;",
+        "const inline = <Button onClick={async () => { try { await save(); } catch (error) { report(error); } }} />;",
+        "save();",
+        "void save();",
+        "[1].forEach(async () => { await save(); });",
+        "const ignored: () => void = handleClick;",
+        "if (save()) { report('not a boolean'); }",
+      ].join("\n"), { filePath: resolve(FIXTURE_DIR, "widget.tsx") });
+      expect(result?.messages.filter(({ ruleId }) => promiseRules.has(ruleId ?? ""))
+        .map(({ ruleId, line }) => ({ ruleId, line }))).toEqual([
+        { ruleId: "@typescript-eslint/no-floating-promises", line: 7 },
+        { ruleId: "@typescript-eslint/no-floating-promises", line: 8 },
+        { ruleId: "@typescript-eslint/no-misused-promises", line: 9 },
+        { ruleId: "@typescript-eslint/no-misused-promises", line: 10 },
+        { ruleId: "@typescript-eslint/no-misused-promises", line: 11 },
+      ]);
+    },
+  );
+
   it("keeps quoted snake_case wire access compatible with camelCase policy", async () => {
     const eslint = new ESLint({
       cwd: FIXTURE_DIR,
@@ -973,6 +1046,55 @@ describe("the shipped eslint.strict.mjs can actually lint", () => {
       "@typescript-eslint/member-ordering",
       "@typescript-eslint/member-ordering",
     ]);
+  });
+
+  it.each([
+    ["promise.then(handle);", 1],
+    ["promise?.then(handle);", 1],
+    ["promise.then?.(handle);", 1],
+    ['promise["then"](handle);', 1],
+    ["const { then: continuePromise } = promise;", 0],
+    ["async function load() { await promise.then(handle); }", 1],
+    ["// eslint-disable-next-line @sarj/prefer-await-in-async-return\npromise.then(handle);", 0],
+    ["// eslint-disable-next-line no-restricted-properties\npromise.then(handle);", 1],
+    ["await Promise.all([first(), second()]);", 0],
+    ["work().catch(reportError);", 0],
+    ["work().finally(cleanup);", 0],
+    ['const schema = { if: {}, then: { type: "string" } };', 0],
+    ['const schema = { then: { type: "string" } }; const type = schema.then.type;', 0],
+    ['const schema = { then: { type: "string" } }; const { then: branch } = schema;', 0],
+    ['const flow = { then(value: number) { return value + 1; } }; flow.then(1);', 0],
+    ['const text = "promise.then(handle)"; // promise.then(handle)', 0],
+  ])("enforces the typed then-only policy for %s", async (source, expectedCount) => {
+    const eslint = new ESLint({
+      cwd: FIXTURE_DIR,
+      overrideConfigFile: true,
+      overrideConfig: STRICT_CONFIG_FACTORY({ tsconfigRootDir: FIXTURE_DIR }),
+    });
+    const declarations = "declare const promise: Promise<number>; declare function handle(input: number): number;\n";
+    const results = await eslint.lintText(declarations + source, { filePath: resolve(FIXTURE_DIR, "example.ts") });
+    const violations = results.flatMap((result) => result.messages)
+      .filter((message) => message.ruleId === "@sarj/prefer-await-in-async-return");
+    expect(violations).toHaveLength(expectedCount);
+    expect(results.flatMap((result) => result.messages)
+      .some((message) => message.ruleId === "no-restricted-properties")).toBe(false);
+    for (const violation of violations) {
+      expect(violation.severity).toBe(2);
+      expect(violation.message).toContain("Use async/await");
+    }
+  });
+
+  it.each(CONFIG_FACTORIES)("%s does not infer Promise policy without type services", async (_name, createConfig) => {
+    const eslint = new ESLint({
+      cwd: FIXTURE_DIR,
+      overrideConfigFile: true,
+      overrideConfig: createConfig({ tsconfigRootDir: FIXTURE_DIR, projectService: false }),
+    });
+    const results = await eslint.lintText("Promise.resolve(1).then(handle);", {
+      filePath: resolve(FIXTURE_DIR, "example.mjs"),
+    });
+    expect(results.flatMap((result) => result.messages)
+      .filter((message) => message.ruleId === "@sarj/prefer-await-in-async-return")).toHaveLength(0);
   });
 
   it("enforces explicit await for a direct typed async return", async () => {

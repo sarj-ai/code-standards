@@ -6,6 +6,8 @@
 
 import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
 
+import { unwrapExpression } from "./_unwrap-expression.js";
+
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isScriptFile, isTestFile } from "./_paths.js";
 import { isZodModule } from "./_zod.js";
@@ -46,13 +48,13 @@ const ZOD_CHAIN_METHODS: ReadonlySet<string> = new Set([
 
 /** True for a standard Fetch body parser — the receiver of a parse-fallback catch. */
 function isBodyParseCall(node: TSESTree.Expression): boolean {
+  const unwrappedNodeCallee = node.type === "CallExpression" || node.type === "NewExpression" ? unwrapExpression(node.callee) : null;
   return (
     node.type === AST_NODE_TYPES.CallExpression &&
     node.arguments.length === 0 &&
-    node.callee.type === AST_NODE_TYPES.MemberExpression &&
-    !node.callee.computed &&
-    node.callee.property.type === AST_NODE_TYPES.Identifier &&
-    BODY_PARSE_METHODS.has(node.callee.property.name)
+    unwrappedNodeCallee?.type === AST_NODE_TYPES.MemberExpression &&
+    ASTUtils.getPropertyName(unwrappedNodeCallee) !== null &&
+    BODY_PARSE_METHODS.has((ASTUtils.getPropertyName(unwrappedNodeCallee) ?? ""))
   );
 }
 
@@ -75,25 +77,24 @@ const isExplanatory = (comment: { value: string }): boolean =>
 
 /** True for `reader.cancel(reason)` / `stream.close()` — a teardown receiver. */
 function isTeardownCall(node: TSESTree.Expression): boolean {
+  const unwrappedNodeCallee = node.type === "CallExpression" || node.type === "NewExpression" ? unwrapExpression(node.callee) : null;
   return (
     node.type === AST_NODE_TYPES.CallExpression &&
-    node.callee.type === AST_NODE_TYPES.MemberExpression &&
-    !node.callee.computed &&
-    node.callee.property.type === AST_NODE_TYPES.Identifier &&
-    TEARDOWN_METHODS.has(node.callee.property.name)
+    unwrappedNodeCallee?.type === AST_NODE_TYPES.MemberExpression &&
+    ASTUtils.getPropertyName(unwrappedNodeCallee) !== null &&
+    TEARDOWN_METHODS.has((ASTUtils.getPropertyName(unwrappedNodeCallee) ?? ""))
   );
 }
 
 /** Web Share rejects on ordinary user cancellation, which callers may ignore. */
 function isCancelledWebShare(node: TSESTree.Expression): boolean {
+  const unwrappedNodeCallee = node.type === "CallExpression" || node.type === "NewExpression" ? unwrapExpression(node.callee) : null;
   return (
     node.type === AST_NODE_TYPES.CallExpression &&
-    node.callee.type === AST_NODE_TYPES.MemberExpression &&
-    !node.callee.computed &&
-    node.callee.object.type === AST_NODE_TYPES.Identifier &&
-    node.callee.object.name === "navigator" &&
-    node.callee.property.type === AST_NODE_TYPES.Identifier &&
-    node.callee.property.name === "share"
+    unwrappedNodeCallee?.type === AST_NODE_TYPES.MemberExpression &&
+    unwrappedNodeCallee.object.type === AST_NODE_TYPES.Identifier &&
+    unwrappedNodeCallee.object.name === "navigator" &&
+    ASTUtils.getPropertyName(unwrappedNodeCallee) === "share"
   );
 }
 
@@ -174,6 +175,7 @@ export default createRule<Options, MessageIds>({
     }
 
     function isZodSchema(node: TSESTree.Node, seen = new Set<TSESTree.Node>()): boolean {
+      const unwrappedNodeCallee = node.type === "CallExpression" || node.type === "NewExpression" ? unwrapExpression(node.callee) : null;
       if (seen.has(node)) return false;
       seen.add(node);
       if (node.type === AST_NODE_TYPES.Identifier) {
@@ -183,10 +185,11 @@ export default createRule<Options, MessageIds>({
         return binding.defs.length === 1 && definition?.node.type === AST_NODE_TYPES.VariableDeclarator &&
           definition.node.init !== null && isZodSchema(definition.node.init, seen);
       }
-      if (node.type !== AST_NODE_TYPES.CallExpression || node.callee.type !== AST_NODE_TYPES.MemberExpression ||
-        node.callee.computed || node.callee.property.type !== AST_NODE_TYPES.Identifier) return false;
-      const { object, property } = node.callee;
-      if (object.type === AST_NODE_TYPES.Identifier && ZOD_CONSTRUCTORS.has(property.name)) {
+      if (node.type !== AST_NODE_TYPES.CallExpression || unwrappedNodeCallee?.type !== AST_NODE_TYPES.MemberExpression ||
+        ASTUtils.getPropertyName(unwrappedNodeCallee) === null) return false;
+      const { object } = unwrappedNodeCallee;
+      const method = ASTUtils.getPropertyName(unwrappedNodeCallee);
+      if (object.type === AST_NODE_TYPES.Identifier && method !== null && ZOD_CONSTRUCTORS.has(method)) {
         const binding = ASTUtils.findVariable(context.sourceCode.getScope(object), object.name);
         if (binding?.defs.some((definition) => {
           const specifier = definition.node;
@@ -195,7 +198,7 @@ export default createRule<Options, MessageIds>({
             specifier.parent.type === AST_NODE_TYPES.ImportDeclaration && isZodModule(String(specifier.parent.source.value));
         })) return true;
       }
-      return ZOD_CHAIN_METHODS.has(property.name) && isZodSchema(object, seen);
+      return method !== null && ZOD_CHAIN_METHODS.has(method) && isZodSchema(object, seen);
     }
 
     const hasExplanatoryComment = (
@@ -230,28 +233,28 @@ export default createRule<Options, MessageIds>({
 
     return {
       CallExpression(node: TSESTree.CallExpression): void {
+        const unwrappedNodeCallee = unwrapExpression(node.callee);
         if (
-          node.callee.type !== AST_NODE_TYPES.MemberExpression ||
-          node.callee.computed ||
-          node.callee.property.type !== AST_NODE_TYPES.Identifier
+          unwrappedNodeCallee.type !== AST_NODE_TYPES.MemberExpression ||
+          ASTUtils.getPropertyName(unwrappedNodeCallee) === null
         ) {
           return;
         }
 
-        const method = node.callee.property.name;
+        const method = (ASTUtils.getPropertyName(unwrappedNodeCallee) ?? "");
         const handlerIndex = method === "catch" ? 0 : method === "then" ? 1 : null;
         if (handlerIndex === null) return;
-        if (method === "catch" && isZodSchema(node.callee.object)) return;
+        if (method === "catch" && isZodSchema(unwrappedNodeCallee.object)) return;
 
-        if (isBodyParseCall(node.callee.object)) {
+        if (isBodyParseCall(unwrappedNodeCallee.object)) {
           return;
         }
 
-        if (isTeardownCall(node.callee.object)) {
+        if (isTeardownCall(unwrappedNodeCallee.object)) {
           return;
         }
 
-        if (isCancelledWebShare(node.callee.object)) {
+        if (isCancelledWebShare(unwrappedNodeCallee.object)) {
           return;
         }
 
@@ -260,9 +263,7 @@ export default createRule<Options, MessageIds>({
         if (
           node.parent.type === AST_NODE_TYPES.MemberExpression &&
           node.parent.object === node &&
-          !node.parent.computed &&
-          node.parent.property.type === AST_NODE_TYPES.Identifier &&
-          node.parent.property.name === "then"
+          ASTUtils.getPropertyName(node.parent) === "then"
         ) {
           return;
         }
@@ -271,11 +272,12 @@ export default createRule<Options, MessageIds>({
         if (node.arguments.length !== expectedArguments) {
           return;
         }
-        const handler = node.arguments[handlerIndex];
+        const argument = node.arguments[handlerIndex];
+        if (argument === undefined) return;
+        const handler = unwrapExpression(argument);
         if (
-          handler === undefined ||
-          (handler.type !== AST_NODE_TYPES.ArrowFunctionExpression &&
-            handler.type !== AST_NODE_TYPES.FunctionExpression)
+          handler.type !== AST_NODE_TYPES.ArrowFunctionExpression &&
+          handler.type !== AST_NODE_TYPES.FunctionExpression
         ) {
           return;
         }

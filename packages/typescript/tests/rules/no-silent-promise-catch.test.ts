@@ -1,8 +1,11 @@
+// vitest: shared-module-graph
 import * as tsParser from "@typescript-eslint/parser";
 import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, it } from "vitest";
 
 import rule, { NO_SILENT_PROMISE_CATCH_DOCUMENTATION } from "../../src/rules/no-silent-promise-catch.js";
+
+import { verifyRuleExamples } from "../../src/verify-rule-examples.js";
 
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
@@ -17,6 +20,7 @@ const RULE_TESTER = new RuleTester({
 
 RULE_TESTER.run("no-silent-promise-catch", rule, {
   valid: [
+    { name: "accepts static bracket JSON parsing with an optional-body fallback", code: "client['json']()['catch'](() => null);" },
     { name: "preserves Zod fallback factories", code: "import { z } from 'zod'; z.string().catch(() => '');" },
     { name: "preserves a bound Zod schema fallback", code: "import { z as schema } from 'zod'; const value = schema.number(); value.catch(() => 0);" },
     { name: "preserves namespace Zod schema fallback", code: "import * as z from 'zod'; z.array(z.string()).catch(() => []);" },
@@ -102,9 +106,9 @@ RULE_TESTER.run("no-silent-promise-catch", rule, {
     {
       code: "try { await p; } catch { /* handled elsewhere */ }",
     },
-    // Computed .catch access is out of scope.
+    // Unknown method access is out of scope.
     {
-      code: "p['catch'](() => null);",
+      code: "p[method](() => null);",
     },
     // Two-argument .then-style catch is not the .catch(fn) form.
     {
@@ -276,9 +280,43 @@ RULE_TESTER.run("no-silent-promise-catch", rule, {
       errors: [{ messageId: "silentCatch" }],
     },
     {
-      name: "reports computed JSON calls because they are not recognized body parsing",
-      code: "client['json']().catch(() => null);",
+      name: "reports an unknown call without evidence of body parsing",
+      code: "client[method]().catch(() => null);",
       errors: [{ messageId: "silentCatch" }],
     },
   ],
+});
+
+
+it("preserves outcomes for static member access and unknown member keys", async () => {
+  const documentation = rule.documentation;
+  if (documentation === undefined) throw new Error("Missing rule documentation");
+  await verifyRuleExamples({ ...rule, documentation: { ...documentation, examples: [
+  {
+    "id": "silent-rejection-static-member",
+    "title": "Static member access preserves the rule outcome",
+    "outcome": "match",
+    "focusPath": "src/load.ts",
+    "expectedCount": 1,
+    "files": [
+      {
+        "path": "src/load.ts",
+        "source": "load()[\"catch\"](() => null);"
+      }
+    ]
+  },
+  {
+    "id": "silent-rejection-dynamic-member",
+    "title": "Unknown member access does not establish API identity",
+    "outcome": "no-match",
+    "focusPath": "src/load.ts",
+    "expectedCount": 0,
+    "files": [
+      {
+        "path": "src/load.ts",
+        "source": "load()[auditDynamicMember](() => null);"
+      }
+    ]
+  }
+] } });
 });

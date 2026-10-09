@@ -65,6 +65,95 @@ def test_allows_structured_non_iac_and_parsed_measurements(body: str) -> None:
     assert check(f"def test_policy():\n    {body}\n") == []
 
 
+@pytest.mark.parametrize(("rule", "suffix"), [(NoRawSourceTextTestOracle, "py"), (IacSourceCoupledTest, "tf")])
+@pytest.mark.parametrize(
+    "assertion",
+    [
+        'assert (lambda source: "ready" in source)("ready")',
+        'assert all("ready" in source for source in ["ready"])',
+        'assert ["ready" in source for source in ["ready"]] == [True]',
+        'assert all(line for source in ["ready"] for line in source.splitlines())',
+        "assert all(True for line in source.splitlines())",
+        'assert {source: "ready" in source for source in ["ready"]} == {"ready": True}',
+        'assert ("ready" in source for _ in [1])',
+        'assert all("ready" in source for _ in ())',
+        'assert all("ready" in source for _ in {})',
+        'assert all("ready" in source for _ in [1] if False)',
+        'assert type((line for line in source.splitlines())).__name__ == "generator"',
+        'from runtime import all\n    assert all("ready" in source for _ in [1]) == {"ready": True}',
+        'match "ready":\n        case source:\n            assert "ready" in source',
+        'match {"value": "ready"}:\n        case {"value": source}:\n            assert "ready" in source',
+        'match ["ready"]:\n        case [*source]:\n            assert "ready" in source',
+    ],
+)
+def test_source_oracle_keeps_nested_and_capture_bindings_separate(
+    rule: type[NoRawSourceTextTestOracle | IacSourceCoupledTest], suffix: str, assertion: str
+) -> None:
+    source = (
+        "from pathlib import Path\ndef test_policy():\n"
+        f"    source = Path('policy.{suffix}').read_text()\n    {assertion}\n"
+    )
+    assert rule().check(Path("tests/test_policy.py"), source) == []
+
+
+@pytest.mark.parametrize(("rule", "suffix"), [(NoRawSourceTextTestOracle, "py"), (IacSourceCoupledTest, "tf")])
+@pytest.mark.parametrize(
+    "assertion",
+    [
+        'assert all("ready" in source for _ in [1])',
+        'assert any("ready" in line for line in source.splitlines())',
+        "assert all(line for line in source.splitlines())",
+        'assert all("ready" in line for source in source.splitlines() for line in [source])',
+        'match "ready":\n        case runtime_value:\n            assert "ready" in source',
+        '["ready" in source for source in ["ready"]]\n    assert "ready" in source',
+    ],
+)
+def test_source_oracle_preserves_proven_outer_and_line_contents(
+    rule: type[NoRawSourceTextTestOracle | IacSourceCoupledTest], suffix: str, assertion: str
+) -> None:
+    source = (
+        "from pathlib import Path\ndef test_policy():\n"
+        f"    source = Path('policy.{suffix}').read_text()\n    {assertion}\n"
+    )
+    assert len(rule().check(Path("tests/test_policy.py"), source)) == 1
+
+
+@pytest.mark.parametrize(("rule", "suffix"), [(NoRawSourceTextTestOracle, "py"), (IacSourceCoupledTest, "tf")])
+@pytest.mark.parametrize(
+    "body",
+    [
+        "assert (tmp_path / 'copy').read_bytes() == Path('policy.{suffix}').read_bytes()",
+        "assert Path('policy.{suffix}').read_bytes() == (tmp_path / 'copy').read_bytes()",
+        "target = Path('policy.{suffix}')\n    before = original_bytes()\n    target.write_bytes(before)\n    execute_update()\n    assert target.read_bytes() == before",
+    ],
+)
+def test_source_oracle_allows_proven_exact_byte_copy_and_preservation(
+    rule: type[NoRawSourceTextTestOracle | IacSourceCoupledTest], suffix: str, body: str
+) -> None:
+    source = f"from pathlib import Path\ndef test_policy(tmp_path):\n    {body.format(suffix=suffix)}\n"
+    assert rule().check(Path("tests/test_policy.py"), source) == []
+
+
+@pytest.mark.parametrize(("rule", "suffix"), [(NoRawSourceTextTestOracle, "py"), (IacSourceCoupledTest, "tf")])
+@pytest.mark.parametrize(
+    "body",
+    [
+        "assert Path('policy.{suffix}').read_bytes() == b'fixed implementation'",
+        "assert b'feature_enabled' in Path('policy.{suffix}').read_bytes()",
+        "target = Path('policy.{suffix}')\n    before = original_bytes()\n    target.write_bytes(before)\n    before = replacement_bytes()\n    assert target.read_bytes() == before",
+        "target = Path('policy.{suffix}')\n    before = original_bytes()\n    target.write_bytes(before)\n    target = Path('other.{suffix}')\n    assert target.read_bytes() == before",
+        "target = Path('policy.{suffix}')\n    before = original_bytes()\n    target.write_bytes(before)\n    target.write_bytes(replacement_bytes())\n    assert target.read_bytes() == before",
+        "target = Path('policy.{suffix}')\n    before = original_bytes()\n    unknown_target.write_bytes(before)\n    assert target.read_bytes() == before",
+        "target = Path('policy.{suffix}')\n    before = original_bytes()\n    if condition:\n        target.write_bytes(before)\n    assert target.read_bytes() == before",
+    ],
+)
+def test_source_oracle_retains_constant_and_unproven_byte_oracles(
+    rule: type[NoRawSourceTextTestOracle | IacSourceCoupledTest], suffix: str, body: str
+) -> None:
+    source = f"from pathlib import Path\ndef test_policy(tmp_path, condition):\n    {body.format(suffix=suffix)}\n"
+    assert len(rule().check(Path("tests/test_policy.py"), source)) == 1
+
+
 @pytest.mark.parametrize(
     "assertion",
     [
@@ -259,5 +348,54 @@ def test_allows_iac_representation_contract_directories(directory: str) -> None:
             source = Path("tests/{directory}/main.tf").read_text()
             assert "resource" in source
     """)
+        == []
+    )
+
+
+@pytest.mark.parametrize("suffix", ["tf", "hcl", "tfvars", "tf.json", "tftest.hcl", "tftest.json"])
+def test_module_tuple_unpack_has_only_iac_owner(suffix: str) -> None:
+    source = f"""
+        PATHS = (Path('first.{suffix}'), Path('second.{suffix}'))
+        def test_policy():
+            first, second = (path.read_text() for path in PATHS)
+            assert 'prevent_destroy' in first
+            assert 'prevent_destroy' in second
+    """
+    [diagnostic] = check(source)
+    assert diagnostic.code == "SARJ412"
+    assert (
+        NoRawSourceTextTestOracle().check(
+            Path("tests/test_policy.py"), "from pathlib import Path\n" + textwrap.dedent(source)
+        )
+        == []
+    )
+
+
+@pytest.mark.parametrize("artifact", ["Dockerfile", "bootstrap.sh.tftpl"])
+def test_general_source_extensions_have_only_general_owner(artifact: str) -> None:
+    source = f"""
+        def test_policy():
+            source = Path('{artifact}').read_text()
+            assert 'install_agent' in source
+    """
+    assert check(source) == []
+    [diagnostic] = NoRawSourceTextTestOracle().check(
+        Path("tests/test_policy.py"), "from pathlib import Path\n" + textwrap.dedent(source)
+    )
+    assert diagnostic.code == "SARJ402"
+
+
+@pytest.mark.parametrize(
+    "binding",
+    [
+        "match runtime_paths():\n    case PATHS:\n        pass",
+        "try:\n    run()\nexcept RuntimePaths as PATHS:\n    pass",
+        "callback = lambda replacement=(PATHS := runtime_paths()): replacement",
+    ],
+)
+def test_local_binding_invalidates_module_iac_tuple(binding: str) -> None:
+    body = f"{binding}\nfirst, second = (path.read_text() for path in PATHS)\nassert 'prevent_destroy' in first\n"
+    assert (
+        check(f"PATHS = (Path('first.tf'), Path('second.tf'))\ndef test_policy():\n{textwrap.indent(body, '    ')}")
         == []
     )

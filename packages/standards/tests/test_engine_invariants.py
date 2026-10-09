@@ -30,6 +30,7 @@ _CASES = (
     _EngineCase(RuleEngine.SQL, "sql", "sql", frozenset(("sql", "sarj-sql-lint"))),
     _EngineCase(RuleEngine.TEXT, "text", "standards", frozenset(("text", "sarj-text-lint"))),
 )
+_UPSTREAM_ENGINES = frozenset({RuleEngine.CHECKOV, RuleEngine.ZIZMOR})
 
 
 def _object(value: object) -> dict[str, object]:
@@ -71,7 +72,10 @@ def test_engine_matrix_exhausts_the_public_contract_and_schema() -> None:
     properties = _object(rule["properties"])
     engine = _object(properties["engine"])
 
-    assert expected == set(RuleEngine)
+    # Upstream audits support selectors, but are documented in the third-party
+    # catalog rather than claiming source-owned rules and release families.
+    assert expected.isdisjoint(_UPSTREAM_ENGINES)
+    assert expected | _UPSTREAM_ENGINES == set(RuleEngine)
     assert {_text(value) for value in _array(engine["enum"])} == {engine.value for engine in expected}
 
 
@@ -89,6 +93,7 @@ def test_engine_family_and_release_mappings_agree() -> None:
 
 def test_diagnostic_sources_resolve_to_the_same_engine_everywhere() -> None:
     expected_aliases = {source: case.engine for case in _CASES for source in case.sources}
+    expected_aliases.update({engine.value: engine for engine in _UPSTREAM_ENGINES})
 
     assert {
         source: api._engine_for_diagnostic(_diagnostic(source))  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]

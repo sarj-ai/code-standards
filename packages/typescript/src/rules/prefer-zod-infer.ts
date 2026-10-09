@@ -4,9 +4,12 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/prefer-zod-infer.test.ts
  */
 
-import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
+import { ASTUtils, AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
+
+import { importSpecifierName } from "./_import-specifier-name.js";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
+import { unwrapExpression } from "./_unwrap-expression.js";
 import { isGeneratedFile, isStoryFile, isTestFile } from "./_paths.js";
 import { isZodModule } from "./_zod.js";
 
@@ -481,30 +484,31 @@ function twinCallChain(
   zodNamespaces: ReadonlySet<string>,
 ): readonly TSESTree.CallExpression[] | null {
   const chain: TSESTree.CallExpression[] = [];
-  let current: TSESTree.Node = node;
+  let current: TSESTree.Node = unwrapExpression(node);
   while (current.type === AST_NODE_TYPES.CallExpression) {
-    const callee = current.callee;
+    const callee = unwrapExpression(current.callee);
+    const calleeReceiver = callee.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(callee.object) : callee;
     if (
       callee.type !== AST_NODE_TYPES.MemberExpression ||
-      callee.computed ||
-      callee.property.type !== AST_NODE_TYPES.Identifier
+      ASTUtils.getPropertyName(callee) === null
     ) {
       return null;
     }
     chain.push(current);
-    if (callee.object.type === AST_NODE_TYPES.Identifier) {
-      return zodNamespaces.has(callee.object.name) ? chain.reverse() : null;
+    if (calleeReceiver.type === AST_NODE_TYPES.Identifier) {
+      return zodNamespaces.has(calleeReceiver.name) ? chain.reverse() : null;
     }
-    current = callee.object;
+    current = calleeReceiver;
   }
   return null;
 }
 
 function twinMethodName(call: TSESTree.CallExpression): string {
-  const callee = call.callee;
+  const callee = unwrapExpression(call.callee);
+
   return callee.type === AST_NODE_TYPES.MemberExpression &&
-    callee.property.type === AST_NODE_TYPES.Identifier
-    ? callee.property.name
+    ASTUtils.getPropertyName(callee) !== null
+    ? (ASTUtils.getPropertyName(callee) ?? "")
     : "";
 }
 
@@ -519,14 +523,12 @@ function twinSchemaFields(
   const baseMethod = twinMethodName(base);
   if (baseMethod !== "object" && baseMethod !== "strictObject") return null;
   if (rest.some((call) => !SHAPE_PRESERVING_METHODS.has(twinMethodName(call)))) return null;
-  const shape = base.arguments[0];
+  const shape = base.arguments[0] === undefined ? undefined : unwrapExpression(base.arguments[0]);
   if (shape === undefined || shape.type !== AST_NODE_TYPES.ObjectExpression) return null;
   const fields = new Map<string, SchemaField>();
   for (const property of shape.properties) {
-    if (property.type !== AST_NODE_TYPES.Property || property.computed) return null;
-    const { key } = property;
-    const name =
-      staticFieldName(key);
+    if (property.type !== AST_NODE_TYPES.Property) return null;
+    const name = ASTUtils.getPropertyName(property);
     if (name === null) return null;
     fields.set(name, twinSchemaField(property.value, zodNamespaces));
   }
@@ -538,25 +540,25 @@ function twinSchemaField(
   zodNamespaces: ReadonlySet<string>,
 ): SchemaField {
   const modifiers: string[] = [];
-  let current: TSESTree.Node = node;
+  let current: TSESTree.Node = unwrapExpression(node);
   let leaf: string | null = null;
   let leafCall: TSESTree.CallExpression | null = null;
   while (current.type === AST_NODE_TYPES.CallExpression) {
-    const callee = current.callee;
+    const callee = unwrapExpression(current.callee);
+    const calleeReceiver = callee.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(callee.object) : callee;
     if (
       callee.type !== AST_NODE_TYPES.MemberExpression ||
-      callee.computed ||
-      callee.property.type !== AST_NODE_TYPES.Identifier
+      ASTUtils.getPropertyName(callee) === null
     ) {
       break;
     }
-    const receiver = callee.object;
+    const receiver = calleeReceiver;
     if (receiver.type === AST_NODE_TYPES.Identifier && zodNamespaces.has(receiver.name)) {
-      leaf = callee.property.name;
+      leaf = (ASTUtils.getPropertyName(callee) ?? "");
       leafCall = current;
       break;
     }
-    modifiers.push(callee.property.name);
+    modifiers.push((ASTUtils.getPropertyName(callee) ?? ""));
     current = receiver;
   }
   return {
@@ -701,8 +703,7 @@ export default createRule<Options, MessageIds>({
           specifier.type === AST_NODE_TYPES.ImportNamespaceSpecifier ||
           specifier.type === AST_NODE_TYPES.ImportDefaultSpecifier ||
           (specifier.type === AST_NODE_TYPES.ImportSpecifier &&
-            specifier.imported.type === AST_NODE_TYPES.Identifier &&
-            specifier.imported.name === "z")
+            importSpecifierName(specifier) === "z")
         ) {
           zodNamespaces.add(specifier.local.name);
         }
@@ -850,11 +851,11 @@ export default createRule<Options, MessageIds>({
       },
 
       /** Records `XSchema.transform(...)` and equivalent module-level reshaping. */
-      "MemberExpression[computed=false]"(node: TSESTree.MemberExpression): void {
+      "MemberExpression"(node: TSESTree.MemberExpression): void {
         if (
           node.object.type === AST_NODE_TYPES.Identifier &&
-          node.property.type === AST_NODE_TYPES.Identifier &&
-          isPreferZodInferModuleReshaper(node.property.name)
+          ASTUtils.getPropertyName(node) !== null &&
+          isPreferZodInferModuleReshaper(ASTUtils.getPropertyName(node) ?? "")
         ) {
           reshapedSchemaNames.add(node.object.name);
         }

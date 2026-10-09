@@ -162,8 +162,7 @@ def test_unexpected_linter_exit_does_not_leak_output(monkeypatch: pytest.MonkeyP
     corpus.mkdir()
     (corpus / "secret.py").write_text("VALUE = 1\n", encoding="utf-8")
 
-    def fail(argv: tuple[str, ...], **_kwargs: object) -> SimpleNamespace:
-        _ = argv
+    def fail(_argv: tuple[str, ...], **_kwargs: object) -> SimpleNamespace:
         private = SimpleNamespace(retained_bytes=15, total_bytes=15, lines=1, truncated=False)
         return SimpleNamespace(returncode=2, stdout=private, stderr=private)
 

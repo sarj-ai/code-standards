@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 import subprocess
 from typing import ClassVar
@@ -8,6 +9,9 @@ from typing import ClassVar
 from pydantic import BaseModel, ConfigDict, Field
 import pytest
 import yaml
+
+from sarj_standards.libs.release.process import credential_free_environment
+from sarj_standards.libs.release.reviewed_analysis import AnalysisProof, CheckKind
 
 
 SCRIPT = Path(__file__).resolve().parents[3] / ".github/scripts/ci-scope.sh"
@@ -99,9 +103,26 @@ def route(root: Path, base: str, head: str, *, event: str = "pull_request") -> f
             {"standards", "docs", "mobile", "codeql-python"},
             id="runner-mobile-dependency",
         ),
+        pytest.param(
+            "packages/standards/src/sarj_standards/libs/release/status.py",
+            {"standards", "docs", "codeql-python"},
+            id="release-no-mobile",
+        ),
         pytest.param("packages/standards/tests/test_api.py", {"standards", "codeql-python"}, id="runner-test-only"),
         pytest.param("packages/standards/src/sarj_standards/configs/ruff.strict.toml", SCOPES, id="shared-config"),
         pytest.param(".github/scripts/ci-scope.sh", SCOPES, id="routing-change"),
+        pytest.param(".github/workflows/ci.yml", SCOPES, id="shared-ci"),
+        pytest.param(".github/workflows/commit-policy.yml", {"standards", "docs"}, id="commit-policy"),
+        pytest.param(".github/workflows/standards-rollout.yml", {"standards", "docs"}, id="fleet-workflow"),
+        pytest.param(".github/scripts/dispatch-standards-rollout.sh", {"standards", "docs"}, id="fleet-dispatch"),
+        pytest.param(".github/scripts/verify-docs.sh", {"standards", "docs"}, id="complete-docs-gate"),
+        pytest.param(
+            ".github/scripts/verify_registry_publication.py",
+            {"standards", "docs", "codeql-python"},
+            id="registry-publication",
+        ),
+        pytest.param(".github/workflows/private-refs.yml", {"standards", "docs"}, id="private-probe"),
+        pytest.param(".github/workflows/ruff-freshness.yml", {"standards", "docs"}, id="freshness-probe"),
         pytest.param(".sarj-standards.toml", {"standards", "docs"}, id="bundle-manifest"),
         pytest.param("packages/standards/uv.lock", {"standards", "docs", "mobile"}, id="runner-dependencies"),
         pytest.param(
@@ -117,14 +138,15 @@ def route(root: Path, base: str, head: str, *, event: str = "pull_request") -> f
         ),
     ],
 )
-def test_pr_selects_owners_and_consumers(repository: Path, path: str, expected: set[str]) -> None:
+@pytest.mark.parametrize("event", ["pull_request", "push"])
+def test_pr_selects_owners_and_consumers(repository: Path, path: str, expected: set[str], event: str) -> None:
     base = git(repository, "rev-parse", "HEAD")
     source = repository / path
     source.parent.mkdir(parents=True, exist_ok=True)
     source.write_text("fixture\n")
     git(repository, "add", "--", path)
     git(repository, "commit", "-qm", "change")
-    assert route(repository, base, git(repository, "rev-parse", "HEAD")) == expected
+    assert route(repository, base, git(repository, "rev-parse", "HEAD"), event=event) == expected
 
 
 def test_cross_package_rename_checks_old_and_new_owners(repository: Path) -> None:
@@ -256,7 +278,7 @@ def test_dependency_changes_or_comparison_errors_keep_mobile(
     assert "mobile" in route(repository, base, git(repository, "rev-parse", "HEAD"))
 
 
-@pytest.mark.parametrize("event", ["push", "workflow_dispatch"])
+@pytest.mark.parametrize("event", ["push", "workflow_dispatch", "schedule"])
 def test_non_pr_events_keep_complete_validation(repository: Path, event: str) -> None:
     assert route(repository, "", "", event=event) == SCOPES
 
@@ -358,7 +380,7 @@ def test_routing_failure_cannot_silently_skip_required_jobs() -> None:
 
 def test_required_standards_gate_requires_both_lanes_and_routing() -> None:
     gate = workflow("ci.yml").jobs["standards"]
-    assert gate.needs == ["changes", "static-analysis", "package-tests"]
+    assert gate.needs == ["changes", "static-analysis", "package-tests", "adoption-smoke"]
     assert gate.condition.startswith("always()")
     assert "needs.changes.result != 'success'" in gate.condition
     [guard] = [step for step in gate.steps if step.run]
@@ -366,13 +388,14 @@ def test_required_standards_gate_requires_both_lanes_and_routing() -> None:
         "needs.changes.result != 'success'",
         "needs.static-analysis.result != 'success'",
         "needs.package-tests.result != 'success'",
+        "needs.adoption-smoke.result != 'success'",
     }
     assert guard.run == "exit 1"
 
 
 def test_required_matrix_checks_keep_their_names_when_unaffected() -> None:
     typescript = workflow("ci.yml").jobs["typescript"]
-    assert typescript.condition == "always() && github.event_name != 'schedule'"
+    assert typescript.condition == "always()"
     for step in typescript.steps[2:]:
         assert "needs.changes.outputs.typescript != 'false'" in step.condition
     assert workflow("ci.yml").jobs["portability-smoke"].name == "standards portability (ubuntu-latest)"
@@ -406,17 +429,16 @@ def test_private_reference_fetch_excludes_existing_main_history(repository: Path
     assert git(candidate, "rev-parse", "--is-shallow-repository") == "false"
 
 
-def test_scheduled_ci_selects_only_security(repository: Path) -> None:
-    assert route(repository, "", "", event="schedule") == {
-        "codeql-python",
-        "codeql-javascript-typescript",
-        "docs-audit",
-    }
+def test_scheduled_ci_audits_every_package(repository: Path) -> None:
+    assert route(repository, "", "", event="schedule") == SCOPES
 
 
 def test_ci_detects_changes_once_and_never_deploys_on_schedule() -> None:
     workflows = SCRIPT.parents[1] / "workflows"
-    assert sum(path.read_text().count("run: bash .github/scripts/ci-scope.sh") for path in workflows.glob("*.yml")) == 1
+    assert (
+        sum(path.read_text().count("bash .github/scripts/ci-select-scope.sh") for path in workflows.glob("*.yml")) == 1
+    )
+    assert SCRIPT.with_name("ci-select-scope.sh").read_text().count("bash .github/scripts/ci-scope.sh") == 1
     jobs = workflow("ci.yml").jobs
     assert jobs["changes"].name == "Detect affected checks"
     deploy = jobs["docs-deploy"]
@@ -424,6 +446,44 @@ def test_ci_detects_changes_once_and_never_deploys_on_schedule() -> None:
     assert deploy.condition == (
         "github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')"
     )
+
+
+@pytest.mark.parametrize(
+    "case", ["success", "failed", "pending", "fork", "wrong-sha", "pr", "missing", "latest-failed"]
+)
+def test_incremental_checks_require_successful_exact_main_baseline(tmp_path: Path, case: str) -> None:
+    sha = "a" * 40
+    run = {
+        "id": 1,
+        "head_sha": "b" * 40 if case == "wrong-sha" else sha,
+        "event": "pull_request" if case == "pr" else "push",
+        "head_branch": "main",
+        "head_repository": {"full_name": "fork/repo" if case == "fork" else "owner/repo"},
+        "path": ".github/workflows/ci.yml",
+        "conclusion": {"failed": "failure", "pending": None}.get(case, "success"),
+    }
+    runs = [] if case == "missing" else [run]
+    if case == "latest-failed":
+        runs.append({**run, "id": 2, "conclusion": "failure"})
+    response = tmp_path / "response.json"
+    response.write_text(json.dumps({"workflow_runs": runs}), encoding="utf-8")
+    executable = tmp_path / "bin/gh"
+    executable.parent.mkdir()
+    executable.write_text('#!/usr/bin/env bash\ncat "$CI_TEST_RESPONSE"\n', encoding="utf-8")
+    executable.chmod(0o755)
+    environment = credential_free_environment()
+    environment["PATH"] = str(executable.parent) + os.pathsep + environment.get("PATH", os.defpath)
+    environment["CI_TEST_RESPONSE"] = str(response)
+    result = subprocess.run(
+        ("bash", str(SCRIPT.with_name("ci-base-certified.sh")), "owner/repo", sha),
+        env=environment,
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert (result.returncode == 0) is (case == "success")
+    assert not result.stdout
 
 
 @pytest.mark.parametrize(
@@ -436,16 +496,160 @@ def test_ci_completion_covers_every_job_and_rejects_failures(result: str, accept
     assert isinstance(terminal.needs, list)
     assert set(terminal.needs) == set(jobs) - {"complete"}
     assert terminal.condition == "always()"
-    [step] = [step for step in terminal.steps if step.run]
-    results = {key: {"result": "success"} for key in jobs if key != "complete"}
-    for key in results:
-        candidate = results | {key: {"result": result}}
-        process = subprocess.run(
-            ("bash", "-c", step.run),
-            env={"PATH": "/usr/bin:/bin", "RESULTS": json.dumps(candidate)},
+    [step] = [step for step in terminal.steps if step.run and step.name == "Require all selected checks to succeed"]
+    # GitHub defines needs.<job>.result as this closed four-value set:
+    # https://docs.github.com/en/actions/reference/workflows-and-actions/contexts#needs-context
+    assert step.run == "exit 1"
+    assert step.condition == "contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')"
+    rejected = {
+        term.removeprefix("contains(needs.*.result, '").removesuffix("')") for term in step.condition.split(" || ")
+    }
+    for key in terminal.needs:
+        candidate = dict.fromkeys(terminal.needs, "success") | {key: result}
+        triggers_guard = bool(rejected.intersection(candidate.values()))
+        previous_gate_accepts = all(value in {"success", "skipped"} for value in candidate.values())
+        assert triggers_guard is not previous_gate_accepts
+        assert previous_gate_accepts is accepted
+
+
+@pytest.mark.parametrize("kind", list(CheckKind))
+def test_analysis_certificate_records_checked_tree_and_comparison_base(repository: Path, kind: CheckKind) -> None:
+    base = git(repository, "rev-parse", "HEAD")
+    (repository / "source.py").write_text("VALUE = 1\n")
+    git(repository, "add", "source.py")
+    git(repository, "commit", "-qm", "checked source")
+    event = repository / "event.json"
+    event.write_text(json.dumps({"pull_request": {"base": {"sha": base}}}))
+    destination = repository / "certificate"
+    environment = credential_free_environment()
+    environment.update(
+        {
+            "GITHUB_REPOSITORY": "owner/repo",
+            "GITHUB_EVENT_PATH": str(event),
+            "GITHUB_RUN_ID": "7",
+            "GITHUB_RUN_ATTEMPT": "2",
+        }
+    )
+    subprocess.run(
+        ("bash", str(SCRIPT.with_name("ci-record-analysis.sh")), kind, str(destination)),
+        cwd=repository,
+        env=environment,
+        check=True,
+        capture_output=True,
+        timeout=30,
+    )
+    proof = AnalysisProof.model_validate_json((destination / "proof.json").read_text())
+    assert proof.source_commit == git(repository, "rev-parse", "HEAD")
+    assert proof.tree == git(repository, "rev-parse", "HEAD^{tree}")
+    assert proof.comparison_base == base
+    assert proof.kind == kind
+    assert proof.run_id == 7
+    assert proof.run_attempt == 2
+
+
+@pytest.mark.parametrize("failed", ["git", "event-json"])
+def test_analysis_certificate_does_not_mask_metadata_failure(repository: Path, failed: str) -> None:
+    event = repository / "event.json"
+    event.write_text("broken JSON" if failed == "event-json" else '{"pull_request":{"base":{"sha":"base"}}}')
+    environment = credential_free_environment()
+    environment.update(
+        {
+            "GITHUB_REPOSITORY": "owner/repo",
+            "GITHUB_EVENT_PATH": str(event),
+            "GITHUB_RUN_ID": "7",
+            "GITHUB_RUN_ATTEMPT": "2",
+        }
+    )
+    if failed == "git":
+        executable = repository / "bin/git"
+        executable.parent.mkdir()
+        executable.write_text("#!/usr/bin/env bash\nexit 7\n")
+        executable.chmod(0o755)
+        environment["PATH"] = str(executable.parent) + os.pathsep + environment.get("PATH", os.defpath)
+    destination = repository / "certificate"
+    result = subprocess.run(
+        ("bash", str(SCRIPT.with_name("ci-record-analysis.sh")), "static", str(destination)),
+        cwd=repository,
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=30,
+    )
+    assert result.returncode != 0
+    assert not (destination / "proof.json").exists()
+
+
+@pytest.mark.parametrize("failed", ["none", "ruff", "ruff-helpers", "types", "dogfood", "shellcheck", "shfmt"])
+def test_parallel_static_gate_propagates_every_background_failure(tmp_path: Path, failed: str) -> None:
+    job = workflow("ci.yml").jobs["static-analysis"]
+    steps = [
+        step
+        for step in job.steps
+        if step.name in {"Lint, typecheck, and native shell checks", "Check repository standards"}
+    ]
+    assert len(steps) == 2
+    assert all(step.condition == "needs.changes.outputs.reviewed-static != 'true'" for step in steps)
+    [certificate] = [step for step in job.steps if step.name == "Record the successfully checked PR tree"]
+    assert job.steps.index(steps[1]) < job.steps.index(certificate)
+    executable = tmp_path / "bin/uv"
+    executable.parent.mkdir()
+    executable.write_text(
+        "#!/usr/bin/env bash\n"
+        'case "$*" in\n'
+        '  "run ruff check src/ tests/"*) label=ruff ;;\n'
+        '  "run ruff check ../../.github/scripts/"*) label=ruff-helpers ;;\n'
+        '  "run basedpyright src/ tests/ "*) label=types ;;\n'
+        '  "run code-standards --root ../.. check --jobs 2 .") label=dogfood ;;\n'
+        "  *) exit 99 ;;\n"
+        "esac\n"
+        'printf "%s\\n" "$label" >> "$CHECK_LOG"\n'
+        '[[ "$label" != "$FAILED" ]]\n'
+    )
+    executable.chmod(0o755)
+    native_launcher = executable.with_name("mise")
+    native_launcher.write_text(
+        "#!/usr/bin/env bash\n"
+        '[[ "$MISE_OFFLINE" == true ]] || exit 98\n'
+        'case "$*" in\n'
+        '  "--no-config --no-env --no-hooks exec aqua:koalaman/shellcheck@0.11.0 -- "*) label=shellcheck ;;\n'
+        '  "--no-config --no-env --no-hooks exec aqua:mvdan/sh@3.14.1 -- "*) label=shfmt ;;\n'
+        "  *) exit 99 ;;\n"
+        "esac\n"
+        '[[ "$label" != "$FAILED" ]]\n'
+    )
+    native_launcher.chmod(0o755)
+    scripts = tmp_path / ".github/scripts"
+    scripts.mkdir(parents=True)
+    scripts.joinpath("ci-static-analysis.sh").write_text(SCRIPT.with_name("ci-static-analysis.sh").read_text())
+    workdir = tmp_path / "packages/standards"
+    workdir.mkdir(parents=True)
+    summary = tmp_path / "summary"
+    environment = credential_free_environment()
+    environment.update(
+        {
+            "PATH": str(executable.parent) + os.pathsep + environment.get("PATH", os.defpath),
+            "FAILED": failed,
+            "GITHUB_STEP_SUMMARY": str(summary),
+            "CHECK_LOG": str(tmp_path / "checks.log"),
+        }
+    )
+
+    def run_step(step: WorkflowStep) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            ("bash", "-eu", "-o", "pipefail", "-c", step.run),
+            cwd=workdir,
+            env=environment,
             capture_output=True,
             text=True,
             check=False,
-            timeout=10,
+            timeout=30,
         )
-        assert process.returncode == (0 if accepted else 1), (key, process.stderr)
+
+    result = run_step(steps[0])
+    if result.returncode == 0:
+        result = run_step(steps[1])
+    assert result.returncode == (0 if failed == "none" else 1), result.stderr
+    assert len(summary.read_text().splitlines()) == 5
+    checks = (tmp_path / "checks.log").read_text().splitlines()
+    assert checks.count("dogfood") == (1 if failed in {"none", "dogfood"} else 0)

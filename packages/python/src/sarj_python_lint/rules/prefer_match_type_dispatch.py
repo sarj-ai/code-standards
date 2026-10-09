@@ -100,7 +100,9 @@ class PreferMatchTypeDispatch(Rule):
         autofix=AutofixPolicy.NONE,
         limitations=(
             "General dispatch requires three or more adjacent, unguarded `isinstance` branches over the same simple name. Two arms are checked only for an exact `ast.Name.id` / `ast.Attribute.attr` projection followed by a None-returning fallback.",
-            "The checked types must be unshadowed builtins, unshadowed module-local classes, or proven stdlib ast classes; unresolved imports, runtime type groups, repeated type references, generated files, and non-terminating sibling checks are excluded.",
+            "A terminating sibling prefix may precede a two-arm if/elif tail whose bodies can fall through. Preserve nested checks inside case bodies rather than moving them into case guards.",
+            "The checked types must be unshadowed builtins, undecorated module-local classes without an explicit or known locally inherited custom metaclass, or proven stdlib ast classes; unresolved imports, runtime type groups, repeated type references, generated files, and non-terminating sibling checks are excluded.",
+            "Local ancestry must resolve to stable undeclared-metaclass classes or proven builtin/stdlib ast bases. External bases, runtime base aliases, and parameterized base expressions remain excluded because their metaclass or __class_getitem__ effects are unproven.",
             "Nested attribute-validation guards are excluded: converting them to keyword class patterns can turn attribute errors into match fallthrough, and an imported isinstance operand may be a runtime tuple rather than a class.",
             "A terminal-looking context-manager body does not prove a sibling branch terminates: exceptions can be suppressed. An unconditional return or raise after the context manager remains eligible.",
             "Declared support for Python before 3.10 suppresses this recommendation when proven by the nearest project metadata or exact installed-distribution ownership. Missing or ambiguous target metadata retains advisory behavior; it does not prove a modern target.",
@@ -194,6 +196,36 @@ class PreferMatchTypeDispatch(Rule):
                 expected_count=0,
                 public=True,
             ),
+            RuleExample(
+                example_id="terminal-prefix-with-conditional-tail",
+                title="A terminating prefix and conditional if/elif tail dispatch on the same AST node",
+                outcome=ExampleOutcome.MATCH,
+                scenario="mixed-type-dispatch",
+                files=(
+                    ExampleFile.python(
+                        "app/bindings.py",
+                        "import ast\ndef has_binding(node, name):\n    if isinstance(node, ast.ListComp):\n        return True\n    if isinstance(node, ast.FunctionDef):\n        if name in bindings(node):\n            return True\n    elif isinstance(node, ast.ClassDef):\n        if name in bindings(node):\n            return True\n    return False\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/bindings.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="class-patterns-with-nested-checks",
+                title="Class patterns preserve the nested checks within their case bodies",
+                outcome=ExampleOutcome.NO_MATCH,
+                scenario="mixed-type-dispatch",
+                files=(
+                    ExampleFile.python(
+                        "app/bindings.py",
+                        "import ast\ndef has_binding(node, name):\n    match node:\n        case ast.ListComp():\n            return True\n        case ast.FunctionDef():\n            if name in bindings(node):\n                return True\n        case ast.ClassDef():\n            if name in bindings(node):\n                return True\n    return False\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/bindings.py"),
+                expected_count=0,
+                public=True,
+            ),
         ),
     )
     description: str = documentation.summary
@@ -208,13 +240,20 @@ class PreferMatchTypeDispatch(Rule):
             return []
         imports = context.imports
         all_nodes = tuple(context.nodes(ast.AST))
-        unsafe_bindings = _unsafe_local_bound_names(tree, all_nodes)
+        unsafe_bindings = _unsafe_local_bound_names(tree, all_nodes, imports) | frozenset(
+            qualified
+            for node in all_nodes
+            if isinstance(node, ast.Attribute)
+            and isinstance(node.ctx, (ast.Store, ast.Del))
+            and (qualified := imports.resolved_qualified_name(node)) is not None
+            and qualified.startswith(("ast.", "builtins."))
+        )
         has_wildcard_import = any(
             isinstance(node, ast.ImportFrom) and any(alias.name == "*" for alias in node.names) for node in all_nodes
         )
         if not imports.builtin_is_unshadowed("isinstance") or "isinstance" in unsafe_bindings or has_wildcard_import:
             return []
-        local_classes = _unshadowed_module_classes(tree, all_nodes)
+        local_classes = _unshadowed_module_classes(tree, all_nodes, imports, unsafe_bindings)
         findings = _ladder_findings(
             all_nodes,
             path,
@@ -249,32 +288,102 @@ class PreferMatchTypeDispatch(Rule):
         return findings
 
 
-def _unshadowed_module_classes(tree: ast.Module, all_nodes: tuple[ast.AST, ...]) -> frozenset[str]:
-    classes = [statement.name for statement in tree.body if isinstance(statement, ast.ClassDef)]
-    rebound = {
-        candidate.id
-        for candidate in all_nodes
-        if isinstance(candidate, ast.Name) and isinstance(candidate.ctx, (ast.Store, ast.Del))
-    }
-    rebound.update(candidate.arg for candidate in all_nodes if isinstance(candidate, ast.arg))
-    rebound.update(
-        candidate.name
-        for candidate in all_nodes
-        if isinstance(candidate, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
-        and (not isinstance(candidate, ast.ClassDef) or candidate not in tree.body)
-    )
+def _unshadowed_module_classes(
+    tree: ast.Module, all_nodes: tuple[ast.AST, ...], imports: ImportIndex, unsafe_bindings: frozenset[str]
+) -> frozenset[str]:
+    declarations = [statement for statement in tree.body if isinstance(statement, ast.ClassDef)]
+    rebound: set[str] = set()
+    for node in all_nodes:
+        match node:
+            case (
+                ast.Name(id=name, ctx=ast.Store() | ast.Del())
+                | ast.arg(arg=name)
+                | ast.FunctionDef(name=name)
+                | ast.AsyncFunctionDef(name=name)
+            ):
+                rebound.add(name)
+            case ast.ClassDef(name=name) if node not in tree.body:
+                rebound.add(name)
+            case _:
+                pass
     _add_module_import_bindings(tree, rebound)
-    return frozenset(name for name in classes if classes.count(name) == 1 and name not in rebound)
+    names = [declaration.name for declaration in declarations]
+    stable = [
+        declaration
+        for declaration in declarations
+        if names.count(declaration.name) == 1 and declaration.name not in rebound
+    ]
+    nominal = _nominal_class_ancestry(stable, imports, unsafe_bindings)
+    return frozenset(
+        declaration.name
+        for declaration in stable
+        if declaration.name in nominal
+        and not any(keyword.arg in {"metaclass", None} for keyword in declaration.keywords)
+    )
 
 
-def _unsafe_local_bound_names(tree: ast.Module, all_nodes: tuple[ast.AST, ...]) -> frozenset[str]:
-    module_imports = {id(statement) for statement in tree.body if isinstance(statement, (ast.Import, ast.ImportFrom))}
-    names = {
-        alias.asname or alias.name.partition(".")[0]
-        for statement in all_nodes
-        if isinstance(statement, (ast.Import, ast.ImportFrom)) and id(statement) not in module_imports
-        for alias in statement.names
-    }
+def _nominal_class_ancestry(
+    declarations: list[ast.ClassDef], imports: ImportIndex, unsafe_bindings: frozenset[str]
+) -> frozenset[str]:
+    proven: frozenset[str] = frozenset()
+    while True:
+        nominal = frozenset(
+            declaration.name
+            for declaration in declarations
+            if not declaration.decorator_list
+            and not _unproven_metaclass_header(declaration, imports, unsafe_bindings)
+            and all(_nominal_base(base, imports, proven, unsafe_bindings) for base in declaration.bases)
+        )
+        if nominal <= proven:
+            return proven
+        proven |= nominal
+
+
+def _nominal_base(
+    expression: ast.expr, imports: ImportIndex, local_classes: frozenset[str], unsafe_bindings: frozenset[str]
+) -> bool:
+    if isinstance(expression, ast.Subscript):
+        return False
+    return _type_reference(expression, imports, local_classes, unsafe_bindings) is not None or (
+        _builtin_class_reference(expression, imports, unsafe_bindings) is not None
+    )
+
+
+def _unproven_metaclass_header(
+    declaration: ast.ClassDef, imports: ImportIndex, unsafe_bindings: frozenset[str]
+) -> bool:
+    for keyword in declaration.keywords:
+        if keyword.arg is None:
+            return True
+        if keyword.arg != "metaclass":
+            continue
+        if _builtin_class_reference(keyword.value, imports, unsafe_bindings) == "type":
+            continue
+        return True
+    return False
+
+
+def _builtin_class_reference(expression: ast.expr, imports: ImportIndex, unsafe_bindings: frozenset[str]) -> str | None:
+    root = expression
+    while isinstance(root, ast.Attribute):
+        root = root.value
+    if not isinstance(root, ast.Name) or root.id in unsafe_bindings:
+        return None
+    if (
+        isinstance(expression, ast.Name)
+        and expression.id in _BUILTIN_TYPES
+        and imports.builtin_is_unshadowed(expression.id)
+        and f"builtins.{expression.id}" not in unsafe_bindings
+    ):
+        return expression.id
+    symbol = imports.resolved_symbol(expression, sources=frozenset({"builtins"}))
+    if symbol in _BUILTIN_TYPES and f"builtins.{symbol}" not in unsafe_bindings:
+        return symbol
+    return None
+
+
+def _unsafe_local_bound_names(tree: ast.Module, all_nodes: tuple[ast.AST, ...], imports: ImportIndex) -> frozenset[str]:
+    names = _unsafe_import_bound_names(tree, all_nodes, imports)
     names.update(
         candidate.name
         for candidate in all_nodes
@@ -286,6 +395,31 @@ def _unsafe_local_bound_names(tree: ast.Module, all_nodes: tuple[ast.AST, ...]) 
         if isinstance(candidate, ast.MatchMapping) and candidate.rest is not None
     )
     return frozenset(names)
+
+
+def _unsafe_import_bound_names(tree: ast.Module, all_nodes: tuple[ast.AST, ...], imports: ImportIndex) -> set[str]:
+    module_imports = {id(statement) for statement in tree.body if isinstance(statement, (ast.Import, ast.ImportFrom))}
+    names: set[str] = set()
+    for statement in all_nodes:
+        if not isinstance(statement, (ast.Import, ast.ImportFrom)):
+            continue
+        relative = isinstance(statement, ast.ImportFrom) and statement.level > 0
+        if id(statement) in module_imports and not relative:
+            continue
+        for alias in statement.names:
+            if not _preserves_indexed_import(statement, alias, imports):
+                names.add(alias.asname or alias.name.partition(".")[0])
+    return names
+
+
+def _preserves_indexed_import(statement: ast.Import | ast.ImportFrom, alias: ast.alias, imports: ImportIndex) -> bool:
+    local = alias.asname or alias.name.partition(".")[0]
+    target = imports.bindings.get(local)
+    if target is None:
+        return False
+    if isinstance(statement, ast.ImportFrom):
+        return not statement.level and target.module == statement.module and target.symbol == alias.name
+    return target.module == alias.name and target.symbol is None
 
 
 def _ladder_findings(
@@ -330,30 +464,61 @@ def _sibling_findings(
     def collect_block(statements: list[ast.stmt]) -> None:
         index = 0
         while index < len(statements):
-            run: list[ast.If] = []
-            cursor = index
-            subject: str | None = None
-            seen: set[str] = set()
-            while cursor < len(statements):
-                statement = statements[cursor]
-                if not isinstance(statement, ast.If) or statement.orelse or not _body_terminates(statement.body):
-                    break
-                branch = _type_branch(statement.test, imports, local_classes, unsafe_bindings)
-                if branch is None or (subject is not None and branch.subject != subject) or bool(seen & branch.types):
-                    break
-                run.append(statement)
-                subject = branch.subject
-                seen.update(branch.types)
-                cursor += 1
+            run = _terminal_prefix(statements, index, imports, local_classes, unsafe_bindings)
+            cursor = index + len(run)
+            if run and cursor < len(statements):
+                tail_statement = statements[cursor]
+                if isinstance(tail_statement, ast.If):
+                    tail = _two_arm_ladder(tail_statement)
+                    if tail and _dispatch([*run, *tail], imports, local_classes, unsafe_bindings) is not None:
+                        run.extend(tail)
+                        cursor += 1
             dispatch = _dispatch(run, imports, local_classes, unsafe_bindings)
             if dispatch is not None:
-                findings.append(_diagnostic(path, code, run[0], dispatch, "terminating isinstance sequence"))
+                shape = (
+                    "terminating isinstance prefix with if/elif tail"
+                    if run[-2].orelse
+                    else "terminating isinstance sequence"
+                )
+                findings.append(_diagnostic(path, code, run[0], dispatch, shape))
             index = max(cursor, index + 1)
 
     for owner in all_nodes:
         for statements in _statement_blocks(owner):
             collect_block(statements)
     return findings
+
+
+def _terminal_prefix(
+    statements: list[ast.stmt],
+    index: int,
+    imports: ImportIndex,
+    local_classes: frozenset[str],
+    unsafe_bindings: frozenset[str],
+) -> list[ast.If]:
+    run: list[ast.If] = []
+    subject: str | None = None
+    seen: set[str] = set()
+    for cursor in range(index, len(statements)):
+        statement = statements[cursor]
+        if not isinstance(statement, ast.If) or statement.orelse or not _body_terminates(statement.body):
+            break
+        branch = _type_branch(statement.test, imports, local_classes, unsafe_bindings)
+        if branch is None or (subject is not None and branch.subject != subject) or bool(seen & branch.types):
+            break
+        run.append(statement)
+        subject = branch.subject
+        seen.update(branch.types)
+    return run
+
+
+def _two_arm_ladder(statement: ast.If) -> tuple[ast.If, ast.If] | None:
+    if len(statement.orelse) != 1 or not isinstance(statement.orelse[0], ast.If):
+        return None
+    second = statement.orelse[0]
+    if len(second.orelse) == 1 and isinstance(second.orelse[0], ast.If):
+        return None
+    return statement, second
 
 
 def _dispatch(
@@ -555,6 +720,7 @@ def _type_reference(
             expression.id in _BUILTIN_TYPES
             and imports.builtin_is_unshadowed(expression.id)
             and expression.id not in unsafe_bindings
+            and f"builtins.{expression.id}" not in unsafe_bindings
         ):
             return expression.id
         if expression.id in local_classes and expression.id not in unsafe_bindings:
@@ -565,7 +731,11 @@ def _type_reference(
     if isinstance(root, ast.Name) and root.id in unsafe_bindings:
         return None
     symbol = imports.resolved_symbol(expression, sources=frozenset({"ast"}))
-    if symbol is None or not (symbol[:1].isupper() or symbol in _LOWERCASE_AST_TYPES):
+    if (
+        symbol is None
+        or f"ast.{symbol}" in unsafe_bindings
+        or not (symbol[:1].isupper() or symbol in _LOWERCASE_AST_TYPES)
+    ):
         return None
     return f"ast.{symbol}"
 

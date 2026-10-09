@@ -64,8 +64,17 @@ def strip_sql_noise(
 
 def _quoted_sql_end(text: str, start: int) -> int:
     quote = text[start]
+    escape_string = (
+        quote == "'"
+        and start > 0
+        and text[start - 1] in {"E", "e"}
+        and (start == 1 or not (text[start - 2].isalnum() or text[start - 2] in {"_", "$"}))
+    )
     i = start + 1
     while i < len(text):
+        if escape_string and text[i] == "\\" and i + 1 < len(text):
+            i += 2
+            continue
         if text[i] != quote:
             i += 1
             continue
@@ -85,14 +94,30 @@ def _sql_noise_end(text: str, start: int, *, mask_dollar_quotes: bool) -> int | 
         end = text.find("\n", start)
         return len(text) if end == -1 else end
     if text.startswith("/*", start):
-        end = text.find("*/", start + 2)
-        return len(text) if end == -1 else end + 2
+        return _block_comment_end(text, start)
     if mask_dollar_quotes and ch == "$":
         return _dollar_quote_end(text, start)
     return None
 
 
+def _block_comment_end(text: str, start: int) -> int:
+    depth = 1
+    i = start + 2
+    while i < len(text) and depth:
+        if text.startswith("/*", i):
+            depth += 1
+            i += 2
+        elif text.startswith("*/", i):
+            depth -= 1
+            i += 2
+        else:
+            i += 1
+    return i
+
+
 def _dollar_quote_end(text: str, start: int) -> int | None:
+    if start > 0 and (text[start - 1].isalnum() or text[start - 1] in {"_", "$"}):
+        return None
     delimiter_end = text.find("$", start + 1)
     if delimiter_end == -1:
         return None

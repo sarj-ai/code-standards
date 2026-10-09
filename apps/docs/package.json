@@ -18,10 +18,11 @@
     "preview": "astro preview",
     "deploy": "wrangler deploy",
     "third-party-catalog:check": "node scripts/verify-third-party-catalog.mjs --source",
-    "verify:deployment": "node scripts/verify-deployment.mjs"
+    "verify:deployment": "node scripts/verify-deployment.mjs",
+    "audit:dependencies": "node scripts/audit-dependencies.mjs"
   },
   "dependencies": {
-    "@astrojs/starlight": "0.41.10",
+    "@astrojs/starlight": "0.41.11",
     "@sarj/design": "0.5.0",
     "astro": "7.3.5"
   },
@@ -45,6 +46,11 @@
     "node": ">=22.22.2"
   },
   "overrides": {
-    "sharp": "0.35.4"
+    "postcss-selector-parser": "7.1.6",
+    "http-cache-semantics": "https://codeload.github.com/kornelski/http-cache-semantics/tar.gz/11fb104275349bbd84bf21eafd40b18220c29c46",
+    "sharp": "0.35.5",
+    "miniflare": {
+      "undici": "7.29.1"
+    }
   }
 }

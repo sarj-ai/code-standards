@@ -1,8 +1,11 @@
+// vitest: shared-module-graph
 import * as parser from "@typescript-eslint/parser";
 import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, it } from "vitest";
 
 import rule from "../../src/rules/no-unlocalized-toast.js";
+
+import { verifyRuleExamples } from "../../src/verify-rule-examples.js";
 
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
@@ -40,4 +43,38 @@ RULE_TESTER.run("no-unlocalized-toast", rule, {
       errors: [{ messageId: "unlocalized" }],
     },
   ],
+});
+
+
+it("preserves outcomes for static member access and unknown member keys", async () => {
+  const documentation = rule.documentation;
+  if (documentation === undefined) throw new Error("Missing rule documentation");
+  await verifyRuleExamples({ ...rule, documentation: { ...documentation, examples: [
+  {
+    "id": "literal-message-static-member",
+    "title": "Static member access preserves the rule outcome",
+    "outcome": "match",
+    "focusPath": "src/message.tsx",
+    "expectedCount": 1,
+    "files": [
+      {
+        "path": "src/message.tsx",
+        "source": "import { toast } from \"sonner\"; toast[\"success\"](\"Saved\");"
+      }
+    ]
+  },
+  {
+    "id": "literal-message-dynamic-member",
+    "title": "Unknown member access does not establish API identity",
+    "outcome": "no-match",
+    "focusPath": "src/message.tsx",
+    "expectedCount": 0,
+    "files": [
+      {
+        "path": "src/message.tsx",
+        "source": "import { toast } from \"sonner\"; toast[auditDynamicMember](\"Saved\");"
+      }
+    ]
+  }
+] } });
 });

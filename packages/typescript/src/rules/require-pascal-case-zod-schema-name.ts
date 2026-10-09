@@ -11,6 +11,8 @@ import {
   ASTUtils,
 } from "@typescript-eslint/utils";
 
+import { unwrapExpression } from "./_unwrap-expression.js";
+
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile, isTestFile } from "./_paths.js";
 import { isZodModule } from "./_zod.js";
@@ -89,8 +91,8 @@ const SCHEMA_RETURNING_METHODS: ReadonlySet<string> = new Set([
 
 /** Return the final method name in a call chain. */
 const terminalMethodName = (callee: TSESTree.MemberExpression): string | null =>
-  !callee.computed && callee.property.type === AST_NODE_TYPES.Identifier
-    ? callee.property.name
+  ASTUtils.getPropertyName(callee) !== null
+    ? (ASTUtils.getPropertyName(callee) ?? "")
     : null;
 
 /** Return the identifier at the root of a fluent call/member chain. */
@@ -98,6 +100,7 @@ const calleeChainRoot = (node: TSESTree.Node): TSESTree.Identifier | null => {
   let current: TSESTree.Node = node;
 
   for (;;) {
+    current = unwrapExpression(current);
     if (current.type === AST_NODE_TYPES.Identifier) {
       return current;
     }
@@ -106,7 +109,7 @@ const calleeChainRoot = (node: TSESTree.Node): TSESTree.Identifier | null => {
       continue;
     }
     if (current.type === AST_NODE_TYPES.CallExpression) {
-      current = current.callee;
+      current = unwrapExpression(current.callee);
       continue;
     }
     return null;
@@ -117,14 +120,15 @@ const chainMemberNames = (node: TSESTree.Node): readonly string[] => {
   const names: string[] = [];
   let current = node;
   for (;;) {
+    current = unwrapExpression(current);
     if (current.type === AST_NODE_TYPES.MemberExpression) {
-      if (current.computed || current.property.type !== AST_NODE_TYPES.Identifier) return [];
-      names.push(current.property.name);
+      if (ASTUtils.getPropertyName(current) === null) return [];
+      names.push((ASTUtils.getPropertyName(current) ?? ""));
       current = current.object;
       continue;
     }
     if (current.type === AST_NODE_TYPES.CallExpression) {
-      current = current.callee;
+      current = unwrapExpression(current.callee);
       continue;
     }
     break;
@@ -133,18 +137,6 @@ const chainMemberNames = (node: TSESTree.Node): readonly string[] => {
   return names;
 };
 
-const unwrapExpression = (node: TSESTree.Expression): TSESTree.Expression => {
-  let current = node;
-  while (
-    current.type === AST_NODE_TYPES.TSAsExpression ||
-    current.type === AST_NODE_TYPES.TSSatisfiesExpression ||
-    current.type === AST_NODE_TYPES.TSNonNullExpression ||
-    current.type === AST_NODE_TYPES.TSTypeAssertion
-  ) {
-    current = current.expression;
-  }
-  return current;
-};
 
 const isModuleDeclarator = (node: TSESTree.VariableDeclarator): boolean => {
   const declaration = node.parent;
@@ -184,11 +176,24 @@ export default createRule<Options, MessageIds>({
       if (binding !== null) zodBindings.add(binding);
     }
 
-    function isZodChain(node: TSESTree.Node): boolean {
-      const root = calleeChainRoot(node);
-      if (root === null) return false;
-      const binding = resolvedBinding(root);
-      return binding !== null && zodBindings.has(binding);
+    function isConfirmedSchema(expression: TSESTree.Expression): boolean {
+      const init = unwrapExpression(expression);
+      if (init.type === AST_NODE_TYPES.Identifier) return isSchemaBinding(init);
+      if (init.type !== AST_NODE_TYPES.CallExpression) return false;
+      const callee = unwrapExpression(init.callee);
+      if (callee.type !== AST_NODE_TYPES.MemberExpression) {
+        return false;
+      }
+      const terminal = terminalMethodName(callee);
+      if (terminal === null || NON_SCHEMA_TERMINALS.has(terminal)) return false;
+      const names = chainMemberNames(callee);
+      if (names.length === 0) return false;
+      if (isZodChain(callee)) {
+        return ZOD_SCHEMA_FACTORIES.has(names[0] ?? "") ||
+          (ZOD_FACTORY_NAMESPACES.has(names[0] ?? "") && ZOD_SCHEMA_FACTORIES.has(names[1] ?? ""));
+      }
+      const root = calleeChainRoot(callee);
+      return root !== null && isSchemaBinding(root) && SCHEMA_RETURNING_METHODS.has(terminal);
     }
 
     function isSchemaBinding(identifier: TSESTree.Identifier): boolean {
@@ -196,22 +201,11 @@ export default createRule<Options, MessageIds>({
       return binding !== null && schemaBindings.has(binding);
     }
 
-    function isConfirmedSchema(expression: TSESTree.Expression): boolean {
-      const init = unwrapExpression(expression);
-      if (init.type === AST_NODE_TYPES.Identifier) return isSchemaBinding(init);
-      if (init.type !== AST_NODE_TYPES.CallExpression || init.callee.type !== AST_NODE_TYPES.MemberExpression) {
-        return false;
-      }
-      const terminal = terminalMethodName(init.callee);
-      if (terminal === null || NON_SCHEMA_TERMINALS.has(terminal)) return false;
-      const names = chainMemberNames(init.callee);
-      if (names.length === 0) return false;
-      if (isZodChain(init.callee)) {
-        return ZOD_SCHEMA_FACTORIES.has(names[0] ?? "") ||
-          (ZOD_FACTORY_NAMESPACES.has(names[0] ?? "") && ZOD_SCHEMA_FACTORIES.has(names[1] ?? ""));
-      }
-      const root = calleeChainRoot(init.callee);
-      return root !== null && isSchemaBinding(root) && SCHEMA_RETURNING_METHODS.has(terminal);
+    function isZodChain(node: TSESTree.Node): boolean {
+      const root = calleeChainRoot(node);
+      if (root === null) return false;
+      const binding = resolvedBinding(root);
+      return binding !== null && zodBindings.has(binding);
     }
 
     // Test and benchmark schemas are local fixtures rather than APIs.

@@ -11,9 +11,10 @@ import tempfile
 from types import MappingProxyType
 from typing import Annotated, ClassVar, Final, Literal, NewType
 
-from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
+from pydantic import BaseModel, ConfigDict, Field, RootModel
 import typer
 
+from sarj_standards.libs.linting import security_tools
 from sarj_standards.libs.linting.devops_tools import TOOLS
 
 
@@ -53,12 +54,27 @@ _DETEKT_RULE_SETS: Final = frozenset(
 
 type ProfileName = Literal["application", "standard"]
 type ProviderEngine = Literal[
-    "deptry", "detekt", "devops", "eslint", "ktlint", "mobsfscan", "react-doctor", "ruff", "swiftformat", "swiftlint"
+    "checkov",
+    "deptry",
+    "detekt",
+    "devops",
+    "eslint",
+    "ktlint",
+    "mobsfscan",
+    "react-doctor",
+    "ruff",
+    "swiftformat",
+    "swiftlint",
+    "zizmor",
 ]
 type ProjectionScope = Literal["complete", "config-explicit", "provider-only"]
 RuleId = NewType("RuleId", str)
 DisplayRuleId = NewType("DisplayRuleId", str)
 ContextId = NewType("ContextId", str)
+
+
+class _MobileToolVersions(RootModel[dict[str, str]]):
+    pass
 
 
 class _FrozenModel(BaseModel):
@@ -149,6 +165,10 @@ class _CatalogArtifact(_FrozenModel):
     rules: tuple[_Rule, ...]
 
 
+class _RuffMetadataList(RootModel[tuple[_RuffMetadata, ...]]):
+    pass
+
+
 @dataclass(frozen=True, slots=True)
 class _RuffProjection:
     provider: _Provider
@@ -166,7 +186,7 @@ class _MobileProviderSpec:
 
 
 @dataclass(frozen=True, slots=True)
-class _MobileProjection:
+class _ToolProjection:
     providers: tuple[_Provider, ...]
     rules: tuple[_Rule, ...]
 
@@ -195,27 +215,29 @@ def parse_enabled_ruff_rules(settings: str) -> frozenset[str]:
 
 def build(root: Path) -> _CatalogArtifact:
     resolved = root.resolve()
-    node = shutil.which("node")
-    npm = shutil.which("npm")
-    ruff = shutil.which("ruff")
-    deptry = shutil.which("deptry")
-    if node is None or npm is None or ruff is None or deptry is None:
-        missing = "node" if node is None else "npm" if npm is None else "ruff" if ruff is None else "deptry"
-        msg = f"cannot generate third-party catalog: {missing} is not installed"
-        raise RuntimeError(msg)
+    node = _required_tool("node")
+    npm = _required_tool("npm")
+    ruff = _required_tool("ruff")
+    deptry = _required_tool("deptry")
     _run((npm, "run", "build", "--silent"), cwd=resolved / "packages/typescript")
     eslint = _eslint_projection(resolved, node)
     react_doctor = _react_doctor_projection(resolved, node)
     ruff_projection = _ruff_projection(resolved, ruff)
     deptry_projection = _deptry_projection(resolved, deptry)
-    mobile = _mobile_projections(resolved)
-    rules = (*eslint.rules, *react_doctor.rules, *ruff_projection.rules, *deptry_projection.rules, *mobile.rules)
+    supplemental = (_mobile_projections(resolved), _security_projections())
+    rules = (
+        *eslint.rules,
+        *react_doctor.rules,
+        *ruff_projection.rules,
+        *deptry_projection.rules,
+        *(rule for projection in supplemental for rule in projection.rules),
+    )
     providers = (
         *eslint.providers,
         _react_doctor_provider(resolved),
         ruff_projection.provider,
         deptry_projection.provider,
-        *mobile.providers,
+        *(provider for projection in supplemental for provider in projection.providers),
         *_devops_providers(),
     )
     included_providers = {rule.provider for rule in rules} | {
@@ -239,7 +261,6 @@ def _devops_providers() -> tuple[_Provider, ...]:
         ("shfmt", "shfmt", "https://github.com/mvdan/sh"),
         ("shellcheck", "ShellCheck", "https://www.shellcheck.net/"),
         ("actionlint", "actionlint", "https://github.com/rhysd/actionlint"),
-        ("zizmor", "Zizmor", "https://docs.zizmor.sh/"),
         ("hadolint", "Hadolint", "https://github.com/hadolint/hadolint"),
         ("terraform", "Terraform", "https://developer.hashicorp.com/terraform/cli/commands/validate"),
         ("tflint", "TFLint", "https://github.com/terraform-linters/tflint"),
@@ -256,6 +277,14 @@ def _devops_providers() -> tuple[_Provider, ...]:
         )
         for name, label, homepage in projects
     )
+
+
+def _required_tool(name: str) -> str:
+    executable = shutil.which(name)
+    if executable is None:
+        msg = f"cannot generate third-party catalog: {name} is not installed"
+        raise RuntimeError(msg)
+    return executable
 
 
 def render(root: Path) -> str:
@@ -378,11 +407,11 @@ def _react_doctor_provider(root: Path) -> _Provider:
     )
 
 
-def _mobile_projections(root: Path) -> _MobileProjection:
+def _mobile_projections(root: Path) -> _ToolProjection:
     config_root = root / _MOBILE_CONFIG_ROOT
-    versions = TypeAdapter(dict[str, str]).validate_json(
+    versions = _MobileToolVersions.model_validate_json(
         (config_root / "mobile-tools.versions.json").read_text(encoding="utf-8"), strict=True
-    )
+    ).root
     provider_specs = (
         _MobileProviderSpec("detekt", "Detekt", "detekt", "detekt", "https://detekt.dev/", "config-explicit"),
         _MobileProviderSpec(
@@ -447,7 +476,62 @@ def _mobile_projections(root: Path) -> _MobileProjection:
             for rule_id in detekt_ids
         ),
     )
-    return _MobileProjection(providers, tuple(rules))
+    return _ToolProjection(providers, tuple(rules))
+
+
+def _security_projections() -> _ToolProjection:
+    providers = (
+        _Provider(
+            id="checkov",
+            label="Checkov",
+            engine="checkov",
+            package="checkov",
+            version=security_tools.VERSIONS["checkov"],
+            homepage="https://www.checkov.io/",
+            projection_scope="config-explicit",
+        ),
+        _Provider(
+            id="zizmor",
+            label="zizmor",
+            engine="zizmor",
+            package="zizmor",
+            version=security_tools.VERSIONS["zizmor"],
+            homepage="https://docs.zizmor.sh/",
+            projection_scope="provider-only",
+        ),
+    )
+    policies = {
+        "CKV_GCP_41": (
+            "Avoid project-level Service Account User and Token Creator grants",
+            "gcp/GoogleRoleServiceAccountUser",
+        ),
+        "CKV_GCP_95": ("Enable Redis authentication", "gcp/MemorystoreForRedisAuthEnabled"),
+        "CKV_GCP_97": ("Encrypt Redis connections in transit", "gcp/MemorystoreForRedisInTransitEncryption"),
+        "CKV_K8S_10": ("Declare container CPU requests", "k8s/CPURequests"),
+        "CKV_K8S_12": ("Declare container memory requests", "k8s/MemoryRequests"),
+        "CKV_K8S_13": ("Declare container memory limits", "k8s/MemoryLimits"),
+        "CKV_K8S_43": ("Pin deployed container images by digest", "k8s/ImageDigest"),
+    }
+    rules: list[_Rule] = []
+    for code in sorted(security_tools.CHECKOV_CHECKS):
+        summary, source = policies[code]
+        framework = "kubernetes" if code.startswith("CKV_K8S_") else "terraform"
+        context = _Context(id=ContextId(framework), label=framework.title(), level="warning")
+        rules.append(
+            _Rule(
+                key=f"checkov:{code}",
+                provider="checkov",
+                id=RuleId(code),
+                display_id=DisplayRuleId(code),
+                summary=summary,
+                docs_url=f"https://github.com/bridgecrewio/checkov/blob/{security_tools.VERSIONS['checkov']}/checkov/{framework}/checks/resource/{source}.py",
+                family="security",
+                autofix="none",
+                has_suggestions=False,
+                profiles=tuple(_Profile(name=name, contexts=(context,)) for name in ("application", "standard")),
+            )
+        )
+    return _ToolProjection(providers, tuple(rules))
 
 
 def _mobile_rule(*, provider: str, rule_id: RuleId, context_label: str, context_id: ContextId) -> _Rule:
@@ -571,7 +655,7 @@ def _ruff_projection(root: Path, ruff: str) -> _RuffProjection:
 
 
 def parse_ruff_metadata(output: str) -> dict[str, _RuffMetadata]:
-    metadata_values = TypeAdapter(tuple[_RuffMetadata, ...]).validate_json(output)
+    metadata_values = _RuffMetadataList.model_validate_json(output).root
     # Ruff may expose preview rules by name before assigning a stable code or
     # linter family. The name is the stable selector Ruff accepts until a code
     # exists, so it remains part of the effective public inventory.

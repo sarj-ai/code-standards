@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass, field
 from datetime import timedelta
 from enum import StrEnum
-from functools import lru_cache
+from functools import lru_cache, partial
 import json
 import os
 from pathlib import Path
@@ -17,7 +18,7 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING, Annotated, Final, NoReturn, TypeIs
 
 from packaging.version import InvalidVersion, Version
-from pydantic import TypeAdapter, ValidationError
+from pydantic import BaseModel, ValidationError
 from repo_standards.core.commit_message import check_local_commit_message_file
 import typer
 
@@ -36,7 +37,12 @@ if TYPE_CHECKING:
 
     from sarj_standards.libs.adoption import doctor, lifecycle, service, upgrade
     from sarj_standards.libs.diagnostics import AnalysisReport, Diagnostic, ExecutionIssue
+    from sarj_standards.libs.linting.external import UpstreamESLintRules
     from sarj_standards.libs.repository import rule_catalog_artifact
+
+
+class _CorpusLintReport(BaseModel):
+    diagnostics: list[dict[str, object]]
 
 
 _NEXT_STEPS = (
@@ -148,6 +154,7 @@ class _Args:
     output: Path | None = None
     external: bool = False
     jobs: int = 1
+    python_type_check: bool = True
     trust: str = "safe"
     trust_repository_code: bool = False
     before: str = ""
@@ -421,12 +428,12 @@ def _repair_full_adoption(root: Path, *, install: bool) -> int:
     from sarj_standards.libs.adoption import doctor, upgrade  # ruff: ignore[import-outside-top-level]
 
     plan = upgrade.build_plan(root)
-    blockers = upgrade.unsafe_retired_findings(plan)
+    current_findings = list(plan.preflight_findings)
+    blockers = upgrade.unmigrated_retired_findings(plan, current_findings)
     if blockers:
         print("warning: automatic repair cannot migrate these retired rule references:", file=sys.stderr)
         for finding in blockers:
             print(f"warning: {finding.where} -- {finding.detail}", file=sys.stderr)
-    current_findings = doctor.diagnose(root)
     current_drift = [finding for finding in current_findings if finding.level is doctor.Level.DRIFT]
     missing_hooks = install and any(finding.id in _HOOK_INSTALL_IDS for finding in current_findings)
     return (
@@ -519,7 +526,7 @@ def _repair_legacy_manifest(root: Path, *, install: bool) -> manifest.Manifest:
 
 
 def cmd_update(args: _Args) -> int:
-    from sarj_standards.libs.adoption import doctor, upgrade  # ruff: ignore[import-outside-top-level]
+    from sarj_standards.libs.adoption import upgrade  # ruff: ignore[import-outside-top-level]
 
     target_version: str | None = None
     if args.target_version is not None:
@@ -565,7 +572,7 @@ def cmd_update(args: _Args) -> int:
     except (OSError, TypeError, ValueError) as exc:
         print(f"error: cannot plan upgrade: {exc}", file=sys.stderr)
         return 2
-    preflight_findings = doctor.diagnose(root)
+    preflight_findings = list(plan.preflight_findings)
     if not _update_preflight(plan, preflight_findings):
         return 2
     preview = upgrade.render(plan.changes)
@@ -652,7 +659,7 @@ def _update_preflight(plan: upgrade.UpgradePlan, preflight_findings: list[doctor
             if finding.remediation:
                 print(f"fix: {finding.remediation}", file=sys.stderr)
         return False
-    blockers = upgrade.unsafe_retired_findings(plan)
+    blockers = upgrade.unmigrated_retired_findings(plan, preflight_findings)
     if blockers:
         for finding in blockers:
             print(f"error: {finding.where} -- {finding.detail}", file=sys.stderr)
@@ -1040,6 +1047,7 @@ def cmd_verify(args: _Args) -> int:
         raw=adopted is None,
         jobs=args.jobs,
         trusted=args.trust_repository_code,
+        python_type_check=args.python_type_check,
     )
 
 
@@ -1115,7 +1123,14 @@ def cmd_check(args: _Args) -> int:
             return health_status
         args.files = [path for path in args.files if runner.accepts_hook_path(Path(path), root=root)]
         if not args.files and not scope.react_doctor_triggered:
-            return _run_canonical_check(root, (), trusted=args.trust_repository_code, staged=True, jobs=args.jobs)
+            return _run_canonical_check(
+                root,
+                (),
+                trusted=args.trust_repository_code,
+                staged=True,
+                jobs=args.jobs,
+                python_type_check=args.python_type_check,
+            )
     if args.output_format != "text":
         return _check_machine_output(args, root, scope)
     return _check_text_output(args, root, scope)
@@ -1151,8 +1166,15 @@ def _check_text_output(args: _Args, root: Path, scope: _CheckScope) -> int:
                     trusted=args.trust_repository_code,
                     react_doctor_triggered=True,
                     jobs=args.jobs,
+                    python_type_check=args.python_type_check,
                 )
-            return _run_canonical_check(root, (), trusted=args.trust_repository_code, jobs=args.jobs)
+            return _run_canonical_check(
+                root,
+                (),
+                trusted=args.trust_repository_code,
+                jobs=args.jobs,
+                python_type_check=args.python_type_check,
+            )
     if not args.files:
         return cmd_verify(args)
     check_options: dict[str, bool] = {
@@ -1161,7 +1183,9 @@ def _check_text_output(args: _Args, root: Path, scope: _CheckScope) -> int:
     }
     if scope.react_doctor_triggered:
         check_options["react_doctor_triggered"] = True
-    return _run_canonical_check(root, list(args.files), jobs=args.jobs, **check_options)
+    return _run_canonical_check(
+        root, list(args.files), jobs=args.jobs, python_type_check=args.python_type_check, **check_options
+    )
 
 
 @dataclass(slots=True)
@@ -1274,6 +1298,7 @@ def _check_machine_output(args: _Args, root: Path, scope: _CheckScope) -> int:
             trust=TrustMode.TRUSTED if args.trust_repository_code else TrustMode.SAFE,
             mode=AnalysisMode.POLICY,
             react_doctor_triggered=scope.react_doctor_triggered,
+            python_type_check=args.python_type_check,
         )
         return _emit_analysis_report(args, root, report)
     args.react_doctor_triggered = scope.react_doctor_triggered
@@ -1351,6 +1376,7 @@ def _run_canonical_check(
     staged: bool = False,
     react_doctor_triggered: bool = False,
     jobs: int = 1,
+    python_type_check: bool = True,
 ) -> int:
     from sarj_standards.api import AnalysisMode, Standards, TrustMode  # ruff: ignore[import-outside-top-level]
     from sarj_standards.libs.diagnostics import to_text  # ruff: ignore[import-outside-top-level]
@@ -1363,6 +1389,7 @@ def _run_canonical_check(
         mode=AnalysisMode.RAW if raw else AnalysisMode.POLICY,
         staged=staged,
         react_doctor_triggered=react_doctor_triggered,
+        python_type_check=python_type_check,
     )
     rendered = to_text(report)
     if rendered:
@@ -1390,6 +1417,7 @@ def cmd_analyze(args: _Args) -> int:
         prepared_devops=args.prepared_devops,
         prepared_targets=args.prepared_targets,
         prepared_only=args.prepared_only,
+        python_type_check=args.python_type_check,
     )
     return _emit_analysis_report(args, root, report)
 
@@ -1468,8 +1496,7 @@ def _cmd_rule_evaluate_manifest(args: _Args, root: Path) -> int:
             msg = "corpus runner returned an invalid result"
             raise TypeError(msg)
         try:
-            report_payload = TypeAdapter(dict[str, object]).validate_json(stdout)
-            raw_diagnostics = TypeAdapter(list[dict[str, object]]).validate_python(report_payload.get("diagnostics"))
+            raw_diagnostics = _CorpusLintReport.model_validate_json(stdout).diagnostics
         except ValidationError as exc:
             msg = f"corpus {source.report_name} batch {batch.ordinal} returned invalid JSON"
             raise CorpusLintError(msg) from exc
@@ -2302,11 +2329,13 @@ def _baseline_analysis_reports(args: _Args, root: Path, selected: list[str] | No
     from sarj_standards.api import AnalysisMode, Standards, TrustMode  # ruff: ignore[import-outside-top-level]
 
     trust = TrustMode.TRUSTED if args.trust_repository_code else TrustMode.SAFE
-    reports: list[AnalysisReport] = []
-    scoped_rules = _analysis_rules_for_baseline(args.baseline_rules) if args.baseline_cmd == "update" else None
+    operations: list[Callable[[], AnalysisReport]] = []
+    selection = _baseline_scan_rules(args)
+    scoped_rules, upstream_eslint = selection.rules, selection.upstream_eslint
     if scoped_rules is None or scoped_rules:
-        reports.append(
-            Standards(root).analyze(
+        operations.append(
+            partial(
+                Standards(root).analyze,
                 selected,
                 external=True,
                 trust=trust,
@@ -2314,54 +2343,95 @@ def _baseline_analysis_reports(args: _Args, root: Path, selected: list[str] | No
                 rules=scoped_rules,
                 include_react_doctor=False,
                 pass_on_unpruned_eslint_suppressions=args.baseline_cmd == "update" and bool(args.baseline_rules),
+                jobs=args.jobs
+                if not (
+                    upstream_eslint
+                    or _react_doctor_rules_for_baseline(args.baseline_rules)
+                    or _shellcheck_rules_for_baseline(args.baseline_rules)
+                )
+                else 1,
             )
         )
-    upstream_eslint = _upstream_eslint_rules_for_baseline(args.baseline_rules)
     if upstream_eslint:
-        from sarj_standards.libs.linting.analysis import (  # ruff: ignore[import-outside-top-level]
-            report_from_tools,
-        )
-        from sarj_standards.libs.linting.external import (  # ruff: ignore[import-outside-top-level]
-            analyze_external,
-        )
-
-        external = report_from_tools(
-            root,
-            analyze_external(
-                selected or [str(root)],
-                root=root,
-                trust=trust,
-                policy=_baseline_corpus_policy(root),
-                capabilities=frozenset({"eslint"}),
-                include_react_doctor=False,
-                pass_on_unpruned_eslint_suppressions=True,
-            ),
-        )
-        reports.append(external)
+        operations.append(partial(_baseline_eslint_report, args, root, selected, trust))
     if _react_doctor_rules_for_baseline(args.baseline_rules):
-        reports.append(_react_doctor_baseline_report(root, selected, trust, _baseline_corpus_policy(root)))
+        operations.append(partial(_react_doctor_baseline_report, root, selected, trust, _baseline_corpus_policy(root)))
     if _shellcheck_rules_for_baseline(args.baseline_rules):
-        from sarj_standards.libs.linting.analysis import (  # ruff: ignore[import-outside-top-level]
-            report_from_tools,
-        )
-        from sarj_standards.libs.linting.external import (  # ruff: ignore[import-outside-top-level]
-            analyze_external,
-        )
+        operations.append(partial(_baseline_external_report, root, selected, trust, "shellcheck"))
+    if args.jobs == 1 or len(operations) <= 1:
+        return [operation() for operation in operations]
+    # Multiple operations share one bounded pool with serial inner analyzers;
+    # a single operation uses its own worker budget. Check every result first.
+    with ThreadPoolExecutor(max_workers=args.jobs, thread_name_prefix="baseline") as workers:
+        pending = [workers.submit(operation) for operation in operations]
+        return [result.result() for result in pending]
 
-        reports.append(
-            report_from_tools(
-                root,
-                analyze_external(
-                    selected or [str(root)],
-                    root=root,
-                    trust=trust,
-                    policy=_baseline_corpus_policy(root),
-                    capabilities=frozenset({"shellcheck"}),
-                    include_react_doctor=False,
-                ),
-            )
+
+@dataclass(frozen=True, slots=True)
+class _BaselineScanRules:
+    rules: list[str] | None
+    upstream_eslint: bool
+
+
+def _baseline_scan_rules(args: _Args) -> _BaselineScanRules:
+    scoped_rules = _analysis_rules_for_baseline(args.baseline_rules) if args.baseline_cmd == "update" else None
+    upstream_eslint = bool(_upstream_eslint_rules_for_baseline(args.baseline_rules))
+    if upstream_eslint and scoped_rules is not None:
+        # One selected ESLint scan below covers both upstream and custom
+        # findings. Validate custom selectors before removing that duplicate scan.
+        for selector in scoped_rules:
+            if (
+                selector.startswith("eslint:")
+                and str(RuleSelector.parse(selector)) not in _baseline_catalog_selectors()
+            ):
+                msg = f"unknown or invalid rule selector: {selector}"
+                raise ValueError(msg)
+        scoped_rules = [selector for selector in scoped_rules if not selector.startswith("eslint:")]
+    return _BaselineScanRules(scoped_rules, upstream_eslint)
+
+
+def _baseline_eslint_report(args: _Args, root: Path, selected: list[str] | None, trust: str) -> AnalysisReport:
+    from sarj_standards.libs.linting.external import UpstreamESLintRules  # ruff: ignore[import-outside-top-level]
+
+    custom = frozenset(
+        selector.removeprefix("eslint:")
+        for selector in (_analysis_rules_for_baseline(args.baseline_rules) or [])
+        if selector.startswith("eslint:")
+    )
+    upstream = UpstreamESLintRules(
+        frozenset(
+            selector.removeprefix("eslint:") for selector in _upstream_eslint_rules_for_baseline(args.baseline_rules)
         )
-    return reports
+    )
+    return _baseline_external_report(root, selected, trust, "eslint", rule_ids=custom, upstream_rules=upstream)
+
+
+def _baseline_external_report(
+    root: Path,
+    selected: Sequence[str] | None,
+    trust: str,
+    capability: str,
+    *,
+    rule_ids: frozenset[str] | None = None,
+    upstream_rules: UpstreamESLintRules | None = None,
+) -> AnalysisReport:
+    from sarj_standards.libs.linting.analysis import report_from_tools  # ruff: ignore[import-outside-top-level]
+    from sarj_standards.libs.linting.external import UpstreamESLintRules, analyze_external  # ruff: ignore[import-outside-top-level]
+
+    return report_from_tools(
+        root,
+        analyze_external(
+            selected or [str(root)],
+            root=root,
+            trust=trust,
+            policy=_baseline_corpus_policy(root),
+            capabilities=frozenset({capability}),
+            include_react_doctor=False,
+            pass_on_unpruned_eslint_suppressions=capability == "eslint",
+            rule_ids=rule_ids,
+            upstream_rules=upstream_rules or UpstreamESLintRules(),
+        ),
+    )
 
 
 def _baseline_selected_paths(root: Path, files: Sequence[str], *, scoped: bool) -> list[str] | None:
@@ -2646,6 +2716,7 @@ class _ProfileChoice(StrEnum):
 
 
 class _ConfigChoice(StrEnum):
+    CHECKOV = "checkov"
     DETEKT = "detekt"
     ESLINT = "eslint"
     KTLINT = "ktlint"
@@ -2658,6 +2729,7 @@ class _ConfigChoice(StrEnum):
     SWIFTLINT = "swiftlint"
     TAPLO = "taplo"
     YAMLLINT = "yamllint"
+    ZIZMOR = "zizmor"
 
 
 class _DiagnosticFormat(StrEnum):
@@ -2936,8 +3008,18 @@ def build_app(handler: Callable[[_Args], int] = _dispatch) -> typer.Typer:
             ),
         ] = False,
         jobs: Annotated[
-            int, typer.Option("--jobs", min=1, max=2, help="overlap native and external analysis (default: 1)")
-        ] = 1,
+            int,
+            typer.Option(
+                "--jobs", min=1, max=2, help="overlap native and external analysis (default: 2; 1 for serial debugging)"
+            ),
+        ] = 2,
+        skip_python_type_check: Annotated[
+            bool,
+            typer.Option(
+                "--skip-python-type-check",
+                help="leave BasedPyright to the repository's own required CI; configs stay managed",
+            ),
+        ] = False,
         staged: Annotated[
             bool,
             typer.Option(
@@ -2963,6 +3045,7 @@ def build_app(handler: Callable[[_Args], int] = _dispatch) -> typer.Typer:
                 dest=_command_root(ctx),
                 cmd="check",
                 jobs=jobs,
+                python_type_check=not skip_python_type_check,
                 trust_repository_code=trust_repository_code,
                 staged=staged,
                 selected_rules=selected_rules if selected_rules is not None else [],
@@ -3074,6 +3157,7 @@ def build_app(handler: Callable[[_Args], int] = _dispatch) -> typer.Typer:
     def command_baseline_init(
         ctx: typer.Context,
         *,
+        jobs: Annotated[int, typer.Option("--jobs", min=1, max=2, help="overlap independent baseline scans")] = 1,
         output: Annotated[
             Path | None, typer.Option("--output", help="baseline JSON (default: diagnostic-baseline.json)")
         ] = None,
@@ -3090,6 +3174,7 @@ def build_app(handler: Callable[[_Args], int] = _dispatch) -> typer.Typer:
                 dest=_command_root(ctx),
                 cmd="baseline",
                 baseline_cmd="init",
+                jobs=jobs,
                 output=output if output is not None else None,
                 trust_repository_code=trust_repository_code,
                 files=files if files is not None else [],
@@ -3100,6 +3185,7 @@ def build_app(handler: Callable[[_Args], int] = _dispatch) -> typer.Typer:
     def command_baseline_update(
         ctx: typer.Context,
         *,
+        jobs: Annotated[int, typer.Option("--jobs", min=1, max=2, help="overlap independent baseline scans")] = 1,
         output: Annotated[
             Path | None, typer.Option("--output", help="baseline JSON (default: diagnostic-baseline.json)")
         ] = None,
@@ -3123,6 +3209,7 @@ def build_app(handler: Callable[[_Args], int] = _dispatch) -> typer.Typer:
                 dest=_command_root(ctx),
                 cmd="baseline",
                 baseline_cmd="update",
+                jobs=jobs,
                 output=output if output is not None else None,
                 trust_repository_code=trust_repository_code,
                 baseline_rules=baseline_rules if baseline_rules is not None else [],
@@ -3537,6 +3624,24 @@ def build_app(handler: Callable[[_Args], int] = _dispatch) -> typer.Typer:
                 repo_cmd="release",
                 release_cmd="verify-wheel",
                 wheels=wheels,
+            )
+        )
+
+    @group_maintain_release.command("status", help="show release stages and queue time for an exact revision")
+    def command_maintain_release_status(
+        ctx: typer.Context,
+        *,
+        release_commit: Annotated[str, typer.Option("--commit")] = "HEAD",
+        output_format: Annotated[_JsonTextFormat, typer.Option("--format")] = _JsonTextFormat.TEXT,
+    ) -> int:
+        return handler(
+            _Args(
+                dest=_command_root(ctx),
+                cmd="maintain",
+                repo_cmd="release",
+                release_cmd="status",
+                release_commit=release_commit,
+                output_format=output_format.value,
             )
         )
 
@@ -4048,6 +4153,10 @@ def _run_repo_release(args: _Args) -> int:
     from sarj_standards.libs import release  # ruff: ignore[import-outside-top-level] -- lazy route
 
     root = _resolve_dest(args.dest)
+    if args.release_cmd == "status":
+        from sarj_standards.libs.release.status import print_release_status  # ruff: ignore[import-outside-top-level]
+
+        return print_release_status(root, commit=args.release_commit, output_format=args.output_format)
     if args.release_cmd == "check-tag":
         validated = release.validate_release_tag(args.tag, root)
         print(f"{validated.tag} exactly matches {validated.manifest}")

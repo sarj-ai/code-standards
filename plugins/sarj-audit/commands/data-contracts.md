@@ -29,3 +29,22 @@ annotation erases a known value. `prefer-typed-reflection` owns reflection over
 proven property and callable contracts. Do not duplicate their diagnostics.
 Keep unparsed input, opaque boundaries, and generic abstractions when reviewing
 flows outside the deterministic rules.
+
+## Validation and replacement values
+
+Preserve caller-owned raw input during normalization, including when validation
+fails. Return normalized mappings or collections and copy modified nested values
+explicitly. The before-validator input-mutation rule owns deterministic findings;
+review additional flows using concrete evidence of changed caller data.
+
+Pydantic `model_copy(update=...)` applies updates without validation. Use it only
+when replacements already satisfy the complete updated model contract. Validate
+external or uncertain values through a constructor or domain factory before
+creating the replacement; a trusted field type alone does not prove cross-field
+invariants. Neither deep copying nor frozen fields adds validation.
+
+Do not prescribe serialization-based reconstruction universally: excluded fields,
+aliases, private state, and validators can make `model_dump()`/`model_validate()`
+round trips lose information or change behavior. Use the smallest replacement
+that preserves the model's contract, and keep intentional stateful boundaries
+explicit.

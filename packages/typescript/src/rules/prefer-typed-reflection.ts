@@ -59,18 +59,6 @@ export const PREFER_TYPED_REFLECTION_DOCUMENTATION = {
   ],
 } as const satisfies RuleDocumentation;
 
-function propertyName(node: TSESTree.MemberExpression): string | null {
-  if (!node.computed && node.property.type === AST_NODE_TYPES.Identifier)
-    return node.property.name;
-  if (
-    node.computed &&
-    node.property.type === AST_NODE_TYPES.Literal &&
-    typeof node.property.value === "string"
-  )
-    return node.property.value;
-  return null;
-}
-
 function knownType(type: ts.Type): boolean {
   if (type.isUnion()) return type.types.every(knownType);
   return (
@@ -106,16 +94,17 @@ export default createRule<[], "avoid">({
     const services = ESLintUtils.getParserServices(context);
     if (!services.program) return {};
     const checker = services.program.getTypeChecker();
+    const isReflect = (node: TSESTree.Node): boolean =>
+      globalName(node, "Reflect") ||
+      (node.type === AST_NODE_TYPES.MemberExpression &&
+        ASTUtils.getPropertyName(node) === "Reflect" &&
+        globalName(node.object, "globalThis"));
+
     const globalName = (node: TSESTree.Node, name: string): boolean =>
       node.type === AST_NODE_TYPES.Identifier &&
       node.name === name &&
       !ASTUtils.findVariable(context.sourceCode.getScope(node), name)?.defs
         .length;
-    const isReflect = (node: TSESTree.Node): boolean =>
-      globalName(node, "Reflect") ||
-      (node.type === AST_NODE_TYPES.MemberExpression &&
-        propertyName(node) === "Reflect" &&
-        globalName(node.object, "globalThis"));
     const closedObject = (type: ts.Type): boolean => {
       if (type.isUnion()) return type.types.every(closedObject);
       return (
@@ -164,7 +153,7 @@ export default createRule<[], "avoid">({
           !isReflect(node.callee.object)
         )
           return;
-        const method = propertyName(node.callee);
+        const method = ASTUtils.getPropertyName(node.callee);
         const target = node.arguments[0];
         if (
           !target ||

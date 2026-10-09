@@ -75,6 +75,7 @@ _SUFFIX_TO_TOOL = MappingProxyType(
     }
 )
 _TERRAFORM_TEST_SUFFIXES = (".tftest.hcl", ".tftest.json")
+_TERRAFORM_SOURCE_SUFFIXES = (*_TERRAFORM_TEST_SUFFIXES, ".tf.json", ".tfvars.json")
 _IGNORED_DIRS = frozenset(
     {
         ".build",
@@ -430,7 +431,7 @@ def _has_generated_header(path: Path) -> bool:
 
 def _owns_path(path: Path) -> bool:
     return (
-        path.name.casefold().endswith(_TERRAFORM_TEST_SUFFIXES)
+        path.name.casefold().endswith(_TERRAFORM_SOURCE_SUFFIXES)
         or path.suffix.lower() in _SUFFIX_TO_TOOL
         or textlint.is_text_path(path)
     )
@@ -452,7 +453,7 @@ def _path_key(path: Path) -> Path:
 def _route_path(grouped: GroupedPaths, path: Path, raw_path: str) -> None:
     tool = (
         _Tool.IAC
-        if path.name.casefold().endswith(_TERRAFORM_TEST_SUFFIXES)
+        if path.name.casefold().endswith(_TERRAFORM_SOURCE_SUFFIXES)
         else _SUFFIX_TO_TOOL.get(path.suffix.lower())
     )
     _append_path(grouped, tool, raw_path)

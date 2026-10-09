@@ -15,13 +15,13 @@ from sarj_python_lint.rule_base import (
     RuleExample,
     Severity,
 )
-from sarj_python_lint.rules._ast_index import walk as walk_ast
+from sarj_python_lint.rules._ast_index import parent_map, walk as walk_ast
 from sarj_python_lint.rules._ast_position import AstPosition, ast_position
 from sarj_python_lint.rules._paths import is_test_path
 
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Iterator, Mapping
 
     from sarj_python_lint._file_context import PythonFileContext
     from sarj_python_lint.rules._ast_index import NodeIndex
@@ -29,38 +29,75 @@ if TYPE_CHECKING:
 
 
 _ATTRIBUTE_MUTATIONS = frozenset({"delattr", "setattr"})
-_MONKEYPATCH = "monkeypatch"
 _PYTEST = frozenset({"pytest"})
+_PYTEST_MOCK = frozenset({"pytest_mock", "pytest_mock.plugin"})
 _UNITTEST_MOCK = frozenset({"unittest.mock"})
-_SCOPES = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)
+_COMPREHENSIONS = (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)
+_SCOPES = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda, *_COMPREHENSIONS)
 
 
 class PreferInjectedDependencyOverMonkeypatch(Rule):
     id: str = "prefer-injected-dependency-over-monkeypatch"
     code: str = "SARJ445"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        default_level=Severity.WARNING,
-        summary="Tests should inject dependencies instead of replacing attributes through ambient patching.",
+        default_level=Severity.ERROR,
+        summary="Prefer explicit test dependencies; justify scoped attribute patches at the boundary.",
         rationale=(
             "Attribute patching hides collaborators and configuration behind ambient module or object state, coupling "
-            "tests to lookup locations instead of an explicit boundary. Pytest monkeypatch remains appropriate for "
+            "tests to lookup locations instead of an explicit boundary. Replacing a scoped patch with bare assignment "
+            "does not fix that coupling and loses automatic restoration. Pytest monkeypatch remains appropriate for "
             "reversible process state such as environment variables and the working directory."
         ),
         remediation=(
             "Pass the collaborator, settings, clock, sleeper, random source, client, or factory explicitly; prefer a "
-            "real in-process dependency, framework override, or purpose-built ABC/Protocol fake. If a runtime "
-            "boundary is inherently global, or intercepting its lookup is the behavior under test, suppress SARJ445 "
-            "at that call with the concrete reason an owned injection seam would invalidate the test."
+            "real in-process dependency, framework override, or purpose-built ABC/Protocol fake. A scoped patch may "
+            "replace an existing constructor-injected collaborator on a test-owned instance with an interface-conforming "
+            "fake when rebuilding the fixture would add wiring without improving the boundary. Keep attribute-existence "
+            "checks enabled and the tested implementation intact. Suppress SARJ445 only at that call, naming the "
+            "owned instance and injection seam. For inherently global boundaries or lookup interception, explain why "
+            "injection would invalidate the test. Do not switch to bare assignment merely to avoid this rule."
         ),
         category=RuleCategory.TESTING,
         autofix=AutofixPolicy.NONE,
         limitations=(
             "Only maintained test paths are analyzed; generated files and production helpers are excluded.",
-            "The rule recognizes pytest monkeypatch and statically resolved unittest.mock or pytest-mock patch APIs.",
+            "The rule recognizes pytest monkeypatch fixtures, unambiguous local MonkeyPatch constructors and context handles, and statically resolved unittest.mock or pytest-mock patch APIs.",
             "Environment, mapping, import-path, and working-directory mutations are intentionally allowed.",
+            "Untyped handles are recognized only on pytest tests or fixtures; directly parametrized values are excluded.",
             "A nested function that captures a monkeypatch handle from an outer scope is not inferred.",
+            "Instance ownership and collaborator contracts are not inferred; justified scoped patches need a local suppression.",
         ),
         examples=(
+            RuleExample(
+                example_id="patched-constructor-failure",
+                title="Avoid replacing the SDK constructor lookup",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "tests/test_adapter.py",
+                        "import pytest\nfrom unittest.mock import patch\ndef test_constructor_failure():\n    with patch('transport.Client', side_effect=ConnectionError):\n        with pytest.raises(AdapterUnavailable):\n            open_adapter()\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("tests/test_adapter.py"),
+                expected_count=1,
+                public=True,
+                scenario="constructor-failure",
+            ),
+            RuleExample(
+                example_id="injected-constructor-failure",
+                title="Inject a factory to exercise constructor failure",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "tests/test_adapter.py",
+                        "import pytest\ndef unavailable_client():\n    raise ConnectionError\ndef test_constructor_failure():\n    with pytest.raises(AdapterUnavailable):\n        open_adapter(client_factory=unavailable_client)\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("tests/test_adapter.py"),
+                expected_count=0,
+                public=True,
+                scenario="constructor-failure",
+            ),
             RuleExample(
                 example_id="patched-first-party-collaborator",
                 title="Test replaces an application collaborator",
@@ -106,10 +143,14 @@ class PreferInjectedDependencyOverMonkeypatch(Rule):
         if tree is None:
             return []
         imports = context.module_imports
+        parents = parent_map(tree, index=context.node_index)
+        has_factory = "MonkeyPatch" in context.source and any(
+            _creates_monkeypatch(call, imports) for call in context.nodes(ast.Call)
+        )
         replacements = [
             (call, f"monkeypatch.{_operation(call)}")
             for function in _functions(tree, node_index=context.node_index)
-            for call in _attribute_mutations(function, imports)
+            for call in _attribute_mutations(function, imports, parents, has_factory=has_factory)
         ]
         replacements.extend((call, label) for call, label in _patch_calls(tree, imports, node_index=context.node_index))
         diagnostics = [
@@ -124,7 +165,7 @@ class PreferInjectedDependencyOverMonkeypatch(Rule):
                     "If global lookup or interception is the behavior under test, suppress SARJ445 locally and explain "
                     "why injection would invalidate the test."
                 ),
-                severity=Severity.WARNING,
+                severity=Severity.ERROR,
             )
             for call, label in replacements
         ]
@@ -144,8 +185,14 @@ def _patch_calls(
     tree: ast.Module, imports: ImportIndex, *, node_index: NodeIndex | None = None
 ) -> list[tuple[ast.Call, str]]:
     calls: list[tuple[ast.Call, str]] = []
+    parents = parent_map(tree, index=node_index)
+    bindings: dict[ast.AST, set[str]] = {}
+    for function in _functions(tree, node_index=node_index):
+        calls.extend(_mocker_calls(function, imports, parents))
     for node in walk_ast(tree, index=node_index):
         if not isinstance(node, ast.Call):
+            continue
+        if _import_shadowed(node.func, parents, bindings):
             continue
         if _resolves_patch(node.func, imports):
             calls.append((node, "patch"))
@@ -157,9 +204,6 @@ def _patch_calls(
         ):
             calls.append((node, "patch.object"))
             continue
-        label = _pytest_mock_patch_label(node)
-        if label is not None:
-            calls.append((node, label))
     return calls
 
 
@@ -173,21 +217,77 @@ def _resolves_patch(node: ast.expr, imports: ImportIndex) -> bool:
     )
 
 
-def _pytest_mock_patch_label(call: ast.Call) -> str | None:
-    func = call.func
-    if not isinstance(func, ast.Attribute):
-        return None
-    if isinstance(func.value, ast.Name) and func.value.id == "mocker" and func.attr == "patch":
-        return "mocker.patch"
-    if (
-        func.attr == "object"
-        and isinstance(func.value, ast.Attribute)
-        and func.value.attr == "patch"
-        and isinstance(func.value.value, ast.Name)
-        and func.value.value.id == "mocker"
-    ):
-        return "mocker.patch.object"
-    return None
+def _mocker_calls(
+    function: ast.FunctionDef | ast.AsyncFunctionDef,
+    imports: ImportIndex,
+    parents: Mapping[ast.AST, ast.AST],
+) -> list[tuple[ast.Call, str]]:
+    parameters = _parameter_handles(
+        function, imports, parents, fixture_name="mocker", sources=_PYTEST_MOCK, symbol="MockerFixture"
+    )
+    nodes = tuple(_lexical_body_nodes(function))
+    handles = parameters | _direct_aliases(nodes, parameters, parameters)
+    calls: list[tuple[ast.Call, str]] = []
+    for node in nodes:
+        if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute):
+            continue
+        func = node.func
+        label = "mocker.patch"
+        if func.attr == "object" and isinstance(func.value, ast.Attribute):
+            func = func.value
+            label = "mocker.patch.object"
+        if (
+            func.attr == "patch"
+            and isinstance(func.value, ast.Name)
+            and func.value.id in handles
+            and not _parameter_rebound_before(node, func.value.id, nodes, parameters)
+        ):
+            calls.append((node, label))
+    return calls
+
+
+def _import_shadowed(
+    expression: ast.expr, parents: Mapping[ast.AST, ast.AST], bindings: dict[ast.AST, set[str]]
+) -> bool:
+    root = expression
+    while isinstance(root, ast.Attribute):
+        root = root.value
+    if not isinstance(root, ast.Name):
+        return False
+    child: ast.AST = expression
+    while (parent := parents.get(child)) is not None:
+        if _inside_scope_body(parent, child):
+            if parent not in bindings:
+                bindings[parent] = _scope_bindings(parent)
+            if root.id in bindings[parent]:
+                return True
+        child = parent
+    return False
+
+
+def _inside_scope_body(parent: ast.AST, child: ast.AST) -> bool:
+    if isinstance(parent, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+        return child in parent.body
+    return isinstance(parent, (ast.Lambda, *_COMPREHENSIONS))
+
+
+def _scope_bindings(scope: ast.AST) -> set[str]:
+    names: set[str] = set()
+    if isinstance(scope, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+        names.update(name for node in _lexical_body_nodes(scope) for name in _bound_targets(node))
+    if isinstance(scope, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
+        names.update(argument.arg for argument in _arguments(scope.args))
+    if isinstance(scope, _COMPREHENSIONS):
+        names.update(name for generator in scope.generators for name in _target_names(generator.target))
+    return names
+
+
+def _arguments(arguments: ast.arguments) -> Iterator[ast.arg]:
+    yield from (*arguments.posonlyargs, *arguments.args, *arguments.kwonlyargs)
+    if arguments.vararg is not None:
+        yield arguments.vararg
+    if arguments.kwarg is not None:
+        yield arguments.kwarg
 
 
 def _functions(
@@ -201,9 +301,12 @@ def _functions(
 def _attribute_mutations(
     function: ast.FunctionDef | ast.AsyncFunctionDef,
     imports: ImportIndex,
+    parents: Mapping[ast.AST, ast.AST],
+    *,
+    has_factory: bool,
 ) -> list[ast.Call]:
-    parameters = _parameter_handles(function, imports)
-    if not parameters:
+    parameters = _parameter_handles(function, imports, parents)
+    if not parameters and not has_factory:
         return []
     nodes = tuple(_lexical_body_nodes(function))
     handles = set(parameters)
@@ -215,35 +318,152 @@ def _attribute_mutations(
         and isinstance(node.func, ast.Attribute)
         and node.func.attr in _ATTRIBUTE_MUTATIONS
         and isinstance(node.func.value, ast.Name)
-        and node.func.value.id in handles
+        and (
+            node.func.value.id in handles
+            or _constructed_reference(
+                node.func.value.id, node, function, nodes=nodes, imports=imports, parents=parents, seen=frozenset()
+            )
+        )
         and not _parameter_rebound_before(node, node.func.value.id, nodes, parameters)
     ]
+
+
+def _creates_monkeypatch(call: ast.Call, imports: ImportIndex) -> bool:
+    callee = call.func
+    if isinstance(callee, ast.Attribute) and callee.attr == "context":
+        callee = callee.value
+    return imports.resolves(callee, sources=_PYTEST, symbol="MonkeyPatch")
+
+
+def _constructed_reference(
+    name: str,
+    use: ast.AST,
+    function: ast.FunctionDef | ast.AsyncFunctionDef,
+    *,
+    nodes: tuple[ast.AST, ...],
+    imports: ImportIndex,
+    parents: Mapping[ast.AST, ast.AST],
+    seen: frozenset[str],
+) -> bool:
+    if name in seen or name in {arg.arg for arg in _arguments(function.args)}:
+        return False
+    definitions = [node for node in nodes if name in _bound_targets(node)]
+    if len(definitions) != 1 or _position(definitions[0]) >= _position(use):
+        return False
+    definition = definitions[0]
+    value: ast.expr | None = None
+    if isinstance(definition, (ast.Assign, ast.AnnAssign)) and parents.get(definition) is function:
+        value = definition.value
+    elif isinstance(definition, ast.withitem) and _within(use, parents.get(definition), parents):
+        expression = definition.context_expr
+        if (
+            isinstance(expression, ast.Call)
+            and isinstance(expression.func, ast.Attribute)
+            and expression.func.attr == "context"
+        ):
+            value = expression.func.value
+            if imports.resolves(value, sources=_PYTEST, symbol="MonkeyPatch"):
+                value = ast.Call(func=value, args=[], keywords=[])
+    if isinstance(value, ast.Name):
+        return _constructed_reference(
+            value.id, definition, function, nodes=nodes, imports=imports, parents=parents, seen=seen | {name}
+        )
+    return (
+        isinstance(value, ast.Call)
+        and imports.resolves(value.func, sources=_PYTEST, symbol="MonkeyPatch")
+        and not _import_shadowed(value.func, parents, {})
+    )
+
+
+def _within(node: ast.AST, ancestor: ast.AST | None, parents: Mapping[ast.AST, ast.AST]) -> bool:
+    if ancestor is None:
+        return False
+    while (parent := parents.get(node)) is not None:
+        if parent is ancestor:
+            return True
+        node = parent
+    return False
 
 
 def _parameter_handles(
     function: ast.FunctionDef | ast.AsyncFunctionDef,
     imports: ImportIndex,
+    parents: Mapping[ast.AST, ast.AST],
+    *,
+    fixture_name: str = "monkeypatch",
+    sources: frozenset[str] = _PYTEST,
+    symbol: str = "MonkeyPatch",
 ) -> set[str]:
     args = function.args
     parameters = (*args.posonlyargs, *args.args, *args.kwonlyargs)
+    fixture_consumer = function.name.startswith("test_") or any(
+        imports.resolves(
+            decorator.func if isinstance(decorator, ast.Call) else decorator,
+            sources=frozenset({"pytest", "pytest_asyncio"}),
+            symbol="fixture",
+        )
+        for decorator in function.decorator_list
+    )
+    parametrized = _parametrized_names(function, imports)
+    ancestor: ast.AST = function
+    while (parent := parents.get(ancestor)) is not None:
+        if isinstance(parent, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            fixture_consumer = False
+        if isinstance(parent, ast.ClassDef):
+            parametrized.update(_parametrized_names(parent, imports))
+        ancestor = parent
     return {
         parameter.arg
         for parameter in parameters
-        if parameter.arg == _MONKEYPATCH or _is_monkeypatch_annotation(parameter.annotation, imports)
+        if _is_handle_annotation(parameter.annotation, imports, sources=sources, symbol=symbol)
+        or (parameter.arg == fixture_name and fixture_consumer and parameter.arg not in parametrized)
     }
 
 
-def _is_monkeypatch_annotation(annotation: ast.expr | None, imports: ImportIndex) -> bool:
+def _parametrized_names(
+    function: ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef, imports: ImportIndex
+) -> set[str]:
+    names: set[str] = set()
+    for decorator in function.decorator_list:
+        if not isinstance(decorator, ast.Call) or not imports.resolves(
+            decorator.func, sources=frozenset({"pytest.mark"}), symbol="parametrize"
+        ):
+            continue
+        argument = (
+            decorator.args[0]
+            if decorator.args
+            else next((keyword.value for keyword in decorator.keywords if keyword.arg == "argnames"), None)
+        )
+        names.update(_literal_parameter_names(argument))
+    return names
+
+
+def _literal_parameter_names(argument: ast.expr | None) -> set[str]:
+    if isinstance(argument, ast.Constant) and isinstance(argument.value, str):
+        return {name.strip() for name in argument.value.split(",")}
+    if isinstance(argument, (ast.List, ast.Tuple)):
+        return {item.value for item in argument.elts if isinstance(item, ast.Constant) and isinstance(item.value, str)}
+    return set()
+
+
+def _is_handle_annotation(
+    annotation: ast.expr | None, imports: ImportIndex, *, sources: frozenset[str], symbol: str
+) -> bool:
     if annotation is None:
         return False
-    if imports.resolves(annotation, sources=_PYTEST, symbol="MonkeyPatch"):
+    if imports.resolves(annotation, sources=sources, symbol=symbol):
         return True
     if isinstance(annotation, ast.BinOp) and isinstance(annotation.op, ast.BitOr):
-        return _is_monkeypatch_annotation(annotation.left, imports) or _is_monkeypatch_annotation(
-            annotation.right, imports
+        return _is_handle_annotation(annotation.left, imports, sources=sources, symbol=symbol) or _is_handle_annotation(
+            annotation.right, imports, sources=sources, symbol=symbol
         )
     if isinstance(annotation, ast.Constant) and isinstance(annotation.value, str):
-        return annotation.value in {"MonkeyPatch", "pytest.MonkeyPatch"}
+        try:
+            parsed = ast.parse(annotation.value, mode="eval").body
+        except SyntaxError:
+            return False
+        if not isinstance(parsed, ast.Constant):
+            return _is_handle_annotation(parsed, imports, sources=sources, symbol=symbol)
     return False
 
 
@@ -301,6 +521,12 @@ def _bound_targets(node: ast.AST) -> set[str]:
             return _target_names(target)
         case ast.withitem(optional_vars=target) if target is not None:
             return _target_names(target)
+        case ast.FunctionDef() | ast.AsyncFunctionDef() | ast.ClassDef():
+            return {node.name}
+        case ast.Import() | ast.ImportFrom():
+            return {alias.asname or alias.name.split(".")[0] for alias in node.names}
+        case ast.ExceptHandler(name=str(name)):
+            return {name}
         case _:
             return set()
 
@@ -334,7 +560,7 @@ def _target_names(node: ast.expr) -> set[str]:
     return set()
 
 
-def _lexical_body_nodes(function: ast.FunctionDef | ast.AsyncFunctionDef) -> Iterator[ast.AST]:
+def _lexical_body_nodes(function: ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef) -> Iterator[ast.AST]:
     pending: list[ast.AST] = list(reversed(function.body))
     while pending:
         node = pending.pop()

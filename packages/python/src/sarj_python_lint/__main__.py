@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ast
 from collections import Counter
+from contextlib import suppress
 from dataclasses import dataclass
 from fnmatch import fnmatch
 import json
@@ -16,6 +17,7 @@ from sarj_python_lint import __version__
 from sarj_python_lint._analysis_session import AnalysisSession
 from sarj_python_lint._file_context import PythonFileContext
 from sarj_python_lint._filesystem import atomic_write_text
+from sarj_python_lint._source import read_python_source
 from sarj_python_lint.json_boundary import is_object_mapping, parse_json
 from sarj_python_lint.rule_base import Diagnostic, ProjectRule, Rule, Severity, is_suppressed
 from sarj_python_lint.rules import REGISTRY
@@ -84,7 +86,18 @@ def _python_files(p: Path) -> list[Path]:
     return sorted(out)
 
 
+def _canonical_rule_ids(rule_ids: list[str]) -> list[str]:
+    aliases = {
+        alias: rule_id
+        for rule_id, cls in REGISTRY.items()
+        if (documentation := cls.documentation) is not None
+        for alias in documentation.aliases
+    }
+    return list(dict.fromkeys(rid if rid in REGISTRY else aliases.get(rid, rid) for rid in rule_ids))
+
+
 def _check(rule_ids: list[str], paths: list[Path]) -> list[Diagnostic]:
+    rule_ids = _canonical_rule_ids(rule_ids)
     unknown = [rid for rid in rule_ids if rid not in REGISTRY]
     if unknown:
         sys.stderr.write(f"unknown rule(s): {', '.join(unknown)}\n")
@@ -99,7 +112,7 @@ def _check(rule_ids: list[str], paths: list[Path]) -> list[Diagnostic]:
     loaded: dict[Path, str] = {}
     for path in expanded:
         try:
-            loaded[path] = path.read_text(encoding="utf-8", errors="replace")
+            loaded[path] = read_python_source(path)
         except OSError:
             continue
     project_rules = [rule for rule in rules if isinstance(rule, ProjectRule)]
@@ -127,6 +140,7 @@ def check_source(
             if diagnostic.code == "SARJ419" or not is_suppressed(source_lines, diagnostic.line, diagnostic.code)
         ],
         source=source,
+        context=context,
     )
 
 
@@ -155,11 +169,14 @@ _DIAGNOSTIC_PRECEDENCE = MappingProxyType(
         # Keep the annotation diagnostics when SARJ094 is absent, including
         # when a concrete response_model makes the route contract complete.
         "SARJ094": frozenset({"SARJ008", "SARJ447"}),
+        "SARJ095": frozenset({"SARJ468"}),
         "SARJ099": frozenset({"SARJ420"}),
         # Any-valued mappings are the stronger correctness failure. SARJ008
         # still owns every fixed dictionary return when selected alone, while
         # an all-rules run emits one actionable diagnostic for this overlap.
         "SARJ447": frozenset({"SARJ008"}),
+        "SARJ457": frozenset({"SARJ045"}),
+        "SARJ465": frozenset({"SARJ071"}),
     }
 )
 
@@ -173,20 +190,27 @@ class _OwnerLocation(NamedTuple):
     column: int
 
 
-def deduplicate_diagnostics(diags: list[Diagnostic], *, source: str | None = None) -> list[Diagnostic]:
+def deduplicate_diagnostics(
+    diags: list[Diagnostic], *, source: str | None = None, context: PythonFileContext | None = None
+) -> list[Diagnostic]:
     codes = frozenset(diagnostic.code for diagnostic in diags)
     needs_docstring_owners = ("SARJ092" in codes and not codes.isdisjoint(_DIAGNOSTIC_PRECEDENCE["SARJ092"])) or (
         "SARJ420" in codes and not codes.isdisjoint(_DOCSTRING_PRECEDENCE_CODES)
     )
-    docstring_owners = _docstring_owner_locations(source) if source is not None and needs_docstring_owners else {}
     needs_signature_owners = (
         ("SARJ093" in codes and "SARJ034" in codes)
         or ("SARJ447" in codes and "SARJ008" in codes)
         or ("SARJ094" in codes and not codes.isdisjoint(_DIAGNOSTIC_PRECEDENCE["SARJ094"]))
     )
-    signature_owners = (
-        _function_signature_owner_locations(source) if source is not None and needs_signature_owners else {}
+    needs_composition_owners = {"SARJ066", "SARJ457"} <= codes
+    tree = (
+        _diagnostic_owner_tree(source, context)
+        if needs_docstring_owners or needs_signature_owners or needs_composition_owners
+        else None
     )
+    diags = _deduplicate_test_composition(diags, tree)
+    docstring_owners = _docstring_owner_locations(tree) if needs_docstring_owners else {}
+    signature_owners = _function_signature_owner_locations(tree) if needs_signature_owners else {}
 
     def owner_location(diagnostic: Diagnostic) -> _OwnerLocation:
         if diagnostic.code in {"SARJ008", "SARJ034", "SARJ093", "SARJ094", "SARJ447"}:
@@ -219,6 +243,38 @@ def deduplicate_diagnostics(diags: list[Diagnostic], *, source: str | None = Non
             not in suppressed
         )
     ]
+
+
+def _diagnostic_owner_tree(source: str | None, context: PythonFileContext | None) -> ast.Module | None:
+    if source is None:
+        return None
+    if context is not None and context.source == source:
+        return context.tree
+    with suppress(SyntaxError):
+        return ast.parse(source)
+    return None
+
+
+def _deduplicate_test_composition(diags: list[Diagnostic], tree: ast.Module | None) -> list[Diagnostic]:
+    codes = {diagnostic.code for diagnostic in diags}
+    if tree is None or not {"SARJ066", "SARJ457"} <= codes:
+        return diags
+    whole_tests = {
+        (diagnostic.path, diagnostic.line): diagnostic.severity for diagnostic in diags if diagnostic.code == "SARJ066"
+    }
+    functions = [node for node in ast.walk(tree) if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))]
+
+    def redundant(diagnostic: Diagnostic) -> bool:
+        if diagnostic.code != "SARJ457":
+            return False
+        owners = [node for node in functions if node.lineno <= diagnostic.line <= (node.end_lineno or node.lineno)]
+        if not owners:
+            return False
+        owner = max(owners, key=lambda node: node.lineno)
+        severity = whole_tests.get((diagnostic.path, owner.lineno))
+        return severity is not None and (severity is Severity.ERROR or diagnostic.severity is Severity.WARNING)
+
+    return [diagnostic for diagnostic in diags if not redundant(diagnostic)]
 
 
 def _suppressed_diagnostics(
@@ -271,10 +327,8 @@ def _typed_docstring_warning_is_superseded(codes: dict[str, set[Severity]]) -> b
     return any(Severity.ERROR in codes.get(generic, set()) for generic in ("SARJ086", "SARJ087"))
 
 
-def _function_signature_owner_locations(source: str) -> dict[int, _OwnerLocation]:
-    try:
-        tree = ast.parse(source)
-    except SyntaxError:
+def _function_signature_owner_locations(tree: ast.Module | None) -> dict[int, _OwnerLocation]:
+    if tree is None:
         return {}
     owners: dict[int, _OwnerLocation] = {}
     for node in ast.walk(tree):
@@ -286,11 +340,7 @@ def _function_signature_owner_locations(source: str) -> dict[int, _OwnerLocation
     return owners
 
 
-def _docstring_owner_locations(source: str) -> dict[int, _OwnerLocation]:
-    try:
-        tree = ast.parse(source)
-    except SyntaxError:
-        tree = None
+def _docstring_owner_locations(tree: ast.Module | None) -> dict[int, _OwnerLocation]:
     if tree is None:
         return {}
     owners: dict[int, _OwnerLocation] = {}

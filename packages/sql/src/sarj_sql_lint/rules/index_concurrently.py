@@ -17,6 +17,7 @@ from sarj_sql_lint.rule_base import (
     is_dump_file,
     is_postgres,
     mask_sql,
+    source_location,
 )
 
 
@@ -114,12 +115,12 @@ class IndexConcurrently(Rule):
                 # A newly created table has no concurrent writers; CONCURRENTLY would make this migration nontransactional.
                 if created_at is not None and created_at < pos:
                     continue
-            line_start = masked.rfind("\n", 0, pos) + 1
+            location = source_location(source, pos)
             diags.append(
                 Diagnostic(
                     path=path,
-                    line=masked.count("\n", 0, pos) + 1,
-                    col=pos - line_start + 1,
+                    line=location.line,
+                    col=location.column,
                     code=self.code,
                     message=(
                         "Move this index to a `-- migrate:no-transaction` migration, replace `SET LOCAL` "

@@ -10,7 +10,7 @@ import re
 from types import MappingProxyType
 from typing import TYPE_CHECKING, NamedTuple, final, override
 
-from sarj_iac_lint._hcl import Block, document
+from sarj_iac_lint._hcl import Block, document, literal_string, ungrouped_expression
 from sarj_iac_lint.json_boundary import is_object_mapping, parse_json
 from sarj_iac_lint.rule_base import (
     AutofixPolicy,
@@ -37,6 +37,7 @@ _ENVS_MANIFEST = "envs.json"
 # Directories that never hold a root's own inputs; `.terraform` carries vendored
 # module copies whose tfvars belong to other repositories entirely.
 _SKIP_DIR_NAMES = frozenset({".terraform", ".git", "node_modules", "__pycache__", ".venv", "venv"})
+_FIXTURE_DIR_NAMES = frozenset({"fixture", "fixtures", "testdata"})
 
 # A tfvars file sits at most two directories below its root (`env/<name>/x.tfvars`),
 # so root resolution never needs to climb further than three levels.
@@ -46,6 +47,7 @@ _MAX_ANCESTOR_HOPS = 3
 _MIN_ENVIRONMENTS = 2
 
 _MAX_VALUE_DISPLAY = 48
+_MAX_NUMBER_STRING_DIGITS = 10_000
 
 # Value tags a diagnostic may print, and only from unquoted source text. A
 # string in a tfvars file is routinely a password, token or connection URI, and
@@ -130,11 +132,14 @@ class NoDeadEnvironmentInput(Rule):
         category=RuleCategory.MAINTAINABILITY,
         autofix=AutofixPolicy.NONE,
         limitations=(
-            "Cross-environment comparisons require at least two discovered, readable HCL tfvars environments.",
+            "Cross-environment comparisons require at least two discovered, readable HCL or JSON tfvars environments.",
             (
                 "Only scalar variables declared exactly as bool, number, or string are compared; dynamic, collection, "
-                "interpolated, heredoc, JSON, and incomplete roots are conservatively skipped."
+                "interpolated HCL, heredoc, and incomplete roots are conservatively skipped."
             ),
+            "Unreadable declarations, JSON configuration declarations, and override files suppress findings because the effective variable contracts cannot be proven.",
+            "Malformed or duplicate-key JSON inputs suppress findings for that file and comparisons across the root.",
+            "Numeric-to-string comparisons abstain for non-finite values or exponents expanding beyond 10,000 decimal places; unsupported HCL string escapes are also skipped.",
             (
                 "Named tfvars files are inferred as environments; repeated values are advisory because invocation "
                 "order and intentional fail-closed contracts cannot be proven from filenames."
@@ -146,6 +151,33 @@ class NoDeadEnvironmentInput(Rule):
             "Sensitive and non-primitive values are never printed in diagnostics.",
         ),
         examples=(
+            RuleExample(
+                example_id="json-orphaned-assignment",
+                title="JSON variable files receive the same declaration checks",
+                outcome=ExampleOutcome.MATCH,
+                scenario="json-input",
+                files=(
+                    ExampleFile.iac("variables.tf", 'variable "region" {\n  type = string\n}\n'),
+                    ExampleFile.iac("dev.tfvars.json", '{"region":"west","ghost":true}\n'),
+                ),
+                focus_path=PurePosixPath("dev.tfvars.json"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="json-input-varies",
+                title="JSON scalar values retain environment differences",
+                outcome=ExampleOutcome.NO_MATCH,
+                scenario="json-input",
+                files=(
+                    ExampleFile.iac("variables.tf", 'variable "region" {\n  type = string\n}\n'),
+                    ExampleFile.iac("dev.tfvars.json", '{"region":"west"}\n'),
+                    ExampleFile.iac("prod.tfvars.json", '{"region":"east"}\n'),
+                ),
+                focus_path=PurePosixPath("dev.tfvars.json"),
+                expected_count=0,
+                public=True,
+            ),
             RuleExample(
                 example_id="flag-constant-in-every-environment",
                 title="Boolean assigned the same semantic value in every environment",
@@ -279,11 +311,7 @@ class NoDeadEnvironmentInput(Rule):
     def check(self, path: Path, source: str) -> list[Diagnostic]:
         if not path.name.endswith((_TFVARS_SUFFIX, _TFVARS_JSON_SUFFIX)):
             return []
-        if (
-            path.name.endswith(_TFVARS_JSON_SUFFIX)
-            or any(part.lower() in {"fixture", "fixtures", "testdata"} for part in path.parts)
-            or _generated_header(source)
-        ):
+        if _excluded_input(path, source):
             return []
         root = _find_root(path)
         if root is None:
@@ -293,10 +321,13 @@ class NoDeadEnvironmentInput(Rule):
         environment = analysis.environment_of(resolved)
         if environment is None:
             return []
+        assignments = _assignments(path, source)
+        if assignments is None:
+            return []
         diags = [
             Diagnostic(path=path, line=attr.line, col=attr.col, code=self.code, message=message)
-            for attr in document(source).attributes
-            if (message := _assignment_message(analysis, environment, attr.name, attr.value)) is not None
+            for attr in assignments
+            if (message := _assignment_message(analysis, environment, attr)) is not None
         ]
         return sorted(diags, key=lambda d: (d.line, d.col))
 
@@ -315,6 +346,16 @@ class _VariableContract:
     default: str | None
     scalar_type: _ScalarType | None
     sensitive: bool
+
+
+@dataclass(frozen=True, slots=True)
+class _InputAssignment:
+    name: str
+    text: str
+    line: int
+    col: int
+    is_json: bool = False
+    native: object = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -343,18 +384,19 @@ class _RootAnalysis:
         return next((env for env, paths in self.files.items() if any(resolved == p.resolve() for p in paths)), None)
 
 
-def _assignment_message(analysis: _RootAnalysis, environment: str, name: str, value: str) -> str | None:
+def _assignment_message(analysis: _RootAnalysis, environment: str, assignment: _InputAssignment) -> str | None:
+    if not analysis.declarations_complete:
+        return None
+    name, value = assignment.name, assignment.text
     declaration = analysis.declarations.get(name)
     if declaration is None:
-        if not analysis.declarations_complete:
-            return None
         return (
             f"orphaned-key: `{name}` has no declaration in the parsed root `{analysis.root.name}`; "
             "remove it if this is a variable file, or restore the missing declaration."
         )
     if declaration.scalar_type is None:
         return None
-    canon = _canonical_for_type(value, declaration.scalar_type)
+    canon = _assignment_canon(assignment, declaration.scalar_type)
     display = _display(canon, value, sensitive=declaration.sensitive)
     if (
         canon is not None
@@ -410,9 +452,18 @@ def _constant_everywhere(analysis: _RootAnalysis, environment: str, name: str, c
 
 def _display(canon: _Canon | None, value: str, *, sensitive: bool) -> str:
     text = " ".join(value.split())
-    if sensitive or canon is None or canon.tag not in _PRINTABLE_TAGS or text.startswith(('"', "'")):
+    if (
+        sensitive
+        or canon is None
+        or canon.tag not in _PRINTABLE_TAGS
+        or ungrouped_expression(text).lstrip().startswith(('"', "'"))
+    ):
         return ""
     return f" ({text})" if len(text) <= _MAX_VALUE_DISPLAY else ""
+
+
+def _excluded_input(path: Path, source: str) -> bool:
+    return any(part.lower() in _FIXTURE_DIR_NAMES for part in path.parts) or _generated_header(source)
 
 
 def _generated_header(source: str) -> bool:
@@ -454,9 +505,123 @@ def _variable_blocks(directory: Path) -> Iterator[_VariableContract]:
 
 def _read_text(path: Path) -> str | None:
     try:
-        return path.read_text(encoding="utf-8", errors="replace")
-    except OSError:
+        return path.read_text(encoding="utf-8")
+    except OSError, UnicodeError:
         return None
+
+
+def _is_override(path: Path) -> bool:
+    return path.name == "override.tf" or path.name.endswith("_override.tf")
+
+
+def _assignments(path: Path, source: str) -> tuple[_InputAssignment, ...] | None:
+    if path.name.endswith(_TFVARS_JSON_SUFFIX):
+        return _json_assignments(source)
+    return tuple(_InputAssignment(attr.name, attr.value, attr.line, attr.col) for attr in document(source).attributes)
+
+
+def _unique_json_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    result: dict[str, object] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError
+        result[key] = value
+    return result
+
+
+def _reject_json_constant(_value: str) -> object:
+    raise ValueError
+
+
+_JSON_DECODER = json.JSONDecoder(
+    parse_int=Decimal,
+    parse_float=Decimal,
+    parse_constant=_reject_json_constant,
+    object_pairs_hook=_unique_json_object,
+)
+
+
+def _json_assignments(source: str) -> tuple[_InputAssignment, ...] | None:
+    try:
+        return _validated_json_assignments(source)
+    except ValueError, RecursionError, ArithmeticError:
+        return None
+
+
+def _validated_json_assignments(source: str) -> tuple[_InputAssignment, ...] | None:
+    start = _skip_json_ws(source, 0)
+    decoded: tuple[object, int] = _JSON_DECODER.raw_decode(source, start)
+    value, end = decoded
+    if not is_object_mapping(value) or _skip_json_ws(source, end) != len(source):
+        return None
+    cursor = _skip_json_ws(source, start + 1)
+    assignments: list[_InputAssignment] = []
+    while cursor < end - 1:
+        key_start = cursor
+        decoded_key: tuple[object, int] = _JSON_DECODER.raw_decode(source, cursor)
+        name, cursor = decoded_key
+        if not isinstance(name, str):
+            return None
+        cursor = _skip_json_ws(source, cursor) + 1  # The validated object has a colon here.
+        value_start = _skip_json_ws(source, cursor)
+        decoded_value: tuple[object, int] = _JSON_DECODER.raw_decode(source, value_start)
+        native, cursor = decoded_value
+        assignments.append(
+            _InputAssignment(
+                name,
+                source[value_start:cursor],
+                source.count("\n", 0, key_start) + 1,
+                key_start - source.rfind("\n", 0, key_start),
+                is_json=True,
+                native=native,
+            )
+        )
+        cursor = _skip_json_ws(source, cursor)
+        if source[cursor] == ",":
+            cursor = _skip_json_ws(source, cursor + 1)
+    return tuple(assignments)
+
+
+def _skip_json_ws(source: str, index: int) -> int:
+    while index < len(source) and source[index] in " \t\r\n":
+        index += 1
+    return index
+
+
+def _assignment_canon(assignment: _InputAssignment, scalar_type: _ScalarType) -> _Canon | None:
+    if not assignment.is_json:
+        return _canonical_for_type(assignment.text, scalar_type)
+    value = assignment.native
+    if isinstance(value, str):
+        if scalar_type is _ScalarType.STRING:
+            return _Canon("str", value)
+        canon = _string_scalar(value)
+    elif isinstance(value, bool):
+        canon = _Canon("bool", value)
+    elif isinstance(value, Decimal):
+        canon = _Canon("num", value)
+    else:
+        return None
+    if scalar_type is _ScalarType.BOOL:
+        return canon if canon.tag == "bool" else None
+    if scalar_type is _ScalarType.NUMBER:
+        return canon if canon.tag == "num" else None
+    if canon.tag == "bool":
+        return _Canon("str", "true" if canon.value is True else "false")
+    if isinstance(canon.value, Decimal):
+        return _number_string(canon.value)
+    return None
+
+
+def _number_string(value: Decimal) -> _Canon | None:
+    # Avoid decimal-context rounding and unbounded exponent expansion when a
+    # short numeric literal is converted into a potentially enormous string.
+    if not value.is_finite() or abs(value.adjusted()) > _MAX_NUMBER_STRING_DIGITS:
+        return None
+    text = format(value, "f")
+    if "." in text:
+        text = text.rstrip("0").rstrip(".")
+    return _Canon("str", "0" if value == 0 else text)
 
 
 def _analyze_root(root: Path) -> _RootAnalysis:
@@ -488,7 +653,10 @@ def _analyze_root(root: Path) -> _RootAnalysis:
         declarations=declarations,
         values=values,
         blind=tuple(sorted(blind, key=lambda item: (item.name, item.reason))),
-        declarations_complete=next(iter(root.glob("*.tf.json")), None) is None,
+        declarations_complete=(
+            next(iter(root.glob("*.tf.json")), None) is None
+            and all(_read_text(path) is not None and not _is_override(path) for path in root.glob("*.tf"))
+        ),
     )
 
 
@@ -509,7 +677,7 @@ def _environment_files(root: Path) -> dict[str, list[Path]]:
     out: dict[str, list[Path]] = {}
     seen: set[Path] = set()
     for file, environment in _candidate_environments(root):
-        if _is_non_environment(environment):
+        if _is_non_environment(environment) or _excluded_input(file, _read_text(file) or ""):
             continue
         resolved = file.resolve()
         if resolved in seen:
@@ -520,18 +688,17 @@ def _environment_files(root: Path) -> dict[str, list[Path]]:
 
 
 def _candidate_environments(root: Path) -> Iterator[tuple[Path, str]]:
-    for file in sorted(root.glob(f"*{_TFVARS_SUFFIX}")):
-        # Terraform loads every auto-loaded root var-file into the SAME plan, so
-        # `a.auto.tfvars` and `b.auto.tfvars` are one environment, not two whose
-        # shared lines would read as constant across it.
-        yield file, _AUTO_ENVIRONMENT if _is_auto_loaded(file.name) else _stem_environment(file.name)
-    for file, env_dir in _nested_tfvars(root, _TFVARS_SUFFIX):
-        stem = _stem_environment(file.name)
-        yield file, env_dir.name if stem == _CONVENTIONAL_STEM else stem
+    for suffix in (_TFVARS_SUFFIX, _TFVARS_JSON_SUFFIX):
+        for file in sorted(root.glob(f"*{suffix}")):
+            # All auto-loaded files feed one plan, including JSON counterparts.
+            yield file, _AUTO_ENVIRONMENT if _is_auto_loaded(file.name) else _stem_environment(file.name)
+        for file, env_dir in _nested_tfvars(root, suffix):
+            stem = _stem_environment(file.name)
+            yield file, env_dir.name if stem == _CONVENTIONAL_STEM else stem
 
 
 def _is_auto_loaded(name: str) -> bool:
-    stem = name.removesuffix(_TFVARS_SUFFIX)
+    stem = name.removesuffix(_TFVARS_JSON_SUFFIX).removesuffix(_TFVARS_SUFFIX)
     return stem == _CONVENTIONAL_STEM or stem.endswith(_AUTO_STEM_SUFFIX)
 
 
@@ -544,7 +711,7 @@ def _nested_tfvars(root: Path, suffix: str) -> Iterator[tuple[Path, Path]]:
     for pattern in (f"*/*{suffix}", f"*/*/*{suffix}"):
         for file in sorted(root.glob(pattern)):
             relative_dirs = file.relative_to(root).parts[:-1]
-            if any(part in _SKIP_DIR_NAMES for part in relative_dirs):
+            if any(part in _SKIP_DIR_NAMES or part.lower() in _FIXTURE_DIR_NAMES for part in relative_dirs):
                 continue
             if any(_has_tf_files(root.joinpath(*relative_dirs[: index + 1])) for index in range(len(relative_dirs))):
                 continue
@@ -552,26 +719,34 @@ def _nested_tfvars(root: Path, suffix: str) -> Iterator[tuple[Path, Path]]:
 
 
 def _stem_environment(name: str) -> str:
-    stem = name.removesuffix(_TFVARS_SUFFIX)
+    stem = name.removesuffix(_TFVARS_JSON_SUFFIX).removesuffix(_TFVARS_SUFFIX)
     return stem.removesuffix(_AUTO_STEM_SUFFIX)
 
 
 def _structural_blind(root: Path, files: dict[str, list[Path]]) -> Iterator[_BlindEnvironment]:
-    for file, env_dir in _nested_tfvars(root, _TFVARS_JSON_SUFFIX):
-        yield _BlindEnvironment(env_dir.name, f"`{file.relative_to(root)}` is JSON, which this rule does not parse")
-    for json_file in sorted(root.glob(f"*{_TFVARS_JSON_SUFFIX}")):
-        yield _BlindEnvironment(json_file.name, f"`{json_file.name}` is JSON, which this rule does not parse")
     containers = _environment_containers(root, files)
     for container in sorted(containers, key=str):
         for sibling in sorted(item for item in container.iterdir() if item.is_dir()):
-            if sibling.name in _SKIP_DIR_NAMES or sibling.name in files:
+            if sibling.name in _SKIP_DIR_NAMES or sibling.name.lower() in _FIXTURE_DIR_NAMES or sibling.name in files:
                 continue
-            if next(iter(sibling.glob(f"*{_TFVARS_JSON_SUFFIX}")), None) is not None:
-                continue  # Already reported above as unparsed JSON.
+            if _only_excluded_inputs(sibling):
+                continue
             yield _BlindEnvironment(
                 sibling.name,
                 f"environment directory `{sibling.relative_to(root)}` has no tfvars file while sibling environments have one",
             )
+
+
+def _only_excluded_inputs(directory: Path) -> bool:
+    try:
+        inputs = tuple(
+            path
+            for path in directory.iterdir()
+            if path.is_file() and path.name.endswith((_TFVARS_SUFFIX, _TFVARS_JSON_SUFFIX))
+        )
+    except OSError:
+        return False  # An unreadable sibling remains an unknown environment.
+    return bool(inputs) and all(_excluded_input(path, _read_text(path) or "") for path in inputs)
 
 
 def _manifest_blind(root: Path, environments: frozenset[str]) -> Iterator[_BlindEnvironment]:
@@ -612,6 +787,7 @@ def _tfvars_secret(entry: object) -> str | None:
 
 
 def _canonical_for_type(text: str, scalar_type: _ScalarType) -> _Canon | None:
+    text = ungrouped_expression(text)
     canon = _canonical(text)
     if canon is None:
         return None
@@ -622,20 +798,19 @@ def _canonical_for_type(text: str, scalar_type: _ScalarType) -> _Canon | None:
 
     stripped = text.strip()
     if stripped.startswith('"'):
-        parsed = _parse_string(stripped, 0)
-        if parsed.value is None or parsed.next_index != len(stripped):
-            return None
-        return _Canon("str", stripped[1:-1])
+        literal = literal_string(stripped)
+        return None if literal is None else _Canon("str", literal)
     if canon.tag == "bool":
         return _Canon("str", "true" if canon.value is True else "false")
     if canon.tag == "num" and isinstance(canon.value, Decimal):
-        return _Canon("str", format(canon.value.normalize(), "f"))
+        return _number_string(canon.value)
     return canon if canon.tag == "str" else None
 
 
 def _canonical(text: str) -> _Canon | None:
-    if "${" in text or "<<" in text:
+    if "${" in text or "%{" in text or "<<" in text:
         return None
+    text = ungrouped_expression(text)
     parsed = _parse_value(text, _skip_ws(text, 0))
     return parsed.value if parsed.value is not None and _skip_ws(text, parsed.next_index) == len(text) else None
 
@@ -657,7 +832,7 @@ def _parse_value(text: str, index: int) -> _ValueParseResult:
     if char == "{":
         return _parse_map(text, index)
     if (number := _NUMBER_RE.match(text, index)) is not None:
-        return _ValueParseResult(_Canon("num", Decimal(number.group(0))), number.end())
+        return _ValueParseResult(_numeric_scalar(number.group(0)), number.end())
     if (ident := _IDENT_RE.match(text, index)) is not None and (
         keyword := _KEYWORD_SCALARS.get(ident.group(0))
     ) is not None:
@@ -673,7 +848,8 @@ def _parse_string(text: str, index: int) -> _ValueParseResult:
             cursor += 2
             continue
         if char == '"':
-            return _ValueParseResult(_string_scalar(text[index + 1 : cursor]), cursor + 1)
+            literal = literal_string(text[index : cursor + 1])
+            return _ValueParseResult(None if literal is None else _string_scalar(literal), cursor + 1)
         cursor += 1
     return _ValueParseResult(None, index)
 
@@ -682,8 +858,15 @@ def _string_scalar(inner: str) -> _Canon:
     if (bool_scalar := _BOOL_SCALARS.get(inner)) is not None:
         return bool_scalar
     if _NUMBER_RE.fullmatch(inner) is not None:
-        return _Canon("num", Decimal(inner))
+        return _numeric_scalar(inner) or _Canon("str", inner)
     return _Canon("str", inner)
+
+
+def _numeric_scalar(text: str) -> _Canon | None:
+    try:
+        return _Canon("num", Decimal(text))
+    except ArithmeticError:
+        return None
 
 
 def _parse_list(text: str, index: int) -> _ValueParseResult:
@@ -774,13 +957,17 @@ def _collect_environment_values(
     if text is None:
         blind.append(_BlindEnvironment(env, f"`{file.name}` for environment `{env}` cannot be read"))
         return
-    for attr in document(text).attributes:
+    assignments = _assignments(file, text)
+    if assignments is None:
+        blind.append(_BlindEnvironment(env, f"`{file.name}` for environment `{env}` is not unambiguous JSON input"))
+        return
+    for attr in assignments:
         declaration = declarations.get(attr.name)
         assignment = _AssignmentValue(
-            attr.value,
+            attr.text,
             None
             if declaration is None or declaration.scalar_type is None
-            else _canonical_for_type(attr.value, declaration.scalar_type),
+            else _assignment_canon(attr, declaration.scalar_type),
             file,
         )
         previous = values.setdefault(attr.name, {}).get(env)

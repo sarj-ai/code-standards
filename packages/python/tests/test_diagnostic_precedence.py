@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import ast
+import cProfile
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from sarj_python_lint.__main__ import analyze, deduplicate_diagnostics, main
+from sarj_python_lint._file_context import PythonFileContext
 from sarj_python_lint.rule_base import Diagnostic, Severity
 
 
@@ -19,6 +22,41 @@ def test_specific_test_docstring_finding_suppresses_generic_restatements() -> No
     diagnostics = [_diagnostic("SARJ050"), _diagnostic("SARJ085"), _diagnostic("SARJ088")]
 
     assert [finding.code for finding in deduplicate_diagnostics(diagnostics)] == ["SARJ088"]
+
+
+def test_repeated_composition_owns_wide_setup_at_same_call() -> None:
+    diagnostics = [_diagnostic("SARJ045"), _diagnostic("SARJ457"), _diagnostic("SARJ045", line=4)]
+
+    assert [(finding.code, finding.line) for finding in deduplicate_diagnostics(diagnostics)] == [
+        ("SARJ457", 3),
+        ("SARJ045", 4),
+    ]
+
+
+def test_proven_service_contract_finding_owns_advisory_at_same_class() -> None:
+    diagnostics = [
+        Diagnostic(Path("service.py"), 3, 5, "SARJ071", "advisory", Severity.WARNING),
+        Diagnostic(Path("service.py"), 3, 5, "SARJ465", "contract", Severity.WARNING),
+        Diagnostic(Path("service.py"), 7, 5, "SARJ071", "other", Severity.WARNING),
+    ]
+    assert [(finding.code, finding.line) for finding in deduplicate_diagnostics(diagnostics)] == [
+        ("SARJ465", 3),
+        ("SARJ071", 7),
+    ]
+
+
+def test_repeated_body_owns_composition_only_inside_its_test() -> None:
+    source = "def test_one():\n    service = build()\n    service.run()\n\ndef test_two():\n    service = build()\n"
+    diagnostics = [
+        _diagnostic("SARJ066", line=1),
+        _diagnostic("SARJ457", line=2),
+        _diagnostic("SARJ457", line=6),
+    ]
+
+    assert [(finding.code, finding.line) for finding in deduplicate_diagnostics(diagnostics, source=source)] == [
+        ("SARJ066", 1),
+        ("SARJ457", 6),
+    ]
 
 
 def test_typed_section_finding_suppresses_per_section_twins() -> None:
@@ -241,3 +279,38 @@ def test_suppressing_specific_finding_preserves_unsuppressed_generic_twin(
     output = capsys.readouterr().out
     assert "SARJ050 warning:" in output
     assert "SARJ088" not in output
+
+
+def test_owner_precedence_shares_one_parse_and_reuses_a_file_context() -> None:
+    source = 'def test_one(\n    value,\n):\n    """\n    Args: value\n    """\n    return build(value)\n'
+    diagnostics = [
+        Diagnostic(Path("service.py"), line, 1, code, code)
+        for code, line in [
+            ("SARJ066", 1),
+            ("SARJ457", 7),
+            ("SARJ092", 5),
+            ("SARJ086", 5),
+            ("SARJ093", 1),
+            ("SARJ034", 2),
+        ]
+    ]
+    expected = [("SARJ066", 1), ("SARJ092", 5), ("SARJ093", 1)]
+    profile = cProfile.Profile()
+    findings = profile.runcall(deduplicate_diagnostics, diagnostics, source=source)
+    assert [(finding.code, finding.line) for finding in findings] == expected
+    assert sum(entry.callcount for entry in profile.getstats() if entry.code is ast.parse.__code__) == 1
+    context = PythonFileContext(Path("service.py"), source)
+    assert context.tree is not None
+    profile = cProfile.Profile()
+    findings = profile.runcall(deduplicate_diagnostics, diagnostics, source=source, context=context)
+    assert not any(entry.code is ast.parse.__code__ for entry in profile.getstats())
+    assert [(finding.code, finding.line) for finding in findings] == expected
+
+
+def test_owner_precedence_preserves_findings_when_source_cannot_parse() -> None:
+    diagnostics = [_diagnostic(code) for code in ("SARJ066", "SARJ457", "SARJ092", "SARJ086", "SARJ093", "SARJ034")]
+    source = "def broken(:"
+    expected = deduplicate_diagnostics(diagnostics)
+    assert deduplicate_diagnostics(diagnostics, source=source) == expected
+    context = PythonFileContext(Path("service.py"), source)
+    assert deduplicate_diagnostics(diagnostics, source=source, context=context) == expected

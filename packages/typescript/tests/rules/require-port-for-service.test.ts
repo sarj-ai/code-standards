@@ -1,3 +1,4 @@
+// vitest: shared-module-graph
 import * as tsParser from "@typescript-eslint/parser";
 import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, it } from "vitest";
@@ -20,6 +21,10 @@ const SRC = "/repo/src/domain/record-normalizer/service.ts";
 
 RULE_TESTER.run("require-port-for-service", rule, {
   valid: [
+    { name: "qualified imported port aliases remain unresolved rather than empty", code: "import type * as contracts from './contracts'; type Handler = contracts.Handler; export class RequestHandler implements Handler { constructor(private readonly store: TaskStore) {} handle() { this.store.handle(); } }" },
+    { name: "callable port aliases retain their capability across local aliases", code: "type Run = Fn; type Fn = () => void; interface Handler { handle: Run } export class RequestHandler implements Handler { constructor(private readonly store: TaskStore) {} handle() { this.store.handle(); } }" },
+    { name: "locally shadowed constructor names do not prove retained injection", code: "export class RequestHandler { private store: TaskStore; constructor(store: TaskStore) { { const store = new TaskStore(); this.store = store; } } handle() { this.store.handle(); } }" },
+    { name: "a parameter property replaced with a constructed value is not injection", code: "export class RequestHandler { constructor(private readonly store: TaskStore) { this.store = new TaskStore(); } handle() { this.store.handle(); } }" },
     { name: "quoted callable keys match equivalent interface keys", code: 'interface Handler { "handle"(): void } export class RequestHandler implements Handler { constructor(private readonly store: TaskStore) {} "handle"(): void { this.store.handle(); } }' },
     { name: "quoted function properties match equivalent port properties", code: 'interface Handler { "handle": () => void } export class RequestHandler implements Handler { constructor(private readonly store: TaskStore) {} "handle" = () => { this.store.handle(); }; }' },
     { name: "accepts the documented service port", filename: REQUIRE_PORT_FOR_SERVICE_DOCUMENTATION.examples[0].focusPath, code: REQUIRE_PORT_FOR_SERVICE_DOCUMENTATION.examples[0].files[0].source },
@@ -595,7 +600,7 @@ RULE_TESTER.run("require-port-for-service", rule, {
       `,
     },
     {
-      name: "accepts a same-stem structural port that covers the public surface",
+      name: "ignores a thin transport wrapper despite a nearby interface",
       filename: "/repo/src/app/api/parser.ts",
       code: `
         export interface Parser { parse(args: ParseArgs): Promise<Parsed>; }
@@ -959,6 +964,12 @@ RULE_TESTER.run("require-port-for-service", rule, {
   ],
 
   invalid: [
+    {
+      name: "a same-stem interface does not replace an implements clause",
+      filename: SRC,
+      code: "interface WorkerService { run(): void } export class WorkerServiceImpl { constructor(private readonly worker: Worker) {} run(): void { this.worker.run(); } }",
+      errors: [{ messageId: "requireInterface" }],
+    },
     { name: "different quoted method names do not establish a port", code: 'interface Handler { "save"(): void } export class RequestHandler implements Handler { constructor(private readonly store: TaskStore) {} "handle"(): void { this.store.handle(); } }', errors: [{ messageId: "requireInterface" }] },
     { name: "reports the documented concrete service", filename: REQUIRE_PORT_FOR_SERVICE_DOCUMENTATION.examples[1].focusPath, code: REQUIRE_PORT_FOR_SERVICE_DOCUMENTATION.examples[1].files[0].source, errors: [{ messageId: "requireInterface", data: { name: "RequestHandler", deps: "store: TaskStore", methods: "handle" } }] },
     {

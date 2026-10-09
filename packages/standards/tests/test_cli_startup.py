@@ -4,6 +4,8 @@ import subprocess
 import sys
 from typing import TYPE_CHECKING
 
+from sarj_standards import __version__
+
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -12,8 +14,8 @@ if TYPE_CHECKING:
 def test_importing_cli_does_not_eagerly_load_command_implementations() -> None:
     script = (
         "import sys; import sarj_standards.__main__; "
-        "blocked = {'sarj_standards.doctor', 'sarj_standards.lifecycle', "
-        "'sarj_standards.repository', 'sarj_standards.runner'}; "
+        "blocked = {'typer', 'pydantic', 'sarj_standards.cli.main', "
+        "'sarj_standards.libs.repository.rule_catalog_artifact'}; "
         "raise SystemExit(1 if blocked & sys.modules.keys() else 0)"
     )
 
@@ -25,6 +27,18 @@ def test_importing_cli_does_not_eagerly_load_command_implementations() -> None:
     )
 
     assert result.returncode == 0, result.stderr
+
+
+def test_version_probe_preserves_public_output_without_loading_analysis() -> None:
+    script = (
+        "import sys; "
+        "from sarj_standards.__main__ import main; "
+        "assert main(['--version']) == 0; "
+        "assert not {'typer', 'pydantic', 'sarj_standards.cli.main'} & sys.modules.keys()"
+    )
+    result = subprocess.run([sys.executable, "-c", script], check=False, capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == f"code-standards {__version__}\n"
 
 
 def test_update_parser_exposes_the_complete_bundle_controls() -> None:

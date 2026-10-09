@@ -11,6 +11,8 @@ import {
   type TSESTree,
 } from "@typescript-eslint/utils";
 
+import { unwrapExpression } from "./_unwrap-expression.js";
+
 import { forEachOwnAstChild } from "./_for-each-own-ast-child.js";
 import { createRule, type RuleDocumentation } from "./_docs.js";
 
@@ -53,6 +55,7 @@ const ACAC_HEADER = "access-control-allow-credentials";
 const HEADER_SET_METHODS: ReadonlySet<string> = new Set(["setheader", "set", "append"]);
 
 function isCredentialsTrueValue(node: TSESTree.Node): boolean {
+  node = unwrapExpression(node);
   if (node.type === "Literal") {
     if (node.value === true) {
       return true;
@@ -72,17 +75,7 @@ function isStarLiteral(node: TSESTree.Node): boolean {
  * Returns the (non-computed) string name of a property key, or `undefined`.
  */
 function propertyKeyName(prop: TSESTree.Property): string | undefined {
-  if (prop.computed) {
-    return undefined;
-  }
-  const key = prop.key;
-  if (key.type === "Identifier") {
-    return key.name;
-  }
-  if (key.type === "Literal" && typeof key.value === "string") {
-    return key.value;
-  }
-  return undefined;
+  return ASTUtils.getPropertyName(prop) ?? undefined;
 }
 
 function isCorsWildcardCredentialsCall(
@@ -92,7 +85,7 @@ function isCorsWildcardCredentialsCall(
   if (name === undefined || name.toLowerCase() !== "cors") {
     return false;
   }
-  const options = node.arguments.find(
+  const options = node.arguments.map(unwrapExpression).find(
     (arg): arg is TSESTree.ObjectExpression => arg.type === "ObjectExpression",
   );
   if (options === undefined) {
@@ -118,6 +111,7 @@ function isCorsWildcardCredentialsCall(
  * True only for the boolean literal `true` (not `1`, not a truthy expression).
  */
 function isTrueLiteral(node: TSESTree.Node): boolean {
+  node = unwrapExpression(node);
   return node.type === "Literal" && node.value === true;
 }
 
@@ -136,7 +130,8 @@ function subtreeContainsStarLiteral(node: TSESTree.Node): boolean {
 function calleeName(
   node: TSESTree.CallExpression | TSESTree.NewExpression,
 ): string | undefined {
-  const callee = node.callee;
+  const callee = unwrapExpression(node.callee);
+
   if (callee.type === "Identifier") {
     return callee.name;
   }
@@ -188,7 +183,8 @@ type HeaderSetKind = "origin" | "credentials";
 function classifyHeaderSetCall(
   node: TSESTree.CallExpression,
 ): HeaderSetKind | undefined {
-  const callee = node.callee;
+  const callee = unwrapExpression(node.callee);
+
   if (
     callee.type !== "MemberExpression" ||
     callee.computed ||
@@ -258,12 +254,30 @@ export default createRule<Options, MessageIds>({
     const variableIds = new WeakMap<TSESLint.Scope.Variable, number>();
     let nextVariableId = 0;
 
-    function variableId(variable: TSESLint.Scope.Variable): number {
-      const existing = variableIds.get(variable);
-      if (existing !== undefined) return existing;
-      const value = nextVariableId++;
-      variableIds.set(variable, value);
-      return value;
+    function recordHeaderSet(
+      node: TSESTree.CallExpression,
+      kind: HeaderSetKind,
+    ): void {
+      const unwrappedNodeCallee = unwrapExpression(node.callee);
+      if (unwrappedNodeCallee.type !== AST_NODE_TYPES.MemberExpression) return;
+      const receiver = receiverIdentity(unwrappedNodeCallee.object);
+      if (receiver === null) return;
+      const key = enclosingScope(node) ?? "module";
+      let receivers = scopeHeaderSets.get(key);
+      if (receivers === undefined) {
+        receivers = new Map();
+        scopeHeaderSets.set(key, receivers);
+      }
+      let entry = receivers.get(receiver);
+      if (entry === undefined) {
+        entry = { originNodes: [], credentialsNodes: [] };
+        receivers.set(receiver, entry);
+      }
+      if (kind === "origin") {
+        entry.originNodes.push(node);
+      } else {
+        entry.credentialsNodes.push(node);
+      }
     }
 
     function receiverIdentity(node: TSESTree.Node): string | null {
@@ -288,29 +302,12 @@ export default createRule<Options, MessageIds>({
       return null;
     }
 
-    function recordHeaderSet(
-      node: TSESTree.CallExpression,
-      kind: HeaderSetKind,
-    ): void {
-      if (node.callee.type !== AST_NODE_TYPES.MemberExpression) return;
-      const receiver = receiverIdentity(node.callee.object);
-      if (receiver === null) return;
-      const key = enclosingScope(node) ?? "module";
-      let receivers = scopeHeaderSets.get(key);
-      if (receivers === undefined) {
-        receivers = new Map();
-        scopeHeaderSets.set(key, receivers);
-      }
-      let entry = receivers.get(receiver);
-      if (entry === undefined) {
-        entry = { originNodes: [], credentialsNodes: [] };
-        receivers.set(receiver, entry);
-      }
-      if (kind === "origin") {
-        entry.originNodes.push(node);
-      } else {
-        entry.credentialsNodes.push(node);
-      }
+    function variableId(variable: TSESLint.Scope.Variable): number {
+      const existing = variableIds.get(variable);
+      if (existing !== undefined) return existing;
+      const value = nextVariableId++;
+      variableIds.set(variable, value);
+      return value;
     }
 
     return {

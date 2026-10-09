@@ -22,6 +22,16 @@ if TYPE_CHECKING:
 class PublicationVerifier(Protocol):
     def main(self, argv: list[str] | None = None) -> int: ...
 
+    def verify_pypi(
+        self,
+        dist: Path,
+        projects: tuple[str, ...],
+        environment: str,
+        *,
+        clock: Callable[[], float] = ...,
+        sleeper: Callable[[float], None] = ...,
+    ) -> None: ...
+
     def verify_npm(
         self,
         tarball: Path,
@@ -130,13 +140,21 @@ def test_ambiguous_publish_failure_is_accepted_only_after_exact_verification(
         verifier, "_npm_version_exists", _missing
     )
 
-    def publish(_argv: tuple[str, ...], *, check: bool, timeout: int) -> None:
-        _ = check, timeout
+    def publish(
+        _argv: tuple[str, ...],
+        *,
+        check: bool,  # ruff: ignore[unused-function-argument] -- subprocess.run fixes this keyword.
+        timeout: int,  # ruff: ignore[unused-function-argument] -- subprocess.run fixes this keyword.
+    ) -> None:
         raise subprocess.CalledProcessError(1, "npm publish")
 
-    def verify(_tarball: Path, *, commit: str, environment: str) -> None:
+    def verify(
+        _tarball: Path,
+        *,
+        commit: str,  # ruff: ignore[unused-function-argument] -- The provenance verifier fixes this keyword.
+        environment: str,  # ruff: ignore[unused-function-argument] -- The provenance verifier fixes this keyword.
+    ) -> None:
         nonlocal calls
-        _ = commit, environment
         calls += 1
 
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- test injects an ambiguous npm subprocess failure
@@ -157,12 +175,20 @@ def test_ambiguous_publish_and_verification_failure_reports_failure(
         verifier, "_npm_version_exists", _missing
     )
 
-    def publish(_argv: tuple[str, ...], *, check: bool, timeout: int) -> None:
-        _ = check, timeout
+    def publish(
+        _argv: tuple[str, ...],
+        *,
+        check: bool,  # ruff: ignore[unused-function-argument] -- subprocess.run fixes this keyword.
+        timeout: int,  # ruff: ignore[unused-function-argument] -- subprocess.run fixes this keyword.
+    ) -> None:
         raise subprocess.CalledProcessError(1, "npm publish")
 
-    def reject(_tarball: Path, *, commit: str, environment: str) -> None:
-        _ = commit, environment
+    def reject(
+        _tarball: Path,
+        *,
+        commit: str,  # ruff: ignore[unused-function-argument] -- The provenance verifier fixes this keyword.
+        environment: str,  # ruff: ignore[unused-function-argument] -- The provenance verifier fixes this keyword.
+    ) -> None:
         msg = "registry never converged"
         raise OSError(msg)
 
@@ -263,10 +289,9 @@ def test_npm_verification_has_independent_stage_budgets(
         operation: Callable[[], object],
         *,
         timeout: timedelta,
-        clock: Callable[[], float],
-        sleeper: Callable[[float], None],
+        clock: Callable[[], float],  # ruff: ignore[unused-function-argument] -- The retry stage fixes this keyword.
+        sleeper: Callable[[float], None],  # ruff: ignore[unused-function-argument] -- The retry stage fixes this keyword.
     ) -> object:
-        _ = clock, sleeper
         stages.append((stage, timeout))
         return operation()
 
@@ -277,7 +302,7 @@ def test_npm_verification_has_independent_stage_budgets(
         return artifact
 
     def verify_provenance(_artifact: object, *, commit: str, environment: str) -> None:
-        _ = commit, environment
+        """Treat provenance as already verified while exercising publication timeouts."""
 
     def verify_installability(_identity: PackageIdentity) -> None:
         return None
@@ -334,8 +359,12 @@ def test_npm_verification_converges_independently_after_each_stage_is_delayed(
     def delayed_metadata(_tarball: Path, _identity: PackageIdentity) -> object:
         return delayed("metadata", artifact)
 
-    def delayed_provenance(_artifact: object, *, commit: str, environment: str) -> object:
-        _ = commit, environment
+    def delayed_provenance(
+        _artifact: object,
+        *,
+        commit: str,  # ruff: ignore[unused-function-argument] -- The provenance verifier fixes this keyword.
+        environment: str,  # ruff: ignore[unused-function-argument] -- The provenance verifier fixes this keyword.
+    ) -> object:
         return delayed("provenance")
 
     def delayed_install(_identity: PackageIdentity) -> object:
@@ -454,3 +483,91 @@ def test_attested_commit_must_be_an_unchanged_ancestor(
             "packages/typescript/package.json",
             "packages/typescript/src",
         )
+
+
+@pytest.fixture
+def pypi_dist(tmp_path: Path, verifier: PublicationVerifier, monkeypatch: pytest.MonkeyPatch) -> Path:
+    for filename in ("alpha_1.whl", "alpha_2.tar.gz", "zeta_1.whl", "zeta_2.tar.gz"):
+        (tmp_path / filename).write_bytes(b"staged artifact")
+
+    def identity(artifact: Path) -> PackageIdentity:
+        return PackageIdentity(artifact.name.split("_", 1)[0], "1.2.3")
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- test separates retry orchestration from archive decoding
+        verifier, "_metadata", identity
+    )
+    return tmp_path
+
+
+@pytest.mark.parametrize("visible_at", [0.0, 70.0, 181.0])
+def test_pypi_retries_only_the_delayed_file_with_a_bounded_budget(
+    verifier: PublicationVerifier, monkeypatch: pytest.MonkeyPatch, pypi_dist: Path, visible_at: float
+) -> None:
+    now = 0.0
+    calls: dict[str, int] = {}
+    waits: list[float] = []
+
+    def clock() -> float:
+        return now
+
+    def sleep(seconds: float) -> None:
+        nonlocal now
+        waits.append(seconds)
+        now += seconds
+
+    def verify(artifact: Path, *, name: str, version: str, environment: str) -> None:
+        assert (name, version, environment) == (artifact.name.split("_", 1)[0], "1.2.3", "publisher")
+        calls[artifact.name] = calls.get(artifact.name, 0) + 1
+        if artifact.name == "zeta_1.whl" and now < visible_at:
+            url = "https://pypi.example/provenance"
+            raise HTTPError(url, 404, "not visible yet", Message(), None)
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- test models one delayed PyPI file without network calls
+        verifier, "_verify_pypi_file", verify
+    )
+    if visible_at > 180:
+        with pytest.raises(Exception, match=r"PyPI zeta_1\.whl did not converge"):
+            verifier.verify_pypi(pypi_dist, ("alpha", "zeta"), "publisher", clock=clock, sleeper=sleep)
+        assert now == 180
+        assert "zeta_2.tar.gz" not in calls
+    else:
+        verifier.verify_pypi(pypi_dist, ("alpha", "zeta"), "publisher", clock=clock, sleeper=sleep)
+        assert visible_at <= now < visible_at + 30
+        assert calls["zeta_2.tar.gz"] == 1
+    assert calls["alpha_1.whl"] == calls["alpha_2.tar.gz"] == 1
+    assert all(0 < delay <= 30 for delay in waits)
+
+
+@pytest.mark.parametrize("mismatch", ["digest", "bytes", "publisher"])
+def test_pypi_immutable_artifact_mismatch_fails_without_waiting(
+    verifier: PublicationVerifier, monkeypatch: pytest.MonkeyPatch, pypi_dist: Path, mismatch: str
+) -> None:
+    artifact = pypi_dist / "alpha_1.whl"
+    digest = hashlib.sha256(artifact.read_bytes()).hexdigest()
+
+    def metadata(url: str) -> dict[str, object]:
+        if url.endswith("/provenance"):
+            return {}
+        return {
+            "urls": [
+                {
+                    "filename": artifact.name,
+                    "url": "https://pypi.example/alpha.whl",
+                    "digests": {"sha256": "wrong" if mismatch == "digest" else digest},
+                }
+            ]
+        }
+
+    def download(_url: str) -> bytes:
+        return b"wrong" if mismatch == "bytes" else artifact.read_bytes()
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- test supplies exact PyPI metadata and absent publisher provenance
+        verifier, "_json", metadata
+    )
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- test controls registry bytes without a network request
+        verifier, "_bytes", download
+    )
+    sleeps: list[float] = []
+    with pytest.raises(Exception, match=r"PyPI (digest|bytes|provenance)"):
+        verifier.verify_pypi(pypi_dist, ("alpha", "zeta"), "publisher", clock=lambda: 0, sleeper=sleeps.append)
+    assert sleeps == []

@@ -35,6 +35,7 @@ LOCKFILES: Final[tuple[tuple[str, PackageManager], ...]] = (
     ("bun.lockb", PackageManager.BUN),
     ("package-lock.json", PackageManager.NPM),
 )
+AGE_GATE_POLICY_NAMES: Final = frozenset({".npmrc", ".yarnrc.yml", ".yarnrc.yaml", "pnpm-workspace.yaml"})
 
 _ESLINT: Final = "eslint"
 _YARN_BERRY_MINIMUM_MAJOR: Final = 2

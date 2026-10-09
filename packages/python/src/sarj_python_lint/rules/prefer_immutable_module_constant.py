@@ -20,10 +20,13 @@ from sarj_python_lint.rules._paths import is_test_path, is_test_support_path
 
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
+
     from sarj_python_lint._file_context import PythonFileContext
 
 
 _CONSTANT_NAME = re.compile(r"^_?[A-Z][A-Z0-9_]*$")
+_TYPING_SOURCES = frozenset({"typing", "typing_extensions"})
 _MUTATING_METHODS = frozenset(
     {
         "add",
@@ -73,21 +76,25 @@ class PreferImmutableModuleConstant(Rule):
     code: str = "SARJ096"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
         default_level=Severity.WARNING,
-        summary=("Nonempty uppercase module collections allow top-level membership or keys to change at runtime."),
+        summary=(
+            "Module collection constants should use native immutable containers or declare dictionary bindings as Final."
+        ),
         rationale=(
-            "A constant-looking collection can expose process-wide top-level mutation even when callers intend it as a "
-            "read-only lookup table."
+            "Tuple and frozenset protect collection membership. Final makes a dictionary's constant binding explicit "
+            "without changing its runtime type or concrete dictionary API."
         ),
         remediation=(
-            "When the concrete collection API is not part of the contract, use a tuple for ordered values, a frozenset for "
-            "membership, or a Mapping-typed immutable mapping for keyed values. Recursively freeze nested values when needed."
+            "When the concrete list or set API is not part of the contract, use a tuple for ordered values or a frozenset "
+            "for membership. Annotate dictionary constants with Final[dict[K, V]]. Final prevents reassignment in type-checked "
+            "code but does not freeze dictionary contents. Use MappingProxyType when runtime write protection is required."
         ),
         category=RuleCategory.MAINTAINABILITY,
         autofix=AutofixPolicy.NONE,
         limitations=(
             "Empty collections and collections intentionally mutated or passed to unknown calls are not reported.",
-            "The suggested replacements prevent top-level membership or key changes; tuple and MappingProxyType are shallow.",
-            "Changing list or dict to an immutable type can affect consumers, serialization, equality, and concrete API methods.",
+            "Direct declarations and declarations in module-level if/try suites are checked; repeated bindings, loops, functions, and class bodies are excluded.",
+            "Final has no runtime enforcement and permits item mutation on dictionaries; tuple and frozenset are shallow.",
+            "Changing a list or set to an immutable type can affect consumers, serialization, and concrete API methods.",
             "Test, test-support, and generated files are excluded.",
         ),
         examples=(
@@ -122,12 +129,42 @@ class PreferImmutableModuleConstant(Rule):
             RuleExample(
                 example_id="immutable-module-mapping",
                 scenario="keyed-values",
-                title="Read-only mapping used for keyed values",
+                title="Final dictionary binding used for keyed values",
                 outcome=ExampleOutcome.NO_MATCH,
                 files=(
                     ExampleFile.python(
                         "settings.py",
-                        'from collections.abc import Mapping\nfrom types import MappingProxyType\n\nROLE_LABELS: Mapping[str, str] = MappingProxyType({"admin": "Administrator"})\n',
+                        'from typing import Final\n\nROLE_LABELS: Final[dict[str, str]] = {"admin": "Administrator"}\n',
+                    ),
+                ),
+                focus_path=PurePosixPath("settings.py"),
+                expected_count=0,
+                public=True,
+            ),
+            RuleExample(
+                example_id="conditional-module-mapping",
+                scenario="conditional-factory",
+                title="Conditional dictionary factory needs constant intent",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "settings.py",
+                        'if voice_enabled:\n    TOOL_LABELS = dict.fromkeys(("call", "transfer"), "Voice")\n',
+                    ),
+                ),
+                focus_path=PurePosixPath("settings.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="final-conditional-module-mapping",
+                scenario="conditional-factory",
+                title="Conditional dictionary factory declares a Final binding",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "settings.py",
+                        'from typing import Final\n\nif voice_enabled:\n    TOOL_LABELS: Final[dict[str, str]] = dict.fromkeys(("call", "transfer"), "Voice")\n',
                     ),
                 ),
                 focus_path=PurePosixPath("settings.py"),
@@ -147,12 +184,17 @@ class PreferImmutableModuleConstant(Rule):
         if tree is None:
             return []
         mutated = _mutated_names(tree)
-        shadowed_builtins = _module_bound_names(tree) & {"dict", "list", "set"}
+        module_names = _module_bound_names(tree)
+        shadowed_builtins = {"dict", "list", "set"} if "*" in module_names else module_names & {"dict", "list", "set"}
+        statements = tuple(_module_statements(tree.body))
+        final_names = _final_names(statements, context)
         findings: list[Diagnostic] = []
-        for statement in tree.body:
+        for statement in statements:
             for name, value in _bindings(statement):
                 kind = _mutable_literal_kind(value, shadowed_builtins=shadowed_builtins)
                 if kind is None or name in mutated or not _CONSTANT_NAME.fullmatch(name) or name.startswith("__"):
+                    continue
+                if kind == "dict" and name in final_names:
                     continue
                 findings.append(
                     Diagnostic(
@@ -165,6 +207,57 @@ class PreferImmutableModuleConstant(Rule):
                     )
                 )
         return findings
+
+
+def _module_statements(body: list[ast.stmt]) -> Iterator[ast.stmt]:
+    for statement in body:
+        yield statement
+        match statement:
+            case ast.If():
+                yield from _module_statements(statement.body)
+                yield from _module_statements(statement.orelse)
+            case ast.Try() | ast.TryStar():
+                yield from _module_statements(statement.body)
+                for handler in statement.handlers:
+                    yield from _module_statements(handler.body)
+                yield from _module_statements(statement.orelse)
+                yield from _module_statements(statement.finalbody)
+            case _:
+                pass
+
+
+def _final_names(statements: tuple[ast.stmt, ...], context: PythonFileContext) -> frozenset[str]:
+    annotations = [
+        statement
+        for statement in statements
+        if isinstance(statement, ast.AnnAssign) and isinstance(statement.target, ast.Name)
+    ]
+    tree = context.tree
+    if not annotations or tree is None:
+        return frozenset()
+    non_import_bindings = _scope_bound_names(tree.body, include_imports=False)
+    return frozenset(
+        statement.target.id
+        for statement in annotations
+        if isinstance(statement.target, ast.Name)
+        and _is_final_annotation(statement.annotation, context, non_import_bindings)
+    )
+
+
+def _is_final_annotation(annotation: ast.expr, context: PythonFileContext, non_import_bindings: set[str]) -> bool:
+    if isinstance(annotation, ast.Constant) and isinstance(annotation.value, str):
+        try:
+            annotation = ast.parse(annotation.value.strip(), mode="eval").body
+        except SyntaxError:
+            return False
+    if isinstance(annotation, ast.Subscript):
+        if isinstance(annotation.slice, ast.Tuple):
+            return False
+        annotation = annotation.value
+    root = _root_name(annotation)
+    return root not in non_import_bindings and context.module_imports.resolves(
+        annotation, sources=_TYPING_SOURCES, symbol="Final"
+    )
 
 
 def _bindings(statement: ast.stmt) -> tuple[tuple[str, ast.expr], ...]:
@@ -195,14 +288,30 @@ def _mutable_literal_kind(value: ast.expr, *, shadowed_builtins: set[str]) -> st
             return None
         case ast.Call(func=ast.Name(id=kind)) if kind in {"set", "dict", "list"} and kind not in shadowed_builtins:
             return kind
+        case ast.Call(func=ast.Attribute(value=ast.Name(id="dict"), attr="fromkeys"), args=args, keywords=[]) if (
+            "dict" not in shadowed_builtins
+            and len(args) in {1, 2}
+            and not any(isinstance(argument, ast.Starred) for argument in args)
+        ):
+            return None if _empty_literal(args[0]) else "dict"
         case _:
             return None
+
+
+def _empty_literal(value: ast.expr) -> bool:
+    match value:
+        case (
+            ast.List(elts=[]) | ast.Tuple(elts=[]) | ast.Set(elts=[]) | ast.Dict(keys=[]) | ast.Constant(value="" | b"")
+        ):
+            return True
+        case _:
+            return False
 
 
 def _mutated_names(tree: ast.Module) -> frozenset[str]:
     mutated: set[str] = set()
     module_bindings: dict[str, int] = {}
-    for statement in tree.body:
+    for statement in _module_statements(tree.body):
         if isinstance(statement, ast.Assign) and len(statement.targets) > 1:
             # Skip every chained alias because mutation or escape through one name changes them all.
             mutated.update(target.id for target in statement.targets if isinstance(target, ast.Name))
@@ -424,8 +533,9 @@ def _scope_global_names(body: list[ast.stmt]) -> set[str]:
 
 
 class _BoundNameCollector(ast.NodeVisitor):
-    def __init__(self) -> None:
+    def __init__(self, *, include_imports: bool) -> None:
         self.names: set[str] = set()
+        self._include_imports: bool = include_imports
 
     def _record_target(self, target: ast.expr) -> None:
         match target:
@@ -503,11 +613,13 @@ class _BoundNameCollector(ast.NodeVisitor):
 
     @override
     def visit_Import(self, node: ast.Import) -> None:
-        self.names.update(alias.asname or alias.name.split(".", maxsplit=1)[0] for alias in node.names)
+        if self._include_imports:
+            self.names.update(alias.asname or alias.name.split(".", maxsplit=1)[0] for alias in node.names)
 
     @override
     def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
-        self.names.update(alias.asname or alias.name for alias in node.names)
+        if self._include_imports:
+            self.names.update(alias.asname or alias.name for alias in node.names)
 
     @override
     def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
@@ -544,8 +656,8 @@ class _BoundNameCollector(ast.NodeVisitor):
         self.generic_visit(node)
 
 
-def _scope_bound_names(body: list[ast.stmt]) -> set[str]:
-    collector = _BoundNameCollector()
+def _scope_bound_names(body: list[ast.stmt], *, include_imports: bool = True) -> set[str]:
+    collector = _BoundNameCollector(include_imports=include_imports)
     for statement in body:
         collector.visit(statement)
     return collector.names
@@ -615,10 +727,15 @@ def _literal_container_root_names(value: ast.expr) -> tuple[str, ...]:
 
 
 def _message(name: str, kind: str) -> str:
-    replacement = {"list": "tuple", "set": "frozenset", "dict": "an immutable mapping"}[kind]
+    if kind == "dict":
+        return (
+            f"uppercase module dictionary `{name}` should declare constant intent with Final[dict[K, V]]; "
+            "Final prevents reassignment in type-checked code but does not freeze dictionary contents."
+        )
+    replacement = {"list": "tuple", "set": "frozenset"}[kind]
     return (
         f"uppercase module collection `{name}` is a mutable {kind} — consider {replacement} to prevent top-level "
-        "membership or key changes; preserve concrete APIs and recursively freeze nested values when required."
+        "membership changes; preserve concrete APIs and recursively freeze nested values when required."
     )
 
 

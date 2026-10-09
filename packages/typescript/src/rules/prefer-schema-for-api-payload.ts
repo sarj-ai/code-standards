@@ -70,9 +70,8 @@ const isSchemaParseReference = (
   return (
     inner !== null &&
     inner.type === AST_NODE_TYPES.MemberExpression &&
-    !inner.computed &&
-    inner.property.type === AST_NODE_TYPES.Identifier &&
-    (inner.property.name === "parse" || inner.property.name === "safeParse")
+    ASTUtils.getPropertyName(inner) !== null &&
+    ((ASTUtils.getPropertyName(inner) ?? "") === "parse" || (ASTUtils.getPropertyName(inner) ?? "") === "safeParse")
   );
 };
 
@@ -94,15 +93,15 @@ const isRawPayloadSource = (
   if (callee === null || callee.type !== AST_NODE_TYPES.MemberExpression) {
     return false;
   }
-  const property = unwrap(callee.property);
-  if (property === null || property.type !== AST_NODE_TYPES.Identifier) {
+  const property = ASTUtils.getPropertyName(callee);
+  if (property === null) {
     return false;
   }
-  if (property.name === "json") {
-    return !callee.computed && current.arguments.length === 0 && isResponseSource(callee.object, context);
+  if (property === "json") {
+    return current.arguments.length === 0 && isResponseSource(callee.object, context);
   }
   // Promise methods preserve taint unless their callback is a schema parser.
-  if (PROMISE_CHAIN_METHODS.has(property.name)) {
+  if (PROMISE_CHAIN_METHODS.has(property)) {
     return (
       !current.arguments.some(isSchemaParseReference) &&
       isRawPayloadSource(callee.object, context, isKnownLocalText)
@@ -115,15 +114,13 @@ const isRawPayloadSource = (
     input?.type === AST_NODE_TYPES.CallExpression &&
     input.arguments.length === 1 &&
     input.callee.type === AST_NODE_TYPES.MemberExpression &&
-    !input.callee.computed &&
     input.callee.object.type === AST_NODE_TYPES.Identifier &&
     input.callee.object.name === "JSON" &&
-    input.callee.property.type === AST_NODE_TYPES.Identifier &&
-    input.callee.property.name === "stringify" &&
+    ASTUtils.getPropertyName(input.callee) === "stringify" &&
     (ASTUtils.findVariable(context.sourceCode.getScope(input.callee.object), "JSON")?.defs.length ?? 0) === 0
   ) return false;
   return (
-    property.name === "parse" &&
+    property === "parse" &&
     object !== null &&
     object.type === AST_NODE_TYPES.Identifier &&
     object.name === "JSON" &&
@@ -167,9 +164,8 @@ const isDirectLocalFileRead = (
     callee?.type === AST_NODE_TYPES.Identifier
       ? callee.name
       : callee?.type === AST_NODE_TYPES.MemberExpression &&
-        !callee.computed &&
-        callee.property.type === AST_NODE_TYPES.Identifier
-        ? callee.property.name
+        ASTUtils.getPropertyName(callee) !== null
+        ? (ASTUtils.getPropertyName(callee) ?? "")
         : null;
   return name !== null && FILE_READ_RE.test(name);
 };
@@ -270,11 +266,9 @@ const isValidationRead = (node: TSESTree.Node): boolean => {
   const callee = parent.callee;
   if (
     callee.type === AST_NODE_TYPES.MemberExpression &&
-    !callee.computed &&
     callee.object.type === AST_NODE_TYPES.Identifier &&
     callee.object.name === "Array" &&
-    callee.property.type === AST_NODE_TYPES.Identifier &&
-    callee.property.name === "isArray"
+    ASTUtils.getPropertyName(callee) === "isArray"
   ) {
     return parent.arguments.length === 1;
   }
@@ -336,11 +330,9 @@ const bindingValidationPolarity = (
     test.arguments[0]?.type === AST_NODE_TYPES.Identifier &&
     test.arguments[0].name === bindingName &&
     test.callee.type === AST_NODE_TYPES.MemberExpression &&
-    !test.callee.computed &&
     test.callee.object.type === AST_NODE_TYPES.Identifier &&
     test.callee.object.name === "Array" &&
-    test.callee.property.type === AST_NODE_TYPES.Identifier &&
-    test.callee.property.name === "isArray"
+    ASTUtils.getPropertyName(test.callee) === "isArray"
     ? "valid-when-true"
     : null;
 };
@@ -350,15 +342,11 @@ type PlainMemberAccess = {
   readonly property: string;
 };
 
-const plainMemberAccess = (
-  node: TSESTree.Node,
-): PlainMemberAccess | null =>
-  node.type === AST_NODE_TYPES.MemberExpression &&
-    !node.computed &&
-    node.object.type === AST_NODE_TYPES.Identifier &&
-    node.property.type === AST_NODE_TYPES.Identifier
-    ? { object: node.object.name, property: node.property.name }
-    : null;
+const plainMemberAccess = (node: TSESTree.Node): PlainMemberAccess | null => {
+  if (node.type !== AST_NODE_TYPES.MemberExpression || node.object.type !== AST_NODE_TYPES.Identifier) return null;
+  const property = ASTUtils.getPropertyName(node);
+  return property === null ? null : { object: node.object.name, property };
+};
 
 const isSamePlainMember = (
   node: TSESTree.Node,
@@ -490,11 +478,9 @@ const memberValidationPolarity = (
     test.arguments[0].type !== AST_NODE_TYPES.SpreadElement &&
     isSamePlainMember(test.arguments[0], access) &&
     test.callee.type === AST_NODE_TYPES.MemberExpression &&
-    !test.callee.computed &&
     test.callee.object.type === AST_NODE_TYPES.Identifier &&
     test.callee.object.name === "Array" &&
-    test.callee.property.type === AST_NODE_TYPES.Identifier &&
-    test.callee.property.name === "isArray"
+    ASTUtils.getPropertyName(test.callee) === "isArray"
     ? "valid-when-true"
     : null;
 };
@@ -883,13 +869,11 @@ export default createRule<Options, MessageIds>({
         ) {
           // Validation and promise methods are calls, not payload field reads.
           const parent = node.parent;
+          const method = ASTUtils.getPropertyName(node);
           if (
             parent.type === AST_NODE_TYPES.CallExpression &&
-            parent.callee === node &&
-            node.property.type === AST_NODE_TYPES.Identifier &&
-            (node.property.name === "parse" ||
-              node.property.name === "safeParse" ||
-              PROMISE_CHAIN_METHODS.has(node.property.name))
+            parent.callee === node && method !== null &&
+            (method === "parse" || method === "safeParse" || PROMISE_CHAIN_METHODS.has(method))
           ) {
             return;
           }

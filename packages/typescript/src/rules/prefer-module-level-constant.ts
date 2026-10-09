@@ -4,9 +4,10 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/prefer-module-level-constant.test.ts
  */
 
-import { type TSESTree, AST_NODE_TYPES } from "@typescript-eslint/utils";
+import { ASTUtils, type TSESTree, type TSESLint, AST_NODE_TYPES } from "@typescript-eslint/utils";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
+import { outerExpression, unwrapExpression } from "./_unwrap-expression.js";
 import { isStoryFile, isTestFile } from "./_paths.js";
 
 type MessageIds = "hoistCollection" | "hoistRegex";
@@ -160,8 +161,8 @@ function isLiteralOnly(node: TSESTree.Node, depth: number): boolean {
  * Classifies the initializer, or returns null when it is not a hoistable
  * literal-only collection / regex.
  */
-function classify(init: TSESTree.Node, checkRegex: boolean): Candidate | null {
-  const node = unwrapObjectFreeze(init);
+function classify(init: TSESTree.Node, checkRegex: boolean, sourceCode: Readonly<TSESLint.SourceCode>): Candidate | null {
+  const node = unwrapObjectFreeze(init, sourceCode);
 
   if (isRegexLiteral(node)) {
     if (!checkRegex) {
@@ -201,16 +202,18 @@ type Candidate =
   | { kind: "regex"; size: number };
 
 /** `Object.freeze(x)` → `x`; anything else is returned untouched. */
-function unwrapObjectFreeze(node: TSESTree.Node): TSESTree.Node {
+function unwrapObjectFreeze(node: TSESTree.Node, sourceCode: Readonly<TSESLint.SourceCode>): TSESTree.Node {
   const inner = unwrap(node);
+  const callee = inner.type === AST_NODE_TYPES.CallExpression ? unwrapExpression(inner.callee) : null;
   if (
     inner.type === AST_NODE_TYPES.CallExpression &&
-    inner.callee.type === AST_NODE_TYPES.MemberExpression &&
-    !inner.callee.computed &&
-    inner.callee.object.type === AST_NODE_TYPES.Identifier &&
-    inner.callee.object.name === "Object" &&
-    inner.callee.property.type === AST_NODE_TYPES.Identifier &&
-    inner.callee.property.name === "freeze" &&
+    callee?.type === AST_NODE_TYPES.MemberExpression &&
+    !callee.computed &&
+    callee.object.type === AST_NODE_TYPES.Identifier &&
+    callee.object.name === "Object" &&
+    (ASTUtils.findVariable(sourceCode.getScope(callee.object), "Object")?.defs.length ?? 0) === 0 &&
+    callee.property.type === AST_NODE_TYPES.Identifier &&
+    callee.property.name === "freeze" &&
     inner.arguments.length === 1 &&
     inner.arguments[0] !== undefined &&
     inner.arguments[0].type !== AST_NODE_TYPES.SpreadElement
@@ -248,14 +251,22 @@ const NON_RETAINING_BUILTINS: ReadonlyMap<string, ReadonlySet<string>> = new Map
 );
 
 function isSafeRead(identifier: TSESTree.Identifier): boolean {
-  const parent = identifier.parent;
+  let typeOwner: TSESTree.Node = identifier.parent;
+  while (typeOwner.type === AST_NODE_TYPES.TSQualifiedName) typeOwner = typeOwner.parent;
+  if (typeOwner.type === AST_NODE_TYPES.TSTypeQuery) return true;
+  let value: TSESTree.Expression = identifier;
+  let parent = value.parent;
+  while (unwrapExpression(parent) !== parent && "expression" in parent && parent.expression === value) {
+    value = parent as TSESTree.Expression;
+    parent = value.parent;
+  }
 
-  if (parent.type === AST_NODE_TYPES.MemberExpression) return isSafeMemberRead(identifier, parent);
+  if (parent.type === AST_NODE_TYPES.MemberExpression) return isSafeMemberRead(value, parent);
 
   // `for (const x of X)` — iteration is a read.
   if (
     parent.type === AST_NODE_TYPES.ForOfStatement &&
-    parent.right === identifier
+    parent.right === value
   ) {
     return true;
   }
@@ -273,8 +284,8 @@ function isSafeRead(identifier: TSESTree.Identifier): boolean {
 
   if (
     parent.type === AST_NODE_TYPES.CallExpression &&
-    parent.arguments.includes(identifier) &&
-    isNonRetainingBuiltinCall(parent, identifier)
+    parent.arguments.includes(value) &&
+    isNonRetainingBuiltinCall(parent, value)
   ) {
     return true;
   }
@@ -292,9 +303,11 @@ function isSafeRead(identifier: TSESTree.Identifier): boolean {
 
 function isNonRetainingBuiltinCall(
   node: TSESTree.CallExpression,
-  argument: TSESTree.Identifier,
+  argument: TSESTree.Expression,
 ): boolean {
-  const callee = node.callee;
+  const callee = unwrapExpression(node.callee);
+
+  const calleeReceiver = callee.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(callee.object) : callee;
   if (
     callee.type === AST_NODE_TYPES.Identifier &&
     callee.name === "structuredClone"
@@ -304,18 +317,18 @@ function isNonRetainingBuiltinCall(
   if (
     callee.type !== AST_NODE_TYPES.MemberExpression ||
     callee.computed ||
-    callee.object.type !== AST_NODE_TYPES.Identifier ||
+    calleeReceiver.type !== AST_NODE_TYPES.Identifier ||
     callee.property.type !== AST_NODE_TYPES.Identifier
   ) {
     return false;
   }
-  const members = NON_RETAINING_BUILTINS.get(callee.object.name);
+  const members = NON_RETAINING_BUILTINS.get(calleeReceiver.name);
   if (members === undefined || !members.has(callee.property.name)) {
     return false;
   }
   // `Object.assign(X, src)` mutates its FIRST argument; only later positions
   // (sources) are reads.
-  if (callee.object.name === "Object" && callee.property.name === "assign") {
+  if (calleeReceiver.name === "Object" && callee.property.name === "assign") {
     return node.arguments[0] !== argument;
   }
   return true;
@@ -374,6 +387,7 @@ export default createRule<Options, MessageIds>({
         return false;
       }
       for (const reference of variable.references) {
+        if (reference.isTypeReference && !reference.isValueReference) continue;
         // The initializer write itself is not a usage.
         if (reference.init === true) {
           continue;
@@ -417,7 +431,7 @@ export default createRule<Options, MessageIds>({
         if (expression.parent?.type === AST_NODE_TYPES.CallExpression &&
           expression.parent.callee === expression) return;
 
-        const candidate = classify(node.init, checkRegex);
+        const candidate = classify(node.init, checkRegex, sourceCode);
         if (candidate === null) {
           return;
         }
@@ -457,7 +471,7 @@ function classifyCollection(node: TSESTree.NewExpression, constructorName: strin
     : null;
 }
 
-function isSafeMemberRead(identifier: TSESTree.Identifier, parent: TSESTree.MemberExpression): boolean {
+function isSafeMemberRead(identifier: TSESTree.Expression, parent: TSESTree.MemberExpression): boolean {
   if (parent.object !== identifier) {
     // `foo[X]` — the binding is used as a key, which is a plain read.
     return true;
@@ -465,12 +479,13 @@ function isSafeMemberRead(identifier: TSESTree.Identifier, parent: TSESTree.Memb
   while (parent.parent.type === AST_NODE_TYPES.MemberExpression && parent.parent.object === parent) {
     parent = parent.parent;
   }
-  const grandparent = parent.parent;
+  const usage = outerExpression(parent);
+  const grandparent = usage.parent;
   if (grandparent.type === AST_NODE_TYPES.VariableDeclarator || grandparent.type === AST_NODE_TYPES.SpreadElement) return false;
   // `X.a = 1`, `X[0] = 1`, `X.a += 1`
   if (
     grandparent.type === AST_NODE_TYPES.AssignmentExpression &&
-    grandparent.left === parent
+    grandparent.left === usage
   ) {
     return false;
   }
@@ -488,10 +503,8 @@ function isSafeMemberRead(identifier: TSESTree.Identifier, parent: TSESTree.Memb
   // `X.push(...)`, `X.sort()`, ...
   if (
     grandparent.type === AST_NODE_TYPES.CallExpression &&
-    grandparent.callee === parent &&
-    (parent.computed
-      ? parent.property.type !== AST_NODE_TYPES.Literal || typeof parent.property.value !== "string" || MUTATING_METHODS.has(parent.property.value)
-      : parent.property.type === AST_NODE_TYPES.Identifier && MUTATING_METHODS.has(parent.property.name))
+    grandparent.callee === usage &&
+    (ASTUtils.getPropertyName(parent) === null || MUTATING_METHODS.has(ASTUtils.getPropertyName(parent) ?? ""))
   ) {
     return false;
   }

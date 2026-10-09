@@ -8,7 +8,10 @@ import format from "./eslint-compact-formatter.mjs";
 const require = createRequire(resolve("package.json"));
 const { ESLint } = require("eslint");
 const request = JSON.parse(process.argv[2]);
-const selected = new Set(request.rules.map((rule) => `@sarj/${rule}`));
+const selected = new Set([
+  ...request.rules.map((rule) => `@sarj/${rule}`),
+  ...(request.upstreamRules ?? []),
+]);
 const eslint = new ESLint({
   cwd: process.cwd(),
   ...(request.config === null ? {} : { overrideConfigFile: request.config }),

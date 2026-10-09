@@ -7,6 +7,7 @@
 import { ASTUtils, type TSESTree } from "@typescript-eslint/utils";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
+import { unwrapExpression } from "./_unwrap-expression.js";
 import type { Scope, SourceCode } from "@typescript-eslint/utils/ts-eslint";
 
 type MessageIds = "noJsonStringifyError";
@@ -106,11 +107,12 @@ function instanceofErrorSubject(
 function typeGuardSubject(
   test: TSESTree.Expression,
 ): TSESTree.Expression | null {
+  const unwrappedTestCallee = test.type === "CallExpression" || test.type === "NewExpression" ? unwrapExpression(test.callee) : null;
   const arg = test.type === "CallExpression" ? test.arguments[0] : undefined;
   if (
     test.type === "CallExpression" &&
-    test.callee.type === "Identifier" &&
-    TYPE_GUARD_PATTERN.test(test.callee.name) &&
+    unwrappedTestCallee?.type === "Identifier" &&
+    TYPE_GUARD_PATTERN.test(unwrappedTestCallee.name) &&
     test.arguments.length === 1 &&
     arg !== undefined &&
     arg.type !== "SpreadElement"
@@ -195,13 +197,13 @@ function nodeWithin(node: TSESTree.Node, container: TSESTree.Node | null): boole
 }
 
 function isJsonStringify(callee: TSESTree.Expression): boolean {
+  if (callee.type !== "MemberExpression") return false;
+  const receiver = unwrapExpression(callee.object);
   return (
     callee.type === "MemberExpression" &&
-    !callee.computed &&
-    callee.object.type === "Identifier" &&
-    callee.object.name === "JSON" &&
-    callee.property.type === "Identifier" &&
-    callee.property.name === "stringify"
+    receiver.type === "Identifier" &&
+    receiver.name === "JSON" &&
+    ASTUtils.getPropertyName(callee) === "stringify"
   );
 }
 
@@ -209,9 +211,10 @@ function isJsonStringify(callee: TSESTree.Expression): boolean {
 function directLiteralValues(
   argument: TSESTree.CallExpressionArgument,
 ): readonly TSESTree.Expression[] {
+  argument = unwrapExpression(argument);
   if (argument.type === "ObjectExpression") {
     return argument.properties.flatMap((property) => {
-      if (property.type !== "Property" || property.computed) return [];
+      if (property.type !== "Property" || ASTUtils.getPropertyName(property) === null) return [];
       const value = property.value;
       if (
         value.type === "AssignmentPattern" ||
@@ -236,14 +239,16 @@ function expressionSuggestsError(
   expression: TSESTree.Expression,
   scope: Scope.Scope,
 ): boolean {
+  expression = unwrapExpression(expression);
+  const unwrappedExpressionCallee = expression.type === "CallExpression" || expression.type === "NewExpression" ? unwrapExpression(expression.callee) : null;
   if (expression.type === "Identifier") {
     return identifierIsProvenError(expression, scope);
   }
   if (
     expression.type === "NewExpression" &&
-    expression.callee.type === "Identifier"
+    unwrappedExpressionCallee?.type === "Identifier"
   ) {
-    return BUILTIN_ERROR_CONSTRUCTORS.has(expression.callee.name) && isGlobalIdentifier(expression.callee.name, scope);
+    return BUILTIN_ERROR_CONSTRUCTORS.has(unwrappedExpressionCallee.name) && isGlobalIdentifier(unwrappedExpressionCallee.name, scope);
   }
   return (
     expression.type === "MemberExpression" &&
@@ -259,8 +264,7 @@ function memberSuggestsError(
   member: TSESTree.MemberExpression,
   scope: Scope.Scope,
 ): boolean {
-  const propName =
-    !member.computed && member.property.type === "Identifier" ? member.property.name : null;
+  const propName = ASTUtils.getPropertyName(member);
 
   const base = member.object;
   const baseSuggestsError =
@@ -296,7 +300,8 @@ export default createRule<Options, MessageIds>({
   create(context) {
     return {
       CallExpression(node: TSESTree.CallExpression): void {
-        if (!isJsonStringify(node.callee)) {
+        const unwrappedNodeCallee = unwrapExpression(node.callee);
+        if (!isJsonStringify(unwrappedNodeCallee)) {
           return;
         }
 
@@ -307,7 +312,7 @@ export default createRule<Options, MessageIds>({
 
         const scope = context.sourceCode.getScope(firstArg);
         if (!isGlobalIdentifier("JSON", scope)) return;
-        const replacer = node.arguments[1];
+        const replacer = node.arguments[1] === undefined ? undefined : unwrapExpression(node.arguments[1]);
         if (replacer !== undefined && !(replacer.type === "Literal" && replacer.value === null) && !(replacer.type === "Identifier" && replacer.name === "undefined" && isGlobalIdentifier("undefined", scope))) return;
         const unsafeValue = directLiteralValues(firstArg).find(
           (value) =>

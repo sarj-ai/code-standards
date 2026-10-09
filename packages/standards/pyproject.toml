@@ -1,6 +1,6 @@
 [project]
 name = "code-standards"
-version = "8.2.0"
+version = "8.39.0"
 description = "One deterministic quality gate for Sarj Python, TypeScript, Swift, Kotlin, shell, SQL, IaC, and repository policy."
 readme = "README.md"
 requires-python = ">=3.14"
@@ -16,7 +16,7 @@ classifiers = [
   "Topic :: Software Development :: Quality Assurance",
 ]
 dependencies = [
-  "sarj-rule-contracts==0.1.0",
+  "sarj-rule-contracts==0.2.1",
   "pathspec==1.1.1",
   "basedpyright==1.40.1",
   "deptry==0.25.1",
@@ -27,13 +27,13 @@ dependencies = [
   "PyYAML==6.0.3",
   "jsonschema==4.25.1",
   "referencing==0.37.0",
-  "repo-standards==6.0.1",
-  "ruff==0.16.8",
+  "repo-standards==6.3.12",
+  "ruff==0.16.10",
   "semgrep==1.178.0",
   "shellcheck-py==0.11.0.1; (sys_platform == 'darwin' and platform_machine == 'arm64') or (sys_platform == 'darwin' and platform_machine == 'x86_64') or (sys_platform == 'linux' and platform_machine == 'x86_64') or (sys_platform == 'win32' and platform_machine == 'AMD64')",
-  "sarj-iac-lint==0.17.0",
-  "sarj-python-lint==1.2.0",
-  "sarj-sql-lint==0.18.0",
+  "sarj-iac-lint==0.19.0",
+  "sarj-python-lint==1.26.0",
+    "sarj-sql-lint==0.18.14",
   "typer==0.27.2",
 ]
 
@@ -67,6 +67,12 @@ include = [
 dev = [
   "pytest>=9.1.1",
 ]
+
+[tool.uv]
+# Semgrep 1.178.0 requires vulnerable PyJWT 2.13.x. Remove this override when
+# its upstream requirement admits the patched version.
+override-dependencies = ["pyjwt[crypto]==2.15.1"]
+
 [tool.uv.sources]
 sarj-rule-contracts = { path = "../contracts", editable = true }
 # Development uses the sibling packages while wheel smoke tests resolve the

@@ -6,6 +6,8 @@
 
 import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
 
+import { directArgumentCall, outerExpression, unwrapExpression } from "./_unwrap-expression.js";
+
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isTestFile } from "./_paths.js";
 
@@ -43,6 +45,7 @@ const FUNCTION_TYPES: ReadonlySet<AST_NODE_TYPES> = new Set([
 
 /** True for a nonzero numeric literal — the timing guess, as opposed to a `0` yield. */
 function isNonzeroNumericLiteral(node: TSESTree.Node | undefined): boolean {
+  node = node === undefined ? undefined : unwrapExpression(node);
   return node?.type === AST_NODE_TYPES.Literal && typeof node.value === "number" && node.value !== 0;
 }
 
@@ -51,7 +54,8 @@ function isNonzeroNumericLiteral(node: TSESTree.Node | undefined): boolean {
  * block-bodied `{ setTimeout(r, n); }` spelling.
  */
 function isPromiseSleep(node: TSESTree.NewExpression): boolean {
-  if (node.callee.type !== AST_NODE_TYPES.Identifier || node.callee.name !== "Promise") {
+  const unwrappedNodeCallee = unwrapExpression(node.callee);
+  if (unwrappedNodeCallee?.type !== AST_NODE_TYPES.Identifier || unwrappedNodeCallee.name !== "Promise") {
     return false;
   }
   const executor = node.arguments[0];
@@ -71,10 +75,11 @@ function isPromiseSleep(node: TSESTree.NewExpression): boolean {
 }
 
 function isTimedSetTimeout(node: TSESTree.Node): boolean {
+  const unwrappedNodeCallee = node.type === "CallExpression" || node.type === "NewExpression" ? unwrapExpression(node.callee) : null;
   return (
     node.type === AST_NODE_TYPES.CallExpression &&
-    node.callee.type === AST_NODE_TYPES.Identifier &&
-    node.callee.name === "setTimeout" &&
+    unwrappedNodeCallee?.type === AST_NODE_TYPES.Identifier &&
+    unwrappedNodeCallee.name === "setTimeout" &&
     node.arguments.length >= 2 &&
     isNonzeroNumericLiteral(node.arguments[1])
   );
@@ -82,9 +87,10 @@ function isTimedSetTimeout(node: TSESTree.Node): boolean {
 
 /** True when `node` is `sleep(n)` / `delay(n)` with a nonzero numeric literal. */
 function isHelperSleep(node: TSESTree.CallExpression): boolean {
+  const unwrappedNodeCallee = unwrapExpression(node.callee);
   return (
-    node.callee.type === AST_NODE_TYPES.Identifier &&
-    SLEEP_HELPERS.has(node.callee.name) &&
+    unwrappedNodeCallee.type === AST_NODE_TYPES.Identifier &&
+    SLEEP_HELPERS.has(unwrappedNodeCallee.name) &&
     node.arguments.length >= 1 &&
     isNonzeroNumericLiteral(node.arguments[0])
   );
@@ -108,7 +114,7 @@ function nearestEnclosingFunction(node: TSESTree.Node): TSESTree.Node | null {
 
 /** True when the sleep itself controls the test body rather than serving as injected test data. */
 function isImmediatelyConsumedSleep(node: TSESTree.Node): boolean {
-  const parent = node.parent;
+  const parent = outerExpression(node).parent;
   if (parent?.type === AST_NODE_TYPES.AwaitExpression ||
       parent?.type === AST_NODE_TYPES.ReturnStatement ||
       parent?.type === AST_NODE_TYPES.ExpressionStatement) {
@@ -119,19 +125,15 @@ function isImmediatelyConsumedSleep(node: TSESTree.Node): boolean {
 
 /** True when `fn` is the callback argument of an `it`/`test`/per-test-hook call. */
 function isTestBody(fn: TSESTree.Node): boolean {
-  const call = fn.parent;
-  if (
-    call?.type !== AST_NODE_TYPES.CallExpression ||
-    !call.arguments.some((argument) => argument === fn)
-  ) {
-    return false;
-  }
+  const call = directArgumentCall(fn);
+  if (call === null) return false;
   const name = testCallerName(call.callee);
   return name !== null && TEST_CALLERS.has(name);
 }
 
 /** The base callee name of a call, unwrapping `.only` / `.skip` / `.each` chains. */
 function testCallerName(callee: TSESTree.Node): string | null {
+  callee = unwrapExpression(callee);
   if (callee.type === AST_NODE_TYPES.Identifier) {
     return callee.name;
   }
@@ -187,9 +189,10 @@ export default createRule<Options, MessageIds>({
         }
       },
       CallExpression(node: TSESTree.CallExpression): void {
+        const unwrappedNodeCallee = unwrapExpression(node.callee);
         if (isHelperSleep(node)) {
-          if (node.callee.type !== AST_NODE_TYPES.Identifier) return;
-          const variable = ASTUtils.findVariable(context.sourceCode.getScope(node), node.callee.name);
+          if (unwrappedNodeCallee.type !== AST_NODE_TYPES.Identifier) return;
+          const variable = ASTUtils.findVariable(context.sourceCode.getScope(node), unwrappedNodeCallee.name);
           if (variable?.defs.some((definition) => definition.type !== "ImportBinding")) return;
           report(node);
         }

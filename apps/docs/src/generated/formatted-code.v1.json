@@ -1,12 +1,12 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "463fbd08e20ea7f2b29bd06046f9727ec3063ebd1724e2e7009a9fde97f2f8be",
-  "cliSha256": "fbfd85dd829b78170f2cc90b10d50086008d8c9f1549a899b3ff3fd935d60bbb",
+  "catalogSha256": "98e44d49d4ad9d8d087175923061cd573ade78b9e34198c795d4085171f5427a",
+  "cliSha256": "30e82bb68ef86232301c7ef00f6a43f9593820f80a001ab6d5189cc0ba7462a8",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
     "prettierPluginToml": "2.0.6",
-    "ruff": "0.16.8",
+    "ruff": "0.16.10",
     "sqlFormatter": "15.8.2",
     "terraform": "1.15.8"
   },
@@ -567,6 +567,41 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Listen to one lifecycle signal"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "eslint:no-duplicate-test-case": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/format.test.ts",
+              "source": "import { it } from \"vitest\";\nit.each([\n  [0, \"0ms\"],\n  [1, \"1ms\"],\n])(\"%s\", (input, expected) => {\n  expect(format(input)).toBe(expected);\n});\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/format.test.ts",
+          "id": "distinct-boundary",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Distinct inputs have independent rows"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/format.test.ts",
+              "source": "import { it } from \"vitest\";\nit.each([\n  [0, \"0ms\"],\n  [0, \"0ms\"],\n])(\"%s\", (input, expected) => {\n  expect(format(input)).toBe(expected);\n});\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/format.test.ts",
+          "id": "duplicate-row",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A copied row misses the intended boundary"
         }
       ],
       "optionsSchemaSource": null
@@ -1893,7 +1928,7 @@
           "files": [
             {
               "path": "src/engineer-digest/post.ts",
-              "source": "await kv.put(\"digest:last\", timestamp);\n"
+              "source": "export {};\nawait kv.put(\"digest:last\", timestamp);\n"
             }
           ],
           "fixedFiles": [],
@@ -1977,6 +2012,21 @@
           "expectedCount": 0,
           "files": [
             {
+              "path": "src/service.test.ts",
+              "source": "it(\"works\", () => {\n  const status = serviceStatus();\n  expect(status).toBe(\"ok\");\n});\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/service.test.ts",
+          "id": "produced-scalar-oracle",
+          "outcome": "accept",
+          "scenarioId": "setup-only",
+          "title": "A runtime scalar result remains a valid observation"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
               "path": "src/add.test.ts",
               "source": "it(\"adds\", () => {\n  expect(add(1, 1)).toBe(2);\n});\n"
             }
@@ -1987,6 +2037,21 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Assert on a produced value"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/service.test.ts",
+              "source": "it(\"works\", () => {\n  const status = \"ok\";\n  expect(status).toBe(\"ok\");\n});\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/service.test.ts",
+          "id": "setup-only-oracle",
+          "outcome": "reject",
+          "scenarioId": "setup-only",
+          "title": "A const setup assertion never observes the application"
         }
       ],
       "optionsSchemaSource": null
@@ -2444,7 +2509,7 @@
           "title": "Do not directly return a Promise callback chain from async code"
         }
       ],
-      "optionsSchemaSource": null
+      "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"scope\": { \"enum\": [\"async-return\", \"all-promise-calls\"], \"type\": \"string\" }\n  },\n  \"type\": \"object\"\n}\n"
     },
     "eslint:prefer-constant-time-secret-compare": {
       "examples": [
@@ -2582,6 +2647,36 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "A module constant exposes a readonly literal"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/constants.ts",
+              "source": "type ToolSupport = Readonly<{ voice: boolean }>;\nexport const TOOL_SUPPORT: ToolSupport = { voice: true };\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/constants.ts",
+          "id": "resolved-readonly-alias",
+          "outcome": "accept",
+          "scenarioId": "type-binding",
+          "title": "A local alias resolves to readonly properties"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/constants.ts",
+              "source": "type Readonly = { voice: boolean };\nexport const TOOL_SUPPORT: Readonly = { voice: true };\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/constants.ts",
+          "id": "shadowed-readonly-alias",
+          "outcome": "reject",
+          "scenarioId": "type-binding",
+          "title": "A type named Readonly still exposes mutable properties"
         }
       ],
       "optionsSchemaSource": null
@@ -3002,6 +3097,41 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Do not block on a synchronous read"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "eslint:prefer-nominal-id-types": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/store.ts",
+              "source": "type AccountId = string & { readonly account: unique symbol };\ntype InvoiceId = string & { readonly invoice: unique symbol };\nfunction load(accountId: AccountId, invoiceId: InvoiceId): void {}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/store.ts",
+          "id": "branded-identifiers",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Distinguish domain identifiers"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/store.ts",
+              "source": "function load(accountId: string, invoiceId: string): void {}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/store.ts",
+          "id": "raw-identifiers",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Do not accept interchangeable identifiers"
         }
       ],
       "optionsSchemaSource": null
@@ -3566,6 +3696,76 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Do not use unquoted wire casing as application property syntax"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "eslint:require-explicit-contract-implementation": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/service.ts",
+              "source": "abstract class Publisher {\n  abstract publish(): void;\n}\nclass Consumer {\n  constructor(readonly publisher: Publisher) {\n    if (!(publisher instanceof Publisher))\n      throw new TypeError(\"Nominal publisher required\");\n  }\n}\nclass FakePublisher extends Publisher {\n  publish() {}\n}\nnew Consumer(new FakePublisher());\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/service.ts",
+          "id": "runtime-nominal-guard-with-inherited-fake",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "The fake satisfies the existing nominal runtime contract"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/service.ts",
+              "source": "abstract class Publisher {\n  abstract publish(): void;\n}\nclass Consumer {\n  constructor(readonly publisher: Publisher) {\n    if (!(publisher instanceof Publisher))\n      throw new TypeError(\"Nominal publisher required\");\n  }\n}\nclass FakePublisher {\n  publish() {}\n}\nnew Consumer(new FakePublisher());\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/service.ts",
+          "id": "runtime-nominal-guard-with-structural-fake",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A structurally compatible fake fails the constructor's runtime guard"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "eslint:require-explicit-service-contract": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/service.ts",
+              "source": "interface Runner {\n  run(): void;\n}\nclass OrchestratorService implements Runner {\n  constructor(private readonly worker: Worker) {}\n  run(): void {\n    this.worker.run();\n  }\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/service.ts",
+          "id": "explicit-single-operation-contract",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "The service declares its operation"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/service.ts",
+              "source": "class OrchestratorService {\n  constructor(private readonly worker: Worker) {}\n  run(): void {\n    this.worker.run();\n  }\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/service.ts",
+          "id": "single-operation-service-without-contract",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A single service operation still needs its contract"
         }
       ],
       "optionsSchemaSource": null
@@ -4310,6 +4510,48 @@
           "title": "Data input carrying a real per-environment difference"
         },
         {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "dev.tfvars.json",
+              "source": "{ \"region\": \"west\" }\n"
+            },
+            {
+              "path": "prod.tfvars.json",
+              "source": "{ \"region\": \"east\" }\n"
+            },
+            {
+              "path": "variables.tf",
+              "source": "variable \"region\" {\n  type = string\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "dev.tfvars.json",
+          "id": "json-input-varies",
+          "outcome": "accept",
+          "scenarioId": "json-input",
+          "title": "JSON scalar values retain environment differences"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "dev.tfvars.json",
+              "source": "{ \"region\": \"west\", \"ghost\": true }\n"
+            },
+            {
+              "path": "variables.tf",
+              "source": "variable \"region\" {\n  type = string\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "dev.tfvars.json",
+          "id": "json-orphaned-assignment",
+          "outcome": "reject",
+          "scenarioId": "json-input",
+          "title": "JSON variable files receive the same declaration checks"
+        },
+        {
           "expectedCount": 1,
           "files": [
             {
@@ -4544,7 +4786,7 @@
           "files": [
             {
               "path": "tests/routing.tftest.hcl",
-              "source": "override_resource {\n  target = aws_s3_bucket.main\n  values = { arn = \"fixture-arn\" }\n}\n\nrun \"routing\" {\n  assert {\n    condition     = aws_s3_bucket.main.arn == \"fixture-arn\"\n    error_message = \"ARN mismatch\"\n  }\n}\n"
+              "source": "override_module {\n  target  = module.storage\n  outputs = { arn = \"fixture-arn\" }\n}\n\nrun \"routing\" {\n  assert {\n    condition     = module.storage.arn == \"fixture-arn\"\n    error_message = \"ARN mismatch\"\n  }\n}\n"
             }
           ],
           "fixedFiles": [],
@@ -4552,7 +4794,7 @@
           "id": "direct-override-reassertion",
           "outcome": "reject",
           "scenarioId": "terraform-provider-evidence",
-          "title": "Assertion repeats its own resource override"
+          "title": "Assertion repeats its own module output override"
         },
         {
           "expectedCount": 0,
@@ -4902,6 +5144,41 @@
       ],
       "optionsSchemaSource": null
     },
+    "python:async-cleanup-registered-synchronously": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/resources.py",
+              "source": "from contextlib import AsyncExitStack\n\n\nasync def close():\n    await release()\n\n\nasync def run():\n    async with AsyncExitStack() as stack:\n        stack.push_async_callback(close)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/resources.py",
+          "id": "awaited-cleanup",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Register cleanup with the async API"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/resources.py",
+              "source": "from contextlib import AsyncExitStack\n\n\nasync def close():\n    await release()\n\n\nasync def run():\n    async with AsyncExitStack() as stack:\n        stack.callback(close)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/resources.py",
+          "id": "dropped-cleanup",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Synchronous callbacks do not await cleanup"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "python:async-mock-call-without-await-assertion": {
       "examples": [
         {
@@ -4933,6 +5210,36 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "A call assertion does not prove awaiting"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "tests/test_delivery.py",
+              "source": "from unittest.mock import AsyncMock\n\n\nasync def test_delivery(expected):\n    send = AsyncMock()\n    await deliver(send)\n    send.assert_called_once()\n    send.assert_has_awaits(expected)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_delivery.py",
+          "id": "dynamic-expected-awaits",
+          "outcome": "accept",
+          "scenarioId": "await-expectation-boundaries",
+          "title": "Unresolved await expectations retain their acceptance"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "tests/test_delivery.py",
+              "source": "from unittest.mock import AsyncMock\n\n\nasync def test_delivery():\n    send = AsyncMock()\n    await deliver(send)\n    assert send.call_count == 1\n    assert send.await_count >= 0\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_delivery.py",
+          "id": "vacuous-await-count",
+          "outcome": "reject",
+          "scenarioId": "await-expectation-boundaries",
+          "title": "A nonnegative await count does not prove execution"
         }
       ],
       "optionsSchemaSource": null
@@ -5647,6 +5954,166 @@
       ],
       "optionsSchemaSource": null
     },
+    "python:no-before-validator-input-mutation": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/records.py",
+              "source": "from pydantic import BaseModel, model_validator\n\n\nclass Record(BaseModel):\n    name: str\n\n    @model_validator(mode=\"before\")\n    @classmethod\n    def normalize(cls, data: dict[str, object]):\n        data = dict(data)\n        data[\"name\"] = \"new\"\n        return data\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/records.py",
+          "id": "fresh-normalization-builder",
+          "outcome": "accept",
+          "scenarioId": "local-builder",
+          "title": "A copied outer mapping can be updated locally"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/records.py",
+              "source": "from pydantic import BaseModel, model_validator\n\n\nclass Record(BaseModel):\n    name: str\n\n    @model_validator(mode=\"before\")\n    @classmethod\n    def normalize(cls, data: dict[str, object]):\n        data.pop(\"legacy\", None)\n        return data\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/records.py",
+          "id": "raw-input-pop",
+          "outcome": "reject",
+          "scenarioId": "local-builder",
+          "title": "Removing a raw entry changes caller data"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/records.py",
+              "source": "from pydantic import BaseModel, model_validator\n\n\nclass Record(BaseModel):\n    name: str\n\n    @model_validator(mode=\"before\")\n    @classmethod\n    def normalize(cls, data: dict[str, object]):\n        data[\"name\"] = \"new\"\n        return data\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/records.py",
+          "id": "raw-input-write",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Before-validation changes the original mapping"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/records.py",
+              "source": "from pydantic import BaseModel, model_validator\n\n\nclass Record(BaseModel):\n    name: str\n\n    @model_validator(mode=\"before\")\n    @classmethod\n    def normalize(cls, data: dict[str, object]):\n        return {**data, \"name\": \"new\"}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/records.py",
+          "id": "replacement-input",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Return normalized data without changing the original"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:no-broad-keyword-capture": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/adapter.py",
+              "source": "def wrapper(*args: object, **kwargs: object):\n    return target(*args, **kwargs)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/adapter.py",
+          "id": "broad-forwarding-arguments",
+          "outcome": "reject",
+          "scenarioId": "forwarding",
+          "title": "Forwarding broad arguments still loses the callable contract"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "tests/fakes/session.py",
+              "source": "class Session:\n    async def start(self, **_kwargs: object) -> None:\n        self.start_count += 1\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/fakes/session.py",
+          "id": "discarded-session-keywords",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "An ignored catch-all weakens a fake's contract"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/templates.py",
+              "source": "def render(\n    template: str, **values: object\n) -> (\n    str\n):  # sarj-noqa: SARJ477 — template supplies dynamic field names and object formatting\n    return template.format(**values)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/templates.py",
+          "id": "documented-open-template-fields",
+          "outcome": "accept",
+          "scenarioId": "dynamic-boundary",
+          "title": "Document why template fields require an open object-valued interface"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/templates.py",
+              "source": "def render(template: str, **values: object) -> str:\n    return template.format(**values)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/templates.py",
+          "id": "open-template-fields",
+          "outcome": "reject",
+          "scenarioId": "dynamic-boundary",
+          "title": "A deliberately open formatting interface still requests policy review"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/adapter.py",
+              "source": "from collections.abc import Callable\n\n\ndef wrapper[**P, R](target: Callable[P, R], *args: P.args, **kwargs: P.kwargs) -> R:\n    return target(*args, **kwargs)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/adapter.py",
+          "id": "typed-forwarding-arguments",
+          "outcome": "accept",
+          "scenarioId": "forwarding",
+          "title": "ParamSpec preserves the forwarded callable contract"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "tests/fakes/session.py",
+              "source": "class Session:\n    async def start(self, *, room: Room, agent: Agent) -> None:\n        _unused_inputs = room, agent\n        self.start_count += 1\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/fakes/session.py",
+          "id": "typed-unused-keywords",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Preserve named typed keywords with a named unused binding"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "python:no-comment-cruft": {
       "examples": [
         {
@@ -5783,6 +6250,41 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Credentials allowed for every origin"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:no-database-programmability": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "tests/fakes/batch_fault.py",
+              "source": "await conn.execute(\n    \"ALTER TABLE batch ADD CONSTRAINT fail_counter CHECK (false) NOT VALID\"\n)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/fakes/batch_fault.py",
+          "id": "constraint-fault",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Declarative failure in a disposable database"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "tests/fakes/batch_fault.py",
+              "source": "await conn.execute(\n    \"CREATE TRIGGER fail_counter BEFORE UPDATE ON batch EXECUTE FUNCTION fail_counter()\"\n)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/fakes/batch_fault.py",
+          "id": "trigger-fault",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Procedural fault fixture"
         }
       ],
       "optionsSchemaSource": null
@@ -6339,6 +6841,106 @@
       ],
       "optionsSchemaSource": null
     },
+    "python:no-injected-module-loader": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/service.py",
+              "source": "import importlib\n\n\ndef run(*, loader=importlib.import_module):\n    return loader(\"plugin\").create()\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/service.py",
+          "id": "injected-loader",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Import machinery becomes a configurable parameter"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/service.py",
+              "source": "def run():\n    from plugin import create\n\n    return create()\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/service.py",
+          "id": "lazy-import",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Implementation owns its lazy import"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:no-input-model-mutation": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/records.py",
+              "source": "from pydantic import BaseModel\n\n\nclass Attachment(BaseModel):\n    url: str\n\n\nclass Record(BaseModel):\n    attachment: Attachment\n\n\ndef sign(record: Record):\n    attachment = record.attachment.model_copy(update={\"url\": \"signed\"})\n    return record.model_copy(update={\"attachment\": attachment})\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/records.py",
+          "id": "copy-changed-ancestors",
+          "outcome": "accept",
+          "scenarioId": "nested-copy",
+          "title": "Replace the nested value and its parent"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/records.py",
+              "source": "from pydantic import BaseModel\n\n\nclass Record(BaseModel):\n    name: str\n\n\ndef rename(record: Record):\n    record.name = \"new\"\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/records.py",
+          "id": "input-field-write",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A transformation changes its caller's model"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/records.py",
+              "source": "from pydantic import BaseModel\n\n\nclass Record(BaseModel):\n    name: str\n\n\ndef rename(record: Record):\n    return record.model_copy(update={\"name\": \"new\"})\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/records.py",
+          "id": "returned-replacement",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Return a trusted replacement"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/records.py",
+              "source": "from pydantic import BaseModel\n\n\nclass Attachment(BaseModel):\n    url: str\n\n\nclass Record(BaseModel):\n    attachment: Attachment\n\n\ndef sign(record: Record):\n    copied = record.model_copy()\n    copied.attachment.url = \"signed\"\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/records.py",
+          "id": "shallow-model-shares-child",
+          "outcome": "reject",
+          "scenarioId": "nested-copy",
+          "title": "A shallow model copy shares a nested model"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "python:no-interpreter-source-arguments": {
       "examples": [
         {
@@ -6409,6 +7011,41 @@
       ],
       "optionsSchemaSource": null
     },
+    "python:no-mocked-pydantic-value-object": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "tests/test_profile.py",
+              "source": "from unittest.mock import Mock\nfrom pydantic import BaseModel\n\n\nclass Profile(BaseModel):\n    language: str\n\n\ndef test_profile():\n    profile = Mock(spec=Profile)\n    profile.language = \"ar\"\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_profile.py",
+          "id": "mocked-model-field-data",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A mock bypasses the model's validated data contract"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "tests/test_profile.py",
+              "source": "from pydantic import BaseModel\n\n\nclass Profile(BaseModel):\n    language: str\n\n\ndef make_profile(*, language: str = \"en\") -> Profile:\n    return Profile(language=language)\n\n\ndef test_profile():\n    profile = make_profile(language=\"ar\")\n    assert profile.language == \"ar\"\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_profile.py",
+          "id": "real-model-field-data",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Real model fixtures retain validation and defaults"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "python:no-nested-pydantic-field-validator": {
       "examples": [
         {
@@ -6440,6 +7077,41 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Validator belongs to the model"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:no-nullable-dependency-fallback": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/service.py",
+              "source": "def run(factory: Factory):\n    return factory()\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/service.py",
+          "id": "concrete-factory",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Caller supplies a concrete dependency"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/service.py",
+              "source": "def run(factory: Factory | None = None):\n    return (factory or DefaultFactory)()\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/service.py",
+          "id": "nullable-factory",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Omission silently selects an implementation"
         }
       ],
       "optionsSchemaSource": null
@@ -6660,16 +7332,16 @@
           "expectedCount": 1,
           "files": [
             {
-              "path": "tests/test_orders.py",
-              "source": "async def load_rows(pool: AsyncConnectionPool):\n    async with pool.connection() as conn:\n        return await conn.execute(\"SELECT 1\")\n"
+              "path": "tests/fixtures/probe.py",
+              "source": "from psycopg_pool import AsyncConnectionPool\n\n\nclass Probe:\n    def __init__(self, pool: AsyncConnectionPool):\n        self._pool = pool\n\n    async def seed(self):\n        async with self._pool.connection() as conn:\n            await conn.execute(\"INSERT INTO jobs (id) VALUES (%s)\", (job_id,))\n"
             }
           ],
           "fixedFiles": [],
-          "focusPath": "tests/test_orders.py",
-          "id": "test-acquires-pool-connection",
+          "focusPath": "tests/fixtures/probe.py",
+          "id": "test-probe-executes-sql",
           "outcome": "reject",
           "scenarioId": "primary",
-          "title": "A test helper reaches directly through its pool"
+          "title": "An injected test probe still bypasses the owning store"
         },
         {
           "expectedCount": 0,
@@ -7099,6 +7771,41 @@
       ],
       "optionsSchemaSource": null
     },
+    "python:no-shallow-container-type-guard": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/values.py",
+              "source": "from typing import TypeGuard\n\n\ndef is_mapping(value: object) -> TypeGuard[dict[object, object]]:\n    return isinstance(value, dict)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/values.py",
+          "id": "honest-dictionary-keys",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Unchecked keys retain their object type"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/values.py",
+              "source": "from typing import TypeGuard\n\n\ndef is_mapping(value: object) -> TypeGuard[dict[str, object]]:\n    return isinstance(value, dict)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/values.py",
+          "id": "unchecked-dictionary-keys",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A container check does not prove string keys"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "python:no-statically-truthy-assertion": {
       "examples": [
         {
@@ -7121,6 +7828,21 @@
           "files": [
             {
               "path": "tests/test_service.py",
+              "source": "def test_service():\n    status = service_status()\n    assert status == \"ok\"\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_service.py",
+          "id": "produced-scalar-oracle",
+          "outcome": "accept",
+          "scenarioId": "setup-only",
+          "title": "Assert on a value returned by the application"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "tests/test_service.py",
               "source": "def test_service(response):\n    assert response.status_code == 200\n"
             }
           ],
@@ -7130,6 +7852,21 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Assertion checks runtime output"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "tests/test_service.py",
+              "source": "def test_service():\n    status = \"ok\"\n    assert status == \"ok\"\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_service.py",
+          "id": "setup-only-oracle",
+          "outcome": "reject",
+          "scenarioId": "setup-only",
+          "title": "A test asserts only on its own fixed setup"
         }
       ],
       "optionsSchemaSource": null
@@ -7165,6 +7902,76 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "String accumulator grown on every iteration"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:no-swallowed-asyncio-cancellation": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "worker.py",
+              "source": "import asyncio\n\n\nasync def worker():\n    try:\n        await asyncio.sleep(10)\n    except asyncio.CancelledError:\n        raise\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "worker.py",
+          "id": "cancelled-operation-reraises",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Cleanup preserves cancellation"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "worker.py",
+              "source": "import asyncio\n\n\nasync def worker():\n    try:\n        await asyncio.sleep(10)\n    except asyncio.CancelledError:\n        return None\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "worker.py",
+          "id": "cancelled-operation-returns-success",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Cancellation becomes a successful return"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:no-test-method-grafting": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "tests/test_delivery.py",
+              "source": "from unittest.mock import Mock\n\n\nclass Sender:\n    def send(self, text: str) -> None:\n        pass\n\n\ndef test_delivery():\n    sender = Mock(spec=Sender)\n    messages = []\n\n    def record(text: str) -> None:\n        messages.append(text)\n\n    sender.send = record\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_delivery.py",
+          "id": "method-implementation-assignment",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A test replaces a mock's resolved collaborator method"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "tests/test_delivery.py",
+              "source": "from unittest.mock import create_autospec\n\n\nclass Sender:\n    def send(self, text: str) -> None:\n        pass\n\n\ndef test_delivery():\n    sender = create_autospec(Sender, instance=True, spec_set=True)\n    messages = []\n    sender.send.side_effect = messages.append\n    sender.send(\"hello\")\n    sender.send.assert_called_once_with(\"hello\")\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_delivery.py",
+          "id": "mock-method-side-effect",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Configure behavior through an existing mock method"
         }
       ],
       "optionsSchemaSource": null
@@ -7274,8 +8081,123 @@
       ],
       "optionsSchemaSource": null
     },
+    "python:no-unused-copy-result": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/records.py",
+              "source": "from copy import replace\n\n\ndef rename(record):\n    result = replace(record, name=\"new\")\n    return result\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/records.py",
+          "id": "consumed-standard-copy",
+          "outcome": "accept",
+          "scenarioId": "standard-replacement",
+          "title": "Capture the standard-library replacement"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/records.py",
+              "source": "from dataclasses import replace\n\n\ndef rename(record):\n    replace(record, name=\"new\")\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/records.py",
+          "id": "discarded-dataclass-replacement",
+          "outcome": "reject",
+          "scenarioId": "standard-replacement",
+          "title": "A standard-library replacement is ignored"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/records.py",
+              "source": "from pydantic import BaseModel\n\n\nclass Record(BaseModel):\n    name: str\n\n\ndef rename(record: Record):\n    record.model_copy(update={\"name\": \"new\"})\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/records.py",
+          "id": "discarded-model-copy",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A replacement model is ignored"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/records.py",
+              "source": "from pydantic import BaseModel\n\n\nclass Record(BaseModel):\n    name: str\n\n\ndef rename(record: Record):\n    return record.model_copy(update={\"name\": \"new\"})\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/records.py",
+          "id": "returned-copy",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Return the replacement to its caller"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:no-unused-underscored-keyword-parameter": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/sink.py",
+              "source": "def emit(*, _email=None):\n    return \"ready\"\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/sink.py",
+          "id": "discarded-keyword-input",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "An ignored keyword input is kept just to silence unused-argument lint"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/sink.py",
+              "source": "def emit():\n    return \"ready\"\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/sink.py",
+          "id": "removed-keyword-input",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "The callable exposes only inputs it uses"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "python:no-unused-value-marker": {
       "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/adapter.py",
+              "source": "def render(root: Path, manifest: Path) -> str:\n    _ = root, manifest\n    return \"ready\"\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/adapter.py",
+          "id": "callback-parameter-marker",
+          "outcome": "reject",
+          "scenarioId": "callback-parameters",
+          "title": "A callback disguises unused parameters with a discard binding"
+        },
         {
           "expectedCount": 0,
           "files": [
@@ -7320,6 +8242,21 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "A standalone discard binding is unnecessary"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/adapter.py",
+              "source": "def on(event: str, callback: object) -> None:\n    pass\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/adapter.py",
+          "id": "intentional-callback-stub",
+          "outcome": "accept",
+          "scenarioId": "callback-parameters",
+          "title": "An intentional stub preserves its callback signature"
         },
         {
           "expectedCount": 0,
@@ -7479,6 +8416,41 @@
       ],
       "optionsSchemaSource": null
     },
+    "python:prefer-autospec-for-callable-mock": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "tests/test_delivery.py",
+              "source": "from unittest.mock import create_autospec\n\n\ndef send(*, recipient: str) -> None:\n    pass\n\n\ndef test_send():\n    double = create_autospec(send, spec_set=True)\n    double(recipient=\"sample\")\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_delivery.py",
+          "id": "autospecced-function-direct-call",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Autospec checks the function call shape"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "tests/test_delivery.py",
+              "source": "from unittest.mock import Mock\n\n\ndef send(*, recipient: str) -> None:\n    pass\n\n\ndef test_send():\n    double = Mock(spec=send)\n    double(recipient=\"sample\")\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_delivery.py",
+          "id": "specced-function-direct-call",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A function spec leaves invocation permissive"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "python:prefer-class-row": {
       "examples": [
         {
@@ -7545,6 +8517,36 @@
           "outcome": "reject",
           "scenarioId": "computed-filter",
           "title": "Compute and filter a list candidate directly"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/views.py",
+              "source": "def views(rows, labels):\n    return {row.id: EntryView(id=row.id, label=labels.get(row.id)) for row in rows}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/views.py",
+          "id": "constructor-dict-comprehension",
+          "outcome": "accept",
+          "scenarioId": "constructor-dict",
+          "title": "Keep constructor-valued dictionaries declarative"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/views.py",
+              "source": "def views(rows, labels):\n    result = {}\n    for row in rows:\n        result[row.id] = EntryView(id=row.id, label=labels.get(row.id))\n    return result\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/views.py",
+          "id": "constructor-dict-projection-loop",
+          "outcome": "reject",
+          "scenarioId": "constructor-dict",
+          "title": "Build constructor-valued dictionaries directly"
         },
         {
           "expectedCount": 1,
@@ -7652,6 +8654,36 @@
     "python:prefer-immutable-module-constant": {
       "examples": [
         {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "settings.py",
+              "source": "if voice_enabled:\n    TOOL_LABELS = dict.fromkeys((\"call\", \"transfer\"), \"Voice\")\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "settings.py",
+          "id": "conditional-module-mapping",
+          "outcome": "reject",
+          "scenarioId": "conditional-factory",
+          "title": "Conditional dictionary factory needs constant intent"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "settings.py",
+              "source": "from typing import Final\n\nif voice_enabled:\n    TOOL_LABELS: Final[dict[str, str]] = dict.fromkeys((\"call\", \"transfer\"), \"Voice\")\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "settings.py",
+          "id": "final-conditional-module-mapping",
+          "outcome": "accept",
+          "scenarioId": "conditional-factory",
+          "title": "Conditional dictionary factory declares a Final binding"
+        },
+        {
           "expectedCount": 0,
           "files": [
             {
@@ -7671,7 +8703,7 @@
           "files": [
             {
               "path": "settings.py",
-              "source": "from collections.abc import Mapping\nfrom types import MappingProxyType\n\nROLE_LABELS: Mapping[str, str] = MappingProxyType({\"admin\": \"Administrator\"})\n"
+              "source": "from typing import Final\n\nROLE_LABELS: Final[dict[str, str]] = {\"admin\": \"Administrator\"}\n"
             }
           ],
           "fixedFiles": [],
@@ -7679,7 +8711,7 @@
           "id": "immutable-module-mapping",
           "outcome": "accept",
           "scenarioId": "keyed-values",
-          "title": "Read-only mapping used for keyed values"
+          "title": "Final dictionary binding used for keyed values"
         },
         {
           "expectedCount": 1,
@@ -7720,6 +8752,21 @@
           "expectedCount": 0,
           "files": [
             {
+              "path": "tests/test_adapter.py",
+              "source": "import pytest\n\n\ndef unavailable_client():\n    raise ConnectionError\n\n\ndef test_constructor_failure():\n    with pytest.raises(AdapterUnavailable):\n        open_adapter(client_factory=unavailable_client)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_adapter.py",
+          "id": "injected-constructor-failure",
+          "outcome": "accept",
+          "scenarioId": "constructor-failure",
+          "title": "Inject a factory to exercise constructor failure"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
               "path": "tests/test_checkout.py",
               "source": "def test_checkout(recording_gateway):\n    service = CheckoutService(payment_gateway=recording_gateway)\n    assert service.run() == \"paid\"\n"
             }
@@ -7730,6 +8777,21 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Test injects a purpose-built collaborator"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "tests/test_adapter.py",
+              "source": "import pytest\nfrom unittest.mock import patch\n\n\ndef test_constructor_failure():\n    with patch(\"transport.Client\", side_effect=ConnectionError):\n        with pytest.raises(AdapterUnavailable):\n            open_adapter()\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_adapter.py",
+          "id": "patched-constructor-failure",
+          "outcome": "reject",
+          "scenarioId": "constructor-failure",
+          "title": "Avoid replacing the SDK constructor lookup"
         },
         {
           "expectedCount": 1,
@@ -7860,6 +8922,21 @@
           "expectedCount": 0,
           "files": [
             {
+              "path": "app/bindings.py",
+              "source": "import ast\n\n\ndef has_binding(node, name):\n    match node:\n        case ast.ListComp():\n            return True\n        case ast.FunctionDef():\n            if name in bindings(node):\n                return True\n        case ast.ClassDef():\n            if name in bindings(node):\n                return True\n    return False\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/bindings.py",
+          "id": "class-patterns-with-nested-checks",
+          "outcome": "accept",
+          "scenarioId": "mixed-type-dispatch",
+          "title": "Class patterns preserve the nested checks within their case bodies"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
               "path": "app/parser.py",
               "source": "def parse(value: object):\n    match value:\n        case str():\n            return parse_text(value)\n        case bytes():\n            return parse_bytes(value)\n        case dict():\n            return parse_mapping(value)\n        case _:\n            raise TypeError(type(value))\n"
             }
@@ -7870,6 +8947,21 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Class patterns make the type dispatch explicit"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/bindings.py",
+              "source": "import ast\n\n\ndef has_binding(node, name):\n    if isinstance(node, ast.ListComp):\n        return True\n    if isinstance(node, ast.FunctionDef):\n        if name in bindings(node):\n            return True\n    elif isinstance(node, ast.ClassDef):\n        if name in bindings(node):\n            return True\n    return False\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/bindings.py",
+          "id": "terminal-prefix-with-conditional-tail",
+          "outcome": "reject",
+          "scenarioId": "mixed-type-dispatch",
+          "title": "A terminating prefix and conditional if/elif tail dispatch on the same AST node"
         },
         {
           "expectedCount": 1,
@@ -7991,6 +9083,21 @@
           "files": [
             {
               "path": "service.py",
+              "source": "from typing import Final\n\nLABELS: Final[dict[str, int]] = {\n    \"a\": 1,\n    \"b\": 2,\n    \"c\": 3,\n    \"d\": 4,\n    \"e\": 5,\n    \"f\": 6,\n    \"g\": 7,\n    \"h\": 8,\n}\n\n\ndef handle(key):\n    return LABELS.get(key)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "service.py",
+          "id": "final-module-lookup",
+          "outcome": "accept",
+          "scenarioId": "keyed-values",
+          "title": "Final lookup dictionary defined once"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "service.py",
               "source": "ALLOWED = (\"a\", \"b\", \"c\", \"d\", \"e\", \"f\", \"g\", \"h\")\n\n\ndef handle(value):\n    return value in ALLOWED\n"
             }
           ],
@@ -8000,6 +9107,21 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Immutable membership table defined once"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "service.py",
+              "source": "def handle(key):\n    labels = {\"a\": 1, \"b\": 2, \"c\": 3, \"d\": 4, \"e\": 5, \"f\": 6, \"g\": 7, \"h\": 8}\n    return labels.get(key)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "service.py",
+          "id": "static-lookup-built-per-call",
+          "outcome": "reject",
+          "scenarioId": "keyed-values",
+          "title": "Static lookup dictionary rebuilt per call"
         },
         {
           "expectedCount": 1,
@@ -8050,6 +9172,106 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Pytest restores the module registry after the test"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:prefer-monotonic-for-elapsed-time": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/metrics.py",
+              "source": "import time\n\n\ndef measure():\n    started = time.monotonic()\n    work()\n    return time.monotonic() - started\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/metrics.py",
+          "id": "monotonic-elapsed",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "A monotonic clock measures duration"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/metrics.py",
+              "source": "import time\n\n\ndef measure():\n    started = time.time()\n    work()\n    return time.time() - started\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/metrics.py",
+          "id": "wall-clock-elapsed",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A local wall clock measures duration"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:prefer-native-string-check": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "tests/test_receipt.py",
+              "source": "from pydantic import TypeAdapter\n\n\ndef test_receipt():\n    assert TypeAdapter(str).validate_python(receipt[\"id\"]) == \"abc\"\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_receipt.py",
+          "id": "adapter-for-string-check",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A string assertion unnecessarily constructs a schema validator"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/responses.py",
+              "source": "from pydantic import TypeAdapter, JsonValue\nfrom fastapi.encoders import jsonable_encoder\n\n\ndef response_content(body):\n    return TypeAdapter(dict[str, JsonValue]).validate_python(\n        jsonable_encoder(\n            {\"body\": body},\n            custom_encoder={\n                bytes: lambda value: value.decode(\"utf-8\", errors=\"replace\")\n            },\n        )\n    )\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/responses.py",
+          "id": "generic-json-after-encoding",
+          "outcome": "reject",
+          "scenarioId": "json-output",
+          "title": "A generic validator wraps an already encoded response mapping"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "tests/test_receipt.py",
+              "source": "def test_receipt():\n    value = receipt[\"id\"]\n    assert isinstance(value, str)\n    assert value == \"abc\"\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_receipt.py",
+          "id": "native-string-assertion",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "A native assertion rejects unexpected types and narrows the value"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/responses.py",
+              "source": "from fastapi.encoders import jsonable_encoder\nfrom fastapi.responses import JSONResponse\n\n\ndef response(body) -> JSONResponse:\n    return JSONResponse(content=jsonable_encoder({\"body\": body}))\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/responses.py",
+          "id": "response-serialization-boundary",
+          "outcome": "accept",
+          "scenarioId": "json-output",
+          "title": "The response owns encoded content without annotation-only validation"
         }
       ],
       "optionsSchemaSource": null
@@ -8198,6 +9420,157 @@
       ],
       "optionsSchemaSource": null
     },
+    "python:prefer-pytest-fixture-injection": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "tests/conftest.py",
+              "source": "import pytest\nfrom psycopg_pool import AsyncConnectionPool\n\n\n@pytest.fixture\ndef pool() -> AsyncConnectionPool[object]:\n    return AsyncConnectionPool[object](open=False)\n"
+            },
+            {
+              "path": "tests/test_app.py",
+              "source": "async def test_app(pool):\n    app = Application(pool)\n    assert pool.closed\n    async with lifespan(app):\n        assert not pool.closed\n    assert pool.closed\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_app.py",
+          "id": "allocation-fixture-keeps-application-lifespan",
+          "outcome": "accept",
+          "scenarioId": "application-lifecycle",
+          "title": "An unopened fixture leaves open and close ownership with the application"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "tests/conftest.py",
+              "source": "import pytest\nfrom psycopg_pool import ConnectionPool\n\n\n@pytest.fixture\ndef pool() -> ConnectionPool[object]:\n    return ConnectionPool[object](open=False)\n"
+            },
+            {
+              "path": "tests/test_app.py",
+              "source": "def test_app(pool):\n    app = Application(pool)\n    assert app\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_app.py",
+          "id": "injected-generic-pool",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "A test requests its shared resource"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "tests/conftest.py",
+              "source": "from psycopg_pool import AsyncConnectionPool\n\n\ndef pool() -> AsyncConnectionPool[object]:\n    return AsyncConnectionPool[object](open=False)\n"
+            },
+            {
+              "path": "tests/test_app.py",
+              "source": "from tests.conftest import pool\n\n\nasync def test_app():\n    resource = pool()\n    app = Application(resource)\n    async with lifespan(app):\n        assert not resource.closed\n    assert resource.closed\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_app.py",
+          "id": "manual-pool-with-application-lifespan",
+          "outcome": "reject",
+          "scenarioId": "application-lifecycle",
+          "title": "Application-owned lifecycle still uses a fixture dependency"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "tests/conftest.py",
+              "source": "from psycopg_pool import ConnectionPool\n\n\ndef pool() -> ConnectionPool[object]:\n    return ConnectionPool[object](open=False)\n"
+            },
+            {
+              "path": "tests/test_app.py",
+              "source": "from tests.conftest import pool\n\n\ndef test_app():\n    resource = pool()\n    app = Application(resource)\n    assert app\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_app.py",
+          "id": "manual-shared-generic-pool",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A test calls shared generic pool setup"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:prefer-regex-fullmatch": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/validation.py",
+              "source": "import re\n\n\ndef validate(value):\n    if not re.match(r\"^[a-z]+$\", value):\n        raise ValueError(\"invalid value\")\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/validation.py",
+          "id": "anchored-rejection",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "An end anchor permits a final newline"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/validation.py",
+              "source": "import re\n\n\ndef validate(value):\n    if not re.fullmatch(r\"[a-z]+\", value):\n        raise ValueError(\"invalid value\")\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/validation.py",
+          "id": "whole-value-rejection",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Validate the entire value"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:prefer-required-constructor-parameters": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/service.py",
+              "source": "class Service:\n    def __init__(self, agent_name: str = \"\") -> None:\n        self.agent_name = agent_name\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/service.py",
+          "id": "defaulted-choice",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Constructor silently selects an empty configuration"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/service.py",
+              "source": "class Service:\n    def __init__(self, agent_name: str | None) -> None:\n        self.agent_name = agent_name\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/service.py",
+          "id": "explicit-absent-choice",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Caller explicitly chooses an absent configuration"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "python:prefer-self-documenting-constant": {
       "examples": [
         {
@@ -8335,7 +9708,11 @@
           "files": [
             {
               "path": "app/policy.py",
-              "source": "allowed = {\"read\", \"write\"}\nrequested = set(scopes)\nif not (allowed & requested):\n    deny()\n"
+              "source": "class AccessCase:\n    tags: frozenset[str]\n\n\ndef accepts(case: AccessCase):\n    if case.tags & {\"read\", \"write\"}:\n        allow()\n"
+            },
+            {
+              "path": "pyproject.toml",
+              "source": "[project]\nname = \"example\"\nversion = \"0.1.0\"\n"
             }
           ],
           "fixedFiles": [],
@@ -8343,7 +9720,7 @@
           "id": "discarded-intersection",
           "outcome": "reject",
           "scenarioId": "primary",
-          "title": "Set intersection is used only for an emptiness test"
+          "title": "A declared set field is used only for an overlap test"
         },
         {
           "expectedCount": 0,
@@ -8890,6 +10267,41 @@
       ],
       "optionsSchemaSource": null
     },
+    "python:repeated-test-composition": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "tests/test_client.py",
+              "source": "async def test_response(client):\n    assert await client.get(\"/\")\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_client.py",
+          "id": "fixture-client",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Request a managed test client fixture"
+        },
+        {
+          "expectedCount": 3,
+          "files": [
+            {
+              "path": "tests/test_client.py",
+              "source": "from httpx import AsyncClient, ASGITransport\n\n\nasync def test_case_0(app):\n    async with AsyncClient(\n        transport=ASGITransport(app=app), base_url=\"http://test\"\n    ) as client:\n        assert await client.get(\"/\")\n\n\nasync def test_case_1(app):\n    async with AsyncClient(\n        transport=ASGITransport(app=app), base_url=\"http://test\"\n    ) as client:\n        assert await client.get(\"/\")\n\n\nasync def test_case_2(app):\n    async with AsyncClient(\n        transport=ASGITransport(app=app), base_url=\"http://test\"\n    ) as client:\n        assert await client.get(\"/\")\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_client.py",
+          "id": "repeated-managed-clients",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Share managed test-client assembly"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "python:replay-contract-insert-requires-duplicate-policy": {
       "examples": [
         {
@@ -8921,6 +10333,135 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Replay-named store callable omits duplicate behavior"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:require-explicit-contract-implementation": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/__init__.py",
+              "source": "# package\n"
+            },
+            {
+              "path": "app/consumer.py",
+              "source": "from abc import ABC, abstractmethod\n\n\nclass Publisher(ABC):\n    @abstractmethod\n    def publish(self) -> None: ...\n\n\nclass Consumer:\n    def __init__(self, publisher: Publisher) -> None:\n        self.publisher = publisher\n"
+            },
+            {
+              "path": "app/fake.py",
+              "source": "from app.consumer import Publisher\n\n\nclass FakePublisher(Publisher):\n    def publish(self) -> None: ...\n"
+            },
+            {
+              "path": "app/usage.py",
+              "source": "from app.consumer import Consumer\nfrom app.fake import FakePublisher\n\n\ndef setup() -> None:\n    Consumer(publisher=FakePublisher())\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/usage.py",
+          "id": "explicit-fake-at-injection",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "The fake declares the actual contract"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/__init__.py",
+              "source": "# package\n"
+            },
+            {
+              "path": "app/consumer.py",
+              "source": "from abc import ABC, abstractmethod\n\n\nclass Publisher(ABC):\n    @abstractmethod\n    def publish(self) -> None: ...\n\n\nclass Consumer:\n    def __init__(self, publisher: Publisher) -> None:\n        self.publisher = publisher\n"
+            },
+            {
+              "path": "app/fake.py",
+              "source": "class FakePublisher:\n    def publish(self) -> None: ...\n"
+            },
+            {
+              "path": "app/usage.py",
+              "source": "from app.consumer import Consumer\nfrom app.fake import FakePublisher\n\n\ndef setup() -> None:\n    Consumer(publisher=FakePublisher())\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/usage.py",
+          "id": "nominal-abc-fake-at-injection",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A fake is supplied without inheriting its nominal ABC"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:require-explicit-psycopg-transaction": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "repository.py",
+              "source": "from psycopg_pool import AsyncConnectionPool\n\n\nasync def save(pool: AsyncConnectionPool):\n    async with pool.connection() as conn, conn.transaction():\n        await conn.execute(\"SELECT id FROM items FOR UPDATE\")\n        await conn.execute(\"UPDATE items SET n = 1\")\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "repository.py",
+          "id": "explicit-lock-transaction",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Retain locks for the atomic operation"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "repository.py",
+              "source": "from psycopg_pool import AsyncConnectionPool\n\n\nasync def save(pool: AsyncConnectionPool):\n    async with pool.connection() as conn:\n        await conn.execute(\"SELECT id FROM items FOR UPDATE\")\n        await conn.execute(\"UPDATE items SET n = 1\")\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "repository.py",
+          "id": "unprotected-lock",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A pool checkout alone does not retain a lock"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:require-explicit-service-contract": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/service.py",
+              "source": "from abc import ABC, abstractmethod\n\n\nclass Runner(ABC):\n    @abstractmethod\n    def run(self) -> None: ...\n\n\nclass OrchestratorService(Runner):\n    def __init__(self, worker: Worker) -> None:\n        self.worker = worker\n\n    def run(self) -> None:\n        self.worker.run()\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/service.py",
+          "id": "explicit-single-operation-contract",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "The service declares its operation"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/service.py",
+              "source": "class OrchestratorService:\n    def __init__(self, worker: Worker) -> None:\n        self.worker = worker\n\n    def run(self) -> None:\n        self.worker.run()\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/service.py",
+          "id": "single-operation-service-without-contract",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "One service operation still needs its contract"
         }
       ],
       "optionsSchemaSource": null
@@ -9026,12 +10567,166 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "A visible structural port already describes the service boundary"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/native.py",
+              "source": "from typing import Protocol\n\n\nclass Backend(Protocol):\n    def read(self) -> str: ...\n    def write(self, value: str) -> None: ...\n\n\nclass Coordinator:\n    def __init__(self) -> None:\n        self.backend: Backend = native_backend()\n\n    def read(self) -> str:\n        return self.backend.read()\n\n    def write(self, value: str) -> None:\n        self.backend.write(value)\n\n\nclass Consumer:\n    def receive(self) -> str:\n        return Coordinator().read()\n\n    def send(self, value: str) -> None:\n        Coordinator().write(value)\n"
+            },
+            {
+              "path": "pyproject.toml",
+              "source": "[project]\nname = \"boundary-example\"\nversion = \"0.1.0\"\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/native.py",
+          "id": "factory-created-boundary",
+          "outcome": "reject",
+          "scenarioId": "factory-created-boundary",
+          "title": "A native collaborator is hidden behind a directly constructed concrete boundary"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/native.py",
+              "source": "from typing import Protocol, final\n\n\nclass Backend(Protocol):\n    def read(self) -> str: ...\n    def write(self, value: str) -> None: ...\n\n\nclass Operations(Protocol):\n    def read(self) -> str: ...\n    def write(self, value: str) -> None: ...\n\n\n@final\nclass Coordinator:\n    def __init__(self) -> None:\n        self.backend: Backend = native_backend()\n\n    def read(self) -> str:\n        return self.backend.read()\n\n    def write(self, value: str) -> None:\n        self.backend.write(value)\n\n\ndef coordinator() -> Operations:\n    return Coordinator()\n\n\nclass Consumer:\n    def receive(self) -> str:\n        return coordinator().read()\n\n    def send(self, value: str) -> None:\n        coordinator().write(value)\n"
+            },
+            {
+              "path": "pyproject.toml",
+              "source": "[project]\nname = \"boundary-example\"\nversion = \"0.1.0\"\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/native.py",
+          "id": "factory-created-public-port",
+          "outcome": "accept",
+          "scenarioId": "factory-created-boundary",
+          "title": "A typed factory exposes the consumer's public Protocol"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:require-precise-factory-signature": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/service.py",
+              "source": "from collections.abc import Callable\n\n\nclass Result:\n    pass\n\n\ndef build(factory: Callable[..., Result]):\n    return factory(size=4)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/service.py",
+          "id": "erased-factory",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Keyword arguments escape checking"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/service.py",
+              "source": "from typing import Protocol\n\n\nclass Result:\n    pass\n\n\nclass Factory(Protocol):\n    def __call__(self, *, size: int) -> Result: ...\n\n\ndef build(factory: Factory):\n    return factory(size=4)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/service.py",
+          "id": "exact-factory",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Factory declares its keyword contract"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:require-public-dependency-contract": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/__init__.py",
+              "source": "# package\n"
+            },
+            {
+              "path": "app/consumer.py",
+              "source": "from app.publisher import Publisher, HttpPublisher\n\n\nclass Consumer:\n    def __init__(self, publisher: HttpPublisher) -> None:\n        self.publisher = publisher\n\n    def run(self) -> None:\n        self.publisher.publish()\n"
+            },
+            {
+              "path": "app/publisher.py",
+              "source": "from abc import ABC, abstractmethod\n\n\nclass Publisher(ABC):\n    @abstractmethod\n    def publish(self) -> None: ...\n\n\nclass HttpPublisher(Publisher):\n    def publish(self) -> None: ...\n\n\nclass QueuePublisher(Publisher):\n    def publish(self) -> None: ...\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/consumer.py",
+          "id": "existing-contract-httppublisher",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Use the existing substitutable publisher contract"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/__init__.py",
+              "source": "# package\n"
+            },
+            {
+              "path": "app/consumer.py",
+              "source": "from app.publisher import Publisher, HttpPublisher\n\n\nclass Consumer:\n    def __init__(self, publisher: Publisher) -> None:\n        self.publisher = publisher\n\n    def run(self) -> None:\n        self.publisher.publish()\n"
+            },
+            {
+              "path": "app/publisher.py",
+              "source": "from abc import ABC, abstractmethod\n\n\nclass Publisher(ABC):\n    @abstractmethod\n    def publish(self) -> None: ...\n\n\nclass HttpPublisher(Publisher):\n    def publish(self) -> None: ...\n\n\nclass QueuePublisher(Publisher):\n    def publish(self) -> None: ...\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/consumer.py",
+          "id": "existing-contract-publisher",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "The consumer already uses the existing contract"
         }
       ],
       "optionsSchemaSource": null
     },
     "python:require-pydantic-for-external-json": {
       "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "protocol.py",
+              "source": "import httpx\n\n\nclass Envelope:\n    def __init__(self, body):\n        self.body = body\n\n    def payload(self):\n        return self.body\n\n\ndef wrap(body):\n    result = Envelope(body)\n    return result\n\n\ndef fetch():\n    raw = httpx.get(\"https://api.example/report\").json()\n    return wrap(raw).payload()[\"version\"]\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "protocol.py",
+          "id": "factory-forwarded-external-json",
+          "outcome": "reject",
+          "scenarioId": "factory-forwarding",
+          "title": "A local factory forwards an unvalidated response"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "protocol.py",
+              "source": "import httpx\n\n\nclass Envelope:\n    def __init__(self, body):\n        self.body = body\n\n    def payload(self):\n        return self.body\n\n\ndef wrap(body):\n    return Envelope(body)\n\n\ndef fetch():\n    remote = httpx.get(\"https://api.example/report\").json()\n    return wrap({\"version\": 1}).payload()[\"version\"]\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "protocol.py",
+          "id": "factory-local-record",
+          "outcome": "accept",
+          "scenarioId": "factory-forwarding",
+          "title": "A factory receives a locally constructed record"
+        },
         {
           "expectedCount": 1,
           "files": [
@@ -9170,6 +10865,41 @@
       ],
       "optionsSchemaSource": null
     },
+    "python:shared-mutable-pydantic-factory": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/models.py",
+              "source": "from pydantic import BaseModel, Field\n\nSHARED = []\n\n\nclass Model(BaseModel):\n    values: list[int] = Field(default_factory=lambda: SHARED)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/models.py",
+          "id": "captured-list",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A factory returns the same mutable list for every model"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/models.py",
+              "source": "from pydantic import BaseModel, Field\n\n\nclass Model(BaseModel):\n    values: list[int] = Field(default_factory=list)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/models.py",
+          "id": "fresh-list",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "The factory creates an independent list"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "python:stepdown": {
       "examples": [
         {
@@ -9266,6 +10996,41 @@
           "outcome": "accept",
           "scenarioId": "write",
           "title": "Route singleton mutations through the bulk primitive"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:subprocess-kill-without-reap": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/processes.py",
+              "source": "import subprocess\n\n\ndef run(args):\n    process = subprocess.Popen(args)\n    try:\n        process.communicate(timeout=1)\n    except subprocess.TimeoutExpired:\n        process.kill()\n        process.communicate()\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/processes.py",
+          "id": "reaped-child",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Drain and wait after killing"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/processes.py",
+              "source": "import subprocess\n\n\ndef run(args):\n    process = subprocess.Popen(args)\n    try:\n        process.communicate(timeout=1)\n    except subprocess.TimeoutExpired:\n        process.kill()\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/processes.py",
+          "id": "unreaped-child",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Killing does not complete cleanup"
         }
       ],
       "optionsSchemaSource": null
@@ -9377,7 +11142,22 @@
           "files": [
             {
               "path": "tests/test_widget.py",
-              "source": "def _make_widget(*, size=3):\n    return Widget(size=size)\n\n\ndef test_widget():\n    assert _make_widget(size=4)\n"
+              "source": "def _read():\n    return \"ready\"\n\n\ndef _make_widget(*, read=_read):\n    return Widget(read=read)\n\n\n_make_widget()\n_make_widget(read=_read)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_widget.py",
+          "id": "exercised-local-callable-option",
+          "outcome": "accept",
+          "scenarioId": "callable-default",
+          "title": "An explicit callback preserves the dependency contract"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "tests/test_widget.py",
+              "source": "def test_widgets():\n    def _make_widget(*, size=3):\n        return Widget(size=size)\n\n    _make_widget()\n    _make_widget(size=4)\n"
             }
           ],
           "fixedFiles": [],
@@ -9392,7 +11172,7 @@
           "files": [
             {
               "path": "tests/test_widget.py",
-              "source": "def _make_widget(*, size=3):\n    return Widget(size=size)\n\n\n_make_widget()\n_make_widget(size=3)\n"
+              "source": "def test_widgets():\n    def _make_widget(*, size=3):\n        return Widget(size=size)\n\n    _make_widget()\n    _make_widget(size=3)\n"
             }
           ],
           "fixedFiles": [],
@@ -9401,6 +11181,21 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Repeated calls never vary the option"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "tests/test_widget.py",
+              "source": "def _read():\n    return \"ready\"\n\n\ndef _make_widget(*, read=_read):\n    return Widget(read=read)\n\n\n_make_widget()\n_make_widget()\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_widget.py",
+          "id": "unused-local-callable-option",
+          "outcome": "reject",
+          "scenarioId": "callable-default",
+          "title": "Known callers do not replace a stable local dependency"
         }
       ],
       "optionsSchemaSource": null
@@ -9715,6 +11510,41 @@
           "outcome": "reject",
           "scenarioId": "json-shape",
           "title": "Database duplicates a JSON array schema"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "sql:no-database-functions": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "supabase/migrations/001.sql",
+              "source": "ALTER TABLE batch\nADD CONSTRAINT fail_counter CHECK (FALSE) NOT VALID;\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "supabase/migrations/001.sql",
+          "id": "declarative-fault",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Declarative constraint in a disposable test database"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "supabase/migrations/001.sql",
+              "source": "CREATE FUNCTION fail_counter () RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'failure'; END $$;\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "supabase/migrations/001.sql",
+          "id": "stored-fault-function",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Procedural database fault fixture"
         }
       ],
       "optionsSchemaSource": null
@@ -10257,6 +12087,36 @@
           "title": "CI applies the reviewed Terraform plan"
         },
         {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "main.tf",
+              "source": "resource \"terraform_data\" \"enable_api\" {\n  provisioner \"local-exec\" {\n    command = \"gcloud services enable example.googleapis.com\"\n  }\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "main.tf",
+          "id": "terraform-local-exec-control-plane",
+          "outcome": "reject",
+          "scenarioId": "terraform-local-exec",
+          "title": "Provider resources own API enablement"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "main.tf",
+              "source": "resource \"terraform_data\" \"inspect_api\" {\n  provisioner \"local-exec\" {\n    command = \"gcloud services list --enabled\"\n  }\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "main.tf",
+          "id": "terraform-local-exec-read-only",
+          "outcome": "accept",
+          "scenarioId": "terraform-local-exec",
+          "title": "Read-only local commands do not create drift"
+        },
+        {
           "expectedCount": 0,
           "files": [
             {
@@ -10594,14 +12454,14 @@
       "doctor": "code-standards doctor [-h] [--format OUTPUT_FORMAT] [--repair] [--no-install]\n",
       "setup": "code-standards setup [-h] [--hooks HOOKS] [--python-dest PYTHON_DEST] [--typescript-dest TYPESCRIPT_DEST] [--swift-dest SWIFT_DEST] [--kotlin-dest KOTLIN_DEST] [--dry-run] [--force] [--no-install] [--tools-only] [--commit-policy-only] [--config ONLY ...]\n",
       "analyze": "code-standards analyze [-h] [--external] [--prepared-only] [--trust-repository-code] [--prepared-devops PREPARED_DEVOPS ...] [--prepared-target PREPARED_TARGET ...] [--format OUTPUT_FORMAT] [--output OUTPUT] [FILES ...]\n",
-      "check": "code-standards check [-h] [--trust-repository-code] [--jobs JOBS] [--staged] [--rule SELECTED_RULES ...] [--format OUTPUT_FORMAT] [--output OUTPUT] [--max-annotations-per-level MAX_ANNOTATIONS_PER_LEVEL] [FILES ...]\n",
+      "check": "code-standards check [-h] [--trust-repository-code] [--jobs JOBS] [--skip-python-type-check] [--staged] [--rule SELECTED_RULES ...] [--format OUTPUT_FORMAT] [--output OUTPUT] [--max-annotations-per-level MAX_ANNOTATIONS_PER_LEVEL] [FILES ...]\n",
       "validate-slack-automations": "code-standards validate-slack-automations [-h] PATH\n",
       "observe": "code-standards observe [-h] --rule SELECTED_RULES ... [--format OUTPUT_FORMAT] [--output OUTPUT] [--trust-repository-code] [--max-annotations-per-level MAX_ANNOTATIONS_PER_LEVEL] [FILES ...]\n",
       "fix": "code-standards fix [-h] [--staged] [FILES ...]\n",
       "update": "code-standards update [-h] [--check] [--offline] [--to VERSION] [--no-install]\n",
       "baseline": "code-standards baseline [-h] {init,update}\n",
-      "baseline/init": "code-standards baseline init [-h] [--output OUTPUT] [--trust-repository-code] [FILES ...]\n",
-      "baseline/update": "code-standards baseline update [-h] [--output OUTPUT] [--trust-repository-code] [--rule BASELINE_RULES ...] [FILES ...]\n",
+      "baseline/init": "code-standards baseline init [-h] [--jobs JOBS] [--output OUTPUT] [--trust-repository-code] [FILES ...]\n",
+      "baseline/update": "code-standards baseline update [-h] [--jobs JOBS] [--output OUTPUT] [--trust-repository-code] [--rule BASELINE_RULES ...] [FILES ...]\n",
       "ratchet": "code-standards ratchet [-h] {init,check,status,update}\n",
       "ratchet/init": "code-standards ratchet init [-h] [--baseline BASELINE] [--package PACKAGE ...] [--exclude-subtree EXCLUDE_SUBTREE ...]\n",
       "ratchet/check": "code-standards ratchet check [-h] [--baseline BASELINE] [--package PACKAGE ...] [--exclude-subtree EXCLUDE_SUBTREE ...]\n",
@@ -10623,7 +12483,7 @@
       "maintain/check": "code-standards maintain check [-h] [--only REPO_ONLY ...] [--commits COMMITS] [--policy-root POLICY_DEST] [--private-refs-file PRIVATE_REFS_FILE] [--quiet]\n",
       "maintain/sync-ledger": "code-standards maintain sync-ledger [-h] [--check]\n",
       "maintain/comment-corpus": "code-standards maintain comment-corpus [-h] ROOTS ... [--include-text PRIVATE_JSONL]\n",
-      "maintain/release": "code-standards maintain release [-h] {check-tag,verify-tags,create-tags,changes,causality,lock-age,typescript,verify-wheel,verify-publications,publish}\n",
+      "maintain/release": "code-standards maintain release [-h] {check-tag,verify-tags,create-tags,changes,causality,lock-age,typescript,verify-wheel,status,verify-publications,publish}\n",
       "maintain/release/check-tag": "code-standards maintain release check-tag [-h] TAG\n",
       "maintain/release/verify-tags": "code-standards maintain release verify-tags [-h] [--commit RELEASE_COMMIT]\n",
       "maintain/release/create-tags": "code-standards maintain release create-tags [-h] RELEASE_TARGETS ... --commit RELEASE_COMMIT [--attempts ATTEMPTS] [--delay-seconds DELAY_SECONDS]\n",
@@ -10632,6 +12492,7 @@
       "maintain/release/lock-age": "code-standards maintain release lock-age [-h] LOCKFILE [--minimum-days MINIMUM_AGE] [--exclude RELEASE_EXCLUDE ...] [--exclude-file RELEASE_EXCLUDE_FILE ...]\n",
       "maintain/release/typescript": "code-standards maintain release typescript [-h] RELEASE_MODE [--output OUTPUT]\n",
       "maintain/release/verify-wheel": "code-standards maintain release verify-wheel [-h] WHEELS ...\n",
+      "maintain/release/status": "code-standards maintain release status [-h] [--commit RELEASE_COMMIT] [--format OUTPUT_FORMAT]\n",
       "maintain/release/verify-publications": "code-standards maintain release verify-publications [-h] [--attempts ATTEMPTS] [--delay-seconds DELAY_SECONDS]\n",
       "maintain/release/publish": "code-standards maintain release publish [-h] RELEASE_TARGET\n",
       "maintain/docs": "code-standards maintain docs [-h] {check,sync}\n",

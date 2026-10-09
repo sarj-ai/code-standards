@@ -5,6 +5,8 @@
 
 import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
 
+import { directArgumentCall, unwrapExpression } from "./_unwrap-expression.js";
+
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { duplicateTestBodyCandidate } from "./duplicate-test-body.js";
 import { isGeneratedFile, isTestFile } from "./_paths.js";
@@ -48,12 +50,6 @@ interface PendingFinding {
   readonly statement: TSESTree.ExpressionStatement;
 }
 
-function staticMemberName(node: TSESTree.MemberExpression): string | null {
-  if (!node.computed && node.property.type === AST_NODE_TYPES.Identifier) return node.property.name;
-  if (node.computed && node.property.type === AST_NODE_TYPES.Literal && typeof node.property.value === "string") return node.property.value;
-  return null;
-}
-
 function importedName(identifier: TSESTree.Identifier, context: Context, modules: ReadonlySet<string>): string | null {
   const variable = ASTUtils.findVariable(context.sourceCode.getScope(identifier), identifier.name);
   if (variable === null || variable.defs.length === 0) return identifier.name;
@@ -69,21 +65,22 @@ function importedName(identifier: TSESTree.Identifier, context: Context, modules
 
 function isDirectTestCallback(node: TSESTree.Node, context: Context): node is FunctionNode {
   if (node.type !== AST_NODE_TYPES.ArrowFunctionExpression && node.type !== AST_NODE_TYPES.FunctionExpression) return false;
-  const call = node.parent;
-  if (call?.type !== AST_NODE_TYPES.CallExpression || !call.arguments.includes(node)) return false;
+  const call = directArgumentCall(node);
+  if (call === null) return false;
   const root = testRoot(call.callee);
   return root !== null && TEST_NAMES.has(importedName(root, context, TEST_MODULES) ?? "");
 }
 
 function testRoot(callee: TSESTree.Node): TSESTree.Identifier | null {
+  callee = unwrapExpression(callee);
   if (callee.type === AST_NODE_TYPES.Identifier) return callee;
   if (callee.type !== AST_NODE_TYPES.MemberExpression) return null;
-  const modifier = staticMemberName(callee);
+  const modifier = ASTUtils.getPropertyName(callee);
   return modifier !== null && TEST_MODIFIERS.has(modifier) ? testRoot(callee.object) : null;
 }
 
-function isStatic(node: TSESTree.Node): boolean {
-  if (node.type === AST_NODE_TYPES.TSAsExpression || node.type === AST_NODE_TYPES.TSTypeAssertion || node.type === AST_NODE_TYPES.TSSatisfiesExpression || node.type === AST_NODE_TYPES.TSNonNullExpression) return isStatic(node.expression);
+function isStatic(input: TSESTree.Node): boolean {
+  const node = unwrapExpression(input);
   switch (node.type) {
     case AST_NODE_TYPES.Literal: return true;
     case AST_NODE_TYPES.TemplateLiteral: return node.expressions.length === 0;
@@ -95,8 +92,8 @@ function isStatic(node: TSESTree.Node): boolean {
 }
 
 /** Preserve literal container/operator structure while replacing the values. */
-function staticShape(node: TSESTree.Node): string {
-  if (node.type === AST_NODE_TYPES.TSAsExpression || node.type === AST_NODE_TYPES.TSTypeAssertion || node.type === AST_NODE_TYPES.TSSatisfiesExpression || node.type === AST_NODE_TYPES.TSNonNullExpression) return staticShape(node.expression);
+function staticShape(input: TSESTree.Node): string {
+  const node = unwrapExpression(input);
   switch (node.type) {
     case AST_NODE_TYPES.Literal: return `literal:${typeof node.value}`;
     case AST_NODE_TYPES.TemplateLiteral: return "template";
@@ -113,18 +110,22 @@ function staticShape(node: TSESTree.Node): string {
 }
 
 function assertionShape(statement: TSESTree.Statement, context: Context, callback: FunctionNode): AssertionShape | null {
-  if (statement.type !== AST_NODE_TYPES.ExpressionStatement || statement.expression.type !== AST_NODE_TYPES.CallExpression) return null;
-  const matcherCall = statement.expression;
-  if (matcherCall.callee.type !== AST_NODE_TYPES.MemberExpression || matcherCall.callee.computed || matcherCall.callee.property.type !== AST_NODE_TYPES.Identifier || matcherCall.arguments.length !== 1) return null;
-  const matcher = matcherCall.callee.property.name;
+  if (statement.type !== AST_NODE_TYPES.ExpressionStatement) return null;
+  const matcherCall = unwrapExpression(statement.expression);
+  if (matcherCall.type !== AST_NODE_TYPES.CallExpression) return null;
+  const matcherCallee = unwrapExpression(matcherCall.callee);
+  if (matcherCallee.type !== AST_NODE_TYPES.MemberExpression || ASTUtils.getPropertyName(matcherCallee) === null || matcherCall.arguments.length !== 1) return null;
+  const matcher = (ASTUtils.getPropertyName(matcherCallee) ?? "");
   if (SNAPSHOT_MATCHERS.test(matcher)) return null;
-  const chain = expectCallFromMatcher(matcherCall.callee);
-  if (chain === null || chain.call.callee.type !== AST_NODE_TYPES.Identifier || importedName(chain.call.callee, context, ASSERTION_MODULES) !== "expect" || chain.call.arguments.length !== 1) return null;
-  const observed = chain.call.arguments[0];
+  const chain = expectCallFromMatcher(matcherCallee);
+  const expectCallee = chain === null ? null : unwrapExpression(chain.call.callee);
+  if (chain === null || expectCallee?.type !== AST_NODE_TYPES.Identifier || importedName(expectCallee, context, ASSERTION_MODULES) !== "expect" || chain.call.arguments.length !== 1) return null;
+  const observed = chain.call.arguments[0] === undefined ? undefined : unwrapExpression(chain.call.arguments[0]);
   const expected = matcherCall.arguments[0];
-  if (observed?.type !== AST_NODE_TYPES.CallExpression || observed.callee.type !== AST_NODE_TYPES.Identifier || observed.arguments.length === 0 || observed.arguments.some((arg) => arg.type === AST_NODE_TYPES.SpreadElement || !isStatic(arg)) || expected?.type === AST_NODE_TYPES.SpreadElement || expected === undefined || !isStatic(expected)) return null;
-  const skeleton = `${observed.callee.name}/${observed.arguments.map((item) => staticShape(item)).join(",")}/${chain.modifiers.join(".")}/${matcher}/${staticShape(expected)}`;
-  const binding = ASTUtils.findVariable(context.sourceCode.getScope(observed.callee), observed.callee.name);
+  const observedCallee = observed?.type === AST_NODE_TYPES.CallExpression ? unwrapExpression(observed.callee) : null;
+  if (observed?.type !== AST_NODE_TYPES.CallExpression || observedCallee?.type !== AST_NODE_TYPES.Identifier || observed.arguments.length === 0 || observed.arguments.some((arg) => arg.type === AST_NODE_TYPES.SpreadElement || !isStatic(arg)) || expected?.type === AST_NODE_TYPES.SpreadElement || expected === undefined || !isStatic(expected)) return null;
+  const skeleton = `${observedCallee.name}/${observed.arguments.map((item) => staticShape(item)).join(",")}/${chain.modifiers.join(".")}/${matcher}/${staticShape(expected)}`;
+  const binding = ASTUtils.findVariable(context.sourceCode.getScope(observedCallee), observedCallee.name);
   if (binding?.defs.some((definition) =>
     definition.node.range[0] >= callback.range[0] && definition.node.range[1] <= callback.range[1],
   )) return null;
@@ -136,7 +137,7 @@ function expectCallFromMatcher(node: TSESTree.MemberExpression): { call: TSESTre
   const modifiers: string[] = [];
   let receiver: TSESTree.Expression = node.object;
   while (receiver.type === AST_NODE_TYPES.MemberExpression) {
-    const modifier = staticMemberName(receiver);
+    const modifier = ASTUtils.getPropertyName(receiver);
     if (modifier === null || !EXPECT_MODIFIERS.has(modifier)) return null;
     modifiers.unshift(modifier);
     receiver = receiver.object;
@@ -160,9 +161,9 @@ export default createRule<Options, MessageIds>({
     const duplicateGroups = new Map<TSESTree.Node, Map<string, FunctionNode[]>>();
     const pending: PendingFinding[] = [];
     return {
-      "CallExpression > ArrowFunctionExpression, CallExpression > FunctionExpression"(node: FunctionNode): void {
-        const call = node.parent;
-        if (call?.type === AST_NODE_TYPES.CallExpression) {
+      "ArrowFunctionExpression, FunctionExpression"(node: FunctionNode): void {
+        const call = directArgumentCall(node);
+        if (call !== null) {
           const duplicate = duplicateTestBodyCandidate(call, sourceCode);
           if (duplicate !== null && duplicate.body === node) {
             const groups = duplicateGroups.get(duplicate.container) ?? new Map<string, FunctionNode[]>();

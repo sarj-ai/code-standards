@@ -6,6 +6,9 @@
 
 import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
 
+import { unwrapExpression } from "./_unwrap-expression.js";
+import { staticString } from "./_static-string.js";
+
 import { createRule, type RuleDocumentation } from "./_docs.js";
 
 type MessageIds = "preferNodeCryptoHash";
@@ -31,22 +34,11 @@ export const PREFER_NODE_CRYPTO_HASH_DOCUMENTATION = {
 
 type ScopeVariable = TSESLint.Scope.Variable;
 
-function memberName(node: TSESTree.MemberExpression): string | null {
-  if (!node.computed && node.property.type === AST_NODE_TYPES.Identifier) return node.property.name;
-  if (
-    node.computed &&
-    node.property.type === AST_NODE_TYPES.Literal &&
-    typeof node.property.value === "string"
-  ) {
-    return node.property.value;
-  }
-  return null;
-}
-
 function isCryptoLoader(
   node: TSESTree.Expression,
   resolve: (identifier: TSESTree.Identifier) => ScopeVariable | null,
 ): boolean {
+  const unwrappedNodeCallee = node.type === "CallExpression" || node.type === "NewExpression" ? unwrapExpression(node.callee) : null;
   if (node.type !== AST_NODE_TYPES.CallExpression || node.arguments.length !== 1) return false;
   const [argument] = node.arguments;
   if (
@@ -56,18 +48,18 @@ function isCryptoLoader(
   ) {
     return false;
   }
-  if (node.callee.type === AST_NODE_TYPES.Identifier) {
+  if (unwrappedNodeCallee?.type === AST_NODE_TYPES.Identifier) {
     return (
-      node.callee.name === "require" &&
-      isUnshadowedBuiltinIdentifier(node.callee, resolve)
+      unwrappedNodeCallee.name === "require" &&
+      isUnshadowedBuiltinIdentifier(unwrappedNodeCallee, resolve)
     );
   }
   return (
-    node.callee.type === AST_NODE_TYPES.MemberExpression &&
-    node.callee.object.type === AST_NODE_TYPES.Identifier &&
-    node.callee.object.name === "process" &&
-    isUnshadowedBuiltinIdentifier(node.callee.object, resolve) &&
-    memberName(node.callee) === "getBuiltinModule"
+    unwrappedNodeCallee?.type === AST_NODE_TYPES.MemberExpression &&
+    unwrappedNodeCallee.object.type === AST_NODE_TYPES.Identifier &&
+    unwrappedNodeCallee.object.name === "process" &&
+    isUnshadowedBuiltinIdentifier(unwrappedNodeCallee.object, resolve) &&
+    ASTUtils.getPropertyName(unwrappedNodeCallee) === "getBuiltinModule"
   );
 }
 
@@ -159,20 +151,23 @@ export default createRule<Options, MessageIds>({
         }
       },
       CallExpression(node): void {
-        if (!isMemberCall(node, "digest")) return;
-        const update = node.callee.object;
+        const unwrappedNodeCallee = unwrapExpression(node.callee);
+        if (unwrappedNodeCallee.type !== AST_NODE_TYPES.MemberExpression || !isMemberCall(node, "digest")) return;
+        const update = unwrapExpression(unwrappedNodeCallee.object);
         if (
           update.type !== AST_NODE_TYPES.CallExpression ||
           update.arguments.length !== 1 ||
           !isMemberCall(update, "update")
         )
           return;
-        const create = update.callee.object;
+        const updateCallee = unwrapExpression(update.callee);
+        if (updateCallee.type !== AST_NODE_TYPES.MemberExpression) return;
+        const create = unwrapExpression(updateCallee.object);
+        const algorithm = create.type === AST_NODE_TYPES.CallExpression && create.arguments[0] !== undefined ? unwrapExpression(create.arguments[0]) : null;
         if (
           create.type !== AST_NODE_TYPES.CallExpression ||
           create.arguments.length !== 1 ||
-          create.arguments[0]?.type !== AST_NODE_TYPES.Literal ||
-          typeof create.arguments[0].value !== "string" ||
+          staticString(algorithm ?? undefined) === null ||
           !isCreateHashCall(
             create,
             directBindings,
@@ -194,12 +189,11 @@ function importedName(node: TSESTree.Identifier | TSESTree.StringLiteral): strin
 function isMemberCall(
   node: TSESTree.CallExpression,
   name: string,
-): node is TSESTree.CallExpression & {
-  callee: TSESTree.MemberExpression;
-} {
+): boolean {
+  const unwrappedNodeCallee = unwrapExpression(node.callee);
   return (
-    node.callee.type === AST_NODE_TYPES.MemberExpression &&
-    memberName(node.callee) === name
+    unwrappedNodeCallee.type === AST_NODE_TYPES.MemberExpression &&
+    ASTUtils.getPropertyName(unwrappedNodeCallee) === name
   );
 }
 
@@ -209,19 +203,20 @@ function isCreateHashCall(
   namespaceBindings: ReadonlySet<ScopeVariable>,
   resolve: (identifier: TSESTree.Identifier) => ScopeVariable | null,
 ): boolean {
-  if (node.callee.type === AST_NODE_TYPES.Identifier) {
-    const variable = resolve(node.callee);
+  const unwrappedNodeCallee = unwrapExpression(node.callee);
+  if (unwrappedNodeCallee.type === AST_NODE_TYPES.Identifier) {
+    const variable = resolve(unwrappedNodeCallee);
     return variable !== null && directBindings.has(variable);
   }
   if (
-    node.callee.type !== AST_NODE_TYPES.MemberExpression ||
-    memberName(node.callee) !== "createHash"
+    unwrappedNodeCallee.type !== AST_NODE_TYPES.MemberExpression ||
+    ASTUtils.getPropertyName(unwrappedNodeCallee) !== "createHash"
   ) {
     return false;
   }
-  if (isCryptoLoader(node.callee.object, resolve)) return true;
-  if (node.callee.object.type !== AST_NODE_TYPES.Identifier) return false;
-  const variable = resolve(node.callee.object);
+  if (isCryptoLoader(unwrappedNodeCallee.object, resolve)) return true;
+  if (unwrappedNodeCallee.object.type !== AST_NODE_TYPES.Identifier) return false;
+  const variable = resolve(unwrappedNodeCallee.object);
   return (
     variable !== null &&
     namespaceBindings.has(variable)

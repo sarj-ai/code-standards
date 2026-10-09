@@ -23,6 +23,12 @@ make setup
 make verify
 ```
 
+Run independent package suites with `make test -j4`, or focus on the fresh Standards wheel with `make test-standards PYTEST_ARGS='-k release'`. `TEST_JOBS=1` serializes wheel tests (default: 4, maximum: 16). Wheel tests build local exact sibling versions in a temporary wheelhouse and leave existing distribution output intact. Use `make release-status COMMIT=origin/main` to inspect exact-revision checks, publication, tagging, and rollout with queue and job durations. Preview affected test files with `make test-plan BASE=origin/main`, then run them against fresh local wheels with `make test-standards-changed BASE=origin/main`. Ordinary PR and main CI select affected packages and test cohorts; shared code, dependencies, workflows, missing comparisons, unknown paths, and uncertified comparison bases fall back to full coverage. Manual and weekly CI run every package and test. Test plans record selected files, fallback reasons, and elapsed time in the job summary.
+
+On main, CI can reuse successful own-repository PR validation only when the checked Git tree and comparison base are identical. The verifier requires the latest successful CI run, matching run attempt, successful job, immutable artifact digest, and checked-tree certificate less than 24 hours old. It preserves the tested wheel bytes and submits reviewed CodeQL results for the actual main commit. Documentation source checks can be reused, while main builds and deploys the site afresh. Missing, expired, malformed, forked, changed or uncertified proofs fall back to fresh checks; PR, weekly and manual runs always perform fresh validation. The job summary links the source CI and explains reuse or fallback.
+
+Publication reuses the successful exact-main CI artifact after checking its repository, event, commit, job result, and archive digest; missing/expired artifacts receive a fresh build and full wheel suite. Consumer portability repeats when shared runtime code can be affected. CLI smoke tests and a fresh revision-local pre-commit installation run concurrently; either failure blocks publication, and a second hook run must reuse its environment. Reproduce both lanes with `make release-portability`; CI retains separate logs and timings. Release detection uses the exact source-owned bootstrap pins without installing lint engines. Documentation deployment uses a separate locked Wrangler toolchain; reproduce its dry run with `make docs-deploy-check` after building the site. The underlying `maintain release status --commit REV --format json` command provides JSON. Release builds and portability checks overlap safety checks; publication still requires every check, exact public sibling version, verified artifact digest, and trusted-publisher attestation.
+
 Create a rule with `maintain rules new ENGINE:ID --category CATEGORY --summary TEXT --apply`. Without `--apply`, the command shows its plan. Creation writes the detector and executable test, registers the rule, and reserves its identifier atomically. New rules default to warning. Run authoring commands through `uv run --project packages/standards --frozen code-standards` to use the source and dependencies of the checkout being edited. Implement the detector and replace the example placeholders, then verify and prepare it:
 
 ```bash
@@ -45,6 +51,23 @@ code-standards --root . maintain rules changes --before origin/main --after HEAD
 ```
 
 Fleet calibration and downstream PR creation run automatically after review and release.
+
+### Fleet rollout
+
+Copy `.sarj-standards-rollout.example.toml` to the ignored `.sarj-standards-rollout.toml` and register authorized consumers. Use an exact published bundle version:
+
+```bash
+make rollout-plan VERSION=<published-version>
+make rollout-check VERSION=<published-version>
+make rollout VERSION=<published-version>
+make rollout-status VERSION=<published-version>
+```
+
+Add `CONSUMER=owner/repository@branch` to inspect or retry one consumer, `DRY_RUN=1` to preview an apply, and `JOBS=1` to serialize local work (default: 4). `make rollout-reconcile` resolves the latest published bundle when VERSION is omitted. `make rollout-check` verifies the published CLI and immutable source tag without a consumer registry. Consumer installs refresh only Code Standards metadata and retry a newly published version's index visibility with up to six 10-second waits; other install errors fail immediately. The planner briefly waits for a new tag to become visible after PyPI publication. Canary, early, and stable waves advance only after earlier waves merge; targeted retries retain that gate. The apply command reports PR creation independently of adoption.
+
+Hosted reconciliation runs every 15 minutes and starts jobs only for consumers requiring work. Open verified PRs wait for their existing approvals. Pending adoption appears as pending in the durable issue; verification and transport failures still fail the workflow. Status exits 0 for complete adoption, 1 for pending adoption, and 2 for blocked or failed reads. Progress goes to stderr; stdout stays JSON with elapsedSeconds per consumer. The controller accepts `--jobs` (1 to 16) and `--command-timeout` (seconds, default: 900) before its subcommand. Registry consumers may opt into `partial_clone = true` when verification uses the checkout and its base. Full clones remain the default for verification that reads arbitrary history.
+
+On POSIX hosts, preparation and verification check the remote base every 10 seconds with a bounded read. Confirmed movement cancels the candidate's dependency update, baseline, bootstrap, or verification processes, preserves their log tails, and leaves that consumer pending for reconciliation from the new base. Unavailable remote evidence does not cancel consumer work. Stable candidates still run every registered check, and independent base checks remain required before publication. Other hosts retain the existing verification runner and base checks. Bounded structured timings from consumer verifiers appear in progress logs so slow phases can be measured without changing test coverage.
 
 ### Rule implementation
 

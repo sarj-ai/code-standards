@@ -4,7 +4,9 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-dynamic-sql.test.ts
  */
 
-import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
+import { ASTUtils, AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
+
+import { unwrapExpression } from "./_unwrap-expression.js";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { sqlSingleQuotedRanges, stripSqlNoise } from "./_sql.js";
@@ -86,10 +88,9 @@ function isStaticFragment(expression: TSESTree.Expression): boolean {
   }
   if (
     expression.type === AST_NODE_TYPES.MemberExpression &&
-    !expression.computed &&
-    expression.property.type === AST_NODE_TYPES.Identifier
+    ASTUtils.getPropertyName(expression) !== null
   ) {
-    return CONSTANT_CASE_RE.test(expression.property.name);
+    return CONSTANT_CASE_RE.test((ASTUtils.getPropertyName(expression) ?? ""));
   }
   if (expression.type === AST_NODE_TYPES.Literal) {
     return typeof expression.value === "string";
@@ -224,15 +225,15 @@ function statementMethodName(
   node: TSESTree.CallExpression,
   methods: ReadonlySet<string>,
 ): string | null {
-  const callee = node.callee;
+  const callee = unwrapExpression(node.callee);
+
   if (
     callee.type !== AST_NODE_TYPES.MemberExpression ||
-    callee.computed ||
-    callee.property.type !== AST_NODE_TYPES.Identifier
+    ASTUtils.getPropertyName(callee) === null
   ) {
     return null;
   }
-  const name = callee.property.name;
+  const name = (ASTUtils.getPropertyName(callee) ?? "");
   return methods.has(name) ? name : null;
 }
 
@@ -276,7 +277,7 @@ export default createRule<Options, MessageIds>({
           return;
         }
 
-        const statement = node.arguments[0];
+        const statement = node.arguments[0] === undefined ? undefined : unwrapExpression(node.arguments[0]);
         if (statement === undefined || !looksLikeSql(statement)) {
           return;
         }

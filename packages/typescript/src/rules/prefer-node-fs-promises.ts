@@ -6,6 +6,8 @@
 
 import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
 
+import { importSpecifierName } from "./_import-specifier-name.js";
+
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile, isTestFile } from "./_paths.js";
 
@@ -114,9 +116,8 @@ export default createRule<Options, MessageIds>({
           }
           if (
             specifier.type === AST_NODE_TYPES.ImportSpecifier &&
-            specifier.imported.type === AST_NODE_TYPES.Identifier &&
-            specifier.imported.name.endsWith("Sync")
-          ) synchronousImports.push(specifier.imported.name);
+            importSpecifierName(specifier).endsWith("Sync")
+          ) synchronousImports.push(importSpecifierName(specifier));
         }
         if (synchronousImports.length > 0) {
           context.report({

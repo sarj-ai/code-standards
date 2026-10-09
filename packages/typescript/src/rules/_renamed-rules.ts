@@ -1,5 +1,5 @@
 /**
- * @fileoverview _renames — every rule this plugin has renamed, old name to new; the old names no longer resolve, so this map is what says what to write instead.
+ * @fileoverview _renamed-rules — every rule this plugin has renamed, old name to new; the old names no longer resolve, so this map is what says what to write instead.
  *
  * `code-standards maintain sync-ledger` turns each entry into the consumer-facing ledger row.
  *

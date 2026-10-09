@@ -8,20 +8,49 @@ ROLLOUT := uv run --project packages/standards --frozen python -m sarj_standards
 VERSION ?=
 CHANNEL ?= stable
 REGISTRY ?= .sarj-standards-rollout.toml
+JOBS ?= 4
+CONSUMER ?=
+DRY_RUN ?=
+TEST_JOBS ?= 4
+PYTEST_ARGS ?=
+BASE ?= origin/main
+COMMIT ?= HEAD
+ROLLOUT_OPTIONS = --registry "$(REGISTRY)" --jobs "$(JOBS)"
+ROLLOUT_TARGET = --channel "$(CHANNEL)" $(if $(CONSUMER),--consumer "$(CONSUMER)")
 
-.PHONY: help setup build verify doctor docs-artifacts-check docs-code-sync docs-check test lint dogfood dogfood-python dogfood-typescript format-check typecheck repo-check check-no-private-refs check-file-conventions check-versions-synced release-check release-check-lock-age release-check-tags release-check-typescript sync-rule-ledger rollout
+.PHONY: help setup build verify doctor docs-artifacts-check docs-code-sync docs-check test lint dogfood dogfood-python dogfood-typescript format-check typecheck repo-check check-no-private-refs check-file-conventions check-versions-synced release-check release-portability release-check-lock-age release-check-tags release-check-typescript sync-rule-ledger rollout rollout-plan rollout-status rollout-reconcile
 
 help:
 	@echo "Targets: setup | verify | doctor | build | test | lint | dogfood | typecheck"
 	@echo "         check-{versions-synced,no-private-refs,file-conventions} | release-check"
-	@echo "         rollout VERSION=<published-version>"
+	@echo "         rollout[-plan|-status|-reconcile] VERSION=<published-version>"
+	@echo "         Optional: CONSUMER=owner/repo@branch JOBS=4 DRY_RUN=1 CHANNEL=stable"
+	@echo "         test-standards TEST_JOBS=4 PYTEST_ARGS='-k release' | test -j4"
+	@echo "         test-plan | test-standards-changed BASE=origin/main"
+	@echo "         release-status COMMIT=origin/main | release-portability"
+	@echo "         rollout-check VERSION=<published-version> | docs-deploy-check"
 	@echo "Releases are published only after a version-changing merge to main."
 
 rollout:
-	@test -n "$(VERSION)" || { echo "usage: make rollout VERSION=<published-version>" >&2; exit 2; }
-	$(ROLLOUT) --registry "$(REGISTRY)" plan --version "$(VERSION)" --channel "$(CHANNEL)"
-	$(ROLLOUT) --registry "$(REGISTRY)" apply --version "$(VERSION)" --channel "$(CHANNEL)"
-	$(ROLLOUT) --registry "$(REGISTRY)" status --version "$(VERSION)" --channel "$(CHANNEL)"
+	@bash .github/scripts/make-require-version.sh "$@" "$(VERSION)"
+	$(ROLLOUT) $(ROLLOUT_OPTIONS) apply --version "$(VERSION)" $(ROLLOUT_TARGET) $(if $(DRY_RUN),--dry-run)
+
+.PHONY: rollout-check docs-deploy-check
+rollout-check:
+	@bash .github/scripts/make-require-version.sh "$@" "$(VERSION)"
+	$(ROLLOUT) verify-release --version "$(VERSION)"
+
+docs-deploy-check:
+	@bash .github/scripts/make-require-docs.sh
+	npm --prefix .github/deploy ci --ignore-scripts --no-audit --no-fund
+	.github/deploy/node_modules/.bin/wrangler deploy --config apps/docs/wrangler.jsonc --dry-run --outdir "$(CURDIR)/.github/deploy/dist"
+
+rollout-plan rollout-status:
+	@bash .github/scripts/make-require-version.sh "$@" "$(VERSION)"
+	$(ROLLOUT) $(ROLLOUT_OPTIONS) $(patsubst rollout-%,%,$@) --version "$(VERSION)" $(ROLLOUT_TARGET)
+
+rollout-reconcile:
+	$(ROLLOUT) $(ROLLOUT_OPTIONS) reconcile $(if $(VERSION),--version "$(VERSION)") $(ROLLOUT_TARGET) $(if $(DRY_RUN),--dry-run)
 
 setup:
 	$(STANDARDS) --root . maintain setup
@@ -33,7 +62,7 @@ doctor:
 	@$(STANDARDS) doctor
 
 typescript-build:
-	cd packages/typescript && npm run build
+	npm --prefix packages/typescript run build
 
 .PHONY: typescript-build
 
@@ -45,11 +74,10 @@ docs-artifacts-check: typescript-build
 	@$(STANDARDS) --root . maintain docs check
 
 docs-code-sync:
-	cd apps/docs && npm run code-examples:sync
+	npm --prefix apps/docs run code-examples:sync
 
 docs-check: docs-artifacts-check
-	cd apps/docs && npm run code-examples:check
-	cd apps/docs && npm run lint && npm run check && npm run build
+	bash .github/scripts/verify-docs.sh
 
 format-check:
 	uv run --project packages/standards --frozen ruff format --check \
@@ -61,48 +89,62 @@ format-check:
 	  packages/standards/src packages/standards/tests
 
 build:
-	cd packages/typescript     && npm run build
-	cd apps/docs               && npm run build
-	cd packages/bootstrap      && uv build
-	cd packages/contracts      && uv build
-	cd packages/python         && uv build
-	cd packages/sql            && uv build
-	cd packages/iac            && uv build
-	cd packages/standards   && uv build
-	cd packages/standards-compat && uv build
+	npm --prefix packages/typescript run build
+	npm --prefix apps/docs run build
+	uv --directory packages/bootstrap build
+	uv --directory packages/contracts build
+	uv --directory packages/python build
+	uv --directory packages/sql build
+	uv --directory packages/iac build
+	uv --directory packages/standards build
+	uv --directory packages/standards-compat build
 
-test: check-versions-synced
-	cd packages/typescript     && npm test
-	cd packages/bootstrap      && uv run pytest -q
-	cd packages/contracts      && uv run pytest -q
-	cd packages/python         && uv run pytest -q
-	cd packages/sql            && uv run pytest -q
-	cd packages/iac            && uv run pytest -q
-	# Sibling wheels are built and installed alongside, mirroring ci.yml.
-	# `code-standards` pins its siblings exactly, so resolving them from PyPI fails
-	# for the whole window between bumping a pin and publishing that version -- which
-	# is exactly when this target most needs to run. Building them locally keeps
-	# `make test` usable on a version-bump branch.
-	cd packages/standards   && rm -rf dist \
-	  && uv build --wheel >/dev/null \
-	  && uv build --wheel --project ../contracts --out-dir dist/deps >/dev/null \
-	  && uv build --wheel --project ../python --out-dir dist/deps >/dev/null \
-	  && uv build --wheel --project ../sql    --out-dir dist/deps >/dev/null \
-	  && uv build --wheel --project ../iac    --out-dir dist/deps >/dev/null \
-	  && uv venv --quiet --clear dist/test-venv \
-	  && uv pip install --quiet --python dist/test-venv/bin/python pytest==9.1.1 jsonschema==4.25.1 ./dist/deps/*.whl ./dist/code_standards-*.whl \
-	  && PATH="$$PWD/dist/test-venv/bin:$$PATH" dist/test-venv/bin/python -m pytest -q tests/
-	cd packages/tsconfig       && node -e "JSON.parse(require('fs').readFileSync('base.json','utf8'))" && node -e "JSON.parse(require('fs').readFileSync('strict.json','utf8'))"
+test: check-versions-synced test-typescript test-bootstrap test-contracts test-python test-sql test-iac test-standards test-tsconfig
+
+.PHONY: test-typescript test-bootstrap test-contracts test-python test-sql test-iac test-standards test-tsconfig release-status test-plan test-standards-changed
+
+test-typescript:
+	npm --prefix packages/typescript test
+
+test-bootstrap:
+	uv --directory packages/bootstrap run pytest -q
+
+test-contracts:
+	uv --directory packages/contracts run pytest -q
+
+test-python:
+	uv --directory packages/python run pytest -q
+
+test-sql:
+	uv --directory packages/sql run pytest -q
+
+test-iac:
+	uv --directory packages/iac run pytest -q
+
+test-standards:
+	uv run --project packages/standards --frozen python -m sarj_standards.libs.release.wheel_tests --root . --jobs "$(TEST_JOBS)" $(PYTEST_ARGS)
+
+test-plan:
+	uv run --project packages/standards --frozen python -m sarj_standards.libs.release.test_selection --root . --base "$(BASE)"
+
+test-standards-changed:
+	uv run --project packages/standards --frozen python -m sarj_standards.libs.release.wheel_tests --root . --jobs "$(TEST_JOBS)" --changed --base "$(BASE)" $(PYTEST_ARGS)
+
+test-tsconfig:
+	node .github/scripts/ci-validate-tsconfig.mjs packages/tsconfig
+
+release-status:
+	$(STANDARDS) --root . maintain release status --commit "$(COMMIT)"
 
 # Each package runs its native type-aware lint gate.
 lint:
-	cd packages/typescript     && npm run lint
-	cd packages/bootstrap      && uv run ruff check src/ tests/
-	cd packages/contracts      && uv run ruff check src/ tests/
-	cd packages/python         && uv run ruff check src/ tests/
-	cd packages/sql            && uv run ruff check src/ tests/
-	cd packages/iac            && uv run ruff check src/ tests/
-	cd packages/standards   && uv run ruff check src/ tests/
+	npm --prefix packages/typescript run lint
+	uv --directory packages/bootstrap run ruff check src/ tests/
+	uv --directory packages/contracts run ruff check src/ tests/
+	uv --directory packages/python run ruff check src/ tests/
+	uv --directory packages/sql run ruff check src/ tests/
+	uv --directory packages/iac run ruff check src/ tests/
+	uv --directory packages/standards run ruff check src/ tests/
 	# `ci.yml` runs the custom SARJ rules over this package and
 	# `make lint` did not, so a change could pass `make verify` locally and fail
 	# CI on rules this repo wrote. Dogfooding that stops at ruff is not dogfooding.
@@ -116,39 +158,22 @@ lint:
 dogfood: dogfood-python dogfood-typescript
 
 dogfood-python:
-	@python_files=(); \
-	while IFS= read -r -d '' file; do if [[ -f "$$file" ]]; then python_files+=("$$file"); fi; done < <(git ls-files -z --cached --others --exclude-standard -- 'packages/*/src/*.py' 'packages/*/src/**/*.py' 'packages/*/tests/*.py' 'packages/*/tests/**/*.py'); \
-	python_rules=(); \
-	while IFS= read -r rule; do python_rules+=("$$rule"); done < <(uv run --quiet --project packages/python --frozen sarj-python-lint list-rules | awk '{print $$2}'); \
-	if (( $${#python_files[@]} == 0 || $${#python_rules[@]} == 0 )); then echo 'dogfood: Python source or registry is unexpectedly empty' >&2; exit 2; fi; \
-	rule_args=(); \
-	for rule in "$${python_rules[@]}"; do rule_args+=(--rule "$$rule"); done; \
-	set +e; \
-	output="$$(uv run --quiet --project packages/python --frozen sarj-python-lint check "$${rule_args[@]}" -- "$${python_files[@]}" 2>&1)"; \
-	status=$$?; \
-	set -e; \
-	if (( status != 0 )); then printf '%s\n' "$$output"; exit $$status; fi; \
-	if [[ -n "$$output" ]]; then printf '%s\n' "$$output"; fi; \
-	printf 'dogfood: %d Python rules, %d source files, 0 blocking diagnostics\n' "$${#python_rules[@]}" "$${#python_files[@]}"
+	@bash .github/scripts/make-dogfood-python.sh
 
 dogfood-typescript: typescript-build
-	cd packages/typescript && npm run dogfood:built
+	npm --prefix packages/typescript run dogfood:built
 
 typecheck:
-	cd packages/bootstrap      && uv run basedpyright
-	cd packages/contracts      && uv run basedpyright
-	cd packages/python         && uv run basedpyright
-	cd packages/sql            && uv run basedpyright
-	cd packages/iac            && uv run basedpyright
-	cd packages/standards   && uv run basedpyright
-	cd packages/typescript     && npm run typecheck
+	uv --directory packages/bootstrap run basedpyright
+	uv --directory packages/contracts run basedpyright
+	uv --directory packages/python run basedpyright
+	uv --directory packages/sql run basedpyright
+	uv --directory packages/iac run basedpyright
+	uv --directory packages/standards run basedpyright
+	npm --prefix packages/typescript run typecheck
 
 check-no-private-refs:
-	@if test -f .sarj-private-refs.toml; then \
-	  $(STANDARDS) --root . maintain check --only private-refs --only ci-history; \
-	else \
-	  echo "private-reference scan delegated to trusted CI"; \
-	fi
+	@bash .github/scripts/make-check-private-refs.sh $(STANDARDS)
 
 # Filename casing, rule<->test pairing, markdown placement, and strict-config
 # ownership. Setup synchronizes the root `.ruff-strict.toml` and
@@ -187,8 +212,11 @@ release-check-lock-age:
 	$(STANDARDS) --root . maintain release lock-age packages/typescript/package-lock.json --minimum-days 0
 
 release-check-tags:
-	$(STANDARDS) --root . maintain release check-tag typescript-v$$(node -p "require('./packages/typescript/package.json').version")
-	! $(STANDARDS) --root . maintain release check-tag typescript-v0.0.0
+	uv run --project packages/standards --frozen python -m sarj_standards.libs.release.make_checks $(STANDARDS)
 
 release-check-typescript:
 	$(STANDARDS) --root . maintain release typescript check
+
+# Reproduce both platform release smoke lanes, including a fresh hook install.
+release-portability:
+	bash .github/scripts/release-portability.sh

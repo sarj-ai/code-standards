@@ -50,85 +50,137 @@ sys.exit(0 if documents[0] == documents[1] else 1)
 PY
 }
 
-if [[ "$event" == schedule ]]; then
-  # Weekly security coverage does not rebuild packages or deploy documentation.
-  select_scopes codeql-python codeql-javascript-typescript docs-audit
-elif [[ "$event" != pull_request ]]; then
-  # Releases wait for complete validation of their exact main revision.
+if [[ "$event" != pull_request && "$event" != push ]]; then
+  # Manual and weekly runs audit every package, even when nothing changed.
+  select_scopes "${scopes[@]}"
+elif [[ "$event" == push && (-z "$base" || "$base" == 0000000000000000000000000000000000000000) ]]; then
+  # First pushes and missing webhook comparisons conservatively validate everything.
   select_scopes "${scopes[@]}"
 else
   [[ "$base" =~ ^[0-9a-f]{40}$ && "$head" =~ ^[0-9a-f]{40}$ ]] || {
-    echo 'PR routing requires base and head commit SHAs' >&2
+    echo 'routing requires base and head commit SHAs' >&2
     exit 1
   }
   changed=$(mktemp)
   trap 'rm -f "$changed"' EXIT
   # Disable rename detection so BOTH the old and new package owners run.
   # A failed diff must abort before any false outputs can be published.
-  comparison_base=$(git merge-base "$base" "$head")
-  git diff --no-renames --name-only -z "$comparison_base" "$head" -- > "$changed"
+  comparison_base="$base"
+  if [[ "$event" == pull_request ]]; then
+    comparison_base=$(git merge-base "$base" "$head")
+  fi
+  git diff --no-renames --name-only -z "$comparison_base" "$head" -- >"$changed"
   while IFS= read -r -d '' path; do
     case "$path" in
-      *.py|*.pyi) select_scopes codeql-python ;;
-      *.js|*.jsx|*.mjs|*.cjs|*.ts|*.tsx|*.mts|*.cts|*.astro) select_scopes codeql-javascript-typescript ;;
+    *.py | *.pyi) select_scopes codeql-python ;;
+    *.js | *.jsx | *.mjs | *.cjs | *.ts | *.tsx | *.mts | *.cts | *.astro) select_scopes codeql-javascript-typescript ;;
     esac
     case "$path" in
-      packages/*/README.md) select_scopes docs standards ;;
-      .github/*)
-        select_scopes "${scopes[@]}" ;;
-      .sarj-standards.toml)
-        select_scopes standards docs ;;
-      pyproject.toml|uv.lock)
-        select_scopes python standards docs ;;
-      packages/standards/src/sarj_standards/configs/eslint*)
-        select_scopes typescript standards docs ;;
-      packages/standards/src/sarj_standards/configs/rule-*|packages/standards/src/sarj_standards/configs/cli-reference.v1.json)
-        select_scopes standards docs ;;
-      packages/standards/src/sarj_standards/configs/*)
-        select_scopes "${scopes[@]}" ;;
-      packages/bootstrap/*)
-        select_scopes bootstrap standards docs ;;
-      packages/contracts/*)
-        select_scopes python sql iac standards docs ;;
-      packages/python/*)
-        select_scopes python standards docs ;;
-      packages/sql/*)
-        select_scopes sql standards docs ;;
-      packages/iac/*)
-        select_scopes iac standards docs ;;
-      packages/typescript/*)
-        select_scopes typescript standards docs ;;
-      packages/tsconfig/*)
-        select_scopes tsconfig standards docs ;;
-      packages/standards/tests/*)
-        select_scopes standards ;;
-      packages/standards/src/sarj_standards/schemas/rule-catalog.v1.json|packages/standards/src/sarj_standards/libs/linting/textlint.py)
-        select_scopes standards docs ;;
-      packages/standards/pyproject.toml|packages/standards/uv.lock)
-        select_scopes standards docs
-        # Missing/malformed files and comparison failures conservatively run mobile.
-        if ! release_metadata_only "$comparison_base" "$head" "$path"; then select_scopes mobile; fi ;;
-      packages/standards/*)
-        # Shared runner code and configuration can affect mobile execution.
-        select_scopes standards docs mobile ;;
-      packages/standards-compat/*)
-        select_scopes standards docs ;;
-      apps/docs/src/generated/*)
-        select_scopes docs standards ;;
-      apps/docs/package.json|apps/docs/package-lock.json)
-        select_scopes docs standards docs-audit ;;
-      apps/docs/*.md|apps/docs/*.mdx)
-        select_scopes docs ;;
-      apps/docs/*)
-        select_scopes docs standards ;;
-      README.md|AGENTS.md|LICENSE|plugins/*)
-        select_scopes docs standards ;;
-      *)
-        # New directories and repository-wide configuration fail open to work,
-        # never to a green result that omitted an unknown dependency.
-        select_scopes "${scopes[@]}" ;;
+    packages/*/README.md) select_scopes docs standards ;;
+    .github/workflows/commit-policy.yml)
+      # Repository delivery policy has no dependency on native linter units.
+      select_scopes standards docs
+      ;;
+    .github/workflows/standards-rollout.yml | .github/scripts/dispatch-standards-rollout.sh)
+      # The SDK cohort owns the fleet controller and dispatch contracts.
+      select_scopes standards docs
+      ;;
+    .github/scripts/verify-docs.sh)
+      # The SDK executes this gate's real-shell failure contracts; the docs
+      # lane runs the full gate. Native linter units cannot affect this shell.
+      select_scopes standards docs
+      ;;
+    .github/scripts/verify_registry_publication.py)
+      # SDK tests own registry bytes/provenance and convergence contracts.
+      # This verifier does not load native lint rules or mobile toolchains.
+      select_scopes standards docs
+      ;;
+    .github/workflows/private-refs.yml | .github/workflows/ruff-freshness.yml)
+      # Repository probes do not import or build language packages.
+      select_scopes standards docs
+      ;;
+    .github/*)
+      select_scopes "${scopes[@]}"
+      ;;
+    .sarj-standards.toml)
+      select_scopes standards docs
+      ;;
+    pyproject.toml | uv.lock)
+      select_scopes python standards docs
+      ;;
+    packages/standards/src/sarj_standards/configs/eslint*)
+      select_scopes typescript standards docs
+      ;;
+    packages/standards/src/sarj_standards/configs/rule-* | packages/standards/src/sarj_standards/configs/cli-reference.v1.json)
+      select_scopes standards docs
+      ;;
+    packages/standards/src/sarj_standards/configs/*)
+      select_scopes "${scopes[@]}"
+      ;;
+    packages/bootstrap/*)
+      select_scopes bootstrap standards docs
+      ;;
+    packages/contracts/*)
+      select_scopes python sql iac standards docs
+      ;;
+    packages/python/*)
+      select_scopes python standards docs
+      ;;
+    packages/sql/*)
+      select_scopes sql standards docs
+      ;;
+    packages/iac/*)
+      select_scopes iac standards docs
+      ;;
+    packages/typescript/*)
+      select_scopes typescript standards docs
+      ;;
+    packages/tsconfig/*)
+      select_scopes tsconfig standards docs
+      ;;
+    packages/standards/src/sarj_standards/libs/release/*)
+      select_scopes standards docs
+      ;;
+    packages/standards/tests/*)
+      select_scopes standards
+      ;;
+    packages/standards/src/sarj_standards/schemas/rule-catalog.v1.json | packages/standards/src/sarj_standards/libs/linting/textlint.py)
+      select_scopes standards docs
+      ;;
+    packages/standards/pyproject.toml | packages/standards/uv.lock)
+      select_scopes standards docs
+      # Missing/malformed files and comparison failures conservatively run mobile.
+      if ! release_metadata_only "$comparison_base" "$head" "$path"; then select_scopes mobile; fi
+      ;;
+    packages/standards/*)
+      # Shared runner code and configuration can affect mobile execution.
+      select_scopes standards docs mobile
+      ;;
+    packages/standards-compat/*)
+      select_scopes standards docs
+      ;;
+    apps/docs/src/generated/*)
+      select_scopes docs standards
+      ;;
+    apps/docs/package.json | apps/docs/package-lock.json)
+      select_scopes docs standards docs-audit
+      ;;
+    apps/docs/*.md | apps/docs/*.mdx)
+      select_scopes docs
+      ;;
+    apps/docs/*)
+      select_scopes docs standards
+      ;;
+    README.md | AGENTS.md | LICENSE | plugins/*)
+      select_scopes docs standards
+      ;;
+    *)
+      # New directories and repository-wide configuration fail open to work,
+      # never to a green result that omitted an unknown dependency.
+      select_scopes "${scopes[@]}"
+      ;;
     esac
-  done < "$changed"
+  done <"$changed"
 fi
 
 for scope in "${scopes[@]}"; do

@@ -5,6 +5,7 @@ from textwrap import dedent, indent
 from typing import TYPE_CHECKING
 
 import pytest
+from sarj_rule_contracts import EvaluationCase, ExpectedOutcome, Language
 
 from sarj_python_lint.rule_base import Severity
 from sarj_python_lint.rules.require_pydantic_for_external_json import (
@@ -439,7 +440,9 @@ def test_message_covers_already_decoded_json() -> None:
     assert "model_validate" in diagnostic.message
     documentation = RequirePydanticForExternalJson.documentation
     assert documentation is not None
-    assert "validate_python" in documentation.remediation
+    assert "model_validate" in documentation.remediation
+    assert "RootModel" in documentation.remediation
+    assert "TypeAdapter" not in documentation.remediation
 
 
 def test_direct_subprocess_output_is_proven_external() -> None:
@@ -992,3 +995,774 @@ def test_accepts_validated_aiohttp_response() -> None:
         """)
         == []
     )
+
+
+_WRAPPER = """
+import httpx
+
+class Envelope:
+    def __init__(self, body, metadata):
+        self.body = body
+        self.metadata = metadata
+
+    def payload(self):
+        return self.body
+
+    def headers(self):
+        return self.metadata
+"""
+
+
+@pytest.mark.parametrize(
+    ("case_id", "statement", "expected"),
+    [
+        ("method", "return result.payload().get('version')", 1),
+        ("field", "return result.body.get('version')", 1),
+        ("unrelated-field", "return result.headers().get('version')", 0),
+        ("unknown-method", "return result.unknown().get('version')", 0),
+        ("field-replaced", "result.body = {}\nreturn result.payload().get('version')", 0),
+        ("unknown-mutation", "result.reset()\nreturn result.payload().get('version')", 0),
+        ("escaped-instance", "change(result)\nreturn result.payload().get('version')", 0),
+        ("alias", "alias = result\nreturn alias.payload().get('version')", 1),
+        ("suppressed", "return result.payload().get('version')  # sarj-noqa: SARJ411", 0),
+        ("duplicate", "first = result.payload().get('version')\nreturn result.payload()['version']", 1),
+    ],
+)
+def test_wrapper_provenance_cases(case_id: str, statement: str, expected: int) -> None:
+    source = (
+        _WRAPPER
+        + '\ndef fetch():\n    result = Envelope(httpx.get("https://example.test").json(), {})\n'
+        + indent(statement, "    ")
+    )
+    case = EvaluationCase(
+        case_id, Language.PYTHON, source, ExpectedOutcome.MATCH if expected else ExpectedOutcome.NO_MATCH
+    )
+    assert len(_check(case.source)) == expected
+
+
+@pytest.mark.parametrize(
+    "accessor",
+    [
+        "return clean(self.body)",
+        "return {}",
+        "self.body = {}\nreturn self.body",
+    ],
+)
+def test_wrapper_unknown_or_mutating_accessors_stop_provenance(accessor: str) -> None:
+    source = _WRAPPER.replace("return self.body", indent(accessor, "        ").lstrip())
+    source += '\ndef fetch():\n    result = Envelope(httpx.get("https://example.test").json(), {})\n    return result.payload().get("version")\n'
+    assert not _check(source)
+
+
+def test_wrapper_inheritance_is_not_summarized() -> None:
+    source = _WRAPPER.replace("class Envelope:", "class Envelope(Parent):")
+    source += '\ndef fetch():\n    result = Envelope(httpx.get("https://example.test").json(), {})\n    return result.payload().get("version")\n'
+    assert not _check(source)
+
+
+def test_wrapper_local_input_is_not_external() -> None:
+    source = (
+        _WRAPPER
+        + '\ndef fetch():\n    result = Envelope({"version": 1}, {})\n    return result.payload().get("version")\n'
+    )
+    assert not _check(source)
+
+
+def test_wrapper_local_narrowing_preserves_unvalidated_fields() -> None:
+    source = _WRAPPER.replace("return self.body", "return narrow(self.body)")
+    source += "\ndef narrow(value):\n    return value if isinstance(value, dict) else {}\n"
+    source += '\ndef fetch():\n    result = Envelope(body=httpx.get("https://example.test").json(), metadata={})\n    return result.payload().get("version")\n'
+    assert len(_check(source)) == 1
+
+
+def test_wrapper_runtime_validation_stops_provenance() -> None:
+    source = _WRAPPER + "\nfrom pydantic import BaseModel\nclass Document(BaseModel):\n    version: int\n"
+    source += '\ndef fetch():\n    result = Envelope(Document.model_validate(httpx.get("https://example.test").json()), {})\n    return result.payload().get("version")\n'
+    assert not _check(source)
+
+
+@pytest.mark.parametrize(
+    ("before", "after"),
+    [
+        ("class Envelope:", "class Envelope(Parent):"),
+        ("class Envelope:", "@decorated\nclass Envelope:"),
+        ("return self.body", "return validate(self.body)"),
+        ("self.body = body", "self.body = validate(body)"),
+        ("self.body = body", "self.body = body\n        self.body = {}"),
+        ("def payload(self):", "@property\n    def payload(self):"),
+        ("def payload(self):", "@decorated\n    def payload(self):"),
+        ("def __init__(self, body, metadata):", "def __init__(self, *body, metadata):"),
+        ("def payload(self):", "def payload(self, other):"),
+        ("def payload(self):", "def payload(self):\n        return {}\n\n    def payload(self):"),
+    ],
+)
+def test_wrapper_ambiguous_declarations_are_excluded(before: str, after: str) -> None:
+    source = _WRAPPER.replace(before, after)
+    source += '\ndef fetch():\n    result = Envelope(httpx.get("https://example.test").json(), {})\n    return result.payload().get("version")\n'
+    assert not _check(source)
+
+
+@pytest.mark.parametrize(
+    "statement",
+    [
+        "alias = result\n    alias.body = {}",
+        "alias = result\n    mutate(alias)",
+        "alias = result\n    mutate(value=alias)",
+        "alias = result\n    alias.reset()",
+        "del result.body",
+    ],
+)
+def test_wrapper_alias_mutation_stops_provenance(statement: str) -> None:
+    source = _WRAPPER + '\ndef fetch():\n    result = Envelope(httpx.get("https://example.test").json(), {})\n'
+    source += f'    {statement}\n    return result.payload().get("version")\n'
+    assert not _check(source)
+
+
+def test_wrapper_direct_factory_return_is_followed() -> None:
+    source = _WRAPPER + '\ndef make() -> Envelope:\n    return Envelope(httpx.get("https://example.test").json(), {})\n'
+    source += '\ndef fetch():\n    result = make()\n    return result.payload().get("version")\n'
+    assert len(_check(source)) == 1
+
+
+@pytest.mark.parametrize("mutation", ["Envelope.payload = replacement", "Envelope.body = Descriptor()"])
+def test_wrapper_class_monkeypatch_stops_provenance(mutation: str) -> None:
+    source = _WRAPPER + "\n" + mutation
+    source += '\ndef fetch():\n    result = Envelope(httpx.get("https://example.test").json(), {})\n    return result.payload().get("version")\n'
+    assert not _check(source)
+
+
+def test_wrapper_descriptor_is_not_transparent_storage() -> None:
+    source = _WRAPPER.replace("class Envelope:", "class Envelope:\n    body = Descriptor()")
+    source += '\ndef fetch():\n    result = Envelope(httpx.get("https://example.test").json(), {})\n    return result.payload().get("version")\n'
+    assert not _check(source)
+
+
+@pytest.mark.parametrize(
+    "capture",
+    [
+        "def reset():\n    result.body = {}\nreset()",
+        "async def reset():\n    result.body = {}\nschedule(reset())",
+        "reset = lambda: mutate(result)\nreset()",
+        "class Reset:\n    def run(self):\n        result.body = {}\nReset().run()",
+    ],
+)
+def test_wrapper_nested_capture_stops_provenance(capture: str) -> None:
+    source = _WRAPPER + '\ndef fetch():\n    result = Envelope(httpx.get("https://example.test").json(), {})\n'
+    source += indent(capture, "    ") + '\n    return result.payload().get("version")\n'
+    assert not _check(source)
+
+
+def test_wrapper_bound_unknown_method_escape_stops_provenance() -> None:
+    source = _WRAPPER + "\n    def reset(self):\n        mutate(self)\n"
+    source += '\ndef fetch():\n    result = Envelope(httpx.get("https://example.test").json(), {})\n'
+    source += '    reset = result.reset\n    reset()\n    return result.payload().get("version")\n'
+    assert not _check(source)
+
+
+_FACTORY_RETURN_CASES = tuple(
+    EvaluationCase(
+        case_id,
+        Language.PYTHON,
+        _WRAPPER + "\n" + factory + "\ndef fetch():\n" + indent(consumer, "    "),
+        ExpectedOutcome.MATCH if expected else ExpectedOutcome.NO_MATCH,
+    )
+    for case_id, factory, consumer, expected in (
+        (
+            "factory-inline",
+            'def make():\n    return Envelope(httpx.get("https://example.test").json(), {})',
+            "return make().payload().get('version')",
+            True,
+        ),
+        (
+            "factory-annotated-alias",
+            'def make() -> Envelope:\n    return Envelope(httpx.get("https://example.test").json(), {})',
+            "result = make()\nalias = result\nreturn alias.payload()['version']",
+            True,
+        ),
+        (
+            "factory-constructor-keywords",
+            'def make():\n    return Envelope(metadata={}, body=httpx.get("https://example.test").json())',
+            "return make().payload().get('version')",
+            True,
+        ),
+        (
+            "factory-docstring",
+            'def make():\n    """Fetch the remote envelope."""\n    return Envelope(httpx.get("https://example.test").json(), {})',
+            "return make().payload().get('version')",
+            True,
+        ),
+        (
+            "factory-alias-captured",
+            'def make():\n    return Envelope(httpx.get("https://example.test").json(), {})',
+            "result = make()\nalias = result\ndef reset():\n    alias.body = {}\nreset()\nreturn result.payload().get('version')",
+            False,
+        ),
+        (
+            "factory-result-schema-validated",
+            'from jsonschema import validate\ndef make():\n    return Envelope(httpx.get("https://example.test").json(), {})',
+            "body = make().payload()\nvalidate(body, {'type': 'object'})\nreturn body.get('version')",
+            False,
+        ),
+        (
+            "factory-local-input",
+            'def make() -> Envelope:\n    return Envelope({"version": 1}, {})',
+            "return make().payload().get('version')",
+            False,
+        ),
+        (
+            "factory-unrelated-field",
+            'def make():\n    return Envelope(httpx.get("https://example.test").json(), {})',
+            "return make().headers().get('version')",
+            False,
+        ),
+        (
+            "factory-replaced-field",
+            'def make():\n    return Envelope(httpx.get("https://example.test").json(), {})',
+            "result = make()\nresult.body = {}\nreturn result.payload().get('version')",
+            False,
+        ),
+        (
+            "factory-escaped-alias",
+            'def make():\n    return Envelope(httpx.get("https://example.test").json(), {})',
+            "result = make()\nalias = result\nmutate(alias)\nreturn result.payload().get('version')",
+            False,
+        ),
+        (
+            "factory-captured-instance",
+            'def make():\n    return Envelope(httpx.get("https://example.test").json(), {})',
+            "result = make()\ndef mutate():\n    result.body = {}\nmutate()\nreturn result.payload().get('version')",
+            False,
+        ),
+        (
+            "factory-unknown-member-escape",
+            'def make():\n    return Envelope(httpx.get("https://example.test").json(), {})',
+            "result = make()\nreset = result.reset\nreset()\nreturn result.payload().get('version')",
+            False,
+        ),
+        (
+            "factory-local-shadow",
+            'def make():\n    return Envelope(httpx.get("https://example.test").json(), {})',
+            "make = local_factory\nreturn make().payload().get('version')",
+            False,
+        ),
+        (
+            "factory-rebound-module-name",
+            'def make():\n    return Envelope(httpx.get("https://example.test").json(), {})\nmake = local_factory',
+            "return make().payload().get('version')",
+            False,
+        ),
+        (
+            "factory-constructor-rebound",
+            'def make():\n    return Envelope(httpx.get("https://example.test").json(), {})\nEnvelope = replacement',
+            "return make().payload().get('version')",
+            False,
+        ),
+        (
+            "factory-import-shadowed",
+            'httpx = local_client\ndef make():\n    return Envelope(httpx.get("https://example.test").json(), {})',
+            "return make().payload().get('version')",
+            False,
+        ),
+        (
+            "factory-global-not-caller-local",
+            "def make():\n    return Envelope(raw, {})",
+            'raw = httpx.get("https://example.test").json()\nreturn make().payload().get("version")',
+            False,
+        ),
+        (
+            "factory-call-keyword",
+            'def make():\n    return Envelope(httpx.get("https://example.test").json(), {})',
+            "return make(body={}).payload().get('version')",
+            False,
+        ),
+        (
+            "factory-parameterized",
+            'def make(url="https://example.test"):\n    return Envelope(httpx.get(url).json(), {})',
+            "return make().payload().get('version')",
+            False,
+        ),
+        (
+            "factory-decorated",
+            '@replace_result\ndef make():\n    return Envelope(httpx.get("https://example.test").json(), {})',
+            "return make().payload().get('version')",
+            False,
+        ),
+        (
+            "factory-async",
+            'async def make():\n    return Envelope(httpx.get("https://example.test").json(), {})',
+            "return make().payload().get('version')",
+            False,
+        ),
+        (
+            "factory-return-alias",
+            'def make():\n    result = Envelope(httpx.get("https://example.test").json(), {})\n    return result',
+            "return make().payload().get('version')",
+            True,
+        ),
+        (
+            "factory-duplicate-declaration",
+            'def make():\n    return Envelope(httpx.get("https://example.test").json(), {})\ndef make():\n    return Envelope({}, {})',
+            "return make().payload().get('version')",
+            False,
+        ),
+        (
+            "factory-suppressed",
+            'def make():\n    return Envelope(httpx.get("https://example.test").json(), {})',
+            "return make().payload().get('version')  # sarj-noqa: SARJ411",
+            False,
+        ),
+    )
+)
+
+
+@pytest.mark.parametrize("case", _FACTORY_RETURN_CASES, ids=tuple(case.case_id for case in _FACTORY_RETURN_CASES))
+def test_factory_return_cases(case: EvaluationCase) -> None:
+    diagnostics = _check(case.source)
+    assert len(diagnostics) == (1 if case.expected is ExpectedOutcome.MATCH else 0)
+
+
+@pytest.mark.parametrize(
+    "constructor",
+    [
+        'Envelope(httpx.get("https://example.test").json(), {}, body={})',
+        'Envelope(httpx.get("https://example.test").json(), {}, extra=True)',
+        'Envelope(httpx.get("https://example.test").json())',
+        'Envelope(*[httpx.get("https://example.test").json(), {}])',
+        'Envelope(**{"body": httpx.get("https://example.test").json(), "metadata": {}})',
+        'Envelope((raw := httpx.get("https://example.test").json()), {})',
+        'Envelope((yield httpx.get("https://example.test").json()), {})',
+    ],
+)
+def test_factory_ambiguous_constructor_arguments_are_excluded(constructor: str) -> None:
+    source = _WRAPPER + f"\ndef make():\n    return {constructor}\n"
+    source += '\ndef fetch():\n    return make().payload().get("version")\n'
+    assert not _check(source)
+
+
+def test_factory_retains_conservative_import_shadow_exclusion() -> None:
+    source = _WRAPPER + '\ndef make():\n    return Envelope(httpx.get("https://example.test").json(), {})\n'
+    source += '\ndef fetch(httpx):\n    return make().payload().get("version")\n'
+    assert not _check(source)
+
+
+def test_factory_runtime_validation_stops_provenance() -> None:
+    source = _WRAPPER + "\nfrom pydantic import BaseModel\nclass Report(BaseModel):\n    version: int\n"
+    source += (
+        '\ndef make():\n    return Envelope(Report.model_validate(httpx.get("https://example.test").json()), {})\n'
+    )
+    source += '\ndef fetch():\n    return make().payload().get("version")\n'
+    assert not _check(source)
+
+
+def test_factory_has_one_warning_per_external_origin() -> None:
+    source = _WRAPPER + '\ndef make():\n    return Envelope(httpx.get("https://example.test").json(), {})\n'
+    source += '\ndef fetch():\n    first = make().payload().get("version")\n    return make().payload()["version"]\n'
+    assert len(_check(source)) == 1
+
+
+@pytest.mark.parametrize("path", ["tests/test_protocol.py", "generated/protocol.py"])
+def test_factory_existing_path_exclusions_remain(path: str) -> None:
+    assert not _check(_FACTORY_RETURN_CASES[0].source, path)
+
+
+def test_factory_malformed_input_remains_quiet() -> None:
+    assert not _check(_FACTORY_RETURN_CASES[0].source + "\ndef broken(")
+
+
+def test_factory_unknown_argument_transform_does_not_preserve_provenance() -> None:
+    source = _WRAPPER + '\ndef sanitize(raw):\n    return {"version": 1}\n'
+    source += '\ndef make():\n    return Envelope(sanitize(httpx.get("https://example.test").json()), {})\n'
+    source += '\ndef fetch():\n    return make().payload()["version"]\n'
+    assert not _check(source)
+
+
+def test_factory_proven_argument_narrowing_preserves_provenance() -> None:
+    source = _WRAPPER + "\ndef narrow(raw):\n    return raw if isinstance(raw, dict) else {}\n"
+    source += '\ndef make():\n    return Envelope(narrow(httpx.get("https://example.test").json()), {})\n'
+    source += '\ndef fetch():\n    return make().payload()["version"]\n'
+    assert len(_check(source)) == 1
+
+
+def test_factory_suppressed_consumer_does_not_hide_other_consumers() -> None:
+    source = _WRAPPER + '\ndef make():\n    return Envelope(httpx.get("https://example.test").json(), {})\n'
+    source += '\ndef ignored():\n    return make().payload()["version"]  # sarj-noqa: SARJ411\n'
+    source += '\ndef fetch():\n    return make().payload()["version"]\n'
+    diagnostics = _check(source)
+    assert len(diagnostics) == 1
+    assert diagnostics[0].line == len(source.splitlines())
+
+
+_BOUNDED_FACTORY_CASES = tuple(
+    EvaluationCase(
+        case_id,
+        Language.PYTHON,
+        _WRAPPER + "\n" + factory + "\ndef fetch():\n" + indent(consumer, "    "),
+        ExpectedOutcome.MATCH if expected else ExpectedOutcome.NO_MATCH,
+    )
+    for case_id, factory, consumer, expected in (
+        (
+            "local-decoded-alias",
+            'def make():\n    raw = httpx.get("https://example.test").json()\n    alias: object = raw\n    result = Envelope(alias, {})\n    returned = result\n    return returned',
+            "return make().payload()['version']",
+            True,
+        ),
+        (
+            "local-response-alias",
+            'def make():\n    response = httpx.get("https://example.test")\n    raw = response.json()\n    return Envelope(raw, {})',
+            "return make().payload()['version']",
+            True,
+        ),
+        (
+            "transport-parameter",
+            "def make(url):\n    raw = httpx.get(url).json()\n    return Envelope(raw, {})",
+            'return make("https://example.test").payload()["version"]',
+            True,
+        ),
+        (
+            "positional-payload",
+            "def make(raw):\n    alias = raw\n    return Envelope(alias, {})",
+            'return make(httpx.get("https://example.test").json()).payload()["version"]',
+            True,
+        ),
+        (
+            "keyword-payload",
+            "def make(raw):\n    return Envelope(raw, {})",
+            'return make(raw=httpx.get("https://example.test").json()).payload()["version"]',
+            True,
+        ),
+        (
+            "posonly-kwonly",
+            "def make(meta, /, *, raw):\n    return Envelope(raw, meta)",
+            'return make({}, raw=httpx.get("https://example.test").json()).payload()["version"]',
+            True,
+        ),
+        (
+            "separate-call-origins",
+            "def make(raw):\n    return Envelope(raw, {})",
+            'local = make({}).payload()["version"]\nreturn make(httpx.get("https://example.test").json()).payload()["version"]',
+            True,
+        ),
+        (
+            "caller-alias",
+            "def make(raw):\n    return Envelope(raw, {})",
+            'raw = httpx.get("https://example.test").json()\nalias = raw\nreturn make(alias).payload()["version"]',
+            True,
+        ),
+        (
+            "local-value",
+            "def make(raw):\n    return Envelope(raw, {})",
+            'return make({"version": 1}).payload()["version"]',
+            False,
+        ),
+        (
+            "annotation-only",
+            "def make(raw: dict[str, object]):\n    return Envelope(raw, {})",
+            'return make(unknown).payload()["version"]',
+            False,
+        ),
+        (
+            "unused-external-argument",
+            "def make(raw, metadata):\n    return Envelope(raw, metadata)",
+            'return make({}, httpx.get("https://example.test").json()).payload()["version"]',
+            False,
+        ),
+        (
+            "unknown-transform-caller",
+            "def make(raw):\n    return Envelope(raw, {})",
+            'return make(sanitize(httpx.get("https://example.test").json())).payload()["version"]',
+            False,
+        ),
+        (
+            "unknown-transform-factory",
+            "def make(raw):\n    clean = sanitize(raw)\n    return Envelope(clean, {})",
+            'return make(httpx.get("https://example.test").json()).payload()["version"]',
+            False,
+        ),
+        (
+            "unknown-effect",
+            'def make():\n    raw = httpx.get("https://example.test").json()\n    ignored = mutate(raw)\n    return Envelope(raw, {})',
+            'return make().payload()["version"]',
+            False,
+        ),
+        (
+            "mutation",
+            'def make():\n    result = Envelope(httpx.get("https://example.test").json(), {})\n    result.body = {}\n    return result',
+            'return make().payload()["version"]',
+            False,
+        ),
+        (
+            "branch",
+            'def make():\n    raw = httpx.get("https://example.test").json()\n    if flag:\n        raw = {}\n    return Envelope(raw, {})',
+            'return make().payload()["version"]',
+            False,
+        ),
+        (
+            "rebinding",
+            'def make():\n    raw = httpx.get("https://example.test").json()\n    raw = {}\n    return Envelope(raw, {})',
+            'return make().payload()["version"]',
+            False,
+        ),
+        (
+            "forward-reference",
+            'def make():\n    alias = raw\n    raw = httpx.get("https://example.test").json()\n    return Envelope(alias, {})',
+            'return make().payload()["version"]',
+            False,
+        ),
+        (
+            "parameter-rebinding",
+            "def make(raw):\n    raw = {}\n    return Envelope(raw, {})",
+            'return make(httpx.get("https://example.test").json()).payload()["version"]',
+            False,
+        ),
+        (
+            "constructor-shadow",
+            "def make(Envelope, raw):\n    return Envelope(raw, {})",
+            'return make(replacement, httpx.get("https://example.test").json()).payload()["version"]',
+            False,
+        ),
+        (
+            "default-excluded",
+            "def make(raw=None):\n    return Envelope(raw, {})",
+            'return make(httpx.get("https://example.test").json()).payload()["version"]',
+            False,
+        ),
+        (
+            "invalid-posonly-keyword",
+            "def make(raw, /):\n    return Envelope(raw, {})",
+            'return make(raw=httpx.get("https://example.test").json()).payload()["version"]',
+            False,
+        ),
+        (
+            "invalid-kwonly-positional",
+            "def make(*, raw):\n    return Envelope(raw, {})",
+            'return make(httpx.get("https://example.test").json()).payload()["version"]',
+            False,
+        ),
+        (
+            "duplicate-argument",
+            "def make(raw):\n    return Envelope(raw, {})",
+            'return make(httpx.get("https://example.test").json(), raw={}).payload()["version"]',
+            False,
+        ),
+        (
+            "missing-argument",
+            "def make(raw, metadata):\n    return Envelope(raw, metadata)",
+            'return make(httpx.get("https://example.test").json()).payload()["version"]',
+            False,
+        ),
+        (
+            "starred-argument",
+            "def make(raw):\n    return Envelope(raw, {})",
+            'return make(*[httpx.get("https://example.test").json()]).payload()["version"]',
+            False,
+        ),
+        (
+            "factory-chain",
+            "def make(raw):\n    return Envelope(raw, {})\ndef outer(raw):\n    return make(raw)",
+            'return outer(httpx.get("https://example.test").json()).payload()["version"]',
+            False,
+        ),
+        (
+            "caller-validation",
+            "from pydantic import BaseModel\nclass Report(BaseModel):\n    version: int\ndef make(raw):\n    return Envelope(raw, {})",
+            'return make(Report.model_validate(httpx.get("https://example.test").json())).payload()["version"]',
+            False,
+        ),
+        (
+            "factory-validation",
+            "from pydantic import BaseModel\nclass Report(BaseModel):\n    version: int\ndef make(raw):\n    clean = Report.model_validate(raw)\n    return Envelope(clean, {})",
+            'return make(httpx.get("https://example.test").json()).payload()["version"]',
+            False,
+        ),
+        (
+            "caller-schema-validation",
+            "from jsonschema import validate\ndef make(raw):\n    return Envelope(raw, {})",
+            'raw = httpx.get("https://example.test").json()\nvalidate(raw, {"type": "object"})\nreturn make(raw).payload()["version"]',
+            False,
+        ),
+    )
+)
+
+
+@pytest.mark.parametrize("case", _BOUNDED_FACTORY_CASES, ids=tuple(case.case_id for case in _BOUNDED_FACTORY_CASES))
+def test_bounded_factory_cases(case: EvaluationCase) -> None:
+    assert len(_check(case.source)) == (1 if case.expected is ExpectedOutcome.MATCH else 0)
+
+
+@pytest.mark.parametrize(
+    "factory",
+    [
+        "def make(raw):\n    callback = lambda: raw.clear()\n    return Envelope(raw, {})",
+        "def make(raw):\n    return make(raw)",
+        "def make(raw):\n    def captured():\n        raw.clear()\n    return Envelope(raw, {})",
+        "def make(raw):\n    alias = raw\n    del alias['version']\n    return Envelope(raw, {})",
+        "def make(raw):\n    alias = raw\n    alias['version'] = 1\n    return Envelope(raw, {})",
+    ],
+)
+def test_factory_effects_and_recursion_remain_excluded(factory: str) -> None:
+    source = _WRAPPER + "\n" + factory
+    source += '\ndef fetch():\n    return make(httpx.get("https://example.test").json()).payload()["version"]\n'
+    assert not _check(source)
+
+
+def test_async_method_response_chain_remains_an_explicit_limitation() -> None:
+    source = (
+        _WRAPPER
+        + """
+class Client:
+    def __init__(self, transport: httpx.AsyncClient):
+        self.transport = transport
+
+    async def request(self, endpoint):
+        response = await self.transport.get(endpoint)
+        try:
+            raw = response.json()
+        except ValueError:
+            raw = {}
+        return Envelope(raw, {})
+
+async def fetch(client: Client):
+    result = await client.request("/report")
+    return result.payload()["version"]
+"""
+    )
+    assert not _check(source)
+
+
+def test_parameter_shadowed_decoder_is_not_an_external_source() -> None:
+    source = (
+        _WRAPPER
+        + """
+import json
+import os
+
+def make(json):
+    return Envelope(json.loads(os.environ["REPORT"]), {})
+
+def fetch():
+    return make(local_decoder).payload()["version"]
+"""
+    )
+    assert not _check(source)
+
+
+@pytest.mark.parametrize(
+    "effect",
+    [
+        "raw.clear()\nraw.update({'version': 1})",
+        "reset(raw)",
+        "alias = raw\nreset(alias)",
+        "reset([raw])",
+        "items = [raw]\nreset(items)",
+        "raw['version'] = 1",
+        "alias = raw\nalias['version'] = 1",
+        "def reset():\n    raw.clear()\nreset()",
+    ],
+)
+@pytest.mark.parametrize("after_factory", [False, True])
+def test_forwarded_argument_mutation_and_escape_stop_provenance(effect: str, *, after_factory: bool) -> None:
+    source = _WRAPPER + "\ndef make(raw):\n    return Envelope(raw, {})\n"
+    statements = ['raw = httpx.get("https://example.test").json()']
+    if after_factory:
+        statements.extend(["result = make(raw)", effect, 'return result.payload()["version"]'])
+    else:
+        statements.extend([effect, 'return make(raw).payload()["version"]'])
+    source += "\ndef fetch():\n" + indent("\n".join(statements), "    ")
+    assert not _check(source)
+
+
+def test_factory_argument_effect_during_call_stops_provenance() -> None:
+    source = (
+        _WRAPPER
+        + """
+def make(raw, metadata):
+    return Envelope(raw, metadata)
+
+def fetch():
+    raw = httpx.get("https://example.test").json()
+    return make(raw, reset(raw)).payload()["version"]
+"""
+    )
+    assert not _check(source)
+
+
+def test_forwarded_argument_validation_after_factory_stops_provenance() -> None:
+    source = (
+        _WRAPPER
+        + """
+from jsonschema import validate
+
+def make(raw):
+    return Envelope(raw, {})
+
+def fetch():
+    raw = httpx.get("https://example.test").json()
+    result = make(raw)
+    validate(raw, {"type": "object"})
+    return result.payload()["version"]
+"""
+    )
+    assert not _check(source)
+
+
+@pytest.mark.parametrize("construction", ["direct", "no-argument-factory", "parameter-factory"])
+@pytest.mark.parametrize("effect", ["reset([result])", "result.body['version'] = 1", "items = [result]\nreset(items)"])
+def test_wrapper_nested_escape_and_stored_field_mutation_stop_provenance(construction: str, effect: str) -> None:
+    source = _WRAPPER
+    match construction:
+        case "direct":
+            expression = 'Envelope(httpx.get("https://example.test").json(), {})'
+        case "no-argument-factory":
+            source += '\ndef make():\n    return Envelope(httpx.get("https://example.test").json(), {})\n'
+            expression = "make()"
+        case "parameter-factory":
+            source += "\ndef make(raw):\n    return Envelope(raw, {})\n"
+            expression = 'make(httpx.get("https://example.test").json())'
+        case _:
+            raise AssertionError(construction)
+    source += "\ndef fetch():\n" + indent(
+        f'result = {expression}\n{effect}\nreturn result.payload()["version"]', "    "
+    )
+    assert not _check(source)
+
+
+@pytest.mark.parametrize("construction", ["direct", "no-argument-factory", "parameter-factory"])
+@pytest.mark.parametrize(
+    "effect",
+    [
+        "result.payload().clear()",
+        "result.body.clear()",
+        "payload = result.payload()\npayload.clear()",
+        "payload = result.body\npayload.clear()",
+        "payload = result.payload()\nitems = [payload]\nreset(items)",
+        "payload = result.body\nitems = {'body': payload}\nreset(items)",
+        "payload = result.payload()\npayload['version'] = 1",
+        "payload = result.payload()\nvalidate(payload, {'type': 'object'})",
+    ],
+)
+def test_wrapper_stored_payload_effects_stop_provenance(construction: str, effect: str) -> None:
+    source = _WRAPPER + "\nfrom jsonschema import validate\n"
+    match construction:
+        case "direct":
+            expression = 'Envelope(httpx.get("https://example.test").json(), {})'
+        case "no-argument-factory":
+            source += '\ndef make():\n    return Envelope(httpx.get("https://example.test").json(), {})\n'
+            expression = "make()"
+        case "parameter-factory":
+            source += "\ndef make(raw):\n    return Envelope(raw, {})\n"
+            expression = 'make(httpx.get("https://example.test").json())'
+        case _:
+            raise AssertionError(construction)
+    source += "\ndef fetch():\n" + indent(
+        f'result = {expression}\n{effect}\nreturn result.payload()["version"]', "    "
+    )
+    assert not _check(source)
+
+
+@pytest.mark.parametrize("expression", ["trigger.attr", "trigger + raw", "trigger[raw]", "raw if trigger else {}"])
+def test_factory_unknown_operator_or_descriptor_binding_is_excluded(expression: str) -> None:
+    source = _WRAPPER + f"\ndef make(raw, trigger):\n    ignored = {expression}\n    return Envelope(raw, {{}})\n"
+    source += (
+        '\ndef fetch():\n    return make(httpx.get("https://example.test").json(), unknown).payload()["version"]\n'
+    )
+    assert not _check(source)

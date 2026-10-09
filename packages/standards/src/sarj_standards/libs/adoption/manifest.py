@@ -34,17 +34,23 @@ _ESLINT_RULE_KEY: Final = re.compile(
     re.MULTILINE,
 )
 _SARJ_RULE_ENGINES: Final = frozenset({"python", "sql", "iac", "text"})
+_RUNNER_LABEL: Final = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,99}")
+_TOML_COLUMN_WIDTH: Final = 80  # Taplo's default; the shipped strict config does not override column_width.
 
 
 class _UpstreamRuleEngine(StrEnum):
+    CHECKOV = "checkov"
     ESLINT = "eslint"
     SHELLCHECK = "shellcheck"
+    ZIZMOR = "zizmor"
 
 
 #: Sibling distributions pinned exactly by `code-standards`.
 LINT_CONFIGS: Final = "code-standards"
 _PYTHON_LINT: Final = "sarj-python-lint"
 SIBLING_PACKAGES: Final = (_PYTHON_LINT, "sarj-sql-lint", "sarj-iac-lint")
+REPO_STANDARDS_VERSION: Final = "6.3.12"
+REPO_STANDARDS_REVISION: Final = "a73873facd868332e1bd7de07350f5aaa1cbe158"
 
 
 def adopted_version() -> str:
@@ -87,6 +93,7 @@ SWIFT_CONFIGS: Final = ("swiftformat", "swiftlint")
 KOTLIN_CONFIGS: Final = ("ktlint", "detekt")
 MOBILE_CONFIGS: Final = ("mobile-security",)
 SHARED_CONFIGS: Final = ("markdownlint", "shellcheck", "taplo", "yamllint")
+SECURITY_CONFIGS: Final = ("zizmor", "checkov")
 _SCHEMA_THREE_CONFIGS: Final = (*PYTHON_CONFIGS, *TYPESCRIPT_CONFIGS, *SHARED_CONFIGS)
 ALL_CONFIGS: Final = (
     *PYTHON_CONFIGS,
@@ -95,8 +102,9 @@ ALL_CONFIGS: Final = (
     *KOTLIN_CONFIGS,
     *MOBILE_CONFIGS,
     *SHARED_CONFIGS,
+    *SECURITY_CONFIGS,
 )
-DEVOPS_ANALYZERS: Final = ("actionlint", "zizmor", "hadolint", "terraform", "tflint", "compose", "devops-schema")
+DEVOPS_ANALYZERS: Final = ("actionlint", "hadolint", "terraform", "tflint", "compose", "devops-schema")
 ALL_CAPABILITIES: Final = (*ALL_CONFIGS, *PYTHON_ANALYZERS, *DEVOPS_ANALYZERS)
 DEFAULT_DURABLE_ARTIFACTS: Final = (
     "**/README.md",
@@ -145,6 +153,7 @@ class Manifest:
     ci_bootstrap: tuple[str, ...] = ()
     prepared_targets: tuple[PreparedTarget, ...] = ()
     compose_version: str | None = None
+    ci_runner: str | None = None
 
     @property
     def enabled_capabilities(self) -> tuple[str, ...]:
@@ -155,50 +164,47 @@ class Manifest:
     def render(self) -> str:
         enabled = set(self.enabled_capabilities)
         disabled = tuple(name for name in ALL_CAPABILITIES if name not in enabled)
-        disabled_text = ", ".join(f'"{name}"' for name in disabled)
-        durable_text = ", ".join(json.dumps(value) for value in self.durable_artifacts)
         sections = [
             (
                 "# Managed by `code-standards setup`; commit this file.\n"
-                f"schema = {MANIFEST_SCHEMA}\n"
                 f'bundle = "{self.version}"\n'
                 'rule_profile = "all"\n'
+                f"schema = {MANIFEST_SCHEMA}\n"
                 "\n"
                 "[capabilities]\n"
-                f"disable = [{disabled_text}]\n"
+                f"{_array_field('disable', disabled)}"
                 "\n"
                 "[artifacts]\n"
-                f"durable = [{durable_text}]\n"
+                f"{_array_field('durable', self.durable_artifacts)}"
                 "\n"
                 "[dest]\n"
-                f'python = "{self.python_dest}"\n'
-                f'typescript = "{self.typescript_dest}"\n'
-                f'swift = "{self.swift_dest}"\n'
-                f'kotlin = "{self.kotlin_dest}"\n'
+                f"kotlin = {_toml_string(self.kotlin_dest)}\n"
+                f"python = {_toml_string(self.python_dest)}\n"
+                f"swift = {_toml_string(self.swift_dest)}\n"
+                f"typescript = {_toml_string(self.typescript_dest)}\n"
                 "\n"
                 "[hooks]\n"
                 f'manager = "{self.hook_manager}"\n'
             )
         ]
         if self.verify_paths != (".",):
-            paths = ", ".join(json.dumps(value) for value in self.verify_paths)
-            sections.append(f"\n[verify]\npaths = [{paths}]\n")
+            sections.append(f"\n[verify]\n{_array_field('paths', self.verify_paths)}")
         sections.extend(_exclusion_sections(self))
         if self.text_excluded_paths:
-            paths = ", ".join(json.dumps(value) for value in self.text_excluded_paths)
-            sections.append(f"\n[text]\nexclude = [{paths}]\n")
+            sections.append(f"\n[text]\n{_array_field('exclude', self.text_excluded_paths)}")
         if self.doctor_excluded_paths:
-            paths = ", ".join(json.dumps(value) for value in self.doctor_excluded_paths)
-            sections.append(f"\n[doctor]\nexclude = [{paths}]\n")
+            sections.append(f"\n[doctor]\n{_array_field('exclude', self.doctor_excluded_paths)}")
         if self.diagnostic_baseline is not None:
-            sections.append(f"\n[baseline]\ndiagnostics = {json.dumps(self.diagnostic_baseline)}\n")
-        if self.ci_bootstrap:
-            commands = ", ".join(json.dumps(command) for command in self.ci_bootstrap)
-            sections.append(f"\n[ci]\nbootstrap = [{commands}]\n")
+            sections.append(f"\n[baseline]\ndiagnostics = {_toml_string(self.diagnostic_baseline)}\n")
+        if self.ci_bootstrap or self.ci_runner is not None:
+            ci_fields = _array_field("bootstrap", self.ci_bootstrap) if self.ci_bootstrap else ""
+            if self.ci_runner is not None:
+                ci_fields += f"runner = {_toml_string(self.ci_runner)}\n"
+            sections.append(f"\n[ci]\n{ci_fields}")
         if self.compose_version is not None:
-            sections.append(f"\n[devops]\ncompose_version = {json.dumps(self.compose_version)}\n")
+            sections.append(f"\n[devops]\ncompose_version = {_toml_string(self.compose_version)}\n")
         sections.extend(
-            f"\n[[devops.prepared_targets]]\nid = {json.dumps(target.id)}\nsource = {json.dumps(target.source)}\n"
+            f"\n[[devops.prepared_targets]]\nid = {_toml_string(target.id)}\nsource = {_toml_string(target.source)}\n"
             for target in self.prepared_targets
         )
         return "".join(sections)
@@ -231,8 +237,14 @@ def default_configs(
     has_swift: bool = False,
     has_kotlin: bool = False,
     has_mobile: bool = False,
+    has_actions: bool = False,
+    has_infrastructure: bool = False,
 ) -> tuple[str, ...]:
     selected: set[str] = set(SHARED_CONFIGS)
+    if has_actions:
+        selected.add("zizmor")
+    if has_infrastructure:
+        selected.add("checkov")
     if has_python:
         selected.update(PYTHON_CONFIGS)
     if has_typescript:
@@ -250,6 +262,7 @@ def default_configs(
         *KOTLIN_CONFIGS,
         *MOBILE_CONFIGS,
         *SHARED_CONFIGS,
+        *SECURITY_CONFIGS,
     )
     return tuple(name for name in order if name in selected)
 
@@ -286,7 +299,6 @@ def _load_schema(  # ruff: ignore[too-many-locals] - one validation boundary kee
     raw_profile = data.get("profile", "standard")
     capabilities_table = _manifest_table(data, "capabilities")
     disabled = _string_list(capabilities_table, "disable", label="manifest [capabilities].disable")
-    supported_configs = ALL_CONFIGS if expected_schema == MANIFEST_SCHEMA else _SCHEMA_THREE_CONFIGS
     supported_capabilities = ALL_CAPABILITIES if expected_schema == MANIFEST_SCHEMA else _SCHEMA_THREE_CONFIGS
     unknown_capabilities = sorted(set(disabled) - set(supported_capabilities))
     if unknown_capabilities:
@@ -295,17 +307,7 @@ def _load_schema(  # ruff: ignore[too-many-locals] - one validation boundary kee
     if declared is None:
         msg = f"{path} must set a string `bundle` declaration"
         raise TypeError(msg)
-    try:
-        bundle_version = Version(declared)
-    except InvalidVersion as exc:
-        msg = f"{path} `bundle` must be a valid PEP 440 version"
-        raise ValueError(msg) from exc
-    enabled_configs = (
-        _SCHEMA_THREE_CONFIGS
-        if expected_schema == MANIFEST_SCHEMA and bundle_version < Version("7.8.0")
-        else supported_configs
-    )
-    names = [name for name in enabled_configs if name not in disabled]
+    names = tuple(name for name in _bundle_configs(declared, path, expected_schema) if name not in disabled)
     if not isinstance(raw_profile, str) or raw_profile not in PROFILES:
         msg = f"{path} `profile` must be one of: {', '.join(PROFILES)}"
         raise ValueError(msg)
@@ -327,7 +329,7 @@ def _load_schema(  # ruff: ignore[too-many-locals] - one validation boundary kee
     hook_manager: HookManager = raw_hook_manager
     return Manifest(
         version=declared,
-        configs=tuple(names),
+        configs=names,
         python_dest=_dest_value(dest_table, "python"),
         typescript_dest=_dest_value(dest_table, "typescript"),
         swift_dest=_dest_value(dest_table, "swift", root=root),
@@ -359,6 +361,7 @@ def _load_schema(  # ruff: ignore[too-many-locals] - one validation boundary kee
         ci_bootstrap=_ci_bootstrap(ci_table),
         prepared_targets=_prepared_targets(root, _manifest_table(data, "devops")),
         compose_version=_compose_version(_manifest_table(data, "devops")),
+        ci_runner=_ci_runner(ci_table),
     )
 
 
@@ -405,6 +408,19 @@ def _prepared_targets(root: Path, table: Mapping[str, object]) -> tuple[Prepared
             raise ValueError(msg)
         targets.append(PreparedTarget(identifier, source))
     return tuple(targets)
+
+
+def _bundle_configs(declared: str, path: Path, schema: int) -> tuple[str, ...]:
+    try:
+        version = Version(declared)
+    except InvalidVersion as exc:
+        msg = f"{path} `bundle` must be a valid PEP 440 version"
+        raise ValueError(msg) from exc
+    if schema != MANIFEST_SCHEMA or version < Version("7.8.0"):
+        return _SCHEMA_THREE_CONFIGS
+    if version < Version("8.13.0"):
+        return tuple(name for name in ALL_CONFIGS if name not in SECURITY_CONFIGS)
+    return ALL_CONFIGS
 
 
 def _check_manifest_schema(data: Mapping[str, object], path: Path, expected_schema: int) -> None:
@@ -552,6 +568,19 @@ def _ci_bootstrap(table: Mapping[str, object]) -> tuple[str, ...]:
     return commands
 
 
+def _ci_runner(table: Mapping[str, object]) -> str | None:
+    if "runner" not in table:
+        return None
+    label = table["runner"]
+    if not isinstance(label, str):
+        msg = "manifest [ci].runner must be a string"
+        raise TypeError(msg)
+    if _RUNNER_LABEL.fullmatch(label) is None:
+        msg = "manifest [ci].runner must be one GitHub Actions runner label, such as blacksmith-2vcpu-ubuntu-2404"
+        raise ValueError(msg)
+    return label
+
+
 def _path_patterns(root: Path, table: Mapping[str, object], key: str) -> tuple[str, ...]:
     patterns = _string_list(table, key, label=f"manifest [exclude].{key}")
     return tuple(validate_excluded_path(root, pattern) for pattern in patterns)
@@ -571,7 +600,10 @@ def _rule_selectors(
     )
 
 
-def validate_excluded_path(root: Path, pattern: str) -> str:
+def validate_excluded_path(
+    root: Path,  # ruff: ignore[unused-function-argument] -- Preserve the public exclusion validator keyword.
+    pattern: str,
+) -> str:
     normalized = pattern.replace("\\", "/")
     if normalized.startswith(("/", "!")) or ".." in normalized.split("/"):
         msg = f"manifest exclusion pattern must be a repository-relative denylist pattern: {pattern}"
@@ -582,7 +614,6 @@ def validate_excluded_path(root: Path, pattern: str) -> str:
     if normalized in {MANIFEST_NAME, f"**/{MANIFEST_NAME}"}:
         msg = "manifest exclusion cannot hide the Standards manifest"
         raise ValueError(msg)
-    _ = root
     return normalized
 
 
@@ -590,7 +621,7 @@ def validate_excluded_rule(selector: str) -> str:
     engine, separator, rule = selector.partition(":")
     if (
         not separator
-        or engine not in {"ruff", "basedpyright", "eslint", "shellcheck", "python", "sql", "iac", "text"}
+        or engine not in {"ruff", "basedpyright", *_UpstreamRuleEngine, *_SARJ_RULE_ENGINES}
         or not rule
         or rule != rule.strip()
     ):
@@ -636,10 +667,8 @@ def _validate_known_rule(engine: str, rule: str, selector: str) -> None:
         upstream = _UpstreamRuleEngine(engine)
     except ValueError:
         return
-    if upstream is _UpstreamRuleEngine.SHELLCHECK:
-        if re.fullmatch(r"SC[0-9]{4}", rule) is None:
-            msg = f"unknown Standards rule exclusion: {selector}"
-            raise ValueError(msg)
+    if upstream is not _UpstreamRuleEngine.ESLINT:
+        _validate_source_tool_rule(upstream, rule, selector)
         return
     if rule.startswith("@sarj/"):
         known = frozenset(f"@sarj/{name}" for name in shipped.rules.get(ledger.ESLINT, ()))
@@ -649,6 +678,21 @@ def _validate_known_rule(engine: str, rule: str, selector: str) -> None:
     else:
         return
     if rule not in known:
+        msg = f"unknown Standards rule exclusion: {selector}"
+        raise ValueError(msg)
+
+
+def _validate_source_tool_rule(engine: _UpstreamRuleEngine, rule: str, selector: str) -> None:
+    from sarj_standards.libs.linting import (  # ruff: ignore[import-outside-top-level] -- defer analyzer imports while adoption initializes.
+        security_tools,
+    )
+
+    if engine is _UpstreamRuleEngine.SHELLCHECK:
+        valid = re.fullmatch(r"SC[0-9]{4}", rule) is not None
+    else:
+        known = security_tools.CHECKOV_CHECKS if engine is _UpstreamRuleEngine.CHECKOV else security_tools.ZIZMOR_RULES
+        valid = rule in known
+    if not valid:
         msg = f"unknown Standards rule exclusion: {selector}"
         raise ValueError(msg)
 
@@ -734,7 +778,7 @@ def _relative_file(root: Path, table: Mapping[str, object], key: str) -> str | N
 
 def installed_versions() -> dict[str, str]:
     found = {LINT_CONFIGS: adopted_version()}
-    for name in SIBLING_PACKAGES:
+    for name in (*SIBLING_PACKAGES, "repo-standards"):
         try:
             found[name] = version(name)
         except PackageNotFoundError:
@@ -759,13 +803,24 @@ def eslint_overrides() -> dict[str, object]:
 def _exclusion_sections(manifest: Manifest) -> list[str]:
     sections: list[str] = []
     if manifest.excluded_paths or manifest.excluded_rules:
-        paths = ", ".join(json.dumps(value) for value in manifest.excluded_paths)
-        rules = ", ".join(json.dumps(value) for value in manifest.excluded_rules)
-        sections.append(f"\n[exclude]\npaths = [{paths}]\nrules = [{rules}]\n")
+        paths = _array_field("paths", manifest.excluded_paths)
+        rules = _array_field("rules", manifest.excluded_rules)
+        sections.append(f"\n[exclude]\n{paths}{rules}")
     for override in manifest.exclusion_overrides:
-        paths = ", ".join(json.dumps(value) for value in override.paths)
-        rules = ", ".join(json.dumps(value) for value in override.rules)
-        sections.append(
-            f"\n[[exclude.overrides]]\npaths = [{paths}]\nrules = [{rules}]\nreason = {json.dumps(override.reason)}\n"
-        )
+        paths = _array_field("paths", override.paths)
+        rules = _array_field("rules", override.rules)
+        sections.append(f"\n[[exclude.overrides]]\n{paths}reason = {_toml_string(override.reason)}\n{rules}")
     return sections
+
+
+def _array_field(key: str, values: tuple[str, ...]) -> str:
+    rendered = tuple(_toml_string(value) for value in values)
+    inline = f"{key} = [{', '.join(rendered)}]"
+    if len(inline) <= _TOML_COLUMN_WIDTH:
+        return f"{inline}\n"
+    items = "".join(f"  {value},\n" for value in rendered)
+    return f"{key} = [\n{items}]\n"
+
+
+def _toml_string(value: str) -> str:
+    return json.dumps(value, ensure_ascii=False).replace("\x7f", r"\u007f")

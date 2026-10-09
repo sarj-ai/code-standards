@@ -85,7 +85,7 @@ async def seeded_database(pool: AsyncConnectionPool):
     async with pool.connection() as conn:
         await conn.execute("DELETE FROM orders")
 """
-    assert _check(source) == []
+    assert len(_check(source)) == 2
 
 
 def test_reports_fixture_that_exposes_raw_connection() -> None:
@@ -107,3 +107,89 @@ def unrelated_network_helper(pool):
     return pool.connection()
 """
     assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    "path",
+    ["tests/test_jobs.py", "tests/conftest.py", "tests/fixtures/probe.py", "app/testing/probe.py"],
+)
+def test_raw_sql_is_not_hidden_by_test_support_paths(path: str) -> None:
+    source = """
+from psycopg_pool import AsyncConnectionPool as Pool
+class Probe:
+    def __init__(self, pool: Pool):
+        self._pool = pool
+    async def seed(self):
+        async with self._pool.connection() as connection:
+            await connection.execute("INSERT INTO jobs (id) VALUES (%s)", (job_id,))
+"""
+    findings = _check(source, path)
+    assert len(findings) == 1
+    assert findings[0].code == "SARJ429"
+
+
+@pytest.mark.parametrize(
+    "statement",
+    ["conn.execute(query)", "conn.executemany(query, rows)", "conn.execute(query=builder())"],
+)
+def test_proven_connection_catches_dynamic_queries(statement: str) -> None:
+    source = f"from psycopg import Connection as DB\ndef test_query(conn: DB):\n    {statement}\n"
+    assert len(_check(source)) == 1
+
+
+@pytest.mark.parametrize(
+    "statement",
+    [
+        "client.query('SELECT id FROM jobs')",
+        "client.execute('UPDATE jobs SET state = %s', (state,))",
+        "client.fetch('SELECT id FROM jobs')",
+        "client.exec_driver_sql('DELETE FROM jobs')",
+        "client.command('TRUNCATE TABLE jobs')",
+        "client.execute(query='SELECT 1')",
+        "client.execute('SELECT ' + 'id FROM jobs')",
+        "client.execute(f'SELECT id FROM jobs WHERE id = {job_id}')",
+        "client.execute('/* setup */ SELECT id FROM jobs')",
+    ],
+)
+def test_sql_shaped_execution_is_independent_of_driver(statement: str) -> None:
+    assert len(_check(f"async def test_query(client):\n    {statement}\n")) == 1
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "client.execute('send notification')\n",
+        "client.query('How many orders?')\n",
+        "client.execute('update preferences')\n",
+        "example = \"conn.execute('SELECT id FROM jobs')\"\n",
+        "assert compiler.render() == 'SELECT id FROM jobs'\n",
+        "client.execute(query)\n",
+        "# conn.execute('SELECT id FROM jobs')\n",
+    ],
+)
+def test_near_misses_do_not_infer_database_execution(source: str) -> None:
+    assert _check(source) == []
+
+
+def test_sql_execution_supersedes_connection_acquisition() -> None:
+    source = """
+from psycopg_pool import AsyncConnectionPool
+async def test_rows(pool: AsyncConnectionPool):
+    async with pool.connection() as conn:
+        await conn.execute("SELECT 1")
+"""
+    findings = _check(source)
+    assert len(findings) == 1
+    assert findings[0].line == 5
+
+
+def test_generated_and_production_sql_are_excluded() -> None:
+    source = "conn.execute('SELECT id FROM jobs')\n"
+    assert _check(source, "app/store.py") == []
+    assert _check("# @generated\n" + source) == []
+
+
+def test_malformed_source_and_exact_suppression() -> None:
+    assert _check("def test_broken(:") == []
+    assert _check("conn.execute('SELECT id FROM jobs')  # sarj-noqa: SARJ429 — migration behavior under test\n") == []
+    assert len(_check("conn.execute('SELECT id FROM jobs')  # sarj-noqa: SARJ415 — different rule\n")) == 1

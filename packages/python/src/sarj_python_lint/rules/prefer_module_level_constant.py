@@ -99,20 +99,23 @@ class PreferModuleLevelConstant(Rule):
     code: str = "SARJ039"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
         default_level=Severity.WARNING,
-        summary="Hoist repeatedly read static values when an immutable module representation preserves behavior.",
+        summary="Hoist repeatedly read static values when a module constant preserves behavior.",
         rationale=(
             "Rebuilding a substantial static collection repeats allocation, while calling `re.compile` with a "
-            "constant pattern repeats a regex-cache lookup. In reusable code, an immutable module value makes "
-            "the static lifetime explicit without exposing shared mutable state."
+            "constant pattern repeats a regex-cache lookup. Native immutable collections or Final dictionary bindings "
+            "make the static lifetime explicit for proven read-only use."
         ),
         remediation=(
-            "Define the value once at module scope as a tuple, frozenset, immutable mapping, or compiled pattern, "
-            "then reference it from the function. Preserve ordering and concrete-type behavior used by callers."
+            "Define the value once at module scope as a tuple, frozenset, Final[dict[K, V]], or compiled pattern, "
+            "then reference it from the function. Final prevents reassignment in type-checked code but does not freeze "
+            "dictionary contents; use MappingProxyType when runtime write protection is required. Preserve ordering "
+            "and concrete-type behavior used by callers."
         ),
         category=RuleCategory.PERFORMANCE,
         limitations=(
             "Test, test-support, and generated files are excluded.",
             "Collections require at least eight deeply immutable elements, or three when allocated inside a loop; only representation-insensitive reads are accepted.",
+            "Final dictionaries retain mutable contents at runtime; unknown calls, mutation, and escaping references are excluded from hoisting candidates.",
             "Regex findings require a proven stdlib `re.compile` binding and exclude `re.DEBUG`; the rule cannot prove that a function is hot, so findings remain advisory.",
         ),
         examples=(
@@ -138,6 +141,36 @@ class PreferModuleLevelConstant(Rule):
                     ExampleFile.python(
                         "service.py",
                         'ALLOWED = ("a", "b", "c", "d", "e", "f", "g", "h")\n\ndef handle(value):\n    return value in ALLOWED\n',
+                    ),
+                ),
+                focus_path=PurePosixPath("service.py"),
+                expected_count=0,
+                public=True,
+            ),
+            RuleExample(
+                example_id="static-lookup-built-per-call",
+                scenario="keyed-values",
+                title="Static lookup dictionary rebuilt per call",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "service.py",
+                        "def handle(key):\n    labels = {'a': 1, 'b': 2, 'c': 3, 'd': 4, 'e': 5, 'f': 6, 'g': 7, 'h': 8}\n    return labels.get(key)\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("service.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="final-module-lookup",
+                scenario="keyed-values",
+                title="Final lookup dictionary defined once",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "service.py",
+                        "from typing import Final\n\nLABELS: Final[dict[str, int]] = {'a': 1, 'b': 2, 'c': 3, 'd': 4, 'e': 5, 'f': 6, 'g': 7, 'h': 8}\n\ndef handle(key):\n    return LABELS.get(key)\n",
                     ),
                 ),
                 focus_path=PurePosixPath("service.py"),
@@ -600,6 +633,12 @@ def _is_excluded_test_path(path: Path) -> bool:
 def _message(name: str, candidate: _Candidate) -> str:
     if candidate.kind == _REGEX_KIND:
         return f"`{name}` repeats a regex-cache lookup on every call — hoist it to module scope."
+    if candidate.kind == "dict":
+        return (
+            f"`{name}` is a constant-only dictionary rebuilt on every call — hoist it to module scope as "
+            "Final[dict[K, V]] for read-only lookup use. Final prevents reassignment in type-checked code but does not "
+            "freeze dictionary contents; use MappingProxyType when runtime write protection is required."
+        )
     return (
         f"`{name}` is a constant-only {candidate.kind} rebuilt on every call — hoist it "
         "to module scope in immutable form (tuple, frozenset, or an immutable mapping) "

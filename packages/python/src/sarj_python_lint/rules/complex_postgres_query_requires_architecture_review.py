@@ -243,26 +243,12 @@ def _expression_args(node: exp.Expr, key: str) -> tuple[exp.Expr, ...]:
     return tuple(child for child in node.iter_expressions() if child.arg_key == key)
 
 
-def _root_selects(query: exp.Query) -> tuple[exp.Select, ...]:
-    from sqlglot import exp  # ruff: ignore[import-outside-top-level] -- keep parser startup off unrelated lint runs
-
-    if isinstance(query, exp.Select):
-        return (query,)
-    if not isinstance(query, exp.SetOperation):
-        return ()
-    branches: list[exp.Select] = []
-    for key in ("this", "expression"):
-        if isinstance((branch := _expression_arg(query, key)), exp.Query):
-            branches.extend(_root_selects(branch))
-    return tuple(branches)
-
-
 def _derived_query(node: exp.Expr | None) -> exp.Query | None:
     from sqlglot import exp  # ruff: ignore[import-outside-top-level] -- keep parser startup off unrelated lint runs
 
-    if isinstance(node, exp.Subquery) and isinstance((query := _expression_arg(node, "this")), exp.Query):
-        return query
-    return None
+    while isinstance(node, (exp.Lateral, exp.Paren, exp.Subquery)):
+        node = _expression_arg(node, "this")
+    return node if isinstance(node, exp.Query) else None
 
 
 @final
@@ -278,18 +264,21 @@ class ComplexPostgresQueryRequiresArchitectureReview(Rule):
             "cost, a bad data model, or the right datastore."
         ),
         remediation=(
-            "Review whether the schema exposes the operational fact directly, together with production-like "
-            "cardinality and EXPLAIN output. Simplify the query or read model when warranted, but do not mechanically "
-            "replace database joins with application joins. Keep atomic coordination in one statement; consider a "
-            "columnar store only for measured repeated analytical reads with an explicit freshness contract."
+            "Prefer ClickHouse for reporting, historical analysis, and broad aggregations, with measured performance "
+            "and an explicit freshness contract. For transactional work, simplify the query or document why "
+            "PostgreSQL is required, with query bounds and production-like EXPLAIN evidence. Review whether the "
+            "schema exposes the operational fact directly; preserve atomic coordination and do not mechanically "
+            "replace database joins with application joins. Do not add reporting-specific indexes without "
+            "evaluating ClickHouse."
         ),
         category=RuleCategory.ARCHITECTURE,
         autofix=AutofixPolicy.NONE,
         limitations=(
-            "Only statically recoverable SQL passed to execute, executemany, fetch, fetchrow, fetchval, or prepare in non-test modules with explicit PostgreSQL imports is analyzed; extended derived, staged, and wide-shape review requires a recognized store module.",
+            "Only statically recoverable SQL passed to execute, executemany, fetch, fetchrow, fetchval, or prepare in non-test modules with explicit PostgreSQL imports is analyzed, regardless of module filename.",
             "Execution receivers must use a conventional database name; custom wrappers and dynamically obtained receivers abstain.",
             "One direct, unambiguous simple-name binding in the same lexical scope is followed; standalone constants, branches, aliases, attributes, containers, wildcard imports, and cross-scope flow abstain.",
-            "A query is reviewed for a complex derived relation, at least four joins in one query block, at least six nested query stages, three joins plus four stages, or 25 projections plus two joins.",
+            "Review covers derived relations in every SELECT (including LATERAL, CTEs, predicates and writes), four explicit or comma joins, six query stages, three joins plus four stages, or 25 projections plus two joins.",
+            "Derived-relation review requires grouping, HAVING or windowing combined with joins or nested reads; expression density is not a separate trigger.",
             "Projection width alone is accepted, and UNION branches are measured independently; execution plans and production cardinality remain authoritative.",
             "ClickHouse and BigQuery syntax is excluded per query, including in mixed-backend modules.",
             "The rule does not infer optimizer behavior, materialization, performance, data-model quality, or datastore placement.",
@@ -405,9 +394,11 @@ class ComplexPostgresQueryRequiresArchitectureReview(Rule):
                     code=self.code,
                     severity=Severity.WARNING,
                     message=(
-                        f"{signal} requires architecture review;{guidance} "
-                        "Review warning only, not a defect or cost claim; syntax does not prove a bad data model or "
-                        "an offload decision."
+                        f"Complex PostgreSQL query: {signal}. Architecture review required;{guidance} "
+                        "Prefer ClickHouse for reporting, historical analysis, and broad aggregations. "
+                        "For transactional work, simplify the query or document why PostgreSQL is required, "
+                        "with query bounds and EXPLAIN evidence. Do not add reporting-specific indexes without "
+                        "evaluating ClickHouse. Syntax alone does not establish runtime cost or datastore placement."
                     ),
                 )
             )
@@ -494,45 +485,40 @@ def _query_architecture_signal(text_value: str, path: Path) -> str | None:
         or (is_store_module(path) and analytical_signal(sql_without_noise) is not None)
     ):
         return None
-    return _parse_signal(text_value, include_extended_shapes=is_store_module(path))
+    return _parse_signal(text_value)
 
 
-def _parse_signal(sql: str, *, include_extended_shapes: bool) -> str | None:
+def _parse_signal(sql: str) -> str | None:
     import sqlglot  # ruff: ignore[import-outside-top-level] -- parse only SQL that passes cheap ownership and shape gates
     from sqlglot.errors import SqlglotError  # ruff: ignore[import-outside-top-level] -- paired with lazy parser import
 
     normalized = _COMPOSABLE_HOLE.sub(_SQL_HOLE, sql)
     try:
-        statements = sqlglot.parse(normalized, read="postgres")
+        for statement in sqlglot.parse(normalized, read="postgres"):
+            if statement is not None and (signal := _architecture_signal(statement)) is not None:
+                return signal
     except SqlglotError:
         return None
-    for statement in statements:
-        if (
-            statement is not None
-            and (signal := _architecture_signal(statement, include_extended_shapes=include_extended_shapes)) is not None
-        ):
-            return signal
     return None
 
 
-def _architecture_signal(statement: exp.Expr, *, include_extended_shapes: bool) -> str | None:
+def _architecture_signal(statement: exp.Expr) -> str | None:
     from sqlglot import exp  # ruff: ignore[import-outside-top-level] -- keep parser startup off unrelated lint runs
 
-    if not isinstance(statement, exp.Query):
+    if not isinstance(statement, (exp.Query, exp.Insert, exp.Update, exp.Delete)):
         return None
     maximum_joins = _maximum_query_joins(statement)
     if maximum_joins >= _JOIN_LIMIT:
-        return f"SELECT block has {maximum_joins} JOINs (4+ explicit JOINs)"
-    if not include_extended_shapes:
-        return None
-    nested_queries = sum(1 for query in statement.walk() if isinstance(query, exp.Query)) - 1
+        return f"SELECT block has {maximum_joins} JOINs (4+ explicit JOINs or comma relations)"
+    nested_queries = sum(1 for query in statement.walk() if isinstance(query, (exp.Select, exp.SetOperation)))
+    nested_queries -= isinstance(statement, (exp.Select, exp.SetOperation))
     if (derived_signal := _derived_architecture_signal(statement)) is not None:
         return derived_signal
     if nested_queries >= _STAGE_LIMIT:
         return f"Query has {nested_queries} CTE/subquery stages"
     if maximum_joins >= _COMBINED_JOIN_LIMIT and nested_queries >= _COMBINED_STAGE_LIMIT:
         return f"Query combines {maximum_joins} JOINs with {nested_queries} CTE/subquery stages"
-    for select in _root_selects(statement):
+    for select in statement.find_all(exp.Select):
         projections = tuple(_expression_args(select, "expressions"))
         joins = tuple(join for join in _expression_args(select, "joins") if isinstance(join, exp.Join))
         if len(projections) >= _WIDE_PROJECTION_LIMIT and len(joins) >= _WIDE_PROJECTION_JOIN_LIMIT:
@@ -540,20 +526,20 @@ def _architecture_signal(statement: exp.Expr, *, include_extended_shapes: bool) 
     return None
 
 
-def _derived_architecture_signal(statement: exp.Query) -> str | None:
+def _derived_architecture_signal(statement: exp.Expr) -> str | None:
     from sqlglot import exp  # ruff: ignore[import-outside-top-level] -- keep parser startup off unrelated lint runs
 
-    for select in _root_selects(statement):
+    for select in statement.find_all(exp.Select):
         for join in _expression_args(select, "joins"):
             if not isinstance(join, exp.Join):
                 continue
             if (derived := _derived_query(_expression_arg(join, "this"))) is not None and _has_complex_body(derived):
-                return "Complex JOIN-derived query"
+                return "JOIN-derived query combines grouping, HAVING or windowing with joins or nested reads"
         from_clause = _expression_arg(select, "from_")
         if not isinstance(from_clause, exp.From):
             continue
         if (derived := _derived_query(_expression_arg(from_clause, "this"))) is not None and _has_complex_body(derived):
-            return "Complex FROM-derived query"
+            return "FROM-derived query combines grouping, HAVING or windowing with joins or nested reads"
     return None
 
 
@@ -561,28 +547,43 @@ def _has_complex_body(query: exp.Query) -> bool:
     from sqlglot import exp  # ruff: ignore[import-outside-top-level] -- keep parser startup off unrelated lint runs
 
     if isinstance(query, exp.SetOperation):
-        return True
+        return any(
+            isinstance(branch := _expression_arg(query, key), exp.Query)
+            and (_has_row_transform(branch) or _has_complex_body(branch))
+            for key in ("this", "expression")
+        )
     if not isinstance(query, exp.Select):
         return False
-    if _expression_arg(query, "group") is not None or _expression_arg(query, "having") is not None:
+    if _has_row_transform(query) and (
+        _expression_args(query, "joins") or any(select is not query for select in query.find_all(exp.Select))
+    ):
         return True
-    if any(window.parent_select is query for window in query.find_all(exp.Window)):
-        return True
-    from_clause = _expression_arg(query, "from_")
-    if isinstance(from_clause, exp.From) and _derived_query(_expression_arg(from_clause, "this")) is not None:
-        return True
-    for join in _expression_args(query, "joins"):
-        if isinstance(join, exp.Join) and _derived_query(_expression_arg(join, "this")) is not None:
+    for relation in query.find_all(exp.From, exp.Join):
+        if relation.parent is not query:
+            continue
+        child = _derived_query(_expression_arg(relation, "this"))
+        if child is not None and (_has_row_transform(child) or _has_complex_body(child)):
             return True
     return False
 
 
-def _maximum_query_joins(statement: exp.Query) -> int:
+def _has_row_transform(query: exp.Query) -> bool:
+    from sqlglot import exp  # ruff: ignore[import-outside-top-level] -- keep parser startup off unrelated lint runs
+
+    select = _derived_query(query)
+    return isinstance(select, exp.Select) and (
+        _expression_arg(select, "group") is not None
+        or _expression_arg(select, "having") is not None
+        or any(window.parent_select is select for window in select.find_all(exp.Window))
+    )
+
+
+def _maximum_query_joins(statement: exp.Expr) -> int:
     from sqlglot import exp  # ruff: ignore[import-outside-top-level] -- keep parser startup off unrelated lint runs
 
     return max(
         (
-            sum(isinstance(join, exp.Join) and "pivots" in join.args for join in _expression_args(select, "joins"))
+            sum(isinstance(join, exp.Join) for join in _expression_args(select, "joins"))
             for select in statement.find_all(exp.Select)
         ),
         default=0,

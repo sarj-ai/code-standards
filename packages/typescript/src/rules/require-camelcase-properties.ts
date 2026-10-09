@@ -21,7 +21,7 @@ export const REQUIRE_CAMELCASE_PROPERTIES_DOCUMENTATION = {
   autofix: "none",
   limitations: [
     "Quoted string keys and bracket access are treated as explicit external-wire boundaries.",
-    "Computed, numeric, symbol, private, generated, PascalCase, and external-library property names are excluded.",
+    "Computed, numeric, symbol, private, generated, and PascalCase property names are excluded. External-library ownership is not inferred: preserve its spelling using quoted keys and bracket access, or an exact local suppression.",
     "Renaming a property can cross module or protocol boundaries, so the rule does not autofix.",
   ],
   examples: [

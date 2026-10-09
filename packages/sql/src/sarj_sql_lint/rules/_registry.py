@@ -14,6 +14,7 @@ from sarj_sql_lint.rules.mixed_migration_phases import MixedMigrationPhases
 from sarj_sql_lint.rules.no_application_schema_check import NoApplicationSchemaCheck
 from sarj_sql_lint.rules.no_comment_cruft import NoCommentCruft
 from sarj_sql_lint.rules.no_create_trigger import NoCreateTrigger
+from sarj_sql_lint.rules.no_database_functions import NoDatabaseFunctions
 from sarj_sql_lint.rules.no_duplicate_index import NoDuplicateIndex
 from sarj_sql_lint.rules.no_offset_pagination import NoOffsetPagination
 from sarj_sql_lint.rules.no_pg_enum import NoPgEnum
@@ -32,6 +33,7 @@ if TYPE_CHECKING:
 
 REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
     {
+        NoDatabaseFunctions.id: NoDatabaseFunctions,
         ExcessiveCommentary.id: ExcessiveCommentary,
         EnforceTimestamptz.id: EnforceTimestamptz,
         IdempotentDdl.id: IdempotentDdl,

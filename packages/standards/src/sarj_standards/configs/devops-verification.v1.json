@@ -1049,10 +1049,61 @@
       "audit plugin command changes"
     ],
     "verification": {
-      "status": "pending",
+      "status": "failed",
+      "passedClaimed": false,
       "argv": [
         "make",
         "verify"
+      ],
+      "workingDirectory": ".",
+      "testedSourceCommit": "faa8990a8aeaf0c040f39810a54befd132552430",
+      "evaluatedAt": "2026-10-09",
+      "exitCode": 2,
+      "exitCodeEvidence": "Numeric exit marker written by the observer only after the original make verify exec session completed.",
+      "logSha256": "2683fb1616a4fd4888d5f8a6181fbab3374d477405804ec883f41393219e9ff0",
+      "typescriptTestsPassed": 6024,
+      "pythonTestsPassed": 13194,
+      "totalTestsPassed": 19218,
+      "totalTestsFailed": 1,
+      "pythonCustomRulesChecked": 109,
+      "pythonSourceFilesChecked": 576,
+      "typescriptCustomRulesChecked": 114,
+      "testSuites": {
+        "bootstrap": 15,
+        "contracts": 13,
+        "python": 8758,
+        "sql": 885,
+        "iac": 630,
+        "typescript": 6024,
+        "standardsFreshWheel": 2893
+      },
+      "completedChecks": [
+        "doctor/native attestation",
+        "generated artifacts and documentation lint/type/build",
+        "format-check",
+        "lint",
+        "dogfood",
+        "all package typechecks",
+        "version synchronization",
+        "TypeScript, bootstrap, contracts, Python, SQL and IaC test suites"
+      ],
+      "failures": [
+        {
+          "suite": "standardsFreshWheel",
+          "test": "tests/test_devops_tool_admission.py::test_upstream_compose_rules_fail_versionless_admission",
+          "reason": "Semgrep fixture scan raised subprocess.TimeoutExpired after 30 seconds; no subprocess stdout or stderr was captured.",
+          "timeoutSeconds": 30,
+          "passed": 2893,
+          "failed": 1
+        }
+      ],
+      "limitations": [
+        "Historical isolated old-base branch result for the testedSourceCommit; not evidence for a rebased/current-main tree or merge readiness.",
+        "make verify stopped at the test target; final repo-check and check-no-private-refs targets did not run.",
+        "The observed Semgrep timeout is a failed admission test; its cause was not established and the isolated canonical gate did not pass.",
+        "The canonical source scan does not select CI. The separate sourceGateProbes exit 2 and its SARJ310/Zizmor blockers remain unresolved.",
+        "Current-main rebase, fresh package versions/exact pins, and the SARJ462 allocation conflict remain separate draft blockers.",
+        "Remote GitHub CI, publishing, merging, releases and deployments were not performed by this verification."
       ]
     },
     "mergeReadiness": "Draft: rebase onto current main, allocate a fresh Python rule code and update package versions and exact pins before merge.",
@@ -1097,5 +1148,107 @@
         ]
       }
     ]
+  },
+  "currentMainIntegration": {
+    "baseCommit": "29f0d0005a5db81bc82d812ee4a56bce85427497",
+    "versions": {
+      "standards": "8.39.0",
+      "python": "1.26.0",
+      "iac": "0.19.0"
+    },
+    "pythonRuleCode": "SARJ484",
+    "zizmorOwner": "Canonical first-class security_tools SARIF adapter; DevOps duplicate dispatch/provisioning removed",
+    "verification": {
+      "status": "passed",
+      "argv": [
+        "make",
+        "verify"
+      ],
+      "exitCode": 0,
+      "passed": 24805,
+      "skipped": 9,
+      "failed": 0,
+      "suites": {
+        "typescript": 7163,
+        "bootstrap": 15,
+        "contracts": 13,
+        "python": 11909,
+        "sql": 1035,
+        "iac": 788,
+        "freshStandardsWheel": 3882
+      },
+      "dogfood": {
+        "pythonRules": 136,
+        "pythonSourceFiles": 687,
+        "typescriptRules": 118,
+        "blockingDiagnostics": 0
+      },
+      "configurationCheck": {
+        "argv": [
+          "code-standards",
+          "--root",
+          ".",
+          "check",
+          "--trust-repository-code",
+          ".github/workflows",
+          "Makefile",
+          ".github/scripts"
+        ],
+        "exitCode": 0,
+        "errors": 0,
+        "warnings": 5,
+        "executionIssues": 0
+      },
+      "focusedReleaseAndCiTestsPassed": 196,
+      "focusedErrorFirstAdmissionTestsPassed": 44,
+      "notes": [
+        "The full gate started with staged tree b0e1193d2f7e4298c78699686a93937f4b880028. A two-line portability fixture correction was staged during the run; it separately passed focused Ruff, formatting, types, authored checks, and the 196-test release/CI run. The full fresh-wheel suite then tested the final fixture.",
+        "The verified tree records the implementation before this result-only metadata update. Artifact, documentation, format, lint, type, package, tsconfig and repository-policy gates passed.",
+        "All 96 inline-program findings exposed by staged and explicit configuration checks were migrated. Actual pinned actionlint, ShellCheck and shfmt passed.",
+        "Doctor retained two existing worktree hook-installation warnings; Standards self-lint retained 84 advisory warnings. The explicit configuration check retained five existing SARJ447 warnings in the registry verification helper.",
+        "Repository capabilities disable ESLint for the selected standalone JavaScript helper; this coverage limitation is recorded for the requested postmerge review.",
+        "The private-reference scan was delegated to trusted CI because this isolated checkout has no private overlay.",
+        "Passing gates and labeled fixtures do not establish corpus-wide absence of false positives. The requested 30 postmerge DevOps passes and subsequent broader review have not yet started."
+      ]
+    },
+    "historicalEvidenceNote": "All preceding acceptance checks and gate results describe their recorded historical trees; changed source hashes must not be treated as current-tree verification.",
+    "preConfigurationScopeMigration": {
+      "verifiedTree": "57f033d88edbbf43673b30c3756b03e5e6912b34",
+      "verification": {
+        "status": "passed",
+        "argv": [
+          "make",
+          "verify"
+        ],
+        "exitCode": 0,
+        "passed": 24741,
+        "skipped": 9,
+        "failed": 0,
+        "suites": {
+          "typescript": 7163,
+          "bootstrap": 15,
+          "contracts": 13,
+          "python": 11909,
+          "sql": 1035,
+          "iac": 788,
+          "freshStandardsWheel": 3818
+        },
+        "dogfood": {
+          "pythonRules": 136,
+          "pythonSourceFiles": 683,
+          "typescriptRules": 118,
+          "blockingDiagnostics": 0
+        },
+        "notes": [
+          "The verified tree records the staged implementation before this result-only metadata update.",
+          "Artifact, documentation, format, lint, type, package, and repository-policy gates passed.",
+          "Doctor retained two existing worktree hook-installation warnings; self-lint retained 85 advisory warnings.",
+          "The canonical private-reference scan was delegated to trusted CI because this isolated checkout has no private overlay.",
+          "Explicit source CI and extracted-script checks also exited successfully; native actionlint, ShellCheck, and shfmt passed.",
+          "Passing authored fixtures and gates do not establish corpus-wide absence of false positives."
+        ]
+      }
+    },
+    "verifiedTree": "5f89637655b7f1a69fe6b51e150d5981a2b7dc61"
   }
 }

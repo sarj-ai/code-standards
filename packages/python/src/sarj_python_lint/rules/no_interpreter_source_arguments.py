@@ -42,7 +42,7 @@ class ProcessArguments:
 @final
 class NoInterpreterSourceArguments(ProjectRule):
     id = "no-interpreter-source-arguments"
-    code = "SARJ462"
+    code = "SARJ484"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
         default_level=Severity.ERROR,
         summary="Keep interpreter programs in linted files or modules, outside process argv.",

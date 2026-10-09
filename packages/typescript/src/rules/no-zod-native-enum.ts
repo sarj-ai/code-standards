@@ -15,6 +15,8 @@ import {
 import * as ts from "typescript";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
+import { unwrapExpression } from "./_unwrap-expression.js";
+import { isZodModule } from "./_zod.js";
 import { isTestFile } from "./_paths.js";
 
 type MessageIds = "nativeEnum" | "enumOfTsEnum";
@@ -62,11 +64,6 @@ function isIgnoredFile(filename: string, sourceText: string): boolean {
     return true;
   }
   return /@generated\b/.test(sourceText.slice(0, 1024));
-}
-
-/** `zod`, `zod/v4`, `zod/mini`, `@hono/zod-openapi`, `@/lib/zod`, ... */
-function isZodModule(source: string): boolean {
-  return /(^|[/@-])zod([/-]|$)/.test(source);
 }
 
 /** Unwraps `x as const` / `x satisfies T` / `(x)` down to the inner expression. */
@@ -166,18 +163,15 @@ export default createRule<Options, MessageIds>({
     }
 
     function isZodMemberCall(node: TSESTree.CallExpression, api: string): boolean {
-      const callee = node.callee;
+      const callee = unwrapExpression(node.callee);
+
+      const calleeReceiver = callee.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(callee.object) : callee;
       if (
         callee.type === AST_NODE_TYPES.MemberExpression &&
-        callee.object.type === AST_NODE_TYPES.Identifier &&
-        ((callee.property.type === AST_NODE_TYPES.Identifier &&
-          !callee.computed &&
-          callee.property.name === api) ||
-          (callee.computed &&
-            callee.property.type === AST_NODE_TYPES.Literal &&
-            callee.property.value === api))
+        calleeReceiver.type === AST_NODE_TYPES.Identifier &&
+        ASTUtils.getPropertyName(callee) === api
       ) {
-        const binding = resolvedBinding(callee.object);
+        const binding = resolvedBinding(calleeReceiver);
         return binding !== null && zodNamespaceBindings.has(binding);
       }
       if (callee.type === AST_NODE_TYPES.Identifier) {

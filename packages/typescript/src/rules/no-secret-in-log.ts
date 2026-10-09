@@ -4,7 +4,9 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-secret-in-log.test.ts
  */
 
-import { type TSESTree } from "@typescript-eslint/utils";
+import { ASTUtils, type TSESTree } from "@typescript-eslint/utils";
+
+import { unwrapExpression } from "./_unwrap-expression.js";
 
 import {
   createLogMatcher,
@@ -97,7 +99,7 @@ function hasRedactionMarker(name: string): boolean {
 
 function valueName(node: TSESTree.Node): string | null {
   if (node.type === "Identifier") return node.name;
-  return node.type === "MemberExpression" && !node.computed && node.property.type === "Identifier" ? node.property.name : null;
+  return node.type === "MemberExpression" ? ASTUtils.getPropertyName(node) : null;
 }
 
 function isRawSecretValue(prop: TSESTree.Property): boolean {
@@ -151,29 +153,25 @@ const BLOB_SAFE_TOKENS: ReadonlySet<string> = new Set([
 ]);
 
 function rawBlobValueName(value: TSESTree.Node): string | null {
+  const unwrappedValueCallee = value.type === "CallExpression" || value.type === "NewExpression" ? unwrapExpression(value.callee) : null;
   if (value.type === "AwaitExpression") return rawBlobValueName(value.argument);
   if (value.type === "ChainExpression") return rawBlobValueName(value.expression);
   if (value.type === "Identifier") {
     return isRawBlobName(value.name) ? value.name : null;
   }
-  if (
-    value.type === "MemberExpression" &&
-    !value.computed &&
-    value.property.type === "Identifier"
-  ) {
-    return isRawBlobName(value.property.name) ? value.property.name : null;
+  if (value.type === "MemberExpression") {
+    const name = ASTUtils.getPropertyName(value);
+    return name !== null && isRawBlobName(name) ? name : null;
   }
   if (
     value.type === "CallExpression" &&
     value.arguments.length === 0 &&
-    value.callee.type === "MemberExpression" &&
-    !value.callee.computed &&
-    value.callee.object.type === "Identifier" &&
-    /^(?:res|response|\w+Response)$/.test(value.callee.object.name) &&
-    value.callee.property.type === "Identifier" &&
-    (value.callee.property.name === "json" || value.callee.property.name === "text")
+    unwrappedValueCallee?.type === "MemberExpression" &&
+    unwrappedValueCallee.object.type === "Identifier" &&
+    /^(?:res|response|\w+Response)$/.test(unwrappedValueCallee.object.name)
   ) {
-    return `${value.callee.object.name}.${value.callee.property.name}()`;
+    const name = ASTUtils.getPropertyName(unwrappedValueCallee);
+    return name === "json" || name === "text" ? `${unwrappedValueCallee.object.name}.${name}()` : null;
   }
   return null;
 }
@@ -240,38 +238,35 @@ export default createRule<Options, MessageIds>({
     // Bodies in a test file are fixtures the author wrote, not production PII.
     const blobArmApplies = !isTestFile(context.filename);
 
-    function reportSecretArgument(arg: TSESTree.Node): boolean {
-      const name = valueName(arg);
-      if (name === null || !isSecretKeyword(name)) {
-        return false;
-      }
-      context.report({ node: arg, messageId: "noSecretInLog", data: { name } });
-      return true;
-    }
 
-    function reportSecretProperty(prop: TSESTree.Property): boolean {
-      const keyName = propertyKeyName(prop);
-      const value = valueName(prop.value);
-      if (value !== null && hasRedactionMarker(value)) return false;
-      const name = value !== null && isSecretKeyword(value) ? value : keyName;
-      if (name === null || !isSecretKeyword(name) || !isRawSecretValue(prop)) {
-        return false;
-      }
-      context.report({ node: prop, messageId: "noSecretInLog", data: { name } });
-      return true;
-    }
 
-    /** Reports `node` when `value` carries an un-redacted request/response blob. */
-    function reportRawBlob(node: TSESTree.Node, value: TSESTree.Node): boolean {
-      if (!blobArmApplies) {
-        return false;
+
+
+    function inspectLoggedValue(value: TSESTree.Node): void {
+      value = unwrapExpression(value);
+      if (value.type === "ObjectExpression") {
+        for (const property of literalProperties(value)) {
+          if (reportSecretProperty(property) || reportRawBlob(property, property.value)) continue;
+          inspectLoggedValue(property.value);
+        }
+        return;
       }
-      const name = rawBlobValueName(value);
-      if (name !== null) {
-        context.report({ node, messageId: "noRawBodyInLog", data: { name } });
-        return true;
+      if (value.type === "ArrayExpression") {
+        for (const element of value.elements) {
+          if (element !== null && element.type !== "SpreadElement") inspectLoggedValue(element);
+        }
+        return;
       }
-      return false;
+      if (value.type === "TemplateLiteral") {
+        for (const expression of value.expressions) inspectLoggedValue(expression);
+        return;
+      }
+      if (value.type === "BinaryExpression" && value.operator === "+") {
+        inspectLoggedValue(value.left);
+        inspectLoggedValue(value.right);
+        return;
+      }
+      if (!reportSecretArgument(value)) reportRawBlob(value, value);
     }
 
     function literalProperties(value: TSESTree.ObjectExpression): TSESTree.Property[] {
@@ -298,30 +293,38 @@ export default createRule<Options, MessageIds>({
       return [...effective.values()];
     }
 
-    function inspectLoggedValue(value: TSESTree.Node): void {
-      if (value.type === "ObjectExpression") {
-        for (const property of literalProperties(value)) {
-          if (reportSecretProperty(property) || reportRawBlob(property, property.value)) continue;
-          inspectLoggedValue(property.value);
-        }
-        return;
+    /** Reports `node` when `value` carries an un-redacted request/response blob. */
+    function reportRawBlob(node: TSESTree.Node, value: TSESTree.Node): boolean {
+      if (!blobArmApplies) {
+        return false;
       }
-      if (value.type === "ArrayExpression") {
-        for (const element of value.elements) {
-          if (element !== null && element.type !== "SpreadElement") inspectLoggedValue(element);
-        }
-        return;
+      const name = rawBlobValueName(value);
+      if (name !== null) {
+        context.report({ node, messageId: "noRawBodyInLog", data: { name } });
+        return true;
       }
-      if (value.type === "TemplateLiteral") {
-        for (const expression of value.expressions) inspectLoggedValue(expression);
-        return;
+      return false;
+    }
+
+    function reportSecretProperty(prop: TSESTree.Property): boolean {
+      const keyName = propertyKeyName(prop);
+      const value = valueName(prop.value);
+      if (value !== null && hasRedactionMarker(value)) return false;
+      const name = value !== null && isSecretKeyword(value) ? value : keyName;
+      if (name === null || !isSecretKeyword(name) || !isRawSecretValue(prop)) {
+        return false;
       }
-      if (value.type === "BinaryExpression" && value.operator === "+") {
-        inspectLoggedValue(value.left);
-        inspectLoggedValue(value.right);
-        return;
+      context.report({ node: prop, messageId: "noSecretInLog", data: { name } });
+      return true;
+    }
+
+    function reportSecretArgument(arg: TSESTree.Node): boolean {
+      const name = valueName(arg);
+      if (name === null || !isSecretKeyword(name)) {
+        return false;
       }
-      if (!reportSecretArgument(value)) reportRawBlob(value, value);
+      context.report({ node: arg, messageId: "noSecretInLog", data: { name } });
+      return true;
     }
 
     return {

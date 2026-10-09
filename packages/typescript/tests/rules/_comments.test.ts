@@ -1,3 +1,4 @@
+// vitest: shared-module-graph
 /**
  * `_comments.ts` is consumed by five rules and had no tests of its own.
  *

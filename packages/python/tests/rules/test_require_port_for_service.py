@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import ast
 from pathlib import Path
 import textwrap
 from typing import TYPE_CHECKING
 
 import pytest
+from sarj_rule_contracts import EvaluationCase, ExpectedOutcome, Language
 
+from sarj_python_lint.__main__ import analyze
 from sarj_python_lint.rule_base import Severity
 from sarj_python_lint.rules._project_index import ProjectIndexSet
 from sarj_python_lint.rules.require_port_for_service import RequirePortForService
@@ -23,9 +26,16 @@ _PUBLIC_EXAMPLES = RequirePortForService.public_examples()
 
 
 @pytest.mark.parametrize("example", _PUBLIC_EXAMPLES, ids=tuple(e.example_id for e in _PUBLIC_EXAMPLES))
-def test_public_documentation_examples_are_executable(example: RuleExample) -> None:
-    focus = example.focus_file
-    assert len(RequirePortForService().check(Path(focus.path), focus.source)) == example.expected_count
+def test_public_documentation_examples_are_executable(example: RuleExample, tmp_path: Path) -> None:
+    paths: list[Path] = []
+    for item in example.files:
+        path = tmp_path / item.path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(item.source)
+        if path.suffix == ".py":
+            paths.append(path)
+    diagnostics = analyze([RequirePortForService.id], paths, root=tmp_path)
+    assert len(diagnostics) == example.expected_count
 
 
 # The canonical offender: a concrete service, an injected first-party port, two public methods, no abstract base.
@@ -51,6 +61,34 @@ def test_flags_concrete_service_with_injected_collaborator() -> None:
     assert diags[0].line == 2
     assert diags[0].col == 1
     assert diags[0].severity is Severity.WARNING
+
+
+@pytest.mark.parametrize(
+    "declaration",
+    [
+        "from typing import Protocol as Contract\nclass ThingServicePort(Contract):",
+        "from typing import Protocol as Contract\nclass ThingServicePort[T](Contract[T]):",
+        "from typing_extensions import Protocol as Contract\nclass ThingServicePort[T](Contract[T]):",
+        "from typing_extensions import Protocol as Contract\nclass ThingServicePort(Contract):",
+        "from abc import ABC as Contract\nclass ThingServicePort(Contract):",
+        "from abc import ABCMeta as Contract\nclass ThingServicePort(metaclass=Contract):",
+    ],
+)
+def test_aliased_local_interface_satisfies_the_service_port(declaration: str) -> None:
+    source = (
+        declaration
+        + "\n    def read(self, key: str) -> str: ...\n    def write(self, key: str, value: str) -> None: ...\n"
+        + _SERVICE
+    )
+    assert _check(source) == []
+
+
+def test_unrelated_aliased_base_does_not_manufacture_a_local_port() -> None:
+    source = (
+        "from framework import Protocol as Contract\nclass ThingServicePort(Contract):\n"
+        "    def read(self, key: str) -> str: ...\n    def write(self, key: str, value: str) -> None: ...\n"
+    ) + _SERVICE
+    assert len(_check(source)) == 1
 
 
 def test_project_evidence_flags_suffixless_concrete_dependency(tmp_path: Path) -> None:
@@ -1909,3 +1947,559 @@ def test_unrelated_import_named_service_does_not_look_like_a_port() -> None:
 def test_pep_695_service_class_passes_the_lexical_prefilter() -> None:
     source = _SERVICE.replace("class ThingService:", "class ThingService[T]:")
     assert len(_check(source)) == 1
+
+
+_FACTORY_BOUNDARY = textwrap.dedent(
+    """
+    from importlib import import_module
+    from typing import Protocol, runtime_checkable
+
+    @runtime_checkable
+    class Backend(Protocol):
+        def read(self, key: str) -> str: ...
+        def write(self, key: str, value: str) -> None: ...
+
+    class Coordinator:
+        def __init__(self, *, enabled: bool) -> None:
+            backend: object = import_module('_native_backend')
+            if not isinstance(backend, Backend):
+                raise TypeError('missing native backend')
+            self.backend: Backend = backend
+
+        def read(self, key: str) -> str:
+            return self.backend.read(key)
+
+        def write(self, key: str, value: str) -> None:
+            self.backend.write(key, value)
+
+    class Consumer:
+        def receive(self, key: str) -> str:
+            return Coordinator(enabled=True).read(key)
+
+        def send(self, key: str, value: str) -> None:
+            Coordinator(enabled=True).write(key, value)
+    """
+)
+
+_FACTORY_CASES = (
+    EvaluationCase("native-lookup", Language.PYTHON, _FACTORY_BOUNDARY, ExpectedOutcome.MATCH),
+    EvaluationCase(
+        "top-level-function-consumers",
+        Language.PYTHON,
+        _FACTORY_BOUNDARY.split("class Consumer:", 1)[0]
+        + "\ndef receive(key: str) -> str:\n    return Coordinator(enabled=True).read(key)\n\ndef send(key: str, value: str) -> None:\n    Coordinator(enabled=True).write(key, value)\n",
+        ExpectedOutcome.MATCH,
+    ),
+    EvaluationCase(
+        "direct-factory-storage",
+        Language.PYTHON,
+        _FACTORY_BOUNDARY.replace("self.backend: Backend = backend", "self.backend: Backend = native_backend()"),
+        ExpectedOutcome.MATCH,
+    ),
+    EvaluationCase(
+        "unused-port-homonym",
+        Language.PYTHON,
+        _FACTORY_BOUNDARY + "\nclass CoordinatorPort(Protocol):\n    def read(self, key: str) -> str: ...\n",
+        ExpectedOutcome.MATCH,
+    ),
+    EvaluationCase(
+        "one-consumed-operation",
+        Language.PYTHON,
+        _FACTORY_BOUNDARY.replace("Coordinator(enabled=True).write(key, value)", "Coordinator(enabled=True).read(key)"),
+    ),
+    EvaluationCase(
+        "static-utility-is-not-second-operation",
+        Language.PYTHON,
+        _FACTORY_BOUNDARY.replace(
+            "class Consumer:",
+            "    @staticmethod\n    def inspect(key: str, value: str) -> None: ...\n\nclass Consumer:",
+        ).replace("Coordinator(enabled=True).write(key, value)", "Coordinator(enabled=True).inspect(key, value)"),
+    ),
+    EvaluationCase(
+        "unused-concrete-class",
+        Language.PYTHON,
+        _FACTORY_BOUNDARY.split("class Consumer:", 1)[0],
+    ),
+    EvaluationCase(
+        "unknown-api",
+        Language.PYTHON,
+        _FACTORY_BOUNDARY.replace("self.backend: Backend = backend", "self.backend: Unknown = backend"),
+    ),
+    EvaluationCase(
+        "qualified-type-homonym",
+        Language.PYTHON,
+        _FACTORY_BOUNDARY.replace("self.backend: Backend = backend", "self.backend: external.Backend = backend"),
+    ),
+    EvaluationCase(
+        "raw-object-api",
+        Language.PYTHON,
+        _FACTORY_BOUNDARY.replace("self.backend: Backend = backend", "self.backend: object = backend"),
+    ),
+    EvaluationCase(
+        "unresolved-value-origin",
+        Language.PYTHON,
+        _FACTORY_BOUNDARY.replace("backend: object = import_module('_native_backend')", "backend: object = OTHER"),
+    ),
+    EvaluationCase(
+        "rebound-factory-value",
+        Language.PYTHON,
+        _FACTORY_BOUNDARY.replace(
+            "self.backend: Backend = backend", "backend = OTHER\n        self.backend: Backend = backend"
+        ),
+    ),
+    EvaluationCase(
+        "overwritten-field",
+        Language.PYTHON,
+        _FACTORY_BOUNDARY.replace(
+            "self.backend: Backend = backend", "self.backend: Backend = backend\n        self.backend = OTHER"
+        ),
+    ),
+    EvaluationCase(
+        "data-owner",
+        Language.PYTHON,
+        _FACTORY_BOUNDARY.replace(
+            "class Coordinator:", "from dataclasses import dataclass\n@dataclass\nclass Coordinator:"
+        ),
+    ),
+    EvaluationCase(
+        "persistence-collaborator",
+        Language.PYTHON,
+        _FACTORY_BOUNDARY.replace("Backend", "BackendStore"),
+    ),
+    EvaluationCase(
+        "runtime-driver-handle",
+        Language.PYTHON,
+        _FACTORY_BOUNDARY.replace("Backend", "Connection"),
+    ),
+    EvaluationCase(
+        "framework-implementation",
+        Language.PYTHON,
+        _FACTORY_BOUNDARY.replace("class Coordinator:", "from framework import Handler\nclass Coordinator(Handler):"),
+    ),
+    EvaluationCase(
+        "constructor-shadowed-in-consumer",
+        Language.PYTHON,
+        _FACTORY_BOUNDARY.replace(
+            "def receive(self, key: str)", "def receive(self, key: str, Coordinator: object)"
+        ).replace("def send(self, key: str, value: str)", "def send(self, key: str, value: str, Coordinator: object)"),
+    ),
+    EvaluationCase(
+        "constructor-import-shadowed-in-consumer",
+        Language.PYTHON,
+        _FACTORY_BOUNDARY.replace(
+            "return Coordinator(enabled=True).read(key)",
+            "from unrelated import Coordinator\n        return Coordinator(enabled=True).read(key)",
+        ).replace(
+            "Coordinator(enabled=True).write(key, value)",
+            "from unrelated import Coordinator\n        Coordinator(enabled=True).write(key, value)",
+        ),
+    ),
+    EvaluationCase(
+        "constructor-rebound-in-consumer",
+        Language.PYTHON,
+        _FACTORY_BOUNDARY.replace(
+            "return Coordinator(enabled=True).read(key)",
+            "Coordinator = OTHER\n        return Coordinator(enabled=True).read(key)",
+        ).replace(
+            "Coordinator(enabled=True).write(key, value)",
+            "Coordinator = OTHER\n        Coordinator(enabled=True).write(key, value)",
+        ),
+    ),
+    EvaluationCase(
+        "constructor-function-rebinding",
+        Language.PYTHON,
+        _FACTORY_BOUNDARY + "\ndef Coordinator(*, enabled: bool) -> object:\n    return OTHER\n",
+    ),
+    EvaluationCase(
+        "dormant-construction",
+        Language.PYTHON,
+        _FACTORY_BOUNDARY.replace(
+            "return Coordinator(enabled=True).read(key)",
+            "return 'value'\n        return Coordinator(enabled=True).read(key)",
+        ),
+    ),
+    EvaluationCase(
+        "exact-suppression",
+        Language.PYTHON,
+        _FACTORY_BOUNDARY.replace("class Coordinator:", "class Coordinator:  # sarj-noqa: SARJ071"),
+    ),
+    EvaluationCase(
+        "wrong-suppression",
+        Language.PYTHON,
+        _FACTORY_BOUNDARY.replace("class Coordinator:", "class Coordinator:  # sarj-noqa: SARJ095"),
+        ExpectedOutcome.MATCH,
+    ),
+    EvaluationCase(
+        "module-rebinding",
+        Language.PYTHON,
+        _FACTORY_BOUNDARY + "\nCoordinator = OTHER\n",
+    ),
+    EvaluationCase(
+        "dead-conditional-consumer",
+        Language.PYTHON,
+        _FACTORY_BOUNDARY.replace(
+            "return Coordinator(enabled=True).read(key)",
+            "if False:\n            return Coordinator(enabled=True).read(key)\n        return ''",
+        ),
+    ),
+    EvaluationCase(
+        "inherited-public-protocol",
+        Language.PYTHON,
+        _FACTORY_BOUNDARY.replace(
+            "class Coordinator:",
+            "class Operations(Protocol):\n    def read(self, key: str) -> str: ...\n    def write(self, key: str, value: str) -> None: ...\n\nclass Coordinator(Operations):",
+        ),
+    ),
+    EvaluationCase(
+        "inherited-public-abc",
+        Language.PYTHON,
+        _FACTORY_BOUNDARY.replace("class Coordinator:", "from abc import ABC\nclass Coordinator(ABC):"),
+    ),
+    EvaluationCase(
+        "malformed-input",
+        Language.PYTHON,
+        _FACTORY_BOUNDARY + "\nclass Broken(\n",
+    ),
+    EvaluationCase(
+        "public-protocol-consumer",
+        Language.PYTHON,
+        _FACTORY_BOUNDARY.replace(
+            "class Consumer:",
+            "class CoordinatorPort(Protocol):\n    def read(self, key: str) -> str: ...\n    def write(self, key: str, value: str) -> None: ...\n\ndef coordinator() -> CoordinatorPort:\n    return Coordinator(enabled=True)\n\nclass Consumer:",
+        )
+        .replace("Coordinator(enabled=True).read(key)", "coordinator().read(key)")
+        .replace("Coordinator(enabled=True).write(key, value)", "coordinator().write(key, value)"),
+    ),
+)
+
+
+@pytest.mark.parametrize("case", _FACTORY_CASES, ids=tuple(case.case_id for case in _FACTORY_CASES))
+def test_factory_boundary_needs_concrete_behavior_and_production_consumption(case: EvaluationCase) -> None:
+    path = Path("app/routing.py")
+    rule = RequirePortForService()
+    rule.prepare(ProjectIndexSet.single(path, case.source))
+    diagnostics = rule.check(path, case.source)
+    assert len(diagnostics) == (1 if case.expected is ExpectedOutcome.MATCH else 0)
+    if diagnostics:
+        assert diagnostics[0].severity is Severity.WARNING
+        assert "Coordinator" in diagnostics[0].message
+
+
+@pytest.mark.parametrize(
+    ("consumer_file", "prefix", "constructor", "expected"),
+    [
+        ("routing.py", "from app.native.adapter import Coordinator as Adapter\n", "Adapter", 1),
+        ("routing.py", "import app.native.adapter as native\n", "native.Coordinator", 1),
+        ("routing.py", "from app.native.adapter import Coordinator\nCoordinator = OTHER\n", "Coordinator", 0),
+        ("test_routing.py", "from app.native.adapter import Coordinator\n", "Coordinator", 0),
+        ("routing.py", "# @generated - do not edit\nfrom app.native.adapter import Coordinator\n", "Coordinator", 0),
+        ("routing.py", "from unrelated.adapter import Coordinator\n", "Coordinator", 0),
+    ],
+    ids=["alias", "namespace", "rebound", "tests", "generated", "unrelated"],
+)
+def test_factory_consumers_resolve_owned_namespace_without_guessing(
+    tmp_path: Path, consumer_file: str, prefix: str, constructor: str, expected: int
+) -> None:
+    package = tmp_path / "app"
+    native = package / "native"
+    native.mkdir(parents=True)
+    (tmp_path / "pyproject.toml").write_text("[project]\nname = 'example'\nversion = '0.1.0'\n")
+    definition = native / "adapter.py"
+    consumer = package / consumer_file
+    source, consumers = _FACTORY_BOUNDARY.split("class Consumer:", 1)
+    sources = {
+        definition: source,
+        consumer: prefix
+        + "class Consumer:"
+        + consumers.replace("Coordinator(enabled=True)", f"{constructor}(enabled=True)"),
+    }
+    for path, text in sources.items():
+        path.write_text(text)
+    rule = RequirePortForService()
+    rule.prepare(ProjectIndexSet.build(list(sources), sources))
+    assert len(rule.check(definition, source)) == expected
+
+
+_AUDIT_FACTORY_REBINDINGS = (
+    "backend, other = OTHER, None",
+    "backend, *other = [OTHER]",
+    "backend += OTHER",
+    "del backend",
+    "(backend := OTHER)",
+    "from external import backend",
+    "def backend():\n            return OTHER",
+    "class backend:\n            pass",
+    "try:\n            raise ValueError\n        except ValueError as backend:\n            pass",
+    "match OTHER:\n            case backend:\n                pass",
+)
+
+
+@pytest.mark.parametrize("rebinding", _AUDIT_FACTORY_REBINDINGS)
+def test_factory_origins_reject_real_runtime_rebindings(rebinding: str, tmp_path: Path) -> None:
+    source = _FACTORY_BOUNDARY.replace(
+        "self.backend: Backend = backend", f"{rebinding}\n        self.backend: Backend = backend"
+    )
+    assert not _analyze_factory_source(source, tmp_path)
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "self.backend, other = OTHER, None",
+        "self.backend, *other = [OTHER]",
+        "self.backend += OTHER",
+        "del self.backend",
+    ],
+)
+def test_factory_field_mutations_invalidate_retained_api(mutation: str, tmp_path: Path) -> None:
+    source = _FACTORY_BOUNDARY.replace(
+        "self.backend: Backend = backend", f"self.backend: Backend = backend\n        {mutation}"
+    )
+    assert not _analyze_factory_source(source, tmp_path)
+
+
+@pytest.mark.parametrize(
+    "storage",
+    [
+        "saved = backend\n        backend = OTHER\n        self.backend: Backend = saved",
+        "saved = backend\n        snapshot = saved\n        backend = OTHER\n        saved = OTHER\n        self.backend: Backend = snapshot",
+        "backend: Backend\n        self.backend: Backend = backend",
+    ],
+)
+def test_factory_alias_snapshots_and_annotations_preserve_proven_api(storage: str, tmp_path: Path) -> None:
+    source = _FACTORY_BOUNDARY.replace("self.backend: Backend = backend", storage)
+    diagnostics = _analyze_factory_source(source, tmp_path)
+    assert len(diagnostics) == 1
+    assert "Coordinator" in diagnostics[0].message
+
+
+@pytest.mark.parametrize(
+    "termination",
+    [
+        "if True:\n            raise RuntimeError",
+        "if not False:\n            raise RuntimeError",
+        "if enabled:\n            raise RuntimeError\n        else:\n            raise ValueError",
+        "while True:\n            pass",
+        "with scope():\n            raise RuntimeError",
+        "if True:\n            while True:\n                pass",
+    ],
+)
+def test_definitely_terminated_constructor_never_proves_storage(termination: str, tmp_path: Path) -> None:
+    source = _FACTORY_BOUNDARY.replace(
+        "self.backend: Backend = backend", f"{termination}\n        self.backend: Backend = backend"
+    )
+    assert not _analyze_factory_source(source, tmp_path)
+
+
+def test_unconditional_raise_after_storage_does_not_prove_constructible_boundary(tmp_path: Path) -> None:
+    source = _FACTORY_BOUNDARY.replace(
+        "self.backend: Backend = backend", "self.backend: Backend = backend\n        raise RuntimeError"
+    )
+    assert not _analyze_factory_source(source, tmp_path)
+
+
+@pytest.mark.parametrize(
+    ("prefix", "owner", "expected"),
+    [
+        (
+            "from typing import Protocol as Contract\nclass Operations(Contract):\n    def read(self, key: str) -> str: ...\n",
+            "class Coordinator(Operations):",
+            0,
+        ),
+        (
+            "from abc import ABC as Contract\nclass Operations(Contract):\n    pass\n",
+            "class Coordinator(Operations):",
+            0,
+        ),
+        ("from dataclasses import dataclass as record\n@record\n", "class Coordinator:", 0),
+        ("from attrs import define as record\n@record\n", "class Coordinator:", 0),
+        (
+            "from dataclasses import dataclass as record\n@record\nclass Record:\n    pass\n",
+            "class Coordinator(Record):",
+            0,
+        ),
+        (
+            "from framework import Runtime\nclass RuntimeAdapter(Runtime):\n    pass\n",
+            "class Coordinator(RuntimeAdapter):",
+            0,
+        ),
+        ("class LocalBase:\n    pass\n", "class Coordinator(LocalBase):", 1),
+    ],
+)
+def test_factory_owner_roles_resolve_aliases_and_local_ancestry(
+    prefix: str, owner: str, expected: int, tmp_path: Path
+) -> None:
+    source = _FACTORY_BOUNDARY.replace("class Coordinator:", prefix + owner)
+    assert len(_analyze_factory_source(source, tmp_path)) == expected
+
+
+@pytest.mark.parametrize(
+    "replacement",
+    [
+        "from dataclasses import dataclass as record\n@record\nclass Backend(Protocol):",
+        "from attrs import define as record\n@record\nclass Backend(Protocol):",
+        "from dataclasses import dataclass as record\n@record\nclass Record:\n    pass\nclass Backend(Record):",
+        "from framework import Runtime\nclass RuntimeAdapter(Runtime):\n    pass\nclass Backend(RuntimeAdapter):",
+    ],
+)
+def test_factory_collaborator_data_and_framework_ancestry_abstain(replacement: str, tmp_path: Path) -> None:
+    source = _FACTORY_BOUNDARY.replace("@runtime_checkable\nclass Backend(Protocol):", replacement)
+    assert not _analyze_factory_source(source, tmp_path)
+
+
+@pytest.mark.parametrize("rebinding", ["from external import Backend", "Backend = OTHER", "class Backend:\n    pass"])
+def test_factory_annotation_requires_unique_owned_class(rebinding: str, tmp_path: Path) -> None:
+    assert not _analyze_factory_source(_FACTORY_BOUNDARY + "\n" + rebinding + "\n", tmp_path)
+
+
+def test_constructor_local_annotation_import_cannot_borrow_module_class(tmp_path: Path) -> None:
+    source = _FACTORY_BOUNDARY.replace(
+        "self.backend: Backend = backend", "from external import Backend\n        self.backend: Backend = backend"
+    )
+    assert not _analyze_factory_source(source, tmp_path)
+
+
+def _analyze_factory_source(source: str, root: Path) -> list[Diagnostic]:
+    ast.parse(source)
+    (root / "pyproject.toml").write_text("[project]\nname = 'example'\nversion = '0.1.0'\n")
+    path = root / "app" / "routing.py"
+    path.parent.mkdir(exist_ok=True)
+    path.write_text(source)
+    return analyze([RequirePortForService.id], [path], root=root)
+
+
+@pytest.mark.parametrize(
+    ("imports", "constructor", "expected"),
+    [
+        ("from app import adapter as native", "native.Coordinator", 0),
+        ("import app.adapter", "app.adapter.Coordinator", 1),
+        ("from app import adapter as native\nnative.Coordinator = OTHER", "native.Coordinator", 0),
+        ("import app.adapter\napp.adapter = OTHER", "app.adapter.Coordinator", 0),
+        ("from app.adapter import Coordinator\nclass Coordinator:\n    pass", "Coordinator", 0),
+        ("from app.adapter import Coordinator\nfrom external import *", "Coordinator", 0),
+    ],
+)
+def test_factory_constructor_imports_need_unique_owned_runtime_binding(
+    imports: str, constructor: str, expected: int, tmp_path: Path
+) -> None:
+    implementation, consumer = _FACTORY_BOUNDARY.split("class Consumer:", 1)
+    _analyze_factory_source("", tmp_path)
+    path = tmp_path / "app" / "adapter.py"
+    path.write_text(implementation)
+    caller = tmp_path / "app" / "routing.py"
+    caller.write_text(imports + "\nclass Consumer:" + consumer.replace("Coordinator", constructor))
+    assert len(analyze([RequirePortForService.id], [path, caller], root=tmp_path)) == expected
+
+
+def test_main_guard_consumer_is_a_program_not_library_boundary(tmp_path: Path) -> None:
+    implementation, consumer = _FACTORY_BOUNDARY.split("class Consumer:", 1)
+    _analyze_factory_source("", tmp_path)
+    path = tmp_path / "app" / "adapter.py"
+    path.write_text(implementation)
+    caller = tmp_path / "app" / "routing.py"
+    caller.write_text(
+        "from app.adapter import Coordinator\nclass Consumer:" + consumer + "\nif __name__ == '__main__':\n    pass\n"
+    )
+    assert not analyze([RequirePortForService.id], [path, caller], root=tmp_path)
+
+
+@pytest.mark.parametrize("duplicate_modules", [True, False])
+def test_constructor_evidence_isolated_across_projects(duplicate_modules: bool, tmp_path: Path) -> None:
+    paths: list[Path] = []
+    for index, package in enumerate(("app", "app" if duplicate_modules else "other")):
+        root = tmp_path / str(index)
+        root.mkdir()
+        (root / "pyproject.toml").write_text("[project]\nname = 'example'\nversion = '0.1.0'\n")
+        path = root / package / "adapter.py"
+        path.parent.mkdir()
+        path.write_text(_FACTORY_BOUNDARY)
+        paths.append(path)
+    assert len(analyze([RequirePortForService.id], paths, root=tmp_path)) == (0 if duplicate_modules else 2)
+
+
+@pytest.mark.parametrize("marker", ["", "class PackageMarker:\n    pass\n"])
+@pytest.mark.parametrize("export", ["from unrelated import native\n", "native = OtherNamespace\n"])
+@pytest.mark.parametrize(
+    ("imports", "constructor", "expected"),
+    [
+        ("from app import native as adapter", "adapter.Coordinator", 0),
+        ("import app", "app.native.Coordinator", 0),
+        ("import app.native", "app.native.Coordinator", 1),
+        ("import app.native as adapter", "adapter.Coordinator", 1),
+    ],
+)
+def test_package_exports_cannot_prove_submodule_constructor(
+    marker: str, export: str, imports: str, constructor: str, expected: int, *, tmp_path: Path
+) -> None:
+    implementation, consumer = _FACTORY_BOUNDARY.split("class Consumer:", 1)
+    _analyze_factory_source("", tmp_path)
+    provider = tmp_path / "app" / "native.py"
+    provider.write_text(implementation)
+    package = tmp_path / "app" / "__init__.py"
+    package.write_text(marker + export)
+    caller = tmp_path / "app" / "routing.py"
+    caller.write_text(imports + "\nclass Consumer:" + consumer.replace("Coordinator", constructor))
+    for path in (provider, package, caller):
+        ast.parse(path.read_text())
+    assert len(analyze([RequirePortForService.id], [provider, package, caller], root=tmp_path)) == expected
+
+
+def test_provider_wildcard_import_cannot_prove_owned_collaborator_from_separate_consumer(tmp_path: Path) -> None:
+    implementation, consumer = _FACTORY_BOUNDARY.split("class Consumer:", 1)
+    _analyze_factory_source("", tmp_path)
+    provider = tmp_path / "app" / "adapter.py"
+    provider.write_text(implementation + "\nfrom external import *\n")
+    caller = tmp_path / "app" / "routing.py"
+    caller.write_text("from app.adapter import Coordinator\nclass Consumer:" + consumer)
+    assert not analyze([RequirePortForService.id], [provider, caller], root=tmp_path)
+
+
+@pytest.mark.parametrize(
+    "declaration",
+    [
+        "def expose_port(cls):\n    return other_factory\n\n@expose_port\nclass Coordinator:",
+        "def configure(unused=(Backend := object)):\n    pass\n\nclass Coordinator:",
+        "configure = lambda unused=(Backend := object): unused\n\nclass Coordinator:",
+        "def configure(unused=(Coordinator := other_factory)):\n    pass\n\nclass Consumer:",
+    ],
+)
+def test_factory_boundary_needs_owned_runtime_classes(declaration: str, tmp_path: Path) -> None:
+    owner = "class Consumer:" if "class Consumer:" in declaration else "class Coordinator:"
+    source = _FACTORY_BOUNDARY.replace(owner, declaration)
+    assert not _analyze_factory_source(source, tmp_path)
+
+
+@pytest.mark.parametrize(
+    "declaration",
+    [
+        "from typing import final as closed\n@closed\nclass Coordinator:",
+        "def configure(unused=(runtime_value := None)):\n    pass\n\nclass Coordinator:",
+        "def configure():\n    Backend = object\n\nclass Coordinator:",
+    ],
+)
+def test_factory_boundary_preserves_identity_decorator_and_unrelated_bindings(declaration: str, tmp_path: Path) -> None:
+    source = _FACTORY_BOUNDARY.replace("class Coordinator:", declaration)
+    assert len(_analyze_factory_source(source, tmp_path)) == 1
+
+
+@pytest.mark.parametrize("method", ["def read(self, key: str)", "def __init__(self, *, enabled: bool)"])
+def test_factory_boundary_does_not_infer_replaced_method_bodies(method: str, tmp_path: Path) -> None:
+    source = _FACTORY_BOUNDARY.replace(method, f"@replace_body\n    {method}")
+    assert not _analyze_factory_source(source, tmp_path)
+
+
+@pytest.mark.parametrize("decorator", ["final", "override"])
+def test_factory_boundary_keeps_canonical_method_identity(decorator: str, tmp_path: Path) -> None:
+    source = f"from typing import {decorator} as preserve\n" + _FACTORY_BOUNDARY.replace(
+        "def read(self, key: str)", "@preserve\n    def read(self, key: str)"
+    )
+    assert len(_analyze_factory_source(source, tmp_path)) == 1
+
+
+@pytest.mark.parametrize("operation", ["write", "inspect"])
+def test_factory_boundary_counts_only_proven_consumed_operations(operation: str, tmp_path: Path) -> None:
+    source = _FACTORY_BOUNDARY.replace(
+        "class Consumer:",
+        "    @replace_body\n    def inspect(self, key: str, value: str) -> None:\n        self.backend.write(key, value)\n\nclass Consumer:",
+    ).replace("Coordinator(enabled=True).write(key, value)", f"Coordinator(enabled=True).{operation}(key, value)")
+    assert len(_analyze_factory_source(source, tmp_path)) == (1 if operation == "write" else 0)

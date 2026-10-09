@@ -5,7 +5,6 @@ from pathlib import Path
 
 
 PACKAGE = Path(__file__).parents[1] / "src" / "sarj_standards"
-REPOSITORY = Path(__file__).parents[3]
 
 
 def test_top_level_contains_only_the_public_facade_and_entrypoints() -> None:
@@ -30,9 +29,3 @@ def test_business_libraries_never_import_cli_or_public_facade() -> None:
         )
 
     assert violations == []
-
-
-def test_release_automation_has_no_standalone_scripts() -> None:
-    scripts = REPOSITORY / ".github" / "scripts"
-
-    assert not list(scripts.glob("*.mjs"))

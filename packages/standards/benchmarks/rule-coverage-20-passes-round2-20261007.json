@@ -1,0 +1,5392 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-10-07",
+  "round": 2,
+  "request": "Twenty more catalog-wide passes after PR 1280, retaining the request to improve reliable coverage, simplify and measure cost.",
+  "baselineCommit": "caab0bdad12a7ddebafcde56d71026e1f21a563e",
+  "familyCounts": {
+    "iac": 9,
+    "sql": 20,
+    "text": 11,
+    "python": 135,
+    "typescript": 117
+  },
+  "reviewScope": "Every one of the 292 rules is reviewed for each lens. Mutations run only where syntax and the rule contract make them meaningful; source-owned limitations are retained.",
+  "passes": [
+    {
+      "pass": 1,
+      "focus": "Source-owned catalog and admission",
+      "scope": "all",
+      "reviewedRules": 292,
+      "probeVariants": [
+        "baseline"
+      ],
+      "applicableProbeCases": 706,
+      "evidence": "Enumerate every existing owner, authored positive/negative contract and documented scope; introduce no new policy or severity."
+    },
+    {
+      "pass": 2,
+      "focus": "Call targets asserted with as",
+      "scope": "typescript",
+      "reviewedRules": 292,
+      "probeVariants": [
+        "callee-as"
+      ],
+      "applicableProbeCases": 125,
+      "evidence": "Qualified call targets preserve runtime binding and their type through typeof assertions."
+    },
+    {
+      "pass": 3,
+      "focus": "Call targets checked with satisfies",
+      "scope": "typescript",
+      "reviewedRules": 292,
+      "probeVariants": [
+        "callee-satisfies"
+      ],
+      "applicableProbeCases": 125,
+      "evidence": "Satisfies expressions preserve call targets while existing provenance guards retain ownership."
+    },
+    {
+      "pass": 4,
+      "focus": "Non-null call targets",
+      "scope": "typescript",
+      "reviewedRules": 292,
+      "probeVariants": [
+        "callee-non-null"
+      ],
+      "applicableProbeCases": 125,
+      "evidence": "Calls remain visible through erased non-null assertions; mutation and scope guards are retained."
+    },
+    {
+      "pass": 5,
+      "focus": "Angle call assertions",
+      "scope": "typescript",
+      "reviewedRules": 292,
+      "probeVariants": [
+        "callee-angle"
+      ],
+      "applicableProbeCases": 112,
+      "evidence": "Only non-JSX qualified call targets are transformed; type-sensitive owners are excluded."
+    },
+    {
+      "pass": 6,
+      "focus": "Combined erased call targets",
+      "scope": "typescript",
+      "reviewedRules": 292,
+      "probeVariants": [
+        "callee-combined"
+      ],
+      "applicableProbeCases": 125,
+      "evidence": "Nested assertions preserve original AST nodes for scope and type-service lookups."
+    },
+    {
+      "pass": 7,
+      "focus": "Literal call arguments",
+      "scope": "typescript",
+      "reviewedRules": 292,
+      "probeVariants": [
+        "argument-const"
+      ],
+      "applicableProbeCases": 47,
+      "evidence": "Const assertions preserve literal values and ownership; dynamic values remain excluded."
+    },
+    {
+      "pass": 8,
+      "focus": "Computed object keys",
+      "scope": "typescript",
+      "reviewedRules": 292,
+      "probeVariants": [
+        "object-key-string"
+      ],
+      "applicableProbeCases": 43,
+      "evidence": "Static keys use maintained extraction where effective values are provable; protocol-key exclusions stay negative."
+    },
+    {
+      "pass": 9,
+      "focus": "Static template object keys",
+      "scope": "typescript",
+      "reviewedRules": 292,
+      "probeVariants": [
+        "object-key-template"
+      ],
+      "applicableProbeCases": 43,
+      "evidence": "No-substitution keys preserve effective property names; unknown overriding keys remain excluded."
+    },
+    {
+      "pass": 10,
+      "focus": "Static template member names",
+      "scope": "typescript",
+      "reviewedRules": 292,
+      "probeVariants": [
+        "template"
+      ],
+      "applicableProbeCases": 117,
+      "evidence": "Member names retain binding and method allowlist contracts."
+    },
+    {
+      "pass": 11,
+      "focus": "Alias provenance",
+      "scope": "python/typescript",
+      "reviewedRules": 292,
+      "probeVariants": [
+        "self-import-alias",
+        "import-alias"
+      ],
+      "applicableProbeCases": 238,
+      "evidence": "Binding-aware aliases and explicit same-name Python aliases preserve authored outcomes."
+    },
+    {
+      "pass": 12,
+      "focus": "Python literal/source normalization",
+      "scope": "python",
+      "reviewedRules": 292,
+      "probeVariants": [
+        "literal-format"
+      ],
+      "applicableProbeCases": 310,
+      "evidence": "AST formatting applies only outside comment/docstring policy; source-owned outcomes are retained."
+    },
+    {
+      "pass": 13,
+      "focus": "SQL keyword casing",
+      "scope": "sql",
+      "reviewedRules": 292,
+      "probeVariants": [
+        "keyword-case"
+      ],
+      "applicableProbeCases": 42,
+      "evidence": "Token-aware case mutation leaves identifiers, quoted data and comments unchanged."
+    },
+    {
+      "pass": 14,
+      "focus": "SQL inter-token comments",
+      "scope": "sql",
+      "reviewedRules": 292,
+      "probeVariants": [
+        "block-comments"
+      ],
+      "applicableProbeCases": 42,
+      "evidence": "Comment spans preserve quoted data and offsets; duplicate signatures and timeout state use semantic text."
+    },
+    {
+      "pass": 15,
+      "focus": "HCL inter-token comments",
+      "scope": "iac",
+      "reviewedRules": 292,
+      "probeVariants": [
+        "inter-token-hcl-comments"
+      ],
+      "applicableProbeCases": 30,
+      "evidence": "Only valid whitespace gaps outside quoted strings/heredocs/comments are changed; authored ownership is retained."
+    },
+    {
+      "pass": 16,
+      "focus": "SQL horizontal whitespace",
+      "scope": "sql",
+      "reviewedRules": 292,
+      "probeVariants": [
+        "horizontal-tabs"
+      ],
+      "applicableProbeCases": 42,
+      "evidence": "Token gaps vary without inventing statement boundaries or changing literal values."
+    },
+    {
+      "pass": 17,
+      "focus": "Input framing and signatures",
+      "scope": "all",
+      "reviewedRules": 292,
+      "probeVariants": [
+        "no-terminal-newline",
+        "leading-blank-lines",
+        "crlf",
+        "bom"
+      ],
+      "applicableProbeCases": 1830,
+      "evidence": "Line endings and framing preserve outcomes. Signature decoding is limited to Markdown/JSON/YAML; shell and TOML keep their input semantics."
+    },
+    {
+      "pass": 18,
+      "focus": "Inert text and scope guards",
+      "scope": "all",
+      "reviewedRules": 292,
+      "probeVariants": [
+        "comment-noise",
+        "string-noise"
+      ],
+      "applicableProbeCases": 432,
+      "evidence": "Policy inputs retain their own scope. Supplemental fixtures cover foreign/shadowed receivers, dynamic overrides, mutations and safe literal values."
+    },
+    {
+      "pass": 19,
+      "focus": "Diagnostic/fix stability and DRY",
+      "scope": "all",
+      "reviewedRules": 292,
+      "probeVariants": [],
+      "applicableProbeCases": 0,
+      "evidence": "All original suites retain precedence and coordinates; four new fixes converge. Shared recognition removes 21 redundant aliases; wrapped mutation and foreign freeze regressions prevent unsafe hoist advice."
+    },
+    {
+      "pass": 20,
+      "focus": "Pinned corpus, performance and integration",
+      "scope": "all",
+      "reviewedRules": 292,
+      "probeVariants": [],
+      "applicableProbeCases": 0,
+      "evidence": "Use verified local pins and fresh bounded processes, paired timings, full package tests/type checks/self-lint, make verify and exact-revision PR CI."
+    }
+  ],
+  "decisions": {
+    "retain": 229,
+    "equivalent-source-coverage": 54,
+    "false-positive-fix": 2,
+    "shared-fact-simplification": 7
+  },
+  "labels": {
+    "cases": 4534,
+    "positiveCases": 2009,
+    "negativeCases": 2525,
+    "FP": 0,
+    "FN": 0,
+    "exactDuplicateProbeDiagnostics": 0
+  },
+  "baselineEvidence": {
+    "mismatchesByFamily": {
+      "iac": 0,
+      "sql": 2,
+      "text": 5,
+      "python": 0,
+      "typescript": 255
+    },
+    "typescriptAffectedRules": 49,
+    "typescriptFalsePositiveProbes": 5,
+    "sqlFalsePositiveProbes": 1,
+    "supplementalHoistSafetyReproductions": 2,
+    "fixtureCorrections": "Typed top-level-await examples declare module context at the end, preserving use-client directives. Quoted/computed protocol-key variants are explicitly labeled negative for their documented owners. No parser failures are counted as rule gaps."
+  },
+  "admission": {
+    "routing": "sarj-ai/code-standards: source/configuration semantics and lint-engine facts",
+    "failureMode": "Valid source signatures, harmless SQL comments or erased/static-equivalent TypeScript syntax hid existing violations or created false warnings.",
+    "owners": "All changes refine existing owners and their shared facts; no new rules or severity changes.",
+    "harm": "Existing safety/test/API diagnostics become inconsistent with valid syntax; fallback and hoist warnings can be misleading.",
+    "upstream": "Reuse @typescript-eslint/utils ASTUtils.getPropertyName and existing scope/type services. Keep internal erased-expression and SQL comment facts at shared owning boundaries.",
+    "beforeImplementation": "New assertion/static-key/signature/comment and hoist regressions were labeled and reproduced before their corresponding fixes.",
+    "fixPolicy": "Retain existing fixes; four additional optional-array transformations have authored fixed outputs and require a clean second pass.",
+    "upstreamReferences": [
+      {
+        "url": "https://github.com/DavidAnson/markdownlint/blob/main/lib/markdownlint.mjs",
+        "evidence": "lintContent removes a leading UTF-8 signature before Markdown parsing."
+      },
+      {
+        "url": "https://www.rfc-editor.org/rfc/rfc8259.html#section-8.1",
+        "evidence": "JSON parsers may ignore a leading byte order mark for interoperability; network senders must not add one."
+      },
+      {
+        "url": "https://yaml.org/spec/1.2.2/#52-character-encodings",
+        "evidence": "YAML document prefixes permit byte order marks."
+      }
+    ]
+  },
+  "regressions": {
+    "typescriptNewCases": 215,
+    "typescriptTotalTests": 6848,
+    "nativeAdditionalCases": "Timeout state, index signature/literal punctuation, signature decoding and embedded-character fixtures live in their owning tests."
+  },
+  "corpusPins": [
+    {
+      "name": "standards",
+      "files": 459,
+      "bytes": 5851710,
+      "revision": "1df5f4645e768136bca34013a33880b274665470",
+      "digest": "sha256:4b46e025fcf655a715b84ef8a24b24fa4c73389608feb84da8ff7e2033f1baa0"
+    },
+    {
+      "name": "<private-corpus>",
+      "files": 357,
+      "bytes": 3201667
+    },
+    {
+      "name": "<private-corpus>",
+      "files": 1012,
+      "bytes": 9016055
+    },
+    {
+      "name": "<private-corpus>",
+      "files": 968,
+      "bytes": 4421639
+    },
+    {
+      "name": "<private-corpus>",
+      "files": 361,
+      "bytes": 2766370
+    },
+    {
+      "name": "<private-corpus>",
+      "files": 351,
+      "bytes": 1835919
+    },
+    {
+      "name": "<private-corpus>",
+      "files": 64,
+      "bytes": 272256
+    },
+    {
+      "name": "<private-corpus>",
+      "files": 43,
+      "bytes": 64711
+    },
+    {
+      "name": "<private-corpus>",
+      "files": 139,
+      "bytes": 781866
+    },
+    {
+      "name": "<private-corpus>",
+      "files": 152,
+      "bytes": 500002
+    }
+  ],
+  "corpusResults": [
+    {
+      "family": "native",
+      "files": 2087,
+      "bytes": 18360284,
+      "beforeFindings": 7143,
+      "afterFindings": 7143,
+      "introduced": 0,
+      "removed": 0,
+      "engineSeconds": {
+        "baseline": 161.53046962292865,
+        "candidate": 156.563934834674
+      },
+      "processSeconds": {
+        "baseline": 189.891747,
+        "candidate": 181.50629999999998
+      }
+    },
+    {
+      "family": "typescript",
+      "files": 1819,
+      "bytes": 10351911,
+      "beforeFindings": 16526,
+      "afterFindings": 16526,
+      "introduced": 0,
+      "removed": 0,
+      "engineSeconds": {
+        "baseline": 9.915529499,
+        "candidate": 18.179491334999998
+      },
+      "processSeconds": {
+        "baseline": 15.861203999999999,
+        "candidate": 27.927999
+      }
+    }
+  ],
+  "corpusInspection": {
+    "introducedFindingsInspected": 0,
+    "introducedFindings": 0,
+    "removedFindings": 0,
+    "exactDuplicates": {
+      "native": 0,
+      "typescript": 0
+    },
+    "unchangedDistinctMessageLocationGroups": {
+      "native": 20,
+      "typescript": 49
+    },
+    "classification": "Every diagnostic including its message retains the same multiplicity. Unchanged matches retain earlier calibration; this does not freshly adjudicate all 23,669 findings as TP/FP.",
+    "limits": "Corpus scans cover all 164 native rules and 112 untyped TypeScript rules. Five mandatory type-service owners and all text owners have typed/authored fixtures and full owning suites. Private identities, paths, snippets and hashes are omitted."
+  },
+  "performance": {
+    "pairedFreshProcesses": {
+      "native": {
+        "files": 100,
+        "bytes": 1068323,
+        "samples": {
+          "baseline": [
+            {
+              "files": 100,
+              "bytes": 1068323,
+              "seconds": 11.083929332904518,
+              "peak": 412303360
+            },
+            {
+              "files": 100,
+              "bytes": 1068323,
+              "seconds": 17.786498666973785,
+              "peak": 411385856
+            },
+            {
+              "files": 100,
+              "bytes": 1068323,
+              "seconds": 10.15032891696319,
+              "peak": 416743424
+            }
+          ],
+          "candidate": [
+            {
+              "files": 100,
+              "bytes": 1068323,
+              "seconds": 11.017853083088994,
+              "peak": 412876800
+            },
+            {
+              "files": 100,
+              "bytes": 1068323,
+              "seconds": 12.238236542092636,
+              "peak": 417808384
+            },
+            {
+              "files": 100,
+              "bytes": 1068323,
+              "seconds": 9.72671666694805,
+              "peak": 417349632
+            }
+          ]
+        },
+        "medians": {
+          "baseline": 11.083929332904518,
+          "candidate": 11.017853083088994
+        }
+      },
+      "typescript": {
+        "files": 100,
+        "bytes": 812551,
+        "samples": {
+          "baseline": [
+            {
+              "files": 100,
+              "bytes": 812551,
+              "seconds": 1.293299792,
+              "peak": 415186944
+            },
+            {
+              "files": 100,
+              "bytes": 812551,
+              "seconds": 0.751220417,
+              "peak": 412434432
+            },
+            {
+              "files": 100,
+              "bytes": 812551,
+              "seconds": 0.7969082909999999,
+              "peak": 417742848
+            }
+          ],
+          "candidate": [
+            {
+              "files": 100,
+              "bytes": 812551,
+              "seconds": 0.770129917,
+              "peak": 435126272
+            },
+            {
+              "files": 100,
+              "bytes": 812551,
+              "seconds": 0.7910813750000001,
+              "peak": 430014464
+            },
+            {
+              "files": 100,
+              "bytes": 812551,
+              "seconds": 0.9167163750000001,
+              "peak": 415531008
+            }
+          ]
+        },
+        "medians": {
+          "baseline": 0.7969082909999999,
+          "candidate": 0.7910813750000001
+        }
+      }
+    },
+    "sqlIndexStress": {
+      "repetitions": 3,
+      "warmRepetitions": 5,
+      "medians": [
+        {
+          "indexes": 100,
+          "bytes": 4180,
+          "baseline": {
+            "coldSeconds": 0.004103000042960048,
+            "warmMedianSeconds": 0.0009072090033441782,
+            "scannerExecutions": 2
+          },
+          "candidate": {
+            "coldSeconds": 0.004139957949519157,
+            "warmMedianSeconds": 0.0008991251233965158,
+            "scannerExecutions": 2
+          }
+        },
+        {
+          "indexes": 1000,
+          "bytes": 43780,
+          "baseline": {
+            "coldSeconds": 0.03960212483070791,
+            "warmMedianSeconds": 0.009434709092602134,
+            "scannerExecutions": 2
+          },
+          "candidate": {
+            "coldSeconds": 0.03968833317048848,
+            "warmMedianSeconds": 0.009466083021834493,
+            "scannerExecutions": 2
+          }
+        },
+        {
+          "indexes": 3000,
+          "bytes": 135780,
+          "baseline": {
+            "coldSeconds": 0.12034358293749392,
+            "warmMedianSeconds": 0.0290477080270648,
+            "scannerExecutions": 2
+          },
+          "candidate": {
+            "coldSeconds": 0.12155816587619483,
+            "warmMedianSeconds": 0.029014125000685453,
+            "scannerExecutions": 2
+          }
+        }
+      ],
+      "samples": {
+        "baseline": [
+          {
+            "mode": "baseline",
+            "samples": [
+              {
+                "indexes": 100,
+                "bytes": 4180,
+                "coldSeconds": 0.004051916999742389,
+                "warmMedianSeconds": 0.0008768748957663774,
+                "scannerExecutions": 2
+              },
+              {
+                "indexes": 1000,
+                "bytes": 43780,
+                "coldSeconds": 0.039097625063732266,
+                "warmMedianSeconds": 0.009434709092602134,
+                "scannerExecutions": 2
+              },
+              {
+                "indexes": 3000,
+                "bytes": 135780,
+                "coldSeconds": 0.12016262509860098,
+                "warmMedianSeconds": 0.028778458014130592,
+                "scannerExecutions": 2
+              }
+            ],
+            "peakRssBytes": 41926656
+          },
+          {
+            "mode": "baseline",
+            "samples": [
+              {
+                "indexes": 100,
+                "bytes": 4180,
+                "coldSeconds": 0.004144083941355348,
+                "warmMedianSeconds": 0.0009072090033441782,
+                "scannerExecutions": 2
+              },
+              {
+                "indexes": 1000,
+                "bytes": 43780,
+                "coldSeconds": 0.03992199990898371,
+                "warmMedianSeconds": 0.00946824997663498,
+                "scannerExecutions": 2
+              },
+              {
+                "indexes": 3000,
+                "bytes": 135780,
+                "coldSeconds": 0.1234859589021653,
+                "warmMedianSeconds": 0.0290477080270648,
+                "scannerExecutions": 2
+              }
+            ],
+            "peakRssBytes": 41762816
+          },
+          {
+            "mode": "baseline",
+            "samples": [
+              {
+                "indexes": 100,
+                "bytes": 4180,
+                "coldSeconds": 0.004103000042960048,
+                "warmMedianSeconds": 0.0009192498400807381,
+                "scannerExecutions": 2
+              },
+              {
+                "indexes": 1000,
+                "bytes": 43780,
+                "coldSeconds": 0.03960212483070791,
+                "warmMedianSeconds": 0.009226750116795301,
+                "scannerExecutions": 2
+              },
+              {
+                "indexes": 3000,
+                "bytes": 135780,
+                "coldSeconds": 0.12034358293749392,
+                "warmMedianSeconds": 0.02923745894804597,
+                "scannerExecutions": 2
+              }
+            ],
+            "peakRssBytes": 41762816
+          }
+        ],
+        "candidate": [
+          {
+            "mode": "candidate",
+            "samples": [
+              {
+                "indexes": 100,
+                "bytes": 4180,
+                "coldSeconds": 0.004139957949519157,
+                "warmMedianSeconds": 0.0008991251233965158,
+                "scannerExecutions": 2
+              },
+              {
+                "indexes": 1000,
+                "bytes": 43780,
+                "coldSeconds": 0.03861891711130738,
+                "warmMedianSeconds": 0.009466083021834493,
+                "scannerExecutions": 2
+              },
+              {
+                "indexes": 3000,
+                "bytes": 135780,
+                "coldSeconds": 0.12155816587619483,
+                "warmMedianSeconds": 0.02853445801883936,
+                "scannerExecutions": 2
+              }
+            ],
+            "peakRssBytes": 43040768
+          },
+          {
+            "mode": "candidate",
+            "samples": [
+              {
+                "indexes": 100,
+                "bytes": 4180,
+                "coldSeconds": 0.004155708011239767,
+                "warmMedianSeconds": 0.0009547921363264322,
+                "scannerExecutions": 2
+              },
+              {
+                "indexes": 1000,
+                "bytes": 43780,
+                "coldSeconds": 0.03968833317048848,
+                "warmMedianSeconds": 0.009582916973158717,
+                "scannerExecutions": 2
+              },
+              {
+                "indexes": 3000,
+                "bytes": 135780,
+                "coldSeconds": 0.12265291600488126,
+                "warmMedianSeconds": 0.029014125000685453,
+                "scannerExecutions": 2
+              }
+            ],
+            "peakRssBytes": 41648128
+          },
+          {
+            "mode": "candidate",
+            "samples": [
+              {
+                "indexes": 100,
+                "bytes": 4180,
+                "coldSeconds": 0.0039452919736504555,
+                "warmMedianSeconds": 0.0008699581958353519,
+                "scannerExecutions": 2
+              },
+              {
+                "indexes": 1000,
+                "bytes": 43780,
+                "coldSeconds": 0.03987166681326926,
+                "warmMedianSeconds": 0.009216208942234516,
+                "scannerExecutions": 2
+              },
+              {
+                "indexes": 3000,
+                "bytes": 135780,
+                "coldSeconds": 0.12083599995821714,
+                "warmMedianSeconds": 0.029024207964539528,
+                "scannerExecutions": 2
+              }
+            ],
+            "peakRssBytes": 41385984
+          }
+        ]
+      }
+    },
+    "interpretation": "The paired whole-catalog medians remain within local run variation. SQL shares comment spans with existing masking and keeps two cold scanner executions, with no extra scan per index. No general speedup is claimed.",
+    "protocol": "Fresh process pairs alternate baseline/candidate three times. SQL cold timings exclude cProfile; separate profiles count scanner executions. Each SQL warm median has five repetitions. Peak RSS is bytes for native processes and RSS at scan completion for TypeScript.",
+    "cacheBounds": "Existing SQL content scans retain the same bounded 32-entry cache; current-source line indexing remains bounded to one entry. No path-only stale cache is added.",
+    "timingLimit": "Unpaired corpus and initial stress wall times include concurrent local load; paired medians are the comparison evidence."
+  },
+  "release": {
+    "python": "1.25.4 (unchanged)",
+    "iac": "0.18.2 (unchanged)",
+    "sql": "0.18.12",
+    "typescript": "16.3.3",
+    "standards": "8.37.3",
+    "compat": "8.37.3",
+    "immutableTags": "Affected packages and exact sibling pins advance; no package tag is retargeted."
+  },
+  "limitationsReference": "packages/standards/src/sarj_standards/schemas/rule-catalog.v1.json",
+  "commands": [
+    "make verify",
+    "cd packages/typescript && npm test",
+    "uv run --project packages/standards --frozen pytest packages/sql/tests packages/standards/tests/test_textlint.py -q",
+    "code-standards --root . maintain rules changes --before origin/main --after HEAD"
+  ],
+  "rules": [
+    {
+      "key": "iac:no-comment-cruft",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 6,
+      "negativeProbes": 6,
+      "variants": [
+        "baseline",
+        "crlf",
+        "no-terminal-newline"
+      ]
+    },
+    {
+      "key": "iac:no-dead-environment-input",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 24,
+      "negativeProbes": 24,
+      "variants": [
+        "baseline",
+        "crlf",
+        "inter-token-hcl-comments",
+        "leading-blank-lines",
+        "no-terminal-newline"
+      ]
+    },
+    {
+      "key": "iac:no-environment-conditional",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 20,
+      "negativeProbes": 20,
+      "variants": [
+        "baseline",
+        "crlf",
+        "inter-token-hcl-comments",
+        "leading-blank-lines",
+        "no-terminal-newline"
+      ]
+    },
+    {
+      "key": "iac:no-mocked-terraform-test-oracle",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 5,
+      "negativeProbes": 5,
+      "variants": [
+        "baseline",
+        "crlf",
+        "inter-token-hcl-comments",
+        "leading-blank-lines",
+        "no-terminal-newline"
+      ]
+    },
+    {
+      "key": "iac:no-redundant-variable-validation",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 10,
+      "negativeProbes": 10,
+      "variants": [
+        "baseline",
+        "crlf",
+        "inter-token-hcl-comments",
+        "leading-blank-lines",
+        "no-terminal-newline"
+      ]
+    },
+    {
+      "key": "iac:no-restated-comment",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 9,
+      "negativeProbes": 9,
+      "variants": [
+        "baseline",
+        "crlf",
+        "no-terminal-newline"
+      ]
+    },
+    {
+      "key": "iac:no-terraform-data-condition",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 5,
+      "negativeProbes": 5,
+      "variants": [
+        "baseline",
+        "crlf",
+        "inter-token-hcl-comments",
+        "leading-blank-lines",
+        "no-terminal-newline"
+      ]
+    },
+    {
+      "key": "iac:require-deletion-protection",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 5,
+      "negativeProbes": 5,
+      "variants": [
+        "baseline",
+        "crlf",
+        "inter-token-hcl-comments",
+        "leading-blank-lines",
+        "no-terminal-newline"
+      ]
+    },
+    {
+      "key": "iac:require-prevent-destroy-on-irreplaceable",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 10,
+      "negativeProbes": 10,
+      "variants": [
+        "baseline",
+        "crlf",
+        "inter-token-hcl-comments",
+        "leading-blank-lines",
+        "no-terminal-newline"
+      ]
+    },
+    {
+      "key": "sql:enforce-timestamptz",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 7,
+      "negativeProbes": 7,
+      "variants": [
+        "baseline",
+        "block-comments",
+        "crlf",
+        "horizontal-tabs",
+        "keyword-case",
+        "leading-blank-lines",
+        "no-terminal-newline"
+      ]
+    },
+    {
+      "key": "sql:excess-migration-index-requires-justification",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 7,
+      "negativeProbes": 7,
+      "variants": [
+        "baseline",
+        "block-comments",
+        "crlf",
+        "horizontal-tabs",
+        "keyword-case",
+        "leading-blank-lines",
+        "no-terminal-newline"
+      ]
+    },
+    {
+      "key": "sql:existing-table-check-or-foreign-key-requires-not-valid",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 7,
+      "negativeProbes": 7,
+      "variants": [
+        "baseline",
+        "block-comments",
+        "crlf",
+        "horizontal-tabs",
+        "keyword-case",
+        "leading-blank-lines",
+        "no-terminal-newline"
+      ]
+    },
+    {
+      "key": "sql:idempotent-ddl",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 7,
+      "negativeProbes": 7,
+      "variants": [
+        "baseline",
+        "block-comments",
+        "crlf",
+        "horizontal-tabs",
+        "keyword-case",
+        "leading-blank-lines",
+        "no-terminal-newline"
+      ]
+    },
+    {
+      "key": "sql:index-concurrently",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 7,
+      "negativeProbes": 7,
+      "variants": [
+        "baseline",
+        "block-comments",
+        "crlf",
+        "horizontal-tabs",
+        "keyword-case",
+        "leading-blank-lines",
+        "no-terminal-newline"
+      ]
+    },
+    {
+      "key": "sql:insert-requires-replay-policy",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 7,
+      "negativeProbes": 7,
+      "variants": [
+        "baseline",
+        "block-comments",
+        "crlf",
+        "horizontal-tabs",
+        "keyword-case",
+        "leading-blank-lines",
+        "no-terminal-newline"
+      ]
+    },
+    {
+      "key": "sql:mixed-migration-phases",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 7,
+      "negativeProbes": 7,
+      "variants": [
+        "baseline",
+        "block-comments",
+        "crlf",
+        "horizontal-tabs",
+        "keyword-case",
+        "leading-blank-lines",
+        "no-terminal-newline"
+      ]
+    },
+    {
+      "key": "sql:no-application-schema-check",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 14,
+      "negativeProbes": 14,
+      "variants": [
+        "baseline",
+        "block-comments",
+        "crlf",
+        "horizontal-tabs",
+        "keyword-case",
+        "leading-blank-lines",
+        "no-terminal-newline"
+      ]
+    },
+    {
+      "key": "sql:no-database-functions",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 7,
+      "negativeProbes": 7,
+      "variants": [
+        "baseline",
+        "block-comments",
+        "crlf",
+        "horizontal-tabs",
+        "keyword-case",
+        "leading-blank-lines",
+        "no-terminal-newline"
+      ]
+    },
+    {
+      "key": "sql:no-database-triggers",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 7,
+      "negativeProbes": 7,
+      "variants": [
+        "baseline",
+        "block-comments",
+        "crlf",
+        "horizontal-tabs",
+        "keyword-case",
+        "leading-blank-lines",
+        "no-terminal-newline"
+      ]
+    },
+    {
+      "key": "sql:no-duplicate-index",
+      "decision": "equivalent-source-coverage",
+      "beforeMismatches": 1,
+      "positiveProbes": 7,
+      "negativeProbes": 7,
+      "variants": [
+        "baseline",
+        "block-comments",
+        "crlf",
+        "horizontal-tabs",
+        "keyword-case",
+        "leading-blank-lines",
+        "no-terminal-newline"
+      ]
+    },
+    {
+      "key": "sql:no-long-migration-narration",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 6,
+      "negativeProbes": 6,
+      "variants": [
+        "baseline",
+        "block-comments",
+        "crlf",
+        "horizontal-tabs",
+        "keyword-case",
+        "no-terminal-newline"
+      ]
+    },
+    {
+      "key": "sql:no-migration-comment-cruft",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 6,
+      "negativeProbes": 6,
+      "variants": [
+        "baseline",
+        "block-comments",
+        "crlf",
+        "horizontal-tabs",
+        "keyword-case",
+        "no-terminal-newline"
+      ]
+    },
+    {
+      "key": "sql:no-offset-pagination",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 7,
+      "negativeProbes": 7,
+      "variants": [
+        "baseline",
+        "block-comments",
+        "crlf",
+        "horizontal-tabs",
+        "keyword-case",
+        "leading-blank-lines",
+        "no-terminal-newline"
+      ]
+    },
+    {
+      "key": "sql:no-pg-enum",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 7,
+      "negativeProbes": 7,
+      "variants": [
+        "baseline",
+        "block-comments",
+        "crlf",
+        "horizontal-tabs",
+        "keyword-case",
+        "leading-blank-lines",
+        "no-terminal-newline"
+      ]
+    },
+    {
+      "key": "sql:prefer-jsonb",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 7,
+      "negativeProbes": 7,
+      "variants": [
+        "baseline",
+        "block-comments",
+        "crlf",
+        "horizontal-tabs",
+        "keyword-case",
+        "leading-blank-lines",
+        "no-terminal-newline"
+      ]
+    },
+    {
+      "key": "sql:prefer-text-over-varchar",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 7,
+      "negativeProbes": 7,
+      "variants": [
+        "baseline",
+        "block-comments",
+        "crlf",
+        "horizontal-tabs",
+        "keyword-case",
+        "leading-blank-lines",
+        "no-terminal-newline"
+      ]
+    },
+    {
+      "key": "sql:prefer-uuidv7-default",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 7,
+      "negativeProbes": 7,
+      "variants": [
+        "baseline",
+        "block-comments",
+        "crlf",
+        "horizontal-tabs",
+        "keyword-case",
+        "leading-blank-lines",
+        "no-terminal-newline"
+      ]
+    },
+    {
+      "key": "sql:require-fk-index",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 7,
+      "negativeProbes": 7,
+      "variants": [
+        "baseline",
+        "block-comments",
+        "crlf",
+        "horizontal-tabs",
+        "keyword-case",
+        "leading-blank-lines",
+        "no-terminal-newline"
+      ]
+    },
+    {
+      "key": "sql:require-lock-timeout",
+      "decision": "false-positive-fix",
+      "beforeMismatches": 1,
+      "positiveProbes": 7,
+      "negativeProbes": 7,
+      "variants": [
+        "baseline",
+        "block-comments",
+        "crlf",
+        "horizontal-tabs",
+        "keyword-case",
+        "leading-blank-lines",
+        "no-terminal-newline"
+      ]
+    },
+    {
+      "key": "text:commented-out-config",
+      "decision": "shared-fact-simplification",
+      "beforeMismatches": 0,
+      "positiveProbes": 4,
+      "negativeProbes": 4,
+      "variants": [
+        "baseline",
+        "bom",
+        "crlf",
+        "no-terminal-newline"
+      ]
+    },
+    {
+      "key": "text:config-comment-wall",
+      "decision": "equivalent-source-coverage",
+      "beforeMismatches": 1,
+      "positiveProbes": 4,
+      "negativeProbes": 4,
+      "variants": [
+        "baseline",
+        "bom",
+        "crlf",
+        "no-terminal-newline"
+      ]
+    },
+    {
+      "key": "text:declarative-deployment-boundary",
+      "decision": "shared-fact-simplification",
+      "beforeMismatches": 0,
+      "positiveProbes": 16,
+      "negativeProbes": 16,
+      "variants": [
+        "baseline",
+        "bom",
+        "crlf",
+        "no-terminal-newline"
+      ]
+    },
+    {
+      "key": "text:ephemeral-execution-artifact",
+      "decision": "equivalent-source-coverage",
+      "beforeMismatches": 1,
+      "positiveProbes": 4,
+      "negativeProbes": 4,
+      "variants": [
+        "baseline",
+        "bom",
+        "crlf",
+        "no-terminal-newline"
+      ]
+    },
+    {
+      "key": "text:exact-config-comment-restatement",
+      "decision": "shared-fact-simplification",
+      "beforeMismatches": 0,
+      "positiveProbes": 4,
+      "negativeProbes": 4,
+      "variants": [
+        "baseline",
+        "bom",
+        "crlf",
+        "no-terminal-newline"
+      ]
+    },
+    {
+      "key": "text:hidden-markdown-heading",
+      "decision": "equivalent-source-coverage",
+      "beforeMismatches": 1,
+      "positiveProbes": 4,
+      "negativeProbes": 4,
+      "variants": [
+        "baseline",
+        "bom",
+        "crlf",
+        "no-terminal-newline"
+      ]
+    },
+    {
+      "key": "text:iac-source-coupled-test",
+      "decision": "shared-fact-simplification",
+      "beforeMismatches": 0,
+      "positiveProbes": 4,
+      "negativeProbes": 4,
+      "variants": [
+        "baseline",
+        "bom",
+        "crlf",
+        "no-terminal-newline"
+      ]
+    },
+    {
+      "key": "text:large-shell-program",
+      "decision": "shared-fact-simplification",
+      "beforeMismatches": 0,
+      "positiveProbes": 4,
+      "negativeProbes": 4,
+      "variants": [
+        "baseline",
+        "bom",
+        "crlf",
+        "no-terminal-newline"
+      ]
+    },
+    {
+      "key": "text:no-unsafe-command-argument-interpolation",
+      "decision": "equivalent-source-coverage",
+      "beforeMismatches": 1,
+      "positiveProbes": 4,
+      "negativeProbes": 4,
+      "variants": [
+        "baseline",
+        "bom",
+        "crlf",
+        "no-terminal-newline"
+      ]
+    },
+    {
+      "key": "text:no-wildcard-secret-read-permission",
+      "decision": "equivalent-source-coverage",
+      "beforeMismatches": 1,
+      "positiveProbes": 4,
+      "negativeProbes": 4,
+      "variants": [
+        "baseline",
+        "bom",
+        "crlf",
+        "no-terminal-newline"
+      ]
+    },
+    {
+      "key": "text:workflow-embedded-program",
+      "decision": "shared-fact-simplification",
+      "beforeMismatches": 0,
+      "positiveProbes": 4,
+      "negativeProbes": 4,
+      "variants": [
+        "baseline",
+        "bom",
+        "crlf",
+        "no-terminal-newline"
+      ]
+    },
+    {
+      "key": "python:async-cleanup-registered-synchronously",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 6,
+      "negativeProbes": 6,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline",
+        "self-import-alias"
+      ]
+    },
+    {
+      "key": "python:async-mock-call-without-await-assertion",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 12,
+      "negativeProbes": 12,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline",
+        "self-import-alias"
+      ]
+    },
+    {
+      "key": "python:complex-postgres-query-requires-architecture-review",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 12,
+      "negativeProbes": 12,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline",
+        "self-import-alias"
+      ]
+    },
+    {
+      "key": "python:defect-xfail-requires-explicit-strict",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 6,
+      "negativeProbes": 6,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline",
+        "self-import-alias"
+      ]
+    },
+    {
+      "key": "python:docstring-args-restate-signature",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 3,
+      "variants": [
+        "baseline",
+        "crlf",
+        "no-terminal-newline"
+      ]
+    },
+    {
+      "key": "python:docstring-returns-restate-signature",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 3,
+      "variants": [
+        "baseline",
+        "crlf",
+        "no-terminal-newline"
+      ]
+    },
+    {
+      "key": "python:excessive-commentary",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 3,
+      "variants": [
+        "baseline",
+        "crlf",
+        "no-terminal-newline"
+      ]
+    },
+    {
+      "key": "python:fakes-in-shared-location",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 5,
+      "negativeProbes": 10,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline"
+      ]
+    },
+    {
+      "key": "python:fastapi-class-router-contract",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 6,
+      "negativeProbes": 6,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline",
+        "self-import-alias"
+      ]
+    },
+    {
+      "key": "python:fastapi-explicit-openapi-contract",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 18,
+      "negativeProbes": 18,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline",
+        "self-import-alias"
+      ]
+    },
+    {
+      "key": "python:iac-source-coupled-test",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 6,
+      "negativeProbes": 5,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline",
+        "self-import-alias"
+      ]
+    },
+    {
+      "key": "python:invalid-pydantic-field-default",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 12,
+      "negativeProbes": 12,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline",
+        "self-import-alias"
+      ]
+    },
+    {
+      "key": "python:mock-without-spec",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 10,
+      "negativeProbes": 12,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline",
+        "self-import-alias"
+      ]
+    },
+    {
+      "key": "python:named-record-at-boundaries",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 5,
+      "negativeProbes": 6,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline",
+        "self-import-alias"
+      ]
+    },
+    {
+      "key": "python:negative-only-http-status-assertion",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 5,
+      "negativeProbes": 5,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline"
+      ]
+    },
+    {
+      "key": "python:no-analytical-aggregation-in-postgres-store",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 6,
+      "negativeProbes": 6,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline",
+        "self-import-alias"
+      ]
+    },
+    {
+      "key": "python:no-any-mapping-types",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 6,
+      "negativeProbes": 6,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline",
+        "self-import-alias"
+      ]
+    },
+    {
+      "key": "python:no-bare-test-phase-comments",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 3,
+      "variants": [
+        "baseline",
+        "crlf",
+        "no-terminal-newline"
+      ]
+    },
+    {
+      "key": "python:no-before-validator-input-mutation",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 12,
+      "negativeProbes": 12,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline",
+        "self-import-alias"
+      ]
+    },
+    {
+      "key": "python:no-broad-keyword-capture",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 15,
+      "negativeProbes": 15,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline",
+        "self-import-alias"
+      ]
+    },
+    {
+      "key": "python:no-comment-cruft",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 3,
+      "variants": [
+        "baseline",
+        "crlf",
+        "no-terminal-newline"
+      ]
+    },
+    {
+      "key": "python:no-conftest-test-module-import",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 6,
+      "negativeProbes": 6,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline",
+        "self-import-alias"
+      ]
+    },
+    {
+      "key": "python:no-copied-inherited-docstring",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 3,
+      "variants": [
+        "baseline",
+        "crlf",
+        "no-terminal-newline"
+      ]
+    },
+    {
+      "key": "python:no-cors-wildcard-with-credentials",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 6,
+      "negativeProbes": 6,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline",
+        "self-import-alias"
+      ]
+    },
+    {
+      "key": "python:no-database-programmability",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 5,
+      "negativeProbes": 5,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline"
+      ]
+    },
+    {
+      "key": "python:no-delete-statement",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 5,
+      "negativeProbes": 5,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline"
+      ]
+    },
+    {
+      "key": "python:no-docstring-type-restatement",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 3,
+      "variants": [
+        "baseline",
+        "crlf",
+        "no-terminal-newline"
+      ]
+    },
+    {
+      "key": "python:no-dunder-all",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 5,
+      "negativeProbes": 5,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline"
+      ]
+    },
+    {
+      "key": "python:no-duplicate-dunder-all-entry",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 5,
+      "negativeProbes": 5,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline"
+      ]
+    },
+    {
+      "key": "python:no-excessive-cognitive-complexity",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 10,
+      "negativeProbes": 10,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline"
+      ]
+    },
+    {
+      "key": "python:no-fastapi-on-event",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 6,
+      "negativeProbes": 6,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline",
+        "self-import-alias"
+      ]
+    },
+    {
+      "key": "python:no-file-level-escape-hatch-suppression",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 4,
+      "negativeProbes": 4,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "no-terminal-newline"
+      ]
+    },
+    {
+      "key": "python:no-first-party-private-import",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 6,
+      "negativeProbes": 6,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline",
+        "self-import-alias"
+      ]
+    },
+    {
+      "key": "python:no-fixed-sleep-before-assert",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 12,
+      "negativeProbes": 12,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline",
+        "self-import-alias"
+      ]
+    },
+    {
+      "key": "python:no-frozen-after-validator-field-write",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 6,
+      "negativeProbes": 6,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline",
+        "self-import-alias"
+      ]
+    },
+    {
+      "key": "python:no-generic-single-export-module",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 5,
+      "negativeProbes": 5,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline"
+      ]
+    },
+    {
+      "key": "python:no-hidden-constructor-fallback",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 6,
+      "negativeProbes": 6,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline",
+        "self-import-alias"
+      ]
+    },
+    {
+      "key": "python:no-injected-module-loader",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 6,
+      "negativeProbes": 6,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline",
+        "self-import-alias"
+      ]
+    },
+    {
+      "key": "python:no-input-model-mutation",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 18,
+      "negativeProbes": 12,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline",
+        "self-import-alias"
+      ]
+    },
+    {
+      "key": "python:no-invalid-argument-name-suppression",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 4,
+      "negativeProbes": 6,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline",
+        "self-import-alias"
+      ]
+    },
+    {
+      "key": "python:no-mocked-pydantic-value-object",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 6,
+      "negativeProbes": 12,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline",
+        "self-import-alias"
+      ]
+    },
+    {
+      "key": "python:no-nested-pydantic-field-validator",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 6,
+      "negativeProbes": 6,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline",
+        "self-import-alias"
+      ]
+    },
+    {
+      "key": "python:no-nullable-dependency-fallback",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 5,
+      "negativeProbes": 5,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline"
+      ]
+    },
+    {
+      "key": "python:no-offset-pagination",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 5,
+      "negativeProbes": 5,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline"
+      ]
+    },
+    {
+      "key": "python:no-positional-psycopg-row-escape",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 6,
+      "negativeProbes": 6,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline",
+        "self-import-alias"
+      ]
+    },
+    {
+      "key": "python:no-positional-tuple-record",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 5,
+      "negativeProbes": 6,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline",
+        "self-import-alias"
+      ]
+    },
+    {
+      "key": "python:no-provably-dead-mock-configuration",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 6,
+      "negativeProbes": 6,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline",
+        "self-import-alias"
+      ]
+    },
+    {
+      "key": "python:no-psycopg-execution-outside-injected-owner",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 6,
+      "negativeProbes": 6,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline",
+        "self-import-alias"
+      ]
+    },
+    {
+      "key": "python:no-random-uuid-in-sql",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 5,
+      "negativeProbes": 5,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline"
+      ]
+    },
+    {
+      "key": "python:no-raw-connection-in-tests",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 6,
+      "negativeProbes": 5,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline",
+        "self-import-alias"
+      ]
+    },
+    {
+      "key": "python:no-raw-source-text-test-oracle",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 6,
+      "negativeProbes": 6,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline",
+        "self-import-alias"
+      ]
+    },
+    {
+      "key": "python:no-redundant-module-alias-exports",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 11,
+      "negativeProbes": 10,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline",
+        "self-import-alias"
+      ]
+    },
+    {
+      "key": "python:no-repeated-structured-string-literal",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 5,
+      "negativeProbes": 5,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline"
+      ]
+    },
+    {
+      "key": "python:no-repeated-test-body",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 10,
+      "negativeProbes": 11,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline",
+        "self-import-alias"
+      ]
+    },
+    {
+      "key": "python:no-repeated-unseeded-stdlib-random-in-test",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 6,
+      "negativeProbes": 6,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline",
+        "self-import-alias"
+      ]
+    },
+    {
+      "key": "python:no-restated-closed-domain-description",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 6,
+      "negativeProbes": 6,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline",
+        "self-import-alias"
+      ]
+    },
+    {
+      "key": "python:no-restated-comment",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 3,
+      "variants": [
+        "baseline",
+        "crlf",
+        "no-terminal-newline"
+      ]
+    },
+    {
+      "key": "python:no-secret-in-log",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 5,
+      "negativeProbes": 5,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline"
+      ]
+    },
+    {
+      "key": "python:no-select-star",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 5,
+      "negativeProbes": 5,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline"
+      ]
+    },
+    {
+      "key": "python:no-service-behavior-in-settings",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 5,
+      "negativeProbes": 6,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline",
+        "self-import-alias"
+      ]
+    },
+    {
+      "key": "python:no-shallow-container-type-guard",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 6,
+      "negativeProbes": 6,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline",
+        "self-import-alias"
+      ]
+    },
+    {
+      "key": "python:no-statically-truthy-assertion",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 5,
+      "negativeProbes": 5,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline"
+      ]
+    },
+    {
+      "key": "python:no-string-concat-in-loop",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 5,
+      "negativeProbes": 5,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline"
+      ]
+    },
+    {
+      "key": "python:no-swallowed-asyncio-cancellation",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 6,
+      "negativeProbes": 6,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline",
+        "self-import-alias"
+      ]
+    },
+    {
+      "key": "python:no-test-method-grafting",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 6,
+      "negativeProbes": 12,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline",
+        "self-import-alias"
+      ]
+    },
+    {
+      "key": "python:no-trailing-numeric-unit-assignment-comment",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 3,
+      "variants": [
+        "baseline",
+        "crlf",
+        "no-terminal-newline"
+      ]
+    },
+    {
+      "key": "python:no-unique-violation-message-match",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 6,
+      "negativeProbes": 6,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline",
+        "self-import-alias"
+      ]
+    },
+    {
+      "key": "python:no-unnecessary-docstring",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 3,
+      "variants": [
+        "baseline",
+        "crlf",
+        "no-terminal-newline"
+      ]
+    },
+    {
+      "key": "python:no-unused-copy-result",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 12,
+      "negativeProbes": 12,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline",
+        "self-import-alias"
+      ]
+    },
+    {
+      "key": "python:no-unused-underscored-keyword-parameter",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 5,
+      "negativeProbes": 5,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline"
+      ]
+    },
+    {
+      "key": "python:no-unused-value-marker",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 15,
+      "negativeProbes": 15,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline"
+      ]
+    },
+    {
+      "key": "python:no-vague-suppression-description",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 4,
+      "negativeProbes": 4,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "no-terminal-newline"
+      ]
+    },
+    {
+      "key": "python:no-whole-request-response-payload-in-log",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 5,
+      "negativeProbes": 5,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline"
+      ]
+    },
+    {
+      "key": "python:opaque-parametrize-case-needs-id",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 6,
+      "negativeProbes": 6,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline",
+        "self-import-alias"
+      ]
+    },
+    {
+      "key": "python:over-mocked-test",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 6,
+      "negativeProbes": 6,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline",
+        "self-import-alias"
+      ]
+    },
+    {
+      "key": "python:prefer-autospec-for-callable-mock",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 6,
+      "negativeProbes": 6,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline",
+        "self-import-alias"
+      ]
+    },
+    {
+      "key": "python:prefer-class-row",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 6,
+      "negativeProbes": 6,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline",
+        "self-import-alias"
+      ]
+    },
+    {
+      "key": "python:prefer-collection-comprehension",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 15,
+      "negativeProbes": 15,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline"
+      ]
+    },
+    {
+      "key": "python:prefer-constant-time-secret-compare",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 5,
+      "negativeProbes": 6,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline",
+        "self-import-alias"
+      ]
+    },
+    {
+      "key": "python:prefer-fstring-over-concat",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 5,
+      "negativeProbes": 5,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline"
+      ]
+    },
+    {
+      "key": "python:prefer-immutable-module-constant",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 15,
+      "negativeProbes": 17,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline",
+        "self-import-alias"
+      ]
+    },
+    {
+      "key": "python:prefer-injected-dependency-over-monkeypatch",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 11,
+      "negativeProbes": 11,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline",
+        "self-import-alias"
+      ]
+    },
+    {
+      "key": "python:prefer-library-fake",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 5,
+      "negativeProbes": 6,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline",
+        "self-import-alias"
+      ]
+    },
+    {
+      "key": "python:prefer-match-assert-never",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 6,
+      "negativeProbes": 6,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline",
+        "self-import-alias"
+      ]
+    },
+    {
+      "key": "python:prefer-match-exception-dispatch",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 6,
+      "negativeProbes": 6,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline",
+        "self-import-alias"
+      ]
+    },
+    {
+      "key": "python:prefer-match-type-dispatch",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 17,
+      "negativeProbes": 17,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline",
+        "self-import-alias"
+      ]
+    },
+    {
+      "key": "python:prefer-match-value-dispatch",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 10,
+      "negativeProbes": 10,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline"
+      ]
+    },
+    {
+      "key": "python:prefer-module-level-constant",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 10,
+      "negativeProbes": 11,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline",
+        "self-import-alias"
+      ]
+    },
+    {
+      "key": "python:prefer-monkeypatch-for-process-state-in-test",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 6,
+      "negativeProbes": 6,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline",
+        "self-import-alias"
+      ]
+    },
+    {
+      "key": "python:prefer-monotonic-for-elapsed-time",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 6,
+      "negativeProbes": 6,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline",
+        "self-import-alias"
+      ]
+    },
+    {
+      "key": "python:prefer-native-string-check",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 12,
+      "negativeProbes": 11,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline",
+        "self-import-alias"
+      ]
+    },
+    {
+      "key": "python:prefer-nominal-id-types",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 5,
+      "negativeProbes": 6,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline",
+        "self-import-alias"
+      ]
+    },
+    {
+      "key": "python:prefer-non-nullable-collection",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 5,
+      "negativeProbes": 6,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline",
+        "self-import-alias"
+      ]
+    },
+    {
+      "key": "python:prefer-or-pattern",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 5,
+      "negativeProbes": 5,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline"
+      ]
+    },
+    {
+      "key": "python:prefer-pydantic-json-value",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 5,
+      "negativeProbes": 6,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline",
+        "self-import-alias"
+      ]
+    },
+    {
+      "key": "python:prefer-pytest-fixture-injection",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 12,
+      "negativeProbes": 12,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline",
+        "self-import-alias"
+      ]
+    },
+    {
+      "key": "python:prefer-regex-fullmatch",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 6,
+      "negativeProbes": 6,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline",
+        "self-import-alias"
+      ]
+    },
+    {
+      "key": "python:prefer-required-constructor-parameters",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 5,
+      "negativeProbes": 5,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline"
+      ]
+    },
+    {
+      "key": "python:prefer-self-documenting-constant",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 8,
+      "negativeProbes": 10,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline",
+        "self-import-alias"
+      ]
+    },
+    {
+      "key": "python:prefer-self-type-annotation",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 10,
+      "negativeProbes": 12,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline",
+        "self-import-alias"
+      ]
+    },
+    {
+      "key": "python:prefer-set-isdisjoint",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 5,
+      "negativeProbes": 5,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline"
+      ]
+    },
+    {
+      "key": "python:prefer-str-enum",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 10,
+      "negativeProbes": 11,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline",
+        "self-import-alias"
+      ]
+    },
+    {
+      "key": "python:prefer-struct-over-namedtuple",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 6,
+      "negativeProbes": 6,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline",
+        "self-import-alias"
+      ]
+    },
+    {
+      "key": "python:prefer-walrus-awaited-none-guard",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 5,
+      "negativeProbes": 5,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline"
+      ]
+    },
+    {
+      "key": "python:prefer-walrus-comprehension-filter",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 5,
+      "negativeProbes": 5,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline"
+      ]
+    },
+    {
+      "key": "python:prefer-walrus-regex-match",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 6,
+      "negativeProbes": 6,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline",
+        "self-import-alias"
+      ]
+    },
+    {
+      "key": "python:prefer-walrus-stream-loop",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 10,
+      "negativeProbes": 10,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline"
+      ]
+    },
+    {
+      "key": "python:production-derived-test-cases",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 6,
+      "negativeProbes": 6,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline",
+        "self-import-alias"
+      ]
+    },
+    {
+      "key": "python:pytest-fixture-returns-bare-tuple",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 6,
+      "negativeProbes": 6,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline",
+        "self-import-alias"
+      ]
+    },
+    {
+      "key": "python:redundant-class-docstring",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 3,
+      "variants": [
+        "baseline",
+        "crlf",
+        "no-terminal-newline"
+      ]
+    },
+    {
+      "key": "python:redundant-docstring",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 3,
+      "variants": [
+        "baseline",
+        "crlf",
+        "no-terminal-newline"
+      ]
+    },
+    {
+      "key": "python:redundant-module-docstring",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 3,
+      "variants": [
+        "baseline",
+        "crlf",
+        "no-terminal-newline"
+      ]
+    },
+    {
+      "key": "python:repeated-kwarg-heavy-call-in-test",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 5,
+      "negativeProbes": 5,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline"
+      ]
+    },
+    {
+      "key": "python:repeated-static-call-cases",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 5,
+      "negativeProbes": 5,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline"
+      ]
+    },
+    {
+      "key": "python:repeated-test-composition",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 6,
+      "negativeProbes": 5,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline",
+        "self-import-alias"
+      ]
+    },
+    {
+      "key": "python:replay-contract-insert-requires-duplicate-policy",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 5,
+      "negativeProbes": 5,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline"
+      ]
+    },
+    {
+      "key": "python:require-explicit-contract-implementation",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 6,
+      "negativeProbes": 12,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline",
+        "self-import-alias"
+      ]
+    },
+    {
+      "key": "python:require-explicit-psycopg-transaction",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 6,
+      "negativeProbes": 6,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline",
+        "self-import-alias"
+      ]
+    },
+    {
+      "key": "python:require-explicit-service-contract",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 5,
+      "negativeProbes": 12,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline",
+        "self-import-alias"
+      ]
+    },
+    {
+      "key": "python:require-keyword-only-swap-prone-params",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 5,
+      "negativeProbes": 5,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline"
+      ]
+    },
+    {
+      "key": "python:require-nodecode-for-splitting-settings-field",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 6,
+      "negativeProbes": 6,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline",
+        "self-import-alias"
+      ]
+    },
+    {
+      "key": "python:require-port-for-service",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 11,
+      "negativeProbes": 12,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline",
+        "self-import-alias"
+      ]
+    },
+    {
+      "key": "python:require-precise-factory-signature",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 6,
+      "negativeProbes": 6,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline",
+        "self-import-alias"
+      ]
+    },
+    {
+      "key": "python:require-public-dependency-contract",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 6,
+      "negativeProbes": 6,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline",
+        "self-import-alias"
+      ]
+    },
+    {
+      "key": "python:require-pydantic-for-external-json",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 12,
+      "negativeProbes": 12,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline",
+        "self-import-alias"
+      ]
+    },
+    {
+      "key": "python:require-pydantic-for-structured-payload",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 6,
+      "negativeProbes": 6,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline",
+        "self-import-alias"
+      ]
+    },
+    {
+      "key": "python:require-pydantic-ordinal-lower-bound",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 6,
+      "negativeProbes": 6,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline",
+        "self-import-alias"
+      ]
+    },
+    {
+      "key": "python:restated-test-docstring",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 3,
+      "variants": [
+        "baseline",
+        "crlf",
+        "no-terminal-newline"
+      ]
+    },
+    {
+      "key": "python:shared-mutable-pydantic-factory",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 6,
+      "negativeProbes": 6,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline",
+        "self-import-alias"
+      ]
+    },
+    {
+      "key": "python:stepdown",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 3,
+      "variants": [
+        "baseline",
+        "crlf",
+        "no-terminal-newline"
+      ]
+    },
+    {
+      "key": "python:store-get-delegates-to-bulk-read",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 10,
+      "negativeProbes": 10,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline"
+      ]
+    },
+    {
+      "key": "python:subprocess-kill-without-reap",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 6,
+      "negativeProbes": 6,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline",
+        "self-import-alias"
+      ]
+    },
+    {
+      "key": "python:timestamp-order-requires-tiebreaker",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 5,
+      "negativeProbes": 5,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline"
+      ]
+    },
+    {
+      "key": "python:typed-error-reasons",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 10,
+      "negativeProbes": 11,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline",
+        "self-import-alias"
+      ]
+    },
+    {
+      "key": "python:unused-test-factory-option",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 10,
+      "negativeProbes": 10,
+      "variants": [
+        "baseline",
+        "crlf",
+        "leading-blank-lines",
+        "literal-format",
+        "no-terminal-newline"
+      ]
+    },
+    {
+      "key": "eslint:duplicate-test-body",
+      "decision": "equivalent-source-coverage",
+      "beforeMismatches": 6,
+      "positiveProbes": 10,
+      "negativeProbes": 14,
+      "variants": [
+        "argument-const",
+        "baseline",
+        "bom",
+        "callee-angle",
+        "callee-as",
+        "callee-combined",
+        "callee-non-null",
+        "callee-satisfies",
+        "comment-noise",
+        "crlf",
+        "string-noise",
+        "template"
+      ]
+    },
+    {
+      "key": "eslint:enforce-file-structure",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 4,
+      "negativeProbes": 14,
+      "variants": [
+        "baseline",
+        "bom",
+        "callee-angle",
+        "callee-as",
+        "callee-combined",
+        "callee-non-null",
+        "callee-satisfies",
+        "comment-noise",
+        "crlf",
+        "import-alias",
+        "string-noise",
+        "template"
+      ]
+    },
+    {
+      "key": "eslint:excessive-commentary",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 4,
+      "negativeProbes": 3,
+      "variants": [
+        "baseline",
+        "bom",
+        "crlf",
+        "import-alias"
+      ]
+    },
+    {
+      "key": "eslint:iac-source-coupled-test",
+      "decision": "equivalent-source-coverage",
+      "beforeMismatches": 5,
+      "positiveProbes": 11,
+      "negativeProbes": 15,
+      "variants": [
+        "argument-const",
+        "baseline",
+        "bom",
+        "callee-angle",
+        "callee-as",
+        "callee-combined",
+        "callee-non-null",
+        "callee-satisfies",
+        "comment-noise",
+        "crlf",
+        "import-alias",
+        "string-noise",
+        "template"
+      ]
+    },
+    {
+      "key": "eslint:interface-contract-members-private",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 4,
+      "negativeProbes": 7,
+      "variants": [
+        "baseline",
+        "bom",
+        "comment-noise",
+        "crlf",
+        "string-noise",
+        "template"
+      ]
+    },
+    {
+      "key": "eslint:no-bare-return-from-test-catch",
+      "decision": "equivalent-source-coverage",
+      "beforeMismatches": 5,
+      "positiveProbes": 10,
+      "negativeProbes": 14,
+      "variants": [
+        "argument-const",
+        "baseline",
+        "bom",
+        "callee-angle",
+        "callee-as",
+        "callee-combined",
+        "callee-non-null",
+        "callee-satisfies",
+        "comment-noise",
+        "crlf",
+        "string-noise",
+        "template"
+      ]
+    },
+    {
+      "key": "eslint:no-bespoke-api-case-conversion",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 5,
+      "negativeProbes": 13,
+      "variants": [
+        "baseline",
+        "bom",
+        "comment-noise",
+        "crlf",
+        "import-alias",
+        "object-key-string",
+        "object-key-template",
+        "string-noise",
+        "template"
+      ]
+    },
+    {
+      "key": "eslint:no-broad-return-type",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 7,
+      "variants": [
+        "baseline",
+        "bom",
+        "comment-noise",
+        "crlf",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:no-client-side-data-fetching",
+      "decision": "equivalent-source-coverage",
+      "beforeMismatches": 4,
+      "positiveProbes": 8,
+      "negativeProbes": 14,
+      "variants": [
+        "argument-const",
+        "baseline",
+        "bom",
+        "callee-as",
+        "callee-combined",
+        "callee-non-null",
+        "callee-satisfies",
+        "comment-noise",
+        "crlf",
+        "import-alias",
+        "string-noise",
+        "template"
+      ]
+    },
+    {
+      "key": "eslint:no-comment-cruft",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 3,
+      "variants": [
+        "baseline",
+        "bom",
+        "crlf"
+      ]
+    },
+    {
+      "key": "eslint:no-conditional-empty-object-spread",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 5,
+      "negativeProbes": 10,
+      "variants": [
+        "baseline",
+        "bom",
+        "comment-noise",
+        "crlf",
+        "object-key-string",
+        "object-key-template",
+        "string-noise",
+        "template"
+      ]
+    },
+    {
+      "key": "eslint:no-cors-wildcard-with-credentials",
+      "decision": "equivalent-source-coverage",
+      "beforeMismatches": 7,
+      "positiveProbes": 11,
+      "negativeProbes": 15,
+      "variants": [
+        "baseline",
+        "bom",
+        "callee-angle",
+        "callee-as",
+        "callee-combined",
+        "callee-non-null",
+        "callee-satisfies",
+        "comment-noise",
+        "crlf",
+        "object-key-string",
+        "object-key-template",
+        "string-noise",
+        "template"
+      ]
+    },
+    {
+      "key": "eslint:no-dangerously-allow-svg",
+      "decision": "equivalent-source-coverage",
+      "beforeMismatches": 2,
+      "positiveProbes": 5,
+      "negativeProbes": 9,
+      "variants": [
+        "baseline",
+        "bom",
+        "comment-noise",
+        "crlf",
+        "object-key-string",
+        "object-key-template",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:no-declaration-comment-wall",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 3,
+      "variants": [
+        "baseline",
+        "bom",
+        "crlf"
+      ]
+    },
+    {
+      "key": "eslint:no-detached-global-fetch",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 12,
+      "variants": [
+        "baseline",
+        "bom",
+        "callee-angle",
+        "callee-as",
+        "callee-combined",
+        "callee-non-null",
+        "callee-satisfies",
+        "comment-noise",
+        "crlf",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:no-duplicate-lifecycle-refresh-listeners",
+      "decision": "equivalent-source-coverage",
+      "beforeMismatches": 6,
+      "positiveProbes": 11,
+      "negativeProbes": 15,
+      "variants": [
+        "argument-const",
+        "baseline",
+        "bom",
+        "callee-angle",
+        "callee-as",
+        "callee-combined",
+        "callee-non-null",
+        "callee-satisfies",
+        "comment-noise",
+        "crlf",
+        "import-alias",
+        "string-noise",
+        "template"
+      ]
+    },
+    {
+      "key": "eslint:no-dynamic-sql",
+      "decision": "equivalent-source-coverage",
+      "beforeMismatches": 10,
+      "positiveProbes": 18,
+      "negativeProbes": 28,
+      "variants": [
+        "argument-const",
+        "baseline",
+        "bom",
+        "callee-angle",
+        "callee-as",
+        "callee-combined",
+        "callee-non-null",
+        "callee-satisfies",
+        "comment-noise",
+        "crlf",
+        "string-noise",
+        "template"
+      ]
+    },
+    {
+      "key": "eslint:no-enum",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 7,
+      "variants": [
+        "baseline",
+        "bom",
+        "comment-noise",
+        "crlf",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:no-excessive-cognitive-complexity",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 9,
+      "negativeProbes": 9,
+      "variants": [
+        "baseline",
+        "bom",
+        "crlf"
+      ]
+    },
+    {
+      "key": "eslint:no-fat-try-blocks",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 8,
+      "negativeProbes": 12,
+      "variants": [
+        "baseline",
+        "bom",
+        "callee-angle",
+        "callee-as",
+        "callee-combined",
+        "callee-non-null",
+        "callee-satisfies",
+        "comment-noise",
+        "crlf",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:no-first-party-module-mock",
+      "decision": "equivalent-source-coverage",
+      "beforeMismatches": 6,
+      "positiveProbes": 13,
+      "negativeProbes": 14,
+      "variants": [
+        "argument-const",
+        "baseline",
+        "bom",
+        "callee-angle",
+        "callee-as",
+        "callee-combined",
+        "callee-non-null",
+        "callee-satisfies",
+        "comment-noise",
+        "crlf",
+        "import-alias",
+        "object-key-string",
+        "object-key-template",
+        "string-noise",
+        "template"
+      ]
+    },
+    {
+      "key": "eslint:no-generic-single-export-module",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 7,
+      "variants": [
+        "baseline",
+        "bom",
+        "comment-noise",
+        "crlf",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:no-hand-rolled-sleep",
+      "decision": "equivalent-source-coverage",
+      "beforeMismatches": 5,
+      "positiveProbes": 8,
+      "negativeProbes": 13,
+      "variants": [
+        "baseline",
+        "bom",
+        "callee-angle",
+        "callee-as",
+        "callee-combined",
+        "callee-non-null",
+        "callee-satisfies",
+        "comment-noise",
+        "crlf",
+        "import-alias",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:no-hand-rolled-spinner",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 7,
+      "variants": [
+        "baseline",
+        "bom",
+        "comment-noise",
+        "crlf",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:no-impossible-zod-literal-bounds",
+      "decision": "equivalent-source-coverage",
+      "beforeMismatches": 5,
+      "positiveProbes": 10,
+      "negativeProbes": 14,
+      "variants": [
+        "baseline",
+        "bom",
+        "callee-angle",
+        "callee-as",
+        "callee-combined",
+        "callee-non-null",
+        "callee-satisfies",
+        "comment-noise",
+        "crlf",
+        "import-alias",
+        "string-noise",
+        "template"
+      ]
+    },
+    {
+      "key": "eslint:no-in-operator-on-built-in-collections",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 8,
+      "negativeProbes": 13,
+      "variants": [
+        "baseline",
+        "bom",
+        "callee-angle",
+        "callee-as",
+        "callee-combined",
+        "callee-non-null",
+        "callee-satisfies",
+        "comment-noise",
+        "crlf",
+        "string-noise",
+        "template"
+      ]
+    },
+    {
+      "key": "eslint:no-insecure-random-id",
+      "decision": "equivalent-source-coverage",
+      "beforeMismatches": 5,
+      "positiveProbes": 9,
+      "negativeProbes": 13,
+      "variants": [
+        "baseline",
+        "bom",
+        "callee-angle",
+        "callee-as",
+        "callee-combined",
+        "callee-non-null",
+        "callee-satisfies",
+        "comment-noise",
+        "crlf",
+        "string-noise",
+        "template"
+      ]
+    },
+    {
+      "key": "eslint:no-json-stringify-error",
+      "decision": "equivalent-source-coverage",
+      "beforeMismatches": 7,
+      "positiveProbes": 11,
+      "negativeProbes": 15,
+      "variants": [
+        "baseline",
+        "bom",
+        "callee-angle",
+        "callee-as",
+        "callee-combined",
+        "callee-non-null",
+        "callee-satisfies",
+        "comment-noise",
+        "crlf",
+        "object-key-string",
+        "object-key-template",
+        "string-noise",
+        "template"
+      ]
+    },
+    {
+      "key": "eslint:no-json-stringify-object-equality",
+      "decision": "equivalent-source-coverage",
+      "beforeMismatches": 5,
+      "positiveProbes": 11,
+      "negativeProbes": 12,
+      "variants": [
+        "baseline",
+        "bom",
+        "callee-angle",
+        "callee-as",
+        "callee-combined",
+        "callee-non-null",
+        "callee-satisfies",
+        "comment-noise",
+        "crlf",
+        "object-key-string",
+        "object-key-template",
+        "string-noise",
+        "template"
+      ]
+    },
+    {
+      "key": "eslint:no-known-value-widening",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 7,
+      "variants": [
+        "baseline",
+        "bom",
+        "comment-noise",
+        "crlf",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:no-log-only-catch",
+      "decision": "equivalent-source-coverage",
+      "beforeMismatches": 5,
+      "positiveProbes": 9,
+      "negativeProbes": 13,
+      "variants": [
+        "baseline",
+        "bom",
+        "callee-angle",
+        "callee-as",
+        "callee-combined",
+        "callee-non-null",
+        "callee-satisfies",
+        "comment-noise",
+        "crlf",
+        "string-noise",
+        "template"
+      ]
+    },
+    {
+      "key": "eslint:no-long-comment",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 3,
+      "variants": [
+        "baseline",
+        "bom",
+        "crlf"
+      ]
+    },
+    {
+      "key": "eslint:no-offset-pagination",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 9,
+      "negativeProbes": 13,
+      "variants": [
+        "baseline",
+        "bom",
+        "callee-angle",
+        "callee-as",
+        "callee-combined",
+        "callee-non-null",
+        "callee-satisfies",
+        "comment-noise",
+        "crlf",
+        "string-noise",
+        "template"
+      ]
+    },
+    {
+      "key": "eslint:no-positional-tuple-return",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 8,
+      "negativeProbes": 12,
+      "variants": [
+        "baseline",
+        "bom",
+        "callee-angle",
+        "callee-as",
+        "callee-combined",
+        "callee-non-null",
+        "callee-satisfies",
+        "comment-noise",
+        "crlf",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:no-production-browser-source-maps",
+      "decision": "equivalent-source-coverage",
+      "beforeMismatches": 2,
+      "positiveProbes": 5,
+      "negativeProbes": 9,
+      "variants": [
+        "baseline",
+        "bom",
+        "comment-noise",
+        "crlf",
+        "object-key-string",
+        "object-key-template",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:no-raw-env",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 4,
+      "negativeProbes": 9,
+      "variants": [
+        "baseline",
+        "bom",
+        "comment-noise",
+        "crlf",
+        "import-alias",
+        "string-noise",
+        "template"
+      ]
+    },
+    {
+      "key": "eslint:no-raw-fetch-outside-clients",
+      "decision": "equivalent-source-coverage",
+      "beforeMismatches": 5,
+      "positiveProbes": 9,
+      "negativeProbes": 13,
+      "variants": [
+        "argument-const",
+        "baseline",
+        "bom",
+        "callee-angle",
+        "callee-as",
+        "callee-combined",
+        "callee-non-null",
+        "callee-satisfies",
+        "comment-noise",
+        "crlf",
+        "string-noise",
+        "template"
+      ]
+    },
+    {
+      "key": "eslint:no-reduce-accumulator-copy",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 4,
+      "negativeProbes": 8,
+      "variants": [
+        "baseline",
+        "bom",
+        "comment-noise",
+        "crlf",
+        "string-noise",
+        "template"
+      ]
+    },
+    {
+      "key": "eslint:no-redundant-optional-array-default",
+      "decision": "equivalent-source-coverage",
+      "beforeMismatches": 5,
+      "positiveProbes": 10,
+      "negativeProbes": 14,
+      "variants": [
+        "baseline",
+        "bom",
+        "callee-angle",
+        "callee-as",
+        "callee-combined",
+        "callee-non-null",
+        "callee-satisfies",
+        "comment-noise",
+        "crlf",
+        "import-alias",
+        "string-noise",
+        "template"
+      ]
+    },
+    {
+      "key": "eslint:no-repeated-string-literal",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 7,
+      "variants": [
+        "baseline",
+        "bom",
+        "comment-noise",
+        "crlf",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:no-restated-comment",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 3,
+      "variants": [
+        "baseline",
+        "bom",
+        "crlf"
+      ]
+    },
+    {
+      "key": "eslint:no-restated-jsdoc",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 6,
+      "negativeProbes": 6,
+      "variants": [
+        "baseline",
+        "bom",
+        "crlf"
+      ]
+    },
+    {
+      "key": "eslint:no-restricted-library-load",
+      "decision": "equivalent-source-coverage",
+      "beforeMismatches": 6,
+      "positiveProbes": 9,
+      "negativeProbes": 8,
+      "variants": [
+        "argument-const",
+        "baseline",
+        "bom",
+        "callee-angle",
+        "callee-as",
+        "callee-combined",
+        "callee-non-null",
+        "callee-satisfies",
+        "comment-noise",
+        "crlf",
+        "import-alias",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:no-router-refresh-polling",
+      "decision": "equivalent-source-coverage",
+      "beforeMismatches": 4,
+      "positiveProbes": 9,
+      "negativeProbes": 12,
+      "variants": [
+        "baseline",
+        "bom",
+        "callee-as",
+        "callee-combined",
+        "callee-non-null",
+        "callee-satisfies",
+        "comment-noise",
+        "crlf",
+        "import-alias",
+        "string-noise",
+        "template"
+      ]
+    },
+    {
+      "key": "eslint:no-secret-in-log",
+      "decision": "equivalent-source-coverage",
+      "beforeMismatches": 5,
+      "positiveProbes": 10,
+      "negativeProbes": 14,
+      "variants": [
+        "argument-const",
+        "baseline",
+        "bom",
+        "callee-angle",
+        "callee-as",
+        "callee-combined",
+        "callee-non-null",
+        "callee-satisfies",
+        "comment-noise",
+        "crlf",
+        "string-noise",
+        "template"
+      ]
+    },
+    {
+      "key": "eslint:no-select-star",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 9,
+      "negativeProbes": 13,
+      "variants": [
+        "baseline",
+        "bom",
+        "callee-angle",
+        "callee-as",
+        "callee-combined",
+        "callee-non-null",
+        "callee-satisfies",
+        "comment-noise",
+        "crlf",
+        "string-noise",
+        "template"
+      ]
+    },
+    {
+      "key": "eslint:no-sentinel-return-on-catch",
+      "decision": "false-positive-fix",
+      "beforeMismatches": 5,
+      "positiveProbes": 8,
+      "negativeProbes": 14,
+      "variants": [
+        "argument-const",
+        "baseline",
+        "bom",
+        "callee-angle",
+        "callee-as",
+        "callee-combined",
+        "callee-non-null",
+        "callee-satisfies",
+        "comment-noise",
+        "crlf",
+        "string-noise",
+        "template"
+      ]
+    },
+    {
+      "key": "eslint:no-server-env-in-client-component",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 5,
+      "negativeProbes": 9,
+      "variants": [
+        "baseline",
+        "bom",
+        "comment-noise",
+        "crlf",
+        "import-alias",
+        "string-noise",
+        "template"
+      ]
+    },
+    {
+      "key": "eslint:no-silent-promise-catch",
+      "decision": "shared-fact-simplification",
+      "beforeMismatches": 0,
+      "positiveProbes": 9,
+      "negativeProbes": 14,
+      "variants": [
+        "argument-const",
+        "baseline",
+        "bom",
+        "callee-angle",
+        "callee-as",
+        "callee-combined",
+        "callee-non-null",
+        "callee-satisfies",
+        "comment-noise",
+        "crlf",
+        "string-noise",
+        "template"
+      ]
+    },
+    {
+      "key": "eslint:no-sleep-in-test-body",
+      "decision": "equivalent-source-coverage",
+      "beforeMismatches": 5,
+      "positiveProbes": 10,
+      "negativeProbes": 14,
+      "variants": [
+        "argument-const",
+        "baseline",
+        "bom",
+        "callee-angle",
+        "callee-as",
+        "callee-combined",
+        "callee-non-null",
+        "callee-satisfies",
+        "comment-noise",
+        "crlf",
+        "string-noise",
+        "template"
+      ]
+    },
+    {
+      "key": "eslint:no-storage-in-stateless-modules",
+      "decision": "equivalent-source-coverage",
+      "beforeMismatches": 5,
+      "positiveProbes": 10,
+      "negativeProbes": 13,
+      "variants": [
+        "argument-const",
+        "baseline",
+        "bom",
+        "callee-angle",
+        "callee-as",
+        "callee-combined",
+        "callee-non-null",
+        "callee-satisfies",
+        "comment-noise",
+        "crlf",
+        "string-noise",
+        "template"
+      ]
+    },
+    {
+      "key": "eslint:no-string-concat-in-loop",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 14,
+      "variants": [
+        "argument-const",
+        "baseline",
+        "bom",
+        "callee-angle",
+        "callee-as",
+        "callee-combined",
+        "callee-non-null",
+        "callee-satisfies",
+        "comment-noise",
+        "crlf",
+        "string-noise",
+        "template"
+      ]
+    },
+    {
+      "key": "eslint:no-tautological-expect",
+      "decision": "equivalent-source-coverage",
+      "beforeMismatches": 5,
+      "positiveProbes": 10,
+      "negativeProbes": 14,
+      "variants": [
+        "argument-const",
+        "baseline",
+        "bom",
+        "callee-angle",
+        "callee-as",
+        "callee-combined",
+        "callee-non-null",
+        "callee-satisfies",
+        "comment-noise",
+        "crlf",
+        "string-noise",
+        "template"
+      ]
+    },
+    {
+      "key": "eslint:no-trailing-value-narration",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 7,
+      "variants": [
+        "baseline",
+        "bom",
+        "comment-noise",
+        "crlf",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:no-type-member-comment-wall",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 3,
+      "variants": [
+        "baseline",
+        "bom",
+        "crlf"
+      ]
+    },
+    {
+      "key": "eslint:no-typed-doc-sections",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 7,
+      "variants": [
+        "baseline",
+        "bom",
+        "comment-noise",
+        "crlf",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:no-union-in-comment",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 3,
+      "variants": [
+        "baseline",
+        "bom",
+        "crlf"
+      ]
+    },
+    {
+      "key": "eslint:no-unlocalized-jsx-attributes",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 12,
+      "variants": [
+        "argument-const",
+        "baseline",
+        "bom",
+        "callee-as",
+        "callee-combined",
+        "callee-non-null",
+        "callee-satisfies",
+        "comment-noise",
+        "crlf",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:no-unlocalized-jsx-text",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 12,
+      "variants": [
+        "argument-const",
+        "baseline",
+        "bom",
+        "callee-as",
+        "callee-combined",
+        "callee-non-null",
+        "callee-satisfies",
+        "comment-noise",
+        "crlf",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:no-unlocalized-toast",
+      "decision": "equivalent-source-coverage",
+      "beforeMismatches": 5,
+      "positiveProbes": 10,
+      "negativeProbes": 14,
+      "variants": [
+        "argument-const",
+        "baseline",
+        "bom",
+        "callee-as",
+        "callee-combined",
+        "callee-non-null",
+        "callee-satisfies",
+        "comment-noise",
+        "crlf",
+        "import-alias",
+        "string-noise",
+        "template"
+      ]
+    },
+    {
+      "key": "eslint:no-unnecessary-use-client",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 12,
+      "variants": [
+        "baseline",
+        "bom",
+        "callee-as",
+        "callee-combined",
+        "callee-non-null",
+        "callee-satisfies",
+        "comment-noise",
+        "crlf",
+        "import-alias",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:no-unsafe-mock-casting",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 4,
+      "negativeProbes": 17,
+      "variants": [
+        "argument-const",
+        "baseline",
+        "bom",
+        "callee-angle",
+        "callee-as",
+        "callee-combined",
+        "callee-non-null",
+        "callee-satisfies",
+        "comment-noise",
+        "crlf",
+        "import-alias",
+        "object-key-string",
+        "object-key-template",
+        "string-noise",
+        "template"
+      ]
+    },
+    {
+      "key": "eslint:no-unsafe-test-double-cast",
+      "decision": "equivalent-source-coverage",
+      "beforeMismatches": 5,
+      "positiveProbes": 12,
+      "negativeProbes": 9,
+      "variants": [
+        "baseline",
+        "bom",
+        "callee-angle",
+        "callee-as",
+        "callee-combined",
+        "callee-non-null",
+        "callee-satisfies",
+        "comment-noise",
+        "crlf",
+        "import-alias",
+        "object-key-string",
+        "object-key-template",
+        "string-noise",
+        "template"
+      ]
+    },
+    {
+      "key": "eslint:no-vague-suppression-description",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 4,
+      "negativeProbes": 8,
+      "variants": [
+        "baseline",
+        "bom",
+        "comment-noise",
+        "crlf",
+        "string-noise",
+        "template"
+      ]
+    },
+    {
+      "key": "eslint:no-zod-native-enum",
+      "decision": "equivalent-source-coverage",
+      "beforeMismatches": 5,
+      "positiveProbes": 12,
+      "negativeProbes": 14,
+      "variants": [
+        "baseline",
+        "bom",
+        "callee-angle",
+        "callee-as",
+        "callee-combined",
+        "callee-non-null",
+        "callee-satisfies",
+        "comment-noise",
+        "crlf",
+        "import-alias",
+        "object-key-string",
+        "object-key-template",
+        "string-noise",
+        "template"
+      ]
+    },
+    {
+      "key": "eslint:prefer-await-in-async-return",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 9,
+      "negativeProbes": 13,
+      "variants": [
+        "baseline",
+        "bom",
+        "callee-angle",
+        "callee-as",
+        "callee-combined",
+        "callee-non-null",
+        "callee-satisfies",
+        "comment-noise",
+        "crlf",
+        "string-noise",
+        "template"
+      ]
+    },
+    {
+      "key": "eslint:prefer-constant-time-secret-compare",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 8,
+      "negativeProbes": 12,
+      "variants": [
+        "baseline",
+        "bom",
+        "callee-angle",
+        "callee-as",
+        "callee-combined",
+        "callee-non-null",
+        "callee-satisfies",
+        "comment-noise",
+        "crlf",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:prefer-discriminated-union",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 7,
+      "variants": [
+        "baseline",
+        "bom",
+        "comment-noise",
+        "crlf",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:prefer-ecmascript-private-members",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 4,
+      "negativeProbes": 7,
+      "variants": [
+        "baseline",
+        "bom",
+        "comment-noise",
+        "crlf",
+        "string-noise",
+        "template"
+      ]
+    },
+    {
+      "key": "eslint:prefer-immutable-module-constant",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 8,
+      "negativeProbes": 16,
+      "variants": [
+        "baseline",
+        "bom",
+        "comment-noise",
+        "crlf",
+        "object-key-string",
+        "object-key-template",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:prefer-input-group-search",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 4,
+      "negativeProbes": 8,
+      "variants": [
+        "baseline",
+        "bom",
+        "comment-noise",
+        "crlf",
+        "import-alias",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:prefer-logical-tailwind-utilities",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 7,
+      "variants": [
+        "baseline",
+        "bom",
+        "comment-noise",
+        "crlf",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:prefer-millisecond-control-duration-schema",
+      "decision": "equivalent-source-coverage",
+      "beforeMismatches": 5,
+      "positiveProbes": 10,
+      "negativeProbes": 18,
+      "variants": [
+        "baseline",
+        "bom",
+        "callee-angle",
+        "callee-as",
+        "callee-combined",
+        "callee-non-null",
+        "callee-satisfies",
+        "comment-noise",
+        "crlf",
+        "import-alias",
+        "object-key-string",
+        "object-key-template",
+        "string-noise",
+        "template"
+      ]
+    },
+    {
+      "key": "eslint:prefer-module-level-constant",
+      "decision": "equivalent-source-coverage",
+      "beforeMismatches": 4,
+      "positiveProbes": 9,
+      "negativeProbes": 13,
+      "variants": [
+        "baseline",
+        "bom",
+        "callee-angle",
+        "callee-as",
+        "callee-combined",
+        "callee-non-null",
+        "callee-satisfies",
+        "comment-noise",
+        "crlf",
+        "string-noise",
+        "template"
+      ]
+    },
+    {
+      "key": "eslint:prefer-module-level-refined-schema",
+      "decision": "equivalent-source-coverage",
+      "beforeMismatches": 5,
+      "positiveProbes": 10,
+      "negativeProbes": 14,
+      "variants": [
+        "baseline",
+        "bom",
+        "callee-angle",
+        "callee-as",
+        "callee-combined",
+        "callee-non-null",
+        "callee-satisfies",
+        "comment-noise",
+        "crlf",
+        "import-alias",
+        "string-noise",
+        "template"
+      ]
+    },
+    {
+      "key": "eslint:prefer-module-level-schema",
+      "decision": "equivalent-source-coverage",
+      "beforeMismatches": 5,
+      "positiveProbes": 12,
+      "negativeProbes": 16,
+      "variants": [
+        "baseline",
+        "bom",
+        "callee-angle",
+        "callee-as",
+        "callee-combined",
+        "callee-non-null",
+        "callee-satisfies",
+        "comment-noise",
+        "crlf",
+        "import-alias",
+        "object-key-string",
+        "object-key-template",
+        "string-noise",
+        "template"
+      ]
+    },
+    {
+      "key": "eslint:prefer-multi-value-zod-literal",
+      "decision": "equivalent-source-coverage",
+      "beforeMismatches": 5,
+      "positiveProbes": 10,
+      "negativeProbes": 14,
+      "variants": [
+        "baseline",
+        "bom",
+        "callee-angle",
+        "callee-as",
+        "callee-combined",
+        "callee-non-null",
+        "callee-satisfies",
+        "comment-noise",
+        "crlf",
+        "import-alias",
+        "string-noise",
+        "template"
+      ]
+    },
+    {
+      "key": "eslint:prefer-named-callback-domain",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 7,
+      "variants": [
+        "baseline",
+        "bom",
+        "comment-noise",
+        "crlf",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:prefer-named-complex-return-type",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 5,
+      "negativeProbes": 9,
+      "variants": [
+        "baseline",
+        "bom",
+        "comment-noise",
+        "crlf",
+        "object-key-string",
+        "object-key-template",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:prefer-native-random-uuid",
+      "decision": "equivalent-source-coverage",
+      "beforeMismatches": 5,
+      "positiveProbes": 9,
+      "negativeProbes": 13,
+      "variants": [
+        "baseline",
+        "bom",
+        "callee-angle",
+        "callee-as",
+        "callee-combined",
+        "callee-non-null",
+        "callee-satisfies",
+        "comment-noise",
+        "crlf",
+        "import-alias",
+        "string-noise",
+        "template"
+      ]
+    },
+    {
+      "key": "eslint:prefer-node-crypto-hash",
+      "decision": "equivalent-source-coverage",
+      "beforeMismatches": 6,
+      "positiveProbes": 11,
+      "negativeProbes": 14,
+      "variants": [
+        "argument-const",
+        "baseline",
+        "bom",
+        "callee-angle",
+        "callee-as",
+        "callee-combined",
+        "callee-non-null",
+        "callee-satisfies",
+        "comment-noise",
+        "crlf",
+        "import-alias",
+        "string-noise",
+        "template"
+      ]
+    },
+    {
+      "key": "eslint:prefer-node-fs-promises",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 10,
+      "negativeProbes": 14,
+      "variants": [
+        "argument-const",
+        "baseline",
+        "bom",
+        "callee-angle",
+        "callee-as",
+        "callee-combined",
+        "callee-non-null",
+        "callee-satisfies",
+        "comment-noise",
+        "crlf",
+        "import-alias",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:prefer-nominal-id-types",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 7,
+      "variants": [
+        "baseline",
+        "bom",
+        "comment-noise",
+        "crlf",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:prefer-non-nullable-collection",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 4,
+      "negativeProbes": 8,
+      "variants": [
+        "baseline",
+        "bom",
+        "comment-noise",
+        "crlf",
+        "string-noise",
+        "template"
+      ]
+    },
+    {
+      "key": "eslint:prefer-nullish-filter-predicate",
+      "decision": "equivalent-source-coverage",
+      "beforeMismatches": 5,
+      "positiveProbes": 9,
+      "negativeProbes": 13,
+      "variants": [
+        "baseline",
+        "bom",
+        "callee-angle",
+        "callee-as",
+        "callee-combined",
+        "callee-non-null",
+        "callee-satisfies",
+        "comment-noise",
+        "crlf",
+        "string-noise",
+        "template"
+      ]
+    },
+    {
+      "key": "eslint:prefer-schema-for-api-payload",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 9,
+      "negativeProbes": 13,
+      "variants": [
+        "baseline",
+        "bom",
+        "callee-angle",
+        "callee-as",
+        "callee-combined",
+        "callee-non-null",
+        "callee-satisfies",
+        "comment-noise",
+        "crlf",
+        "string-noise",
+        "template"
+      ]
+    },
+    {
+      "key": "eslint:prefer-semantic-colors",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 7,
+      "variants": [
+        "baseline",
+        "bom",
+        "comment-noise",
+        "crlf",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:prefer-server-actions",
+      "decision": "equivalent-source-coverage",
+      "beforeMismatches": 7,
+      "positiveProbes": 10,
+      "negativeProbes": 12,
+      "variants": [
+        "argument-const",
+        "baseline",
+        "bom",
+        "callee-as",
+        "callee-combined",
+        "callee-non-null",
+        "callee-satisfies",
+        "comment-noise",
+        "crlf",
+        "import-alias",
+        "object-key-string",
+        "object-key-template",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:prefer-shadcn-primitives",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 4,
+      "negativeProbes": 8,
+      "variants": [
+        "baseline",
+        "bom",
+        "comment-noise",
+        "crlf",
+        "import-alias",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:prefer-shared-zod-enum",
+      "decision": "equivalent-source-coverage",
+      "beforeMismatches": 5,
+      "positiveProbes": 12,
+      "negativeProbes": 16,
+      "variants": [
+        "baseline",
+        "bom",
+        "callee-angle",
+        "callee-as",
+        "callee-combined",
+        "callee-non-null",
+        "callee-satisfies",
+        "comment-noise",
+        "crlf",
+        "import-alias",
+        "object-key-string",
+        "object-key-template",
+        "string-noise",
+        "template"
+      ]
+    },
+    {
+      "key": "eslint:prefer-switch-for-repeated-equality",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 8,
+      "negativeProbes": 12,
+      "variants": [
+        "baseline",
+        "bom",
+        "callee-angle",
+        "callee-as",
+        "callee-combined",
+        "callee-non-null",
+        "callee-satisfies",
+        "comment-noise",
+        "crlf",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:prefer-typed-reflection",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 4,
+      "negativeProbes": 8,
+      "variants": [
+        "baseline",
+        "bom",
+        "comment-noise",
+        "crlf",
+        "string-noise",
+        "template"
+      ]
+    },
+    {
+      "key": "eslint:prefer-whole-object-assertion",
+      "decision": "equivalent-source-coverage",
+      "beforeMismatches": 6,
+      "positiveProbes": 10,
+      "negativeProbes": 15,
+      "variants": [
+        "argument-const",
+        "baseline",
+        "bom",
+        "callee-angle",
+        "callee-as",
+        "callee-combined",
+        "callee-non-null",
+        "callee-satisfies",
+        "comment-noise",
+        "crlf",
+        "object-key-string",
+        "object-key-template",
+        "string-noise",
+        "template"
+      ]
+    },
+    {
+      "key": "eslint:prefer-zod-infer",
+      "decision": "equivalent-source-coverage",
+      "beforeMismatches": 7,
+      "positiveProbes": 12,
+      "negativeProbes": 16,
+      "variants": [
+        "baseline",
+        "bom",
+        "callee-angle",
+        "callee-as",
+        "callee-combined",
+        "callee-non-null",
+        "callee-satisfies",
+        "comment-noise",
+        "crlf",
+        "import-alias",
+        "object-key-string",
+        "object-key-template",
+        "string-noise",
+        "template"
+      ]
+    },
+    {
+      "key": "eslint:prefer-zod-parse-output-type",
+      "decision": "equivalent-source-coverage",
+      "beforeMismatches": 5,
+      "positiveProbes": 12,
+      "negativeProbes": 16,
+      "variants": [
+        "baseline",
+        "bom",
+        "callee-angle",
+        "callee-as",
+        "callee-combined",
+        "callee-non-null",
+        "callee-satisfies",
+        "comment-noise",
+        "crlf",
+        "import-alias",
+        "object-key-string",
+        "object-key-template",
+        "string-noise",
+        "template"
+      ]
+    },
+    {
+      "key": "eslint:repeated-static-call-cases",
+      "decision": "equivalent-source-coverage",
+      "beforeMismatches": 5,
+      "positiveProbes": 10,
+      "negativeProbes": 14,
+      "variants": [
+        "argument-const",
+        "baseline",
+        "bom",
+        "callee-angle",
+        "callee-as",
+        "callee-combined",
+        "callee-non-null",
+        "callee-satisfies",
+        "comment-noise",
+        "crlf",
+        "string-noise",
+        "template"
+      ]
+    },
+    {
+      "key": "eslint:require-assert-never",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 12,
+      "variants": [
+        "baseline",
+        "bom",
+        "callee-angle",
+        "callee-as",
+        "callee-combined",
+        "callee-non-null",
+        "callee-satisfies",
+        "comment-noise",
+        "crlf",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:require-button-accessible-name",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 7,
+      "variants": [
+        "baseline",
+        "bom",
+        "comment-noise",
+        "crlf",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:require-camelcase-properties",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 5,
+      "negativeProbes": 9,
+      "variants": [
+        "baseline",
+        "bom",
+        "comment-noise",
+        "crlf",
+        "object-key-string",
+        "object-key-template",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:require-explicit-contract-implementation",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 7,
+      "variants": [
+        "baseline",
+        "bom",
+        "comment-noise",
+        "crlf",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:require-explicit-service-contract",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 4,
+      "negativeProbes": 8,
+      "variants": [
+        "baseline",
+        "bom",
+        "comment-noise",
+        "crlf",
+        "string-noise",
+        "template"
+      ]
+    },
+    {
+      "key": "eslint:require-fetch-timeout",
+      "decision": "equivalent-source-coverage",
+      "beforeMismatches": 6,
+      "positiveProbes": 9,
+      "negativeProbes": 15,
+      "variants": [
+        "argument-const",
+        "baseline",
+        "bom",
+        "callee-angle",
+        "callee-as",
+        "callee-combined",
+        "callee-non-null",
+        "callee-satisfies",
+        "comment-noise",
+        "crlf",
+        "object-key-string",
+        "object-key-template",
+        "string-noise",
+        "template"
+      ]
+    },
+    {
+      "key": "eslint:require-interface-for-exported-class",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 7,
+      "variants": [
+        "baseline",
+        "bom",
+        "comment-noise",
+        "crlf",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:require-pascal-case-zod-schema-name",
+      "decision": "equivalent-source-coverage",
+      "beforeMismatches": 5,
+      "positiveProbes": 12,
+      "negativeProbes": 16,
+      "variants": [
+        "baseline",
+        "bom",
+        "callee-angle",
+        "callee-as",
+        "callee-combined",
+        "callee-non-null",
+        "callee-satisfies",
+        "comment-noise",
+        "crlf",
+        "import-alias",
+        "object-key-string",
+        "object-key-template",
+        "string-noise",
+        "template"
+      ]
+    },
+    {
+      "key": "eslint:require-port-for-service",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 4,
+      "negativeProbes": 8,
+      "variants": [
+        "baseline",
+        "bom",
+        "comment-noise",
+        "crlf",
+        "string-noise",
+        "template"
+      ]
+    },
+    {
+      "key": "eslint:require-sql-access-class",
+      "decision": "equivalent-source-coverage",
+      "beforeMismatches": 5,
+      "positiveProbes": 10,
+      "negativeProbes": 9,
+      "variants": [
+        "argument-const",
+        "baseline",
+        "bom",
+        "callee-angle",
+        "callee-as",
+        "callee-combined",
+        "callee-non-null",
+        "callee-satisfies",
+        "comment-noise",
+        "crlf",
+        "string-noise",
+        "template"
+      ]
+    },
+    {
+      "key": "eslint:require-static-next-matcher",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 9,
+      "variants": [
+        "baseline",
+        "bom",
+        "comment-noise",
+        "crlf",
+        "object-key-string",
+        "object-key-template",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:require-svg-accessible-name",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 7,
+      "variants": [
+        "baseline",
+        "bom",
+        "comment-noise",
+        "crlf",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:require-use-form-default-values",
+      "decision": "equivalent-source-coverage",
+      "beforeMismatches": 4,
+      "positiveProbes": 9,
+      "negativeProbes": 15,
+      "variants": [
+        "baseline",
+        "bom",
+        "callee-as",
+        "callee-combined",
+        "callee-non-null",
+        "callee-satisfies",
+        "comment-noise",
+        "crlf",
+        "import-alias",
+        "object-key-string",
+        "object-key-template",
+        "string-noise",
+        "template"
+      ]
+    },
+    {
+      "key": "eslint:require-use-server-in-actions-file",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 7,
+      "variants": [
+        "baseline",
+        "bom",
+        "comment-noise",
+        "crlf",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:require-zod-form-validation",
+      "decision": "equivalent-source-coverage",
+      "beforeMismatches": 5,
+      "positiveProbes": 10,
+      "negativeProbes": 16,
+      "variants": [
+        "argument-const",
+        "baseline",
+        "bom",
+        "callee-angle",
+        "callee-as",
+        "callee-combined",
+        "callee-non-null",
+        "callee-satisfies",
+        "comment-noise",
+        "crlf",
+        "object-key-string",
+        "object-key-template",
+        "string-noise",
+        "template"
+      ]
+    },
+    {
+      "key": "eslint:sole-export-matches-filename",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 7,
+      "variants": [
+        "baseline",
+        "bom",
+        "comment-noise",
+        "crlf",
+        "string-noise"
+      ]
+    },
+    {
+      "key": "eslint:source-coupled-test",
+      "decision": "equivalent-source-coverage",
+      "beforeMismatches": 5,
+      "positiveProbes": 11,
+      "negativeProbes": 15,
+      "variants": [
+        "argument-const",
+        "baseline",
+        "bom",
+        "callee-angle",
+        "callee-as",
+        "callee-combined",
+        "callee-non-null",
+        "callee-satisfies",
+        "comment-noise",
+        "crlf",
+        "import-alias",
+        "string-noise",
+        "template"
+      ]
+    },
+    {
+      "key": "eslint:stepdown",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 3,
+      "variants": [
+        "baseline",
+        "bom",
+        "crlf"
+      ]
+    },
+    {
+      "key": "eslint:store-insert-requires-on-conflict",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 9,
+      "negativeProbes": 13,
+      "variants": [
+        "baseline",
+        "bom",
+        "callee-angle",
+        "callee-as",
+        "callee-combined",
+        "callee-non-null",
+        "callee-satisfies",
+        "comment-noise",
+        "crlf",
+        "string-noise",
+        "template"
+      ]
+    },
+    {
+      "key": "eslint:test-loops-over-literal-cases",
+      "decision": "equivalent-source-coverage",
+      "beforeMismatches": 5,
+      "positiveProbes": 10,
+      "negativeProbes": 14,
+      "variants": [
+        "argument-const",
+        "baseline",
+        "bom",
+        "callee-angle",
+        "callee-as",
+        "callee-combined",
+        "callee-non-null",
+        "callee-satisfies",
+        "comment-noise",
+        "crlf",
+        "string-noise",
+        "template"
+      ]
+    },
+    {
+      "key": "eslint:test-phase-label-comment",
+      "decision": "retain",
+      "beforeMismatches": 0,
+      "positiveProbes": 3,
+      "negativeProbes": 3,
+      "variants": [
+        "baseline",
+        "bom",
+        "crlf"
+      ]
+    }
+  ],
+  "integrationBaseCommit": "d4b9b039c2683fb3b7fee3c51621417aaadea4f5"
+}

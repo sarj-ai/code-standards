@@ -80,8 +80,12 @@ def _mock_builders(monkeypatch: pytest.MonkeyPatch, *, fail_catalog_sync: bool =
         rule_catalog_artifact, "typescript_specs", typescript_specs
     )
 
-    def sync_warning_levels(_root: Path, *, check: bool, writer: Callable[[Path, str], None] | None = None) -> bool:
-        _ = check, writer
+    def sync_warning_levels(
+        _root: Path,
+        *,
+        check: bool,  # ruff: ignore[unused-function-argument] -- Warning synchronization fixes this keyword.
+        writer: Callable[[Path, str], None] | None = None,  # ruff: ignore[unused-function-argument] -- Warning synchronization fixes this keyword.
+    ) -> bool:
         return True
 
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- lifecycle orchestration interception is the behavior under test.
@@ -95,11 +99,10 @@ def _mock_builders(monkeypatch: pytest.MonkeyPatch, *, fail_catalog_sync: bool =
             root: Path,
             *,
             check: bool,
-            levels: object = None,
-            typescript: object = None,
+            levels: object = None,  # ruff: ignore[unused-function-argument] -- Catalog synchronization fixes this keyword.
+            typescript: object = None,  # ruff: ignore[unused-function-argument] -- Catalog synchronization fixes this keyword.
             writer: Callable[[Path, str], None] | None = None,
         ) -> object:
-            _ = levels, typescript
             if check:
                 status = 0 if (root / relative).read_text(encoding="utf-8") == '{"updated":true}\n' else 1
                 return type("Result", (), {"status": status})()
@@ -231,12 +234,11 @@ def test_lifecycle_rollback_preserves_unwritten_and_unrelated_edits(
     def fail_catalog(
         _root: Path,
         *,
-        check: bool,
-        levels: object = None,
-        typescript: object = None,
-        writer: Callable[[Path, str], None] | None = None,
+        check: bool,  # ruff: ignore[unused-function-argument] -- Catalog synchronization fixes this keyword.
+        levels: object = None,  # ruff: ignore[unused-function-argument] -- Catalog synchronization fixes this keyword.
+        typescript: object = None,  # ruff: ignore[unused-function-argument] -- Catalog synchronization fixes this keyword.
+        writer: Callable[[Path, str], None] | None = None,  # ruff: ignore[unused-function-argument] -- Catalog synchronization fixes this keyword.
     ) -> object:
-        _ = check, levels, typescript, writer
         catalog_path.write_text("concurrent catalog\n", encoding="utf-8")
         unrelated.write_text("concurrent package\n", encoding="utf-8")
         msg = "injected catalog failure"

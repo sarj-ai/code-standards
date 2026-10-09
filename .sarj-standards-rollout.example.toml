@@ -7,8 +7,28 @@ schema = 1
 name = "example-consumer"
 repository = "example/consumer"
 branch = "main"
-verify = ["make check"]
+verify = ["make", "check"]
 channel = "canary"
 baseline_rules = ["eslint:@sarj/example-promoted-rule"]
 requires_approval = true
 auto_merge = false
+# Enable blob filtering for verification that uses the checkout and its base;
+# full clones support verification that reads arbitrary historical blobs.
+partial_clone = false
+# Opt in when verification needs only the target branch's complete history.
+# Other branches and tags are omitted; existing managed rollout heads are fetched.
+single_branch = false
+# Bound baseline workers to the consumer runner; use 1 for serial debugging.
+baseline_jobs = 2
+# Optional independent checks run after `verify` succeeds. Keep formatters and
+# setup in `verify`; checks must not mutate shared inputs. Every check must pass.
+# This allows a reviewed standards-only cohort or overlapping the full gate.
+# Existing registries continue to execute exactly their `verify` command.
+verify_checks = []
+verify_jobs = 2 # 1 for serial debugging; 2 or 4 for independent checks.
+# Optional repository-owned check for a proven bundle/provenance-only update.
+# The controller still runs the exact published bundle's full Standards checker.
+# Source, locks, workflows, rule settings, baseline diagnostics, additions,
+# deletions, file modes and uncommitted changes always select the full verifier.
+# Leave empty to retain the original full gate for every rollout.
+verify_metadata = []

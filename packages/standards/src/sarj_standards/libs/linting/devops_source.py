@@ -25,10 +25,7 @@ from sarj_standards.libs.typed_containers import is_object_list, is_object_mappi
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-SUPPORTED: Final = frozenset({"actionlint", "zizmor", "hadolint", "terraform", "tflint", "compose"})
-ZIZMOR_AUDITS: Final = frozenset(
-    {"unpinned-uses", "unpinned-images", "template-injection", "dangerous-triggers", "excessive-permissions"}
-)
+SUPPORTED: Final = frozenset({"actionlint", "hadolint", "terraform", "tflint", "compose"})
 _ACTION_FORMAT: Final = "{{json .}}"
 _CONFIGS: Final = Path(__file__).resolve().parents[2] / "configs"
 _GOOGLE_PLUGIN: Final = re.compile(r"ruleset.google \(0\.39\.0\)")
@@ -40,7 +37,6 @@ _MISSING_TERRAFORM_INPUTS: Final = frozenset(
 @dataclass(frozen=True, slots=True)
 class SourcePaths:
     workflows: tuple[Path, ...]
-    actions: tuple[Path, ...]
     dockerfiles: tuple[Path, ...]
     terraform: tuple[Path, ...]
     compose: tuple[Path, ...]
@@ -60,29 +56,6 @@ def analyze_sources(
     reports: list[ToolReport] = []
     if "actionlint" in selected and sources.workflows:
         reports.append(_actionlint_report(root, sources.workflows, runner))
-    if "zizmor" in selected and (sources.workflows or sources.actions):
-        chosen = (*sources.workflows, *sources.actions)
-        reports.append(
-            _json_tool(
-                "zizmor",
-                (
-                    "--format",
-                    "json-v1",
-                    "--offline",
-                    "--no-config",
-                    "--no-ignores",
-                    "--persona",
-                    "pedantic",
-                    "--strict-collection",
-                    "--no-progress",
-                    *map(str, chosen),
-                ),
-                root,
-                chosen,
-                parse_zizmor,
-                runner=runner,
-            )
-        )
     if "hadolint" in selected and sources.dockerfiles:
         reports.append(
             _json_tool(
@@ -119,7 +92,6 @@ def _select_sources(root: Path, paths: tuple[str, ...]) -> SourcePaths:
             for path in inputs
             if path.suffix in {".yml", ".yaml"} and ".github/workflows/" in path.relative_to(root).as_posix()
         ),
-        actions=tuple(path for path in inputs if path.name in {"action.yml", "action.yaml"}),
         dockerfiles=tuple(
             path
             for path in inputs
@@ -200,13 +172,6 @@ def _json_tool(
         if output.returncode and not findings:
             message = f"{name} reported findings without structured diagnostics"
             raise NativeToolError(message)
-        if name == "zizmor":
-            findings = tuple(
-                finding
-                for finding in findings
-                if finding.rule_id in ZIZMOR_AUDITS
-                and (finding.rule_id != "unpinned-images" or "confidence:High" in finding.tags)
-            )
         return ToolReport(name, Completion.COMPLETE, diagnostics=findings, version=tool.version, file_count=len(paths))
     except (OSError, ValueError, subprocess.SubprocessError) as error:
         return _failed(name, error, len(paths))
@@ -246,47 +211,6 @@ def parse_hadolint(payload: str, root: Path) -> tuple[Diagnostic, ...]:
         )
         for item in records
     )
-
-
-def parse_zizmor(payload: str, root: Path) -> tuple[Diagnostic, ...]:
-    diagnostics: list[Diagnostic] = []
-    for item in _records(parse_json(payload)):
-        classifications = _table(item.get("determinations"))
-        if classifications.get("severity") not in {"Informational", "Low", "Medium", "High"}:
-            message = "Zizmor reported an unknown severity"
-            raise ValueError(message)
-        confidence = _text(classifications, "confidence")
-        if confidence not in {"Low", "Medium", "High"}:
-            message = "Zizmor reported an unknown confidence"
-            raise ValueError(message)
-        locations = _records(item.get("locations"))
-        primary = [location for location in locations if _table(location.get("symbolic")).get("kind") == "Primary"]
-        if len(primary) != 1 or not isinstance(item.get("ignored"), bool):
-            message = "Zizmor JSON-v1 must provide one primary location and an ignored boolean"
-            raise ValueError(message)
-        symbolic = _table(primary[0].get("symbolic"))
-        local_key = _table(_table(symbolic.get("key")).get("Local"))
-        concrete = _table(_table(primary[0].get("concrete")).get("location"))
-        span = _table(concrete.get("offset_span"))
-        path = _contained(root, _text(local_key, "verbatim_path"))
-        document = SourceDocument.read(path)
-        start, end = _integer(span, "start", minimum=0), _integer(span, "end", minimum=0)
-        if end > len(document.text.encode("utf-8")) or end < start:
-            message = "Zizmor byte span lies outside its selected source"
-            raise ValueError(message)
-        diagnostics.append(
-            Diagnostic(
-                _text(item, "ident"),
-                _text(item, "desc"),
-                Severity.ERROR,
-                "zizmor",
-                Location(path.relative_to(root).as_posix(), region=document.region(start_byte=start, end_byte=end)),
-                rule_id=_text(item, "ident"),
-                help_url=_text(item, "url"),
-                tags=(f"confidence:{confidence}",),
-            )
-        )
-    return tuple(diagnostics)
 
 
 def parse_tflint(payload: str, root: Path, *, cwd: Path | None = None) -> tuple[Diagnostic, ...]:

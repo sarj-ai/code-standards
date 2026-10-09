@@ -8,12 +8,11 @@ from urllib.parse import unquote
 from jsonschema import Draft4Validator, Draft6Validator, Draft7Validator, Draft201909Validator, Draft202012Validator
 from jsonschema.exceptions import SchemaError
 from jsonschema.protocols import Validator
-from pydantic import JsonValue, TypeAdapter
 from referencing import Registry, Resource
 from referencing.exceptions import CannotDetermineSpecification, Unresolvable
 from referencing.jsonschema import DRAFT7, Schema, UnknownDialect, specification_with
 
-from sarj_standards.libs.json_boundary import parse_unique_json
+from sarj_standards.libs.json_boundary import normalize_json_value, parse_unique_json
 from sarj_standards.libs.typed_containers import is_object_list, is_object_mapping
 
 
@@ -215,7 +214,7 @@ def _validate(instance: object, schema: Path, closure: Sequence[Path]) -> tuple[
         registry = registry.with_resource(path.as_uri(), resource)
     content = _schema(parse_unique_json(schema.read_text(encoding="utf-8")))
     validator = _validator(schema=content)({"$ref": schema.as_uri()}, registry=registry)
-    normalized = TypeAdapter[JsonValue](JsonValue).validate_python(instance)
+    normalized = normalize_json_value(instance)
     errors: Iterable[ValidationError] = validator.iter_errors(normalized)
     return tuple(str(error.message) for error in errors)
 

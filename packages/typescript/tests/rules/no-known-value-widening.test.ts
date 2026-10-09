@@ -20,6 +20,8 @@ const RULE_TESTER = new RuleTester({
 
 RULE_TESTER.run("no-known-value-widening", rule, {
   valid: [
+    "function keep<T>(input: T | undefined) { const output: unknown = input; return output; }",
+    "function keep<T>(input: T | null) { const output: unknown = input; return output; }",
     "declare const raw: unknown; const payload: unknown = raw;",
     "declare const raw: any; const payload: unknown = raw;",
     "const fields: Record<string, unknown> = {};",
@@ -33,6 +35,7 @@ RULE_TESTER.run("no-known-value-widening", rule, {
     { code: "// @generated\ndeclare const tool: { name: string }; const fields: unknown = tool;" },
   ],
   invalid: [
+    { code: "declare const value: { name: string } | undefined; const output: unknown = value;", errors: [{ messageId: "widening" }] },
     { code: "declare const tool: { name: string }; const fields: unknown = tool;", errors: [{ messageId: "widening" }] },
     { code: "declare const tool: { name: string }; const fields: object = tool;", errors: [{ messageId: "widening" }] },
     { code: "declare const tool: { name: string }; const fields: Record<string, unknown> = tool;", errors: [{ messageId: "widening" }] },

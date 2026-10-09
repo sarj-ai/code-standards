@@ -256,6 +256,7 @@ class Standards:
         prepared_devops: Sequence[Path] = (),
         prepared_targets: Sequence[str] = (),
         prepared_only: bool = False,
+        python_type_check: bool = True,
     ) -> AnalysisReport:
         if jobs not in {1, 2}:
             return _failed_analysis(self.root, "invalid-input", "analysis jobs must be 1 or 2")
@@ -327,6 +328,15 @@ class Standards:
                     CoverageDisposition.NOT_REQUESTED,
                 )
             )
+        if selected_groups.python and not python_type_check:
+            coverage.append(
+                CoverageNotice(
+                    "basedpyright",
+                    "Python type checking is left to the repository's own CI",
+                    len(selected_groups.python),
+                    CoverageDisposition.NOT_REQUESTED,
+                )
+            )
 
         def external_analysis() -> tuple[ToolReport, ...]:
             return _selected_external_analysis(
@@ -342,6 +352,7 @@ class Standards:
                 staged=staged,
                 react_doctor_full_scan=react_doctor_full_scan,
                 pass_on_unpruned_eslint_suppressions=pass_on_unpruned_eslint_suppressions,
+                python_type_check=python_type_check,
             )
 
         combined = report_from_tools(
@@ -670,13 +681,20 @@ def _selected_external_analysis(
     staged: bool,
     react_doctor_full_scan: bool,
     pass_on_unpruned_eslint_suppressions: bool,
+    python_type_check: bool,
 ) -> tuple[ToolReport, ...]:
     rule_ids = (
         frozenset(str(value) for value in rule_selection.ids_for(RuleEngine.ESLINT))
         if rule_selection is not None
         else None
     )
-    run_eslint = rule_selection is None or RuleEngine.ESLINT in rule_selection.engines
+    external_engines = frozenset({RuleEngine.ESLINT, RuleEngine.CHECKOV, RuleEngine.ZIZMOR})
+    selected_capabilities = (
+        frozenset(engine.value for engine in rule_selection.engines & external_engines)
+        if rule_selection is not None
+        else None
+    )
+    run_external = rule_selection is None or not rule_selection.engines.isdisjoint(external_engines)
     external_reports = (
         (
             analyze_external(
@@ -685,32 +703,36 @@ def _selected_external_analysis(
                 trust=normalized_trust,
                 policy=selection_policy,
                 capabilities=(
-                    frozenset({"eslint"}) if rule_selection is not None else frozenset(adopted.enabled_capabilities)
+                    selected_capabilities if rule_selection is not None else frozenset(adopted.enabled_capabilities)
                 ),
                 grouped=selected_groups,
                 rule_ids=rule_ids,
+                security_selection=rule_selection,
                 include_react_doctor=include_react_doctor and rule_selection is None,
                 force_react_doctor=react_doctor_triggered,
                 react_doctor_staged=staged,
                 react_doctor_full_scan=react_doctor_full_scan,
                 pass_on_unpruned_eslint_suppressions=pass_on_unpruned_eslint_suppressions,
+                python_type_check=python_type_check,
             )
             if adopted is not None
             else analyze_external(
                 active_selected,
                 root=root,
                 trust=normalized_trust,
-                capabilities=frozenset({"eslint"}) if rule_selection is not None else None,
+                capabilities=selected_capabilities,
                 grouped=selected_groups,
                 rule_ids=rule_ids,
+                security_selection=rule_selection,
                 include_react_doctor=include_react_doctor and rule_selection is None,
                 force_react_doctor=react_doctor_triggered,
                 react_doctor_staged=staged,
                 react_doctor_full_scan=react_doctor_full_scan,
                 pass_on_unpruned_eslint_suppressions=pass_on_unpruned_eslint_suppressions,
+                python_type_check=python_type_check,
             )
         )
-        if run_eslint
+        if run_external
         else ()
     )
     if rule_selection is not None:
@@ -824,6 +846,9 @@ def _rule_selection(values: Sequence[str | RuleSelector] | None) -> RuleSelectio
     if isinstance(values, str):
         msg = "rules must be a sequence of canonical selectors, not one string"
         raise TypeError(msg)
+    from sarj_standards.libs.linting import (  # ruff: ignore[import-outside-top-level] -- load the upstream selectors with the catalog.
+        security_tools,
+    )
     from sarj_standards.libs.repository import (  # ruff: ignore[import-outside-top-level]
         rule_catalog_artifact,
     )
@@ -831,6 +856,8 @@ def _rule_selection(values: Sequence[str | RuleSelector] | None) -> RuleSelectio
     catalog = rule_catalog_artifact.load()
     raw_rules = _object_list(catalog.get("rules"), "shipped rule catalog rules")
     live: set[RuleSelector] = set()
+    live.update(RuleSelector(RuleEngine.CHECKOV, RuleId(rule)) for rule in security_tools.CHECKOV_CHECKS)
+    live.update(RuleSelector(RuleEngine.ZIZMOR, RuleId(rule)) for rule in security_tools.ZIZMOR_RULES)
     for value in raw_rules:
         key = value.get("key") if is_object_mapping(value) else None
         if isinstance(key, str):
@@ -838,6 +865,9 @@ def _rule_selection(values: Sequence[str | RuleSelector] | None) -> RuleSelectio
     selected: set[RuleSelector] = set()
     for value in values:
         selector = value if isinstance(value, RuleSelector) else RuleSelector.parse(value)
+        if selector.engine is RuleEngine.ZIZMOR and selector.rule_id in security_tools.ZIZMOR_ONLINE_ONLY:
+            msg = f"{selector} cannot run in offline analysis; choose an offline audit"
+            raise ValueError(msg)
         if selector not in live:
             msg = f"unknown or invalid rule selector: {value}"
             raise ValueError(msg)
@@ -861,6 +891,8 @@ def _routed_for_selection(grouped: object, selected: RuleSelection | None) -> se
         routed.update(grouped.sql)
     if RuleEngine.IAC in engines:
         routed.update(grouped.iac)
+    if not engines.isdisjoint({RuleEngine.CHECKOV, RuleEngine.ZIZMOR}):
+        routed.update(grouped.iac)
     if RuleEngine.TEXT in engines:
         routed.update(grouped.text)
     if RuleEngine.ESLINT in engines:
@@ -875,7 +907,7 @@ def _filter_report_selectors(
     report: ToolReport,
     selected: RuleSelection,
 ) -> ToolReport:
-    engine = RuleEngine.ESLINT if report.name == "eslint" else None
+    engine = RuleEngine(report.name) if report.name in {"eslint", "zizmor", "checkov"} else None
     allowed: frozenset[str] = frozenset() if engine is None else selected.native_ids_for(engine)
     return ToolReport(
         report.name,
@@ -947,6 +979,8 @@ def _engine_for_diagnostic(item: Diagnostic) -> RuleEngine | None:
         "iac": RuleEngine.IAC,
         "text": RuleEngine.TEXT,
         "eslint": RuleEngine.ESLINT,
+        "checkov": RuleEngine.CHECKOV,
+        "zizmor": RuleEngine.ZIZMOR,
     }.get(item.source)
 
 

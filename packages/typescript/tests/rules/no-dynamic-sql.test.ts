@@ -1,8 +1,11 @@
+// vitest: shared-module-graph
 import * as tsParser from "@typescript-eslint/parser";
 import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, it } from "vitest";
 
 import rule, { NO_DYNAMIC_SQL_DOCUMENTATION } from "../../src/rules/no-dynamic-sql.js";
+
+import { verifyRuleExamples } from "../../src/verify-rule-examples.js";
 
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
@@ -92,8 +95,8 @@ RULE_TESTER.run("no-dynamic-sql", rule, {
       code: "cache.get(`user:${userId}`);",
     },
     {
-      name: "ignores a computed method name",
-      code: "db['prepare'](`select * from t where id = ${id}`);",
+      name: "ignores an unknown method name",
+      code: "db[method](`select * from t where id = ${id}`);",
     },
     {
       name: "ignores concatenation without a string literal",
@@ -227,4 +230,64 @@ RULE_TESTER.run("no-dynamic-sql", rule, {
       errors: [{ messageId: "dynamicSql" }],
     },
   ],
+});
+
+
+it("preserves outcomes for static member access and unknown member keys", async () => {
+  const documentation = rule.documentation;
+  if (documentation === undefined) throw new Error("Missing rule documentation");
+  await verifyRuleExamples({ ...rule, documentation: { ...documentation, examples: [
+  {
+    "id": "interpolated-sql-value-static-member",
+    "title": "Static member access preserves the rule outcome",
+    "outcome": "match",
+    "focusPath": "src/users.ts",
+    "expectedCount": 1,
+    "files": [
+      {
+        "path": "src/users.ts",
+        "source": "db[\"prepare\"](`select * from users where id = '${userId}'`);"
+      }
+    ]
+  },
+  {
+    "id": "interpolated-sql-value-dynamic-member",
+    "title": "Unknown member access does not establish API identity",
+    "outcome": "no-match",
+    "focusPath": "src/users.ts",
+    "expectedCount": 0,
+    "files": [
+      {
+        "path": "src/users.ts",
+        "source": "db[auditDynamicMember](`select * from users where id = '${userId}'`);"
+      }
+    ]
+  },
+  {
+    "id": "unquoted-runtime-fragment-static-member",
+    "title": "Static member access preserves the rule outcome",
+    "outcome": "match",
+    "focusPath": "src/users.ts",
+    "expectedCount": 1,
+    "files": [
+      {
+        "path": "src/users.ts",
+        "source": "db[\"prepare\"](`select id from users where id = ${userId}`);"
+      }
+    ]
+  },
+  {
+    "id": "unquoted-runtime-fragment-dynamic-member",
+    "title": "Unknown member access does not establish API identity",
+    "outcome": "no-match",
+    "focusPath": "src/users.ts",
+    "expectedCount": 0,
+    "files": [
+      {
+        "path": "src/users.ts",
+        "source": "db[auditDynamicMember](`select id from users where id = ${userId}`);"
+      }
+    ]
+  }
+] } });
 });

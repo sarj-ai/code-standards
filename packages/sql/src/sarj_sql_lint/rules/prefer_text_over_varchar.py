@@ -18,6 +18,7 @@ from sarj_sql_lint.rule_base import (
     is_postgres,
     mask_sql,
     redirect_to_model,
+    source_location,
 )
 
 
@@ -82,18 +83,18 @@ class PreferTextOverVarchar(Rule):
             return []
 
         diags: list[Diagnostic] = []
-        for lineno, line in enumerate(masked.splitlines(), start=1):
-            diags.extend(
+        for match in PATTERN.finditer(masked):
+            location = source_location(source, match.start())
+            diags.append(
                 Diagnostic(
                     path=path,
-                    line=lineno,
-                    col=match.start() + 1,
+                    line=location.line,
+                    col=location.column,
                     code=self.code,
                     message=(
                         "Use TEXT (+ CHECK length if needed) — VARCHAR(n) has "
                         "no benefit in Postgres and hides a business rule in DDL."
                     ),
                 )
-                for match in PATTERN.finditer(line)
             )
         return redirect_to_model(diags, model_owned=model_owned)

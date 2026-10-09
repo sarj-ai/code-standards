@@ -6,6 +6,8 @@
 
 import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
 
+import { unwrapExpression } from "./_unwrap-expression.js";
+
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile, isScriptFile, isTestFile } from "./_paths.js";
 
@@ -81,6 +83,7 @@ function matchesAnyPattern(filename: string, patterns: readonly string[]): boole
 }
 
 function isSetTimeoutCallee(callee: TSESTree.Node): boolean {
+  callee = unwrapExpression(callee);
   if (callee.type === AST_NODE_TYPES.Identifier) {
     return callee.name === "setTimeout";
   }
@@ -98,7 +101,8 @@ function soleCall(fn: TSESTree.ArrowFunctionExpression | TSESTree.FunctionExpres
   | TSESTree.CallExpression
   | null {
   if (fn.body.type !== AST_NODE_TYPES.BlockStatement) {
-    return fn.body.type === AST_NODE_TYPES.CallExpression ? fn.body : null;
+    const body = unwrapExpression(fn.body);
+    return body.type === AST_NODE_TYPES.CallExpression ? body : null;
   }
   if (fn.body.body.length !== 1) {
     return null;
@@ -107,13 +111,15 @@ function soleCall(fn: TSESTree.ArrowFunctionExpression | TSESTree.FunctionExpres
   if (only?.type !== AST_NODE_TYPES.ExpressionStatement) {
     return null;
   }
-  return only.expression.type === AST_NODE_TYPES.CallExpression ? only.expression : null;
+  const expression = unwrapExpression(only.expression);
+  return expression.type === AST_NODE_TYPES.CallExpression ? expression : null;
 }
 
 function isTimedDelay(delay: TSESTree.Node | undefined): boolean {
   if (delay === undefined) {
     return false;
   }
+  delay = unwrapExpression(delay);
   if (delay.type === AST_NODE_TYPES.Literal && typeof delay.value === "number") {
     return delay.value !== 0;
   }
@@ -121,6 +127,7 @@ function isTimedDelay(delay: TSESTree.Node | undefined): boolean {
 }
 
 function settlesWithoutValue(callback: TSESTree.Node, name: string): boolean {
+  callback = unwrapExpression(callback);
   if (callback.type === AST_NODE_TYPES.Identifier) {
     return callback.name === name;
   }
@@ -131,15 +138,17 @@ function settlesWithoutValue(callback: TSESTree.Node, name: string): boolean {
     return false;
   }
   const call = soleCall(callback);
+  const callee = call === null ? null : unwrapExpression(call.callee);
   return (
     call !== null &&
     call.arguments.length === 0 &&
-    call.callee.type === AST_NODE_TYPES.Identifier &&
-    call.callee.name === name
+    callee?.type === AST_NODE_TYPES.Identifier &&
+    callee.name === name
   );
 }
 
 function rejectsInCallback(callback: TSESTree.Node, name: string): boolean {
+  callback = unwrapExpression(callback);
   if (callback.type === AST_NODE_TYPES.Identifier) {
     return callback.name === name;
   }
@@ -150,10 +159,11 @@ function rejectsInCallback(callback: TSESTree.Node, name: string): boolean {
     return false;
   }
   const call = soleCall(callback);
+  const callee = call === null ? null : unwrapExpression(call.callee);
   return (
     call !== null &&
-    call.callee.type === AST_NODE_TYPES.Identifier &&
-    call.callee.name === name
+    callee?.type === AST_NODE_TYPES.Identifier &&
+    callee.name === name
   );
 }
 
@@ -238,6 +248,7 @@ export default createRule<Options, MessageIds>({
     const bindingOf = (identifier: TSESTree.Identifier) => ASTUtils.findVariable(sourceCode.getScope(identifier), identifier.name);
     const isGlobal = (identifier: TSESTree.Identifier): boolean => (bindingOf(identifier)?.defs.length ?? 0) === 0;
     const isBuiltinTimer = (callee: TSESTree.Node): boolean => {
+      callee = unwrapExpression(callee);
       if (!isSetTimeoutCallee(callee)) return false;
       if (callee.type === AST_NODE_TYPES.MemberExpression && callee.object.type === AST_NODE_TYPES.Identifier) return isGlobal(callee.object);
       if (callee.type !== AST_NODE_TYPES.Identifier) return false;
@@ -249,11 +260,21 @@ export default createRule<Options, MessageIds>({
         ["node:timers", "timers"].includes(String(definition.node.parent.source.value)));
     };
     const settlesParameter = (callback: TSESTree.Node, executor: TSESTree.ArrowFunctionExpression | TSESTree.FunctionExpression, index: number): boolean => {
+      callback = unwrapExpression(callback);
       const parameter = executor.params[index];
       if (parameter?.type !== AST_NODE_TYPES.Identifier) return false;
       const callee = callback.type === AST_NODE_TYPES.Identifier ? callback :
         callback.type === AST_NODE_TYPES.ArrowFunctionExpression || callback.type === AST_NODE_TYPES.FunctionExpression ? soleCall(callback)?.callee : null;
       return callee?.type === AST_NODE_TYPES.Identifier && bindingOf(callee) === bindingOf(parameter);
+    };
+
+    let clientModule: boolean | null = null;
+    const reportsSleepHere = (): boolean => {
+      if (checkClientModules) {
+        return true;
+      }
+      clientModule ??= isClientModule();
+      return !clientModule;
     };
 
     function isClientModule(): boolean {
@@ -280,18 +301,10 @@ export default createRule<Options, MessageIds>({
       return false;
     }
 
-    let clientModule: boolean | null = null;
-    const reportsSleepHere = (): boolean => {
-      if (checkClientModules) {
-        return true;
-      }
-      clientModule ??= isClientModule();
-      return !clientModule;
-    };
-
     return {
       NewExpression(node: TSESTree.NewExpression): void {
-        if (node.callee.type !== AST_NODE_TYPES.Identifier || node.callee.name !== "Promise" || !isGlobal(node.callee)) {
+        const unwrappedNodeCallee = unwrapExpression(node.callee);
+        if (unwrappedNodeCallee?.type !== AST_NODE_TYPES.Identifier || unwrappedNodeCallee.name !== "Promise" || !isGlobal(unwrappedNodeCallee)) {
           return;
         }
         const executor = node.arguments[0];

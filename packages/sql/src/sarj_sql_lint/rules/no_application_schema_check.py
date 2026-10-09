@@ -19,8 +19,10 @@ from sarj_sql_lint.rule_base import (
     is_postgres_source,
     locate,
     mask_sql,
+    mask_sql_literals_and_comments,
     redirect_to_model,
     split_statements,
+    sql_code_matches,
 )
 
 
@@ -31,25 +33,28 @@ if TYPE_CHECKING:
 _CHECK_START = re.compile(r"\bCHECK\s*\(", re.IGNORECASE)
 _JSON_SHAPE_FUNCTION = re.compile(r"\bJSONB?_(?:TYPEOF|ARRAY_LENGTH)\s*\(", re.IGNORECASE)
 _CLOSED_TEXT_VALUES = re.compile(
-    r"^\s*[A-Za-z_][A-Za-z0-9_]*\s+IN\s*\(\s+,\s+(?:,\s+)*\)\s*$",
+    r'^\s*(?:[A-Za-z_][A-Za-z0-9_]*|"(?:""|[^"\n])+")\s+IN\s*\(\s+,\s+(?:,\s+)*\)\s*$',
     re.IGNORECASE | re.DOTALL,
 )
 
 
 def _application_schema_checks(source: str) -> list[int]:
     findings: list[int] = []
-    for match in _CHECK_START.finditer(source):
+    code = mask_sql(source) if '"' in source else source
+    for match in sql_code_matches(_CHECK_START, source):
         opening_parenthesis = match.end() - 1
         depth = 0
         for index in range(opening_parenthesis, len(source)):
-            character = source[index]
+            character = code[index]
             if character == "(":
                 depth += 1
             elif character == ")":
                 depth -= 1
                 if depth == 0:
                     expression = source[opening_parenthesis + 1 : index]
-                    if _JSON_SHAPE_FUNCTION.search(expression) or _CLOSED_TEXT_VALUES.fullmatch(expression):
+                    if next(sql_code_matches(_JSON_SHAPE_FUNCTION, expression), None) or _CLOSED_TEXT_VALUES.fullmatch(
+                        expression
+                    ):
                         findings.append(match.start())
                     break
     return findings
@@ -67,8 +72,8 @@ class NoApplicationSchemaCheck(Rule):
             "validators that can drift and turn an otherwise valid application deployment into failed writes."
         ),
         remediation=(
-            "Remove the application-schema CHECK and validate the JSON payload or closed value set with the typed "
-            "application boundary before writing it. Keep relational constraints such as foreign keys, uniqueness, "
+            "If the application owns the contract, validate the JSON payload or closed value set with the typed "
+            "application boundary before changing its CHECK. Preserve database-owned validation and checks needed by other writers; use an exact SARJ118 suppression explaining ownership. Keep relational constraints such as foreign keys, uniqueness, "
             "nullability, and cross-column invariants in the database."
         ),
         category=RuleCategory.ARCHITECTURE,
@@ -76,7 +81,7 @@ class NoApplicationSchemaCheck(Rule):
         limitations=(
             "Only PostgreSQL CHECK expressions that call JSON_TYPEOF, JSONB_TYPEOF, JSON_ARRAY_LENGTH, or JSONB_ARRAY_LENGTH are reported.",
             "Enum-like checks are reported only for a simple column IN a list of at least two string literals.",
-            "JSON operators and cross-column consistency checks are not inferred because their ownership can be ambiguous.",
+            "JSON operators alone are not matched. Function calls inside cross-column or mixed checks can match; application ownership is not proven and removal requires review of every writer.",
             "Dump files are excluded; generated migrations redirect findings to their owning model when identifiable.",
         ),
         examples=(
@@ -158,7 +163,7 @@ class NoApplicationSchemaCheck(Rule):
             return []
         model_owned = is_generated_migration(path, source)
         diagnostics: list[Diagnostic] = []
-        for statement in split_statements(mask_sql(source)):
+        for statement in split_statements(mask_sql_literals_and_comments(source)):
             text = "\n".join(fragment for _, fragment in statement)
             for offset in _application_schema_checks(text):
                 line, col = locate(statement, offset)
@@ -169,8 +174,8 @@ class NoApplicationSchemaCheck(Rule):
                         col=col,
                         code=self.code,
                         message=(
-                            "Application schema validation belongs in the typed application boundary; remove this "
-                            "JSON-shape or closed-value CHECK while retaining relational database invariants."
+                            "Review ownership of this "
+                            "JSON-shape or closed-value CHECK. Move application-owned validation to a typed boundary; retain database invariants and document their ownership."
                         ),
                     )
                 )

@@ -9,6 +9,10 @@ from typing import Self
 from sarj_python_lint.rules._ast_index import walk as walk_ast
 
 
+ABC_SOURCES = frozenset({"abc"})
+TYPING_SOURCES = frozenset({"typing", "typing_extensions"})
+
+
 @dataclass(frozen=True, slots=True)
 class _ImportTarget:
     module: str
@@ -81,7 +85,14 @@ def _non_import_bindings(tree: ast.Module) -> set[str]:
     names: set[str] = set()
     for node in walk_ast(tree):
         match node:
-            case ast.Name(id=name, ctx=(ast.Store() | ast.Del())) | ast.arg(arg=name):
+            case (
+                ast.Name(id=name, ctx=(ast.Store() | ast.Del()))
+                | ast.arg(arg=name)
+                | ast.ExceptHandler(name=str() as name)
+                | ast.MatchAs(name=str() as name)
+                | ast.MatchStar(name=str() as name)
+                | ast.MatchMapping(rest=str() as name)
+            ):
                 names.add(name)
             case ast.FunctionDef() | ast.AsyncFunctionDef() | ast.ClassDef():
                 names.add(node.name)
@@ -138,7 +149,13 @@ def _collect_module_bindings(node: ast.AST, names: set[str]) -> None:
             return
         case ast.Lambda():
             return
-        case ast.Name(id=name, ctx=(ast.Store() | ast.Del())):
+        case (
+            ast.Name(id=name, ctx=(ast.Store() | ast.Del()))
+            | ast.ExceptHandler(name=str() as name)
+            | ast.MatchAs(name=str() as name)
+            | ast.MatchStar(name=str() as name)
+            | ast.MatchMapping(rest=str() as name)
+        ):
             names.add(name)
         case _:
             pass

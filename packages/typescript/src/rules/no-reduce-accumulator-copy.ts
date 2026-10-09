@@ -28,12 +28,6 @@ export const NO_REDUCE_ACCUMULATOR_COPY_DOCUMENTATION = {
 
 const COPY_METHODS: ReadonlySet<string> = new Set(["concat", "slice", "toSpliced", "toSorted", "toReversed", "with"]);
 
-function methodName(node: TSESTree.MemberExpression): string | null {
-  if (!node.computed && node.property.type === AST_NODE_TYPES.Identifier) return node.property.name;
-  if (node.computed && node.property.type === AST_NODE_TYPES.Literal && typeof node.property.value === "string") return node.property.value;
-  return null;
-}
-
 export default createRule<[], "copy">({
   name: "no-reduce-accumulator-copy",
   documentation: NO_REDUCE_ACCUMULATOR_COPY_DOCUMENTATION,
@@ -51,7 +45,7 @@ export default createRule<[], "copy">({
     return {
       CallExpression(node): void {
         if (node.callee.type !== AST_NODE_TYPES.MemberExpression ||
-          !["reduce", "reduceRight"].includes(methodName(node.callee) ?? "") ||
+          !["reduce", "reduceRight"].includes(ASTUtils.getPropertyName(node.callee) ?? "") ||
           node.arguments.length !== 2) return;
         const seed = node.arguments[1];
         const arraySeed = seed?.type === AST_NODE_TYPES.ArrayExpression && seed.elements.length === 0;
@@ -70,10 +64,19 @@ export default createRule<[], "copy">({
         if (!accumulator || accumulator.references.some(reference => reference.isWrite())) return;
         const referencesAccumulator = (value: TSESTree.Node): boolean => value.type === AST_NODE_TYPES.Identifier &&
           ASTUtils.findVariable(context.sourceCode.getScope(value), value.name) === accumulator;
+        const inspect = (current: TSESTree.Node): void => {
+          if (current !== callback.body && [AST_NODE_TYPES.ArrowFunctionExpression, AST_NODE_TYPES.FunctionExpression, AST_NODE_TYPES.FunctionDeclaration, AST_NODE_TYPES.ClassDeclaration, AST_NODE_TYPES.ClassExpression, AST_NODE_TYPES.ForStatement, AST_NODE_TYPES.ForInStatement, AST_NODE_TYPES.ForOfStatement, AST_NODE_TYPES.WhileStatement, AST_NODE_TYPES.DoWhileStatement].some(kind => kind === current.type)) return;
+          if (current.type === AST_NODE_TYPES.SpreadElement && ((arraySeed && current.parent.type === AST_NODE_TYPES.ArrayExpression) || (objectSeed && current.parent.type === AST_NODE_TYPES.ObjectExpression)) && referencesAccumulator(current.argument)) {
+            context.report({ node: current, messageId: "copy" });
+          }
+          if (current.type === AST_NODE_TYPES.CallExpression) inspectCall(current);
+          forEachAstChild(current, context.sourceCode.visitorKeys, inspect);
+        };
+
         const inspectCall = (current: TSESTree.CallExpression): void => {
           if (current.callee.type !== AST_NODE_TYPES.MemberExpression) return;
           const member = current.callee;
-          const name = methodName(member);
+          const name = ASTUtils.getPropertyName(member);
           const directCopy = arraySeed && name !== null && COPY_METHODS.has(name) && referencesAccumulator(member.object);
           const globalArray = member.object.type === AST_NODE_TYPES.Identifier && member.object.name === "Array" &&
             !(ASTUtils.findVariable(context.sourceCode.getScope(member.object), "Array")?.defs.length);
@@ -84,14 +87,6 @@ export default createRule<[], "copy">({
           const assignCopy = objectSeed && name === "assign" && globalObject && target?.type === AST_NODE_TYPES.ObjectExpression &&
             current.arguments.slice(1).some(referencesAccumulator);
           if (directCopy || fromCopy || assignCopy) context.report({ node: current, messageId: "copy" });
-        };
-        const inspect = (current: TSESTree.Node): void => {
-          if (current !== callback.body && [AST_NODE_TYPES.ArrowFunctionExpression, AST_NODE_TYPES.FunctionExpression, AST_NODE_TYPES.FunctionDeclaration].some(kind => kind === current.type)) return;
-          if (current.type === AST_NODE_TYPES.SpreadElement && ((arraySeed && current.parent.type === AST_NODE_TYPES.ArrayExpression) || (objectSeed && current.parent.type === AST_NODE_TYPES.ObjectExpression)) && referencesAccumulator(current.argument)) {
-            context.report({ node: current, messageId: "copy" });
-          }
-          if (current.type === AST_NODE_TYPES.CallExpression) inspectCall(current);
-          forEachAstChild(current, context.sourceCode.visitorKeys, inspect);
         };
         inspect(callback.body);
       },
