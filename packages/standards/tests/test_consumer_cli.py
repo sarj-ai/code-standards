@@ -499,10 +499,12 @@ def test_explicit_repository_root_keeps_the_machine_adoption_gate(
     assert "sarj-standards-doctor" in capsys.readouterr().out
 
 
+@pytest.mark.parametrize("arguments", [(".",), ("--trust-repository-code", ".")], ids=("root", "rollout-root"))
 def test_explicit_repository_root_overrides_pull_request_change_scope(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
+    arguments: tuple[str, ...],
 ) -> None:
     (tmp_path / "pyproject.toml").write_text(
         '[project]\nname = "fixture"\nversion = "0.0.0"\nrequires-python = ">=3.14"\n',
@@ -528,7 +530,7 @@ def test_explicit_repository_root_overrides_pull_request_change_scope(
         cli, "_run_canonical_check", capture_check
     )
 
-    assert cli.main(["--root", str(tmp_path), "check", "."]) == 0
+    assert cli.main(["--root", str(tmp_path), "check", *arguments]) == 0
     assert selected == [(".",)]
 
 

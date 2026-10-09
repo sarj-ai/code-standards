@@ -249,7 +249,7 @@ def test_proved_path_requires_full_standards_and_repository_checks(candidate: Ca
         version="8.38.17",
         baseline_path=baseline,
     )
-    expected: list[tuple[str, ...]] = [("prefix", "exact-published-tool", "check", "--trust-repository-code")]
+    expected: list[tuple[str, ...]] = [("prefix", "exact-published-tool", "check", "--trust-repository-code", ".")]
     if failed != "standards":
         expected.append(("prefix", "metadata"))
     assert calls == expected
