@@ -10086,6 +10086,19 @@
         "The stopped intermediate full gate is not counted as a successful verification.",
         "This CI repair is not an additional numbered DevOps pass."
       ]
+    },
+    {
+      "scope": "CodeQL annotation-key classification",
+      "owner": "prepared_kubernetes._ignore_annotation",
+      "reproduction": "PR1337 CodeQL py/incomplete-url-substring-sanitization flags Kubernetes annotation prefix matching as URL sanitization. No URL sink exists; the owner filters qualified annotation keys.",
+      "fix": "Partition the qualified annotation key and compare its namespace component, preserving the original anti-waiver projection without query exclusions.",
+      "controls": "Seven namespace/equivalence controls plus existing native policy and prepared-artifact tests; full coherent verification recorded in the PR.",
+      "primarySources": [
+        "https://codeql.github.com/codeql-query-help/python/py-incomplete-url-substring-sanitization/",
+        "https://kubernetes.io/docs/concepts/overview/working-with-objects/annotations/"
+      ],
+      "counting": "Integration repair, not an additional numbered DevOps pass.",
+      "sourceSha256": "a3a4d76908dac26e16c218b9d02c59662276afa6b03ce1936ef7631638a89fc0"
     }
   ]
 }

@@ -180,12 +180,14 @@ def _policy_value(value: object) -> object:
     metadata = result.get("metadata")
     if is_object_mapping(metadata) and is_object_mapping(annotations := metadata.get("annotations")):
         metadata["annotations"] = {
-            key: item
-            for key, item in annotations.items()
-            if not isinstance(key, str)
-            or (key != "kube-linter.io/ignore-all" and not key.startswith("ignore-check.kube-linter.io/"))
+            key: item for key, item in annotations.items() if not isinstance(key, str) or not _ignore_annotation(key)
         }
     return result
+
+
+def _ignore_annotation(key: str) -> bool:
+    prefix, separator, _name = key.partition("/")
+    return key == "kube-linter.io/ignore-all" or (separator == "/" and prefix == "ignore-check.kube-linter.io")
 
 
 @dataclass(frozen=True, slots=True)

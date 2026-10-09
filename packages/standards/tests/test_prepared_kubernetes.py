@@ -329,3 +329,28 @@ def test_ambiguous_container_attribution_cannot_be_suppressed() -> None:
     }
     with pytest.raises(ValueError, match="ambiguous"):
         build_config(resource)
+
+
+@pytest.mark.parametrize(
+    ("annotation", "removed"),
+    [
+        pytest.param("ignore-check.kube-linter.io/run-as-non-root", True, id="qualified-check-waiver"),
+        pytest.param("kube-linter.io/ignore-all", True, id="exact-blanket-waiver"),
+        pytest.param("ignore-check.kube-linter.io", False, id="unqualified-name"),
+        pytest.param("ignore-check.kube-linter.io.example.com/run-as-non-root", False, id="different-namespace"),
+        pytest.param("example.com/ignore-check.kube-linter.io", False, id="ordinary-name"),
+        pytest.param("https://ignore-check.kube-linter.io/run-as-non-root", False, id="url-shaped-data"),
+        pytest.param("kube-linter.io/ignore-all-extra", False, id="different-blanket-name"),
+    ],
+)
+def test_policy_projection_removes_only_native_waiver_namespaces(annotation: str, *, removed: bool) -> None:
+    resource = _pod()
+    resource["metadata"] = {
+        "name": "test",
+        "annotations": {annotation: "documented value", "example.com/owner": "team"},
+    }
+    original = deepcopy(resource)
+    projected = _object(_object(policy_resource(resource)["metadata"])["annotations"])
+    assert (annotation not in projected) is removed
+    assert projected["example.com/owner"] == "team"
+    assert resource == original
