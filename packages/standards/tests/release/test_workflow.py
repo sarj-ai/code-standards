@@ -8,6 +8,9 @@ import textwrap
 from typing import NamedTuple
 
 import pytest
+import yaml
+
+from sarj_standards.libs.typed_containers import is_object_list, is_object_mapping
 
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
@@ -19,13 +22,40 @@ class _PreflightResult(NamedTuple):
 
 
 def _release_tag_preflight_script() -> str:
-    workflow = (REPO_ROOT / ".github/workflows/release-tags.yml").read_text(encoding="utf-8")
-    recovery_step = workflow.split("      - id: recovery\n", 1)[1].split("\n\n  release-safety:\n", 1)[0]
-    return textwrap.dedent(recovery_step.split("        run: |\n", 1)[1])
+    return _run("release-tags.yml", "preflight", "Detect tag or GitHub Release recovery")
+
+
+def _job(filename: str, name: str) -> dict[str, object]:
+    document: object = yaml.safe_load((REPO_ROOT / ".github/workflows" / filename).read_text())  # pyright: ignore[reportAny] -- narrow the workflow parser boundary.
+    assert is_object_mapping(document)
+    jobs = document["jobs"]
+    assert is_object_mapping(jobs)
+    job = jobs[name]
+    assert is_object_mapping(job)
+    return {key: value for key, value in job.items() if isinstance(key, str)}
+
+
+def _steps(filename: str, name: str) -> list[dict[object, object]]:
+    steps = _job(filename, name)["steps"]
+    assert is_object_list(steps)
+    return [step for step in steps if is_object_mapping(step)]
+
+
+def _run(filename: str, job: str, step_name: str) -> str:
+    step = next(step for step in _steps(filename, job) if step.get("name") == step_name)
+    command = step["run"]
+    assert isinstance(command, str)
+    return command
+
+
+def _checkout_scripts(root: Path) -> None:
+    scripts = root / ".github/scripts"
+    scripts.parent.mkdir()
+    scripts.symlink_to(REPO_ROOT / ".github/scripts", target_is_directory=True)
 
 
 def _write_executable(path: Path, source: str) -> None:
-    path.write_text(textwrap.dedent(source), encoding="utf-8")
+    path.write_text(textwrap.dedent(source).lstrip(), encoding="utf-8")
     path.chmod(0o755)
 
 
@@ -36,6 +66,7 @@ def _run_release_tag_preflight(
     http_status: str = "200",
     malformed_manifest: bool = False,
 ) -> _PreflightResult:
+    _checkout_scripts(tmp_path)
     versions = {
         "typescript": "1.0.0",
         "bootstrap": "1.5.0",
@@ -67,6 +98,10 @@ def _run_release_tag_preflight(
         fake_bin / "uv",
         """
         #!/bin/sh
+        case "$*" in
+          *"maintain release verify-tags --commit $TARGET_SHA") ;;
+          *) exit 64 ;;
+        esac
         case "$FAKE_GIT_MODE" in
           existing) exit 0 ;;
           missing) exit 1 ;;
@@ -139,13 +174,17 @@ def test_lint_config_release_waits_for_typescript_and_preflights_registry() -> N
 
 @pytest.mark.parametrize("filename", ["release.yml", "release-tags.yml"])
 def test_publication_and_tag_recovery_require_security_at_exact_revision(filename: str) -> None:
-    workflow = (REPO_ROOT / ".github/workflows" / filename).read_text(encoding="utf-8")
-    gate = workflow.split("\n  release-safety:\n", maxsplit=1)[1].split("\n\n  ", maxsplit=1)[0]
-
-    assert "'ci.yml|CI'" in gate
-    assert 'head_sha="$TARGET_SHA"' in gate
-    assert '.head_sha == $sha and .event == "push"' in gate
-    assert 'if [[ -n "$conclusion" ]]; then' in gate
+    job = _job(filename, "release-safety")
+    assert job["permissions"] == {"actions": "read", "contents": "read"}
+    steps = _steps(filename, "release-safety")
+    checkout_index, checkout = next(
+        (index, step) for index, step in enumerate(steps) if str(step.get("uses", "")).startswith("actions/checkout@")
+    )
+    gate_index, gate = next((index, step) for index, step in enumerate(steps) if "run" in step)
+    assert checkout_index < gate_index
+    revision = "${{ github.sha }}" if filename == "release.yml" else "${{ github.event.workflow_run.head_sha }}"
+    assert checkout["with"] == {"ref": revision, "persist-credentials": False}
+    assert gate["env"] == {"GH_TOKEN": "${{ github.token }}", "TARGET_SHA": revision}
 
 
 def test_release_tags_registry_visible_packages_at_the_published_commit() -> None:
@@ -177,26 +216,10 @@ def test_release_tags_registry_visible_packages_at_the_published_commit() -> Non
     assert (
         "needs.release-safety.result == 'success'" in workflow
     )  # sarj-noqa: SARJ402 -- workflow text is the release-policy contract
-    for specification in (
-        "repo-ci.yml|release-ready",
-        "private-refs.yml|private references",
-        "ci.yml|CI",
-    ):
-        assert specification in workflow  # sarj-noqa: SARJ402 -- workflow text is the release-gate contract
-    assert (
-        "head_repository.full_name == $repo" in workflow
-    )  # sarj-noqa: SARJ402 -- workflow text is the release-gate contract
-    assert "actions/runs/$run_id/jobs" in workflow  # sarj-noqa: SARJ402 -- workflow text is the release-gate contract
-    assert (
-        "pending_jobs == 0 && successful_jobs > 0" in workflow
-    )  # sarj-noqa: SARJ402 -- workflow text is the release-gate contract
     assert (
         "maintain release create-tags typescript bootstrap contracts python sql iac standards tsconfig" in workflow
     )  # sarj-noqa: SARJ402 -- workflow text is the release-policy contract
     assert '--commit "$PUBLISHED_SHA"' in workflow  # sarj-noqa: SARJ402 -- workflow text is the release-policy contract
-    assert (
-        'maintain release verify-tags --commit "$TARGET_SHA"' in workflow
-    )  # sarj-noqa: SARJ402 -- workflow text is the release-policy contract
 
 
 def test_tsconfig_release_publishes_verified_registry_artifacts() -> None:
@@ -342,26 +365,68 @@ def test_release_tag_preflight_rejects_malformed_manifest(tmp_path: Path) -> Non
 
 @pytest.mark.parametrize("filename", ["release.yml", "release-tags.yml"])
 @pytest.mark.parametrize("terminal", [None, "success", "failure", "cancelled", "skipped"])
-def test_release_fallback_requires_successful_terminal_ci(filename: str, terminal: str | None) -> None:
-    workflow = (REPO_ROOT / ".github/workflows" / filename).read_text(encoding="utf-8")
-    gate = workflow.split("\n  release-safety:\n", 1)[1].split("\n\n  ", 1)[0]
-    script = textwrap.dedent(gate.split("        run: |\n", 1)[1])
-    fallback = script.split("terminal_complete=true", 1)[1].split('echo "$expected_name jobs succeeded', 1)[0]
+def test_release_fallback_requires_successful_terminal_ci(tmp_path: Path, filename: str, terminal: str | None) -> None:
+    _checkout_scripts(tmp_path)
     jobs = [{"name": "Detect affected checks", "status": "completed", "conclusion": "success"}]
     if terminal is not None:
         jobs.append({"name": "CI complete", "status": "completed", "conclusion": terminal})
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    _write_executable(fake_bin / "sleep", "#!/bin/sh\nexit 99\n")
+    _write_executable(
+        fake_bin / "gh",
+        f"""
+        #!{sys.executable}
+        import json, os, sys
+        with open(os.environ['CALLS'], 'a') as log:
+            log.write(json.dumps(sys.argv[1:]) + '\\n')
+        endpoint = sys.argv[4]
+        if endpoint.endswith('/jobs'):
+            print(os.environ['JOBS'])
+        else:
+            run = {{'head_sha': os.environ['TARGET_SHA'], 'event': 'push', 'head_repository': {{'full_name': os.environ['GITHUB_REPOSITORY']}}, 'id': 42, 'conclusion': None if '/ci.yml/' in endpoint else 'success'}}
+            wrong_sha = {{**run, 'head_sha': 'b' * 40, 'conclusion': 'success'}}
+            wrong_repo = {{**run, 'head_repository': {{'full_name': 'untrusted/repo'}}, 'conclusion': 'success'}}
+            print(json.dumps({{'workflow_runs': [wrong_sha, wrong_repo, run]}}))
+        """,
+    )
     process = subprocess.run(
-        ("bash", "-euo", "pipefail", "-c", "terminal_complete=true" + fallback + "exit 0; fi; exit 1"),
+        (
+            "bash",
+            "-euo",
+            "pipefail",
+            "-c",
+            _run(filename, "release-safety", "Require successful checks for this exact revision"),
+        ),
+        cwd=tmp_path,
         env={
-            "PATH": "/usr/bin:/bin",
-            "workflow": "ci.yml",
-            "jobs": json.dumps({"jobs": jobs}),
-            "pending_jobs": "0",
-            "successful_jobs": "1",
+            "PATH": f"{fake_bin}:/usr/bin:/bin",
+            "JOBS": json.dumps({"jobs": jobs}),
+            "TARGET_SHA": "a" * 40,
+            "GITHUB_REPOSITORY": "example/repo",
+            "CALLS": str(tmp_path / "calls.jsonl"),
         },
         capture_output=True,
         text=True,
         check=False,
         timeout=10,
     )
-    assert process.returncode == (0 if terminal == "success" else 1), process.stderr
+    assert (process.returncode == 0) is (terminal == "success"), process.stderr
+    calls = (tmp_path / "calls.jsonl").read_text().splitlines()
+    expected = [
+        [
+            "api",
+            "--method",
+            "GET",
+            f"repos/example/repo/actions/workflows/{workflow}/runs",
+            "-f",
+            "head_sha=" + "a" * 40,
+            "-f",
+            "event=push",
+            "-f",
+            "per_page=10",
+        ]
+        for workflow in ("repo-ci.yml", "private-refs.yml", "ci.yml")
+    ]
+    expected.append(["api", "--method", "GET", "repos/example/repo/actions/runs/42/jobs", "-f", "per_page=100"])
+    assert [json.loads(call) for call in calls] == expected

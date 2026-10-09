@@ -63,6 +63,7 @@
       "no-hidden-constructor-fallback",
       "no-injected-module-loader",
       "no-input-model-mutation",
+      "no-interpreter-source-arguments",
       "no-invalid-argument-name-suppression",
       "no-mocked-pydantic-value-object",
       "no-nested-pydantic-field-validator",
@@ -186,7 +187,9 @@
       "no-comment-cruft",
       "no-dead-environment-input",
       "no-environment-conditional",
+      "no-managed-service-account-key",
       "no-mocked-terraform-test-oracle",
+      "no-project-basic-privilege",
       "no-redundant-variable-validation",
       "no-restated-comment",
       "no-terraform-data-condition",
@@ -314,6 +317,7 @@
       "test-phase-label-comment"
     ],
     "text": [
+      "cloudbuild-contract",
       "commented-out-config",
       "config-comment-wall",
       "declarative-deployment-boundary",
@@ -463,7 +467,8 @@
       "SARJ480",
       "SARJ481",
       "SARJ482",
-      "SARJ483"
+      "SARJ483",
+      "SARJ484"
     ],
     "sql": [
       "SARJ101",
@@ -496,7 +501,9 @@
       "SARJ206",
       "SARJ207",
       "SARJ209",
-      "SARJ210"
+      "SARJ210",
+      "SARJ211",
+      "SARJ212"
     ],
     "text": [
       "SARJ300",
@@ -509,7 +516,8 @@
       "SARJ308",
       "SARJ309",
       "SARJ310",
-      "SARJ311"
+      "SARJ311",
+      "SARJ315"
     ]
   },
   "retired": [

@@ -435,7 +435,10 @@ def test_scheduled_ci_audits_every_package(repository: Path) -> None:
 
 def test_ci_detects_changes_once_and_never_deploys_on_schedule() -> None:
     workflows = SCRIPT.parents[1] / "workflows"
-    assert sum(path.read_text().count("bash .github/scripts/ci-scope.sh") for path in workflows.glob("*.yml")) == 1
+    assert (
+        sum(path.read_text().count("bash .github/scripts/ci-select-scope.sh") for path in workflows.glob("*.yml")) == 1
+    )
+    assert SCRIPT.with_name("ci-select-scope.sh").read_text().count("bash .github/scripts/ci-scope.sh") == 1
     jobs = workflow("ci.yml").jobs
     assert jobs["changes"].name == "Detect affected checks"
     deploy = jobs["docs-deploy"]
@@ -494,18 +497,19 @@ def test_ci_completion_covers_every_job_and_rejects_failures(result: str, accept
     assert set(terminal.needs) == set(jobs) - {"complete"}
     assert terminal.condition == "always()"
     [step] = [step for step in terminal.steps if step.run and step.name == "Require all selected checks to succeed"]
-    results = {key: {"result": "success"} for key in jobs if key != "complete"}
-    for key in results:
-        candidate = results | {key: {"result": result}}
-        process = subprocess.run(
-            ("bash", "-c", step.run),
-            env={"PATH": "/usr/bin:/bin", "RESULTS": json.dumps(candidate)},
-            capture_output=True,
-            text=True,
-            check=False,
-            timeout=10,
-        )
-        assert process.returncode == (0 if accepted else 1), (key, process.stderr)
+    # GitHub defines needs.<job>.result as this closed four-value set:
+    # https://docs.github.com/en/actions/reference/workflows-and-actions/contexts#needs-context
+    assert step.run == "exit 1"
+    assert step.condition == "contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')"
+    rejected = {
+        term.removeprefix("contains(needs.*.result, '").removesuffix("')") for term in step.condition.split(" || ")
+    }
+    for key in terminal.needs:
+        candidate = dict.fromkeys(terminal.needs, "success") | {key: result}
+        triggers_guard = bool(rejected.intersection(candidate.values()))
+        previous_gate_accepts = all(value in {"success", "skipped"} for value in candidate.values())
+        assert triggers_guard is not previous_gate_accepts
+        assert previous_gate_accepts is accepted
 
 
 @pytest.mark.parametrize("kind", list(CheckKind))
@@ -543,26 +547,83 @@ def test_analysis_certificate_records_checked_tree_and_comparison_base(repositor
     assert proof.run_attempt == 2
 
 
-@pytest.mark.parametrize("failed", ["none", "ruff", "types", "dogfood"])
+@pytest.mark.parametrize("failed", ["git", "event-json"])
+def test_analysis_certificate_does_not_mask_metadata_failure(repository: Path, failed: str) -> None:
+    event = repository / "event.json"
+    event.write_text("broken JSON" if failed == "event-json" else '{"pull_request":{"base":{"sha":"base"}}}')
+    environment = credential_free_environment()
+    environment.update(
+        {
+            "GITHUB_REPOSITORY": "owner/repo",
+            "GITHUB_EVENT_PATH": str(event),
+            "GITHUB_RUN_ID": "7",
+            "GITHUB_RUN_ATTEMPT": "2",
+        }
+    )
+    if failed == "git":
+        executable = repository / "bin/git"
+        executable.parent.mkdir()
+        executable.write_text("#!/usr/bin/env bash\nexit 7\n")
+        executable.chmod(0o755)
+        environment["PATH"] = str(executable.parent) + os.pathsep + environment.get("PATH", os.defpath)
+    destination = repository / "certificate"
+    result = subprocess.run(
+        ("bash", str(SCRIPT.with_name("ci-record-analysis.sh")), "static", str(destination)),
+        cwd=repository,
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=30,
+    )
+    assert result.returncode != 0
+    assert not (destination / "proof.json").exists()
+
+
+@pytest.mark.parametrize("failed", ["none", "ruff", "ruff-helpers", "types", "dogfood", "shellcheck", "shfmt"])
 def test_parallel_static_gate_propagates_every_background_failure(tmp_path: Path, failed: str) -> None:
-    [step] = [
+    job = workflow("ci.yml").jobs["static-analysis"]
+    steps = [
         step
-        for step in workflow("ci.yml").jobs["static-analysis"].steps
-        if step.name == "Lint + typecheck (dogfood the strict config)"
+        for step in job.steps
+        if step.name in {"Lint, typecheck, and native shell checks", "Check repository standards"}
     ]
+    assert len(steps) == 2
+    assert all(step.condition == "needs.changes.outputs.reviewed-static != 'true'" for step in steps)
+    [certificate] = [step for step in job.steps if step.name == "Record the successfully checked PR tree"]
+    assert job.steps.index(steps[1]) < job.steps.index(certificate)
     executable = tmp_path / "bin/uv"
     executable.parent.mkdir()
     executable.write_text(
         "#!/usr/bin/env bash\n"
         'case "$*" in\n'
-        '  "run ruff check src/ tests/") label=ruff ;;\n'
-        '  "run basedpyright") label=types ;;\n'
+        '  "run ruff check src/ tests/"*) label=ruff ;;\n'
+        '  "run ruff check ../../.github/scripts/"*) label=ruff-helpers ;;\n'
+        '  "run basedpyright src/ tests/ "*) label=types ;;\n'
         '  "run code-standards --root ../.. check --jobs 2 .") label=dogfood ;;\n'
+        "  *) exit 99 ;;\n"
+        "esac\n"
+        'printf "%s\\n" "$label" >> "$CHECK_LOG"\n'
+        '[[ "$label" != "$FAILED" ]]\n'
+    )
+    executable.chmod(0o755)
+    native_launcher = executable.with_name("mise")
+    native_launcher.write_text(
+        "#!/usr/bin/env bash\n"
+        '[[ "$MISE_OFFLINE" == true ]] || exit 98\n'
+        'case "$*" in\n'
+        '  "--no-config --no-env --no-hooks exec aqua:koalaman/shellcheck@0.11.0 -- "*) label=shellcheck ;;\n'
+        '  "--no-config --no-env --no-hooks exec aqua:mvdan/sh@3.14.1 -- "*) label=shfmt ;;\n'
         "  *) exit 99 ;;\n"
         "esac\n"
         '[[ "$label" != "$FAILED" ]]\n'
     )
-    executable.chmod(0o755)
+    native_launcher.chmod(0o755)
+    scripts = tmp_path / ".github/scripts"
+    scripts.mkdir(parents=True)
+    scripts.joinpath("ci-static-analysis.sh").write_text(SCRIPT.with_name("ci-static-analysis.sh").read_text())
+    workdir = tmp_path / "packages/standards"
+    workdir.mkdir(parents=True)
     summary = tmp_path / "summary"
     environment = credential_free_environment()
     environment.update(
@@ -570,16 +631,25 @@ def test_parallel_static_gate_propagates_every_background_failure(tmp_path: Path
             "PATH": str(executable.parent) + os.pathsep + environment.get("PATH", os.defpath),
             "FAILED": failed,
             "GITHUB_STEP_SUMMARY": str(summary),
+            "CHECK_LOG": str(tmp_path / "checks.log"),
         }
     )
-    result = subprocess.run(
-        ("bash", "-eu", "-o", "pipefail", "-c", step.run),
-        cwd=tmp_path,
-        env=environment,
-        capture_output=True,
-        text=True,
-        check=False,
-        timeout=30,
-    )
+
+    def run_step(step: WorkflowStep) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            ("bash", "-eu", "-o", "pipefail", "-c", step.run),
+            cwd=workdir,
+            env=environment,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=30,
+        )
+
+    result = run_step(steps[0])
+    if result.returncode == 0:
+        result = run_step(steps[1])
     assert result.returncode == (0 if failed == "none" else 1), result.stderr
-    assert len(summary.read_text().splitlines()) == 3
+    assert len(summary.read_text().splitlines()) == 5
+    checks = (tmp_path / "checks.log").read_text().splitlines()
+    assert checks.count("dogfood") == (1 if failed in {"none", "dogfood"} else 0)

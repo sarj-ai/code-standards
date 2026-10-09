@@ -273,6 +273,13 @@ def _security_input_kind(
     return None
 
 
+@dataclass(frozen=True, slots=True)
+class _ZizmorSourceLocation:
+    path: Path
+    line: int
+    column: int
+
+
 def parse_zizmor(payload: str, *, root: Path) -> tuple[Diagnostic, ...]:
     report = _SarifReport.model_validate_json(payload)
     diagnostics: list[Diagnostic] = []
@@ -288,24 +295,36 @@ def parse_zizmor(payload: str, *, root: Path) -> tuple[Diagnostic, ...]:
             if rule_id not in ZIZMOR_RULES:
                 msg = "zizmor returned an audit outside the pinned registry"
                 raise ValueError(msg)
-            physical = finding.locations[0].physical
-            uri = urlparse(physical.artifact.uri)
-            if uri.scheme not in {"", "file"} or uri.netloc:
-                msg = "zizmor reported a nonlocal artifact"
-                raise ValueError(msg)
-            path = _contained_path(unquote(uri.path), root)
+            locations = tuple(_zizmor_location(location, root=root) for location in finding.locations)
+            # A grouped upstream finding may name several primary locations. Validate all
+            # locations, while retaining one canonical diagnostic per finding.
+            location = locations[0]
             diagnostics.append(
                 _diagnostic(
                     "zizmor",
                     rule_id,
                     finding.message.text,
-                    path=path,
+                    path=location.path,
                     root=root,
-                    line=physical.region.start_line,
-                    column=physical.region.start_column,
+                    line=location.line,
+                    column=location.column,
                 )
             )
     return tuple(diagnostics)
+
+
+def _zizmor_location(location: _SarifLocation, *, root: Path) -> _ZizmorSourceLocation:
+    physical = location.physical
+    uri = urlparse(physical.artifact.uri)
+    if uri.scheme not in {"", "file"} or uri.netloc:
+        msg = "zizmor reported a nonlocal artifact"
+        raise ValueError(msg)
+    path = _contained_path(unquote(uri.path), root)
+    document = SourceDocument.read(path)
+    if document is None or document.point(line=physical.region.start_line, column=physical.region.start_column) is None:
+        msg = "security analyzer reported a position outside readable source"
+        raise ValueError(msg)
+    return _ZizmorSourceLocation(path, physical.region.start_line, physical.region.start_column)
 
 
 def parse_checkov(payload: str, *, root: Path) -> tuple[Diagnostic, ...]:

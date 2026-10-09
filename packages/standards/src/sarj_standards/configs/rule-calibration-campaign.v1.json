@@ -2313,6 +2313,38 @@
       "state": "complete",
       "evidence": "The 88-case combined native rule suite and 28 EvaluationCase labels pass: 12 true positives, 16 true negatives, no mismatches or duplicate locations. Reused const tables emit each source row once. Fourteen regression vectors make the coverage guard accept cardinality-preserving literal-array maps while rejecting filters, flat maps, unknown sources and sparse arrays. Pinned isolated calibration selects 1,820 tracked test sources / 19,553,840 bytes across three local Git corpora, with fresh processes and batches capped at 250 files. All corpus runs retain zero findings. Public reporting contains only aggregate data; private source identities, commits and SHA-256 pins remain in the owner-readable overlay. Seeds prove the detectors fire. Three-run detector-only wall medians are Python 4.144s baseline / 4.504s candidate and TypeScript 2.390s / 2.358s. A deterministic 48-file-per-language SHA-256 sample gives combined-registry/testing-rule median overhead of 2.3% / 5.0%, with peak memory about 616 MB / 258 MB. Filesystem caches are not purged and local load limits timing precision. Reproduce native qualification with make verify; focused fixtures use pytest tests/rules/test_no_tautological_expect.py in packages/python and npm test -- tests/rules/no-tautological-expect.test.ts tests/rules/no-duplicate-test-case.test.ts in packages/typescript. Corpus and timing measurements precede the current-main port; no revised timing claim is made. Current-main qualification preserves shared erased-expression helpers and passes cast-wrapped scalar, call and table regressions. The label extractor now includes three-column matcher fixtures; the complete aggregate is 112 cases (42 true positives, 70 true negatives, no mismatches or duplicate locations).",
       "outcome": "Ship as a warning without autofix. Compare complete literal rows in recognized framework each calls and safe const tables; preserve IDs and property order. Exclude runtime values, escapes, mutation, spreads, computed properties, getters, generated code and custom runners. Intentional repeated stateful or concurrent execution requires a local reasoned suppression. Corpus diversity is limited to local Standards/consumer suites; do not promote without broader adoption evidence."
+    },
+    {
+      "task": "rule-audit/python/no-interpreter-source-arguments",
+      "family": "python",
+      "ruleId": "no-interpreter-source-arguments",
+      "state": "complete",
+      "evidence": "The user explicitly authorized strict deployment program boundaries. Forty focused labeled/example/location/suppression cases pass for import-proven literal argv process sinks; shared argv classification and the rule pass Ruff and strict BasedPyright. A read-only local self-scan selected 590 maintained Python files and reported zero candidate findings. This unpinned dirty-worktree smoke scan does not establish a fleet false-positive rate or corpus precision claim.",
+      "outcome": "Ship SARJ484 as error without autofix. Recognize literal argv at import-proven subprocess, asyncio.create_subprocess_exec and os exec/spawn APIs, honoring executable overrides, shell=True abstention, mode/environment signature positions, aliases, import shadowing and replaced methods. Reject known interpreter/jq/awk source arguments while allowing external files/modules and correct option operands. Dynamic argv, remote receiver methods, shell strings, recursive shell payloads and unknown option grammars remain documented scope gaps; no receiver-name or shell-string heuristics are introduced."
+    },
+    {
+      "task": "rule-audit/iac/no-managed-service-account-key",
+      "family": "iac",
+      "ruleId": "no-managed-service-account-key",
+      "state": "complete",
+      "evidence": "Six cases in packages/iac/tests/rules/test_no_managed_service_account_key.py cover managed resources, data sources, other resource kinds, comments, quoted text and malformed HCL. A bounded scan of 131 tracked DevOps files (982,417 bytes) retained one managed-key finding; this exact live finding was reviewed. This is not a claim of broader corpus precision.",
+      "outcome": "Ship SARJ211 at explicitly requested error severity without autofix. Only management of a literal google_service_account_key resource is rejected; key data sources and unresolved forms are left to other owners."
+    },
+    {
+      "task": "rule-audit/iac/no-project-basic-privilege",
+      "family": "iac",
+      "ruleId": "no-project-basic-privilege",
+      "state": "complete",
+      "evidence": "Twenty cases in packages/iac/tests/rules/test_no_project_basic_privilege.py cover literal Owner/Editor grants, list/for_each, jsonencode and same-file policy data, project scope, comparison expressions, unknown roles, malformed input and deterministic findings. The bounded 131-file DevOps scan retained one project basic-role finding, reviewed as a true positive. Source ownership and literal proof remain deliberate boundaries; no blanket live precision claim.",
+      "outcome": "Ship SARJ212 at explicitly requested error severity without autofix. Require a source-proven project IAM Owner/Editor grant. Permit Viewer/admin roles and organization/folder policies; abstain on unresolved expressions rather than guessing."
+    },
+    {
+      "task": "rule-audit/text/cloudbuild-contract",
+      "family": "text",
+      "ruleId": "cloudbuild-contract",
+      "state": "complete",
+      "evidence": "37 focused semantic cases cover duplicate IDs, prior waitFor, script exclusivity, shell command option arity, substitution trust, alias use-site provenance, merge precedence, unknown and malformed YAML. Small shared-graph and amplified/recursive/deep-input cases verify bounded composition and expanded work before validation, with coverage failures rather than semantic findings. A bounded 131-file DevOps scan retained 24 findings: one confirmed forward dependency and 23 shell-source substitution boundaries. The motivating forward dependency was reviewed; broader substitution corpus review remains incomplete. Local cold/warm source-only runs were about 0.28 seconds; this is not an isolated all-engine performance promotion claim.",
+      "outcome": "Ship SARJ315 at explicitly requested error severity without autofix. Enforce only source-proven Build step dependencies and execution semantics. This is not a complete Cloud Build schema, trigger option, effective identity or runtime-script analysis. Malformed selected YAML is fatal parser coverage, never suppressible semantic debt."
     }
   ]
 }

@@ -14,18 +14,20 @@ if [[ "$PUBLISHED_SHA" =~ ^[0-9a-f]{40}$ ]] && active="$(
       --json databaseId,event,headSha,status
   done | jq -sc 'add | unique_by(.databaseId)'
 )"; then
+  run_rows=$(jq -r '.[] | select((.event == "schedule" or .event == "workflow_dispatch") and (.status == "in_progress" or .status == "pending" or .status == "queued")) | [.databaseId, .headSha, .event] | @tsv' <<<"$active") || run_rows=''
   while IFS=$'\t' read -r run_id source_sha event; do
     [[ "$run_id" =~ ^[0-9]+$ && "$source_sha" =~ ^[0-9a-f]{40}$ && "$source_sha" != "$PUBLISHED_SHA" ]] || continue
     if [[ "$event" == workflow_dispatch ]]; then
-      automatic="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id" | \
+      automatic="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id" |
         jq -r --arg sha "$source_sha" '.event == "workflow_dispatch" and .head_sha == $sha and (.head_branch | test("^standards-v[0-9]+\\.[0-9]+\\.[0-9]+")) and .actor.login == "github-actions[bot]" and .triggering_actor.login == "github-actions[bot]" and .run_attempt == 1')" || automatic=false
       [[ "$automatic" == true ]] || continue
     fi
-    if [[ "$(gh api "repos/$GITHUB_REPOSITORY/compare/$source_sha...$PUBLISHED_SHA" --jq .status)" == ahead ]]; then
+    comparison=$(gh api "repos/$GITHUB_REPOSITORY/compare/$source_sha...$PUBLISHED_SHA" --jq .status) || comparison=''
+    if [[ "$comparison" == ahead ]]; then
       gh run cancel "$run_id" --repo "$GITHUB_REPOSITORY" ||
         echo "::warning::could not cancel superseded automatic rollout $run_id"
     fi
-  done < <(jq -r '.[] | select((.event == "schedule" or .event == "workflow_dispatch") and (.status == "in_progress" or .status == "pending" or .status == "queued")) | [.databaseId, .headSha, .event] | @tsv' <<< "$active")
+  done <<<"$run_rows"
 else
   echo "::warning::could not inspect automatic rollouts; dispatching normally"
 fi

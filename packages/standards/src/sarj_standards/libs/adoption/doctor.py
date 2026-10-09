@@ -267,6 +267,9 @@ def diagnose(root: Path) -> list[Finding]:
     findings.extend(_check_adoption_wiring(root))
     findings.extend(_check_eslint_warning_exit_semantics(root))
     findings.extend(_check_shellcheck(root, files))
+    from . import devops  # ruff: ignore[import-outside-top-level] -- native analysis dependencies initialize after adoption contracts.
+
+    findings.extend(devops.health_findings(root, files))
     findings.extend(_check_ci_gate(root))
     findings.extend(_check_commit_policy_ci(root))
     unique = dict.fromkeys(findings)
@@ -395,6 +398,9 @@ def diagnose_adoption_health(root: Path, selected: Sequence[Path] = ()) -> list[
     findings.extend(_check_adoption_wiring(root))
     findings.extend(_check_eslint_warning_exit_semantics(root))
     findings.extend(_check_shellcheck(root, files))
+    from . import devops  # ruff: ignore[import-outside-top-level] -- native analysis dependencies initialize after adoption contracts.
+
+    findings.extend(devops.health_findings(root, files))
     findings.extend(_check_ci_gate(root))
     findings.extend(_check_commit_policy_ci(root))
     return sorted(dict.fromkeys(findings), key=lambda finding: (finding.where, finding.id, finding.detail))

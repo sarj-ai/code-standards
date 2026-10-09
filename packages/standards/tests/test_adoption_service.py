@@ -118,6 +118,10 @@ def test_setup_prepares_only_selected_security_tools_and_writes_their_configs(
         encoding="utf-8",
     )
     executable.chmod(0o755)
+    native_log = tmp_path / "prepared-native-tools.txt"
+    mise = binaries / "mise"
+    mise.write_text(executable.read_text().replace(str(log), str(native_log)), encoding="utf-8")
+    mise.chmod(0o755)
     monkeypatch.setenv("PATH", str(binaries), prepend=":")
 
     plan = plan_init(tmp_path, configs=configs, hook_manager="none")
@@ -130,6 +134,16 @@ def test_setup_prepares_only_selected_security_tools_and_writes_their_configs(
     assert set(adopted.enabled_capabilities) & {"zizmor", "checkov"} == selected
     calls = log.read_text().splitlines() if log.exists() else []
     assert len(calls) == len(selected)
+    native_calls = native_log.read_text().splitlines()
+    assert len(native_calls) == 2
+    assert native_calls[0] == (
+        "--no-config --no-env --no-hooks install "
+        "aqua:rhysd/actionlint@1.7.12 aqua:koalaman/shellcheck@0.11.0 "
+        "aqua:hashicorp/terraform@1.15.8 aqua:terraform-linters/tflint@0.63.1"
+    )
+    assert "exec aqua:terraform-linters/tflint@0.63.1 -- tflint --config " in native_calls[1]
+    assert native_calls[1].endswith(" --init")
+    assert not any("zizmor" in call for call in native_calls)
     generated = (tmp_path / ".github/workflows/standards.yml").read_text()
     for tool, target in (("zizmor", "zizmor.yml"), ("checkov", ".checkov.yml")):
         assert (tmp_path / target).is_file() == (tool in selected)

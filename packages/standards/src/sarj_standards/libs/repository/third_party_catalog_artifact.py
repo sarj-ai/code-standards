@@ -15,6 +15,7 @@ from pydantic import BaseModel, ConfigDict, Field, RootModel
 import typer
 
 from sarj_standards.libs.linting import security_tools
+from sarj_standards.libs.linting.devops_tools import TOOLS
 
 
 _DESTINATION: Final = Path("apps/docs/src/generated/third-party-rules.v1.json")
@@ -56,6 +57,7 @@ type ProviderEngine = Literal[
     "checkov",
     "deptry",
     "detekt",
+    "devops",
     "eslint",
     "ktlint",
     "mobsfscan",
@@ -236,9 +238,10 @@ def build(root: Path) -> _CatalogArtifact:
         ruff_projection.provider,
         deptry_projection.provider,
         *(provider for projection in supplemental for provider in projection.providers),
+        *_devops_providers(),
     )
     included_providers = {rule.provider for rule in rules} | {
-        provider.id for projection in supplemental for provider in projection.providers
+        provider.id for provider in providers if provider.projection_scope == "provider-only"
     }
     return _CatalogArtifact(
         schema_version=1,
@@ -247,6 +250,32 @@ def build(root: Path) -> _CatalogArtifact:
             sorted((provider for provider in providers if provider.id in included_providers), key=lambda item: item.id)
         ),
         rules=tuple(sorted(rules, key=lambda item: item.key)),
+    )
+
+
+def _devops_providers() -> tuple[_Provider, ...]:
+    projects = (
+        ("helm", "Helm", "https://helm.sh/docs/helm/helm_lint/"),
+        ("kubeconform", "Kubeconform", "https://github.com/yannh/kubeconform"),
+        ("kube-linter", "KubeLinter", "https://github.com/stackrox/kube-linter"),
+        ("shfmt", "shfmt", "https://github.com/mvdan/sh"),
+        ("shellcheck", "ShellCheck", "https://www.shellcheck.net/"),
+        ("actionlint", "actionlint", "https://github.com/rhysd/actionlint"),
+        ("hadolint", "Hadolint", "https://github.com/hadolint/hadolint"),
+        ("terraform", "Terraform", "https://developer.hashicorp.com/terraform/cli/commands/validate"),
+        ("tflint", "TFLint", "https://github.com/terraform-linters/tflint"),
+    )
+    return tuple(
+        _Provider(
+            id=name,
+            label=label,
+            engine="devops",
+            package=name,
+            version=TOOLS[name].version,
+            homepage=homepage,
+            projection_scope="provider-only",
+        )
+        for name, label, homepage in projects
     )
 
 

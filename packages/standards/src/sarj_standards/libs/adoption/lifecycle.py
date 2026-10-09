@@ -71,8 +71,21 @@ def install_commands(
     ecosystems: scaffold.Ecosystems,
     *,
     hook_manager: manifest.HookManager = "pre-commit",
+    include_devops: bool = True,
 ) -> list[Command]:
     commands: list[Command] = []
+    if include_devops:
+        from . import devops, doctor  # ruff: ignore[import-outside-top-level] -- setup loads optional native tooling after adoption initialization.
+
+        adopted = manifest.load_for_setup(root)
+        commands.extend(
+            devops.install_commands(
+                root,
+                doctor.authored_files(root),
+                capabilities=adopted.enabled_capabilities if adopted is not None else None,
+                prepared=bool(adopted.prepared_targets) if adopted is not None else False,
+            )
+        )
     for name in security_tools.TOOLS:
         enabled = ecosystems.actions if name == "zizmor" else ecosystems.infrastructure
         if enabled:
@@ -104,7 +117,9 @@ def install_commands(
             )
         )
     git_metadata = root / ".git"
-    if (git_metadata.is_dir() or git_metadata.is_file()) and hook_manager == "pre-commit":
+    if not (git_metadata.is_dir() or git_metadata.is_file()):
+        return commands
+    if hook_manager == "pre-commit":
         hook_argv = (
             "uvx",
             "--no-config",
@@ -119,7 +134,7 @@ def install_commands(
             "--install-hooks",
         )
         commands.append(Command(_PRECOMMIT_HOOK_LABEL, hook_argv, root))
-    elif (git_metadata.is_dir() or git_metadata.is_file()) and hook_manager == "lefthook":
+    elif hook_manager == "lefthook":
         commands.append(
             Command(
                 "Lefthook repository hooks",

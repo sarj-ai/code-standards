@@ -165,7 +165,7 @@ wheels = [
 
 [[package]]
 name = "sarj-iac-lint"
-version = "0.18.5"
+version = "0.19.0"
 source = { editable = "." }
 dependencies = [
     { name = "sarj-rule-contracts" },

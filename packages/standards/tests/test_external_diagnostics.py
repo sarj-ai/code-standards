@@ -1022,6 +1022,7 @@ def test_shellcheck_runs_hermetically_for_supported_shell(tmp_path: Path) -> Non
             "shellcheck",
             "--norc",
             "--extended-analysis=true",
+            "--enable=check-extra-masked-returns",
             "--severity=info",
             "--source-path=SCRIPTDIR",
             "--format=json1",
@@ -3578,3 +3579,83 @@ def test_eslint_heap_respects_host_and_process_container_limits(
         external_module, "_CGROUP_MEMORY_LIMIT_FILES", (root / "memory.max", root / "memory/memory.limit_in_bytes")
     )
     assert external_module._eslint_node_options() == f"--max-old-space-size={expected}"  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+
+
+@pytest.mark.parametrize("unused", [False, True], ids=("declared-used", "seeded-unused"))
+@pytest.mark.parametrize("select_child", [False, True], ids=("root-script", "root-and-child"))
+def test_deptry_scans_declared_wheel_sources_for_root_scripts_without_unrelated_children(
+    tmp_path: Path, unused: bool, select_child: bool
+) -> None:
+    dependencies = ["packaging", "typer"] if unused else ["packaging"]
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname = "application"\nversion = "1"\n'
+        f"dependencies = {json.dumps(dependencies)}\n"
+        '\n[build-system]\nrequires = ["hatchling"]\nbuild-backend = "hatchling.build"\n'
+        '\n[tool.hatch.build.targets.wheel]\npackages = ["packages/application/src/application"]\n',
+        encoding="utf-8",
+    )
+    script = tmp_path / ".github/scripts/verify.py"
+    script.parent.mkdir(parents=True)
+    script.write_text("from pathlib import Path\nprint(Path.cwd())\n", encoding="utf-8")
+    source = tmp_path / "packages/application/src/application/__init__.py"
+    source.parent.mkdir(parents=True)
+    source.write_text("from packaging.version import Version\nVERSION = Version('1')\n", encoding="utf-8")
+    project = source.parents[2]
+    (project / "pyproject.toml").write_text(
+        '[project]\nname = "application"\nversion = "1"\ndependencies = ["packaging"]\n', encoding="utf-8"
+    )
+    unrelated = tmp_path / "packages/unrelated"
+    unrelated.mkdir()
+    (unrelated / "pyproject.toml").write_text(
+        '[project]\nname = "unrelated"\nversion = "1"\ndependencies = ["typer"]\n', encoding="utf-8"
+    )
+    (unrelated / "app.py").write_text("import typer\n", encoding="utf-8")
+    calls: list[tuple[Path, tuple[str, ...]]] = []
+
+    def run(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
+        calls.append((cwd, tuple(argv)))
+        return external_module.run_process(argv, cwd=cwd)
+
+    selected = [str(script), str(source)] if select_child else [str(script)]
+    reports = analyze_external(
+        selected, root=tmp_path, trust=TrustMode.SAFE, capabilities=frozenset({"deptry"}), runner=run
+    )
+    assert len(calls) == (2 if select_child else 1)
+    assert all(report.completion is Completion.COMPLETE for report in reports)
+    diagnostics = [item for report in reports for item in report.diagnostics]
+    assert [(item.code, item.location.path) for item in diagnostics] == (
+        [("DEP002", "pyproject.toml")] if unused else []
+    )
+    if unused:
+        assert "typer" in diagnostics[0].message
+    root_call = next(argv for cwd, argv in calls if cwd == tmp_path)
+    assert "packages/application/src/application" in root_call
+    assert "packages/unrelated" not in root_call
+
+
+def test_deptry_declared_sources_overlap_without_duplicate_missing_dependency_findings(tmp_path: Path) -> None:
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname = "application"\nversion = "1"\ndependencies = []\n'
+        '\n[build-system]\nrequires = ["hatchling"]\nbuild-backend = "hatchling.build"\n'
+        '\n[tool.hatch.build.targets.wheel]\npackages = ["src/application"]\n',
+        encoding="utf-8",
+    )
+    source = tmp_path / "src/application/__init__.py"
+    source.parent.mkdir(parents=True)
+    source.write_text("import deptry_missing_fixture\n", encoding="utf-8")
+    calls: list[tuple[str, ...]] = []
+
+    def run(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
+        calls.append(tuple(argv))
+        return external_module.run_process(argv, cwd=cwd)
+
+    reports = analyze_external(
+        [str(source)], root=tmp_path, trust=TrustMode.SAFE, capabilities=frozenset({"deptry"}), runner=run
+    )
+    assert len(reports) == 1
+    assert reports[0].completion is Completion.COMPLETE
+    assert [(item.code, item.location.path) for item in reports[0].diagnostics] == [
+        ("DEP001", "src/application/__init__.py")
+    ]
+    assert calls[0][1] == "src"
+    assert "src/application" not in calls[0]

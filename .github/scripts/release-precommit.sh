@@ -6,10 +6,10 @@ mkdir -p "$consumer"
 git -C "$consumer" init -q
 git -C "$consumer" config user.name "Standards Release"
 git -C "$consumer" config user.email "standards-release@example.invalid"
-printf 'VALUE: int = 1\n' > "$consumer/smoke.py"
-printf 'SELECT 1;\n' > "$consumer/smoke.sql"
-: > "$consumer/smoke.tf"
-python -c 'import json,os,pathlib,sys; pathlib.Path(sys.argv[1]).write_text(json.dumps({"repos":[{"repo":pathlib.Path(os.environ["GITHUB_WORKSPACE"]).resolve().as_uri(),"rev":os.environ["GITHUB_SHA"],"hooks":[{"id":"sarj-standards"}]}]}),encoding="utf-8")' "$consumer/.pre-commit-config.yaml"
+printf 'VALUE: int = 1\n' >"$consumer/smoke.py"
+printf 'SELECT 1;\n' >"$consumer/smoke.sql"
+: >"$consumer/smoke.tf"
+python "$root/.github/scripts/ci-precommit-config.py" "$consumer/.pre-commit-config.yaml" "$GITHUB_WORKSPACE" "$GITHUB_SHA"
 git -C "$consumer" add .
 git -C "$consumer" commit -qm fixture
 pc=(uv run --project "$root/packages/standards" --no-sync pre-commit)

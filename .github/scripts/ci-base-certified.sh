@@ -15,4 +15,4 @@ jq -e --arg sha "$base" --arg repo "$repository" '
     .head_branch == "main" and .head_repository.full_name == $repo and
     .path == ".github/workflows/ci.yml")]
   | max_by(.id) | .conclusion == "success"
-' <<< "$response" >/dev/null
+' <<<"$response" >/dev/null

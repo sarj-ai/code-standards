@@ -4,7 +4,8 @@ set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/../../apps/docs"
 
 run_check() {
-  label="$1"; shift
+  label="$1"
+  shift
   started=$SECONDS
   "$@" && result=0 || result=$?
   printf 'Docs %s: %ss (exit %s)\n' "$label" "$((SECONDS - started))" "$result"
@@ -17,8 +18,10 @@ run_check Examples npm run code-examples:check
 run_check Catalog npm run third-party-catalog:check
 # Both checks read the prepared source. ESLint excludes Astro's generated
 # .astro directory; neither check depends on the other's output.
-run_check Lint npm --ignore-scripts run lint & lint_pid=$!
-run_check Types npm --ignore-scripts run check & types_pid=$!
+run_check Lint npm --ignore-scripts run lint &
+lint_pid=$!
+run_check Types npm --ignore-scripts run check &
+types_pid=$!
 result=0
 wait "$lint_pid" || result=1
 wait "$types_pid" || result=1

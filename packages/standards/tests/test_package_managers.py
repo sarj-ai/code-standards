@@ -1,14 +1,17 @@
 from __future__ import annotations
 
 import json
+import shlex
 import subprocess
 import sys
 from typing import TYPE_CHECKING
 
 import pytest
+import yaml
 
 from sarj_standards.libs.adoption import lifecycle, manifest, packagemanager, scaffold
 from sarj_standards.libs.adoption.packagemanager import PackageManager, YarnVariant
+from sarj_standards.libs.typed_containers import is_object_list, is_object_mapping
 
 
 if TYPE_CHECKING:
@@ -277,7 +280,7 @@ def test_ci_bootstraps_bun_without_unneeded_node_or_corepack(tmp_path: Path) -> 
 
     workflow = scaffold.github_ci_workflow(tmp_path)
 
-    assert "oven-sh/setup-bun@v2" in workflow
+    assert "oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2" in workflow
     assert "actions/setup-node" not in workflow
     assert "corepack enable" not in workflow
     assert "run: bun install --frozen-lockfile" in workflow
@@ -291,10 +294,35 @@ def test_ci_pins_node_for_bun_on_a_configured_runner(tmp_path: Path) -> None:
 
     workflow = scaffold.github_ci_workflow(tmp_path)
 
-    assert "    runs-on: blacksmith-2vcpu-ubuntu-2404\n" in workflow
-    assert workflow.index("oven-sh/setup-bun@v2") < workflow.index("actions/setup-node@v7")
-    assert "          node-version: 24\n          check-latest: true\n" in workflow
-    assert "run: bun install --frozen-lockfile" in workflow
+    document: object = yaml.safe_load(workflow)  # pyright: ignore[reportAny] -- narrow generated YAML at the parser boundary.
+    assert is_object_mapping(document)
+    jobs = document["jobs"]
+    assert is_object_mapping(jobs)
+    job = jobs["standards"]
+    assert is_object_mapping(job)
+    assert job["runs-on"] == "blacksmith-2vcpu-ubuntu-2404"
+    steps = job["steps"]
+    assert is_object_list(steps)
+    actions = [(index, step) for index, step in enumerate(steps) if is_object_mapping(step) and "uses" in step]
+    bun_index, _ = next((index, step) for index, step in actions if str(step["uses"]).startswith("oven-sh/setup-bun@"))
+    node_index, node = next(
+        (index, step) for index, step in actions if str(step["uses"]).startswith("actions/setup-node@")
+    )
+    assert bun_index < node_index
+    assert node["with"] == {"node-version": 24, "check-latest": True}
+    install_index = next(
+        index
+        for index, step in enumerate(steps)
+        if is_object_mapping(step)
+        and isinstance(run := step.get("run"), str)
+        and shlex.split(run)[:2] == ["bun", "install"]
+    )
+    assert node_index < install_index
+    install = steps[install_index]
+    assert is_object_mapping(install)
+    command = install["run"]
+    assert isinstance(command, str)
+    assert {"--frozen-lockfile", "--ignore-scripts"} <= set(shlex.split(command))
 
 
 def test_ci_resolves_the_newest_node_before_npm_activation_on_a_configured_runner(tmp_path: Path) -> None:

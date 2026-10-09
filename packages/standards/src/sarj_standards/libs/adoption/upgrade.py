@@ -605,6 +605,8 @@ def _upgrade_install_commands(plan: UpgradePlan) -> list[lifecycle.Command]:
             plan.root,
             plan.ecosystems,
             hook_manager=plan.adopted.hook_manager,
+            include_devops=bool(plan.adopted.prepared_targets)
+            or not set(plan.adopted.configs).isdisjoint(manifest.SHARED_CONFIGS),
         ),
     ]
 

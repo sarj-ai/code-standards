@@ -62,6 +62,7 @@ from .libs.linting.library_policy import (
     scan_paths as check_selected_library_policy,
 )
 from .libs.linting.policy import Policy
+from .libs.linting.prepared_devops import analyze_prepared
 from .libs.linting.runner import group_paths, run as check
 from .libs.linting.scheduling import analyze_groups
 from .libs.rules import RuleEngine, RuleId, RuleSelection, RuleSelector
@@ -252,6 +253,9 @@ class Standards:
         include_react_doctor: bool = True,
         pass_on_unpruned_eslint_suppressions: bool = False,
         jobs: int = 1,
+        prepared_devops: Sequence[Path] = (),
+        prepared_targets: Sequence[str] = (),
+        prepared_only: bool = False,
         python_type_check: bool = True,
     ) -> AnalysisReport:
         if jobs not in {1, 2}:
@@ -263,6 +267,13 @@ class Standards:
             return _failed_analysis(self.root, "invalid-input", str(exc))
         try:
             adopted = _analysis_manifest(self.root, normalized_mode)
+        except (OSError, TypeError, ValueError) as exc:
+            return _failed_analysis(self.root, "invalid-input", str(exc))
+        if prepared_only:
+            return _prepared_only_analysis(
+                self.root, adopted, prepared_devops, prepared_targets, paths=paths, rules=rules
+            )
+        try:
             selection_policy = _selection_policy(self.root, adopted, normalized_mode)
             rule_selection = _rule_selection(rules)
             selected = _analysis_inputs(self.root, paths, mode=normalized_mode)
@@ -295,9 +306,11 @@ class Standards:
                 native = _with_library_policy(self.root, native, active_selected, selection_policy)
             if rule_selection is None and normalized_mode is AnalysisMode.POLICY:
                 native = _with_repository_analysis(self.root, native, staged=staged)
-            return native.tools
+            prepared = _prepared_reports(self.root, adopted, prepared_devops, prepared_targets)
+            return (*native.tools, *prepared)
 
         coverage = _selection_coverage(self.root, selected, active_selected, selected_groups, rule_selection)
+        coverage.extend(_prepared_coverage(adopted, prepared_devops))
         if not external:
             native = report_from_tools(self.root, native_analysis())
             _native_typescript_coverage(selected_groups, adopted, rule_selection, coverage)
@@ -535,6 +548,46 @@ def _operation_result(
         case _:
             status = Status.FAILED
     return Result(status, findings, changes, exit_code)
+
+
+def _prepared_only_analysis(
+    root: Path,
+    adopted: Manifest | None,
+    receipts: Sequence[Path],
+    targets: Sequence[str],
+    *,
+    paths: Sequence[str] | None,
+    rules: Sequence[str | RuleSelector] | None,
+) -> AnalysisReport:
+    if not receipts or paths or rules:
+        return _failed_analysis(
+            root,
+            "invalid-input",
+            "prepared-only analysis requires receipts and cannot include source paths or rule selectors",
+        )
+    return report_from_tools(root, _prepared_reports(root, adopted, receipts, targets))
+
+
+def _prepared_reports(
+    root: Path, adopted: Manifest | None, receipts: Sequence[Path], targets: Sequence[str]
+) -> tuple[ToolReport, ...]:
+    if not receipts and not targets:
+        return ()
+    declared = adopted.prepared_targets if adopted is not None else ()
+    return analyze_prepared(receipts, root=root, declared=declared, selected=targets)
+
+
+def _prepared_coverage(adopted: Manifest | None, receipts: Sequence[Path]) -> tuple[CoverageNotice, ...]:
+    if adopted is None or not adopted.prepared_targets or receipts:
+        return ()
+    return (
+        CoverageNotice(
+            "prepared-devops",
+            "prepared artifact validation deferred; supply --prepared-devops before release",
+            len(adopted.prepared_targets),
+            CoverageDisposition.NOT_REQUESTED,
+        ),
+    )
 
 
 def _failed_analysis(root: Path, kind: str, message: str) -> AnalysisReport:

@@ -444,10 +444,12 @@ def test_security_adoption_detects_sources_and_prepares_tools_separately(tmp_pat
     )
     assert {"zizmor", "checkov"}.issubset(selected)
     commands = lifecycle.install_commands(tmp_path, detected, hook_manager="none")
-    assert len(commands) == 2
+    assert len(commands) == 4
+    assert sum("zizmor" in command.argv for command in commands) == 1
     assert all("--offline" not in command.argv for command in commands)
     disabled = scaffold.configured_ecosystems(detected, ())
-    assert lifecycle.install_commands(tmp_path, disabled, hook_manager="none") == []
+    disabled_commands = lifecycle.install_commands(tmp_path, disabled, hook_manager="none")
+    assert not any(name in command.argv for command in disabled_commands for name in security_tools.TOOLS)
 
 
 @pytest.mark.parametrize("tool", security_tools.TOOLS)
@@ -693,3 +695,61 @@ def test_explicit_checkov_selection_limits_checks_and_preserves_terraform_provid
     assert all(str(pod) not in argv for argv in calls)
     assert len(reports) == 1
     assert reports[0].completion is Completion.COMPLETE
+
+
+@pytest.mark.parametrize("filename", [".github/workflows/ci.yml", "actions/check/action.yaml"])
+def test_zizmor_uses_one_canonical_invocation_for_workflows_and_composite_actions(
+    tmp_path: Path, filename: str
+) -> None:
+    path = tmp_path / filename
+    path.parent.mkdir(parents=True)
+    path.write_text("name: fixture\n", encoding="utf-8")
+    calls: list[tuple[str, ...]] = []
+
+    def run(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
+        assert cwd == tmp_path
+        calls.append(tuple(argv))
+        assert tuple(argv[:3]) == ("uvx", "--no-config", "--isolated")
+        assert "--collect=all" in argv
+        assert "--strict-collection" in argv
+        assert "--format=sarif" in argv
+        assert argv[-1] == str(path)
+        return ProcessOutput(0, json.dumps(_zizmor(path)), "")
+
+    reports = analyze_external(
+        [str(path)], root=tmp_path, trust=TrustMode.SAFE, runner=run, capabilities=frozenset({"zizmor"})
+    )
+    assert len(calls) == 1
+    assert len(reports) == 1
+    assert reports[0].name == "zizmor"
+    assert reports[0].completion is Completion.COMPLETE
+    assert len(reports[0].diagnostics) == 1
+
+
+@pytest.mark.parametrize("secondary", ["valid", "remote", "outside-source"])
+def test_zizmor_grouped_locations_preserve_one_finding_and_validate_every_primary(
+    tmp_path: Path, secondary: str
+) -> None:
+    path = tmp_path / "action.yml"
+    path.write_text("name: fixture\n", encoding="utf-8")
+    payload = _zizmor(path)
+    runs = payload["runs"]
+    assert is_object_list(runs)
+    findings = _mapping(runs[0])["results"]
+    assert is_object_list(findings)
+    locations = _mapping(findings[0])["locations"]
+    assert is_object_list(locations)
+    uri = "https://example.invalid/action.yml" if secondary == "remote" else path.as_uri()
+    locations.append(
+        {
+            "physicalLocation": {
+                "artifactLocation": {"uri": uri},
+                "region": {"startLine": 99 if secondary == "outside-source" else 1, "startColumn": 1},
+            }
+        }
+    )
+    if secondary == "valid":
+        assert len(security_tools.parse_zizmor(json.dumps(payload), root=tmp_path)) == 1
+    else:
+        with pytest.raises(ValueError, match=r"nonlocal artifact|position outside readable source"):
+            security_tools.parse_zizmor(json.dumps(payload), root=tmp_path)

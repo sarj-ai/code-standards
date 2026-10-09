@@ -47,21 +47,7 @@ jobs:
         env:
           REQUESTED_VERSION: ${{ inputs.version || '' }}
           EVENT_NAME: ${{ github.event_name }}
-        run: |
-          set -euo pipefail
-          version="$REQUESTED_VERSION"
-          if [[ -z "$version" && "$EVENT_NAME" == schedule ]]; then
-            version="$(uvx --no-config --isolated --python 3.14 --refresh --from code-standards code-standards --version | sed -E 's/.* ([0-9][^ ]*)$/\1/')"
-          fi
-          if [[ -z "$version" ]]; then
-            echo "::error::an exact published Standards version is required"
-            exit 2
-          fi
-          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([a-zA-Z0-9.-]+)?$ ]]; then
-            echo "::error::invalid Standards bundle version: $version"
-            exit 2
-          fi
-          echo "version=$version" >> "$GITHUB_OUTPUT"
+        run: bash .github/scripts/rollout-version.sh
       - name: Mint the fleet rollout token
         id: app-token
         continue-on-error: true
@@ -78,42 +64,7 @@ jobs:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           VERSION: ${{ steps.version.outputs.version }}
           REGISTRY_TOML: ${{ vars.STANDARDS_ROLLOUT_REGISTRY_TOML }}
-        run: |
-          set -uo pipefail
-          log="$RUNNER_TEMP/standards-rollout.log"
-          registry="$RUNNER_TEMP/standards-rollout.toml"
-          : > "$log"
-          install -m 600 /dev/null "$registry"
-          printf '%s' "$REGISTRY_TOML" > "$registry"
-
-          run_and_log() {
-            "$@" 2>&1 | tee -a "$log"
-            return "${PIPESTATUS[0]}"
-          }
-
-          plan_status=0
-          consumers='[]'
-          if [[ -z "$REGISTRY_TOML" ]]; then
-            echo "rollout consumer registry is not configured" | tee -a "$log"
-            plan_status=1
-          elif [[ -z "$GH_TOKEN" ]]; then
-            echo "rollout App token was not minted" | tee -a "$log"
-            plan_status=1
-          else
-            matrix_output="$RUNNER_TEMP/rollout-plan.outputs"
-            run_and_log uv run --project packages/standards --frozen python -m sarj_standards.libs.release.rollout --registry "$registry" --jobs 4 --github-output "$matrix_output" plan --version "$VERSION" || plan_status=$?
-            if (( plan_status == 0 )); then
-              consumers="$(sed -n 's/^consumers=//p' "$matrix_output")"
-              if [[ -z "$consumers" ]]; then
-                consumers='[]'
-                plan_status=2
-              fi
-            fi
-          fi
-          {
-            echo "plan_status=$plan_status"
-            echo "consumers=$consumers"
-          } >> "$GITHUB_OUTPUT"
+        run: bash .github/scripts/rollout-plan.sh
       - name: Keep the rollout log for the fleet report
         if: always()
         continue-on-error: true
@@ -155,16 +106,7 @@ jobs:
         env:
           MISE_VERSION: '2026.8.8'
           MISE_SHA256: 1fce52a3656cf14bef6feeb9f0b90d545126a0bb598f0a69afbb9e4702f8f3e3
-        run: |
-          set -euo pipefail
-          destination="$RUNNER_TEMP/mise-bin"
-          mkdir -p "$destination"
-          curl --fail --location --retry 3 --silent --show-error \
-            "https://github.com/jdx/mise/releases/download/v${MISE_VERSION}/mise-v${MISE_VERSION}-linux-x64" \
-            --output "$destination/mise"
-          printf '%s  %s\n' "$MISE_SHA256" "$destination/mise" | sha256sum --check --strict
-          chmod 0755 "$destination/mise"
-          printf '%s\n' "$destination" >> "$GITHUB_PATH"
+        run: bash .github/scripts/rollout-bootstrap.sh
       - name: Mint the fleet rollout token
         id: app-token
         continue-on-error: true
@@ -183,35 +125,7 @@ jobs:
           CONSUMER: ${{ matrix.consumer.identity }}
           EVENT_NAME: ${{ github.event_name }}
           REGISTRY_TOML: ${{ vars.STANDARDS_ROLLOUT_REGISTRY_TOML }}
-        run: |
-          set -uo pipefail
-          log="$RUNNER_TEMP/standards-rollout.log"
-          registry="$RUNNER_TEMP/standards-rollout.toml"
-          : > "$log"
-          install -m 600 /dev/null "$registry"
-          printf '%s' "$REGISTRY_TOML" > "$registry"
-
-          run_and_log() {
-            "$@" 2>&1 | tee -a "$log"
-            return "${PIPESTATUS[0]}"
-          }
-
-          operation_status=0
-          if [[ -z "$GH_TOKEN" ]]; then
-            echo "rollout App token was not minted" | tee -a "$log"
-            operation_status=1
-          else
-            gh auth setup-git
-            git config --global user.name "sarj-standards-rollout[bot]"
-            git config --global user.email "sarj-standards-rollout[bot]@users.noreply.github.com"
-            if [[ "$EVENT_NAME" == schedule ]]; then
-              run_and_log uv run --project packages/standards --frozen python -m sarj_standards.libs.release.rollout --registry "$registry" reconcile --version "$VERSION" --consumer "$CONSUMER" || operation_status=$?
-            else
-              run_and_log uv run --project packages/standards --frozen python -m sarj_standards.libs.release.rollout --registry "$registry" apply --version "$VERSION" --consumer "$CONSUMER" || operation_status=$?
-            fi
-          fi
-          echo "$operation_status" > "$RUNNER_TEMP/standards-rollout.status"
-          exit "$operation_status"
+        run: bash .github/scripts/rollout-apply.sh
       - name: Keep the rollout log for the fleet report
         if: always()
         continue-on-error: true
@@ -271,50 +185,7 @@ jobs:
           CONSUMERS: ${{ needs.plan.outputs.consumers }}
           ROLLOUT_RESULT: ${{ needs.rollout.result }}
           REGISTRY_TOML: ${{ vars.STANDARDS_ROLLOUT_REGISTRY_TOML }}
-        run: |
-          set -uo pipefail
-          log="$RUNNER_TEMP/standards-rollout.log"
-          registry="$RUNNER_TEMP/standards-rollout.toml"
-          : > "$log"
-          install -m 600 /dev/null "$registry"
-          printf '%s' "$REGISTRY_TOML" > "$registry"
-
-          run_and_log() {
-            "$@" 2>&1 | tee -a "$log"
-            return "${PIPESTATUS[0]}"
-          }
-
-          parts=("$RUNNER_TEMP/rollout-logs/standards-rollout-log-plan")
-          for ((index = 0; index < $(jq length <<< "$CONSUMERS"); index++)); do
-            parts+=("$RUNNER_TEMP/rollout-logs/standards-rollout-log-consumer-$index")
-          done
-          operation_status="$PLAN_STATUS"
-          for part in "${parts[@]}"; do
-            if [[ -f "$part/standards-rollout.log" ]]; then
-              cat "$part/standards-rollout.log" >> "$log"
-            fi
-            if [[ -f "$part/standards-rollout.status" ]] && (( $(< "$part/standards-rollout.status") > operation_status )); then
-              operation_status="$(< "$part/standards-rollout.status")"
-            fi
-          done
-          # A leg that failed before recording its status still fails the rollout.
-          if (( operation_status == 0 )) && [[ "$ROLLOUT_RESULT" != success ]] && [[ "$CONSUMERS" != '[]' ]]; then
-            operation_status=1
-          fi
-          status_status=0
-          run_and_log uv run --project packages/standards --frozen python -m sarj_standards.libs.release.rollout --registry "$registry" --jobs 4 status --version "$VERSION" || status_status=$?
-          if (( operation_status != 0 || status_status > 1 )); then
-            result=failure
-          elif (( status_status == 1 )); then
-            result=pending
-          else
-            result=success
-          fi
-          {
-            echo "result=$result"
-            echo "operation_status=$operation_status"
-            echo "status_status=$status_status"
-          } >> "$GITHUB_OUTPUT"
+        run: bash .github/scripts/rollout-report.sh
       - name: Publish durable rollout status
         env:
           GH_TOKEN: ${{ github.token }}
@@ -322,47 +193,7 @@ jobs:
           RESULT: ${{ steps.rollout.outputs.result }}
           OPERATION_STATUS: ${{ steps.rollout.outputs.operation_status }}
           STATUS_STATUS: ${{ steps.rollout.outputs.status_status }}
-        run: |
-          set -euo pipefail
-          title="[Standards rollout] $VERSION"
-          log="$RUNNER_TEMP/standards-rollout.log"
-          body="$RUNNER_TEMP/standards-rollout-issue.md"
-          issues="$(gh issue list --repo "$GITHUB_REPOSITORY" --state all --limit 100 --json number,title,state)"
-          issue_number="$(jq -r --arg title "$title" '[.[] | select(.title == $title)][0].number // empty' <<< "$issues")"
-          issue_state="$(jq -r --arg title "$title" '[.[] | select(.title == $title)][0].state // empty' <<< "$issues")"
-
-          # The backticks below are intentional Markdown literals.
-          # shellcheck disable=SC2016
-          {
-            printf 'Automated rollout of `code-standards==%s` is **%s**.\n\n' "$VERSION" "$RESULT"
-            printf -- '- Workflow: %s\n' "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
-            printf -- '- Operation exit status: `%s`\n' "$OPERATION_STATUS"
-            printf -- '- Fleet status exit status: `%s`\n\n' "$STATUS_STATUS"
-            printf '```text\n'
-            tail -c 40000 "$log"
-            printf '\n```\n'
-          } > "$body"
-          cat "$body" >> "$GITHUB_STEP_SUMMARY"
-
-          if [[ "$RESULT" == success && "$STATUS_STATUS" == 0 ]]; then
-            if [[ -n "$issue_number" ]]; then
-              gh issue edit "$issue_number" --repo "$GITHUB_REPOSITORY" --body-file "$body"
-              if [[ "$issue_state" == OPEN ]]; then
-                gh issue comment "$issue_number" --repo "$GITHUB_REPOSITORY" \
-                  --body "Every registered consumer has adopted the release in run $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID."
-                gh issue close "$issue_number" --repo "$GITHUB_REPOSITORY" --reason completed
-              fi
-            fi
-          elif [[ -n "$issue_number" ]]; then
-            gh issue edit "$issue_number" --repo "$GITHUB_REPOSITORY" --body-file "$body"
-            if [[ "$issue_state" == CLOSED ]]; then
-              gh issue reopen "$issue_number" --repo "$GITHUB_REPOSITORY"
-            fi
-          else
-            gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" --body-file "$body"
-          fi
+        run: bash .github/scripts/rollout-publish-status.sh
       - name: Enforce the rollout result
         if: steps.rollout.outputs.result == 'failure'
-        run: |
-          echo "::error::Standards rollout is incomplete; see the durable rollout issue"
-          exit 1
+        run: bash .github/scripts/rollout-enforce.sh

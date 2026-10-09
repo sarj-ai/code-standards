@@ -51,6 +51,15 @@ _ERROR_FIRST_APPROVALS: Final = frozenset(
         "eslint:prefer-typed-reflection",
         "eslint:no-conditional-empty-object-spread",
         "eslint:no-reduce-accumulator-copy",
+        # Explicit strict DevOps admission: proven persistent private-key creation.
+        "iac:no-managed-service-account-key",
+        # Explicit strict DevOps admission: proven broad project Owner/Editor grants.
+        "iac:no-project-basic-privilege",
+        # Invalid build ordering or substitution into executable shell syntax.
+        "text:cloudbuild-contract",
+        # User-approved architecture policy: literal/import-proven interpreter source
+        # bypasses the requested independently linted file/module boundary.
+        "python:no-interpreter-source-arguments",
     }
 )
 

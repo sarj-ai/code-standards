@@ -1,15 +1,22 @@
 from __future__ import annotations
 
 import ast
+from dataclasses import dataclass
+from hashlib import sha256
 import json
 import os
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 from typing import TypeGuard
 
+from pydantic import RootModel
 import pytest
 import yaml
+
+from sarj_standards.libs.release.process import credential_free_environment
+from sarj_standards.libs.typed_containers import is_object_mapping
 
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
@@ -17,7 +24,7 @@ WORKFLOW = REPO_ROOT / ".github" / "workflows" / "standards-rollout.yml"
 
 
 def _is_object(value: object) -> TypeGuard[dict[str, object]]:
-    return isinstance(value, dict)
+    return is_object_mapping(value) and all(isinstance(key, str) for key in value)
 
 
 def _is_array(value: object) -> TypeGuard[list[object]]:
@@ -85,34 +92,6 @@ def test_rollout_is_downstream_of_release_and_reconciles_every_fifteen_minutes()
     assert "workflow_run" not in release_trigger
 
 
-def test_rollout_uses_one_deterministic_interface_for_every_entrypoint() -> None:
-    workflow = _rendered_workflow()
-
-    module = "python -m sarj_standards.libs.release.rollout"
-    assert (
-        f'{module} --registry "$registry" --jobs 4 --github-output "$matrix_output" plan --version "$VERSION"'
-        in workflow
-    )
-    assert f'{module} --registry "$registry" apply --version "$VERSION"' in workflow
-    assert f'{module} --registry "$registry" reconcile --version "$VERSION"' in workflow
-    assert "--refresh --from code-standards" in workflow
-    assert f'{module} --registry "$registry" --jobs 4 status --version "$VERSION"' in workflow
-    assert "github.sha" in workflow
-    assert "an exact published Standards version is required" in workflow
-    assert "gh auth setup-git" in workflow
-    assert 'git config --global user.name "sarj-standards-rollout[bot]"' in workflow
-
-
-def test_rollout_bootstrap_obeys_the_selected_action_policy() -> None:
-    workflow = _rendered_workflow()
-
-    assert "jdx/mise-action" not in workflow
-    assert "mise-v${MISE_VERSION}-linux-x64" in workflow
-    assert "2026.8.8" in workflow
-    assert "1fce52a3656cf14bef6feeb9f0b90d545126a0bb598f0a69afbb9e4702f8f3e3" in workflow
-    assert "sha256sum --check --strict" in workflow
-
-
 def test_rollout_worker_uses_validated_per_consumer_hosts_with_the_existing_default() -> None:
     workflow = _workflow()
     jobs = workflow["jobs"]
@@ -141,29 +120,6 @@ def test_rollout_token_is_installation_scoped_and_never_persisted_by_checkout() 
     assert "git push" not in workflow
     assert {"GH_TOKEN", "GITHUB_TOKEN"}.issubset(controller_literals)
     assert "STANDARDS_ROLLOUT_" in controller_literals
-
-
-def test_failure_is_reported_durably_without_blocking_publication() -> None:
-    workflow = _rendered_workflow()
-    release = _load_yaml(REPO_ROOT / ".github/workflows/release.yml")
-    assert _is_object(release)
-
-    assert "[Standards rollout] $VERSION" in workflow
-    assert "gh issue create" in workflow
-    assert "gh issue edit" in workflow
-    assert "gh issue reopen" in workflow
-    assert "gh issue close" in workflow
-    assert "operation_status != 0 || status_status > 1" in workflow
-    assert "result=pending" in workflow
-    assert "steps.rollout.outputs.result == 'failure'" in workflow
-    assert 'gh issue edit "$issue_number" --repo "$GITHUB_REPOSITORY" --body-file "$body"' in workflow
-    assert 'tail -c 40000 "$log"' in workflow
-    assert "GITHUB_STEP_SUMMARY" in workflow
-    assert "Enforce the rollout result" in workflow
-    assert "Standards rollout is incomplete" in workflow
-    release_trigger = release.get("on")
-    assert _is_object(release_trigger)
-    assert "workflow_run" not in release_trigger
 
 
 def test_release_tags_dispatches_rollout_from_the_immutable_release_tag() -> None:
@@ -316,3 +272,362 @@ def _dispatch_step_environment(published: str) -> dict[str, str]:
         assert isinstance(expression, str)
         environment[name] = context[expression]
     return environment
+
+
+@dataclass(frozen=True)
+class _RolloutRecorder:
+    environment: dict[str, str]
+    commands: Path
+
+
+def _rollout_recorder(tmp_path: Path, **values: str) -> _RolloutRecorder:
+    commands = tmp_path / "commands.jsonl"
+    binary = tmp_path / "bin"
+    binary.mkdir()
+    runner = binary / "runner"
+    runner.write_text(
+        f"#!{sys.executable}\n"
+        r"""
+import json
+import os
+from pathlib import Path
+import sys
+name = Path(sys.argv[0]).name
+args = sys.argv[1:]
+with Path(os.environ["RECORDS"]).open("a") as stream:
+    stream.write(json.dumps([name, *args]) + "\n")
+if name == "uvx":
+    print("code-standards " + os.environ.get("PUBLISHED_VERSION", "8.39.0"))
+elif name == "uv":
+    if "--github-output" in args:
+        Path(args[args.index("--github-output") + 1]).write_text(os.environ.get("MATRIX_OUTPUT", "consumers=[]\n"))
+    print("controller output")
+    sys.exit(int(os.environ.get("UV_STATUS", "0")))
+elif name == "gh" and args[:2] == ["issue", "list"]:
+    print(os.environ.get("ISSUES", "[]"))
+elif name == "curl":
+    Path(args[args.index("--output") + 1]).write_text("fixture bootstrap\n")
+elif name == "sha256sum":
+    from hashlib import sha256
+    expected, path = sys.stdin.read().strip().split(None, 1)
+    sys.exit(0 if sha256(Path(path).read_bytes()).hexdigest() == expected else 1)
+""",
+        encoding="utf-8",
+    )
+    runner.chmod(0o755)
+    for name in ("uv", "uvx", "git", "gh", "curl", "sha256sum"):
+        (binary / name).symlink_to(runner)
+    output = tmp_path / "outputs"
+    output.touch()
+    summary = tmp_path / "summary"
+    summary.touch()
+    inherited = credential_free_environment()
+    environment = {
+        **inherited,
+        "PATH": f"{binary}{os.pathsep}{inherited['PATH']}",
+        "RECORDS": str(commands),
+        "RUNNER_TEMP": str(tmp_path),
+        "GITHUB_OUTPUT": str(output),
+        "GITHUB_STEP_SUMMARY": str(summary),
+        "GITHUB_REPOSITORY": "example/standards",
+        "GITHUB_SERVER_URL": "https://github.com",
+        "GITHUB_RUN_ID": "123",
+        "GH_TOKEN": "fixture-token",
+        "REGISTRY_TOML": "fixture registry\n",
+        "VERSION": "8.39.0",
+        **values,
+    }
+    return _RolloutRecorder(environment=environment, commands=commands)
+
+
+def _run_rollout(script: str, environment: dict[str, str]) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ("bash", str(REPO_ROOT / ".github/scripts" / script)),
+        cwd=REPO_ROOT,
+        env=environment,
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+
+
+class _RecordedCommand(RootModel[list[str]]):
+    pass
+
+
+def _recorded_commands(path: Path) -> list[list[str]]:
+    if not path.exists():
+        return []
+    return [_RecordedCommand.model_validate_json(line).root for line in path.read_text(encoding="utf-8").splitlines()]
+
+
+@pytest.mark.parametrize(
+    ("requested", "event", "expected", "status"),
+    [
+        ("8.39.0", "workflow_dispatch", "8.39.0", 0),
+        ("", "schedule", "8.39.0", 0),
+        ("", "workflow_dispatch", "", 2),
+        ("bad; command", "workflow_dispatch", "", 2),
+    ],
+)
+def test_rollout_version_executes_only_the_schedule_lookup(
+    tmp_path: Path, requested: str, event: str, expected: str, status: int
+) -> None:
+    recorder = _rollout_recorder(tmp_path, REQUESTED_VERSION=requested, EVENT_NAME=event)
+    environment = recorder.environment
+    commands = recorder.commands
+    result = _run_rollout("rollout-version.sh", environment)
+    assert result.returncode == status
+    assert Path(environment["GITHUB_OUTPUT"]).read_text(encoding="utf-8") == (
+        f"version={expected}\n" if expected else ""
+    )
+    assert _recorded_commands(commands) == (
+        [
+            [
+                "uvx",
+                "--no-config",
+                "--isolated",
+                "--python",
+                "3.14",
+                "--refresh",
+                "--from",
+                "code-standards",
+                "code-standards",
+                "--version",
+            ]
+        ]
+        if event == "schedule"
+        else []
+    )
+
+
+@pytest.mark.parametrize("controller_status", [0, 17])
+def test_rollout_plan_preserves_controller_status_matrix_and_private_registry(
+    tmp_path: Path, controller_status: int
+) -> None:
+    recorder = _rollout_recorder(
+        tmp_path, UV_STATUS=str(controller_status), MATRIX_OUTPUT='consumers=[{"identity":"example/app"}]\n'
+    )
+    environment = recorder.environment
+    commands = recorder.commands
+    result = _run_rollout("rollout-plan.sh", environment)
+    assert result.returncode == 0
+    output = Path(environment["GITHUB_OUTPUT"]).read_text(encoding="utf-8")
+    assert (
+        output
+        == f"plan_status={controller_status}\nconsumers="
+        + ('[{"identity":"example/app"}]' if controller_status == 0 else "[]")
+        + "\n"
+    )
+    registry = tmp_path / "standards-rollout.toml"
+    assert registry.read_text(encoding="utf-8") == environment["REGISTRY_TOML"]
+    assert registry.stat().st_mode & 0o777 == 0o600
+    assert (tmp_path / "standards-rollout.log").read_text(encoding="utf-8") == "controller output\n"
+    assert _recorded_commands(commands) == [
+        [
+            "uv",
+            "run",
+            "--project",
+            "packages/standards",
+            "--frozen",
+            "python",
+            "-m",
+            "sarj_standards.libs.release.rollout",
+            "--registry",
+            str(registry),
+            "--jobs",
+            "4",
+            "--github-output",
+            str(tmp_path / "rollout-plan.outputs"),
+            "plan",
+            "--version",
+            environment["VERSION"],
+        ]
+    ]
+
+
+@pytest.mark.parametrize("missing", ["GH_TOKEN", "REGISTRY_TOML"])
+def test_rollout_plan_records_missing_configuration_without_invoking_controller(tmp_path: Path, missing: str) -> None:
+    recorder = _rollout_recorder(tmp_path, **{missing: ""})
+    environment = recorder.environment
+    commands = recorder.commands
+    assert _run_rollout("rollout-plan.sh", environment).returncode == 0
+    assert Path(environment["GITHUB_OUTPUT"]).read_text(encoding="utf-8") == "plan_status=1\nconsumers=[]\n"
+    assert _recorded_commands(commands) == []
+
+
+@pytest.mark.parametrize(("event", "operation"), [("schedule", "reconcile"), ("workflow_dispatch", "apply")])
+@pytest.mark.parametrize("controller_status", [0, 19])
+def test_rollout_apply_uses_exact_consumer_and_preserves_failure(
+    tmp_path: Path, event: str, operation: str, controller_status: int
+) -> None:
+    consumer = "example/app"
+    recorder = _rollout_recorder(tmp_path, EVENT_NAME=event, CONSUMER=consumer, UV_STATUS=str(controller_status))
+    environment = recorder.environment
+    commands = recorder.commands
+    assert _run_rollout("rollout-apply.sh", environment).returncode == controller_status
+    assert (tmp_path / "standards-rollout.status").read_text(encoding="utf-8") == f"{controller_status}\n"
+    recorded = _recorded_commands(commands)
+    assert recorded[:3] == [
+        ["gh", "auth", "setup-git"],
+        ["git", "config", "--global", "user.name", "sarj-standards-rollout[bot]"],
+        ["git", "config", "--global", "user.email", "sarj-standards-rollout[bot]@users.noreply.github.com"],
+    ]
+    assert recorded[3] == [
+        "uv",
+        "run",
+        "--project",
+        "packages/standards",
+        "--frozen",
+        "python",
+        "-m",
+        "sarj_standards.libs.release.rollout",
+        "--registry",
+        str(tmp_path / "standards-rollout.toml"),
+        operation,
+        "--version",
+        environment["VERSION"],
+        "--consumer",
+        consumer,
+    ]
+
+
+@pytest.mark.parametrize(
+    ("plan_status", "leg_status", "rollout_result", "fleet_status", "expected"),
+    [
+        (0, 0, "success", 0, "success"),
+        (0, 0, "success", 1, "pending"),
+        (0, 0, "failure", 0, "failure"),
+        (0, 17, "success", 0, "failure"),
+        (2, 0, "skipped", 0, "failure"),
+        (0, 0, "success", 2, "failure"),
+    ],
+)
+def test_rollout_report_combines_real_artifacts_and_controller_status(
+    tmp_path: Path, *, plan_status: int, leg_status: int, rollout_result: str, fleet_status: int, expected: str
+) -> None:
+    recorder = _rollout_recorder(
+        tmp_path,
+        PLAN_STATUS=str(plan_status),
+        CONSUMERS='[{"identity":"example/app"}]',
+        ROLLOUT_RESULT=rollout_result,
+        UV_STATUS=str(fleet_status),
+    )
+    environment = recorder.environment
+    commands = recorder.commands
+    directory = tmp_path / "rollout-logs" / "standards-rollout-log-consumer-0"
+    directory.mkdir(parents=True)
+    (directory / "standards-rollout.log").write_text("consumer output\n")
+    (directory / "standards-rollout.status").write_text(f"{leg_status}\n")
+    assert _run_rollout("rollout-report.sh", environment).returncode == 0
+    assert (
+        Path(environment["GITHUB_OUTPUT"]).read_text(encoding="utf-8")
+        == f"result={expected}\noperation_status={max(plan_status, leg_status, int(rollout_result != 'success'))}\nstatus_status={fleet_status}\n"
+    )
+    assert (tmp_path / "standards-rollout.log").read_text(encoding="utf-8") == "consumer output\ncontroller output\n"
+    assert _recorded_commands(commands) == [
+        [
+            "uv",
+            "run",
+            "--project",
+            "packages/standards",
+            "--frozen",
+            "python",
+            "-m",
+            "sarj_standards.libs.release.rollout",
+            "--registry",
+            str(tmp_path / "standards-rollout.toml"),
+            "--jobs",
+            "4",
+            "status",
+            "--version",
+            environment["VERSION"],
+        ]
+    ]
+
+
+@pytest.mark.parametrize(
+    ("result", "issue_state", "expected_operations"),
+    [
+        ("success", "OPEN", ["edit", "comment", "close"]),
+        ("failure", "CLOSED", ["edit", "reopen"]),
+        ("pending", "", ["create"]),
+        ("success", "", []),
+    ],
+)
+def test_rollout_publish_status_executes_durable_issue_transitions(
+    tmp_path: Path, result: str, issue_state: str, expected_operations: list[str]
+) -> None:
+    issues = [{"number": 42, "title": "[Standards rollout] 8.39.0", "state": issue_state}] if issue_state else []
+    recorder = _rollout_recorder(
+        tmp_path, RESULT=result, OPERATION_STATUS="0", STATUS_STATUS="0", ISSUES=json.dumps(issues)
+    )
+    environment = recorder.environment
+    commands = recorder.commands
+    (tmp_path / "standards-rollout.log").write_text("recorded controller output\n")
+    assert _run_rollout("rollout-publish-status.sh", environment).returncode == 0
+    recorded = _recorded_commands(commands)
+    assert recorded[0] == [
+        "gh",
+        "issue",
+        "list",
+        "--repo",
+        environment["GITHUB_REPOSITORY"],
+        "--state",
+        "all",
+        "--limit",
+        "100",
+        "--json",
+        "number,title,state",
+    ]
+    assert [command[2] for command in recorded[1:]] == expected_operations
+    body = (tmp_path / "standards-rollout-issue.md").read_text(encoding="utf-8")
+    assert "recorded controller output" in body
+    assert Path(environment["GITHUB_STEP_SUMMARY"]).read_text(encoding="utf-8") == body
+    for command in recorded[1:]:
+        assert command[command.index("--repo") + 1] == environment["GITHUB_REPOSITORY"]
+        if command[2] in {"edit", "create"}:
+            assert command[command.index("--body-file") + 1] == str(tmp_path / "standards-rollout-issue.md")
+
+
+@pytest.mark.parametrize("checksum_matches", [True, False])
+def test_rollout_bootstrap_verifies_download_before_exposing_executable(
+    tmp_path: Path, *, checksum_matches: bool
+) -> None:
+    github_path = tmp_path / "github-path"
+    github_path.touch()
+    digest = sha256(b"fixture bootstrap\n").hexdigest() if checksum_matches else "0" * 64
+    recorder = _rollout_recorder(tmp_path, MISE_VERSION="2026.8.8", MISE_SHA256=digest, GITHUB_PATH=str(github_path))
+    environment = recorder.environment
+    commands = recorder.commands
+    result = _run_rollout("rollout-bootstrap.sh", environment)
+    assert (result.returncode == 0) == checksum_matches
+    assert github_path.read_text(encoding="utf-8") == (f"{tmp_path / 'mise-bin'}\n" if checksum_matches else "")
+    assert _recorded_commands(commands) == [
+        [
+            "curl",
+            "--fail",
+            "--location",
+            "--retry",
+            "3",
+            "--silent",
+            "--show-error",
+            "https://github.com/jdx/mise/releases/download/v2026.8.8/mise-v2026.8.8-linux-x64",
+            "--output",
+            str(tmp_path / "mise-bin/mise"),
+        ],
+        ["sha256sum", "--check", "--strict"],
+    ]
+    if checksum_matches:
+        assert (tmp_path / "mise-bin/mise").stat().st_mode & 0o777 == 0o755
+
+
+def test_rollout_report_rejects_invalid_consumer_json_before_querying_controller(tmp_path: Path) -> None:
+    recorder = _rollout_recorder(tmp_path, PLAN_STATUS="0", CONSUMERS="invalid JSON", ROLLOUT_RESULT="success")
+    environment = recorder.environment
+    commands = recorder.commands
+    result = _run_rollout("rollout-report.sh", environment)
+    assert result.returncode != 0
+    assert not Path(environment["GITHUB_OUTPUT"]).read_text(encoding="utf-8")
+    assert _recorded_commands(commands) == []

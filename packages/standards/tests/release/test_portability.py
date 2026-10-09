@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-import shutil
 import subprocess
 
 import pytest
@@ -16,8 +15,8 @@ ROOT = Path(__file__).resolve().parents[4]
 @pytest.mark.parametrize("failed", ["none", "cli", "lifecycle", "hook", "warm"])
 def test_portability_overlaps_both_lanes_and_propagates_each_failure(tmp_path: Path, failed: str) -> None:
     scripts = tmp_path / ".github/scripts"
-    scripts.mkdir(parents=True)
-    shutil.copy(ROOT / ".github/scripts/release-precommit.sh", scripts)
+    scripts.parent.mkdir(parents=True)
+    scripts.symlink_to(ROOT / ".github/scripts", target_is_directory=True)
     (tmp_path / "packages/standards").mkdir(parents=True)
     run_process(("git", "init", "-q"), cwd=tmp_path)
     run_process(("git", "add", "."), cwd=tmp_path)

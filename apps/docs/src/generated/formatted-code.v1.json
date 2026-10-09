@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "b58c24b1ed727d9df3e622d240e5cecdf33cfe9d45e310fae12c021241bb3fe2",
-  "cliSha256": "e9800db39695a083ec2b57cba82c6583bd7c8dfc754f5b89fb7150a0bb6a6bf9",
+  "catalogSha256": "98e44d49d4ad9d8d087175923061cd573ade78b9e34198c795d4085171f5427a",
+  "cliSha256": "30e82bb68ef86232301c7ef00f6a43f9593820f80a001ab6d5189cc0ba7462a8",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -4744,6 +4744,41 @@
       ],
       "optionsSchemaSource": null
     },
+    "iac:no-managed-service-account-key": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "main.tf",
+              "source": "resource \"google_service_account_key\" \"app\" { service_account_id = \"app\" }\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "main.tf",
+          "id": "managed-key",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A managed key creates persistent credentials"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "main.tf",
+              "source": "resource \"google_service_account\" \"app\" { account_id = \"app\" }\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "main.tf",
+          "id": "service-account",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "A service account needs no managed key"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "iac:no-mocked-terraform-test-oracle": {
       "examples": [
         {
@@ -4775,6 +4810,41 @@
           "outcome": "accept",
           "scenarioId": "terraform-provider-evidence",
           "title": "Empty mock provider validates configured plan behavior"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "iac:no-project-basic-privilege": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "main.tf",
+              "source": "resource \"google_project_iam_member\" \"app\" { role = \"roles/editor\" }\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "main.tf",
+          "id": "project-editor",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Project Editor grants broad mutable access"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "main.tf",
+              "source": "resource \"google_project_iam_member\" \"app\" { role = \"roles/logging.logWriter\" }\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "main.tf",
+          "id": "specific-role",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "A specific role stays scoped"
         }
       ],
       "optionsSchemaSource": null
@@ -6867,6 +6937,41 @@
           "outcome": "reject",
           "scenarioId": "nested-copy",
           "title": "A shallow model copy shares a nested model"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:no-interpreter-source-arguments": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "tools/check.py",
+              "source": "import subprocess\n\nsubprocess.run([\"python3\", \"-m\", \"tools.verify\", \"-c\", \"strict\"], check=True)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tools/check.py",
+          "id": "external-interpreter-module",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Process argv invokes a checked module"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "tools/check.py",
+              "source": "import subprocess\n\nsubprocess.run([\"python3\", \"-c\", \"print(1)\"], check=True)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tools/check.py",
+          "id": "interpreter-source-argument",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Process argv contains unchecked Python source"
         }
       ],
       "optionsSchemaSource": null
@@ -11829,6 +11934,41 @@
       ],
       "optionsSchemaSource": null
     },
+    "text:cloudbuild-contract": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "build.yaml",
+              "source": "steps:\n  - name: builder\n    waitFor: [later]\n  - name: builder\n    id: later\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "build.yaml",
+          "id": "forward-dependency",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A build cannot depend on a later step"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "build.yaml",
+              "source": "steps:\n  - name: builder\n    id: first\n  - name: builder\n    waitFor: [first]\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "build.yaml",
+          "id": "prior-dependency",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Dependencies precede their consumers"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "text:commented-out-config": {
       "examples": [
         {
@@ -12291,7 +12431,7 @@
           "files": [
             {
               "path": ".github/workflows/ci.yml",
-              "source": "jobs:\n  test:\n    steps:\n      - run: |\n          if make probe; then\n            make test\n          else\n            echo 'not applicable'\n          fi\n"
+              "source": "jobs:\n  test:\n    steps:\n      - run: |\n          MODE=test python3 scripts/check.py --target \"$TARGET\"\n"
             }
           ],
           "fixedFiles": [],
@@ -12299,7 +12439,7 @@
           "id": "workflow-single-decision",
           "outcome": "accept",
           "scenarioId": "primary",
-          "title": "Keep one workflow gating decision inline"
+          "title": "Invoke an external program with quoted arguments"
         }
       ],
       "optionsSchemaSource": null
@@ -12312,7 +12452,8 @@
     "usage": {
       "commit-message": "code-standards commit-message [-h] COMMIT_MSG_FILE\n",
       "doctor": "code-standards doctor [-h] [--format OUTPUT_FORMAT] [--repair] [--no-install]\n",
-      "setup": "code-standards setup [-h] [--hooks HOOKS] [--python-dest PYTHON_DEST] [--typescript-dest TYPESCRIPT_DEST] [--swift-dest SWIFT_DEST] [--kotlin-dest KOTLIN_DEST] [--dry-run] [--force] [--no-install] [--commit-policy-only] [--config ONLY ...]\n",
+      "setup": "code-standards setup [-h] [--hooks HOOKS] [--python-dest PYTHON_DEST] [--typescript-dest TYPESCRIPT_DEST] [--swift-dest SWIFT_DEST] [--kotlin-dest KOTLIN_DEST] [--dry-run] [--force] [--no-install] [--tools-only] [--commit-policy-only] [--config ONLY ...]\n",
+      "analyze": "code-standards analyze [-h] [--external] [--prepared-only] [--trust-repository-code] [--prepared-devops PREPARED_DEVOPS ...] [--prepared-target PREPARED_TARGET ...] [--format OUTPUT_FORMAT] [--output OUTPUT] [FILES ...]\n",
       "check": "code-standards check [-h] [--trust-repository-code] [--jobs JOBS] [--skip-python-type-check] [--staged] [--rule SELECTED_RULES ...] [--format OUTPUT_FORMAT] [--output OUTPUT] [--max-annotations-per-level MAX_ANNOTATIONS_PER_LEVEL] [FILES ...]\n",
       "validate-slack-automations": "code-standards validate-slack-automations [-h] PATH\n",
       "observe": "code-standards observe [-h] --rule SELECTED_RULES ... [--format OUTPUT_FORMAT] [--output OUTPUT] [--trust-repository-code] [--max-annotations-per-level MAX_ANNOTATIONS_PER_LEVEL] [FILES ...]\n",

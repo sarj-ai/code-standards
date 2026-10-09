@@ -82,7 +82,9 @@ def test_upgrade_preview_is_read_only_and_names_every_change(tmp_path: Path) -> 
     assert {path: path.read_bytes() for path in tmp_path.iterdir() if path.is_file()} == before
 
 
-def test_upgrade_preserves_old_bundle_security_opt_out_without_unplanned_installs(tmp_path: Path) -> None:
+def test_upgrade_preserves_old_bundle_security_opt_out_without_unplanned_installs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     (tmp_path / "main.tf").write_text('resource "terraform_data" "example" {}\n', encoding="utf-8")
     workflow = tmp_path / ".github/workflows/ci.yml"
     workflow.parent.mkdir(parents=True)
@@ -96,11 +98,21 @@ def test_upgrade_preserves_old_bundle_security_opt_out_without_unplanned_install
     )
     before = manifest.load(tmp_path)
     assert before is not None
+    prepared: list[lifecycle.Command] = []
+
+    def capture(commands: Iterable[lifecycle.Command]) -> int:
+        prepared.extend(commands)
+        return 0
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- inspect upgrade installer dispatch to prove legacy opt-outs do not install tools.
+        lifecycle, "execute", capture
+    )
 
     plan = upgrade.build_plan(tmp_path)
     assert not plan.ecosystems.actions
     assert not plan.ecosystems.infrastructure
     assert upgrade.apply(plan) == 0
+    assert prepared == []
 
     after = manifest.load(tmp_path)
     assert after is not None
@@ -1351,7 +1363,7 @@ def test_upgrade_plan_retains_findings_without_changing_the_drift_contract(tmp_p
     )
 
 
-def test_current_no_install_update_does_not_recommend_unneeded_install_work(
+def test_current_no_install_update_reports_selected_native_install_work(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
@@ -1364,7 +1376,10 @@ def test_current_no_install_update_does_not_recommend_unneeded_install_work(
     output = capsys.readouterr().out
     assert status == 0
     assert output.startswith("current:")
-    assert "setup is incomplete" not in output
+    assert "setup is incomplete (1 setup command(s) skipped;" in output
+    assert "mise --no-config --no-env --no-hooks install" in output
+    assert "aqua:rhysd/actionlint@1.7.12" in output
+    assert "uv sync" not in output
 
 
 def test_upgrade_no_install_explains_incomplete_setup_and_next_command(
@@ -1396,7 +1411,7 @@ def test_update_no_install_prints_a_clean_typescript_lock_command(
 
     output = capsys.readouterr().out
     assert status == 0
-    assert "setup is incomplete (1 setup command(s) skipped; 0 finding(s) pending)" in output
+    assert "setup is incomplete (2 setup command(s) skipped; 0 finding(s) pending)" in output
     assert "npm install --ignore-scripts --no-audit --no-fund" in output
 
 

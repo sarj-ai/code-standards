@@ -10,7 +10,7 @@ import pytest
 
 from sarj_standards.api import Standards
 import sarj_standards.cli.main as cli
-from sarj_standards.libs.adoption import manifest
+from sarj_standards.libs.adoption import devops, manifest
 from sarj_standards.libs.adoption.manifest import as_table, list_field
 from sarj_standards.libs.linting.analysis import report_from_tools
 
@@ -24,6 +24,7 @@ if TYPE_CHECKING:
 
 PUBLIC_COMMANDS = (
     "setup",
+    "analyze",
     "check",
     "commit-message",
     "validate-slack-automations",
@@ -35,7 +36,7 @@ PUBLIC_COMMANDS = (
     "show",
     "maintain",
 )
-REMOVED_ALIASES = ("init", "sync", "analyze", "verify", "format", "inspect", "upgrade", "repo", "list", "path", "peers")
+REMOVED_ALIASES = ("init", "sync", "verify", "format", "inspect", "upgrade", "repo", "list", "path", "peers")
 
 
 def _git_environment() -> dict[str, str]:
@@ -81,6 +82,33 @@ def test_setup_uses_one_global_repository_root(tmp_path: Path) -> None:
     assert cli.main(["--root", str(tmp_path), "setup", "--no-install"]) == 0
     assert (tmp_path / ".sarj-standards.toml").is_file()
     assert (tmp_path / ".github" / "workflows" / "standards.yml").is_file()
+
+
+def test_tools_only_requires_adoption_without_creating_wiring(tmp_path: Path) -> None:
+    assert cli.main(["--root", str(tmp_path), "setup", "--tools-only"]) == 2
+    assert not tuple(tmp_path.iterdir())
+
+
+def test_tools_only_preserves_native_installation_failure_status(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    seen: list[Path] = []
+
+    def install(root: Path) -> devops.ToolsSetupResult:
+        seen.append(root)
+        return devops.ToolsSetupResult(2, ())
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- public CLI installer lookup is tested; injection would bypass dispatch.
+        devops, "setup_tools_only", install
+    )
+    assert cli.main(["--root", str(tmp_path), "setup", "--tools-only"]) == 2
+    assert seen == [tmp_path.resolve()]
+    assert not tuple(tmp_path.iterdir())
+
+
+def test_tools_only_rejects_adoption_options(tmp_path: Path) -> None:
+    assert cli.main(["--root", str(tmp_path), "setup", "--tools-only", "--no-install"]) == 2
+    assert not tuple(tmp_path.iterdir())
 
 
 def test_global_root_is_equally_valid_after_the_command(tmp_path: Path) -> None:

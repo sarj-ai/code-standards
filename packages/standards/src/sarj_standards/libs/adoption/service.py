@@ -359,6 +359,7 @@ def plan_commit_policy(
             resolved,
             scaffold_plan.ecosystems,
             hook_manager=scaffold_plan.hook_manager,
+            include_devops=False,
         )
     )
     preconditions = {path: path.read_bytes() if path.is_file() else None for path in mutations}

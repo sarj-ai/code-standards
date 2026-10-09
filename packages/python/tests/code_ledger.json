@@ -271,5 +271,6 @@
   "SARJ480": "prefer-native-string-check",
   "SARJ481": "no-input-model-mutation",
   "SARJ482": "no-before-validator-input-mutation",
-  "SARJ483": "no-unused-copy-result"
+  "SARJ483": "no-unused-copy-result",
+  "SARJ484": "no-interpreter-source-arguments"
 }

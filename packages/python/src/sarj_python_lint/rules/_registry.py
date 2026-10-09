@@ -62,6 +62,7 @@ from sarj_python_lint.rules.no_hidden_constructor_fallback import (
 )
 from sarj_python_lint.rules.no_injected_module_loader import NoInjectedModuleLoader
 from sarj_python_lint.rules.no_input_model_mutation import NoInputModelMutation
+from sarj_python_lint.rules.no_interpreter_source_arguments import NoInterpreterSourceArguments
 from sarj_python_lint.rules.no_invalid_argument_name_suppression import NoInvalidArgumentNameSuppression
 from sarj_python_lint.rules.no_mocked_pydantic_value_object import NoMockedPydanticValueObject
 from sarj_python_lint.rules.no_nested_pydantic_field_validator import NoNestedPydanticFieldValidator
@@ -207,6 +208,7 @@ if TYPE_CHECKING:
 
 REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
     {
+        NoInterpreterSourceArguments.id: NoInterpreterSourceArguments,
         NoUnusedCopyResult.id: NoUnusedCopyResult,
         NoBeforeValidatorInputMutation.id: NoBeforeValidatorInputMutation,
         NoInputModelMutation.id: NoInputModelMutation,

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 from dataclasses import dataclass
 from datetime import timedelta
 from enum import StrEnum
@@ -401,6 +402,21 @@ def analyze_external(
                 )
 
     collect_python_reports()
+    from .devops_source import SUPPORTED, analyze_sources  # ruff: ignore[import-outside-top-level] -- native catalog uses the bounded runner defined in this module.
+
+    reports.extend(
+        analyze_sources(
+            root=root,
+            paths=tuple(dict.fromkeys((*routed.text, *routed.iac))),
+            selected=SUPPORTED if capabilities is None else SUPPORTED.intersection(capabilities),
+            trust_repository_code=normalized_trust is TrustMode.TRUSTED,
+            runner=execute,
+        )
+    )
+    if capabilities is None or "devops-schema" in capabilities:
+        from .devops_schema import analyze_source_schemas  # ruff: ignore[import-outside-top-level] -- schema validation is a selected local runtime adapter.
+
+        reports.extend(analyze_source_schemas(root=root, paths=tuple(routed.text)))
     if capabilities is not None and "eslint" not in capabilities:
         eslint_commands = ()
         unowned_eslint = 0
@@ -585,6 +601,7 @@ def _security_reports(
                         *security_tools.command("zizmor"),
                         "--offline",
                         *(("--persona", "auditor") if zizmor_selected else ()),
+                        "--collect=all",
                         "--format=sarif",
                         "--no-exit-codes",
                         "--strict-collection",
@@ -1933,6 +1950,7 @@ def _invoke_shellcheck(files: Sequence[str], *, root: Path, runner: ProcessRunne
             "shellcheck",
             "--norc",
             "--extended-analysis=true",
+            "--enable=check-extra-masked-returns",
             "--severity=info",
             "--source-path=SCRIPTDIR",
             "--format=json1",
@@ -2147,6 +2165,23 @@ def run_process(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
     return _run_process(argv, cwd=cwd, environment=_analysis_environment())
 
 
+def run_process_input(argv: Sequence[str], *, cwd: Path, source: str, timeout_seconds: float = 10) -> ProcessOutput:
+    if len(source.encode("utf-8")) > 1024 * 1024:
+        msg = "analyzer source exceeds the 1 MiB input limit"
+        raise OutputLimitError(msg)
+    with tempfile.TemporaryDirectory(prefix="sarj-analyzer-input-") as directory:
+        input_path = Path(directory) / "source"
+        input_path.write_text(source, encoding="utf-8")
+        input_path.chmod(0o600)
+        return _run_process(
+            argv,
+            cwd=cwd,
+            environment=_analysis_environment(),
+            timeout_seconds=timeout_seconds,
+            input_path=input_path,
+        )
+
+
 def _run_eslint_process(
     argv: Sequence[str], *, cwd: Path, timeout_seconds: float = _TIMEOUT.total_seconds()
 ) -> ProcessOutput:
@@ -2222,21 +2257,28 @@ def _physical_memory_bytes() -> int | None:
 
 
 def _run_process(
-    argv: Sequence[str], *, cwd: Path, environment: dict[str, str], timeout_seconds: float = _TIMEOUT.total_seconds()
+    argv: Sequence[str],
+    *,
+    cwd: Path,
+    environment: dict[str, str],
+    timeout_seconds: float = _TIMEOUT.total_seconds(),
+    input_path: Path | None = None,
 ) -> ProcessOutput:
     executable = _analyzer_executable(argv[0])
     if executable is None:
         msg = f"required analyzer executable is missing: {argv[0]}"
         raise FileNotFoundError(msg)
-    process = subprocess.Popen(  # ruff: ignore[subprocess-without-shell-equals-true] -- fixed argv and shell stays disabled.
-        [executable, *argv[1:]],
-        cwd=cwd,
-        shell=False,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        start_new_session=os.name == "posix",
-        env=environment,
-    )
+    with input_path.open("rb") if input_path is not None else contextlib.nullcontext(None) as stdin:
+        process = subprocess.Popen(  # ruff: ignore[subprocess-without-shell-equals-true] -- fixed argv and shell stays disabled.
+            [executable, *argv[1:]],
+            cwd=cwd,
+            shell=False,
+            stdin=stdin,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            start_new_session=os.name == "posix",
+            env=environment,
+        )
     stdout = process.stdout
     stderr = process.stderr
     if stdout is None or stderr is None:  # pragma: no cover - PIPE guarantees streams.
@@ -2978,16 +3020,49 @@ def _deptry_argv(project: Path, scoped_files: Sequence[str]) -> tuple[str, ...]:
 
 
 def _deptry_scan_roots(project: Path, scoped_files: Sequence[str]) -> tuple[str, ...]:
-    roots: set[str] = set()
+    # DEP002 compares project dependencies with its complete import graph. A
+    # selected maintenance script must also scan the package sources explicitly
+    # owned by this wheel, even when those sources have a nested pyproject.
+    roots = {path.relative_to(project).as_posix() for path in _deptry_declared_packages(project)}
     for raw_file in scoped_files:
         relative = Path(raw_file).resolve().relative_to(project)
         roots.add("." if len(relative.parts) == 1 else relative.parts[0])
-    return tuple(sorted(roots))
+    selected_roots = tuple(PurePosixPath(value) for value in roots)
+    return tuple(
+        sorted(
+            str(path)
+            for path in selected_roots
+            if not any(path != other and path.is_relative_to(other) for other in selected_roots)
+        )
+    )
+
+
+def _deptry_declared_packages(project: Path) -> tuple[Path, ...]:
+    pyproject = project / "pyproject.toml"
+    try:
+        parsed: object = tomllib.loads(pyproject.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return ()
+    table = manifest.as_table(parsed)
+    if manifest.table_field(table, "build-system").get("build-backend") != "hatchling.build":
+        return ()
+    for key in ("tool", "hatch", "build", "targets", "wheel"):
+        table = manifest.table_field(table, key)
+    packages: list[Path] = []
+    for value in manifest.list_field(table, "packages"):
+        if not isinstance(value, str):
+            continue
+        package = (project / value).resolve()
+        if not package.is_relative_to(project):
+            msg = "declared wheel package source must stay within its Python project"
+            raise ValueError(msg)
+        packages.append(package)
+    return tuple(packages)
 
 
 def _deptry_first_party_modules(project: Path) -> tuple[str, ...]:
     roots = (project / "src", project)
-    names: set[str] = set()
+    names = {path.name for path in _deptry_declared_packages(project) if path.name.isidentifier()}
     for source_root in roots:
         if not source_root.is_dir():
             continue
