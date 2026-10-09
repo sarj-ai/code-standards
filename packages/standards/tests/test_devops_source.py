@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
 
 from sarj_standards.libs.diagnostics import Completion
+from sarj_standards.libs.json_boundary import parse_json
 from sarj_standards.libs.linting.devops_source import (
     analyze_sources,
     parse_actionlint,
@@ -18,7 +20,6 @@ from sarj_standards.libs.linting.external import ProcessOutput
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
-    from pathlib import Path
 
 
 def _file(root: Path, name: str, source: str = "example\n") -> Path:
@@ -74,6 +75,48 @@ def test_actionlint_authored_byte_column(tmp_path: Path) -> None:
     findings = parse_actionlint(payload, tmp_path)
     assert findings[0].location.position is not None
     assert findings[0].location.position.character == 2
+
+
+def test_actionlint_preserves_declared_runners_without_importing_ignores(tmp_path: Path) -> None:
+    _file(tmp_path, ".github/workflows/test.yml")
+    _file(
+        tmp_path,
+        ".github/actionlint.yaml",
+        'self-hosted-runner:\n  labels: [blacksmith-2vcpu-ubuntu-2404]\nignore: [".*"]\n',
+    )
+    configurations: list[object] = []
+
+    def runner(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
+        assert cwd == tmp_path
+        if argv[0] == "shellcheck":
+            return ProcessOutput(0, "version: 0.11.0", "")
+        if "-version" in argv:
+            return ProcessOutput(0, "1.7.12", "")
+        configurations.append(parse_json(Path(argv[argv.index("-config-file") + 1]).read_text(encoding="utf-8")))
+        return ProcessOutput(0, "", "")
+
+    reports = analyze_sources(
+        root=tmp_path, paths=(".github/workflows/test.yml",), selected=frozenset({"actionlint"}), runner=runner
+    )
+    assert reports[0].completion is Completion.COMPLETE
+    assert configurations == [{"self-hosted-runner": {"labels": ["blacksmith-2vcpu-ubuntu-2404"]}}]
+
+
+@pytest.mark.parametrize("declaration", ["labels: [1]", 'labels: [""]', "labels: blacksmith"])
+def test_actionlint_invalid_runner_labels_fail_closed(tmp_path: Path, declaration: str) -> None:
+    _file(tmp_path, ".github/workflows/test.yml")
+    _file(tmp_path, ".github/actionlint.yaml", f"self-hosted-runner:\n  {declaration}\n")
+
+    def runner(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
+        assert cwd == tmp_path
+        assert argv[0] == "shellcheck"
+        return ProcessOutput(0, "version: 0.11.0", "")
+
+    reports = analyze_sources(
+        root=tmp_path, paths=(".github/workflows/test.yml",), selected=frozenset({"actionlint"}), runner=runner
+    )
+    assert reports[0].completion is Completion.FAILED
+    assert "non-empty strings" in reports[0].issues[0].message
 
 
 def test_hadolint_json_strict_severity(tmp_path: Path) -> None:

@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
+import json
 from pathlib import Path
 import re
 import shutil
 import subprocess  # ruff: ignore[suspicious-subprocess-import] -- only catch bounded runner timeout failures.
+import tempfile
 from typing import TYPE_CHECKING, Final
 
 from sarj_standards.libs.diagnostics import (
@@ -20,6 +22,7 @@ from sarj_standards.libs.json_boundary import parse_json
 from sarj_standards.libs.linting.devops_tools import NativeToolError, checked_tool, invoke
 from sarj_standards.libs.linting.external import ProcessOutput, ProcessRunner, run_process
 from sarj_standards.libs.typed_containers import is_object_list, is_object_mapping
+from sarj_standards.libs.yaml_boundary import parse_yaml
 
 
 if TYPE_CHECKING:
@@ -136,22 +139,56 @@ def _actionlint_report(root: Path, paths: tuple[Path, ...], runner: ProcessRunne
         if shellcheck.executable is not None
         else shutil.which(shellcheck.name) or shellcheck.name
     )
-    return _json_tool(
-        "actionlint",
-        (
-            "-format",
-            _ACTION_FORMAT,
-            "-config-file",
-            str(_CONFIGS / "actionlint.strict.yaml"),
-            f"-shellcheck={shellcheck_path}",
-            "-pyflakes=",
-            *map(str, paths),
-        ),
-        root,
-        paths,
-        parse_actionlint,
-        runner=runner,
+    try:
+        labels = _actionlint_runner_labels(root)
+        with tempfile.TemporaryDirectory(prefix="sarj-actionlint-") as directory:
+            config = Path(directory) / "actionlint.yaml"
+            config.write_text(json.dumps({"self-hosted-runner": {"labels": labels}}), encoding="utf-8")
+            return _json_tool(
+                "actionlint",
+                (
+                    "-format",
+                    _ACTION_FORMAT,
+                    "-config-file",
+                    str(config),
+                    f"-shellcheck={shellcheck_path}",
+                    "-pyflakes=",
+                    *map(str, paths),
+                ),
+                root,
+                paths,
+                parse_actionlint,
+                runner=runner,
+            )
+    except (OSError, TypeError, ValueError) as error:
+        return _failed("actionlint", error, len(paths))
+
+
+def _actionlint_runner_labels(root: Path) -> list[str]:
+    config = next(
+        (path for name in ("actionlint.yaml", "actionlint.yml") if (path := root / ".github" / name).is_file()), None
     )
+    if config is None:
+        return []
+    parsed = parse_yaml(config.read_text(encoding="utf-8"))
+    if parsed is None:
+        return []
+    if not is_object_mapping(parsed):
+        message = "actionlint configuration must be a mapping"
+        raise TypeError(message)
+    runners = parsed.get("self-hosted-runner", {})
+    if not is_object_mapping(runners):
+        message = "actionlint self-hosted-runner must be a mapping"
+        raise TypeError(message)
+    labels = runners.get("labels", [])
+    if not is_object_list(labels):
+        message = "actionlint custom runner labels must be non-empty strings"
+        raise TypeError(message)
+    strings = [label for label in labels if isinstance(label, str) and label]
+    if len(strings) != len(labels):
+        message = "actionlint custom runner labels must be non-empty strings"
+        raise TypeError(message)
+    return strings
 
 
 def _json_tool(
