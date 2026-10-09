@@ -36,6 +36,7 @@ from sarj_standards.libs.adoption import (
 )
 from sarj_standards.libs.json_boundary import parse_json
 from sarj_standards.libs.release import retirement
+from sarj_standards.libs.release.verification_process import BaseWatch
 from sarj_standards.libs.repository import ledger as rule_ledger, rule_catalog_artifact
 from sarj_standards.libs.yaml_boundary import parse_yaml
 
@@ -45,6 +46,8 @@ if TYPE_CHECKING:
 
 DEFAULT_REGISTRY = Path(".sarj-standards-rollout.toml")
 MAX_CONCURRENT_CONSUMERS = 16
+BASE_WATCH_POLL_SECONDS = 10
+SUPPORTS_VERIFICATION_PROCESS_GROUPS = os.name == "posix"
 SOURCE_REPOSITORY = "https://github.com/sarj-ai/code-standards.git"
 VERSION_RE = re.compile(r"[0-9]+\.[0-9]+\.[0-9]+(?:[a-zA-Z0-9.-]+)?\Z")
 BOT_COMMIT_PREFIX = "chore(standards): adopt "
@@ -169,6 +172,10 @@ REPOSITORY_SCAN_EXCLUSIONS = SECONDARY_JAVASCRIPT_ROOT_EXCLUSIONS - {
 
 class RolloutError(RuntimeError):
     pass
+
+
+class ConsumerBaseMovedError(RolloutError):
+    """A stale candidate needs reconciliation against the current base."""
 
 
 def is_object(value: object) -> TypeGuard[dict[str, object]]:
@@ -706,6 +713,8 @@ def consumer_outcome(consumer: Consumer, operation: Callable[[Consumer], Outcome
     started = time.monotonic()
     try:
         outcome = operation(consumer)
+    except ConsumerBaseMovedError as exc:
+        outcome = Outcome(consumer, OutcomeState.MISSING, detail=str(exc))
     except subprocess.CalledProcessError as exc:
         outcome = Outcome(consumer, OutcomeState.ERROR, detail=process_failure_detail(exc))
     except (OSError, RolloutError) as exc:
@@ -911,7 +920,7 @@ def assert_consumer_base_unchanged(
             f"{consumer.name}: consumer base moved from {expected_sha} to {live_sha} during verification; "
             "reconcile will retry from the refreshed base"
         )
-        raise RolloutError(msg)
+        raise ConsumerBaseMovedError(msg)
 
 
 def assert_consumer_base_current(consumer: Consumer, expected_sha: str, runner: CommandRunner) -> None:
@@ -921,7 +930,7 @@ def assert_consumer_base_current(consumer: Consumer, expected_sha: str, runner: 
             f"{consumer.name}: consumer base moved from {expected_sha} to {current_sha} before verification; "
             "reconcile will retry from the refreshed base"
         )
-        raise RolloutError(msg)
+        raise ConsumerBaseMovedError(msg)
 
 
 def unauthenticated_environment() -> dict[str, str]:
@@ -2303,13 +2312,21 @@ def _verify_rollout_patch(
     for attempt in range(MAX_VERIFICATION_ATTEMPTS):
         progress(consumer, f"verification attempt {attempt + 1}/{MAX_VERIFICATION_ATTEMPTS}")
         started = time.monotonic()
-        verification = run_consumer_verification(
-            consumer,
-            repo,
-            runner,
-            tool_prefix,
-            environment=consumer_verification_environment(environment, base_sha),
-        )
+        verification: subprocess.CompletedProcess[str] | None = None
+        try:
+            with consumer_verification_runner(consumer, runner, base_sha) as verification_runner:
+                verification = run_consumer_verification(
+                    consumer,
+                    repo,
+                    verification_runner,
+                    tool_prefix,
+                    environment=consumer_verification_environment(environment, base_sha),
+                )
+        except ConsumerBaseMovedError as exc:
+            if verification is None:
+                raise
+            msg = f"{exc}\n{verification_detail(verification)}"
+            raise ConsumerBaseMovedError(msg) from exc
         progress(
             consumer,
             f"verification attempt {attempt + 1} finished in {time.monotonic() - started:.2f}s (exit {verification.returncode})",
@@ -2333,6 +2350,34 @@ def _verify_rollout_patch(
             verification_failure_detail += "\nconsumer verification did not converge after safe auto-fixes"
         break
     return verification_failure_detail
+
+
+@contextmanager
+def consumer_verification_runner(consumer: Consumer, runner: CommandRunner, base_sha: str) -> Generator[CommandRunner]:
+    if not isinstance(runner, SubprocessRunner) or not SUPPORTS_VERIFICATION_PROCESS_GROUPS:
+        yield runner
+        return
+    poll_runner = replace(runner, command_timeout=min(runner.command_timeout, 10))
+    with BaseWatch(
+        base_sha,
+        partial(_read_watched_consumer_base, consumer, poll_runner),
+        runner.command_timeout,
+        poll_interval=BASE_WATCH_POLL_SECONDS,
+    ) as watched:
+        yield watched
+    if watched.moved_to is not None:
+        msg = (
+            f"{consumer.name}: consumer base moved from {base_sha} to {watched.moved_to} during verification; "
+            "cancelled stale verification; reconcile will retry from the refreshed base"
+        )
+        raise ConsumerBaseMovedError(msg)
+
+
+def _read_watched_consumer_base(consumer: Consumer, runner: CommandRunner) -> str | None:
+    try:
+        return live_consumer_base_sha(consumer, runner)
+    except OSError, RolloutError:
+        return None
 
 
 def run_consumer_verification(

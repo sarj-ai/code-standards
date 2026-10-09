@@ -28,6 +28,36 @@ def consumer() -> rollout.Consumer:
     return rollout.Consumer("Consumer", "example/consumer", "main", ("make", "check"))
 
 
+@pytest.mark.parametrize(
+    ("failure", "expected_state"),
+    [
+        (rollout.ConsumerBaseMovedError("confirmed base movement"), rollout.OutcomeState.MISSING),
+        (rollout.RolloutError("remote evidence unavailable"), rollout.OutcomeState.ERROR),
+        (OSError("process could not start"), rollout.OutcomeState.ERROR),
+        (subprocess.CalledProcessError(1, ["check"]), rollout.OutcomeState.ERROR),
+    ],
+)
+def test_only_confirmed_base_movement_is_pending(failure: Exception, expected_state: rollout.OutcomeState) -> None:
+    def operation(_consumer: rollout.Consumer) -> rollout.Outcome:
+        raise failure
+
+    result = rollout.consumer_outcome(consumer(), operation)
+    assert result.state == expected_state
+    assert result.detail
+
+
+@pytest.mark.parametrize("custom_runner", [True, False])
+def test_unavailable_process_groups_retain_original_runner(
+    monkeypatch: pytest.MonkeyPatch, *, custom_runner: bool
+) -> None:
+    runner = FakeRunner([]) if custom_runner else rollout.SubprocessRunner()
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- exercises the portable fallback without changing the operating system.
+        rollout, "SUPPORTS_VERIFICATION_PROCESS_GROUPS", False
+    )
+    with rollout.consumer_verification_runner(consumer(), runner, "a" * 40) as selected:
+        assert selected is runner
+
+
 def registry_entry(index: int) -> str:
     branch = "dev" if index < 2 else "main"
     auto_merge = "true" if index == 0 else "false"
@@ -1084,7 +1114,7 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
             ((0,), frozenset[int](), True, True, True, "missing", 1, False),
             ((0,), frozenset[int](), False, False, True, "missing", 1, False),
             ((0,), frozenset[int](), False, True, True, "pr-open", 1, False),
-            ((0,), frozenset[int](), True, True, True, "error", 0, True),
+            ((0,), frozenset[int](), True, True, True, "missing", 0, True),
         ],
     )
     def test_verification_autofix_amends_a_clean_candidate_once(
