@@ -87,6 +87,10 @@ else
         # The SDK executes this gate's real-shell failure contracts; the docs
         # lane runs the full gate. Native linter units cannot affect this shell.
         select_scopes standards docs ;;
+      .github/scripts/verify_registry_publication.py)
+        # SDK tests own registry bytes/provenance and convergence contracts.
+        # This verifier does not load native lint rules or mobile toolchains.
+        select_scopes standards docs ;;
       .github/workflows/private-refs.yml|.github/workflows/ruff-freshness.yml)
         # Repository probes do not import or build language packages.
         select_scopes standards docs ;;

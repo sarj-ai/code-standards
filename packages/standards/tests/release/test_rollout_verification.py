@@ -155,10 +155,27 @@ def test_registry_preserves_argv_and_serial_debugging(tmp_path: Path) -> None:
             "verify": ["prepare"],
             "verify_checks": [["lint", "path with spaces"], ["test"]],
             "verify_jobs": 1,
+            "verify_metadata": ["metadata", "path with spaces"],
         },
     )
     assert consumer.verify_checks == (("lint", "path with spaces"), ("test",))
     assert consumer.verify_jobs == 1
+    assert consumer.verify_metadata == ("metadata", "path with spaces")
+
+
+@pytest.mark.parametrize("value", [True, 3, "check", [""], [1], [["check"]]])
+def test_invalid_metadata_command_is_rejected(tmp_path: Path, value: object) -> None:
+    with pytest.raises(rollout.RolloutError, match="verify_metadata"):
+        _consumer(
+            tmp_path,
+            {
+                "name": "Example",
+                "repository": "example/consumer",
+                "branch": "main",
+                "verify": ["full"],
+                "verify_metadata": value,
+            },
+        )
 
 
 def _consumer(root: Path, entry: dict[str, object]) -> rollout.Consumer:

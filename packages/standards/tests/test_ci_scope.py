@@ -116,6 +116,11 @@ def route(root: Path, base: str, head: str, *, event: str = "pull_request") -> f
         pytest.param(".github/workflows/standards-rollout.yml", {"standards", "docs"}, id="fleet-workflow"),
         pytest.param(".github/scripts/dispatch-standards-rollout.sh", {"standards", "docs"}, id="fleet-dispatch"),
         pytest.param(".github/scripts/verify-docs.sh", {"standards", "docs"}, id="complete-docs-gate"),
+        pytest.param(
+            ".github/scripts/verify_registry_publication.py",
+            {"standards", "docs", "codeql-python"},
+            id="registry-publication",
+        ),
         pytest.param(".github/workflows/private-refs.yml", {"standards", "docs"}, id="private-probe"),
         pytest.param(".github/workflows/ruff-freshness.yml", {"standards", "docs"}, id="freshness-probe"),
         pytest.param(".sarj-standards.toml", {"standards", "docs"}, id="bundle-manifest"),

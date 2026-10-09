@@ -26,3 +26,9 @@ baseline_jobs = 2
 # Existing registries continue to execute exactly their `verify` command.
 verify_checks = []
 verify_jobs = 2 # 1 for serial debugging; 2 or 4 for independent checks.
+# Optional repository-owned check for a proven bundle/provenance-only update.
+# The controller still runs the exact published bundle's full Standards checker.
+# Source, locks, workflows, rule settings, baseline diagnostics, additions,
+# deletions, file modes and uncommitted changes always select the full verifier.
+# Leave empty to retain the original full gate for every rollout.
+verify_metadata = []
