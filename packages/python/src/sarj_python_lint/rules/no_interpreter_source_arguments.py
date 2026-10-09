@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import ast
 from dataclasses import dataclass
+import io
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, ClassVar, final, override
 
-from sarj_python_lint.interpreter_argv import classify_interpreter
+from sarj_python_lint.interpreter_argv import classify_interpreter, is_python_executable, unwrap_command
 from sarj_python_lint.rule_base import (
     AutofixPolicy,
     Diagnostic,
@@ -45,8 +46,8 @@ class NoInterpreterSourceArguments(ProjectRule):
     code = "SARJ484"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
         default_level=Severity.ERROR,
-        summary="Keep interpreter programs in linted files or modules, outside process argv.",
-        rationale="Moving deployment logic from YAML into Python still bypasses language checks when the Python wrapper passes program source through interpreter flags or jq/awk argv.",
+        summary="Keep interpreter programs in linted files or modules, outside process argv and literal Python stdin.",
+        rationale="Moving deployment logic from YAML into Python still bypasses language checks when the Python wrapper passes program source through interpreter flags, jq/awk argv, or literal Python stdin.",
         remediation="Invoke a repository-owned file or module covered by the normal language checks; pass configuration as arguments rather than interpreter source.",
         category=RuleCategory.ARCHITECTURE,
         autofix=AutofixPolicy.NONE,
@@ -54,6 +55,7 @@ class NoInterpreterSourceArguments(ProjectRule):
             "Only import-proven subprocess process APIs, asyncio.create_subprocess_exec, and os exec/spawn argv APIs with literal string vectors are checked. Import aliases are followed; shadowed or reassigned imports and methods abstain.",
             "Script/module and interpreter option boundaries use the shared dependency-free classifier, including env/sudo/timeout wrappers and jq/awk file flags.",
             "Dynamic argv, shell strings and shell=True, recursive shell payloads, receiver-based remote execution, and unknown interpreter option grammars are outside this narrow rule. A clean result does not prove those programs are linted.",
+            "Literal str/bytes input to subprocess.run/check_output is checked only for proven Python stdin invocations and compatible constant text/binary modes. Dynamic input, Popen.communicate, and asyncio stdin abstain.",
             "Generated/vendor sources are excluded; maintained tests are checked. Source-checker fixtures may use an exact reasoned suppression.",
         ),
         examples=(
@@ -85,6 +87,36 @@ class NoInterpreterSourceArguments(ProjectRule):
                 expected_count=0,
                 public=True,
             ),
+            RuleExample(
+                example_id="literal-python-stdin",
+                scenario="stdin",
+                title="Process stdin contains unchecked Python source",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "tools/check.py",
+                        "import subprocess\nsubprocess.run(['python3', '-'], input='print(1)', text=True)\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("tools/check.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="external-module-stdin-data",
+                scenario="stdin",
+                title="An external module receives stdin as data",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "tools/check.py",
+                        "import subprocess\nsubprocess.run(['python3', '-m', 'tools.verify'], input='print(1)', text=True)\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("tools/check.py"),
+                expected_count=0,
+                public=True,
+            ),
         ),
     )
     description = documentation.summary
@@ -106,7 +138,13 @@ class NoInterpreterSourceArguments(ProjectRule):
             if sink is None or sink in replaced or is_suppressed(context.source_lines, call.lineno, self.code):
                 continue
             argv = _literal_argv(call, sink)
-            if argv is None or classify_interpreter(argv).kind != "inline":
+            if argv is None:
+                continue
+            kind = classify_interpreter(argv).kind
+            channel = "process argv" if kind == "inline" else None
+            if kind == "stdin" and _literal_python_stdin(call, sink, argv):
+                channel = "process stdin"
+            if channel is None:
                 continue
             findings.append(
                 Diagnostic(
@@ -114,11 +152,63 @@ class NoInterpreterSourceArguments(ProjectRule):
                     line=call.lineno,
                     col=call.col_offset + 1,
                     code=self.code,
-                    message="Interpreter source is embedded in process argv; invoke a linted repository-owned file or module instead.",
+                    message=f"Interpreter source is embedded in {channel}; invoke a linted repository-owned file or module instead.",
                     severity=Severity.ERROR,
                 )
             )
         return findings
+
+
+def _literal_python_stdin(call: ast.Call, sink: str, argv: tuple[str, ...]) -> bool:
+    if sink not in {"subprocess.run", "subprocess.check_output"}:
+        return False
+    arguments = unwrap_command(argv)  # The shared classifier already proved these wrappers.
+    if not arguments or not is_python_executable(arguments[0]):
+        return False
+    literal = _argument(call, "input", len(call.args))
+    if not isinstance(literal, ast.Constant) or not isinstance(literal.value, (str, bytes)):
+        return False
+    if not _compatible_stdin(call, literal.value):
+        return False
+    try:
+        return bool(ast.parse(literal.value).body)
+    except SyntaxError, ValueError:
+        return True
+
+
+def _compatible_stdin(call: ast.Call, payload: str | bytes) -> bool:
+    modes: dict[str, object] = {}
+    for name in ("stdin", "text", "universal_newlines", "encoding", "errors"):
+        option = _argument(call, name, len(call.args))
+        if option is not None and not isinstance(option, ast.Constant):
+            return False
+        modes[name] = option.value if isinstance(option, ast.Constant) else None
+    if modes["stdin"] is not None:
+        return False
+    text, universal = modes["text"], modes["universal_newlines"]
+    if text not in {None, True, False} or universal not in {None, True, False}:
+        return False
+    if text is not None and universal is not None and bool(text) != bool(universal):
+        return False
+    encoding, errors = modes["encoding"], modes["errors"]
+    if encoding is not None and not isinstance(encoding, str):
+        return False
+    if errors is not None and not isinstance(errors, str):
+        return False
+    text_mode = bool(text or universal or encoding or errors)
+    if isinstance(payload, str) != text_mode:
+        return False
+    return not isinstance(payload, str) or _text_input_valid(payload, encoding, errors)
+
+
+def _text_input_valid(payload: str, encoding: str | None, errors: str | None) -> bool:
+    try:
+        with io.TextIOWrapper(io.BytesIO(), encoding=encoding, errors=errors) as stream:
+            stream.write(payload)
+            stream.flush()
+    except LookupError, UnicodeError, ValueError:
+        return False
+    return True
 
 
 def _literal_argv(call: ast.Call, sink: str) -> tuple[str, ...] | None:

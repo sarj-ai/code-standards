@@ -145,9 +145,11 @@ def test_legacy_unknown_dynamic_reference_is_ignored_like_upstream() -> None:
     assert not schema_references({"$dynamicRef": "https://example.invalid/data"})
 
 
-def test_helm_rejects_unsupported_modern_schema_dialect() -> None:
-    with pytest.raises(ValueError, match="native validator"):
-        schema_references({"$schema": "https://json-schema.org/draft/2020-12/schema"}, dialects=HELM_SCHEMA_DIALECTS)
+@pytest.mark.parametrize(
+    "dialect", ["https://json-schema.org/draft/2019-09/schema", "https://json-schema.org/draft/2020-12/schema"]
+)
+def test_helm_supports_modern_schema_dialects(dialect: str) -> None:
+    assert not schema_references({"$schema": dialect}, dialects=HELM_SCHEMA_DIALECTS)
 
 
 def test_duplicate_schema_keys_are_invalid_input(tmp_path: Path) -> None:

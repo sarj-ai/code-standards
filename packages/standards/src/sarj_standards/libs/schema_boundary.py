@@ -32,10 +32,27 @@ _DIALECTS: Mapping[str, type[Validator]] = MappingProxyType(
         "https://json-schema.org/draft/2020-12/schema": Draft202012Validator,
     }
 )
-HELM_SCHEMA_DIALECTS = frozenset(tuple(_DIALECTS)[:3])
+HELM_SCHEMA_DIALECTS = frozenset(_DIALECTS)
+HELM_DEFAULT_DIALECT = "https://json-schema.org/draft/2020-12/schema"
 KUBERNETES_DEFAULT_DIALECT = "http://json-schema.org/draft-04/schema"
 DEFAULT_DIALECT = "http://json-schema.org/draft-07/schema"
 _MAX_SCHEMA_RESOURCES = 100_000
+
+
+@dataclass(frozen=True, slots=True)
+class SchemaReferenceProfile:
+    default_dialect: str
+    dialects: frozenset[str]
+    extra_reference_keywords: tuple[tuple[str, str], ...] = ()
+    extra_subschema_maps: tuple[tuple[str, str], ...] = ()
+
+
+HELM_SCHEMA_PROFILE = SchemaReferenceProfile(
+    default_dialect=HELM_DEFAULT_DIALECT,
+    dialects=HELM_SCHEMA_DIALECTS,
+    extra_reference_keywords=((HELM_DEFAULT_DIALECT, "$recursiveRef"),),
+    extra_subschema_maps=tuple((dialect, "dependencies") for dialect in sorted(HELM_SCHEMA_DIALECTS)),
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -70,14 +87,16 @@ def schema_references(
     fragment: str = "",
     default_dialect: str = DEFAULT_DIALECT,
     legacy_identifiers: bool = False,
+    profile: SchemaReferenceProfile | None = None,
 ) -> tuple[str, ...]:
     try:
         return _schema_references(
             value,
-            dialects=dialects,
+            dialects=dialects if profile is None else profile.dialects,
             fragment=fragment,
-            default=_DIALECTS[default_dialect],
+            default=_DIALECTS[default_dialect if profile is None else profile.default_dialect],
             legacy_identifiers=legacy_identifiers,
+            profile=profile,
         )
     except (SchemaError, UnknownDialect, CannotDetermineSpecification) as error:
         msg = f"invalid or unsupported schema declaration: {error}"
@@ -85,7 +104,13 @@ def schema_references(
 
 
 def _schema_references(
-    value: object, *, dialects: frozenset[str] | None, fragment: str, default: type[Validator], legacy_identifiers: bool
+    value: object,
+    *,
+    dialects: frozenset[str] | None,
+    fragment: str,
+    default: type[Validator],
+    legacy_identifiers: bool,
+    profile: SchemaReferenceProfile | None,
 ) -> tuple[str, ...]:
     root = _schema(value)
     validator = _validator(schema=root, default=default)
@@ -93,7 +118,9 @@ def _schema_references(
     if fragment:
         walk.pending.append(_SchemaResource(_resource(_pointer(root, fragment), default=validator), root, validator))
     while walk.pending:
-        _visit_resource(walk, walk.pending.pop(), dialects=dialects, legacy_identifiers=legacy_identifiers)
+        _visit_resource(
+            walk, walk.pending.pop(), dialects=dialects, legacy_identifiers=legacy_identifiers, profile=profile
+        )
     if any(reference.split("#", 1)[0] for reference in walk.references) and any(
         identifier.split("#", 1)[0] for identifier in walk.identifiers
     ):
@@ -103,7 +130,12 @@ def _schema_references(
 
 
 def _visit_resource(
-    walk: _ReferenceWalk, item: _SchemaResource, *, dialects: frozenset[str] | None, legacy_identifiers: bool
+    walk: _ReferenceWalk,
+    item: _SchemaResource,
+    *,
+    dialects: frozenset[str] | None,
+    legacy_identifiers: bool,
+    profile: SchemaReferenceProfile | None,
 ) -> None:
     resource, base = item.resource, item.base
     identity = (id(resource.contents), id(base))
@@ -117,7 +149,7 @@ def _visit_resource(
     validator = _validator(schema=content, default=item.validator)
     if not isinstance(content, bool):
         _native_dialect(content, dialects)
-        references = _own_references(content, validator)
+        references = _own_references(content, validator, profile=profile)
         walk.references.extend(references)
         identifier = _resource_identifier(resource, content, validator=validator, legacy_identifiers=legacy_identifiers)
         if identifier:
@@ -127,6 +159,27 @@ def _visit_resource(
         _queue_pointer_targets(walk, references, base=base, validator=validator)
     validator.check_schema(content)  # pyright: ignore[reportArgumentType] -- upstream protocol stub excludes valid modern boolean schemas.
     walk.pending.extend(_SchemaResource(child, base, validator) for child in resource.subresources())
+    walk.pending.extend(
+        _SchemaResource(child, base, validator)
+        for child in _profile_subresources(content=content, validator=validator, profile=profile)
+    )
+
+
+def _profile_subresources(
+    *,
+    content: dict[str, object] | bool,
+    validator: type[Validator],
+    profile: SchemaReferenceProfile | None,
+) -> Iterable[Resource[Schema]]:
+    if profile is None or isinstance(content, bool):
+        return
+    for dialect, keyword in profile.extra_subschema_maps:
+        container = content.get(keyword)
+        if _DIALECTS[dialect] is not validator or not is_object_mapping(container):
+            continue
+        for child in container.values():
+            if not is_object_list(child):
+                yield _resource(child, default=validator)
 
 
 def _native_dialect(content: dict[str, object], dialects: frozenset[str] | None) -> None:
@@ -184,10 +237,17 @@ def _resource(value: object, *, default: type[Validator]) -> Resource[Schema]:
     return Resource.from_contents(_schema(value), default_specification=specification_with(dialect))
 
 
-def _own_references(content: dict[str, object], validator: type[Validator]) -> tuple[str, ...]:
+def _own_references(
+    content: dict[str, object], validator: type[Validator], *, profile: SchemaReferenceProfile | None
+) -> tuple[str, ...]:
     references: list[str] = []
+    additional: frozenset[str] = (
+        frozenset(keyword for dialect, keyword in profile.extra_reference_keywords if _DIALECTS[dialect] is validator)
+        if profile is not None
+        else frozenset()
+    )
     for keyword in ("$ref", "$dynamicRef", "$recursiveRef"):
-        if keyword not in content or keyword not in validator.VALIDATORS:
+        if keyword not in content or (keyword not in validator.VALIDATORS and keyword not in additional):
             continue
         reference = content[keyword]
         if not isinstance(reference, str):

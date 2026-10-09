@@ -1,4 +1,5 @@
 config {
+  plugin_dir       = "~/.tflint.d/plugins"
   call_module_type = "local"
 }
 

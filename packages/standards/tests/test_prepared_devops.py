@@ -12,9 +12,12 @@ import pytest
 
 from sarj_standards.libs.adoption.manifest import Manifest, PreparedTarget, load
 from sarj_standards.libs.diagnostics import Completion
+from sarj_standards.libs.json_boundary import parse_json
 from sarj_standards.libs.linting.external import ProcessOutput
 from sarj_standards.libs.linting.prepared_devops import analyze_prepared
 from sarj_standards.libs.linting.prepared_kubernetes import NATIVE_CHECKS, OMISSION_CHECK
+from sarj_standards.libs.typed_containers import is_object_list, is_object_mapping
+from sarj_standards.libs.yaml_boundary import parse_yaml_documents
 
 
 if TYPE_CHECKING:
@@ -67,8 +70,27 @@ def _native(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
     if argv[0] == "kubeconform":
         assert "-strict" in argv
         assert "-ignore-missing-schemas" not in argv
+        [resource] = parse_yaml_documents(Path(argv[-1]).read_text(encoding="utf-8"))
+        assert is_object_mapping(resource)
+        metadata = resource["metadata"]
+        assert is_object_mapping(metadata)
         return ProcessOutput(
-            0, '{"resources":[{"status":"statusValid"}],"summary":{"valid":1,"invalid":0,"errors":0,"skipped":0}}', ""
+            0,
+            json.dumps(
+                {
+                    "resources": [
+                        {
+                            "filename": argv[-1],
+                            "version": resource["apiVersion"],
+                            "kind": resource["kind"],
+                            "name": metadata["name"],
+                            "status": "statusValid",
+                        }
+                    ],
+                    "summary": {"valid": 1, "invalid": 0, "errors": 0, "skipped": 0},
+                }
+            ),
+            "",
         )
     assert argv[0] == "kube-linter"
     return ProcessOutput(
@@ -314,3 +336,184 @@ def test_duplicate_declarations_fail(tmp_path: Path) -> None:
     (tmp_path / ".sarj-standards.toml").write_text(manifest.render(), encoding="utf-8")
     with pytest.raises(ValueError, match="duplicate prepared target"):
         load(tmp_path)
+
+
+@pytest.mark.parametrize("field", ["filename", "version", "kind", "name"])
+@pytest.mark.parametrize("missing", [False, True], ids=("mismatched", "missing"))
+def test_native_schema_result_must_identify_submitted_resource(field: str, *, missing: bool, tmp_path: Path) -> None:
+    path = _receipt(tmp_path).path
+
+    def runner(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
+        output = _native(argv, cwd=cwd)
+        if argv[0] != "kubeconform" or "-strict" not in argv:
+            return output
+        parsed = parse_json(output.stdout)
+        assert is_object_mapping(parsed)
+        resources = parsed["resources"]
+        assert is_object_list(resources)
+        native: object = resources[0]
+        assert is_object_mapping(native)
+        parsed["resources"] = [
+            {
+                key: "another-resource" if key == field else value
+                for key, value in native.items()
+                if not (missing and key == field)
+            }
+        ]
+        return ProcessOutput(0, json.dumps(parsed), "")
+
+    [report] = analyze_prepared(
+        (path,), root=tmp_path, declared=(PreparedTarget("example", "deploy.yaml"),), runner=runner
+    )
+    assert report.completion is Completion.FAILED
+    assert not report.diagnostics
+    assert "resource identity" in report.issues[0].message
+
+
+def test_wrong_schema_resource_identity_supersedes_schema_violation(tmp_path: Path) -> None:
+    path = _receipt(tmp_path).path
+
+    def runner(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
+        output = _native(argv, cwd=cwd)
+        if argv[0] != "kubeconform" or "-strict" not in argv:
+            return output
+        return ProcessOutput(
+            1,
+            json.dumps(
+                {
+                    "resources": [
+                        {
+                            "filename": argv[-1],
+                            "version": "v1",
+                            "kind": "ConfigMap",
+                            "name": "other",
+                            "status": "statusInvalid",
+                            "msg": "invalid other object",
+                        }
+                    ],
+                    "summary": {"valid": 0, "invalid": 1, "errors": 0, "skipped": 0},
+                }
+            ),
+            "",
+        )
+
+    [report] = analyze_prepared(
+        (path,), root=tmp_path, declared=(PreparedTarget("example", "deploy.yaml"),), runner=runner
+    )
+    assert report.completion is Completion.FAILED
+    assert not report.diagnostics
+    assert "resource identity" in report.issues[0].message
+
+
+def _scalar_receipt(root: Path, *, name: object, value: object, privileged: bool = False) -> _ReceiptFixture:
+    fixture = _receipt(root)
+    directory = fixture.path.parent
+    resource = {
+        "apiVersion": "v1",
+        "kind": "Pod",
+        "metadata": {"name": "public-pod", "annotations": {"example.com/state": "Y"}},
+        "spec": {
+            "containers": [
+                {
+                    "name": "app",
+                    "image": "public-example:1",
+                    "securityContext": {
+                        "allowPrivilegeEscalation": False,
+                        "runAsNonRoot": True,
+                        "privileged": privileged,
+                    },
+                    "env": [{"name": name, "value": value}],
+                }
+            ]
+        },
+    }
+    (directory / "resource.yaml").write_text(json.dumps(resource), encoding="utf-8")
+    schema = {
+        "type": "object",
+        "properties": {
+            "spec": {
+                "type": "object",
+                "properties": {
+                    "containers": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "env": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "object",
+                                        "properties": {"name": {"type": "string"}, "value": {"type": "string"}},
+                                    },
+                                }
+                            },
+                        },
+                    }
+                },
+            }
+        },
+    }
+    (directory / "schema.json").write_text(json.dumps(schema), encoding="utf-8")
+    fixture.target["schema_bindings"] = {"v1/Pod": "schema.json"}
+    fixture.target["artifacts"] = {
+        name: sha256((directory / name).read_bytes()).hexdigest() for name in ("resource.yaml", "schema.json")
+    }
+    _write_receipt(fixture.path, fixture.target)
+    return fixture
+
+
+@pytest.mark.parametrize("value", ["Y", "N", "y", "n", "yes", "no", "true", "false", "001", "1e3", "2026-10-09", ""])
+def test_native_prepared_resources_preserve_string_scalar_types(tmp_path: Path, value: str) -> None:
+    fixture = _scalar_receipt(tmp_path, name="Y", value=value)
+    original = (fixture.path.parent / "resource.yaml").read_bytes()
+    reports = analyze_prepared((fixture.path,), root=tmp_path, declared=(PreparedTarget("example", "deploy.yaml"),))
+    assert reports[0].completion is Completion.COMPLETE
+    assert not reports[0].diagnostics
+    assert not reports[0].issues
+    assert (fixture.path.parent / "resource.yaml").read_bytes() == original
+
+
+def test_quoted_scalar_security_findings_keep_upstream_ownership(tmp_path: Path) -> None:
+    fixture = _scalar_receipt(tmp_path, name="N", value="Y", privileged=True)
+    reports = analyze_prepared((fixture.path,), root=tmp_path, declared=(PreparedTarget("example", "deploy.yaml"),))
+    assert reports[0].completion is Completion.COMPLETE
+    findings = reports[0].diagnostics
+    assert {finding.code for finding in findings} == {"privileged-container", "privilege-escalation-container"}
+    assert len(findings) == 2
+    assert all(finding.source == "kube-linter" and finding.location.path == "deploy.yaml" for finding in findings)
+    assert all(finding.location.position is None for finding in findings)
+
+
+@pytest.mark.parametrize(("name", "value"), [(True, "value"), ("APP", 42)])
+def test_prepared_serialization_cannot_turn_invalid_scalar_types_into_strings(
+    tmp_path: Path, name: object, value: object
+) -> None:
+    fixture = _scalar_receipt(tmp_path, name=name, value=value)
+    reports = analyze_prepared((fixture.path,), root=tmp_path, declared=(PreparedTarget("example", "deploy.yaml"),))
+    assert reports[0].completion is Completion.FAILED
+    assert reports[0].issues
+
+
+def test_prepared_null_value_retains_native_schema_diagnostic(tmp_path: Path) -> None:
+    fixture = _scalar_receipt(tmp_path, name="APP", value=None)
+    reports = analyze_prepared((fixture.path,), root=tmp_path, declared=(PreparedTarget("example", "deploy.yaml"),))
+    assert reports[0].completion is Completion.COMPLETE
+    assert [finding.code for finding in reports[0].diagnostics] == ["schema"]
+
+
+def test_prepared_yaml_date_scalar_retains_native_supported_behavior(tmp_path: Path) -> None:
+    fixture = _scalar_receipt(tmp_path, name="APP", value="value")
+    resource = fixture.path.parent / "resource.yaml"
+    resource.write_text(
+        "apiVersion: v1\nkind: Pod\nmetadata:\n  name: public-pod\nspec:\n  containers:\n  - name: app\n"
+        "    image: public-example:1\n    securityContext:\n      allowPrivilegeEscalation: false\n"
+        "      runAsNonRoot: true\n    env:\n    - name: APP\n      value: 2026-10-09\n",
+        encoding="utf-8",
+    )
+    fixture.target["artifacts"] = {
+        name: sha256((fixture.path.parent / name).read_bytes()).hexdigest() for name in ("resource.yaml", "schema.json")
+    }
+    _write_receipt(fixture.path, fixture.target)
+    reports = analyze_prepared((fixture.path,), root=tmp_path, declared=(PreparedTarget("example", "deploy.yaml"),))
+    assert reports[0].completion is Completion.COMPLETE
+    assert not reports[0].diagnostics

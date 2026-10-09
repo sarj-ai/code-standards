@@ -12,6 +12,10 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
 
 
+_MAX_CACHE_CHARACTERS = 1_048_576
+_MAX_CACHE_ENTRIES = 128
+
+
 class ShellParseError(RuntimeError):
     """Missing analyzer, resource limit or malformed analyzer output."""
 
@@ -37,12 +41,25 @@ def _checked_executable() -> Path:
 
 def make_shell_parser() -> Callable[[str], Mapping[str, object]]:
     executable: Path | None = None
+    cache: dict[str, str] = {}
+    retained_characters = 0
 
     def parse(source: str) -> Mapping[str, object]:
-        nonlocal executable
+        nonlocal executable, retained_characters
         if executable is None:
             executable = _checked_executable()
-        return _parse_shell(source, executable=executable, dialect="bash")
+        if source in cache:
+            return _shell_tree(cache[source])
+        payload = _shell_json(source, executable=executable, dialect="bash")
+        tree = _shell_tree(payload)
+        size = len(source) + len(payload)
+        if size <= _MAX_CACHE_CHARACTERS:
+            if len(cache) >= _MAX_CACHE_ENTRIES or retained_characters + size > _MAX_CACHE_CHARACTERS:
+                cache.clear()
+                retained_characters = 0
+            cache[source] = payload
+            retained_characters += size
+        return tree
 
     return parse
 
@@ -52,6 +69,10 @@ def parse_shell(source: str, *, dialect: str = "bash") -> Mapping[str, object]:
 
 
 def _parse_shell(source: str, *, executable: Path, dialect: str) -> Mapping[str, object]:
+    return _shell_tree(_shell_json(source, executable=executable, dialect=dialect))
+
+
+def _shell_json(source: str, *, executable: Path, dialect: str) -> str:
     from .external import run_process_input  # ruff: ignore[import-outside-top-level] -- runner imports textlint; avoid a module cycle.
 
     if dialect not in {"bash", "posix", "mksh", "bats", "zsh"}:
@@ -69,8 +90,12 @@ def _parse_shell(source: str, *, executable: Path, dialect: str) -> Mapping[str,
     if result.returncode != 0 or result.stderr.strip():
         msg = "shfmt did not complete the typed-JSON analysis protocol"
         raise ShellParseError(msg)
+    return result.stdout
+
+
+def _shell_tree(payload: str) -> Mapping[str, object]:
     try:
-        tree = parse_json(result.stdout)
+        tree = parse_json(payload)
     except ValueError as error:
         msg = "shfmt returned invalid JSON"
         raise ShellParseError(msg) from error

@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 from jsonschema import Draft7Validator
 from referencing import Registry, Resource
 import yaml
-from yaml.nodes import MappingNode, Node, SequenceNode
+from yaml.nodes import MappingNode, Node, ScalarNode, SequenceNode
 
 from sarj_standards.libs.diagnostics import (
     Completion,
@@ -109,6 +109,7 @@ _DEPLOY_FIELDS: Mapping[str, dict[str, object]] = MappingProxyType(
 
 def analyze_source_schemas(*, root: Path, paths: tuple[str, ...]) -> tuple[ToolReport, ...]:
     reports: list[ToolReport] = []
+    validators: dict[str, Draft7Validator] = {}
     for relative in paths:
         path = (root / relative).resolve()
         if path.suffix.lower() not in {".yaml", ".yml"}:
@@ -122,50 +123,97 @@ def analyze_source_schemas(*, root: Path, paths: tuple[str, ...]) -> tuple[ToolR
                 reports.append(_failed("devops-schema", error))
             continue
         for node in nodes:
-            if not isinstance(node, MappingNode):
-                continue
-            version = _schema_version(node)
-            if version is None or not version.startswith(("skaffold/", "deploy.cloud.google.com/")):
-                continue
-            reports.append(_validate_document(root, path, source, node, version))
+            report = _source_schema_report(root, path, source, node, validators=validators)
+            if report is not None:
+                reports.append(report)
     return tuple(reports)
 
 
+def _source_schema_report(
+    root: Path,
+    path: Path,
+    source: str,
+    node: Node | None,
+    *,
+    validators: dict[str, Draft7Validator],
+) -> ToolReport | None:
+    if not isinstance(node, MappingNode):
+        return None
+    try:
+        version = _schema_version(node)
+    except ValueError as error:
+        if _has_source_schema(node) or "skaffold" in path.stem or "clouddeploy" in path.stem:
+            return _failed("devops-schema", error)
+        return None
+    if version is None or not version.startswith(("skaffold/", "deploy.cloud.google.com/")):
+        return None
+    return _validate_document(root, path, source, node, version, validators=validators)
+
+
 def _schema_version(node: MappingNode) -> str | None:
-    return next(
-        (
-            cloudbuild.scalar_text(value)
-            for key, value in mapping_items(node)
-            if cloudbuild.scalar_text(key) == "apiVersion"
-        ),
-        None,
-    )
+    return cloudbuild.scalar_text(cloudbuild.mapping_fields(node).get("apiVersion"))
+
+
+def _has_source_schema(node: MappingNode) -> bool:
+    pending: list[Node] = [node]
+    visited: set[int] = set()
+    while pending:
+        current = pending.pop()
+        if not isinstance(current, MappingNode) or id(current) in visited:
+            continue
+        visited.add(id(current))
+        for key, value in mapping_items(current):
+            if isinstance(key, ScalarNode) and key.tag == "tag:yaml.org,2002:merge":
+                pending.extend(sequence_items(value) if isinstance(value, SequenceNode) else [value])
+            elif cloudbuild.scalar_text(key) == "apiVersion":
+                version = cloudbuild.scalar_text(value)
+                if version is not None and version.startswith(("skaffold/", "deploy.cloud.google.com/")):
+                    return True
+    return False
 
 
 def _documents(source: str) -> list[Node | None]:
     return cloudbuild.compose_documents(source)
 
 
-def _validate_document(root: Path, path: Path, source: str, node: MappingNode, version: str) -> ToolReport:
+def _validate_document(
+    root: Path,
+    path: Path,
+    source: str,
+    node: MappingNode,
+    version: str,
+    *,
+    validators: dict[str, Draft7Validator],
+) -> ToolReport:
     name = "skaffold-schema" if version.startswith("skaffold/") else "clouddeploy-structure"
     try:  # ruff: ignore[too-many-statements-in-try-clause] -- normalize the external schema and YAML boundaries into one fatal coverage report.
-        schema = _skaffold_schema(version) if version.startswith("skaffold/") else _deploy_schema(node, version)
+        validator = _source_validator(node, version, validators)
         _validate_keys(node)
         loader = yaml.SafeLoader("")
         try:
             instance = normalize_json_value(loader.construct_document(node))  # pyright: ignore[reportUnknownArgumentType, reportUnknownMemberType] -- normalize the untyped safe YAML constructor boundary.
         finally:
             loader.dispose()  # pyright: ignore[reportUnknownMemberType] -- PyYAML loader cleanup boundary.
-        resource: Resource[Schema] = Resource.from_contents(schema)
-        registry: Registry[Schema] = Registry()
-        registry = registry.with_resource("urn:sarj:devops-source", resource)
-        validator = Draft7Validator(schema, registry=registry)
         errors: Iterable[ValidationError] = validator.iter_errors(instance)  # pyright: ignore[reportUnknownMemberType] -- jsonschema validation boundary.
         document = SourceDocument(path, source)
         findings = tuple(_schema_diagnostic(root, path, document, node, error, name=name) for error in errors)  # pyright: ignore[reportAny] -- external jsonschema iterator stub exposes validated errors as Any.
         return ToolReport(name, Completion.COMPLETE, diagnostics=findings, file_count=1)
     except (OSError, ValueError, yaml.YAMLError, RecursionError) as error:
         return _failed(name, error)
+
+
+def _source_validator(node: MappingNode, version: str, validators: dict[str, Draft7Validator]) -> Draft7Validator:
+    skaffold = version.startswith("skaffold/")
+    if skaffold and version in validators:
+        return validators[version]
+    schema = _skaffold_schema(version) if skaffold else _deploy_schema(node, version)
+    resource: Resource[Schema] = Resource.from_contents(schema)
+    registry: Registry[Schema] = Registry()
+    registry = registry.with_resource("urn:sarj:devops-source", resource)
+    validator = Draft7Validator(schema, registry=registry)
+    if skaffold:
+        validators[version] = validator
+    return validator
 
 
 def _skaffold_schema(version: str) -> Schema:

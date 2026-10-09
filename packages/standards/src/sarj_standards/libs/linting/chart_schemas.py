@@ -8,7 +8,7 @@ import tarfile
 from typing import TYPE_CHECKING
 
 from sarj_standards.libs.json_boundary import parse_unique_json
-from sarj_standards.libs.schema_boundary import HELM_SCHEMA_DIALECTS, schema_references
+from sarj_standards.libs.schema_boundary import HELM_SCHEMA_PROFILE, schema_references
 
 
 if TYPE_CHECKING:
@@ -18,6 +18,7 @@ if TYPE_CHECKING:
 _MAX_MEMBERS = 4096
 _MAX_EXPANDED_BYTES = 64 * 1024 * 1024
 _MAX_DEPTH = 8
+_DEPENDENCY_PATH_PARTS = 2
 
 
 @dataclass(slots=True)
@@ -47,13 +48,28 @@ def _validate_archive(archive: bytes, budget: _Budget, depth: int) -> None:
             if not member.isfile() or path.suffix not in {".json", ".tgz"}:
                 continue
             content = _read_member(chart, member)
-            if path.suffix == ".tgz" and "charts" in path.parts:
+            chart_path = _chart_path(path)
+            if (
+                len(chart_path) == _DEPENDENCY_PATH_PARTS
+                and chart_path[0] == "charts"
+                and path.suffix == ".tgz"
+                and not path.name.startswith(("_", "."))
+            ):
                 _validate_archive(content, budget, depth + 1)
             elif path.suffix == ".json":
                 files[path.as_posix()] = content
     for name in files:
-        if name.endswith("/values.schema.json"):
+        if _chart_path(PurePosixPath(name)) == ("values.schema.json",):
             _closed(name, files, set())
+
+
+def _chart_path(path: PurePosixPath) -> tuple[str, ...]:
+    parts = path.parts[1:]
+    while len(parts) > _DEPENDENCY_PATH_PARTS and parts[0] == "charts":
+        if parts[1].startswith(("_", ".")) or PurePosixPath(parts[1]).suffix == ".tgz":
+            return ()
+        parts = parts[2:]
+    return parts
 
 
 def _record_member(member: tarfile.TarInfo, budget: _Budget, seen: set[str]) -> PurePosixPath:
@@ -89,7 +105,11 @@ def _closed(name: str, files: dict[str, bytes], seen: set[tuple[str, str]], frag
         return
     seen.add(key)
     data = parse_unique_json(files[name].decode("utf-8"))
-    for reference in schema_references(data, dialects=HELM_SCHEMA_DIALECTS, fragment=fragment, legacy_identifiers=True):
+    for reference in schema_references(
+        data,
+        profile=HELM_SCHEMA_PROFILE,
+        fragment=fragment,
+    ):
         relative = reference.split("#", 1)[0]
         if not relative:
             continue

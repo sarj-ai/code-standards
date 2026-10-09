@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "98e44d49d4ad9d8d087175923061cd573ade78b9e34198c795d4085171f5427a",
-  "cliSha256": "3b997da31aeff34f785804c5873d081f16f66318353ffb5131632d3be4a17203",
+  "catalogSha256": "3f66f7cceaacee067e27ea4ad5012f64783671f482be027b8e8e2cbe42ea7fb1",
+  "cliSha256": "cd6b9a063e4a70e9d816cd59a6588138edfd50c5a44e783fac6c907b617780fe",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -6959,6 +6959,21 @@
           "title": "Process argv invokes a checked module"
         },
         {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "tools/check.py",
+              "source": "import subprocess\n\nsubprocess.run([\"python3\", \"-m\", \"tools.verify\"], input=\"print(1)\", text=True)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tools/check.py",
+          "id": "external-module-stdin-data",
+          "outcome": "accept",
+          "scenarioId": "stdin",
+          "title": "An external module receives stdin as data"
+        },
+        {
           "expectedCount": 1,
           "files": [
             {
@@ -6972,6 +6987,21 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Process argv contains unchecked Python source"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "tools/check.py",
+              "source": "import subprocess\n\nsubprocess.run([\"python3\", \"-\"], input=\"print(1)\", text=True)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tools/check.py",
+          "id": "literal-python-stdin",
+          "outcome": "reject",
+          "scenarioId": "stdin",
+          "title": "Process stdin contains unchecked Python source"
         }
       ],
       "optionsSchemaSource": null
