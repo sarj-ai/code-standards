@@ -258,7 +258,7 @@
   "canonicalGate": {
     "makeVerify": {
       "exitCode": 0,
-      "passed": 25682,
+      "passed": 25690,
       "skipped": 9
     },
     "finalPythonRerun": {
@@ -273,9 +273,9 @@
       "python": 12089,
       "sql": 1035,
       "iac": 828,
-      "standards": 4445
+      "standards": 4451
     },
-    "finalPassed": 25684,
+    "finalPassed": 25690,
     "nativeTimeoutControls": 3,
     "unchangedRuleLevels": true
   },
@@ -290,6 +290,19 @@
     "owners": {
       "packages/standards/src/sarj_standards/libs/linting/devops_tools.py": "895b96a72d1e6f9f9cff02f1f845d97e41464b61b9ef9c2f9a9b18e861c2429b",
       "packages/standards/tests/test_devops_tools.py": "2fcb5e6a2923f66491c862f1b7525be99368d95e0ba166112fc07298b920a953"
+    }
+  },
+  "npmDistributionVerificationRepair": {
+    "nativeControls": 6,
+    "nativeSupplyChainSuitePassed": 68,
+    "npmClients": 2,
+    "pythonClients": 6,
+    "strictChecksumsPreserved": true,
+    "sourceBoundPublicationPreserved": true,
+    "owners": {
+      ".github/scripts/release-verify-distributions.sh": "4645c9e81680b7d59d659f666e073989a2870c50f54cee2de35a9822b0f21d05",
+      ".github/workflows/release.yml": "e9e31cf5166937ff47ba5442aeecee42849ee95048a0ffde0e8670af6c57b1d2",
+      "packages/standards/tests/test_supply_chain.py": "5e6f3a357027049cb4d9e61cb51d4244c34a88b3f48a6d66829249dca9fb335b"
     }
   }
 }
