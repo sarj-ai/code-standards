@@ -9,6 +9,7 @@ import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/util
 import { directArgumentCall, unwrapExpression } from "./_unwrap-expression.js";
 
 import { forEachOwnAstChild } from "./_for-each-own-ast-child.js";
+import { runtimeTestFrameworkName } from "./_test-mock-provenance.js";
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isTestFile } from "./_paths.js";
 
@@ -42,8 +43,6 @@ const FUNCTION_TYPES: ReadonlySet<AST_NODE_TYPES> = new Set([
   AST_NODE_TYPES.ArrowFunctionExpression,
 ]);
 const MIN_CASES = 2;
-const TEST_MODULES: ReadonlySet<string> = new Set(["@jest/globals", "@playwright/test", "bun:test", "node:test", "vitest"]);
-const ASSERTION_MODULES: ReadonlySet<string> = new Set([...TEST_MODULES, "node:assert", "node:assert/strict"]);
 
 function rootIdentifier(callee: TSESTree.Node): TSESTree.Identifier | null {
   callee = unwrapExpression(callee);
@@ -67,18 +66,18 @@ function isTestBody(node: TSESTree.Node, isFrameworkTest: (identifier: TSESTree.
   const root = call === null ? null : rootIdentifier(call.callee);
   return (
     call !== null &&
-    isTestCaller(call.callee) &&
+    isTestCaller(call.callee, isFrameworkTest) &&
     root !== null &&
     isFrameworkTest(root)
   );
 }
 
-function isTestCaller(callee: TSESTree.Node): boolean {
+function isTestCaller(callee: TSESTree.Node, isFrameworkTest: (identifier: TSESTree.Identifier) => boolean): boolean {
   callee = unwrapExpression(callee);
-  if (callee.type === AST_NODE_TYPES.Identifier) return TEST_CALLERS.has(callee.name);
+  if (callee.type === AST_NODE_TYPES.Identifier) return isFrameworkTest(callee);
   if (callee.type !== AST_NODE_TYPES.MemberExpression) return false;
   const member = staticMemberName(callee);
-  return member !== null && TEST_MODIFIERS.has(member) && isTestCaller(callee.object);
+  return member !== null && TEST_MODIFIERS.has(member) && isTestCaller(callee.object, isFrameworkTest);
 }
 
 function nearestEnclosingFunction(
@@ -137,26 +136,9 @@ function isAssertion(
   node: TSESTree.Node,
   isFrameworkAssertion: (identifier: TSESTree.Identifier) => boolean,
 ): boolean {
-  if (node.type !== AST_NODE_TYPES.CallExpression || !ASSERTION_ROOTS.has(callerName(node.callee) ?? "")) return false;
+  if (node.type !== AST_NODE_TYPES.CallExpression) return false;
   const root = rootIdentifier(node.callee);
   return root !== null && isFrameworkAssertion(root);
-}
-
-function callerName(callee: TSESTree.Node): string | null {
-  callee = unwrapExpression(callee);
-  if (callee.type === AST_NODE_TYPES.Identifier) {
-    return callee.name;
-  }
-  if (callee.type === AST_NODE_TYPES.MemberExpression) {
-    return callerName(callee.object);
-  }
-  if (callee.type === AST_NODE_TYPES.CallExpression) {
-    return callerName(callee.callee);
-  }
-  if (callee.type === AST_NODE_TYPES.TaggedTemplateExpression) {
-    return callerName(callee.tag);
-  }
-  return null;
 }
 
 function opensSubtest(node: TSESTree.Node, callbackParameters: ReadonlySet<string>): boolean {
@@ -202,21 +184,8 @@ export default createRule<Options, MessageIds>({
     if (!isTestFile(context.filename)) {
       return {};
     }
-    const isFrameworkIdentifier = (
-      identifier: TSESTree.Identifier,
-      modules: ReadonlySet<string>,
-    ): boolean => {
-      const variable = ASTUtils.findVariable(context.sourceCode.getScope(identifier), identifier.name);
-      if (variable === null || variable.defs.length === 0) return true;
-      return variable.defs.some((definition) => {
-        let current: TSESTree.Node | null | undefined = definition.node;
-        while (current != null && current.type !== AST_NODE_TYPES.ImportDeclaration) current = current.parent;
-        return current?.type === AST_NODE_TYPES.ImportDeclaration &&
-          typeof current.source.value === "string" && modules.has(current.source.value);
-      });
-    };
-    const isFrameworkTest = (identifier: TSESTree.Identifier): boolean => isFrameworkIdentifier(identifier, TEST_MODULES);
-    const isFrameworkAssertion = (identifier: TSESTree.Identifier): boolean => isFrameworkIdentifier(identifier, ASSERTION_MODULES);
+    const isFrameworkTest = (identifier: TSESTree.Identifier): boolean => TEST_CALLERS.has(runtimeTestFrameworkName(context.sourceCode, identifier, "test") ?? "");
+    const isFrameworkAssertion = (identifier: TSESTree.Identifier): boolean => ASSERTION_ROOTS.has(runtimeTestFrameworkName(context.sourceCode, identifier, "assertion") ?? "");
     return {
       ForOfStatement(node: TSESTree.ForOfStatement): void {
         const enclosing = nearestEnclosingFunction(node);

@@ -50,6 +50,8 @@ After committing the resulting changes, review the complete rule diff:
 code-standards --root . maintain rules changes --before origin/main --after HEAD
 ```
 
+Rule comparison reads immutable Git blobs and fingerprints explicit local runtime imports from source and test modules. Type-only imports and data-only registry member edges are excluded; computed imports and TypeScript path aliases are not resolved. For TypeScript-bearing revisions, run `make setup` first to prepare the pinned Node and locked compiler in the authoring repository. Comparison never installs tools or falls back to text matching. Python-only revisions do not require Node.
+
 Fleet calibration and downstream PR creation run automatically after review and release.
 
 ### Fleet rollout

@@ -29,7 +29,6 @@ _SARJ_NOQA_RE = re.compile(
 
 
 def is_suppressed(source_lines: Sequence[str], line: int, code: str) -> bool:
-    """Report whether the diagnostic's line carries a `# sarj-noqa[: CODE]` comment."""
     if line < 1 or line > len(source_lines):
         return False
     m = _SARJ_NOQA_RE.search(source_lines[line - 1])

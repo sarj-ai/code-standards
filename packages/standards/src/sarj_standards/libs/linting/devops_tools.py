@@ -132,7 +132,11 @@ def _attest(tool: NativeTool, *, root: Path, runner: ProcessRunner) -> NativeToo
 
 
 def _version_output(argv: Sequence[str], *, root: Path, runner: ProcessRunner) -> ProcessOutput:
-    return run_process(argv, cwd=root, timeout_seconds=5) if runner is run_process else runner(argv, cwd=root)
+    try:
+        return run_process(argv, cwd=root, timeout_seconds=5) if runner is run_process else runner(argv, cwd=root)
+    except subprocess.TimeoutExpired as error:
+        msg = f"{Path(argv[0]).name} query timed out after {error.timeout} seconds"
+        raise NativeToolError(msg) from error
 
 
 def _version(tool: NativeTool, source: str) -> str:

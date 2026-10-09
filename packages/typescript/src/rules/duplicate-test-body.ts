@@ -4,10 +4,11 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/duplicate-test-body.test.ts
  */
 
-import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
+import { AST_NODE_TYPES, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
 
 import { unwrapExpression } from "./_unwrap-expression.js";
 
+import { runtimeTestFrameworkName } from "./_test-mock-provenance.js";
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile, isTestFile } from "./_paths.js";
 
@@ -30,7 +31,6 @@ const OMITTED_AST_KEYS: ReadonlySet<string> = new Set([
 ]);
 const MIN_STATEMENTS = 3;
 const MAX_NORMALIZED_STRING_LENGTH = 64;
-const TEST_MODULES: ReadonlySet<string> = new Set(["@jest/globals", "@playwright/test", "bun:test", "node:test", "vitest"]);
 
 export const DUPLICATE_TEST_BODY_DOCUMENTATION = {
   summary:
@@ -72,15 +72,6 @@ export const DUPLICATE_TEST_BODY_DOCUMENTATION = {
   ],
 } as const satisfies RuleDocumentation;
 
-function rootIdentifier(callee: TSESTree.Node): TSESTree.Identifier | null {
-  callee = unwrapExpression(callee);
-  if (callee.type === AST_NODE_TYPES.Identifier) return callee;
-  if (callee.type === AST_NODE_TYPES.MemberExpression) return rootIdentifier(callee.object);
-  if (callee.type === AST_NODE_TYPES.CallExpression) return rootIdentifier(callee.callee);
-  if (callee.type === AST_NODE_TYPES.TaggedTemplateExpression) return rootIdentifier(callee.tag);
-  return null;
-}
-
 function staticMemberName(member: TSESTree.MemberExpression): string | null {
   if (!member.computed && member.property.type === AST_NODE_TYPES.Identifier) return member.property.name;
   if (member.computed && member.property.type === AST_NODE_TYPES.Literal && typeof member.property.value === "string") {
@@ -89,9 +80,9 @@ function staticMemberName(member: TSESTree.MemberExpression): string | null {
   return null;
 }
 
-function normalizedAst(value: unknown, preserveLiteral = false): unknown {
+function normalizedAst(value: unknown, sourceCode: Readonly<TSESLint.SourceCode>, preserveLiteral = false): unknown {
   if (Array.isArray(value)) {
-    return value.map((item) => normalizedAst(item, preserveLiteral));
+    return value.map((item) => normalizedAst(item, sourceCode, preserveLiteral));
   }
   if (typeof value !== "object" || value === null) {
     return typeof value === "bigint" ? value.toString() : value;
@@ -102,7 +93,7 @@ function normalizedAst(value: unknown, preserveLiteral = false): unknown {
   }
   const normalized: Record<string, unknown> = {};
   const preservesAssertionContract =
-    record["type"] === AST_NODE_TYPES.CallExpression && isAssertionCall(value as TSESTree.CallExpression);
+    record["type"] === AST_NODE_TYPES.CallExpression && isAssertionCall(value as TSESTree.CallExpression, sourceCode);
   for (const key of Object.keys(record).sort()) {
     if (OMITTED_AST_KEYS.has(key)) {
       continue;
@@ -117,22 +108,33 @@ function normalizedAst(value: unknown, preserveLiteral = false): unknown {
       record["type"] === AST_NODE_TYPES.MemberExpression;
     normalized[key] = normalizedAst(
       record[key],
+      sourceCode,
       preserveLiteral || preservesAssertionContract || isPropertyName || isComputedMemberName,
     );
   }
   return normalized;
 }
 
-function isAssertionCall(node: TSESTree.CallExpression): boolean {
+function isAssertionCall(node: TSESTree.CallExpression, sourceCode: Readonly<TSESLint.SourceCode>): boolean {
   const unwrappedNodeCallee = unwrapExpression(node.callee);
   const root = rootIdentifier(unwrappedNodeCallee);
-  return root !== null && ["assert", "expect"].includes(root.name);
+  return root !== null && ["assert", "expect"].includes(runtimeTestFrameworkName(sourceCode, root, "assertion") ?? "");
 }
 
-function isAssertionStatement(statement: TSESTree.Statement): boolean {
+function rootIdentifier(callee: TSESTree.Node): TSESTree.Identifier | null {
+  callee = unwrapExpression(callee);
+  if (callee.type === AST_NODE_TYPES.Identifier) return callee;
+  if (callee.type === AST_NODE_TYPES.MemberExpression) return rootIdentifier(callee.object);
+  if (callee.type === AST_NODE_TYPES.CallExpression) return rootIdentifier(callee.callee);
+  if (callee.type === AST_NODE_TYPES.TaggedTemplateExpression) return rootIdentifier(callee.tag);
+  return null;
+}
+
+
+function isAssertionStatement(statement: TSESTree.Statement, sourceCode: Readonly<TSESLint.SourceCode>): boolean {
   if (statement.type !== AST_NODE_TYPES.ExpressionStatement) return false;
   const expression = statement.expression;
-  return expression.type === AST_NODE_TYPES.CallExpression && isAssertionCall(expression);
+  return expression.type === AST_NODE_TYPES.CallExpression && isAssertionCall(expression, sourceCode);
 }
 
 function isTypeOnlyContractStatement(statement: TSESTree.Statement): boolean {
@@ -166,19 +168,16 @@ export function duplicateTestBodyCandidate(
   call: TSESTree.CallExpression,
   sourceCode: Readonly<TSESLint.SourceCode>,
 ): DuplicateTestBodyCandidate | null {
-  const unwrappedCallCallee = unwrapExpression(call.callee);
   if (call.parent?.type !== AST_NODE_TYPES.ExpressionStatement) return null;
   const container = call.parent.parent;
   if (container?.type !== AST_NODE_TYPES.Program && container?.type !== AST_NODE_TYPES.BlockStatement) return null;
-  const root = rootIdentifier(unwrappedCallCallee);
-  if (root === null || !isDuplicateTestFrameworkIdentifier(root, sourceCode)) return null;
-  const candidate = testBody(call);
+  const candidate = testBody(call, sourceCode);
   if (candidate === null) return null;
   const body = candidate.body;
   if (
     body.body.type !== AST_NODE_TYPES.BlockStatement ||
     body.body.body.length < MIN_STATEMENTS ||
-    body.body.body.every(isAssertionStatement) ||
+    body.body.body.every(statement => isAssertionStatement(statement, sourceCode)) ||
     body.body.body.some(isTypeOnlyContractStatement)
   ) {
     return null;
@@ -188,19 +187,19 @@ export function duplicateTestBodyCandidate(
     candidate.signature,
     body.async,
     body.generator,
-    normalizedAst(body.params),
-    normalizedAst(body.body.body),
+    normalizedAst(body.params, sourceCode),
+    normalizedAst(body.body.body, sourceCode),
     comments,
   ]);
   return { body, container, fingerprint };
 }
 
-function testBody(call: TSESTree.CallExpression): {
+function testBody(call: TSESTree.CallExpression, sourceCode: Readonly<TSESLint.SourceCode>): {
   readonly body: TSESTree.FunctionExpression | TSESTree.ArrowFunctionExpression;
   readonly signature: string;
 } | null {
   const unwrappedCallCallee = unwrapExpression(call.callee);
-  const signature = testCallerSignature(unwrappedCallCallee);
+  const signature = testCallerSignature(unwrappedCallCallee, sourceCode);
   if (signature === null || hasEachMember(unwrappedCallCallee)) {
     return null;
   }
@@ -221,21 +220,22 @@ function testBody(call: TSESTree.CallExpression): {
   return { body: callback, signature };
 }
 
-function testCallerSignature(callee: TSESTree.Node): string | null {
+function testCallerSignature(callee: TSESTree.Node, sourceCode: Readonly<TSESLint.SourceCode>): string | null {
   callee = unwrapExpression(callee);
   if (callee.type === AST_NODE_TYPES.Identifier) {
-    return TEST_CALLERS.has(callee.name) ? callee.name : null;
+    const name = runtimeTestFrameworkName(sourceCode, callee, "test");
+    return name !== null && TEST_CALLERS.has(name) ? name : null;
   }
   if (callee.type === AST_NODE_TYPES.MemberExpression) {
-    const base = testCallerSignature(callee.object);
+    const base = testCallerSignature(callee.object, sourceCode);
     const member = staticMemberName(callee);
     return base !== null && member !== null && TEST_MODIFIERS.has(member) ? `${base}.${member}` : null;
   }
   if (callee.type === AST_NODE_TYPES.CallExpression) {
-    return testCallerSignature(callee.callee);
+    return testCallerSignature(callee.callee, sourceCode);
   }
   if (callee.type === AST_NODE_TYPES.TaggedTemplateExpression) {
-    return testCallerSignature(callee.tag);
+    return testCallerSignature(callee.tag, sourceCode);
   }
   return null;
 }
@@ -275,24 +275,6 @@ function containsInlineSnapshot(node: TSESTree.Node): boolean {
     }
   }
   return false;
-}
-
-function isDuplicateTestFrameworkIdentifier(
-  identifier: TSESTree.Identifier,
-  sourceCode: Readonly<TSESLint.SourceCode>,
-): boolean {
-  const variable = ASTUtils.findVariable(sourceCode.getScope(identifier), identifier.name);
-  if (variable === null || variable.defs.length === 0) return true;
-  return variable.defs.some((definition) => {
-    if (definition.node.type === AST_NODE_TYPES.ImportDefaultSpecifier) return definition.node.parent.source.value === "node:test";
-    if (definition.node.type !== AST_NODE_TYPES.ImportSpecifier) return false;
-    const imported = definition.node.imported;
-    if (!TEST_CALLERS.has(imported.type === AST_NODE_TYPES.Identifier ? imported.name : String(imported.value))) return false;
-    let current: TSESTree.Node | null | undefined = definition.node;
-    while (current != null && current.type !== AST_NODE_TYPES.ImportDeclaration) current = current.parent;
-    return current?.type === AST_NODE_TYPES.ImportDeclaration &&
-      typeof current.source.value === "string" && TEST_MODULES.has(current.source.value);
-  });
 }
 
 export default createRule<Options, MessageIds>({

@@ -15,6 +15,10 @@ const TEST_FILE = "/repo/src/codec.test.ts";
 
 RULE_TESTER.run("no-bare-return-from-test-catch", rule, {
   valid: [
+    { name: "binding ownership: catch-local", filename: TEST_FILE, code: "function test(n:string,f:()=>unknown){return f;} test('case',()=>{try{run();}catch{return;}expect(done).toBe(true);});" },
+    { name: "binding ownership: catch-local-assertion", filename: TEST_FILE, code: "import {test} from 'vitest';function expect(v:unknown){return {toBe(v:unknown){return true}}}test('case',()=>{try{run();}catch{return;}expect(done).toBe(true);});" },
+    { name: "binding ownership: type-erased-assertion-abstention", filename: TEST_FILE, code: "import {test} from 'vitest';import type {expect} from 'vitest';test('case',()=>{try{run()}catch{return;}expect(done).toBe(true)});" },
+
     { name: "preserves negated caught-error assertion", filename: TEST_FILE, code: "test('rejects', () => { try { run(); } catch (error) { expect(error).not.toBeNull(); return; } expect.fail('must reject'); });" },
     { name: "preserves asserted rejection return", filename: TEST_FILE, code: "test('rejects', () => { try { run(); } catch (error) { expect(error).toBeInstanceOf(Error); return; } expect.fail('must reject'); });" },
     { name: "preserves imported assertion alias", filename: TEST_FILE, code: "import {expect as verify} from 'vitest'; test('rejects', () => { try { run(); } catch (error) { verify(error.message).toBe('bad'); return; } verify.fail('must reject'); });" },
@@ -36,6 +40,9 @@ RULE_TESTER.run("no-bare-return-from-test-catch", rule, {
     { name: "ignores generated headers", filename: TEST_FILE, code: "// @generated\ntest('x', () => { try { run(); } catch { return; } expect(done).toBe(true); });" },
   ],
   invalid: [
+    { name: "binding ownership: catch-renamed", filename: TEST_FILE, code: "import {test as check,expect as verify} from 'vitest';check('case',()=>{try{run();}catch{return;}verify(done).toBe(true);});", errors: [{ messageId: "bareReturnFromTestCatch" }] },
+    { name: "binding ownership: catch-node-default", filename: TEST_FILE, code: "import check from 'node:test';import assert from 'node:assert/strict';check('case',()=>{try{run();}catch{return;}assert.equal(done,true);});", errors: [{ messageId: "bareReturnFromTestCatch" }] },
+
     { name: "property name is not caught error reference", filename: TEST_FILE, code: "test('x', () => { try { run(); } catch (error) { expect(result.error).toBe(true); return; } expect(done).toBe(true); });", errors: [{messageId: "bareReturnFromTestCatch"}] },
     { name: "bare expect construction is not assertion", filename: TEST_FILE, code: "test('x', () => { try { run(); } catch (error) { expect(error); return; } expect(done).toBe(true); });", errors: [{messageId: "bareReturnFromTestCatch"}] },
     { name: "unrelated assertion does not validate error", filename: TEST_FILE, code: "test('x', () => { try { run(); } catch (error) { expect(true).toBe(true); return; } expect(done).toBe(true); });", errors: [{messageId: "bareReturnFromTestCatch"}] },

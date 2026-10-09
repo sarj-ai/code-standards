@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import subprocess
+import sys
 from typing import TYPE_CHECKING
 
 import pytest
@@ -7,7 +9,7 @@ import pytest
 from sarj_standards.libs.adoption import devops, doctor, lifecycle, manifest
 from sarj_standards.libs.linting import devops_tools
 from sarj_standards.libs.linting.devops_tools import NativeToolError, checked_tool, installed_compose_version
-from sarj_standards.libs.linting.external import ProcessOutput
+from sarj_standards.libs.linting.external import ProcessOutput, run_process
 
 
 if TYPE_CHECKING:
@@ -74,6 +76,63 @@ def test_consumer_compose_pin_requires_exact_semver(tmp_path: Path, version: str
 def test_non_compose_tool_cannot_override_catalog_pin(tmp_path: Path) -> None:
     with pytest.raises(NativeToolError, match="Only Compose"):
         checked_tool("helm", root=tmp_path, expected_version="1.2.3")
+
+
+def test_native_version_timeout_has_an_owned_tool_error(tmp_path: Path) -> None:
+    def runner(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
+        assert argv == ("helm", "version", "--short")
+        return run_process((sys.executable, "-c", "import time; time.sleep(10)"), cwd=cwd, timeout_seconds=0.05)
+
+    with pytest.raises(NativeToolError, match="query timed out") as caught:
+        checked_tool("helm", root=tmp_path, runner=runner)
+    assert isinstance(caught.value.__cause__, subprocess.TimeoutExpired)
+
+
+@pytest.mark.parametrize("installed_version", ["3.19.0", "4.0.0"])
+def test_timed_out_path_tool_preserves_pinned_mise_fallback(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, installed_version: str
+) -> None:
+    binary_directory = tmp_path / "bin"
+    binary_directory.mkdir()
+    suffix = ".exe" if sys.platform == "win32" else ""
+    stalled = binary_directory / f"helm{suffix}"
+    mise = binary_directory / f"mise{suffix}"
+    installation = tmp_path / "installed"
+    installation.mkdir()
+    installed = installation / f"helm{suffix}"
+    for executable in (stalled, mise, installed):
+        executable.write_text("native protocol fixture", encoding="utf-8")
+        executable.chmod(0o755)
+    monkeypatch.setenv("PATH", str(binary_directory))
+    calls: list[tuple[str, ...]] = []
+
+    def resolve(argv: Sequence[str], *, cwd: Path, timeout_seconds: float | None = None) -> ProcessOutput:
+        assert cwd == tmp_path
+        assert timeout_seconds == 5
+        calls.append(tuple(argv))
+        if argv[0] == str(stalled):
+            raise subprocess.TimeoutExpired(argv, timeout_seconds)
+        if argv[0] == str(mise):
+            path = installation if argv[4] == "where" else installed
+            return ProcessOutput(0, f"{path}\n", "")
+        assert argv == (str(installed), "version", "--short")
+        return ProcessOutput(0, f"v{installed_version}\n", "")
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- exercise production lookup after a controlled OS-query timeout; the ordinary runner injection bypasses discovery.
+        devops_tools, "run_process", resolve
+    )
+    if installed_version == "3.19.0":
+        assert checked_tool("helm", root=tmp_path, runner=resolve).executable == installed
+    else:
+        with pytest.raises(NativeToolError, match=r"exact version 3\.19\.0"):
+            checked_tool("helm", root=tmp_path, runner=resolve)
+    reference = "aqua:helm/helm@3.19.0"
+    assert calls == [
+        (str(stalled), "version", "--short"),
+        (str(mise), "--no-config", "--no-env", "--no-hooks", "where", reference),
+        (str(mise), "--no-config", "--no-env", "--no-hooks", "which", "--tool", reference, "helm"),
+        (str(installed), "version", "--short"),
+    ]
 
 
 @pytest.mark.parametrize(

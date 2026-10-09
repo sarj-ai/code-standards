@@ -7,7 +7,17 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING, Final, Literal, TypedDict
 
 from sarj_standards.libs.json_boundary import parse_json
-from sarj_standards.libs.release.process import ProcessRunner, run_process
+from sarj_standards.libs.release.process import (
+    ProcessBinaryRunner,
+    ProcessFailureError,
+    ProcessInputRunner,
+    ProcessRunner,
+    run_binary_process,
+    run_input_process,
+    run_process,
+)
+from sarj_standards.libs.repository.immutable_git import ImmutableGit, git_argv
+from sarj_standards.libs.repository.rule_dependencies import ModuleFingerprint, RuleDependencies
 from sarj_standards.libs.rules import DefaultLevel
 from sarj_standards.libs.typed_containers import is_object_list, is_object_mapping
 
@@ -100,7 +110,7 @@ class RuleChangeSetV1(TypedDict):
 class _RevisionRules(TypedDict):
     descriptors: dict[str, RuleDescriptorV1]
     catalog: dict[str, dict[str, object]]
-    implementation_blobs: dict[str, tuple[str, str]]
+    implementation_blobs: dict[str, tuple[ModuleFingerprint, ModuleFingerprint]]
 
 
 def compare(
@@ -109,12 +119,19 @@ def compare(
     before: str,
     after: str,
     runner: ProcessRunner = run_process,
+    binary_runner: ProcessBinaryRunner = run_binary_process,
+    parser_runner: ProcessInputRunner = run_input_process,
 ) -> RuleChangeSetV1:
     resolved = root.resolve()
     before_sha = _resolve_revision(resolved, before, runner=runner)
     after_sha = _resolve_revision(resolved, after, runner=runner)
-    old = _load_revision(resolved, before_sha, runner=runner)
-    new = _load_revision(resolved, after_sha, runner=runner)
+    objects: dict[str, bytes] = {}
+    old = _load_revision(
+        ImmutableGit(resolved, before_sha, runner=binary_runner, objects=objects), parser_runner=parser_runner
+    )
+    new = _load_revision(
+        ImmutableGit(resolved, after_sha, runner=binary_runner, objects=objects), parser_runner=parser_runner
+    )
     changes: list[RuleChangeV1] = []
     for key in sorted(old["descriptors"].keys() | new["descriptors"].keys()):
         old_descriptor = old["descriptors"].get(key)
@@ -198,7 +215,9 @@ def _resolve_revision(root: Path, revision: str, *, runner: ProcessRunner) -> st
     if not revision:
         msg = "rule comparison revisions must not be empty"
         raise ValueError(msg)
-    result = runner(("git", "rev-parse", "--verify", f"{revision}^{{commit}}"), cwd=root, capture_output=True)
+    result = runner(git_argv("rev-parse", "--verify", f"{revision}^{{commit}}"), cwd=root, capture_output=True)
+    if result.returncode != 0:
+        raise ProcessFailureError(git_argv("rev-parse", "--verify", f"{revision}^{{commit}}"), result.returncode)
     sha = result.stdout.strip()
     if len(sha) != _GIT_SHA_LENGTH or any(character not in "0123456789abcdef" for character in sha):
         msg = f"git did not resolve {revision!r} to a full lowercase commit SHA"
@@ -207,13 +226,12 @@ def _resolve_revision(root: Path, revision: str, *, runner: ProcessRunner) -> st
 
 
 def _load_revision(  # ruff: ignore[too-many-locals] -- validates and joins two generated wire artifacts.
-    root: Path,
-    sha: str,
+    snapshot: ImmutableGit,
     *,
-    runner: ProcessRunner,
+    parser_runner: ProcessInputRunner,
 ) -> _RevisionRules:
-    inventory = _git_json(root, sha, _INVENTORY_PATH, runner=runner)
-    catalog = _git_json(root, sha, _CATALOG_PATH, runner=runner)
+    inventory = _immutable_json(snapshot, _INVENTORY_PATH)
+    catalog = _immutable_json(snapshot, _CATALOG_PATH)
     inventory_entries = _rules_array(inventory, label="rule inventory")
     catalog_entries = _rules_array(catalog, label="rule catalog")
 
@@ -243,8 +261,16 @@ def _load_revision(  # ruff: ignore[too-many-locals] -- validates and joins two 
         )
         raise ValueError(msg)
 
+    dependencies = RuleDependencies(
+        snapshot,
+        frozenset(_string(entry, "source") for entry in inventory_by_key.values()),
+        parser_runner=parser_runner,
+        owned_roots=frozenset(
+            _string(entry, field) for entry in inventory_by_key.values() for field in ("source", "test")
+        ),
+    )
     descriptors: dict[str, RuleDescriptorV1] = {}
-    implementation_blobs: dict[str, tuple[str, str]] = {}
+    implementation_blobs: dict[str, tuple[ModuleFingerprint, ModuleFingerprint]] = {}
     for key in sorted(inventory_by_key):
         inventory_entry = inventory_by_key[key]
         catalog_entry = catalog_by_key[key]
@@ -270,8 +296,8 @@ def _load_revision(  # ruff: ignore[too-many-locals] -- validates and joins two 
             "test": _string(inventory_entry, "test"),
         }
         implementation_blobs[key] = (
-            _git_blob_oid(root, sha, descriptors[key]["source"], runner=runner),
-            _git_blob_oid(root, sha, descriptors[key]["test"], runner=runner),
+            dependencies.fingerprint(descriptors[key]["source"]),
+            dependencies.fingerprint(descriptors[key]["test"]),
         )
     return {
         "descriptors": descriptors,
@@ -303,25 +329,12 @@ def _inventory_by_key(inventory_entries: list[object]) -> dict[str, dict[str, ob
     return inventory_by_key
 
 
-def _git_blob_oid(root: Path, sha: str, path: str, *, runner: ProcessRunner) -> str:
-    if path.startswith("/") or ".." in path.split("/"):
-        msg = f"rule implementation path must be repository-relative: {path!r}"
-        raise ValueError(msg)
-    result = runner(("git", "rev-parse", "--verify", f"{sha}:{path}"), cwd=root, capture_output=True)
-    oid = result.stdout.strip()
-    if len(oid) != _GIT_SHA_LENGTH or any(character not in "0123456789abcdef" for character in oid):
-        msg = f"git did not resolve rule implementation {path!r} at {sha} to a blob"
-        raise ValueError(msg)
-    return oid
-
-
-def _git_json(root: Path, sha: str, path: str, *, runner: ProcessRunner) -> dict[str, object]:
-    result = runner(("git", "show", f"{sha}:{path}"), cwd=root, capture_output=True)
+def _immutable_json(snapshot: ImmutableGit, path: str) -> dict[str, object]:
     try:
-        payload: object = parse_json(result.stdout)
-    except json.JSONDecodeError as exc:
-        msg = f"{path} at {sha} is not valid JSON"
-        raise ValueError(msg) from exc
+        payload = parse_json(snapshot.text(path))
+    except json.JSONDecodeError as error:
+        msg = f"{path} at {snapshot.sha} is not valid JSON"
+        raise ValueError(msg) from error
     return _object(payload, label=path)
 
 

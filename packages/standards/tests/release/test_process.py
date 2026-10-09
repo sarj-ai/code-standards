@@ -1,10 +1,17 @@
 from __future__ import annotations
 
 from pathlib import Path
+import sys
 
 import pytest
 
 from sarj_standards.libs.release import ProcessResult, credential_free_environment, run_build_process
+from sarj_standards.libs.release.process import (
+    ProcessBinaryResult,
+    ProcessFailureError,
+    run_binary_process,
+    run_input_process,
+)
 
 
 @pytest.mark.parametrize("returncode", [True, False])
@@ -63,3 +70,32 @@ def test_build_process_isolates_posix_and_windows_config_homes(monkeypatch: pyte
 
     assert run_build_process(("build",), cwd=Path()) == ProcessResult(0)
     assert seen["HOME"] == seen["USERPROFILE"] == seen["APPDATA"] == seen["LOCALAPPDATA"]
+
+
+def test_binary_process_preserves_protocol_bytes_and_utf8_input(tmp_path: Path) -> None:
+    script = tmp_path / "binary.py"
+    script.write_text(
+        "import sys\nsys.stdout.buffer.write(sys.stdin.buffer.read())\nsys.stderr.buffer.write(b'error-stream')\n",
+        encoding="utf-8",
+    )
+    argv = (sys.executable, str(script))
+    payload = b"record\0\r\n\xfftrailer"
+    result = run_binary_process(argv, cwd=tmp_path, input_bytes=payload)
+    assert result == ProcessBinaryResult(0, payload, b"error-stream")
+    text = "héllo\r\n"
+    assert run_input_process(argv, cwd=tmp_path, input_text=text) == ProcessResult(0, text, "error-stream")
+
+
+def test_binary_process_rejects_actual_failed_execution(tmp_path: Path) -> None:
+    script = tmp_path / "failed.py"
+    script.write_text("import sys\nsys.stdout.buffer.write(b'valid-looking-output')\nsys.exit(7)\n", encoding="utf-8")
+    with pytest.raises(ProcessFailureError) as caught:
+        run_binary_process((sys.executable, str(script)), cwd=tmp_path)
+    assert caught.value.returncode == 7
+
+
+def test_binary_result_rejects_text_and_boolean_status() -> None:
+    with pytest.raises(TypeError, match="return code must be an integer"):
+        ProcessBinaryResult(True)
+    with pytest.raises(TypeError, match="binary process output must be bytes"):
+        ProcessBinaryResult(0, "text")  # pyright: ignore[reportArgumentType]
