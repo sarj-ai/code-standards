@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 from sarj_standards.libs.adoption import devops, doctor, lifecycle, manifest
+from sarj_standards.libs.linting import devops_tools
 from sarj_standards.libs.linting.devops_tools import NativeToolError, checked_tool, installed_compose_version
 from sarj_standards.libs.linting.external import ProcessOutput
 
@@ -137,3 +138,85 @@ def test_tools_only_install_preserves_files_and_never_installs_hooks(
     assert commands[0].argv[:5] == ("mise", "--no-config", "--no-env", "--no-hooks", "install")
     assert attested == ([tmp_path] if install_status == 0 else [])
     assert {file: file.read_bytes() for file in before} == before
+
+
+@pytest.mark.parametrize(
+    ("name", "relative"),
+    [
+        ("helm", "helm"),
+        ("helm", "bin/helm"),
+        ("helm", "darwin-arm64/helm"),
+        ("helm", "linux-amd64/helm"),
+        ("shellcheck", "shellcheck-v0.11.0/shellcheck"),
+    ],
+)
+def test_mise_resolves_backend_archive_layout_without_installing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, name: str, relative: str
+) -> None:
+    installation = tmp_path / "installed"
+    executable = installation / relative
+    executable.parent.mkdir(parents=True)
+    executable.write_text("native fixture")
+    mise = tmp_path / "bin/mise"
+    mise.parent.mkdir()
+    mise.write_text("native protocol runner fixture")
+    mise.chmod(0o755)
+    monkeypatch.setenv("PATH", str(mise.parent))
+    calls: list[tuple[str, ...]] = []
+    tool = devops_tools.TOOLS[name]
+    reference = f"{devops_tools.MISE_REFS[name]}@{tool.version}"
+
+    def resolve(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
+        assert cwd == tmp_path
+        calls.append(tuple(argv))
+        if argv[4] == "where":
+            return ProcessOutput(0, f"{installation}\n", "")
+        assert argv[4:] == ("which", "--tool", reference, name)
+        return ProcessOutput(0, f"{executable}\n", "")
+
+    result = devops_tools._mise_tool(tool, root=tmp_path, runner=resolve)  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- focused native locator contract, separate from unchanged attestation protocol.
+    assert result.executable == executable.resolve()
+    assert calls == [
+        (str(mise), "--no-config", "--no-env", "--no-hooks", "where", reference),
+        (str(mise), "--no-config", "--no-env", "--no-hooks", "which", "--tool", reference, name),
+    ]
+
+
+@pytest.mark.parametrize(
+    "case", ["relative", "multiline", "missing", "directory", "escape", "symlink-escape", "failure"]
+)
+def test_mise_rejects_ambiguous_or_escaping_executable_paths(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, case: str
+) -> None:
+    installation = tmp_path / "installed"
+    installation.mkdir()
+    executable = installation / "helm"
+    outside = tmp_path / "outside"
+    outside.write_text("native fixture")
+    if case == "directory":
+        executable.mkdir()
+    elif case == "symlink-escape":
+        executable.symlink_to(outside)
+    elif case != "missing":
+        executable.write_text("native fixture")
+    payload = f"{executable}\n"
+    if case == "relative":
+        payload = "installed/helm\n"
+    elif case == "multiline":
+        payload += f"{outside}\n"
+    elif case == "escape":
+        payload = f"{outside}\n"
+    mise = tmp_path / "bin/mise"
+    mise.parent.mkdir()
+    mise.write_text("native protocol runner fixture")
+    mise.chmod(0o755)
+    monkeypatch.setenv("PATH", str(mise.parent))
+
+    def resolve(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
+        assert cwd == tmp_path
+        if argv[4] == "where":
+            return ProcessOutput(0, f"{installation}\n", "")
+        return ProcessOutput(1 if case == "failure" else 0, payload, "")
+
+    with pytest.raises((OSError, ValueError)):
+        devops_tools._mise_tool(devops_tools.TOOLS["helm"], root=tmp_path, runner=resolve)  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- malformed native locator protocol must fail closed before attestation.

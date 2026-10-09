@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from hashlib import sha256
+from hashlib import file_digest, sha256
 import json
 from pathlib import Path
+import posixpath
 import re
 import subprocess  # ruff: ignore[suspicious-subprocess-import] -- catch bounded native-runner failures.
 import tempfile
@@ -116,9 +117,12 @@ def contained_file(directory: Path, name: str) -> Path:
 
 
 def _verify_hash(path: Path, digest: str) -> None:
-    if len(digest) != _SHA256_LENGTH or digest != sha256(path.read_bytes()).hexdigest():
-        msg = f"prepared artifact hash does not match: {path.name}"
-        raise ValueError(msg)
+    if len(digest) == _SHA256_LENGTH:
+        with path.open("rb") as stream:
+            if digest == file_digest(stream, sha256).hexdigest():
+                return
+    msg = f"prepared artifact hash does not match: {path.name}"
+    raise ValueError(msg)
 
 
 def analyze_prepared(
@@ -556,7 +560,8 @@ def _closed_schema(
         if ":" in name or "?" in name or "%" in name or "\\" in name or name.startswith("/"):
             msg = f"schemas must not resolve network or absolute references: {reference}"
             raise ValueError(msg)
-        artifact = (path.parent / name).relative_to(directory).as_posix()
+        # URI dot segments are lexical; retain symlink checks on the destination.
+        artifact = posixpath.normpath((path.parent / name).relative_to(directory).as_posix())
         hashes = _table(target.get("artifacts"), "artifact hashes")
         child = contained_file(directory, artifact)
         _verify_hash(child, _text(hashes, artifact))

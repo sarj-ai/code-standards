@@ -9,3 +9,11 @@ regexes = [
   '''^qZKGV7V0bPMsO5fOvuYhpvvBcGd9FWBX$''',
   '''^(key-123|sig-456|jws_signature=)$''',
 ]
+
+[[allowlists]]
+description = "Published SHA-256 of the managed-key rule test module in audit evidence"
+targetRules = ["generic-api-key"]
+condition = "AND"
+regexTarget = "secret"
+paths = ['''^packages/standards/src/sarj_standards/configs/devops-verification\.v1\.json$''']
+regexes = ['''^5b61f4ec8a921f407e2fae598166fb3679b41d18a9b528bc6720c2043b3638c0$''']
