@@ -48,6 +48,10 @@ _NODE_VALUE_FLAGS = frozenset(
 _JQ_VALUE_FLAGS = MappingProxyType(
     {"--arg": 2, "--argjson": 2, "--slurpfile": 2, "--rawfile": 2, "--indent": 1, "-L": 1}
 )
+_RUBY_VALUE_FLAGS = frozenset({"I", "r", "C", "X", "E"})
+_RUBY_LONG_VALUE_FLAGS = frozenset(
+    {"--encoding", "--external-encoding", "--internal-encoding", "--backtrace-limit", "--enable", "--disable"}
+)
 _WRAPPER_VALUES = MappingProxyType(
     {
         "env": frozenset({"-u", "--unset", "-C", "--chdir"}),
@@ -153,10 +157,10 @@ def classify_interpreter(argv: Sequence[str]) -> InterpreterInvocation:
         return _jq(arguments[1:])
     if executable in {"awk", "gawk", "mawk", "nawk"}:
         return _awk(arguments[1:])
-    if executable in {"perl", "ruby", "php"}:
-        return _short_options(
-            arguments[1:], source={"perl": "eE", "ruby": "e", "php": "r"}[executable], values=frozenset({"I"})
-        )
+    if executable == "ruby":
+        return _ruby(arguments[1:])
+    if executable in {"perl", "php"}:
+        return _short_options(arguments[1:], source={"perl": "eE", "php": "r"}[executable], values=frozenset({"I"}))
     return InterpreterInvocation("other")
 
 
@@ -197,6 +201,51 @@ def _python_short_option(argument: str, following: str | None) -> ParsedOption:
         if flag not in "bBdEhiIOPqRsSuvVx":
             return ParsedOption(InterpreterInvocation("unknown"))
     return ParsedOption()
+
+
+def _ruby(arguments: Sequence[str]) -> InterpreterInvocation:
+    index = 0
+    while index < len(arguments):
+        boundary = _external_boundary(arguments, index)
+        if boundary is not None:
+            return boundary
+        parsed = _ruby_option(arguments, index)
+        if parsed.invocation is not None:
+            return parsed.invocation
+        index += parsed.consumed
+    return InterpreterInvocation("stdin")
+
+
+def _ruby_option(arguments: Sequence[str], index: int) -> ParsedOption:
+    argument = arguments[index]
+    if argument.startswith("--"):
+        return _ruby_long_option(argument, _following_operand(arguments, index))
+    if re.fullmatch(r"-(?:0[0-7]{0,3}|W[0-2]?)", argument):
+        return ParsedOption()
+    for cursor, flag in enumerate(argument[1:], 1):
+        if flag == "h":
+            return ParsedOption(InterpreterInvocation("external"))
+        if flag in "Fix":
+            # These operands are attached only and consume the rest of this word.
+            return ParsedOption()
+        if flag == "e" or flag in _RUBY_VALUE_FLAGS:
+            if cursor + 1 == len(argument) and _following_operand(arguments, index) is None:
+                return ParsedOption(InterpreterInvocation("unknown"))
+            return _short_option(arguments, index, source="e", values=_RUBY_VALUE_FLAGS, shell_mode=False)
+        if flag not in "acdlnpsSvwU":
+            return ParsedOption(InterpreterInvocation("unknown"))
+    return ParsedOption()
+
+
+def _ruby_long_option(argument: str, following: str | None) -> ParsedOption:
+    if argument in {"--help", "--version"}:
+        return ParsedOption(InterpreterInvocation("external"))
+    if argument in {"--debug", "--verbose", "--copyright"}:
+        return ParsedOption()
+    name, separator, _operand = argument.partition("=")
+    if name in _RUBY_LONG_VALUE_FLAGS and (separator or following is not None):
+        return ParsedOption(consumed=1 + int(not separator))
+    return ParsedOption(InterpreterInvocation("unknown"))
 
 
 def _short_options(

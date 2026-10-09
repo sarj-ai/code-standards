@@ -586,13 +586,7 @@ jobs:
         run: uv audit --locked
       - name: Install the pinned native tool bootstrap
         if: needs.changes.outputs.reviewed-static != 'true'
-        uses: jdx/mise-action@5228313ee0372e111a38da051671ca30fc5a96db # v3
-        with:
-          version: '2026.10.6'
-          install: false
-          cache: false
-          env: false
-          add_shims_to_path: false
+        run: uv run python -m sarj_standards.libs.adoption.native_bootstrap
       - name: Install and attest applicable native tools
         if: needs.changes.outputs.reviewed-static != 'true'
         run: uv run code-standards --root ../.. setup --tools-only
@@ -766,13 +760,7 @@ jobs:
       - name: Install built wheel into a fresh venv
         run: bash ../../.github/scripts/ci-install-adoption-wheels.sh
       - name: Install the pinned native tool bootstrap
-        uses: jdx/mise-action@5228313ee0372e111a38da051671ca30fc5a96db # v3
-        with:
-          version: '2026.10.6'
-          install: false
-          cache: false
-          env: false
-          add_shims_to_path: false
+        run: uv run --no-project python -m sarj_standards.libs.adoption.native_bootstrap
       - name: Install and attest applicable native tools
         run: uv run --no-project code-standards --root ../.. setup --tools-only
 

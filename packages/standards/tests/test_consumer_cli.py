@@ -13,13 +13,17 @@ import sarj_standards.cli.main as cli
 from sarj_standards.libs.adoption import devops, manifest
 from sarj_standards.libs.adoption.manifest import as_table, list_field
 from sarj_standards.libs.linting.analysis import report_from_tools
+from sarj_standards.libs.linting.devops_tools import TOOLS
+from sarj_standards.libs.linting.external import ProcessOutput
 
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
     from pathlib import Path
 
+    from sarj_standards.libs.adoption.doctor import Finding
     from sarj_standards.libs.diagnostics import AnalysisReport
+    from sarj_standards.libs.linting.external import ProcessRunner
 
 
 PUBLIC_COMMANDS = (
@@ -37,6 +41,41 @@ PUBLIC_COMMANDS = (
     "maintain",
 )
 REMOVED_ALIASES = ("init", "sync", "verify", "format", "inspect", "upgrade", "repo", "list", "path", "peers")
+
+
+def _use_workflow_health_runner(monkeypatch: pytest.MonkeyPatch, root: Path, runner: ProcessRunner) -> None:
+    health = devops.health_findings
+
+    def attest(selected_root: Path, files: Sequence[Path]) -> tuple[Finding, ...]:
+        assert selected_root == root.resolve()
+        assert root / ".github" / "workflows" / "standards.yml" in files
+        return health(selected_root, files, runner=runner)
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- inject the external version-query protocol while retaining actual native health validation and CLI gating.
+        devops, "health_findings", attest
+    )
+
+
+def _workflow_version_output(argv: Sequence[str]) -> ProcessOutput:
+    outputs = {
+        "actionlint": TOOLS["actionlint"].version + "\n",
+        "shellcheck": "version: " + TOOLS["shellcheck"].version + "\n",
+        "shfmt": "v" + TOOLS["shfmt"].version + "\n",
+    }
+    assert argv[0] in outputs
+    assert tuple(argv) == (argv[0], *TOOLS[argv[0]].version_args)
+    return ProcessOutput(0, outputs[argv[0]], "")
+
+
+@pytest.fixture
+def native_workflow_versions(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Routing fixtures adopt workflows without provisioning native executables."""
+
+    def version_query(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
+        assert cwd == tmp_path.resolve()
+        return _workflow_version_output(argv)
+
+    _use_workflow_health_runner(monkeypatch, tmp_path, version_query)
 
 
 def _git_environment() -> dict[str, str]:
@@ -111,6 +150,7 @@ def test_tools_only_rejects_adoption_options(tmp_path: Path) -> None:
     assert not tuple(tmp_path.iterdir())
 
 
+@pytest.mark.usefixtures("native_workflow_versions")
 def test_global_root_is_equally_valid_after_the_command(tmp_path: Path) -> None:
     (tmp_path / "package.json").write_text('{"name":"fixture"}\n', encoding="utf-8")
 
@@ -119,6 +159,7 @@ def test_global_root_is_equally_valid_after_the_command(tmp_path: Path) -> None:
     assert cli.main(["exclude", "list", "--root", str(tmp_path)]) == 0
 
 
+@pytest.mark.usefixtures("native_workflow_versions")
 def test_global_root_equals_form_is_valid_after_the_command(tmp_path: Path) -> None:
     (tmp_path / "package.json").write_text('{"name":"fixture"}\n', encoding="utf-8")
 
@@ -127,6 +168,7 @@ def test_global_root_equals_form_is_valid_after_the_command(tmp_path: Path) -> N
     assert cli.main(["exclude", "list", f"--root={tmp_path}"]) == 0
 
 
+@pytest.mark.usefixtures("native_workflow_versions")
 def test_yarn_workspace_setup_doctor_and_check_share_an_executable_eslint_environment(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -199,7 +241,7 @@ def test_yarn_workspace_setup_doctor_and_check_share_an_executable_eslint_enviro
     capsys.readouterr()
     assert cli.main(["--root", str(tmp_path), "doctor"]) == 0
     capsys.readouterr()
-    assert cli.main(["--root", str(tmp_path), "check", "--trust-repository-code"]) == 0
+    assert cli.main(["--root", str(tmp_path), "check", "--trust-repository-code", "apps/web/src/index.ts"]) == 0
 
     root_package: object = json.loads((tmp_path / "package.json").read_text(encoding="utf-8"))  # pyright: ignore[reportAny]
     web_package: object = json.loads((web / "package.json").read_text(encoding="utf-8"))  # pyright: ignore[reportAny]
@@ -261,6 +303,7 @@ def test_machine_check_tells_an_unadopted_repository_to_run_setup(
 
 
 @pytest.mark.parametrize("output_format", ["json", "sarif", "github"])
+@pytest.mark.usefixtures("native_workflow_versions")
 def test_staged_adoption_drift_uses_the_requested_machine_format(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
@@ -314,6 +357,7 @@ def test_machine_check_creates_a_safe_nested_report_directory(tmp_path: Path) ->
     assert json.loads((tmp_path / "reports" / "standards.sarif").read_text(encoding="utf-8"))["version"] == "2.1.0"
 
 
+@pytest.mark.usefixtures("native_workflow_versions")
 def test_full_machine_check_runs_doctor_and_config_sync_gates(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -336,6 +380,7 @@ def test_full_machine_check_runs_doctor_and_config_sync_gates(
     assert any(item.get("source") == "sarj-standards-doctor" for item in diagnostics)
 
 
+@pytest.mark.usefixtures("native_workflow_versions")
 def test_empty_pull_request_scope_does_not_expand_to_the_repository(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -380,6 +425,7 @@ def test_react_doctor_trigger_keeps_metadata_and_deleted_typescript_out_of_the_a
     assert not trigger(("README.md",))
 
 
+@pytest.mark.usefixtures("native_workflow_versions")
 def test_non_default_push_runs_adoption_gate_without_expanding_to_repository(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -418,6 +464,7 @@ def test_non_default_push_runs_adoption_gate_without_expanding_to_repository(
 
 @pytest.mark.parametrize("branch", ["main", "preview"])
 @pytest.mark.parametrize("scope", ["committed-base", "missing-revision", "--invalid-option"])
+@pytest.mark.usefixtures("native_workflow_versions")
 def test_non_default_push_honors_explicit_change_scope(
     branch: str,
     scope: str,
@@ -480,6 +527,7 @@ def test_non_default_push_honors_explicit_change_scope(
         assert payload["exitCode"] == 2
 
 
+@pytest.mark.usefixtures("native_workflow_versions")
 def test_pull_request_scope_ignores_changed_files_without_an_analyzer(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -509,6 +557,7 @@ def test_pull_request_scope_ignores_changed_files_without_an_analyzer(
     assert as_table(payload).get("diagnostics") == []
 
 
+@pytest.mark.usefixtures("native_workflow_versions")
 def test_explicit_repository_root_keeps_the_machine_adoption_gate(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
@@ -528,6 +577,7 @@ def test_explicit_repository_root_keeps_the_machine_adoption_gate(
 
 
 @pytest.mark.parametrize("arguments", [(".",), ("--trust-repository-code", ".")], ids=("root", "rollout-root"))
+@pytest.mark.usefixtures("native_workflow_versions")
 def test_explicit_repository_root_overrides_pull_request_change_scope(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -581,3 +631,58 @@ def test_check_rejects_output_outside_repository_before_analysis(
 
     assert status == 2
     assert "report output must stay inside repository root" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("health_state", ["missing", "wrong-version", "nonzero-exit"])
+def test_native_workflow_health_failure_blocks_cli_before_analysis(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    health_state: str,
+) -> None:
+    (tmp_path / "package.json").write_text('{"name":"fixture"}\n', encoding="utf-8")
+    assert cli.main(["--root", str(tmp_path), "setup", "--no-install"]) == 0
+    capsys.readouterr()
+    queries: list[tuple[str, ...]] = []
+
+    def version_query(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
+        assert cwd == tmp_path.resolve()
+        assert argv[0] in {"actionlint", "shellcheck", "shfmt"}
+        assert tuple(argv) == (argv[0], *TOOLS[argv[0]].version_args)
+        queries.append(tuple(argv))
+        if health_state == "missing":
+            message = "fixture native executable is missing"
+            raise FileNotFoundError(message)
+        output = _workflow_version_output(argv)
+        if health_state == "wrong-version":
+            return ProcessOutput(0, output.stdout.replace(TOOLS[argv[0]].version, "0.0.0"), "")
+        return ProcessOutput(7, output.stdout, "")
+
+    analyzed: list[Sequence[str] | None] = []
+
+    def forbidden_analysis(
+        _self: Standards,
+        paths: Sequence[str] | None = None,
+        **_kwargs: bool | int | str | Sequence[str] | Sequence[Path],
+    ) -> object:
+        analyzed.append(paths)
+        pytest.fail("native health drift must block the analyzer")
+
+    _use_workflow_health_runner(monkeypatch, tmp_path, version_query)
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- assert public CLI health gating before analyzer dispatch.
+        Standards, "analyze", forbidden_analysis
+    )
+    assert cli.main(["--root", str(tmp_path), "doctor"]) == 1
+    capsys.readouterr()
+    assert cli.main(["--root", str(tmp_path), "check", "--format", "json"]) == 1
+    payload: object = json.loads(capsys.readouterr().out)  # pyright: ignore[reportAny]
+    diagnostics = tuple(as_table(item) for item in list_field(as_table(payload), "diagnostics"))
+    assert {item.get("ruleId") for item in diagnostics} == {
+        "doctor.devops.actionlint.version",
+        "doctor.devops.shellcheck.version",
+        "doctor.devops.shfmt.version",
+    }
+    assert queries == [
+        (name, *TOOLS[name].version_args) for _ in range(2) for name in ("actionlint", "shellcheck", "shfmt")
+    ]
+    assert analyzed == []

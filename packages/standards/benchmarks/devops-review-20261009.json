@@ -1,0 +1,3455 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-10-09",
+  "phase": "postmerge-devops",
+  "baselineCommit": "120f8cf3b893a24e60c15ec7bff05c63bc8ec10f",
+  "requestedPasses": 30,
+  "completedPasses": 5,
+  "completedPassIds": [
+    1,
+    2,
+    3,
+    4,
+    30
+  ],
+  "countingPolicy": "Each numbered review has a distinct agent, scope, baseline, executed controls, outcome and limitations. Premerge preparation and the urgent CI bootstrap repair are not counted. Pass30 ran early to investigate portability; its identifier does not imply30 completed passes.",
+  "validationContext": "Individual records describe source hashes when that agent completed. Pass04 intentionally follows pass01 in the same schema/hash owner. Root validates the coherent implementation before committing. Temporary evidence files are local artifacts; permanent labeled controls are the recorded repository test modules.",
+  "passes": [
+    {
+      "passId": "01",
+      "scope": "Contained relative JSON Schema references and prepared schema closure false rejections",
+      "baselineCommit": "120f8cf3b893a24e60c15ec7bff05c63bc8ec10f",
+      "ownerPaths": [
+        "packages/standards/src/sarj_standards/libs/linting/prepared_devops.py",
+        "packages/standards/tests/test_prepared_schema_closure.py"
+      ],
+      "admission": {
+        "baselineCommit": "120f8cf3b893a24e60c15ec7bff05c63bc8ec10f",
+        "sourceBeforeSha256": "92b9efdb476375045e9729e909cf07fa61aa222b767a2e72e929fa532da6c188",
+        "routing": "sarj-ai/code-standards: schema URI/JSON configuration semantics determine validation",
+        "failureMode": "A nested local schema with a contained parent-relative reference is rejected before native validation.",
+        "existingOwner": "prepared_devops._closed_schema + contained_file + _verify_hash; jsonschema/referencing and kubeconform own instance validation and reference semantics",
+        "demonstratedGap": "_closed_schema feeds unnormalized nested/../shared.json to receipt path policy, which rejects every parent segment even when URI destination remains contained.",
+        "harm": "Valid hashed schema closures cannot complete prepared Kubernetes validation; users must flatten legitimate schema layouts to avoid the false rejection.",
+        "validStateDistinction": "Accept contained canonical reference destinations only; retain failed admission for escaping, symlink, unlisted/unhashed, changed hash, network, unsupported URI forms, malformed schemas, invalid pointers, and base-changing identifiers.",
+        "smallestFix": "Apply lexical POSIX dot-segment normalization to the relative artifact name before existing contained_file and hash checks; do not resolve symlinks or broaden receipt path policy.",
+        "beforeControls": {
+          "parentRelativeClosure": "ValueError: prepared path must stay beneath its directory: nested/../shared.json",
+          "validateLocalSchemaValid": [],
+          "kubeconformVersion": "v0.8.0",
+          "kubeconformExit": 0,
+          "nativeSummary": {
+            "valid": 1,
+            "invalid": 0,
+            "errors": 0,
+            "skipped": 0
+          }
+        },
+        "upstreamSources": [
+          "https://json-schema.org/draft-04/json-schema-core#section-7",
+          "https://datatracker.ietf.org/doc/html/rfc3986#section-5.2.4",
+          "https://raw.githubusercontent.com/yannh/kubeconform/v0.8.0/pkg/validator/validator.go",
+          "https://raw.githubusercontent.com/yannh/kubeconform/v0.8.0/go.mod",
+          "https://raw.githubusercontent.com/santhosh-tekuri/jsonschema/v6.0.2/util.go"
+        ],
+        "labelsBeforeImplementation": [
+          "valid-contained-parent",
+          "valid-dot-segment",
+          "valid-missing-canceled-segment",
+          "invalid-escape",
+          "invalid-network",
+          "invalid-absolute",
+          "invalid-encoded",
+          "invalid-query",
+          "invalid-backslash",
+          "invalid-symlink",
+          "invalid-missing-hash",
+          "invalid-changed-hash",
+          "malformed-schema",
+          "malformed-ref",
+          "invalid-pointer",
+          "valid-cycle",
+          "shadowed-ref-is-example-data",
+          "base-changing-id-unproven",
+          "native-valid-and-invalid-instances"
+        ]
+      },
+      "labeledCases": [
+        {
+          "label": "valid-contained-parent",
+          "expected": "complete",
+          "before": "failed",
+          "after": "complete"
+        },
+        {
+          "label": "valid-dot-parent",
+          "expected": "complete",
+          "before": "failed",
+          "after": "complete"
+        },
+        {
+          "label": "valid-canceled-missing-segment",
+          "expected": "complete",
+          "before": "failed",
+          "after": "complete"
+        },
+        {
+          "label": "valid-cyclic-closure-with-example-data",
+          "expected": "complete twice",
+          "before": "failed",
+          "after": "complete twice"
+        },
+        {
+          "labels": [
+            "escape",
+            "network",
+            "network-relative",
+            "absolute",
+            "file-uri",
+            "encoded",
+            "query",
+            "backslash"
+          ],
+          "expected": "failed",
+          "before": "failed",
+          "after": "failed"
+        },
+        {
+          "labels": [
+            "missing-hash",
+            "changed-hash",
+            "symlink-file",
+            "symlink-directory",
+            "missing-file"
+          ],
+          "expected": "failed",
+          "before": "failed",
+          "after": "failed"
+        },
+        {
+          "labels": [
+            "malformed-json",
+            "malformed-ref",
+            "missing-pointer",
+            "duplicate-ref",
+            "base-changing-id"
+          ],
+          "expected": "failed",
+          "before": "failed",
+          "after": "failed"
+        },
+        {
+          "label": "native-parity",
+          "expected": "3 valid instances accepted, 3 invalid instances rejected",
+          "before": "initial standalone reproduction accepted valid parent-relative instance with kubeconform and validate_local_schema while closure rejected it",
+          "after": "all 6 match local validator and kubeconform 0.8.0"
+        }
+      ],
+      "commandsAndResults": [
+        {
+          "command": "python /private/tmp/sarj-devops-pass-01-baseline.py",
+          "result": "Final 22 controls with immutable baseline module loaded in isolated process: 4 failed, 18 passed in 0.13 s; the four failures are valid contained closures. No checkout source mutation."
+        },
+        {
+          "command": "python -m pytest packages/standards/tests/test_prepared_schema_closure.py -q",
+          "result": "22 passed in 0.38 s"
+        },
+        {
+          "command": "python -m pytest packages/standards/tests/test_prepared_schema_closure.py packages/standards/tests/test_prepared_devops.py packages/standards/tests/test_schema_boundary.py packages/standards/tests/test_chart_schemas.py -q",
+          "result": "78 passed in 0.92 s (before final test-only extra hash declaration for symlink-directory fixture; final focused tests then passed)"
+        },
+        {
+          "command": "ruff check packages/standards/src/sarj_standards/libs/linting/prepared_devops.py packages/standards/tests/test_prepared_schema_closure.py",
+          "result": "All checks passed"
+        },
+        {
+          "command": "ruff format --check packages/standards/src/sarj_standards/libs/linting/prepared_devops.py packages/standards/tests/test_prepared_schema_closure.py",
+          "result": "2 files already formatted"
+        },
+        {
+          "command": "basedpyright packages/standards/src/sarj_standards/libs/linting/prepared_devops.py packages/standards/tests/test_prepared_schema_closure.py",
+          "result": "0 errors, 0 warnings, 0 notes"
+        },
+        {
+          "command": "code-standards --root . check packages/standards/src/sarj_standards/libs/linting/prepared_devops.py packages/standards/tests/test_prepared_schema_closure.py --format json > /private/tmp/sarj-devops-pass-01-self-check.json",
+          "result": {
+            "exitCode": 0,
+            "completion": "complete",
+            "conclusion": "passed",
+            "diagnostics": 0,
+            "issues": 0
+          }
+        },
+        {
+          "command": "git diff --check -- packages/standards/src/sarj_standards/libs/linting/prepared_devops.py",
+          "result": "passed"
+        },
+        {
+          "command": "kubeconform -v",
+          "result": "v0.8.0"
+        },
+        {
+          "resolvedInitialFailures": "Private helper import, positional fixture tuple, and repeated dispatch in initial tests triggered authored diagnostics. Rewritten using public analyze_prepared, a named dataclass fixture, and match dispatch; no suppression retained. Initial --output outside repository rejected by CLI; stdout redirected to temporary file instead. Initial tmp baseline pytest tuple argument corrected to list."
+        }
+      ],
+      "metrics": {
+        "boundedFixtureCases": 22,
+        "before": {
+          "truePositiveInvalidAdmission": 18,
+          "trueNegativeValidAdmission": 0,
+          "falsePositiveValidRejection": 4,
+          "falseNegativeInvalidAcceptance": 0
+        },
+        "after": {
+          "truePositiveInvalidAdmission": 18,
+          "trueNegativeValidAdmission": 4,
+          "falsePositiveValidRejection": 0,
+          "falseNegativeInvalidAcceptance": 0
+        },
+        "nativeInstanceCases": {
+          "valid": 3,
+          "invalid": 3,
+          "actualNativeCalls": 9,
+          "versionProbes": 3,
+          "validationCalls": 6
+        },
+        "authoredCheck": {
+          "files": 2,
+          "bytes": 30702,
+          "diagnostics": 0,
+          "issues": 0
+        },
+        "optimizationClaim": false,
+        "timingInterpretation": "Test durations are execution evidence, not performance comparisons: baseline aborts before native invocations; after executes native parity. No speed improvement claimed."
+      },
+      "limitations": [
+        "Only bounded synthetic fixtures and focused repository tests were evaluated; no external or private corpus evaluation and no universal false-positive claim.",
+        "Encoded paths, query components, backslashes, absolute/network references and base-changing identifiers remain intentionally unsupported at this closed offline trust boundary.",
+        "Dot-segment normalization is lexical and preserves symlink checks on the canonical destination. Schema identifiers are delegated to the existing semantic boundary; no resolver expansion added.",
+        "Public admission fixtures use the Cloud Run adapter which shares _closed_schema; Kubernetes instance parity separately exercises actual pinned kubeconform 0.8.0. Existing Kubernetes prepared tests remain covered by the wider suite.",
+        "Mise emitted sandbox tracking-symlink warnings during self-check; all analyzers completed with zero issues and no escalation was needed.",
+        "Root owns full make verify, version changes and all staging/commits/PR operations. This pass performed none."
+      ],
+      "conclusion": "revise: smallest closure-owner fix removes four demonstrated fixture false rejections while retaining all 18 invalid-admission controls; ready for root full gate",
+      "sourceHashes": {
+        "packages/standards/src/sarj_standards/libs/linting/prepared_devops.py": {
+          "before": "92b9efdb476375045e9729e909cf07fa61aa222b767a2e72e929fa532da6c188",
+          "after": "cd217a7fb6796ca9bf27fc6c75436e80123cf2ce11fd62838989bee870472d26"
+        },
+        "packages/standards/tests/test_prepared_schema_closure.py": {
+          "before": null,
+          "after": "0c7a727953af3029503da0c24df398189f2c53ecb6b1785fa0eeda8d87b324d1"
+        }
+      },
+      "evidencePaths": [
+        "/private/tmp/sarj-devops-pass-01-admission.json",
+        "/private/tmp/sarj-devops-pass-01-baseline.py",
+        "/private/tmp/sarj-devops-pass-01-baseline-results.txt",
+        "/private/tmp/sarj-devops-pass-01-self-check.json"
+      ]
+    },
+    {
+      "passId": "02",
+      "scope": "Skaffold custom builder execution projection",
+      "baselineCommit": "120f8cf3b893a24e60c15ec7bff05c63bc8ec10f",
+      "ownerPaths": [
+        "packages/standards/src/sarj_standards/libs/linting/devops_programs.py",
+        "packages/standards/tests/test_skaffold_programs.py"
+      ],
+      "admission": {
+        "failure": "custom.buildCommand inline program produces zero execution blocks on merged baseline; dependency command data and unknown/activation fields produce SARJ310 false positives",
+        "owner": "_skaffold_blocks under existing SARJ310 workflow-embedded-program",
+        "gap": "generic command-key walker misses buildCommand and confuses direct argv with shell execution",
+        "harm": "embedded interpreter payload bypasses existing policy and ordinary configuration data is incorrectly diagnosed",
+        "validState": "single external script/module invocations remain valid; unsupported configuration data abstains; unresolved templates/platform semantics produce coverage failure",
+        "smallestFix": "replace generic Skaffold walk with supported structural execution paths using existing YAML occurrence loader, mapping merge handling and native shell AST; no new rule",
+        "platformBoundary": "execution_blocks keyword-only platform allows callers analyzing a Skaffold configuration for a different execution host to declare that host; defaults actual sys.platform. This is distinct from artifact target platforms. It also makes the Windows trust boundary testable without ambient mutation."
+      },
+      "sourceHashes": {
+        "before": {
+          "devops_programs.py": "4daa0cc3d02811d5e1992f1864654cd48236b50d894d7599e68d87deb66af42c"
+        },
+        "after": {
+          "packages/standards/src/sarj_standards/libs/linting/devops_programs.py": "eca95053fe92b06168c9c992af8500a0485a79974427b2580fef39c99cd450fb",
+          "packages/standards/tests/test_skaffold_programs.py": "1876ce9b44a26c79b0cb52aa7d1ee4a44ef6c4d5be485d6d258de53177cd5db5"
+        },
+        "upstreamReadOnly": {
+          "sarj-pass02-upstream-v280-dependencies.go": "2f94ac92f9f2372b7b27467d69e19f12736311b6567f3c112a336f03d3c687b9",
+          "sarj-pass02-upstream-v280-test.go": "e2fe1e19b51d780bec096e763389601b9636f9b383180d3a97c0a94a4941b518",
+          "sarj-pass02-upstream-v280-script.go": "dfcc72fed0215be047ad0de9d6a9999ec62fd8019cb05699507995f812a3f965",
+          "sarj-pass02-upstream-v280-config.go": "b73a6f63b447cdf031a2159c773fb24f7f32f97ca798cf5d4d7aac7bd156fc20"
+        },
+        "baselineExtract": "4daa0cc3d02811d5e1992f1864654cd48236b50d894d7599e68d87deb66af42c"
+      },
+      "labeledCases": {
+        "replayedBeforeAfter": [
+          {
+            "caseId": "inline-python",
+            "label": "positive",
+            "expected": {
+              "blocks": 1,
+              "matches": 1
+            },
+            "before": {
+              "blocks": 0,
+              "matches": 0,
+              "locations": []
+            },
+            "after": {
+              "blocks": 1,
+              "matches": 1,
+              "locations": [
+                [
+                  7,
+                  7,
+                  46
+                ]
+              ]
+            }
+          },
+          {
+            "caseId": "shell-command-chain",
+            "label": "positive",
+            "expected": {
+              "blocks": 1,
+              "matches": 1
+            },
+            "before": {
+              "blocks": 0,
+              "matches": 0,
+              "locations": []
+            },
+            "after": {
+              "blocks": 1,
+              "matches": 1,
+              "locations": [
+                [
+                  7,
+                  7,
+                  47
+                ]
+              ]
+            }
+          },
+          {
+            "caseId": "external-script",
+            "label": "negative/near-miss",
+            "expected": {
+              "blocks": 1,
+              "matches": 0
+            },
+            "before": {
+              "blocks": 0,
+              "matches": 0,
+              "locations": []
+            },
+            "after": {
+              "blocks": 1,
+              "matches": 0,
+              "locations": [
+                [
+                  7,
+                  7,
+                  59
+                ]
+              ]
+            }
+          },
+          {
+            "caseId": "external-module",
+            "label": "negative/near-miss",
+            "expected": {
+              "blocks": 1,
+              "matches": 0
+            },
+            "before": {
+              "blocks": 0,
+              "matches": 0,
+              "locations": []
+            },
+            "after": {
+              "blocks": 1,
+              "matches": 0,
+              "locations": [
+                [
+                  7,
+                  7,
+                  57
+                ]
+              ]
+            }
+          },
+          {
+            "caseId": "quoted-data",
+            "label": "negative/near-miss",
+            "expected": {
+              "blocks": 1,
+              "matches": 0
+            },
+            "before": {
+              "blocks": 0,
+              "matches": 0,
+              "locations": []
+            },
+            "after": {
+              "blocks": 1,
+              "matches": 0,
+              "locations": [
+                [
+                  7,
+                  7,
+                  49
+                ]
+              ]
+            }
+          },
+          {
+            "caseId": "dependency-argv-shell-data",
+            "label": "negative/near-miss",
+            "expected": {
+              "blocks": 2,
+              "matches": 0
+            },
+            "before": {
+              "blocks": 1,
+              "matches": 1,
+              "locations": [
+                [
+                  9,
+                  9,
+                  45
+                ]
+              ]
+            },
+            "after": {
+              "blocks": 2,
+              "matches": 0,
+              "locations": [
+                [
+                  7,
+                  7,
+                  35
+                ],
+                [
+                  9,
+                  9,
+                  45
+                ]
+              ]
+            }
+          },
+          {
+            "caseId": "dependency-inline-interpreter",
+            "label": "positive",
+            "expected": {
+              "blocks": 2,
+              "matches": 1
+            },
+            "before": {
+              "coverageError": "ShellSyntaxError",
+              "message": "1:17: a command can only contain words and redirects; encountered `(`"
+            },
+            "after": {
+              "blocks": 2,
+              "matches": 1,
+              "locations": [
+                [
+                  7,
+                  7,
+                  35
+                ],
+                [
+                  9,
+                  9,
+                  39
+                ]
+              ]
+            }
+          },
+          {
+            "caseId": "dockerfile-shadows-dependency-command",
+            "label": "negative/near-miss",
+            "expected": {
+              "blocks": 1,
+              "matches": 0
+            },
+            "before": {
+              "coverageError": "ShellSyntaxError",
+              "message": "1:17: a command can only contain words and redirects; encountered `(`"
+            },
+            "after": {
+              "blocks": 1,
+              "matches": 0,
+              "locations": [
+                [
+                  7,
+                  7,
+                  35
+                ]
+              ]
+            }
+          },
+          {
+            "caseId": "profile-builder",
+            "label": "positive",
+            "expected": {
+              "blocks": 1,
+              "matches": 1
+            },
+            "before": {
+              "blocks": 0,
+              "matches": 0,
+              "locations": []
+            },
+            "after": {
+              "blocks": 1,
+              "matches": 1,
+              "locations": [
+                [
+                  9,
+                  9,
+                  48
+                ]
+              ]
+            }
+          },
+          {
+            "caseId": "activation-is-data",
+            "label": "negative/near-miss",
+            "expected": {
+              "blocks": 0,
+              "matches": 0
+            },
+            "before": {
+              "blocks": 1,
+              "matches": 1,
+              "locations": [
+                [
+                  6,
+                  6,
+                  30
+                ]
+              ]
+            },
+            "after": {
+              "blocks": 0,
+              "matches": 0,
+              "locations": []
+            }
+          },
+          {
+            "caseId": "unknown-builder",
+            "label": "negative/near-miss",
+            "expected": {
+              "blocks": 0,
+              "matches": 0
+            },
+            "before": {
+              "blocks": 1,
+              "matches": 1,
+              "locations": [
+                [
+                  7,
+                  7,
+                  30
+                ]
+              ]
+            },
+            "after": {
+              "blocks": 0,
+              "matches": 0,
+              "locations": []
+            }
+          },
+          {
+            "caseId": "unknown-nesting",
+            "label": "negative/near-miss",
+            "expected": {
+              "blocks": 0,
+              "matches": 0
+            },
+            "before": {
+              "blocks": 1,
+              "matches": 1,
+              "locations": [
+                [
+                  6,
+                  6,
+                  26
+                ]
+              ]
+            },
+            "after": {
+              "blocks": 0,
+              "matches": 0,
+              "locations": []
+            }
+          },
+          {
+            "caseId": "unsupported-deploy-hook-location",
+            "label": "negative/near-miss",
+            "expected": {
+              "blocks": 0,
+              "matches": 0
+            },
+            "before": {
+              "blocks": 1,
+              "matches": 1,
+              "locations": [
+                [
+                  7,
+                  7,
+                  45
+                ]
+              ]
+            },
+            "after": {
+              "blocks": 0,
+              "matches": 0,
+              "locations": []
+            }
+          },
+          {
+            "caseId": "host-build-hook-direct-data",
+            "label": "negative/near-miss",
+            "expected": {
+              "blocks": 1,
+              "matches": 0
+            },
+            "before": {
+              "blocks": 1,
+              "matches": 0,
+              "locations": [
+                [
+                  6,
+                  6,
+                  51
+                ]
+              ]
+            },
+            "after": {
+              "blocks": 1,
+              "matches": 0,
+              "locations": [
+                [
+                  6,
+                  6,
+                  51
+                ]
+              ]
+            }
+          },
+          {
+            "caseId": "deployer-host-hook",
+            "label": "positive",
+            "expected": {
+              "blocks": 1,
+              "matches": 1
+            },
+            "before": {
+              "blocks": 1,
+              "matches": 1,
+              "locations": [
+                [
+                  8,
+                  8,
+                  55
+                ]
+              ]
+            },
+            "after": {
+              "blocks": 1,
+              "matches": 1,
+              "locations": [
+                [
+                  8,
+                  8,
+                  55
+                ]
+              ]
+            }
+          },
+          {
+            "caseId": "verify-direct-argv",
+            "label": "positive",
+            "expected": {
+              "blocks": 1,
+              "matches": 1
+            },
+            "before": {
+              "blocks": 1,
+              "matches": 1,
+              "locations": [
+                [
+                  6,
+                  7,
+                  29
+                ]
+              ]
+            },
+            "after": {
+              "blocks": 1,
+              "matches": 1,
+              "locations": [
+                [
+                  6,
+                  7,
+                  29
+                ]
+              ]
+            }
+          },
+          {
+            "caseId": "custom-action-direct-data",
+            "label": "negative/near-miss",
+            "expected": {
+              "blocks": 1,
+              "matches": 0
+            },
+            "before": {
+              "blocks": 1,
+              "matches": 0,
+              "locations": [
+                [
+                  8,
+                  9,
+                  40
+                ]
+              ]
+            },
+            "after": {
+              "blocks": 1,
+              "matches": 0,
+              "locations": [
+                [
+                  8,
+                  9,
+                  40
+                ]
+              ]
+            }
+          },
+          {
+            "caseId": "custom-test-shell",
+            "label": "positive",
+            "expected": {
+              "blocks": 2,
+              "matches": 2
+            },
+            "before": {
+              "blocks": 2,
+              "matches": 2,
+              "locations": [
+                [
+                  6,
+                  6,
+                  39
+                ],
+                [
+                  8,
+                  8,
+                  45
+                ]
+              ]
+            },
+            "after": {
+              "blocks": 2,
+              "matches": 2,
+              "locations": [
+                [
+                  6,
+                  6,
+                  39
+                ],
+                [
+                  8,
+                  8,
+                  45
+                ]
+              ]
+            }
+          }
+        ],
+        "additionalExecutedControls": [
+          "dependency literal spaces and retained quotes",
+          "alias use-site, merge override, multiple-document locations",
+          "supported render/helm/cloudrun/artifact-sync hooks",
+          "malformed buildCommand: sequence/null/bool/integer",
+          "unresolved Go template coverage failure",
+          "explicit Windows platform public-boundary coverage failure",
+          "malformed shell native syntax failure"
+        ],
+        "summary": {
+          "cases": 18,
+          "baselineMissedPositiveCases": 4,
+          "baselineFalsePositiveCases": 5,
+          "baselineCoverageFailureCases": 2,
+          "afterMismatches": 0
+        }
+      },
+      "commandsAndResults": [
+        {
+          "command": "python -m pytest packages/standards/tests/test_skaffold_programs.py packages/standards/tests/test_devops_programs.py -q",
+          "result": "131 passed in 4.19s"
+        },
+        {
+          "command": "ruff check <owned source> <focused tests>",
+          "result": "All checks passed"
+        },
+        {
+          "command": "ruff format --check <owned source> <focused tests>",
+          "result": "2 files already formatted"
+        },
+        {
+          "command": "basedpyright <owned source> <focused tests>",
+          "result": "0 errors, 0 warnings, 0 notes"
+        },
+        {
+          "command": "code-standards --root . check <owned source> <focused tests>",
+          "result": "0 errors, 0 warnings, 0 notices, 0 execution issues"
+        },
+        {
+          "command": "git show immutable baseline:<owner> then python /private/tmp/sarj-pass02-evaluate.py",
+          "result": "18 labeled cases replayed before/after; results artifact /private/tmp/sarj-pass02-labeled-results.json"
+        },
+        {
+          "command": "/bin/sh -c and native direct argv parity controls",
+          "result": [
+            {
+              "case": "build-sh-inline",
+              "argv": [
+                "/bin/sh",
+                "-c",
+                "python3 -c 'print(1)'"
+              ],
+              "returncode": 0,
+              "stdout": "1\n",
+              "stderr": ""
+            },
+            {
+              "case": "dependency-direct-data",
+              "argv": [
+                "/bin/echo",
+                "$(python3",
+                "-c",
+                "1)"
+              ],
+              "returncode": 0,
+              "stdout": "$(python3 -c 1)\n",
+              "stderr": ""
+            },
+            {
+              "case": "dependency-direct-inline",
+              "argv": [
+                "python3",
+                "-c",
+                "print(1)"
+              ],
+              "returncode": 0,
+              "stdout": "1\n",
+              "stderr": ""
+            }
+          ]
+        }
+      ],
+      "metrics": {
+        "focusedTests": 131,
+        "focusedTestWallSeconds": 4.19,
+        "labeledFixtureFiles": 18,
+        "labeledFixtureBytes": 2902,
+        "nativeParser": "shfmt v3.14.1 through checked existing shell AST adapter",
+        "performanceClaim": "None; functional coverage repair, no cache/optimization changes",
+        "peakMemory": "not measured"
+      },
+      "primarySources": [
+        {
+          "url": "https://github.com/GoogleContainerTools/skaffold/blob/v2.8.0/pkg/skaffold/schema/latest/config.go",
+          "evidence": "Version skaffold/v4beta7; owned execution fields and hook schema checked against bundled v4beta7 schema"
+        },
+        {
+          "url": "https://github.com/GoogleContainerTools/skaffold/blob/v2.8.0/pkg/skaffold/build/custom/script.go",
+          "evidence": "ExpandEnvTemplate then cmd.exe /C on Windows or sh -c on other platforms"
+        },
+        {
+          "url": "https://github.com/GoogleContainerTools/skaffold/blob/v2.8.0/pkg/skaffold/build/custom/dependencies.go",
+          "evidence": "Dockerfile precedence; strings.Split(command, literal space), then direct exec.CommandContext"
+        },
+        {
+          "url": "https://github.com/GoogleContainerTools/skaffold/blob/v2.8.0/pkg/skaffold/test/custom/custom.go",
+          "evidence": "custom test command is templated shell; custom test dependency command shell without ExpandEnvTemplate"
+        },
+        {
+          "url": "https://skaffold.dev/docs/builders/builder-types/custom/",
+          "evidence": "custom artifact builder and dependency contract; upstream does not own SARJ310 embedded-program policy"
+        }
+      ],
+      "limitations": [
+        "No Skaffold build/deploy executed; native parity uses harmless local sh/interpreter/echo commands with argv semantics matching upstream source.",
+        "Windows execution not run on Windows; explicit Windows platform control verifies fail-closed projection without treating cmd.exe as POSIX.",
+        "Go template commands deliberately produce coverage failure; no attempt to evaluate environment templates or dynamic programs.",
+        "Explicit execution paths verified for bundled v4beta7; profile JSON patches/computed configurations and future schema fields are not projected. Profile bodies are evaluated as declared alternatives, without guessing active profile/runtime selection.",
+        "YAML malformed document diagnostics remain owned by existing YAML syntax adapter; selected non-string execution fields fail projection.",
+        "Native shell AST adapter remains the existing Bash-capable adapter; this pass does not change its POSIX dialect admission contract.",
+        "Fixture controls do not establish universal zero false positives; no corpus download/refresh or consumer scans performed.",
+        "Root owns full repository make verify and coherent postmerge gate; shared checkout contains other concurrent pass edits."
+      ],
+      "conclusion": "ship existing-policy coverage repair: custom build commands now emit SARJ310 when static programs are proven; external invocations and direct argv data remain valid; unknown fields abstain; unproven templates/platforms retain coverage failure."
+    },
+    {
+      "passId": "03",
+      "scope": "Shared interpreter argv Ruby option operands and nearby grammar controls",
+      "baselineCommit": "120f8cf3b893a24e60c15ec7bff05c63bc8ec10f",
+      "ownerPaths": [
+        "packages/python/src/sarj_python_lint/interpreter_argv.py",
+        "packages/python/tests/test_interpreter_argv.py"
+      ],
+      "admission": {
+        "failureMode": "Ruby -r json -e puts 1 executes inline code natively but both existing policy owners miss it. Ruby -Fre/-ie file operands and help/unknown options also cause proven false positives.",
+        "existingOwner": "Shared classify_interpreter consumed by SARJ310 and SARJ484; native Ruby parser owns executable grammar but does not enforce repository source location policy.",
+        "gap": "Generic short-option parser omits Ruby required and attached-only option operands, terminal help options, and unknown grammar abstention.",
+        "harm": "Inline deployment source bypasses language checks; valid external-file invocations and native option errors are mislabeled as inline source.",
+        "validStateDistinction": "Classify supported option operands by native grammar without freezing source spelling; preserve file/-- boundaries.",
+        "smallestFix": "Add Ruby option profile at shared parser boundary; reuse common operand/source scanning. No new rule, autofix, guard, or provenance changes."
+      },
+      "labeledCases": [
+        {
+          "id": "ruby-source",
+          "argv": [
+            "ruby",
+            "-e",
+            "puts 1"
+          ],
+          "expectedClassifier": "inline",
+          "expectedDiagnosticCount": 1,
+          "before": {
+            "classifier": "inline",
+            "SARJ484": 1,
+            "duplicateLocations": 0,
+            "SARJ310_projection": 1
+          },
+          "after": {
+            "classifier": "inline",
+            "SARJ484": 1,
+            "duplicateLocations": 0,
+            "SARJ310_projection": 1
+          },
+          "native": {
+            "returncode": 0,
+            "stdout": "1\n",
+            "stderr": ""
+          },
+          "label": "positive"
+        },
+        {
+          "id": "ruby-attached-source",
+          "argv": [
+            "ruby",
+            "-eputs 1"
+          ],
+          "expectedClassifier": "inline",
+          "expectedDiagnosticCount": 1,
+          "before": {
+            "classifier": "inline",
+            "SARJ484": 1,
+            "duplicateLocations": 0,
+            "SARJ310_projection": 1
+          },
+          "after": {
+            "classifier": "inline",
+            "SARJ484": 1,
+            "duplicateLocations": 0,
+            "SARJ310_projection": 1
+          },
+          "native": {
+            "returncode": 0,
+            "stdout": "1\n",
+            "stderr": ""
+          },
+          "label": "positive"
+        },
+        {
+          "id": "ruby-require-separated",
+          "argv": [
+            "ruby",
+            "-r",
+            "json",
+            "-e",
+            "puts 1"
+          ],
+          "expectedClassifier": "inline",
+          "expectedDiagnosticCount": 1,
+          "before": {
+            "classifier": "external",
+            "SARJ484": 0,
+            "duplicateLocations": 0,
+            "SARJ310_projection": 0
+          },
+          "after": {
+            "classifier": "inline",
+            "SARJ484": 1,
+            "duplicateLocations": 0,
+            "SARJ310_projection": 1
+          },
+          "native": {
+            "returncode": 0,
+            "stdout": "1\n",
+            "stderr": ""
+          },
+          "label": "positive"
+        },
+        {
+          "id": "ruby-require-attached",
+          "argv": [
+            "ruby",
+            "-rjson",
+            "-e",
+            "puts 1"
+          ],
+          "expectedClassifier": "inline",
+          "expectedDiagnosticCount": 1,
+          "before": {
+            "classifier": "inline",
+            "SARJ484": 1,
+            "duplicateLocations": 0,
+            "SARJ310_projection": 1
+          },
+          "after": {
+            "classifier": "inline",
+            "SARJ484": 1,
+            "duplicateLocations": 0,
+            "SARJ310_projection": 1
+          },
+          "native": {
+            "returncode": 0,
+            "stdout": "1\n",
+            "stderr": ""
+          },
+          "label": "positive"
+        },
+        {
+          "id": "ruby-include-separated",
+          "argv": [
+            "ruby",
+            "-I",
+            ".",
+            "-e",
+            "puts 1"
+          ],
+          "expectedClassifier": "inline",
+          "expectedDiagnosticCount": 1,
+          "before": {
+            "classifier": "inline",
+            "SARJ484": 1,
+            "duplicateLocations": 0,
+            "SARJ310_projection": 1
+          },
+          "after": {
+            "classifier": "inline",
+            "SARJ484": 1,
+            "duplicateLocations": 0,
+            "SARJ310_projection": 1
+          },
+          "native": {
+            "returncode": 0,
+            "stdout": "1\n",
+            "stderr": ""
+          },
+          "label": "positive"
+        },
+        {
+          "id": "ruby-include-attached",
+          "argv": [
+            "ruby",
+            "-I.",
+            "-e",
+            "puts 1"
+          ],
+          "expectedClassifier": "inline",
+          "expectedDiagnosticCount": 1,
+          "before": {
+            "classifier": "inline",
+            "SARJ484": 1,
+            "duplicateLocations": 0,
+            "SARJ310_projection": 1
+          },
+          "after": {
+            "classifier": "inline",
+            "SARJ484": 1,
+            "duplicateLocations": 0,
+            "SARJ310_projection": 1
+          },
+          "native": {
+            "returncode": 0,
+            "stdout": "1\n",
+            "stderr": ""
+          },
+          "label": "positive"
+        },
+        {
+          "id": "ruby-directory-separated",
+          "argv": [
+            "ruby",
+            "-C",
+            ".",
+            "-e",
+            "puts 1"
+          ],
+          "expectedClassifier": "inline",
+          "expectedDiagnosticCount": 1,
+          "before": {
+            "classifier": "external",
+            "SARJ484": 0,
+            "duplicateLocations": 0,
+            "SARJ310_projection": 0
+          },
+          "after": {
+            "classifier": "inline",
+            "SARJ484": 1,
+            "duplicateLocations": 0,
+            "SARJ310_projection": 1
+          },
+          "native": {
+            "returncode": 0,
+            "stdout": "1\n",
+            "stderr": ""
+          },
+          "label": "positive"
+        },
+        {
+          "id": "ruby-directory-attached",
+          "argv": [
+            "ruby",
+            "-C.",
+            "-e",
+            "puts 1"
+          ],
+          "expectedClassifier": "inline",
+          "expectedDiagnosticCount": 1,
+          "before": {
+            "classifier": "inline",
+            "SARJ484": 1,
+            "duplicateLocations": 0,
+            "SARJ310_projection": 1
+          },
+          "after": {
+            "classifier": "inline",
+            "SARJ484": 1,
+            "duplicateLocations": 0,
+            "SARJ310_projection": 1
+          },
+          "native": {
+            "returncode": 0,
+            "stdout": "1\n",
+            "stderr": ""
+          },
+          "label": "positive"
+        },
+        {
+          "id": "ruby-encoding-separated",
+          "argv": [
+            "ruby",
+            "-E",
+            "utf-8",
+            "-e",
+            "puts 1"
+          ],
+          "expectedClassifier": "inline",
+          "expectedDiagnosticCount": 1,
+          "before": {
+            "classifier": "external",
+            "SARJ484": 0,
+            "duplicateLocations": 0,
+            "SARJ310_projection": 0
+          },
+          "after": {
+            "classifier": "inline",
+            "SARJ484": 1,
+            "duplicateLocations": 0,
+            "SARJ310_projection": 1
+          },
+          "native": {
+            "returncode": 0,
+            "stdout": "1\n",
+            "stderr": ""
+          },
+          "label": "positive"
+        },
+        {
+          "id": "ruby-encoding-attached",
+          "argv": [
+            "ruby",
+            "-Eutf-8",
+            "-e",
+            "puts 1"
+          ],
+          "expectedClassifier": "inline",
+          "expectedDiagnosticCount": 1,
+          "before": {
+            "classifier": "inline",
+            "SARJ484": 1,
+            "duplicateLocations": 0,
+            "SARJ310_projection": 1
+          },
+          "after": {
+            "classifier": "inline",
+            "SARJ484": 1,
+            "duplicateLocations": 0,
+            "SARJ310_projection": 1
+          },
+          "native": {
+            "returncode": 0,
+            "stdout": "1\n",
+            "stderr": ""
+          },
+          "label": "positive"
+        },
+        {
+          "id": "ruby-long-encoding-separated",
+          "argv": [
+            "ruby",
+            "--encoding",
+            "utf-8",
+            "-e",
+            "puts 1"
+          ],
+          "expectedClassifier": "inline",
+          "expectedDiagnosticCount": 1,
+          "before": {
+            "classifier": "external",
+            "SARJ484": 0,
+            "duplicateLocations": 0,
+            "SARJ310_projection": 0
+          },
+          "after": {
+            "classifier": "inline",
+            "SARJ484": 1,
+            "duplicateLocations": 0,
+            "SARJ310_projection": 1
+          },
+          "native": {
+            "returncode": 0,
+            "stdout": "1\n",
+            "stderr": ""
+          },
+          "label": "positive"
+        },
+        {
+          "id": "ruby-long-encoding-attached",
+          "argv": [
+            "ruby",
+            "--encoding=utf-8",
+            "-e",
+            "puts 1"
+          ],
+          "expectedClassifier": "inline",
+          "expectedDiagnosticCount": 1,
+          "before": {
+            "classifier": "inline",
+            "SARJ484": 1,
+            "duplicateLocations": 0,
+            "SARJ310_projection": 1
+          },
+          "after": {
+            "classifier": "inline",
+            "SARJ484": 1,
+            "duplicateLocations": 0,
+            "SARJ310_projection": 1
+          },
+          "native": {
+            "returncode": 0,
+            "stdout": "1\n",
+            "stderr": ""
+          },
+          "label": "positive"
+        },
+        {
+          "id": "ruby-cluster-before-operand",
+          "argv": [
+            "ruby",
+            "-wr",
+            "json",
+            "-e",
+            "puts 1"
+          ],
+          "expectedClassifier": "inline",
+          "expectedDiagnosticCount": 1,
+          "before": {
+            "classifier": "external",
+            "SARJ484": 0,
+            "duplicateLocations": 0,
+            "SARJ310_projection": 0
+          },
+          "after": {
+            "classifier": "inline",
+            "SARJ484": 1,
+            "duplicateLocations": 0,
+            "SARJ310_projection": 1
+          },
+          "native": {
+            "returncode": 0,
+            "stdout": "1\n",
+            "stderr": ""
+          },
+          "label": "positive"
+        },
+        {
+          "id": "ruby-source-in-cluster",
+          "argv": [
+            "ruby",
+            "-we",
+            "puts 1"
+          ],
+          "expectedClassifier": "inline",
+          "expectedDiagnosticCount": 1,
+          "before": {
+            "classifier": "inline",
+            "SARJ484": 1,
+            "duplicateLocations": 0,
+            "SARJ310_projection": 1
+          },
+          "after": {
+            "classifier": "inline",
+            "SARJ484": 1,
+            "duplicateLocations": 0,
+            "SARJ310_projection": 1
+          },
+          "native": {
+            "returncode": 0,
+            "stdout": "1\n",
+            "stderr": ""
+          },
+          "label": "positive"
+        },
+        {
+          "id": "ruby-empty-source",
+          "argv": [
+            "ruby",
+            "-e",
+            ""
+          ],
+          "expectedClassifier": "inline",
+          "expectedDiagnosticCount": 1,
+          "before": {
+            "classifier": "inline",
+            "SARJ484": 1,
+            "duplicateLocations": 0,
+            "SARJ310_projection": null,
+            "SARJ310_coverage_error": "invalid shfmt literal"
+          },
+          "after": {
+            "classifier": "inline",
+            "SARJ484": 1,
+            "duplicateLocations": 0,
+            "SARJ310_projection": null,
+            "SARJ310_coverage_error": "invalid shfmt literal"
+          },
+          "native": {
+            "returncode": 0,
+            "stdout": "",
+            "stderr": ""
+          },
+          "label": "positive"
+        },
+        {
+          "id": "ruby-field-attached",
+          "argv": [
+            "ruby",
+            "-Fe",
+            "program.rb"
+          ],
+          "expectedClassifier": "external",
+          "expectedDiagnosticCount": 0,
+          "before": {
+            "classifier": "inline",
+            "SARJ484": 1,
+            "duplicateLocations": 0,
+            "SARJ310_projection": 1
+          },
+          "after": {
+            "classifier": "external",
+            "SARJ484": 0,
+            "duplicateLocations": 0,
+            "SARJ310_projection": 0
+          },
+          "native": {
+            "returncode": 0,
+            "stdout": "2\n",
+            "stderr": ""
+          },
+          "label": "negative-or-near-miss"
+        },
+        {
+          "id": "ruby-field-separated-file",
+          "argv": [
+            "ruby",
+            "-F",
+            "e",
+            "-e",
+            "puts 1"
+          ],
+          "expectedClassifier": "external",
+          "expectedDiagnosticCount": 0,
+          "before": {
+            "classifier": "external",
+            "SARJ484": 0,
+            "duplicateLocations": 0,
+            "SARJ310_projection": 0
+          },
+          "after": {
+            "classifier": "external",
+            "SARJ484": 0,
+            "duplicateLocations": 0,
+            "SARJ310_projection": 0
+          },
+          "native": {
+            "returncode": 0,
+            "stdout": "2\n",
+            "stderr": ""
+          },
+          "label": "negative-or-near-miss"
+        },
+        {
+          "id": "ruby-field-separated-source",
+          "argv": [
+            "ruby",
+            "-F",
+            "-e",
+            "puts 1"
+          ],
+          "expectedClassifier": "inline",
+          "expectedDiagnosticCount": 1,
+          "before": {
+            "classifier": "inline",
+            "SARJ484": 1,
+            "duplicateLocations": 0,
+            "SARJ310_projection": 1
+          },
+          "after": {
+            "classifier": "inline",
+            "SARJ484": 1,
+            "duplicateLocations": 0,
+            "SARJ310_projection": 1
+          },
+          "native": {
+            "returncode": 0,
+            "stdout": "1\n",
+            "stderr": ""
+          },
+          "label": "positive"
+        },
+        {
+          "id": "ruby-extension-attached",
+          "argv": [
+            "ruby",
+            "-ie",
+            "program.rb"
+          ],
+          "expectedClassifier": "external",
+          "expectedDiagnosticCount": 0,
+          "before": {
+            "classifier": "inline",
+            "SARJ484": 1,
+            "duplicateLocations": 0,
+            "SARJ310_projection": 1
+          },
+          "after": {
+            "classifier": "external",
+            "SARJ484": 0,
+            "duplicateLocations": 0,
+            "SARJ310_projection": 0
+          },
+          "native": {
+            "returncode": 0,
+            "stdout": "2\n",
+            "stderr": ""
+          },
+          "label": "negative-or-near-miss"
+        },
+        {
+          "id": "ruby-extension-without-operand",
+          "argv": [
+            "ruby",
+            "-i",
+            "-e",
+            "puts 1"
+          ],
+          "expectedClassifier": "inline",
+          "expectedDiagnosticCount": 1,
+          "before": {
+            "classifier": "inline",
+            "SARJ484": 1,
+            "duplicateLocations": 0,
+            "SARJ310_projection": 1
+          },
+          "after": {
+            "classifier": "inline",
+            "SARJ484": 1,
+            "duplicateLocations": 0,
+            "SARJ310_projection": 1
+          },
+          "native": {
+            "returncode": 0,
+            "stdout": "1\n",
+            "stderr": ""
+          },
+          "label": "positive"
+        },
+        {
+          "id": "ruby-directory-attached-source-text",
+          "argv": [
+            "ruby",
+            "-xe",
+            "program.rb"
+          ],
+          "expectedClassifier": "external",
+          "expectedDiagnosticCount": 0,
+          "before": {
+            "classifier": "inline",
+            "SARJ484": 1,
+            "duplicateLocations": 0,
+            "SARJ310_projection": 1
+          },
+          "after": {
+            "classifier": "external",
+            "SARJ484": 0,
+            "duplicateLocations": 0,
+            "SARJ310_projection": 0
+          },
+          "native": {
+            "returncode": 0,
+            "stdout": "2\n",
+            "stderr": ""
+          },
+          "label": "negative-or-near-miss"
+        },
+        {
+          "id": "ruby-require-operand-source-text",
+          "argv": [
+            "ruby",
+            "-r",
+            "-e",
+            "program.rb"
+          ],
+          "expectedClassifier": "external",
+          "expectedDiagnosticCount": 0,
+          "before": {
+            "classifier": "inline",
+            "SARJ484": 1,
+            "duplicateLocations": 0,
+            "SARJ310_projection": 1
+          },
+          "after": {
+            "classifier": "external",
+            "SARJ484": 0,
+            "duplicateLocations": 0,
+            "SARJ310_projection": 0
+          },
+          "native": {
+            "returncode": 1,
+            "stdout": "",
+            "stderr": "/System/Library/Frameworks/Ruby.framework/Versions/2.6/usr/lib/ruby/2.6.0/rubygems/core_ext/kernel_require.rb:54:in `require': cannot load such file -- -e (LoadError)\n\tfrom /System/Library/Frameworks/Ruby.framework/Versions/2.6/usr/lib/ruby"
+          },
+          "label": "negative-or-near-miss"
+        },
+        {
+          "id": "ruby-file-boundary",
+          "argv": [
+            "ruby",
+            "-r",
+            "json",
+            "program.rb",
+            "-e",
+            "puts 1"
+          ],
+          "expectedClassifier": "external",
+          "expectedDiagnosticCount": 0,
+          "before": {
+            "classifier": "external",
+            "SARJ484": 0,
+            "duplicateLocations": 0,
+            "SARJ310_projection": 0
+          },
+          "after": {
+            "classifier": "external",
+            "SARJ484": 0,
+            "duplicateLocations": 0,
+            "SARJ310_projection": 0
+          },
+          "native": {
+            "returncode": 0,
+            "stdout": "2\n",
+            "stderr": ""
+          },
+          "label": "negative-or-near-miss"
+        },
+        {
+          "id": "ruby-option-boundary",
+          "argv": [
+            "ruby",
+            "-r",
+            "json",
+            "--",
+            "-e",
+            "puts 1"
+          ],
+          "expectedClassifier": "external",
+          "expectedDiagnosticCount": 0,
+          "before": {
+            "classifier": "external",
+            "SARJ484": 0,
+            "duplicateLocations": 0,
+            "SARJ310_projection": 0
+          },
+          "after": {
+            "classifier": "external",
+            "SARJ484": 0,
+            "duplicateLocations": 0,
+            "SARJ310_projection": 0
+          },
+          "native": {
+            "returncode": 0,
+            "stdout": "2\n",
+            "stderr": ""
+          },
+          "label": "negative-or-near-miss"
+        },
+        {
+          "id": "ruby-plus-file-boundary",
+          "argv": [
+            "ruby",
+            "+e",
+            "puts 1"
+          ],
+          "expectedClassifier": "external",
+          "expectedDiagnosticCount": 0,
+          "before": {
+            "classifier": "inline",
+            "SARJ484": 1,
+            "duplicateLocations": 0,
+            "SARJ310_projection": 1
+          },
+          "after": {
+            "classifier": "external",
+            "SARJ484": 0,
+            "duplicateLocations": 0,
+            "SARJ310_projection": 0
+          },
+          "native": {
+            "returncode": 0,
+            "stdout": "2\n",
+            "stderr": ""
+          },
+          "label": "negative-or-near-miss"
+        },
+        {
+          "id": "ruby-missing-source",
+          "argv": [
+            "ruby",
+            "-e"
+          ],
+          "expectedClassifier": "unknown",
+          "expectedDiagnosticCount": 0,
+          "before": {
+            "classifier": "inline",
+            "SARJ484": 1,
+            "duplicateLocations": 0,
+            "SARJ310_projection": 1
+          },
+          "after": {
+            "classifier": "unknown",
+            "SARJ484": 0,
+            "duplicateLocations": 0,
+            "SARJ310_projection": null,
+            "SARJ310_coverage_error": "interpreter option grammar cannot be proven"
+          },
+          "native": {
+            "returncode": 1,
+            "stdout": "",
+            "stderr": "ruby: no code specified for -e (RuntimeError)\n"
+          },
+          "label": "malformed-or-ambiguous"
+        },
+        {
+          "id": "ruby-missing-encoding",
+          "argv": [
+            "ruby",
+            "-E"
+          ],
+          "expectedClassifier": "unknown",
+          "expectedDiagnosticCount": 0,
+          "before": {
+            "classifier": "stdin",
+            "SARJ484": 0,
+            "duplicateLocations": 0,
+            "SARJ310_projection": 0
+          },
+          "after": {
+            "classifier": "unknown",
+            "SARJ484": 0,
+            "duplicateLocations": 0,
+            "SARJ310_projection": null,
+            "SARJ310_coverage_error": "interpreter option grammar cannot be proven"
+          },
+          "native": {
+            "returncode": 1,
+            "stdout": "",
+            "stderr": "ruby: missing argument for -E (RuntimeError)\n"
+          },
+          "label": "malformed-or-ambiguous"
+        },
+        {
+          "id": "ruby-missing-require",
+          "argv": [
+            "ruby",
+            "-r"
+          ],
+          "expectedClassifier": "unknown",
+          "expectedDiagnosticCount": 0,
+          "before": {
+            "classifier": "stdin",
+            "SARJ484": 0,
+            "duplicateLocations": 0,
+            "SARJ310_projection": 0
+          },
+          "after": {
+            "classifier": "unknown",
+            "SARJ484": 0,
+            "duplicateLocations": 0,
+            "SARJ310_projection": null,
+            "SARJ310_coverage_error": "interpreter option grammar cannot be proven"
+          },
+          "native": {
+            "returncode": 0,
+            "stdout": "",
+            "stderr": ""
+          },
+          "label": "malformed-or-ambiguous"
+        },
+        {
+          "id": "ruby-missing-long-operand",
+          "argv": [
+            "ruby",
+            "--encoding"
+          ],
+          "expectedClassifier": "unknown",
+          "expectedDiagnosticCount": 0,
+          "before": {
+            "classifier": "stdin",
+            "SARJ484": 0,
+            "duplicateLocations": 0,
+            "SARJ310_projection": 0
+          },
+          "after": {
+            "classifier": "unknown",
+            "SARJ484": 0,
+            "duplicateLocations": 0,
+            "SARJ310_projection": null,
+            "SARJ310_coverage_error": "interpreter option grammar cannot be proven"
+          },
+          "native": {
+            "returncode": 1,
+            "stdout": "",
+            "stderr": "ruby: missing argument for --encoding (RuntimeError)\n"
+          },
+          "label": "malformed-or-ambiguous"
+        },
+        {
+          "id": "ruby-unknown-short",
+          "argv": [
+            "ruby",
+            "-z",
+            "-e",
+            "puts 1"
+          ],
+          "expectedClassifier": "unknown",
+          "expectedDiagnosticCount": 0,
+          "before": {
+            "classifier": "inline",
+            "SARJ484": 1,
+            "duplicateLocations": 0,
+            "SARJ310_projection": 1
+          },
+          "after": {
+            "classifier": "unknown",
+            "SARJ484": 0,
+            "duplicateLocations": 0,
+            "SARJ310_projection": null,
+            "SARJ310_coverage_error": "interpreter option grammar cannot be proven"
+          },
+          "native": {
+            "returncode": 1,
+            "stdout": "",
+            "stderr": "ruby: invalid option -z  (-h will show valid options) (RuntimeError)\n"
+          },
+          "label": "malformed-or-ambiguous"
+        },
+        {
+          "id": "ruby-unknown-cluster",
+          "argv": [
+            "ruby",
+            "-ze",
+            "puts 1"
+          ],
+          "expectedClassifier": "unknown",
+          "expectedDiagnosticCount": 0,
+          "before": {
+            "classifier": "inline",
+            "SARJ484": 1,
+            "duplicateLocations": 0,
+            "SARJ310_projection": 1
+          },
+          "after": {
+            "classifier": "unknown",
+            "SARJ484": 0,
+            "duplicateLocations": 0,
+            "SARJ310_projection": null,
+            "SARJ310_coverage_error": "interpreter option grammar cannot be proven"
+          },
+          "native": {
+            "returncode": 1,
+            "stdout": "",
+            "stderr": "ruby: invalid option -z  (-h will show valid options) (RuntimeError)\n"
+          },
+          "label": "malformed-or-ambiguous"
+        },
+        {
+          "id": "ruby-unknown-long",
+          "argv": [
+            "ruby",
+            "--unknown",
+            "-e",
+            "puts 1"
+          ],
+          "expectedClassifier": "unknown",
+          "expectedDiagnosticCount": 0,
+          "before": {
+            "classifier": "inline",
+            "SARJ484": 1,
+            "duplicateLocations": 0,
+            "SARJ310_projection": 1
+          },
+          "after": {
+            "classifier": "unknown",
+            "SARJ484": 0,
+            "duplicateLocations": 0,
+            "SARJ310_projection": null,
+            "SARJ310_coverage_error": "interpreter option grammar cannot be proven"
+          },
+          "native": {
+            "returncode": 1,
+            "stdout": "",
+            "stderr": "ruby: invalid option --unknown  (-h will show valid options) (RuntimeError)\n"
+          },
+          "label": "malformed-or-ambiguous"
+        },
+        {
+          "id": "ruby-help",
+          "argv": [
+            "ruby",
+            "--help",
+            "-e",
+            "puts 1"
+          ],
+          "expectedClassifier": "external",
+          "expectedDiagnosticCount": 0,
+          "before": {
+            "classifier": "inline",
+            "SARJ484": 1,
+            "duplicateLocations": 0,
+            "SARJ310_projection": 1
+          },
+          "after": {
+            "classifier": "external",
+            "SARJ484": 0,
+            "duplicateLocations": 0,
+            "SARJ310_projection": 0
+          },
+          "native": {
+            "returncode": 0,
+            "stdout": "Usage: ruby [switches] [--] [programfile] [arguments]\n  -0[octal]       specify record separator (\\0, if no argument)\n  -a              autosplit mode with -n or -p (splits $_ into",
+            "stderr": ""
+          },
+          "label": "negative-or-near-miss"
+        },
+        {
+          "id": "ruby-short-help",
+          "argv": [
+            "ruby",
+            "-he",
+            "puts 1"
+          ],
+          "expectedClassifier": "external",
+          "expectedDiagnosticCount": 0,
+          "before": {
+            "classifier": "inline",
+            "SARJ484": 1,
+            "duplicateLocations": 0,
+            "SARJ310_projection": 1
+          },
+          "after": {
+            "classifier": "external",
+            "SARJ484": 0,
+            "duplicateLocations": 0,
+            "SARJ310_projection": 0
+          },
+          "native": {
+            "returncode": 0,
+            "stdout": "Usage: ruby [switches] [--] [programfile] [arguments]\n  -0[octal]       specify record separator (\\0, if no argument)\n  -a              autosplit mode with -n or -p (splits $_ into",
+            "stderr": ""
+          },
+          "label": "negative-or-near-miss"
+        },
+        {
+          "id": "ruby-version",
+          "argv": [
+            "ruby",
+            "--version",
+            "-e",
+            "puts 1"
+          ],
+          "expectedClassifier": "external",
+          "expectedDiagnosticCount": 0,
+          "before": {
+            "classifier": "inline",
+            "SARJ484": 1,
+            "duplicateLocations": 0,
+            "SARJ310_projection": 1
+          },
+          "after": {
+            "classifier": "external",
+            "SARJ484": 0,
+            "duplicateLocations": 0,
+            "SARJ310_projection": 0
+          },
+          "native": {
+            "returncode": 0,
+            "stdout": "ruby 2.6.10p210 (2022-04-12 revision 67958) [universal.arm64e-darwin26]\n",
+            "stderr": ""
+          },
+          "label": "negative-or-near-miss"
+        },
+        {
+          "id": "ruby-version-verbose",
+          "argv": [
+            "ruby",
+            "-v",
+            "-e",
+            "puts 1"
+          ],
+          "expectedClassifier": "inline",
+          "expectedDiagnosticCount": 1,
+          "before": {
+            "classifier": "inline",
+            "SARJ484": 1,
+            "duplicateLocations": 0,
+            "SARJ310_projection": 1
+          },
+          "after": {
+            "classifier": "inline",
+            "SARJ484": 1,
+            "duplicateLocations": 0,
+            "SARJ310_projection": 1
+          },
+          "native": {
+            "returncode": 0,
+            "stdout": "ruby 2.6.10p210 (2022-04-12 revision 67958) [universal.arm64e-darwin26]\n1\n",
+            "stderr": ""
+          },
+          "label": "positive"
+        },
+        {
+          "id": "ruby-warnings-operand",
+          "argv": [
+            "ruby",
+            "-W2",
+            "-e",
+            "puts 1"
+          ],
+          "expectedClassifier": "inline",
+          "expectedDiagnosticCount": 1,
+          "before": {
+            "classifier": "inline",
+            "SARJ484": 1,
+            "duplicateLocations": 0,
+            "SARJ310_projection": 1
+          },
+          "after": {
+            "classifier": "inline",
+            "SARJ484": 1,
+            "duplicateLocations": 0,
+            "SARJ310_projection": 1
+          },
+          "native": {
+            "returncode": 0,
+            "stdout": "1\n",
+            "stderr": ""
+          },
+          "label": "positive"
+        },
+        {
+          "id": "ruby-record-separator",
+          "argv": [
+            "ruby",
+            "-0777",
+            "-e",
+            "puts 1"
+          ],
+          "expectedClassifier": "inline",
+          "expectedDiagnosticCount": 1,
+          "before": {
+            "classifier": "inline",
+            "SARJ484": 1,
+            "duplicateLocations": 0,
+            "SARJ310_projection": 1
+          },
+          "after": {
+            "classifier": "inline",
+            "SARJ484": 1,
+            "duplicateLocations": 0,
+            "SARJ310_projection": 1
+          },
+          "native": {
+            "returncode": 0,
+            "stdout": "1\n",
+            "stderr": ""
+          },
+          "label": "positive"
+        },
+        {
+          "id": "ruby-wrapper",
+          "argv": [
+            "env",
+            "MODE=test",
+            "ruby",
+            "-r",
+            "json",
+            "-e",
+            "puts 1"
+          ],
+          "expectedClassifier": "inline",
+          "expectedDiagnosticCount": 1,
+          "before": {
+            "classifier": "external",
+            "SARJ484": 0,
+            "duplicateLocations": 0,
+            "SARJ310_projection": 0
+          },
+          "after": {
+            "classifier": "inline",
+            "SARJ484": 1,
+            "duplicateLocations": 0,
+            "SARJ310_projection": 1
+          },
+          "label": "positive"
+        },
+        {
+          "id": "ruby-query-wrapper",
+          "argv": [
+            "command",
+            "-v",
+            "ruby",
+            "-e",
+            "puts 1"
+          ],
+          "expectedClassifier": "other",
+          "expectedDiagnosticCount": 0,
+          "before": {
+            "classifier": "other",
+            "SARJ484": 0,
+            "duplicateLocations": 0,
+            "SARJ310_projection": 0
+          },
+          "after": {
+            "classifier": "other",
+            "SARJ484": 0,
+            "duplicateLocations": 0,
+            "SARJ310_projection": 0
+          },
+          "label": "negative-or-near-miss"
+        },
+        {
+          "id": "ruby-unproven-wrapper",
+          "argv": [
+            "env",
+            "-S",
+            "ruby -e 'puts 1'"
+          ],
+          "expectedClassifier": "unknown",
+          "expectedDiagnosticCount": 0,
+          "before": {
+            "classifier": "unknown",
+            "SARJ484": 0,
+            "duplicateLocations": 0,
+            "SARJ310_projection": null,
+            "SARJ310_coverage_error": "invalid shfmt literal"
+          },
+          "after": {
+            "classifier": "unknown",
+            "SARJ484": 0,
+            "duplicateLocations": 0,
+            "SARJ310_projection": null,
+            "SARJ310_coverage_error": "invalid shfmt literal"
+          },
+          "label": "malformed-or-ambiguous"
+        },
+        {
+          "id": "python-options",
+          "argv": [
+            "python3",
+            "-W",
+            "once",
+            "-Xdev",
+            "-c",
+            "print(1)"
+          ],
+          "expectedClassifier": "inline",
+          "expectedDiagnosticCount": 1,
+          "before": {
+            "classifier": "inline",
+            "SARJ484": 1,
+            "duplicateLocations": 0,
+            "SARJ310_projection": 1
+          },
+          "after": {
+            "classifier": "inline",
+            "SARJ484": 1,
+            "duplicateLocations": 0,
+            "SARJ310_projection": 1
+          },
+          "label": "positive"
+        },
+        {
+          "id": "python-operand-source-text",
+          "argv": [
+            "python3",
+            "-W",
+            "-c",
+            "program.py"
+          ],
+          "expectedClassifier": "external",
+          "expectedDiagnosticCount": 0,
+          "before": {
+            "classifier": "external",
+            "SARJ484": 0,
+            "duplicateLocations": 0,
+            "SARJ310_projection": 0
+          },
+          "after": {
+            "classifier": "external",
+            "SARJ484": 0,
+            "duplicateLocations": 0,
+            "SARJ310_projection": 0
+          },
+          "label": "negative-or-near-miss"
+        },
+        {
+          "id": "python-module",
+          "argv": [
+            "python3",
+            "-m",
+            "tools.check",
+            "-c",
+            "1"
+          ],
+          "expectedClassifier": "external",
+          "expectedDiagnosticCount": 0,
+          "before": {
+            "classifier": "external",
+            "SARJ484": 0,
+            "duplicateLocations": 0,
+            "SARJ310_projection": 0
+          },
+          "after": {
+            "classifier": "external",
+            "SARJ484": 0,
+            "duplicateLocations": 0,
+            "SARJ310_projection": 0
+          },
+          "label": "negative-or-near-miss"
+        },
+        {
+          "id": "python-missing-source",
+          "argv": [
+            "python3",
+            "-c"
+          ],
+          "expectedClassifier": "unknown",
+          "expectedDiagnosticCount": 0,
+          "before": {
+            "classifier": "unknown",
+            "SARJ484": 0,
+            "duplicateLocations": 0,
+            "SARJ310_projection": null,
+            "SARJ310_coverage_error": "interpreter option grammar cannot be proven"
+          },
+          "after": {
+            "classifier": "unknown",
+            "SARJ484": 0,
+            "duplicateLocations": 0,
+            "SARJ310_projection": null,
+            "SARJ310_coverage_error": "interpreter option grammar cannot be proven"
+          },
+          "label": "malformed-or-ambiguous"
+        },
+        {
+          "id": "node-preloader",
+          "argv": [
+            "node",
+            "--require",
+            "preload.js",
+            "-e",
+            "1"
+          ],
+          "expectedClassifier": "inline",
+          "expectedDiagnosticCount": 1,
+          "before": {
+            "classifier": "inline",
+            "SARJ484": 1,
+            "duplicateLocations": 0,
+            "SARJ310_projection": 1
+          },
+          "after": {
+            "classifier": "inline",
+            "SARJ484": 1,
+            "duplicateLocations": 0,
+            "SARJ310_projection": 1
+          },
+          "label": "positive"
+        },
+        {
+          "id": "node-attached-preloader",
+          "argv": [
+            "node",
+            "-rpreload.js",
+            "program.js",
+            "-e",
+            "1"
+          ],
+          "expectedClassifier": "external",
+          "expectedDiagnosticCount": 0,
+          "before": {
+            "classifier": "external",
+            "SARJ484": 0,
+            "duplicateLocations": 0,
+            "SARJ310_projection": 0
+          },
+          "after": {
+            "classifier": "external",
+            "SARJ484": 0,
+            "duplicateLocations": 0,
+            "SARJ310_projection": 0
+          },
+          "label": "negative-or-near-miss"
+        },
+        {
+          "id": "jq-arguments",
+          "argv": [
+            "jq",
+            "--arg",
+            "mode",
+            "strict",
+            ".items"
+          ],
+          "expectedClassifier": "inline",
+          "expectedDiagnosticCount": 1,
+          "before": {
+            "classifier": "inline",
+            "SARJ484": 1,
+            "duplicateLocations": 0,
+            "SARJ310_projection": 1
+          },
+          "after": {
+            "classifier": "inline",
+            "SARJ484": 1,
+            "duplicateLocations": 0,
+            "SARJ310_projection": 1
+          },
+          "label": "positive"
+        },
+        {
+          "id": "jq-file",
+          "argv": [
+            "jq",
+            "--arg",
+            "mode",
+            "strict",
+            "-f",
+            "filter.jq"
+          ],
+          "expectedClassifier": "external",
+          "expectedDiagnosticCount": 0,
+          "before": {
+            "classifier": "external",
+            "SARJ484": 0,
+            "duplicateLocations": 0,
+            "SARJ310_projection": 0
+          },
+          "after": {
+            "classifier": "external",
+            "SARJ484": 0,
+            "duplicateLocations": 0,
+            "SARJ310_projection": 0
+          },
+          "label": "negative-or-near-miss"
+        },
+        {
+          "id": "awk-arguments",
+          "argv": [
+            "awk",
+            "-v",
+            "mode=strict",
+            "{print 1}"
+          ],
+          "expectedClassifier": "inline",
+          "expectedDiagnosticCount": 1,
+          "before": {
+            "classifier": "inline",
+            "SARJ484": 1,
+            "duplicateLocations": 0,
+            "SARJ310_projection": 1
+          },
+          "after": {
+            "classifier": "inline",
+            "SARJ484": 1,
+            "duplicateLocations": 0,
+            "SARJ310_projection": 1
+          },
+          "label": "positive"
+        },
+        {
+          "id": "awk-file",
+          "argv": [
+            "awk",
+            "-v",
+            "mode=strict",
+            "-f",
+            "filter.awk"
+          ],
+          "expectedClassifier": "external",
+          "expectedDiagnosticCount": 0,
+          "before": {
+            "classifier": "external",
+            "SARJ484": 0,
+            "duplicateLocations": 0,
+            "SARJ310_projection": 0
+          },
+          "after": {
+            "classifier": "external",
+            "SARJ484": 0,
+            "duplicateLocations": 0,
+            "SARJ310_projection": 0
+          },
+          "label": "negative-or-near-miss"
+        },
+        {
+          "id": "shell-cluster",
+          "argv": [
+            "bash",
+            "-ceu",
+            "make check"
+          ],
+          "expectedClassifier": "shell",
+          "expectedDiagnosticCount": 0,
+          "before": {
+            "classifier": "shell",
+            "SARJ484": 0,
+            "duplicateLocations": 0,
+            "SARJ310_projection": 0
+          },
+          "after": {
+            "classifier": "shell",
+            "SARJ484": 0,
+            "duplicateLocations": 0,
+            "SARJ310_projection": 0
+          },
+          "label": "negative-or-near-miss"
+        },
+        {
+          "id": "perl-include",
+          "argv": [
+            "perl",
+            "-I",
+            ".",
+            "-e",
+            "print 1"
+          ],
+          "expectedClassifier": "inline",
+          "expectedDiagnosticCount": 1,
+          "before": {
+            "classifier": "inline",
+            "SARJ484": 1,
+            "duplicateLocations": 0,
+            "SARJ310_projection": 1
+          },
+          "after": {
+            "classifier": "inline",
+            "SARJ484": 1,
+            "duplicateLocations": 0,
+            "SARJ310_projection": 1
+          },
+          "label": "positive"
+        },
+        {
+          "id": "php-source",
+          "argv": [
+            "php",
+            "-r",
+            "echo 1;"
+          ],
+          "expectedClassifier": "inline",
+          "expectedDiagnosticCount": 1,
+          "before": {
+            "classifier": "inline",
+            "SARJ484": 1,
+            "duplicateLocations": 0,
+            "SARJ310_projection": 1
+          },
+          "after": {
+            "classifier": "inline",
+            "SARJ484": 1,
+            "duplicateLocations": 0,
+            "SARJ310_projection": 1
+          },
+          "label": "positive"
+        }
+      ],
+      "commandsAndResults": [
+        {
+          "command": "git rev-parse HEAD",
+          "result": "immutable merged baseline verified before edits: 120f8cf3b893a24e60c15ec7bff05c63bc8ec10f"
+        },
+        {
+          "command": "ruby --version; ruby --help",
+          "result": "Native Ruby 2.6.10p210 available; options examined. Primary docs and native source independently checked."
+        },
+        {
+          "command": "packages/standards/.venv/bin/python /private/tmp/sarj-devops-pass-03-repro.py /private/tmp/sarj-devops-pass-03-before.json",
+          "result": "29 initial labeled cases; 13 SARJ484 and SARJ310 mismatches before fix; native Ruby confirmed separate require inline execution."
+        },
+        {
+          "command": "packages/standards/.venv/bin/python /private/tmp/sarj-devops-pass-03-parity.py",
+          "result": {
+            "cases": 54,
+            "nativeRubyCases": 38,
+            "before": {
+              "TP": 21,
+              "TN": 15,
+              "FP": 12,
+              "FN": 6,
+              "duplicateLocations": 0,
+              "SARJ310ResolvedMismatches": 18,
+              "SARJ310CoverageErrors": 3
+            },
+            "after": {
+              "TP": 27,
+              "TN": 27,
+              "FP": 0,
+              "FN": 0,
+              "duplicateLocations": 0,
+              "SARJ310ResolvedMismatches": 0,
+              "SARJ310CoverageErrors": 10
+            },
+            "artifact": "/private/tmp/sarj-devops-pass-03-parity.json"
+          }
+        },
+        {
+          "command": "packages/python/.venv/bin/python -m pytest packages/python/tests/test_interpreter_argv.py packages/python/tests/rules/test_no_interpreter_source_arguments.py -q",
+          "result": "97 passed in 0.07s"
+        },
+        {
+          "command": "packages/standards/.venv/bin/python -m pytest packages/standards/tests/test_devops_programs.py -q",
+          "result": "100 passed in 3.17s"
+        },
+        {
+          "command": "packages/python/.venv/bin/python -m ruff check packages/python/src/sarj_python_lint/interpreter_argv.py packages/python/tests/test_interpreter_argv.py",
+          "result": "All checks passed"
+        },
+        {
+          "command": "packages/python/.venv/bin/python -m ruff format --check packages/python/src/sarj_python_lint/interpreter_argv.py packages/python/tests/test_interpreter_argv.py",
+          "result": "2 files already formatted"
+        },
+        {
+          "command": "(cwd packages/python) .venv/bin/basedpyright src/sarj_python_lint/interpreter_argv.py tests/test_interpreter_argv.py",
+          "result": "0 errors, 0 warnings, 0 notes"
+        },
+        {
+          "command": "packages/standards/.venv/bin/code-standards --root . check packages/python/src/sarj_python_lint/interpreter_argv.py packages/python/tests/test_interpreter_argv.py --format json > /private/tmp/sarj-devops-pass-03-selfcheck.json",
+          "result": "complete/passed/exit0; zero diagnostics/issues; native Ruff, BasedPyright, Deptry, repo-standards, sarj-library-policy, sarj-python-lint all complete"
+        },
+        {
+          "command": "git diff --check -- packages/python/src/sarj_python_lint/interpreter_argv.py packages/python/tests/test_interpreter_argv.py",
+          "result": "passed"
+        },
+        {
+          "command": "packages/python/.venv/bin/python /private/tmp/sarj-devops-pass-03-bench.py",
+          "result": "5 fresh warm benchmark processes/version, 7 warm samples/process, 29000calls/sample;5 separate cold processes/version; see metrics artifact"
+        }
+      ],
+      "metrics": {
+        "inputs": {
+          "cases": 29,
+          "argvBytes": 576,
+          "classificationsPerWarmSample": 29000,
+          "warmRepeatsPerProcess": 7,
+          "freshProcessesPerVersion": 5,
+          "classifierSubprocesses": 0
+        },
+        "measurements": {
+          "baseline": [
+            {
+              "warmBenchmarkProcessTotalMs": 584.1901251114905,
+              "warmMedianMsPer29000": 74.85824986360967,
+              "warmSamplesMs": [
+                75.494582997635,
+                74.85824986360967,
+                74.01516707614064,
+                75.14079194515944,
+                75.14770794659853,
+                73.85866693221033,
+                73.28191702254117
+              ],
+              "firstImportMs": 7.43133295327425,
+              "peakRssBytes": 31227904
+            },
+            {
+              "warmBenchmarkProcessTotalMs": 578.9372080471367,
+              "warmMedianMsPer29000": 75.98958280868828,
+              "warmSamplesMs": [
+                75.98958280868828,
+                76.20645803399384,
+                75.90624992735684,
+                76.36937499046326,
+                76.50887500494719,
+                75.66562504507601,
+                75.91137499548495
+              ],
+              "firstImportMs": 5.337249953299761,
+              "peakRssBytes": 29278208
+            },
+            {
+              "warmBenchmarkProcessTotalMs": 601.2762919999659,
+              "warmMedianMsPer29000": 75.36812499165535,
+              "warmSamplesMs": [
+                75.77408314682543,
+                74.50683391653001,
+                77.84241694025695,
+                74.77733399719,
+                76.46737503819168,
+                75.36812499165535,
+                75.07954188622534
+              ],
+              "firstImportMs": 7.325167069211602,
+              "peakRssBytes": 29868032
+            },
+            {
+              "warmBenchmarkProcessTotalMs": 648.0093339923769,
+              "warmMedianMsPer29000": 75.88595896959305,
+              "warmSamplesMs": [
+                76.0972909629345,
+                77.43333303369582,
+                76.26708294264972,
+                74.95312509126961,
+                74.82629106380045,
+                74.87841695547104,
+                75.88595896959305
+              ],
+              "firstImportMs": 5.7952499482780695,
+              "peakRssBytes": 29392896
+            },
+            {
+              "warmBenchmarkProcessTotalMs": 583.9713329914957,
+              "warmMedianMsPer29000": 76.84258301742375,
+              "warmSamplesMs": [
+                75.32516703940928,
+                77.6118328794837,
+                76.83466700837016,
+                76.96770899929106,
+                79.64920811355114,
+                76.84258301742375,
+                76.10245794057846
+              ],
+              "firstImportMs": 5.27483387850225,
+              "peakRssBytes": 29294592
+            }
+          ],
+          "current": [
+            {
+              "warmBenchmarkProcessTotalMs": 611.6731250658631,
+              "warmMedianMsPer29000": 80.88345895521343,
+              "warmSamplesMs": [
+                81.03579189628363,
+                81.39058295637369,
+                81.69983304105699,
+                80.88345895521343,
+                80.46779199503362,
+                80.46458405442536,
+                80.57929202914238
+              ],
+              "firstImportMs": 5.358916940167546,
+              "peakRssBytes": 29343744
+            },
+            {
+              "warmBenchmarkProcessTotalMs": 620.5766669008881,
+              "warmMedianMsPer29000": 82.08920806646347,
+              "warmSamplesMs": [
+                82.08920806646347,
+                80.53695899434388,
+                82.1021250449121,
+                83.21433304809034,
+                80.34154190681875,
+                79.90479120053351,
+                84.57054197788239
+              ],
+              "firstImportMs": 5.3703750018030405,
+              "peakRssBytes": 29212672
+            },
+            {
+              "warmBenchmarkProcessTotalMs": 668.5647908598185,
+              "warmMedianMsPer29000": 81.1540000140667,
+              "warmSamplesMs": [
+                81.2882911413908,
+                81.1540000140667,
+                80.04091680049896,
+                80.21945902146399,
+                80.74670913629234,
+                81.29387488588691,
+                82.61737506836653
+              ],
+              "firstImportMs": 5.536833079531789,
+              "peakRssBytes": 29736960
+            },
+            {
+              "warmBenchmarkProcessTotalMs": 619.0234590321779,
+              "warmMedianMsPer29000": 81.5926669165492,
+              "warmSamplesMs": [
+                81.5926669165492,
+                80.94462496228516,
+                79.51404200866818,
+                84.0639581438154,
+                82.61554199270904,
+                85.26579197496176,
+                80.48775000497699
+              ],
+              "firstImportMs": 5.426625022664666,
+              "peakRssBytes": 29196288
+            },
+            {
+              "warmBenchmarkProcessTotalMs": 616.9426250271499,
+              "warmMedianMsPer29000": 81.0256670229137,
+              "warmSamplesMs": [
+                80.7304170448333,
+                82.58812478743494,
+                82.46770803816617,
+                80.78841702081263,
+                80.58620919473469,
+                81.74854191020131,
+                81.0256670229137
+              ],
+              "firstImportMs": 5.564374849200249,
+              "peakRssBytes": 29507584
+            }
+          ]
+        },
+        "summary": {
+          "baseline": {
+            "warmMedianMsPer29000": 75.88595896959305,
+            "warmBenchmarkProcessTotalMedianMs": 584.1901251114905,
+            "peakRssBytesMax": 31227904,
+            "freshProcessSingleBatchMedianMs": 47.93045902624726
+          },
+          "current": {
+            "warmMedianMsPer29000": 81.1540000140667,
+            "warmBenchmarkProcessTotalMedianMs": 619.0234590321779,
+            "peakRssBytesMax": 29736960,
+            "freshProcessSingleBatchMedianMs": 48.0357501655817
+          }
+        },
+        "coldMeasurements": {
+          "baseline": [
+            {
+              "freshProcessMs": 46.51649994775653,
+              "importAndSingleBatchMs": 5.810665898025036,
+              "peakRssBytes": 29474816
+            },
+            {
+              "freshProcessMs": 47.93045902624726,
+              "importAndSingleBatchMs": 6.064667133614421,
+              "peakRssBytes": 29605888
+            },
+            {
+              "freshProcessMs": 50.316291861236095,
+              "importAndSingleBatchMs": 6.189292063936591,
+              "peakRssBytes": 29835264
+            },
+            {
+              "freshProcessMs": 52.03854199498892,
+              "importAndSingleBatchMs": 6.225958000868559,
+              "peakRssBytes": 29884416
+            },
+            {
+              "freshProcessMs": 47.10429208353162,
+              "importAndSingleBatchMs": 6.0276249423623085,
+              "peakRssBytes": 29638656
+            }
+          ],
+          "current": [
+            {
+              "freshProcessMs": 48.0357501655817,
+              "importAndSingleBatchMs": 5.921500036492944,
+              "peakRssBytes": 29147136
+            },
+            {
+              "freshProcessMs": 46.06241616420448,
+              "importAndSingleBatchMs": 5.960917100310326,
+              "peakRssBytes": 29786112
+            },
+            {
+              "freshProcessMs": 49.2916249204427,
+              "importAndSingleBatchMs": 5.837959004566073,
+              "peakRssBytes": 29376512
+            },
+            {
+              "freshProcessMs": 48.72504202648997,
+              "importAndSingleBatchMs": 5.800749873742461,
+              "peakRssBytes": 29687808
+            },
+            {
+              "freshProcessMs": 47.974125016480684,
+              "importAndSingleBatchMs": 6.002167006954551,
+              "peakRssBytes": 29753344
+            }
+          ]
+        },
+        "fixtureEvaluation": {
+          "before": {
+            "TP": 21,
+            "TN": 15,
+            "FP": 12,
+            "FN": 6,
+            "duplicateLocations": 0,
+            "SARJ310ResolvedMismatches": 18,
+            "SARJ310CoverageErrors": 3
+          },
+          "after": {
+            "TP": 27,
+            "TN": 27,
+            "FP": 0,
+            "FN": 0,
+            "duplicateLocations": 0,
+            "SARJ310ResolvedMismatches": 0,
+            "SARJ310CoverageErrors": 10
+          },
+          "permanentLabeledCases": 54,
+          "sourcePayloadTests": 3,
+          "nativeRubyCases": 38,
+          "ownedFiles": 2,
+          "ownedSourceAndTestBytes": 19553
+        },
+        "interpretation": "No optimization claim. Repeated bounded warm median added about 0.18 microseconds per classification; fresh-process single-batch medians about48ms both. Concurrent-agent environment makes small timing/RSS differences noisy. Classifier starts0subprocesses; native semantics validation and benchmark orchestration use explicit fresh subprocesses."
+      },
+      "limitations": [
+        "No external corpora fetched, refreshed, or installed. Fixture controls establish bounded evidence only; no universal false-positive or performance claim.",
+        "Ruby unknown options, missing separate operands, unsupported complex numeric clusters/legacy flags, and experimental long option grammar abstain in Python; config analysis retains existing fail-closed coverage errors.",
+        "Ruby empty -e source is preserved by the classifier and SARJ484; SARJ310 already rejects empty source projection as a coverage error. This pre-existing payload admission behavior remains outside assigned scope.",
+        "Ruby2.6.10 executes38native controls; current primary Ruby3.4 docs support common operands. Legacy -X comes from2.6.10 primary source. Not all Ruby versions/dialects are executable locally.",
+        "The existing classifier returns upon a proven source flag; this pass does not validate Ruby source syntax/runtime dependencies or later options after that proven inline-source boundary.",
+        "Nearby Python/Node/jq/awk/shell/Perl/PHP grammars were regression-tested; their unsupported option grammars were not expanded by this Ruby-specific fix.",
+        "No process-provenance, shadowing, stdin, payload-scope, rule metadata, severity, versions, staging, commits, push, or merge changes. Root owns coherent full make verify and PR gate.",
+        "Initial formatter check identified one layout change and was corrected. Initial self-check --output to /private/tmp was rejected by the CLI root-path constraint; rerun redirected stdout to the requested temp artifact and passed."
+      ],
+      "conclusion": "revise existing owner: validated focused Ruby option-operand fix; ready for root integration.18SARJ484 fixture failures corrected; no known fixture false positives or false negatives afterward, no duplicate findings, and all resolved SARJ310 results agree.",
+      "sourceHashes": {
+        "baselineClassifierSha256": "492d296c9df2d2acd27f6907dc0b889005153174cbaa68dfa5266a7f94486dae",
+        "current": {
+          "packages/python/src/sarj_python_lint/interpreter_argv.py": "25fbcc2c038ee1d479e3701a97fa0fc4d0e185c7389dd9d245509155aaba930b",
+          "packages/python/tests/test_interpreter_argv.py": "dfd72cdf6f525b99cb7351d220bf5dd934c476281f01c6f028416c26ee199296"
+        }
+      },
+      "upstreamLinks": [
+        {
+          "url": "https://docs.ruby-lang.org/en/3.4/ruby/options_md.html",
+          "supports": "Required separate/attached -r/-I/-C/-E/-e operands; attached-only -F/-i/-x; help/version terminal behavior; long encoding flags."
+        },
+        {
+          "url": "https://raw.githubusercontent.com/ruby/ruby/v2_6_10/ruby.c",
+          "supports": "Native Ruby 2.6.10 parser cases r/I/C/X/E/e/F/i/x/h; unknown options raise before execution; legacy X directory alias."
+        },
+        {
+          "url": "https://docs.astral.sh/ruff/rules/subprocess-popen-with-shell-equals-true/",
+          "supports": "S602 owns shell invocation security, not interpreter argument source-location policy."
+        },
+        {
+          "url": "https://docs.astral.sh/ruff/rules/subprocess-without-shell-equals-true/",
+          "supports": "S603 warns about subprocess input validation generally, not Ruby option arity or repository inline-source policy."
+        }
+      ],
+      "artifacts": [
+        "/private/tmp/sarj-devops-pass-03-before.json",
+        "/private/tmp/sarj-devops-pass-03-parity.py",
+        "/private/tmp/sarj-devops-pass-03-parity.json",
+        "/private/tmp/sarj-devops-pass-03-bench.py",
+        "/private/tmp/sarj-devops-pass-03-metrics.json",
+        "/private/tmp/sarj-devops-pass-03-selfcheck.json"
+      ]
+    },
+    {
+      "passId": "postmerge-devops-pass-04-stream-hashes",
+      "scope": "Prepared artifact streaming SHA-256 verification at existing owning boundary; distinct agent review pass04.",
+      "baselineCommit": "120f8cf3b893a24e60c15ec7bff05c63bc8ec10f",
+      "ownerPaths": [
+        "packages/standards/src/sarj_standards/libs/linting/prepared_devops.py",
+        "packages/standards/tests/test_prepared_hashes.py"
+      ],
+      "admission": {
+        "passId": "postmerge-devops-04-stream-hashes",
+        "baselineCommit": "120f8cf3b893a24e60c15ec7bff05c63bc8ec10f",
+        "sourceHashBefore": "cd217a7fb6796ca9bf27fc6c75436e80123cf2ce11fd62838989bee870472d26",
+        "failureMode": "Public prepared admission retains a full artifact allocation solely to hash it: repeated 32 MiB fixture admissions show median traced peak 33,559,061 bytes.",
+        "existingOwner": "prepared_devops._verify_hash; called after contained_file on source, authored inputs, artifacts, and schema closure.",
+        "gap": "Path.read_bytes materializes entire artifact despite stdlib first-class streaming digest support.",
+        "harm": "Transient memory usage grows with each artifact's complete size; receipt bounds do not bound artifacts.",
+        "validStateDistinction": "This is resource behavior optimization, with no additional invalid state or frozen source spelling. Existing complete hash equality and admission failures are preserved.",
+        "smallestFix": "Use hashlib.file_digest(binary blocking Path.open stream, sha256 constructor) under a context manager only after the existing 64-character gate. Preserve ValueError text and OSError propagation to public analyze_prepared boundary.",
+        "beforeControls": "27 public-admission tests pass on pre-change verifier: valid empty/multi-chunk/2MiB files, receipt size bound, digest exactness across three boundaries, path guards, unreadable error and length short-circuit.",
+        "upstream": [
+          "https://docs.python.org/3.14/library/hashlib.html#hashlib.file_digest",
+          "https://github.com/python/cpython/blob/3.14/Lib/hashlib.py"
+        ]
+      },
+      "labeledCases": [
+        {
+          "label": "negative-valid",
+          "cases": [
+            "empty-artifact",
+            "262145-byte-multi-chunk",
+            "2MiB-artifact",
+            "repeated-admission",
+            "exact-2MiB-receipt",
+            "valid-authored-input"
+          ],
+          "result": "complete; repeated reports identical"
+        },
+        {
+          "label": "positive-invalid",
+          "cases": [
+            "wrong-digest",
+            "uppercase-digest",
+            "63-character",
+            "65-character",
+            "64-nonhex"
+          ],
+          "boundaries": [
+            "source",
+            "source_inputs",
+            "artifact"
+          ],
+          "count": 15,
+          "result": "exact existing invalid-input hash mismatch issue retained"
+        },
+        {
+          "label": "malformed-path",
+          "cases": [
+            "missing",
+            "file-symlink",
+            "directory-symlink",
+            "parent-escape",
+            "absolute",
+            "backslash"
+          ],
+          "count": 6,
+          "result": "exact existing invalid-input path issue retained"
+        },
+        {
+          "label": "near-miss",
+          "cases": [
+            "receipt-one-byte-over-limit",
+            "unreadable-with64-digest",
+            "unreadable-short-digest"
+          ],
+          "result": "receipt bound rejection; PermissionError retained; short digest produces mismatch without opening file"
+        },
+        {
+          "label": "changed-input",
+          "cases": [
+            "mutation-of-final-byte-after-successful-admission"
+          ],
+          "result": "rejects without cache; authored input hash checked"
+        },
+        {
+          "label": "resource-regression",
+          "cases": [
+            "8MiB-valid-artifact-bounded-public-admission-memory"
+          ],
+          "before": "fails budget: traced8394596bytes >=2097152",
+          "after": "passes budget; full content remains accepted"
+        }
+      ],
+      "commandsAndResults": [
+        {
+          "command": "packages/standards/.venv/bin/python -m pytest packages/standards/tests/test_prepared_hashes.py -q",
+          "phase": "before initial27 controls",
+          "result": "27 passed in0.31s"
+        },
+        {
+          "command": "PYTHONPATH=/private/tmp packages/standards/.venv/bin/python -m pytest -p sarj_devops_pass04_before_plugin packages/standards/tests/test_prepared_hashes.py -q",
+          "phase": "saved before verifier with final29 controls",
+          "result": "28 passed;1 expected resource regression failure (8394596byte peak)"
+        },
+        {
+          "command": "python -m pytest packages/standards/tests/test_prepared_hashes.py packages/standards/tests/test_prepared_devops.py packages/standards/tests/test_prepared_schema_closure.py -q",
+          "phase": "after",
+          "result": "73 passed in0.93s"
+        },
+        {
+          "command": "ruff check packages/standards/src/sarj_standards/libs/linting/prepared_devops.py packages/standards/tests/test_prepared_hashes.py",
+          "result": "All checks passed"
+        },
+        {
+          "command": "ruff format --check packages/standards/src/sarj_standards/libs/linting/prepared_devops.py packages/standards/tests/test_prepared_hashes.py",
+          "result": "2 files already formatted"
+        },
+        {
+          "command": "basedpyright --project packages/standards/pyrightconfig.json packages/standards/src/sarj_standards/libs/linting/prepared_devops.py packages/standards/tests/test_prepared_hashes.py",
+          "result": "0 errors,0 warnings,0 notes"
+        },
+        {
+          "command": "code-standards --root . check packages/standards/src/sarj_standards/libs/linting/prepared_devops.py packages/standards/tests/test_prepared_hashes.py",
+          "result": "0 errors,0 warnings,0 notices,0 execution issues",
+          "log": "/private/tmp/sarj-devops-pass-04-self-check.log"
+        },
+        {
+          "command": "packages/standards/.venv/bin/python /private/tmp/sarj-devops-pass-04-benchmark.py",
+          "phase": "before and after, separate saved JSON outputs",
+          "result": "3 identical bounded public fixtures; each11 warm,5 fresh-process and5 tracemalloc runs; all report representations identical"
+        }
+      ],
+      "commandEnvironment": {
+        "UV_CACHE_DIR": "/private/tmp/sarj-devops-uv-cache",
+        "PATHPrefix": [
+          "<checkout>/packages/standards/.venv/bin",
+          "/private/tmp/sarj-devops-pinned-uv/bin",
+          "<original-checkout>/packages/standards/.venv/bin"
+        ],
+        "python": "3.14.7 (main, Sep 24 2026, 17:46:50) [Clang 22.1.3 ]"
+      },
+      "metrics": [
+        {
+          "artifactBytes": 0,
+          "filesPerAdmission": 5,
+          "inputBytes": 677,
+          "nativeSubprocessesPerAdmission": 0,
+          "warmIterations": 11,
+          "freshProcessIterations": 5,
+          "peakIterations": 5,
+          "before": {
+            "artifact_bytes": 0,
+            "files": 5,
+            "input_bytes": 677,
+            "warm_samples": [
+              0.0015099591109901667,
+              0.0017545828595757484,
+              0.0015399579424411058,
+              0.001476250123232603,
+              0.001350250095129013,
+              0.0014110419433563948,
+              0.0014072500634938478,
+              0.001205249922350049,
+              0.0012718751095235348,
+              0.0016531669534742832,
+              0.0014014581684023142
+            ],
+            "warm_median_seconds": 0.0014110419433563948,
+            "peak_samples_bytes": [
+              144080,
+              143802,
+              143851,
+              143737,
+              144042
+            ],
+            "peak_median_bytes": 143851,
+            "fresh_process_samples_seconds": [
+              0.2478057499974966,
+              0.2504336249548942,
+              0.240020832978189,
+              0.2566899168305099,
+              0.2482753749936819
+            ],
+            "fresh_process_median_seconds": 0.2482753749936819,
+            "fresh_call_median_seconds": 0.0024888329207897186,
+            "native_subprocesses_per_call": 0,
+            "report": "ToolReport(name='prepared-devops:example', completion=<Completion.COMPLETE: 'complete'>, diagnostics=(), issues=(), analyzer_id=None, invocation_id=None, version=None, duration_ms=None, file_count=1, cache_status=<CacheStatus.DISABLED: 'disabled'>, baselined_count=0)"
+          },
+          "after": {
+            "artifact_bytes": 0,
+            "files": 5,
+            "input_bytes": 677,
+            "warm_samples": [
+              0.0017664169427007437,
+              0.0015194169245660305,
+              0.001537499949336052,
+              0.0013794589322060347,
+              0.001418332802131772,
+              0.0013132919557392597,
+              0.0013340420555323362,
+              0.001311207888647914,
+              0.0015827501192688942,
+              0.0013680420815944672,
+              0.0013612918555736542
+            ],
+            "warm_median_seconds": 0.0013794589322060347,
+            "peak_samples_bytes": [
+              398978,
+              398766,
+              398928,
+              398919,
+              398919
+            ],
+            "peak_median_bytes": 398919,
+            "fresh_process_samples_seconds": [
+              0.25246287509799004,
+              0.2445547911338508,
+              0.24443683307617903,
+              0.24435962503775954,
+              0.2544357089791447
+            ],
+            "fresh_process_median_seconds": 0.2445547911338508,
+            "fresh_call_median_seconds": 0.0025275000371038914,
+            "native_subprocesses_per_call": 0,
+            "report": "ToolReport(name='prepared-devops:example', completion=<Completion.COMPLETE: 'complete'>, diagnostics=(), issues=(), analyzer_id=None, invocation_id=None, version=None, duration_ms=None, file_count=1, cache_status=<CacheStatus.DISABLED: 'disabled'>, baselined_count=0)"
+          },
+          "tracedPeakReductionPercent": -177.31402631889944
+        },
+        {
+          "artifactBytes": 2097152,
+          "filesPerAdmission": 5,
+          "inputBytes": 2097829,
+          "nativeSubprocessesPerAdmission": 0,
+          "warmIterations": 11,
+          "freshProcessIterations": 5,
+          "peakIterations": 5,
+          "before": {
+            "artifact_bytes": 2097152,
+            "files": 5,
+            "input_bytes": 2097829,
+            "warm_samples": [
+              0.002392374910414219,
+              0.002146999817341566,
+              0.0022012919653207064,
+              0.002024458022788167,
+              0.002154499990865588,
+              0.002125666942447424,
+              0.0022270421031862497,
+              0.0022143330425024033,
+              0.0022621669340878725,
+              0.0020388751290738583,
+              0.002270708093419671
+            ],
+            "warm_median_seconds": 0.0022012919653207064,
+            "peak_samples_bytes": [
+              2101941,
+              2101941,
+              2101941,
+              2101781,
+              2101781
+            ],
+            "peak_median_bytes": 2101941,
+            "fresh_process_samples_seconds": [
+              0.24783770786598325,
+              0.24278495786711574,
+              0.24373249989002943,
+              0.2405510840471834,
+              0.2432737909257412
+            ],
+            "fresh_process_median_seconds": 0.2432737909257412,
+            "fresh_call_median_seconds": 0.0034542500507086515,
+            "native_subprocesses_per_call": 0,
+            "report": "ToolReport(name='prepared-devops:example', completion=<Completion.COMPLETE: 'complete'>, diagnostics=(), issues=(), analyzer_id=None, invocation_id=None, version=None, duration_ms=None, file_count=1, cache_status=<CacheStatus.DISABLED: 'disabled'>, baselined_count=0)"
+          },
+          "after": {
+            "artifact_bytes": 2097152,
+            "files": 5,
+            "input_bytes": 2097829,
+            "warm_samples": [
+              0.002102290978655219,
+              0.0019938331097364426,
+              0.001970167038962245,
+              0.002024458022788167,
+              0.00200662505812943,
+              0.0019927090033888817,
+              0.0024770419113337994,
+              0.002118583070114255,
+              0.0019343751482665539,
+              0.0019102918449789286,
+              0.001983584137633443
+            ],
+            "warm_median_seconds": 0.0019938331097364426,
+            "peak_samples_bytes": [
+              398876,
+              398817,
+              398766,
+              398876,
+              398818
+            ],
+            "peak_median_bytes": 398818,
+            "fresh_process_samples_seconds": [
+              0.2380802498664707,
+              0.23528099991381168,
+              0.24418016616255045,
+              0.25283895805478096,
+              0.24124279199168086
+            ],
+            "fresh_process_median_seconds": 0.24124279199168086,
+            "fresh_call_median_seconds": 0.003255625022575259,
+            "native_subprocesses_per_call": 0,
+            "report": "ToolReport(name='prepared-devops:example', completion=<Completion.COMPLETE: 'complete'>, diagnostics=(), issues=(), analyzer_id=None, invocation_id=None, version=None, duration_ms=None, file_count=1, cache_status=<CacheStatus.DISABLED: 'disabled'>, baselined_count=0)"
+          },
+          "tracedPeakReductionPercent": 81.02620387537043
+        },
+        {
+          "artifactBytes": 33554432,
+          "filesPerAdmission": 5,
+          "inputBytes": 33555109,
+          "nativeSubprocessesPerAdmission": 0,
+          "warmIterations": 11,
+          "freshProcessIterations": 5,
+          "peakIterations": 5,
+          "before": {
+            "artifact_bytes": 33554432,
+            "files": 5,
+            "input_bytes": 33555109,
+            "warm_samples": [
+              0.014836625196039677,
+              0.015031500020995736,
+              0.014643542002886534,
+              0.014513541013002396,
+              0.014583125011995435,
+              0.01491095800884068,
+              0.014722916996106505,
+              0.014778333948925138,
+              0.01486095879226923,
+              0.014733541058376431,
+              0.014379957923665643
+            ],
+            "warm_median_seconds": 0.014733541058376431,
+            "peak_samples_bytes": [
+              33559221,
+              33559060,
+              33559061,
+              33559061,
+              33559221
+            ],
+            "peak_median_bytes": 33559061,
+            "fresh_process_samples_seconds": [
+              0.2559457500465214,
+              0.26858183299191296,
+              0.2872556250076741,
+              0.28060666704550385,
+              0.2776511248666793
+            ],
+            "fresh_process_median_seconds": 0.2776511248666793,
+            "fresh_call_median_seconds": 0.01740975002758205,
+            "native_subprocesses_per_call": 0,
+            "report": "ToolReport(name='prepared-devops:example', completion=<Completion.COMPLETE: 'complete'>, diagnostics=(), issues=(), analyzer_id=None, invocation_id=None, version=None, duration_ms=None, file_count=1, cache_status=<CacheStatus.DISABLED: 'disabled'>, baselined_count=0)"
+          },
+          "after": {
+            "artifact_bytes": 33554432,
+            "files": 5,
+            "input_bytes": 33555109,
+            "warm_samples": [
+              0.014329874888062477,
+              0.014368792064487934,
+              0.013088040985167027,
+              0.01440174994058907,
+              0.0145321658346802,
+              0.014274999964982271,
+              0.014216958079487085,
+              0.01447100006043911,
+              0.01394441700540483,
+              0.014381250133737922,
+              0.014411709038540721
+            ],
+            "warm_median_seconds": 0.014368792064487934,
+            "peak_samples_bytes": [
+              398817,
+              398923,
+              398817,
+              398978,
+              398818
+            ],
+            "peak_median_bytes": 398818,
+            "fresh_process_samples_seconds": [
+              0.24172670813277364,
+              0.2461514170281589,
+              0.24940758291631937,
+              0.2521869170013815,
+              0.2513781669549644
+            ],
+            "fresh_process_median_seconds": 0.24940758291631937,
+            "fresh_call_median_seconds": 0.015066582942381501,
+            "native_subprocesses_per_call": 0,
+            "report": "ToolReport(name='prepared-devops:example', completion=<Completion.COMPLETE: 'complete'>, diagnostics=(), issues=(), analyzer_id=None, invocation_id=None, version=None, duration_ms=None, file_count=1, cache_status=<CacheStatus.DISABLED: 'disabled'>, baselined_count=0)"
+          },
+          "tracedPeakReductionPercent": 98.8115936855325
+        }
+      ],
+      "upstreamSources": [
+        {
+          "url": "https://docs.python.org/3.14/library/hashlib.html#hashlib.file_digest",
+          "supports": "First-class efficient whole-file digest helper; binary blocking readable file; callable SHA constructor; caller closes stream. SHA256 remains guaranteed standard constructor."
+        },
+        {
+          "url": "https://github.com/python/cpython/blob/3.14/Lib/hashlib.py",
+          "supports": "Maintained standard-library streaming implementation; no custom chunk API or provider coupling added."
+        }
+      ],
+      "limitations": [
+        "Resource measurements are bounded local synthetic public fixtures, not universal memory or false-positive guarantees.",
+        "tracemalloc covers Python-traced allocations, not process RSS or native allocator memory.",
+        "Timing is subject to concurrent review load; repeated medians do not justify a strong runtime improvement claim.",
+        "Fixed streaming buffer raises small empty-artifact admission traced peak from143851 to398919bytes while bounding large-file growth.",
+        "Receipt/manifests/schema parsing may independently retain their own bounded text; this change only removes full-file allocation used for hash verification.",
+        "Existing path checks and TOCTOU behavior are unchanged; no new race guarantees asserted.",
+        "Unreadability control executes actual chmod0 permission failure in this non-root macOS environment.",
+        "No external corpora fetched or pins refreshed; no source-spelling checks, new helpers, schema changes, or native provider coupling.",
+        "Full make verify/coherent repository gates are owned by root per assigned review contract."
+      ],
+      "conclusion": "Ship the smallest verified resource fix: hashlib.file_digest(stream, sha256) under Path.open(rb) context after existing64-character gate. OSError propagation, exact digest semantics, diagnostic text, source guards, repeated-invocation behavior and pass01 schema-closure patch are preserved. No stage/commit/push performed.",
+      "sourceHashes": {
+        "packages/standards/src/sarj_standards/libs/linting/prepared_devops.py": "64ca2ff7170f24b776de5427dd3577ba0020a18379c96fac811ecf14fddd0515",
+        "packages/standards/tests/test_prepared_hashes.py": "ac75b2c76f8b622dbaa07aebfb93e884a2c560da71e018590a8af75acddd1905"
+      },
+      "reproductionArtifacts": {
+        "/private/tmp/sarj-devops-pass-04-before.py": "cd217a7fb6796ca9bf27fc6c75436e80123cf2ce11fd62838989bee870472d26",
+        "/private/tmp/sarj-devops-pass-04-benchmark.py": "110a7255b2220e9e54df173738bc6c9285923f471da400e592240080dcccb5ef",
+        "/private/tmp/sarj_devops_pass04_before_plugin.py": "94a838b7dd31e17762613d8679db33356602f82e6ee853699c9c5c1acc68b831",
+        "/private/tmp/sarj-devops-pass-04-before-metrics.json": "21dc54a05bacaeaab9ecb2c166412aa9a36913b42800093924b7858f89e36a6f",
+        "/private/tmp/sarj-devops-pass-04-after-metrics.json": "de1758fd592235c5b6e8d6f8cfe3c259b199396908a70682f29d297b28f164ad"
+      }
+    },
+    {
+      "passId": 30,
+      "scope": "Postmerge CLI/API parity, source deferral and repeated-invocation stability; consumer CLI native health dependency isolation.",
+      "baselineCommit": "120f8cf3b893a24e60c15ec7bff05c63bc8ec10f",
+      "actualHeadAtValidation": "120f8cf3b893a24e60c15ec7bff05c63bc8ec10f",
+      "branch": "codex/devops-audit-round1-20261009",
+      "ownerPaths": [
+        "packages/standards/tests/test_consumer_cli.py",
+        "packages/standards/tests/test_devops_cli_api_acceptance.py"
+      ],
+      "productionRetainRationale": "No CLI/API production bug demonstrated. Public API and CLI serialize identical reports across repeated bounded inputs. Existing health_findings and checked_tool own exact native version attestation; their implementation and production health gating are unchanged.",
+      "admission": {
+        "failureMode": "Actual Mac/Windows release portability jobs each failed 10 consumer CLI routing cases after adoption with --no-install because actionlint/shfmt were absent.",
+        "existingOwner": "devops.health_findings -> devops_tools.checked_tool owns pinned native health; test_consumer_cli.py owns consumer path/dispatch and Yarn environment tests.",
+        "demonstratedGap": "Routing tests invoked actual ambient native health while their fixture explicitly avoided installation. The local development host had native tools, concealing test dependence.",
+        "harm": "Portable release gate falsely rejects CLI routing behavior and can conceal adoption/path gating assertions behind unrelated tool drift.",
+        "validStateDistinction": "A correctly routed CLI remains valid independently of the test host native installation; actual missing, wrong-version, and nonzero version queries remain drift and block the analyzer.",
+        "smallestFix": "Explicit module-local fixture only on adopting CLI routing/config-gate tests injects the external version protocol into original health_findings through its existing runner seam. Fake asserts exact native version argv and fixture cwd. The Yarn check analyzes its actual TS fixture after separately exercising doctor."
+      },
+      "labeledCases": [
+        {
+          "label": "before-portability-reproduction",
+          "classification": "demonstrated test defect",
+          "result": "10 failed, 34 passed with actionlint/shfmt missing at external process boundary; matches release failed cases"
+        },
+        {
+          "label": "after-portability-reproduction",
+          "classification": "positive isolation",
+          "result": "47 passed under identical missing-native reproduction plugin"
+        },
+        {
+          "label": "sanitized-native-path",
+          "classification": "negative ambient dependency",
+          "result": "47 passed with current venv+pinned uv+/usr/bin+/bin PATH; actionlint/shfmt absent from current venv"
+        },
+        {
+          "label": "health-missing",
+          "classification": "negative control",
+          "result": "Original health catches FileNotFoundError; doctor/check return1; 3 expected native diagnostics; no analysis"
+        },
+        {
+          "label": "health-wrong-version",
+          "classification": "near miss",
+          "result": "Well-formed version queries with0.0.0 fail actual exact-version attestation; doctor/check1; no analysis"
+        },
+        {
+          "label": "health-nonzero-exit",
+          "classification": "negative control",
+          "result": "Correct pinned version text with query exit7 still fails actual attestation; doctor/check1; no analysis"
+        },
+        {
+          "label": "source-only",
+          "classification": "positive public parity",
+          "result": "CLI/API0; native source tools complete; prepared-devops coverage explicitly not-requested count1; reportroot."
+        },
+        {
+          "label": "prepared-only",
+          "classification": "positive public parity",
+          "result": "CLI/API0; exactly prepared-devops:example complete fileCount1; no source analyzer tools or coverage"
+        },
+        {
+          "label": "mixed-source-and-receipt",
+          "classification": "positive public parity",
+          "result": "CLI/API0; source and prepared target tools both complete; no coverage omission"
+        },
+        {
+          "label": "mixed-required-source-deferred",
+          "classification": "negative coverage control",
+          "result": "Actual prepared target completes; native ESLint source coverage failed; overall partial/inconclusive exit2"
+        },
+        {
+          "label": "receipt-boundaries",
+          "classification": "malformed/identity controls",
+          "cases": [
+            "malformed-json",
+            "boolean-version",
+            "stale-source",
+            "wrong-source",
+            "case-identity",
+            "undeclared-target",
+            "duplicate-target",
+            "duplicate-receipt",
+            "prepared-with-source"
+          ],
+          "result": "Each CLI/API2 failed/inconclusive, exactly1invalid-input issue, identical reports over2paired rounds"
+        },
+        {
+          "label": "target-default-and-all-explicit",
+          "classification": "missing target negative",
+          "result": "Declared other target without receipt fails2 with missing prepared targets: other; no fabricated completed target"
+        },
+        {
+          "label": "target-selected-subset",
+          "classification": "valid scoped selection",
+          "result": "Explicit example subset0; only example completed; other never claimed complete, per existing wanted=set(selected) contract"
+        },
+        {
+          "label": "actual-native-pins",
+          "classification": "first-class semantic tools",
+          "result": "kubeconform0.8.0 and kube-linter0.8.3 attested and used for positive prepared validation"
+        }
+      ],
+      "commandsAndResults": [
+        {
+          "command": "PYTHONPATH=/private/tmp/sarj-pass30 python -m pytest -q -p missing_native packages/standards/tests/test_consumer_cli.py",
+          "before": "10failed34passed6.72s",
+          "after": "47passed7.03s",
+          "logs": [
+            "/private/tmp/sarj-pass30/before-missing-native.log",
+            "/private/tmp/sarj-pass30/after-missing-native.log"
+          ]
+        },
+        {
+          "command": "PATH=<checkout>/packages/standards/.venv/bin:/private/tmp/sarj-devops-pinned-uv/bin:/usr/bin:/bin python -m pytest -q packages/standards/tests/test_consumer_cli.py",
+          "result": "47passed7.70s",
+          "log": "/private/tmp/sarj-pass30/after-sanitized-path.log"
+        },
+        {
+          "command": "python -m pytest -q packages/standards/tests/test_devops_cli_api_acceptance.py",
+          "result": "16passed2.69s",
+          "log": "/private/tmp/sarj-pass30/paired-acceptance.log"
+        },
+        {
+          "command": "python -m pytest -q packages/standards/tests/test_consumer_cli.py packages/standards/tests/test_devops_cli_api_acceptance.py packages/standards/tests/test_api.py packages/standards/tests/test_devops_tools.py packages/standards/tests/test_prepared_devops.py",
+          "result": "140passed11.34s",
+          "log": "/private/tmp/sarj-pass30/focused-regression-final.log"
+        },
+        {
+          "command": "ruff check <ownerPaths> && ruff format --check <ownerPaths>",
+          "result": "Allchecks passed;2filesformatted"
+        },
+        {
+          "command": "basedpyright --project packages/standards <ownerPaths>",
+          "result": "0errors0warnings0notes"
+        },
+        {
+          "command": "code-standards --root . check <ownerPaths> --format json",
+          "result": {
+            "exitCode": 0,
+            "completion": "complete",
+            "errors": 0,
+            "warnings": 5,
+            "warningNotes": "Only5preexisting SARJ477 broad captures in existing consumer routing wrappers; no authored finding in new helpers/acceptance module."
+          },
+          "log": "/private/tmp/sarj-pass30/authored-self-check.json"
+        }
+      ],
+      "metrics": {
+        "ownedCases": 63,
+        "pairedAcceptanceCases": 16,
+        "pairedPublicRequests": 64,
+        "repeatRoundsPerCase": 2,
+        "focusedRegressionCases": 140,
+        "optimization": false,
+        "performanceClaim": "None; test durations are reproduction evidence only, not a speed comparison."
+      },
+      "limits": {
+        "corpora": "Bounded authored publicfixtures and existing focused package cases; no external corpus refresh/install. No universal false-positive claim.",
+        "platforms": "Executed on available local macOS host; sanitized native PATH and external unavailability reproduction emulate portable health dependency boundaries. Actual Mac/Windows release rerun remains root/CI responsibility.",
+        "nativeHealthSeam": "Injected ProcessRunner intentionally bypasses checked_tool executable discovery by existing public protocol seam; exact output attestation and doctor/CLI gate remain real. Separate sanitized PATH replay establishes routing host independence.",
+        "selection": "Explicit prepared target subset validates only requestedtarget; existingcontract does not emit unselected-target coverage. Tests ensure no false completion of unselectedtarget and require all defaults when unselected."
+      },
+      "limitations": [
+        "Full repository make verify is delegated to root under shared-worktree contract.",
+        "Current validation includes previously completed pass01-03 production changes and concurrently edited bootstrap/workflow/version files; sourceHashes capture actual parser/API/CLI context.",
+        "No staging, commits, pushes, publishing or consumer changes performed by this agent."
+      ],
+      "conclusion": "Ship scoped test isolation and CLI/API acceptance coverage; retain production CLI/API/native health.",
+      "sourceHashes": {
+        "packages/standards/tests/test_consumer_cli.py": {
+          "baselineSha256": "7052bb64764dcfb9a1240c5dbca56a29800c0020495515b2d76488eefd55c4c3",
+          "currentSha256": "29cefd564a2edbaa71de98aa95befddfc14332fbc7322c36b122e3a50fe4d176"
+        },
+        "packages/standards/tests/test_devops_cli_api_acceptance.py": {
+          "baselineSha256": null,
+          "currentSha256": "ddca8cde92203ef4a80a33c56c0a69d95e92ae791ee45159cfe216e6cefda29e"
+        },
+        "packages/standards/src/sarj_standards/api.py": {
+          "baselineSha256": "1239eaf4c1dd5206285669e7bcd99a063a7b977393e33d52b4357d857a6cc336",
+          "currentSha256": "1239eaf4c1dd5206285669e7bcd99a063a7b977393e33d52b4357d857a6cc336"
+        },
+        "packages/standards/src/sarj_standards/cli/main.py": {
+          "baselineSha256": "df24ae13b0435d110a99b5002c841ec2b53a99570e413d80f7753020c2b1620a",
+          "currentSha256": "df24ae13b0435d110a99b5002c841ec2b53a99570e413d80f7753020c2b1620a"
+        },
+        "packages/standards/src/sarj_standards/libs/adoption/devops.py": {
+          "baselineSha256": "f1f931fc62c5f449069b469693e3b7239c5512a1529025d4f554d17c6a43d9e8",
+          "currentSha256": "f1f931fc62c5f449069b469693e3b7239c5512a1529025d4f554d17c6a43d9e8"
+        },
+        "packages/standards/src/sarj_standards/libs/linting/devops_tools.py": {
+          "baselineSha256": "8a28bf47edd6caa51a68f2a6be7c5b982f89f3e0bb16953c2f478413f5d60ea6",
+          "currentSha256": "8a28bf47edd6caa51a68f2a6be7c5b982f89f3e0bb16953c2f478413f5d60ea6"
+        },
+        "packages/standards/src/sarj_standards/libs/linting/prepared_devops.py": {
+          "baselineSha256": "92b9efdb476375045e9729e909cf07fa61aa222b767a2e72e929fa532da6c188",
+          "currentSha256": "64ca2ff7170f24b776de5427dd3577ba0020a18379c96fac811ecf14fddd0515"
+        },
+        "packages/standards/src/sarj_standards/libs/linting/devops_programs.py": {
+          "baselineSha256": "4daa0cc3d02811d5e1992f1864654cd48236b50d894d7599e68d87deb66af42c",
+          "currentSha256": "eca95053fe92b06168c9c992af8500a0485a79974427b2580fef39c99cd450fb"
+        },
+        "packages/python/src/sarj_python_lint/interpreter_argv.py": {
+          "baselineSha256": "492d296c9df2d2acd27f6907dc0b889005153174cbaa68dfa5266a7f94486dae",
+          "currentSha256": "25fbcc2c038ee1d479e3701a97fa0fc4d0e185c7389dd9d245509155aaba930b"
+        }
+      },
+      "sources": [
+        {
+          "url": "https://docs.pytest.org/en/stable/how-to/fixtures.html",
+          "supports": "Explicit fixture requests/usefixtures scope only tests needing setup"
+        },
+        {
+          "url": "https://github.com/rhysd/actionlint/blob/v1.7.12/docs/usage.md",
+          "supports": "Native actionlint version query and0/1/2/3exit protocol; upstream analyzer remains semantic owner"
+        },
+        {
+          "url": "https://github.com/mvdan/sh/blob/v3.14.1/cmd/shfmt/main.go",
+          "supports": "Pinned shfmt --version shows version then returns; native parser remains semantic owner"
+        }
+      ],
+      "packageVersionsAtReport": {
+        "standards": "8.39.1",
+        "python": "1.26.1"
+      }
+    }
+  ]
+}

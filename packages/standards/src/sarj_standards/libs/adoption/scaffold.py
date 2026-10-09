@@ -2333,13 +2333,11 @@ def github_ci_workflow(root: Path, *, ecosystems: Ecosystems | None = None) -> s
     lines.extend(
         (
             "      - name: Install the pinned native tool bootstrap",
-            "        uses: jdx/mise-action@5228313ee0372e111a38da051671ca30fc5a96db # v3",
-            "        with:",
-            "          version: '2026.10.6'",
-            "          install: false",
-            "          cache: false",
-            "          env: false",
-            "          add_shims_to_path: false",
+            (
+                f"        run: uv run --no-config --no-project --python {launcher.TOOL_PYTHON} "
+                f"--with code-standards=={manifest.adopted_version()} "
+                "python -m sarj_standards.libs.adoption.native_bootstrap"
+            ),
             "      - name: Install and attest applicable native tools",
             f"        run: {runner} setup --tools-only",
         )

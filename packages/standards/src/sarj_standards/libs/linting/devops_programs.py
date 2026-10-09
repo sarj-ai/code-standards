@@ -4,6 +4,7 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 import re
 import string
+import sys
 import tomllib
 from typing import TYPE_CHECKING, override
 
@@ -464,7 +465,7 @@ def _mise_shell(value: object) -> str:
     return _mise_template(value, execution=True)
 
 
-def execution_blocks(relative: str, source: str) -> list[ExecutionBlock]:
+def execution_blocks(relative: str, source: str, *, platform: str | None = None) -> list[ExecutionBlock]:
     name = relative.rsplit("/", 1)[-1].casefold()
     if name in {"makefile", "gnumakefile"}:
         return _make_blocks(source)
@@ -479,7 +480,7 @@ def execution_blocks(relative: str, source: str) -> list[ExecutionBlock]:
     ):
         return _toml_blocks(source)
     if name.endswith((".yaml", ".yml", ".json")):
-        return _yaml_blocks(relative, source)
+        return _yaml_blocks(relative, source, platform=sys.platform if platform is None else platform)
     return []
 
 
@@ -614,7 +615,7 @@ def _make_variables(lines: Sequence[str]) -> dict[str, str]:
     return variables
 
 
-def _yaml_blocks(relative: str, source: str) -> list[ExecutionBlock]:
+def _yaml_blocks(relative: str, source: str, *, platform: str) -> list[ExecutionBlock]:
     try:
         documents: list[Node | None] = list(yaml.compose_all(source, Loader=_OccurrenceLoader))  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType] -- PyYAML composition boundary.
     except yaml.YAMLError:
@@ -622,11 +623,11 @@ def _yaml_blocks(relative: str, source: str) -> list[ExecutionBlock]:
     blocks: list[ExecutionBlock] = []
     for document in documents:
         if document is not None:
-            blocks.extend(_yaml_consumer_blocks(relative, document))
+            blocks.extend(_yaml_consumer_blocks(relative, document, platform=platform))
     return blocks
 
 
-def _yaml_consumer_blocks(relative: str, document: Node) -> list[ExecutionBlock]:
+def _yaml_consumer_blocks(relative: str, document: Node, *, platform: str) -> list[ExecutionBlock]:
     top = _table(document)
     if (relative.startswith(".github/workflows/") and len(relative.split("/")) == _WORKFLOW_PATH_COMPONENTS) or (
         "runs" in top and "using" in _table(top["runs"])
@@ -635,7 +636,7 @@ def _yaml_consumer_blocks(relative: str, document: Node) -> list[ExecutionBlock]
     if "steps" in top and any("name" in _table(step) for step in _items(top.get("steps"))):
         return _cloudbuild_blocks(top)
     if (_scalar(top.get("apiVersion")) or "").startswith("skaffold/"):
-        return _skaffold_blocks(document)
+        return _skaffold_blocks(document, platform=platform)
     if "services" in top:
         return _compose_blocks(top["services"])
     if "kind" in top and "apiVersion" in top:
@@ -743,12 +744,96 @@ def _kubernetes_execution_fields(fields: Mapping[str, Node]) -> list[ExecutionBl
     return blocks
 
 
-def _skaffold_blocks(document: Node) -> list[ExecutionBlock]:
+def _skaffold_blocks(document: Node, *, platform: str) -> list[ExecutionBlock]:
+    top = _table(document)
+    return [
+        block
+        for fields in [top, *(_table(profile) for profile in _items(top.get("profiles")))]
+        for block in _skaffold_pipeline_blocks(fields, platform=platform)
+    ]
+
+
+def _skaffold_pipeline_blocks(fields: Mapping[str, Node], *, platform: str) -> list[ExecutionBlock]:
     blocks: list[ExecutionBlock] = []
-    for node in _walk(document):
-        if "command" in _table(node):
-            blocks.extend(_container(node))
+    build = _table(fields.get("build"))
+    blocks.extend(_skaffold_hook_blocks(build))
+    for artifact in _items(build.get("artifacts")):
+        blocks.extend(_skaffold_artifact_blocks(_table(artifact), platform=platform))
+    for test in _items(fields.get("test")):
+        for custom_test in _items(_table(test).get("custom")):
+            custom = _table(custom_test)
+            if "command" in custom:
+                blocks.append(_skaffold_shell_block(_block(custom["command"]), platform=platform))
+            dependencies = _table(custom.get("dependencies"))
+            if "command" in dependencies:
+                blocks.append(
+                    _skaffold_shell_block(_block(dependencies["command"]), platform=platform, templated=False)
+                )
+    for verify in _items(fields.get("verify")):
+        container = _table(verify).get("container")
+        if container is not None:
+            blocks.extend(_container(container))
+    for action in _items(fields.get("customActions")):
+        for container in _items(_table(action).get("containers")):
+            blocks.extend(_container(container))
+    blocks.extend(_skaffold_hook_blocks(_table(fields.get("manifests"))))
+    deploy = _table(fields.get("deploy"))
+    for deployer in ("kubectl", "helm", "cloudrun"):
+        blocks.extend(_skaffold_hook_blocks(_table(deploy.get(deployer))))
     return blocks
+
+
+def _skaffold_artifact_blocks(fields: Mapping[str, Node], *, platform: str) -> list[ExecutionBlock]:
+    blocks = _skaffold_hook_blocks(fields)
+    blocks.extend(_skaffold_hook_blocks(_table(fields.get("sync"))))
+    custom = _table(fields.get("custom"))
+    if "buildCommand" in custom:
+        blocks.append(_skaffold_shell_block(_block(custom["buildCommand"]), platform=platform))
+    dependencies = _table(custom.get("dependencies"))
+    # Skaffold prefers Dockerfile dependency extraction over a command.
+    command = dependencies.get("command")
+    if command is None or isinstance(dependencies.get("dockerfile"), MappingNode):
+        return blocks
+    value = _scalar(command)
+    if value is None:
+        msg = "Skaffold dependency command must be a string"
+        raise ProgramProjectionError(msg)
+    if value:
+        # Upstream uses strings.Split, without shell quote processing.
+        blocks.append(_argv_block(command, tuple(value.split(" "))))
+    return blocks
+
+
+def _skaffold_hook_blocks(fields: Mapping[str, Node]) -> list[ExecutionBlock]:
+    blocks: list[ExecutionBlock] = []
+    hooks = _table(fields.get("hooks"))
+    for phase in ("before", "after"):
+        for hook in _items(hooks.get(phase)):
+            hook_fields = _table(hook)
+            owners = [hook, *(hook_fields[key] for key in ("host", "container") if key in hook_fields)]
+            for owner in owners:
+                blocks.extend(_skaffold_hook_command(_table(owner).get("command")))
+    return blocks
+
+
+def _skaffold_hook_command(command: Node | None) -> list[ExecutionBlock]:
+    if command is None:
+        return []
+    argv = _argv(command)
+    if argv is None:
+        msg = "Skaffold hook command must be an argv sequence"
+        raise ProgramProjectionError(msg)
+    return [_argv_block(command, argv)]
+
+
+def _skaffold_shell_block(block: ExecutionBlock, *, platform: str, templated: bool = True) -> ExecutionBlock:
+    if platform == "win32":
+        msg = "Windows Skaffold cmd.exe execution cannot be projected as POSIX shell"
+        raise ProgramProjectionError(msg)
+    if templated and ("{{" in block.source or "}}" in block.source):
+        msg = "Skaffold executable template cannot be proven statically"
+        raise ProgramProjectionError(msg)
+    return block
 
 
 def _mapping(value: object) -> Mapping[str, object]:
