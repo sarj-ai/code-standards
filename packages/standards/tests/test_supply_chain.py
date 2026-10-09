@@ -640,3 +640,47 @@ def test_python_publishers_smoke_and_bind_wheels_and_sdists(
         cli_calls = [call for call in calls if call[0] == executable]
         expected_args = ["--root", str(tmp_path), "check"] if package == "bootstrap" else ["--help"]
         assert cli_calls == [[executable, *expected_args]] * 2
+
+
+@pytest.mark.parametrize("package", ["typescript", "tsconfig"])
+@pytest.mark.parametrize("state", ["intact", "tampered", "missing"])
+def test_npm_publishers_verify_the_build_bound_tarball(tmp_path: Path, package: str, state: str) -> None:
+    environment = _record_commands(tmp_path, "uv")
+    checksum = tmp_path / "bin/sha256sum"
+    checksum.write_text('#!/bin/sh\nexec shasum -a 256 "$@"\n', encoding="utf-8")
+    checksum.chmod(0o755)
+    workdir = tmp_path / "packages" / package
+    workdir.mkdir(parents=True)
+    (workdir / "package.json").write_text(json.dumps({"version": "1.2.3"}), encoding="utf-8")
+    artifact = tmp_path / "npm-artifacts/package.tgz"
+    artifact.parent.mkdir()
+    name = "@sarj/tsconfig" if package == "tsconfig" else "@sarj/eslint-plugin"
+    manifest = json.dumps({"name": name, "version": "1.2.3"}).encode()
+    with tarfile.open(artifact, "w:gz") as archive:
+        member = tarfile.TarInfo("package/package.json")
+        member.size = len(manifest)
+        archive.addfile(member, io.BytesIO(manifest))
+    output = tmp_path / "github-output"
+    environment["GITHUB_OUTPUT"] = str(output)
+    label = (
+        "Verify artifact identity and bind digest" if package == "tsconfig" else "Bind artifact digest to the build job"
+    )
+    bind = _named_step(_ci_steps(f"build-{package}", "release.yml"), label)
+    result = _run_ci_step(bind, root=workdir, environment=environment)
+    assert result.returncode == 0, result.stderr
+    expected = hashlib.sha256(artifact.read_bytes()).hexdigest()
+    assert output.read_text() == f"sha256={expected}\n"
+    environment["EXPECTED_SHA256"] = expected
+    if state == "tampered":
+        artifact.write_bytes(artifact.read_bytes() + b"tampered")
+    elif state == "missing":
+        artifact.unlink()
+    assert not (tmp_path / "verified-dist").exists()
+    verify = _named_step(_ci_steps(f"publish-{package}", "release.yml"), "Verify build-bound artifact digest")
+    assert verify["env"] == {"EXPECTED_SHA256": f"${{{{ needs.build-{package}.outputs.artifact_sha256 }}}}"}
+    result = _run_ci_step(verify, root=tmp_path, environment=environment)
+    assert (result.returncode == 0) is (state == "intact"), result.stderr
+    if state == "intact":
+        assert "package.tgz: OK" in result.stdout
+    else:
+        assert "package.tgz: FAILED" in result.stdout

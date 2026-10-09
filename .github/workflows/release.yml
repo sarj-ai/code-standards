@@ -207,7 +207,7 @@ jobs:
       - name: Verify build-bound artifact digest
         env:
           EXPECTED_SHA256: ${{ needs.build-typescript.outputs.artifact_sha256 }}
-        run: bash .github/scripts/release-verify-distributions.sh
+        run: bash .github/scripts/release-verify-distributions.sh npm
       - name: Publish and verify registry bytes and source-bound provenance
         env:
           EXPECTED_COMMIT: ${{ github.sha }}
@@ -990,7 +990,7 @@ jobs:
       - name: Verify build-bound artifact digest
         env:
           EXPECTED_SHA256: ${{ needs.build-tsconfig.outputs.artifact_sha256 }}
-        run: bash .github/scripts/release-verify-distributions.sh
+        run: bash .github/scripts/release-verify-distributions.sh npm
       - name: Publish and verify registry bytes and source-bound provenance
         env:
           EXPECTED_COMMIT: ${{ github.sha }}
