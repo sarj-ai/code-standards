@@ -139,6 +139,10 @@ def _value_wrapper_index(arguments: Sequence[str], command: str) -> int:
     return index + int(command == "timeout")
 
 
+def is_python_executable(executable: str) -> bool:
+    return re.fullmatch(r"python(?:[23](?:\.\d+)?)?", PurePosixPath(executable).name) is not None
+
+
 def classify_interpreter(argv: Sequence[str]) -> InterpreterInvocation:
     try:
         arguments = unwrap_command(argv)
@@ -147,7 +151,7 @@ def classify_interpreter(argv: Sequence[str]) -> InterpreterInvocation:
     if not arguments:
         return InterpreterInvocation("other")
     executable = PurePosixPath(arguments[0]).name
-    if re.fullmatch(r"python(?:[23](?:\.\d+)?)?", executable):
+    if is_python_executable(executable):
         return _python(arguments[1:])
     if executable in _SHELLS:
         return _short_options(arguments[1:], source="c", values=frozenset({"o", "O"}), shell_mode=True)

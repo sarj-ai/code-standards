@@ -95,3 +95,193 @@ def test_exact_suppression_and_error_level() -> None:
 
 def test_generated_sources_abstain() -> None:
     assert not NoInterpreterSourceArguments().check(Path("generated/check.py"), _CASES[0][1])
+
+
+_STDIN_CASES = (
+    ("default-stdin-str", "import subprocess\nsubprocess.run(['python3'], input='print(21)', text=True)\n", True),
+    ("explicit-stdin-str", "import subprocess\nsubprocess.run(['python3', '-'], input='print(21)', text=True)\n", True),
+    ("keyword-args", "import subprocess\nsubprocess.run(args=('python3', '-'), input='print(21)', text=True)\n", True),
+    ("module-alias", "import subprocess as process\nprocess.run(['python3'], input='print(21)', text=True)\n", True),
+    ("symbol-alias", "from subprocess import run as launch\nlaunch(['python3'], input='print(21)', text=True)\n", True),
+    (
+        "check-output",
+        "from subprocess import check_output\ncheck_output(['python3'], input='print(21)', text=True)\n",
+        True,
+    ),
+    ("bytes-stdin", "import subprocess\nsubprocess.run(['python3'], input=b'print(21)')\n", True),
+    (
+        "nested-call",
+        "import subprocess\ndef verify():\n    return subprocess.run(['python3'], input='print(21)', text=True)\n",
+        True,
+    ),
+    (
+        "python-flags",
+        "import subprocess\nsubprocess.run(['python3', '-I', '-W', 'once', '-Xdev'], input='print(21)', text=True)\n",
+        True,
+    ),
+    (
+        "python-versioned",
+        "import subprocess\nsubprocess.run(['/opt/python3.14', '-'], input='print(21)', text=True)\n",
+        True,
+    ),
+    (
+        "env-wrapper",
+        "import subprocess\nsubprocess.run(['env', 'MODE=strict', 'python3'], input='print(21)', text=True)\n",
+        True,
+    ),
+    (
+        "executable-override",
+        "import subprocess\nsubprocess.run(['worker', '-'], executable='/opt/python3', input='print(21)', text=True)\n",
+        True,
+    ),
+    (
+        "module-data",
+        "import subprocess\nsubprocess.run(['python3', '-m', 'tools.check'], input='print(21)', text=True)\n",
+        False,
+    ),
+    (
+        "file-data",
+        "import subprocess\nsubprocess.run(['python3', 'tools/check.py'], input='print(21)', text=True)\n",
+        False,
+    ),
+    (
+        "option-operand",
+        "import subprocess\nsubprocess.run(['python3', '-W', '-c', 'tools/check.py'], input='print(21)', text=True)\n",
+        False,
+    ),
+    (
+        "version-exit",
+        "import subprocess\nsubprocess.run(['python3', '--version'], input='print(21)', text=True)\n",
+        False,
+    ),
+    ("help-exit", "import subprocess\nsubprocess.run(['python3', '-h'], input='print(21)', text=True)\n", False),
+    (
+        "unknown-flags",
+        "import subprocess\nsubprocess.run(['python3', '--unknown'], input='print(21)', text=True)\n",
+        False,
+    ),
+    ("empty-string", "import subprocess\nsubprocess.run(['python3'], input='', text=True)\n", False),
+    ("whitespace-input", "import subprocess\nsubprocess.run(['python3'], input=' \\n\\t\\n', text=True)\n", False),
+    (
+        "comment-input",
+        "import subprocess\nsubprocess.run(['python3'], input='# prepared verifier\\n# no program\\n', text=True)\n",
+        False,
+    ),
+    ("empty-bytes", "import subprocess\nsubprocess.run(['python3'], input=b'')\n", False),
+    ("none-input", "import subprocess\nsubprocess.run(['python3'], input=None)\n", False),
+    ("dynamic-input", "import subprocess\nsubprocess.run(['python3'], input=program, text=True)\n", False),
+    (
+        "file-backed-input",
+        "import subprocess\nsubprocess.run(['python3'], input=Path('tools/check.py').read_text(), text=True)\n",
+        False,
+    ),
+    (
+        "bound-argv",
+        "import subprocess\ncommand = ['python3']\nsubprocess.run(command, input='print(21)', text=True)\n",
+        False,
+    ),
+    ("dynamic-argv", "import subprocess\nsubprocess.run(command, input='print(21)', text=True)\n", False),
+    (
+        "shadowed-module",
+        "import subprocess\ndef verify(subprocess):\n    subprocess.run(['python3'], input='print(21)', text=True)\n",
+        False,
+    ),
+    (
+        "reassigned-import",
+        "from subprocess import run\nrun = launch\nrun(['python3'], input='print(21)', text=True)\n",
+        False,
+    ),
+    (
+        "replaced-method",
+        "import subprocess\nsubprocess.run = launch\nsubprocess.run(['python3'], input='print(21)', text=True)\n",
+        False,
+    ),
+    ("unknown-method", "connection.run(['python3'], input='print(21)', text=True)\n", False),
+    ("shell-true", "import subprocess\nsubprocess.run(['python3'], input='print(21)', text=True, shell=True)\n", False),
+    ("shell-string", "import subprocess\nsubprocess.run('python3', input='print(21)', text=True)\n", False),
+    (
+        "expanded-options",
+        "import subprocess\nsubprocess.run(['python3'], input='print(21)', text=True, **options)\n",
+        False,
+    ),
+    ("non-interpreter", "import subprocess\nsubprocess.run(['cat'], input='print(21)', text=True)\n", False),
+    (
+        "overridden-to-data",
+        "import subprocess\nsubprocess.run(['python3'], executable='/bin/cat', input='print(21)', text=True)\n",
+        False,
+    ),
+    (
+        "popen-unsupported-input",
+        "import subprocess\nsubprocess.Popen(['python3'], input='print(21)', text=True)\n",
+        False,
+    ),
+    (
+        "call-unsupported-input",
+        "import subprocess\nsubprocess.call(['python3'], input='print(21)', text=True)\n",
+        False,
+    ),
+    (
+        "asyncio-unsupported-input",
+        "import asyncio\nasyncio.create_subprocess_exec('python3', input='print(21)', text=True)\n",
+        False,
+    ),
+    (
+        "receiver-communicate",
+        "import subprocess\np = subprocess.Popen(['python3'], stdin=subprocess.PIPE)\np.communicate(b'print(21)')\n",
+        False,
+    ),
+    ("malformed-outer", "def verify(:\n", False),
+    ("str-without-text", "import subprocess\nsubprocess.run(['python3'], input='print(21)')\n", False),
+    ("str-with-false-text", "import subprocess\nsubprocess.run(['python3'], input='print(21)', text=False)\n", False),
+    ("bytes-with-text", "import subprocess\nsubprocess.run(['python3'], input=b'print(21)', text=True)\n", False),
+    (
+        "stdin-conflict",
+        "import subprocess\nsubprocess.run(['python3'], input=b'print(21)', stdin=subprocess.PIPE)\n",
+        False,
+    ),
+    (
+        "mode-conflict",
+        "import subprocess\nsubprocess.run(['python3'], input='print(21)', text=True, universal_newlines=False)\n",
+        False,
+    ),
+    ("literal-encoding", "import subprocess\nsubprocess.run(['python3'], input='print(21)', encoding='utf-8')\n", True),
+    ("literal-errors", "import subprocess\nsubprocess.run(['python3'], input='print(21)', errors='strict')\n", True),
+    (
+        "universal-newlines",
+        "import subprocess\nsubprocess.run(['python3'], input='print(21)', universal_newlines=True)\n",
+        True,
+    ),
+    ("stdin-none", "import subprocess\nsubprocess.run(['python3'], input=b'print(21)', stdin=None)\n", True),
+    ("dynamic-text-mode", "import subprocess\nsubprocess.run(['python3'], input='print(21)', text=text_mode)\n", False),
+    (
+        "dynamic-encoding",
+        "import subprocess\nsubprocess.run(['python3'], input='print(21)', encoding=encoding)\n",
+        False,
+    ),
+    ("existing-inline", "import subprocess\nsubprocess.run(['python3', '-c', 'print(21)'])\n", True),
+    (
+        "invalid-encoding",
+        "import subprocess\nsubprocess.run(['python3'], input='print(21)', encoding='missing-codec')\n",
+        False,
+    ),
+    (
+        "nontext-encoding",
+        "import subprocess\nsubprocess.run(['python3'], input='print(21)', encoding='base64')\n",
+        False,
+    ),
+    (
+        "unencodable-input",
+        "import subprocess\nsubprocess.run(['python3'], input='print(\"🌍\")', encoding='ascii')\n",
+        False,
+    ),
+)
+
+
+@pytest.mark.parametrize(("case_id", "source", "expected"), _STDIN_CASES, ids=[case[0] for case in _STDIN_CASES])
+def test_literal_interpreter_stdin_source(case_id: str, source: str, *, expected: bool) -> None:
+    case = EvaluationCase(
+        case_id, Language.PYTHON, source, ExpectedOutcome.MATCH if expected else ExpectedOutcome.NO_MATCH
+    )
+    findings = NoInterpreterSourceArguments().check(Path("tools/check.py"), case.source)
+    assert bool(findings) is (case.expected is ExpectedOutcome.MATCH), case.case_id
+    assert len(findings) <= 1

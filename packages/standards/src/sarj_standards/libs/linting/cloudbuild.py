@@ -140,13 +140,25 @@ def _looks_like_build(document: MappingNode) -> bool:
     for key, value in mapping_items(document):
         if _string(key) != "steps" or not isinstance(value, SequenceNode):
             continue
-        for step in sequence_items(value):
-            if isinstance(step, MappingNode) and any(_string(field) == "name" for field, _ in mapping_items(step)):
-                return True
-    return False
+        if any(
+            isinstance(step, MappingNode) and any(_string(field) == "name" for field, _ in mapping_items(step))
+            for step in sequence_items(value)
+        ):
+            return True
+    try:
+        steps = _mapping(document, ignore_non_string_keys=True).get("steps")
+        return isinstance(steps, SequenceNode) and any(
+            isinstance(step, MappingNode) and "name" in _mapping(step, ignore_non_string_keys=True)
+            for step in sequence_items(steps)
+        )
+    except CloudBuildParseError:
+        # Invalid mappings without a proven Build shape belong to YAML validation.
+        return False
 
 
-def _mapping(node: MappingNode, active: frozenset[int] = frozenset()) -> dict[str, Node]:
+def _mapping(
+    node: MappingNode, active: frozenset[int] = frozenset(), *, ignore_non_string_keys: bool = False
+) -> dict[str, Node]:
     if id(node) in active or len(active) >= _MAX_YAML_DEPTH:
         message = "Recursive or excessively nested YAML merge has no finite Cloud Build mapping"
         raise CloudBuildParseError(message)
@@ -160,18 +172,25 @@ def _mapping(node: MappingNode, active: frozenset[int] = frozenset()) -> dict[st
                 if not isinstance(parent, MappingNode):
                     message = "YAML merge source must be a mapping"
                     raise CloudBuildParseError(message)
-                result.update(_mapping(parent, active))
+                result.update(_mapping(parent, active, ignore_non_string_keys=ignore_non_string_keys))
             continue
-        key_name = _string(key)
+        key_name = _mapping_key(key, ignore_non_string_keys=ignore_non_string_keys)
         if key_name is None:
-            message = "Cloud Build mapping keys must be strings"
-            raise CloudBuildParseError(message)
+            continue
         if key_name in explicit:
             message = f"Duplicate YAML key {key_name!r} at line {key.start_mark.line + 1}"
             raise CloudBuildParseError(message)
         explicit[key_name] = value
     result.update(explicit)
     return result
+
+
+def _mapping_key(key: Node, *, ignore_non_string_keys: bool) -> str | None:
+    key_name = _string(key)
+    if key_name is None and not ignore_non_string_keys:
+        message = "Cloud Build mapping keys must be strings"
+        raise CloudBuildParseError(message)
+    return key_name
 
 
 def _string(node: Node | None) -> str | None:

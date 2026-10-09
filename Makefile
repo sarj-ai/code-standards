@@ -56,7 +56,7 @@ setup:
 	$(STANDARDS) --root . maintain setup
 
 # Canonical local gate; CI runs the same checks.
-verify: doctor docs-check format-check lint dogfood typecheck test repo-check check-no-private-refs
+verify: doctor docs-check format-check lint dogfood typecheck test repo-check check-no-private-refs shell-check
 
 doctor:
 	@$(STANDARDS) doctor
@@ -79,6 +79,11 @@ docs-code-sync:
 docs-check: docs-artifacts-check
 	bash .github/scripts/verify-docs.sh
 
+.PHONY: shell-check
+shell-check:
+	uv run --project packages/standards --frozen python -m sarj_standards.libs.repository.shell_checks --root . --tool shellcheck
+	uv run --project packages/standards --frozen python -m sarj_standards.libs.repository.shell_checks --root . --tool shfmt
+
 format-check:
 	uv run --project packages/standards --frozen ruff format --check \
 	  packages/bootstrap/src packages/bootstrap/tests \
@@ -86,7 +91,7 @@ format-check:
 	  packages/python/src packages/python/tests \
 	  packages/sql/src packages/sql/tests \
 	  packages/iac/src packages/iac/tests \
-	  packages/standards/src packages/standards/tests
+	  packages/standards/src packages/standards/tests .github/scripts/*.py
 
 build:
 	npm --prefix packages/typescript run build
@@ -144,7 +149,7 @@ lint:
 	uv --directory packages/python run ruff check src/ tests/
 	uv --directory packages/sql run ruff check src/ tests/
 	uv --directory packages/iac run ruff check src/ tests/
-	uv --directory packages/standards run ruff check src/ tests/
+	uv run --project packages/standards --frozen ruff check packages/standards/src packages/standards/tests .github/scripts/*.py
 	# `ci.yml` runs the custom SARJ rules over this package and
 	# `make lint` did not, so a change could pass `make verify` locally and fail
 	# CI on rules this repo wrote. Dogfooding that stops at ruff is not dogfooding.
@@ -169,7 +174,7 @@ typecheck:
 	uv --directory packages/python run basedpyright
 	uv --directory packages/sql run basedpyright
 	uv --directory packages/iac run basedpyright
-	uv --directory packages/standards run basedpyright
+	uv run --project packages/standards --frozen basedpyright --project packages/standards/pyrightconfig.json packages/standards/src packages/standards/tests .github/scripts/*.py
 	npm --prefix packages/typescript run typecheck
 
 check-no-private-refs:

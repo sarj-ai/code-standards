@@ -413,7 +413,7 @@ def _validate_manifests(
         metadata = _table(obj.get("metadata"), "Kubernetes metadata")
         identity = f"{_text(target, 'id')}:{_text(obj, 'apiVersion')}:{_text(obj, 'kind')}:{metadata.get('namespace', '')}:{_text(metadata, 'name')}:{index}"
         path = work / f"resource-{index}.yaml"
-        path.write_text(yaml.safe_dump(obj), encoding="utf-8")
+        path.write_text(yaml.safe_dump(obj, default_style='"'), encoding="utf-8")
         output = invoke(
             conform,
             (
@@ -431,8 +431,8 @@ def _validate_manifests(
             root=root,
             runner=runner,
         )
-        diagnostics.extend(_conform_findings(output, target, identity))
-        path.write_text(yaml.safe_dump(policy_resource(obj)), encoding="utf-8")
+        diagnostics.extend(_conform_findings(output, target, identity, resource=obj, path=path))
+        path.write_text(yaml.safe_dump(policy_resource(obj), default_style='"'), encoding="utf-8")
         lint = invoke(
             linter,
             (
@@ -500,13 +500,20 @@ def _resources(manifests: str, *, namespace: str = "default") -> tuple[dict[str,
     return tuple(result)
 
 
-def _conform_findings(output: ProcessOutput, target: Mapping[str, object], identity: str) -> tuple[Diagnostic, ...]:
+def _conform_findings(
+    output: ProcessOutput, target: Mapping[str, object], identity: str, *, resource: Mapping[str, object], path: Path
+) -> tuple[Diagnostic, ...]:
     payload = _table(parse_json(output.stdout), "kubeconform output")
     results = payload.get("resources")
     if not is_object_list(results) or len(results) != 1:
         msg = "kubeconform did not account for the required resource"
         raise ValueError(msg)
     result = _table(results[0], "kubeconform result")
+    metadata = _table(resource.get("metadata"), "Kubernetes metadata")
+    expected_identity = (str(path), _text(resource, "apiVersion"), _text(resource, "kind"), _text(metadata, "name"))
+    if tuple(result.get(key) for key in ("filename", "version", "kind", "name")) != expected_identity:
+        msg = "native kubeconform resource identity does not match submitted input"
+        raise ValueError(msg)
     status = result.get("status")
     if status not in {"statusValid", "statusInvalid"}:
         msg = f"Kubernetes schema coverage is incomplete: {result}"

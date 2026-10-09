@@ -331,6 +331,13 @@ def parse_terraform(payload: str, root: Path, *, cwd: Path | None = None) -> tup
     return tuple(diagnostics)
 
 
+def _project_inputs(paths: tuple[Path, ...]) -> tuple[tuple[Path, tuple[Path, ...]], ...]:
+    grouped: dict[Path, list[Path]] = {}
+    for path in paths:
+        grouped.setdefault(path.parent, []).append(path)
+    return tuple((project, tuple(grouped[project])) for project in sorted(grouped))
+
+
 def _terraform_reports(
     root: Path, paths: tuple[Path, ...], runner: ProcessRunner, *, trust_repository_code: bool
 ) -> tuple[ToolReport, ...]:
@@ -373,14 +380,14 @@ def _terraform_reports(
             )
         )
     except (OSError, ValueError, subprocess.SubprocessError) as error:
-        reports.append(_failed("terraform-fmt", error, len(paths)))
-    for project in sorted({path.parent for path in paths}):
+        reports.append(_failed("terraform-fmt", error, len(formatting_paths)))
+    for project, project_paths in _project_inputs(paths):
         if not trust_repository_code:
             reports.append(
                 _failed(
                     "terraform-validate",
                     "Terraform provider validation requires trusted repository code and preinitialized local providers",
-                    len(paths),
+                    len(project_paths),
                 )
             )
             continue
@@ -389,7 +396,7 @@ def _terraform_reports(
                 "terraform",
                 ("validate", "-json", "-no-color"),
                 project,
-                paths,
+                project_paths,
                 lambda payload, project_root: parse_terraform(payload, root, cwd=project_root),
                 runner=runner,
             )
@@ -406,7 +413,9 @@ def _tflint_reports(
                 "tflint", "TFLint requires trusted repository configuration and installed pinned plugins", len(paths)
             ),
         )
-    return tuple(_tflint_report(root, project, paths, runner) for project in sorted({path.parent for path in paths}))
+    return tuple(
+        _tflint_report(root, project, project_paths, runner) for project, project_paths in _project_inputs(paths)
+    )
 
 
 def _tflint_report(root: Path, project: Path, paths: tuple[Path, ...], runner: ProcessRunner) -> ToolReport:

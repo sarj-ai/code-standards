@@ -8,11 +8,16 @@ import stat
 import subprocess  # ruff: ignore[suspicious-subprocess-import] -- catch bounded version-query failures.
 import sys
 from types import MappingProxyType
-from typing import Final
+from typing import TYPE_CHECKING, Final
 
+from sarj_standards._meta import CONFIGS_DIR
 from sarj_standards.libs.json_boundary import parse_json
 from sarj_standards.libs.linting.external import ProcessOutput, ProcessRunner, run_process
 from sarj_standards.libs.typed_containers import is_object_mapping
+
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 
 @dataclass(frozen=True, slots=True)
@@ -34,12 +39,16 @@ TOOLS: Final = MappingProxyType(
             NativeTool("kubeconform", "0.8.0", ("-v",), r"^v?(?P<version>\d+\.\d+\.\d+)"),
             NativeTool("kube-linter", "0.8.3", ("version",), r"v?(?P<version>\d+\.\d+\.\d+)"),
             NativeTool("shfmt", "3.14.1", ("--version",), r"^v(?P<version>\d+\.\d+\.\d+)"),
-            NativeTool("shellcheck", "0.11.0", ("--version",), r"^version:\s*(?P<version>\d+\.\d+\.\d+)"),
+            NativeTool("shellcheck", "0.11.0", ("--version",), r"^version:[ \t]*(?P<version>\d+\.\d+\.\d+)[ \t]*\r?$"),
             NativeTool("actionlint", "1.7.12", ("-version",), r"^(?P<version>\d+\.\d+\.\d+)"),
             NativeTool("hadolint", "2.15.1", ("--version",), r"v?(?P<version>\d+\.\d+\.\d+)"),
             NativeTool("terraform", "1.15.8", ("version",), r"Terraform v(?P<version>\d+\.\d+\.\d+)"),
             NativeTool(
-                "tflint", "0.63.1", ("--version",), r"TFLint version (?P<version>\d+\.\d+\.\d+)", frozenset({2})
+                "tflint",
+                "0.63.1",
+                ("--version", "--config", str(CONFIGS_DIR / "tflint.version.hcl")),
+                r"TFLint version (?P<version>\d+\.\d+\.\d+)",
+                frozenset({2}),
             ),
             NativeTool(
                 "docker",
@@ -54,6 +63,10 @@ TOOLS: Final = MappingProxyType(
 
 class NativeToolError(ValueError):
     pass
+
+
+class NativeToolMissingError(NativeToolError):
+    """No installed native executable is available for attestation."""
 
 
 MISE_REFS: Final = MappingProxyType(
@@ -88,28 +101,38 @@ def checked_tool(
     # resolves an immutable absolute executable before attesting its version.
     if runner is not run_process:
         return _attest(tool, root=root, runner=runner)
-    adjacent = Path(sys.executable).parent / name
-    path_binary = shutil.which(name)
-    candidates = (str(adjacent), path_binary) if adjacent.is_file() else (path_binary,)
+    adjacent = shutil.which(name, path=str(Path(sys.executable).parent))
+    candidates = dict.fromkeys((adjacent, shutil.which(name)))
+    first_error: OSError | NativeToolError | None = None
     for candidate in candidates:
         if candidate is None:
             continue
         try:
             executable = Path(candidate).resolve(strict=True)
             return _attest(replace(tool, executable=executable), root=root, runner=runner)
-        except OSError, NativeToolError:
-            pass
-    installed = _mise_tool(tool, root=root, runner=runner)
+        except (OSError, NativeToolError) as error:
+            if first_error is None:
+                first_error = error
+    try:
+        installed = _mise_tool(tool, root=root, runner=runner)
+    except NativeToolMissingError:
+        if first_error is not None:
+            raise first_error from None
+        raise
     return _attest(installed, root=root, runner=runner)
 
 
 def _attest(tool: NativeTool, *, root: Path, runner: ProcessRunner) -> NativeTool:
-    output = runner(_argv(tool, tool.version_args), cwd=root)
+    output = _version_output(_argv(tool, tool.version_args), root=root, runner=runner)
     actual = _version(tool, output.stdout)
     if output.returncode or actual != tool.version:
         msg = f"{tool.name} {actual} is installed; exact version {tool.version} is required"
         raise NativeToolError(msg)
     return tool
+
+
+def _version_output(argv: Sequence[str], *, root: Path, runner: ProcessRunner) -> ProcessOutput:
+    return run_process(argv, cwd=root, timeout_seconds=5) if runner is run_process else runner(argv, cwd=root)
 
 
 def _version(tool: NativeTool, source: str) -> str:
@@ -144,17 +167,22 @@ def _mise_tool(tool: NativeTool, *, root: Path, runner: ProcessRunner) -> Native
     mise = shutil.which("mise")
     if mise is None:
         msg = f"{tool.name} {tool.version} is missing; run explicit setup to install pinned native tools"
-        raise NativeToolError(msg)
-    output = runner(
-        (mise, "--no-config", "--no-env", "--no-hooks", "where", f"{MISE_REFS[tool.name]}@{tool.version}"), cwd=root
+        raise NativeToolMissingError(msg)
+    output = _version_output(
+        (mise, "--no-config", "--no-env", "--no-hooks", "where", f"{MISE_REFS[tool.name]}@{tool.version}"),
+        root=root,
+        runner=runner,
     )
     lines = output.stdout.strip().splitlines()
-    if output.returncode or len(lines) != 1 or not Path(lines[0]).is_absolute():
+    if output.returncode:
+        msg = f"mise has no installed {tool.name} {tool.version}; run explicit setup"
+        raise NativeToolMissingError(msg)
+    if len(lines) != 1 or not Path(lines[0]).is_absolute():
         msg = f"mise has no unambiguous installed {tool.name} {tool.version}; run explicit setup"
         raise NativeToolError(msg)
     installation = Path(lines[0]).resolve(strict=True)
     binary = "docker-compose" if tool.name == "docker" else tool.name
-    output = runner(
+    output = _version_output(
         (
             mise,
             "--no-config",
@@ -165,7 +193,8 @@ def _mise_tool(tool: NativeTool, *, root: Path, runner: ProcessRunner) -> Native
             f"{MISE_REFS[tool.name]}@{tool.version}",
             binary,
         ),
-        cwd=root,
+        root=root,
+        runner=runner,
     )
     lines = output.stdout.strip().splitlines()
     if output.returncode or len(lines) != 1 or not Path(lines[0]).is_absolute():

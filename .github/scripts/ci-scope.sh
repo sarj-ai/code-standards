@@ -16,38 +16,7 @@ select_scopes() {
 # Runner images provide Python 3.11+; no package installation is needed.
 # Local linter releases cannot affect mobile; retain their dependency/toolchain changes.
 release_metadata_only() {
-  python3 - "$1" "$2" "$3" <<'PY'
-import re
-import subprocess
-import sys
-import tomllib
-
-base, head, path = sys.argv[1:]
-local_sources = {
-    "code-standards": ".",
-    "sarj-python-lint": "../python",
-    "sarj-sql-lint": "../sql",
-    "sarj-iac-lint": "../iac",
-    "sarj-rule-contracts": "../contracts",
-}
-documents = []
-for revision in (base, head):
-    source = subprocess.check_output(["git", "show", f"{revision}:{path}"], text=True, timeout=30)
-    document = tomllib.loads(source)
-    if path.endswith("pyproject.toml"):
-        del document["project"]["version"]
-        document["project"]["dependencies"] = [
-            re.sub(r"^(sarj-(?:python|sql|iac)-lint|sarj-rule-contracts)==[0-9]+(?:\.[0-9]+)*$", r"\1", dependency)
-            for dependency in document["project"].get("dependencies", [])
-        ]
-    else:
-        for package in document["package"]:
-            name = package["name"]
-            if name in local_sources and package.get("source") == {"editable": local_sources[name]}:
-                del package["version"]
-    documents.append(document)
-sys.exit(0 if documents[0] == documents[1] else 1)
-PY
+  python3 "$(dirname "${BASH_SOURCE[0]}")/ci-release-metadata-only.py" "$1" "$2" "$3"
 }
 
 if [[ "$event" != pull_request && "$event" != push ]]; then

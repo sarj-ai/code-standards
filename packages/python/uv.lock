@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.14"
 
 [options]
@@ -165,7 +165,7 @@ wheels = [
 
 [[package]]
 name = "sarj-python-lint"
-version = "1.26.1"
+version = "1.26.2"
 source = { editable = "." }
 dependencies = [
     { name = "packaging" },

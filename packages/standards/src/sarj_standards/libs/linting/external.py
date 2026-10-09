@@ -175,6 +175,8 @@ _SAFE_ENVIRONMENT_KEYS = frozenset(
     {
         "HOME",
         "LANG",
+        "MISE_DATA_DIR",
+        "MISE_INSTALLS_DIR",
         "PATH",
         "SHELL",
         "SYSTEMROOT",
@@ -185,6 +187,7 @@ _SAFE_ENVIRONMENT_KEYS = frozenset(
         "UV_CACHE_DIR",
         "UV_PYTHON_INSTALL_DIR",
         "UV_TOOL_DIR",
+        "XDG_DATA_HOME",
     }
 )
 
@@ -2161,8 +2164,8 @@ def _nearest_project(start: Path, root: Path, markers: Sequence[str]) -> Path:
     return root
 
 
-def run_process(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
-    return _run_process(argv, cwd=cwd, environment=_analysis_environment())
+def run_process(argv: Sequence[str], *, cwd: Path, timeout_seconds: float = _TIMEOUT.total_seconds()) -> ProcessOutput:
+    return _run_process(argv, cwd=cwd, environment=_analysis_environment(), timeout_seconds=timeout_seconds)
 
 
 def run_process_input(argv: Sequence[str], *, cwd: Path, source: str, timeout_seconds: float = 10) -> ProcessOutput:

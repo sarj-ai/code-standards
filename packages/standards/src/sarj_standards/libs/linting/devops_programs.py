@@ -536,6 +536,8 @@ def _mise_task_fields(value: object) -> Mapping[str, object] | None:
 def _docker_blocks(source: str) -> list[ExecutionBlock]:
     blocks: list[ExecutionBlock] = []
     shell_argv: tuple[str, ...] = ()
+    stages: dict[str, tuple[str, ...]] = {}
+    stage = ""
     escape = "`" if re.search(r"(?im)^\s*#\s*escape\s*=\s*`\s*$", source) else "\\"
     cursor = _DockerCursor(source.splitlines(), escape)
     while cursor.index < len(cursor.lines):
@@ -543,7 +545,14 @@ def _docker_blocks(source: str) -> list[ExecutionBlock]:
         if instruction is None:
             continue
         if instruction.name == "from":
+            if stage:
+                stages[stage] = shell_argv
+            match = re.fullmatch(r"\s*(\S+)(?:\s+[Aa][Ss]\s+([A-Za-z][A-Za-z0-9_.-]*))?\s*", instruction.command)
             shell_argv = ()
+            stage = ""
+            if match is not None:
+                shell_argv = stages.get(match[1].casefold(), ())
+                stage = (match[2] or "").casefold()
             continue
         words = _docker_json_argv(instruction.command)
         if instruction.name == "shell":
@@ -601,17 +610,29 @@ def _make_blocks(source: str) -> list[ExecutionBlock]:
 
 def _make_variables(lines: Sequence[str]) -> dict[str, str]:
     variables: dict[str, str] = {}
+    simple: set[str] = set()
     for line in lines:
-        assignment = re.fullmatch(r"(?:export\s+)?([A-Za-z_][A-Za-z0-9_.]*)\s*([?:+]?=)\s*(.*)", line)
-        if assignment is not None:
-            name, operator, value = assignment.groups()
-            # Make comments are independent of shell quoting; an unescaped #
-            # terminates the assignment before recipe expansion.
-            value = re.split(r"(?<!\\)#", value, maxsplit=1)[0].rstrip()
-            if operator == "+=" and name in variables:
-                variables[name] += " " + value
-            elif operator != "?=" or name not in variables:
-                variables[name] = value
+        assignment = re.fullmatch(r"(?:export\s+)?([A-Za-z_][A-Za-z0-9_.]*)\s*(:::=|::=|:=|[?+]?=)\s*(.*)", line)
+        if assignment is None:
+            continue
+        name, operator, value = assignment.groups()
+        # Make comments are independent of shell quoting; an unescaped #
+        # terminates the assignment before recipe expansion.
+        value = re.split(r"(?<!\\)#", value, maxsplit=1)[0].rstrip()
+        if operator == "?=" and name in variables:
+            continue
+        if operator in {":=", "::=", ":::="} or (operator == "+=" and name in simple):
+            # Frozen values must survive the existing recursive expander verbatim:
+            # dollars belong to the shell after Make's single expansion pass.
+            value = _make_source(value, variables).replace("$", "$$")
+        if operator == "+=" and name in variables:
+            variables[name] += " " + value
+            continue
+        variables[name] = value
+        if operator in {":=", "::="}:
+            simple.add(name)
+        else:
+            simple.discard(name)
     return variables
 
 

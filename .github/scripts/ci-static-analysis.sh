@@ -11,16 +11,13 @@ run_check() {
 }
 run_check Ruff uv run ruff check src/ tests/ &
 ruff_pid=$!
-run_check 'Ruff release helpers' uv run ruff check ../../.github/scripts/ci-precommit-config.py ../../.github/scripts/release-*.py &
+run_check 'Ruff release helpers' uv run ruff check ../../.github/scripts/*.py &
 ruff_helpers_pid=$!
-run_check Typecheck uv run basedpyright src/ tests/ ../../.github/scripts/ci-precommit-config.py ../../.github/scripts/release-*.py &
+run_check Typecheck uv run basedpyright src/ tests/ ../../.github/scripts/*.py &
 types_pid=$!
-run_check ShellCheck env MISE_OFFLINE=true mise --no-config --no-env --no-hooks exec aqua:koalaman/shellcheck@0.11.0 -- \
-  shellcheck --norc --extended-analysis=true --enable=check-extra-masked-returns --severity=info \
-  --source-path=SCRIPTDIR -- ../../.github/scripts/*.sh &
+run_check ShellCheck uv run python -m sarj_standards.libs.repository.shell_checks --root ../.. --tool shellcheck &
 shellcheck_pid=$!
-run_check ShellFormat env MISE_OFFLINE=true mise --no-config --no-env --no-hooks exec aqua:mvdan/sh@3.14.1 -- \
-  shfmt -d -i 2 ../../.github/scripts/*.sh &
+run_check ShellFormat uv run python -m sarj_standards.libs.repository.shell_checks --root ../.. --tool shfmt &
 shellformat_pid=$!
 result=0
 wait "$ruff_pid" || result=1
