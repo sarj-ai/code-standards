@@ -16,6 +16,7 @@ from sarj_standards.libs.rules import (
     AutofixPolicy,
     DefaultLevel,
     DocumentedRule,
+    ExampleDependency,
     ExampleFile,
     ExpectedOutcome,
     Language,
@@ -67,6 +68,7 @@ _TYPESCRIPT_FIELDS: Final = frozenset(
 _TYPESCRIPT_EXAMPLE_FIELDS: Final = frozenset(
     {"expectedCount", "files", "fixedFiles", "focusPath", "id", "outcome", "scenarioId", "title"}
 )
+_TYPESCRIPT_EXAMPLE_OPTIONAL_FIELDS: Final = frozenset({"ruleOptions", "installedDependencies"})
 _TYPESCRIPT_FILE_FIELDS: Final = frozenset({"path", "source"})
 _PROCESS_TIMEOUT: Final = timedelta(seconds=120)
 
@@ -386,13 +388,20 @@ def _typescript_example(value: object) -> RuleExample:
     if not _is_object(value):
         msg = "TypeScript public example must be an object"
         raise TypeError(msg)
-    if frozenset(value) != _TYPESCRIPT_EXAMPLE_FIELDS:
+    if not _TYPESCRIPT_EXAMPLE_FIELDS.issubset(value) or not frozenset(value).issubset(
+        _TYPESCRIPT_EXAMPLE_FIELDS | _TYPESCRIPT_EXAMPLE_OPTIONAL_FIELDS
+    ):
         msg = "TypeScript public example has unexpected or missing fields"
         raise ValueError(msg)
     files = value.get("files")
     fixed_files = value.get("fixedFiles")
     if not _is_array(files) or not _is_array(fixed_files):
         msg = "TypeScript public example files must be arrays"
+        raise TypeError(msg)
+    rule_options = value.get("ruleOptions", [])
+    dependencies = value.get("installedDependencies", [])
+    if not _is_array(rule_options) or not _is_array(dependencies):
+        msg = "TypeScript example options and dependencies must be arrays"
         raise TypeError(msg)
     focus_path = _value_from_dict(value, "focusPath")
     expected_count = value.get("expectedCount")
@@ -409,7 +418,18 @@ def _typescript_example(value: object) -> RuleExample:
         expected_count=expected_count,
         public=True,
         scenario=_value_from_dict(value, "scenarioId"),
+        rule_options_json=json.dumps(rule_options, sort_keys=True, separators=(",", ":"))
+        if "ruleOptions" in value
+        else None,
+        installed_dependencies=tuple(_typescript_dependency(item) for item in dependencies),
     )
+
+
+def _typescript_dependency(value: object) -> ExampleDependency:
+    if not _is_object(value) or frozenset(value) != frozenset({"module", "version"}):
+        msg = "TypeScript example dependency must have exactly module and version"
+        raise ValueError(msg)
+    return ExampleDependency(_value_from_dict(value, "module"), _value_from_dict(value, "version"))
 
 
 def _typescript_file(value: object) -> ExampleFile:

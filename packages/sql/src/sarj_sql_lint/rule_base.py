@@ -6,6 +6,7 @@ from dataclasses import dataclass, replace
 from functools import lru_cache
 from pathlib import Path
 import re
+from types import MappingProxyType
 from typing import TYPE_CHECKING, ClassVar, NamedTuple, final
 
 from sarj_rule_contracts import (
@@ -21,7 +22,7 @@ from sarj_rule_contracts import (
 
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Iterator, Mapping, Sequence
 
 
 class StatementFragment(NamedTuple):
@@ -55,6 +56,7 @@ class _ScanResult(NamedTuple):
     comments: list[SourceComment]
     comment_spans: tuple[tuple[int, int], ...]
     identifier_spans: tuple[tuple[int, int], ...]
+    dollar_spans: tuple[tuple[int, int], ...]
 
 
 class SourceComment(NamedTuple):
@@ -71,14 +73,14 @@ class _CommentScan:
 
 
 _SARJ_NOQA_RE = re.compile(
-    r"--\s*sarj-noqa(?::\s*([A-Za-z0-9_, ]+))?",
+    r"--\s*sarj-noqa\b(?::[ \t]*([A-Za-z][A-Za-z0-9_]*(?:[ \t]*,[ \t]*[A-Za-z][A-Za-z0-9_]*)*))?",
     re.IGNORECASE,
 )
 _NON_NEWLINE = re.compile(r"[^\n]")
 
 # A dollar-quote delimiter (`$$` or `$tag$`) where `tag` cannot start with a digit, preventing match with `$1`/`$2` positional parameters.
-_DOLLAR_DELIM_RE = re.compile(r"\$(?:[A-Za-z_][A-Za-z0-9_]*)?\$")
-_IDENT_CHAR_RE = re.compile(r"[A-Za-z0-9_]")
+_DOLLAR_DELIM_RE = re.compile(r"\$(?:[A-Za-z_\u0080-\U0010ffff][A-Za-z0-9_\u0080-\U0010ffff]*)?\$")
+_IDENT_CHAR_RE = re.compile(r"[A-Za-z0-9_$\u0080-\U0010ffff]")
 _STATEMENT_HEAD_SIZE = 4
 
 
@@ -123,9 +125,13 @@ _DIALECT_DIRECTIVE_RE = re.compile(
     re.IGNORECASE | re.MULTILINE,
 )
 _DBMATE_DIRECTIVE_RE = re.compile(
-    r"^\s*--\s*migrate:(up|no-transaction)\s*$",
-    re.IGNORECASE | re.MULTILINE,
+    r"^(?P<header>--[ \t\n\f\r]*migrate:(?P<section>up|down))([ \t\n\f\r]*$|[ \t\n\f\r]+[^ \t\n\f\r]+)",
+    re.MULTILINE,
 )
+# Dbmate uses Go RE2 ASCII whitespace for fields, and Unicode White_Space for option-edge trimming.
+_DBMATE_FIELD_SPACE = re.compile(r"[ \t\n\f\r]+")
+_DBMATE_OPTION_TRIM = re.compile(r"^[^\S\x1c-\x1f]+|[^\S\x1c-\x1f]+$")
+_DBMATE_PREFIX_SPACE = " \t\n\f\r"
 _SQLITE_RE = re.compile(r"\bAUTOINCREMENT\b", re.IGNORECASE)
 
 _MIGRATION_ROOT_NAMES = frozenset({"changesets", "drizzle", "migrate", "migration", "migrations"})
@@ -167,24 +173,124 @@ _POSTGRES_MIGRATION_EVIDENCE_RE = re.compile(
 )
 
 
+@lru_cache(maxsize=32)
+def _file_comment_spans(
+    source: str,
+) -> tuple[tuple[SourceComment, tuple[int, int]], ...]:
+    scanned = _scan(source, mask_dollar_literals=True, cross_dialect_identifiers=True)
+    body_starts = tuple(first for first, _ in scanned.executable_spans)
+    comments: list[tuple[SourceComment, tuple[int, int]]] = []
+    for comment, (start, end) in zip(scanned.comments, scanned.comment_spans, strict=True):
+        preceding = bisect_right(body_starts, start) - 1
+        if preceding >= 0 and start < scanned.executable_spans[preceding][1]:
+            continue
+        comments.append((comment, (start, end)))
+    return tuple(comments)
+
+
+def has_file_comment_match(source: str, pattern: re.Pattern[str], *, limit: int) -> bool:
+    spans: tuple[tuple[SourceComment, tuple[int, int]], ...] | None = None
+    cursor = 0
+    header = source[:limit]
+    for match in pattern.finditer(header):
+        if spans is None:
+            spans = _file_comment_spans(header)
+        position = match.end() - 1
+        while cursor < len(spans) and spans[cursor][1][1] <= position:
+            cursor += 1
+        if cursor < len(spans) and spans[cursor][1][0] <= position:
+            return True
+    return False
+
+
+@lru_cache(maxsize=32)
+def _standalone_directive_comments(source: str) -> tuple[SourceComment, ...]:
+    source_lines = source.split("\n")
+    return tuple(
+        comment
+        for comment, _ in _file_comment_spans(source)
+        if not comment.block and not source_lines[comment.line - 1][: comment.column - 1].strip()
+    )
+
+
+@lru_cache(maxsize=32)
 def declared_dialect(source: str) -> str | None:
-    match = _DIALECT_DIRECTIVE_RE.search(source)
-    if match is None:
-        return None
-    dialect = match.group(1).lower()
-    if dialect in {"postgres", "postgresql"}:
-        return "postgresql"
-    if dialect == "mariadb":
-        return "mysql"
-    return dialect
+    for comment in _standalone_directive_comments(source):
+        match = _DIALECT_DIRECTIVE_RE.fullmatch(f"--{comment.body}")
+        if match is None:
+            continue
+        dialect = match.group(1).lower()
+        if dialect in {"postgres", "postgresql"}:
+            return "postgresql"
+        return "mysql" if dialect == "mariadb" else dialect
+    return None
+
+
+class DbmateDirective(NamedTuple):
+    match: re.Match[str]
+    section: str
+    transactional: bool
+
+
+class _DbmateSource(NamedTuple):
+    directives: tuple[DbmateDirective, ...]
+    starts: tuple[int, ...]
+    has_valid_prefix: bool
+
+
+@lru_cache(maxsize=32)
+def _dbmate_source(source: str) -> _DbmateSource:
+    directives: list[DbmateDirective] = []
+    for match in _DBMATE_DIRECTIVE_RE.finditer(source):
+        end = source.find("\n", match.start())
+        line = source[match.start() : len(source) if end < 0 else end]
+        options: dict[str, str] = {}
+        option_text = _DBMATE_OPTION_TRIM.sub("", line.removeprefix(match.group("header")))
+        for word in _DBMATE_FIELD_SPACE.split(option_text):
+            match word.split(":"):
+                case [key, value]:
+                    options[key] = value
+                case _:
+                    pass
+        directives.append(DbmateDirective(match, match.group("section"), options.get("transaction") != "false"))
+    first_up = next((item for item in directives if item.section == "up"), None)
+    prefix_valid = first_up is not None and all(
+        not line.strip(_DBMATE_PREFIX_SPACE) or line.lstrip(_DBMATE_PREFIX_SPACE).startswith("--")
+        for line in source[: first_up.match.start()].split("\n")
+    )
+    return _DbmateSource(tuple(directives), tuple(item.match.start() for item in directives), prefix_valid)
+
+
+def dbmate_directives(source: str) -> tuple[DbmateDirective, ...]:
+    scanned = _dbmate_source(source)
+    return scanned.directives if scanned.has_valid_prefix else ()
+
+
+@lru_cache(maxsize=32)
+def dbmate_section_boundaries(source: str) -> tuple[tuple[int, re.Match[str]], ...]:
+    directives = dbmate_directives(source)
+    if directives:
+        return tuple((item.match.start(), item.match) for item in directives)
+    # Preserve genuine down-section boundaries in existing partial SQL inputs.
+    boundaries: list[tuple[int, re.Match[str]]] = []
+    for comment in _standalone_directive_comments(source):
+        match = _DBMATE_DIRECTIVE_RE.match(f"--{comment.body}")
+        if match is not None and match.group("section") == "down":
+            offset = _line_starts(source)[comment.line - 1] + comment.column - 1
+            boundaries.append((offset, match))
+    return tuple(boundaries)
+
+
+def dbmate_transactional(source: str, offset: int) -> bool | None:
+    directives = _dbmate_source(source)
+    index = bisect_right(directives.starts, offset) - 1
+    return None if index < 0 or not directives.has_valid_prefix else directives.directives[index].transactional
 
 
 def has_dbmate_directive(source: str, directive: str) -> bool:
-    dollar_lines = dollar_quoted_lines(source)
-    return any(
-        match.group(1).lower() == directive and source_location(source, match.start()).line not in dollar_lines
-        for match in _DBMATE_DIRECTIVE_RE.finditer(source)
-    )
+    if directive == "no-transaction":
+        return any(item.section == "up" and not item.transactional for item in dbmate_directives(source))
+    return any(item.section == directive for item in dbmate_directives(source))
 
 
 # Drizzle writes this separator between statements in every migration it emits.
@@ -202,7 +308,7 @@ def is_postgres(source: str) -> bool:
     dialect = declared_dialect(source)
     if dialect is not None:
         return dialect == "postgresql"
-    return _NON_POSTGRES_RE.search(mask_sql(source)) is None
+    return _NON_POSTGRES_RE.search(mask_sql(source, mask_dollar_literals=True)) is None
 
 
 def is_postgres_source(path: Path, source: str) -> bool:
@@ -212,21 +318,32 @@ def is_postgres_source(path: Path, source: str) -> bool:
     dialect = declared_dialect(source)
     if dialect is not None:
         return dialect == "postgresql"
-    return is_postgres(source) and ("supabase" in parts or _POSTGRES_MIGRATION_EVIDENCE_RE.search(source) is not None)
+    scanned = _scan(source, mask_dollar_literals=True)
+    return is_postgres(source) and (
+        "supabase" in parts
+        or _POSTGRES_MIGRATION_EVIDENCE_RE.search(scanned.masked_source) is not None
+        or bool(scanned.executable_spans)
+    )
 
 
 def is_mysql(source: str) -> bool:
     dialect = declared_dialect(source)
     if dialect is not None:
         return dialect == "mysql"
-    return _MYSQL_RE.search(mask_sql(source)) is not None
+    return (
+        _MYSQL_RE.search(_scan(source, mask_dollar_literals=True, cross_dialect_identifiers=True).masked_source)
+        is not None
+    )
 
 
 def is_sqlite(source: str) -> bool:
     dialect = declared_dialect(source)
     if dialect is not None:
         return dialect == "sqlite"
-    return _SQLITE_RE.search(mask_sql(source)) is not None
+    return (
+        _SQLITE_RE.search(_scan(source, mask_dollar_literals=True, cross_dialect_identifiers=True).masked_source)
+        is not None
+    )
 
 
 def is_postgres_migration(path: Path, source: str) -> bool:
@@ -280,7 +397,9 @@ def _has_generated_marker(directory: Path) -> bool:
 
 
 def is_generated_migration(path: Path, source: str) -> bool:
-    if _GENERATED_MIGRATION_SENTINEL in source:
+    if _GENERATED_MIGRATION_SENTINEL in source and any(
+        _GENERATED_MIGRATION_SENTINEL in source[start:end] for _, (start, end) in _file_comment_spans(source)
+    ):
         return True
     return _has_generated_marker(path.parent)
 
@@ -288,19 +407,56 @@ def is_generated_migration(path: Path, source: str) -> bool:
 def clear_path_caches() -> None:
     _has_generated_marker.cache_clear()
     _line_starts.cache_clear()
+    _suppression_codes.cache_clear()
+    _standalone_directive_comments.cache_clear()
+    _file_comment_spans.cache_clear()
+    _dbmate_source.cache_clear()
+    declared_dialect.cache_clear()
+    dbmate_section_boundaries.cache_clear()
 
 
-def is_suppressed(source_lines: list[str], line: int, code: str) -> bool:
-    if line < 1 or line > len(source_lines):
+def is_suppressed(source_lines: str | list[str], line: int, code: str) -> bool:
+    if line < 1 or (isinstance(source_lines, list) and line > len(source_lines)):
         return False
-    m = _SARJ_NOQA_RE.search(source_lines[line - 1])
-    if m is None:
-        return False
-    codes_str = m.group(1)
-    if not codes_str:
-        return True
-    codes = {val.upper() for c in codes_str.split(",") if (val := c.strip())}
-    return code.upper() in codes
+    source = source_lines if isinstance(source_lines, str) else "\n".join(source_lines)
+    codes = _suppression_codes(source).get(line, frozenset())
+    return codes is None or code.upper() in codes
+
+
+@lru_cache(maxsize=32)
+def _suppression_codes(source: str) -> Mapping[int, frozenset[str] | None]:
+    suppressions: dict[int, frozenset[str] | None] = {}
+    comments = _scan(
+        source,
+        mask_dollar_literals=True,
+        cross_dialect_identifiers=declared_dialect(source) in {"mysql", "sqlite"},
+    ).comments
+    for comment in comments:
+        suppression = _comment_suppression(comment)
+        if suppression is not None:
+            suppressions[suppression[0]] = suppression[1]
+    return MappingProxyType(suppressions)
+
+
+def _comment_suppression(comment: SourceComment) -> tuple[int, frozenset[str] | None] | None:
+    if comment.block:
+        return None
+    payload = f"--{comment.body}"
+    match = _SARJ_NOQA_RE.match(payload)
+    if match is None:
+        return None
+    codes_str = match.group(1)
+    trailing = payload[match.end() :]
+    if codes_str is None:
+        if trailing and (not trailing[0].isspace() or trailing.lstrip().startswith(":")):
+            return None
+        return comment.line, None
+    suffix = trailing.lstrip()
+    separated_dash = bool(trailing) and trailing[0].isspace() and suffix.startswith("-")
+    if suffix and not (suffix.startswith(("--", "—", "–")) or separated_dash):
+        return None
+    codes = frozenset(val.upper() for part in codes_str.split(",") if (val := part.strip()))
+    return comment.line, codes
 
 
 def _scan_quoted(  # sarj-noqa: SARJ023 — scanner primitive stays above the cached engine.
@@ -319,6 +475,21 @@ def _scan_quoted(  # sarj-noqa: SARJ023 — scanner primitive stays above the ca
             return j + 1
         j += 1
     return n
+
+
+def cross_dialect_identifier_end(chars: Sequence[str], cursor: int, char: str) -> int:
+    closer = "`" if char == "`" else "]"
+    index = cursor + 1
+    while index < len(chars):
+        if chars[index] != closer:
+            index += 1
+            continue
+        if index + 1 < len(chars) and chars[index + 1] == closer:
+            index += 2
+            continue
+        index += 1
+        break
+    return index
 
 
 def _dollar_open_tag(  # sarj-noqa: SARJ023 — scanner primitive stays above the cached engine.
@@ -378,12 +549,21 @@ class _StatementContext:
 
 @final
 class _SqlMasker:
-    def __init__(self, source: str, *, preserve_quoted_identifiers: bool, mask_dollar_literals: bool) -> None:
+    def __init__(
+        self,
+        source: str,
+        *,
+        preserve_quoted_identifiers: bool,
+        mask_dollar_literals: bool,
+        cross_dialect_identifiers: bool,
+    ) -> None:
         self.source = source
         self.preserve_quoted_identifiers = preserve_quoted_identifiers
         self.mask_dollar_literals = mask_dollar_literals
+        self.cross_dialect_identifiers = cross_dialect_identifiers
         self.out: list[str] = []
         self.bodies = _DollarBodies()
+        self.scalar_dollar_spans: list[tuple[int, int]] = []
         self.comments: list[SourceComment] = []
         self.comment_spans: list[tuple[int, int]] = []
         self.identifier_spans: list[tuple[int, int]] = []
@@ -396,12 +576,14 @@ class _SqlMasker:
             self._scan_token()
         if self.chunk_start < len(self.source):
             self.out.append(self.source[self.chunk_start :])
+        body_spans = self.bodies.finish(len(self.source))
         return _ScanResult(
             "".join(self.out),
-            self.bodies.finish(len(self.source)),
+            body_spans,
             self.comments,
             tuple(self.comment_spans),
             tuple(self.identifier_spans),
+            tuple(sorted((*body_spans, *self.scalar_dollar_spans))),
         )
 
     def _scan_token(self) -> None:
@@ -410,6 +592,16 @@ class _SqlMasker:
             self._mask(template_end)
             return
         ch = self.source[self.offset]
+        if ch == "`" or (self.cross_dialect_identifiers and ch == "["):
+            end = cross_dialect_identifier_end(self.source, self.offset, ch)
+            if self.cross_dialect_identifiers:
+                self._mask(end)
+            else:
+                self.identifier_spans.append((self.offset, end))
+                self.offset = end
+            if self.mask_dollar_literals and not self.bodies.tags:
+                self.statement.record("<quoted>")
+            return
         if ch == "$":
             self._scan_dollar()
             return
@@ -452,7 +644,10 @@ class _SqlMasker:
             return
         if self.mask_dollar_literals and (self.bodies.tags or not self.statement.is_executable_body()):
             close = self.source.find(tag, self.offset + len(tag))
-            self._mask(len(self.source) if close < 0 else close + len(tag))
+            end = len(self.source) if close < 0 else close + len(tag)
+            if not self.bodies.tags:
+                self.scalar_dollar_spans.append((self.offset, end))
+            self._mask(end)
             self.statement.tail = "<literal>"
         else:
             self._mask(self.bodies.open(tag, self.offset))
@@ -464,10 +659,19 @@ class _SqlMasker:
 
 
 @lru_cache(maxsize=32)
-def _scan(source: str, *, preserve_quoted_identifiers: bool = False, mask_dollar_literals: bool = False) -> _ScanResult:
+def _scan(
+    source: str,
+    *,
+    preserve_quoted_identifiers: bool = False,
+    mask_dollar_literals: bool = False,
+    cross_dialect_identifiers: bool = False,
+) -> _ScanResult:
     # Preserve offsets while masking noise inside executable dollar-quoted bodies.
     return _SqlMasker(
-        source, preserve_quoted_identifiers=preserve_quoted_identifiers, mask_dollar_literals=mask_dollar_literals
+        source,
+        preserve_quoted_identifiers=preserve_quoted_identifiers,
+        mask_dollar_literals=mask_dollar_literals,
+        cross_dialect_identifiers=cross_dialect_identifiers,
     ).scan()
 
 
@@ -533,7 +737,7 @@ def sql_comments(source: str) -> tuple[SourceComment, ...]:
 
 
 def dollar_quoted_lines(source: str) -> frozenset[int]:
-    spans = _scan(source).executable_spans
+    spans = _scan(source, mask_dollar_literals=True).dollar_spans
     if not spans:
         return frozenset()
     inside: set[int] = set()
@@ -547,7 +751,7 @@ def dollar_quoted_lines(source: str) -> frozenset[int]:
 
 
 def dollar_quoted_spans(source: str) -> tuple[tuple[int, int], ...]:
-    return tuple(_scan(source).executable_spans)
+    return _scan(source, mask_dollar_literals=True).dollar_spans
 
 
 def split_statements(masked: str) -> list[Statement]:

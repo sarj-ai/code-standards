@@ -34,6 +34,8 @@ export interface ExampleFile {
 
 /** A reviewed example. It remains private unless `public: true` is explicit. */
 export interface RuleExample {
+  readonly ruleOptions?: readonly unknown[];
+  readonly installedDependencies?: readonly { readonly module: string; readonly version: string }[];
   readonly id: string;
   readonly scenarioId?: string;
   readonly title: string;
@@ -188,7 +190,7 @@ export function publicDocumentation(
 
 /** Copy an example through a closed field list so future private fields stay private. */
 function publicExample(example: RuleExample): RuleExample {
-  return {
+  const copy: { -readonly [Field in keyof RuleExample]: RuleExample[Field] } = {
     id: example.id,
     scenarioId: example.scenarioId ?? "primary",
     title: example.title,
@@ -198,6 +200,9 @@ function publicExample(example: RuleExample): RuleExample {
     expectedCount: example.expectedCount,
     fixedFiles: (example.fixedFiles ?? []).map(publicFile),
   };
+  if (example.ruleOptions !== undefined) copy.ruleOptions = example.ruleOptions;
+  if (example.installedDependencies !== undefined) copy.installedDependencies = example.installedDependencies.map(({ module, version }) => ({ module, version }));
+  return copy;
 }
 
 function publicFile(file: ExampleFile): ExampleFile {

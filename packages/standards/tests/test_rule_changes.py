@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 import hashlib
 from importlib.resources import files
 import json
@@ -651,10 +652,12 @@ def test_functional_registry_keeps_called_rule_dependency(repository: Path) -> N
 
 @pytest.mark.parametrize("case", ["compiler-runtime", "compiler-package"])
 def test_parser_version_pair_rejects_fully_functional_wrong_compiler(repository: Path, case: str) -> None:
+    _prepare_rule_comparison_parser_metadata(repository)
     installed = Path(__file__).parents[2] / "typescript/node_modules/typescript/lib/typescript.js"
     compiler = repository / "packages/typescript/node_modules/typescript/lib/typescript.js"
     compiler.parent.mkdir(parents=True)
-    runtime = "0.0.0" if case == "compiler-runtime" else "6.0.3"
+    pins = _rule_comparison_parser_fixture_pins(repository)
+    runtime = "0.0.0" if case == "compiler-runtime" else pins.runtime
     compiler.write_text(
         "const compiler=require("
         + json.dumps(str(installed.resolve()))
@@ -664,7 +667,9 @@ def test_parser_version_pair_rejects_fully_functional_wrong_compiler(repository:
         encoding="utf-8",
     )
     (compiler.parent.parent / "package.json").write_text(
-        json.dumps({"name": "@typescript/typescript6", "version": "0.0.0" if case == "compiler-package" else "6.0.2"}),
+        json.dumps(
+            {"name": "@typescript/typescript6", "version": "0.0.0" if case == "compiler-package" else pins.package}
+        ),
         encoding="utf-8",
     )
     entry = _rule("alpha")
@@ -683,7 +688,7 @@ def test_parser_version_pair_rejects_fully_functional_wrong_compiler(repository:
         rule_changes.compare(repository, before=before, after=before)
     frontend = files("sarj_standards.libs.repository").joinpath("rule_imports.cjs")
     invoked = subprocess.run(
-        ("node", str(frontend), str(compiler), "v24.21.0", "6.0.2", "6.0.3"),
+        ("node", str(frontend), str(compiler), pins.node, pins.package, pins.runtime),
         cwd=repository,
         input="{}",
         text=True,
@@ -709,3 +714,667 @@ def test_invalid_native_python_encoding_fails_at_the_immutable_boundary(reposito
     assert native.returncode != 0
     with pytest.raises(ValueError, match="invalid immutable Python source encoding"):
         rule_changes.compare(repository, before=revision, after=revision)
+
+
+@pytest.fixture
+def installed_rule_comparison_compiler(repository: Path) -> None:
+    _prepare_rule_comparison_parser_metadata(repository)
+    installed = Path(__file__).parents[2] / "typescript/node_modules/typescript"
+    compiler = repository / "packages/typescript/node_modules/typescript"
+    compiler.parent.mkdir(parents=True)
+    compiler.symlink_to(installed.resolve(), target_is_directory=True)
+
+
+@pytest.mark.parametrize(
+    ("case", "source", "tracks_helper"),
+    [
+        ("literal", "module.exports=require('./helper.cjs');", True),
+        ("nested", "module.exports=(()=>require('./helper.cjs'))();", True),
+        (
+            "separate-block-shadow",
+            "{const require=()=>false;require('./helper.cjs');} module.exports=require('./helper.cjs');",
+            True,
+        ),
+        (
+            "separate-parameter-shadow",
+            "function local(require){return require('./helper.cjs');} local(()=>false);module.exports=require('./helper.cjs');",
+            True,
+        ),
+        (
+            "separate-local-mutation",
+            "function local(require){require=()=>false;return require('./helper.cjs');} local(()=>false);module.exports=require('./helper.cjs');",
+            True,
+        ),
+        ("dynamic-with-shadow", "with({require:()=>false}){module.exports=require('./helper.cjs');}", False),
+        ("direct-eval-mutation", "eval('require=()=>false');module.exports=require('./helper.cjs');", False),
+        ("shadowed-eval", "(eval=>eval('ignored'))(()=>false);module.exports=require('./helper.cjs');", True),
+        ("parameter-shadow", "module.exports=(require=>require('./helper.cjs'))(()=>false);", False),
+        (
+            "destructured-parameter-shadow",
+            "module.exports=(({require})=>require('./helper.cjs'))({require:()=>false});",
+            False,
+        ),
+        ("block-shadow", "{const require=()=>false;module.exports=require('./helper.cjs');}", False),
+        ("catch-shadow", "try{throw ()=>false;}catch(require){module.exports=require('./helper.cjs');}", False),
+        (
+            "function-hoisted-var",
+            "module.exports=(function(){var require=()=>false;return require('./helper.cjs');})();",
+            False,
+        ),
+        ("function-shadow", "function require(){return false;}module.exports=require('./helper.cjs');", False),
+        ("assigned-wrapper", "require=()=>false;module.exports=require('./helper.cjs');", False),
+        ("destructured-assignment", "({require}={require:()=>false});module.exports=require('./helper.cjs');", False),
+        ("literal-computed-abstention", "const path='./helper.cjs';module.exports=require(path);", False),
+        ("comment-lookalike", "// require('./helper.cjs')\nmodule.exports=false;", False),
+        ("string-lookalike", "const spelling=\"require('./helper.cjs')\";module.exports=false;", False),
+        ("unicode-bom", "\ufeffmodule.exports=require('./helper.cjs');", True),
+        ("hashbang", "#!/usr/bin/env node\nmodule.exports=require('./helper.cjs');", True),
+    ],
+)
+@pytest.mark.usefixtures("installed_rule_comparison_compiler")
+def test_commonjs_runtime_dependency_ownership(repository: Path, case: str, source: str, tracks_helper: bool) -> None:
+    entry = _rule("alpha")
+    entry.update(
+        key="eslint:alpha",
+        engine="eslint",
+        source="packages/typescript/src/alpha.cjs",
+        test="packages/typescript/tests/alpha.test.cjs",
+    )
+    package = repository / "packages/typescript/src"
+    package.mkdir(parents=True)
+    (package / "alpha.cjs").write_text(source, encoding="utf-8")
+    (package / "helper.cjs").write_text("module.exports=false;", encoding="utf-8")
+    test = repository / str(entry["test"])
+    test.parent.mkdir(parents=True)
+    test.write_text("", encoding="utf-8")
+    before = _write_revision(repository, [entry], f"CommonJS baseline {case}")
+    observe = ("node", "--eval", "console.log(require('./packages/typescript/src/alpha.cjs'))")
+    before_output = subprocess.run(observe, cwd=repository, check=True, capture_output=True, text=True).stdout.strip()
+    (package / "helper.cjs").write_text("module.exports=true;", encoding="utf-8")
+    _git(repository, "add", "packages")
+    _git(repository, "commit", "-m", "CommonJS helper counterfactual")
+    after = _git(repository, "rev-parse", "HEAD")
+    after_output = subprocess.run(observe, cwd=repository, check=True, capture_output=True, text=True).stdout.strip()
+    runtime_changes = tracks_helper or case == "literal-computed-abstention"
+    assert before_output == "false"
+    assert after_output == ("true" if runtime_changes else "false")
+    result = rule_changes.compare(repository, before=before, after=after)
+    assert result["changedSelectors"] == (["eslint:alpha"] if tracks_helper else [])
+    assert rule_changes.compare(repository, before=before, after=after) == result
+
+
+@pytest.mark.parametrize("suffix", [".cjs", ".mjs"])
+@pytest.mark.usefixtures("installed_rule_comparison_compiler")
+def test_javascript_extensions_use_native_parser_kind(repository: Path, suffix: str) -> None:
+    entry = _rule("alpha")
+    entry.update(
+        key="eslint:alpha",
+        engine="eslint",
+        source=f"packages/typescript/src/alpha{suffix}",
+        test="packages/typescript/tests/alpha.test.cjs",
+    )
+    source = repository / str(entry["source"])
+    source.parent.mkdir(parents=True)
+    source.write_text("const value = <number>1;", encoding="utf-8")
+    test = repository / str(entry["test"])
+    test.parent.mkdir(parents=True)
+    test.write_text("", encoding="utf-8")
+    revision = _write_revision(repository, [entry], "invalid native JavaScript")
+    native = subprocess.run(("node", str(source)), cwd=repository, check=False, capture_output=True, text=True)
+    assert native.returncode != 0
+    with pytest.raises(ValueError, match="Malformed TypeScript source"):
+        rule_changes.compare(repository, before=revision, after=revision)
+
+
+@pytest.mark.parametrize("suffix", [".js", ".mjs", ".cjs"])
+@pytest.mark.parametrize(
+    ("source_bytes", "native_valid"),
+    [
+        (b"// \xff\nconsole.log(true);", True),
+        (b"const value='\xff';console.log(true);", True),
+        (b"\xef\xbb\xbfconsole.log(true);", True),
+        ("console.log(true);".encode("utf-16"), False),
+    ],
+    ids=("replacement-comment", "replacement-string", "utf8-bom", "utf16-rejected"),
+)
+@pytest.mark.usefixtures("installed_rule_comparison_compiler")
+def test_javascript_bytes_match_native_decoding(
+    repository: Path, suffix: str, source_bytes: bytes, native_valid: bool
+) -> None:
+    entry = _rule("alpha")
+    entry.update(
+        key="eslint:alpha",
+        engine="eslint",
+        source=f"packages/typescript/src/alpha{suffix}",
+        test="packages/typescript/tests/alpha.test.cjs",
+    )
+    source = repository / str(entry["source"])
+    source.parent.mkdir(parents=True)
+    source.write_bytes(source_bytes)
+    test = repository / str(entry["test"])
+    test.parent.mkdir(parents=True)
+    test.write_text("", encoding="utf-8")
+    before = _write_revision(repository, [entry], "native JavaScript bytes")
+    native = subprocess.run(("node", str(source)), cwd=repository, check=False, capture_output=True, text=True)
+    assert (native.returncode == 0) is native_valid
+    if not native_valid:
+        with pytest.raises(ValueError, match="Malformed TypeScript source"):
+            rule_changes.compare(repository, before=before, after=before)
+        return
+    assert native.stdout.strip() == "true"
+    assert rule_changes.compare(repository, before=before, after=before)["changes"] == []
+    # Distinct invalid UTF-8 bytes may decode identically; raw Git identity still owns the fingerprint.
+    source.write_bytes(
+        source_bytes.replace(b"\xff", b"\xfe") if b"\xff" in source_bytes else source_bytes + b"\n// source edit"
+    )
+    _git(repository, "add", "packages")
+    _git(repository, "commit", "-m", "immutable JavaScript byte change")
+    after = _git(repository, "rev-parse", "HEAD")
+    result = rule_changes.compare(repository, before=before, after=after)
+    assert result["changedSelectors"] == ["eslint:alpha"]
+    assert rule_changes.compare(repository, before=before, after=after) == result
+
+
+@pytest.mark.parametrize("owner", ["source", "test"])
+@pytest.mark.usefixtures("installed_rule_comparison_compiler")
+def test_commonjs_literal_closure_tracks_transitive_owner(repository: Path, owner: str) -> None:
+    entry = _rule("alpha")
+    entry.update(
+        key="eslint:alpha",
+        engine="eslint",
+        source="packages/typescript/src/alpha.cjs",
+        test="packages/typescript/tests/alpha.test.cjs",
+    )
+    for field in ("source", "test"):
+        path = repository / str(entry[field])
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("module.exports=false;", encoding="utf-8")
+    selected = repository / str(entry[owner])
+    selected.write_text("module.exports=require('../../shared/src/helper.cjs');", encoding="utf-8")
+    helper = repository / "packages/shared/src/helper.cjs"
+    helper.parent.mkdir(parents=True)
+    helper.write_text("module.exports=require('./leaf.cjs');", encoding="utf-8")
+    leaf = helper.with_name("leaf.cjs")
+    leaf.write_text("module.exports=false;", encoding="utf-8")
+    before = _write_revision(repository, [entry], "transitive CommonJS baseline")
+    observe = ("node", "--eval", f"console.log(require('./{entry[owner]}'))")
+    assert subprocess.run(observe, cwd=repository, check=True, capture_output=True, text=True).stdout.strip() == "false"
+    leaf.write_text("module.exports=true;", encoding="utf-8")
+    _git(repository, "add", "packages")
+    _git(repository, "commit", "-m", "transitive CommonJS helper change")
+    after = _git(repository, "rev-parse", "HEAD")
+    assert subprocess.run(observe, cwd=repository, check=True, capture_output=True, text=True).stdout.strip() == "true"
+    result = rule_changes.compare(repository, before=before, after=after)
+    assert result["changedSelectors"] == ["eslint:alpha"]
+    assert rule_changes.compare(repository, before=before, after=after) == result
+
+
+@pytest.mark.usefixtures("installed_rule_comparison_compiler")
+def test_commonjs_missing_literal_dependency_fails_actual_gate(repository: Path) -> None:
+    entry = _rule("alpha")
+    entry.update(
+        key="eslint:alpha",
+        engine="eslint",
+        source="packages/typescript/src/alpha.cjs",
+        test="packages/typescript/tests/alpha.test.cjs",
+    )
+    for field in ("source", "test"):
+        path = repository / str(entry[field])
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("", encoding="utf-8")
+    source = repository / str(entry["source"])
+    source.write_text("module.exports=require('./missing.cjs');", encoding="utf-8")
+    revision = _write_revision(repository, [entry], "missing literal CommonJS dependency")
+    native = subprocess.run(("node", str(source)), cwd=repository, check=False, capture_output=True, text=True)
+    assert native.returncode != 0
+    assert "MODULE_NOT_FOUND" in native.stderr
+    with pytest.raises(ValueError, match="missing immutable TypeScript import"):
+        rule_changes.compare(repository, before=revision, after=revision)
+
+
+@pytest.mark.parametrize("changed_suffix", [".js", ".ts"])
+@pytest.mark.usefixtures("installed_rule_comparison_compiler")
+def test_commonjs_explicit_code_target_uses_runtime_file_not_typescript_substitution(
+    repository: Path, changed_suffix: str
+) -> None:
+    entry = _rule("alpha")
+    entry.update(
+        key="eslint:alpha",
+        engine="eslint",
+        source="packages/typescript/src/alpha.cjs",
+        test="packages/typescript/tests/alpha.test.cjs",
+    )
+    for field in ("source", "test"):
+        path = repository / str(entry[field])
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("", encoding="utf-8")
+    package = repository / "packages/typescript/src"
+    (package / "alpha.cjs").write_text("module.exports=require('./helper.js');", encoding="utf-8")
+    (package / "helper.js").write_text("module.exports=false;", encoding="utf-8")
+    (package / "helper.ts").write_text("export default false;", encoding="utf-8")
+    before = _write_revision(repository, [entry], "explicit CommonJS runtime target")
+    observe = ("node", "--eval", "console.log(require('./packages/typescript/src/alpha.cjs'))")
+    assert subprocess.run(observe, cwd=repository, check=True, capture_output=True, text=True).stdout.strip() == "false"
+    helper = package / f"helper{changed_suffix}"
+    helper.write_text(helper.read_text().replace("false", "true"), encoding="utf-8")
+    _git(repository, "add", "packages")
+    _git(repository, "commit", "-m", "runtime file versus unrelated type implementation")
+    after = _git(repository, "rev-parse", "HEAD")
+    positive = changed_suffix == ".js"
+    assert subprocess.run(observe, cwd=repository, check=True, capture_output=True, text=True).stdout.strip() == (
+        "true" if positive else "false"
+    )
+    result = rule_changes.compare(repository, before=before, after=after)
+    assert result["changedSelectors"] == (["eslint:alpha"] if positive else [])
+    assert rule_changes.compare(repository, before=before, after=after) == result
+
+
+@pytest.mark.parametrize("suffix", [".js", ".mjs", ".cjs", ".ts"])
+@pytest.mark.usefixtures("installed_rule_comparison_compiler")
+def test_commonjs_supported_explicit_code_extensions_track_exact_native_target(repository: Path, suffix: str) -> None:
+    entry = _rule("alpha")
+    entry.update(
+        key="eslint:alpha",
+        engine="eslint",
+        source="packages/typescript/src/alpha.cjs",
+        test="packages/typescript/tests/alpha.test.cjs",
+    )
+    for field in ("source", "test"):
+        path = repository / str(entry[field])
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("", encoding="utf-8")
+    package = repository / "packages/typescript/src"
+    (package / "alpha.cjs").write_text(
+        f"module.exports=require('./helper{suffix}')" + (".default" if suffix == ".mjs" else "") + ";", encoding="utf-8"
+    )
+    helper = package / f"helper{suffix}"
+    helpers = {
+        ".js": "module.exports=false;",
+        ".cjs": "module.exports=false;",
+        ".mjs": "export default false;",
+        ".ts": "const value:boolean=false;module.exports=value;",
+    }
+    helper.write_text(helpers[suffix], encoding="utf-8")
+    before = _write_revision(repository, [entry], "native code extension baseline")
+    observe = ("node", "--eval", "console.log(require('./packages/typescript/src/alpha.cjs'))")
+    assert subprocess.run(observe, cwd=repository, check=True, capture_output=True, text=True).stdout.strip() == "false"
+    helper.write_text(helpers[suffix].replace("false", "true"), encoding="utf-8")
+    _git(repository, "add", "packages")
+    _git(repository, "commit", "-m", "native exact extension helper change")
+    after = _git(repository, "rev-parse", "HEAD")
+    assert subprocess.run(observe, cwd=repository, check=True, capture_output=True, text=True).stdout.strip() == "true"
+    result = rule_changes.compare(repository, before=before, after=after)
+    assert result["changedSelectors"] == ["eslint:alpha"]
+    assert rule_changes.compare(repository, before=before, after=after) == result
+
+
+@pytest.mark.parametrize("owner", ["source", "test"])
+@pytest.mark.parametrize(("suffix", "loader"), [(".cjs", "require"), (".mjs", "static"), (".mjs", "dynamic")])
+@pytest.mark.usefixtures("installed_rule_comparison_compiler")
+def test_literal_runtime_json_dependency_tracks_immutable_leaf(
+    repository: Path, suffix: str, owner: str, loader: str
+) -> None:
+    entry = _rule("alpha")
+    entry.update(
+        key="eslint:alpha",
+        engine="eslint",
+        source=f"packages/typescript/src/alpha{suffix}",
+        test=f"packages/typescript/tests/alpha.test{suffix}",
+    )
+    for field in ("source", "test"):
+        path = repository / str(entry[field])
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("", encoding="utf-8")
+    source = repository / str(entry[owner])
+    loaders = {
+        "require": "console.log(require('./helper.json'));",
+        "static": "import value from './helper.json' with {type:'json'};console.log(value);",
+        "dynamic": "console.log((await import('./helper.json',{with:{type:'json'}})).default);",
+    }
+    source.write_text(loaders[loader], encoding="utf-8")
+    helper = source.with_name("helper.json")
+    helper.write_text("false", encoding="utf-8")
+    before = _write_revision(repository, [entry], "native JSON dependency baseline")
+    observe = ("node", str(source))
+    assert subprocess.run(observe, cwd=repository, check=True, capture_output=True, text=True).stdout.strip() == "false"
+    helper.write_text("true", encoding="utf-8")
+    _git(repository, "add", "packages")
+    _git(repository, "commit", "-m", "native JSON dependency counterfactual")
+    after = _git(repository, "rev-parse", "HEAD")
+    assert subprocess.run(observe, cwd=repository, check=True, capture_output=True, text=True).stdout.strip() == "true"
+    result = rule_changes.compare(repository, before=before, after=after)
+    assert result["changedSelectors"] == ["eslint:alpha"]
+    assert rule_changes.compare(repository, before=before, after=after) == result
+
+
+@pytest.mark.parametrize("leaf_count", [1, 8])
+@pytest.mark.usefixtures("installed_rule_comparison_compiler")
+def test_reachable_json_leaves_share_bounded_immutable_batches(repository: Path, leaf_count: int) -> None:
+    entry = _rule("alpha")
+    entry.update(
+        key="eslint:alpha",
+        engine="eslint",
+        source="packages/typescript/src/alpha.cjs",
+        test="packages/typescript/tests/alpha.test.cjs",
+    )
+    for field in ("source", "test"):
+        path = repository / str(entry[field])
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("", encoding="utf-8")
+    package = repository / "packages/typescript/src"
+    (package / "alpha.cjs").write_text(
+        "module.exports=" + "+".join(f"require('./leaf{index}.json')" for index in range(leaf_count)) + ";",
+        encoding="utf-8",
+    )
+    for index in range(leaf_count):
+        (package / f"leaf{index}.json").write_text(str(index), encoding="utf-8")
+    unowned = package / "unowned.json"
+    unowned.write_text("not parsed or loaded as code", encoding="utf-8")
+    before = _write_revision(repository, [entry], "bounded JSON leaf baseline")
+    observe = ("node", "--eval", "console.log(require('./packages/typescript/src/alpha.cjs'))")
+    assert subprocess.run(observe, cwd=repository, check=True, capture_output=True, text=True).stdout.strip() == str(
+        sum(range(leaf_count))
+    )
+    for index in range(leaf_count):
+        (package / f"leaf{index}.json").write_text(str(index + 10), encoding="utf-8")
+    _git(repository, "add", "packages")
+    _git(repository, "commit", "-m", "bounded JSON leaf counterfactual")
+    after = _git(repository, "rev-parse", "HEAD")
+    assert subprocess.run(observe, cwd=repository, check=True, capture_output=True, text=True).stdout.strip() == str(
+        sum(range(leaf_count)) + 10 * leaf_count
+    )
+    calls: list[tuple[tuple[str, ...], bytes]] = []
+
+    def runner(argv: tuple[str, ...], *, cwd: Path, input_bytes: bytes = b"") -> ProcessBinaryResult:
+        calls.append((argv, input_bytes))
+        return run_binary_process(argv, cwd=cwd, input_bytes=input_bytes)
+
+    result = rule_changes.compare(repository, before=before, after=after, binary_runner=runner)
+    assert result["changedSelectors"] == ["eslint:alpha"]
+    assert rule_changes.compare(repository, before=before, after=after) == result
+    batches = [payload for argv, payload in calls if "cat-file" in argv]
+    assert len(batches) == 3  # One unchanged code/artifact batch, then one data-leaf batch per revision.
+    assert [len(payload.splitlines()) for payload in batches[1:]] == [leaf_count, leaf_count]
+    unowned_oid = _git(repository, "rev-parse", f"{after}:packages/typescript/src/unowned.json").encode()
+    assert all(unowned_oid not in payload.splitlines() for payload in batches)
+
+
+@pytest.mark.parametrize("case", ["absent", "nonregular", "escaping", "oversized"])
+@pytest.mark.usefixtures("installed_rule_comparison_compiler")
+def test_exact_json_leaf_preserves_immutable_boundary_failures(repository: Path, case: str) -> None:
+    entry = _rule("alpha")
+    entry.update(
+        key="eslint:alpha",
+        engine="eslint",
+        source="packages/typescript/src/alpha.cjs",
+        test="packages/typescript/tests/alpha.test.cjs",
+    )
+    for field in ("source", "test"):
+        path = repository / str(entry[field])
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("", encoding="utf-8")
+    source = repository / str(entry["source"])
+    helper = source.with_name("helper.json")
+    reference = "./helper.json"
+    errors = {
+        "absent": "missing/nonregular immutable implementation blob",
+        "nonregular": "missing/nonregular immutable implementation blob",
+        "escaping": "implementation path must be repository-relative",
+        "oversized": "immutable Git blob exceeds byte limit",
+    }
+    if case == "nonregular":
+        helper.with_name("actual.json").write_text("false", encoding="utf-8")
+        helper.symlink_to("actual.json")
+    elif case == "escaping":
+        external = repository.parent / f"outside_{repository.name}.json"
+        external.write_text("false", encoding="utf-8")
+        reference = f"../../../../{external.name}"
+    elif case == "oversized":
+        helper.write_bytes(b'"' + b"a" * (8 * 1024 * 1024) + b'"')
+    source.write_text(f"console.log(typeof require('{reference}'));", encoding="utf-8")
+    revision = _write_revision(repository, [entry], "JSON leaf boundary fixture")
+    native = subprocess.run(("node", str(source)), cwd=repository, check=False, capture_output=True, text=True)
+    assert (native.returncode == 0) is (case != "absent")
+    if case == "absent":
+        assert "MODULE_NOT_FOUND" in native.stderr
+    with pytest.raises(ValueError, match=errors[case]):
+        rule_changes.compare(repository, before=revision, after=revision)
+
+
+@pytest.mark.usefixtures("installed_rule_comparison_compiler")
+def test_json_leaf_requires_actual_immutable_byte_identity(repository: Path) -> None:
+    entry = _rule("alpha")
+    entry.update(
+        key="eslint:alpha",
+        engine="eslint",
+        source="packages/typescript/src/alpha.cjs",
+        test="packages/typescript/tests/alpha.test.cjs",
+    )
+    for field in ("source", "test"):
+        path = repository / str(entry[field])
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("", encoding="utf-8")
+    source = repository / str(entry["source"])
+    source.write_text("console.log(require('./helper.json'));", encoding="utf-8")
+    source.with_name("helper.json").write_text("false", encoding="utf-8")
+    revision = _write_revision(repository, [entry], "JSON leaf byte identity fixture")
+    assert (
+        subprocess.run(("node", str(source)), cwd=repository, check=True, capture_output=True, text=True).stdout.strip()
+        == "false"
+    )
+    leaf_oid = _git(repository, "rev-parse", f"{revision}:packages/typescript/src/helper.json").encode()
+    intercepted: list[bytes] = []
+
+    def runner(argv: tuple[str, ...], *, cwd: Path, input_bytes: bytes = b"") -> ProcessBinaryResult:
+        result = run_binary_process(argv, cwd=cwd, input_bytes=input_bytes)
+        if "cat-file" in argv and leaf_oid in input_bytes.splitlines():
+            intercepted.append(result.stdout)
+            return ProcessBinaryResult(result.returncode, result.stdout.replace(b"\nfalse\n", b"\ntrue \n"))
+        return result
+
+    with pytest.raises(ValueError, match="immutable Git batch blob identity mismatch"):
+        rule_changes.compare(repository, before=revision, after=revision, binary_runner=runner)
+    assert len(intercepted) == 1
+
+
+def test_missing_python_module_named_json_keeps_owned_import_failure(repository: Path) -> None:
+    entry = _rule("alpha")
+    entry["source"] = "packages/python/src/engine/alpha.py"
+    package = repository / "packages/python/src/engine"
+    package.mkdir(parents=True)
+    (package / "__init__.py").write_text("", encoding="utf-8")
+    (package / "alpha.py").write_text("import engine.json", encoding="utf-8")
+    revision = _write_revision(repository, [entry], "missing Python module named json")
+    native = subprocess.run(
+        (sys.executable, "-c", "import engine.alpha"), cwd=package.parent, check=False, capture_output=True, text=True
+    )
+    assert native.returncode != 0
+    assert "ModuleNotFoundError" in native.stderr
+    with pytest.raises(ValueError, match=r"missing immutable local import: engine\.json"):
+        rule_changes.compare(repository, before=revision, after=revision)
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        pytest.param(b"def broken(:\n", id="syntax"),
+        pytest.param(b"# coding: unknown-codec\nvalue = 1\n", id="unknown-cookie"),
+        pytest.param(b"\xef\xbb\xbf# coding: latin-1\nvalue = 1\n", id="bom-conflict"),
+        pytest.param(b'value = "\xff"\n', id="invalid-utf8"),
+    ],
+)
+@pytest.mark.parametrize("owned", [False, True], ids=["unowned", "owned"])
+def test_python_byte_errors_follow_immutable_import_ownership(
+    repository: Path,
+    payload: bytes,
+    *,
+    owned: bool,
+) -> None:
+    rule = _rule("owner")
+    source = repository / str(rule["source"])
+    source.parent.mkdir(parents=True, exist_ok=True)
+    source.write_text("from .helper import value\n" if owned else "value = 1\n", encoding="utf-8")
+    helper = source.with_name("helper.py" if owned else "unowned.py")
+    helper.write_bytes(b"value = 1\n")
+    before = _write_revision(repository, [rule], "base")
+    helper.write_bytes(payload)
+    after = _write_revision(repository, [rule], "malformed unrelated or owned module")
+
+    if owned:
+        with pytest.raises(ValueError, match=r"malformed immutable Python|invalid immutable Python source encoding"):
+            rule_changes.compare(repository, before=before, after=after)
+    else:
+        assert rule_changes.compare(repository, before=before, after=after)["changedSelectors"] == []
+    blob = _git(repository, "rev-parse", f"{after}:{helper.relative_to(repository).as_posix()}")
+    expected_oid = hashlib.sha1(
+        b"blob " + str(len(payload)).encode("ascii") + b"\0" + payload,
+        usedforsecurity=False,
+    ).hexdigest()
+    assert blob == expected_oid
+
+
+def test_valid_python_encoded_dependency_changes_use_raw_blob_identity(repository: Path) -> None:
+    rule = _rule("owner")
+    source = repository / str(rule["source"])
+    source.parent.mkdir(parents=True, exist_ok=True)
+    source.write_text("from .helper import value\n", encoding="utf-8")
+    helper = source.with_name("helper.py")
+    helper.write_bytes(b"# coding: latin-1\nvalue = 1\n")
+    before = _write_revision(repository, [rule], "base")
+    helper.write_bytes(b"# coding: latin-1\nvalue = 1  # caf\xe9\n")
+    after = _write_revision(repository, [rule], "raw native-valid encoded comment changed")
+
+    assert rule_changes.compare(repository, before=before, after=after)["changedSelectors"] == ["python:owner"]
+
+
+def _prepare_rule_comparison_parser_metadata(repository: Path) -> None:
+    authoring = Path(__file__).parents[3]
+    (repository / ".node-version").write_bytes((authoring / ".node-version").read_bytes())
+    lock = repository / "packages/typescript/package-lock.json"
+    lock.parent.mkdir(parents=True, exist_ok=True)
+    lock.write_bytes((authoring / "packages/typescript/package-lock.json").read_bytes())
+
+
+@dataclass(frozen=True, slots=True)
+class _ParserFixturePins:
+    node: str
+    package: str
+    runtime: str
+
+
+def _rule_comparison_parser_fixture_pins(repository: Path) -> _ParserFixturePins:
+    from sarj_standards.libs.json_boundary import parse_json  # ruff: ignore[import-outside-top-level] -- fixture metadata is used only by native parser controls.
+    from sarj_standards.libs.typed_containers import is_object_mapping  # ruff: ignore[import-outside-top-level] -- narrow the actual lock at its test parser boundary.
+
+    node = "v" + (repository / ".node-version").read_text().strip().removeprefix("v")
+    locked = parse_json((repository / "packages/typescript/package-lock.json").read_text())
+    assert is_object_mapping(locked)
+    packages = locked["packages"]
+    assert is_object_mapping(packages)
+    wrapper = packages["node_modules/typescript"]
+    runtime = packages["node_modules/@typescript/old"]
+    assert is_object_mapping(wrapper)
+    assert is_object_mapping(runtime)
+    package_pin, runtime_pin = wrapper["version"], runtime["version"]
+    assert isinstance(package_pin, str)
+    assert isinstance(runtime_pin, str)
+    return _ParserFixturePins(node, package_pin, runtime_pin)
+
+
+@pytest.mark.usefixtures("installed_rule_comparison_compiler")
+@pytest.mark.parametrize(
+    "case",
+    [
+        "matching",
+        "node",
+        "package",
+        "runtime",
+        "package-name",
+        "runtime-name",
+        "missing-node",
+        "missing-lock",
+        "malformed-lock",
+        "duplicate-lock",
+        "missing-runtime",
+    ],
+)
+def test_rule_comparison_attests_the_declared_authoring_parser(repository: Path, case: str) -> None:
+    entry = _rule("alpha")
+    entry.update(
+        key="eslint:alpha",
+        engine="eslint",
+        source="packages/typescript/src/alpha.ts",
+        test="packages/typescript/tests/alpha.test.ts",
+    )
+    for field in ("source", "test"):
+        path = repository / str(entry[field])
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("export const value=false;\n", encoding="utf-8")
+    before = _write_revision(repository, [entry], "declared parser baseline")
+    (repository / str(entry["source"])).write_text("export const value=true;\n", encoding="utf-8")
+    after = _write_revision(repository, [entry], "declared parser changed owner")
+    _change_rule_comparison_parser_metadata(repository, case)
+    if case == "matching":
+        result = rule_changes.compare(repository, before=before, after=after)
+        assert result["changedSelectors"] == ["eslint:alpha"]
+        assert rule_changes.compare(repository, before=before, after=after) == result
+    else:
+        with pytest.raises(ValueError, match="rule comparison requires"):
+            rule_changes.compare(repository, before=before, after=after)
+
+
+def test_python_only_comparison_does_not_require_authoring_parser_metadata(repository: Path) -> None:
+    before = _write_revision(repository, [_rule("alpha")], "Python-only baseline without parser setup")
+    source = repository / "packages/python/src/rules/alpha.py"
+    source.write_text("VALUE = True\n")
+    after = _write_revision(repository, [_rule("alpha")], "Python-only changed owner")
+    assert not (repository / ".node-version").exists()
+    assert not (repository / "packages/typescript/package-lock.json").exists()
+
+    def forbidden_parser(argv: tuple[str, ...], *, cwd: Path, input_text: str) -> ProcessResult:
+        pytest.fail(f"Python-only comparison invoked Node: {argv}, cwd={cwd}, source={input_text}")
+
+    result = rule_changes.compare(repository, before=before, after=after, parser_runner=forbidden_parser)
+    assert result["changedSelectors"] == ["python:alpha"]
+
+
+def _change_rule_comparison_parser_metadata(repository: Path, case: str) -> None:
+    from sarj_standards.libs.json_boundary import parse_json  # ruff: ignore[import-outside-top-level] -- fixture metadata is used only by native parser controls.
+    from sarj_standards.libs.typed_containers import is_object_mapping  # ruff: ignore[import-outside-top-level] -- narrow the actual lock at its test parser boundary.
+
+    node = repository / ".node-version"
+    lock = repository / "packages/typescript/package-lock.json"
+    match case:
+        case "matching":
+            return
+        case "node":
+            node.write_text("0.0.0\n")
+        case "missing-node":
+            node.unlink()
+        case "missing-lock":
+            lock.unlink()
+        case "malformed-lock":
+            lock.write_text("{")
+        case "duplicate-lock":
+            lock.write_text('{"packages":{},"packages":{}}')
+        case _:
+            payload = parse_json(lock.read_text())
+            assert is_object_mapping(payload)
+            packages = payload["packages"]
+            assert is_object_mapping(packages)
+            if case == "missing-runtime":
+                payload["packages"] = {
+                    key: value for key, value in packages.items() if key != "node_modules/@typescript/old"
+                }
+            else:
+                cases = {
+                    "package": ("node_modules/typescript", "version", "0.0.0"),
+                    "runtime": ("node_modules/@typescript/old", "version", "0.0.0"),
+                    "package-name": ("node_modules/typescript", "name", "other"),
+                    "runtime-name": ("node_modules/@typescript/old", "name", "other"),
+                }
+                key, field, value = cases[case]
+                package = packages[key]
+                assert is_object_mapping(package)
+                package[field] = value
+            lock.write_text(json.dumps(payload))

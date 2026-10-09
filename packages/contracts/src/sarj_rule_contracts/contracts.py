@@ -16,6 +16,7 @@ _DEFAULT_CASE_PATH = PurePosixPath("case.txt")
 _KEBAB_CASE: Final = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 _MAX_SUMMARY_LENGTH: Final = 160
 _PUBLIC_PAIR_SIZE: Final = 2
+_MAX_NPM_NAME_LENGTH: Final = 214
 
 RuleId = NewType("RuleId", str)
 MessageId = NewType("MessageId", str)
@@ -176,6 +177,24 @@ class ExampleFile:
 
 
 @dataclass(frozen=True, slots=True)
+class ExampleDependency:
+    module: str
+    version: str
+
+    def __post_init__(self) -> None:
+        if (
+            not re.fullmatch(r"(?:@[a-z0-9._-]+/[a-z0-9._-]+|[a-z0-9][a-z0-9._-]*)", self.module)
+            or len(self.module) > _MAX_NPM_NAME_LENGTH
+            or any(part in {".", ".."} for part in self.module.split("/"))
+        ):
+            msg = "example dependency must name a registry package"
+            raise ValueError(msg)
+        if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?", self.version):
+            msg = "example dependency must require an exact installed version"
+            raise ValueError(msg)
+
+
+@dataclass(frozen=True, slots=True)
 class RuleExample:
     example_id: str
     outcome: ExpectedOutcome
@@ -186,6 +205,8 @@ class RuleExample:
     public: bool = False
     fixed_files: tuple[ExampleFile, ...] = ()
     scenario: str = "primary"
+    rule_options_json: str | None = None
+    installed_dependencies: tuple[ExampleDependency, ...] = ()
 
     def __post_init__(self) -> None:
         if not _KEBAB_CASE.fullmatch(self.example_id):
@@ -196,6 +217,13 @@ class RuleExample:
             raise ValueError(msg)
         if not self.title.strip():
             msg = "example title must not be empty"
+            raise ValueError(msg)
+        if self.rule_options_json is not None and not isinstance(json.loads(self.rule_options_json), list):
+            msg = "example rule options must be a JSON array"
+            raise ValueError(msg)
+        modules = tuple(item.module for item in self.installed_dependencies)
+        if len(modules) != len(set(modules)):
+            msg = "example dependencies must have unique modules"
             raise ValueError(msg)
         paths = tuple(item.path for item in self.files)
         if not paths or len(paths) != len(set(paths)):

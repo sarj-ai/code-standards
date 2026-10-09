@@ -157,3 +157,115 @@ def test_duplicate_schema_keys_are_invalid_input(tmp_path: Path) -> None:
     path.write_text('{"type":"integer","type":"string"}')
     with pytest.raises(ValueError, match="duplicate"):
         validate_local_schema("value", path, (path,))
+
+
+_LEGACY_DEPENDENCY_CASES = (
+    (
+        "Draft4Validator-list-first-True",
+        {
+            "$schema": "http://json-schema.org/draft-04/schema#",
+            "dependencies": {"list": ["required"], "schema": {"$ref": "https://example.invalid/dependency"}},
+        },
+        ("https://example.invalid/dependency",),
+    ),
+    (
+        "Draft4Validator-list-first-False",
+        {
+            "$schema": "http://json-schema.org/draft-04/schema#",
+            "dependencies": {"schema": {"$ref": "https://example.invalid/dependency"}, "list": ["required"]},
+        },
+        ("https://example.invalid/dependency",),
+    ),
+    (
+        "Draft6Validator-list-first-True",
+        {
+            "$schema": "http://json-schema.org/draft-06/schema#",
+            "dependencies": {"list": ["required"], "schema": {"$ref": "https://example.invalid/dependency"}},
+        },
+        ("https://example.invalid/dependency",),
+    ),
+    (
+        "Draft6Validator-list-first-False",
+        {
+            "$schema": "http://json-schema.org/draft-06/schema#",
+            "dependencies": {"schema": {"$ref": "https://example.invalid/dependency"}, "list": ["required"]},
+        },
+        ("https://example.invalid/dependency",),
+    ),
+    (
+        "Draft7Validator-list-first-True",
+        {
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "dependencies": {"list": ["required"], "schema": {"$ref": "https://example.invalid/dependency"}},
+        },
+        ("https://example.invalid/dependency",),
+    ),
+    (
+        "Draft7Validator-list-first-False",
+        {
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "dependencies": {"schema": {"$ref": "https://example.invalid/dependency"}, "list": ["required"]},
+        },
+        ("https://example.invalid/dependency",),
+    ),
+    (
+        "Draft201909Validator-dependencies",
+        {
+            "$schema": "https://json-schema.org/draft/2019-09/schema",
+            "dependencies": {"schema": {"$ref": "https://example.invalid/dependency"}},
+        },
+        (),
+    ),
+    (
+        "Draft201909Validator-dependentSchemas",
+        {
+            "$schema": "https://json-schema.org/draft/2019-09/schema",
+            "dependentSchemas": {"schema": {"$ref": "https://example.invalid/dependency"}},
+        },
+        ("https://example.invalid/dependency",),
+    ),
+    (
+        "Draft202012Validator-dependencies",
+        {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "dependencies": {"schema": {"$ref": "https://example.invalid/dependency"}},
+        },
+        (),
+    ),
+    (
+        "Draft202012Validator-dependentSchemas",
+        {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "dependentSchemas": {"schema": {"$ref": "https://example.invalid/dependency"}},
+        },
+        ("https://example.invalid/dependency",),
+    ),
+    (
+        "default-legacy",
+        {"dependencies": {"list": ["required"], "schema": {"$ref": "https://example.invalid/dependency"}}},
+        ("https://example.invalid/dependency",),
+    ),
+    ("literal-data", {"examples": [{"dependencies": {"schema": {"$ref": "https://example.invalid/data"}}}]}, ()),
+)
+
+
+@pytest.mark.parametrize(
+    ("case_id", "schema", "references"),
+    _LEGACY_DEPENDENCY_CASES,
+    ids=[case[0] for case in _LEGACY_DEPENDENCY_CASES],
+)
+def test_dependency_reference_closure_respects_each_dialect(
+    case_id: str, schema: object, references: tuple[str, ...]
+) -> None:
+    assert tuple(sorted(set(schema_references(schema)))) == references, case_id
+    assert tuple(sorted(set(schema_references(schema)))) == references
+
+
+@pytest.mark.parametrize(
+    "dependency",
+    [["required", 1], {"type": "not-a-schema-type"}, 1],
+    ids=("invalid-property-dependency", "invalid-schema-dependency", "invalid-dependency-shape"),
+)
+def test_invalid_legacy_dependency_is_not_hidden_by_the_native_adapter(dependency: object) -> None:
+    with pytest.raises(ValueError, match="invalid"):
+        schema_references({"dependencies": {"mixed": dependency}})

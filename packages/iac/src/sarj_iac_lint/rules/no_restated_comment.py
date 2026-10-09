@@ -4,7 +4,7 @@ from pathlib import PurePosixPath
 import re
 from typing import TYPE_CHECKING, NamedTuple, final, override
 
-from sarj_iac_lint._hcl import heredoc_body_mask
+from sarj_iac_lint._hcl import header_comment_lines, heredoc_body_mask
 from sarj_iac_lint.rule_base import (
     AutofixPolicy,
     DefaultLevel,
@@ -316,27 +316,8 @@ def _fixture_path(path: Path) -> bool:
 
 
 def _generated_header(source: str) -> bool:
-    lines = source.splitlines()[:20]
-    fragments: list[str] = []
-    in_block = False
-    for line in lines:
-        stripped = line.lstrip()
-        if in_block:
-            fragments.append(stripped.removeprefix("*").strip())
-            if "*/" in stripped:
-                in_block = False
-            continue
-        if not stripped:
-            continue
-        if stripped.startswith(("#", "//")):
-            fragments.append(stripped.lstrip("#/ "))
-            continue
-        if stripped.startswith("/*"):
-            fragments.append(stripped.removeprefix("/*").strip())
-            in_block = "*/" not in stripped
-            continue
-        break
-    return _GENERATED_RE.search(" ".join(fragments)) is not None
+    comments = (line.lstrip().removeprefix("*").strip() for line in header_comment_lines(source, leading_only=True))
+    return _GENERATED_RE.search(" ".join(comments)) is not None
 
 
 def _stem(word: str) -> str:

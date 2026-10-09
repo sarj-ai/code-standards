@@ -2340,10 +2340,12 @@ def test_doctor_detects_a_precommit_migration_chain_with_legacy_lefthook(
     subprocess.run(("git", "init", "-q"), cwd=tmp_path, check=True, env={})
     hook = tmp_path / ".git" / "hooks" / "pre-commit"
     hook.write_text("#!/bin/sh\n# pre_commit hook-type=pre-commit\n", encoding="utf-8")
+    hook.chmod(0o755)
     hook.with_name("pre-commit.legacy").write_text(
         "#!/bin/sh\nexport LEFTHOOK_BIN=.git/hooks/.sarj-lefthook\n",
         encoding="utf-8",
     )
+    hook.with_name("pre-commit.legacy").chmod(0o755)
     durable = tmp_path / ".git" / "hooks" / ".sarj-lefthook"
     durable.write_text("#!/bin/sh\n", encoding="utf-8")
     durable.chmod(0o755)
@@ -2459,6 +2461,7 @@ def test_doctor_warns_when_the_checkout_hook_is_not_installed(monkeypatch: pytes
         "# pre_commit hook-type=pre-commit\n",
         encoding="utf-8",
     )
+    hook.chmod(0o755)
     assert not [finding for finding in doctor.diagnose(consumer) if finding.id == "doctor.hooks.precommit-install"]
 
 
@@ -2484,6 +2487,7 @@ def test_doctor_repair_installs_missing_precommit_and_commit_message_hooks(
                 f"# pre_commit hook-type={hook_type}\n",
                 encoding="utf-8",
             )
+            (hooks_dir / hook_type).chmod(0o755)
         return 0
 
     monkeypatch.setattr(lifecycle, "execute", install)  # sarj-noqa: SARJ445 -- intercepts setup command dispatch

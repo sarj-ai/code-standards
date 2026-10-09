@@ -11,7 +11,7 @@ import sys
 import time
 import tomllib
 from typing import TYPE_CHECKING, Annotated, ClassVar, Literal, Protocol
-from urllib.error import HTTPError
+from urllib.error import HTTPError, URLError
 from urllib.parse import quote
 from urllib.request import Request, urlopen
 
@@ -127,6 +127,16 @@ def publication_exists(requirement: RegistryRequirement) -> bool:
 
 
 def _request_publication(request: Request, requirement: RegistryRequirement) -> bool:
+    try:
+        return _read_publication(request, requirement)
+    except (TimeoutError, URLError) as error:
+        if isinstance(error, URLError) and not isinstance(error.reason, TimeoutError):
+            raise
+        # Repeat one read after a socket/TLS timeout; exhausted reads remain errors, never absence.
+        return _read_publication(request, requirement)
+
+
+def _read_publication(request: Request, requirement: RegistryRequirement) -> bool:
     with urlopen(request, timeout=15) as response:  # ruff: ignore[suspicious-url-open-usage]  # pyright: ignore[reportAny] -- fixed registry origins
         if response.status != _HTTP_OK:  # pyright: ignore[reportAny]
             return False

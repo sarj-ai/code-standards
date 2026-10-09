@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, rm, writeFile, readFile, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve, sep } from "node:path";
 
@@ -10,6 +10,7 @@ import type { DocumentedRule, RuleExample } from "./rules/_docs.js";
 /** Execute all authored examples, including private regressions, in isolated projects. */
 export async function verifyRuleExamples<Options extends readonly unknown[], MessageIds extends string>(
   rule: DocumentedRule<Options, MessageIds>,
+  setup: { readonly installedDependencyRoot?: string } = {},
 ): Promise<number> {
   const spec = rule.documentation;
   if (spec === undefined || !spec.publicExamples.some((item) => item.outcome === "match") ||
@@ -24,6 +25,15 @@ export async function verifyRuleExamples<Options extends readonly unknown[], Mes
         await mkdir(dirname(path), { recursive: true });
         await writeFile(path, file.source);
       }
+      for (const dependency of example.installedDependencies ?? []) {
+        if (setup.installedDependencyRoot === undefined) throw new Error(`${example.id}: explicit installed dependency root is required`);
+        const packageFile = fixturePath(resolve(setup.installedDependencyRoot), `node_modules/${dependency.module}/package.json`);
+        const metadata: unknown = JSON.parse(await readFile(packageFile, "utf8"));
+        if (typeof metadata !== "object" || metadata === null || !("name" in metadata) || !("version" in metadata) || metadata.name !== dependency.module || metadata.version !== dependency.version) throw new Error(`${example.id}: installed dependency identity/version mismatch for ${dependency.module}`);
+        const destination = fixturePath(root, `node_modules/${dependency.module}`);
+        await mkdir(dirname(destination), { recursive: true });
+        await symlink(dirname(packageFile), destination, process.platform === "win32" ? "junction" : "dir");
+      }
       const tsconfig = join(root, "tsconfig.json");
       if (!example.files.some((file) => file.path === "tsconfig.json")) {
         await writeFile(tsconfig, JSON.stringify({ compilerOptions: {
@@ -36,10 +46,11 @@ export async function verifyRuleExamples<Options extends readonly unknown[], Mes
         files: ["**/*.{ts,tsx,js,jsx,mts,cts,mjs,cjs}"],
         languageOptions: { parser, parserOptions: { project: tsconfig, tsconfigRootDir: root } },
         plugins: { "@sarj": { rules: { [spec.ruleId]: rule as unknown as Rule.RuleModule } } },
-        rules: { [ruleId]: ["error", ...(rule.defaultOptions ?? [])] },
+        rules: { [ruleId]: ["error", ...(example.ruleOptions ?? rule.defaultOptions ?? [])] },
       };
       await verifyExample(new Linter({ cwd: root }), config, example, root, ruleId);
     } finally {
+      parser.clearCaches();
       await rm(root, { recursive: true, force: true });
     }
   }

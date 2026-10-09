@@ -10,7 +10,13 @@ import re
 from types import MappingProxyType
 from typing import TYPE_CHECKING, NamedTuple, final, override
 
-from sarj_iac_lint._hcl import Block, document, literal_string, ungrouped_expression
+from sarj_iac_lint._hcl import (
+    Block,
+    document,
+    header_comment_lines,
+    literal_string,
+    ungrouped_expression,
+)
 from sarj_iac_lint.json_boundary import is_object_mapping, parse_json
 from sarj_iac_lint.rule_base import (
     AutofixPolicy,
@@ -61,7 +67,18 @@ _PRINTABLE_TAGS = frozenset({"bool", "num", "null"})
 # it as a second environment makes every shared line "constant everywhere" — a
 # tautology comparing a file against its own copy.
 _NON_ENVIRONMENT_STEMS = frozenset(
-    {"backup", "bak", "backend", "backend-config", "example", "sample", "template", "old", "copy", "tmp"}
+    {
+        "backup",
+        "bak",
+        "backend",
+        "backend-config",
+        "example",
+        "sample",
+        "template",
+        "old",
+        "copy",
+        "tmp",
+    }
 )
 
 # Terraform's own filename: it names no environment, so it takes the name of the
@@ -467,7 +484,9 @@ def _excluded_input(path: Path, source: str) -> bool:
 
 
 def _generated_header(source: str) -> bool:
-    header = "\n".join(line for line in source.splitlines()[:20] if line.lstrip().startswith(("#", "//", "/*", "*")))
+    header = "\n".join(
+        line for line in header_comment_lines(source) if line.lstrip().startswith(("#", "//", "/*", "*"))
+    )
     return _GENERATED_RE.search(header) is not None
 
 

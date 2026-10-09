@@ -841,7 +841,7 @@ def _read_module(path: Path, cache: dict[Path, ast.Module | None]) -> ast.Module
             tree = None
         else:
             tree = ast.parse(read_python_source(path), filename=str(path))
-    except OSError, SyntaxError:
+    except OSError, SyntaxError, UnicodeError:
         tree = None
     cache[path] = tree
     return tree

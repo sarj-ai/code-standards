@@ -690,7 +690,7 @@ def _read_module(path: Path) -> ast.Module | None:
         if path.stat().st_size > _MAX_IMPORTED_MODULE_BYTES:
             return None
         tree = ast.parse(read_python_source(path), filename=str(path))
-    except OSError, SyntaxError:
+    except OSError, SyntaxError, UnicodeError:
         return None
     return tree
 

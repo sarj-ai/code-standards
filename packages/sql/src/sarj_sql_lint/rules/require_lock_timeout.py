@@ -15,8 +15,9 @@ from sarj_sql_lint.rule_base import (
     RuleCategory,
     RuleDocumentation,
     RuleExample,
+    dbmate_section_boundaries,
+    dbmate_transactional,
     dollar_quoted_lines,
-    has_dbmate_directive,
     is_dump_file,
     is_postgres_migration,
     mask_sql,
@@ -41,7 +42,7 @@ DDL_PATTERN = re.compile(
 )
 TX_END_PATTERN = re.compile(r"\b(COMMIT|ROLLBACK)\b", re.IGNORECASE)
 SECTION_BOUNDARY_PATTERN = re.compile(
-    r"^\s*--\s*(?:migrate:down(?:\s+transaction:false)?|\+goose\s+down)\s*$",
+    r"^\s*--\s*\+goose\s+down\s*$",
     re.IGNORECASE | re.MULTILINE,
 )
 
@@ -101,7 +102,6 @@ class RequireLockTimeout(Rule):
 
         diags: list[Diagnostic] = []
         masked = mask_sql(source)
-        nontransactional = has_dbmate_directive(source, "no-transaction")
 
         events = _timeout_events(source, masked)
 
@@ -111,6 +111,7 @@ class RequireLockTimeout(Rule):
         reported_for_current_state = False
 
         for pos, event_type, match in events:
+            nontransactional = dbmate_transactional(source, pos) is False
             if event_type != "DDL":
                 reported_for_current_state = False
             if event_type == "ASSIGNMENT":
@@ -166,11 +167,15 @@ def _timeout_events(source: str, masked: str) -> list[tuple[int, str, re.Match[s
 
 def _section_boundary_events(source: str) -> list[_SectionBoundaryEvent]:
     dollar_lines = dollar_quoted_lines(source)
-    return [
+    events = [
         _SectionBoundaryEvent(boundary_offset, "SECTION_BOUNDARY", match)
         for match in SECTION_BOUNDARY_PATTERN.finditer(source)
         if source_location(source, (boundary_offset := match.start())).line not in dollar_lines
     ]
+    events.extend(
+        _SectionBoundaryEvent(offset, "SECTION_BOUNDARY", match) for offset, match in dbmate_section_boundaries(source)
+    )
+    return events
 
 
 def _apply_timeout_assignment(

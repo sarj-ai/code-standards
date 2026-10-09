@@ -1,14 +1,18 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Final
+from io import BytesIO
+import tokenize
+from typing import TYPE_CHECKING
 
 
 if TYPE_CHECKING:
     from pathlib import Path
 
 
-PYTHON_SOURCE_ENCODING: Final = "utf-8-sig"
+def python_source_encoding(data: bytes) -> str:
+    return tokenize.detect_encoding(BytesIO(data).readline)[0]
 
 
 def read_python_source(path: Path) -> str:
-    return path.read_text(encoding=PYTHON_SOURCE_ENCODING, errors="replace")
+    with tokenize.open(path) as stream:
+        return stream.read()

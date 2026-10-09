@@ -6,6 +6,7 @@ import {
   documentationWarnings,
   publicDocumentation,
   type RuleDocumentation,
+  type RuleExample,
 } from "../src/rules/_docs.js";
 
 const SUMMARY = "Report the representative construct.";
@@ -162,5 +163,47 @@ describe("source-owned TypeScript rule metadata", () => {
 describe("warning-first rollout", () => {
   it("requires source-owned documentation for every published rule", () => {
     expect(documentationWarnings(RULES)).toEqual([]);
+  });
+});
+
+describe("installed example dependency projection", () => {
+  it.each(["zod", "@example/typed"])("publishes only declared dependency fields for %s", (module) => {
+    const dependency = { module, version: "1.2.3", internalFixtureNote: "unpublished-dependency-note" };
+    const file = { path: "src/input.ts", source: "export {};", internalFixtureNote: "unpublished-file-note" };
+    const options = [{ reviewedConfiguration: { values: ["literal", 1, true] } }];
+    const matching: RuleExample = {
+      id: "rejected-case", title: "A reviewed rejection", outcome: "match", expectedCount: 1, public: true,
+      focusPath: file.path, files: [file], installedDependencies: [dependency], ruleOptions: options,
+    };
+    const rule = documentedRule(documentation([
+      matching, { ...matching, id: "accepted-case", title: "A reviewed acceptance", outcome: "no-match", expectedCount: 0 },
+    ]));
+    const [published] = publicDocumentation({ "representative-rule": rule });
+    const example = published?.examples[0];
+    expect(rule.documentation?.examples[0]?.installedDependencies).toEqual([dependency]);
+    expect(example?.installedDependencies).toEqual([{ module, version: "1.2.3" }]);
+    expect(example?.ruleOptions).toEqual(options);
+    expect(example?.files).toEqual([{ path: file.path, source: file.source }]);
+    expect(JSON.stringify(published)).not.toContain("unpublished-");
+    expect(Object.isFrozen(example?.installedDependencies?.[0])).toBe(true);
+  });
+
+  it.each(["omitted", "empty"])("preserves %s dependency and option setup", (setup) => {
+    const base: RuleExample = {
+      id: "rejected-case", title: "A reviewed rejection", outcome: "match", expectedCount: 1, public: true,
+      focusPath: "src/input.ts", files: [{ path: "src/input.ts", source: "export {};" }],
+    };
+    const matching = setup === "empty" ? { ...base, installedDependencies: [], ruleOptions: [] } : base;
+    const rule = documentedRule(documentation([
+      matching, { ...matching, id: "accepted-case", title: "A reviewed acceptance", outcome: "no-match", expectedCount: 0 },
+    ]));
+    const [published] = publicDocumentation({ "representative-rule": rule });
+    const example = published?.examples[0];
+    expect(Object.hasOwn(example ?? {}, "installedDependencies")).toBe(setup === "empty");
+    expect(Object.hasOwn(example ?? {}, "ruleOptions")).toBe(setup === "empty");
+    if (setup === "empty") {
+      expect(example?.installedDependencies).toEqual([]);
+      expect(example?.ruleOptions).toEqual([]);
+    }
   });
 });

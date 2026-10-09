@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 from pathlib import Path
+from textwrap import dedent
 from typing import TYPE_CHECKING
 
 import pytest
 
+from sarj_sql_lint.rule_base import dbmate_directives, dbmate_transactional, has_dbmate_directive
 from sarj_sql_lint.rules.require_lock_timeout import RequireLockTimeout
 
 
@@ -16,7 +18,7 @@ P = Path("supabase/migrations/001_schema.sql")
 
 
 def _check(source: str, path: Path = P) -> list[Diagnostic]:
-    return RequireLockTimeout().check(path, source)
+    return RequireLockTimeout().check(path, dedent(source))
 
 
 _PUBLIC_EXAMPLES = RequireLockTimeout.public_examples()
@@ -265,7 +267,7 @@ def test_session_set_config_survives_commit() -> None:
 
 def test_nontransactional_migration_rejects_transaction_local_set_config() -> None:
     source = """
-    -- migrate:no-transaction
+    -- migrate:up transaction:false
     SELECT set_config('lock_timeout', '5s', true);
     ALTER TABLE a ADD COLUMN x INT;
     """
@@ -286,8 +288,7 @@ def test_a_schema_dump_is_not_asked_for_a_lock_timeout() -> None:
 
 def test_nontransactional_migration_rejects_ineffective_set_local_timeout() -> None:
     source = """
-    -- migrate:no-transaction
-    -- migrate:up
+    -- migrate:up transaction:false
     SET LOCAL lock_timeout = '2s';
     CREATE INDEX CONCURRENTLY idx_users_email ON users(email);
     """
@@ -377,3 +378,91 @@ def test_quoted_timeout_reset_removes_protection() -> None:
 )
 def test_quoted_timeout_decoys_do_not_grant_protection(assignment: str) -> None:
     assert len(_check(assignment + " ALTER TABLE users ADD COLUMN note TEXT;")) == 1
+
+
+_DBMATE_OPTION_CASES = (
+    ("default", "", True),
+    ("false", "transaction:false", False),
+    ("true", "transaction:true", True),
+    ("last-false", "transaction:true transaction:false", False),
+    ("last-true", "transaction:false transaction:true", True),
+    ("unknown-option", "other:value transaction:false", False),
+    ("case-key", "Transaction:false", True),
+    ("case-value", "transaction:False", True),
+    ("malformed-pair", "transaction:false:extra", True),
+)
+
+
+@pytest.mark.parametrize(
+    ("name", "options", "transactional"), _DBMATE_OPTION_CASES, ids=tuple(item[0] for item in _DBMATE_OPTION_CASES)
+)
+@pytest.mark.parametrize("crlf", [False, True])
+def test_dbmate_options_follow_actual_runner_sections(
+    name: str, options: str, *, transactional: bool, crlf: bool
+) -> None:
+    source = f"-- migrate:up {options}\nSET LOCAL lock_timeout = '3s';\nALTER TABLE public_example ADD COLUMN name TEXT;\n-- migrate:down\nALTER TABLE public_example DROP COLUMN name;\n"
+    source = source.replace("\n", "\r\n") if crlf else source
+    first, second = dbmate_directives(source)
+    assert first.transactional is transactional, name
+    assert second.transactional
+    assert has_dbmate_directive(source, "no-transaction") is (not transactional)
+    assert dbmate_transactional(source, source.index("SET LOCAL")) is transactional
+    findings = _check(source)
+    assert [item.line for item in findings] == ([5] if transactional else [3, 5])
+
+
+@pytest.mark.parametrize("prefix", ["SELECT 1;\n", "DO $body$\n"])
+def test_runner_rejected_prefix_has_no_transaction_context(prefix: str) -> None:
+    source = f"{prefix}-- migrate:up transaction:false\nSET LOCAL lock_timeout = '3s';\nALTER TABLE public_example ADD COLUMN name TEXT;\n-- migrate:down\n"
+    assert not dbmate_directives(source)
+    assert dbmate_transactional(source, source.index("SET LOCAL")) is None
+
+
+def test_legacy_no_transaction_comment_does_not_override_dbmate() -> None:
+    source = "-- migrate:no-transaction\n-- migrate:up\nSET LOCAL lock_timeout = '3s';\nALTER TABLE public_example ADD COLUMN name TEXT;\n-- migrate:down transaction:false\n"
+    assert not has_dbmate_directive(source, "no-transaction")
+    assert dbmate_transactional(source, source.index("SET LOCAL")) is True
+    assert _check(source) == []
+
+
+def test_mixed_runner_sections_use_each_sections_transaction_options() -> None:
+    source = "-- migrate:up transaction:true\nSET LOCAL lock_timeout = '3s';\nALTER TABLE a ADD COLUMN name TEXT;\n-- migrate:down transaction:true\nSET LOCAL lock_timeout = '3s';\nALTER TABLE a DROP COLUMN name;\n-- migrate:up transaction:false\nSET LOCAL lock_timeout = '3s';\nALTER TABLE b ADD COLUMN name TEXT;\n-- migrate:down transaction:true\nSET LOCAL lock_timeout = '3s';\nALTER TABLE b DROP COLUMN name;\n"
+    findings = _check(source)
+    assert [item.line for item in findings] == [9]
+    assert findings == _check(source)
+
+
+def test_session_timeout_does_not_leak_between_up_sections() -> None:
+    source = "-- migrate:up\nSET lock_timeout = '3s';\nALTER TABLE a ADD COLUMN name TEXT;\n-- migrate:up transaction:false\nALTER TABLE b ADD COLUMN name TEXT;\n"
+    assert [item.line for item in _check(source)] == [5]
+
+
+@pytest.mark.parametrize(
+    ("prefix", "header", "transactional"),
+    [
+        ("", "-- migrate:up other:value\u00a0transaction:false", True),
+        ("", "-- migrate:up other:value\vtransaction:false", True),
+        ("", "--\u00a0migrate:up transaction:false", None),
+        ("", "--\vmigrate:up transaction:false", None),
+        ("", "--\tmigrate:up other:value\ttransaction:false", False),
+        ("\u00a0\n", "-- migrate:up transaction:false", None),
+        ("\u00a0-- documentation\n", "-- migrate:up transaction:false", None),
+        ("", "-- migrate:up transaction:false\x1c", True),
+        ("", "-- migrate:up transaction:false\u00a0", False),
+    ],
+)
+@pytest.mark.parametrize("crlf", [False, True])
+def test_dbmate_whitespace_matches_native_runner(
+    prefix: str, header: str, transactional: bool | None, *, crlf: bool
+) -> None:
+    source = f"{prefix}{header}\nSET LOCAL lock_timeout = '3s';\nALTER TABLE public_example ADD COLUMN name TEXT;\n-- migrate:down\n"
+    source = source.replace("\n", "\r\n") if crlf else source
+    offset = source.index("SET LOCAL")
+    assert dbmate_transactional(source, offset) is transactional
+    findings = RequireLockTimeout().check(P, source)
+    if transactional is None:
+        assert all("nontransactional" not in item.message for item in findings)
+    else:
+        assert [item.line for item in findings] == (
+            [source.count("\n", 0, source.index("ALTER TABLE")) + 1] if transactional is False else []
+        )

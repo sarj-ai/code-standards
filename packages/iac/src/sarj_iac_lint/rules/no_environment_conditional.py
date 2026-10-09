@@ -5,7 +5,7 @@ from pathlib import PurePosixPath
 import re
 from typing import TYPE_CHECKING, NamedTuple, final, override
 
-from sarj_iac_lint._hcl import document, tokens
+from sarj_iac_lint._hcl import document, header_comment_lines, tokens
 from sarj_iac_lint.rule_base import (
     AutofixPolicy,
     Diagnostic,
@@ -31,7 +31,18 @@ ENVIRONMENT_SEGMENTS = frozenset({"environment", "env"})
 # Segments that are also ordinary product words. These count only when every other
 # segment is a neutral qualifier, so `var.project` and `var.gcp_project_id` match
 # while `var.langfuse_ui_project_id` (a third-party resource id) does not.
-QUALIFIED_SEGMENTS = frozenset({"project", "slug", "branch", "account", "tenant", "stage", "workspace", "deployment"})
+QUALIFIED_SEGMENTS = frozenset(
+    {
+        "project",
+        "slug",
+        "branch",
+        "account",
+        "tenant",
+        "stage",
+        "workspace",
+        "deployment",
+    }
+)
 
 _NEUTRAL_QUALIFIERS = frozenset(
     {
@@ -58,7 +69,19 @@ _NEUTRAL_QUALIFIERS = frozenset(
 # exact segments rather than substrings: `product` and `developmental` are not
 # deployment labels, while `platform-prod` and `preview_us` are.
 _ENVIRONMENT_LITERAL_SEGMENTS = frozenset(
-    {"dev", "development", "preview", "prod", "production", "qa", "sandbox", "stage", "staging", "test", "testing"}
+    {
+        "dev",
+        "development",
+        "preview",
+        "prod",
+        "production",
+        "qa",
+        "sandbox",
+        "stage",
+        "staging",
+        "test",
+        "testing",
+    }
 )
 _LITERAL_SEGMENT_RE = re.compile(r"[^a-z0-9]+")
 
@@ -544,5 +567,7 @@ def _normalized_identity(function: str, argument: Sequence[str]) -> str | None:
 
 
 def _generated_header(source: str) -> bool:
-    header = "\n".join(line for line in source.splitlines()[:20] if line.lstrip().startswith(("#", "//", "/*", "*")))
+    header = "\n".join(
+        line for line in header_comment_lines(source) if line.lstrip().startswith(("#", "//", "/*", "*"))
+    )
     return _GENERATED_RE.search(header) is not None

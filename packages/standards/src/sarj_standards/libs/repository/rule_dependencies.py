@@ -5,20 +5,57 @@ from dataclasses import dataclass
 from importlib.resources import as_file, files
 import json
 from pathlib import PurePosixPath
-from typing import Final, override
+from typing import TYPE_CHECKING, Final, Literal, override
 
-from pydantic import BaseModel, ConfigDict, RootModel
+from pydantic import BaseModel, ConfigDict, Field, RootModel
 
-from sarj_standards.libs.json_boundary import parse_json
+from sarj_standards.libs.json_boundary import parse_json, parse_unique_json
 from sarj_standards.libs.release.process import ProcessFailureError, ProcessInputRunner
 from sarj_standards.libs.repository.immutable_git import MAX_MODULES, ImmutableGit
 
 
-_NODE_PIN: Final = "v24.21.0"
-_COMPILER_PACKAGE_PIN: Final = "6.0.2"
-_COMPILER_RUNTIME_PIN: Final = "6.0.3"
+if TYPE_CHECKING:
+    from pathlib import Path
+
+
 _TS_SUFFIXES: Final = frozenset({".ts", ".tsx", ".js", ".mjs", ".cjs"})
 type ModuleFingerprint = tuple[tuple[str, str], ...]
+
+
+class _LockedParserPackage(BaseModel):
+    model_config = ConfigDict(strict=True)
+    name: str
+    version: str
+
+
+class _ParserLock(BaseModel):
+    model_config = ConfigDict(strict=True)
+    lockfile_version: Literal[3] = Field(alias="lockfileVersion")
+    packages: dict[str, object]
+
+
+@dataclass(frozen=True, slots=True)
+class _ParserPins:
+    node: str
+    package: str
+    runtime: str
+
+
+def _parser_pins(root: Path) -> _ParserPins:
+    try:
+        node = "v" + (root / ".node-version").read_text(encoding="utf-8").strip().removeprefix("v")
+        locked = _ParserLock.model_validate(
+            parse_unique_json((root / "packages/typescript/package-lock.json").read_text(encoding="utf-8"))
+        )
+        package = _LockedParserPackage.model_validate(locked.packages["node_modules/typescript"])
+        runtime = _LockedParserPackage.model_validate(locked.packages["node_modules/@typescript/old"])
+    except (OSError, UnicodeError, ValueError, KeyError) as error:
+        msg = "rule comparison requires preinstalled Node/compiler matching authoring .node-version and package-lock.json; use documented repository setup"
+        raise ValueError(msg) from error
+    if package.name != "@typescript/typescript6" or runtime.name != "typescript":
+        msg = "rule comparison requires the locked @typescript/typescript6 compiler and its typescript runtime"
+        raise ValueError(msg)
+    return _ParserPins(node, package.version, runtime.version)
 
 
 class _ImportReference(BaseModel):
@@ -59,7 +96,7 @@ class RuleDependencies:
         self.modules: dict[str, str] = {}
         self.names: dict[str, str] = {}
         self.graph: dict[str, set[str]] = {}
-        self.errors: dict[str, str] = {}
+        self.errors: dict[str, str] = dict(snapshot.encoding_errors)
         self.registries: set[str] = set()
         for path in snapshot.modules:
             if not path.endswith(".py"):
@@ -80,6 +117,25 @@ class RuleDependencies:
                 self._python(path=path, source=source)
         if any(PurePosixPath(path).suffix in _TS_SUFFIXES for path in owned_roots):
             self._typescript(parser_runner)
+        self._prepare_data_leaves(owned_roots)
+
+    def _prepare_data_leaves(self, roots: frozenset[str]) -> None:
+        pending = list(roots)
+        seen: set[str] = set()
+        leaves: set[str] = set()
+        while pending:
+            current = pending.pop()
+            if current in seen:
+                continue
+            seen.add(current)
+            if current.startswith("<missing>"):
+                continue
+            if PurePosixPath(current).suffix == ".json":
+                leaves.add(current)
+            else:
+                pending.extend(self.graph.get(current, ()))
+        if leaves:
+            self.snapshot.read_blobs(sorted(leaves))
 
     def fingerprint(self, path: str) -> ModuleFingerprint:
         pending = [path]
@@ -168,14 +224,15 @@ class RuleDependencies:
         if not sources:
             return
         compiler = self.snapshot.root / "packages/typescript/node_modules/typescript/lib/typescript.js"
-        prerequisite = f"rule comparison requires preinstalled Node {_NODE_PIN} and @typescript/typescript6 {_COMPILER_PACKAGE_PIN} (compiler {_COMPILER_RUNTIME_PIN}); use documented repository setup; no automatic installation or fallback"
+        pins = _parser_pins(self.snapshot.root)
+        prerequisite = f"rule comparison requires preinstalled Node {pins.node} and locked @typescript/typescript6 {pins.package} (compiler {pins.runtime}); use documented repository setup; no automatic installation or fallback"
         if not compiler.is_file():
             raise ValueError(prerequisite)
         resource = files("sarj_standards.libs.repository").joinpath("rule_imports.cjs")
         try:
             with as_file(resource) as frontend:
                 result = runner(
-                    ("node", str(frontend), str(compiler), _NODE_PIN, _COMPILER_PACKAGE_PIN, _COMPILER_RUNTIME_PIN),
+                    ("node", str(frontend), str(compiler), pins.node, pins.package, pins.runtime),
                     cwd=self.snapshot.root,
                     input_text=json.dumps(sources),
                 )
@@ -200,6 +257,9 @@ class RuleDependencies:
                 continue
             if reference.resolved is None:
                 self.errors[path] = f"missing immutable TypeScript import: {path} {reference.specifier}"
+                continue
+            if PurePosixPath(reference.resolved).suffix == ".json":
+                dependencies.add(reference.resolved)
                 continue
             if reference.resolved not in self.snapshot.modules:
                 msg = "TypeScript frontend returned escaping or missing module"

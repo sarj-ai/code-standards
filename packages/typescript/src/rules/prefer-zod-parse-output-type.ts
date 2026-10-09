@@ -57,7 +57,7 @@ export const PREFER_ZOD_PARSE_OUTPUT_TYPE_DOCUMENTATION = {
       ],
       focusPath: "src/row.ts",
       expectedCount: 0,
-      public: true,
+      public: true, installedDependencies: [{ module: "zod", version: "4.6.5" }],
     },
     {
       id: "hand-written-parsed-return",
@@ -75,7 +75,7 @@ export const PREFER_ZOD_PARSE_OUTPUT_TYPE_DOCUMENTATION = {
       ],
       focusPath: "src/row.ts",
       expectedCount: 1,
-      public: true,
+      public: true, installedDependencies: [{ module: "zod", version: "4.6.5" }],
     },
   ],
 } as const satisfies RuleDocumentation;

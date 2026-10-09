@@ -14,6 +14,7 @@ from yaml.events import AliasEvent, MappingStartEvent, ScalarEvent, SequenceStar
 from yaml.nodes import MappingNode, Node, ScalarNode, SequenceNode
 
 from sarj_standards.libs.json_boundary import parse_json
+from sarj_standards.libs.linting.kubernetes_context import CONTAINER_KINDS, POD_SPEC_PATHS
 from sarj_standards.libs.typed_containers import is_object_list, is_object_mapping
 from sarj_standards.libs.yaml_boundary import mapping_items, sequence_items
 
@@ -751,24 +752,37 @@ def _actions_step_blocks(steps: Sequence[Node], *, interpreter: str) -> list[Exe
     return blocks
 
 
-def _kubernetes_blocks(document: Node) -> list[ExecutionBlock]:
-    blocks: list[ExecutionBlock] = []
-    for node in _walk(document):
-        blocks.extend(_kubernetes_execution_fields(_table(node)))
-    return blocks
-
-
-def _kubernetes_execution_fields(fields: Mapping[str, Node]) -> list[ExecutionBlock]:
-    blocks = [
+def _kubernetes_blocks(document: Node, *, depth: int = 0) -> list[ExecutionBlock]:
+    if depth >= _MAX_DEPTH:
+        msg = "Kubernetes List nesting exceeds analysis bound"
+        raise ProgramProjectionError(msg)
+    fields = _table(document)
+    version, resource_kind = _scalar(fields.get("apiVersion")), _scalar(fields.get("kind"))
+    if version is None or resource_kind is None:
+        return []
+    identity = (version, resource_kind)
+    if identity == ("v1", "List"):
+        return [block for item in _items(fields.get("items")) for block in _kubernetes_blocks(item, depth=depth + 1)]
+    path = POD_SPEC_PATHS.get(identity)
+    if path is None:
+        return []
+    for key in path:
+        fields = _table(fields.get(key))
+    return [
         block
-        for key in ("containers", "initContainers", "ephemeralContainers")
-        for container in _items(fields.get(key))
-        for block in _container(container)
+        for kind in CONTAINER_KINDS
+        for container in _items(fields.get(kind))
+        for block in [*_container(container), *_kubernetes_hooks(_table(container))]
     ]
+
+
+def _kubernetes_hooks(fields: Mapping[str, Node]) -> list[ExecutionBlock]:
+    lifecycle = _table(fields.get("lifecycle"))
     hooks = [
-        *_table(fields.get("lifecycle")).values(),
+        *(lifecycle.get(hook) for hook in ("postStart", "preStop")),
         *(fields.get(probe) for probe in ("livenessProbe", "readinessProbe", "startupProbe")),
     ]
+    blocks: list[ExecutionBlock] = []
     for hook in hooks:
         execute = _table(hook).get("exec")
         if "command" in _table(execute) and execute is not None:

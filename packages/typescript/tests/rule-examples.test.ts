@@ -1,3 +1,9 @@
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import restrictedLoad from "../src/rules/no-restricted-library-load.js";
+import statelessStorage from "../src/rules/no-storage-in-stateless-modules.js";
+import zodOutput from "../src/rules/prefer-zod-parse-output-type.js";
 import { ESLintUtils } from "@typescript-eslint/utils";
 import { describe, expect, it } from "vitest";
 
@@ -108,4 +114,46 @@ describe("dummy detector mutation proof", () => {
     });
     await expect(verifyRuleExamples(rule)).resolves.toBe(2);
   });
+});
+
+
+describe("declarative example setup", () => {
+  it("runs opt-in public examples while retaining empty production defaults", async () => {
+    expect(restrictedLoad.defaultOptions).toEqual([{ libraries: [] }]);
+    expect(statelessStorage.defaultOptions).toEqual([{}]);
+    await expect(verifyRuleExamples(restrictedLoad)).resolves.toBe(2);
+    await expect(verifyRuleExamples(statelessStorage)).resolves.toBe(2);
+  });
+  it("uses the exact explicitly installed Zod declarations", async () => {
+    await expect(verifyRuleExamples(zodOutput, { installedDependencyRoot: new URL("../", import.meta.url).pathname })).resolves.toBe(2);
+  });
+  it("fails clearly without an explicit installed dependency root", async () => {
+    await expect(verifyRuleExamples(zodOutput)).rejects.toThrow("explicit installed dependency root is required");
+  });
+  it("rejects installed dependency version drift", async () => {
+    const rule = { ...zodOutput, documentation: { ...zodOutput.documentation, examples: zodOutput.documentation.examples.map(example => ({ ...example, installedDependencies: [{ module: "zod", version: "0.0.0" }] })) } };
+    await expect(verifyRuleExamples(rule, { installedDependencyRoot: new URL("../", import.meta.url).pathname })).rejects.toThrow("identity/version mismatch");
+  });
+  it("rejects a missing installed dependency", async () => {
+    const rule = { ...zodOutput, documentation: { ...zodOutput.documentation, examples: zodOutput.documentation.examples.map(example => ({ ...example, installedDependencies: [{ module: "sarj-example-missing", version: "0.0.0" }] })) } };
+    await expect(verifyRuleExamples(rule, { installedDependencyRoot: new URL("../", import.meta.url).pathname })).rejects.toThrow("ENOENT");
+  });
+  it("preserves the positive oracle with an explicitly empty policy", async () => {
+    const rule = { ...restrictedLoad, documentation: { ...restrictedLoad.documentation, examples: restrictedLoad.documentation.examples.map(example => ({ ...example, ruleOptions: [] })) } };
+    await expect(verifyRuleExamples(rule)).rejects.toThrow("expected 1 findings, received 0");
+  });
+  it("lets native ESLint reject malformed per-example options", async () => {
+    const rule = { ...restrictedLoad, documentation: { ...restrictedLoad.documentation, examples: restrictedLoad.documentation.examples.map(example => ({ ...example, ruleOptions: [{ unsupported: true }] })) } };
+    await expect(verifyRuleExamples(rule)).rejects.toThrow("additional properties");
+  });
+});
+
+
+it("does not replace an explicit empty dependency root with ambient packages", async () => {
+  const root = await mkdtemp(join(tmpdir(), "sarj-installed-example-"));
+  try {
+    await expect(verifyRuleExamples(zodOutput, { installedDependencyRoot: root })).rejects.toThrow("ENOENT");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });

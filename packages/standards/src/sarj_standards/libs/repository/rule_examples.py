@@ -29,7 +29,7 @@ _NODE_VERIFY = """import {rules} from './dist/index.js';
 import {verifyRuleExamples} from './dist/rule-examples.js';
 const rule = rules[process.argv[1]];
 if (!rule) throw new Error('unknown live rule selector: eslint:' + process.argv[1]);
-console.log(await verifyRuleExamples(rule));
+console.log(await verifyRuleExamples(rule, {installedDependencyRoot: process.cwd()}));
 """
 
 
