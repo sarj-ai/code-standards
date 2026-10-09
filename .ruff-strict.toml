@@ -302,6 +302,10 @@ warns-extend-require-match-for = [
 # END GENERATED LIBRARY POLICY
 
 [lint.per-file-ignores]
+# SARJ015 owns static application records and preserves dynamic factories,
+# compatibility contracts, already typed records, and namedtuple test subjects.
+# Keep the upstream stub-file check active where SARJ015 does not run.
+"**/*.py"                 = ["PYI024"]
 # Tests legitimately assert, use fixtures and magic values, and invoke the
 # binary under test. Scope those exemptions to test paths so assertion and
 # hardcoded-secret checks remain active in shipped code. Test trees also need

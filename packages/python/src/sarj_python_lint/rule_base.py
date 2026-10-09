@@ -37,7 +37,7 @@ TESTS_DIR: Final = "packages/python/tests/rules"
 
 # Keep SARJ suppressions separate because Ruff removes unknown `noqa` codes.
 _SARJ_NOQA_RE = re.compile(
-    r"#\s*sarj-noqa(?::\s*([A-Za-z0-9_, ]+))?",
+    r"#\s*sarj-noqa\b(?::\s*([A-Za-z0-9_, ]+))?",
     re.IGNORECASE,
 )
 
@@ -49,12 +49,25 @@ def is_suppressed(source_lines: Sequence[str], line: int, code: str) -> bool:
     m = _SARJ_NOQA_RE.search(text)
     if not m:
         return False
+    from sarj_python_lint.rules._suppression_comments import comment_lines  # ruff: ignore[import-outside-top-level] -- comment scanner depends on rule_base.
+
+    comment = comment_lines(tuple(source_lines)).get(line, "")
+    m = _SARJ_NOQA_RE.search(comment)
+    if m is None:
+        return False
     codes_str = m.group(1)
-    if not codes_str:
-        # A bare sarj-noqa intentionally suppresses every SARJ code on its line.
-        return True
-    codes = {val.upper() for c in codes_str.split(",") if (val := c.strip())}
-    return code.upper() in codes
+    trailing = comment[m.end() :]
+    if codes_str is None:
+        # A complete bare marker preserves the existing all-codes waiver contract.
+        return not (trailing and (not trailing[0].isspace() or trailing.lstrip().startswith(":")))
+    reason = trailing.lstrip()
+    single_dash_reason = reason.startswith("-") and (codes_str[-1:].isspace() or trailing[:1].isspace())
+    if reason and not reason.startswith(("--", "—", "–")) and not single_dash_reason:
+        return False
+    parts = tuple(part.strip() for part in codes_str.split(","))
+    if any(not part for part in parts):
+        return False
+    return code.upper() in {part.upper() for part in parts}
 
 
 class ColumnEncoding(StrEnum):

@@ -1,5 +1,3 @@
-"""End-to-end `# sarj-noqa` suppression through the CLI entrypoint."""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING

@@ -4,9 +4,11 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-sleep-in-test-body.test.ts
  */
 
-import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
+import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
 
 import { directArgumentCall, outerExpression, unwrapExpression } from "./_unwrap-expression.js";
+
+import { runtimeTestFrameworkName } from "./_test-mock-provenance.js";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isTestFile } from "./_paths.js";
@@ -124,28 +126,28 @@ function isImmediatelyConsumedSleep(node: TSESTree.Node): boolean {
 }
 
 /** True when `fn` is the callback argument of an `it`/`test`/per-test-hook call. */
-function isTestBody(fn: TSESTree.Node): boolean {
+function isTestBody(fn: TSESTree.Node, source: Readonly<TSESLint.SourceCode>): boolean {
   const call = directArgumentCall(fn);
   if (call === null) return false;
-  const name = testCallerName(call.callee);
+  const name = testCallerName(call.callee, source);
   return name !== null && TEST_CALLERS.has(name);
 }
 
 /** The base callee name of a call, unwrapping `.only` / `.skip` / `.each` chains. */
-function testCallerName(callee: TSESTree.Node): string | null {
+const TEST_MODIFIERS: ReadonlySet<string> = new Set(["only", "skip", "each", "concurrent", "sequential", "fails", "skipIf", "runIf"]);
+
+function testCallerName(callee: TSESTree.Node, source: Readonly<TSESLint.SourceCode>): string | null {
   callee = unwrapExpression(callee);
   if (callee.type === AST_NODE_TYPES.Identifier) {
-    return callee.name;
+    const name = runtimeTestFrameworkName(source, callee, "test");
+    return name !== null && TEST_CALLERS.has(name) ? name : null;
   }
   if (callee.type === AST_NODE_TYPES.MemberExpression) {
-    return testCallerName(callee.object);
+    const member = ASTUtils.getPropertyName(callee);
+    return member !== null && TEST_MODIFIERS.has(member) ? testCallerName(callee.object, source) : null;
   }
-  if (callee.type === AST_NODE_TYPES.CallExpression) {
-    return testCallerName(callee.callee);
-  }
-  if (callee.type === AST_NODE_TYPES.TaggedTemplateExpression) {
-    return testCallerName(callee.tag);
-  }
+  if (callee.type === AST_NODE_TYPES.CallExpression) return testCallerName(callee.callee, source);
+  if (callee.type === AST_NODE_TYPES.TaggedTemplateExpression) return testCallerName(callee.tag, source);
   return null;
 }
 
@@ -174,7 +176,7 @@ export default createRule<Options, MessageIds>({
         return;
       }
       const enclosing = nearestEnclosingFunction(node);
-      if (enclosing === null || !isTestBody(enclosing)) {
+      if (enclosing === null || !isTestBody(enclosing, context.sourceCode)) {
         return;
       }
       context.report({ node, messageId: "noSleepInTestBody" });

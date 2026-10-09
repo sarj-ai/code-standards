@@ -28,6 +28,7 @@ export const NO_REDUNDANT_OPTIONAL_ARRAY_DEFAULT_DOCUMENTATION = {
     "Only syntactically local Zod array chains with adjacent `.optional().default(...)` calls are checked.",
     "String, scalar, tuple, set, record, aliased, composed, and dynamically constructed schemas are excluded.",
     "The reversed `.default(...).optional()` order is preserved because its outer optional can return undefined instead of the default.",
+    "Defaults must be literal arrays or synchronous functions returning one literal array; dynamic or undefined fallbacks are excluded because Zod 3 reparses the fallback.",
     "Calls containing comments are excluded so the fix never deletes authored context.",
     "Test and generated files are excluded.",
   ],
@@ -75,6 +76,25 @@ function importedName(specifier: TSESTree.ImportSpecifier): string | null {
     : typeof specifier.imported.value === "string"
       ? specifier.imported.value
       : null;
+}
+
+function hasArrayFallback(node: TSESTree.CallExpression): boolean {
+  const argument = node.arguments[0];
+  if (node.arguments.length !== 1 || argument === undefined) return false;
+  const value = unwrapExpression(argument);
+  if (value.type === AST_NODE_TYPES.ArrayExpression) return true;
+  if (
+    (value.type !== AST_NODE_TYPES.ArrowFunctionExpression && value.type !== AST_NODE_TYPES.FunctionExpression) ||
+    value.async || value.generator
+  ) return false;
+  if (value.body.type !== AST_NODE_TYPES.BlockStatement) {
+    return unwrapExpression(value.body).type === AST_NODE_TYPES.ArrayExpression;
+  }
+  const statement = value.body.body[0];
+  return value.body.body.length === 1 &&
+    statement?.type === AST_NODE_TYPES.ReturnStatement &&
+    statement.argument !== null &&
+    unwrapExpression(statement.argument).type === AST_NODE_TYPES.ArrayExpression;
 }
 
 export default createRule<Options, MessageIds>({
@@ -189,6 +209,7 @@ export default createRule<Options, MessageIds>({
         if (
           defaultCallee.type !== AST_NODE_TYPES.MemberExpression ||
           ASTUtils.getPropertyName(defaultCallee) !== "default" ||
+          !hasArrayFallback(node) ||
           defaultCalleeReceiver.type !== AST_NODE_TYPES.CallExpression
         ) {
           return;

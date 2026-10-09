@@ -19,6 +19,15 @@ const TEST_FILE = "/repo/src/worker.test.ts";
 
 RULE_TESTER.run("no-sleep-in-test-body", rule, {
   valid: [
+    { name: "binding ownership: sleep-local-shadow", filename: TEST_FILE, code: "function test(name:string, callback:()=>unknown) { return callback; }test('case',async()=>{await new Promise(resolve => setTimeout(resolve, 5));});" },
+    { name: "binding ownership: sleep-unrelated-import", filename: TEST_FILE, code: "import {test} from './application.js';test('case',async()=>{await new Promise(resolve => setTimeout(resolve, 5));});" },
+    { name: "binding ownership: sleep-imported-describe-alias", filename: TEST_FILE, code: "import {describe as test} from 'vitest';test('case',async()=>{await new Promise(resolve => setTimeout(resolve, 5));});" },
+    { name: "binding ownership: sleep-unknown-method", filename: TEST_FILE, code: "test.transform('case',async()=>{await new Promise(resolve => setTimeout(resolve, 5));});" },
+    { name: "binding ownership: sleep-parameter-delay", filename: TEST_FILE, code: "test('case',async()=>{await new Promise(resolve=>setTimeout(resolve,delay));});" },
+    { name: "binding ownership: sleep-zero-yield", filename: TEST_FILE, code: "test('case',async()=>{await new Promise(resolve=>setTimeout(resolve,0));});" },
+    { name: "binding ownership: sleep-nested-data-callback", filename: TEST_FILE, code: "test('case',()=>{const fake=async()=>{await new Promise(resolve => setTimeout(resolve, 5));};use(fake);});" },
+    { name: "binding ownership: assigned-local", filename: TEST_FILE, code: "let test=adapter;test('case',async()=>{await new Promise(resolve=>setTimeout(resolve,5))});" },
+
     { name: "allows zero-delay yielding in an erased test callback", filename: TEST_FILE, code: "test('flushes', (async () => { await sleep(0); })!);" },
     { name: "retains nested helper exclusion in an erased test callback", filename: TEST_FILE, code: "test('latency input', (async () => { const delayed = async () => { await sleep(50); }; await consume(delayed); })!);" },
     { filename: TEST_FILE, code: "test('operation', async () => { await new Promise((resolve, reject) => { start(resolve); setTimeout(reject, 50); }); });" },
@@ -117,6 +126,12 @@ RULE_TESTER.run("no-sleep-in-test-body", rule, {
     },
   ],
   invalid: [
+    { name: "binding ownership: sleep-global", filename: TEST_FILE, code: "test('case',async()=>{await new Promise(resolve => setTimeout(resolve, 5));});", errors: [{ messageId: "noSleepInTestBody" }] },
+    { name: "binding ownership: sleep-named-import", filename: TEST_FILE, code: "import {test} from 'vitest';test('case',async()=>{await new Promise(resolve => setTimeout(resolve, 5));});", errors: [{ messageId: "noSleepInTestBody" }] },
+    { name: "binding ownership: sleep-renamed-import", filename: TEST_FILE, code: "import {test as check} from 'vitest';check('case',async()=>{await new Promise(resolve => setTimeout(resolve, 5));});", errors: [{ messageId: "noSleepInTestBody" }] },
+    { name: "binding ownership: sleep-node-default", filename: TEST_FILE, code: "import check from 'node:test';check('case',async()=>{await new Promise(resolve => setTimeout(resolve, 5));});", errors: [{ messageId: "noSleepInTestBody" }] },
+    { name: "binding ownership: renamed-before-each", filename: TEST_FILE, code: "import {beforeEach as prepare} from 'vitest';prepare(async()=>{await new Promise(resolve=>setTimeout(resolve,5))});", errors: [{ messageId: "noSleepInTestBody" }] },
+
     { name: "reports the documented fixed sleep", filename: NO_SLEEP_IN_TEST_BODY_DOCUMENTATION.examples[1].focusPath, code: NO_SLEEP_IN_TEST_BODY_DOCUMENTATION.examples[1].files[0].source, errors: [{ messageId: "noSleepInTestBody" }] },
     {
       name: "reports an expression-bodied Promise sleep in an it callback",

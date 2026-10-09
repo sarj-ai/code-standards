@@ -1231,3 +1231,24 @@ describe("the shipped eslint.strict.mjs can actually lint", () => {
     ).toBe(true);
   });
 });
+
+
+describe("await-return ownership", () => {
+  it.each(CONFIG_FACTORIES)("%s preserves safe await and the typed error-handling owner", async (_name, createConfig) => {
+    const related = new Set(["no-return-await", "@typescript-eslint/return-await", "@sarj/prefer-await-in-async-return"]);
+    const cases = [{"id": "ordinary-awaited-return", "code": "declare function operation():Promise<number>;async function load(){return await operation();}", "syntax": [], "typed": []}, {"id": "try-awaited-return", "code": "declare function operation():Promise<number>;async function load(){try{return await operation()}catch{return 0}}", "syntax": [], "typed": []}, {"id": "try-unawaited-return", "code": "declare function operation():Promise<number>;async function load(){try{return operation()}catch{return 0}}", "syntax": [], "typed": ["@typescript-eslint/return-await"]}, {"id": "using-awaited-return", "code": "declare function operation():Promise<number>;async function load(){using token={[Symbol.dispose](){}};return await operation();}", "syntax": [], "typed": []}, {"id": "using-unawaited-return", "code": "declare function operation():Promise<number>;async function load(){using token={[Symbol.dispose](){}};return operation();}", "syntax": [], "typed": ["@typescript-eslint/return-await"]}, {"id": "then-transform", "code": "async function load(){return Promise.resolve(1).then(value=>value+1)}", "syntax": [], "typed": ["@sarj/prefer-await-in-async-return"]}, {"id": "custom-thenable", "code": "const source={then(callback:(value:number)=>number){return callback(1)}};async function load(){return source.then(value=>value+1)}", "syntax": [], "typed": []}] as const;
+    for (const typed of [false, true]) {
+      const config = createConfig({ tsconfigRootDir: FIXTURE_DIR, projectService: typed }).map(entry => ({ ...entry, rules: Object.fromEntries(Object.entries(entry.rules ?? {}).filter(([id]) => related.has(id))) }));
+      const eslint = new ESLint({ cwd: FIXTURE_DIR, overrideConfigFile: true, overrideConfig: config });
+      for (const sample of cases) {
+        const options = { filePath: resolve(FIXTURE_DIR, "example.ts") };
+        const results = await eslint.lintText(sample.code, options);
+        const messages = results.flatMap(result => result.messages);
+        expect(messages.some(message => message.fatal), sample.id).toBe(false);
+        expect(messages.map(message => message.ruleId).sort(), sample.id).toEqual(typed ? sample.typed : sample.syntax);
+        const repeated = await eslint.lintText(sample.code, options);
+        expect(repeated.flatMap(result => result.messages), sample.id).toEqual(messages);
+      }
+    }
+  });
+});

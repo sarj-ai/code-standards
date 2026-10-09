@@ -45,6 +45,14 @@ jobs:
           BEFORE: ${{ github.event.pull_request.base.sha || github.event.before }}
           AFTER: ${{ github.event.pull_request.head.sha || github.sha }}
         run: uv run --project packages/standards --frozen code-standards --root . maintain release causality --before "$BEFORE" --after "$AFTER"
+      - name: Install rule-comparison Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version-file: .node-version
+          package-manager-cache: false
+      - name: Install locked rule-comparison compiler
+        working-directory: packages/typescript
+        run: npm ci --ignore-scripts --no-audit --no-fund
       - name: New judgment rules start as warnings
         env:
           BEFORE: ${{ github.event.pull_request.base.sha || github.event.before }}

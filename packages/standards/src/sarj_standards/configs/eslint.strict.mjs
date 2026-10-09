@@ -1212,7 +1212,9 @@ export function createConfig(options = {}) {
       "no-useless-return": "error",
       "no-eval": ["error", { allowIndirect: false }],
       "no-prototype-builtins": "error",
-      "no-return-await": "error",
+      // The deprecated core rule rejects useful stack frames and safe resource disposal.
+      // Typed return-await owns promise error handling where type information exists.
+      "no-return-await": "off",
       // Unicorn's guard-style iteration fix intentionally uses `value != null`
       // to reject both null and undefined without changing truthiness semantics.
       // ESLint documents this narrow null exception; every other loose

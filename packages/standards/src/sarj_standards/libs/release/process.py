@@ -146,3 +146,50 @@ def run_build_process(
             capture_output=capture_output,
             environment=environment,
         )
+
+
+@dataclass(frozen=True, slots=True)
+class ProcessBinaryResult:
+    returncode: int
+    stdout: bytes = b""
+    stderr: bytes = b""
+
+    def __post_init__(self) -> None:
+        if type(self.returncode) is not int:
+            msg = "process return code must be an integer"
+            raise TypeError(msg)
+        if type(self.stdout) is not bytes or type(self.stderr) is not bytes:
+            msg = "binary process output must be bytes"
+            raise TypeError(msg)
+
+
+class ProcessBinaryRunner(Protocol):
+    def __call__(self, argv: tuple[str, ...], *, cwd: Path, input_bytes: bytes = b"") -> ProcessBinaryResult: ...
+
+
+class ProcessInputRunner(Protocol):
+    def __call__(self, argv: tuple[str, ...], *, cwd: Path, input_text: str) -> ProcessResult: ...
+
+
+def run_binary_process(argv: tuple[str, ...], *, cwd: Path, input_bytes: bytes = b"") -> ProcessBinaryResult:
+    try:
+        completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- centralized fixed argv transport; shell remains disabled.
+            argv,
+            cwd=cwd,
+            input=input_bytes,
+            capture_output=True,
+            check=False,
+            shell=False,
+            timeout=120,
+        )
+    except subprocess.TimeoutExpired as error:
+        raise ProcessFailureError(argv, 124) from error
+    result = ProcessBinaryResult(completed.returncode, completed.stdout, completed.stderr)
+    if result.returncode != 0:
+        raise ProcessFailureError(argv, result.returncode)
+    return result
+
+
+def run_input_process(argv: tuple[str, ...], *, cwd: Path, input_text: str) -> ProcessResult:
+    result = run_binary_process(argv, cwd=cwd, input_bytes=input_text.encode("utf-8"))
+    return ProcessResult(result.returncode, result.stdout.decode("utf-8"), result.stderr.decode("utf-8"))

@@ -1,13 +1,23 @@
 from __future__ import annotations
 
 import hashlib
+from importlib.resources import files
 import json
 from pathlib import Path
+import shutil
 import subprocess
+import sys
 
 import pytest
 
 from sarj_standards.cli.main import main
+from sarj_standards.libs.release.process import (
+    ProcessBinaryResult,
+    ProcessFailureError,
+    ProcessResult,
+    run_binary_process,
+    run_process,
+)
 from sarj_standards.libs.repository import rule_changes
 from sarj_standards.libs.rules import DefaultLevel
 
@@ -469,3 +479,233 @@ def test_explicit_devops_error_first_admission_preserves_exact_selector_scope(
         if line.startswith("Run:")
     ]
     assert sorted(suggested) == sorted([foreign_key, similarly_named_key])
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        "parent-init",
+        "unrelated-init",
+        "module",
+        "aliased-module",
+        "utf8-bom-module",
+        "latin1-module",
+        "dotted-module",
+        "mutated-type-guard",
+        "mutated-import-function",
+        "import-function",
+        "builtin",
+        "relative-module",
+        "shadowed",
+    ],
+)
+def test_runtime_import_ownership(repository: Path, case: str) -> None:
+    entry = _rule("alpha")
+    entry["source"] = "packages/python/src/engine/alpha.py"
+    package = repository / "packages/python/src/engine"
+    package.mkdir(parents=True)
+    initializer = package / "__init__.py"
+    initializer.write_text("FLAG=False\n", encoding="utf-8")
+    helper = package / "helper.py"
+    helper.write_text("def evaluate():\n return False\n", encoding="utf-8")
+    (package / "other.py").write_text("VALUE=False\n", encoding="utf-8")
+    sources = {
+        "parent-init": "import engine.other\nfrom engine import FLAG\ndef check():\n return FLAG\n",
+        "unrelated-init": "def check():\n return False\n",
+        "module": "import importlib\ndef check():\n return importlib.import_module('engine.helper').evaluate()\n",
+        "mutated-type-guard": "import typing\ntyping.TYPE_CHECKING=True\nif typing.TYPE_CHECKING:\n from .helper import evaluate\ndef check():\n return evaluate()\n",
+        "mutated-import-function": "import importlib as modules\nmodules.import_module=lambda name:False\ndef check():\n return modules.import_module('engine.helper')\n",
+        "dotted-module": "import importlib.util\ndef check():\n return importlib.import_module('engine.helper').evaluate()\n",
+        "aliased-module": "import importlib as modules\ndef check():\n return modules.import_module('engine.helper').evaluate()\n",
+        "utf8-bom-module": "\ufefffrom .helper import evaluate\ndef check():\n return evaluate()\n",
+        "latin1-module": "# coding: latin-1\n# café\nfrom .helper import evaluate\ndef check():\n return evaluate()\n",
+        "import-function": "from importlib import import_module as load\ndef check():\n return load('engine.helper').evaluate()\n",
+        "builtin": "def check():\n return __import__('engine.helper',fromlist=['evaluate']).evaluate()\n",
+        "relative-module": "from importlib import import_module\ndef check():\n return import_module('.helper',package='engine').evaluate()\n",
+        "shadowed": "from importlib import import_module as load\ndef load(_name):\n return False\ndef check():\n return load('engine.helper')\n",
+    }
+    (package / "alpha.py").write_text(sources[case], encoding="latin-1" if case == "latin1-module" else "utf-8")
+    other = repository / "packages/python/src/unrelated"
+    other.mkdir()
+    (other / "__init__.py").write_text("FLAG=False\n", encoding="utf-8")
+    before = _write_revision(repository, [entry], "runtime baseline")
+    script = repository / "observe.py"
+    script.write_text(
+        "import sys\nsys.path.insert(0,'packages/python/src')\nfrom engine.alpha import check\nprint(check())\n",
+        encoding="utf-8",
+    )
+    before_output = subprocess.run(
+        (sys.executable, str(script)), cwd=repository, check=True, capture_output=True, text=True
+    ).stdout
+    match case:
+        case "parent-init":
+            initializer.write_text("FLAG=True\n", encoding="utf-8")
+        case "unrelated-init":
+            (other / "__init__.py").write_text("FLAG=True\n", encoding="utf-8")
+        case _:
+            helper.write_text("def evaluate():\n return True\n", encoding="utf-8")
+    _git(repository, "add", "packages")
+    _git(repository, "commit", "-m", "runtime candidate")
+    after = _git(repository, "rev-parse", "HEAD")
+    after_output = subprocess.run(
+        (sys.executable, str(script)), cwd=repository, check=True, capture_output=True, text=True
+    ).stdout
+    positive = case not in {"unrelated-init", "shadowed", "mutated-import-function"}
+    assert before_output.strip() == "False"
+    assert after_output.strip() == ("True" if positive else "False")
+    result = rule_changes.compare(repository, before=before, after=after)
+    assert result["changedSelectors"] == (["python:alpha"] if positive else [])
+    assert rule_changes.compare(repository, before=before, after=after) == result
+
+
+@pytest.mark.parametrize("case", ["invalid-header", "missing", "truncated", "trailer", "failed-status"])
+def test_binary_git_boundary_rejects_invalid_snapshots(repository: Path, case: str) -> None:
+    before = _write_revision(repository, [_rule("alpha")], "binary baseline")
+
+    def runner(argv: tuple[str, ...], *, cwd: Path, input_bytes: bytes = b"") -> ProcessBinaryResult:
+        result = run_binary_process(argv, cwd=cwd, input_bytes=input_bytes)
+        if "cat-file" not in argv:
+            return result
+        oid = input_bytes.splitlines()[0]
+        payloads = {
+            "invalid-header": b"invalid\n",
+            "missing": oid + b" missing\n",
+            "truncated": oid + b" blob 10\nshort\n",
+            "trailer": result.stdout + b"unexpected",
+            "failed-status": result.stdout,
+        }
+        return ProcessBinaryResult(7 if case == "failed-status" else 0, payloads[case])
+
+    if case == "failed-status":
+        with pytest.raises(ProcessFailureError) as caught:
+            rule_changes.compare(repository, before=before, after=before, binary_runner=runner)
+        assert caught.value.returncode == 7
+    else:
+        with pytest.raises(ValueError, match="immutable Git batch"):
+            rule_changes.compare(repository, before=before, after=before, binary_runner=runner)
+
+
+def test_python_only_comparison_does_not_require_node(repository: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    before = _write_revision(repository, [_rule("alpha")], "python-only baseline")
+    # Git stays available through an explicit fixed executable; Node discovery is absent.
+    git = shutil.which("git")
+    assert git is not None
+
+    def git_only(argv: tuple[str, ...], *, cwd: Path, input_bytes: bytes = b"") -> ProcessBinaryResult:
+        return run_binary_process((git, *argv[1:]), cwd=cwd, input_bytes=input_bytes)
+
+    def resolve(argv: tuple[str, ...], *, cwd: Path, capture_output: bool = False) -> ProcessResult:
+        return run_process((git, *argv[1:]), cwd=cwd, capture_output=capture_output)
+
+    monkeypatch.setenv("PATH", "")
+    assert (
+        rule_changes.compare(repository, before=before, after=before, runner=resolve, binary_runner=git_only)["changes"]
+        == []
+    )
+    assert shutil.which("node") is None
+
+
+def test_functional_registry_keeps_called_rule_dependency(repository: Path) -> None:
+    alpha = _rule("alpha")
+    beta = _rule("beta")
+    alpha["source"] = "packages/python/src/engine/alpha.py"
+    beta["source"] = "packages/python/src/engine/beta.py"
+    package = repository / "packages/python/src/engine"
+    package.mkdir(parents=True)
+    (package / "__init__.py").write_text("", encoding="utf-8")
+    (package / "alpha.py").write_text(
+        "from .registry import OBSERVED\ndef check():\n return OBSERVED\n", encoding="utf-8"
+    )
+    source = "class Beta:\n id='beta'\n @staticmethod\n def check():\n  return False\n"
+    (package / "beta.py").write_text(source, encoding="utf-8")
+    (package / "registry.py").write_text(
+        "from .beta import Beta\nREGISTRY={Beta.id:Beta}\nOBSERVED=Beta.check()\n", encoding="utf-8"
+    )
+    before = _write_revision(repository, [alpha, beta], "functional registry baseline")
+    script = repository / "observe.py"
+    script.write_text(
+        "import sys\nsys.path.insert(0,'packages/python/src')\nfrom engine.alpha import check\nprint(check())\n",
+        encoding="utf-8",
+    )
+    assert (
+        subprocess.run(
+            (sys.executable, str(script)), cwd=repository, capture_output=True, text=True, check=True
+        ).stdout.strip()
+        == "False"
+    )
+    (package / "beta.py").write_text(source.replace("False", "True"), encoding="utf-8")
+    _git(repository, "add", "packages")
+    _git(repository, "commit", "-m", "functional registry candidate")
+    after = _git(repository, "rev-parse", "HEAD")
+    assert (
+        subprocess.run(
+            (sys.executable, str(script)), cwd=repository, capture_output=True, text=True, check=True
+        ).stdout.strip()
+        == "True"
+    )
+    assert rule_changes.compare(repository, before=before, after=after)["changedSelectors"] == [
+        "python:alpha",
+        "python:beta",
+    ]
+
+
+@pytest.mark.parametrize("case", ["compiler-runtime", "compiler-package"])
+def test_parser_version_pair_rejects_fully_functional_wrong_compiler(repository: Path, case: str) -> None:
+    installed = Path(__file__).parents[2] / "typescript/node_modules/typescript/lib/typescript.js"
+    compiler = repository / "packages/typescript/node_modules/typescript/lib/typescript.js"
+    compiler.parent.mkdir(parents=True)
+    runtime = "0.0.0" if case == "compiler-runtime" else "6.0.3"
+    compiler.write_text(
+        "const compiler=require("
+        + json.dumps(str(installed.resolve()))
+        + ");module.exports={...compiler,version:"
+        + json.dumps(runtime)
+        + "};\n",
+        encoding="utf-8",
+    )
+    (compiler.parent.parent / "package.json").write_text(
+        json.dumps({"name": "@typescript/typescript6", "version": "0.0.0" if case == "compiler-package" else "6.0.2"}),
+        encoding="utf-8",
+    )
+    entry = _rule("alpha")
+    entry.update(
+        key="eslint:alpha",
+        engine="eslint",
+        source="packages/typescript/src/alpha.ts",
+        test="packages/typescript/tests/alpha.test.ts",
+    )
+    for field in ("source", "test"):
+        path = repository / str(entry[field])
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("export const valid=true;\n", encoding="utf-8")
+    before = _write_revision(repository, [entry], "compiler-pair baseline")
+    with pytest.raises(ValueError, match=r"preinstalled Node.*compiler"):
+        rule_changes.compare(repository, before=before, after=before)
+    frontend = files("sarj_standards.libs.repository").joinpath("rule_imports.cjs")
+    invoked = subprocess.run(
+        ("node", str(frontend), str(compiler), "v24.21.0", "6.0.2", "6.0.3"),
+        cwd=repository,
+        input="{}",
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert invoked.returncode != 0
+    assert "does not match documented preinstalled Node/compiler package/runtime pins" in invoked.stderr
+
+
+@pytest.mark.parametrize(
+    "source",
+    [b"# coding: unavailable-encoding\nVALUE = 1\n", b"\xef\xbb\xbf# coding: latin-1\nVALUE = 1\n"],
+    ids=("unknown-encoding", "bom-cookie-conflict"),
+)
+def test_invalid_native_python_encoding_fails_at_the_immutable_boundary(repository: Path, source: bytes) -> None:
+    entry = _rule("alpha")
+    path = repository / str(entry["source"])
+    path.parent.mkdir(parents=True)
+    path.write_bytes(source)
+    revision = _write_revision(repository, [entry], "invalid encoding fixture")
+    native = subprocess.run((sys.executable, str(path)), cwd=repository, check=False, capture_output=True, text=True)
+    assert native.returncode != 0
+    with pytest.raises(ValueError, match="invalid immutable Python source encoding"):
+        rule_changes.compare(repository, before=revision, after=revision)

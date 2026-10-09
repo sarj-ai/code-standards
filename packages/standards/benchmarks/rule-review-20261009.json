@@ -1,0 +1,295 @@
+{
+  "schemaVersion": 1,
+  "completedPasses": 7,
+  "passes": [
+    {
+      "pass": 1,
+      "changed": true,
+      "owners": {
+        "packages/standards/src/sarj_standards/libs/repository/rule_changes.py": "008edb4d574c4670cd25abbf1513a947d5384d6551bafd3729a20e4ca5e0f3a6",
+        "packages/standards/src/sarj_standards/libs/repository/immutable_git.py": "f86e5d69c8e8a3babceafbca0cc68920d0142c8416e41ddbbb281be7cf2ae5f3",
+        "packages/standards/src/sarj_standards/libs/repository/rule_dependencies.py": "5699cdd69b0f67ec2a6946ec2972f38f6f8841037751179409b099490c2f8eee",
+        "packages/standards/src/sarj_standards/libs/repository/rule_imports.cjs": "46731fbb271660ccb48a259bb2ed98b4eeaf2ac9f6aeb6f1b0d95ede7d904e77"
+      },
+      "historicalComparison": {
+        "before": "120f8cf3b893a24e60c15ec7bff05c63bc8ec10f",
+        "after": "b0df0a9ae5afb1172218846c0d4f732da356eecb",
+        "repeats": 3,
+        "osCold": false,
+        "memoryMeasured": false,
+        "concurrentLoad": true,
+        "baselineMedianSeconds": 8.375877041835338,
+        "candidateMedianSeconds": 4.172445624833927,
+        "baselineProcesses": {
+          "git": 1194,
+          "compiler": 0
+        },
+        "candidateProcesses": {
+          "git": 6,
+          "compiler": 2
+        },
+        "baselineChanges": 0,
+        "candidateChanges": 13
+      }
+    },
+    {
+      "pass": 2,
+      "changed": true,
+      "owners": {
+        "packages/python/src/sarj_python_lint/rule_base.py": "b101468d17ec195fd91ba7dd1907aaf7cb13d5d0496d071ab751f06cc1f669df",
+        "packages/python/src/sarj_python_lint/rules/_suppression_comments.py": "f0492eac6b729421f82ec599d82fe7e21d8caca97c247ada2b1d10552d9ca74c"
+      }
+    },
+    {
+      "pass": 5,
+      "changed": true,
+      "owners": {
+        "packages/standards/src/sarj_standards/configs/ruff.strict.toml": "de1e24edd54e79d53b4c02e498daa0493106fb22a6cf2e6d7de533ce7635a6e5"
+      }
+    },
+    {
+      "pass": 6,
+      "changed": false,
+      "owners": {
+        "packages/python/src/sarj_python_lint/rules/invalid_pydantic_field_default.py": "d506e7fe63a4694cbb6ec05c9654b324774b32c74910f44f2461956872b9591b",
+        "packages/python/src/sarj_python_lint/rules/named_record_at_boundaries.py": "d4d3e30f29e52431b32578037816e4e5a4b16e62b038d75039d9a152ed4fdc23",
+        "packages/python/src/sarj_python_lint/rules/no_any_mapping_types.py": "eb75a45a56a3277a27e826bc8084fc607ffd16b8cce9eba4e0fca0ed00a3c9c4",
+        "packages/python/src/sarj_python_lint/rules/no_before_validator_input_mutation.py": "b6df70bde9481c1675c87e03f810b6f37fc2150f818fc78e9834ec4fe87647c9",
+        "packages/python/src/sarj_python_lint/rules/no_broad_keyword_capture.py": "7ec04556c9a37bfb6adafb2f898b9d79b7d14b22abb80842d617d7c69a87ff93",
+        "packages/python/src/sarj_python_lint/rules/no_frozen_after_validator_field_write.py": "9596f63718b3f6bbe8cbacc58face4cc7b80e3cbbff9913125944e094c96bce3",
+        "packages/python/src/sarj_python_lint/rules/no_hidden_constructor_fallback.py": "041014f018434d95bfcfcb5d200dd238029f59284e45e35e4fe44c83974958b3",
+        "packages/python/src/sarj_python_lint/rules/no_input_model_mutation.py": "6f7dfa27acb75a71cbe3c115f53f7556cf1159ecb6c5ec28a0ab0e5e79ad138d",
+        "packages/python/src/sarj_python_lint/rules/no_nested_pydantic_field_validator.py": "a67537194c560b9a06d0471544722ec5305350cf92443743d5a174c600664efd",
+        "packages/python/src/sarj_python_lint/rules/no_nullable_dependency_fallback.py": "34f5a30dbb9bcfc23f47e84605a8e191e4605a0fc6fe4bc27ca04903caab530f",
+        "packages/python/src/sarj_python_lint/rules/no_redundant_literal_description.py": "35fd0c1b6ba7ccbc28d1fa0ddb13b0c8a1fc58b2e75158a5f063a39b111e4cd8",
+        "packages/python/src/sarj_python_lint/rules/no_shallow_container_type_guard.py": "efddde65b70f4d9fb423eede840a6e9b0a98b43d9daee43c3879bcd757630c14",
+        "packages/python/src/sarj_python_lint/rules/no_unused_copy_result.py": "f3332919d03ee3f6d43474b2772a1981d4bb58f18e0f44eab8af2f3e06d78df1",
+        "packages/python/src/sarj_python_lint/rules/prefer_immutable_module_constant.py": "7d82a5d19b892d6d39fb700efaa86146f00fb37342d15df9101eee870e06de77",
+        "packages/python/src/sarj_python_lint/rules/prefer_match_type_dispatch.py": "8aa8aa9f42aa79a9a41221d82897024864c09b7c62684c198aa073f13294199e",
+        "packages/python/src/sarj_python_lint/rules/prefer_namedtuple_over_tuple_return.py": "0fed461933f93042d24750343d03fe88b6d897d5f4918f45dd5a5bb8346b13df",
+        "packages/python/src/sarj_python_lint/rules/prefer_nominal_id_types.py": "a03c8dd1b046628d56b3fe9e34781cf0401e4dc6a1161029b167c6c5246713a0",
+        "packages/python/src/sarj_python_lint/rules/prefer_non_nullable_collection.py": "3c505a4add8104ef2dab6555e9b4eb102924b72d8e051e482a57bbfe8b1d26c6",
+        "packages/python/src/sarj_python_lint/rules/prefer_pydantic_json_value.py": "ff5c8c9651388d45ffd0814de4c19c1c0855e35beddebe7584b4eaff86d9505e",
+        "packages/python/src/sarj_python_lint/rules/prefer_required_constructor_parameters.py": "3575d4f17c8999c6a201a4bf7bf33d1c244a982937071b9a169d221578047648",
+        "packages/python/src/sarj_python_lint/rules/prefer_self_type_annotation.py": "5779f7643332f64450634781bab9b2c03d48a187d02606ebb76335f67334cbbd",
+        "packages/python/src/sarj_python_lint/rules/prefer_str_enum.py": "6a47fbf70fcb5dd3b42a1621b502939e8afdaaadfc8cbe4c1394329602b5efc6",
+        "packages/python/src/sarj_python_lint/rules/prefer_struct_over_namedtuple.py": "f7936e1367ba08df3fca54ae982cca4596c005bdc089fa0bf337e946e29cebcb",
+        "packages/python/src/sarj_python_lint/rules/require_explicit_contract_implementation.py": "ca7b6569252c9df36349a22269882430138534f430c276d3d0d0a1a825cc2870",
+        "packages/python/src/sarj_python_lint/rules/require_explicit_service_contract.py": "1867c33a314c9bb209cef3d9d9f8d38bc3be40d45ae6776cde93b63799fc96ce",
+        "packages/python/src/sarj_python_lint/rules/require_keyword_only_swap_prone_params.py": "96fcd1ffd8d17766f19c9039ed25d529590c2176ba59434f9d390c7b8cd03655",
+        "packages/python/src/sarj_python_lint/rules/require_nodecode_for_splitting_settings_field.py": "a77b48348ac1202e6fde915ddf35ccc67c2d7638e4309800d7cfca1dd6192059",
+        "packages/python/src/sarj_python_lint/rules/require_port_for_service.py": "4aab3d8ca1ad1de1c627f6ae85a49a3b6e542373a9ad0eef41246b17fa6a1b7c",
+        "packages/python/src/sarj_python_lint/rules/require_precise_factory_signature.py": "b67e4cf5d733b4bebd8d59a20ed431f32ef93df9916db14d274902069f57575c",
+        "packages/python/src/sarj_python_lint/rules/require_public_dependency_contract.py": "dba7e55e42cc233da1fea8cebc3627492be1044c9cb905a6175d39f516e3fa5f",
+        "packages/python/src/sarj_python_lint/rules/require_pydantic_for_external_json.py": "c822156435795bb22a0c5328c21c8d9ca5d096199cdba20760efa4d9f81513f5",
+        "packages/python/src/sarj_python_lint/rules/require_pydantic_for_structured_payload.py": "6410ca07f421d5440a067da84ed0d1c072aba36cb71479f15b9f83c0dfb7bdcd",
+        "packages/python/src/sarj_python_lint/rules/require_pydantic_ordinal_lower_bound.py": "703f5355389b5b5c50f695b60d864a6390ae9a0218aaadd24a3cb9a285cb71af",
+        "packages/python/src/sarj_python_lint/rules/shared_mutable_pydantic_factory.py": "5665029b48c8671d1e181394d5e72125497c52e45940d019410eb1493fe449ae",
+        "packages/python/tests/rules/test_invalid_pydantic_field_default.py": "bfafc445ae14b43127b31e7c50c5d90ea90b96dd4e6262aaaae033276c1a4744",
+        "packages/python/tests/rules/test_named_record_at_boundaries.py": "f8d3f1522d49b526c5dcbfbb9d865012062b62c4fd635c03a59f50940f09a54b",
+        "packages/python/tests/rules/test_no_any_mapping_types.py": "224d4859a66bb85c1cfb107c70703cf7db4ede0b3ad767f2971b2b6ba36cc5dd",
+        "packages/python/tests/rules/test_no_before_validator_input_mutation.py": "5bf668c25ad189a934014a559fd19accfd67dc99a4557a8f6491fd63d52114b0",
+        "packages/python/tests/rules/test_no_broad_keyword_capture.py": "4a52b2ddef9385237944070f9d4120de47de072c65121c613bee0c1b7831e5e0",
+        "packages/python/tests/rules/test_no_frozen_after_validator_field_write.py": "bb659bc5dc368896ac4a641a1723ed7c3edc8ae23620f948cbc77aa2e322ec35",
+        "packages/python/tests/rules/test_no_hidden_constructor_fallback.py": "f3c5e4ac17675fdf2ffa85592278e1c53152fec8a53a7bb8b42b2345b185dcb8",
+        "packages/python/tests/rules/test_no_input_model_mutation.py": "b7d4666222909e18fce5aaf3e68187d30605d8e9df01b1ffcc183e4013d0a667",
+        "packages/python/tests/rules/test_no_nested_pydantic_field_validator.py": "4ceecad813518ec82095e28bbe239d195b1872ee26452d7123bddc13c81fb498",
+        "packages/python/tests/rules/test_no_nullable_dependency_fallback.py": "70d538f912c85b881c0f7a313e1f72daf6764615fa833063bc5d25770bdf3bb7",
+        "packages/python/tests/rules/test_no_redundant_literal_description.py": "3ef801e23e9f08f6511ba9f41a61ed0a2b70bf00403827389fd4f5f76ffcc8cd",
+        "packages/python/tests/rules/test_no_shallow_container_type_guard.py": "1e39fd128a72af56eb07776d138f53d3a1005ff4cee082459e9b3b744af05f45",
+        "packages/python/tests/rules/test_no_unused_copy_result.py": "c080d7400d92f643b784d6746c92e529d10d0736915fb20df24cdd2bab102fd9",
+        "packages/python/tests/rules/test_prefer_immutable_module_constant.py": "5c64a70d63596b20c11910a89b414dbdbd561a3a706e9b69179a9e95e4d4a1ee",
+        "packages/python/tests/rules/test_prefer_match_type_dispatch.py": "4e5d15007c90c057104097be8128f10086552f4c2fd93b17b6cbeebf496c5710",
+        "packages/python/tests/rules/test_prefer_namedtuple_over_tuple_return.py": "2be1b6bade83227d0161686964b7ae85f1c03b501f731fe4c266f0cc879286a8",
+        "packages/python/tests/rules/test_prefer_nominal_id_types.py": "ae78694ff29f7965bdc051af6ffa14a6af145fbc79ef996e0870c8f888418c7b",
+        "packages/python/tests/rules/test_prefer_non_nullable_collection.py": "0dae4571157160b968adbb7f52bb8a8933750fc1c384ba1c4472ab8308cf131c",
+        "packages/python/tests/rules/test_prefer_pydantic_json_value.py": "638de4e1a2d65173c2d43bfb36e1eccc47e998ed1687e8f1c7fbacc147432b5d",
+        "packages/python/tests/rules/test_prefer_required_constructor_parameters.py": "230eeafa328a7ef26fc7f4f02313e70fd4e9bf68d99af8b6b60b6eb74c29c9eb",
+        "packages/python/tests/rules/test_prefer_self_type_annotation.py": "bf061c2824d1ac05c1e4e60e6fb54c900ff5a53b51be1170213e6b96b95d0c88",
+        "packages/python/tests/rules/test_prefer_str_enum.py": "e7903209710a9ff864a5f3f3b355b5ff765d5bf394b383752719ee198c4eb6d1",
+        "packages/python/tests/rules/test_prefer_struct_over_namedtuple.py": "72fc8ee005c061b42277a428a798324535de51f8520d474d5815e45be6ae4009",
+        "packages/python/tests/rules/test_require_explicit_contract_implementation.py": "28ca778c93db4af3f2a846b71ffdb91fdee87b532bb11e906c77dacf53a7b49a",
+        "packages/python/tests/rules/test_require_explicit_service_contract.py": "facd12c70588d978150d1dab720487246a3fa4bcc4f745b3545c25d923015e6d",
+        "packages/python/tests/rules/test_require_keyword_only_swap_prone_params.py": "f4b9906c28b89d642c2037bcbe1010aeb2b9531211d03891b87988269f8eaf56",
+        "packages/python/tests/rules/test_require_nodecode_for_splitting_settings_field.py": "de12f1caf2c5e63c2181e853c509121e55a003a5ab3d9a672cda3f2b07c5714c",
+        "packages/python/tests/rules/test_require_port_for_service.py": "20a45b54c2f78c5aba939aa477ffa43ff1d337c05f2da8928f90ac1951a6cfba",
+        "packages/python/tests/rules/test_require_precise_factory_signature.py": "b33f5b4dfceec725632104edb1aaea053e9852baaa761861f3e81c3ea5a25581",
+        "packages/python/tests/rules/test_require_public_dependency_contract.py": "f90e5df72cf0d90d7970a7862199de45c82eab8e31a3fe79eb50ffb0d4776643",
+        "packages/python/tests/rules/test_require_pydantic_for_external_json.py": "a01b7340aeb74865eb27a076c2c3b4012bcbc9e58c282c0c9eb6238a80802ba6",
+        "packages/python/tests/rules/test_require_pydantic_for_structured_payload.py": "65c7348ea6c7234985bdaf9c481075267aeb2acba51a3f723f0f3421648b45ef",
+        "packages/python/tests/rules/test_require_pydantic_ordinal_lower_bound.py": "dd316aa7cec9a92d5d974c02e12c90f6a67f320654735c90c4839814a18319a5",
+        "packages/python/tests/rules/test_shared_mutable_pydantic_factory.py": "e6e52de699398907ca572a102e4e5aed14d6350ba05476b0b5b4d4f9b9617858"
+      },
+      "sourceBindingMatches": true,
+      "selectedRuleOwners": 34,
+      "nativeControls": 16
+    },
+    {
+      "pass": 7,
+      "changed": false,
+      "owners": {
+        "packages/python/src/sarj_python_lint/rules/async_mock_call_without_await_assertion.py": "e0553974cda28fbec3676dae5e2fbc14f8726b197d201e34d17aae4c0837cb91",
+        "packages/python/src/sarj_python_lint/rules/defect_xfail_requires_explicit_strict.py": "3a412b2b2f23381fc834803b51ffd7081e61aacba872b8baac0dbcfee2c38bc6",
+        "packages/python/src/sarj_python_lint/rules/fakes_in_shared_location.py": "ab54cb23b55a7218bb1b20e803978e22b5bf5a21e1ac0d94d41364170dd5df5f",
+        "packages/python/src/sarj_python_lint/rules/iac_source_coupled_test.py": "4bd37bddd24419e1e54fba666a0df4e5f7b76d334218be124b8c984456224a74",
+        "packages/python/src/sarj_python_lint/rules/mock_without_spec.py": "f1dc4e4730b5f30267d71806e2a0a72734cb693deb61953579d3140c17f155c1",
+        "packages/python/src/sarj_python_lint/rules/negative_only_http_status_assertion.py": "b26048baece337a228a24ece57b0a5a2e787caadae74831b5a720f8579d83705",
+        "packages/python/src/sarj_python_lint/rules/no_conftest_test_module_import.py": "5f5892787fa25def9f80f9bb1abc0675970c2bdb4bd598801f1596cb89c673cf",
+        "packages/python/src/sarj_python_lint/rules/no_fixed_sleep_before_assert.py": "1b87b8dae315369ecf63d199478e6469f2e32df49d05b3678f72977686e991f7",
+        "packages/python/src/sarj_python_lint/rules/no_mocked_pydantic_value_object.py": "0b354ac565d9b1f8998e93e31afcaf0e3f2946ae6c631c7e4672ead19f401e39",
+        "packages/python/src/sarj_python_lint/rules/no_raw_connection_in_tests.py": "c1cdc4e0ad2e51df838f360937ad6938c7206d0a8a33f2dcdfc765f228c5b894",
+        "packages/python/src/sarj_python_lint/rules/no_raw_source_text_test_oracle.py": "f84b9772b02001579e08c4ee5a54a7b216ca45d395dc9e7fb907b06c6a769872",
+        "packages/python/src/sarj_python_lint/rules/no_repeated_test_body.py": "a27fd04f887a6650686f7e725a457e86e25229f668e2aa8e72ea383271a15d7a",
+        "packages/python/src/sarj_python_lint/rules/no_tautological_expect.py": "600981214f4a118f785bdd98eda401d5296bdb76ce8ec3f18e0eb22e28c03575",
+        "packages/python/src/sarj_python_lint/rules/no_test_method_grafting.py": "65dea8a5d0cbb47b2ad5dd04fd9859531af5a07b79ade8b0235072dcf3d1b4fa",
+        "packages/python/src/sarj_python_lint/rules/opaque_parametrize_case_needs_id.py": "a7c1bd95ae95046edfae3211866b189d5cb0912c9f60275848ec3424ea2ec513",
+        "packages/python/src/sarj_python_lint/rules/over_mocked_test.py": "32531ccc2345011f12d0753b78b3a8a27989254742feca54ea63b44782fe7e49",
+        "packages/python/src/sarj_python_lint/rules/phase_label_comment.py": "cd9912aec79b70d374ab7f417ffe37978c141d3472d72e2c8519b711bdfa14f4",
+        "packages/python/src/sarj_python_lint/rules/prefer_autospec_for_callable_mock.py": "c89425823c2b5ce159cc9040a81a0f4b12274d08e7bbf5f623caa5e8de561127",
+        "packages/python/src/sarj_python_lint/rules/prefer_injected_dependency_over_monkeypatch.py": "cf361ac55b2fd2cd482aacbad1a1478c2b95ec5ff2b175e215e56645dac0374d",
+        "packages/python/src/sarj_python_lint/rules/prefer_library_fake.py": "a7c2d1b892f52d7fb8b01c563a5bbfda996e1f8ee32d211c6d684b8cbfbfe92e",
+        "packages/python/src/sarj_python_lint/rules/prefer_monkeypatch_for_process_state_in_test.py": "432b3f3d80909645a01146e786e718313a69108a601bb77a1b57946349918a19",
+        "packages/python/src/sarj_python_lint/rules/prefer_pytest_fixture_injection.py": "518ba171724527c2aefdafd9bd679f9790b9435e8d3442fb3db7eedbd452683a",
+        "packages/python/src/sarj_python_lint/rules/production_derived_test_cases.py": "35538692d841bb2045f577d11e1400f9ef181d2fc22b0b6ecee5c1f1c2142d38",
+        "packages/python/src/sarj_python_lint/rules/pytest_fixture_returns_bare_tuple.py": "5d5c714dd672d52ce0608a574a5f2cb341c5833770f812a286716b10b0e3690c",
+        "packages/python/src/sarj_python_lint/rules/repeated_kwarg_heavy_call_in_test.py": "9946f21243dd27c434825788927c396ac776ec6c24c48eda0cf65a2e2e348821",
+        "packages/python/src/sarj_python_lint/rules/repeated_static_call_cases.py": "9c7c508ed0c149d98c0644d863751c94b289d9c88ed67e7a29481f192cd4baaa",
+        "packages/python/src/sarj_python_lint/rules/repeated_test_composition.py": "81990cb6b70c07acb21403a6c91bd8161079e0582c581243ef10f4f44788d1ed",
+        "packages/python/src/sarj_python_lint/rules/restated_test_docstring.py": "18c6d891bf23ecd4dc6468de53c3cdc4c09a54b9ad808056825838ea64b9ee99",
+        "packages/python/src/sarj_python_lint/rules/uncontrolled_randomness_in_test.py": "cc67e1f372301e40ae130418222608d95c31cf5d9a7e719e9e235940f425c9a3",
+        "packages/python/src/sarj_python_lint/rules/unused_mock_setup.py": "cef2d6ed786cdb142e107af05e34594ea129bc2b57555e992bcf8e9d2bc6ef4c",
+        "packages/python/src/sarj_python_lint/rules/unused_test_factory_option.py": "e2d572908697cbb6730b8bbc7944711ac27a75c948a5dad9e7fd8eb5ca6d3684",
+        "packages/python/tests/rules/test_async_mock_call_without_await_assertion.py": "3a62eaffc392c467c1245eada05dad556bb0ccc275c74cf5295cc4e38ddb21cd",
+        "packages/python/tests/rules/test_defect_xfail_requires_explicit_strict.py": "c60470711a464d549e9ef4811e90602aeae96bd6b282974cfac3e9615e5ea259",
+        "packages/python/tests/rules/test_fakes_in_shared_location.py": "619affea37fb4b05800d9aec68f8576d1c1057f389a432c3f720f8ab77e72747",
+        "packages/python/tests/rules/test_iac_source_coupled_test.py": "cdc21ab98bc2f8d46a04c72366207ab9adb6a99d64b3c1ac72321ec33e3b18ee",
+        "packages/python/tests/rules/test_mock_without_spec.py": "f9d4019ae1e9e691950a1fc50820dd9ccef46c27450fee4f5ebbcf7311c90b05",
+        "packages/python/tests/rules/test_negative_only_http_status_assertion.py": "f6ed63903d69df9673d952883d4a7643fc8ddd4f1f71e30ec278b4fb761491eb",
+        "packages/python/tests/rules/test_no_conftest_test_module_import.py": "0a4b5487bd6d6f6bc15cdffbcd2982c5457bce81d50c226dc8966a4487c6b5ba",
+        "packages/python/tests/rules/test_no_fixed_sleep_before_assert.py": "8b07b5125e60829e044f06e1947ba69c249bcb2f2280f99b0cbc3c814745a8ab",
+        "packages/python/tests/rules/test_no_mocked_pydantic_value_object.py": "95cc30d46ef3e828a4ec1691f3d6402ea7e135f5cc8b4cde7a9b57bcd2b9a129",
+        "packages/python/tests/rules/test_no_raw_connection_in_tests.py": "ad044e0ea8e077ef6599e1bcaebcb02c854b719e7a9174d326e5980d3aae1c82",
+        "packages/python/tests/rules/test_no_raw_source_text_test_oracle.py": "971631223da1e9d2fa171137600b30c958049f310cd61319f747550cd2c75941",
+        "packages/python/tests/rules/test_no_repeated_test_body.py": "b2cac0d4145c37e99e201a3070cb4ad57ab01dd9ecde5ca295e28f9308805e6a",
+        "packages/python/tests/rules/test_no_tautological_expect.py": "0259910e906cd6b4832eb9fe6e87d12397504049e697f67944a5087da5a4a94a",
+        "packages/python/tests/rules/test_no_test_method_grafting.py": "313b866558f1d4f388738127ef926ce718a4eaa1eb976654e537d9d6c3085444",
+        "packages/python/tests/rules/test_opaque_parametrize_case_needs_id.py": "247b4d2acf1f40cd762a0771d01a1479b92c0604ea9f894b83bfc54206909567",
+        "packages/python/tests/rules/test_over_mocked_test.py": "db6663a3931093609d21016dec7c0df64166d32c0ef7b99b0e0c0e2f4237d36c",
+        "packages/python/tests/rules/test_phase_label_comment.py": "e50d09e01fc893ac988a3397fee9a0071148c89361aafd8aca69380164e851ba",
+        "packages/python/tests/rules/test_prefer_autospec_for_callable_mock.py": "65874c57dc8da91d701264673cc2772d21feb88cc94f0d215efed5a4c60d5f48",
+        "packages/python/tests/rules/test_prefer_injected_dependency_over_monkeypatch.py": "52abe57530b55893c025243cec63fdc97b0247fdecefd05aa3087ac1bf60aa34",
+        "packages/python/tests/rules/test_prefer_library_fake.py": "02651a03690f6f0a4788aed77fb95d13c10824b9f67e6898d53e0eb48471ea3d",
+        "packages/python/tests/rules/test_prefer_monkeypatch_for_process_state_in_test.py": "086a9315fe123c433e1d9aefddf3cb69717951c232a8c780eac0192a002f8112",
+        "packages/python/tests/rules/test_prefer_pytest_fixture_injection.py": "970c4d64b2e06b6c11de19349a826e6327203a0e0485d9ea46b8d0624c230bdc",
+        "packages/python/tests/rules/test_production_derived_test_cases.py": "8d0f31f2b37600d6abbd41ae2223ec31adfeed4f1ab4ddbd4b01d85ab128aae5",
+        "packages/python/tests/rules/test_pytest_fixture_returns_bare_tuple.py": "a70cf41affb668cc01b507d02c5bc74c419b657fa5f748474a31dbd646204e93",
+        "packages/python/tests/rules/test_repeated_kwarg_heavy_call_in_test.py": "1815f194ad324108a76a725010cff963d02dc0d4f56ef939c0a27b26039e1ddc",
+        "packages/python/tests/rules/test_repeated_static_call_cases.py": "81d3ca48cfc7a922546caac40120961ba8ed4fb25ef48fe7acac838e15a6054d",
+        "packages/python/tests/rules/test_repeated_test_composition.py": "4ee83662cc12164dc31560658c01715301c63d36ce16d6f0bbe175c0b113c3e0",
+        "packages/python/tests/rules/test_restated_test_docstring.py": "614c1c8e579571818240a02c08507e24c953634d6a5a1b3c63685ba7c5569fd0",
+        "packages/python/tests/rules/test_uncontrolled_randomness_in_test.py": "c2159a8c2d5dd5c64f4aae9eff76975e20c7eef25dffa4e308a43aaf667ec21d",
+        "packages/python/tests/rules/test_unused_mock_setup.py": "7ed3bfc170c7fb41c279bc6ad8ccfd4a736429a4874eab50cf8ce8e2f1828fce",
+        "packages/python/tests/rules/test_unused_test_factory_option.py": "5e96f9ec7453f63730ebcf3f9d139f0701d82042f7b9cf712845cd1c407ef75e"
+      },
+      "sourceBindingMatches": true,
+      "selectedRuleOwners": 31,
+      "nativeControls": 12
+    },
+    {
+      "pass": 9,
+      "changed": true,
+      "owners": {
+        "packages/typescript/src/rules/_test-mock-provenance.ts": "e2b95bb402927183aad8844bc50c12191159fd7ff43066d0974e7e893b2aa983",
+        "packages/typescript/src/rules/duplicate-test-body.ts": "ebb1edde5adf00985a8cd857df24ab835f4cd7bd15e5c02f86866947e07ed33c",
+        "packages/typescript/src/rules/no-bare-return-from-test-catch.ts": "bf75f40ffb3c3557b539173748df4d162d0d63f58df49eec3a81036451f43093",
+        "packages/typescript/src/rules/no-sleep-in-test-body.ts": "0447c2c7f0e8428a670633ea3d881dd137473cc333d8a64bb92724edf76d3251",
+        "packages/typescript/src/rules/test-loops-over-literal-cases.ts": "299cd20ef8fd7ff0e943aa9db793c36e8cf253136172bfc4f5d2aab0fc4c00cf"
+      },
+      "additionalNamedAssertionControls": {
+        "native": 10,
+        "beforeFalsePositives": 10,
+        "afterFalsePositives": 0,
+        "copiedSetupRegressionCases": 10
+      }
+    },
+    {
+      "pass": 10,
+      "changed": true,
+      "owners": {
+        "packages/typescript/src/rules/no-redundant-optional-array-default.ts": "bd3f680a6d423366f1caafdd7dbe9e2cfdfe0b92e2f5957edb4b96ade667475a"
+      }
+    }
+  ],
+  "authoredInventory": {
+    "rules": 297,
+    "python": 136,
+    "typescript": 118,
+    "sql": 20,
+    "iac": 11,
+    "text": 12,
+    "upstreamProviders": 37,
+    "upstreamRules": 2107,
+    "originalPass": 716,
+    "crlfPass": 716,
+    "aliasPass": 245,
+    "aliasUnsupported": 353,
+    "fixtureFiles": 2184,
+    "freshProcesses": 67,
+    "fileBatchLimit": 250,
+    "seconds": 77.77083349996246,
+    "labels": {
+      "TP": 828,
+      "TN": 849,
+      "FP": 0,
+      "FN": 0
+    },
+    "catalogSha256": "fb53b6f28b1fdabee164d9faa78011fb7326ed2e20eb0218fc43da5f4747242b",
+    "runtimeArtifacts": {
+      "nativePythonSha256": "d2b3604dca01e90c303758fd46529af6ba644856a04102596029e54ce762d8e6",
+      "typescriptJsSha256": "609bb93724ca06f7c366f438d3bb1113e81c5a76f32a5f96e62ab13deeb8a011"
+    }
+  },
+  "versions": {
+    "standards": "8.40.4",
+    "python": "1.26.3",
+    "typescript": "16.4.4",
+    "iac": "0.19.2"
+  },
+  "canonicalGate": {
+    "makeVerify": {
+      "exitCode": 0,
+      "passed": 25682,
+      "skipped": 9
+    },
+    "finalPythonRerun": {
+      "passed": 12089,
+      "typeErrors": 0,
+      "typeWarnings": 0
+    },
+    "finalPackageCounts": {
+      "typescript": 7256,
+      "bootstrap": 18,
+      "contracts": 13,
+      "python": 12089,
+      "sql": 1035,
+      "iac": 828,
+      "standards": 4445
+    },
+    "finalPassed": 25684,
+    "nativeTimeoutControls": 3,
+    "unchangedRuleLevels": true
+  },
+  "corpusEvaluatedInThisReport": false,
+  "universalFalsePositiveClaim": false,
+  "osColdOptimizationClaim": false,
+  "nativeQueryTimeoutRepair": {
+    "nativeControls": 3,
+    "queryBudgetSeconds": 5,
+    "exactVersionChecksPreserved": true,
+    "pinnedInstallationFallbackPreserved": true,
+    "owners": {
+      "packages/standards/src/sarj_standards/libs/linting/devops_tools.py": "895b96a72d1e6f9f9cff02f1f845d97e41464b61b9ef9c2f9a9b18e861c2429b",
+      "packages/standards/tests/test_devops_tools.py": "2fcb5e6a2923f66491c862f1b7525be99368d95e0ba166112fc07298b920a953"
+    }
+  }
+}

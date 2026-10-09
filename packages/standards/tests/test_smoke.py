@@ -10,6 +10,7 @@ import sys
 import tomllib
 
 import pytest
+from sarj_python_lint.__main__ import analyze
 
 from sarj_standards import (
     __version__,
@@ -686,3 +687,116 @@ def test_eslint_async_and_void_rules_have_single_authorities() -> None:
     assert '"unicorn/no-useless-switch-case": "off"' in config
     assert '"react/forbid-component-props": "off"' in config
     assert '"react/forbid-dom-props": "off"' in config
+
+
+@pytest.mark.parametrize("config", [RUFF_STRICT, RUFF_APPLICATION])
+@pytest.mark.parametrize(
+    ("filename", "source", "custom_count", "native_count"),
+    [
+        pytest.param(
+            "app/models.py",
+            'from collections import namedtuple\nRow = namedtuple("Row", ["id", "name"])\n',
+            1,
+            0,
+            id="static-direct-positive",
+        ),
+        pytest.param(
+            "app/models.py",
+            'from collections import namedtuple as nt\nRow = nt("Row", ["id", "name"])\n',
+            1,
+            0,
+            id="static-import-alias-positive",
+        ),
+        pytest.param(
+            "app/models.py",
+            'from collections import namedtuple\ndef record_from_schema(fields):\n    return namedtuple("Row", fields)\n',
+            0,
+            0,
+            id="dynamic-field-schema-valid",
+        ),
+        pytest.param(
+            "app/models.py",
+            'from collections import namedtuple\nRow = namedtuple("Row", ["1st", "class"], rename=True)\n',
+            0,
+            0,
+            id="renamed-external-field-valid",
+        ),
+        pytest.param(
+            "app/models.py",
+            'import collections\nclass Row(collections.namedtuple("Row", ["id", "name"])):\n    id: int\n    name: str\n',
+            0,
+            0,
+            id="fully-annotated-subclass-valid",
+        ),
+        pytest.param(
+            "tests/test_namedtuple.py",
+            'from collections import namedtuple\nRow = namedtuple("Row", ["id", "name"])\ndef test_record():\n    assert Row(1, "Ada")._fields == ("id", "name")\n',
+            0,
+            0,
+            id="namedtuple-subject-test-valid",
+        ),
+        pytest.param(
+            "app/models.py",
+            'import collections\nimport sys\nif sys.version_info < (3, 11):\n    Row = collections.namedtuple("Row", ["id", "name"])\n',
+            0,
+            0,
+            id="compatibility-branch-valid",
+        ),
+        pytest.param(
+            "app/models.py",
+            'import collections\ndef record(collections):\n    Row = collections.namedtuple("Row", ["id", "name"])\n    return Row\n',
+            0,
+            0,
+            id="unrelated-parameter-shadow-valid",
+        ),
+        pytest.param(
+            "app/models.pyi",
+            'from collections import namedtuple\nRow = namedtuple("Row", ["id", "name"])\n',
+            0,
+            1,
+            id="native-stub-owner",
+        ),
+        pytest.param(
+            "app/models.pyi",
+            "from typing import NamedTuple\nclass Row(NamedTuple):\n    id: int\n    name: str\n",
+            0,
+            0,
+            id="typed-stub-valid",
+        ),
+        pytest.param(
+            "app/models.py",
+            "from collections import namedtuple\nRow = namedtuple(\n",
+            0,
+            0,
+            id="malformed-abstain",
+        ),
+    ],
+)
+def test_namedtuple_policy_has_one_owner_per_source_type(
+    tmp_path: Path, *, config: Path, filename: str, source: str, custom_count: int, native_count: int
+) -> None:
+    fixture = tmp_path / filename
+    fixture.parent.mkdir(parents=True, exist_ok=True)
+    fixture.write_text(source, encoding="utf-8")
+    assert len(analyze(["prefer-struct-over-namedtuple"], [fixture])) == custom_count
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "ruff",
+            "check",
+            "--no-cache",
+            "--output-format",
+            "json",
+            "--config",
+            str(config),
+            str(fixture),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode in {0, 1}, result.stdout + result.stderr
+    payload: object = json.loads(result.stdout)  # pyright: ignore[reportAny] -- native JSON boundary
+    findings = [manifest.as_table(item) for item in manifest.list_field({"findings": payload}, "findings")]
+    assert sum(finding.get("code") == "PYI024" for finding in findings) == native_count

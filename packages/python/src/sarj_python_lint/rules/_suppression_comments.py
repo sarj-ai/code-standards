@@ -1,9 +1,16 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import lru_cache
 import tokenize
+from types import MappingProxyType
+from typing import TYPE_CHECKING
 
 from sarj_python_lint.rules._comments import all_comments
+
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
 
 
 @dataclass(frozen=True, slots=True)
@@ -34,3 +41,10 @@ def scan_comments_or_none(source: str) -> list[Comment] | None:
         return scan_comments(source)
     except tokenize.TokenError, SyntaxError:
         return None
+
+
+@lru_cache(maxsize=1)
+def comment_lines(source_lines: tuple[str, ...]) -> Mapping[int, str]:
+    return MappingProxyType(
+        {comment.line: "# " + comment.body for comment in scan_comments_or_none("\n".join(source_lines)) or ()}
+    )

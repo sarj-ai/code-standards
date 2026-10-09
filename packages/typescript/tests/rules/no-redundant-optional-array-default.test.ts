@@ -23,6 +23,41 @@ const PRODUCTION = "src/schema.ts";
 RULE_TESTER.run("no-redundant-optional-array-default", rule, {
   valid: [
     {
+      name: "preserves unvalidated data returned by a typed fallback",
+      filename: PRODUCTION,
+      code: 'import { z } from "zod/v3"; const fallback = (): string[] => JSON.parse("{}").missing; const Items = z.array(z.string()).optional().default(fallback);',
+    },
+    {
+      name: "preserves an async fallback",
+      filename: PRODUCTION,
+      code: 'import { z } from "zod"; const Items = z.array(z.string()).optional().default(async () => []);',
+    },
+    {
+      name: "preserves a generator fallback",
+      filename: PRODUCTION,
+      code: 'import { z } from "zod"; const Items = z.array(z.string()).optional().default(function* () { yield []; });',
+    },
+    {
+      name: "preserves a Zod 3 fallback returning undefined",
+      filename: PRODUCTION,
+      code: 'import { z } from "zod/v3"; const Items = z.array(z.string()).optional().default(() => undefined);',
+    },
+    {
+      name: "preserves an opaque fallback function",
+      filename: PRODUCTION,
+      code: 'import { z } from "zod"; const Items = z.array(z.string()).optional().default(fallback);',
+    },
+    {
+      name: "preserves a conditional fallback returning undefined",
+      filename: PRODUCTION,
+      code: 'import { z } from "zod/v3"; const Items = z.array(z.string()).optional().default(() => enabled ? [] : undefined);',
+    },
+    {
+      name: "preserves an absent fallback argument",
+      filename: PRODUCTION,
+      code: 'import { z } from "zod/v3"; const Items = z.array(z.string()).optional().default();',
+    },
+    {
       name: "accepts the documented array default",
       filename: PRODUCTION,
       code: NO_REDUNDANT_OPTIONAL_ARRAY_DEFAULT_DOCUMENTATION.examples[0].files[0].source,
@@ -89,6 +124,27 @@ RULE_TESTER.run("no-redundant-optional-array-default", rule, {
     },
   ],
   invalid: [
+    {
+      name: "preserves Zod 3 semantics with a literal array fallback",
+      filename: PRODUCTION,
+      code: 'import { z } from "zod/v3"; const Items = z.array(z.string()).optional().default([]);',
+      output: 'import { z } from "zod/v3"; const Items = z.array(z.string()).default([]);',
+      errors: [{ messageId: "redundantOptionalArrayDefault" }],
+    },
+    {
+      name: "supports a function returning a literal array",
+      filename: PRODUCTION,
+      code: 'import { z } from "zod/v3"; const Items = z.array(z.string()).optional().default(function () { return []; });',
+      output: 'import { z } from "zod/v3"; const Items = z.array(z.string()).default(function () { return []; });',
+      errors: [{ messageId: "redundantOptionalArrayDefault" }],
+    },
+    {
+      name: "supports an arrow block returning a literal array",
+      filename: PRODUCTION,
+      code: 'import { z } from "zod/v3"; const Items = z.array(z.string()).optional().default(() => { return []; });',
+      output: 'import { z } from "zod/v3"; const Items = z.array(z.string()).default(() => { return []; });',
+      errors: [{ messageId: "redundantOptionalArrayDefault" }],
+    },
     {
       name: "reports and fixes the documented redundant optional",
       filename: PRODUCTION,

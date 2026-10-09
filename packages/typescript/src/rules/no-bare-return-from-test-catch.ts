@@ -8,6 +8,7 @@ import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from "@typescr
 import { directArgumentCall, unwrapExpression } from "./_unwrap-expression.js";
 
 import { forEachOwnAstChild } from "./_for-each-own-ast-child.js";
+import { runtimeTestFrameworkName } from "./_test-mock-provenance.js";
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile, isTestFile } from "./_paths.js";
 
@@ -29,8 +30,6 @@ export const NO_BARE_RETURN_FROM_TEST_CATCH_DOCUMENTATION = {
   ],
 } as const satisfies RuleDocumentation;
 
-const TEST_MODULES: ReadonlySet<string> = new Set(["@jest/globals", "@playwright/test", "bun:test", "node:test", "vitest"]);
-const ASSERTION_MODULES: ReadonlySet<string> = new Set([...TEST_MODULES, "node:assert", "node:assert/strict"]);
 const TEST_NAMES: ReadonlySet<string> = new Set(["it", "test"]);
 const TEST_MODIFIERS: ReadonlySet<string> = new Set(["concurrent", "fails", "only", "sequential", "skip"]);
 const ASSERTION_NAMES: ReadonlySet<string> = new Set(["assert", "assertType", "expect", "expectTypeOf"]);
@@ -39,25 +38,6 @@ const FUNCTION_TYPES: ReadonlySet<AST_NODE_TYPES> = new Set([AST_NODE_TYPES.Arro
 function staticMemberName(node: TSESTree.MemberExpression): string | null {
   if (!node.computed && node.property.type === AST_NODE_TYPES.Identifier) return node.property.name;
   if (node.computed && node.property.type === AST_NODE_TYPES.Literal && typeof node.property.value === "string") return node.property.value;
-  return null;
-}
-
-function importedName(identifier: TSESTree.Identifier, context: Context, modules: ReadonlySet<string>): string | null {
-  const variable = ASTUtils.findVariable(context.sourceCode.getScope(identifier), identifier.name);
-  if (variable === null || variable.defs.length === 0) return identifier.name;
-  for (const definition of variable.defs) {
-    if (
-      definition.node.type !== AST_NODE_TYPES.ImportSpecifier &&
-      definition.node.type !== AST_NODE_TYPES.ImportDefaultSpecifier &&
-      definition.node.type !== AST_NODE_TYPES.ImportNamespaceSpecifier
-    ) continue;
-    const declaration = definition.node.parent;
-    if (declaration.type !== AST_NODE_TYPES.ImportDeclaration || typeof declaration.source.value !== "string" || !modules.has(declaration.source.value)) continue;
-    if (declaration.source.value === "node:assert" || declaration.source.value === "node:assert/strict") return "assert";
-    if (definition.node.type !== AST_NODE_TYPES.ImportSpecifier) continue;
-    const imported = definition.node.imported;
-    return imported.type === AST_NODE_TYPES.Identifier ? imported.name : String(imported.value);
-  }
   return null;
 }
 
@@ -73,7 +53,7 @@ function isDirectTestCallback(node: TSESTree.Node, context: Context): node is Fu
   const call = directArgumentCall(node);
   if (call === null) return false;
   const root = testRoot(call.callee);
-  return root !== null && TEST_NAMES.has(importedName(root, context, TEST_MODULES) ?? "");
+  return root !== null && TEST_NAMES.has(runtimeTestFrameworkName(context.sourceCode, root, "test") ?? "");
 }
 
 function testRoot(callee: TSESTree.Node): TSESTree.Identifier | null {
@@ -98,14 +78,14 @@ function walkOwnScope(node: TSESTree.Node, predicate: (current: TSESTree.Node) =
 function isAssertion(node: TSESTree.Node, context: Context): boolean {
   if (node.type !== AST_NODE_TYPES.CallExpression) return false;
   const root = rootIdentifier(node.callee);
-  return root !== null && ASSERTION_NAMES.has(importedName(root, context, ASSERTION_MODULES) ?? "");
+  return root !== null && ASSERTION_NAMES.has(runtimeTestFrameworkName(context.sourceCode, root, "assertion") ?? "");
 }
 
 function isExplicitSkip(node: TSESTree.Node, context: Context): boolean {
   const unwrappedNodeCallee = node.type === "CallExpression" || node.type === "NewExpression" ? unwrapExpression(node.callee) : null;
   if (node.type !== AST_NODE_TYPES.CallExpression || unwrappedNodeCallee?.type !== AST_NODE_TYPES.MemberExpression || staticMemberName(unwrappedNodeCallee) !== "skip") return false;
   const root = rootIdentifier(unwrappedNodeCallee.object);
-  return root !== null && TEST_NAMES.has(importedName(root, context, TEST_MODULES) ?? "");
+  return root !== null && TEST_NAMES.has(runtimeTestFrameworkName(context.sourceCode, root, "test") ?? "");
 }
 
 function hasDominatingExplicitSkip(
@@ -155,7 +135,7 @@ export default createRule<Options, MessageIds>({
             if (expression.type !== AST_NODE_TYPES.CallExpression || !isAssertion(expression, context)) return false;
             const root = rootIdentifier(expression.callee);
             if (root === null) return false;
-            const assertionName = importedName(root, context, ASSERTION_MODULES);
+            const assertionName = runtimeTestFrameworkName(context.sourceCode, root, "assertion");
             let operand = expression.callee.type === AST_NODE_TYPES.MemberExpression ? expression.callee.object : null;
             if (operand?.type === AST_NODE_TYPES.MemberExpression && staticMemberName(operand) === "not") operand = operand.object;
             if (assertionName !== "assert" && (assertionName !== "expect" || operand?.type !== AST_NODE_TYPES.CallExpression || operand.callee !== root)) return false;
