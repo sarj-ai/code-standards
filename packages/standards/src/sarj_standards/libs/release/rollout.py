@@ -35,7 +35,7 @@ from sarj_standards.libs.adoption import (
     uvtool as adoption_uvtool,
 )
 from sarj_standards.libs.json_boundary import parse_json
-from sarj_standards.libs.release import retirement
+from sarj_standards.libs.release import metadata_verification, retirement
 from sarj_standards.libs.release.verification_process import BaseWatch
 from sarj_standards.libs.repository import ledger as rule_ledger, rule_catalog_artifact
 from sarj_standards.libs.yaml_boundary import parse_yaml
@@ -290,6 +290,7 @@ class Consumer:
     verify_checks: tuple[tuple[str, ...], ...] = ()
     verify_jobs: int = 2
     workflow_runner: str = DEFAULT_WORKFLOW_RUNNER
+    verify_metadata: tuple[str, ...] = ()
 
     @property
     def identity(self) -> str:
@@ -1500,6 +1501,7 @@ def _apply_one(  # ruff: ignore[too-many-locals] - one transaction binds verific
                 runner,
                 version,
                 tool_prefix,
+                standards_tool=tool,
                 environment=unauthenticated,
                 base_sha=base_sha,
                 baseline_path=baseline_path,
@@ -1937,6 +1939,7 @@ def _registry_consumer(entry_value: object) -> Consumer:
         "verify_checks",
         "verify_jobs",
         "workflow_runner",
+        "verify_metadata",
     }:
         msg = f"invalid registry entry keys: {entry_value!r}"
         raise RolloutError(msg)
@@ -1975,6 +1978,7 @@ def _registry_consumer(entry_value: object) -> Consumer:
         verify_checks=_verification_checks(entry),
         verify_jobs=_verification_jobs(entry),
         workflow_runner=_workflow_runner(entry),
+        verify_metadata=_metadata_verification_command(entry),
         channel=RolloutChannel(channel_value),
         baseline_rules=_registry_strings(baseline_rules_value),
         baseline_paths=baseline_paths,
@@ -1983,6 +1987,14 @@ def _registry_consumer(entry_value: object) -> Consumer:
 
 
 _MAX_VERIFICATION_CHECKS = 16
+
+
+def _metadata_verification_command(entry: dict[str, object]) -> tuple[str, ...]:
+    value = entry.get("verify_metadata", [])
+    if not is_array(value) or not all(isinstance(item, str) and item for item in value):
+        msg = "verify_metadata must be an argv array of nonempty strings"
+        raise RolloutError(msg)
+    return tuple(item for item in value if isinstance(item, str))
 
 
 def _workflow_runner(entry: dict[str, object]) -> str:
@@ -2341,6 +2353,7 @@ def _verify_rollout_patch(
     allowed_workflow_paths: frozenset[str],
     allowed_baseline_paths: frozenset[str],
     allowed_paths: frozenset[str],
+    standards_tool: tuple[str, ...] = (),
 ) -> str:
     verification_failure_detail = ""
     for attempt in range(MAX_VERIFICATION_ATTEMPTS):
@@ -2355,6 +2368,10 @@ def _verify_rollout_patch(
                     verification_runner,
                     tool_prefix,
                     environment=consumer_verification_environment(environment, base_sha),
+                    standards_tool=standards_tool,
+                    base_sha=base_sha,
+                    version=version,
+                    baseline_path=baseline_path,
                 )
         except ConsumerBaseMovedError as exc:
             if verification is None:
@@ -2442,6 +2459,10 @@ def run_consumer_verification(
     tool_prefix: tuple[str, ...],
     *,
     environment: Mapping[str, str],
+    standards_tool: tuple[str, ...] = (),
+    base_sha: str = "",
+    version: str = "",
+    baseline_path: Path | None = None,
 ) -> subprocess.CompletedProcess[str]:
     def run(index: int, command: tuple[str, ...]) -> subprocess.CompletedProcess[str]:
         started = time.monotonic()
@@ -2451,6 +2472,19 @@ def run_consumer_verification(
             progress(consumer, f"verification command {index} finished in {time.monotonic() - started:.2f}s")
         report_consumer_timings(consumer, result.stdout)
         return result
+
+    if (
+        consumer.verify_metadata
+        and standards_tool
+        and metadata_verification.metadata_only_rollout(
+            repo, runner, base_sha=base_sha, version=version, baseline_path=baseline_path
+        )
+    ):
+        progress(consumer, "proved bundle/provenance-only diff; running full Standards check and metadata verification")
+        standards = run(0, (*standards_tool, "check", "--trust-repository-code"))
+        if standards.returncode != 0:
+            return standards
+        return run(1, consumer.verify_metadata)
 
     # Preparation may format or synchronize files. Finish it before independent,
     # explicitly registered checks start reading the resulting candidate tree.

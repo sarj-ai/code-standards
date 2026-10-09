@@ -11,6 +11,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from datetime import timedelta
 from email.parser import BytesParser
+from functools import partial
 import hashlib
 from http import HTTPStatus
 import json
@@ -40,7 +41,7 @@ REPOSITORY_URL = f"https://github.com/{REPOSITORY}"
 WORKFLOW = "release.yml"
 REF = "refs/heads/main"
 PYPI_ATTESTATIONS = "pypi-attestations==0.0.30"
-PYPI_ATTEMPTS = 6
+PYPI_FILE_TIMEOUT = timedelta(minutes=3)
 # npm publishes metadata, provenance, and package-spec installability through
 # independent paths. Give each path its own bounded convergence budget so delay
 # in one stage cannot starve the next one.
@@ -66,7 +67,6 @@ NPM_ARTIFACT_PATHS = MappingProxyType(
     }
 )
 GIT_COMMIT_PATTERN = re.compile(r"[0-9a-f]{40}")
-RETRY_DELAY = timedelta(seconds=10)
 
 
 class VerificationError(Exception):
@@ -191,9 +191,9 @@ def _verify_pypi_file(  # sarj-noqa: SARJ023 -- one-file verification precedes t
     sha256 = _digest(local, "sha256")
     digests = entry.get("digests")
     if not isinstance(digests, dict) or digests.get("sha256") != sha256:
-        _fail(f"PyPI digest differs from staged file {artifact.name}")
+        _fail_permanently(f"PyPI digest differs from staged file {artifact.name}")
     if _bytes(entry["url"]) != local:
-        _fail(f"PyPI bytes differ from staged file {artifact.name}")
+        _fail_permanently(f"PyPI bytes differ from staged file {artifact.name}")
 
     provenance_url = (
         f"https://pypi.org/integrity/{quote(name, safe='')}/{quote(version, safe='')}/"
@@ -201,7 +201,7 @@ def _verify_pypi_file(  # sarj-noqa: SARJ023 -- one-file verification precedes t
     )
     provenance = _json(provenance_url)
     if not _pypi_provenance_matches(provenance, artifact, sha256, environment):
-        _fail(f"PyPI provenance does not bind {artifact.name} to {WORKFLOW}/{environment}")
+        _fail_permanently(f"PyPI provenance does not bind {artifact.name} to {WORKFLOW}/{environment}")
     subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- argv is fixed and shell execution is disabled.
         (  # ruff: ignore[start-process-with-partial-path] -- setup-uv provides trusted uvx.
             "uvx",
@@ -250,7 +250,14 @@ def _pypi_provenance_matches(provenance: dict[str, Any], artifact: Path, sha256:
     return matching_publisher and matching_subject
 
 
-def verify_pypi(dist: Path, projects: tuple[str, ...], environment: str) -> None:
+def verify_pypi(
+    dist: Path,
+    projects: tuple[str, ...],
+    environment: str,
+    *,
+    clock: Callable[[], float] = time.monotonic,
+    sleeper: Callable[[float], None] = time.sleep,
+) -> None:
     artifacts = tuple(sorted((*dist.glob("*.whl"), *dist.glob("*.tar.gz"))))
     grouped: dict[str, list[tuple[Path, str]]] = defaultdict(list)
     for artifact in artifacts:
@@ -260,17 +267,16 @@ def verify_pypi(dist: Path, projects: tuple[str, ...], environment: str) -> None
         _fail(f"staged projects {sorted(grouped)} do not equal expected projects {sorted(projects)}")
     if any(len({version for _, version in items}) != 1 for items in grouped.values()):
         _fail("staged files disagree on project version")
-    for attempt in range(PYPI_ATTEMPTS):
-        try:
-            for name in projects:
-                for artifact, version in grouped[name]:
-                    _verify_pypi_file(artifact, name=name, version=version, environment=environment)
-        except RETRYABLE_EXCEPTIONS:
-            if attempt + 1 == PYPI_ATTEMPTS:
-                raise
-            time.sleep(RETRY_DELAY.total_seconds())
-        else:
-            return
+    for name in projects:
+        for artifact, version in grouped[name]:
+            retry_registry_stage(
+                "PyPI",
+                artifact.name,
+                partial(_verify_pypi_file, artifact, name=name, version=version, environment=environment),
+                timeout=PYPI_FILE_TIMEOUT,
+                clock=clock,
+                sleeper=sleeper,
+            )
 
 
 def _npm_identity(  # sarj-noqa: SARJ023 -- format decoding belongs beside its registry primitives.
@@ -396,6 +402,18 @@ def retry_npm_stage[T](
     clock: Callable[[], float] = time.monotonic,
     sleeper: Callable[[float], None] = time.sleep,
 ) -> T:
+    return retry_registry_stage("npm", stage, operation, timeout=timeout, clock=clock, sleeper=sleeper)
+
+
+def retry_registry_stage[T](
+    registry: str,
+    stage: str,
+    operation: Callable[[], T],
+    *,
+    timeout: timedelta,
+    clock: Callable[[], float],
+    sleeper: Callable[[float], None],
+) -> T:
     deadline = clock() + timeout.total_seconds()
     delay = NPM_INITIAL_RETRY_DELAY.total_seconds()
     while True:
@@ -406,12 +424,12 @@ def retry_npm_stage[T](
                 raise
             remaining = deadline - clock()
             if remaining <= 0:
-                msg = f"npm {stage} did not converge within {timeout}: {error}"
+                msg = f"{registry} {stage} did not converge within {timeout}: {error}"
                 raise VerificationError(msg) from error
             requested = _retry_after_seconds(error)
             wait = min(requested if requested is not None else delay, remaining)
             sys.stderr.write(
-                f"npm {stage} attempt failed; retrying in {wait:.1f}s ({remaining:.1f}s remain): {error}\n"
+                f"{registry} {stage} attempt failed; retrying in {wait:.1f}s ({remaining:.1f}s remain): {error}\n"
             )
             sleeper(wait)
             delay = min(delay * 2, NPM_MAX_RETRY_DELAY.total_seconds())
