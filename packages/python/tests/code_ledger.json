@@ -272,5 +272,7 @@
   "SARJ481": "no-input-model-mutation",
   "SARJ482": "no-before-validator-input-mutation",
   "SARJ483": "no-unused-copy-result",
-  "SARJ484": "no-interpreter-source-arguments"
+  "SARJ484": "no-interpreter-source-arguments",
+  "SARJ485": "no-fixed-sleep-in-loop",
+  "SARJ486": "require-injectable-retry-sleep"
 }
