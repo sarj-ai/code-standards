@@ -1249,6 +1249,17 @@
         ]
       }
     },
-    "verifiedTree": "5f89637655b7f1a69fe6b51e150d5981a2b7dc61"
+    "verifiedTree": "5f89637655b7f1a69fe6b51e150d5981a2b7dc61",
+    "postGateTestRelocation": {
+      "from": "packages/standards/tests/test_cloudbuild_semantics.py",
+      "to": "packages/standards/tests/text_rules/test_cloudbuild_contract.py",
+      "reason": "The authored text-rule inventory uses the canonical per-rule test path; the actual Git revision comparison detected its missing blob.",
+      "contentIdentical": true,
+      "focusedTestsPassed": 37,
+      "ruffFormatTypesAndAuthoredChecks": "passed",
+      "ruleCount": 297,
+      "distinctReferencedSourceAndTestFiles": 574,
+      "note": "Historical commands and hashes keep their original paths. This is a test-only relocation after the recorded full gate, not a changed implementation or duplicated test suite."
+    }
   }
 }
