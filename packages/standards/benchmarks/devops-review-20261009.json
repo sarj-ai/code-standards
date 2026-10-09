@@ -3451,5 +3451,76 @@
         "python": "1.26.1"
       }
     }
+  ],
+  "integrationRepairs": [
+    {
+      "scope": "Postmerge CI startup and portability",
+      "owner": "native_bootstrap.py, CI/adoption templates, pass30 tests",
+      "reproduction": "Enterprise action allowlist rejects jdx/mise-action; portability routing tests fail10cases without host-native tools.",
+      "verification": "Shared pinned upstream asset bootstrap and pass30 health dependency controls;500focusedpassed9skipped plus24,979fullgatepassed9skipped."
+    },
+    {
+      "scope": "CI native shell formatter",
+      "owner": ".github/scripts/ci-private-refs.sh",
+      "reproduction": "CI shfmt3.14.1 reports one redirection whitespace change not covered by makeverify native script scope.",
+      "smallestFix": "Apply native shfmt output.",
+      "verification": "Exact CI ShellCheck0.11.0 and shfmt3.14.1 arguments pass for all CI shell scripts."
+    },
+    {
+      "scope": "Upstream Gitleaks false-positive calibration",
+      "owner": ".gitleaks.toml",
+      "reproduction": "Actual Gitleaks8.30.1 generic-api-key flags public SHA256 evidence of managed-key test module; local hash calculation exactlymatches published record.",
+      "smallestFix": "AND condition over upstream generic-api-key rule, exact audit-record path and exact proven-public checksum.",
+      "primarySource": "https://github.com/gitleaks/gitleaks/blob/v8.30.1/README.md",
+      "scopeControls": [
+        {
+          "id": "published-evidence",
+          "expectedExit": 0,
+          "actualExit": 0,
+          "findings": 0,
+          "rules": []
+        },
+        {
+          "id": "other-checksum",
+          "expectedExit": 1,
+          "actualExit": 1,
+          "findings": 1,
+          "rules": [
+            "generic-api-key"
+          ]
+        },
+        {
+          "id": "other-file",
+          "expectedExit": 1,
+          "actualExit": 1,
+          "findings": 1,
+          "rules": [
+            "generic-api-key"
+          ]
+        },
+        {
+          "id": "credential-neighbor",
+          "expectedExit": 1,
+          "actualExit": 1,
+          "findings": 1,
+          "rules": [
+            "generic-api-key"
+          ]
+        }
+      ],
+      "interpretation": "Scope controls exercise actual upstream detector/allowlist, not real leaked-credential TP metrics. Other values, neighboring credential fields and other paths remain detected.",
+      "verification": {
+        "tree": {
+          "result": "pass",
+          "scannedBytesApprox": 67816288
+        },
+        "reachableHistory": {
+          "result": "pass",
+          "commits": 832,
+          "scannedBytesApprox": 315742718
+        }
+      },
+      "limitations": "Single evidenced public checksum exception; no path-wide or SHA256-wide exemptions. Future matches require separate admission."
+    }
   ]
 }
