@@ -436,14 +436,14 @@ WORKFLOW_EMBEDDED_PROGRAM_CASES = (
         "shell-single-arm-if-guard",
         Language.CONFIG,
         "jobs:\n  test:\n    steps:\n      - run: |\n          if make probe; then\n            make test\n          fi\n",
-        ExpectedOutcome.NO_MATCH,
+        ExpectedOutcome.MATCH,
         PurePosixPath(".github/workflows/ci.yml"),
     ),
     EvaluationCase(
         "shell-single-if-else-gate",
         Language.CONFIG,
         "jobs:\n  test:\n    steps:\n      - run: |\n          if make probe; then\n            make test\n          else\n            make test-fallback\n          fi\n",
-        ExpectedOutcome.NO_MATCH,
+        ExpectedOutcome.MATCH,
         PurePosixPath(".github/workflows/ci.yml"),
     ),
     EvaluationCase(
@@ -534,7 +534,7 @@ WORKFLOW_EMBEDDED_PROGRAM_CASES = (
         "combined-bash-inline-program",
         Language.CONFIG,
         "jobs:\n  test:\n    steps:\n      - run: bash -lc 'make test'\n",
-        ExpectedOutcome.MATCH,
+        ExpectedOutcome.NO_MATCH,
         PurePosixPath(".github/workflows/ci.yml"),
     ),
     EvaluationCase(
@@ -575,7 +575,7 @@ WORKFLOW_EMBEDDED_PROGRAM_CASES = (
     EvaluationCase(
         "interpreter-script-stdin",
         Language.CONFIG,
-        "jobs:\n  test:\n    steps:\n      - run: python3 scripts/check.py <<'DATA'\n          input\n          DATA\n",
+        "jobs:\n  test:\n    steps:\n      - run: |\n          python3 scripts/check.py <<'DATA'\n          input\n          DATA\n",
         ExpectedOutcome.NO_MATCH,
         PurePosixPath(".github/workflows/ci.yml"),
     ),
@@ -660,14 +660,14 @@ WORKFLOW_EMBEDDED_PROGRAM_CASES = (
         "ordinary-multiline-orchestration",
         Language.CONFIG,
         "jobs:\n  test:\n    steps:\n      - run: |\n          make lint\n          make test\n",
-        ExpectedOutcome.NO_MATCH,
+        ExpectedOutcome.MATCH,
         PurePosixPath(".github/workflows/ci.yml"),
     ),
     EvaluationCase(
         "simple-shell-guard",
         Language.CONFIG,
         'jobs:\n  test:\n    steps:\n      - run: test -n "$TOKEN" || exit 1\n',
-        ExpectedOutcome.NO_MATCH,
+        ExpectedOutcome.MATCH,
         PurePosixPath(".github/workflows/ci.yml"),
     ),
     EvaluationCase(
@@ -702,7 +702,7 @@ WORKFLOW_EMBEDDED_PROGRAM_CASES = (
         "multiline-jq-program",
         Language.CONFIG,
         "jobs:\n  test:\n    steps:\n      - run: |\n          jq '\n            .items |\n            select(.active)\n          ' report.json\n",
-        ExpectedOutcome.NO_MATCH,
+        ExpectedOutcome.MATCH,
         PurePosixPath(".github/workflows/ci.yml"),
     ),
     EvaluationCase(
@@ -923,7 +923,7 @@ def test_workflow_embedded_program_reports_once_per_run_scalar_at_run_line(
     assert [(finding.line, finding.code) for finding in findings] == [(5, "SARJ310")]
 
 
-def test_workflow_embedded_program_deduplicates_yaml_aliases(tmp_path: Path) -> None:
+def test_workflow_embedded_program_preserves_yaml_alias_use_sites(tmp_path: Path) -> None:
     path = tmp_path / ".github" / "workflows" / "ci.yml"
     path.parent.mkdir(parents=True)
     path.write_text(
@@ -936,10 +936,10 @@ def test_workflow_embedded_program_deduplicates_yaml_aliases(tmp_path: Path) -> 
 
     findings = [finding for finding in textlint.check_paths([str(path)], root=tmp_path) if finding.code == "SARJ310"]
 
-    assert [(finding.line, finding.code) for finding in findings] == [(5, "SARJ310")]
+    assert [(finding.line, finding.code) for finding in findings] == [(5, "SARJ310"), (6, "SARJ310")]
 
 
-def test_deployment_boundary_takes_precedence_over_embedded_program(tmp_path: Path) -> None:
+def test_deployment_boundary_does_not_hide_embedded_program(tmp_path: Path) -> None:
     path = tmp_path / ".github" / "workflows" / "deploy.yml"
     path.parent.mkdir(parents=True)
     path.write_text(
@@ -951,7 +951,7 @@ def test_deployment_boundary_takes_precedence_over_embedded_program(tmp_path: Pa
         encoding="utf-8",
     )
 
-    assert _codes(path, root=tmp_path) == ["SARJ309"]
+    assert set(_codes(path, root=tmp_path)) == {"SARJ309", "SARJ310"}
 
     selected = textlint.check_paths(
         [str(path)],
@@ -976,7 +976,7 @@ def test_heredoc_data_does_not_create_deployment_precedence(tmp_path: Path) -> N
     assert _codes(path, root=tmp_path) == ["SARJ310"]
 
 
-def test_workflow_embedded_program_is_warning_only(
+def test_workflow_embedded_program_blocks_new_violations(
     tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     path = tmp_path / ".github" / "workflows" / "ci.yml"
@@ -987,8 +987,8 @@ def test_workflow_embedded_program_is_warning_only(
     )
     monkeypatch.chdir(tmp_path)
 
-    assert textlint.run([str(path)]) == 0
-    assert "SARJ310 warning:" in capsys.readouterr().out
+    assert textlint.run([str(path)]) == 1
+    assert "SARJ310 Execution block" in capsys.readouterr().out
 
 
 def test_declarative_deployment_boundary_reads_real_plan_allowlist_fixture(tmp_path: Path) -> None:
@@ -1240,6 +1240,7 @@ def test_large_shell_program_is_warning_only(tmp_path: Path) -> None:
 def test_registry_exposes_complete_neutral_rule_metadata() -> None:
     assert set(textlint.REGISTRY) == {
         "commented-out-config",
+        "cloudbuild-contract",
         "config-comment-wall",
         "declarative-deployment-boundary",
         "ephemeral-execution-artifact",
@@ -2375,7 +2376,7 @@ def test_changelog_issue_heading_is_durable(tmp_path: Path) -> None:
 
 @pytest.mark.parametrize(
     "filename",
-    ["Dockerfile.nginx", "workflow.yaml.tftpl", "settings.ini", ".env.example", "Justfile"],
+    ["Dockerfile.nginx", "release.dockerfile", "workflow.yaml.tftpl", "settings.ini", ".env.example", "Justfile"],
 )
 def test_extended_text_file_routing(filename: str) -> None:
     assert textlint.is_text_path(Path(filename))

@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "engine": "semgrep",
+  "engineVersion": "1.178.0",
+  "upstreamCommit": "40b8c63f75dc7c22c8a77482d73bfb864b146f7e",
+  "rules": {
+    "privileged-service": {
+      "source": "https://raw.githubusercontent.com/semgrep/semgrep-rules/40b8c63f75dc7c22c8a77482d73bfb864b146f7e/yaml/docker-compose/security/privileged-service.yaml",
+      "sha256": "edc059befeae0a155ddeca2b04be58d4f2685f0b1ee25211e24f243cd1b27db0"
+    },
+    "exposing-docker-socket-volume": {
+      "source": "https://raw.githubusercontent.com/semgrep/semgrep-rules/40b8c63f75dc7c22c8a77482d73bfb864b146f7e/yaml/docker-compose/security/exposing-docker-socket-volume.yaml",
+      "sha256": "6d7b0b28c128b478f339dd0ab0f6d2a15c8862ca1ae3d0923c77b280b0324f26"
+    },
+    "seccomp-confinement-disabled": {
+      "source": "https://raw.githubusercontent.com/semgrep/semgrep-rules/40b8c63f75dc7c22c8a77482d73bfb864b146f7e/yaml/docker-compose/security/seccomp-confinement-disabled.yaml",
+      "sha256": "1edefabe15dafe113d4c2eb291ea11e1f38e26eeaded17bb5696ccd3bff1a99e"
+    }
+  },
+  "command": "packages/standards/.venv/bin/pytest packages/standards/tests/test_devops_tool_admission.py -q",
+  "evaluatedAt": "2026-10-09",
+  "observed": {
+    "legacyTruePositives": 3,
+    "modernFalseNegatives": 3,
+    "engineErrors": 0
+  },
+  "outcome": "rejected-default-source-integration",
+  "reason": "All three exact upstream rules require the obsolete top-level Compose version key. Identical valid modern versionless configurations produce no findings. Retain audit-only Semgrep; do not advertise security coverage from these candidates."
+}

@@ -1,0 +1,9 @@
+version: '3.8'
+services:
+  app:
+    image: alpine:3.22
+    privileged: true
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    security_opt:
+      - seccomp:unconfined

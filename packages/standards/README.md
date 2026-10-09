@@ -23,4 +23,12 @@ Use repeatable `check --rule ENGINE:ID` selectors to check only selected Sarj cu
 
 `check --jobs 2` overlaps native analysis with the external-tool pipeline. The default is `--jobs 1`; external tools remain sequential and report ordering is deterministic.
 
+DevOps execution blocks must contain one invocation. Move interpreter source, command chains, loops, substitutions and heredocs into independently linted files; Python `-m` and script paths, and jq/awk `-f` files remain supported. SARJ310 is an error, including short inline programs. Cloud Build SARJ315 checks unique IDs, ordered step dependencies, script/argv exclusivity and rejects untrusted substitutions in shell source; pass substitutions as quoted arguments to external scripts.
+
+The source gate uses pinned actionlint with ShellCheck, offline Zizmor, Hadolint and Skaffold v4beta7 schema validation. Cloud Deploy validation is a documented partial structural contract. Terraform validation and TFLint require explicit repository trust and prepared local providers; analysis never initializes or downloads them. Compose requires an exact consumer `[devops].compose_version`; its source check does not resolve environment inputs.
+
+Release gates use `code-standards analyze --prepared-only --prepared-devops prepared.json --prepared-target TARGET_ID`. Declare exact `prepared_targets` under `[devops]` with an authored `source` path. Version-one receipts bind target IDs, authored input hashes, staged chart archives, ordered values, typed set arguments, manifests and a hashed local schema closure. Helm 3.19.0 strict lint and stage-specific rendering feed kubeconform 0.8.0 and kube-linter 0.8.3. Missing tools, schemas, targets and invalid receipts fail the gate. Prepared-only findings bypass source debt baselines; container exceptions require exact target, GVK, namespace, object, check, container kind, container name and a reason, and stale exceptions fail.
+
+Source-only checks report prepared validation as deferred. They do not certify generated manifests or replace Cloud Deploy, Cloud Build or Kubernetes admission validation. Run `setup --tools-only` in CI after installing the bundle and the pinned mise bootstrap. It requires an existing manifest, installs and attests the applicable native tools, and preserves repository wiring. Release analysis consumes prepared bytes without pulling charts.
+
 [Documentation](https://code-standards.sarj.ai/) · [Source](https://github.com/sarj-ai/code-standards)

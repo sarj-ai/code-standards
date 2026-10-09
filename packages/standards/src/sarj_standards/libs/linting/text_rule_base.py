@@ -24,13 +24,16 @@ class Finding:
     line: int
     code: str
     message: str
+    end_line: int | None = None
+    end_column: int | None = None
 
     def render(self) -> str:
         from sarj_standards.libs.linting import textlint  # ruff: ignore[import-outside-top-level] -- rendering consults live severity.
 
         meta = next(meta for meta in textlint.REGISTRY.values() if meta.code == self.code)
         rollout = " warning:" if not meta.blocking else ""
-        return f"{self.path}:{self.line}:1: {self.code}{rollout} {self.message}"
+        position = "" if self.code == "SARJ310" and self.end_line is None else f":{self.line}:1"
+        return f"{self.path}{position}: {self.code}{rollout} {self.message}"
 
 
 @dataclass(frozen=True, kw_only=True)

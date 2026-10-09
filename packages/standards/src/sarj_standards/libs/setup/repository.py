@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from sarj_standards.libs.adoption import devops, doctor
 from sarj_standards.libs.adoption.lifecycle import Command, execute
 from sarj_standards.libs.repository import hooks
 
@@ -17,6 +18,7 @@ class SetupPlan:
 def plan_setup(root: Path) -> SetupPlan:
     resolved = root.resolve()
     commands = (
+        *devops.install_commands(resolved, doctor.authored_files(resolved)),
         *(
             Command("Python package", ("uv", "sync", "--frozen"), resolved / "packages" / name)
             for name in ("python", "sql", "iac", "standards")

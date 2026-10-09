@@ -14,6 +14,8 @@ from typing import Annotated, ClassVar, Final, Literal, NewType
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 import typer
 
+from sarj_standards.libs.linting.devops_tools import TOOLS
+
 
 _DESTINATION: Final = Path("apps/docs/src/generated/third-party-rules.v1.json")
 _NODE_PROJECTION: Final = Path("packages/typescript/scripts/project-third-party-rules.mjs")
@@ -51,7 +53,7 @@ _DETEKT_RULE_SETS: Final = frozenset(
 
 type ProfileName = Literal["application", "standard"]
 type ProviderEngine = Literal[
-    "deptry", "detekt", "eslint", "ktlint", "mobsfscan", "react-doctor", "ruff", "swiftformat", "swiftlint"
+    "deptry", "detekt", "devops", "eslint", "ktlint", "mobsfscan", "react-doctor", "ruff", "swiftformat", "swiftlint"
 ]
 type ProjectionScope = Literal["complete", "config-explicit", "provider-only"]
 RuleId = NewType("RuleId", str)
@@ -214,8 +216,11 @@ def build(root: Path) -> _CatalogArtifact:
         ruff_projection.provider,
         deptry_projection.provider,
         *mobile.providers,
+        *_devops_providers(),
     )
-    included_providers = {rule.provider for rule in rules} | {provider.id for provider in mobile.providers}
+    included_providers = {rule.provider for rule in rules} | {
+        provider.id for provider in providers if provider.projection_scope == "provider-only"
+    }
     return _CatalogArtifact(
         schema_version=1,
         profiles=("application", "standard"),
@@ -223,6 +228,33 @@ def build(root: Path) -> _CatalogArtifact:
             sorted((provider for provider in providers if provider.id in included_providers), key=lambda item: item.id)
         ),
         rules=tuple(sorted(rules, key=lambda item: item.key)),
+    )
+
+
+def _devops_providers() -> tuple[_Provider, ...]:
+    projects = (
+        ("helm", "Helm", "https://helm.sh/docs/helm/helm_lint/"),
+        ("kubeconform", "Kubeconform", "https://github.com/yannh/kubeconform"),
+        ("kube-linter", "KubeLinter", "https://github.com/stackrox/kube-linter"),
+        ("shfmt", "shfmt", "https://github.com/mvdan/sh"),
+        ("shellcheck", "ShellCheck", "https://www.shellcheck.net/"),
+        ("actionlint", "actionlint", "https://github.com/rhysd/actionlint"),
+        ("zizmor", "Zizmor", "https://docs.zizmor.sh/"),
+        ("hadolint", "Hadolint", "https://github.com/hadolint/hadolint"),
+        ("terraform", "Terraform", "https://developer.hashicorp.com/terraform/cli/commands/validate"),
+        ("tflint", "TFLint", "https://github.com/terraform-linters/tflint"),
+    )
+    return tuple(
+        _Provider(
+            id=name,
+            label=label,
+            engine="devops",
+            package=name,
+            version=TOOLS[name].version,
+            homepage=homepage,
+            projection_scope="provider-only",
+        )
+        for name, label, homepage in projects
     )
 
 

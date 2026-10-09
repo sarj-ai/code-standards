@@ -1,0 +1,1101 @@
+{
+  "schemaVersion": 1,
+  "evaluatedAt": "2026-10-09",
+  "gitHead": "46cb8de6a701fa202a476b6e943e1975e4f71d6d",
+  "treeState": "uncommitted collaborative working tree",
+  "scope": "Twenty distinct bounded acceptance checks for strict authored DevOps configuration and prepared native validation. This is a verification record, not a corpus precision estimate.",
+  "fullRepositoryVerification": {
+    "status": "passed",
+    "passedClaimed": true,
+    "argv": [
+      "make",
+      "verify"
+    ],
+    "workingDirectory": ".",
+    "exitCode": 0,
+    "toolchainNotes": [
+      "Pinned uv 0.12.18; native tools available through the Standards virtual environment; writable temporary uv cache."
+    ],
+    "typescriptTestsPassed": 6139,
+    "pythonTestsPassed": 13435,
+    "totalTestsPassed": 19574,
+    "pythonCustomRulesChecked": 114,
+    "pythonSourceFilesChecked": 591,
+    "typescriptCustomRulesChecked": 114,
+    "testSuites": {
+      "typescript": 6139,
+      "bootstrap": 15,
+      "contracts": 13,
+      "python": 8993,
+      "sql": 885,
+      "iac": 630,
+      "standardsFreshWheel": 2899
+    },
+    "limitations": [
+      "This is the local canonical gate. Its private-reference scan is delegated to trusted CI; remote GitHub CI was not run."
+    ],
+    "sourceTreeState": "Historical collaborative working tree identified by gitHead, treeState and evidenceFilesSha256; includes unrelated concurrent work excluded from this PR."
+  },
+  "commandCapture": "Commands are relative to the repository root. Pytest capture used an additional temporary --junitxml report path; replayable argv omits only that report-path option. Counts are actual collected passing cases, not estimated counts. These commands describe the historical collaborative tree. The quality-check argv includes five concurrent Python rules intentionally excluded from the isolated PR; its replay requires that historical tree. The isolated branch is verified separately.",
+  "passes": [
+    {
+      "pass": 1,
+      "id": "execution-consumer-selection",
+      "acceptanceCheck": "Execution program classification across supported consumers, excluding Dockerfile-specific build-context ignore files",
+      "commands": [
+        {
+          "argv": [
+            "packages/standards/.venv/bin/pytest",
+            "packages/standards/tests/test_devops_programs.py::test_execution_fields_labeled_cases",
+            "packages/standards/tests/test_devops_programs.py::test_dockerfile_ignore_patterns_are_not_execution_source",
+            "-q"
+          ],
+          "workingDirectory": ".",
+          "exitCode": 0
+        }
+      ],
+      "tests": {
+        "executed": 21,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "outcome": "verified",
+      "limitations": [
+        "Labeled fixtures establish the selected execution-field contract; they do not establish all configuration dialects or corpus precision."
+      ]
+    },
+    {
+      "pass": 2,
+      "id": "shell-ast-and-interpreter-grammar",
+      "acceptanceCheck": "Native shell AST distinguishes one invocation from executable source/control flow",
+      "commands": [
+        {
+          "argv": [
+            "packages/standards/.venv/bin/pytest",
+            "packages/standards/tests/test_devops_programs.py::test_shell_execution_policy_uses_native_ast",
+            "packages/standards/tests/test_devops_programs.py::test_custom_docker_shell_cannot_turn_source_into_an_unchecked_program",
+            "packages/standards/tests/test_devops_programs.py::test_consumer_dollar_escaping_precedes_shell_analysis",
+            "-q"
+          ],
+          "workingDirectory": ".",
+          "exitCode": 0
+        }
+      ],
+      "tests": {
+        "executed": 48,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "outcome": "verified",
+      "limitations": [
+        "The supported shell AST and interpreter grammar is bounded. Unknown grammar is a coverage issue; scripts are never executed."
+      ]
+    },
+    {
+      "pass": 3,
+      "id": "execution-source-provenance",
+      "acceptanceCheck": "YAML aliases/merges/documents and baseline payload identity preserve authored use sites",
+      "commands": [
+        {
+          "argv": [
+            "packages/standards/.venv/bin/pytest",
+            "packages/standards/tests/test_devops_programs.py::test_alias_merge_reports_execution_use_site_and_respects_override",
+            "packages/standards/tests/test_devops_programs.py::test_multidocument_and_scalar_aliases_preserve_each_occurrence",
+            "packages/standards/tests/test_devops_programs.py::test_payload_body_edit_invalidates_baseline_but_next_field_does_not",
+            "packages/standards/tests/test_devops_programs.py::test_argument_field_order_does_not_fabricate_reversed_source_span",
+            "-q"
+          ],
+          "workingDirectory": ".",
+          "exitCode": 0
+        }
+      ],
+      "tests": {
+        "executed": 4,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "outcome": "verified",
+      "limitations": [
+        "These are source projection and baseline-identity tests, not a full baseline migration or consumer rollout test."
+      ]
+    },
+    {
+      "pass": 4,
+      "id": "execution-fatal-unknown-boundary",
+      "acceptanceCheck": "Malformed or unresolved executable input remains unsuppressible coverage failure",
+      "commands": [
+        {
+          "argv": [
+            "packages/standards/.venv/bin/pytest",
+            "packages/standards/tests/test_devops_programs.py::test_unprovable_payload_is_coverage_failure",
+            "packages/standards/tests/test_devops_programs.py::test_malformed_selected_shell_is_not_clean",
+            "packages/standards/tests/test_devops_programs.py::test_duplicate_execution_key_is_not_baselinable_finding",
+            "packages/standards/tests/test_devops_programs.py::test_recursive_yaml_alias_cannot_silently_disappear",
+            "packages/standards/tests/test_devops_programs.py::test_yaml_alias_expansion_is_bounded",
+            "packages/standards/tests/test_devops_programs.py::test_cyclic_make_variable_is_bounded_coverage_error",
+            "packages/standards/tests/test_devops_programs.py::test_mise_executable_templates_fail_coverage_without_loading",
+            "-q"
+          ],
+          "workingDirectory": ".",
+          "exitCode": 0
+        }
+      ],
+      "tests": {
+        "executed": 12,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "outcome": "verified",
+      "limitations": [
+        "The tests verify known unprovable classes; arbitrary generated syntax is not evaluated or silently accepted."
+      ]
+    },
+    {
+      "pass": 5,
+      "id": "cloudbuild-step-and-yaml-contract",
+      "acceptanceCheck": "Build dependency/exclusivity rules, YAML use-site provenance and bounded composition/expanded work with fatal recursive input",
+      "commands": [
+        {
+          "argv": [
+            "packages/standards/.venv/bin/pytest",
+            "packages/standards/tests/test_cloudbuild_semantics.py::test_build_contract",
+            "-q"
+          ],
+          "workingDirectory": ".",
+          "exitCode": 0
+        },
+        {
+          "argv": [
+            "packages/standards/.venv/bin/pytest",
+            "packages/standards/tests/test_cloudbuild_semantics.py::test_alias_occurrence_has_own_location",
+            "packages/standards/tests/test_cloudbuild_semantics.py::test_merge_preserves_consumer_override_semantics",
+            "packages/standards/tests/test_cloudbuild_semantics.py::test_scalar_alias_has_use_site_location",
+            "packages/standards/tests/test_cloudbuild_semantics.py::test_malformed_and_duplicate_yaml_are_not_clean",
+            "packages/standards/tests/test_cloudbuild_semantics.py::test_unselected_malformed_document_belongs_to_yaml_validator",
+            "packages/standards/tests/test_cloudbuild_semantics.py::test_alias_composition_preserves_a_bounded_shared_graph",
+            "packages/standards/tests/test_cloudbuild_semantics.py::test_selected_yaml_expansion_fails_coverage_without_findings",
+            "-q"
+          ],
+          "workingDirectory": ".",
+          "exitCode": 0
+        }
+      ],
+      "tests": {
+        "executed": 21,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "outcome": "verified",
+      "limitations": [
+        "SARJ315 is a narrow step contract, not complete Cloud Build API schema, trigger option or effective identity validation.",
+        "Unselected malformed YAML belongs to the YAML engine. Parser failures are not semantic baseline findings."
+      ]
+    },
+    {
+      "pass": 6,
+      "id": "cloudbuild-substitution-boundary",
+      "acceptanceCheck": "Build-time shell source substitutions versus escaped runtime environment/direct argv",
+      "commands": [
+        {
+          "argv": [
+            "packages/standards/.venv/bin/pytest",
+            "packages/standards/tests/test_cloudbuild_semantics.py::test_shell_substitution",
+            "packages/standards/tests/test_cloudbuild_semantics.py::test_script_runtime_env_and_direct_argv_are_safe",
+            "-q"
+          ],
+          "workingDirectory": ".",
+          "exitCode": 0
+        }
+      ],
+      "tests": {
+        "executed": 16,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "outcome": "verified",
+      "limitations": [
+        "Only documented non-overridable PROJECT_ID and BUILD_ID are safe builtins. This does not validate application script behavior or consumer substitution values."
+      ]
+    },
+    {
+      "pass": 7,
+      "id": "iam-managed-key-boundary",
+      "acceptanceCheck": "Managed service-account key resources versus nonmanaged/unknown forms",
+      "commands": [
+        {
+          "argv": [
+            "packages/iac/.venv/bin/pytest",
+            "packages/iac/tests/rules/test_no_managed_service_account_key.py::test_managed_keys",
+            "-q"
+          ],
+          "workingDirectory": ".",
+          "exitCode": 0
+        }
+      ],
+      "tests": {
+        "executed": 6,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "outcome": "verified",
+      "limitations": [
+        "Rejects literal google_service_account_key resource management only. No claim of complete IAM credential policy coverage."
+      ]
+    },
+    {
+      "pass": 8,
+      "id": "iam-project-basic-role-proof",
+      "acceptanceCheck": "Project Owner/Editor role proof, list/jsonencode/policy forms and scope exclusions",
+      "commands": [
+        {
+          "argv": [
+            "packages/iac/.venv/bin/pytest",
+            "packages/iac/tests/rules/test_no_project_basic_privilege.py::test_literal_roles",
+            "packages/iac/tests/rules/test_no_project_basic_privilege.py::test_policy_shapes",
+            "packages/iac/tests/rules/test_no_project_basic_privilege.py::test_role_comparison_is_not_a_literal_grant",
+            "packages/iac/tests/rules/test_no_project_basic_privilege.py::test_jsonencode_colon_object_form_is_a_grant",
+            "packages/iac/tests/rules/test_no_project_basic_privilege.py::test_findings_are_deterministic",
+            "-q"
+          ],
+          "workingDirectory": ".",
+          "exitCode": 0
+        }
+      ],
+      "tests": {
+        "executed": 20,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "outcome": "verified",
+      "limitations": [
+        "Allows Viewer/admin and organization/folder policies; unresolved role expressions abstain. Labeled cases do not establish corpus precision."
+      ]
+    },
+    {
+      "pass": 9,
+      "id": "workflow-native-json-protocol",
+      "acceptanceCheck": "Actionlint and Zizmor strict machine protocol, byte coordinates and ignored native findings",
+      "commands": [
+        {
+          "argv": [
+            "packages/standards/.venv/bin/pytest",
+            "packages/standards/tests/test_devops_source.py::test_actionlint_clean_empty_protocol",
+            "packages/standards/tests/test_devops_source.py::test_actionlint_broken_protocol_is_fatal",
+            "packages/standards/tests/test_devops_source.py::test_actionlint_authored_byte_column",
+            "packages/standards/tests/test_devops_source.py::test_zizmor_preserves_exact_byte_region_and_ignored_findings",
+            "-q"
+          ],
+          "workingDirectory": ".",
+          "exitCode": 0
+        }
+      ],
+      "tests": {
+        "executed": 6,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "outcome": "verified",
+      "limitations": [
+        "Most protocol cases use injected runners. These test selected native audits and parsing, not every upstream audit or live workflow execution."
+      ]
+    },
+    {
+      "pass": 10,
+      "id": "dockerfile-terraform-native-protocol",
+      "acceptanceCheck": "Hadolint Dockerfile variant/ignore selection and strict Hadolint/Terraform/TFLint protocols without implicit initialization",
+      "commands": [
+        {
+          "argv": [
+            "packages/standards/.venv/bin/pytest",
+            "packages/standards/tests/test_devops_source.py::test_hadolint_json_strict_severity",
+            "packages/standards/tests/test_devops_source.py::test_tflint_scope_is_relative_to_project",
+            "packages/standards/tests/test_devops_source.py::test_terraform_validate_counts_and_missing_providers",
+            "packages/standards/tests/test_devops_source.py::test_untrusted_terraform_only_formats_and_never_initializes",
+            "packages/standards/tests/test_devops_source.py::test_json_terraform_is_never_passed_to_native_formatter",
+            "packages/standards/tests/test_devops_source.py::test_reported_path_cannot_escape_repository",
+            "packages/standards/tests/test_devops_source.py::test_hadolint_selects_dockerfile_variants_without_ignore_files",
+            "-q"
+          ],
+          "workingDirectory": ".",
+          "exitCode": 0
+        }
+      ],
+      "tests": {
+        "executed": 14,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "outcome": "verified",
+      "limitations": [
+        "Injected protocol checks do not initialize provider graphs or validate cloud infrastructure. Trust/preinitialized inputs are required for provider validation."
+      ]
+    },
+    {
+      "pass": 11,
+      "id": "compose-consumer-static-contract",
+      "acceptanceCheck": "Explicit consumer Compose pin and static no-interpolation/no-env-resolution checks",
+      "commands": [
+        {
+          "argv": [
+            "packages/standards/.venv/bin/pytest",
+            "packages/standards/tests/test_devops_source.py::test_compose_static_contract_is_explicit",
+            "packages/standards/tests/test_devops_source.py::test_compose_missing_consumer_pin_is_fatal",
+            "packages/standards/tests/test_devops_tools.py::test_consumer_compose_version_changes_attestation_and_setup",
+            "packages/standards/tests/test_devops_tools.py::test_consumer_compose_pin_requires_exact_semver",
+            "-q"
+          ],
+          "workingDirectory": ".",
+          "exitCode": 0
+        }
+      ],
+      "tests": {
+        "executed": 9,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "outcome": "verified",
+      "limitations": [
+        "Static validation only. Effective Compose model, runtime environment resolution, secrets, deployment and Docker daemon behavior are not checked."
+      ]
+    },
+    {
+      "pass": 12,
+      "id": "prepared-receipt-input-identity",
+      "acceptanceCheck": "Prepared target declarations, source freshness, artifact containment and hashes",
+      "commands": [
+        {
+          "argv": [
+            "packages/standards/.venv/bin/pytest",
+            "packages/standards/tests/test_prepared_devops.py::test_rejects_unknown_identity_and_stale_source",
+            "packages/standards/tests/test_prepared_devops.py::test_missing_and_duplicate_targets_are_infrastructure_failures",
+            "packages/standards/tests/test_prepared_devops.py::test_artifacts_cannot_escape_receipt_directory",
+            "packages/standards/tests/test_prepared_devops.py::test_hashes_cover_values_and_manifests",
+            "packages/standards/tests/test_prepared_devops.py::test_authored_input_changes_invalidate_receipts",
+            "packages/standards/tests/test_prepared_devops.py::test_manifest_prepared_declarations_round_trip",
+            "packages/standards/tests/test_prepared_devops.py::test_duplicate_declarations_fail",
+            "-q"
+          ],
+          "workingDirectory": ".",
+          "exitCode": 0
+        }
+      ],
+      "tests": {
+        "executed": 12,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "outcome": "verified",
+      "limitations": [
+        "Receipt fixtures prove local admission invariants. They do not generate releases, contact clusters or establish provenance beyond the checked closed input contract."
+      ]
+    },
+    {
+      "pass": 13,
+      "id": "prepared-kubernetes-native-coverage",
+      "acceptanceCheck": "Rendered Kubernetes identity, schema coverage and actual Helm install/upgrade ordinary-hook security validation",
+      "commands": [
+        {
+          "argv": [
+            "packages/standards/.venv/bin/pytest",
+            "packages/standards/tests/test_prepared_devops.py::test_native_null_clean_report_is_complete",
+            "packages/standards/tests/test_prepared_devops.py::test_list_resources_are_checked_individually_and_duplicates_rejected",
+            "packages/standards/tests/test_prepared_devops.py::test_target_namespace_cannot_hide_duplicate_workload_identity",
+            "packages/standards/tests/test_prepared_devops.py::test_native_missing_schema_and_skipped_resources_never_pass",
+            "packages/standards/tests/test_prepared_devops.py::test_local_schema_closure_cannot_fetch_http",
+            "-q"
+          ],
+          "workingDirectory": ".",
+          "exitCode": 0
+        },
+        {
+          "argv": [
+            "packages/standards/.venv/bin/pytest",
+            "packages/standards/tests/test_prepared_devops.py::test_real_helm_stages_keep_ordinary_hooks_in_security_validation",
+            "-q"
+          ],
+          "workingDirectory": ".",
+          "exitCode": 0
+        }
+      ],
+      "tests": {
+        "executed": 10,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "outcome": "verified",
+      "limitations": [
+        "The two Helm hook cases execute real pinned native static tools; other native-report cases use injected reports. No Helm release is installed/upgraded and no cluster or cloud API is contacted."
+      ],
+      "realNativeChecks": {
+        "testCases": [
+          "install-hook",
+          "upgrade-hook"
+        ],
+        "engines": {
+          "helm": "3.19.0",
+          "kubeconform": "0.8.0",
+          "kube-linter": "0.8.3"
+        },
+        "observed": "Both ordinary Pod hooks retained the expected missing allowPrivilegeEscalation security finding."
+      }
+    },
+    {
+      "id": "cloudrun-exact-gvk-and-schema-closure",
+      "acceptanceCheck": "Cloud Run Service/Job exact supported GVK, local hashed schema binding and tamper/unknown/open-reference failures",
+      "commands": [
+        {
+          "argv": [
+            "packages/standards/.venv/bin/pytest",
+            "packages/standards/tests/test_prepared_cloudrun.py",
+            "-q"
+          ],
+          "workingDirectory": ".",
+          "exitCode": 0
+        }
+      ],
+      "tests": {
+        "executed": 12,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "outcome": "verified",
+      "limitations": [
+        "Tests use fixture-supplied local closed schemas. This does not establish complete official Cloud Run API schemas or perform cloud-side deployment validation."
+      ],
+      "pass": 14
+    },
+    {
+      "pass": 15,
+      "id": "json-schema-dialect-and-closure",
+      "acceptanceCheck": "Native schema defaults, declared dialects, legacy IDs, pointers and data-vs-schema references",
+      "commands": [
+        {
+          "argv": [
+            "packages/standards/.venv/bin/pytest",
+            "packages/standards/tests/test_schema_boundary.py",
+            "-q"
+          ],
+          "workingDirectory": ".",
+          "exitCode": 0
+        }
+      ],
+      "tests": {
+        "executed": 25,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "outcome": "verified",
+      "limitations": [
+        "Closed local schemas only; unknown dialects/base reinterpretation are rejected. No remote schema retrieval or future dialect coverage is claimed."
+      ]
+    },
+    {
+      "pass": 16,
+      "id": "helm-chart-archive-closure",
+      "acceptanceCheck": "Helm chart dependencies, archive safety/bounds and semantic local schema closure",
+      "commands": [
+        {
+          "argv": [
+            "packages/standards/.venv/bin/pytest",
+            "packages/standards/tests/test_chart_schemas.py",
+            "-q"
+          ],
+          "workingDirectory": ".",
+          "exitCode": 0
+        }
+      ],
+      "tests": {
+        "executed": 9,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "outcome": "verified",
+      "limitations": [
+        "Archive and schema admission tests do not prove chart rendering in every Helm version or cluster environment."
+      ]
+    },
+    {
+      "pass": 17,
+      "id": "skaffold-clouddeploy-source-structure",
+      "acceptanceCheck": "Pinned Skaffold v4beta7 and partial Cloud Deploy v1 source structure with bounded alias composition before construction",
+      "commands": [
+        {
+          "argv": [
+            "packages/standards/.venv/bin/pytest",
+            "packages/standards/tests/test_devops_schema.py",
+            "-q"
+          ],
+          "workingDirectory": ".",
+          "exitCode": 0
+        }
+      ],
+      "tests": {
+        "executed": 17,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "outcome": "verified",
+      "limitations": [
+        "Cloud Deploy is explicitly partial: documented known fields only, unknown fields permitted. No deployment validation; unsupported reviewed schema versions are coverage failures."
+      ]
+    },
+    {
+      "pass": 18,
+      "id": "setup-ci-and-deferred-installation",
+      "acceptanceCheck": "Tools-only setup, Dockerfile variant/ignore native provisioning, manifest/file preservation and honest skipped work",
+      "commands": [
+        {
+          "argv": [
+            "packages/standards/.venv/bin/pytest",
+            "packages/standards/tests/test_devops_tools.py::test_tools_only_requires_existing_current_manifest",
+            "packages/standards/tests/test_devops_tools.py::test_tools_only_install_preserves_files_and_never_installs_hooks",
+            "packages/standards/tests/test_consumer_cli.py::test_tools_only_requires_adoption_without_creating_wiring",
+            "packages/standards/tests/test_consumer_cli.py::test_tools_only_preserves_native_installation_failure_status",
+            "packages/standards/tests/test_consumer_cli.py::test_tools_only_rejects_adoption_options",
+            "packages/standards/tests/test_upgrade.py::test_current_no_install_update_reports_selected_native_install_work",
+            "packages/standards/tests/test_upgrade.py::test_update_no_install_prints_a_clean_typescript_lock_command",
+            "packages/standards/tests/test_adoption.py::test_show_ci_renders_a_complete_versioned_workflow",
+            "packages/standards/tests/test_adoption.py::test_show_ci_syncs_every_uv_workspace_package_and_runs_configured_bootstrap",
+            "packages/standards/tests/test_adoption.py::test_generated_ci_is_recognized_as_an_executable_standards_gate",
+            "packages/standards/tests/test_devops_tools.py::test_required_tools_match_dockerfile_variants_and_skip_ignore_files",
+            "-q"
+          ],
+          "workingDirectory": ".",
+          "exitCode": 0
+        }
+      ],
+      "tests": {
+        "executed": 13,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "outcome": "verified",
+      "limitations": [
+        "Installer dispatch is intercepted in unit cases. This does not publish packages, run GitHub CI remotely or establish complete consumer rollout."
+      ]
+    },
+    {
+      "pass": 19,
+      "id": "upstream-semgrep-tool-admission",
+      "acceptanceCheck": "Real pinned Semgrep paired-fixture admission rejects obsolete version-key assumptions",
+      "commands": [
+        {
+          "argv": [
+            "packages/standards/.venv/bin/pytest",
+            "packages/standards/tests/test_devops_tool_admission.py::test_upstream_compose_rules_fail_versionless_admission",
+            "-q"
+          ],
+          "workingDirectory": ".",
+          "exitCode": 0
+        }
+      ],
+      "tests": {
+        "executed": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "outcome": "verified",
+      "limitations": [
+        "Rejected integration: three exact upstream rules miss all three dangerous versionless Compose cases. Semgrep remains audit-only; no default security coverage is advertised."
+      ],
+      "admissionDecision": "rejected-default-source-integration",
+      "pairedFixtureEvidence": "packages/standards/tests/fixtures/devops-tool-admission/evidence.json",
+      "observed": {
+        "legacyTruePositives": 3,
+        "modernFalseNegatives": 3,
+        "engineErrors": 0
+      }
+    },
+    {
+      "pass": 20,
+      "id": "strict-maintained-source-quality",
+      "acceptanceCheck": "All registered Python rules, strict Ruff, package type checks and authored rule-family file conventions on maintained semantic/admission source and focused tests",
+      "commands": [
+        {
+          "argv": [
+            "packages/python/.venv/bin/sarj-python-lint",
+            "check",
+            "--rule",
+            "async-mock-call-without-await-assertion",
+            "--rule",
+            "complex-postgres-query-requires-architecture-review",
+            "--rule",
+            "defect-xfail-requires-explicit-strict",
+            "--rule",
+            "docstring-args-restate-signature",
+            "--rule",
+            "docstring-returns-restate-signature",
+            "--rule",
+            "excessive-commentary",
+            "--rule",
+            "fakes-in-shared-location",
+            "--rule",
+            "fastapi-class-router-contract",
+            "--rule",
+            "fastapi-explicit-openapi-contract",
+            "--rule",
+            "iac-source-coupled-test",
+            "--rule",
+            "invalid-pydantic-field-default",
+            "--rule",
+            "mock-without-spec",
+            "--rule",
+            "named-record-at-boundaries",
+            "--rule",
+            "negative-only-http-status-assertion",
+            "--rule",
+            "no-analytical-aggregation-in-postgres-store",
+            "--rule",
+            "no-any-mapping-types",
+            "--rule",
+            "no-bare-test-phase-comments",
+            "--rule",
+            "no-before-validator-input-mutation",
+            "--rule",
+            "no-comment-cruft",
+            "--rule",
+            "no-conftest-test-module-import",
+            "--rule",
+            "no-copied-inherited-docstring",
+            "--rule",
+            "no-cors-wildcard-with-credentials",
+            "--rule",
+            "no-delete-statement",
+            "--rule",
+            "no-docstring-type-restatement",
+            "--rule",
+            "no-dunder-all",
+            "--rule",
+            "no-duplicate-dunder-all-entry",
+            "--rule",
+            "no-excessive-cognitive-complexity",
+            "--rule",
+            "no-fastapi-on-event",
+            "--rule",
+            "no-file-level-escape-hatch-suppression",
+            "--rule",
+            "no-first-party-private-import",
+            "--rule",
+            "no-fixed-sleep-before-assert",
+            "--rule",
+            "no-frozen-after-validator-field-write",
+            "--rule",
+            "no-generic-single-export-module",
+            "--rule",
+            "no-hidden-constructor-fallback",
+            "--rule",
+            "no-input-model-mutation",
+            "--rule",
+            "no-interpreter-source-arguments",
+            "--rule",
+            "no-invalid-argument-name-suppression",
+            "--rule",
+            "no-mocked-pydantic-value-object",
+            "--rule",
+            "no-nested-pydantic-field-validator",
+            "--rule",
+            "no-offset-pagination",
+            "--rule",
+            "no-positional-psycopg-row-escape",
+            "--rule",
+            "no-positional-tuple-record",
+            "--rule",
+            "no-provably-dead-mock-configuration",
+            "--rule",
+            "no-psycopg-execution-outside-injected-owner",
+            "--rule",
+            "no-random-uuid-in-sql",
+            "--rule",
+            "no-raw-connection-in-tests",
+            "--rule",
+            "no-raw-source-text-test-oracle",
+            "--rule",
+            "no-redundant-module-alias-exports",
+            "--rule",
+            "no-repeated-structured-string-literal",
+            "--rule",
+            "no-repeated-test-body",
+            "--rule",
+            "no-repeated-unseeded-stdlib-random-in-test",
+            "--rule",
+            "no-restated-closed-domain-description",
+            "--rule",
+            "no-restated-comment",
+            "--rule",
+            "no-secret-in-log",
+            "--rule",
+            "no-select-star",
+            "--rule",
+            "no-service-behavior-in-settings",
+            "--rule",
+            "no-statically-truthy-assertion",
+            "--rule",
+            "no-string-concat-in-loop",
+            "--rule",
+            "no-test-method-grafting",
+            "--rule",
+            "no-trailing-numeric-unit-assignment-comment",
+            "--rule",
+            "no-unique-violation-message-match",
+            "--rule",
+            "no-unnecessary-docstring",
+            "--rule",
+            "no-unused-copy-result",
+            "--rule",
+            "no-unused-value-marker",
+            "--rule",
+            "no-vague-suppression-description",
+            "--rule",
+            "no-whole-request-response-payload-in-log",
+            "--rule",
+            "opaque-parametrize-case-needs-id",
+            "--rule",
+            "over-mocked-test",
+            "--rule",
+            "prefer-class-row",
+            "--rule",
+            "prefer-collection-comprehension",
+            "--rule",
+            "prefer-constant-time-secret-compare",
+            "--rule",
+            "prefer-fstring-over-concat",
+            "--rule",
+            "prefer-immutable-module-constant",
+            "--rule",
+            "prefer-injected-dependency-over-monkeypatch",
+            "--rule",
+            "prefer-library-fake",
+            "--rule",
+            "prefer-match-assert-never",
+            "--rule",
+            "prefer-match-exception-dispatch",
+            "--rule",
+            "prefer-match-type-dispatch",
+            "--rule",
+            "prefer-match-value-dispatch",
+            "--rule",
+            "prefer-module-level-constant",
+            "--rule",
+            "prefer-monkeypatch-for-process-state-in-test",
+            "--rule",
+            "prefer-nominal-id-types",
+            "--rule",
+            "prefer-non-nullable-collection",
+            "--rule",
+            "prefer-or-pattern",
+            "--rule",
+            "prefer-pydantic-json-value",
+            "--rule",
+            "prefer-self-documenting-constant",
+            "--rule",
+            "prefer-self-type-annotation",
+            "--rule",
+            "prefer-set-isdisjoint",
+            "--rule",
+            "prefer-str-enum",
+            "--rule",
+            "prefer-struct-over-namedtuple",
+            "--rule",
+            "prefer-walrus-awaited-none-guard",
+            "--rule",
+            "prefer-walrus-comprehension-filter",
+            "--rule",
+            "prefer-walrus-regex-match",
+            "--rule",
+            "prefer-walrus-stream-loop",
+            "--rule",
+            "production-derived-test-cases",
+            "--rule",
+            "pytest-fixture-returns-bare-tuple",
+            "--rule",
+            "redundant-class-docstring",
+            "--rule",
+            "redundant-docstring",
+            "--rule",
+            "redundant-module-docstring",
+            "--rule",
+            "repeated-kwarg-heavy-call-in-test",
+            "--rule",
+            "repeated-static-call-cases",
+            "--rule",
+            "replay-contract-insert-requires-duplicate-policy",
+            "--rule",
+            "require-keyword-only-swap-prone-params",
+            "--rule",
+            "require-nodecode-for-splitting-settings-field",
+            "--rule",
+            "require-port-for-service",
+            "--rule",
+            "require-pydantic-for-external-json",
+            "--rule",
+            "require-pydantic-for-structured-payload",
+            "--rule",
+            "require-pydantic-ordinal-lower-bound",
+            "--rule",
+            "restated-test-docstring",
+            "--rule",
+            "stepdown",
+            "--rule",
+            "store-get-delegates-to-bulk-read",
+            "--rule",
+            "timestamp-order-requires-tiebreaker",
+            "--rule",
+            "typed-error-reasons",
+            "--rule",
+            "unused-test-factory-option",
+            "--",
+            "packages/standards/src/sarj_standards/libs/linting/devops_source.py",
+            "packages/standards/src/sarj_standards/libs/linting/devops_schema.py",
+            "packages/standards/src/sarj_standards/libs/linting/cloudbuild.py",
+            "packages/standards/src/sarj_standards/libs/linting/devops_tools.py",
+            "packages/standards/src/sarj_standards/libs/adoption/devops.py",
+            "packages/standards/tests/test_devops_schema.py",
+            "packages/standards/tests/test_devops_source.py",
+            "packages/standards/tests/test_cloudbuild_semantics.py",
+            "packages/standards/tests/test_devops_tools.py",
+            "packages/standards/tests/test_devops_tool_admission.py",
+            "packages/iac/src/sarj_iac_lint/rules/no_project_basic_privilege.py",
+            "packages/iac/src/sarj_iac_lint/rules/no_managed_service_account_key.py",
+            "packages/iac/src/sarj_iac_lint/rules/_literal_policy.py",
+            "packages/iac/tests/rules/test_no_managed_service_account_key.py",
+            "packages/iac/tests/rules/test_no_project_basic_privilege.py",
+            "packages/standards/src/sarj_standards/libs/schema_boundary.py",
+            "packages/standards/src/sarj_standards/libs/linting/chart_schemas.py"
+          ],
+          "workingDirectory": ".",
+          "exitCode": 0,
+          "summary": ""
+        },
+        {
+          "argv": [
+            "packages/standards/.venv/bin/ruff",
+            "check",
+            "packages/standards/src/sarj_standards/libs/linting/devops_source.py",
+            "packages/standards/src/sarj_standards/libs/linting/devops_schema.py",
+            "packages/standards/src/sarj_standards/libs/linting/cloudbuild.py",
+            "packages/standards/src/sarj_standards/libs/linting/devops_tools.py",
+            "packages/standards/src/sarj_standards/libs/adoption/devops.py",
+            "packages/standards/tests/test_devops_schema.py",
+            "packages/standards/tests/test_devops_source.py",
+            "packages/standards/tests/test_cloudbuild_semantics.py",
+            "packages/standards/tests/test_devops_tools.py",
+            "packages/standards/tests/test_devops_tool_admission.py",
+            "packages/iac/src/sarj_iac_lint/rules/no_project_basic_privilege.py",
+            "packages/iac/src/sarj_iac_lint/rules/no_managed_service_account_key.py",
+            "packages/iac/src/sarj_iac_lint/rules/_literal_policy.py",
+            "packages/iac/tests/rules/test_no_managed_service_account_key.py",
+            "packages/iac/tests/rules/test_no_project_basic_privilege.py",
+            "packages/standards/src/sarj_standards/libs/schema_boundary.py",
+            "packages/standards/src/sarj_standards/libs/linting/chart_schemas.py"
+          ],
+          "workingDirectory": ".",
+          "exitCode": 0,
+          "summary": "All checks passed!"
+        },
+        {
+          "argv": [
+            "packages/standards/.venv/bin/basedpyright",
+            "--project",
+            "packages/standards/pyrightconfig.json",
+            "packages/standards/src/sarj_standards/libs/linting/devops_source.py",
+            "packages/standards/src/sarj_standards/libs/linting/devops_schema.py",
+            "packages/standards/src/sarj_standards/libs/linting/cloudbuild.py",
+            "packages/standards/src/sarj_standards/libs/linting/devops_tools.py",
+            "packages/standards/src/sarj_standards/libs/adoption/devops.py",
+            "packages/standards/tests/test_devops_schema.py",
+            "packages/standards/tests/test_devops_source.py",
+            "packages/standards/tests/test_cloudbuild_semantics.py",
+            "packages/standards/tests/test_devops_tools.py",
+            "packages/standards/tests/test_devops_tool_admission.py",
+            "packages/standards/src/sarj_standards/libs/schema_boundary.py",
+            "packages/standards/src/sarj_standards/libs/linting/chart_schemas.py"
+          ],
+          "workingDirectory": ".",
+          "exitCode": 0,
+          "summary": "0 errors, 0 warnings, 0 notes"
+        },
+        {
+          "argv": [
+            "packages/iac/.venv/bin/basedpyright",
+            "--project",
+            "packages/iac/pyrightconfig.json",
+            "packages/iac/src/sarj_iac_lint/rules/_literal_policy.py",
+            "packages/iac/src/sarj_iac_lint/rules/no_managed_service_account_key.py",
+            "packages/iac/src/sarj_iac_lint/rules/no_project_basic_privilege.py",
+            "packages/iac/tests/rules/test_no_managed_service_account_key.py",
+            "packages/iac/tests/rules/test_no_project_basic_privilege.py"
+          ],
+          "workingDirectory": ".",
+          "exitCode": 0,
+          "summary": "0 errors, 0 warnings, 0 notes"
+        },
+        {
+          "argv": [
+            "packages/standards/.venv/bin/code-standards",
+            "--root",
+            ".",
+            "maintain",
+            "check",
+            "--only",
+            "file-conventions"
+          ],
+          "workingDirectory": ".",
+          "exitCode": 0,
+          "summary": "repository policy \u2713"
+        }
+      ],
+      "sourceFiles": [
+        "packages/standards/src/sarj_standards/libs/linting/devops_source.py",
+        "packages/standards/src/sarj_standards/libs/linting/devops_schema.py",
+        "packages/standards/src/sarj_standards/libs/linting/cloudbuild.py",
+        "packages/standards/src/sarj_standards/libs/linting/devops_tools.py",
+        "packages/standards/src/sarj_standards/libs/adoption/devops.py",
+        "packages/standards/tests/test_devops_schema.py",
+        "packages/standards/tests/test_devops_source.py",
+        "packages/standards/tests/test_cloudbuild_semantics.py",
+        "packages/standards/tests/test_devops_tools.py",
+        "packages/standards/tests/test_devops_tool_admission.py",
+        "packages/iac/src/sarj_iac_lint/rules/no_project_basic_privilege.py",
+        "packages/iac/src/sarj_iac_lint/rules/no_managed_service_account_key.py",
+        "packages/iac/src/sarj_iac_lint/rules/_literal_policy.py",
+        "packages/iac/tests/rules/test_no_managed_service_account_key.py",
+        "packages/iac/tests/rules/test_no_project_basic_privilege.py",
+        "packages/standards/src/sarj_standards/libs/schema_boundary.py",
+        "packages/standards/src/sarj_standards/libs/linting/chart_schemas.py"
+      ],
+      "registeredPythonRuleCount": 114,
+      "outcome": "verified",
+      "limitations": [
+        "This is a bounded maintained-source scope, not the full repository make verify gate. Other package, TypeScript, wheel/release and generated artifact checks remain owned by the final repository verification."
+      ]
+    }
+  ],
+  "summary": {
+    "acceptanceChecks": 20,
+    "verifiedChecks": 20,
+    "pytestCases": 276,
+    "pytestFailures": 0,
+    "pytestErrors": 0,
+    "pytestSkipped": 0
+  },
+  "limitations": [
+    "The twenty acceptance checks group related concrete assertions; they are not twenty independent research agents or a proof that all possible configurations are covered.",
+    "The local full make verify gate passed separately from the twenty bounded acceptance checks; trusted CI-only checks remain delegated.",
+    "Compose coverage is static only. Effective-model/environment resolution coverage was not requested or run.",
+    "Cloud Deploy coverage is partial and Skaffold coverage is pinned to the reviewed v4beta7 schema. SARJ315 is a narrow Cloud Build step/substitution contract, not the entire cloud API.",
+    "Positive/negative fixtures do not establish corpus-wide precision. The remaining reviewed-corpus substitution candidates are not all individually adjudicated.",
+    "No publishing, merging, remote GitHub CI, releases, cluster admission, cloud API calls or deployments were performed for these acceptance checks.",
+    "The Semgrep admission check passed by confirming a coverage gap; the three candidates were rejected for default integration."
+  ],
+  "evidenceFilesSha256": {
+    "packages/iac/pyrightconfig.json": "80f73d9c99a6a8e8c72e4ca07ee777e8814a230be5231c0c83055c8584e72132",
+    "packages/iac/src/sarj_iac_lint/rules/_literal_policy.py": "8d01fff750e206038d29daf01eaebe03688e7ca21542d9c049df6a2248883039",
+    "packages/iac/src/sarj_iac_lint/rules/no_managed_service_account_key.py": "1e1dc32098873d209894dfeed50264fba9b1c43cbef66cb8bad12a360185f32e",
+    "packages/iac/src/sarj_iac_lint/rules/no_project_basic_privilege.py": "a49eb67b02f72b70de74067b6eb1a4375f8c79e020c1713f482b2d9b8bbe074a",
+    "packages/iac/tests/rules/test_no_managed_service_account_key.py": "5b61f4ec8a921f407e2fae598166fb3679b41d18a9b528bc6720c2043b3638c0",
+    "packages/iac/tests/rules/test_no_project_basic_privilege.py": "1e47e4ea29bb53ffab7fa60fc50fcbd6dfb11c2b0ca0c324c2ec9f556161aca4",
+    "packages/standards/pyrightconfig.json": "80f73d9c99a6a8e8c72e4ca07ee777e8814a230be5231c0c83055c8584e72132",
+    "packages/standards/src/sarj_standards/configs/actionlint.strict.yaml": "1508137609ea2bd2189950f9d4c86b0a031755b320cc3a2d0d333df4f609ed76",
+    "packages/standards/src/sarj_standards/libs/adoption/devops.py": "97c1d5fab3630e52bbe9992b517fec77214acbddc02796d830e01e95a920fb5e",
+    "packages/standards/src/sarj_standards/libs/linting/chart_schemas.py": "46f81000d91e114c7fadc05b68b2c58773eea50b67e50d8cbc90a50539fabc7f",
+    "packages/standards/src/sarj_standards/libs/linting/cloudbuild.py": "f283911a3d1a1a52f41dccd67d6281897d58a5cdc494cb29e85d9da9161a2441",
+    "packages/standards/src/sarj_standards/libs/linting/devops_programs.py": "4daa0cc3d02811d5e1992f1864654cd48236b50d894d7599e68d87deb66af42c",
+    "packages/standards/src/sarj_standards/libs/linting/devops_schema.py": "c89885d27d8d694bb806a463746bc7fabb6ed606a8eecf824daa5cfe987d2953",
+    "packages/standards/src/sarj_standards/libs/linting/devops_source.py": "c8ed9812e0c8355489d32a1650aacd7d40f14dd34efb8585715988a88f1aa10f",
+    "packages/standards/src/sarj_standards/libs/linting/devops_tools.py": "4527ab18884009f359051b4a2beb82706d2ff7b09604c8431186a63c00109fce",
+    "packages/standards/src/sarj_standards/libs/linting/textlint.py": "bbc82f9cbf7b777e91b70d6b2358a9955162c78f5a497a807616dda7d2930939",
+    "packages/standards/src/sarj_standards/libs/schema_boundary.py": "a55c18b853fadc549a35e0c07fad64784164f85cbac487ba2b7c42d1f8fc77eb",
+    "packages/standards/tests/fixtures/devops-tool-admission/evidence.json": "0aa1b311994d5e788ab1a9b2d297651a9f583f21ea06b11732ec66c46222b0bf",
+    "packages/standards/tests/test_adoption.py": "aad8d87d987a7776fa4ac82bc6bf45f93dc27ec6201928c28d3eafbd629f11b8",
+    "packages/standards/tests/test_chart_schemas.py": "c4e8ab95b8a34536a639e73203a62c0b5114388620ac3830b97f80bb7a074966",
+    "packages/standards/tests/test_cloudbuild_semantics.py": "303de2f9a17b107af165ec0207bc7d64719e73d75fa2c54ca82a13e24319237e",
+    "packages/standards/tests/test_consumer_cli.py": "a4f8f781c8690de148f934b0deb3dbcc8b72c1e0a74bd2e490873024892e3d58",
+    "packages/standards/tests/test_devops_programs.py": "cdd92250126043919a5c7f9d8a15f7f3576e5693a65215803d66ec34834e79cc",
+    "packages/standards/tests/test_devops_schema.py": "93ca193b400ab88439460726c166a033185e64461fa2ef8dd26420c9fdff516a",
+    "packages/standards/tests/test_devops_source.py": "45f8a58d53240c916eaac8ce6676cb4bcb79f6f02e480220f0ed4b906dd96291",
+    "packages/standards/tests/test_devops_tool_admission.py": "8876bcb9ed1f6f768e7a54a902b7588050afd8d4db6c9c07acf6ac3a90b149d8",
+    "packages/standards/tests/test_devops_tools.py": "8b837eed4b48d50ee61a92819a758c055534c49f9bb2c36f71f956fedc4687fd",
+    "packages/standards/tests/test_prepared_cloudrun.py": "6a9f8f3040e1e4b1b2ffe9c55928f0c3c780edc81b90bbc793c81d742916a977",
+    "packages/standards/tests/test_prepared_devops.py": "470e8748ef3a54bbca524093fc25fcd7febb9dd1353028094b8dc5dd15a3582f",
+    "packages/standards/tests/test_schema_boundary.py": "22ff524259d2bb03dcc952ccf94455798fbb98cdcb7ab909146a2485a1356380",
+    "packages/standards/tests/test_upgrade.py": "e3bfa71c718ff35e783d0b507a68618d9f57140f03f8bb275ad587bc3e8098d6"
+  },
+  "pullRequestIsolation": {
+    "baseCommit": "b23d905806551b183ea4bb570323a3d822e866eb",
+    "baseTreeEquivalentToHistoricalGitHead": true,
+    "excludedConcurrentChanges": [
+      "TypeScript rule expansions and version bumps",
+      "SQL index-budget expansion and version bump",
+      "Python copy-on-write and test-quality rules",
+      "audit plugin command changes"
+    ],
+    "verification": {
+      "status": "pending",
+      "argv": [
+        "make",
+        "verify"
+      ]
+    },
+    "mergeReadiness": "Draft: rebase onto current main, allocate a fresh Python rule code and update package versions and exact pins before merge.",
+    "focusedRuleTests": {
+      "argv": [
+        "uv",
+        "run",
+        "--project",
+        "packages/standards",
+        "--frozen",
+        "pytest",
+        "-q",
+        "packages/python/tests/rules/test_no_interpreter_source_arguments.py",
+        "packages/iac/tests/rules/test_no_managed_service_account_key.py",
+        "packages/iac/tests/rules/test_no_project_basic_privilege.py"
+      ],
+      "exitCode": 0,
+      "passed": 66
+    },
+    "sourceGateProbes": [
+      {
+        "argv": [
+          "uv",
+          "run",
+          "--project",
+          "packages/standards",
+          "--frozen",
+          "code-standards",
+          "--root",
+          ".",
+          "check",
+          "--",
+          ".github/workflows/ci.yml"
+        ],
+        "exitCode": 2,
+        "errors": 18,
+        "executionIssues": 1,
+        "notes": [
+          "Existing CI execution blocks violate strict SARJ310.",
+          "Zizmor native JSON-v1 finding was rejected by the adapter (primary location / ignored boolean contract).",
+          "The canonical make verify source scan does not select CI; this failing direct probe is a separate draft blocker."
+        ]
+      }
+    ]
+  }
+}

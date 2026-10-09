@@ -273,17 +273,19 @@ wheels = [
 
 [[package]]
 name = "code-standards"
-version = "8.1.4"
+version = "8.2.0"
 source = { editable = "." }
 dependencies = [
     { name = "basedpyright" },
     { name = "deptry" },
+    { name = "jsonschema" },
     { name = "lefthook" },
     { name = "packaging" },
     { name = "pathspec" },
     { name = "pre-commit" },
     { name = "pydantic" },
     { name = "pyyaml" },
+    { name = "referencing" },
     { name = "repo-standards" },
     { name = "ruff" },
     { name = "sarj-iac-lint" },
@@ -297,7 +299,6 @@ dependencies = [
 
 [package.dev-dependencies]
 dev = [
-    { name = "jsonschema" },
     { name = "pytest" },
 ]
 
@@ -305,12 +306,14 @@ dev = [
 requires-dist = [
     { name = "basedpyright", specifier = "==1.40.1" },
     { name = "deptry", specifier = "==0.25.1" },
+    { name = "jsonschema", specifier = "==4.25.1" },
     { name = "lefthook", specifier = "==2.1.14" },
     { name = "packaging", specifier = "==26.3" },
     { name = "pathspec", specifier = "==1.1.1" },
     { name = "pre-commit", specifier = "==4.6.2" },
     { name = "pydantic", specifier = "==2.13.5" },
     { name = "pyyaml", specifier = "==6.0.3" },
+    { name = "referencing", specifier = "==0.37.0" },
     { name = "repo-standards", specifier = "==6.0.1" },
     { name = "ruff", specifier = "==0.16.8" },
     { name = "sarj-iac-lint", editable = "../iac" },
@@ -323,10 +326,7 @@ requires-dist = [
 ]
 
 [package.metadata.requires-dev]
-dev = [
-    { name = "jsonschema", specifier = "==4.25.1" },
-    { name = "pytest", specifier = ">=9.1.1" },
-]
+dev = [{ name = "pytest", specifier = ">=9.1.1" }]
 
 [[package]]
 name = "colorama"
@@ -1263,7 +1263,7 @@ wheels = [
 
 [[package]]
 name = "sarj-iac-lint"
-version = "0.16.0"
+version = "0.17.0"
 source = { editable = "../iac" }
 dependencies = [
     { name = "sarj-rule-contracts" },
@@ -1285,7 +1285,7 @@ dev = [
 
 [[package]]
 name = "sarj-python-lint"
-version = "1.1.1"
+version = "1.2.0"
 source = { editable = "../python" }
 dependencies = [
     { name = "packaging" },

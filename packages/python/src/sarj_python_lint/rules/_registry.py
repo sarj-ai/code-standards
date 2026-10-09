@@ -56,6 +56,7 @@ from sarj_python_lint.rules.no_generic_single_export_module import NoGenericSing
 from sarj_python_lint.rules.no_hidden_constructor_fallback import (
     NoHiddenConstructorFallback,
 )
+from sarj_python_lint.rules.no_interpreter_source_arguments import NoInterpreterSourceArguments
 from sarj_python_lint.rules.no_invalid_argument_name_suppression import NoInvalidArgumentNameSuppression
 from sarj_python_lint.rules.no_nested_pydantic_field_validator import NoNestedPydanticFieldValidator
 from sarj_python_lint.rules.no_offset_pagination import NoOffsetPagination
@@ -180,6 +181,7 @@ if TYPE_CHECKING:
 
 REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
     {
+        NoInterpreterSourceArguments.id: NoInterpreterSourceArguments,
         AsyncMockCallWithoutAwaitAssertion.id: AsyncMockCallWithoutAwaitAssertion,
         ComplexPostgresQueryRequiresArchitectureReview.id: ComplexPostgresQueryRequiresArchitectureReview,
         ExcessiveCommentary.id: ExcessiveCommentary,

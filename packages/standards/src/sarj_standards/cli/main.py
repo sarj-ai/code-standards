@@ -130,6 +130,7 @@ class _Args:
     docs_cmd: str = ""
     hooks_cmd: str = ""
     no_install: bool = False
+    tools_only: bool = False
     commit_policy_only: bool = False
     repair: bool = False
     message_file: Path | None = None
@@ -183,6 +184,9 @@ class _Args:
     exclude_subtree: list[str] = field(default_factory=list)
     allow_increase: bool = False
     slack_catalog: Path = Path()
+    prepared_devops: list[Path] = field(default_factory=list)
+    prepared_targets: list[str] = field(default_factory=list)
+    prepared_only: bool = False
 
 
 def cmd_sync(args: _Args, *, next_steps: bool = True) -> int:
@@ -838,6 +842,8 @@ def _resolve_and_run_update(
 
 def cmd_setup(args: _Args) -> int:
     root = _resolve_dest(args.dest)
+    if args.tools_only:
+        return _setup_tools_only(args, root)
     selected_configs = tuple(dict.fromkeys((*args.configs, *args.only)))
     try:
         init_plan = _setup_plan(args, root, selected_configs)
@@ -878,6 +884,35 @@ def cmd_setup(args: _Args) -> int:
 
     _report_setup(args, root, init_plan)
     return 0
+
+
+def _setup_tools_only(args: _Args, root: Path) -> int:
+    from sarj_standards.libs.adoption import devops  # ruff: ignore[import-outside-top-level] -- explicit native installation avoids ordinary adoption writes.
+
+    if any(
+        (
+            args.no_install,
+            args.dry_run,
+            args.commit_policy_only,
+            args.force,
+            args.hooks,
+            args.python_dest,
+            args.typescript_dest,
+            args.swift_dest,
+            args.kotlin_dest,
+            args.profile,
+            args.only,
+            args.configs,
+        )
+    ):
+        print("error: --tools-only cannot be combined with adoption or preview options", file=sys.stderr)
+        return 2
+    try:
+        result = devops.setup_tools_only(root)
+    except (OSError, ValueError) as error:
+        print(f"error: cannot install native tools: {error}", file=sys.stderr)
+        return 2
+    return _report_doctor(args, root, list(result.findings), result.status)
 
 
 def _preview_setup(args: _Args, init_plan: service.InitPlan) -> None:
@@ -1352,6 +1387,9 @@ def cmd_analyze(args: _Args) -> int:
         mode=AnalysisMode(args.analysis_mode),
         staged=args.staged,
         react_doctor_triggered=args.react_doctor_triggered,
+        prepared_devops=args.prepared_devops,
+        prepared_targets=args.prepared_targets,
+        prepared_only=args.prepared_only,
     )
     return _emit_analysis_report(args, root, report)
 
@@ -2564,6 +2602,8 @@ def _dispatch(args: _Args) -> int:
             return cmd_format(args)
         case "check":
             return cmd_check(args)
+        case "analyze":
+            return cmd_analyze(args)
         case "commit-message":
             return cmd_commit_message(args)
         case "validate-slack-automations":
@@ -2810,6 +2850,10 @@ def build_app(handler: Callable[[_Args], int] = _dispatch) -> typer.Typer:
             bool,
             typer.Option("--no-install", help="write wiring without installing dependencies or hooks"),
         ] = False,
+        tools_only: Annotated[
+            bool,
+            typer.Option("--tools-only", help="install and attest pinned native tools for an adopted repository"),
+        ] = False,
         commit_policy_only: Annotated[
             bool,
             typer.Option(
@@ -2834,8 +2878,49 @@ def build_app(handler: Callable[[_Args], int] = _dispatch) -> typer.Typer:
                 force=force,
                 profile=profile.value if profile is not None else None,
                 no_install=no_install,
+                tools_only=tools_only,
                 commit_policy_only=commit_policy_only,
                 only=[item.value for item in only] if only is not None else [],
+            )
+        )
+
+    @app.command("analyze", help="emit canonical diagnostics, including prepared DevOps artifacts")
+    def command_analyze(
+        ctx: typer.Context,
+        *,
+        external: Annotated[bool, typer.Option("--external", help="run pinned upstream analyzers")] = False,
+        prepared_only: Annotated[
+            bool,
+            typer.Option(
+                "--prepared-only", help="validate prepared artifacts; source analysis stays in the CI source gate"
+            ),
+        ] = False,
+        trust_repository_code: Annotated[
+            bool,
+            typer.Option("--trust-repository-code", help="allow prepared local Terraform provider/plugin validation"),
+        ] = False,
+        prepared_devops: Annotated[
+            list[Path] | None, typer.Option("--prepared-devops", help="data-only preparation receipt (repeatable)")
+        ] = None,
+        prepared_target: Annotated[
+            list[str] | None, typer.Option("--prepared-target", help="select an exact declared target (repeatable)")
+        ] = None,
+        output_format: Annotated[_DiagnosticFormat, typer.Option("--format")] = _DiagnosticFormat.TEXT,
+        output: Annotated[Path | None, typer.Option("--output")] = None,
+        files: Annotated[list[str] | None, typer.Argument(help="selected source paths")] = None,
+    ) -> int:
+        return handler(
+            _Args(
+                dest=_command_root(ctx),
+                cmd="analyze",
+                external=external,
+                prepared_only=prepared_only,
+                trust="trusted" if trust_repository_code else "safe",
+                prepared_devops=prepared_devops or [],
+                prepared_targets=prepared_target or [],
+                output_format=output_format.value,
+                output=output,
+                files=files or [],
             )
         )
 

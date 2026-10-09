@@ -96,7 +96,8 @@ ALL_CONFIGS: Final = (
     *MOBILE_CONFIGS,
     *SHARED_CONFIGS,
 )
-ALL_CAPABILITIES: Final = (*ALL_CONFIGS, *PYTHON_ANALYZERS)
+DEVOPS_ANALYZERS: Final = ("actionlint", "zizmor", "hadolint", "terraform", "tflint", "compose", "devops-schema")
+ALL_CAPABILITIES: Final = (*ALL_CONFIGS, *PYTHON_ANALYZERS, *DEVOPS_ANALYZERS)
 DEFAULT_DURABLE_ARTIFACTS: Final = (
     "**/README.md",
     "docs/**",
@@ -114,6 +115,12 @@ class ExclusionOverride:
     paths: tuple[str, ...]
     rules: tuple[str, ...]
     reason: str
+
+
+@dataclass(frozen=True, slots=True)
+class PreparedTarget:
+    id: str
+    source: str
 
 
 @dataclass(frozen=True)
@@ -136,11 +143,13 @@ class Manifest:
     doctor_excluded_paths: tuple[str, ...] = ()
     diagnostic_baseline: str | None = None
     ci_bootstrap: tuple[str, ...] = ()
+    prepared_targets: tuple[PreparedTarget, ...] = ()
+    compose_version: str | None = None
 
     @property
     def enabled_capabilities(self) -> tuple[str, ...]:
         analyzers = PYTHON_ANALYZERS if not set(self.configs).isdisjoint(PYTHON_CONFIGS) else ()
-        enabled = (*self.configs, *analyzers)
+        enabled = (*self.configs, *analyzers, *DEVOPS_ANALYZERS)
         return tuple(name for name in enabled if name not in self.disabled_capabilities)
 
     def render(self) -> str:
@@ -186,6 +195,12 @@ class Manifest:
         if self.ci_bootstrap:
             commands = ", ".join(json.dumps(command) for command in self.ci_bootstrap)
             sections.append(f"\n[ci]\nbootstrap = [{commands}]\n")
+        if self.compose_version is not None:
+            sections.append(f"\n[devops]\ncompose_version = {json.dumps(self.compose_version)}\n")
+        sections.extend(
+            f"\n[[devops.prepared_targets]]\nid = {json.dumps(target.id)}\nsource = {json.dumps(target.source)}\n"
+            for target in self.prepared_targets
+        )
         return "".join(sections)
 
 
@@ -342,7 +357,54 @@ def _load_schema(  # ruff: ignore[too-many-locals] - one validation boundary kee
         doctor_excluded_paths=_string_list(doctor_table, "exclude", label="manifest [doctor].exclude"),
         diagnostic_baseline=_relative_file(root, baseline_table, "diagnostics"),
         ci_bootstrap=_ci_bootstrap(ci_table),
+        prepared_targets=_prepared_targets(root, _manifest_table(data, "devops")),
+        compose_version=_compose_version(_manifest_table(data, "devops")),
     )
+
+
+def _compose_version(table: Mapping[str, object]) -> str | None:
+    value = table.get("compose_version")
+    if value is None:
+        return None
+    if not isinstance(value, str) or re.fullmatch(r"(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)", value) is None:
+        message = "manifest [devops].compose_version must be an exact semantic version"
+        raise ValueError(message)
+    return value
+
+
+def _prepared_targets(root: Path, table: Mapping[str, object]) -> tuple[PreparedTarget, ...]:
+    if set(table) - {"prepared_targets", "compose_version"}:
+        msg = "manifest [devops] supports only prepared_targets and compose_version"
+        raise ValueError(msg)
+    raw = table.get("prepared_targets", [])
+    if not is_object_list(raw):
+        msg = "manifest devops.prepared_targets must be an array of tables"
+        raise TypeError(msg)
+    targets: list[PreparedTarget] = []
+    for item in raw:
+        target = as_table(item)
+        identifier = text_field(target, "id")
+        source = text_field(target, "source")
+        if set(target) != {"id", "source"} or not identifier or not source:
+            msg = "each prepared target requires only nonempty id and source"
+            raise ValueError(msg)
+        if not re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9_.-]*", identifier):
+            msg = "prepared target IDs must be exact names without wildcards"
+            raise ValueError(msg)
+        path = Path(source)
+        if (
+            path.is_absolute()
+            or ".." in path.parts
+            or "\\" in source
+            or not (root / path).resolve().is_relative_to(root.resolve())
+        ):
+            msg = "prepared target source must stay beneath the repository root"
+            raise ValueError(msg)
+        if identifier in {target.id for target in targets}:
+            msg = f"duplicate prepared target ID: {identifier}"
+            raise ValueError(msg)
+        targets.append(PreparedTarget(identifier, source))
+    return tuple(targets)
 
 
 def _check_manifest_schema(data: Mapping[str, object], path: Path, expected_schema: int) -> None:

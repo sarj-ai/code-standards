@@ -124,7 +124,7 @@ _SCHEMA_LESS_CONFIGS_START: Final = re.compile(r"^[ \t]*configs\s*=")
 _FIRST_TOML_TABLE: Final = re.compile(r"(?m)^\s*\[")
 _TOML_TABLE_HEADER: Final = re.compile(r"(?m)^\s*\[\[?(?P<name>[A-Za-z0-9_.-]+)\]\]?\s*(?:#.*)?$")
 _OWNED_MANIFEST_TABLES: Final = frozenset(
-    {"artifacts", "baseline", "capabilities", "ci", "dest", "doctor", "exclude", "hooks", "text", "verify"}
+    {"artifacts", "baseline", "capabilities", "ci", "dest", "devops", "doctor", "exclude", "hooks", "text", "verify"}
 )
 _OWNED_MANIFEST_ROOT_KEYS: Final = frozenset({"schema", "bundle", "profile", "rule_profile", *_OWNED_MANIFEST_TABLES})
 _GRADLE_PROJECT_FILES: Final = ("build.gradle", "build.gradle.kts", "settings.gradle", "settings.gradle.kts")
@@ -1070,7 +1070,22 @@ def _desired_manifest(root: Path, plan: Plan, current: manifest.Manifest | None)
         doctor_excluded_paths=() if current is None else current.doctor_excluded_paths,
         diagnostic_baseline=None if current is None else current.diagnostic_baseline,
         ci_bootstrap=() if current is None else current.ci_bootstrap,
+        prepared_targets=() if current is None else current.prepared_targets,
+        compose_version=_new_compose_version(root) if current is None else current.compose_version,
     )
+
+
+def _new_compose_version(root: Path) -> str | None:
+    from sarj_standards.libs.linting.devops_tools import installed_compose_version  # ruff: ignore[import-outside-top-level] -- explicit setup may read the consumer's installed Compose version.
+
+    from . import doctor  # ruff: ignore[import-outside-top-level] -- avoid adoption discovery initialization cycles.
+
+    if not any(
+        path.name in {"compose.yaml", "compose.yml", "docker-compose.yaml", "docker-compose.yml"}
+        for path in doctor.authored_files(root)
+    ):
+        return None
+    return installed_compose_version(root)
 
 
 def _plan_retired_repository_launcher(root: Path, plan: Plan) -> None:
@@ -2235,10 +2250,10 @@ def github_ci_workflow(root: Path, *, ecosystems: Ecosystems | None = None) -> s
         f"    timeout-minutes: {60 if ecosystems.mobile else 15}",
         "    steps:",
         "      - name: Harden the runner",
-        "        uses: step-security/harden-runner@v2",
+        "        uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2",
         "        with:",
         "          egress-policy: audit",
-        "      - uses: actions/checkout@v7",
+        "      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7",
         "        with:",
         "          fetch-depth: 0",
         "          persist-credentials: false",
@@ -2254,7 +2269,7 @@ def github_ci_workflow(root: Path, *, ecosystems: Ecosystems | None = None) -> s
         )
     lines.extend(
         (
-            "      - uses: astral-sh/setup-uv@v10.2.0",
+            "      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0",
             "        with:",
             _setup_uv_version(root, ecosystems.python_root),
             "          enable-cache: true",
@@ -2269,6 +2284,20 @@ def github_ci_workflow(root: Path, *, ecosystems: Ecosystems | None = None) -> s
         python_install = python_ci_install_argv(root, python_dest)
         if python_install:
             lines.extend(("      - name: Install Python dependencies", f"        run: {shlex.join(python_install)}"))
+    lines.extend(
+        (
+            "      - name: Install the pinned native tool bootstrap",
+            "        uses: jdx/mise-action@5228313ee0372e111a38da051671ca30fc5a96db # v3",
+            "        with:",
+            "          version: '2026.10.6'",
+            "          install: false",
+            "          cache: false",
+            "          env: false",
+            "          add_shims_to_path: false",
+            "      - name: Install and attest applicable native tools",
+            f"        run: {runner} setup --tools-only",
+        )
+    )
     for index, command in enumerate(() if adopted is None else adopted.ci_bootstrap, start=1):
         label = "Bootstrap analysis inputs" if index == 1 else f"Bootstrap analysis inputs ({index})"
         lines.extend((f"      - name: {label}", "        run: |", f"          {command}"))
@@ -2315,11 +2344,11 @@ def _workflow_ecosystems(root: Path, adopted: manifest.Manifest | None) -> Ecosy
 
 def _append_javascript_ci(lines: list[str], root: Path, ecosystems: Ecosystems, install_root: Path | None) -> None:
     if ecosystems.client is PackageManager.BUN:
-        lines.append("      - uses: oven-sh/setup-bun@v2")
+        lines.append("      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2")
     else:
         lines.extend(
             (
-                "      - uses: actions/setup-node@v7",
+                "      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7",
                 "        with:",
                 "          node-version: 24",
             )
@@ -2337,7 +2366,7 @@ def _append_javascript_ci(lines: list[str], root: Path, ecosystems: Ecosystems, 
         )
     javascript_command = _ci_javascript_install(ecosystems.client, ecosystems.yarn)
     if ecosystems.client in {PackageManager.PNPM, PackageManager.YARN}:
-        javascript_command = f"corepack enable && {javascript_command}"
+        lines.extend(("      - name: Activate Corepack", "        run: corepack enable"))
     lines.extend(("      - name: Install JavaScript dependencies", f"        run: {javascript_command}"))
     if install_root is not None and install_root != root:
         relative_install_root = install_root.relative_to(root).as_posix()

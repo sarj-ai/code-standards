@@ -1,0 +1,9 @@
+{
+  "skaffold/v4beta7": {
+    "source": "https://raw.githubusercontent.com/GoogleCloudPlatform/skaffold/f386e6c552e83c3a9445fe34442aaed8dd381ab3/docs-v2/content/en/schemas/v4beta7.json",
+    "commit": "f386e6c552e83c3a9445fe34442aaed8dd381ab3",
+    "sha256": "c391a01232cdbf2db42b92664f62fce3bd0e37bf8d0c1de77abacb81b82951bc",
+    "license": "Apache-2.0",
+    "schema": "skaffold-v4beta7.json"
+  }
+}

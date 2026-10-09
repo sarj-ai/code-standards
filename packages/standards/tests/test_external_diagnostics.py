@@ -965,6 +965,7 @@ def test_shellcheck_runs_hermetically_for_supported_shell(tmp_path: Path) -> Non
             "shellcheck",
             "--norc",
             "--extended-analysis=true",
+            "--enable=check-extra-masked-returns",
             "--severity=info",
             "--source-path=SCRIPTDIR",
             "--format=json1",

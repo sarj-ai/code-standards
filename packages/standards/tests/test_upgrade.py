@@ -1194,7 +1194,7 @@ def test_update_rejects_invalid_repository_configuration(
     assert "doctor.package-json.invalid" in error
 
 
-def test_current_no_install_update_does_not_recommend_unneeded_install_work(
+def test_current_no_install_update_reports_selected_native_install_work(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
@@ -1207,7 +1207,10 @@ def test_current_no_install_update_does_not_recommend_unneeded_install_work(
     output = capsys.readouterr().out
     assert status == 0
     assert output.startswith("current:")
-    assert "setup is incomplete" not in output
+    assert "setup is incomplete (1 setup command(s) skipped;" in output
+    assert "mise --no-config --no-env --no-hooks install" in output
+    assert "aqua:rhysd/actionlint@1.7.12" in output
+    assert "uv sync" not in output
 
 
 def test_upgrade_no_install_explains_incomplete_setup_and_next_command(
@@ -1239,7 +1242,7 @@ def test_update_no_install_prints_a_clean_typescript_lock_command(
 
     output = capsys.readouterr().out
     assert status == 0
-    assert "setup is incomplete (1 setup command(s) skipped; 0 finding(s) pending)" in output
+    assert "setup is incomplete (2 setup command(s) skipped; 0 finding(s) pending)" in output
     assert "npm install --ignore-scripts --no-audit --no-fund" in output
 
 

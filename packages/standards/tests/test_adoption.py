@@ -2274,7 +2274,11 @@ def test_lefthook_setup_update_and_doctor_converge_installed_hooks(
     def install(commands: Iterable[lifecycle.Command]) -> int:
         nonlocal calls
         planned = tuple(commands)
-        assert [command.label for command in planned] == ["Lefthook repository hooks"]
+        assert [command.label for command in planned] == (
+            ["Lefthook repository hooks"]
+            if operation == "setup"
+            else ["Pinned native DevOps tools", "Lefthook repository hooks"]
+        )
         calls += 1
         durable.write_text("pinned lefthook", encoding="utf-8")
         durable.chmod(0o755)
@@ -2649,8 +2653,8 @@ def test_show_ci_renders_a_complete_versioned_workflow(tmp_path: Path, ecosystem
     parsed: object = yaml.safe_load(rendered.stdout)  # pyright: ignore[reportAny] -- parser result is narrowed below.
     assert isinstance(parsed, dict)
     assert "permissions:\n  contents: read" in rendered.stdout
-    assert "actions/checkout@v7" in rendered.stdout
-    assert "astral-sh/setup-uv@v10.2.0" in rendered.stdout
+    assert "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7" in rendered.stdout
+    assert "astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0" in rendered.stdout
     uv_config = manifest.as_table(tomllib.loads((REPO_ROOT / "uv.toml").read_text(encoding="utf-8")))
     uv_required = manifest.text_field(uv_config, "required-version")
     assert uv_required is not None
@@ -2660,7 +2664,7 @@ def test_show_ci_renders_a_complete_versioned_workflow(tmp_path: Path, ecosystem
     if ecosystem == "python":
         assert "uv sync --locked" not in rendered.stdout
     else:
-        assert "actions/setup-node@v7" in rendered.stdout
+        assert "actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7" in rendered.stdout
         assert "npm ci --no-audit --no-fund" in rendered.stdout
 
 

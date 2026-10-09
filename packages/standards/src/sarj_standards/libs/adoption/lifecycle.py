@@ -71,8 +71,21 @@ def install_commands(
     ecosystems: scaffold.Ecosystems,
     *,
     hook_manager: manifest.HookManager = "pre-commit",
+    include_devops: bool = True,
 ) -> list[Command]:
     commands: list[Command] = []
+    if include_devops:
+        from . import devops, doctor  # ruff: ignore[import-outside-top-level] -- setup loads optional native tooling after adoption initialization.
+
+        adopted = manifest.load_for_setup(root)
+        commands.extend(
+            devops.install_commands(
+                root,
+                doctor.authored_files(root),
+                capabilities=adopted.enabled_capabilities if adopted is not None else None,
+                prepared=bool(adopted.prepared_targets) if adopted is not None else False,
+            )
+        )
     if ecosystems.typescript_root is not None:
         install_root = ecosystems.typescript_install_root or ecosystems.typescript_root
         # Setup writes pnpm-workspace.yaml before this command executes because

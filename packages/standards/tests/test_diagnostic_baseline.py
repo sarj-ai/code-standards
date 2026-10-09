@@ -304,7 +304,14 @@ def test_existing_baseline_fingerprint_hides_only_matching_react_doctor_debt(tmp
     assert visible.tools[0].baselined_count == 1
 
 
-def test_baseline_init_records_todays_findings_for_every_engine(tmp_path: Path) -> None:
+def _configure_authored_engine_baseline_fixture(root: Path, path: str | None = None) -> None:
+    # These fixtures exercise authored-engine debt, without initialized native providers.
+    adopted = replace(_manifest(path), disabled_capabilities=("terraform", "tflint"))
+    (root / MANIFEST_NAME).write_text(adopted.render(), encoding="utf-8")
+
+
+def test_baseline_init_records_todays_findings_for_every_authored_engine(tmp_path: Path) -> None:
+    _configure_authored_engine_baseline_fixture(tmp_path)
     (tmp_path / "service.py").write_text("logger.info('request', token=token)\n", encoding="utf-8")
     (tmp_path / "main.tf").write_text(
         'resource "google_storage_bucket" "a" {\n  count = var.environment == "prod" ? 1 : 0\n}\n',
@@ -313,7 +320,7 @@ def test_baseline_init_records_todays_findings_for_every_engine(tmp_path: Path) 
 
     assert cli_main(["--root", str(tmp_path), "baseline", "init"]) == 0
 
-    raw = api.Standards(tmp_path).analyze(external=True, mode=api.AnalysisMode.RAW)
+    raw = api.Standards(tmp_path).analyze(external=True, mode=api.AnalysisMode.CORPUS)
     recorded = baseline.load(tmp_path / "diagnostic-baseline.json")
 
     # One command has to cover every engine, or a consumer needs one baseline per tool.
@@ -322,13 +329,14 @@ def test_baseline_init_records_todays_findings_for_every_engine(tmp_path: Path) 
 
 
 def test_baselined_findings_stop_failing_but_a_new_one_still_does(tmp_path: Path) -> None:
+    _configure_authored_engine_baseline_fixture(tmp_path)
     source = tmp_path / "main.tf"
     source.write_text(
         'resource "google_storage_bucket" "a" {\n  count = var.environment == "prod" ? 1 : 0\n}\n',
         encoding="utf-8",
     )
     assert cli_main(["--root", str(tmp_path), "baseline", "init"]) == 0
-    (tmp_path / MANIFEST_NAME).write_text(_manifest("diagnostic-baseline.json").render(), encoding="utf-8")
+    _configure_authored_engine_baseline_fixture(tmp_path, "diagnostic-baseline.json")
 
     settled = api.Standards(tmp_path).analyze()
     assert [item.code for item in settled.diagnostics] == []
@@ -344,6 +352,7 @@ def test_baselined_findings_stop_failing_but_a_new_one_still_does(tmp_path: Path
 
 
 def test_baseline_init_refuses_to_overwrite_and_update_replaces(tmp_path: Path) -> None:
+    _configure_authored_engine_baseline_fixture(tmp_path)
     (tmp_path / "main.tf").write_text(
         'resource "google_storage_bucket" "a" {\n  count = var.environment == "prod" ? 1 : 0\n}\n',
         encoding="utf-8",

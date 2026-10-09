@@ -604,6 +604,16 @@ jobs:
       - run: uv python install 3.14
       - run: uv sync --locked --dev
       - run: uv audit --locked
+      - name: Install the pinned native tool bootstrap
+        uses: jdx/mise-action@5228313ee0372e111a38da051671ca30fc5a96db # v3
+        with:
+          version: '2026.10.6'
+          install: false
+          cache: false
+          env: false
+          add_shims_to_path: false
+      - name: Install and attest applicable native tools
+        run: uv run code-standards --root ../.. setup --tools-only
       # The global root selects the adopted repository for every command.
       # Install the root adoption's locked JS toolchain so this job neither asks
       # npx to download an unpinned ESLint nor accidentally tests network state.
@@ -673,6 +683,16 @@ jobs:
         run: |
           uv venv --clear --python 3.14 --seed
           uv pip install ./dist/deps/*.whl ./dist/code_standards-*.whl pytest==9.1.1 jsonschema==4.25.1 ruff
+      - name: Install the pinned native tool bootstrap
+        uses: jdx/mise-action@5228313ee0372e111a38da051671ca30fc5a96db # v3
+        with:
+          version: '2026.10.6'
+          install: false
+          cache: false
+          env: false
+          add_shims_to_path: false
+      - name: Install and attest applicable native tools
+        run: uv run --no-project code-standards --root ../.. setup --tools-only
       - name: Pytest
         run: uv run --no-project pytest -q
       - name: CLI smoke

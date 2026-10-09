@@ -90,6 +90,7 @@ def test_committed_third_party_catalog_has_a_closed_effective_inventory() -> Non
     assert {value["engine"] for value in providers} == {
         "deptry",
         "detekt",
+        "devops",
         "eslint",
         "ktlint",
         "mobsfscan",

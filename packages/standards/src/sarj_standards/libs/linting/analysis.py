@@ -15,6 +15,7 @@ from sarj_standards.libs.diagnostics import (
     ExecutionIssue,
     InvocationId,
     Location,
+    Region,
     Severity,
     SourceDocument,
     ToolReport,
@@ -397,18 +398,27 @@ def _normalize_text(
             document = None
         documents[resolved] = document
     rule_id, help_text, blocking = metadata[item.code]
+    location = _text_location(item, root, document)
     return Diagnostic(
         code=item.code,
         rule_id=rule_id,
         message=item.message,
         severity=Severity.ERROR if blocking else Severity.WARNING,
         source="sarj-text-lint",
-        location=Location(
-            _relative_path(resolved, root),
-            position=None if document is None else document.point(line=item.line, column=1),
-        ),
+        location=location,
         help=help_text,
     )
+
+
+def _text_location(item: textlint.Finding, root: Path, document: SourceDocument | None) -> Location:
+    path = _relative_path(item.path.resolve(), root)
+    if document is None or (item.code == "SARJ310" and item.end_line is None):
+        return Location(path)
+    start = document.point(line=item.line, column=1)
+    if item.end_line is not None and item.end_column is not None:
+        end = document.point(line=item.end_line, column=item.end_column)
+        return Location(path, region=Region(start, end)) if start is not None and end is not None else Location(path)
+    return Location(path, position=start)
 
 
 def _relative_path(path: Path, root: Path) -> str:
