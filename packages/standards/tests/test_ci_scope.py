@@ -380,7 +380,7 @@ def test_routing_failure_cannot_silently_skip_required_jobs() -> None:
 
 def test_required_standards_gate_requires_both_lanes_and_routing() -> None:
     gate = workflow("ci.yml").jobs["standards"]
-    assert gate.needs == ["changes", "static-analysis", "package-tests", "adoption-smoke"]
+    assert gate.needs == ["changes", "static-analysis", "package-tests", "adoption-smoke", "python-compatibility"]
     assert gate.condition.startswith("always()")
     assert "needs.changes.result != 'success'" in gate.condition
     [guard] = [step for step in gate.steps if step.run]
@@ -389,6 +389,7 @@ def test_required_standards_gate_requires_both_lanes_and_routing() -> None:
         "needs.static-analysis.result != 'success'",
         "needs.package-tests.result != 'success'",
         "needs.adoption-smoke.result != 'success'",
+        "needs.python-compatibility.result != 'success'",
     }
     assert guard.run == "exit 1"
 

@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING, NamedTuple
 
 from sarj_standards.libs.filesystem import is_link_like
 from sarj_standards.libs.json_boundary import parse_json
-from sarj_standards.libs.linting import runner, security_tools
+from sarj_standards.libs.linting import mobile_tools, runner, security_tools
 
 from . import manifest, packagemanager, scaffold, transaction
 
@@ -74,10 +74,10 @@ def install_commands(
     include_devops: bool = True,
 ) -> list[Command]:
     commands: list[Command] = []
+    adopted = manifest.load_for_setup(root)
     if include_devops:
         from . import devops, doctor  # ruff: ignore[import-outside-top-level] -- setup loads optional native tooling after adoption initialization.
 
-        adopted = manifest.load_for_setup(root)
         commands.extend(
             devops.install_commands(
                 root,
@@ -86,12 +86,7 @@ def install_commands(
                 prepared=bool(adopted.prepared_targets) if adopted is not None else False,
             )
         )
-    for name in security_tools.TOOLS:
-        enabled = ecosystems.actions if name == "zizmor" else ecosystems.infrastructure
-        if enabled:
-            commands.append(
-                Command(f"prepare pinned {name}", (*security_tools.command(name, offline=False), "--version"), root)
-            )
+    commands.extend(_security_install_commands(root, ecosystems, adopted))
     if ecosystems.typescript_root is not None:
         install_root = ecosystems.typescript_install_root or ecosystems.typescript_root
         # Setup writes pnpm-workspace.yaml before this command executes because
@@ -159,6 +154,25 @@ def _has_legacy_in_project_bundle(python_root: Path) -> bool:
     except OSError:
         return False
     return re.search(r"(?i)\bsarj[-_]lint[-_]configs\s*(?:\[[^]]+\])?\s*(?:==|>=|<=|~=|!=|>|<|@)", text) is not None
+
+
+def _security_install_commands(
+    root: Path, ecosystems: scaffold.Ecosystems, adopted: manifest.Manifest | None
+) -> list[Command]:
+    commands: list[Command] = []
+    for name in security_tools.TOOLS:
+        enabled = ecosystems.actions if name == "zizmor" else ecosystems.infrastructure
+        if enabled:
+            commands.append(
+                Command(f"prepare pinned {name}", (*security_tools.command(name, offline=False), "--version"), root)
+            )
+    if (ecosystems.swift or ecosystems.kotlin) and (
+        adopted is None or "mobile-security" in adopted.enabled_capabilities
+    ):
+        commands.append(
+            Command("prepare pinned semgrep", (*mobile_tools.semgrep_command(offline=False), "--version"), root)
+        )
+    return commands
 
 
 def verification_commands(ecosystems: scaffold.Ecosystems) -> list[Command]:
@@ -498,7 +512,7 @@ def harden_precommit_hook(root: Path, *, hook_type: str = "pre-commit") -> None:
         fallback = (
             f"{_PRECOMMIT_UVX_MARKER}\n"
             "elif command -v uvx > /dev/null; then\n"
-            f'    exec uvx --no-config --isolated --python 3.14 --from pre-commit=={version} pre-commit "${{ARGS[@]}}"\n'
+            f'    exec uvx --no-config --isolated --python 3.15 --from pre-commit=={version} pre-commit "${{ARGS[@]}}"\n'
         )
         hardened = hardened.replace(fallback_point, fallback + fallback_point, 1)
     transaction.atomic_write_text(hook.parent, hook, hardened)

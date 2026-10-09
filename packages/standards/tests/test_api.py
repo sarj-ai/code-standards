@@ -480,7 +480,7 @@ def test_standards_facade_update_targets_latest_by_default(tmp_path: Path, monke
             "--no-config",
             "--isolated",
             "--python",
-            "3.14",
+            "3.15.0",
             "--refresh",
             "--from",
             "code-standards",
@@ -545,9 +545,11 @@ def test_latest_update_exit_one_is_truthful_and_has_no_parent_timeout(
     expected_finding: str,
 ) -> None:
     calls: list[dict[str, object]] = []
+    environments: list[dict[str, str]] = []
 
-    def run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+    def run(command: list[str], *, env: dict[str, str], **kwargs: object) -> subprocess.CompletedProcess[str]:
         calls.append(kwargs)
+        environments.append(env)
         return subprocess.CompletedProcess(command, 1, "", "postflight drift")
 
     def which(_name: str) -> str:
@@ -560,6 +562,7 @@ def test_latest_update_exit_one_is_truthful_and_has_no_parent_timeout(
 
     assert result.status is expected_status
     assert result.findings[0].id == expected_finding
+    assert environments[0]["UV_PYTHON_DOWNLOADS_JSON_URL"].endswith("/download-metadata.json")
     assert "timeout" not in calls[0]
 
 

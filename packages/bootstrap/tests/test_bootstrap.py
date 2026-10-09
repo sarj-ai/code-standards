@@ -82,8 +82,14 @@ def test_accepts_supported_manifest_schemas(tmp_path: Path, schema: int) -> None
     assert bootstrap.bundle(tmp_path) == "1.2.3"
 
 
-def test_execs_exact_bundle_and_preserves_environment(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    _manifest(tmp_path, bundle="5.16.5")
+@pytest.mark.parametrize(
+    ("bundle", "python"),
+    [("5.16.5", "3.14"), ("8.39.0", "3.14"), ("8.40.0", "3.15.0"), ("8.100.0", "3.15.0")],
+)
+def test_execs_exact_bundle_and_preserves_environment(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, bundle: str, python: str
+) -> None:
+    _manifest(tmp_path, bundle=bundle)
     nested = tmp_path / "nested"
     nested.mkdir()
     monkeypatch.setenv("UV_OFFLINE", "1")
@@ -115,9 +121,9 @@ def test_execs_exact_bundle_and_preserves_environment(tmp_path: Path, monkeypatc
         "--no-config",
         "--isolated",
         "--python",
-        "3.14",
+        python,
         "--from",
-        "code-standards==5.16.5",
+        f"code-standards=={bundle}",
         "code-standards",
         "--root",
         str(tmp_path),
@@ -126,6 +132,11 @@ def test_execs_exact_bundle_and_preserves_environment(tmp_path: Path, monkeypatc
     )
     captured_environment = captured["environment"]
     assert isinstance(captured_environment, dict)
+    if python == "3.15.0":
+        assert (
+            captured_environment["UV_PYTHON_DOWNLOADS_JSON_URL"]
+            == "https://raw.githubusercontent.com/astral-sh/uv/f69fb50c8b28997af9c6b0e5c700a34470d86005/crates/uv-python-managed/download-metadata.json"
+        )
     assert captured_environment["UV_OFFLINE"] == "1"
     assert captured_environment["UV_INDEX_URL"] == "https://packages.example/simple"
     assert captured_environment["SSL_CERT_FILE"] == "/certificates/enterprise.pem"

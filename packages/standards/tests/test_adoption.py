@@ -1120,7 +1120,7 @@ def test_init_refuses_to_create_a_competing_config_beside_pyright_jsonc(tmp_path
 
 @pytest.mark.parametrize(
     "requires_python",
-    [">=3.10", ">=3.15", "==3.15.*", ">=3.16", ">=4", "not-a-spec"],
+    [">=3.10", ">=3.16", ">=4", "not-a-spec"],
 )
 def test_init_rejects_a_consumer_outside_the_python314_policy_floor(tmp_path: Path, requires_python: str) -> None:
     _python_repo(tmp_path)
@@ -1135,9 +1135,34 @@ def test_init_rejects_a_consumer_outside_the_python314_policy_floor(tmp_path: Pa
     proc = _cli("--root", str(tmp_path), "setup", "--no-install")
 
     assert proc.returncode == 2
-    assert "Python 3.14 Standards profile" in proc.stderr
+    assert "Python Standards profile" in proc.stderr
     assert not (tmp_path / ".ruff-strict.toml").exists()
     assert not (tmp_path / "pyrightconfig.json").exists()
+
+
+@pytest.mark.parametrize("existing", [False, True])
+def test_setup_adopts_python315_without_changing_the_shared_314_floor(tmp_path: Path, existing: bool) -> None:
+    _python_repo(tmp_path)
+    pyproject = tmp_path / "pyproject.toml"
+    text = pyproject.read_text(encoding="utf-8").replace('">=3.14"', '">=3.15,<3.16"')
+    if existing:
+        text += '\n[tool.ruff]\nextend = ".ruff-strict.toml"\ntarget-version = "py314"\n'
+        (tmp_path / "pyrightconfig.json").write_text(
+            '{"extends": ".basedpyright-strict.json", "pythonVersion": "3.14"}\n', encoding="utf-8"
+        )
+    pyproject.write_text(text, encoding="utf-8")
+
+    result = _cli("--root", str(tmp_path), "setup", "--no-install")
+
+    assert result.returncode == 0, result.stderr
+    project = tomllib.loads(pyproject.read_text(encoding="utf-8"))
+    assert project["tool"]["ruff"]["target-version"] == "py315"
+    assert json.loads((tmp_path / "pyrightconfig.json").read_text(encoding="utf-8"))["pythonVersion"] == "3.15"
+    assert tomllib.loads((tmp_path / ".ruff-strict.toml").read_text(encoding="utf-8"))["target-version"] == "py314"
+    before = pyproject.read_text(encoding="utf-8")
+    repeated = _cli("--root", str(tmp_path), "setup", "--no-install")
+    assert repeated.returncode == 0, repeated.stderr
+    assert pyproject.read_text(encoding="utf-8") == before
 
 
 def test_init_rejects_a_python_project_without_requires_python(tmp_path: Path) -> None:
@@ -1151,7 +1176,7 @@ def test_init_rejects_a_python_project_without_requires_python(tmp_path: Path) -
     proc = _cli("--root", str(tmp_path), "setup", "--no-install")
 
     assert proc.returncode == 2
-    assert "requires-python must be a valid specifier that includes Python 3.14" in proc.stderr
+    assert "requires-python must be a valid specifier targeting Python 3.14 or 3.15" in proc.stderr
 
 
 def test_init_migrates_the_legacy_pyright_parent_idempotently(tmp_path: Path) -> None:

@@ -6,7 +6,8 @@ import shlex
 from typing import Final, NamedTuple
 
 
-TOOL_PYTHON: Final = "3.14"
+TOOL_PYTHON: Final = "3.15.0"
+PYTHON_DOWNLOADS: Final = "https://raw.githubusercontent.com/astral-sh/uv/f69fb50c8b28997af9c6b0e5c700a34470d86005/crates/uv-python-managed/download-metadata.json"
 PACKAGE: Final = "code-standards"
 COMMAND: Final = "code-standards"
 BOOTSTRAP_PACKAGE: Final = "sarj-standards-bootstrap"
@@ -81,7 +82,7 @@ def argv(*, executable: str = "uvx", version: str | None = None, refresh: bool =
         "--no-config",
         "--isolated",
         "--python",
-        TOOL_PYTHON,
+        "3.14" if version is not None and tuple(int(part) for part in version.split(".")) < (8, 40, 0) else TOOL_PYTHON,
         *refresh_args,
         "--from",
         package,
@@ -95,7 +96,7 @@ def repository_argv(*arguments: str, executable: str = "uvx") -> tuple[str, ...]
         "--no-config",
         "--isolated",
         "--python",
-        TOOL_PYTHON,
+        "3.14",  # Dependency-free bootstrap provisions the final core runtime.
         "--from",
         BOOTSTRAP_PACKAGE,
         COMMAND,
@@ -179,6 +180,7 @@ import tomllib
 
 PROTOCOL = {RETIRED_LAUNCHER_PROTOCOL}
 TOOL_PYTHON = {TOOL_PYTHON!r}
+PYTHON_DOWNLOADS = "https://raw.githubusercontent.com/astral-sh/uv/f69fb50c8b28997af9c6b0e5c700a34470d86005/crates/uv-python-managed/download-metadata.json"
 VERSION = re.compile(r"(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)\\Z")
 ROOT = Path(__file__).resolve().parents[1]
 MANIFEST = ROOT / ".sarj-standards.toml"
@@ -215,12 +217,15 @@ def main() -> int:
         "VIRTUAL_ENV",
     ):
         environment.pop(name, None)
+    python = TOOL_PYTHON if tuple(int(part) for part in bundle.split(".")) >= (8, 40, 0) else "3.14"
+    if python == TOOL_PYTHON:
+        environment.setdefault("UV_PYTHON_DOWNLOADS_JSON_URL", PYTHON_DOWNLOADS)
     command = (
         uvx,
         "--no-config",
         "--isolated",
         "--python",
-        TOOL_PYTHON,
+        python,
         "--from",
         f"code-standards=={{bundle}}",
         "code-standards",
