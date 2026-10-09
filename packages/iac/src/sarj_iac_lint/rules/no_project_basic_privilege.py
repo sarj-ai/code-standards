@@ -3,8 +3,7 @@ from __future__ import annotations
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, final, override
 
-from sarj_iac_lint._hcl import tokens
-from sarj_iac_lint.json_boundary import parse_json
+from sarj_iac_lint._hcl import literal_string, tokens
 from sarj_iac_lint.rule_base import (
     AutofixPolicy,
     DefaultLevel,
@@ -112,22 +111,12 @@ class NoProjectBasicPrivilege(Rule):
         return findings
 
 
-def _literal(value: str) -> str | None:
-    text = value.strip()
-    if not text.startswith('"') or not text.endswith('"') or "${" in text or "%{" in text:
-        return None
-    try:
-        result = parse_json(text)
-    except ValueError:
-        return None
-    return result if isinstance(result, str) else None
-
-
 def _grant_roles(block: Block) -> frozenset[str]:
     attr = block.attribute("role")
     if attr is None:
         return frozenset()
-    literal = _literal(attr.value)
+    value = attr.value.strip()
+    literal = None if value.endswith(",") else literal_string(value)
     if literal is not None:
         return frozenset({literal})
     if attr.value.strip() not in {"each.value", "each.key"} or (each := block.attribute("for_each")) is None:
@@ -137,7 +126,7 @@ def _grant_roles(block: Block) -> frozenset[str]:
         parts = parts[2:-1]
     if parts[:1] != ("[",) or parts[-1:] != ("]",):
         return frozenset()
-    values = [_literal(part) for part in parts[1:-1] if part != ","]
+    values = [literal_string(part) for part in parts[1:-1] if part != ","]
     return frozenset(value for value in values if value is not None) if all(values) else frozenset()
 
 
@@ -186,7 +175,7 @@ def _binding_literal_role(
         or parts[index + 1 : index + 2] not in {("=",), (":",)}
     ):
         return None
-    return _literal(parts[index + 2]) if _literal_ends(parts, index + 3) else None
+    return literal_string(parts[index + 2]) if _literal_ends(parts, index + 3) else None
 
 
 def _literal_ends(parts: tuple[str, ...], index: int) -> bool:

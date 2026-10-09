@@ -25,6 +25,8 @@ from sarj_standards.libs.typed_containers import is_object_list, is_object_mappi
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+    from sarj_standards.libs.linting.devops_tools import NativeTool
+
 SUPPORTED: Final = frozenset({"actionlint", "hadolint", "terraform", "tflint", "compose"})
 _ACTION_FORMAT: Final = "{{json .}}"
 _CONFIGS: Final = Path(__file__).resolve().parents[2] / "configs"
@@ -160,9 +162,10 @@ def _json_tool(
     parser: Callable[[str, Path], tuple[Diagnostic, ...]],
     *,
     runner: ProcessRunner,
+    tool: NativeTool | None = None,
 ) -> ToolReport:
     try:  # ruff: ignore[too-many-statements-in-try-clause] -- one boundary normalizes native execution and structured protocol failures.
-        tool = checked_tool(name, root=root, runner=runner)
+        tool = checked_tool(name, root=root, runner=runner) if tool is None else tool
         output = invoke(tool, args, root=root, runner=runner)
         payload = output.stdout
         # actionlint does not render its error template on a clean invocation.
@@ -386,6 +389,7 @@ def _tflint_report(root: Path, project: Path, paths: tuple[Path, ...], runner: P
         paths,
         lambda payload, project_root: parse_tflint(payload, root, cwd=project_root),
         runner=runner,
+        tool=tool,
     )
 
 

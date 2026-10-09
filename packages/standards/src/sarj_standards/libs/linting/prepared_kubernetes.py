@@ -182,7 +182,8 @@ def _policy_value(value: object) -> object:
         metadata["annotations"] = {
             key: item
             for key, item in annotations.items()
-            if not isinstance(key, str) or not key.startswith("ignore-check.kube-linter.io/")
+            if not isinstance(key, str)
+            or (key != "kube-linter.io/ignore-all" and not key.startswith("ignore-check.kube-linter.io/"))
         }
     return result
 

@@ -2325,11 +2325,13 @@ def _analyzer_executable(name: str) -> str | None:
 
 
 def _analysis_environment() -> dict[str, str]:
-    return {
+    environment = {
         key: value
         for key, value in os.environ.items()  # ruff: ignore[banned-api] -- deliberately reduce inherited environment.
         if key in _SAFE_ENVIRONMENT_KEYS or key.startswith("LC_")
     }
+    environment["TFLINT_DISABLE_VERSION_CHECK"] = "true"
+    return environment
 
 
 def _start_capture_threads(threads: Sequence[threading.Thread]) -> None:

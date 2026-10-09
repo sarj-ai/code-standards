@@ -212,12 +212,20 @@ def test_windows_gating_preserves_duplicate_environment_check(tmp_path: Path) ->
     assert [finding.code for finding in findings] == ["duplicate-env-var"]
 
 
-def test_ignore_annotations_cannot_disable_shared_policy(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    "annotation",
+    [
+        "ignore-check.kube-linter.io/all",
+        "ignore-check.kube-linter.io/explicit-privilege-escalation-disabled",
+        "kube-linter.io/ignore-all",
+    ],
+)
+def test_ignore_annotations_cannot_disable_shared_policy(annotation: str, tmp_path: Path) -> None:
     resource = _pod()
     resource["metadata"] = {
         "name": "test",
         "namespace": "work",
-        "annotations": {"ignore-check.kube-linter.io/all": "skip", "example.com/owner": "team"},
+        "annotations": {annotation: "skip", "example.com/owner": "team"},
     }
     resource["spec"] = {"containers": [{"name": "app", "image": "test", "securityContext": {"runAsNonRoot": True}}]}
     original = deepcopy(resource)
@@ -226,10 +234,18 @@ def test_ignore_annotations_cannot_disable_shared_policy(tmp_path: Path) -> None
     )
     assert [finding.code for finding in findings] == [OMISSION_CHECK]
     assert resource == original
+    assert _object(_object(policy_resource(resource)["metadata"])["annotations"]) == {"example.com/owner": "team"}
 
 
-def test_exception_is_exact_for_one_check_and_one_container(tmp_path: Path) -> None:
+@pytest.mark.parametrize("native_blanket_waiver", [False, True])
+def test_exception_is_exact_for_one_check_and_one_container(tmp_path: Path, *, native_blanket_waiver: bool) -> None:
     resource = _pod()
+    if native_blanket_waiver:
+        resource["metadata"] = {
+            "name": "test",
+            "namespace": "work",
+            "annotations": {"kube-linter.io/ignore-all": "Native blanket waiver is not an exact receipt exception."},
+        }
     resource["spec"] = {
         "containers": [
             {"name": name, "image": "test", "securityContext": {"runAsNonRoot": True}} for name in ["app", "worker"]

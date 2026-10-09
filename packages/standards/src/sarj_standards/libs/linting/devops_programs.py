@@ -709,13 +709,24 @@ def _cloudbuild_blocks(top: Mapping[str, Node]) -> list[ExecutionBlock]:
 
 
 def _actions_blocks(top: Mapping[str, Node]) -> list[ExecutionBlock]:
-    steps = [step for job in _table(top.get("jobs")).values() for step in _items(_table(job).get("steps"))]
-    steps.extend(_items(_table(top.get("runs")).get("steps")))
+    defaults = _table(_table(top.get("defaults")).get("run"))
+    workflow_shell = _scalar(defaults.get("shell")) or "shell"
+    blocks: list[ExecutionBlock] = []
+    for job in _table(top.get("jobs")).values():
+        fields = _table(job)
+        defaults = _table(_table(fields.get("defaults")).get("run"))
+        shell = _scalar(defaults.get("shell")) or workflow_shell
+        blocks.extend(_actions_step_blocks(_items(fields.get("steps")), interpreter=shell))
+    blocks.extend(_actions_step_blocks(_items(_table(top.get("runs")).get("steps")), interpreter="shell"))
+    return blocks
+
+
+def _actions_step_blocks(steps: Sequence[Node], *, interpreter: str) -> list[ExecutionBlock]:
     blocks: list[ExecutionBlock] = []
     for step in steps:
         fields = _table(step)
         if (run := fields.get("run")) is not None:
-            blocks.append(_block(run, interpreter=_scalar(fields.get("shell")) or "shell"))
+            blocks.append(_block(run, interpreter=_scalar(fields.get("shell")) or interpreter))
     return blocks
 
 
