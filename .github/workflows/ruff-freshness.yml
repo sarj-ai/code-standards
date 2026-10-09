@@ -23,7 +23,7 @@ jobs:
           persist-credentials: false
       - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
-          version: '0.12.18'
+          version: '0.12.24'
       - name: Fetch authoritative Ruff metadata
         run: curl --fail --location --retry 3 --silent --show-error https://pypi.org/pypi/ruff/json --output "$RUNNER_TEMP/ruff.json"
       - name: Verify and maintain the durable freshness issue

@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import hashlib
-from importlib.metadata import version
 from pathlib import Path
+import shutil
 import subprocess
-import sys
 
 from sarj_standards.libs.json_boundary import parse_json
+from sarj_standards.libs.linting.mobile_tools import semgrep_command
+from sarj_standards.libs.release.process import credential_free_environment
 from sarj_standards.libs.typed_containers import is_object_list, is_object_mapping
 
 
@@ -14,7 +15,6 @@ _FIXTURES = Path(__file__).parent / "fixtures" / "devops-tool-admission"
 
 
 def test_upstream_compose_rules_fail_versionless_admission(tmp_path: Path) -> None:
-    assert version("semgrep") == "1.178.0"
     evidence = parse_json((_FIXTURES / "evidence.json").read_text(encoding="utf-8"))
     assert is_object_mapping(evidence)
     rules = evidence["rules"]
@@ -24,15 +24,24 @@ def test_upstream_compose_rules_fail_versionless_admission(tmp_path: Path) -> No
         assert is_object_mapping(item)
         payload = (_FIXTURES / "semgrep" / f"{name}.yaml").read_bytes()
         assert hashlib.sha256(payload).hexdigest() == item["sha256"]
-    environment = {
-        "PATH": "/usr/bin:/bin",
-        "SEMGREP_LOG_FILE": str(tmp_path / "semgrep.log"),
-        "SEMGREP_SETTINGS_FILE": str(tmp_path / "settings.yml"),
-        "SEMGREP_ENABLE_VERSION_CHECK": "0",
-    }
+    environment = credential_free_environment()
+    environment.update(
+        {
+            "SEMGREP_LOG_FILE": str(tmp_path / "semgrep.log"),
+            "SEMGREP_SETTINGS_FILE": str(tmp_path / "settings.yml"),
+            "SEMGREP_ENABLE_VERSION_CHECK": "0",
+        }
+    )
+    executable = shutil.which("uvx")
+    assert executable is not None
+    prefix = (executable, *semgrep_command(offline=False)[1:])
+    installed = subprocess.run(
+        (*prefix, "--version"), env=environment, capture_output=True, text=True, check=True, timeout=120
+    )
+    assert installed.stdout.strip() == "1.178.0"
     process = subprocess.run(
         (
-            str(Path(sys.executable).parent / "semgrep"),
+            *prefix,
             "scan",
             "--config",
             str(_FIXTURES / "semgrep"),

@@ -31,7 +31,7 @@ standards)
 *) exit 64 ;;
 esac
 environment="$RUNNER_TEMP/$package-$format"
-uv venv --python 3.14 "$environment"
+uv venv --python "${STANDARDS_PYTHON:-3.15}" "$environment"
 case "$format" in
 wheel) uv pip install --python "$environment/bin/python" dist/*.whl ;;
 sdist)

@@ -9,14 +9,14 @@ Every repository receives one complete policy, including all 41 library policies
 Adopt the complete policy, local hooks, and CI with one command:
 
 ```bash
-uvx --no-config --isolated --python 3.14 --from code-standards code-standards setup
+uvx --no-config --isolated --python 3.15 --from code-standards code-standards setup
 ```
 
 The canonical staged check includes semantic lint and repository policy; do not install a second Repo Standards hook.
 
 ## Contributing
 
-Install uv 0.12.18, Python 3.14, Node 24.21, and GNU Make. Then bootstrap a fresh checkout:
+Install uv 0.12.24, Python 3.15, Node 24.21, and GNU Make. Then bootstrap a fresh checkout:
 
 ```bash
 make setup

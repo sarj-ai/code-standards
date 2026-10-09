@@ -17,7 +17,9 @@ if TYPE_CHECKING:
 
 MANIFEST_NAME: Final = ".sarj-standards.toml"
 SUPPORTED_MANIFEST_SCHEMAS: Final = frozenset({3, 4})
-TOOL_PYTHON: Final = "3.14"
+TOOL_PYTHON: Final = "3.15.0"
+_PYTHON315_BUNDLE: Final = (8, 40, 0)
+_PYTHON_DOWNLOADS: Final = "https://raw.githubusercontent.com/astral-sh/uv/f69fb50c8b28997af9c6b0e5c700a34470d86005/crates/uv-python-managed/download-metadata.json"
 _VERSION: Final = re.compile(r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\Z")
 
 
@@ -121,7 +123,7 @@ def command(uvx: str, root: Path, selected_bundle: str, arguments: Sequence[str]
         "--no-config",
         "--isolated",
         "--python",
-        TOOL_PYTHON,
+        TOOL_PYTHON if tuple(int(part) for part in selected_bundle.split(".")) >= _PYTHON315_BUNDLE else "3.14",
         "--from",
         f"code-standards=={selected_bundle}",
         "code-standards",
@@ -164,11 +166,11 @@ def run(arguments: Sequence[str], *, cwd: Path) -> NoReturn:
         message = "uvx is required; install uv and retry"
         raise BootstrapError(message)
     exact_command = command(uvx, root, selected_bundle, parsed.forwarded)
+    environment = os.environ.copy()  # ruff: ignore[banned-api] -- inherit registry, certificate, cache, proxy, and offline policy.
+    if tuple(int(part) for part in selected_bundle.split(".")) >= _PYTHON315_BUNDLE:
+        environment.setdefault("UV_PYTHON_DOWNLOADS_JSON_URL", _PYTHON_DOWNLOADS)
     try:
-        execute(
-            exact_command,
-            os.environ.copy(),  # ruff: ignore[banned-api] -- inherit registry, certificate, cache, proxy, and offline policy.
-        )
+        execute(exact_command, environment)
     except OSError as exc:
         message = f"could not execute Standards {selected_bundle}: {exc}"
         raise BootstrapError(message) from exc

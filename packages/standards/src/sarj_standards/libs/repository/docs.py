@@ -119,14 +119,14 @@ def _root_readme(
         (
             "Adopt the complete policy, local hooks, and CI with one command:\n\n"
             "```bash\n"
-            "uvx --no-config --isolated --python 3.14 --from code-standards code-standards setup\n"
+            "uvx --no-config --isolated --python 3.15 --from code-standards code-standards setup\n"
             "```\n\n"
             "The canonical staged check includes semantic lint and repository policy; do not install a "
             "second Repo Standards hook."
         ),
         (
             "## Contributing\n\n"
-            "Install uv 0.12.18, Python 3.14, Node 24.21, and GNU Make. Then bootstrap a fresh checkout:\n\n"
+            "Install uv 0.12.24, Python 3.15, Node 24.21, and GNU Make. Then bootstrap a fresh checkout:\n\n"
             "```bash\nmake setup\nmake verify\n```"
             "\n\nRun independent package suites with `make test -j4`, or focus on the fresh Standards wheel "
             "with `make test-standards PYTEST_ARGS='-k release'`. `TEST_JOBS=1` serializes wheel tests "
@@ -339,7 +339,7 @@ def _package_usage(name: str, engine: str | None) -> str:
             "It reads the exact Standards bundle version from `.sarj-standards.toml`; ordinary Standards "
             "upgrades change only that manifest. No mise integration or repository-local launcher is needed.\n\n"
             "```bash\n"
-            "uvx --no-config --isolated --python 3.14 --from "
+            "uvx --no-config --isolated --python 3.15 --from "
             "sarj-standards-bootstrap code-standards check\n"
             "```\n\n"
             "uvx installs and caches the bootstrap on first use, then reuses it without requesting a refresh "
@@ -399,7 +399,7 @@ def _install_command(name: str, registry: str) -> str:
         return f"uv add {name}"
     if registry == "npm":
         return f"npm install --save-dev {name}"
-    python = " --python 3.14" if name == "code-standards" else ""
+    python = " --python 3.15" if name == "code-standards" else ""
     return f"uv tool install{python} {name}"
 
 

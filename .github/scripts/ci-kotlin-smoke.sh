@@ -6,6 +6,7 @@ mkdir -p "$repo/src/main/kotlin/smoke"
 printf 'plugins { id("com.android.application") }\n' >"$repo/build.gradle.kts"
 printf 'package smoke\n\ninternal const val MOBILE_SMOKE: Int = 1\n' >"$repo/src/main/kotlin/smoke/MobileSmoke.kt"
 cli=(uv run --frozen code-standards --root "$repo")
+uv run --frozen python -c 'import subprocess; from sarj_standards.libs.linting.mobile_tools import semgrep_command; subprocess.run((*semgrep_command(offline=False), "--version"), check=True)'
 "${cli[@]}" setup --no-install
 "${cli[@]}" check --trust-repository-code --format json --output "$repo/report.json" \
   "$repo/src/main/kotlin/smoke/MobileSmoke.kt" || true

@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "catalogSha256": "98e44d49d4ad9d8d087175923061cd573ade78b9e34198c795d4085171f5427a",
-  "cliSha256": "8e6eabc264c75cc236dd88b30b6d55522615ae5cd5e489fdc5fb83a04443fb62",
+  "cliSha256": "0e5c8048d181220138f2d9becd8e58fc2b7dda8a546b5fb74abcff86569b21f7",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -12446,8 +12446,8 @@
     }
   },
   "static": {
-    "quickSetup": "uv tool install --python 3.14 code-standards\ncode-standards setup\ncode-standards doctor\ncode-standards check\n",
-    "runOnce": "uvx --no-config --isolated --python 3.14 --from code-standards code-standards setup\n",
+    "quickSetup": "uv tool install --python 3.15.0 code-standards\ncode-standards setup\ncode-standards doctor\ncode-standards check\n",
+    "runOnce": "uvx --no-config --isolated --python 3.15.0 --from code-standards code-standards setup\n",
     "bootstrap": "[ci]\nbootstrap = [\"yarn generate\", \"uv run --project python generate-api\"]\n",
     "usage": {
       "commit-message": "code-standards commit-message [-h] COMMIT_MSG_FILE\n",

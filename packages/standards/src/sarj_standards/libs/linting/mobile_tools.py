@@ -14,6 +14,8 @@ from typing import TYPE_CHECKING, Final, Literal
 from urllib.request import Request, urlopen
 import zipfile
 
+from sarj_standards._meta import CONFIGS_DIR
+
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -23,6 +25,23 @@ _MAX_ARTIFACT_BYTES: Final = 80 * 1024 * 1024
 _MAX_MOBSF_RULE_BYTES: Final = 16 * 1024 * 1024
 _READ_BYTES: Final = 1024 * 1024
 _USER_AGENT: Final = "code-standards-mobile-tools/1"
+SEMGREP_VERSION: Final = "1.178.0"
+
+
+def semgrep_command(*, offline: bool = True) -> tuple[str, ...]:
+    return (
+        "uvx",
+        "--no-config",
+        "--isolated",
+        *(("--offline",) if offline else ()),
+        "--python",
+        "3.14",
+        "--overrides",
+        str(CONFIGS_DIR / "semgrep-overrides.txt"),
+        "--from",
+        f"semgrep=={SEMGREP_VERSION}",
+        "semgrep",
+    )
 
 
 @dataclass(frozen=True, slots=True)

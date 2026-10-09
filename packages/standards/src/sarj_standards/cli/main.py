@@ -608,6 +608,7 @@ def _bootstrap_update(args: _Args, target_version: str | None) -> int:
         command.append("--no-install")
     environment = dict(os.environ)  # ruff: ignore[banned-api] -- preserve the caller environment for uvx
     environment["SARJ_STANDARDS_BOOTSTRAPPED"] = "1"
+    environment.setdefault("UV_PYTHON_DOWNLOADS_JSON_URL", launcher.PYTHON_DOWNLOADS)
     return _run_resolved_update(
         launcher.argv(executable=executable, version=target_version, refresh=True), command, environment
     )

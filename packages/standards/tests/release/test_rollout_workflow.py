@@ -371,10 +371,11 @@ def _recorded_commands(path: Path) -> list[list[str]]:
         ("bad; command", "workflow_dispatch", "", 2),
     ],
 )
+@pytest.mark.parametrize("runtime", ["3.14", "3.15.0"])
 def test_rollout_version_executes_only_the_schedule_lookup(
-    tmp_path: Path, requested: str, event: str, expected: str, status: int
+    tmp_path: Path, requested: str, event: str, expected: str, status: int, *, runtime: str
 ) -> None:
-    recorder = _rollout_recorder(tmp_path, REQUESTED_VERSION=requested, EVENT_NAME=event)
+    recorder = _rollout_recorder(tmp_path, REQUESTED_VERSION=requested, EVENT_NAME=event, STANDARDS_PYTHON=runtime)
     environment = recorder.environment
     commands = recorder.commands
     result = _run_rollout("rollout-version.sh", environment)
@@ -389,7 +390,7 @@ def test_rollout_version_executes_only_the_schedule_lookup(
                 "--no-config",
                 "--isolated",
                 "--python",
-                "3.14",
+                runtime,
                 "--refresh",
                 "--from",
                 "code-standards",

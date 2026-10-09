@@ -72,7 +72,8 @@ def run_wheel_tests(
             msg = f"expected five fresh local wheels, found {len(artifacts)}"
             raise ValueError(msg)
         environment_path = destination / "venv"
-        runner(("uv", "venv", "--python", "3.14", str(environment_path)), cwd=root)
+        runtime = os.environ.get("STANDARDS_PYTHON", "3.15")  # ruff: ignore[banned-api] -- explicit CI compatibility lane selection.
+        runner(("uv", "venv", "--python", runtime, str(environment_path)), cwd=root)
         bin_path = environment_path / ("Scripts" if sys.platform == "win32" else "bin")
         python = bin_path / ("python.exe" if sys.platform == "win32" else "python")
         runner(
