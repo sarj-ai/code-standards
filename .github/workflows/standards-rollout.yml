@@ -130,7 +130,7 @@ jobs:
     needs: plan
     if: needs.plan.outputs.plan_status == '0' && needs.plan.outputs.consumers != '[]'
     name: rollout (${{ matrix.consumer.name }})
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.consumer.workflow_runner || 'ubuntu-latest' }}
     timeout-minutes: 50
     strategy:
       fail-fast: false

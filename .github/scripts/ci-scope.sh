@@ -83,6 +83,10 @@ else
       .github/workflows/standards-rollout.yml|.github/scripts/dispatch-standards-rollout.sh)
         # The SDK cohort owns the fleet controller and dispatch contracts.
         select_scopes standards docs ;;
+      .github/scripts/verify-docs.sh)
+        # The SDK executes this gate's real-shell failure contracts; the docs
+        # lane runs the full gate. Native linter units cannot affect this shell.
+        select_scopes standards docs ;;
       .github/workflows/private-refs.yml|.github/workflows/ruff-freshness.yml)
         # Repository probes do not import or build language packages.
         select_scopes standards docs ;;

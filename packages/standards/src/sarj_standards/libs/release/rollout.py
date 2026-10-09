@@ -45,6 +45,10 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Generator, Mapping, Sequence
 
 DEFAULT_REGISTRY = Path(".sarj-standards-rollout.toml")
+DEFAULT_WORKFLOW_RUNNER = "ubuntu-latest"
+WORKFLOW_RUNNERS = frozenset(
+    {DEFAULT_WORKFLOW_RUNNER, "ubuntu-24.04", "blacksmith-2vcpu-ubuntu-2404", "blacksmith-4vcpu-ubuntu-2404"}
+)
 MAX_CONCURRENT_CONSUMERS = 16
 BASE_WATCH_POLL_SECONDS = 10
 MAX_CONSUMER_TIMINGS = 32
@@ -285,6 +289,7 @@ class Consumer:
     baseline_jobs: int = 2
     verify_checks: tuple[tuple[str, ...], ...] = ()
     verify_jobs: int = 2
+    workflow_runner: str = DEFAULT_WORKFLOW_RUNNER
 
     @property
     def identity(self) -> str:
@@ -457,6 +462,7 @@ def verify_release(
         package = runner.run(
             (
                 "uvx",
+                "--no-config",
                 "--isolated",
                 "--python",
                 "3.14",
@@ -1418,6 +1424,7 @@ def _apply_one(  # ruff: ignore[too-many-locals] - one transaction binds verific
         previous_react_doctor_policy = react_doctor_policy_snapshot(repo)
         tool = (
             "uvx",
+            "--no-config",
             "--isolated",
             "--python",
             "3.14",
@@ -1560,7 +1567,12 @@ def update_consumer_bundle(
             result.check_returncode()
         sys.stderr.write(f"Waiting for Code Standards {version} in the consumer package index\n")
         sleep(RELEASE_VISIBILITY_DELAY.total_seconds())
-    runner.run((*tool_prefix, *tool, "update", "--to", version), cwd=repo, env=environment)
+    # The exact, refreshed consumer probe already resolved this bundle. Hand
+    # that evidence to this update alone so its CLI does not resolve it again.
+    # The CLI still rejects an executing-version mismatch, installs consumer
+    # dependencies and performs its complete preflight/postflight checks.
+    update_environment = {**environment, "SARJ_STANDARDS_BOOTSTRAPPED": "1"}
+    runner.run((*tool_prefix, *tool, "update", "--to", version), cwd=repo, env=update_environment)
 
 
 def push_rollout_head(
@@ -1656,6 +1668,7 @@ def latest_version(runner: CommandRunner) -> str:
     result = runner.run(
         (
             "uvx",
+            "--no-config",
             "--isolated",
             "--python",
             "3.14",
@@ -1716,7 +1729,15 @@ def pending_matrix(outcomes: Sequence[Outcome]) -> list[dict[str, str]]:
         return []
     first_wave = min(ROLLOUT_CHANNELS.index(item.consumer.channel) for item in pending)
     return [
-        {"name": item.consumer.name, "identity": item.consumer.identity}
+        {
+            "name": item.consumer.name,
+            "identity": item.consumer.identity,
+            **(
+                {"workflow_runner": item.consumer.workflow_runner}
+                if item.consumer.workflow_runner != DEFAULT_WORKFLOW_RUNNER
+                else {}
+            ),
+        }
         for item in pending
         if ROLLOUT_CHANNELS.index(item.consumer.channel) == first_wave
         and (
@@ -1915,6 +1936,7 @@ def _registry_consumer(entry_value: object) -> Consumer:
         "baseline_jobs",
         "verify_checks",
         "verify_jobs",
+        "workflow_runner",
     }:
         msg = f"invalid registry entry keys: {entry_value!r}"
         raise RolloutError(msg)
@@ -1952,6 +1974,7 @@ def _registry_consumer(entry_value: object) -> Consumer:
         baseline_jobs=_baseline_jobs(entry),
         verify_checks=_verification_checks(entry),
         verify_jobs=_verification_jobs(entry),
+        workflow_runner=_workflow_runner(entry),
         channel=RolloutChannel(channel_value),
         baseline_rules=_registry_strings(baseline_rules_value),
         baseline_paths=baseline_paths,
@@ -1960,6 +1983,14 @@ def _registry_consumer(entry_value: object) -> Consumer:
 
 
 _MAX_VERIFICATION_CHECKS = 16
+
+
+def _workflow_runner(entry: dict[str, object]) -> str:
+    value = entry.get("workflow_runner", DEFAULT_WORKFLOW_RUNNER)
+    if not isinstance(value, str) or value not in WORKFLOW_RUNNERS:
+        msg = "workflow_runner must be one of: " + ", ".join(sorted(WORKFLOW_RUNNERS))
+        raise RolloutError(msg)
+    return value
 
 
 def _verification_checks(entry: dict[str, object]) -> tuple[tuple[str, ...], ...]:

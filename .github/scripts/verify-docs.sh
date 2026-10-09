@@ -15,7 +15,13 @@ run_check() {
 # shared projections once; standalone npm commands retain their pre/post hooks.
 run_check Examples npm run code-examples:check
 run_check Catalog npm run third-party-catalog:check
-run_check Lint npm --ignore-scripts run lint
-run_check Types npm --ignore-scripts run check
+# Both checks read the prepared source. ESLint excludes Astro's generated
+# .astro directory; neither check depends on the other's output.
+run_check Lint npm --ignore-scripts run lint & lint_pid=$!
+run_check Types npm --ignore-scripts run check & types_pid=$!
+result=0
+wait "$lint_pid" || result=1
+wait "$types_pid" || result=1
+if [[ "$result" != 0 ]]; then exit "$result"; fi
 run_check Build npm --ignore-scripts run build
 run_check Distribution node scripts/verify-third-party-catalog.mjs --dist

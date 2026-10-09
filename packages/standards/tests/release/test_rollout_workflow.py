@@ -113,6 +113,17 @@ def test_rollout_bootstrap_obeys_the_selected_action_policy() -> None:
     assert "sha256sum --check --strict" in workflow
 
 
+def test_rollout_worker_uses_validated_per_consumer_hosts_with_the_existing_default() -> None:
+    workflow = _workflow()
+    jobs = workflow["jobs"]
+    assert _is_object(jobs)
+    job = jobs["rollout"]
+    assert _is_object(job)
+
+    assert job["runs-on"] == "${{ matrix.consumer.workflow_runner || 'ubuntu-latest' }}"
+    assert "workflow_runner" in _controller_literals()
+
+
 def test_rollout_token_is_installation_scoped_and_never_persisted_by_checkout() -> None:
     workflow = _rendered_workflow()
     controller_literals = _controller_literals()

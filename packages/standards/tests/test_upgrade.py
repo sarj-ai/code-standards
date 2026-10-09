@@ -1314,6 +1314,43 @@ def test_update_rejects_invalid_repository_configuration(
     assert "doctor.package-json.invalid" in error
 
 
+@pytest.mark.parametrize("invalid", [False, True])
+def test_update_preview_reuses_the_plans_diagnosis_and_preserves_invalid_blockers(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], *, invalid: bool
+) -> None:
+    _outdated_python_repo(tmp_path)
+    if invalid:
+        (tmp_path / "package.json").write_text("", encoding="utf-8")
+    original = doctor.diagnose
+    observed: list[Path] = []
+
+    def diagnose(root: Path) -> list[doctor.Finding]:
+        observed.append(root)
+        return original(root)
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- observe the real diagnosis at the complete CLI boundary
+        doctor, "diagnose", diagnose
+    )
+
+    status = _main(["update", "--offline", "--check", str(tmp_path)])
+
+    assert observed == [tmp_path.resolve()]
+    assert status == (2 if invalid else 1)
+    if invalid:
+        assert "doctor.package-json.invalid" in capsys.readouterr().err
+
+
+def test_upgrade_plan_retains_findings_without_changing_the_drift_contract(tmp_path: Path) -> None:
+    _outdated_python_repo(tmp_path)
+
+    plan = upgrade.build_plan(tmp_path)
+
+    assert plan.preflight_findings
+    assert plan.preexisting_drift == frozenset(
+        (finding.id, finding.where) for finding in plan.preflight_findings if finding.level is doctor.Level.DRIFT
+    )
+
+
 def test_current_no_install_update_does_not_recommend_unneeded_install_work(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
