@@ -109,6 +109,7 @@ class UpgradePlan:
     manifest_text: str
     preconditions: dict[Path, bytes | None]
     preexisting_drift: frozenset[tuple[str, str]]
+    preflight_findings: tuple[doctor.Finding, ...] = ()
 
 
 def build_plan(root: Path) -> UpgradePlan:  # ruff: ignore[too-many-locals] -- one plan resolves every owned site once
@@ -183,8 +184,9 @@ def build_plan(root: Path) -> UpgradePlan:  # ruff: ignore[too-many-locals] -- o
     planned_paths = _upgrade_targets(plan, path)
     transaction.validate_targets(root, planned_paths)
     plan.preconditions = {target: target.read_bytes() if target.is_file() else None for target in planned_paths}
+    plan.preflight_findings = tuple(doctor.diagnose(root))
     plan.preexisting_drift = frozenset(
-        (finding.id, finding.where) for finding in doctor.diagnose(root) if finding.level is doctor.Level.DRIFT
+        (finding.id, finding.where) for finding in plan.preflight_findings if finding.level is doctor.Level.DRIFT
     )
     return plan
 
@@ -418,6 +420,11 @@ def _identical_config_mirrors(root: Path, target: Path) -> tuple[Path, ...]:
 
 
 def unsafe_retired_findings(plan: UpgradePlan) -> list[doctor.Finding]:
+    # Mutation always reads the current repository, even if its plan is older.
+    return unmigrated_retired_findings(plan, doctor.diagnose(plan.root))
+
+
+def unmigrated_retired_findings(plan: UpgradePlan, findings: Sequence[doctor.Finding]) -> list[doctor.Finding]:
     replaced = [target for _source, target in plan.config_writes]
     owned = {target.relative_to(plan.root).as_posix() for target in replaced}
     planned = {path.relative_to(plan.root).as_posix(): (path, contents) for path, contents in plan.suppression_writes}
@@ -428,7 +435,7 @@ def unsafe_retired_findings(plan: UpgradePlan) -> list[doctor.Finding]:
         path.relative_to(plan.root).as_posix(): (path, contents) for path, contents in plan.scaffold_plan.writes
     }
     blockers: list[doctor.Finding] = []
-    for finding in doctor.diagnose(plan.root):
+    for finding in findings:
         if finding.id != "doctor.rule.retired" or finding.level is not doctor.Level.DRIFT:
             continue
         relative, _, reference = finding.where.partition(": ")

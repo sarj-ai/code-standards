@@ -965,6 +965,7 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
         assert runner.commands == [
             (
                 "uvx",
+                "--no-config",
                 "--isolated",
                 "--python",
                 "3.14",

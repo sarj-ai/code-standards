@@ -424,12 +424,12 @@ def _repair_full_adoption(root: Path, *, install: bool) -> int:
     from sarj_standards.libs.adoption import doctor, upgrade  # ruff: ignore[import-outside-top-level]
 
     plan = upgrade.build_plan(root)
-    blockers = upgrade.unsafe_retired_findings(plan)
+    current_findings = list(plan.preflight_findings)
+    blockers = upgrade.unmigrated_retired_findings(plan, current_findings)
     if blockers:
         print("warning: automatic repair cannot migrate these retired rule references:", file=sys.stderr)
         for finding in blockers:
             print(f"warning: {finding.where} -- {finding.detail}", file=sys.stderr)
-    current_findings = doctor.diagnose(root)
     current_drift = [finding for finding in current_findings if finding.level is doctor.Level.DRIFT]
     missing_hooks = install and any(finding.id in _HOOK_INSTALL_IDS for finding in current_findings)
     return (
@@ -522,7 +522,7 @@ def _repair_legacy_manifest(root: Path, *, install: bool) -> manifest.Manifest:
 
 
 def cmd_update(args: _Args) -> int:
-    from sarj_standards.libs.adoption import doctor, upgrade  # ruff: ignore[import-outside-top-level]
+    from sarj_standards.libs.adoption import upgrade  # ruff: ignore[import-outside-top-level]
 
     target_version: str | None = None
     if args.target_version is not None:
@@ -568,7 +568,7 @@ def cmd_update(args: _Args) -> int:
     except (OSError, TypeError, ValueError) as exc:
         print(f"error: cannot plan upgrade: {exc}", file=sys.stderr)
         return 2
-    preflight_findings = doctor.diagnose(root)
+    preflight_findings = list(plan.preflight_findings)
     if not _update_preflight(plan, preflight_findings):
         return 2
     preview = upgrade.render(plan.changes)
@@ -655,7 +655,7 @@ def _update_preflight(plan: upgrade.UpgradePlan, preflight_findings: list[doctor
             if finding.remediation:
                 print(f"fix: {finding.remediation}", file=sys.stderr)
         return False
-    blockers = upgrade.unsafe_retired_findings(plan)
+    blockers = upgrade.unmigrated_retired_findings(plan, preflight_findings)
     if blockers:
         for finding in blockers:
             print(f"error: {finding.where} -- {finding.detail}", file=sys.stderr)

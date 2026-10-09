@@ -26,6 +26,12 @@ def test_complete_docs_gate_checks_projections_once_and_stops_on_failure(tmp_pat
         '"--ignore-scripts run check") name=types;;\n'
         '"--ignore-scripts run build") name=build;;\n'
         "*) exit 8;; esac\n"
+        'if [ "$name" = lint ] || [ "$name" = types ]; then\n'
+        'touch "$SIGNALS/$name.started"\n'
+        'until test -f "$SIGNALS/lint.started" && test -f "$SIGNALS/types.started"; do sleep 0.01; done\n'
+        'touch "$SIGNALS/$name.done"\nfi\n'
+        'if [ "$name" = build ]; then\n'
+        'test -f "$SIGNALS/lint.done" && test -f "$SIGNALS/types.done" || exit 9\nfi\n'
         'printf "%s\\n" "$name" >> "$SIGNALS/order"\n'
         '[ "$FAILURE" != "$name" ]\n'
     )
@@ -51,7 +57,10 @@ def test_complete_docs_gate_checks_projections_once_and_stops_on_failure(tmp_pat
     )
     expected = ["examples", "catalog", "lint", "types", "build", "distribution"]
     if failure != "none":
-        expected = expected[: expected.index(failure) + 1]
-    assert (signals / "order").read_text().splitlines() == expected
+        expected = expected[: (4 if failure in {"lint", "types"} else expected.index(failure) + 1)]
+    observed = (signals / "order").read_text().splitlines()
+    assert observed[:2] == expected[:2]
+    assert sorted(observed[2:4]) == sorted(expected[2:4])
+    assert observed[4:] == expected[4:]
     assert (result.returncode == 0) == (failure == "none")
     assert len(result.stdout.splitlines()) == len(expected)
