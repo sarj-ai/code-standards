@@ -28,6 +28,7 @@ def test_managed_mobile_tool_pins_match_the_shipped_version_manifest() -> None:
         "mint": versions["mint"],
     }
     assert mobile_tools._MOBSF_RULES.version == versions["mobsfscan"]  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+    assert versions["semgrep"] == mobile_tools.SEMGREP_VERSION
     assert mobile_tools._MOBSF_RULES.url.startswith("https://files.pythonhosted.org/")  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
     artifacts = mobile_tools._ARTIFACTS  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- verifies fixed origins and digests.
     assert all(artifact.url.startswith("https://github.com/") for artifact in artifacts.values())

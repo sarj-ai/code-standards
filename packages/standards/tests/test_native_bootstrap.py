@@ -16,7 +16,7 @@ if TYPE_CHECKING:
 import pytest
 import yaml
 
-from sarj_standards.libs.adoption import manifest, native_bootstrap, scaffold
+from sarj_standards.libs.adoption import launcher, manifest, native_bootstrap, scaffold
 from sarj_standards.libs.typed_containers import is_object_list, is_object_mapping
 
 
@@ -160,6 +160,8 @@ def test_root_and_generated_ci_bootstrap_before_tools_setup(tmp_path: Path) -> N
                     run = step["run"]
                     assert isinstance(run, str)
                     argv = shlex.split(run)
+                    if "--no-config" in argv:
+                        assert step["env"] == {"UV_PYTHON_DOWNLOADS_JSON_URL": launcher.PYTHON_DOWNLOADS}
                     assert argv[-3:] == ["python", "-m", "sarj_standards.libs.adoption.native_bootstrap"]
                     commands.append(argv)
                     bootstrap = index
@@ -176,7 +178,7 @@ def test_root_and_generated_ci_bootstrap_before_tools_setup(tmp_path: Path) -> N
         "--no-config",
         "--no-project",
         "--python",
-        "3.14",
+        "3.15.0",
         "--with",
         f"code-standards=={manifest.adopted_version()}",
         "python",

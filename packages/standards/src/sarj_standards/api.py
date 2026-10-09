@@ -441,6 +441,7 @@ class Standards:
             command.append("--no-install")
         environment = dict(os.environ)  # ruff: ignore[banned-api] -- preserve caller environment for the fixed uvx process.
         environment["SARJ_STANDARDS_BOOTSTRAPPED"] = "1"
+        environment.setdefault("UV_PYTHON_DOWNLOADS_JSON_URL", launcher.PYTHON_DOWNLOADS)
         try:
             completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- fixed executable and argv.
                 command,

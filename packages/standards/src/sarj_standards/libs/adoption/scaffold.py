@@ -1295,7 +1295,7 @@ def _plan_python(root: Path, plan: Plan, *, force: bool) -> None:
             return
         tool = manifest.as_table(document.get("tool"))
         ruff = manifest.as_table(tool.get("ruff"))
-        _plan_ruff_extension(pyproject, text, ruff, plan)
+        _plan_ruff_extension(pyproject, text, ruff, plan, python_target)
     _plan_python_typechecker(root, plan, python_target, force=force)
 
 
@@ -1306,15 +1306,14 @@ def _validate_python_project(
     # document deeply enough to replace the clearer mutation-safety error.
     if not is_link_like(pyproject) and (not isinstance(requires_python, str) or python_target is None):
         plan.errors.append(
-            f"cannot safely adopt the Python 3.14 Standards profile in {pyproject}: "
-            "[project].requires-python must be a valid specifier that includes Python 3.14"
+            f"cannot safely adopt the Python Standards profile in {pyproject}: "
+            "[project].requires-python must be a valid specifier targeting Python 3.14 or 3.15"
         )
         return False
-    if not is_link_like(pyproject) and python_target != "3.14":
+    if not is_link_like(pyproject) and python_target not in {"3.14", "3.15"}:
         plan.errors.append(
-            f"cannot safely adopt the Python 3.14 Standards profile in {pyproject}: "
-            f"the project targets Python {python_target}; use a Python 3.14-compatible range or the advisory "
-            "Python 3.15 watch profile"
+            f"cannot safely adopt the Python Standards profile in {pyproject}: "
+            f"the project targets Python {python_target}; use a range targeting Python 3.14 or 3.15"
         )
         return False
     tool = manifest.as_table(document.get("tool"))
@@ -1354,8 +1353,12 @@ def _ruff_policy_conflicts(lint: Mapping[str, object]) -> tuple[tuple[str, str],
     )
 
 
-def _plan_ruff_extension(pyproject: Path, text: str, ruff: Mapping[str, object], plan: Plan) -> None:
+def _plan_ruff_extension(
+    pyproject: Path, text: str, ruff: Mapping[str, object], plan: Plan, python_target: str | None
+) -> None:
     updated = _extend_ruff_replacement_policy(text)
+    if python_target == "3.15":
+        updated = _ruff_python_target(updated)
     if ruff.get("extend") == ".ruff-strict.toml" and updated != text:
         plan.writes.append((pyproject, updated))
     elif ruff.get("extend") == ".ruff-strict.toml":
@@ -1367,6 +1370,22 @@ def _plan_ruff_extension(pyproject: Path, text: str, ruff: Mapping[str, object],
         plan.writes.append((pyproject, f'{updated}\n[tool.ruff]\nextend = ".ruff-strict.toml"\n'))
     else:
         plan.edits.append((pyproject, '\n[tool.ruff]\nextend = ".ruff-strict.toml"\n'))
+
+
+def _ruff_python_target(text: str) -> str:
+    matches = tuple(_TOML_TABLE_HEADER.finditer(text))
+    for index, match in enumerate(matches):
+        if match.group("name") != "tool.ruff":
+            continue
+        end = matches[index + 1].start() if index + 1 < len(matches) else len(text)
+        section = text[match.end() : end]
+        target = re.compile(r"(?m)^[ \t]*target-version[ \t]*=[^\n]*$")
+        if target.search(section):
+            section = target.sub('target-version = "py315"', section, count=1)
+        else:
+            section = '\ntarget-version = "py315"' + section
+        return text[: match.end()] + section + text[end:]
+    return text + '\n[tool.ruff]\ntarget-version = "py315"\n'
 
 
 def _plan_python_typechecker(root: Path, plan: Plan, python_target: str | None, *, force: bool) -> None:
@@ -1409,7 +1428,9 @@ def _plan_existing_pyright(pyright: Path, plan: Plan, python_target: str | None)
             return
         changed = existing_pyright_extend != _PYRIGHT_POLICY_PARENT
         document["extends"] = _PYRIGHT_POLICY_PARENT
-        if python_target is not None and "pythonVersion" not in document:
+        if python_target is not None and (
+            "pythonVersion" not in document or (python_target == "3.15" and document["pythonVersion"] == "3.14")
+        ):
             document["pythonVersion"] = python_target
             changed = True
         if changed:
@@ -2333,6 +2354,8 @@ def github_ci_workflow(root: Path, *, ecosystems: Ecosystems | None = None) -> s
     lines.extend(
         (
             "      - name: Install the pinned native tool bootstrap",
+            "        env:",
+            f"          UV_PYTHON_DOWNLOADS_JSON_URL: {launcher.PYTHON_DOWNLOADS}",
             (
                 f"        run: uv run --no-config --no-project --python {launcher.TOOL_PYTHON} "
                 f"--with code-standards=={manifest.adopted_version()} "
@@ -2438,7 +2461,7 @@ def _append_javascript_ci(
 def _setup_uv_version(root: Path, python_root: Path | None) -> str:
     source = uvtool.version_file(python_root)
     if source is None:
-        return "          version: '0.12.18'"
+        return "          version: '0.12.24'"
     return f"          version-file: {json.dumps(source.relative_to(root).as_posix())}"
 
 

@@ -6,7 +6,7 @@ set -euo pipefail
 root="$(git rev-parse --show-toplevel)"
 requirements="$(mktemp "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/release-python.XXXXXX")"
 trap 'rm -f "$requirements"' EXIT
-uv run --no-config --no-project --python 3.14 python "$root/.github/scripts/release-metadata.py" \
+uv run --no-config --no-project --python "${STANDARDS_PYTHON:-3.15}" python "$root/.github/scripts/release-metadata.py" \
   runtime-requirements "$root/packages/standards/pyproject.toml" >"$requirements"
-PYTHONPATH="$root/packages/standards/src" uv run --no-config --no-project --python 3.14 \
+PYTHONPATH="$root/packages/standards/src" uv run --no-config --no-project --python "${STANDARDS_PYTHON:-3.15}" \
   --with-requirements "$requirements" python "$@"

@@ -5,7 +5,7 @@
 One deterministic quality gate for Sarj Python, TypeScript, Swift, Kotlin, shell, SQL, IaC, and repository policy.
 
 ```bash
-uv tool install --python 3.14 code-standards
+uv tool install --python 3.15 code-standards
 ```
 
 Adopt the repository once with `code-standards setup`. It installs one canonical staged gate that includes semantic lint and repository policy, plus commit-message and pull-request history enforcement. Do not install Repo Standards separately.

@@ -1,6 +1,6 @@
 [project]
 name = "code-standards"
-version = "8.39.2"
+version = "8.40.1"
 description = "One deterministic quality gate for Sarj Python, TypeScript, Swift, Kotlin, shell, SQL, IaC, and repository policy."
 readme = "README.md"
 requires-python = ">=3.14"
@@ -13,6 +13,7 @@ classifiers = [
   "License :: OSI Approved :: MIT License",
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3.14",
+  "Programming Language :: Python :: 3.15",
   "Topic :: Software Development :: Quality Assurance",
 ]
 dependencies = [
@@ -23,17 +24,16 @@ dependencies = [
   "lefthook==2.1.14",
   "packaging==26.3",
   "pre-commit==4.6.2",
-  "pydantic==2.13.5",
+  "pydantic==2.14.0",
   "PyYAML==6.0.3",
   "jsonschema==4.25.1",
   "referencing==0.37.0",
-  "repo-standards==6.3.12",
+  "repo-standards==6.3.13",
   "ruff==0.16.10",
-  "semgrep==1.178.0",
   "shellcheck-py==0.11.0.1; (sys_platform == 'darwin' and platform_machine == 'arm64') or (sys_platform == 'darwin' and platform_machine == 'x86_64') or (sys_platform == 'linux' and platform_machine == 'x86_64') or (sys_platform == 'win32' and platform_machine == 'AMD64')",
   "sarj-iac-lint==0.19.1",
   "sarj-python-lint==1.26.1",
-    "sarj-sql-lint==0.18.14",
+  "sarj-sql-lint==0.18.14",
   "typer==0.27.2",
 ]
 
@@ -68,10 +68,6 @@ dev = [
   "pytest>=9.1.1",
 ]
 
-[tool.uv]
-# Semgrep 1.178.0 requires vulnerable PyJWT 2.13.x. Remove this override when
-# its upstream requirement admits the patched version.
-override-dependencies = ["pyjwt[crypto]==2.15.1"]
 
 [tool.uv.sources]
 sarj-rule-contracts = { path = "../contracts", editable = true }
@@ -92,4 +88,4 @@ extend = "../../.ruff-strict.toml"
 [tool.deptry.per_rule_ignores]
 # These packages are runtime executables invoked by the Standards orchestrator,
 # not importable libraries. Their exact pins are still required and exercised.
-DEP002 = ["basedpyright", "deptry", "lefthook", "pre-commit", "ruff", "semgrep", "shellcheck-py"]
+DEP002 = ["basedpyright", "deptry", "lefthook", "pre-commit", "ruff", "shellcheck-py"]

@@ -1,0 +1,2 @@
+# Semgrep 1.178.0 pins vulnerable PyJWT 2.13.x. Keep the isolated engine patched.
+pyjwt[crypto]==2.15.1

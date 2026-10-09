@@ -117,8 +117,8 @@ def test_every_setup_uv_step_pins_the_uv_binary() -> None:
         text = workflow.read_text(encoding="utf-8")
         for match in re.finditer(r"(?m)^\s*- uses: astral-sh/setup-uv@[^\n]+$", text):
             following = text[match.end() :].split("\n      - ", 1)[0]
-            if "version: '0.12.18'" not in following:
-                violations.append(f"setup-uv does not pin uv 0.12.18 in {workflow}")
+            if "version: '0.12.24'" not in following:
+                violations.append(f"setup-uv does not pin uv 0.12.24 in {workflow}")
     assert violations == []
 
 
@@ -612,11 +612,13 @@ def test_documentation_deploy_is_revision_bound_self_verifying_and_single_site()
         ("iac", "sarj_iac_lint", "sarj-iac-lint"),
     ],
 )
+@pytest.mark.parametrize("runtime", ["3.14", "3.15"])
 def test_python_publishers_smoke_and_bind_wheels_and_sdists(
-    tmp_path: Path, package: str, module: str, executable: str | None
+    tmp_path: Path, package: str, module: str, executable: str | None, runtime: str
 ) -> None:
     environment = _record_commands(tmp_path, "uv")
     environment["GITHUB_WORKSPACE"] = str(tmp_path)
+    environment["STANDARDS_PYTHON"] = runtime
     workdir = tmp_path / "packages" / package
     dist = workdir / "dist"
     dist.mkdir(parents=True)
@@ -630,7 +632,7 @@ def test_python_publishers_smoke_and_bind_wheels_and_sdists(
     calls = _recorded_commands(tmp_path)
     for format_name, suffix in (("wheel", "whl"), ("sdist", "tar.gz")):
         venv = str(tmp_path / f"{package}-{format_name}")
-        assert ["uv", "venv", "--python", "3.14", venv] in calls
+        assert ["uv", "venv", "--python", runtime, venv] in calls
         assert ["uv", "pip", "install", "--python", venv + "/bin/python", f"dist/example.{suffix}"] in calls
     imports = [call for call in calls if call[0] == "python"]
     assert [call[-1] for call in imports] == [module] * (2 if package == "contracts" else 1)

@@ -945,7 +945,7 @@ assert parse("value") == "text"
 try:
     replacement("value")
 except TypeError as error:
-    assert "must be a class" in str(error)
+    assert str(error) in {"called match pattern must be a class", "class pattern must refer to a class"}
 else:
     raise AssertionError("A runtime type tuple cannot be a class pattern")
 """

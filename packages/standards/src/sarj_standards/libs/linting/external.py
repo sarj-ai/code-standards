@@ -810,7 +810,7 @@ def _mobile_source_reports(
                 else _first_existing(root, (".mobsf", "mobsf.strict.yml"))
             )
             rules = mobile_tools.mobsf_rules() if managed_tools else Path("mobsfscan-rules")
-            argv = _mobsfscan_argv(rules, config=config)
+            argv = _mobsfscan_argv(rules, config=config, managed=managed_tools)
 
             def parse_mobile_security(payload: str, *, root: Path) -> tuple[Diagnostic, ...]:
                 return parse_mobsfscan(payload, root=root, expected_paths=mobile_files)
@@ -865,9 +865,9 @@ def _mobile_command(name: Literal["detekt", "ktlint"], *, managed: bool) -> tupl
     return mobile_tools.command(name) if managed else (name,)
 
 
-def _mobsfscan_argv(rules: Path, *, config: Path | None) -> tuple[str, ...]:
+def _mobsfscan_argv(rules: Path, *, config: Path | None, managed: bool = False) -> tuple[str, ...]:
     argv = (
-        "semgrep",
+        *(mobile_tools.semgrep_command() if managed else ("semgrep",)),
         "scan",
         "--metrics=off",
         "--disable-version-check",
