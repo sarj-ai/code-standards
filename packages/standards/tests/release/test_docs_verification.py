@@ -1,0 +1,57 @@
+from __future__ import annotations
+
+import os
+from pathlib import Path
+import shutil
+import subprocess
+
+import pytest
+
+
+REPO_ROOT = Path(__file__).resolve().parents[4]
+
+
+@pytest.mark.parametrize("failure", ["none", "examples", "catalog", "lint", "types", "build", "distribution"])
+def test_complete_docs_gate_checks_projections_once_and_stops_on_failure(tmp_path: Path, failure: str) -> None:
+    script = (REPO_ROOT / ".github/scripts/verify-docs.sh").read_text()
+    commands = script[script.index("run_check()") :]
+    signals = tmp_path / "signals"
+    signals.mkdir()
+    npm = tmp_path / "npm"
+    npm.write_text(
+        '#!/bin/sh\ncase "$*" in\n'
+        '"run code-examples:check") name=examples;;\n'
+        '"run third-party-catalog:check") name=catalog;;\n'
+        '"--ignore-scripts run lint") name=lint;;\n'
+        '"--ignore-scripts run check") name=types;;\n'
+        '"--ignore-scripts run build") name=build;;\n'
+        "*) exit 8;; esac\n"
+        'printf "%s\\n" "$name" >> "$SIGNALS/order"\n'
+        '[ "$FAILURE" != "$name" ]\n'
+    )
+    npm.chmod(0o755)
+    node = tmp_path / "node"
+    node.write_text(
+        '#!/bin/sh\ntest "$*" = "scripts/verify-third-party-catalog.mjs --dist" || exit 8\n'
+        'printf "distribution\\n" >> "$SIGNALS/order"\n[ "$FAILURE" != distribution ]\n'
+    )
+    node.chmod(0o755)
+    result = subprocess.run(
+        (shutil.which("bash") or "/bin/bash", "-eu", "-o", "pipefail", "-c", commands),
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=10,
+        env={
+            **os.environ,  # ruff: ignore[banned-api] -- actual verification shell with controlled package-manager inputs.
+            "PATH": str(tmp_path) + os.pathsep + os.defpath,
+            "SIGNALS": str(signals),
+            "FAILURE": failure,
+        },
+    )
+    expected = ["examples", "catalog", "lint", "types", "build", "distribution"]
+    if failure != "none":
+        expected = expected[: expected.index(failure) + 1]
+    assert (signals / "order").read_text().splitlines() == expected
+    assert (result.returncode == 0) == (failure == "none")
+    assert len(result.stdout.splitlines()) == len(expected)

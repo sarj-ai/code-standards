@@ -23,6 +23,7 @@ class BaseWatch:
     read_base: Callable[[], str | None]
     command_timeout: float
     poll_interval: float = 10
+    phase: str = "verification"
     moved_to: str | None = field(default=None, init=False)
     stopped: Event = field(default_factory=Event, init=False)
     cancelled: Event = field(default_factory=Event, init=False)
@@ -52,7 +53,7 @@ class BaseWatch:
         env: Mapping[str, str] | None = None,
     ) -> subprocess.CompletedProcess[str]:
         if self.cancelled.is_set():
-            return _result(command, 125, "", "consumer base changed; verification cancelled", check=check)
+            return _result(command, 125, "", f"consumer base changed; {self.phase} cancelled", check=check)
         deadline = time.monotonic() + self.command_timeout
         with subprocess.Popen(  # ruff: ignore[subprocess-without-shell-equals-true] -- argv is supplied directly and shell remains disabled.
             list(command),
@@ -69,7 +70,7 @@ class BaseWatch:
             while True:
                 if self.cancelled.is_set():
                     return _interrupt(
-                        process, command, 125, "consumer base changed; verification cancelled", check=check
+                        process, command, 125, f"consumer base changed; {self.phase} cancelled", check=check
                     )
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
@@ -82,13 +83,15 @@ class BaseWatch:
                 return _result(command, process.wait(), stdout, stderr, check=check)
 
     def _watch(self) -> None:
-        while not self.stopped.wait(self.poll_interval):
+        while not self.stopped.is_set():
             current = self.read_base()
             # Unavailable evidence cannot establish movement. The controller
             # still requires its independent exact-base check before pushing.
             if current is not None and current != self.expected_base:
                 self.moved_to = current
                 self.cancelled.set()
+                return
+            if self.stopped.wait(self.poll_interval):
                 return
 
 

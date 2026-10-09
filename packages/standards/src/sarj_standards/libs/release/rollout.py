@@ -47,6 +47,8 @@ if TYPE_CHECKING:
 DEFAULT_REGISTRY = Path(".sarj-standards-rollout.toml")
 MAX_CONCURRENT_CONSUMERS = 16
 BASE_WATCH_POLL_SECONDS = 10
+MAX_CONSUMER_TIMINGS = 32
+CONSUMER_TIMING = re.compile(r"^\[verify\] pnpm [A-Za-z0-9@:/._ -]{1,160}: [0-9]+(?:\.[0-9]+)?s \(exit [0-9]{1,3}\)$")
 SUPPORTS_VERIFICATION_PROCESS_GROUPS = os.name == "posix"
 SOURCE_REPOSITORY = "https://github.com/sarj-ai/code-standards.git"
 VERSION_RE = re.compile(r"[0-9]+\.[0-9]+\.[0-9]+(?:[a-zA-Z0-9.-]+)?\Z")
@@ -1440,30 +1442,31 @@ def _apply_one(  # ruff: ignore[too-many-locals] - one transaction binds verific
             raise RolloutError(str(exc)) from exc
         failures: list[str] = []
         report("updating bundle and dependencies")
-        try:
-            update_consumer_bundle(repo, version, runner, tool_prefix, tool, environment=unauthenticated)
-        except subprocess.CalledProcessError as exc:
-            msg = f"{consumer.name}: dependency installation failed before a coherent rollout patch was prepared:\n"
-            raise RolloutError(msg + process_failure_detail(exc)) from exc
-        assert_consumer_base_current(consumer, base_sha, runner)
-        report("refreshing scoped baselines")
-        baseline_rules = rollout_baseline_rules(
-            consumer,
-            previous_react_doctor_policy,
-            react_doctor_policy_snapshot(repo),
-        )
-        allowed_baseline_paths, baseline_path, expected_baseline = _prepare_rollout_baseline(
-            consumer, repo, runner, baseline_rules, tool_prefix, tool=tool, environment=unauthenticated
-        )
-        report("diagnosing adoption and bootstrapping consumer")
-        doctor = runner.run((*tool_prefix, *tool, "doctor"), cwd=repo, env=unauthenticated, check=False)
-        if doctor.returncode != 0:
-            failures.append("Standards doctor failed:\n" + verification_detail(doctor))
-        bootstrap = run_consumer_bootstrap(repo, tool_prefix, runner, unauthenticated)
-        assert_baseline_unchanged(baseline_path, expected_baseline)
-        consumer_baselines = _update_consumer_baselines(
-            consumer, repo, runner, tool_prefix, bootstrap, environment=unauthenticated, failures=failures
-        )
+        with consumer_work_runner(consumer, runner, base_sha, phase="preparation") as candidate_runner:
+            try:
+                update_consumer_bundle(repo, version, candidate_runner, tool_prefix, tool, environment=unauthenticated)
+            except subprocess.CalledProcessError as exc:
+                msg = f"{consumer.name}: dependency installation failed before a coherent rollout patch was prepared:\n"
+                raise RolloutError(msg + process_failure_detail(exc)) from exc
+            assert_consumer_base_current(consumer, base_sha, runner)
+            report("refreshing scoped baselines")
+            baseline_rules = rollout_baseline_rules(
+                consumer,
+                previous_react_doctor_policy,
+                react_doctor_policy_snapshot(repo),
+            )
+            allowed_baseline_paths, baseline_path, expected_baseline = _prepare_rollout_baseline(
+                consumer, repo, candidate_runner, baseline_rules, tool_prefix, tool=tool, environment=unauthenticated
+            )
+            report("diagnosing adoption and bootstrapping consumer")
+            doctor = candidate_runner.run((*tool_prefix, *tool, "doctor"), cwd=repo, env=unauthenticated, check=False)
+            if doctor.returncode != 0:
+                failures.append("Standards doctor failed:\n" + verification_detail(doctor))
+            bootstrap = run_consumer_bootstrap(repo, tool_prefix, candidate_runner, unauthenticated)
+            assert_baseline_unchanged(baseline_path, expected_baseline)
+            consumer_baselines = _update_consumer_baselines(
+                consumer, repo, candidate_runner, tool_prefix, bootstrap, environment=unauthenticated, failures=failures
+            )
         worktree_paths = changed_paths(repo, runner)
         allowed_workflow_paths = pin_workflow_paths | canonical_commit_policy_workflow_paths(repo, worktree_paths)
         retired_paths = _validate_rollout_retirements(repo, retired_rewrites)
@@ -2354,23 +2357,44 @@ def _verify_rollout_patch(
 
 @contextmanager
 def consumer_verification_runner(consumer: Consumer, runner: CommandRunner, base_sha: str) -> Generator[CommandRunner]:
+    with consumer_work_runner(consumer, runner, base_sha, phase="verification") as watched:
+        yield watched
+
+
+@contextmanager
+def consumer_work_runner(
+    consumer: Consumer, runner: CommandRunner, base_sha: str, *, phase: str
+) -> Generator[CommandRunner]:
     if not isinstance(runner, SubprocessRunner) or not SUPPORTS_VERIFICATION_PROCESS_GROUPS:
         yield runner
         return
     poll_runner = replace(runner, command_timeout=min(runner.command_timeout, 10))
-    with BaseWatch(
+    watched = BaseWatch(
         base_sha,
         partial(_read_watched_consumer_base, consumer, poll_runner),
         runner.command_timeout,
         poll_interval=BASE_WATCH_POLL_SECONDS,
-    ) as watched:
-        yield watched
+        phase=phase,
+    )
+    try:
+        with watched:
+            yield watched
+    except (OSError, RolloutError, subprocess.SubprocessError) as exc:
+        if watched.moved_to is None:
+            raise
+        detail = process_failure_detail(exc) if isinstance(exc, subprocess.CalledProcessError) else str(exc)
+        raise ConsumerBaseMovedError(
+            _movement_detail(consumer, base_sha, watched, phase) + "\n" + detail[-4000:]
+        ) from exc
     if watched.moved_to is not None:
-        msg = (
-            f"{consumer.name}: consumer base moved from {base_sha} to {watched.moved_to} during verification; "
-            "cancelled stale verification; reconcile will retry from the refreshed base"
-        )
-        raise ConsumerBaseMovedError(msg)
+        raise ConsumerBaseMovedError(_movement_detail(consumer, base_sha, watched, phase))
+
+
+def _movement_detail(consumer: Consumer, base_sha: str, watched: BaseWatch, phase: str) -> str:
+    return (
+        f"{consumer.name}: consumer base moved from {base_sha} to {watched.moved_to} during {phase}; "
+        f"cancelled stale {phase}; reconcile will retry from the refreshed base"
+    )
 
 
 def _read_watched_consumer_base(consumer: Consumer, runner: CommandRunner) -> str | None:
@@ -2394,6 +2418,7 @@ def run_consumer_verification(
             result = runner.run((*tool_prefix, *command), cwd=repo, env=environment, check=False)
         finally:
             progress(consumer, f"verification command {index} finished in {time.monotonic() - started:.2f}s")
+        report_consumer_timings(consumer, result.stdout)
         return result
 
     # Preparation may format or synchronize files. Finish it before independent,
@@ -2410,6 +2435,16 @@ def run_consumer_verification(
         if result.returncode != 0
     ]
     return subprocess.CompletedProcess(consumer.verify, 1 if failures else 0, "\n\n".join(failures), "")
+
+
+def report_consumer_timings(consumer: Consumer, output: str) -> None:
+    count = 0
+    for line in output.splitlines():
+        if CONSUMER_TIMING.fullmatch(line) is not None:
+            progress(consumer, f"consumer timing: {line}")
+            count += 1
+            if count == MAX_CONSUMER_TIMINGS:
+                break
 
 
 def _update_consumer_baselines(
