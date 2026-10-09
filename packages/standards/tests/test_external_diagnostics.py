@@ -38,6 +38,13 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
 
 
+@pytest.fixture
+def _fixed_host_memory(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- analyzer tests use a deterministic small-host budget
+        external_module, "_physical_memory_bytes", lambda: 8 * 1024**3
+    )
+
+
 def _write_detekt_report(command: Sequence[str], payload: str = '{"runs":[]}') -> Path:
     report = command[command.index("--report") + 1]
     assert report.startswith("sarif:")
@@ -397,6 +404,7 @@ def test_eslint_final_batch_over_deadline_keeps_findings_and_fails(
     assert [issue.kind for issue in reports[-1].issues] == ["aggregate-timeout"]
 
 
+@pytest.mark.usefixtures("_fixed_host_memory")
 def test_eslint_batches_pass_only_remaining_time_to_subprocess(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- keep two transport calls to verify deadline sharing.
         external_module, "_ESLINT_ANALYSIS_BATCH_SIZE", 250
@@ -2665,10 +2673,20 @@ def test_external_analyzers_do_not_inherit_caller_credentials(monkeypatch: pytes
     assert environment["LC_ALL"] == "C"
 
 
-def test_only_eslint_receives_the_fixed_node_heap_limit(
+@pytest.mark.parametrize("memory_gib", [8, 16])
+def test_only_eslint_receives_the_bounded_node_heap_limit(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
+    memory_gib: int,
 ) -> None:
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- test controls the host budget without allocating memory
+        external_module, "_physical_memory_bytes", lambda: memory_gib * 1024**3
+    )
+    limit = tmp_path / "memory.max"
+    limit.write_text("max\n")
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- this process-isolation test covers an unconstrained host
+        external_module, "_cgroup_memory_limit_files", lambda: [limit]
+    )
     monkeypatch.setenv("NODE_OPTIONS", "--require=/tmp/untrusted-preload.cjs")
     command = (
         sys.executable,
@@ -2683,7 +2701,7 @@ def test_only_eslint_receives_the_fixed_node_heap_limit(
     )
 
     assert generic.stdout.strip() == "missing"
-    assert eslint.stdout.strip() == "--max-old-space-size=4096"
+    assert eslint.stdout.strip() == f"--max-old-space-size={8192 if memory_gib >= 12 else 4096}"
 
 
 def test_external_analyzers_prefer_the_isolated_python_environment(
@@ -3497,3 +3515,66 @@ def test_external_analyzer_cannot_leak_a_path_outside_repository(tmp_path: Path)
     assert ruff.completion is Completion.FAILED
     assert ruff.issues[0].message == "ValueError: analyzer reported a path outside the repository root"
     assert str(tmp_path.parent) not in ruff.issues[0].message
+
+
+@pytest.mark.parametrize(
+    ("host_gib", "groups", "limits", "expected"),
+    [
+        pytest.param(8, "0::/\n", {"memory.max": "max"}, 4096, id="small-host"),
+        pytest.param(16, "0::/\n", {"memory.max": "max"}, 8192, id="large-host"),
+        pytest.param(None, "0::/\n", {"memory.max": "max"}, 4096, id="unknown-host"),
+        pytest.param(
+            32, "0::/job\n", {"memory.max": "max", "job/memory.max": str(8 * 1024**3)}, 4096, id="v2-job-limit"
+        ),
+        pytest.param(
+            32,
+            "0::/jobs/task\n",
+            {"memory.max": "max", "jobs/memory.max": str(8 * 1024**3), "jobs/task/memory.max": str(16 * 1024**3)},
+            4096,
+            id="v2-parent-limit",
+        ),
+        pytest.param(
+            32, "2:memory:/job\n", {"memory/job/memory.limit_in_bytes": str(8 * 1024**3)}, 4096, id="v1-job-limit"
+        ),
+        pytest.param(
+            32, "2:memory:/job\n", {"memory/job/memory.limit_in_bytes": str(16 * 1024**3)}, 8192, id="v1-large-job"
+        ),
+        pytest.param(32, "0::/job\n", {}, 4096, id="unreadable-limits"),
+        pytest.param(32, "0::/\n", {"memory.max": "invalid"}, 4096, id="malformed-limit"),
+        pytest.param(32, "0::/\n", {"memory.max": "0"}, 4096, id="zero-limit"),
+        pytest.param(32, "0::/../../job\n", {"memory.max": "max"}, 4096, id="unreachable-namespace"),
+        pytest.param(32, "unknown\n", {"memory.max": "max"}, 4096, id="malformed-cgroup"),
+    ],
+)
+def test_eslint_heap_respects_host_and_process_container_limits(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    *,
+    host_gib: int | None,
+    groups: str,
+    limits: dict[str, str],
+    expected: int,
+) -> None:
+    root = tmp_path / "cgroup"
+    process = tmp_path / "process-cgroups"
+    process.write_text(groups)
+    for relative, value in limits.items():
+        path = root / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(value)
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- test supplies the OS memory query without allocating it
+        external_module, "_physical_memory_bytes", lambda: None if host_gib is None else host_gib * 1024**3
+    )
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- exercise Linux hierarchy parsing on every test platform
+        sys, "platform", "linux"
+    )
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- test uses a private cgroup filesystem
+        external_module, "_CGROUP_ROOT", root
+    )
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- test owns the process membership record
+        external_module, "_PROCESS_CGROUPS", process
+    )
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- root and nested limits all belong to the fixture
+        external_module, "_CGROUP_MEMORY_LIMIT_FILES", (root / "memory.max", root / "memory/memory.limit_in_bytes")
+    )
+    assert external_module._eslint_node_options() == f"--max-old-space-size={expected}"  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]

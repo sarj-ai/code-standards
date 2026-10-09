@@ -6,7 +6,7 @@ from enum import StrEnum
 from functools import partial
 import json
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import re
 import shutil
 import signal
@@ -103,6 +103,15 @@ _REACT_DOCTOR_SOURCE_SUFFIXES = frozenset(
     {".astro", ".cjs", ".cts", ".htm", ".html", ".js", ".jsx", ".mjs", ".mts", ".ts", ".tsx"}
 )
 _ESLINT_NODE_OPTIONS: Final = "--max-old-space-size=4096"
+_ESLINT_LARGE_NODE_OPTIONS: Final = "--max-old-space-size=8192"
+_ESLINT_LARGE_HOST_MEMORY: Final = 12 * 1024**3
+_CGROUP_ROOT: Final = Path("/sys/fs/cgroup")
+_PROCESS_CGROUPS: Final = Path("/proc/self/cgroup")
+_CGROUP_RECORD_FIELDS: Final = 3
+_CGROUP_MEMORY_LIMIT_FILES: Final = (
+    Path("/sys/fs/cgroup/memory.max"),
+    Path("/sys/fs/cgroup/memory/memory.limit_in_bytes"),
+)
 _ESLINT_FORMATTER: Final = Path(__file__).parents[2] / "configs" / "eslint-compact-formatter.mjs"
 _ESLINT_SELECTED_RUNNER: Final = Path(__file__).parents[2] / "configs" / "eslint-selected-rules.mjs"
 
@@ -2142,8 +2151,74 @@ def _run_eslint_process(
     argv: Sequence[str], *, cwd: Path, timeout_seconds: float = _TIMEOUT.total_seconds()
 ) -> ProcessOutput:
     environment = _analysis_environment()
-    environment["NODE_OPTIONS"] = _ESLINT_NODE_OPTIONS
+    environment["NODE_OPTIONS"] = _eslint_node_options()
     return _run_process(argv, cwd=cwd, environment=environment, timeout_seconds=timeout_seconds)
+
+
+def _eslint_node_options() -> str:
+    memory = _physical_memory_bytes()
+    if memory is None:
+        return _ESLINT_NODE_OPTIONS
+    paths = _cgroup_memory_limit_files()
+    if paths is None:
+        return _ESLINT_NODE_OPTIONS
+    found_limit = False
+    for path in paths:
+        try:
+            text = path.read_text(encoding="utf-8").strip()
+        except FileNotFoundError:
+            continue
+        except OSError:
+            return _ESLINT_NODE_OPTIONS
+        found_limit = True
+        if text == "max":
+            continue
+        try:
+            limit = int(text)
+        except ValueError:
+            return _ESLINT_NODE_OPTIONS
+        if limit <= 0:
+            return _ESLINT_NODE_OPTIONS
+        memory = min(memory, limit)
+    if sys.platform == "linux" and not found_limit:
+        return _ESLINT_NODE_OPTIONS
+    return _ESLINT_LARGE_NODE_OPTIONS if memory >= _ESLINT_LARGE_HOST_MEMORY else _ESLINT_NODE_OPTIONS
+
+
+def _cgroup_memory_limit_files() -> list[Path] | None:
+    paths = list(_CGROUP_MEMORY_LIMIT_FILES)
+    if sys.platform != "linux":
+        return paths
+    try:
+        groups = _PROCESS_CGROUPS.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return None
+    for line in groups:
+        fields = line.split(":", 2)
+        if len(fields) != _CGROUP_RECORD_FIELDS:
+            return None
+        hierarchy, controllers, group = fields
+        if hierarchy == "0" and not controllers:
+            root, filename = _CGROUP_ROOT, "memory.max"
+        elif "memory" in controllers.split(","):
+            root, filename = _CGROUP_ROOT / "memory", "memory.limit_in_bytes"
+        else:
+            continue
+        relative = PurePosixPath(group)
+        if not relative.is_absolute() or ".." in relative.parts:
+            return None
+        directory = root.joinpath(*relative.parts[1:])
+        paths.extend(parent / filename for parent in (directory, *directory.parents) if parent.is_relative_to(root))
+    return list(dict.fromkeys(paths))
+
+
+def _physical_memory_bytes() -> int | None:
+    if sys.platform == "win32":
+        return None
+    try:
+        return os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES")
+    except AttributeError, OSError, ValueError:
+        return None
 
 
 def _run_process(
