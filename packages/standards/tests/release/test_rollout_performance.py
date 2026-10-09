@@ -185,6 +185,32 @@ def test_command_timeout_is_bounded_and_actionable() -> None:
         runner.run((sys.executable, "-c", "import time; time.sleep(10)"))
 
 
+@pytest.mark.parametrize("check", [False, True])
+def test_timeout_preserves_bounded_stdout_stderr_and_original_failure(check: bool) -> None:
+    runner = rollout.SubprocessRunner(command_timeout=0.2)
+    command = (
+        sys.executable,
+        "-c",
+        (
+            "import os,time; os.write(1,b'x'*10000+b'last output\\n'); "
+            "os.write(2,b'last error\\n'+b'\\xe2\\x82'); time.sleep(10)"
+        ),
+    )
+    if check:
+        with pytest.raises(rollout.RolloutError, match=r"0\.2s command timeout") as caught:
+            runner.run(command)
+        detail = str(caught.value)
+    else:
+        result = runner.run(command, check=False)
+        assert result.returncode == 124
+        assert len(result.stdout) <= 4000
+        detail = rollout.verification_detail(result)
+    assert "last output" in detail
+    assert "last error" in detail
+    assert "\ufffd" in detail
+    assert len(detail) < 5000
+
+
 @pytest.mark.parametrize("partial_clone", [False, True], ids=("complete-history", "filtered-history"))
 def test_blob_filtering_requires_explicit_consumer_opt_in(partial_clone: bool) -> None:
     target = rollout.Consumer("Example", "example/consumer", "main", ("true",), partial_clone=partial_clone)
