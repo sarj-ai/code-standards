@@ -453,7 +453,7 @@ jobs:
           version: '0.12.24'
           enable-cache: true
           cache-dependency-glob: 'packages/**/uv.lock'
-      - run: uv python install 3.15
+      - run: uv python install 3.14 3.15
       - run: uv sync --locked --dev
       - name: CLI, adoption, paths, and package-manager smoke
         run: uv run pytest -q tests/test_cli_startup.py tests/test_lifecycle.py tests/test_package_managers.py tests/test_consumer_cli.py
@@ -660,7 +660,7 @@ jobs:
           cache: 'npm'
           cache-dependency-path: packages/typescript/package-lock.json
       - if: needs.changes.outputs.reviewed-wheels != 'true'
-        run: uv python install 3.15
+        run: uv python install 3.14 3.15
       - if: needs.changes.outputs.reviewed-wheels != 'true'
         run: uv sync --locked --dev
       - if: needs.changes.outputs.reviewed-wheels != 'true'
@@ -758,7 +758,7 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: '24'
-      - run: uv python install 3.15
+      - run: uv python install 3.14 3.15
       - name: Install pinned formatter used by generated manifests
         run: bash ../../.github/scripts/ci-install-taplo.sh
       - name: Build wheel
@@ -825,7 +825,7 @@ jobs:
       - name: Install and attest integration native tools
         run: uv run --project packages/standards python -m sarj_standards.libs.release.native_test_setup --root .
       - name: Test every Python package on the minimum supported runtime
-        run: make test-bootstrap test-contracts test-python test-sql test-iac test-standards -j4
+        run: make test-bootstrap test-contracts test-python test-sql test-iac test-standards
 
   standards:
     name: standards package

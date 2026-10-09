@@ -734,7 +734,7 @@ jobs:
           # CI populates dependency caches; release consumers only restore them.
           save-cache: false
           cache-dependency-glob: 'packages/**/uv.lock'
-      - run: uv python install 3.15
+      - run: uv python install 3.14 3.15
       - name: Cache pip dependencies for fresh hook installs
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
@@ -791,7 +791,7 @@ jobs:
           version: '0.12.24'
           enable-cache: true
           cache-dependency-glob: 'packages/**/uv.lock'
-      - run: uv python install 3.15
+      - run: uv python install 3.14 3.15
       - name: Reuse artifact tested by the exact main push
         id: reuse
         env:
