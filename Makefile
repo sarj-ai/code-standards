@@ -77,8 +77,7 @@ docs-code-sync:
 	cd apps/docs && npm run code-examples:sync
 
 docs-check: docs-artifacts-check
-	cd apps/docs && npm run code-examples:check
-	cd apps/docs && npm run lint && npm run check && npm run build
+	bash .github/scripts/verify-docs.sh
 
 format-check:
 	uv run --project packages/standards --frozen ruff format --check \

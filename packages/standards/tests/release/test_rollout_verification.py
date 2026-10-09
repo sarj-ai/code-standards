@@ -167,3 +167,21 @@ def _consumer(root: Path, entry: dict[str, object]) -> rollout.Consumer:
         "schema = 1\n[[consumer]]\n" + "\n".join(f"{key} = {json.dumps(value)}" for key, value in entry.items()) + "\n"
     )
     return rollout.load_registry(path)[0]
+
+
+def test_consumer_timings_are_bounded_and_preserve_machine_stdout(capsys: pytest.CaptureFixture[str]) -> None:
+    consumer = rollout.Consumer("Example", "example/consumer", "main", ("true",))
+    timings = "\n".join(f"[verify] pnpm lint:{index}: 2.34s (exit 0)" for index in range(100))
+    rollout.report_consumer_timings(
+        consumer,
+        "unstructured secret\n[verify] pnpm evil;command: 1s (exit 0)\n"
+        "[verify] pnpm bad\x1b[31m: 1s (exit 0)\n" + timings,
+    )
+    output = capsys.readouterr()
+    assert not output.out
+    assert len(output.err.splitlines()) == 32
+    assert "pnpm lint:0: 2.34s" in output.err
+    assert "pnpm lint:31: 2.34s" in output.err
+    assert "secret" not in output.err
+    assert "evil" not in output.err
+    assert "\x1b" not in output.err
