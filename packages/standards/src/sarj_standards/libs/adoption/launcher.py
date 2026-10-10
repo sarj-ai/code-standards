@@ -5,6 +5,9 @@ import re
 import shlex
 from typing import Final, NamedTuple
 
+from sarj_standards.libs.linting import shell_ast
+from sarj_standards.libs.typed_containers import is_object_list, is_object_mapping
+
 
 TOOL_PYTHON: Final = "3.15.0"
 PYTHON_DOWNLOADS: Final = "https://raw.githubusercontent.com/astral-sh/uv/f69fb50c8b28997af9c6b0e5c700a34470d86005/crates/uv-python-managed/download-metadata.json"
@@ -163,6 +166,93 @@ def rewrite_legacy_repository_invocations(text: str) -> LegacyInvocationRewrite:
 def _python_repository_argv(match: re.Match[str]) -> str:
     indent = match.group("indent")
     return "".join(f'{indent}"{argument}",\n' for argument in repository_argv())
+
+
+def rewrite_native_bootstrap_pin(source: bytes, *, version: str) -> bytes | None:
+    if _VERSION.fullmatch(version) is None:
+        msg = f"invalid exact Standards version: {version!r}"
+        raise ValueError(msg)
+    try:
+        statements = shell_ast.parse_shell(source.decode("utf-8")).get("Stmts", [])
+    except UnicodeError, shell_ast.ShellSyntaxError:
+        return None
+    if not is_object_list(statements):
+        return None
+    for statement in statements:
+        words = _native_bootstrap_words(statement, source)
+        if words is None:
+            return None
+        arguments = tuple(word[0] for word in words)
+        # Earlier source/eval/alias/function definitions could replace uv.
+        # Only this literal native shell-options prelude precedes the proven call.
+        if arguments == ("set", "-euo", "pipefail"):
+            continue
+        prefix = ("uv", "run", "--no-config", "--no-project", "--python", TOOL_PYTHON, "--with")
+        if arguments[:7] != prefix or arguments[8:] != (
+            "python",
+            "-m",
+            "sarj_standards.libs.adoption.native_bootstrap",
+        ):
+            return None
+        package, start, end = words[7]
+        old_version = package.removeprefix(f"{PACKAGE}==")
+        if package == old_version or _VERSION.fullmatch(old_version) is None or old_version == version:
+            return None
+        literal = source[start:end]
+        if literal.count(old_version.encode()) != 1:
+            return None
+        return source[:start] + literal.replace(old_version.encode(), version.encode(), 1) + source[end:]
+    return None
+
+
+def _native_bootstrap_words(statement: object, source: bytes) -> tuple[tuple[str, int, int], ...] | None:
+    if not is_object_mapping(statement) or any(
+        statement.get(key) for key in ("Negated", "Background", "Coprocess", "Redirs")
+    ):
+        return None
+    command = statement.get("Cmd")
+    if not is_object_mapping(command) or command.get("Type") != "CallExpr":
+        return None
+    assignments, arguments = command.get("Assigns", []), command.get("Args", [])
+    if not is_object_list(assignments) or not is_object_list(arguments):
+        return None
+    for item in assignments:
+        if not is_object_mapping(item) or _literal_shell_word(item.get("Value"), source) is None:
+            return None
+        name = item.get("Name")
+        if not is_object_mapping(name) or name.get("Value") == "PATH":
+            return None
+    words = tuple(_literal_shell_word(word, source) for word in arguments)
+    if any(word is None for word in words):
+        return None
+    return tuple(word for word in words if word is not None)
+
+
+def _literal_shell_word(word: object, source: bytes) -> tuple[str, int, int] | None:
+    if not is_object_mapping(word):
+        return None
+    parts, position, end_position = word.get("Parts"), word.get("Pos"), word.get("End")
+    if not is_object_list(parts) or not is_object_mapping(position) or not is_object_mapping(end_position):
+        return None
+    for part in parts:
+        if not is_object_mapping(part) or part.get("Dollar"):
+            return None
+        match part.get("Type"):
+            case "Lit" | "SglQuoted":
+                continue
+            case "DblQuoted":
+                quoted = part.get("Parts", [])
+                if not is_object_list(quoted) or any(
+                    not is_object_mapping(item) or item.get("Type") != "Lit" for item in quoted
+                ):
+                    return None
+            case _:
+                return None
+    start, end = position.get("Offset", 0), end_position.get("Offset", 0)
+    if not isinstance(start, int) or not isinstance(end, int) or not 0 <= start < end <= len(source):
+        return None
+    values = shlex.split(source[start:end].decode("utf-8"))
+    return (values[0], start, end) if len(values) == 1 else None
 
 
 def retired_repository_script() -> str:

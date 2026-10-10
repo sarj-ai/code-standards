@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+from dataclasses import dataclass
 import json
 import os
 from pathlib import Path
@@ -12,6 +13,7 @@ import pytest
 
 from sarj_standards.libs.adoption import (
     doctor as adoption_doctor,
+    launcher,
     manifest as adoption_manifest,
     scaffold as adoption_scaffold,
 )
@@ -394,6 +396,136 @@ def test_selected_consumer_is_the_only_one_applied(monkeypatch: pytest.MonkeyPat
     assert [item.consumer for item in outcomes] == [second]
     with pytest.raises(rollout.RolloutError, match="'r/other@main' is not in the selected channel"):
         rollout.apply("9.0.0", (first, second), FakeRunner(), consumer="r/other@main")
+
+
+@dataclass(frozen=True)
+class NativePinRepository:
+    repo: Path
+    base: str
+    runner: rollout.SubprocessRunner
+
+
+@pytest.fixture
+def native_pin_repository(tmp_path: Path) -> NativePinRepository:
+    repo = tmp_path / "native-pins"
+    repo.mkdir()
+    source = repo / "bootstrap.sh"
+    source.write_text(
+        f"uv run --no-config --no-project --python {launcher.TOOL_PYTHON} "
+        "--with code-standards==1.2.3 python -m sarj_standards.libs.adoption.native_bootstrap\n"
+    )
+    source.chmod(0o644)
+    runner = rollout.SubprocessRunner()
+    for command in (
+        ("git", "init", "-b", "main"),
+        ("git", "config", "user.name", "Standards Test"),
+        ("git", "config", "user.email", "standards@example.com"),
+        ("git", "add", "."),
+        ("git", "commit", "-m", "base"),
+    ):
+        runner.run(command, cwd=repo)
+    return NativePinRepository(repo, rollout.stdout(runner.run(("git", "rev-parse", "HEAD"), cwd=repo)), runner)
+
+
+class TestNativePinPermissions:
+    def test_native_pin_expectation_comes_from_the_immutable_base(
+        self, native_pin_repository: NativePinRepository
+    ) -> None:
+        repo, base, runner = native_pin_repository.repo, native_pin_repository.base, native_pin_repository.runner
+        source = repo / "bootstrap.sh"
+        original = source.read_bytes()
+        source.write_bytes(b"printf unrelated\n")
+        expected = rollout.native_bootstrap_rewrites(repo, base, (source.name,), runner, version="1.2.4")
+        assert expected == {source.name: retirement.NativePinRewrite(original.replace(b"1.2.3", b"1.2.4"), "100644")}
+        with pytest.raises(rollout.RolloutError, match="canonical native bootstrap"):
+            rollout.validate_rollout_native_pins(repo, expected, runner)
+        source.write_bytes(expected[source.name].contents)
+        allowed = rollout.validate_rollout_native_pins(repo, expected, runner)
+        rollout.reject_unsafe_diff((source.name,), allowed_source_paths=allowed)
+
+    def test_commit_replacement_cannot_change_immutable_native_pin_expectation(
+        self, native_pin_repository: NativePinRepository
+    ) -> None:
+        repo, base, runner = native_pin_repository.repo, native_pin_repository.base, native_pin_repository.runner
+        source = repo / "bootstrap.sh"
+        original = source.read_bytes()
+        source.write_bytes(original + b"printf unauthorized-body\n")
+        source.chmod(0o755)
+        runner.run(("git", "add", source.name), cwd=repo)
+        runner.run(("git", "commit", "-m", "replacement tree"), cwd=repo)
+        replacement = rollout.stdout(runner.run(("git", "rev-parse", "HEAD"), cwd=repo))
+        runner.run(("git", "replace", base, replacement), cwd=repo)
+        expected = rollout.native_bootstrap_rewrites(repo, base, (source.name,), runner, version="1.2.4")
+        source.write_bytes(original.replace(b"1.2.3", b"1.2.4"))
+        source.chmod(0o644)
+        allowed = rollout.validate_rollout_native_pins(repo, expected, runner)
+        rollout.reject_unsafe_diff((source.name,), allowed_source_paths=allowed)
+        source.write_bytes(original.replace(b"1.2.3", b"1.2.4") + b"printf unauthorized-body\n")
+        with pytest.raises(rollout.RolloutError, match="canonical native bootstrap"):
+            rollout.validate_rollout_native_pins(repo, expected, runner)
+
+    def test_untracked_native_call_cannot_grant_source_permission(
+        self, native_pin_repository: NativePinRepository
+    ) -> None:
+        repo, base, runner = native_pin_repository.repo, native_pin_repository.base, native_pin_repository.runner
+        source = repo / "new.sh"
+        source.write_bytes((repo / "bootstrap.sh").read_bytes())
+        assert rollout.native_bootstrap_rewrites(repo, base, (source.name,), runner, version="1.2.4") == {}
+
+    @pytest.mark.parametrize("body", [b"\0", b"\r\n", b"\xff"], ids=["binary", "normalized-text", "invalid-encoding"])
+    def test_unproven_git_blob_bytes_cannot_grant_source_permission(
+        self, native_pin_repository: NativePinRepository, body: bytes
+    ) -> None:
+        repo, runner = native_pin_repository.repo, native_pin_repository.runner
+        source = repo / "bootstrap.sh"
+        source.write_bytes(source.read_bytes().rstrip(b"\n") + body)
+        runner.run(("git", "add", source.name), cwd=repo)
+        runner.run(("git", "commit", "-m", "different bytes"), cwd=repo)
+        base = rollout.stdout(runner.run(("git", "rev-parse", "HEAD"), cwd=repo))
+        assert rollout.native_bootstrap_rewrites(repo, base, (source.name,), runner, version="1.2.4") == {}
+
+    @pytest.mark.parametrize("mutation", ["body", "mode"])
+    def test_committed_native_body_is_checked_even_if_worktree_bytes_are_restored(
+        self, native_pin_repository: NativePinRepository, mutation: str
+    ) -> None:
+        repo, base, runner = native_pin_repository.repo, native_pin_repository.base, native_pin_repository.runner
+        source = repo / "bootstrap.sh"
+        expected = rollout.native_bootstrap_rewrites(repo, base, (source.name,), runner, version="1.2.4")
+        source.write_bytes(expected[source.name].contents + (b"printf unrelated\n" if mutation == "body" else b""))
+        source.chmod(0o755 if mutation == "mode" else 0o644)
+        runner.run(("git", "add", source.name), cwd=repo)
+        runner.run(("git", "commit", "-m", "altered candidate"), cwd=repo)
+        source.write_bytes(expected[source.name].contents)
+        source.chmod(0o644)
+        with pytest.raises(rollout.RolloutError, match="committed native bootstrap"):
+            rollout.validate_rollout_native_pins(repo, expected, runner, revision="HEAD")
+
+    @pytest.mark.parametrize("mutation", ["body", "mode", "wrong-target", "deleted", "symlink"])
+    def test_verification_cannot_amend_an_unproven_native_pin_change(
+        self, native_pin_repository: NativePinRepository, mutation: str
+    ) -> None:
+        repo, base, runner = native_pin_repository.repo, native_pin_repository.base, native_pin_repository.runner
+        source = repo / "bootstrap.sh"
+        expected = rollout.native_bootstrap_rewrites(repo, base, (source.name,), runner, version="1.2.4")
+        source.write_bytes(expected[source.name].contents)
+        match mutation:
+            case "mode":
+                source.chmod(0o755)
+            case "deleted":
+                source.unlink()
+            case "symlink":
+                source.unlink()
+                source.symlink_to(repo / "missing")
+            case _:
+                source.write_bytes(
+                    source.read_bytes().replace(b"1.2.4", b"1.2.5")
+                    if mutation == "wrong-target"
+                    else b"printf changed\n"
+                )
+        with pytest.raises(rollout.RolloutError, match="canonical native bootstrap"):
+            rollout.amend_safe_changes(
+                repo, runner, version="1.2.4", allowed_workflow_paths=frozenset(), native_pin_rewrites=expected
+            )
 
 
 class TestSafety:
@@ -1152,6 +1284,11 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
         repo.mkdir()
         manifest = repo / MANIFEST
         eslint = repo / "eslint.config.mjs"
+        original_native = (
+            f"uv run --no-config --no-project --python {launcher.TOOL_PYTHON} "
+            "--with code-standards==5.8.0 python -m sarj_standards.libs.adoption.native_bootstrap\n"
+        )
+        (repo / "bootstrap.sh").write_text(original_native)
         manifest.write_text('schema = 3\nbundle = "5.8.0"\n', encoding="utf-8")
         eslint.write_text("export default [];\n", encoding="utf-8")
         (repo / "guard.py").write_bytes(
@@ -1248,6 +1385,7 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
                     return subprocess.CompletedProcess(rendered, 0, "code-standards 5.8.1", "")
                 if "update" in rendered:
                     manifest.write_text('schema = 4\nbundle = "5.8.1"\n', encoding="utf-8")
+                    (repo / "bootstrap.sh").write_text(original_native.replace("5.8.0", "5.8.1"))
                     for relative, contents in retired_expected.items():
                         (repo / relative).write_bytes(contents)
                     return subprocess.CompletedProcess(rendered, 0, "", "")
@@ -1413,6 +1551,7 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
         )
         expected_eslint = f'export default ["generated-{max(dirty_runs)}"];\n' if dirty_runs else "export default [];\n"
         assert eslint.read_text(encoding="utf-8") == expected_eslint
+        assert (repo / "bootstrap.sh").read_text() == original_native.replace("5.8.0", "5.8.1")
         pull_request_command = next(command for command in runner.commands if command[:3] == ("gh", "pr", "create"))
         pull_request_body = pull_request_command[pull_request_command.index("--body") + 1]
         if dirty_runs == frozenset({1, 2}):

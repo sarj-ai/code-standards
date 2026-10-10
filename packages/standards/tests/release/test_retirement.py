@@ -96,3 +96,29 @@ def test_canonical_cleanup_preserves_hcl_heredoc_payload(tmp_path: Path, opener:
     target.write_bytes(contents.encode())
     assert retired_suppressions.plan((target,)) == ()
     assert target.read_bytes() == contents.encode()
+
+
+@pytest.mark.parametrize("mode", ["100644", "100755"])
+def test_native_pin_permission_requires_the_exact_body_and_tracked_mode(tmp_path: Path, mode: str) -> None:
+    source = tmp_path / "bootstrap.sh"
+    expected = {source.name: retirement.NativePinRewrite(b"printf expected\n", mode)}
+    source.write_bytes(expected[source.name].contents)
+    source.chmod(0o755 if mode == "100755" else 0o644)
+    assert retirement.validate_native_pins(tmp_path, expected) == frozenset({source.name})
+    source.chmod(0o644 if mode == "100755" else 0o755)
+    with pytest.raises(ValueError, match="canonical native bootstrap"):
+        retirement.validate_native_pins(tmp_path, expected)
+
+
+@pytest.mark.parametrize(
+    "replacement",
+    [b"printf changed\n", b"printf expected\nprintf unrelated\n", b"printf expected\r\n"],
+    ids=["changed-body", "added-command", "changed-bytes"],
+)
+def test_native_pin_permission_does_not_authorize_other_source_edits(tmp_path: Path, replacement: bytes) -> None:
+    source = tmp_path / "bootstrap.sh"
+    source.write_bytes(replacement)
+    with pytest.raises(ValueError, match="canonical native bootstrap"):
+        retirement.validate_native_pins(
+            tmp_path, {source.name: retirement.NativePinRewrite(b"printf expected\n", "100644")}
+        )
