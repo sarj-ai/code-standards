@@ -158,6 +158,7 @@ class Standards:
         force: bool = False,
         install: bool = True,
         dry_run: bool = False,
+        enable_repository_rules: Sequence[str] = (),
     ) -> Result:
         try:
             plan = plan_init(
@@ -167,6 +168,7 @@ class Standards:
                 python_dest=python_root,
                 typescript_dest=typescript_root,
                 force=force,
+                enable_repository_rules=enable_repository_rules,
             )
         except (KeyError, OSError, TypeError, ValueError) as exc:
             return Result(

@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Final, Literal, NamedTuple
 from packaging.specifiers import InvalidSpecifier, SpecifierSet
 from packaging.version import InvalidVersion, Version
 from repo_standards.core.parser import parse_manifest_bytes
+from repo_standards.policy_sarj import SarjPolicy
 import yaml
 
 from sarj_standards.libs.filesystem import is_link_like
@@ -21,7 +22,7 @@ from sarj_standards.libs.linting import security_tools
 from sarj_standards.libs.typed_containers import is_object_list, is_object_mapping
 from sarj_standards.libs.yaml_boundary import parse_yaml
 
-from . import hooks, launcher, manifest, packagemanager, uvtool
+from . import hooks, launcher, manifest, packagemanager, repository_baseline, uvtool
 from .packagemanager import LOCKFILES, Overrides, PackageManager, YarnVariant
 
 
@@ -583,6 +584,7 @@ def build_plan(
     profile: manifest.Profile = "standard",
     hook_manager: manifest.HookManager | None = None,
     allow_existing_nested_eslint: bool = False,
+    enable_repository_rules: Sequence[str] = (),
 ) -> Plan:
     ecosystems = detect(
         root,
@@ -642,7 +644,7 @@ def build_plan(
             )
 
     _plan_manifest(root, plan, force=force, update_existing=update_manifest)
-    _plan_repo_commit_message_policy(root, plan)
+    _plan_repo_commit_message_policy(root, plan, enable_rules=enable_repository_rules)
     _plan_retired_repository_launcher(root, plan)
     _plan_language_configs(root, plan, force=force, allow_existing_nested_eslint=allow_existing_nested_eslint)
     match plan.hook_manager:
@@ -807,13 +809,14 @@ def _is_managed_workflow(path: Path) -> bool:
     )
 
 
-def _plan_repo_commit_message_policy(root: Path, plan: Plan) -> None:
+def _plan_repo_commit_message_policy(root: Path, plan: Plan, *, enable_rules: Sequence[str] = ()) -> None:
     path = root / ".repo-standards" / "repository.toml"
     if path.is_file():
         try:
             contents = path.read_bytes()
             migrated = _without_manifest_schema_version(contents)
-            parse_manifest_bytes(migrated)
+            migrated = _with_reviewed_repository_rules(migrated, enable_rules)
+            _plan_repository_baseline(root, plan, migrated)
         except (OSError, TypeError, ValueError) as exc:
             plan.errors.append(f"invalid Repo Standards manifest: {exc}")
             return
@@ -826,8 +829,65 @@ def _plan_repo_commit_message_policy(root: Path, plan: Plan) -> None:
     if not repository_id or not repository_id[0].isalpha():
         repository_id = f"repository-{repository_id}" if repository_id else "local-repository"
     contents = f'repository_id = "{repository_id}"\ncomponents = []\n'
-    parse_manifest_bytes(contents.encode("utf-8"))
+    try:
+        contents = _with_reviewed_repository_rules(contents.encode("utf-8"), enable_rules).decode("utf-8")
+    except (TypeError, ValueError) as exc:
+        plan.errors.append(f"invalid Repo Standards activation: {exc}")
+        return
     plan.writes.append((path, contents))
+    _plan_repository_baseline(root, plan, contents.encode("utf-8"))
+
+
+def _plan_repository_baseline(root: Path, plan: Plan, configured: bytes) -> None:
+    path = root / repository_baseline.PATH
+    try:
+        contents = repository_baseline.read_optional(root)
+        if contents is None:
+            return
+        migrated = repository_baseline.migrate(contents, configured, target_policy_version=SarjPolicy.policy_version)
+    except (OSError, TypeError, ValueError) as exc:
+        plan.errors.append(f"invalid Repo Standards baseline migration: {exc}")
+        return
+    if contents != migrated:
+        plan.writes.append((path, migrated.decode("utf-8")))
+        plan.notes.append("migrated compatible repository baseline policy metadata; fingerprints are unchanged")
+
+
+def _with_reviewed_repository_rules(contents: bytes, requested: Sequence[str]) -> bytes:
+    configured = parse_manifest_bytes(contents)
+    if not requested:
+        return contents
+    installed = {str(rule.rule_id): rule for rule in SarjPolicy().rules()}
+    for rule_id in requested:
+        if rule_id not in installed:
+            msg = f"repository rule is not available as a versionless ID: {rule_id}"
+            raise ValueError(msg)
+        if installed[rule_id].default_severity != "error":
+            msg = (
+                f"repository rule requires a separately reviewed error-stage release before setup activation: {rule_id}"
+            )
+            raise ValueError(msg)
+    missing = tuple(rule_id for rule_id in dict.fromkeys(requested) if rule_id not in configured.enabled_rules)
+    if not missing:
+        return contents
+    source = contents.decode("utf-8")
+    section = re.search(r"(?m)^[ \t]*\[", source)
+    header = source if section is None else source[: section.start()]
+    entry = re.search(r"""(?m)^[ \t]*(?:enabled_rules|"enabled_rules"|'enabled_rules')[ \t]*=[ \t]*\[""", header)
+    values = ", ".join(json.dumps(rule_id) for rule_id in missing)
+    if entry is None:
+        if configured.enabled_rules:
+            msg = "cannot safely locate the existing top-level enabled_rules assignment"
+            raise ValueError(msg)
+        updated = _match_newline_style(source, f"enabled_rules = [{values}]\n") + source
+    else:
+        # Inserting at the start preserves existing array comments and all other
+        # policy tables, including exact capped Makefile exceptions.
+        separator = ", " if configured.enabled_rules else ""
+        updated = f"{source[: entry.end()]}{values}{separator}{source[entry.end() :]}"
+    result = updated.encode("utf-8")
+    parse_manifest_bytes(result)
+    return result
 
 
 def _without_manifest_schema_version(contents: bytes) -> bytes:
@@ -2286,6 +2346,7 @@ def github_ci_workflow(root: Path, *, ecosystems: Ecosystems | None = None) -> s
         "",
         "on:",
         "  pull_request:",
+        "  merge_group:",
         "  push:",
         "    branches: [main]",
         "",
@@ -2373,7 +2434,7 @@ def github_ci_workflow(root: Path, *, ecosystems: Ecosystems | None = None) -> s
         (
             "      - name: Run standards",
             "        env:",
-            "          SARJ_STANDARDS_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}",
+            "          SARJ_STANDARDS_BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}",
             f"        run: {runner} check --trust-repository-code --format github",
         )
     )

@@ -369,9 +369,15 @@ def test_selected_consumer_is_the_only_one_applied(monkeypatch: pytest.MonkeyPat
         return "a" * 64
 
     def fake_apply_one(
-        item: rollout.Consumer, _version: str, _runner: rollout.CommandRunner, *, dry_run: bool
+        item: rollout.Consumer,
+        _version: str,
+        _runner: rollout.CommandRunner,
+        *,
+        dry_run: bool,
+        enable_repository_rules: Sequence[str] = (),
     ) -> rollout.Outcome:
         assert dry_run is False
+        assert enable_repository_rules == ()
         applied.append(item.identity)
         return rollout.Outcome(item, rollout.OutcomeState.PR_OPEN)
 
@@ -401,6 +407,8 @@ class TestSafety:
             "diagnostic-baseline.json",
             "config/exclusions.toml",
             "apps/web/src/index.ts",
+            "repository.toml",
+            "nested/.repo-standards/repository.toml",
         ):
             with pytest.raises(rollout.RolloutError):
                 rollout.reject_unsafe_diff((MANIFEST, path))
@@ -409,6 +417,7 @@ class TestSafety:
         rollout.reject_unsafe_diff(
             (
                 MANIFEST,
+                ".repo-standards/repository.toml",
                 ".shellcheckrc",
                 "uv.lock",
                 "eslint.config.mjs",

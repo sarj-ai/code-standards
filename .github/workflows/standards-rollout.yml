@@ -12,6 +12,11 @@ on:
         description: Exact published Standards bundle version
         required: true
         type: string
+      enable_repository_rule:
+        description: Optional reviewed error-stage rule to activate in new rollout PRs
+        required: false
+        default: ''
+        type: string
 
 permissions:
   contents: read
@@ -63,6 +68,8 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           VERSION: ${{ steps.version.outputs.version }}
+          EVENT_NAME: ${{ github.event_name }}
+          REQUESTED_REPOSITORY_RULE: ${{ inputs.enable_repository_rule || '' }}
           REGISTRY_TOML: ${{ vars.STANDARDS_ROLLOUT_REGISTRY_TOML }}
         run: bash .github/scripts/rollout-plan.sh
       - name: Keep the rollout log for the fleet report
@@ -124,6 +131,7 @@ jobs:
           VERSION: ${{ needs.plan.outputs.version }}
           CONSUMER: ${{ matrix.consumer.identity }}
           EVENT_NAME: ${{ github.event_name }}
+          REQUESTED_REPOSITORY_RULE: ${{ inputs.enable_repository_rule || '' }}
           REGISTRY_TOML: ${{ vars.STANDARDS_ROLLOUT_REGISTRY_TOML }}
         run: bash .github/scripts/rollout-apply.sh
       - name: Keep the rollout log for the fleet report
