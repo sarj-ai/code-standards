@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+import stat
+from typing import TYPE_CHECKING, NamedTuple
 
 from sarj_standards import __version__
 from sarj_standards.libs.adoption import doctor, retired_suppressions
@@ -9,6 +10,11 @@ from sarj_standards.libs.adoption import doctor, retired_suppressions
 if TYPE_CHECKING:
     from collections.abc import Mapping
     from pathlib import Path
+
+
+class NativePinRewrite(NamedTuple):
+    contents: bytes
+    mode: str
 
 
 def expected_rewrites(
@@ -39,5 +45,21 @@ def validate_rewrites(root: Path, expected: Mapping[str, bytes]) -> frozenset[st
             or path.read_bytes() != contents
         ):
             msg = f"retired suppression migration differs from the canonical rewrite: {relative}"
+            raise ValueError(msg)
+    return frozenset(expected)
+
+
+def validate_native_pins(root: Path, expected: Mapping[str, NativePinRewrite]) -> frozenset[str]:
+    try:
+        validate_rewrites(root, {relative: rewrite.contents for relative, rewrite in expected.items()})
+    except ValueError as exc:
+        msg = "source differs from the canonical native bootstrap pin rewrite"
+        raise ValueError(msg) from exc
+    for relative, rewrite in expected.items():
+        path = root / relative
+        if rewrite.mode not in {"100644", "100755"} or bool(
+            path.stat().st_mode & (stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+        ) != (rewrite.mode == "100755"):
+            msg = f"source differs from the canonical native bootstrap pin rewrite: {relative}"
             raise ValueError(msg)
     return frozenset(expected)

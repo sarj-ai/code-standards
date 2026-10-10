@@ -7,6 +7,7 @@ from dataclasses import dataclass, replace
 from datetime import timedelta
 from enum import StrEnum
 from functools import partial
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -824,6 +825,70 @@ def reject_git_metadata(
             raise RolloutError(msg)
 
 
+def native_bootstrap_rewrites(
+    repo: Path,
+    base_sha: str,
+    paths: Sequence[str],
+    runner: CommandRunner,
+    *,
+    version: str,
+) -> dict[str, retirement.NativePinRewrite]:
+    expected: dict[str, retirement.NativePinRewrite] = {}
+    for relative, original in _tracked_shell_blobs(repo, base_sha, paths, runner).items():
+        rewritten = launcher.rewrite_native_bootstrap_pin(original.contents, version=version)
+        if rewritten is not None:
+            expected[relative] = retirement.NativePinRewrite(rewritten, original.mode)
+    return expected
+
+
+def validate_rollout_native_pins(
+    repo: Path,
+    expected: Mapping[str, retirement.NativePinRewrite],
+    runner: CommandRunner,
+    *,
+    revision: str = "",
+) -> frozenset[str]:
+    try:
+        permitted = retirement.validate_native_pins(repo, expected)
+    except ValueError as exc:
+        raise RolloutError(str(exc)) from exc
+    if revision and _tracked_shell_blobs(repo, revision, tuple(expected), runner) != expected:
+        msg = "committed native bootstrap pin rewrite differs from the immutable-base expectation"
+        raise RolloutError(msg)
+    return permitted
+
+
+def _tracked_shell_blobs(
+    repo: Path, revision: str, paths: Sequence[str], runner: CommandRunner
+) -> dict[str, retirement.NativePinRewrite]:
+    selected = tuple(path for path in paths if Path(path).suffix == ".sh")
+    if not selected:
+        return {}
+    result = runner.run(("git", "--no-replace-objects", "ls-tree", "-r", "-z", revision, "--", *selected), cwd=repo)
+    blobs: dict[str, retirement.NativePinRewrite] = {}
+    for entry in (result.stdout or "").split("\0"):
+        if not entry:
+            continue
+        metadata, relative = entry.split("\t", maxsplit=1)
+        mode, kind, object_id = metadata.split()
+        if relative not in selected or mode not in {"100644", "100755"} or kind != "blob":
+            continue
+        try:
+            contents = (
+                runner.run(("git", "--no-replace-objects", "cat-file", "blob", object_id), cwd=repo).stdout or ""
+            ).encode("utf-8")
+        except UnicodeError:
+            continue
+        # The text runner normalizes line endings. Object identity proves an
+        # exact round trip; unsupported binary/encoding/newline forms stay protected.
+        identity = hashlib.sha1(
+            b"blob " + str(len(contents)).encode() + b"\0" + contents, usedforsecurity=False
+        ).hexdigest()
+        if b"\0" not in contents and identity == object_id:
+            blobs[relative] = retirement.NativePinRewrite(contents, mode)
+    return blobs
+
+
 def reject_unsafe_diff(
     paths: Sequence[str],
     *,
@@ -869,12 +934,15 @@ def amend_safe_changes(
     allowed_workflow_paths: frozenset[str],
     allowed_baseline_paths: frozenset[str] = frozenset(),
     allowed_paths: frozenset[str] = DEFAULT_ALLOWED_ROLLOUT_PATHS,
+    native_pin_rewrites: Mapping[str, retirement.NativePinRewrite] | None = None,
 ) -> bool:
+    native_paths = validate_rollout_native_pins(repo, native_pin_rewrites or {}, runner)
     paths = changed_paths(repo, runner)
     if not paths:
         return False
     reject_unsafe_diff(
         paths,
+        allowed_source_paths=native_paths,
         allowed_workflow_paths=allowed_workflow_paths,
         allowed_baseline_paths=allowed_baseline_paths,
         allowed_paths=allowed_paths,
@@ -1536,10 +1604,12 @@ def _apply_one(  # ruff: ignore[too-many-locals] - one transaction binds verific
         worktree_paths = changed_paths(repo, runner)
         allowed_workflow_paths = pin_workflow_paths | canonical_commit_policy_workflow_paths(repo, worktree_paths)
         retired_paths = _validate_rollout_retirements(repo, retired_rewrites)
+        native_pin_rewrites = native_bootstrap_rewrites(repo, base_sha, worktree_paths, runner, version=version)
+        native_paths = validate_rollout_native_pins(repo, native_pin_rewrites, runner)
         retired_baselines = frozenset(path for path in retired_paths if "baseline" in path.lower())
         reject_unsafe_diff(
             worktree_paths,
-            allowed_source_paths=retired_paths,
+            allowed_source_paths=retired_paths | native_paths,
             allowed_workflow_paths=allowed_workflow_paths,
             allowed_baseline_paths=allowed_baseline_paths | retired_baselines,
             allowed_paths=allowed_paths,
@@ -1568,6 +1638,7 @@ def _apply_one(  # ruff: ignore[too-many-locals] - one transaction binds verific
                 allowed_workflow_paths=allowed_workflow_paths,
                 allowed_baseline_paths=allowed_baseline_paths,
                 allowed_paths=allowed_paths,
+                native_pin_rewrites=native_pin_rewrites,
             )
             if verification_failure_detail:
                 failures.append("consumer verification failed:\n" + verification_failure_detail)
@@ -1575,9 +1646,10 @@ def _apply_one(  # ruff: ignore[too-many-locals] - one transaction binds verific
         branch_paths = committed_paths(repo, consumer.branch, runner)
         allowed_workflow_paths = pin_workflow_paths | canonical_commit_policy_workflow_paths(repo, branch_paths)
         _validate_rollout_retirements(repo, retired_rewrites)
+        validate_rollout_native_pins(repo, native_pin_rewrites, runner, revision="HEAD")
         reject_unsafe_diff(
             branch_paths,
-            allowed_source_paths=retired_paths,
+            allowed_source_paths=retired_paths | native_paths,
             allowed_workflow_paths=allowed_workflow_paths,
             allowed_baseline_paths=allowed_baseline_paths | retired_baselines,
             allowed_paths=allowed_paths,
@@ -2517,6 +2589,7 @@ def _verify_rollout_patch(
     allowed_baseline_paths: frozenset[str],
     allowed_paths: frozenset[str],
     standards_tool: tuple[str, ...] = (),
+    native_pin_rewrites: Mapping[str, retirement.NativePinRewrite] | None = None,
 ) -> str:
     verification_failure_detail = ""
     for attempt in range(MAX_VERIFICATION_ATTEMPTS):
@@ -2554,6 +2627,7 @@ def _verify_rollout_patch(
             allowed_workflow_paths=allowed_workflow_paths,
             allowed_baseline_paths=allowed_baseline_paths,
             allowed_paths=allowed_paths,
+            native_pin_rewrites=native_pin_rewrites,
         )
         if verification.returncode == 0 and not mutated:
             break
