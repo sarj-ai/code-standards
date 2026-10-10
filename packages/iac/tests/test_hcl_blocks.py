@@ -1,10 +1,26 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import pytest
 
 # `_hcl` is package-private by design; the walker is exercised directly because
 # its guards (masking, nesting, value rejoining) are what the rules depend on.
-from sarj_iac_lint._hcl import blocks, document, literal_string, literal_token, strip_outer_parentheses, tokens
+from sarj_iac_lint.__main__ import analyze
+from sarj_iac_lint._hcl import (
+    blocks,
+    document,
+    literal_string,
+    literal_token,
+    strip_outer_parentheses,
+    suppression_comment_lines,
+    tokens,
+)
+from sarj_iac_lint.rules import REGISTRY
+
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 def test_tokens_keeps_an_interpolated_string_whole():
@@ -289,3 +305,279 @@ def test_escaped_backslash_does_not_start_a_unicode_escape() -> None:
 )
 def test_static_template_escapes_keep_lexical_decoding_order(source: str, expected: str | None) -> None:
     assert literal_string(source) == expected
+
+
+_NATIVE_TEMPLATE_CASES = (
+    (
+        "literal-comment-data",
+        'resource "google_service_account_key" "public" { keepers = { reason = "# sarj-noqa: SARJ211 -- source data" } }\n',
+        1,
+    ),
+    (
+        "nested-upper-data",
+        'resource "google_service_account_key" "public" { keepers = { reason = "${upper("# sarj-noqa: SARJ211")}" } }\n',
+        1,
+    ),
+    (
+        "nested-lookup-data",
+        'resource "google_service_account_key" "public" { keepers = { reason = "${lookup({tag = "# sarj-noqa: SARJ211"}, "tag", "default")}" } }\n',
+        1,
+    ),
+    (
+        "nested-object-data",
+        'resource "google_service_account_key" "public" { keepers = { reason = "${jsonencode({one = {two = "# sarj-noqa: SARJ211"}})}" } }\n',
+        1,
+    ),
+    (
+        "nested-template-data",
+        'resource "google_service_account_key" "public" { keepers = { reason = "${format("%s", "${upper("# sarj-noqa: SARJ211")}")}" } }\n',
+        1,
+    ),
+    (
+        "escaped-interpolation-data",
+        'resource "google_service_account_key" "public" { keepers = { reason = "$${# sarj-noqa: SARJ211}" } }\n',
+        1,
+    ),
+    (
+        "escaped-directive-data",
+        'resource "google_service_account_key" "public" { keepers = { reason = "%%{# sarj-noqa: SARJ211}" } }\n',
+        1,
+    ),
+    (
+        "nested-template-block-comment",
+        'resource "google_service_account_key" "public" { keepers = { reason = "${upper(/* # sarj-noqa: SARJ211 */ "data")}" } }\n',
+        1,
+    ),
+    (
+        "nested-template-line-comment",
+        'resource "google_service_account_key" "public" { keepers = { reason = "${upper( # sarj-noqa: SARJ211 -- expression comment\n "data")}" } }\n',
+        1,
+    ),
+    (
+        "nested-template-multiline-object",
+        'resource "google_service_account_key" "public" { keepers = { reason = "${jsonencode({\n reason = "# sarj-noqa: SARJ211"\n})}" } }\n',
+        1,
+    ),
+    (
+        "template-control-data",
+        'resource "google_service_account_key" "public" { keepers = { reason = "%{if upper("# sarj-noqa: SARJ211") != ""}data%{endif}" } }\n',
+        1,
+    ),
+    (
+        "nested-heredoc-in-template",
+        'resource "google_service_account_key" "public" { keepers = { reason = "${<<EOT\n# sarj-noqa: SARJ211\nEOT\n}" } }\n',
+        1,
+    ),
+    (
+        "heredoc-value-data",
+        'resource "google_service_account_key" "public" {\n reason = <<EOT\n# sarj-noqa: SARJ211\nEOT\n}\n',
+        1,
+    ),
+    (
+        "heredoc-template-nested-quote",
+        'locals {\n reason = <<EOT\n${upper("# sarj-noqa: SARJ211")}\nEOT\n}\nresource "google_service_account_key" "public" {}\n',
+        1,
+    ),
+    ("unicode-unrelated-code", 'locals { café = 1 }\nresource "google_service_account_key" "public" {}\n', 1),
+    (
+        "unicode-unrelated-true-waiver",
+        'locals { café = 1 }\nresource "google_service_account_key" "public" {} # sarj-noqa: SARJ211 -- approved\n',
+        1,
+    ),
+    ("inline-header-comments", 'resource /* type */ "google_service_account_key" /* name */ "public" {}\n', 1),
+    ("multiline-header-comment", 'resource /* comment\n detail */ "google_service_account_key" "public" {}\n', 1),
+    ("multiline-label-comment", 'resource "google_service_account_key" /* comment\n detail */ "public" {}\n', 1),
+    (
+        "multiline-header-comment-first-line-waiver",
+        'resource /* # sarj-noqa: SARJ211 -- approved\n detail */ "google_service_account_key" "public" {}\n',
+        1,
+    ),
+    ("structural-header-newline", 'resource\n "google_service_account_key" "public" {}\n', 0),
+    ("structural-brace-newline", 'resource "google_service_account_key" "public"\n {}\n', 0),
+    ("line-comment-header-break", 'resource # comment\n "google_service_account_key" "public" {}\n', 0),
+    ("comment-then-header-break", 'resource /* comment\n detail */\n "google_service_account_key" "public" {}\n', 0),
+    (
+        "header-two-multiline-comments",
+        'resource /* one\n two */ "google_service_account_key" /* three\n four */ "public" {}\n',
+        1,
+    ),
+    ("real-line-waiver", 'resource "google_service_account_key" "public" {} # sarj-noqa: SARJ211 -- approved\n', 1),
+    ("real-slash-waiver", 'resource "google_service_account_key" "public" {} // # sarj-noqa: SARJ211 -- approved\n', 1),
+    (
+        "real-block-waiver",
+        'resource "google_service_account_key" "public" {} /* # sarj-noqa: SARJ211 -- approved */\n',
+        1,
+    ),
+    (
+        "template-with-real-waiver",
+        'resource "google_service_account_key" "public" { keepers = { reason = "${jsonencode({reason = "# source data"})}" } } # sarj-noqa: SARJ211 -- approved\n',
+        1,
+    ),
+    (
+        "wrong-code-real-comment",
+        'resource "google_service_account_key" "public" {} # sarj-noqa: SARJ201 -- other policy\n',
+        1,
+    ),
+    (
+        "literal-data-wrong-code-real-comment",
+        'resource "google_service_account_key" "public" { keepers = { reason = "# sarj-noqa: SARJ211" } } # sarj-noqa: SARJ201 -- other policy\n',
+        1,
+    ),
+    (
+        "template-data-wrong-code-real-comment",
+        'resource "google_service_account_key" "public" { keepers = { reason = "${upper("# sarj-noqa: SARJ211")}" } } # sarj-noqa: SARJ201 -- other policy\n',
+        1,
+    ),
+    ("unclosed-block-comment", 'resource "google_service_account_key" "public" {} /* # sarj-noqa: SARJ211\n', 0),
+    (
+        "unclosed-template",
+        'resource "google_service_account_key" "public" { keepers = { reason = "${upper("source")" } }\n',
+        0,
+    ),
+    ("unclosed-string", 'resource "google_service_account_key" "public" { reason = "data\n', 0),
+    ("unclosed-heredoc", 'resource "google_service_account_key" "public" {\n reason = <<EOT\n# source\n', 0),
+)
+
+
+@pytest.mark.parametrize(
+    ("name", "source", "expected"), _NATIVE_TEMPLATE_CASES, ids=tuple(case[0] for case in _NATIVE_TEMPLATE_CASES)
+)
+@pytest.mark.parametrize("crlf", [False, True])
+def test_shared_template_spans_preserve_native_resource_ownership(
+    name: str, source: str, expected: int, crlf: bool, tmp_path: Path
+) -> None:
+
+    source = source.replace("\n", "\r\n") if crlf else source
+    path = tmp_path / "main.tf"
+    path.write_bytes(source.encode())
+    rule = REGISTRY["no-managed-service-account-key"]()
+    findings = rule.check(path, source)
+    assert len(findings) == expected, name
+    assert findings == rule.check(path, source)
+    assert len({(item.code, item.line, item.col) for item in findings}) == len(findings)
+    analyze(sorted(REGISTRY), [path])
+
+
+def test_multiline_template_remains_one_token_with_exact_source() -> None:
+    value = '"${jsonencode({\n reason = "# source data"\n})}"'
+    assert tokens(value) == (value,)
+    assert literal_string(value) is None
+
+
+def test_shared_comment_index_reuses_one_immutable_projection() -> None:
+
+    source = 'locals { value = "${upper("# source data")}" } # sarj-noqa: SARJ211 -- approved\n'
+    comments = suppression_comment_lines(source)
+    assert dict(comments) == {1: "# sarj-noqa: SARJ211 -- approved"}
+    assert suppression_comment_lines(source) is comments
+
+
+def test_malformed_file_does_not_break_multi_file_declaration_inference(tmp_path: Path) -> None:
+
+    (tmp_path / "variables.tf").write_text('variable "region" { type = string }\n')
+    (tmp_path / "malformed.tf").write_text('locals { value = "unterminated\n')
+    path = tmp_path / "env" / "dev" / "terraform.tfvars"
+    path.parent.mkdir(parents=True)
+    path.write_text('region = "fixture"\n')
+    assert analyze(["no-dead-environment-input"], [path]) == []
+
+
+_NATIVE_VALUE_BOUNDARY_CASES = (
+    (
+        "protection-dynamic-after-comment",
+        'resource "google_sql_database_instance" "public" {\n deletion_protection = true /* comment\n detail */ && false\n}\n',
+        "require-deletion-protection",
+        1,
+    ),
+    (
+        "protection-static-comment",
+        'resource "google_sql_database_instance" "public" {\n deletion_protection = true /* comment\n detail */\n}\n',
+        "require-deletion-protection",
+        0,
+    ),
+    (
+        "protection-grouped-static-comment",
+        'resource "google_sql_database_instance" "public" {\n deletion_protection = (true /* comment\n detail */)\n}\n',
+        "require-deletion-protection",
+        0,
+    ),
+    (
+        "protection-next-attribute",
+        'resource "google_sql_database_instance" "public" {\n deletion_protection = true\n name = "fixture"\n}\n',
+        "require-deletion-protection",
+        0,
+    ),
+    (
+        "protection-false-next-attribute",
+        'resource "google_sql_database_instance" "public" {\n deletion_protection = false\n name = "fixture"\n}\n',
+        "require-deletion-protection",
+        1,
+    ),
+    (
+        "environment-comparison-after-comment",
+        'resource "null_resource" "public" {\n count = var.environment /* comment\n detail */ == "prod" ? 1 : 0\n}\n',
+        "no-environment-conditional",
+        1,
+    ),
+    (
+        "environment-comparison-normal-newline",
+        'resource "null_resource" "public" {\n count = var.environment\n reason = "prod"\n}\n',
+        "no-environment-conditional",
+        0,
+    ),
+    (
+        "conversion-after-comment",
+        'variable "region" {\n type = string\n validation {\n condition = can /* comment\n detail */ (tostring(var.region))\n error_message = "Must be a string."\n }\n}\n',
+        "no-redundant-variable-validation",
+        1,
+    ),
+    (
+        "line-comment-block-delimiter",
+        '# explanatory /* source data\nresource "google_service_account_key" "public" {}\n',
+        "no-managed-service-account-key",
+        1,
+    ),
+    (
+        "slash-comment-block-delimiter",
+        '// explanatory /* source data\nresource "google_service_account_key" "public" {}\n',
+        "no-managed-service-account-key",
+        1,
+    ),
+    (
+        "line-comment-quote",
+        '# explanatory " source data\nresource "google_service_account_key" "public" {}\n',
+        "no-managed-service-account-key",
+        1,
+    ),
+)
+
+
+@pytest.mark.parametrize(
+    ("name", "source", "rule_id", "expected"),
+    _NATIVE_VALUE_BOUNDARY_CASES,
+    ids=tuple(case[0] for case in _NATIVE_VALUE_BOUNDARY_CASES),
+)
+@pytest.mark.parametrize("crlf", [False, True])
+def test_comment_newlines_preserve_complete_value_ownership(
+    name: str, source: str, rule_id: str, expected: int, tmp_path: Path, *, crlf: bool
+) -> None:
+    source = source.replace("\n", "\r\n") if crlf else source
+    path = tmp_path / "main.tf"
+    path.write_bytes(source.encode())
+    findings = analyze([rule_id], [path])
+    assert len(findings) == expected, name
+    assert findings == analyze([rule_id], [path])
+    analyze(sorted(REGISTRY), [path])
+
+
+def test_comment_projection_tracks_source_changes_and_bounds_its_cache() -> None:
+    initial = 'resource "google_service_account_key" "public" {} # sarj-noqa: SARJ211 -- approved\n'
+    revised = 'resource "google_service_account_key" "public" { keepers = { reason = "# sarj-noqa: SARJ211" } }\n'
+    assert suppression_comment_lines(initial).get(1)
+    assert not suppression_comment_lines(revised)
+    assert suppression_comment_lines(initial).get(1)
+    for index in range(40):
+        suppression_comment_lines(f'locals {{ value = "fixture-{index}" }} # ordinary\n')
+    info = suppression_comment_lines.cache_info()
+    assert info.maxsize is not None
+    assert info.currsize <= info.maxsize

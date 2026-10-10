@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import tokenize
 from typing import TYPE_CHECKING
 
 import pytest
@@ -11,6 +12,8 @@ from sarj_python_lint.rules.named_record_at_boundaries import NamedRecordAtBound
 
 
 if TYPE_CHECKING:
+    from typing import TextIO
+
     from sarj_python_lint.rule_base import Diagnostic, RuleExample
 
 
@@ -471,16 +474,16 @@ def test_imported_module_is_parsed_once_per_source_file(tmp_path: Path, monkeypa
         "CurrentUser = Annotated[User, Depends(current_user)]\n",
         encoding="utf-8",
     )
-    original_read_text = Path.read_text
+    original_open = tokenize.open
     reads: list[Path] = []
 
-    def counted_read_text(path: Path, *, encoding: str | None = None, errors: str | None = None) -> str:
+    def counted_open(path: Path) -> TextIO:
         if path == dependency:
             reads.append(path)
-        return original_read_text(path, encoding=encoding, errors=errors)
+        return original_open(path)
 
-    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- global Path reads are intercepted to verify cache behavior.
-        Path, "read_text", counted_read_text
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- native Python source reads are intercepted to verify cache behavior through the public rule.
+        tokenize, "open", counted_open
     )
     source = _source("""
 from .dependencies import CurrentUser

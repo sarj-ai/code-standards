@@ -731,9 +731,11 @@ def _installed_hook_managers(root: Path, *, hook_type: str = "pre-commit") -> fr
         return frozenset()
     hook = Path(completed.stdout.strip())
     path = hook if hook.is_absolute() else root / hook
+    if not path.is_file() or not os.access(path, os.X_OK):
+        return frozenset()
     managers: set[str] = set()
     for candidate in (path, path.with_name(f"{path.name}.legacy")):
-        if not candidate.is_file():
+        if not candidate.is_file() or not os.access(candidate, os.X_OK):
             continue
         try:
             contents = candidate.read_text(encoding="utf-8", errors="replace")

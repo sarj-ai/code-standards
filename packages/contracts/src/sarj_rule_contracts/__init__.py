@@ -3,6 +3,7 @@ from .contracts import (
     CatalogRule as CatalogRule,
     DefaultLevel as DefaultLevel,
     EvaluationCase as EvaluationCase,
+    ExampleDependency as ExampleDependency,
     ExampleFile as ExampleFile,
     ExampleOutcome as ExampleOutcome,
     ExpectedOutcome as ExpectedOutcome,

@@ -133,6 +133,21 @@ class RuleCatalogDocument:
                         {"path": item.path.as_posix(), "source": item.source}
                         for item in sorted(example.files, key=lambda item: item.path)
                     ],
+                    **(
+                        {"ruleOptions": json.loads(example.rule_options_json)}
+                        if example.rule_options_json is not None
+                        else {}
+                    ),
+                    **(
+                        {
+                            "installedDependencies": [
+                                {"module": item.module, "version": item.version}
+                                for item in example.installed_dependencies
+                            ]
+                        }
+                        if example.installed_dependencies
+                        else {}
+                    ),
                     "fixedFiles": [
                         {"path": item.path.as_posix(), "source": item.source}
                         for item in sorted(example.fixed_files, key=lambda item: item.path)

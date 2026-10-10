@@ -46,8 +46,11 @@ def local_exec_commands(source: str) -> tuple[CommandLiteral, ...]:
 
 def _balanced_structure(source: str) -> bool:
     closers: list[str] = []
-    masked = "\n".join(_hcl.strip_inline_comment(line) for line in _hcl.masked_hcl_lines(source))
-    for token in _hcl.tokens(masked):
+    try:
+        structural = _hcl.tokens(source)
+    except ValueError:
+        return False
+    for token in structural:
         if token in {"{", "[", "("}:
             closers.append({"{": "}", "[": "]", "(": ")"}[token])
         elif token in {"}", "]", ")"} and (not closers or closers.pop() != token):

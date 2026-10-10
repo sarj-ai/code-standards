@@ -42,7 +42,7 @@ def test_dbmate_transactional_migration_gets_compatible_paired_guidance() -> Non
 
     (finding,) = _check(source)
 
-    assert "migrate:no-transaction" in finding.message
+    assert "transaction:false" in finding.message
     assert "SET`/`RESET" in finding.message
 
 
@@ -178,3 +178,10 @@ def test_reports_each_blocking_index_build() -> None:
     source = 'CREATE INDEX idx_users_email ON "users" (email);\nCREATE INDEX idx_users_name ON "users" (name);\n'
 
     assert [finding.line for finding in _check(source)] == [1, 2]
+
+
+def test_each_dbmate_section_gets_its_own_native_transaction_guidance() -> None:
+    source = "-- migrate:up transaction:false\nCREATE INDEX first_idx ON public_example(first);\n-- migrate:down transaction:true\nCREATE INDEX second_idx ON public_example(second);\n"
+    first, second = _check(source)
+    assert "transaction:false" not in first.message
+    assert "transaction:false" in second.message

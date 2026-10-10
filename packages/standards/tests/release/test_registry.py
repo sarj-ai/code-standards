@@ -1,8 +1,12 @@
 from __future__ import annotations
 
 from datetime import timedelta
+from email.message import Message
 import json
+import re
+from ssl import SSLCertVerificationError
 from typing import TYPE_CHECKING, Self
+from urllib.error import HTTPError, URLError
 
 import pytest
 from rich.text import Text
@@ -310,3 +314,93 @@ def test_pypi_simple_metadata_without_exact_version_is_not_ready(monkeypatch: py
     )
 
     assert not registry_module.publication_exists(RegistryRequirement("pypi", "sarj-python-lint", "1.2.3"))
+
+
+@pytest.mark.parametrize("wrapped", [False, True], ids=("socket-timeout", "urllib-tls-timeout"))
+@pytest.mark.parametrize("available", [False, True], ids=("exact-version-absent", "exact-version-visible"))
+def test_publication_timeout_repeats_one_read_without_inventing_availability(
+    monkeypatch: pytest.MonkeyPatch, *, wrapped: bool, available: bool
+) -> None:
+    calls: list[tuple[str, str, int]] = []
+    payload = json.dumps(
+        {"files": [{"filename": f"example-{'1.2.3' if available else '1.2.30'}-py3-none-any.whl"}]}
+    ).encode()
+
+    class Response:
+        status: int = 200
+
+        def __enter__(self) -> Self:
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+        def read(self) -> bytes:
+            return payload
+
+    def open_url(request: Request, *, timeout: int) -> Response:
+        calls.append((request.full_url, request.get_method(), timeout))
+        if len(calls) == 1:
+            error = TimeoutError("TLS handshake timed out")
+            if wrapped:
+                raise URLError(error)
+            raise error
+        return Response()
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- isolates registry transport while retaining exact metadata parsing
+        registry_module, "urlopen", open_url
+    )
+    assert registry_module.publication_exists(RegistryRequirement("pypi", "example", "1.2.3")) is available
+    assert calls == [("https://pypi.org/simple/example/", "GET", 15)] * 2
+
+
+@pytest.mark.parametrize("wrapped", [False, True], ids=("socket-timeout", "urllib-tls-timeout"))
+def test_publication_timeout_exhaustion_preserves_last_error(monkeypatch: pytest.MonkeyPatch, *, wrapped: bool) -> None:
+    failures = [TimeoutError("first timeout"), TimeoutError("last timeout")]
+    errors = [URLError(error) for error in failures] if wrapped else failures
+    calls = 0
+
+    def open_url(_request: Request, *, timeout: int) -> None:
+        nonlocal calls
+        assert timeout == 15
+        error = errors[calls]
+        calls += 1
+        raise error
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- verifies bounded transport retries and final error identity
+        registry_module, "urlopen", open_url
+    )
+    with pytest.raises(OSError, match="last timeout") as stopped:
+        registry_module.publication_exists(RegistryRequirement("npm", "@example/plugin", "1.2.3"))
+    assert stopped.value is errors[-1]
+    assert calls == 2
+
+
+@pytest.mark.parametrize("failure", ["certificate", "dns", "forbidden", "server", "absent"])
+def test_publication_read_does_not_retry_unproven_failures(monkeypatch: pytest.MonkeyPatch, failure: str) -> None:
+    errors: dict[str, OSError] = {
+        "certificate": URLError(SSLCertVerificationError("certificate rejected")),
+        "dns": URLError("name lookup failed"),
+        "forbidden": HTTPError("https://registry.npmjs.org/example/1.2.3", 403, "Forbidden", Message(), None),
+        "server": HTTPError("https://registry.npmjs.org/example/1.2.3", 503, "Unavailable", Message(), None),
+        "absent": HTTPError("https://registry.npmjs.org/example/1.2.3", 404, "Not Found", Message(), None),
+    }
+    calls = 0
+
+    def open_url(_request: Request, *, timeout: int) -> None:
+        nonlocal calls
+        assert timeout == 15
+        calls += 1
+        raise errors[failure]
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- distinguishes transport timeouts from terminal registry failures
+        registry_module, "urlopen", open_url
+    )
+    requirement = RegistryRequirement("npm", "example", "1.2.3")
+    if failure == "absent":
+        assert not registry_module.publication_exists(requirement)
+    else:
+        with pytest.raises(OSError, match=re.escape(str(errors[failure]))) as stopped:
+            registry_module.publication_exists(requirement)
+        assert stopped.value is errors[failure]
+    assert calls == 1

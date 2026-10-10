@@ -70,9 +70,8 @@ def _check(rule_ids: list[str], paths: list[Path]) -> list[Diagnostic]:
             source = p.read_text(encoding="utf-8", errors="replace")
         except OSError:
             continue
-        source_lines = source.splitlines()
         for rule in rules:
-            diags.extend(d for d in rule.check(p, source) if not is_suppressed(source_lines, d.line, d.code))
+            diags.extend(d for d in rule.check(p, source) if not is_suppressed(source, d.line, d.code))
     return diags
 
 

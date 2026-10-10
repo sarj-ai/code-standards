@@ -158,11 +158,28 @@ def _visit_resource(
                 base = resource.contents
         _queue_pointer_targets(walk, references, base=base, validator=validator)
     validator.check_schema(content)  # pyright: ignore[reportArgumentType] -- upstream protocol stub excludes valid modern boolean schemas.
-    walk.pending.extend(_SchemaResource(child, base, validator) for child in resource.subresources())
+    walk.pending.extend(
+        _SchemaResource(child, base, validator)
+        for child in _native_subresources(resource=resource, content=content, validator=validator)
+    )
     walk.pending.extend(
         _SchemaResource(child, base, validator)
         for child in _profile_subresources(content=content, validator=validator, profile=profile)
     )
+
+
+def _native_subresources(
+    *, resource: Resource[Schema], content: dict[str, object] | bool, validator: type[Validator]
+) -> Iterable[Resource[Schema]]:
+    if (
+        not isinstance(content, bool)
+        and "dependencies" in content
+        and validator in {Draft4Validator, Draft6Validator, Draft7Validator}
+    ):
+        # referencing 0.37.0 classifies every dependency from the first entry.
+        # Traverse that mixed keyword separately; retain upstream ownership of others.
+        resource = _resource({key: value for key, value in content.items() if key != "dependencies"}, default=validator)
+    return resource.subresources()
 
 
 def _profile_subresources(
@@ -171,15 +188,17 @@ def _profile_subresources(
     validator: type[Validator],
     profile: SchemaReferenceProfile | None,
 ) -> Iterable[Resource[Schema]]:
-    if profile is None or isinstance(content, bool):
+    if isinstance(content, bool):
         return
-    for dialect, keyword in profile.extra_subschema_maps:
+    keywords: set[str] = {"dependencies"} if validator in {Draft4Validator, Draft6Validator, Draft7Validator} else set()
+    if profile is not None:
+        keywords.update(keyword for dialect, keyword in profile.extra_subschema_maps if _DIALECTS[dialect] is validator)
+    for keyword in sorted(keywords):
         container = content.get(keyword)
-        if _DIALECTS[dialect] is not validator or not is_object_mapping(container):
-            continue
-        for child in container.values():
-            if not is_object_list(child):
-                yield _resource(child, default=validator)
+        if is_object_mapping(container):
+            for child in container.values():
+                if not is_object_list(child):
+                    yield _resource(child, default=validator)
 
 
 def _native_dialect(content: dict[str, object], dialects: frozenset[str] | None) -> None:

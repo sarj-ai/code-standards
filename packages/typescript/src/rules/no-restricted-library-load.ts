@@ -31,8 +31,8 @@ export const NO_RESTRICTED_LIBRARY_LOAD_DOCUMENTATION = {
   category: "architecture",
   limitations: ["Only literal dynamic imports, unshadowed CommonJS loads/resolution calls, and runtime TypeScript import-equals declarations are checked; erased type imports are excluded. A configured restriction list is required."],
   examples: [
-    { id: "static-import", title: "Static imports remain the static-import rule's responsibility", outcome: "no-match", files: [{ path: "src/client.ts", source: "import axios from 'axios';" }], focusPath: "src/client.ts", expectedCount: 0, public: true },
-    { id: "runtime-load", title: "Do not load a restricted library at runtime", outcome: "match", files: [{ path: "src/client.ts", source: "const client = require('axios');" }], focusPath: "src/client.ts", expectedCount: 1, public: true },
+    { id: "static-import", title: "Static imports remain the static-import rule's responsibility", outcome: "no-match", files: [{ path: "src/client.ts", source: "import axios from 'axios';" }], focusPath: "src/client.ts", expectedCount: 0, public: true, ruleOptions: [{ libraries: [{ id: "LIB101", module: "axios", replacement: "Ky" }] }] },
+    { id: "runtime-load", title: "Do not load a restricted library at runtime", outcome: "match", files: [{ path: "src/client.ts", source: "const client = require('axios');" }], focusPath: "src/client.ts", expectedCount: 1, public: true, ruleOptions: [{ libraries: [{ id: "LIB101", module: "axios", replacement: "Ky" }] }] },
   ],
 } as const satisfies RuleDocumentation;
 

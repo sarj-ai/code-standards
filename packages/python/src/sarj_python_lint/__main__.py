@@ -434,7 +434,7 @@ def _apply_baseline(
 def _run_check(rule: list[str], files: list[Path], baseline: Path | None, update_baseline: Path | None) -> int:
     try:
         diags = analyze(rule, files)
-    except (OSError, ValueError) as exc:
+    except (OSError, ValueError, SyntaxError) as exc:
         sys.stderr.write(f"error: {exc}\n")
         return 2
     if update_baseline is not None:

@@ -6,7 +6,12 @@ import re
 from types import MappingProxyType
 from typing import TYPE_CHECKING, final, override
 
-from sarj_iac_lint._hcl import document, strip_outer_parentheses, tokens
+from sarj_iac_lint._hcl import (
+    document,
+    header_comment_lines,
+    strip_outer_parentheses,
+    tokens,
+)
 from sarj_iac_lint.rule_base import (
     AutofixPolicy,
     Diagnostic,
@@ -362,23 +367,5 @@ def _fixture_path(path: Path) -> bool:
 
 
 def _generated_header(source: str) -> bool:
-    comments: list[str] = []
-    in_block = False
-    for line in source.splitlines()[:20]:
-        stripped = line.lstrip()
-        if in_block:
-            comments.append(stripped.removeprefix("*").strip())
-            if "*/" in stripped:
-                in_block = False
-            continue
-        if not stripped:
-            continue
-        if stripped.startswith(("#", "//")):
-            comments.append(stripped.lstrip("#/ "))
-            continue
-        if stripped.startswith("/*"):
-            comments.append(stripped.removeprefix("/*").strip())
-            in_block = "*/" not in stripped
-            continue
-        break
+    comments = (line.lstrip().removeprefix("*").strip() for line in header_comment_lines(source, leading_only=True))
     return _GENERATED_RE.search(" ".join(comments)) is not None

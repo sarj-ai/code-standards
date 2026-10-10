@@ -137,7 +137,7 @@ class MixedMigrationPhases(Rule):
         forward = _forward_section(source)
         if _has_complete_header_atomicity_evidence(forward):
             return []
-        masked = _mask_dollar_bodies(forward, mask_sql_literals_and_comments(forward))
+        masked = _mask_dollar_bodies(forward, mask_sql_literals_and_comments(forward, mask_dollar_literals=True))
         return _find_mixed_phase_diagnostic(path, masked, self.code)
 
 

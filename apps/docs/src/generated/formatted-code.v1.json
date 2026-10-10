@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "836ea98e73e44be71bf6b4a6a13ed0eef2ecdb90382e5de331724f17358761db",
-  "cliSha256": "019eb2656097a72e8dbd66d889d48837c45856bd3a7abdeac3dc1ff0da87ca5a",
+  "catalogSha256": "2ce4875c311d084bf3e9ab5ff895c60162ec3de82782cea73d270aa9140495ce",
+  "cliSha256": "b692215ba240dd31264014f1722e5f5d48b567dc57a1798f51cdfe06d1df9287",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -1655,6 +1655,17 @@
           "focusPath": "src/client.ts",
           "id": "runtime-load",
           "outcome": "reject",
+          "ruleOptions": [
+            {
+              "libraries": [
+                {
+                  "id": "LIB101",
+                  "module": "axios",
+                  "replacement": "Ky"
+                }
+              ]
+            }
+          ],
           "scenarioId": "primary",
           "title": "Do not load a restricted library at runtime"
         },
@@ -1670,6 +1681,17 @@
           "focusPath": "src/client.ts",
           "id": "static-import",
           "outcome": "accept",
+          "ruleOptions": [
+            {
+              "libraries": [
+                {
+                  "id": "LIB101",
+                  "module": "axios",
+                  "replacement": "Ky"
+                }
+              ]
+            }
+          ],
           "scenarioId": "primary",
           "title": "Static imports remain the static-import rule's responsibility"
         }
@@ -1935,6 +1957,13 @@
           "focusPath": "src/engineer-digest/post.ts",
           "id": "private-storage",
           "outcome": "reject",
+          "ruleOptions": [
+            {
+              "modules": [
+                "[\\\\/]engineer-digest[\\\\/]"
+              ]
+            }
+          ],
           "scenarioId": "primary",
           "title": "Do not write private state in a stateless module"
         },
@@ -1950,6 +1979,13 @@
           "focusPath": "src/engineer-digest/post.ts",
           "id": "system-of-record",
           "outcome": "accept",
+          "ruleOptions": [
+            {
+              "modules": [
+                "[\\\\/]engineer-digest[\\\\/]"
+              ]
+            }
+          ],
           "scenarioId": "primary",
           "title": "Read from the system of record"
         }
@@ -3538,6 +3574,12 @@
           "fixedFiles": [],
           "focusPath": "src/row.ts",
           "id": "hand-written-parsed-return",
+          "installedDependencies": [
+            {
+              "module": "zod",
+              "version": "4.6.5"
+            }
+          ],
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Do not hand-write the parsed return shape"
@@ -3553,6 +3595,12 @@
           "fixedFiles": [],
           "focusPath": "src/row.ts",
           "id": "schema-derived-return",
+          "installedDependencies": [
+            {
+              "module": "zod",
+              "version": "4.6.5"
+            }
+          ],
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Derive the validated return contract"

@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, NotRequired, Self, TypedDict
 
 from sarj_standards.libs.diagnostics.models import Diagnostic, Location, Severity
 from sarj_standards.libs.json_boundary import parse_json
+from sarj_standards.libs.linting.kubernetes_context import CONTAINER_KINDS, POD_SPEC_PATHS
 from sarj_standards.libs.typed_containers import is_object_list, is_object_mapping
 
 
@@ -22,20 +23,7 @@ NATIVE_CHECKS = (
 )
 OMISSION_CHECK = "explicit-privilege-escalation-disabled"
 _OMISSION_MESSAGE = "CEL check expression returned: missing allowPrivilegeEscalation=false"
-_CONTAINER_KINDS = ("containers", "initContainers", "ephemeralContainers")
-_POD_PATHS = MappingProxyType(
-    {
-        ("v1", "Pod"): ("spec",),
-        ("v1", "PodTemplate"): ("template", "spec"),
-        ("v1", "ReplicationController"): ("spec", "template", "spec"),
-        ("apps/v1", "ReplicaSet"): ("spec", "template", "spec"),
-        ("apps/v1", "Deployment"): ("spec", "template", "spec"),
-        ("apps/v1", "StatefulSet"): ("spec", "template", "spec"),
-        ("apps/v1", "DaemonSet"): ("spec", "template", "spec"),
-        ("batch/v1", "Job"): ("spec", "template", "spec"),
-        ("batch/v1", "CronJob"): ("spec", "jobTemplate", "spec", "template", "spec"),
-    }
-)
+
 _PATTERNS = MappingProxyType(
     {
         "privileged-container": re.compile(r'container "(?P<container>[^\"]+)" is privileged'),
@@ -96,13 +84,13 @@ class KubeConfig(TypedDict):
 
 
 def _pod_spec(resource: Mapping[str, object]) -> PodSpecProjection:
-    path = _POD_PATHS.get((_text(resource, "apiVersion"), _text(resource, "kind")))
+    path = POD_SPEC_PATHS.get((_text(resource, "apiVersion"), _text(resource, "kind")))
     if path is None:
-        for candidate in set(_POD_PATHS.values()):
+        for candidate in set(POD_SPEC_PATHS.values()):
             value: object = resource
             for key in candidate:
                 value = value.get(key) if is_object_mapping(value) else None
-            if is_object_mapping(value) and any(is_object_list(value.get(key)) for key in _CONTAINER_KINDS):
+            if is_object_mapping(value) and any(is_object_list(value.get(key)) for key in CONTAINER_KINDS):
                 msg = "unsupported Kubernetes GVK contains a PodSpec; explicit policy adapter is required"
                 raise ValueError(msg)
         return PodSpecProjection(None)
@@ -123,7 +111,7 @@ def _windows(spec: Mapping[str, object]) -> bool:
 def _containers(spec: Mapping[str, object]) -> tuple[tuple[str, dict[str, object]], ...]:
     result: list[tuple[str, dict[str, object]]] = []
     seen: set[str] = set()
-    for kind in _CONTAINER_KINDS:
+    for kind in CONTAINER_KINDS:
         values = spec.get(kind, [])
         if not is_object_list(values):
             msg = f"PodSpec {kind} must be a sequence"
@@ -152,7 +140,7 @@ def build_config(resource: Mapping[str, object]) -> KubeConfig:
     pod = "object." + ".".join(projection.path)
     conditions = " || ".join(
         f"(has({pod}.{kind}) && {pod}.{kind}.exists(c, !has(c.securityContext) || !has(c.securityContext.allowPrivilegeEscalation)))"
-        for kind in _CONTAINER_KINDS
+        for kind in CONTAINER_KINDS
     )
     check: KubeCheck = {
         "name": OMISSION_CHECK,
@@ -232,7 +220,7 @@ class ExceptionSet:
             if (
                 key.target != _text(target, "id")
                 or key.check not in {*NATIVE_CHECKS, OMISSION_CHECK}
-                or key.container_kind not in _CONTAINER_KINDS
+                or key.container_kind not in CONTAINER_KINDS
             ):
                 msg = "Kubernetes exception has an undeclared target, check or container category"
                 raise ValueError(msg)

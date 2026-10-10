@@ -10,6 +10,7 @@ from sarj_iac_lint.rules.no_environment_conditional import (
     ENVIRONMENT_SEGMENTS,
     QUALIFIED_SEGMENTS,
     NoEnvironmentConditional,
+    uses_environment_conditional,
 )
 
 
@@ -810,3 +811,46 @@ resource "google_storage_bucket" "b" {
 }
 """
     assert len(_check(src)) == 1
+
+
+@pytest.mark.parametrize(
+    ("expression", "expected_count"),
+    [
+        ('var.environment == "prod"', 1),
+        ('var.environment != "prod"', 1),
+        ('contains(["prod"], var.environment)', 1),
+        ("contains(local.prod_like, var.environment)", 1),
+        ('upper(var.environment) == "PROD"', 1),
+        ('"PROD" == upper(var.environment)', 1),
+        ('(var.environment) == ("prod")', 1),
+        ('var.gcp_project_id == "platform-prod"', 1),
+        ('var.project == "analytics"', 0),
+        ("var.enable_cache ? 1 : 0", 0),
+        ("local.tiers[var.environment]", 0),
+        ('"cache-${var.environment}"', 0),
+        ('"var.environment == prod"', 0),
+        ('"contains([prod], var.environment)"', 0),
+        ('true /* var.environment != "prod" */', 0),
+        ("var.region", 0),
+    ],
+)
+def test_branch_candidate_spellings_preserve_native_expression_boundaries(expression: str, expected_count: int) -> None:
+    source = f"locals {{\n  ordinary = var.region\n  selected = {expression}\n}}\n"
+
+    diagnostics = _check(source)
+
+    assert [(finding.code, finding.line, finding.col) for finding in diagnostics] == (
+        [("SARJ204", 3, 3)] if expected_count else []
+    )
+    assert diagnostics == _check(source)
+
+
+@pytest.mark.parametrize("value", ['"unterminated', "/* unterminated", "<<EOF\nbody"])
+def test_public_environment_expression_helper_preserves_malformed_input_errors(value: str) -> None:
+    with pytest.raises(ValueError, match="incomplete HCL value or comment"):
+        uses_environment_conditional(value)
+
+
+@pytest.mark.parametrize("value", ['"unterminated', "/* unterminated", "<<EOF\nbody"])
+def test_non_candidate_attributes_preserve_malformed_document_abstention(value: str) -> None:
+    assert _check(f"locals {{\n  ordinary = {value}") == []

@@ -9,7 +9,7 @@ import tokenize
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Final, NamedTuple, TypeGuard
 
-from sarj_python_lint._source import PYTHON_SOURCE_ENCODING
+from sarj_python_lint._source import read_python_source
 from sarj_python_lint.json_boundary import is_object_mapping, parse_json
 
 
@@ -330,8 +330,8 @@ def _python_files(root: Path, excluded_dir_names: frozenset[str]) -> Iterator[Pa
 
 def _read(path: Path) -> str:
     try:
-        return path.read_text(encoding=PYTHON_SOURCE_ENCODING)
-    except UnicodeDecodeError, OSError:
+        return read_python_source(path)
+    except UnicodeError, OSError, SyntaxError:
         return ""
 
 

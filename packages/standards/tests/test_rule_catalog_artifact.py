@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 import json
+from pathlib import PurePosixPath
 from typing import TYPE_CHECKING
 
 import pytest
 
 from sarj_standards.libs.repository import rule_catalog_artifact
+from sarj_standards.libs.rules import DocumentedRule, RuleCatalogDocument
+from sarj_standards.libs.schema_boundary import validate_local_schema
+from sarj_standards.schemas import RULE_CATALOG_SCHEMA
 
 
 if TYPE_CHECKING:
@@ -239,3 +243,39 @@ def test_selector_index_rejects_duplicate_or_malformed_alias_metadata(
 
     with pytest.raises(ValueError, match="shipped rule catalog"):
         rule_catalog_artifact.selector_index(path)
+
+
+def test_typescript_example_setup_round_trips_through_public_catalog() -> None:
+    payload = _typescript_rule()
+    first = _object_table(_object_list(payload["examples"])[0])
+    first["ruleOptions"] = [{"libraries": []}]
+    first["installedDependencies"] = [{"module": "zod", "version": "4.6.5"}]
+    (spec,) = rule_catalog_artifact.parse_typescript_projection([payload])
+    document = RuleCatalogDocument((DocumentedRule(spec, PurePosixPath("rule.ts"), PurePosixPath("rule.test.ts")),))
+    public = document.as_public_dict()
+    assert validate_local_schema(public, RULE_CATALOG_SCHEMA, (RULE_CATALOG_SCHEMA,)) == ()
+    rule = _object_table(_object_list(public["rules"])[0])
+    examples = [_object_table(item) for item in _object_list(rule["examples"])]
+    rejected = next(item for item in examples if item["id"] == "rejected")
+    assert rejected["ruleOptions"] == first["ruleOptions"]
+    assert rejected["installedDependencies"] == first["installedDependencies"]
+    assert all("ruleOptions" not in item for item in examples if item["id"] == "accepted")
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("ruleOptions", None),
+        ("ruleOptions", {}),
+        ("installedDependencies", None),
+        ("installedDependencies", [{"module": "zod", "version": "4.6.5", "extra": True}]),
+        ("installedDependencies", [{"module": "../zod", "version": "4.6.5"}]),
+        ("installedDependencies", [{"module": "zod", "version": "^4.6.5"}]),
+    ],
+)
+def test_typescript_example_setup_rejects_malformed_metadata(field: str, value: object) -> None:
+    payload = _typescript_rule()
+    first = _object_table(_object_list(payload["examples"])[0])
+    first[field] = value
+    with pytest.raises((ValueError, TypeError)):
+        rule_catalog_artifact.parse_typescript_projection([payload])

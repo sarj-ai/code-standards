@@ -1,156 +1,327 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from bisect import bisect_left
+from dataclasses import dataclass, field
 from functools import lru_cache
 import json
 import re
-from typing import NamedTuple
+from types import MappingProxyType
+from typing import TYPE_CHECKING, NamedTuple
 
 from sarj_iac_lint.json_boundary import parse_json
 
 
-_HEREDOC_RE = re.compile(r"<<-?\s*([A-Za-z_]\w*)")
+if TYPE_CHECKING:
+    from collections.abc import Mapping
+
+
 _MAX_BLOCK_DEPTH = 128
 _PARENTHESIS_PAIR_LENGTH = 2
 _SURROGATE_START = 0xD800
 _SURROGATE_END = 0xDFFF
 
 
+class _InvalidHCLSourceError(ValueError):
+    """Signal a lexical or header failure that cannot produce a shared document."""
+
+
+class _Span(NamedTuple):
+    kind: str
+    start: int
+    end: int
+    body_start: int = 0
+    body_end: int = 0
+
+
+@dataclass(frozen=True, slots=True)
+class _LexicalDocument:
+    values: tuple[_Span, ...]
+    comments: tuple[_Span, ...]
+    newlines: tuple[int, ...]
+    complete: bool
+    physical_newlines: tuple[int, ...]
+
+
+@dataclass(slots=True)
+class _TemplateFrame:
+    kind: str
+    start: int
+    marker: str = ""
+    body_start: int = 0
+    braces: int = 0
+
+
+_HEREDOC_START_RE = re.compile(r"<<-?([^\W\d][\w-]*)\r?\n")
+
+
+@dataclass(slots=True)
+class _HCLScanner:
+    source: str
+    index: int = 0
+    complete: bool = True
+    values: list[_Span] = field(default_factory=list)
+    comments: list[_Span] = field(default_factory=list)
+    newlines: list[int] = field(default_factory=list)
+    stack: list[_TemplateFrame] = field(default_factory=list)
+
+    def scan(self) -> _LexicalDocument:
+        while self.index < len(self.source):
+            if len(self.stack) > _MAX_BLOCK_DEPTH:
+                message = f"HCL nesting exceeds the supported depth of {_MAX_BLOCK_DEPTH}"
+                raise ValueError(message)
+            frame = self.stack[-1] if self.stack else None
+            if frame is not None and frame.kind in {"string", "heredoc"}:
+                self._template(frame)
+            else:
+                self._code(frame)
+        if self.stack:
+            self.complete = False
+            frame = self.stack[0]
+            self.values.append(_Span(frame.kind, frame.start, len(self.source), frame.body_start, len(self.source)))
+        physical = tuple(match.start() for match in re.finditer(r"\n", self.source))
+        return _LexicalDocument(tuple(self.values), tuple(self.comments), tuple(self.newlines), self.complete, physical)
+
+    def _template(self, frame: _TemplateFrame) -> None:
+        if frame.kind == "heredoc" and self._finish_heredoc(frame):
+            return
+        if frame.kind == "string" and self._quoted_character(frame):
+            return
+        if self.source.startswith(("$${", "%%{"), self.index):
+            self.index += 3
+            return
+        if self.source.startswith(("${", "%{"), self.index):
+            self.stack.append(_TemplateFrame("expression", self.index, braces=1))
+            self.index += 2
+            return
+        self._advance_token()
+
+    def _advance_token(self) -> None:
+        match = _TOKEN_RE.match(self.source, self.index)
+        self.index = match.end() if match is not None else self.index + 1
+
+    def _quoted_character(self, frame: _TemplateFrame) -> bool:
+        char = self.source[self.index]
+        if char == "\\":
+            self.index += 2
+            return True
+        if char == '"':
+            self.stack.pop()
+            self.index += 1
+            if not self.stack:
+                self.values.append(_Span("string", frame.start, self.index))
+            return True
+        if char in "\r\n":
+            self.complete = False
+        return False
+
+    def _finish_heredoc(self, frame: _TemplateFrame) -> bool:
+        if self.index != 0 and self.source[self.index - 1] != "\n":
+            return False
+        end = self.source.find("\n", self.index)
+        if end == -1 or self.source[self.index : end].strip() != frame.marker:
+            return False
+        self.stack.pop()
+        if not self.stack:
+            self.values.append(_Span("heredoc", frame.start, end, frame.body_start, self.index))
+        self.index = end
+        return True
+
+    def _code(self, frame: _TemplateFrame | None) -> None:
+        if self._comment():
+            return
+        if self.source[self.index] == '"':
+            self.stack.append(_TemplateFrame("string", self.index))
+            self.index += 1
+            return
+        if self._begin_heredoc():
+            return
+        if frame is not None:
+            self._expression_character(frame)
+        elif self.source[self.index] == "\n":
+            self.newlines.append(self.index)
+        self._advance_token()
+
+    def _begin_heredoc(self) -> bool:
+        if not self.source.startswith("<<", self.index):
+            return False
+        marker = _HEREDOC_START_RE.match(self.source, self.index)
+        if marker is None:
+            return False
+        self.stack.append(_TemplateFrame("heredoc", self.index, marker[1], marker.end()))
+        self.index = marker.end()
+        return True
+
+    def _expression_character(self, frame: _TemplateFrame) -> None:
+        char = self.source[self.index]
+        if char == "{":
+            frame.braces += 1
+        elif char == "}":
+            frame.braces -= 1
+            if frame.braces == 0:
+                self.stack.pop()
+
+    def _comment(self) -> bool:
+        if self.source.startswith(("#", "//"), self.index):
+            end = self.source.find("\n", self.index)
+            self._finish_comment("line-comment", len(self.source) if end == -1 else end)
+            return True
+        if not self.source.startswith("/*", self.index):
+            return False
+        end = self.source.find("*/", self.index + 2)
+        if end == -1:
+            self.complete = False
+            end = len(self.source)
+        else:
+            end += 2
+        self._finish_comment("block-comment", end)
+        return True
+
+    def _finish_comment(self, kind: str, end: int) -> None:
+        if not self.stack:
+            self.comments.append(_Span(kind, self.index, end))
+        self.index = end
+
+
+@lru_cache(maxsize=32)
+def _lexical_document(source: str) -> _LexicalDocument:
+    return _HCLScanner(source).scan()
+
+
 def strip_inline_comment(line: str) -> str:
-    in_str = False
-    i, n = 0, len(line)
-    while i < n:
-        c = line[i]
-        if in_str:
-            if c == "\\":
-                i += 2
-                continue
-            if c == '"':
-                in_str = False
-            i += 1
-            continue
-        if c == '"':
-            in_str = True
-        elif c == "#" or (c == "/" and i + 1 < n and line[i + 1] == "/"):
-            return line[:i]
-        i += 1
-    return line
+    lexical = _lexical_document(line)
+    return next((line[: span.start] for span in lexical.comments if span.kind == "line-comment"), line)
 
 
 def mask_line(line: str) -> str:
-    out: list[str] = []
-    in_str = False
-    i, n = 0, len(line)
-    while i < n:
-        c = line[i]
-        if in_str:
-            if c == "\\":
-                i += 2
-                continue
-            if c == '"':
-                in_str = False
-                out.append('"')
-            i += 1
-            continue
-        if c == '"':
-            in_str = True
-            out.append('"')
-        elif c == "#" or (c == "/" and i + 1 < n and line[i + 1] == "/"):
+    lexical = _lexical_document(line)
+    end = next((span.start for span in lexical.comments if span.kind == "line-comment"), len(line))
+    output: list[str] = []
+    start = 0
+    for span in lexical.values:
+        if span.start >= end:
             break
-        else:
-            out.append(c)
-        i += 1
-    return "".join(out)
+        output.extend((line[start : span.start], '""' if span.kind == "string" else line[span.start : span.body_start]))
+        start = span.end
+    output.append(line[start:end])
+    return "".join(output)
 
 
 def heredoc_body_mask(lines: list[str]) -> tuple[bool, ...]:
     return _cached_heredoc_body_mask(tuple(lines))
 
 
-def mask_block_comments(source: str) -> str:
-    chars = list(source)
-    in_string = False
-    in_comment = False
-    index = 0
-    while index < len(chars):
-        char = chars[index]
-        following = chars[index + 1] if index + 1 < len(chars) else ""
-        if in_comment:
-            if char == "*" and following == "/":
-                chars[index] = chars[index + 1] = " "
-                in_comment = False
-                index += 2
-                continue
-            if char != "\n":
-                chars[index] = " "
-            index += 1
-            continue
-        if in_string:
-            advanced = _advance_hcl_string(chars, index)
-            index = advanced.index
-            in_string = advanced.in_string
-            continue
-        if char == '"':
-            in_string = True
-        elif char == "/" and following == "*":
-            chars[index] = chars[index + 1] = " "
-            in_comment = True
-            index += 2
-            continue
-        index += 1
-    return "".join(chars)
-
-
-def masked_hcl_lines(source: str) -> list[str]:
-    output: list[str] = []
-    in_block_comment = False
-    heredoc_term: str | None = None
-    for raw_line in source.splitlines():
-        if heredoc_term is not None:
-            output.append("")
-            if raw_line.strip() == heredoc_term:
-                heredoc_term = None
-            continue
-        masked = _mask_hcl_line_blocks(raw_line, in_block_comment=in_block_comment)
-        in_block_comment = masked.in_block_comment
-        output.append(masked.line)
-        if (marker := _HEREDOC_RE.search(mask_line(masked.line))) is not None:
-            heredoc_term = marker.group(1)
-    return output
-
-
 @lru_cache(maxsize=32)
 def _cached_heredoc_body_mask(lines: tuple[str, ...]) -> tuple[bool, ...]:
+    source = "\n".join(lines) + "\n"
     mask = [False] * len(lines)
-    term: str | None = None
-    for idx, line in enumerate(lines):
-        if term is not None:
-            if line.strip() == term:
-                term = None
-            else:
-                mask[idx] = True
+    for span in _lexical_document(source).values:
+        if span.kind != "heredoc":
             continue
-        if (m := _HEREDOC_RE.search(mask_line(line))) is not None:
-            term = m.group(1)
+        first = bisect_left(_lexical_document(source).physical_newlines, span.body_start)
+        final = bisect_left(_lexical_document(source).physical_newlines, span.body_end)
+        mask[first:final] = [True] * (final - first)
     return tuple(mask)
 
 
-# Tokenize strings (including interpolations), identifier paths, operators, and structural punctuation.
-_TOKEN_RE = re.compile(
-    # Keep the interpolation, escape, ordinary-dollar, and ordinary-character
-    # branches disjoint so hostile strings cannot induce regex backtracking.
-    r'"(?:\\.|\$\$\{|\$(?!\{|\$\{)|\$\{(?:[^{}"]|"(?:\\.|[^"\\])*")*\}|[^"$\\])*"'
-    r"|[A-Za-z_][\w.\-]*"
-    r"|==|!=|<=|>=|&&|\|\||[{}()\[\]=,]"
-    r"|\S"
-)
+def _mask_spans(source: str, spans: tuple[_Span, ...]) -> str:
+    chars = list(source)
+    for span in spans:
+        for index in range(span.start, span.end):
+            if chars[index] not in "\r\n":
+                chars[index] = " "
+    return "".join(chars)
 
-_OPENERS = frozenset("([{")
-_CLOSERS = frozenset(")]}")
+
+def mask_block_comments(source: str) -> str:
+    comments = tuple(span for span in _lexical_document(source).comments if span.kind == "block-comment")
+    return _mask_spans(source, comments)
+
+
+def masked_hcl_lines(source: str) -> list[str]:
+    lexical = _lexical_document(source)
+    spans = tuple(span for span in lexical.comments if span.kind == "block-comment") + tuple(
+        _Span("body", span.body_start, span.end) for span in lexical.values if span.kind == "heredoc"
+    )
+    return [line if line.strip() else "" for line in _mask_spans(source, spans).splitlines()]
+
+
+@lru_cache(maxsize=32)
+def suppression_comment_lines(source: str) -> Mapping[int, str]:
+    output: dict[int, str] = {}
+    lexical = _lexical_document(source)
+    for span in lexical.comments:
+        first = bisect_left(lexical.physical_newlines, span.start) + 1
+        for offset, line in enumerate(source[span.start : span.end].splitlines()):
+            number = first + offset
+            output[number] = output.get(number, "") + line
+    return MappingProxyType(output)
+
+
+@lru_cache(maxsize=32)
+def header_comment_lines(source: str, *, leading_only: bool = False) -> tuple[str, ...]:
+    limit = 0
+    for _ in range(20):
+        newline = source.find("\n", limit)
+        if newline < 0:
+            limit = len(source)
+            break
+        limit = newline + 1
+    lexical = _lexical_document(source[:limit])
+    output: list[str] = []
+    previous_end = 0
+    for span in lexical.comments:
+        if span.start >= limit:
+            break
+        if leading_only:
+            if source[previous_end : span.start].strip():
+                break
+        else:
+            line_index = bisect_left(lexical.physical_newlines, span.start)
+            line_start = lexical.physical_newlines[line_index - 1] + 1 if line_index else 0
+            if source[line_start : span.start].strip():
+                continue
+        output.extend(source[span.start : min(span.end, limit)].splitlines())
+        previous_end = span.end
+    return tuple(output)
+
+
+# Strings and heredocs are opaque spans; this regex handles the remaining simple tokens.
+_TOKEN_RE = re.compile(r"[A-Za-z_][\w.\-]*|==|!=|<=|>=|&&|\|\||[{}()\[\]=,]|\S")
+
+
+def _token_spans(text: str) -> tuple[_Span, ...]:
+    lexical = _lexical_document(text)
+    if not lexical.complete:
+        message = "incomplete HCL value or comment"
+        raise _InvalidHCLSourceError(message)
+    special = sorted((*lexical.values, *lexical.comments), key=lambda span: span.start)
+    result: list[_Span] = []
+    start = 0
+    for span in special:
+        result.extend(
+            _Span("token", match.start(), match.end()) for match in _TOKEN_RE.finditer(text, start, span.start)
+        )
+        if span.kind == "string":
+            result.append(span)
+        elif span.kind == "heredoc":
+            result.append(
+                _Span(
+                    "token",
+                    span.start,
+                    span.body_start - 1 - int(text[span.body_start - 2 : span.body_start] == "\r\n"),
+                )
+            )
+        start = span.end
+    result.extend(_Span("token", match.start(), match.end()) for match in _TOKEN_RE.finditer(text, start))
+    return tuple(result)
 
 
 def tokens(text: str) -> tuple[str, ...]:
-    return tuple(m.group(0) for m in _TOKEN_RE.finditer(text))
+    return tuple(text[span.start : span.end] for span in _token_spans(text))
+
+
+_OPENERS = frozenset("([{")
+_CLOSERS = frozenset(")]}")
 
 
 def strip_outer_parentheses(value: tuple[str, ...]) -> tuple[str, ...]:
@@ -181,13 +352,13 @@ def strip_outer_parentheses(value: tuple[str, ...]) -> tuple[str, ...]:
 def ungrouped_expression(value: str) -> str:
     if not value.lstrip().startswith("("):
         return value
-    matches = tuple(_TOKEN_RE.finditer(value))
-    parts = tuple(match.group(0) for match in matches)
+    matches = _token_spans(value)
+    parts = tuple(value[match.start : match.end] for match in matches)
     unwrapped = strip_outer_parentheses(parts)
     removed = (len(parts) - len(unwrapped)) // _PARENTHESIS_PAIR_LENGTH
     if removed == 0:
         return value
-    return value[matches[removed].start() : matches[-removed - 1].end()] if unwrapped else ""
+    return value[matches[removed].start : matches[-removed - 1].end] if unwrapped else ""
 
 
 def literal_token(value: str) -> str | None:
@@ -235,6 +406,8 @@ class _Tok(NamedTuple):
     text: str
     line: int  # 1-based
     col: int  # 1-based
+    start: int
+    end: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -276,35 +449,32 @@ class _ValueParseResult(NamedTuple):
     line: int
 
 
-@dataclass(frozen=True, slots=True)
-class _MaskedLine:
-    line: str
-    in_block_comment: bool
-
-
-@dataclass(frozen=True, slots=True)
-class _StringAdvance:
-    index: int
-    in_string: bool
-
-
 @lru_cache(maxsize=32)
 def document(source: str) -> Block:
-    lines = [strip_inline_comment(line) for line in masked_hcl_lines(source)]
-    toks = [
-        _Tok(m.group(0), lineno, m.start() + 1)
-        for lineno, line in enumerate(lines, start=1)
-        for m in _TOKEN_RE.finditer(line)
-    ]
-    parsed = _parse_body(toks, 0, 0, lines)
-    return Block("", (), 0, 1, 1, max(len(lines), 1), parsed.attributes, parsed.blocks)
+    root_end = max(len(source.splitlines()), 1)
+    try:
+        return _parsed_document(source, root_end)
+    except _InvalidHCLSourceError:
+        return Block("", (), 0, 1, 1, root_end, (), ())
+
+
+def _parsed_document(source: str, root_end: int) -> Block:
+    lexical = _lexical_document(source)
+    toks: list[_Tok] = []
+    for span in _token_spans(source):
+        offset = bisect_left(lexical.physical_newlines, span.start)
+        previous = lexical.physical_newlines[offset - 1] if offset else -1
+        toks.append(_Tok(source[span.start : span.end], offset + 1, span.start - previous, span.start, span.end))
+    projected = _mask_spans(source, lexical.comments)
+    parsed = _parse_body(toks, 0, 0, projected, lexical.newlines)
+    return Block("", (), 0, 1, 1, root_end, parsed.attributes, parsed.blocks)
 
 
 def blocks(source: str) -> tuple[Block, ...]:
     return document(source).blocks
 
 
-def _parse_body(toks: list[_Tok], i: int, depth: int, lines: list[str]) -> _BodyParseResult:
+def _parse_body(toks: list[_Tok], i: int, depth: int, source: str, newlines: tuple[int, ...]) -> _BodyParseResult:
     if depth > _MAX_BLOCK_DEPTH:
         msg = f"HCL nesting exceeds the supported depth of {_MAX_BLOCK_DEPTH}"
         raise ValueError(msg)
@@ -319,34 +489,41 @@ def _parse_body(toks: list[_Tok], i: int, depth: int, lines: list[str]) -> _Body
             continue
         j = i + 1
         if j < len(toks) and toks[j].text == "=":
-            parsed_value = _read_value(toks, j + 1, lines)
+            parsed_value = _read_value(toks, j + 1, source, newlines)
             i = parsed_value.next_index
             attrs.append(Attribute(head.text, parsed_value.value, head.line, head.col, parsed_value.line))
             continue
-        labels: list[str] = []
-        while j < len(toks) and (toks[j].text[:1].isalnum() or toks[j].text[:1] in {'"', "_"}):
-            labels.append(_block_label(toks[j].text))
-            j += 1
-        if j < len(toks) and toks[j].text == "{":
-            parsed_body = _parse_body(toks, j + 1, depth + 1, lines)
-            i = parsed_body.next_index
-            end = toks[i].line if i < len(toks) else toks[-1].line
-            found.append(
-                Block(
-                    head.text,
-                    tuple(labels),
-                    depth,
-                    head.line,
-                    head.col,
-                    end,
-                    parsed_body.attributes,
-                    parsed_body.blocks,
-                )
-            )
+        header = _block_header(toks, i, newlines)
+        if header is None:
             i += 1
             continue
+        labels, brace = header
+        parsed_body = _parse_body(toks, brace + 1, depth + 1, source, newlines)
+        i = parsed_body.next_index
+        end = toks[i].line if i < len(toks) else toks[-1].line
+        found.append(
+            Block(head.text, labels, depth, head.line, head.col, end, parsed_body.attributes, parsed_body.blocks)
+        )
         i += 1
     return _BodyParseResult(tuple(attrs), tuple(found), i)
+
+
+def _has_newline(newlines: tuple[int, ...], start: int, end: int) -> bool:
+    return bisect_left(newlines, start) != bisect_left(newlines, end)
+
+
+def _block_header(toks: list[_Tok], index: int, newlines: tuple[int, ...]) -> tuple[tuple[str, ...], int] | None:
+    following = index + 1
+    labels: list[str] = []
+    while following < len(toks) and (toks[following].text[:1].isalnum() or toks[following].text[:1] in {'"', "_"}):
+        labels.append(_block_label(toks[following].text))
+        following += 1
+    if following >= len(toks) or toks[following].text != "{":
+        return None
+    if _has_newline(newlines, toks[index].start, toks[following].start):
+        message = "HCL block headers cannot contain structural newlines"
+        raise _InvalidHCLSourceError(message)
+    return tuple(labels), following
 
 
 def _block_label(token: str) -> str:
@@ -359,7 +536,7 @@ def _block_label(token: str) -> str:
     return label
 
 
-def _read_value(toks: list[_Tok], i: int, lines: list[str]) -> _ValueParseResult:
+def _read_value(toks: list[_Tok], i: int, source: str, newlines: tuple[int, ...]) -> _ValueParseResult:
     start, nest = i, 0
     while i < len(toks):
         tok = toks[i]
@@ -372,58 +549,19 @@ def _read_value(toks: list[_Tok], i: int, lines: list[str]) -> _ValueParseResult
         i += 1
         # A value ends at the line break only once every bracket has closed;
         # `deletion_protection = (\n  var.env == "prod"\n)` is one value.
-        if nest == 0 and (i >= len(toks) or toks[i].line != tok.line):
+        if nest == 0 and (i >= len(toks) or _has_newline(newlines, tok.end, toks[i].start)):
             break
     value_line = toks[start].line if start < len(toks) else 0
-    return _ValueParseResult(_rejoin(toks, start, i, lines), i, value_line)
+    return _ValueParseResult(_rejoin(toks, start, i, source), i, value_line)
 
 
-def _rejoin(toks: list[_Tok], start: int, end: int, lines: list[str]) -> str:
+def _rejoin(toks: list[_Tok], start: int, end: int, source: str) -> str:
     parts: list[str] = []
-    i = start
-    while i < end:
-        j = i
-        while j < end and toks[j].line == toks[i].line:
-            j += 1
-        first, last = toks[i], toks[j - 1]
-        parts.append(lines[first.line - 1][first.col - 1 : last.col - 1 + len(last.text)].strip())
-        i = j
+    index = start
+    while index < end:
+        following = index + 1
+        while following < end and toks[following].line == toks[index].line:
+            following += 1
+        parts.append(source[toks[index].start : toks[following - 1].end].strip())
+        index = following
     return " ".join(parts)
-
-
-def _mask_hcl_line_blocks(raw_line: str, *, in_block_comment: bool) -> _MaskedLine:
-    chars = list(raw_line)
-    in_string = False
-    index = 0
-    while index < len(chars):
-        char = chars[index]
-        following = chars[index + 1] if index + 1 < len(chars) else ""
-        if in_block_comment:
-            if char == "*" and following == "/":
-                chars[index] = chars[index + 1] = " "
-                in_block_comment = False
-                index += 2
-                continue
-            chars[index] = " "
-        elif in_string:
-            if char == "\\":
-                index += 2
-                continue
-            if char == '"':
-                in_string = False
-        elif char == '"':
-            in_string = True
-        elif char == "/" and following == "*":
-            chars[index] = chars[index + 1] = " "
-            in_block_comment = True
-            index += 2
-            continue
-        index += 1
-    line = "".join(chars)
-    return _MaskedLine(line=line, in_block_comment=in_block_comment)
-
-
-def _advance_hcl_string(chars: list[str], index: int) -> _StringAdvance:
-    if chars[index] == "\\":
-        return _StringAdvance(index=index + 2, in_string=True)
-    return _StringAdvance(index=index + 1, in_string=chars[index] != '"')

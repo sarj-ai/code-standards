@@ -7,6 +7,7 @@ import pytest
 
 from sarj_rule_contracts import (
     DefaultLevel,
+    ExampleDependency,
     ExampleFile,
     ExpectedOutcome,
     Language,
@@ -92,3 +93,21 @@ def test_catalog_spec_preserves_native_documentation_contract() -> None:
         replace(spec, aliases=("observable-defect",))
     with pytest.raises(ValueError, match="summary"):
         replace(spec, summary="")
+
+
+def test_example_dependency_rejects_paths_and_version_ranges() -> None:
+    for module, version in (("../zod", "4.6.5"), ("zod", "^4.6.5"), ("zod", "")):
+        with pytest.raises(ValueError, match="example dependency"):
+            ExampleDependency(module, version)
+    assert ExampleDependency("zod", "4.6.5").version == "4.6.5"
+
+
+def test_example_setup_keeps_empty_options_distinct_from_default_options() -> None:
+    example = _example(ExpectedOutcome.NO_MATCH)
+    assert example.rule_options_json is None
+    assert replace(example, rule_options_json="[]").rule_options_json == "[]"
+    with pytest.raises(ValueError, match="options must be a JSON array"):
+        replace(example, rule_options_json="{}")
+    dependency = ExampleDependency("zod", "4.6.5")
+    with pytest.raises(ValueError, match="dependencies must have unique modules"):
+        replace(example, installed_dependencies=(dependency, dependency))

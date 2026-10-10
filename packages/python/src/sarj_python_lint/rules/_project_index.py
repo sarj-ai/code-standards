@@ -534,7 +534,7 @@ def _read_bounded_source(root: Path, path: Path) -> LoadedSource | None:
         resolved = path.resolve()
         resolved.relative_to(root.resolve())
         return LoadedSource(resolved, read_python_source(resolved))
-    except OSError, ValueError:
+    except OSError, ValueError, SyntaxError:
         return None
 
 

@@ -20,6 +20,7 @@ MAX_OBJECT_BYTES: Final = 64 * 1024 * 1024
 MAX_BLOB_BYTES: Final = 8 * 1024 * 1024
 _OID_LENGTH: Final = 40
 _BATCH_HEADER_FIELDS: Final = 3
+_JS_SUFFIXES: Final = frozenset({".js", ".mjs", ".cjs"})
 _CODE_SUFFIXES: Final = frozenset({".py", ".ts", ".tsx", ".js", ".mjs", ".cjs"})
 _INVENTORY: Final = "packages/standards/src/sarj_standards/configs/rule-inventory.v1.json"
 _CATALOG: Final = "packages/standards/src/sarj_standards/schemas/rule-catalog.v1.json"
@@ -38,6 +39,10 @@ def git_argv(*arguments: str) -> tuple[str, ...]:
 
 def valid_oid(value: str) -> bool:
     return len(value) == _OID_LENGTH and all(character in "0123456789abcdef" for character in value)
+
+
+class _PythonSourceEncodingError(ValueError):
+    pass
 
 
 class ImmutableGit:
@@ -60,7 +65,15 @@ class ImmutableGit:
             msg = "immutable module snapshot exceeds file/byte limits"
             raise ValueError(msg)
         self._read_objects([*modules, _INVENTORY, _CATALOG])
-        self.modules = {path: self.text(path) for path in modules}
+        self.modules: dict[str, str] = {}
+        self.encoding_errors: dict[str, str] = {}
+        for path in modules:
+            try:
+                self.modules[path] = self.text(path)
+            except _PythonSourceEncodingError as error:
+                # Keep import identity; the existing closure check rejects this recorded error.
+                self.modules[path] = ""
+                self.encoding_errors[path] = str(error)
 
     def _read_objects(self, paths: list[str]) -> None:
         new_sizes: dict[str, int] = {}
@@ -87,6 +100,9 @@ class ImmutableGit:
             msg = "combined immutable object cache exceeds byte limit"
             raise ValueError(msg)
 
+    def read_blobs(self, paths: list[str]) -> None:
+        self._read_objects(paths)
+
     def oid(self, path: str) -> str:
         if path.startswith("/") or ".." in path.split("/"):
             msg = f"implementation path must be repository-relative: {path!r}"
@@ -99,12 +115,14 @@ class ImmutableGit:
 
     def text(self, path: str) -> str:
         payload = self.objects[self.oid(path)]
-        try:
-            encoding = tokenize.detect_encoding(BytesIO(payload).readline)[0] if path.endswith(".py") else "utf-8"
-        except SyntaxError as error:
-            msg = f"invalid immutable Python source encoding: {path}"
-            raise ValueError(msg) from error
-        return payload.decode(encoding)
+        if path.endswith(".py"):
+            try:
+                encoding = tokenize.detect_encoding(BytesIO(payload).readline)[0]
+                return payload.decode(encoding)
+            except (SyntaxError, UnicodeError) as error:
+                msg = f"invalid immutable Python source encoding: {path}"
+                raise _PythonSourceEncodingError(msg) from error
+        return payload.decode("utf-8", errors="replace" if PurePosixPath(path).suffix in _JS_SUFFIXES else "strict")
 
 
 def _tree_entries(payload: bytes) -> dict[str, GitBlob]:

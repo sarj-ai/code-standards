@@ -12,13 +12,14 @@ from typing import TYPE_CHECKING, Annotated
 import typer
 
 from sarj_iac_lint import __version__
+from sarj_iac_lint._hcl import suppression_comment_lines
 from sarj_iac_lint.json_boundary import is_object_mapping, parse_json
 from sarj_iac_lint.rule_base import Diagnostic, is_suppressed
 from sarj_iac_lint.rules import REGISTRY
 
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Iterator, Mapping
 
 
 SKIP_DIR_NAMES = frozenset(
@@ -62,6 +63,14 @@ def _expand_paths(paths: list[Path]) -> list[Path]:
     return out
 
 
+def _suppression_comments(path: Path, source: str, lines: list[str]) -> Mapping[int, str]:
+    if "sarj-noqa" not in source.casefold():
+        return {}
+    if path.suffix.lower() in {".yaml", ".yml"}:
+        return dict(enumerate(lines, start=1))
+    return suppression_comment_lines(source)
+
+
 def _check(rule_ids: list[str], paths: list[Path]) -> list[Diagnostic]:
     unknown = [rid for rid in rule_ids if rid not in REGISTRY]
     if unknown:
@@ -76,9 +85,10 @@ def _check(rule_ids: list[str], paths: list[Path]) -> list[Diagnostic]:
         except OSError:
             continue
         source_lines = source.splitlines()
+        comments = _suppression_comments(p, source, source_lines)
         for rule in rules:
             for d in rule.check(p, source):
-                if d.suppressible and is_suppressed(source_lines, d.line, d.code):
+                if d.suppressible and is_suppressed(source_lines, d.line, d.code, comments=comments):
                     continue
                 diags.append(d)
     return diags

@@ -442,3 +442,152 @@ def test_custom_docker_shell_cannot_turn_source_into_an_unchecked_program() -> N
     source = 'FROM test\nSHELL ["python3", "-c"]\nRUN print(1)\nFROM another\nRUN make test\n'
     blocks = execution_blocks("Dockerfile", source)
     assert [block_embeds_program(block, parse_shell=parse_shell) for block in blocks] == [True, False]
+
+
+_KUBERNETES_WORKLOAD_PATHS = (
+    ("v1", "Pod", ("spec",)),
+    ("v1", "PodTemplate", ("template", "spec")),
+    ("v1", "ReplicationController", ("spec", "template", "spec")),
+    ("apps/v1", "ReplicaSet", ("spec", "template", "spec")),
+    ("apps/v1", "Deployment", ("spec", "template", "spec")),
+    ("apps/v1", "StatefulSet", ("spec", "template", "spec")),
+    ("apps/v1", "DaemonSet", ("spec", "template", "spec")),
+    ("batch/v1", "Job", ("spec", "template", "spec")),
+    ("batch/v1", "CronJob", ("spec", "jobTemplate", "spec", "template", "spec")),
+)
+
+
+def _indent_kubernetes_context(source: str) -> str:
+    return "".join("  " + line for line in source.splitlines(keepends=True))
+
+
+def _kubernetes_context_header(api_version: str, kind: str) -> str:
+    return f"apiVersion: {api_version}\nkind: {kind}\nmetadata:\n  name: public-control\n"
+
+
+def _kubernetes_context_cases() -> list[tuple[str, str, int]]:
+    cases: list[tuple[str, str, int]] = []
+    command = "command:\n- python3\n- -c\n- print(1)\n"
+    container = "- name: app\n  image: public-example:1\n" + _indent_kubernetes_context(command)
+    for api_version, kind, path in _KUBERNETES_WORKLOAD_PATHS:
+        for container_kind in ("containers", "initContainers", "ephemeralContainers"):
+            prefix = "".join("  " * depth + f"{component}:\n" for depth, component in enumerate(path))
+            body = prefix + "".join(
+                "  " * len(path) + line for line in f"{container_kind}:\n{container}".splitlines(keepends=True)
+            )
+            cases.append((f"{kind}-{container_kind}", _kubernetes_context_header(api_version, kind) + body, 1))
+    for hook in ("postStart", "preStop", "livenessProbe", "readinessProbe", "startupProbe"):
+        body = f"{hook}:\n  exec:\n" + _indent_kubernetes_context(_indent_kubernetes_context(command))
+        if hook in {"postStart", "preStop"}:
+            body = "lifecycle:\n" + _indent_kubernetes_context(body)
+        body = "containers:\n- name: app\n  image: public-example:1\n" + _indent_kubernetes_context(body)
+        cases.append((hook, _kubernetes_context_header("v1", "Pod") + "spec:\n" + _indent_kubernetes_context(body), 1))
+    for api_version, kind in (
+        ("example.com/v1", "ExampleRecord"),
+        ("apps/v99", "Deployment"),
+        ("example.com/v1", "Pod"),
+        ("v1", "ConfigMap"),
+    ):
+        body = "data:\n  examples:\n    containers:\n    - name: sample\n" + "".join(
+            "      " + line for line in command.splitlines(keepends=True)
+        )
+        source = _kubernetes_context_header(api_version, kind) + body
+        cases.append((f"data-{kind}-{api_version}", source, 0))
+        source = "apiVersion: v1\nkind: List\nitems:\n- " + source.replace("\n", "\n  ").rstrip() + "\n"
+        cases.append((f"list-data-{kind}-{api_version}", source, 0))
+    cases.extend(
+        (
+            (
+                "unknown-pod-shaped",
+                "apiVersion: example.com/v1\nkind: Deployment\nspec:\n  template:\n    spec:\n      containers:\n      - command:\n        - python3\n        - -c\n        - print(1)\n",
+                0,
+            ),
+            (
+                "known-metadata-data",
+                "apiVersion: v1\nkind: Pod\nmetadata:\n  name: public-control\n  examples:\n    containers:\n    - command:\n      - python3\n      - -c\n      - print(1)\n",
+                0,
+            ),
+            (
+                "wrong-version",
+                "apiVersion: apps/v99\nkind: Deployment\nspec:\n  template:\n    spec:\n      containers:\n      - command:\n        - python3\n        - -c\n        - print(1)\n",
+                0,
+            ),
+            (
+                "http-probe-data",
+                "apiVersion: v1\nkind: Pod\nspec:\n  containers:\n  - name: app\n    readinessProbe:\n      httpGet:\n        path: /\n        examples:\n          exec:\n            command:\n            - python3\n            - -c\n            - print(1)\n",
+                0,
+            ),
+            (
+                "aliased-command",
+                "apiVersion: v1\nkind: Pod\ndata: &args [python3, -c, 'print(1)']\nspec:\n  containers:\n  - name: app\n    command: *args\n",
+                1,
+            ),
+            (
+                "merge-container-command",
+                "apiVersion: v1\nkind: Pod\nexample: &container\n  name: app\n  command: [python3, -c, 'print(1)']\nspec:\n  containers:\n  - <<: *container\n",
+                1,
+            ),
+            (
+                "merge-command-override",
+                "apiVersion: v1\nkind: Pod\nexample: &container\n  name: app\n  command: [python3, -c, 'print(1)']\nspec:\n  containers:\n  - <<: *container\n    command: [python3, scripts/check.py]\n",
+                0,
+            ),
+            (
+                "nested-list",
+                "apiVersion: v1\nkind: List\nitems:\n- apiVersion: v1\n  kind: List\n  items:\n  - apiVersion: v1\n    kind: Pod\n    metadata:\n      name: public-control\n    spec:\n      containers:\n      - name: app\n        image: public-example:1\n        command:\n        - python3\n        - -c\n        - print(1)\n",
+                1,
+            ),
+            (
+                "external-module",
+                "apiVersion: v1\nkind: Pod\nmetadata:\n  name: public-control\nspec:\n  containers:\n  - name: app\n    image: public-example:1\n    command:\n    - python3\n    - -m\n    - tools.check\n",
+                0,
+            ),
+            (
+                "image-default-stdin-data",
+                "apiVersion: v1\nkind: Pod\nspec:\n  containers:\n  - name: app\n    args:\n    - python3\n    - -c\n    - print(1)\n",
+                0,
+            ),
+        )
+    )
+    return cases
+
+
+_KUBERNETES_CONTEXT_CASES = _kubernetes_context_cases()
+
+
+@pytest.mark.parametrize(
+    ("case_id", "source", "count"),
+    _KUBERNETES_CONTEXT_CASES,
+    ids=[case[0] for case in _KUBERNETES_CONTEXT_CASES],
+)
+def test_kubernetes_programs_require_a_known_execution_context(
+    tmp_path: Path, case_id: str, source: str, count: int
+) -> None:
+    path = tmp_path / "resource.yaml"
+    path.write_text(source, encoding="utf-8")
+    blocks = execution_blocks(path.name, source)
+    assert sum(block_embeds_program(block, parse_shell=parse_shell) for block in blocks) == count, case_id
+    findings = textlint.check_paths([str(path)], root=tmp_path, rule_ids=frozenset({"workflow-embedded-program"}))
+    assert len(findings) == count, case_id
+    assert (
+        textlint.check_paths([str(path)], root=tmp_path, rule_ids=frozenset({"workflow-embedded-program"})) == findings
+    )
+    assert len({(finding.path, finding.line, finding.code) for finding in findings}) == count
+
+
+def test_kubernetes_alias_execution_uses_occurrence_coordinates() -> None:
+    source = "apiVersion: v1\nkind: Pod\nexample: &argv [python3, -c, 'print(1)']\nspec:\n  containers:\n  - name: app\n    command: *argv\n"
+    [block] = execution_blocks("resource.yaml", source)
+    assert block.line == 7
+    assert block.end_line == 7
+
+
+def test_kubernetes_nested_lists_retain_a_coverage_bound() -> None:
+    prefix = ["apiVersion: v1\nkind: List\nitems:\n"]
+    prefix.extend(
+        "  " * (depth - 1) + "- apiVersion: v1\n" + "  " * depth + "kind: List\n" + "  " * depth + "items:\n"
+        for depth in range(1, 33)
+    )
+    source = "".join(prefix) + "  " * 32 + "- apiVersion: v1\n" + "  " * 33 + "kind: Pod\n" + "  " * 33 + "spec: {}\n"
+    with pytest.raises(ProgramProjectionError, match=r"nesting exceeds|node bound"):
+        execution_blocks("resource.yaml", source)

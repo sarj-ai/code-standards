@@ -17,27 +17,45 @@ from sarj_rule_contracts import (
     RuleExample as RuleExample,
 )
 
+from sarj_iac_lint._hcl import suppression_comment_lines
+
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Mapping, Sequence
 
 
 _SARJ_NOQA_RE = re.compile(
-    r"#\s*sarj-noqa(?::\s*([A-Za-z0-9_, ]+))?",
+    r"#\s*sarj-noqa(?![\w-])\s*(?:(?P<colon>:)\s*(?P<codes>[A-Za-z0-9_, \t]*))?",
     re.IGNORECASE,
 )
+_NOQA_CODE_RE = re.compile(r"[A-Za-z][A-Za-z0-9_]*", re.IGNORECASE)
 
 
-def is_suppressed(source_lines: Sequence[str], line: int, code: str) -> bool:
+def is_suppressed(
+    source_lines: Sequence[str], line: int, code: str, *, comments: Mapping[int, str] | None = None
+) -> bool:
     if line < 1 or line > len(source_lines):
         return False
     m = _SARJ_NOQA_RE.search(source_lines[line - 1])
     if not m:
         return False
-    codes_str = m.group(1)
-    if not codes_str:
+    comment_source = suppression_comment_lines("\n".join(source_lines)) if comments is None else comments
+    comment = comment_source.get(line, "")
+    m = _SARJ_NOQA_RE.search(comment)
+    if m is None:
+        return False
+    if m.group("colon") is None:
         return True
-    codes = {val.upper() for c in codes_str.split(",") if (val := c.strip())}
+    codes_str = m.group("codes")
+    if not codes_str:
+        return False
+    suffix = comment[m.end() :]
+    separated_dash = codes_str[-1].isspace() and suffix.startswith("-")
+    if suffix and not (suffix.startswith(("--", "—", "–", "*/", '"', "'", "#")) or separated_dash):
+        return False
+    codes = {item.strip().upper() for item in codes_str.split(",")}
+    if any(_NOQA_CODE_RE.fullmatch(item) is None for item in codes):
+        return False
     return code.upper() in codes
 
 

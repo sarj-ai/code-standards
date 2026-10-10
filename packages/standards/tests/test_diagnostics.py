@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import ast
+import codecs
 import json
+import tokenize
 from typing import TYPE_CHECKING
 
 import pytest
@@ -1002,3 +1005,69 @@ def test_partial_execution_retains_findings_as_an_independent_conclusion(tmp_pat
     assert report.diagnostics[0].code == diagnostic.code
     assert report.diagnostics[0].fingerprint is not None
     assert report.exit_code == 2
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        b"from unittest.mock import Mock; value = Mock()\n",
+        codecs.BOM_UTF8 + b"from unittest.mock import Mock; value = Mock()\n",
+        b"# coding: utf-8-sig\nfrom unittest.mock import Mock; value = Mock()\n",
+        "from unittest.mock import Mock\ndef test_café():\n    naïve = Mock()\n    naïve.send()\n".encode(),
+        (
+            "# coding: latin-1\nfrom unittest.mock import Mock\ndef test_café():\n    naïve = Mock()\n    naïve.send()\n"
+        ).encode("latin-1"),
+        ("# coding: latin-1\nfrom unittest.mock import Mock\ndef test_café():\n    naïve = Mock()\n    naïve.send()\n")
+        .replace("\n", "\r\n")
+        .encode("latin-1"),
+    ],
+    ids=("ascii", "bom-first-line", "utf8-sig-cookie-without-bom", "utf8-unicode", "latin1", "latin1-crlf"),
+)
+def test_python_encoding_normalization_preserves_real_token_offsets(tmp_path: Path, raw: bytes) -> None:
+    target = tmp_path / "test_service.py"
+    target.write_bytes(raw)
+
+    report = analyze_paths([str(target)], root=tmp_path)
+
+    finding = next(diagnostic for diagnostic in report.diagnostics if diagnostic.code == "SARJ040")
+    position = finding.location.position
+    assert position is not None
+    assert position.byte_offset == raw.index(b"Mock()")
+    node = next(node for node in ast.walk(ast.parse(raw)) if isinstance(node, ast.Call))
+    with tokenize.open(target) as stream:
+        prefix = stream.read().splitlines()[node.lineno - 1].encode("utf-8")[: node.col_offset].decode("utf-8")
+    assert position.line == node.lineno - 1
+    assert position.character == len(prefix.encode("utf-16-le")) // 2
+    assert not report.issues
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [b"# coding: unknown-codec\nvalue = 1\n", codecs.BOM_UTF8 + b"# coding: latin-1\nvalue = 1\n", b"value = '\xff'\n"],
+    ids=("unknown-cookie", "bom-conflict", "bad-utf8"),
+)
+def test_invalid_python_encoding_is_incomplete_analysis(tmp_path: Path, raw: bytes) -> None:
+    target = tmp_path / "test_service.py"
+    target.write_bytes(raw)
+
+    report = analyze_paths([str(target)], root=tmp_path)
+
+    assert report.completion is Completion.FAILED
+    assert report.conclusion is Conclusion.INCONCLUSIVE
+    assert report.exit_code == 2
+    assert len(report.issues) == 1
+    assert report.issues[0].kind == "analyzer-failure"
+
+
+def test_python_non_roundtripping_encoding_keeps_finding_without_invented_offset(tmp_path: Path) -> None:
+    raw = b"# coding: utf-7\nfrom unittest.mock import Mock\n+AHY-alue = Mock()\n"
+    target = tmp_path / "test_service.py"
+    target.write_bytes(raw)
+    assert any(isinstance(node, ast.Call) for node in ast.walk(ast.parse(raw)))
+
+    report = analyze_paths([str(target)], root=tmp_path)
+
+    finding = next(diagnostic for diagnostic in report.diagnostics if diagnostic.code == "SARJ040")
+    assert finding.location.path == target.name
+    assert finding.location.position is None
+    assert not report.issues

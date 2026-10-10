@@ -5,7 +5,7 @@ from pathlib import PurePosixPath
 import re
 from typing import TYPE_CHECKING, NamedTuple, final, override
 
-from sarj_iac_lint._hcl import heredoc_body_mask
+from sarj_iac_lint._hcl import header_comment_lines, heredoc_body_mask
 from sarj_iac_lint.rule_base import (
     AutofixPolicy,
     Diagnostic,
@@ -152,7 +152,7 @@ class NoCommentCruft(Rule):
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
         fixture_input = any(part.lower() in {"fixture", "fixtures", "testdata"} for part in path.parts)
-        if fixture_input or _generated_header(source):
+        if fixture_input or _generated_header(source, hcl=path.suffix.lower() not in {".yaml", ".yml"}):
             return []
 
         detect_code = str(path).endswith((".tf", ".tf.json", ".hcl"))
@@ -244,9 +244,9 @@ def _is_banner(body: str) -> bool:
     return _BANNER_FULL_RE.fullmatch(body) is not None or _BANNER_TITLE_RE.fullmatch(body) is not None
 
 
-def _generated_header(source: str) -> bool:
-    header_lines = source.splitlines()[:20]
-    header = "\n".join(line for line in header_lines if line.lstrip().startswith(("#", "//", "/*", "*")))
+def _generated_header(source: str, *, hcl: bool = True) -> bool:
+    lines = header_comment_lines(source) if hcl else tuple(source.splitlines()[:20])
+    header = "\n".join(line for line in lines if line.lstrip().startswith(("#", "//", "/*", "*")))
     return _GENERATED_RE.search(header) is not None
 
 

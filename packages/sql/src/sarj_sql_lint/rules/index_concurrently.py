@@ -13,7 +13,7 @@ from sarj_sql_lint.rule_base import (
     RuleCategory,
     RuleDocumentation,
     RuleExample,
-    has_dbmate_directive,
+    dbmate_transactional,
     is_dump_file,
     is_postgres,
     mask_sql,
@@ -97,7 +97,6 @@ class IndexConcurrently(Rule):
             return []
 
         masked = mask_sql(source)
-        dbmate_transactional = has_dbmate_directive(source, "up") and not has_dbmate_directive(source, "no-transaction")
         if not is_postgres(source):
             return []
 
@@ -123,10 +122,10 @@ class IndexConcurrently(Rule):
                     col=location.column,
                     code=self.code,
                     message=(
-                        "Move this index to a `-- migrate:no-transaction` migration, replace `SET LOCAL` "
+                        "Set `transaction:false` on this section’s `-- migrate:up` or `-- migrate:down` directive, replace `SET LOCAL` "
                         "timeouts with session `SET`/`RESET`, and use `CREATE INDEX CONCURRENTLY` — "
                         "dbmate otherwise runs it in a transaction where CONCURRENTLY is illegal."
-                        if dbmate_transactional
+                        if dbmate_transactional(source, pos) is True
                         else "Use `CREATE INDEX CONCURRENTLY` — a plain CREATE INDEX locks the table against writes for the whole build."
                     ),
                 )

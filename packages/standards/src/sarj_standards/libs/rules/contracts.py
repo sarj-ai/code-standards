@@ -3,6 +3,7 @@ from sarj_rule_contracts import (
     CatalogRule as CatalogRule,
     DefaultLevel as DefaultLevel,
     EvaluationCase as EvaluationCase,
+    ExampleDependency as ExampleDependency,
     ExampleFile as ExampleFile,
     ExpectedOutcome as ExpectedOutcome,
     Finding as Finding,

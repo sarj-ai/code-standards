@@ -3,19 +3,18 @@
 
 from __future__ import annotations
 
+import os
+from pathlib import Path
+import shutil
 import subprocess
+import sys
 import tomllib
-from typing import TYPE_CHECKING
 
 import pytest
 
 import sarj_standards.cli.main as cli
-from sarj_standards.libs.adoption import doctor, manifest, scaffold
+from sarj_standards.libs.adoption import doctor, lifecycle, manifest, scaffold
 from sarj_standards.libs.adoption.doctor import Level, check_pyright_deprecated, check_ruff_policy_authority
-
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 
 @pytest.mark.parametrize("profile", ["standard", "application"])
@@ -482,3 +481,76 @@ def test_doctor_falls_back_to_bounded_filesystem_walk_when_git_times_out(
     findings = doctor.diagnose(tmp_path)
 
     assert [finding for finding in findings if finding.id == "doctor.version.pin"]
+
+
+@pytest.mark.parametrize("legacy_installed", [False, True])
+@pytest.mark.parametrize("linked", [False, True])
+@pytest.mark.parametrize("hook_type", ["pre-commit", "commit-msg"])
+def test_doctor_reports_native_git_ignoring_nonexecutable_managed_hooks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, linked: bool, hook_type: str, legacy_installed: bool
+) -> None:
+    primary = tmp_path / "primary"
+    primary.mkdir()
+    empty_template = tmp_path / "empty-template"
+    empty_template.mkdir()
+    subprocess.run(("git", "init", "-q", "-b", "main", f"--template={empty_template}"), cwd=primary, check=True)
+    subprocess.run(("git", "config", "user.name", "Public fixture"), cwd=primary, check=True)
+    subprocess.run(("git", "config", "user.email", "fixture@example.invalid"), cwd=primary, check=True)
+    (primary / ".pre-commit-config.yaml").write_text("repos: []\n", encoding="utf-8")
+    subprocess.run(("git", "add", "."), cwd=primary, check=True)
+    subprocess.run(("git", "commit", "-qm", "fixture"), cwd=primary, check=True)
+    root = primary
+    if linked:
+        root = tmp_path / "linked checkout"
+        subprocess.run(("git", "worktree", "add", "-q", "-b", "linked", str(root)), cwd=primary, check=True)
+    subprocess.run((sys.executable, "-m", "pre_commit", "install", "--hook-type", hook_type), cwd=root, check=True)
+    hook = Path(
+        subprocess.run(
+            ("git", "rev-parse", "--git-path", f"hooks/{hook_type}"),
+            cwd=root,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+    )
+    if not hook.is_absolute():
+        hook = root / hook
+    lines = hook.read_text(encoding="utf-8").splitlines()
+    hook.write_text(
+        "\n".join(
+            "INSTALL_PYTHON=/missing/public-fixture/python" if line.startswith("INSTALL_PYTHON=") else line
+            for line in lines
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    binaries = tmp_path / "capture bin"
+    binaries.mkdir()
+    uvx = binaries / "uvx"
+    uvx.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    uvx.chmod(0o755)
+    original_which = shutil.which
+
+    def select_binary(name: str, mode: int = os.F_OK | os.X_OK, path: str | None = None) -> str | None:
+        return str(uvx) if name == "uvx" else original_which(name, mode=mode, path=path)
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- intercept the package runner so native Git dispatch cannot install or execute consumer tooling.
+        shutil, "which", select_binary
+    )
+    lifecycle.harden_precommit_hook(root, hook_type=hook_type)
+    (root / ".pre-commit-config.yaml").write_text(f"repos:\n{scaffold.precommit_block()}", encoding="utf-8")
+    adopted = manifest.Manifest(version=manifest.adopted_version(), configs=(), python_dest=".", typescript_dest=".")
+    (root / manifest.MANIFEST_NAME).write_text(adopted.render(), encoding="utf-8")
+    expected = "doctor.hooks.precommit-install" if hook_type == "pre-commit" else "doctor.hooks.commit-message-install"
+    assert not any(finding.id == expected for finding in doctor.diagnose_adoption_health(root))
+    env = {"PATH": f"{binaries}{os.pathsep}/usr/bin:/bin"}
+    assert subprocess.run(("git", "hook", "run", hook_type), cwd=root, env=env, check=False).returncode == 0
+    if legacy_installed:
+        legacy = hook.with_name(f"{hook.name}.legacy")
+        legacy.write_bytes(hook.read_bytes())
+        legacy.chmod(0o755)
+    hook.chmod(0o644)
+    assert subprocess.run(("git", "hook", "run", hook_type), cwd=root, env=env, check=False).returncode != 0
+    assert any(
+        finding.id == expected and finding.level is Level.WARN for finding in doctor.diagnose_adoption_health(root)
+    )

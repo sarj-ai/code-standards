@@ -720,7 +720,7 @@ def _read_module(path: Path, facts: RuntimeConfigFacts) -> ast.Module:
         return cached
     try:
         tree = ast.parse(read_python_source(path), filename=str(path))
-    except OSError, SyntaxError:
+    except OSError, SyntaxError, UnicodeError:
         tree = ast.Module(body=[], type_ignores=[])
     facts.modules[path] = tree
     return tree
@@ -783,7 +783,7 @@ def _candidate_calls_class(
         return False
     try:
         source = read_python_source(candidate)
-    except OSError:
+    except OSError, SyntaxError, UnicodeError:
         return False
     if class_name not in source or is_generated(candidate, source):
         return False
