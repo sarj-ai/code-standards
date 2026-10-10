@@ -743,15 +743,15 @@ REGISTRY: Final[Mapping[str, RuleMeta]] = MappingProxyType(
         ),
         "workflow-embedded-program": RuleMeta(
             code="SARJ310",
-            summary="DevOps execution block embeds a program or multiple invocations",
+            summary="DevOps execution block embeds program logic",
             rationale=(
                 "Programs embedded in deployment and build configuration bypass the normal language lint, type "
-                "and local test boundaries. One invocation per execution block keeps configuration declarative "
-                "and makes the invoked program independently reviewable and testable."
+                "and local test boundaries. Simple sequences of existing commands are orchestration; executable "
+                "logic belongs under the normal language tooling."
             ),
             remediation=(
-                "Move control flow, command chains and inline interpreter source into a linted, typed repository-owned "
-                "script. Keep one invocation with environment assignments and quoted arguments in configuration."
+                "Reuse existing native commands or workflow steps. Keep control flow and inline interpreter source "
+                "in maintained, linted repository code; avoid wrapper scripts solely to rearrange commands."
             ),
             category=RuleCategory.ARCHITECTURE,
             languages=frozenset({Language.CONFIG}),
@@ -788,12 +788,30 @@ REGISTRY: Final[Mapping[str, RuleMeta]] = MappingProxyType(
                     expected_count=0,
                 ),
                 _public_example(
+                    example_id="workflow-sequence-inline-source",
+                    scenario="command-sequence",
+                    title="A later invocation still rejects inline interpreter source",
+                    outcome=ExpectedOutcome.MATCH,
+                    path=".github/workflows/ci.yml",
+                    source="jobs:\n  test:\n    steps:\n      - run: |\n          uv run ruff check .\n          python3 -c 'print(1)'\n",
+                    expected_count=1,
+                ),
+                _public_example(
+                    example_id="workflow-command-sequence",
+                    scenario="command-sequence",
+                    title="Run existing tools directly without a wrapper script",
+                    outcome=ExpectedOutcome.NO_MATCH,
+                    path=".github/workflows/ci.yml",
+                    source="jobs:\n  test:\n    steps:\n      - run: |\n          uv run ruff check .\n          uv run pytest\n",
+                    expected_count=0,
+                ),
+                _public_example(
                     example_id="mise-program-use-site",
                     scenario="mise-source-attribution",
                     title="An executable mise task retains its own source location",
                     outcome=ExpectedOutcome.MATCH,
                     path="mise.toml",
-                    source="[vars]\ntext = '''\nrun = \"printf inert; printf data\"\n'''\n[tasks.probe]\n\"run\" = \"printf first; printf second\"\n",
+                    source="[vars]\ntext = '''\nrun = \"printf inert; printf data\"\n'''\n[tasks.probe]\n\"run\" = \"printf first && printf second\"\n",
                     expected_count=1,
                 ),
                 _public_example(
@@ -814,7 +832,7 @@ REGISTRY: Final[Mapping[str, RuleMeta]] = MappingProxyType(
                     source=(
                         "services:\n  app:\n    image: fixture\n    healthcheck:\n"
                         "      disable: false\n"
-                        '      test: [CMD-SHELL, "printf first; printf second"]\n'
+                        '      test: [CMD-SHELL, "printf first && printf second"]\n'
                     ),
                     expected_count=1,
                 ),
@@ -827,7 +845,7 @@ REGISTRY: Final[Mapping[str, RuleMeta]] = MappingProxyType(
                     source=(
                         "services:\n  app:\n    image: fixture\n    healthcheck:\n"
                         '      disable: "true"\n'
-                        '      test: [CMD-SHELL, "printf first; printf second"]\n'
+                        '      test: [CMD-SHELL, "printf first && printf second"]\n'
                     ),
                     expected_count=0,
                 ),
@@ -871,10 +889,11 @@ REGISTRY: Final[Mapping[str, RuleMeta]] = MappingProxyType(
             limitations=(
                 "Only semantic execution fields are analyzed: Actions/composite steps, Cloud Build steps, Skaffold hooks and containers, Kubernetes containers/probes/hooks, Compose commands, mise tasks, Docker instructions and Make recipe units.",
                 "Compose healthchecks disabled by a constant native boolean value are inert; unresolved disable interpolation fails analysis coverage.",
-                "Inline interpreter source, jq/awk filters, shell control flow, command substitutions and multiple invocations are rejected regardless of program size. External files/modules and recursively verified single-invocation shell wrappers are allowed.",
-                "Image-default entrypoints and dynamic executable identities cannot be inferred. Unsupported selected interpreter option grammars or unprovable shell payloads fail analysis coverage instead of passing silently.",
+                "Inline interpreter source, jq/awk filters, shell control flow, logical chains, pipelines and command substitutions are rejected regardless of program size. Sequential direct invocations, external files/modules and recursively verified shell wrappers are allowed; every invocation is checked.",
+                "Unknown external-image ENTRYPOINT defaults and dynamic executable identities are not inferred; runtime CMD is analyzed only when its entrypoint ownership is proven. Unsupported selected interpreter option grammars or unprovable shell payloads fail analysis coverage instead of passing silently.",
+                "Literal dumb-init child forwarding is verified against its upstream source; signal-rewrite and ambiguous option forms fail analysis coverage.",
                 "Make target/pattern variables and prerequisite inheritance require statically provable names; conflicting pattern values with version-dependent precedence fail analysis coverage.",
-                "New explicit stdin and option-operand validation is native-proven for Bash; other shell dialects retain their existing grammar. Unknown Bash options and shopt options remain unproven coverage.",
+                "Explicit stdin ownership is native-proven for Bash. Command-string selection after options is native-proven for Bash, sh, dash, zsh and ksh; zsh/ksh retain their existing option namespaces. Ambiguous command/value clusters and unproven uppercase-O forms fail coverage.",
                 "Each ordinary Make logical recipe is a separate execution block; .ONESHELL groups contiguous recipe lines. YAML aliases are reported at each executable use site.",
             ),
             default_level=DefaultLevel.ERROR,
@@ -1331,7 +1350,7 @@ def _workflow_embedded_program_findings(
             path,
             block.line,
             "SARJ310",
-            "Execution block embeds a program or multiple invocations — move it into a linted, typed external script and keep one invocation in configuration.",
+            "Execution block embeds program logic; reuse existing commands or workflow steps and keep executable logic in maintained, linted repository code.",
             end_line=block.end_line,
             end_column=block.end_column,
         )

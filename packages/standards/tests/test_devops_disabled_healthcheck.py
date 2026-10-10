@@ -37,7 +37,7 @@ def test_compose_healthcheck_runtime_boolean_owns_execution(value: str | None, e
     source = (
         "services:\n  app:\n    image: fixture\n    healthcheck:\n"
         + disable
-        + '      test: [CMD-SHELL, "printf first; printf second"]\n'
+        + '      test: [CMD-SHELL, "printf first && printf second"]\n'
     )
     blocks = execution_blocks("compose.yaml", source)
     assert sum(block_embeds_program(block, parse_shell=parse_shell) for block in blocks) == expected
@@ -52,7 +52,7 @@ def test_compose_disabled_healthcheck_preserves_service_program_and_source(tmp_p
         + "services:\n  app:\n    image: fixture\n"
         + "    command: [python3, -c, 'print(1)']\n    healthcheck:\n"
         + disable
-        + '      test: [CMD-SHELL, "printf first; printf second"]\n'
+        + '      test: [CMD-SHELL, "printf first && printf second"]\n'
     )
     path = tmp_path / "compose.yaml"
     path.write_text(source, encoding="utf-8")
@@ -67,7 +67,7 @@ def test_compose_unknown_or_invalid_healthcheck_disable_does_not_invent_executio
     source = (
         "services:\n  app:\n    image: fixture\n    healthcheck:\n"
         f"      disable: {value}\n"
-        '      test: [CMD-SHELL, "printf first; printf second"]\n'
+        '      test: [CMD-SHELL, "printf first && printf second"]\n'
     )
     with pytest.raises(ProgramProjectionError, match="cannot be proven statically"):
         execution_blocks("compose.yaml", source)

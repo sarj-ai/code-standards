@@ -50,7 +50,64 @@ _SHELL_CASES = (
     ("quoted-command-substitution-data", "printf '%s\\n' '$(python3 -c 1)'", False),
     ("actual-command-substitution", "printf '%s\\n' \"$(python3 -c 1)\"", True),
     ("command-chain", "make lint && make test", True),
-    ("linear-command-list", "make lint\nmake test", True),
+    ("linear-command-list", "make lint\nmake test", False),
+    ("semicolon-command-list", "make lint; make test", False),
+    ("empty-native-argument-list", "printf '%s\\n' ''; printf done", False),
+    ("native-flags-and-call", "set -euo pipefail\nmake test", False),
+    ("recursive-native-list", "sh -c 'printf first; printf second'", False),
+    ("later-python-source", "printf marker; python3 -c 'print(1)'", True),
+    ("later-node-source", "printf marker; node --eval='process.exit(0)'", True),
+    ("eval-inline-source", "eval 'python3 -c 1'", True),
+    ("later-eval-source", "printf marker; eval 'python3 -c 1'", True),
+    ("eval-external-file", "eval 'python3 scripts/check.py'", False),
+    ("eval-native-list", "eval 'printf first; printf second'", False),
+    ("eval-argument-concatenation", "eval python3 -c '\"print(1)\"'", True),
+    ("eval-option-boundary", "eval -- 'python3 -c 1'", True),
+    ("eval-no-source", "eval", False),
+    ("command-eval-source", "command eval 'python3 -c 1'", True),
+    ("command-default-path-eval-source", "command -p eval 'python3 -c 1'", True),
+    ("command-query-eval", "command -v eval", False),
+    ("command-verbose-query-eval", "command -V eval", False),
+    ("exec-eval-is-external", "exec eval 'python3 -c 1'", False),
+    ("env-eval-is-external", "env eval 'python3 -c 1'", False),
+    ("command-exec-eval-is-external", "command exec eval 'python3 -c 1'", False),
+    ("forwarded-command-eval", "sh -c 'command \"$@\"' -- eval 'python3 -c 1'", True),
+    ("forwarded-eval-file", "sh -c '\"$@\"' -- eval 'python3 scripts/check.py'", False),
+    ("forwarded-command-query", "sh -c 'command \"$@\"' -- -v eval", False),
+    ("forwarded-env-eval-external", "sh -c '\"$@\"' -- env eval 'python3 -c 1'", False),
+    ("eval-inherits-source-stdin", "eval 'python3' <<'PY'\nprint(1)\nPY\n", True),
+    ("eval-overrides-source-stdin", "eval 'python3 < scripts/check.py' <<'PY'\nprint(1)\nPY\n", False),
+    ("eval-inherits-data-stdin", "eval 'python3 scripts/check.py' <<'PY'\ninput\nPY\n", False),
+    ("eval-inherits-copied-source", "eval 'python3' 3<<'PY' 0<&3\nprint(1)\nPY\n", True),
+    ("shell-wrapper-inherits-source", "sh -c 'python3' <<'PY'\nprint(1)\nPY\n", True),
+    ("shell-wrapper-overrides-source", "sh -c 'python3 < scripts/check.py' <<'PY'\nprint(1)\nPY\n", False),
+    ("nested-source-descriptor", "eval 'python3 0<&3' 3<<'PY'\nprint(1)\nPY\n", True),
+    ("persistent-exec-stdin", "exec 0<<'PY'\nprint(1)\nPY\npython3\n", True),
+    ("persistent-exec-file", "exec 0< scripts/check.py\npython3\n", False),
+    ("persistent-exec-data", "exec 0<<'PY'\ninput\nPY\npython3 scripts/check.py\n", False),
+    ("persistent-exec-overwritten-file", "exec 0<<'PY'\nprint(1)\nPY\nexec 0< scripts/check.py\npython3\n", False),
+    ("persistent-exec-descriptor-copy", "exec 3<<'PY'\nprint(1)\nPY\npython3 0<&3\n", True),
+    ("persistent-exec-option-boundary", "exec -- 0<<'PY'\nprint(1)\nPY\npython3\n", True),
+    ("persistent-command-exec", "command exec 0<<'PY'\nprint(1)\nPY\npython3\n", True),
+    ("query-exec-does-not-persist", "command -v exec 0<<'PY'\ninput\nPY\npython3\n", False),
+    ("external-env-exec-does-not-persist", "env exec 0<<'PY'\ninput\nPY\npython3\n", False),
+    ("eval-exec-persists-stdin", "eval 'exec 0<<\"PY\"\nprint(1)\nPY\n'\npython3\n", True),
+    ("eval-exec-file-stdin", "eval 'exec 0< scripts/check.py'\npython3\n", False),
+    ("eval-exec-data-stdin", "eval 'exec 0<<\"PY\"\ninput\nPY\n'\npython3 scripts/check.py\n", False),
+    ("child-exec-does-not-persist", "sh -c 'exec 0<<\"PY\"\nprint(1)\nPY\n'\npython3\n", False),
+    ("eval-redirection-restores-stdin", "eval 'exec 0<<\"PY\"\nprint(1)\nPY\n' < data.txt\npython3\n", False),
+    ("eval-stdout-preserves-stdin", "eval 'exec 0<<\"PY\"\nprint(1)\nPY\n' > /dev/null\npython3\n", True),
+    ("eval-stdin-restores-descriptor", "eval 'exec 0<<\"PY\"\nprint(1)\nPY\n' < /dev/null\npython3\n", False),
+    ("later-jq-source", "printf marker; jq '.items' report.json", True),
+    ("later-awk-source", "printf marker; awk '{print $1}' report.txt", True),
+    ("later-forwarded-source", "printf marker; sh -c 'exec \"$@\"' -- python3 -c 'print(1)'", True),
+    ("later-recursive-source", "printf marker; sh -c 'printf marker; python3 -c 1'", True),
+    ("later-external-module", "printf marker; python3 -m tools.check; node scripts/check.js", False),
+    ("later-assignment", "printf marker; MODE=strict", True),
+    ("later-substitution", "printf marker; printf '%s' \"$(date)\"", True),
+    ("later-arithmetic", "printf marker; printf '%s' \"$((1 + 2))\"", True),
+    ("later-background", "printf marker; make test &", True),
+    ("later-negation", "printf marker; ! make test", True),
     ("single-if-still-program", "if make probe; then make test; fi", True),
     ("assignment-with-invocation", "MODE=strict python3 scripts/check.py", False),
     ("assignment-only-program", "MODE=strict", True),
@@ -58,6 +115,12 @@ _SHELL_CASES = (
     ("stdin-external-file", "python3 - < scripts/check.py", False),
     ("stdin-data-for-external-script", "python3 scripts/check.py <<'DATA'\ninput\nDATA\n", False),
     ("stdin-inline-heredoc", "python3 - <<'PY'\nprint(1)\nPY\n", True),
+    ("stdin-overwritten-file", "python3 - <<'PY' < scripts/check.py\nprint(1)\nPY\n", False),
+    ("stdin-overwritten-inline", "python3 - < scripts/check.py <<'PY'\nprint(1)\nPY\n", True),
+    ("heredoc-other-descriptor", "python3 - 3<<'PY'\nprint(1)\nPY\n", False),
+    ("heredoc-duplicated-to-stdin", "python3 - 3<<'PY' 0<&3\nprint(1)\nPY\n", True),
+    ("stdin-duplicated-from-file", "python3 - <<'PY' 3< scripts/check.py 0<&3\nprint(1)\nPY\n", False),
+    ("overwritten-heredoc-execution", "python3 - <<PY < scripts/check.py\n$(date)\nPY\n", True),
     ("heredoc-data", "cat <<'DATA'\nif this is data\nDATA\n", False),
 )
 
@@ -203,6 +266,232 @@ def test_multiple_docker_heredocs_are_unproven_instead_of_truncated() -> None:
         execution_blocks("Dockerfile", "FROM test\nRUN cat <<FIRST <<SECOND\nfirst\nFIRST\nsecond\nSECOND\n")
 
 
+@pytest.mark.parametrize(
+    ("path", "source", "expected"),
+    [
+        pytest.param("Makefile", 'check: ; python3 -c "print(1)"\n', [True], id="make-inline-source"),
+        pytest.param("Makefile", "check: ; python3 scripts/check.py\n", [False], id="make-inline-file"),
+        pytest.param("Makefile", 'check:\n\t @python3 -c "print(1)"\n', [True], id="make-spaced-prefix"),
+        pytest.param(
+            "Makefile",
+            "check: SHELL = python3\ncheck: .SHELLFLAGS = -c\ncheck: ; print(1)\n",
+            [True],
+            id="make-inline-target-shell",
+        ),
+        pytest.param(
+            "Makefile",
+            "CMD = printf marker; printf later\ncheck:\n\t$(CMD)\n",
+            [False],
+            id="make-assignment-semicolon-data",
+        ),
+        pytest.param(
+            "Makefile",
+            'SHELL = bash\n.SHELLFLAGS = -c "python3 -c 1" --\ncheck:\n\tprintf ignored\n',
+            [True],
+            id="make-shellflags-source",
+        ),
+        pytest.param(
+            "Makefile",
+            "SHELL = bash\n.SHELLFLAGS = -e -o pipefail -c\ncheck:\n\tpython3 scripts/check.py\n",
+            [False],
+            id="make-shellflags-file",
+        ),
+        pytest.param(
+            "Makefile",
+            '.SHELLFLAGS ?= -c "python3 -c 1" --\ncheck:\n\tpython3 scripts/check.py\n',
+            [False],
+            id="make-shellflags-builtin-default",
+        ),
+        pytest.param(
+            "Makefile", ".SHELLFLAGS += -e\ncheck:\n\tpython3 -c 1\n", [True], id="make-shellflags-append-default"
+        ),
+        pytest.param(
+            "action.yml",
+            'runs:\n  using: composite\n  steps:\n    - shell: bash -c "python3 -c 1" {0}\n      run: printf ignored\n',
+            [True],
+            id="actions-template-source",
+        ),
+        pytest.param(
+            "action.yml",
+            'runs:\n  using: composite\n  steps:\n    - shell: bash scripts/check.sh {0}\n      run: python3 -c "print(1)"\n',
+            [False],
+            id="actions-template-external-boundary",
+        ),
+        pytest.param(
+            "action.yml",
+            "runs:\n  using: composite\n  steps:\n    - shell: python -u {0}\n      run: print(1)\n",
+            [True],
+            id="actions-template-language-source",
+        ),
+        pytest.param(
+            "action.yml",
+            "runs:\n  using: composite\n  steps:\n    - shell: bash --noprofile --norc -e -o pipefail {0}\n      run: python3 scripts/check.py\n",
+            [False],
+            id="actions-template-native-file",
+        ),
+        pytest.param(
+            "Dockerfile",
+            'FROM scratch\nCOPY <<EOF /data\nRUN python3 -c "print(1)"\nEOF\n',
+            [],
+            id="docker-copy-heredoc-data",
+        ),
+        pytest.param(
+            "Dockerfile",
+            'FROM scratch\nENTRYPOINT ["python3"]\nCMD ["-c", "print(1)"]\n',
+            [True],
+            id="docker-effective-inline-argv",
+        ),
+        pytest.param(
+            "Dockerfile",
+            'FROM scratch\nENTRYPOINT ["printf", "%s"]\nCMD ["python3", "-c", "print(1)"]\n',
+            [False],
+            id="docker-effective-data-argv",
+        ),
+        pytest.param(
+            "Dockerfile", 'FROM scratch\nCMD ["python3", "-c", "print(1)"]\n', [True], id="docker-scratch-cmd-source"
+        ),
+        pytest.param(
+            "Dockerfile", 'FROM external\nCMD ["python3", "-c", "print(1)"]\n', [], id="docker-unknown-image-entrypoint"
+        ),
+        pytest.param(
+            "Dockerfile",
+            'FROM external\nENTRYPOINT []\nCMD ["python3", "-c", "print(1)"]\n',
+            [True],
+            id="docker-empty-entrypoint",
+        ),
+        pytest.param(
+            "Dockerfile",
+            'FROM scratch\nCMD ["python3", "-c", "print(1)"]\nCMD ["python3", "scripts/check.py"]\n',
+            [False],
+            id="docker-last-cmd",
+        ),
+        pytest.param(
+            "Dockerfile",
+            'FROM scratch\nENTRYPOINT ["python3", "-c", "print(1)"]\nENTRYPOINT ["python3", "scripts/check.py"]\n',
+            [False],
+            id="docker-last-entrypoint",
+        ),
+        pytest.param(
+            "Dockerfile",
+            'FROM scratch\nCMD ["python3", "-c", "print(1)"]\nENTRYPOINT ["printf"]\n',
+            [False],
+            id="docker-current-cmd-is-entrypoint-data",
+        ),
+        pytest.param(
+            "Dockerfile",
+            'FROM scratch\nCMD ["-c", "print(1)"]\nENTRYPOINT ["python3"]\n',
+            [True],
+            id="docker-current-cmd-retained",
+        ),
+        pytest.param(
+            "Dockerfile",
+            'FROM scratch AS base\nENTRYPOINT ["python3"]\nFROM base\nCMD ["-c", "print(1)"]\n',
+            [False, True],
+            id="docker-known-stage-entrypoint",
+        ),
+        pytest.param(
+            "Dockerfile",
+            'FROM scratch AS base\nCMD ["-c", "print(1)"]\nFROM base\nENTRYPOINT ["python3"]\n',
+            [False, False],
+            id="docker-known-stage-cmd-reset",
+        ),
+        pytest.param(
+            "Dockerfile",
+            'FROM scratch\nENTRYPOINT ["python3", "-c", "print(1)"]\nFROM scratch\nCMD ["python3", "scripts/check.py"]\n',
+            [True, False],
+            id="docker-stage-reset",
+        ),
+        pytest.param(
+            "Dockerfile",
+            'FROM scratch\nENTRYPOINT printf marker\nCMD ["python3", "-c", "print(1)"]\n',
+            [False],
+            id="docker-shell-entrypoint-ignores-cmd",
+        ),
+        pytest.param(
+            "Dockerfile",
+            'FROM scratch\nENTRYPOINT ["printf", "%s"]\nCMD python3 -c "print(1)"\n',
+            [False],
+            id="docker-shell-cmd-is-entrypoint-data",
+        ),
+        pytest.param(
+            "Dockerfile",
+            'FROM scratch\nHEALTHCHECK --interval=1s CMD python3 -c "print(1)"\n',
+            [True],
+            id="docker-healthcheck-source",
+        ),
+        pytest.param(
+            "Dockerfile",
+            'FROM scratch\nHEALTHCHECK CMD python3 -c "print(1)"\nHEALTHCHECK CMD python3 scripts/check.py\n',
+            [False],
+            id="docker-last-healthcheck",
+        ),
+        pytest.param(
+            "Dockerfile",
+            'FROM scratch\nHEALTHCHECK CMD python3 -c "print(1)"\nHEALTHCHECK NONE\n',
+            [],
+            id="docker-healthcheck-none",
+        ),
+        pytest.param(
+            "Dockerfile",
+            'FROM scratch AS base\nHEALTHCHECK CMD python3 -c "print(1)"\nFROM base\n',
+            [True],
+            id="docker-known-stage-healthcheck",
+        ),
+        pytest.param(
+            "Dockerfile",
+            'FROM scratch AS base\nENTRYPOINT ["python3", "-c", "print(1)"]\nFROM base\nCMD ["ignored-data"]\n',
+            [True],
+            id="docker-inherited-source-once",
+        ),
+        pytest.param(
+            "Dockerfile",
+            'FROM scratch AS base\nENTRYPOINT ["python3"]\nFROM base AS first\nCMD ["-c", "print(1)"]\nFROM base\nCMD ["-c", "print(2)"]\n',
+            [False, True, True],
+            id="docker-different-stage-source-owners",
+        ),
+        pytest.param(
+            "Dockerfile",
+            'FROM scratch\n# escape=`\nRUN python3 \\\n  -c "print(1)"\n',
+            [True],
+            id="docker-late-escape-comment",
+        ),
+        pytest.param(
+            "Dockerfile",
+            '# escape=`\nFROM scratch\nRUN python3 `\n  -c "print(1)"\n',
+            [True],
+            id="docker-header-escape-directive",
+        ),
+        pytest.param(
+            "Dockerfile",
+            'FROM scratch\nCMD python3 scripts/check.py\nSHELL ["python3", "-c"]\n',
+            [False],
+            id="docker-shell-only-following-cmd",
+        ),
+        pytest.param(
+            "Dockerfile",
+            'FROM scratch\nONBUILD SHELL ["python3", "-c"]\nRUN python3 scripts/check.py\n',
+            [False],
+            id="docker-onbuild-shell-deferred",
+        ),
+        pytest.param(
+            "Dockerfile",
+            'FROM scratch\nRUN python3 \\\n# inert comment\n  -c "print(1)"\n',
+            [True],
+            id="docker-continuation-comment",
+        ),
+        pytest.param(
+            "Dockerfile",
+            'FROM scratch\nHEALTHCHECK CMD\tpython3 -c "print(1)"\n',
+            [True],
+            id="docker-healthcheck-native-whitespace",
+        ),
+    ],
+)
+def test_native_execution_source_ownership(path: str, source: str, expected: list[bool]) -> None:
+    blocks = execution_blocks(path, source)
+    assert [block_embeds_program(block, parse_shell=parse_shell) for block in blocks] == expected
+
+
 _CONFIG_CASES = (
     EvaluationCase(
         "skaffold-python-payload",
@@ -242,7 +531,7 @@ _CONFIG_CASES = (
     EvaluationCase(
         "compose-explicit-shell-program",
         Language.CONFIG,
-        "services:\n  test:\n    image: test\n    entrypoint: [sh, -c]\n    command: ['make lint; make test']\n",
+        "services:\n  test:\n    image: test\n    entrypoint: [sh, -c]\n    command: ['make lint && make test']\n",
         ExpectedOutcome.MATCH,
         PurePosixPath("compose.yaml"),
     ),
@@ -312,7 +601,7 @@ _CONFIG_CASES = (
     EvaluationCase(
         "make-oneshell-program",
         Language.CONFIG,
-        ".ONESHELL:\ncheck:\n\tmake lint\n\tmake test\n",
+        ".ONESHELL:\ncheck:\n\tmake lint &&\n\tmake test\n",
         ExpectedOutcome.MATCH,
         PurePosixPath("Makefile"),
     ),
@@ -370,7 +659,22 @@ def test_multidocument_and_scalar_aliases_preserve_each_occurrence() -> None:
     assert all(block_embeds_program(block, parse_shell=parse_shell) for block in blocks)
 
 
-@pytest.mark.parametrize("source", ["python3 -c", "env -S 'python3 -c 1'", 'sh -c "$PROGRAM"'])
+@pytest.mark.parametrize(
+    "source",
+    [
+        "python3 -c",
+        "env -S 'python3 -c 1'",
+        'sh -c "$PROGRAM"',
+        'printf marker; sh -c "$PROGRAM"',
+        'printf marker; bash --unknown-option -c "printf marker"',
+        'python3 -c 1; sh -c "$PROGRAM"',
+        'eval "$PROGRAM"',
+        'printf marker; eval "$PROGRAM"',
+        'command eval "$PROGRAM"',
+        "sh -c 'command \"$@\" \"$PROGRAM\"' -- eval 'python3 -c 1'",
+        "eval " * 33 + "printf marker",
+    ],
+)
 def test_unprovable_payload_is_coverage_failure(source: str) -> None:
     with pytest.raises(ProgramProjectionError):
         block_embeds_program(ExecutionBlock(1, source), parse_shell=parse_shell)
@@ -717,7 +1021,7 @@ def test_mise_runtime_strings_retain_exact_native_source_lines(source: str, expe
 
 
 def test_mise_array_commands_report_at_their_individual_use_sites(tmp_path: Path) -> None:
-    source = '[tasks.probe]\nrun = [\n  "printf first; printf second", # first command use-site\n  "printf third; printf fourth",\n]\n'
+    source = '[tasks.probe]\nrun = [\n  "printf first && printf second", # first command use-site\n  "printf third && printf fourth",\n]\n'
     path = tmp_path / "mise.toml"
     path.write_text(source)
     findings = textlint.check_paths([str(path)], root=tmp_path, rule_ids=frozenset({"workflow-embedded-program"}))

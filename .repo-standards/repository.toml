@@ -1,2 +1,3 @@
 repository_id = "code-standards"
+enabled_rules = ["repository/artifacts/makefile-growth"]
 components = []

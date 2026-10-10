@@ -661,7 +661,7 @@ WORKFLOW_EMBEDDED_PROGRAM_CASES = (
         "ordinary-multiline-orchestration",
         Language.CONFIG,
         "jobs:\n  test:\n    steps:\n      - run: |\n          make lint\n          make test\n",
-        ExpectedOutcome.MATCH,
+        ExpectedOutcome.NO_MATCH,
         PurePosixPath(".github/workflows/ci.yml"),
     ),
     EvaluationCase(

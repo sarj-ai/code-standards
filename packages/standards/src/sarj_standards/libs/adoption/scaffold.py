@@ -875,16 +875,18 @@ def _with_reviewed_repository_rules(contents: bytes, requested: Sequence[str]) -
     header = source if section is None else source[: section.start()]
     entry = re.search(r"""(?m)^[ \t]*(?:enabled_rules|"enabled_rules"|'enabled_rules')[ \t]*=[ \t]*\[""", header)
     values = ", ".join(json.dumps(rule_id) for rule_id in missing)
-    if entry is None:
-        if configured.enabled_rules:
-            msg = "cannot safely locate the existing top-level enabled_rules assignment"
-            raise ValueError(msg)
-        updated = _match_newline_style(source, f"enabled_rules = [{values}]\n") + source
-    else:
+    if entry is not None:
         # Inserting at the start preserves existing array comments and all other
         # policy tables, including exact capped Makefile exceptions.
         separator = ", " if configured.enabled_rules else ""
+        if source[entry.end() :].startswith(("\n", "\r")):
+            separator = separator.rstrip()
         updated = f"{source[: entry.end()]}{values}{separator}{source[entry.end() :]}"
+    elif configured.enabled_rules:
+        msg = "cannot safely locate the existing top-level enabled_rules assignment"
+        raise ValueError(msg)
+    else:
+        updated = _match_newline_style(source, f"enabled_rules = [{values}]\n") + source
     result = updated.encode("utf-8")
     parse_manifest_bytes(result)
     return result

@@ -49,8 +49,8 @@ class _UpstreamRuleEngine(StrEnum):
 LINT_CONFIGS: Final = "code-standards"
 _PYTHON_LINT: Final = "sarj-python-lint"
 SIBLING_PACKAGES: Final = (_PYTHON_LINT, "sarj-sql-lint", "sarj-iac-lint")
-REPO_STANDARDS_VERSION: Final = "6.4.1"
-REPO_STANDARDS_REVISION: Final = "4574f12f272814c9f9dc9dab383e77c7baefb7f8"
+REPO_STANDARDS_VERSION: Final = "6.4.2"
+REPO_STANDARDS_REVISION: Final = "e5df61d2ed1f1473b402971453cdd5dc9bf9e9ad"
 
 
 def adopted_version() -> str:
