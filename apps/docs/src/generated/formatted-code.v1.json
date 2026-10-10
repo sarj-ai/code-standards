@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "1abced25d86efeda53e24c212298bb7784b8bf0a2bc19f1399f611f5d7e0d25d",
-  "cliSha256": "85ec222288f93adc2448b7f144beb1bfb6f5ff3830610b3ea7a47baf9d292732",
+  "catalogSha256": "2ce4875c311d084bf3e9ab5ff895c60162ec3de82782cea73d270aa9140495ce",
+  "cliSha256": "b692215ba240dd31264014f1722e5f5d48b567dc57a1798f51cdfe06d1df9287",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -6760,6 +6760,71 @@
       ],
       "optionsSchemaSource": null
     },
+    "python:no-fixed-sleep-in-loop": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/health.py",
+              "source": "from collections.abc import Callable\n\n\ndef wait_for_health(probe, sleep: Callable[[float], None]):\n    for _ in range(30):\n        if probe():\n            return\n        sleep(0.5)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/health.py",
+          "id": "blocking-loop-calls-injected-sleeper",
+          "outcome": "accept",
+          "scenarioId": "blocking-sleep",
+          "title": "A synchronous retry loop calls an injected sleeper"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/health.py",
+              "source": "import time\n\n\ndef wait_for_health(probe):\n    for _ in range(30):\n        if probe():\n            return\n        time.sleep(0.5)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/health.py",
+          "id": "blocking-loop-sleeps-literal",
+          "outcome": "reject",
+          "scenarioId": "blocking-sleep",
+          "title": "A synchronous retry loop blocks for a hardcoded interval"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/jobs.py",
+              "source": "import asyncio\n\n\nclass JobWaiter:\n    def __init__(self, poll_seconds: float) -> None:\n        self._poll_seconds = poll_seconds\n\n    async def wait_until_done(self, job):\n        while not await job.done():\n            await asyncio.sleep(self._poll_seconds)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/jobs.py",
+          "id": "polling-loop-sleeps-injected-interval",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "A polling loop sleeps for an injected interval"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/jobs.py",
+              "source": "import asyncio\n\n\nasync def wait_until_done(job):\n    while not await job.done():\n        await asyncio.sleep(2)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/jobs.py",
+          "id": "polling-loop-sleeps-literal",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A polling loop sleeps for a hardcoded interval"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "python:no-frozen-after-validator-field-write": {
       "examples": [
         {
@@ -10540,6 +10605,41 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "One service operation still needs its contract"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:require-injectable-retry-sleep": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/retry.py",
+              "source": "from collections.abc import Awaitable, Callable\n\nfrom tenacity import AsyncRetrying, stop_after_attempt, wait_exponential\n\n\ndef client_retrying(sleep: Callable[[float], Awaitable[None]]) -> AsyncRetrying:\n    return AsyncRetrying(\n        sleep=sleep, stop=stop_after_attempt(4), wait=wait_exponential(multiplier=2)\n    )\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/retry.py",
+          "id": "retry-backoff-with-injected-sleep",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "A retry factory passes an injected sleep"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/retry.py",
+              "source": "from tenacity import retry, stop_after_attempt, wait_exponential\n\nclient_retry = retry(stop=stop_after_attempt(4), wait=wait_exponential(multiplier=2))\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/retry.py",
+          "id": "retry-backoff-without-sleep",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A module-level retry decorator backs off on the wall clock"
         }
       ],
       "optionsSchemaSource": null

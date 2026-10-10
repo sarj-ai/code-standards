@@ -691,6 +691,7 @@
       "currentSourceNativeReplayPassed": true,
       "nativeControls": 16,
       "nativeMatched": 16,
+      "registeredRulesOnEveryControl": 138,
       "publicExamples": 96,
       "publicMatched": 96,
       "selectedRuleOwners": 34,
@@ -849,7 +850,7 @@
         },
         {
           "path": "packages/python/src/sarj_python_lint/rules/_registry.py",
-          "sha256": "28716bed10bf9ea462f3f410250c61a52214ffd6e98a60c399df2b46df0fd19e"
+          "sha256": "e5e5cb63d54fb5ff292c32ff4f033d4d755587d6a681105af4ae5a4c961ec35e"
         },
         {
           "path": "packages/python/src/sarj_python_lint/rules/_resource_provenance.py",
@@ -1006,6 +1007,10 @@
         {
           "path": "packages/python/src/sarj_python_lint/rules/no_fixed_sleep_before_assert.py",
           "sha256": "1b87b8dae315369ecf63d199478e6469f2e32df49d05b3678f72977686e991f7"
+        },
+        {
+          "path": "packages/python/src/sarj_python_lint/rules/no_fixed_sleep_in_loop.py",
+          "sha256": "0a6b8fb898b05ce1be6054b9e5111c2ff1f16b5a7934e3e8da3e5ab6474847b4"
         },
         {
           "path": "packages/python/src/sarj_python_lint/rules/no_frozen_after_validator_field_write.py",
@@ -1342,6 +1347,10 @@
         {
           "path": "packages/python/src/sarj_python_lint/rules/require_explicit_service_contract.py",
           "sha256": "1867c33a314c9bb209cef3d9d9f8d38bc3be40d45ae6776cde93b63799fc96ce"
+        },
+        {
+          "path": "packages/python/src/sarj_python_lint/rules/require_injectable_retry_sleep.py",
+          "sha256": "0dae94bd8646fdbeb4269a0795ee3b8dab304afc0c5333904f971231c45bf64e"
         },
         {
           "path": "packages/python/src/sarj_python_lint/rules/require_keyword_only_swap_prone_params.py",
@@ -1683,6 +1692,7 @@
       "currentSourceNativeReplayPassed": true,
       "nativeControls": 12,
       "nativeMatched": 12,
+      "registeredRulesOnEveryControl": 138,
       "publicExamples": 78,
       "publicMatched": 78,
       "selectedRuleOwners": 31,
@@ -1841,7 +1851,7 @@
         },
         {
           "path": "packages/python/src/sarj_python_lint/rules/_registry.py",
-          "sha256": "28716bed10bf9ea462f3f410250c61a52214ffd6e98a60c399df2b46df0fd19e"
+          "sha256": "e5e5cb63d54fb5ff292c32ff4f033d4d755587d6a681105af4ae5a4c961ec35e"
         },
         {
           "path": "packages/python/src/sarj_python_lint/rules/_resource_provenance.py",
@@ -1998,6 +2008,10 @@
         {
           "path": "packages/python/src/sarj_python_lint/rules/no_fixed_sleep_before_assert.py",
           "sha256": "1b87b8dae315369ecf63d199478e6469f2e32df49d05b3678f72977686e991f7"
+        },
+        {
+          "path": "packages/python/src/sarj_python_lint/rules/no_fixed_sleep_in_loop.py",
+          "sha256": "0a6b8fb898b05ce1be6054b9e5111c2ff1f16b5a7934e3e8da3e5ab6474847b4"
         },
         {
           "path": "packages/python/src/sarj_python_lint/rules/no_frozen_after_validator_field_write.py",
@@ -2336,6 +2350,10 @@
           "sha256": "1867c33a314c9bb209cef3d9d9f8d38bc3be40d45ae6776cde93b63799fc96ce"
         },
         {
+          "path": "packages/python/src/sarj_python_lint/rules/require_injectable_retry_sleep.py",
+          "sha256": "0dae94bd8646fdbeb4269a0795ee3b8dab304afc0c5333904f971231c45bf64e"
+        },
+        {
           "path": "packages/python/src/sarj_python_lint/rules/require_keyword_only_swap_prone_params.py",
           "sha256": "96fcd1ffd8d17766f19c9039ed25d529590c2176ba59434f9d390c7b8cd03655"
         },
@@ -2543,7 +2561,7 @@
       "preparedNativeMatched": 28,
       "publicRuleCount": 118,
       "publicExamples": 248,
-      "publicReplaySeconds": 20.064797709,
+      "publicReplaySeconds": 21.859408542,
       "setupFromAuthoredMetadata": true,
       "expectationsUnchanged": true,
       "automaticInstallation": false
@@ -2663,7 +2681,101 @@
       "preparedNativeSyntaxControls": 94,
       "allPreparedNativeSyntaxMatched": true,
       "newParserDependency": false,
-      "supportedDepthLimit": 128
+      "supportedDepthLimit": 128,
+      "performanceFollowup": {
+        "owners": [
+          {
+            "path": "packages/iac/src/sarj_iac_lint/rules/no_environment_conditional.py",
+            "sha256": "d9340557106e3d305d5e56f3e8ade4840bf6a298daf1483f625b266e44ba9ca5"
+          },
+          {
+            "path": "packages/iac/tests/rules/test_no_environment_conditional.py",
+            "sha256": "9076c1346d42c62733645dad3b4ae3a802a6d0e52d8bbab7975d7972e22c3771"
+          }
+        ],
+        "additionalBroaderPassCount": 0,
+        "authoredOriginalLabels": 46,
+        "authoredOriginalDistinctLabels": 46,
+        "authoredOriginalExecutionsBefore": 92,
+        "authoredOriginalExecutionsAfter": 92,
+        "authoredOriginalExecutionsTotal": 184,
+        "authoredOriginalMatched": 46,
+        "authoredCountAndLocationParity": true,
+        "authoredVariantLabels": 184,
+        "authoredVariantMatched": 184,
+        "authoredVariantDistinctLabels": 46,
+        "authoredVariantExecutionsBefore": 368,
+        "authoredVariantExecutionsAfter": 368,
+        "authoredVariantExecutionsTotal": 736,
+        "authoredVariantCountAndLocationParity": true,
+        "nativeTerraformBranchControls": 16,
+        "nativeTerraformBranchMatched": 16,
+        "branchCountAndLocationParity": true,
+        "performanceThresholdsUnchanged": true,
+        "canonicalBefore": {
+          "passed": 125,
+          "failed": 0
+        },
+        "canonicalAfter": {
+          "passed": 125,
+          "failed": 0
+        },
+        "actualFocusedCanonicalPassed": 125,
+        "localPreparedPerformanceObservations": {
+          "before": {
+            "freshProcesses": 3,
+            "coldFirstCheckMedianSeconds": 0.01309141586534679,
+            "warmBestOfFiveMedianSeconds": 0.0026400419883430004,
+            "all11RuleGuardPasses": 3,
+            "unchangedGuardFactor": 10,
+            "unchangedSlackSeconds": 0.003,
+            "unchangedAbsoluteMsPerKloc": 200.0,
+            "coldFirstCheckSeconds": [
+              0.013064333936199546,
+              0.01309141586534679,
+              0.013160666916519403
+            ],
+            "warmBestOfFiveSeconds": [
+              0.0026151251513510942,
+              0.0026400419883430004,
+              0.0026571659836918116
+            ],
+            "tokenCallsPerCheck": [
+              800,
+              800,
+              800
+            ]
+          },
+          "after": {
+            "freshProcesses": 3,
+            "coldFirstCheckMedianSeconds": 0.01081675011664629,
+            "warmBestOfFiveMedianSeconds": 0.00044754217378795147,
+            "all11RuleGuardPasses": 3,
+            "unchangedGuardFactor": 10,
+            "unchangedSlackSeconds": 0.003,
+            "unchangedAbsoluteMsPerKloc": 200.0,
+            "coldFirstCheckSeconds": [
+              0.01081675011664629,
+              0.009811416966840625,
+              0.0108643330167979
+            ],
+            "warmBestOfFiveSeconds": [
+              0.0004484590608626604,
+              0.0003980412147939205,
+              0.00044754217378795147
+            ],
+            "tokenCallsPerCheck": [
+              0,
+              0,
+              0
+            ]
+          }
+        },
+        "generalSpeedImprovementClaim": false,
+        "candidateNativeProofExactOwningSourceMatched": true,
+        "actualFinalSourceCanonicalGateRequired": true,
+        "priorFailedCiCountedAsPass": false
+      }
     },
     {
       "pass": 13,
@@ -2735,64 +2847,91 @@
       "changed": false,
       "owners": {},
       "controlledCorpusEvaluation": {
+        "actionable_owner_fix_queue_count": 1,
         "additional_distinct_messages_at_same_location": 53,
-        "admitted_owner_defects": 0,
+        "admitted_corpus_owner_defects": 0,
+        "admitted_native_owner_defect_families": 2,
+        "admitted_native_owner_defects": 1,
         "batches_completed": 9,
         "bytes_selected": 10661932,
-        "custom_findings": 10648,
-        "custom_owner_catalog_total": 297,
-        "engine_seconds_total": 67.8562698321168,
+        "custom_findings": 10655,
+        "custom_owner_catalog_total": 299,
+        "engine_seconds_total": 63.19629412392636,
         "exact_duplicate_findings": 0,
         "files_selected": 1750,
         "final_native_rule_replay_examples": 248,
         "final_native_rule_replay_rules": 118,
         "final_public_ts_controls_passed": 6,
         "findings_outside_sample": 10327,
-        "input_language_eligible_owners": 274,
-        "labeled_cases": 57,
-        "labeled_cases_passed": 57,
+        "iac_authored_native_analysis_executions": 184,
+        "iac_authored_native_examples_compared": 46,
+        "iac_eligible_input_files": 0,
+        "iac_native_branch_controls_passed": 16,
+        "inherited_sample_exact_current_matches": 321,
+        "inherited_sample_inspected": 321,
+        "input_language_eligible_owners": 276,
+        "labeled_cases": 61,
+        "labeled_cases_passed": 61,
         "labeled_false_negative_controls": 0,
         "labeled_false_positive_controls": 0,
-        "labeled_true_negative_controls": 29,
-        "labeled_true_positive_controls": 28,
+        "labeled_true_negative_controls": 31,
+        "labeled_true_positive_controls": 30,
         "max_batch_files": 250,
-        "observed_owners_with_findings": 126,
+        "new_loop_sleep_native_controls_passed": 8,
+        "new_owner_findings": 7,
+        "new_owner_findings_native_inspected": 7,
+        "new_owner_intent_unresolved": 4,
+        "new_owner_structural_policy_hits": 3,
+        "new_retry_sleep_alias_native_false_negative_controls": 4,
+        "new_retry_wait_native_contract_mismatches": 24,
+        "observed_owners_with_findings": 127,
         "owners_without_eligible_input": 23,
-        "peak_worker_rss_bytes": 2222456832,
+        "parent_full_gate_tests_passed": 26812,
+        "parent_full_gate_tests_skipped": 9,
+        "peak_worker_rss_bytes": 2225078272,
         "private_corpora": 4,
         "public_corpora": 0,
-        "python_findings": 2249,
+        "python_findings": 2256,
         "same_location_distinct_message_groups": 32,
-        "sample_inspected": 321,
-        "sample_intent_unresolved": 194,
+        "sample_inspected": 328,
+        "sample_intent_unresolved": 198,
         "sample_seed": 2026100915,
-        "sample_structurally_confirmed_policy_hits": 127,
+        "sample_structurally_confirmed_policy_hits": 130,
         "sql_findings": 298,
         "typescript_coverage_failures": 48,
         "typescript_findings": 8101,
         "unknown_upstream_inline_rule_references": 32,
         "unused_inline_disable_messages": 10,
-        "actual_private_scan_after_docs_amendment": false,
+        "actual_private_scan_after_docs_amendment": true,
         "all_batch_processes_fresh": true,
         "consumer_mutations": false,
         "controlled_speedup_claim": false,
         "coverage_claim_complete": false,
-        "diagnostic_policy_changed_after_scan": false,
         "downloads_or_refreshes": false,
+        "eligible_corpus_detector_sources_and_configured_policy_unchanged": true,
+        "eligible_corpus_diagnostic_policy_changed_after_scan": false,
         "final_catalog_metadata_equal": true,
         "final_native_rule_replay_passed": true,
-        "final_runtime_byte_identical": false,
+        "final_runtime_byte_identical": true,
+        "iac_authored_native_example_count_location_parity_passed": true,
+        "iac_performance_thresholds_unchanged": true,
+        "inherited_uniform_sample_population_excludes_new_owners": true,
+        "known_native_owner_defect_queued": true,
         "native_blind_location_dedup_rejected": true,
+        "new299_catalog_private_corpus_claim": true,
         "output_truncated": false,
         "pins_verified": true,
+        "reviewed_source_changes_outside_eligible_corpus_rules": false,
+        "unexercised_iac_rules_independently_native_validated": true,
         "universal_false_positive_claim": false,
-        "originalCorpusReceiptParentGateCompleted": false,
-        "originalCorpusReceiptParentMergeCompleted": false,
+        "corpusReceiptParentGateCompleted": true,
+        "corpusReceiptParentMergeCompleted": false,
         "finalSourceBound": true,
-        "ownedSourceAndRuntimeFiles": 555,
-        "changedOwnedFilesAfterActualScan": 3,
-        "nativeDetectorSourcesAndConfiguredPolicyUnchanged": true,
-        "reviewedSerializationOnlyChange": true,
+        "ownedSourceAndRuntimeFiles": 551,
+        "changedOwnedFilesAfterActualScan": 0,
+        "eligibleCorpusDetectorSourcesAndConfiguredPolicyUnchanged": true,
+        "reviewedSourceChangesOutsideEligibleCorpusRules": false,
+        "eligibleCorpusPolicyOwnedFiles": 529,
         "laterArtifactNativeValidationSeparateFromActualScan": true
       },
       "nativeEvidenceHistorical": false
@@ -2901,39 +3040,39 @@
     }
   ],
   "versions": {
-    "standards": "8.40.5",
-    "python": "1.26.4",
+    "standards": "8.41.1",
+    "python": "1.27.1",
     "sql": "0.18.15",
     "iac": "0.19.3",
     "contracts": "0.2.2",
     "typescript": "16.4.5"
   },
   "authoredInventory": {
-    "rules": 297,
-    "python": 136,
+    "rules": 299,
+    "python": 138,
     "typescript": 118,
     "sql": 20,
     "iac": 11,
     "text": 12,
     "upstreamProviders": 37,
     "upstreamRules": 2107,
-    "originalPass": 716,
-    "crlfPass": 716,
-    "aliasPass": 245,
+    "originalPass": 722,
+    "crlfPass": 722,
+    "aliasPass": 251,
     "aliasUnsupported": 353,
-    "fixtureFiles": 2184,
+    "fixtureFiles": 2202,
     "freshProcesses": 67,
     "fileBatchLimit": 250,
-    "seconds": 72.08572537498549,
+    "seconds": 76.38446716684848,
     "labels": {
-      "TP": 828,
-      "TN": 849,
+      "TP": 837,
+      "TN": 858,
       "FP": 0,
       "FN": 0
     },
-    "catalogSha256": "1abced25d86efeda53e24c212298bb7784b8bf0a2bc19f1399f611f5d7e0d25d",
+    "catalogSha256": "2ce4875c311d084bf3e9ab5ff895c60162ec3de82782cea73d270aa9140495ce",
     "runtimeArtifacts": {
-      "nativePythonSha256": "eb82852b118561f9a9e0a58b701735f60ee2351bdbb2b93eaa546af656cd14cb",
+      "nativePythonSha256": "505a0f4af08e7823eaead3525110c01b9766edea2ad2687fd5f31aa998cff902",
       "typescriptJsSha256": "88469bbe3b221aa07f469cd5a75c4d19e97adbba99f5069bfeffbd7a905763bc"
     },
     "owners": [
@@ -2947,7 +3086,7 @@
       },
       {
         "path": "packages/iac/src/sarj_iac_lint/rules/no_environment_conditional.py",
-        "sha256": "77eced758c5512b598c900850e22d1973ea13a9ede5a36d0d76b9fb1efc689cc"
+        "sha256": "d9340557106e3d305d5e56f3e8ade4840bf6a298daf1483f625b266e44ba9ca5"
       },
       {
         "path": "packages/iac/src/sarj_iac_lint/rules/no_managed_service_account_key.py",
@@ -3108,6 +3247,10 @@
       {
         "path": "packages/python/src/sarj_python_lint/rules/no_fixed_sleep_before_assert.py",
         "sha256": "1b87b8dae315369ecf63d199478e6469f2e32df49d05b3678f72977686e991f7"
+      },
+      {
+        "path": "packages/python/src/sarj_python_lint/rules/no_fixed_sleep_in_loop.py",
+        "sha256": "0a6b8fb898b05ce1be6054b9e5111c2ff1f16b5a7934e3e8da3e5ab6474847b4"
       },
       {
         "path": "packages/python/src/sarj_python_lint/rules/no_frozen_after_validator_field_write.py",
@@ -3444,6 +3587,10 @@
       {
         "path": "packages/python/src/sarj_python_lint/rules/require_explicit_service_contract.py",
         "sha256": "1867c33a314c9bb209cef3d9d9f8d38bc3be40d45ae6776cde93b63799fc96ce"
+      },
+      {
+        "path": "packages/python/src/sarj_python_lint/rules/require_injectable_retry_sleep.py",
+        "sha256": "0dae94bd8646fdbeb4269a0795ee3b8dab304afc0c5333904f971231c45bf64e"
       },
       {
         "path": "packages/python/src/sarj_python_lint/rules/require_keyword_only_swap_prone_params.py",
@@ -4092,23 +4239,23 @@
   "canonicalGate": {
     "makeVerify": {
       "exitCode": 0,
-      "passed": 26666,
+      "passed": 26812,
       "skipped": 9
     },
     "finalPackageCounts": {
       "typescript": 7268,
       "bootstrap": 18,
       "contracts": 15,
-      "python": 12101,
+      "python": 12225,
       "sql": 1388,
-      "iac": 1241,
+      "iac": 1263,
       "standards": 4635
     },
-    "finalPassed": 26666,
-    "standardsPythonDiagnosticObservations": 85,
+    "finalPassed": 26812,
+    "standardsPythonDiagnosticObservations": 87,
     "authoredSourceGates": {
-      "pythonRules": 136,
-      "pythonSourceFiles": 720,
+      "pythonRules": 138,
+      "pythonSourceFiles": 724,
       "pythonBlockingDiagnostics": 0,
       "typeScriptRules": 118,
       "typeScriptDiagnostics": 0
@@ -4117,8 +4264,9 @@
     "unchangedRuleLevels": true
   },
   "nativeAuthoredSourceGates": {
-    "pythonSelectors": 136,
-    "typeScriptSelectors": 118
+    "pythonSelectors": 138,
+    "typeScriptSelectors": 118,
+    "finalCanonicalGateValidated": true
   },
   "historicalPerformance": {
     "preparedHistoricalObservations": true,
@@ -4259,7 +4407,7 @@
       },
       {
         "path": "packages/iac/src/sarj_iac_lint/rules/no_environment_conditional.py",
-        "sha256": "77eced758c5512b598c900850e22d1973ea13a9ede5a36d0d76b9fb1efc689cc"
+        "sha256": "d9340557106e3d305d5e56f3e8ade4840bf6a298daf1483f625b266e44ba9ca5"
       },
       {
         "path": "packages/iac/src/sarj_iac_lint/rules/no_redundant_variable_validation.py",
@@ -4359,6 +4507,60 @@
     "canonicalNewControls": 4,
     "nativeEvidenceHistorical": true,
     "finalOwnedSourceCanonicalGateRequired": true
+  },
+  "admittedNextPrQueue": {
+    "additionalBroaderPassCount": 0,
+    "appliedToCurrentSource": false,
+    "pendingRuleCode": 486,
+    "pendingRuleOwners": 1,
+    "admittedOwningGaps": 2,
+    "currentOwners": [
+      {
+        "path": "packages/python/src/sarj_python_lint/rules/require_injectable_retry_sleep.py",
+        "sha256": "0dae94bd8646fdbeb4269a0795ee3b8dab304afc0c5333904f971231c45bf64e"
+      },
+      {
+        "path": "packages/python/tests/rules/test_require_injectable_retry_sleep.py",
+        "sha256": "7958bfe5e131bf51953f129fceb19750bf0c5e1869db469f272b002041e03fd8"
+      }
+    ],
+    "currentNativeWaitCases": 32,
+    "currentNativeWaitMismatches": 24,
+    "genuineZeroWaitMismatchControls": 12,
+    "representativeZeroWaitFalsePositiveControls": 3,
+    "otherWaitContractMismatches": 12,
+    "currentNativeAliasCases": 5,
+    "currentNativeAliasMismatches": 4,
+    "preparedCandidateCanonicalPassed": 161,
+    "preparedCandidateCanonicalFailed": 0,
+    "preparedCandidateResultsClaimedAsCurrent": false,
+    "allNewMainRuleDefectsAbsentClaim": false,
+    "nextPrAdmittedWorkRemains": true
+  },
+  "historicalCorpusSnapshot": {
+    "currentSourceEvidence": false,
+    "newOwnersIncluded": false,
+    "numericObservations": {
+      "custom_owner_catalog_total": 297,
+      "input_language_eligible_owners": 274,
+      "files_selected": 1750,
+      "bytes_selected": 10661932,
+      "custom_findings": 10648,
+      "python_findings": 2249,
+      "typescript_findings": 8101,
+      "sql_findings": 298,
+      "batches_completed": 9,
+      "sample_inspected": 321,
+      "sample_structurally_confirmed_policy_hits": 127,
+      "sample_intent_unresolved": 194,
+      "labeled_cases": 57,
+      "labeled_true_positive_controls": 28,
+      "labeled_true_negative_controls": 29,
+      "labeled_false_positive_controls": 0,
+      "labeled_false_negative_controls": 0,
+      "engine_seconds_total": 67.8562698321168,
+      "peak_worker_rss_bytes": 2222456832
+    }
   },
   "parserPinBoundary": {
     "owners": [
