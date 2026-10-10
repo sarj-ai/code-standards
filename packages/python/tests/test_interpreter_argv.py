@@ -62,6 +62,26 @@ _CASES: tuple[tuple[str, tuple[str, ...], ProgramKind], ...] = (
     ("shell-cluster", ("bash", "-ceu", "make check"), "shell"),
     ("perl-include", ("perl", "-I", ".", "-e", "print 1"), "inline"),
     ("php-source", ("php", "-r", "echo 1;"), "inline"),
+    ("dumb-init-bare-child", ("dumb-init", "python3", "-c", "1"), "inline"),
+    ("dumb-init-child-boundary", ("/usr/bin/dumb-init", "--", "python3", "-c", "1"), "inline"),
+    ("dumb-init-native-script", ("dumb-init", "python3", "scripts/check.py", "-c", "1"), "external"),
+    ("dumb-init-single-child", ("dumb-init", "--single-child", "python3", "-c", "1"), "inline"),
+    ("dumb-init-short-single-child", ("dumb-init", "-c", "python3", "-c", "1"), "inline"),
+    ("dumb-init-verbose", ("dumb-init", "--verbose", "python3", "-c", "1"), "inline"),
+    ("dumb-init-short-verbose", ("dumb-init", "-v", "python3", "-c", "1"), "inline"),
+    ("dumb-init-help", ("dumb-init", "--help", "python3", "-c", "1"), "other"),
+    ("dumb-init-short-help", ("dumb-init", "-h", "python3", "-c", "1"), "other"),
+    ("dumb-init-version", ("dumb-init", "--version", "python3", "-c", "1"), "other"),
+    ("dumb-init-short-version", ("dumb-init", "-V", "python3", "-c", "1"), "other"),
+    ("dumb-init-help-after-boundary", ("dumb-init", "--", "--help", "python3", "-c", "1"), "other"),
+    ("dumb-init-source-option-data", ("dumb-init", "--", "python3", "-c", "--help"), "inline"),
+    ("dumb-init-no-child", ("dumb-init",), "other"),
+    ("dumb-init-no-child-after-boundary", ("dumb-init", "--"), "other"),
+    ("dumb-init-unproven-rewrite", ("dumb-init", "--rewrite", "15:3", "python3", "-c", "1"), "unknown"),
+    ("dumb-init-unproven-attached-rewrite", ("dumb-init", "--rewrite=15:3", "python3", "-c", "1"), "unknown"),
+    ("dumb-init-unproven-cluster", ("dumb-init", "-cv", "python3", "-c", "1"), "unknown"),
+    ("dumb-init-unknown-option", ("dumb-init", "--unknown", "python3", "-c", "1"), "unknown"),
+    ("dumb-init-shell-builtin-is-external", ("dumb-init", "command", "python3", "-c", "1"), "other"),
 )
 
 
@@ -131,6 +151,14 @@ def test_env_only_wrapper_policy_preserves_other_executable_operands() -> None:
     assert unwrap_command(("env", "sudo", "bash", "-c", "printf fixture")) == ("bash", "-c", "printf fixture")
 
 
+def test_dumb_init_preserves_child_operands_and_wrapper_policy() -> None:
+    child = ("python3", "scripts/check.py", "--help", "--rewrite", "15:3", "-c", "1")
+    assert unwrap_command(("dumb-init", "--single-child", "--verbose", "--", *child)) == child
+    assert unwrap_command(("dumb-init", *child), allowed_wrappers=frozenset({"env"})) == ("dumb-init", *child)
+    assert unwrap_command(("dumb-init", "--", "exec", *child)) == ("exec", *child)
+    assert classify_interpreter(("dumb-init", "env", "MODE=test", "python3", "-c", "1")).kind == "inline"
+
+
 @pytest.mark.parametrize(
     ("argv", "expected"),
     [
@@ -168,3 +196,76 @@ def test_shell_cluster_values_preserve_source_and_forwarded_args(option: str) ->
     invocation = classify_interpreter(("bash", option, "posix", "python3 -c 1", "name", "scripts/data.py"))
     assert invocation.payload == "python3 -c 1"
     assert invocation.forwarded == ("scripts/data.py",)
+
+
+@pytest.mark.parametrize("shell", ["bash", "sh", "dash"])
+@pytest.mark.parametrize(
+    ("arguments", "kind", "payload", "forwarded"),
+    [
+        pytest.param(("-c", "-e", "python3 -c 1", "name", "data"), "shell", "python3 -c 1", ("data",), id="after-c"),
+        pytest.param(("-ec", "python3 -c 1"), "shell", "python3 -c 1", (), id="cluster-ec"),
+        pytest.param(("-ce", "-u", "python3 -c 1"), "shell", "python3 -c 1", (), id="cluster-ce-later-u"),
+        pytest.param(("-c", "-o", "errexit", "python3 -c 1"), "shell", "python3 -c 1", (), id="named-after-c"),
+        pytest.param(("-co", "errexit", "-e", "python3 -c 1"), "shell", "python3 -c 1", (), id="cluster-co"),
+        pytest.param(("-oc", "errexit", "python3 -c 1"), "shell", "python3 -c 1", (), id="cluster-oc"),
+        pytest.param(("-c", "--", "python3 -c 1"), "shell", "python3 -c 1", (), id="boundary-after-c"),
+        pytest.param(("-c", "-", "python3 -c 1"), "shell", "python3 -c 1", (), id="single-dash-after-c"),
+        pytest.param(("-c", "--", "-e"), "shell", "-e", (), id="option-looking-source-after-boundary"),
+        pytest.param(("-c", "-e", ""), "shell", "", (), id="empty-source"),
+        pytest.param(
+            ("-c", "printf fixture", "name", "-e"), "shell", "printf fixture", ("-e",), id="source-freezes-options"
+        ),
+        pytest.param(
+            ("-c", "-e", "python3 scripts/check.py"), "shell", "python3 scripts/check.py", (), id="native-call-source"
+        ),
+        pytest.param(("scripts/check.sh", "-c", "python3 -c 1"), "external", None, (), id="script-freezes-options"),
+        pytest.param(("--", "-c", "python3 -c 1"), "external", None, (), id="boundary-before-c"),
+        pytest.param(("-c", "-e"), "unknown", None, (), id="missing-source"),
+        pytest.param(("-c", "--"), "unknown", None, (), id="missing-source-after-boundary"),
+        pytest.param(("-c", "-Z", "python3 -c 1"), "unknown", None, (), id="unknown-option-after-c"),
+        pytest.param(("-c", "-o", "invalid-option", "python3 -c 1"), "unknown", None, (), id="invalid-named-option"),
+        pytest.param(("-c", "-o"), "unknown", None, (), id="missing-named-operand"),
+        pytest.param(("-c", "-O", "extglob", "python3 -c 1"), "unknown", None, (), id="unproven-shopt-after-c"),
+        pytest.param(("-cO", "extglob", "python3 -c 1"), "unknown", None, (), id="unproven-clustered-shopt"),
+    ],
+)
+def test_shell_command_string_after_options(
+    shell: str, arguments: tuple[str, ...], kind: ProgramKind, payload: str | None, forwarded: tuple[str, ...]
+) -> None:
+    invocation = classify_interpreter((shell, *arguments))
+    assert (invocation.kind, invocation.payload, invocation.forwarded) == (kind, payload, forwarded)
+
+
+@pytest.mark.parametrize("shell", ["zsh", "ksh"])
+@pytest.mark.parametrize("option", ["-co", "-oc"])
+def test_unproven_dialect_cluster_operands(shell: str, option: str) -> None:
+    assert classify_interpreter((shell, option, "errexit", "python3 -c 1")).kind == "unknown"
+
+
+@pytest.mark.parametrize(
+    "options",
+    [("-y",), ("-o", "shwordsplit"), ("-oshwordsplit",), ("-onoclobber",)],
+    ids=["short-y", "named-option", "attached-named-option", "operand-contains-c"],
+)
+def test_zsh_external_option_namespace_is_preserved(options: tuple[str, ...]) -> None:
+    assert classify_interpreter(("zsh", *options, "scripts/check.sh")).kind == "external"
+
+
+@pytest.mark.parametrize("shell", ["zsh", "ksh"])
+@pytest.mark.parametrize(
+    "options",
+    [("-c", "-e"), ("-ec",), ("-ce", "-u"), ("-c", "-o", "noclobber"), ("-c", "--")],
+    ids=["after-c", "cluster-ec", "cluster-ce-later-u", "named-operand", "option-boundary"],
+)
+def test_other_shell_command_string_after_options(shell: str, options: tuple[str, ...]) -> None:
+    invocation = classify_interpreter((shell, *options, "python3 -c 1", "name", "data"))
+    assert (invocation.kind, invocation.payload, invocation.forwarded) == ("shell", "python3 -c 1", ("data",))
+
+
+def test_zsh_command_option_namespace_is_preserved() -> None:
+    assert classify_interpreter(("zsh", "-c", "-o", "shwordsplit", "python3 -c 1")).payload == "python3 -c 1"
+
+
+@pytest.mark.parametrize("shell", ["zsh", "ksh"])
+def test_other_shell_uppercase_option_is_unproven(shell: str) -> None:
+    assert classify_interpreter((shell, "-c", "-O", "python3 -c 1", "name", "data")).kind == "unknown"

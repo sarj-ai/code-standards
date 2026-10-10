@@ -10,7 +10,7 @@ import sys
 import tomllib
 from typing import TYPE_CHECKING, override
 
-from sarj_python_lint.interpreter_argv import classify_interpreter
+from sarj_python_lint.interpreter_argv import UnprovableCommandError, classify_interpreter, unwrap_command
 import yaml
 from yaml.events import AliasEvent, MappingStartEvent, ScalarEvent, SequenceStartEvent
 from yaml.nodes import MappingNode, Node, ScalarNode, SequenceNode
@@ -316,11 +316,13 @@ class _MakeRecipes:
                 self.flush()
             return
         if line.startswith(self.prefix):
-            self.add_recipe(line[1:].lstrip("@-+"), number)
+            self.add_recipe(line[1:].lstrip(" \t@-+"), number)
             return
         if self.oneshell and not line.strip():
             return
         self.flush()
+        if (command := _make_inline_recipe(line)) is not None:
+            self.add_recipe(command.lstrip(" \t@-+"), number)
 
     def add_recipe(self, command: str, number: int) -> None:
         if not self.pending:
@@ -337,7 +339,9 @@ class _MakeRecipes:
                 ExecutionBlock(
                     self.start,
                     _make_source("\n".join(self.pending), variables),
-                    interpreter=variables.get("SHELL", "shell"),
+                    interpreter=_make_source(
+                        variables.get("SHELL", "/bin/sh") + " " + variables.get(".SHELLFLAGS", "-c"), variables
+                    ),
                 )
             )
         self.pending = []
@@ -387,6 +391,7 @@ class _DockerInstruction:
     command: str
     start: int
     end: SourceEnd
+    deferred: bool = False
 
 
 @dataclass(slots=True)
@@ -398,22 +403,34 @@ class _DockerCursor:
     def read_instruction(self) -> _DockerInstruction | None:
         start = self.index + 1
         line = self.read_line()
-        match = re.match(r"\s*(?:ONBUILD\s+)?(FROM|RUN|CMD|ENTRYPOINT|SHELL)\s+(.+)", line, re.IGNORECASE)
+        match = re.match(
+            r"\s*(?:(ONBUILD)\s+)?(FROM|RUN|CMD|ENTRYPOINT|SHELL|COPY|HEALTHCHECK)\s+(.+)", line, re.IGNORECASE
+        )
         if match is None:
             return None
-        command = re.sub(r"^(?:--[a-z-]+=\S+\s+)+", "", match[2])
-        if match[1].casefold() != "from" and not command.startswith("["):
+        command = re.sub(r"^(?:--[a-z-]+=\S+\s+)+", "", match[3])
+        if match[2].casefold() != "from" and not command.startswith("["):
             command = self.read_heredoc(command)
+        if match[2].casefold() == "copy":
+            return None  # COPY heredoc bodies write data, not instructions.
         return _DockerInstruction(
-            match[1].casefold(), command, start, SourceEnd(self.index, len(self.lines[self.index - 1]) + 1)
+            match[2].casefold(),
+            command,
+            start,
+            SourceEnd(self.index, len(self.lines[self.index - 1]) + 1),
+            bool(match[1]),
         )
 
     def read_line(self) -> str:
         line = self.lines[self.index]
         self.index += 1
+        if line.lstrip().startswith("#"):
+            return line  # Parser directives/comments never continue instructions.
         while line.endswith(self.escape) and self.index < len(self.lines):
-            line = line[:-1] + " " + self.lines[self.index].lstrip()
+            following = self.lines[self.index].lstrip()
             self.index += 1
+            if not following.startswith("#"):
+                line = line[:-1] + " " + following
         return line
 
     def read_heredoc(self, command: str) -> str:
@@ -552,41 +569,128 @@ def _mise_task_fields(value: object) -> Mapping[str, object] | None:
     return None
 
 
+@dataclass(slots=True)
+class _DockerStage:
+    shell: tuple[str, ...] = ()
+    entrypoint: ExecutionBlock | None = None
+    command: ExecutionBlock | None = None
+    healthcheck: _DockerInstruction | None = None
+    entrypoint_shell: bool = False
+    entrypoint_known: bool = False
+    command_local: bool = False
+
+    def consume(self, instruction: _DockerInstruction) -> list[ExecutionBlock]:
+        if instruction.name == "run":
+            return [_docker_execution(instruction, self.shell)]
+        if instruction.deferred:
+            if instruction.name == "entrypoint":
+                return [_docker_execution(instruction, self.shell)]
+            deferred = _DockerStage(shell=self.shell)
+            if instruction.name == "healthcheck":
+                deferred.consume(replace(instruction, deferred=False))
+            return deferred.blocks()
+        if instruction.name == "shell":
+            words = _docker_json_argv(instruction.command)
+            if words is None:
+                msg = "Docker SHELL requires JSON argv"
+                raise ProgramProjectionError(msg)
+            self.shell = words
+        elif instruction.name == "entrypoint":
+            words = _docker_json_argv(instruction.command)
+            self.entrypoint = _docker_execution(instruction, self.shell) if words != () else None
+            self.entrypoint_shell, self.entrypoint_known = words is None, True
+            if not self.command_local:
+                self.command = None  # A new ENTRYPOINT clears inherited CMD.
+        elif instruction.name == "cmd":
+            self.command = (
+                _docker_execution(instruction, self.shell) if _docker_json_argv(instruction.command) != () else None
+            )
+            self.command_local = True
+        elif instruction.name == "healthcheck":
+            self.healthcheck = _docker_healthcheck(instruction)
+        return []
+
+    def blocks(self) -> list[ExecutionBlock]:
+        result = [_docker_execution(self.healthcheck, self.shell)] if self.healthcheck is not None else []
+        entrypoint = self.entrypoint
+        if entrypoint is not None and self.entrypoint_shell:
+            return [*result, entrypoint]  # Shell-form ENTRYPOINT ignores CMD.
+        command = self.command
+        if entrypoint is None and not self.entrypoint_known:
+            return result  # External image ENTRYPOINT defaults are unknown.
+        if entrypoint is None or not entrypoint.argv:
+            return [*result, *([command] if command is not None else [])]
+        if command is None:
+            return [*result, entrypoint]
+        if classify_interpreter(entrypoint.argv).kind == "inline":
+            return [*result, entrypoint]  # CMD only supplies data to this declared source.
+        command_argv = command.argv or ("/bin/sh", "-c", command.source)
+        last = max((entrypoint, command), key=lambda block: block.end_line or block.line)
+        return [
+            *result,
+            replace(
+                entrypoint,
+                line=min(entrypoint.line, command.line),
+                argv=entrypoint.argv + command_argv,
+                end_line=last.end_line,
+                end_column=last.end_column,
+            ),
+        ]
+
+
 def _docker_blocks(source: str) -> list[ExecutionBlock]:
     blocks: list[ExecutionBlock] = []
-    shell_argv: tuple[str, ...] = ()
-    stages: dict[str, tuple[str, ...]] = {}
+    state = _DockerStage()
+    stages: dict[str, _DockerStage] = {}
     stage = ""
-    escape = "`" if re.search(r"(?im)^\s*#\s*escape\s*=\s*`\s*$", source) else "\\"
-    cursor = _DockerCursor(source.splitlines(), escape)
+    lines = source.splitlines()
+    cursor = _DockerCursor(lines, _docker_escape(lines))
     while cursor.index < len(cursor.lines):
         instruction = cursor.read_instruction()
         if instruction is None:
             continue
         if instruction.name == "from":
+            blocks.extend(state.blocks())
             if stage:
-                stages[stage] = shell_argv
+                stages[stage] = state
             match = re.fullmatch(r"\s*(\S+)(?:\s+[Aa][Ss]\s+([A-Za-z][A-Za-z0-9_.-]*))?\s*", instruction.command)
-            shell_argv = ()
+            state = _DockerStage()
             stage = ""
             if match is not None:
-                shell_argv = stages.get(match[1].casefold(), ())
+                inherited = stages.get(
+                    match[1].casefold(), _DockerStage(entrypoint_known=match[1].casefold() == "scratch")
+                )
+                state = replace(inherited, command_local=False)
                 stage = (match[2] or "").casefold()
             continue
-        words = _docker_json_argv(instruction.command)
-        if instruction.name == "shell":
-            if words is None:
-                msg = "Docker SHELL requires JSON argv"
-                raise ProgramProjectionError(msg)
-            shell_argv = words
-            continue
-        blocks.append(_docker_execution(instruction, shell_argv, words))
-    return blocks
+        blocks.extend(state.consume(instruction))
+    blocks.extend(state.blocks())
+    return sorted(dict.fromkeys(blocks), key=lambda block: (block.line, block.end_line or block.line))
 
 
-def _docker_execution(
-    instruction: _DockerInstruction, shell_argv: tuple[str, ...], words: tuple[str, ...] | None
-) -> ExecutionBlock:
+def _docker_escape(lines: Sequence[str]) -> str:
+    escape = "\\"
+    for line in lines:
+        directive = re.fullmatch(r"\s*#\s*(syntax|escape|check)\s*=\s*(\S.*?)\s*", line, re.IGNORECASE)
+        if directive is None:
+            break
+        if directive[1].casefold() == "escape" and directive[2] in {"`", "\\"}:
+            escape = directive[2]
+    return escape
+
+
+def _docker_healthcheck(instruction: _DockerInstruction) -> _DockerInstruction | None:
+    if instruction.command.casefold() == "none":
+        return None
+    match = re.match(r"CMD\s+(.*)", instruction.command, re.IGNORECASE | re.DOTALL)
+    if match is None:
+        msg = "Docker HEALTHCHECK requires CMD or NONE"
+        raise ProgramProjectionError(msg)
+    return replace(instruction, command=match[1])
+
+
+def _docker_execution(instruction: _DockerInstruction, shell_argv: tuple[str, ...]) -> ExecutionBlock:
+    words = _docker_json_argv(instruction.command)
     if words is not None:
         return ExecutionBlock(
             instruction.start, argv=words, end_line=instruction.end.line, end_column=instruction.end.column
@@ -627,7 +731,7 @@ def _make_blocks(source: str) -> list[ExecutionBlock]:
     return recipes.blocks
 
 
-_MAKE_ASSIGNMENT = re.compile(r"(?:export\s+)?([A-Za-z_][A-Za-z0-9_.]*)\s*(:::=|::=|:=|[?+]?=)\s*(.*)")
+_MAKE_ASSIGNMENT = re.compile(r"(?:export\s+)?([A-Za-z_.][A-Za-z0-9_.]*)\s*(:::=|::=|:=|[?+]?=)\s*(.*)")
 
 
 @dataclass(slots=True)
@@ -664,7 +768,7 @@ class _MakeVariables:
 
 
 def _make_variables(lines: Sequence[str]) -> dict[str, str]:
-    state = _MakeVariables()
+    state = _MakeVariables({"SHELL": "/bin/sh", ".SHELLFLAGS": "-c"})
     for line in lines:
         if assignment := _MAKE_ASSIGNMENT.fullmatch(line):
             state.consume(assignment)
@@ -673,7 +777,9 @@ def _make_variables(lines: Sequence[str]) -> dict[str, str]:
 
 @dataclass(slots=True)
 class _MakeScopes:
-    global_values: _MakeVariables = field(default_factory=_MakeVariables)
+    global_values: _MakeVariables = field(
+        default_factory=lambda: _MakeVariables({"SHELL": "/bin/sh", ".SHELLFLAGS": "-c"})
+    )
     local_values: dict[str, _MakeVariables] = field(default_factory=dict)
     parents: dict[str, list[str]] = field(default_factory=dict)
     recipes: dict[int, tuple[str, ...]] = field(default_factory=dict)
@@ -697,6 +803,8 @@ class _MakeScopes:
             self.assign(names, assignment)
             return
         self.owners = names
+        if _make_inline_recipe(line) is not None:
+            self.recipes[number] = self.owners
         dependencies = _make_scope_words(body.split(";", 1)[0], self.global_values.values)
         for dependency in dependencies:
             if dependency != "|":
@@ -755,6 +863,27 @@ class _MakeScopes:
 
 def _make_target_assignment(body: str) -> re.Match[str] | None:
     return _MAKE_ASSIGNMENT.fullmatch(body.strip().removeprefix("override "))
+
+
+def _make_inline_recipe(line: str) -> str | None:
+    if _MAKE_ASSIGNMENT.fullmatch(line):
+        return None
+    _, colon, body = line.partition(":")
+    if not colon or _make_target_assignment(body):
+        return None
+    index = 0
+    while index < len(body):
+        if body.startswith(("$(", "${"), index):
+            index = _make_expansion_end(body, index)
+        elif body[index] == "\\":
+            index += 2
+        elif body[index] == "#":
+            return None
+        elif body[index] == ";":
+            return body[index + 1 :]
+        else:
+            index += 1
+    return None
 
 
 def _make_scope_words(source: str, variables: Mapping[str, str]) -> tuple[str, ...]:
@@ -1089,7 +1218,7 @@ def _nodes(value: object) -> list[Mapping[str, object]]:
 
 
 def _argv_embeds_program(
-    argv: Sequence[str], parse_shell: ShellParser, depth: int = 0, *, stdin_program: bool = False
+    argv: Sequence[str], parse_shell: ShellParser, depth: int = 0, *, input_sources: Mapping[str, bool] | None = None
 ) -> bool:
     if depth >= _MAX_DEPTH:
         msg = "shell wrapper nesting exceeds analysis depth"
@@ -1101,18 +1230,32 @@ def _argv_embeds_program(
         msg = "interpreter option grammar cannot be proven"
         raise ProgramProjectionError(msg)
     if invocation.kind == "stdin":
-        return stdin_program
+        return bool(input_sources and input_sources.get("0"))
     if invocation.kind == "shell":
         if invocation.payload is None or "${dynamic}" in invocation.payload:
             msg = "shell -c payload cannot be proven statically"
             raise ProgramProjectionError(msg)
-        return _shell_embeds_program(invocation.payload, parse_shell, depth + 1, forwarded=invocation.forwarded)
+        return _shell_embeds_program(
+            invocation.payload,
+            parse_shell,
+            depth + 1,
+            forwarded=invocation.forwarded,
+            input_sources=dict(input_sources or {}),
+        )
     return False
 
 
 def _shell_embeds_program(
-    source: str, parse_shell: ShellParser, depth: int = 0, *, forwarded: tuple[str, ...] | None = None
+    source: str,
+    parse_shell: ShellParser,
+    depth: int = 0,
+    *,
+    forwarded: tuple[str, ...] | None = None,
+    input_sources: dict[str, bool] | None = None,
 ) -> bool:
+    if depth >= _MAX_DEPTH:
+        msg = "shell wrapper nesting exceeds analysis depth"
+        raise ProgramProjectionError(msg)
     # Workflow expressions are evaluated by Actions before shell parsing. Treat
     # each expression as an opaque word, never interpret its contents as shell.
     source = re.sub(r"\$\{\{.*?\}\}", "workflow_expression", source, flags=re.DOTALL)
@@ -1121,17 +1264,27 @@ def _shell_embeds_program(
         msg = "shfmt did not return a File AST"
         raise ProgramProjectionError(msg)
     statements = _nodes(tree.get("Stmts"))
-    if not statements:
-        return False
-    if len(statements) != 1:
-        return True
-    statement = statements[0]
+    sources = input_sources if input_sources is not None else {}
+    results = [
+        _shell_statement_embeds_program(statement, parse_shell, depth, forwarded, sources) for statement in statements
+    ]
+    return any(results)
+
+
+def _shell_statement_embeds_program(
+    statement: Mapping[str, object],
+    parse_shell: ShellParser,
+    depth: int,
+    forwarded: tuple[str, ...] | None,
+    input_sources: dict[str, bool],
+) -> bool:
     if any(statement.get(key) for key in ("Negated", "Background", "Coprocess", "Disown")):
         return True
     command = _mapping(statement.get("Cmd"))
     if command.get("Type") != "CallExpr" or _contains_execution(statement):
         return True
-    words = tuple(_word(argument) for argument in _nodes(command.get("Args")))
+    arguments = _nodes(command.get("Args"))
+    words = tuple(_word(argument) for argument in arguments)
     argv = tuple(
         item
         for word in words
@@ -1140,10 +1293,97 @@ def _shell_embeds_program(
     if not argv:
         return True  # Assignment-only blocks are programs, not invocations.
     redirections = _nodes(statement.get("Redirs"))
-    stdin_program = any(
-        redirection.get("Hdoc") is not None or redirection.get("Op") == "<<<" for redirection in redirections
-    )
-    return _argv_embeds_program(argv, parse_shell, depth, stdin_program=stdin_program)
+    redirected: set[str] = set()
+    sources = _shell_input_sources(redirections, input_sources, redirected=redirected)
+    if _shell_exec_persists(argv):
+        input_sources.update(sources)  # Commandless exec installs redirections in this shell.
+        return False
+    if (index := _shell_builtin_eval_index(argv)) is not None:
+        result = _shell_eval_embeds_program(
+            arguments, parse_shell, depth, sources, forwarded=forwarded, prefix=argv[:index]
+        )
+        input_sources.update(
+            {descriptor: source for descriptor, source in sources.items() if descriptor not in redirected}
+        )
+        return result
+    return _argv_embeds_program(argv, parse_shell, depth, input_sources=sources)
+
+
+def _shell_exec_persists(argv: tuple[str, ...]) -> bool:
+    if argv[0] not in {"exec", "command"} or "exec" not in argv:
+        return False
+    try:
+        selected = unwrap_command(argv, allowed_wrappers=frozenset())
+    except UnprovableCommandError as error:
+        msg = "interpreter option grammar cannot be proven"
+        raise ProgramProjectionError(msg) from error
+    return not selected
+
+
+def _shell_builtin_eval_index(words: tuple[str, ...]) -> int | None:
+    if words[0] == "eval":
+        return 1
+    if words[0] != "command":
+        return None
+    try:
+        selected = unwrap_command(words, allowed_wrappers=frozenset())
+    except UnprovableCommandError:
+        return None  # The ordinary argv owner reports unsupported wrappers.
+    prefix = len(words) - len(selected)
+    if selected[:1] == ("eval",) and all(word == "command" or word.startswith("-") for word in words[:prefix]):
+        return prefix + 1
+    return None  # exec/env and external paths do not invoke shell builtins.
+
+
+def _shell_eval_embeds_program(
+    arguments: Sequence[Mapping[str, object]],
+    parse_shell: ShellParser,
+    depth: int,
+    input_sources: dict[str, bool],
+    *,
+    forwarded: tuple[str, ...] | None,
+    prefix: tuple[str, ...],
+) -> bool:
+    literal: list[str] = []
+    for argument in arguments:
+        try:
+            word = _word(argument, require_literal=True)
+        except ProgramProjectionError:
+            if forwarded is None or _word(argument) != "${forwarded-arguments}":
+                raise
+            literal.extend(forwarded)
+        else:
+            literal.append(word)
+    if tuple(literal[: len(prefix)]) != prefix:
+        return False  # A literal marker is data, not a forwarded shell parameter.
+    words = literal[len(prefix) :]
+    if words and words[0] == "--":
+        words = words[1:]
+    return _shell_embeds_program(" ".join(words), parse_shell, depth + 1, input_sources=input_sources)
+
+
+def _shell_input_sources(
+    redirections: Sequence[Mapping[str, object]], inherited: Mapping[str, bool] | None, *, redirected: set[str]
+) -> dict[str, bool]:
+    # Shell applies redirections left to right; only the final fd0 is stdin.
+    descriptors = dict(inherited or {})
+    for redirection in redirections:
+        operation = str(redirection.get("Op", ""))
+        descriptor = (
+            _mapping(redirection["N"]).get("Value") if "N" in redirection else "0" if operation.startswith("<") else "1"
+        )
+        if not isinstance(descriptor, str):
+            continue
+        redirected.add(descriptor)
+        if operation in {"<&", ">&"}:
+            copied = _word(_mapping(redirection.get("Word")))
+            descriptors[descriptor] = descriptors.get(copied.removesuffix("-"), False)
+            if copied.endswith("-"):
+                descriptors[copied[:-1]] = False
+                redirected.add(copied[:-1])
+        else:
+            descriptors[descriptor] = redirection.get("Hdoc") is not None or operation == "<<<"
+    return descriptors
 
 
 def _contains_execution(node: object, depth: int = 0) -> bool:
@@ -1163,28 +1403,32 @@ def _contains_execution(node: object, depth: int = 0) -> bool:
     return False
 
 
-def _word(node: Mapping[str, object], *, quoted: bool = False) -> str:
+def _word(node: Mapping[str, object], *, quoted: bool = False, require_literal: bool = False) -> str:
     pieces: list[str] = []
     for part in _nodes(node.get("Parts")):
         kind = part.get("Type")
-        if kind in {"Lit", "SglQuoted"}:
-            value = part.get("Value")
-            if not isinstance(value, str):
+        match part:
+            case {"Type": "Lit", "Value": str() as value}:
+                pieces.append(_literal(value, quoted=quoted))
+            case {"Type": "Lit"}:
                 msg = "invalid shfmt literal"
                 raise ProgramProjectionError(msg)
-            pieces.append(
-                _literal(value, quoted=quoted)
-                if kind == "Lit"
-                else _ansi_literal(value)
-                if part.get("Dollar")
-                else value
-            )
-        elif kind == "DblQuoted":
-            pieces.append(_word(part, quoted=True))
-        elif kind == "ParamExp" and quoted and _mapping(part.get("Param")).get("Value") == "@":
-            pieces.append("${forwarded-arguments}")
-        else:
-            pieces.append("${dynamic}")
+            case {"Type": "SglQuoted"}:
+                value = part.get("Value", "")
+                if not isinstance(value, str):
+                    msg = "invalid shfmt literal"
+                    raise ProgramProjectionError(msg)
+                pieces.append(_ansi_literal(value) if part.get("Dollar") else value)
+            case {"Type": "DblQuoted"}:
+                pieces.append(_word(part, quoted=True, require_literal=require_literal))
+            case _:
+                if require_literal:
+                    msg = "selected interpreter payload cannot be proven statically"
+                    raise ProgramProjectionError(msg)
+                if kind == "ParamExp" and quoted and _mapping(part.get("Param")).get("Value") == "@":
+                    pieces.append("${forwarded-arguments}")
+                else:
+                    pieces.append("${dynamic}")
     return "".join(pieces)
 
 
@@ -1250,11 +1494,16 @@ def _ansi_literal(value: str) -> str:
 def block_embeds_program(block: ExecutionBlock, *, parse_shell: ShellParser) -> bool:
     if block.argv:
         return _argv_embeds_program(block.argv, parse_shell)
+    shell = block.interpreter.split()[0].rsplit("/", 1)[-1].casefold()
+    if "${{" in block.interpreter:
+        msg = f"unsupported configuration execution shell: {shell}"
+        raise ProgramProjectionError(msg)
+    if len(block.interpreter.split()) != 1:
+        return _configured_shell_embeds_program(block, parse_shell)
     if block.source.startswith("#!") and re.search(
         r"\b(?:python[23]?(?:\.\d+)?|node|perl|ruby|php)\b", block.source.splitlines()[0]
     ):
         return True
-    shell = block.interpreter.split()[0].rsplit("/", 1)[-1].casefold()
     if shell not in {"shell", "sh", "bash", "dash", "zsh", "ksh"}:
         # Actions shell: python executes the run field as source regardless of
         # whether that source happens to look like a shell command.
@@ -1263,3 +1512,31 @@ def block_embeds_program(block: ExecutionBlock, *, parse_shell: ShellParser) -> 
         msg = f"unsupported configuration execution shell: {shell}"
         raise ProgramProjectionError(msg)
     return _shell_embeds_program(block.source, parse_shell)
+
+
+def _configured_shell_embeds_program(block: ExecutionBlock, parse_shell: ShellParser) -> bool:
+    statements = _nodes(parse_shell(block.interpreter).get("Stmts"))
+    if len(statements) != 1 or _contains_execution(statements[0]):
+        msg = "configured interpreter argv cannot be proven statically"
+        raise ProgramProjectionError(msg)
+    command = _mapping(statements[0].get("Cmd"))
+    if command.get("Type") != "CallExpr" or command.get("Assigns") or statements[0].get("Redirs"):
+        msg = "configured interpreter must be a literal invocation"
+        raise ProgramProjectionError(msg)
+    argv = tuple(_word(word) for word in _nodes(command.get("Args")))
+    if "{0}" not in argv:
+        argv = (*argv, block.source)
+    invocation = classify_interpreter(argv)
+    if invocation.kind == "other":
+        msg = f"unsupported configuration execution shell: {argv[0]}"
+        raise ProgramProjectionError(msg)
+    if (
+        "{0}" in argv
+        and invocation.kind == "external"
+        and classify_interpreter(argv[: argv.index("{0}")]).kind == "stdin"
+    ):
+        shell = unwrap_command(argv)[0].rsplit("/", 1)[-1].casefold()
+        return (
+            _shell_embeds_program(block.source, parse_shell) if shell in {"sh", "bash", "dash", "zsh", "ksh"} else True
+        )
+    return _argv_embeds_program(argv, parse_shell)

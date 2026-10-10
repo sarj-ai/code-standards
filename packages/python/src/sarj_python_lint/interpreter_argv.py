@@ -29,6 +29,7 @@ class ParsedOption:
     invocation: InterpreterInvocation | None = None
     consumed: int = 1
     stdin_mode: bool = False
+    command_mode: bool = False
 
 
 _SHELLS = frozenset({"sh", "bash", "dash", "zsh", "ksh"})
@@ -112,6 +113,7 @@ _WRAPPER_VALUES = MappingProxyType(
             }
         ),
         "timeout": frozenset({"-s", "--signal", "-k", "--kill-after"}),
+        "dumb-init": frozenset(),
     }
 )
 _MAX_WRAPPERS = 8
@@ -136,6 +138,8 @@ def unwrap_command(
             continue
         if command not in _WRAPPER_VALUES or (allowed_wrappers is not None and command not in allowed_wrappers):
             return current
+        # dumb-init uses execvp; its child cannot be a shell builtin.
+        allow_shell_builtins = allow_shell_builtins and command != "dumb-init"
         current = current[_value_wrapper_index(current, command) :]
     msg = "command wrapper nesting exceeds analysis bound"
     raise UnprovableCommandError(msg)
@@ -160,6 +164,8 @@ def _command_wrapper_index(arguments: Sequence[str], command: str) -> int:
 def _value_wrapper_index(arguments: Sequence[str], command: str) -> int:
     if command == "env":
         return _env_wrapper_index(arguments)
+    if command == "dumb-init":
+        return _dumb_init_wrapper_index(arguments)
     index = 1
     while index < len(arguments):
         argument = arguments[index]
@@ -171,6 +177,24 @@ def _value_wrapper_index(arguments: Sequence[str], command: str) -> int:
         index += 2 if argument in _WRAPPER_VALUES[command] else 1
     # Timeout's positional duration precedes its executable.
     return index + int(command == "timeout")
+
+
+def _dumb_init_wrapper_index(arguments: Sequence[str]) -> int:
+    index = 1
+    while index < len(arguments):
+        argument = arguments[index]
+        if argument in {"-h", "--help", "-V", "--version"}:
+            return len(arguments)
+        if argument == "--":
+            index += 1
+            break
+        if not argument.startswith("-") or argument == "-":
+            break
+        if argument not in {"-c", "--single-child", "-v", "--verbose"}:
+            msg = "unsupported dumb-init wrapper option"
+            raise UnprovableCommandError(msg)
+        index += 1
+    return index
 
 
 def _env_wrapper_index(arguments: Sequence[str]) -> int:
@@ -237,7 +261,7 @@ def classify_interpreter(argv: Sequence[str]) -> InterpreterInvocation:
         return _python(arguments[1:])
     if executable in _SHELLS:
         return _short_options(
-            arguments[1:], source="c", values=frozenset({"o", "O"}), shell_mode=True, bash_mode=executable == "bash"
+            arguments[1:], source="c", values=frozenset({"o", "O"}), shell_mode=True, shell_name=executable
         )
     if executable in {"node", "nodejs"}:
         return _node(arguments[1:])
@@ -342,13 +366,21 @@ def _ruby_long_option(argument: str, following: str | None) -> ParsedOption:
 
 
 def _short_options(
-    arguments: Sequence[str], *, source: str, values: frozenset[str], shell_mode: bool = False, bash_mode: bool = False
+    arguments: Sequence[str], *, source: str, values: frozenset[str], shell_mode: bool = False, shell_name: str = ""
 ) -> InterpreterInvocation:
     index = 0
     stdin_mode = False
+    command_mode = False
     short_seen = False
+    bash_mode = shell_name == "bash"
+    validated_shell = shell_name in {"bash", "sh", "dash"}
     while index < len(arguments):
         boundary = _external_boundary(arguments, index, plus_options=True)
+        if boundary is not None and command_mode:
+            index += int(arguments[index] in {"-", "--"})
+            if index >= len(arguments):
+                return InterpreterInvocation("unknown")
+            return InterpreterInvocation("shell", arguments[index], tuple(arguments[index + 2 :]))
         if boundary is not None:
             return InterpreterInvocation("stdin") if stdin_mode else boundary
         argument = arguments[index]
@@ -357,13 +389,14 @@ def _short_options(
         else:
             short_seen = True
             parsed = _short_option(
-                arguments, index, source=source, values=values, shell_mode=shell_mode, bash_mode=bash_mode
+                arguments, index, source=source, values=values, shell_mode=shell_mode, validated_shell=validated_shell
             )
         if parsed.invocation is not None:
             return parsed.invocation
         stdin_mode = stdin_mode or parsed.stdin_mode
+        command_mode = command_mode or parsed.command_mode
         index += parsed.consumed
-    return InterpreterInvocation("stdin")
+    return InterpreterInvocation("unknown" if command_mode else "stdin")
 
 
 def _long_option(
@@ -395,18 +428,23 @@ def _short_option(
     source: str,
     values: frozenset[str],
     shell_mode: bool,
-    bash_mode: bool = False,
+    validated_shell: bool = False,
 ) -> ParsedOption:
-    if bash_mode:
+    if validated_shell:
         return _shell_short_option(arguments, index, values)
     argument = arguments[index]
     for cursor, flag in enumerate(argument[1:], 1):
         if flag in source:
-            attached = "" if shell_mode else argument[cursor + 1 :]
+            if shell_mode:
+                if not values.isdisjoint(argument[cursor + 1 :]):
+                    return ParsedOption(InterpreterInvocation("unknown"))
+                return ParsedOption(command_mode=True)
+            attached = argument[cursor + 1 :]
             operand = attached or _following_operand(arguments, index)
-            forwarded = tuple(arguments[index + 3 :]) if shell_mode else ()
-            return ParsedOption(InterpreterInvocation("shell" if shell_mode else "inline", operand, forwarded))
+            return ParsedOption(InterpreterInvocation("inline", operand))
         if flag in values:
+            if shell_mode and (flag == "O" or argument[cursor + 1 :] == "c"):
+                return ParsedOption(InterpreterInvocation("unknown"))
             return ParsedOption(consumed=1 + int(cursor + 1 == len(argument)))
     return ParsedOption()
 
@@ -424,11 +462,7 @@ def _shell_short_option(arguments: Sequence[str], index: int, values: frozenset[
             if flag == "O" or operand not in _SHELL_NAMED_OPTIONS:
                 return ParsedOption(InterpreterInvocation("unknown"))
             consumed += 1
-    if "c" in flags:
-        operand = _following_operand(arguments, index + consumed - 1)
-        forwarded = tuple(arguments[index + consumed + 2 :])
-        return ParsedOption(InterpreterInvocation("shell", operand, forwarded))
-    return ParsedOption(consumed=consumed, stdin_mode="s" in flags)
+    return ParsedOption(consumed=consumed, stdin_mode="s" in flags, command_mode="c" in flags)
 
 
 def _node(arguments: Sequence[str]) -> InterpreterInvocation:

@@ -83,7 +83,14 @@ def test_warning_release_cannot_be_activated_by_setup(tmp_path: Path, monkeypatc
 
 
 @pytest.mark.parametrize(
-    "enabled", ["", "enabled_rules = []\n", 'enabled_rules = [\n  # preserve review context\n  "existing/rule",\n]\n']
+    "enabled",
+    [
+        "",
+        "enabled_rules = []\n",
+        'enabled_rules = ["existing/rule"]\n',
+        'enabled_rules = [\n  # preserve review context\n  "existing/rule",\n]\n',
+        'enabled_rules = [\r\n  # preserve review context\r\n  "existing/rule",\r\n]\r\n',
+    ],
 )
 def test_explicit_reviewed_activation_merges_rules_preserves_caps_and_is_idempotent(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, enabled: str
@@ -95,6 +102,7 @@ def test_explicit_reviewed_activation_merges_rules_preserves_caps_and_is_idempot
     assert not planned.scaffold.errors
     scaffold.apply(planned.scaffold)
     contents = path.read_bytes()
+    assert all(not line.endswith((b" ", b"\t")) for line in contents.splitlines())
     parsed = parse_manifest_bytes(contents)
     assert parsed.enabled_rules.count(_RULE) == 1
     assert len(parsed.makefile_exceptions) == 1
@@ -102,6 +110,7 @@ def test_explicit_reviewed_activation_merges_rules_preserves_caps_and_is_idempot
     assert _CAP.encode("utf-8") in contents
     if "existing/rule" in enabled:
         assert "existing/rule" in parsed.enabled_rules
+    if "# preserve review context" in enabled:
         assert b"# preserve review context" in contents
     repeated = service.plan_init(tmp_path, enable_repository_rules=(_RULE,))
     assert path not in {target for target, _contents in repeated.scaffold.writes}

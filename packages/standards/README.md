@@ -27,7 +27,7 @@ The opt-in `jscpd` capability runs the jscpd 5.4.0 copy-paste detector, which se
 
 `check --jobs 2` overlaps native analysis with the external-tool pipeline. The default is `--jobs 1`; external tools remain sequential and report ordering is deterministic.
 
-DevOps execution blocks must contain one invocation. Move interpreter source, command chains, loops, substitutions and heredocs into independently linted files; Python `-m` and script paths, and jq/awk `-f` files remain supported. SARJ310 is an error, including short inline programs. Cloud Build SARJ315 checks unique IDs, ordered step dependencies, script/argv exclusivity and rejects untrusted substitutions in shell source; pass substitutions as quoted arguments to external scripts.
+DevOps execution blocks may sequence existing commands without helper scripts. Keep interpreter source, control flow, logical chains, pipelines and substitutions in independently linted files; Python `-m` and script paths, and jq/awk `-f` files remain supported. SARJ310 is an error, including short inline programs. Cloud Build SARJ315 checks unique IDs, ordered step dependencies, script/argv exclusivity and rejects untrusted substitutions in shell source; pass substitutions as quoted arguments to external scripts.
 
 The source gate uses pinned actionlint with ShellCheck, offline Zizmor, Hadolint and Skaffold v4beta7 schema validation. Cloud Deploy validation is a documented partial structural contract. Terraform validation and TFLint require explicit repository trust and prepared local providers; analysis never initializes or downloads them. Compose requires an exact consumer `[devops].compose_version`; its source check does not resolve environment inputs.
 

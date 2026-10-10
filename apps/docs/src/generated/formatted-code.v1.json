@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "8f0499c05e22590ef3ebf7730d3d2d2940b95918f1ea5fe572bba050f16befae",
-  "cliSha256": "6e83ecc2f5c6e61f35aa4b8651fe1eb58c771786367ff7865811fd4cc014762b",
+  "catalogSha256": "dbba9f8226b25e206247a82af13126ed13d82c82674adf1bb63b9d85d4afdb8a",
+  "cliSha256": "5d2de4d9b8f101cac31491f31a95db20e86df1fd3a47baa6ac44bdb981cf4312",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -13571,7 +13571,7 @@
           "files": [
             {
               "path": "compose.yaml",
-              "source": "services:\n  app:\n    image: fixture\n    healthcheck:\n      disable: false\n      test: [CMD-SHELL, \"printf first; printf second\"]\n"
+              "source": "services:\n  app:\n    image: fixture\n    healthcheck:\n      disable: false\n      test: [CMD-SHELL, \"printf first && printf second\"]\n"
             }
           ],
           "fixedFiles": [],
@@ -13586,7 +13586,7 @@
           "files": [
             {
               "path": "compose.yaml",
-              "source": "services:\n  app:\n    image: fixture\n    healthcheck:\n      disable: \"true\"\n      test: [CMD-SHELL, \"printf first; printf second\"]\n"
+              "source": "services:\n  app:\n    image: fixture\n    healthcheck:\n      disable: \"true\"\n      test: [CMD-SHELL, \"printf first && printf second\"]\n"
             }
           ],
           "fixedFiles": [],
@@ -13646,7 +13646,7 @@
           "files": [
             {
               "path": "mise.toml",
-              "source": "[vars]\ntext = '''\nrun = \"printf inert; printf data\"\n'''\n[tasks.probe]\n\"run\" = \"printf first; printf second\"\n"
+              "source": "[vars]\ntext = '''\nrun = \"printf inert; printf data\"\n'''\n[tasks.probe]\n\"run\" = \"printf first && printf second\"\n"
             }
           ],
           "fixedFiles": [],
@@ -13655,6 +13655,21 @@
           "outcome": "reject",
           "scenarioId": "mise-source-attribution",
           "title": "An executable mise task retains its own source location"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": ".github/workflows/ci.yml",
+              "source": "jobs:\n  test:\n    steps:\n      - run: |\n          uv run ruff check .\n          uv run pytest\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": ".github/workflows/ci.yml",
+          "id": "workflow-command-sequence",
+          "outcome": "accept",
+          "scenarioId": "command-sequence",
+          "title": "Run existing tools directly without a wrapper script"
         },
         {
           "expectedCount": 1,
@@ -13670,6 +13685,21 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Keep procedural validation out of workflow YAML"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": ".github/workflows/ci.yml",
+              "source": "jobs:\n  test:\n    steps:\n      - run: |\n          uv run ruff check .\n          python3 -c 'print(1)'\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": ".github/workflows/ci.yml",
+          "id": "workflow-sequence-inline-source",
+          "outcome": "reject",
+          "scenarioId": "command-sequence",
+          "title": "A later invocation still rejects inline interpreter source"
         },
         {
           "expectedCount": 0,

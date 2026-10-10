@@ -174,7 +174,7 @@ _NATIVE_CASES = (
     ("forwarded-external", "sh -c 'exec \"$@\"' -- python3 scripts/check.py", False),
     ("forwarded-inline", "sh -c 'exec \"$@\"' -- python3 -c 'print(1)'", True),
     ("command-substitution", 'printf %s "$(python3 -c pass)"', True),
-    ("multicommand", "make lint\nmake test", True),
+    ("multicommand", "make lint\nmake test", False),
     ("empty", "", False),
     ("unicode-argument", "printf %s 'é🐍'", False),
 )
