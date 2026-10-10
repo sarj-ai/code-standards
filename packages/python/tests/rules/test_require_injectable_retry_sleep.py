@@ -179,3 +179,135 @@ def test_reports_each_policy_once_through_the_analyzer(tmp_path: Path) -> None:
     findings = analyze([RequireInjectableRetrySleep.id], [module])
 
     assert [(item.line, item.col) for item in findings] == [(3, 9), (3, 45)]
+
+
+@pytest.mark.parametrize(
+    "wait",
+    [
+        "wait_random(0, 0)",
+        "wait_random(min=0, max=0)",
+        "wait_random(max=0, min=0)",
+        "wait_random(max=0)",
+        "wait_random(0, max=0)",
+        "wait_random(0.0, 0.0)",
+        "wait_combine()",
+        "wait_combine(wait_none(), wait_fixed(0))",
+        "wait_chain(wait_none(), wait_fixed(0))",
+        "wait_chain(wait_none())",
+        "wait_combine(wait_chain(wait_none(), wait_fixed(0)), wait_random(max=0))",
+        "wait_chain(wait_none(), wait_fixed(0)) + wait_random(0, 0)",
+    ],
+)
+def test_native_literal_zero_waits_do_not_require_a_sleeper(wait: str) -> None:
+    imports = _IMPORTS + "from tenacity import wait_chain, wait_combine\n"
+
+    assert _check(_policy(f"wait={wait}", imports=imports)) == []
+
+
+@pytest.mark.parametrize(
+    "wait",
+    [
+        "wait_random()",
+        "wait_random(1, 1)",
+        "wait_random(max=1)",
+        "wait_combine(wait_none(), wait_fixed(1))",
+        "wait_chain(wait_none(), wait_fixed(1))",
+        "wait_chain(wait_fixed(1), wait_none())",
+        "wait_combine(wait_chain(wait_none()), wait_fixed(1))",
+        "wait_chain(wait_none(), wait_fixed(0)) + wait_fixed(1)",
+    ],
+)
+def test_native_wait_compositions_retain_positive_delay_ownership(wait: str) -> None:
+    imports = _IMPORTS + "from tenacity import wait_chain, wait_combine\n"
+
+    findings = _check(_policy(f"wait={wait}", imports=imports))
+
+    assert [(finding.code, finding.line, finding.col) for finding in findings] == [("SARJ486", 4, 10)]
+
+
+@pytest.mark.parametrize(
+    "wait",
+    [
+        "wait_random(*bounds)",
+        "wait_random(**bounds)",
+        "wait_random(0, 0, 0)",
+        "wait_random(0, min=0, max=0)",
+        "wait_random(unknown=0)",
+        "wait_combine(*strategies)",
+        "wait_combine(strategies=wait_none())",
+        "wait_combine(wait_fixed(1), custom_wait)",
+        "wait_chain()",
+        "wait_chain(*strategies)",
+        "wait_chain(strategies=wait_none())",
+        "wait_chain(wait_fixed(1), custom_wait)",
+    ],
+)
+def test_native_constructor_uncertainty_keeps_an_injected_or_invalid_shape_opaque(wait: str) -> None:
+    imports = _IMPORTS + "from tenacity import wait_chain, wait_combine\n"
+
+    assert _check(_policy(f"wait={wait}", imports=imports)) == []
+
+
+@pytest.mark.parametrize(
+    ("imports", "sleep"),
+    [
+        ("import tenacity", "tenacity.sleep"),
+        ("import tenacity as t", "t.sleep"),
+        ("from tenacity import sleep", "sleep"),
+        ("from tenacity import sleep as pause", "pause"),
+        ("from tenacity.nap import sleep as pause", "pause"),
+    ],
+)
+def test_public_tenacity_default_sleep_export_is_not_an_injected_seam(imports: str, sleep: str) -> None:
+    findings = _check(_policy(f"wait=wait_fixed(1), sleep={sleep}", imports=f"{_IMPORTS}{imports}\n"))
+
+    assert len(findings) == 1
+    assert findings[0].code == "SARJ486"
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "from tenacity import Retrying, wait_fixed, sleep\ndef policy(sleep):\n return Retrying(wait=wait_fixed(1), sleep=sleep)\n",
+        "from tenacity import Retrying, wait_fixed, sleep\nsleep = custom_sleep\npolicy = Retrying(wait=wait_fixed(1), sleep=sleep)\n",
+        "from tenacity import Retrying, wait_fixed\npolicy = Retrying(wait=wait_fixed(1), sleep=clock.sleep)\n",
+        "from typing import TYPE_CHECKING\nfrom tenacity import Retrying, wait_fixed\nif TYPE_CHECKING:\n from tenacity import sleep\ndef policy(sleep):\n return Retrying(wait=wait_fixed(1), sleep=sleep)\n",
+    ],
+)
+def test_public_sleep_lookalikes_preserve_native_binding_abstention(source: str) -> None:
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    "wait",
+    [
+        "wait_fixed(-0.0)",
+        "wait_fixed(+0)",
+        "wait_fixed(wait=-0)",
+        "wait_random(min=-0.0, max=+0.0)",
+        "wait_random(-0, +0)",
+        "wait_combine(wait_fixed(-0.0), wait_none())",
+        "wait_chain(wait_fixed(+0), wait_fixed(-0))",
+    ],
+)
+def test_signed_real_literal_zero_waits_do_not_require_a_sleeper(wait: str) -> None:
+    imports = _IMPORTS + "from tenacity import wait_chain, wait_combine\n"
+
+    assert _check(_policy(f"wait={wait}", imports=imports)) == []
+
+
+@pytest.mark.parametrize(
+    "wait",
+    [
+        "wait_fixed(+1)",
+        "wait_fixed(-1)",
+        "wait_random(min=+1, max=+1)",
+        "wait_fixed(ZERO)",
+        "wait_fixed(0 + 0)",
+        "wait_fixed(-0j)",
+    ],
+)
+def test_signed_nonzero_opaque_and_invalid_waits_keep_existing_ownership(wait: str) -> None:
+    findings = _check(_policy(f"wait={wait}"))
+
+    assert [(finding.code, finding.line, finding.col) for finding in findings] == [("SARJ486", 3, 10)]

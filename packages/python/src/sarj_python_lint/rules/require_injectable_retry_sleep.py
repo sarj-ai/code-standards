@@ -29,7 +29,7 @@ _POLICIES: Final = frozenset(
 )
 _WAIT_MODULES: Final = frozenset({"tenacity", "tenacity.wait"})
 _WALL_CLOCK_SLEEPS: Final = frozenset(
-    {"asyncio.sleep", "anyio.sleep", "trio.sleep", "time.sleep", "tenacity.nap.sleep"}
+    {"asyncio.sleep", "anyio.sleep", "trio.sleep", "time.sleep", "tenacity.sleep", "tenacity.nap.sleep"}
 )
 _MESSAGE: Final = (
     "this tenacity policy waits between attempts on the wall clock without a sleep= seam; pass an injected sleep "
@@ -58,8 +58,8 @@ class RequireInjectableRetrySleep(Rule):
         autofix=AutofixPolicy.NONE,
         limitations=(
             "Only calls to tenacity.retry, tenacity.Retrying, and tenacity.AsyncRetrying resolved through imports are inspected; bare @retry, positional arguments, and **kwargs expansion abstain.",
-            "A wait is reported only when it is built inline from tenacity wait_* calls, optionally combined with +; wait_none() and wait_fixed(0) do not wait. A wait read from a name, attribute, or other call is treated as injected.",
-            "Any sleep= argument other than a wall-clock sleep imported from asyncio, anyio, trio, time, or tenacity.nap counts as a seam; the rule does not prove that tests replace it.",
+            "A wait is reported only when it is built inline from tenacity wait_* calls, optionally combined with +; wait_none(), literal-zero wait_fixed and wait_random calls, and known zero-only wait_combine or wait_chain calls do not wait. A wait read from a name, attribute, or other call is treated as injected.",
+            "Any sleep= argument other than a wall-clock sleep imported from asyncio, anyio, trio, time, tenacity, or tenacity.nap counts as a seam; the rule does not prove that tests replace it.",
             "The backoff library has no sleep parameter, so its decorators are not inspected. Test modules, test directories, conftest.py, test-support paths, and generated files are excluded.",
         ),
         examples=(
@@ -143,20 +143,55 @@ def _waits_without_seam(call: ast.Call, imports: ImportIndex) -> bool:
 def _wait_strategy(node: ast.expr, imports: ImportIndex) -> bool | None:
     match node:
         case ast.BinOp(left=left, op=ast.Add(), right=right):
-            parts = (_wait_strategy(left, imports), _wait_strategy(right, imports))
-            return None if None in parts else any(parts)
+            return _combined_waits((left, right), imports)
         case ast.Call(func=func, args=args, keywords=keywords):
             module, _, strategy = (imports.resolved_qualified_name(func) or "").rpartition(".")
             if module not in _WAIT_MODULES or not strategy.startswith("wait_"):
                 return None
-            match strategy, args, keywords:
-                case "wait_none", [], []:
-                    return False
-                case "wait_fixed", [ast.Constant(value=0)], []:
-                    return False
-                case "wait_fixed", [], [ast.keyword(arg="wait", value=ast.Constant(value=0))]:
-                    return False
-                case _:
-                    return True
+            return _wait_constructor(strategy, args, keywords, imports)
         case _:
             return None
+
+
+def _wait_constructor(
+    strategy: str, args: list[ast.expr], keywords: list[ast.keyword], imports: ImportIndex
+) -> bool | None:
+    match strategy, args, keywords:
+        case "wait_none", [], []:
+            return False
+        case ("wait_fixed", [value], []) | ("wait_fixed", [], [ast.keyword(arg="wait", value=value)]):
+            return not _literal_zero(value)
+        case "wait_random", _, _:
+            return _random_waits(args, keywords)
+        case "wait_combine" | "wait_chain", _, _:
+            if keywords or any(isinstance(argument, ast.Starred) for argument in args):
+                return None
+            if strategy == "wait_chain" and not args:
+                return None
+            return _combined_waits(tuple(args), imports)
+        case _:
+            return True
+
+
+def _combined_waits(nodes: tuple[ast.expr, ...], imports: ImportIndex) -> bool | None:
+    parts = tuple(_wait_strategy(node, imports) for node in nodes)
+    return None if None in parts else any(parts)
+
+
+def _random_waits(args: list[ast.expr], keywords: list[ast.keyword]) -> bool | None:
+    names = ("min", "max")
+    if len(args) > len(names) or any(isinstance(argument, ast.Starred) for argument in args):
+        return None
+    values = dict(zip(names, args, strict=False))
+    for keyword in keywords:
+        if keyword.arg not in names or keyword.arg in values:
+            return None
+        values[keyword.arg] = keyword.value
+    return not (("min" not in values or _literal_zero(values["min"])) and _literal_zero(values.get("max")))
+
+
+def _literal_zero(node: ast.expr | None) -> bool:
+    if isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.UAdd, ast.USub)):
+        operand = node.operand
+        return isinstance(operand, ast.Constant) and isinstance(operand.value, (int, float)) and operand.value == 0
+    return isinstance(node, ast.Constant) and node.value == 0
