@@ -93,6 +93,7 @@ def test_committed_third_party_catalog_has_a_closed_effective_inventory() -> Non
         "detekt",
         "devops",
         "eslint",
+        "jscpd",
         "ktlint",
         "mobsfscan",
         "react-doctor",

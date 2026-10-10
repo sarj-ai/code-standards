@@ -394,7 +394,11 @@ def _updated_manifest_text(path: Path, current_text: str, adopted: manifest.Mani
     if implicit_disabled:
         # Version gates are effective capability choices too. Serialize them
         # before a bundle bump can enable tools absent from this upgrade plan.
-        updated = replace(adopted, version=manifest.adopted_version())
+        updated = replace(
+            adopted,
+            version=manifest.adopted_version(),
+            disabled_capabilities=(*adopted.disabled_capabilities, *sorted(implicit_disabled)),
+        )
         return scaffold._render_manifest_preserving_extensions(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- reuse the adoption writer that preserves consumer extension tables.
             current_text, updated.render()
         )

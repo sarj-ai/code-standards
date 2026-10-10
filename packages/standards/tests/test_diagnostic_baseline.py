@@ -456,7 +456,7 @@ def test_existing_baseline_fingerprint_hides_only_matching_react_doctor_debt(tmp
 
 def _configure_authored_engine_baseline_fixture(root: Path, path: str | None = None) -> None:
     # These fixtures exercise authored-engine debt, without initialized native providers.
-    adopted = replace(_manifest(path), disabled_capabilities=("terraform", "tflint"))
+    adopted = replace(_manifest(path), disabled_capabilities=("terraform", "tflint", "jscpd"))
     (root / MANIFEST_NAME).write_text(adopted.render(), encoding="utf-8")
 
 
