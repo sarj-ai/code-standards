@@ -408,6 +408,7 @@ const RECOMMENDED_RULES = {
 } as const;
 
 const STRICT_RULES = {
+  "@sarj/named-child-schema-type": "warn",
   "@sarj/no-conditional-empty-object-spread": "error",
   "@sarj/prefer-typed-reflection": "error",
   "@sarj/no-broad-return-type": "error",
