@@ -56,9 +56,13 @@ def _use_workflow_health_runner(monkeypatch: pytest.MonkeyPatch, root: Path, run
     )
 
 
+_FRESH_ADOPTION_NATIVE_TOOLS = ("actionlint", "jscpd", "shellcheck", "shfmt")
+
+
 def _workflow_version_output(argv: Sequence[str]) -> ProcessOutput:
     outputs = {
         "actionlint": TOOLS["actionlint"].version + "\n",
+        "jscpd": "jscpd " + TOOLS["jscpd"].version + "\n",
         "shellcheck": "version: " + TOOLS["shellcheck"].version + "\n",
         "shfmt": "v" + TOOLS["shfmt"].version + "\n",
     }
@@ -647,7 +651,7 @@ def test_native_workflow_health_failure_blocks_cli_before_analysis(
 
     def version_query(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
         assert cwd == tmp_path.resolve()
-        assert argv[0] in {"actionlint", "shellcheck", "shfmt"}
+        assert argv[0] in _FRESH_ADOPTION_NATIVE_TOOLS
         assert tuple(argv) == (argv[0], *TOOLS[argv[0]].version_args)
         queries.append(tuple(argv))
         if health_state == "missing":
@@ -678,11 +682,7 @@ def test_native_workflow_health_failure_blocks_cli_before_analysis(
     payload: object = json.loads(capsys.readouterr().out)  # pyright: ignore[reportAny]
     diagnostics = tuple(as_table(item) for item in list_field(as_table(payload), "diagnostics"))
     assert {item.get("ruleId") for item in diagnostics} == {
-        "doctor.devops.actionlint.version",
-        "doctor.devops.shellcheck.version",
-        "doctor.devops.shfmt.version",
+        f"doctor.devops.{name}.version" for name in _FRESH_ADOPTION_NATIVE_TOOLS
     }
-    assert queries == [
-        (name, *TOOLS[name].version_args) for _ in range(2) for name in ("actionlint", "shellcheck", "shfmt")
-    ]
+    assert queries == [(name, *TOOLS[name].version_args) for _ in range(2) for name in _FRESH_ADOPTION_NATIVE_TOOLS]
     assert analyzed == []

@@ -42,6 +42,7 @@ TOOLS: Final = MappingProxyType(
             NativeTool("shellcheck", "0.11.0", ("--version",), r"^version:[ \t]*(?P<version>\d+\.\d+\.\d+)[ \t]*\r?$"),
             NativeTool("actionlint", "1.7.12", ("-version",), r"^(?P<version>\d+\.\d+\.\d+)"),
             NativeTool("hadolint", "2.15.1", ("--version",), r"v?(?P<version>\d+\.\d+\.\d+)"),
+            NativeTool("jscpd", "5.4.0", ("--version",), r"^jscpd (?P<version>\d+\.\d+\.\d+)$", frozenset()),
             NativeTool("terraform", "1.15.8", ("version",), r"Terraform v(?P<version>\d+\.\d+\.\d+)"),
             NativeTool(
                 "tflint",
@@ -78,6 +79,7 @@ MISE_REFS: Final = MappingProxyType(
         "shellcheck": "aqua:koalaman/shellcheck",
         "actionlint": "aqua:rhysd/actionlint",
         "hadolint": "aqua:hadolint/hadolint",
+        "jscpd": "github:kucherenko/jscpd",
         "terraform": "aqua:hashicorp/terraform",
         "tflint": "aqua:terraform-linters/tflint",
         "docker": "github:docker/compose",

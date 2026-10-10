@@ -416,6 +416,7 @@ def analyze_external(
             runner=execute,
         )
     )
+    reports.extend(_duplicate_code_reports(root, capabilities=capabilities, policy=policy, runner=execute))
     if capabilities is None or "devops-schema" in capabilities:
         from .devops_schema import analyze_source_schemas  # ruff: ignore[import-outside-top-level] -- schema validation is a selected local runtime adapter.
 
@@ -572,6 +573,24 @@ def analyze_external(
         )
         for report in reports
     )
+
+
+def _duplicate_code_reports(
+    root: Path, *, capabilities: frozenset[str] | None, policy: Policy | None, runner: ProcessRunner
+) -> tuple[ToolReport, ...]:
+    if capabilities is None or "jscpd" not in capabilities:
+        return ()
+    from .duplicate_code import analyze_duplicates  # ruff: ignore[import-outside-top-level] -- the detector reuses the bounded runner defined in this module.
+
+    adopted = manifest.load(root)
+    # A copy is found by comparing it with unchanged code, so the scan ignores the changed-file selection.
+    report = analyze_duplicates(
+        root=root,
+        paths=(".",) if adopted is None else adopted.verify_paths,
+        allows_path=(lambda _path: True) if policy is None else policy.allows_path,
+        runner=runner,
+    )
+    return (report,)
 
 
 def _security_reports(
@@ -1019,7 +1038,7 @@ def _invoke_detekt(
                 message = _redact_message(output.stderr.strip() or f"detekt exited {output.returncode}", root)
                 issue = ExecutionIssue("detekt", "tool-failure", message, output.returncode)
                 return ToolReport("detekt", Completion.FAILED, issues=(issue,))
-            payload = _read_bounded_report(report_path)
+            payload = read_bounded_report(report_path, tool="detekt", format_name="SARIF")
             diagnostics = parse_sarif(payload, root=root)
             if output.returncode == _DETEKT_FINDINGS and not diagnostics:
                 message = _redact_message(
@@ -1050,19 +1069,19 @@ def _invoke_detekt(
         )
 
 
-def _read_bounded_report(path: Path) -> str:
+def read_bounded_report(path: Path, *, tool: str, format_name: str = "JSON") -> str:
     try:
         metadata = path.lstat()
     except FileNotFoundError as exc:
-        msg = "detekt did not create its SARIF report"
+        msg = f"{tool} did not create its {format_name} report"
         raise OSError(msg) from exc
     if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISREG(metadata.st_mode):
-        msg = "detekt SARIF report is not a regular file"
+        msg = f"{tool} {format_name} report is not a regular file"
         raise OSError(msg)
     with path.open("rb") as stream:
         payload = stream.read(_MAX_STDOUT_BYTES + 1)
     if len(payload) > _MAX_STDOUT_BYTES:
-        msg = f"detekt SARIF report exceeded {_MAX_STDOUT_BYTES} bytes"
+        msg = f"{tool} {format_name} report exceeded {_MAX_STDOUT_BYTES} bytes"
         raise OutputLimitError(msg)
     return payload.decode("utf-8")
 

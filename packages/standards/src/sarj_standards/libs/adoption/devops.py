@@ -33,6 +33,7 @@ def required_tools(
         names.update(_file_tools(path, path.relative_to(root).as_posix(), selected))
     if prepared:
         names.update({"helm", "kubeconform", "kube-linter"})
+    names.update(selected & set(manifest.QUALITY_ANALYZERS))
     return tuple(sorted(names))
 
 

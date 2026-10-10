@@ -105,7 +105,10 @@ ALL_CONFIGS: Final = (
     *SECURITY_CONFIGS,
 )
 DEVOPS_ANALYZERS: Final = ("actionlint", "hadolint", "terraform", "tflint", "compose", "devops-schema")
-ALL_CAPABILITIES: Final = (*ALL_CONFIGS, *PYTHON_ANALYZERS, *DEVOPS_ANALYZERS)
+QUALITY_ANALYZERS: Final = ("jscpd",)
+# Existing consumers opt in: upgrading from an older bundle records these as disabled.
+_QUALITY_ANALYZERS_SINCE: Final = Version("8.43.0")
+ALL_CAPABILITIES: Final = (*ALL_CONFIGS, *PYTHON_ANALYZERS, *DEVOPS_ANALYZERS, *QUALITY_ANALYZERS)
 DEFAULT_DURABLE_ARTIFACTS: Final = (
     "**/README.md",
     "docs/**",
@@ -158,7 +161,8 @@ class Manifest:
     @property
     def enabled_capabilities(self) -> tuple[str, ...]:
         analyzers = PYTHON_ANALYZERS if not set(self.configs).isdisjoint(PYTHON_CONFIGS) else ()
-        enabled = (*self.configs, *analyzers, *DEVOPS_ANALYZERS)
+        quality = QUALITY_ANALYZERS if Version(self.version) >= _QUALITY_ANALYZERS_SINCE else ()
+        enabled = (*self.configs, *analyzers, *DEVOPS_ANALYZERS, *quality)
         return tuple(name for name in enabled if name not in self.disabled_capabilities)
 
     def render(self) -> str:

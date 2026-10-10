@@ -14,7 +14,7 @@ from typing import Annotated, ClassVar, Final, Literal, NewType
 from pydantic import BaseModel, ConfigDict, Field, RootModel
 import typer
 
-from sarj_standards.libs.linting import security_tools
+from sarj_standards.libs.linting import duplicate_code, security_tools
 from sarj_standards.libs.linting.devops_tools import TOOLS
 
 
@@ -59,6 +59,7 @@ type ProviderEngine = Literal[
     "detekt",
     "devops",
     "eslint",
+    "jscpd",
     "ktlint",
     "mobsfscan",
     "react-doctor",
@@ -224,7 +225,7 @@ def build(root: Path) -> _CatalogArtifact:
     react_doctor = _react_doctor_projection(resolved, node)
     ruff_projection = _ruff_projection(resolved, ruff)
     deptry_projection = _deptry_projection(resolved, deptry)
-    supplemental = (_mobile_projections(resolved), _security_projections())
+    supplemental = (_mobile_projections(resolved), _security_projections(), _duplicate_code_projection())
     rules = (
         *eslint.rules,
         *react_doctor.rules,
@@ -532,6 +533,31 @@ def _security_projections() -> _ToolProjection:
             )
         )
     return _ToolProjection(providers, tuple(rules))
+
+
+def _duplicate_code_projection() -> _ToolProjection:
+    provider = _Provider(
+        id=duplicate_code.SOURCE,
+        label="jscpd",
+        engine="jscpd",
+        package="jscpd",
+        version=TOOLS[duplicate_code.SOURCE].version,
+        homepage="https://github.com/kucherenko/jscpd",
+    )
+    context = _Context(id=ContextId("source"), label="Non-test source", level="warning")
+    rule = _Rule(
+        key=f"{duplicate_code.SOURCE}:{duplicate_code.RULE}",
+        provider=duplicate_code.SOURCE,
+        id=RuleId(duplicate_code.RULE),
+        display_id=DisplayRuleId(duplicate_code.RULE),
+        summary=f"Source block of at least {duplicate_code.MIN_TOKENS} tokens is repeated elsewhere in the repository.",
+        docs_url="https://github.com/kucherenko/jscpd#readme",
+        family="maintainability",
+        autofix="none",
+        has_suggestions=False,
+        profiles=tuple(_Profile(name=name, contexts=(context,)) for name in ("application", "standard")),
+    )
+    return _ToolProjection((provider,), (rule,))
 
 
 def _mobile_rule(*, provider: str, rule_id: RuleId, context_label: str, context_id: ContextId) -> _Rule:

@@ -489,6 +489,7 @@ def test_manifest_renders_as_valid_toml() -> None:
         "yamllint",
         "zizmor",
         "checkov",
+        "jscpd",
     ]
 
 
