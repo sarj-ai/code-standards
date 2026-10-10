@@ -1,0 +1,925 @@
+{
+  "schemaVersion": 1,
+  "baselineCommit": "1cd73614c5fbee9969c3f110543d8015676cd5ce",
+  "completedAdditionalPasses": 61,
+  "minimumAdditionalPasses": 30,
+  "countingPolicy": "Distinct owner/invariant audits with fresh labeled native or first-class syntax cases and actual evidence; no test repetitions, variants, or residual-control counts counted as passes.",
+  "passes": [
+    {
+      "additionalPassId": 1,
+      "phase": "devops",
+      "scope": "Helm layered values/schema",
+      "confirmedChanges": false
+    },
+    {
+      "additionalPassId": 2,
+      "phase": "devops",
+      "scope": "Helm namespace/exception identity",
+      "confirmedChanges": false
+    },
+    {
+      "additionalPassId": 3,
+      "phase": "devops",
+      "scope": "Helm rendered document closure",
+      "confirmedChanges": false
+    },
+    {
+      "additionalPassId": 4,
+      "phase": "devops",
+      "scope": "Kubernetes exact GVK/custom payload",
+      "confirmedChanges": false
+    },
+    {
+      "additionalPassId": 5,
+      "phase": "devops",
+      "scope": "Kubernetes List/source attribution",
+      "confirmedChanges": false
+    },
+    {
+      "additionalPassId": 6,
+      "phase": "devops",
+      "scope": "Skaffold profile/hook execution",
+      "confirmedChanges": false
+    },
+    {
+      "additionalPassId": 7,
+      "phase": "devops",
+      "scope": "CloudDeploy actions/references/schema",
+      "confirmedChanges": false
+    },
+    {
+      "additionalPassId": 8,
+      "phase": "devops",
+      "scope": "CloudBuild shell option/argv",
+      "confirmedChanges": true
+    },
+    {
+      "additionalPassId": 9,
+      "phase": "devops",
+      "scope": "CloudBuild scripts/env/substitution",
+      "confirmedChanges": false
+    },
+    {
+      "additionalPassId": 10,
+      "phase": "devops",
+      "scope": "Standalone shell dialect/sourced coverage",
+      "confirmedChanges": false
+    },
+    {
+      "additionalPassId": 11,
+      "phase": "devops",
+      "scope": "DevOps native validation/capability coverage",
+      "confirmedChanges": true
+    },
+    {
+      "additionalPassId": 12,
+      "phase": "devops",
+      "scope": "Native version/cache/provenance",
+      "confirmedChanges": false
+    },
+    {
+      "additionalPassId": 13,
+      "phase": "devops",
+      "scope": "Native environment/path/invocation",
+      "confirmedChanges": true
+    },
+    {
+      "additionalPassId": 14,
+      "phase": "devops",
+      "scope": "Native TOML source attribution without duplicated grammar",
+      "confirmedChanges": true
+    },
+    {
+      "additionalPassId": 15,
+      "phase": "devops",
+      "scope": "DevOps CI/build/release configuration",
+      "confirmedChanges": false
+    },
+    {
+      "additionalPassId": 16,
+      "phase": "broader",
+      "scope": "Shared suppression/generated/scope boundaries",
+      "confirmedChanges": true
+    },
+    {
+      "additionalPassId": 17,
+      "phase": "broader",
+      "scope": "Immutable Git/import closure/source drift",
+      "confirmedChanges": false
+    },
+    {
+      "additionalPassId": 18,
+      "phase": "broader",
+      "scope": "Native fixture metadata/CLI API/ownership",
+      "confirmedChanges": false
+    },
+    {
+      "additionalPassId": 19,
+      "phase": "broader",
+      "scope": "Adoption/hooks/local environment",
+      "confirmedChanges": false
+    },
+    {
+      "additionalPassId": 20,
+      "phase": "broader",
+      "scope": "Release dependency/registry contracts",
+      "confirmedChanges": true
+    },
+    {
+      "additionalPassId": 21,
+      "phase": "broader",
+      "scope": "Python import/runtime/scopes",
+      "confirmedChanges": false
+    },
+    {
+      "additionalPassId": 22,
+      "phase": "broader",
+      "scope": "Python async/retry/loop ownership",
+      "confirmedChanges": false
+    },
+    {
+      "additionalPassId": 23,
+      "phase": "broader",
+      "scope": "Python literals/collections/annotations",
+      "confirmedChanges": false
+    },
+    {
+      "additionalPassId": 24,
+      "phase": "broader",
+      "scope": "TypeScript runtime/type/framework bindings",
+      "confirmedChanges": false
+    },
+    {
+      "additionalPassId": 25,
+      "phase": "broader",
+      "scope": "TypeScript autofix semantic/idempotence",
+      "confirmedChanges": true
+    },
+    {
+      "additionalPassId": 26,
+      "phase": "broader",
+      "scope": "TypeScript project/performance/cache",
+      "confirmedChanges": false
+    },
+    {
+      "additionalPassId": 27,
+      "phase": "broader",
+      "scope": "SQL native dialect/comments/suppression",
+      "confirmedChanges": true
+    },
+    {
+      "additionalPassId": 28,
+      "phase": "broader",
+      "scope": "SQL migration/statement contracts",
+      "confirmedChanges": true
+    },
+    {
+      "additionalPassId": 29,
+      "phase": "broader",
+      "scope": "HCL native headers/templates/depth/positions",
+      "confirmedChanges": false
+    },
+    {
+      "additionalPassId": 30,
+      "phase": "broader",
+      "scope": "HCL interactions/performance/native grammar",
+      "confirmedChanges": false
+    },
+    {
+      "additionalPassId": 31,
+      "phase": "broader",
+      "scope": "Shared Python AST index native traversal/order/subclass/parent and malformed-context invariants",
+      "confirmedChanges": false
+    },
+    {
+      "additionalPassId": 32,
+      "phase": "broader",
+      "scope": "All138 Python owners shared-file analysis parity, source-key isolation and bounded registry performance",
+      "confirmedChanges": false
+    },
+    {
+      "additionalPassId": 33,
+      "phase": "broader",
+      "scope": "Python set-overlap suggestion versus unsafe automatic transformation, native iterable/equality observability and conservative receiver provenance",
+      "confirmedChanges": false
+    },
+    {
+      "additionalPassId": 34,
+      "phase": "devops",
+      "scope": "GNU Make target/pattern variable source ownership",
+      "confirmedChanges": true
+    },
+    {
+      "additionalPassId": 35,
+      "phase": "devops",
+      "scope": "Bash stdin and interpreter option source ownership",
+      "confirmedChanges": true
+    },
+    {
+      "additionalPassId": 36,
+      "phase": "devops",
+      "scope": "CloudBuild YAML alias use-site provenance",
+      "confirmedChanges": true
+    },
+    {
+      "additionalPassId": 37,
+      "phase": "broader",
+      "scope": "Canonical native UTF8/UTF16 positions, repository URI paths and fingerprint identity",
+      "confirmedChanges": false
+    },
+    {
+      "additionalPassId": 38,
+      "phase": "broader",
+      "scope": "Strict unique JSON Schema decoder numeric grammar and escaped duplicate-key provenance",
+      "confirmedChanges": true
+    },
+    {
+      "additionalPassId": 39,
+      "phase": "broader",
+      "scope": "Native evaluation evidence completeness and repeated case identity",
+      "confirmedChanges": true
+    },
+    {
+      "additionalPassId": 40,
+      "phase": "broader",
+      "scope": "Python string-loop keyword prefilter native lexical boundaries",
+      "confirmedChanges": true
+    },
+    {
+      "additionalPassId": 41,
+      "phase": "broader",
+      "scope": "IaC redundant validation semantic ownership against native null/type constraints",
+      "confirmedChanges": false
+    },
+    {
+      "additionalPassId": 42,
+      "phase": "broader",
+      "scope": "Reviewed CI archive evidence identity and bounded native ZIP rejection",
+      "confirmedChanges": false
+    },
+    {
+      "additionalPassId": 43,
+      "phase": "broader",
+      "scope": "TypeScript decoded SQL literal keyword admission across three owners",
+      "confirmedChanges": true
+    },
+    {
+      "additionalPassId": 44,
+      "phase": "broader",
+      "scope": "Shared TypeScript generated-header native line terminator ownership",
+      "confirmedChanges": true
+    },
+    {
+      "additionalPassId": 45,
+      "phase": "broader",
+      "scope": "All118 TypeScript source-read inventory and native binding/discriminant identity",
+      "confirmedChanges": true
+    },
+    {
+      "additionalPassId": 46,
+      "phase": "devops",
+      "scope": "Literal YAML data cannot grant comment suppressions",
+      "confirmedChanges": true
+    },
+    {
+      "additionalPassId": 47,
+      "phase": "devops",
+      "scope": "Rendered simultaneous-check native attribution and message preservation",
+      "confirmedChanges": false
+    },
+    {
+      "additionalPassId": 48,
+      "phase": "devops",
+      "scope": "Multi-file ShellCheck native execution and external source coverage",
+      "confirmedChanges": false
+    },
+    {
+      "additionalPassId": 49,
+      "phase": "broader",
+      "scope": "Necessary Python symbol prefilters preserve native identifier normalization, token spacing, decoded literals and native project facts",
+      "confirmedChanges": true
+    },
+    {
+      "additionalPassId": 50,
+      "phase": "devops",
+      "scope": "Assembled DevOps composition: inherited Make execution into Bash stdin, alias provenance across custom CloudBuild rules and local suppressions, Skaffold selected schema and executable hooks, schema/syntax failure delegation through the public adapter, closed native Helm chart schemas/rendered List resource execution/data and namespace identities.",
+      "confirmedChanges": false
+    },
+    {
+      "additionalPassId": 51,
+      "phase": "broader",
+      "scope": "Cross-engine combined-owner projection, registry permutation, suppression-data ownership, and interleaved-document cache stability; distinct interaction closure beyond per-owner fixes.",
+      "confirmedChanges": false
+    },
+    {
+      "additionalPassId": 52,
+      "phase": "broader",
+      "scope": "Settings class shape uses native AST rather than redundant raw class regex",
+      "confirmedChanges": true
+    },
+    {
+      "additionalPassId": 53,
+      "phase": "broader",
+      "scope": "Module alias assignment uses native AST rather than raw assignment grammar",
+      "confirmedChanges": true
+    },
+    {
+      "additionalPassId": 54,
+      "phase": "broader",
+      "scope": "Residual native-symbol hint ownership: regex match, pytest MonkeyPatch factory and non-focus canonical NewType identity facts",
+      "confirmedChanges": true
+    },
+    {
+      "additionalPassId": 55,
+      "phase": "broader",
+      "scope": "Native grammar at source hints: AsyncMock called attributes and rejecting string-enum membership/match branches",
+      "confirmedChanges": true
+    },
+    {
+      "additionalPassId": 56,
+      "phase": "broader",
+      "scope": "Python shared contexts, AnalysisSession project facts, registry ordering, native invalid/generated/suppression boundaries and original source locations",
+      "confirmedChanges": false
+    },
+    {
+      "additionalPassId": 57,
+      "phase": "broader",
+      "scope": "Native Makefile documentation projection preserves recipe tabs, scopes, continuations, trailing whitespace and final-newline semantics with unsupported formats rejected",
+      "confirmedChanges": true
+    },
+    {
+      "additionalPassId": 58,
+      "phase": "broader",
+      "scope": "TypeScript Error constructor proof under explicit native builtin/global object writes and construction order",
+      "confirmedChanges": true
+    },
+    {
+      "additionalPassId": 59,
+      "phase": "devops",
+      "scope": "External-script handoff resolution, native working directory/argv ownership, bounded script lint coverage",
+      "confirmedChanges": false
+    },
+    {
+      "additionalPassId": 60,
+      "phase": "broader",
+      "scope": "Python edit/suggestion ownership under native Unicode, CRLF and multiline literals, mutation and convergence contract",
+      "confirmedChanges": false
+    },
+    {
+      "additionalPassId": 61,
+      "phase": "broader",
+      "scope": "All118 TypeScript owner firstclass scoped static-property key identity inventory and native admitted policy counterfactuals",
+      "confirmedChanges": true
+    }
+  ],
+  "previousBatches": [
+    {
+      "pullRequest": 1356,
+      "reportPath": "packages/standards/benchmarks/audit-continuation-20261009.json",
+      "publishedStandards": "8.41.3"
+    },
+    {
+      "pullRequest": 1359,
+      "reportPath": "packages/standards/benchmarks/audit-followup-20261010.json",
+      "publishedStandards": "8.42.1"
+    }
+  ],
+  "versions": {
+    "standards": "8.42.2",
+    "typescript": "16.4.8",
+    "python": "1.27.4"
+  },
+  "implementedOwners": [
+    {
+      "rule": "eslint:no-json-stringify-error",
+      "fix": "Preserve explicit constructor and serializer writes, custom toJSON ownership and native object-literal prototype semantics; remove unsupported Error member-type guesses."
+    },
+    {
+      "rule": "eslint:no-silent-promise-catch",
+      "fix": "Resolve computed operation and exemption names through stable lexical string aliases."
+    },
+    {
+      "sharedHelper": "packages/typescript/src/rules/_static-string.ts",
+      "fix": "Follow aliases in initializer scopes through native ESLint bindings; cache results per immutable SourceCode and Variable; leave function/object-derived values unknown."
+    }
+  ],
+  "retainedAudits": [
+    {
+      "pass": 59,
+      "reason": "Selected external script argv, working-directory and native lint handoff matched bounded controls; dynamic/unselected scripts remain explicitly unresolved."
+    },
+    {
+      "pass": 60,
+      "reason": "Python rules expose no automatic source edits; three suggestions remain manual, with source preservation and controlled native execution verified."
+    }
+  ],
+  "scopeLimits": [
+    "Audit and native-control variants are not counted as distinct passes.",
+    "No rule addition, severity promotion, performance-budget relaxation or general control-flow evaluator.",
+    "Native matrices overlap and their counts are reported separately.",
+    "Member values and custom hooks returning Errors remain unsupported value/dataflow cases.",
+    "Uncertain ordering, external writes, mutator aliases and runtime-derived keys remain outside modeled proof.",
+    "Pinned corpus calibration excludes five drifted inputs; no private identities or snippets are included."
+  ],
+  "closure": {
+    "universalNoFurtherImprovementClaim": false,
+    "universalFalsePositiveClaim": false,
+    "knownSupportedMismatches": 0,
+    "status": "audited-fixes-native-and-canonical-verified-for-release",
+    "remainingConfirmedOwnerFixes": 0
+  },
+  "pass61NativeControls": {
+    "labels": 34,
+    "matched": 34,
+    "nativeFailures": 0,
+    "repeatedDiagnosticsStable": true,
+    "publicExamples": 2,
+    "publicMatched": 2,
+    "identicalDiagnosticDuplicates": 0,
+    "policyPositiveControls": 14,
+    "negativeAndNearMissControls": 19,
+    "retainedUnprovenNativePositiveControls": 1,
+    "scope": "34 expected outcomes matched, including one deliberately unproven native-positive computed-key case. Added binding proof is limited to literal/no-interpolation-template aliases; negative controls include unsupported function, Symbol and parameter keys.",
+    "artifactCjsSha256": "d7962971e7da0c9ce6ae9369aeb2283bf2a0e911215ac1ad9791bfc278bfc5a9",
+    "sourceAndArtifactStable": true
+  },
+  "sharedAliasLookupMeasurements": {
+    "sizes": [
+      100,
+      200,
+      400,
+      800
+    ],
+    "samplesPerSize": 7,
+    "parserExcluded": true,
+    "immutableNativeSourceCode": true,
+    "plainMedianColdMs": [
+      1.237957999999992,
+      5.349167000000023,
+      22.182833000000016,
+      88.896792
+    ],
+    "cachedMedianColdMs": [
+      0.09766700000000128,
+      0.1393329999999935,
+      0.2674159999999972,
+      0.4124170000000049
+    ],
+    "plainMedianWarmMs": [
+      1.1829160000000059,
+      5.324666999999977,
+      21.786207999999988,
+      85.20620800000006
+    ],
+    "cachedMedianWarmMs": [
+      0.023167000000000826,
+      0.0378340000000037,
+      0.0750409999999988,
+      0.13079199999998536
+    ],
+    "generalThroughputImprovementClaim": false
+  },
+  "pass59NativeHandoff": {
+    "projectionLabels": 14,
+    "projectionMatched": 14,
+    "nativeRuntimeLabels": 10,
+    "nativeRuntimeMatched": 10,
+    "selectedLintLabels": 8,
+    "selectedLintMatched": 8,
+    "nativeLintLabels": 3,
+    "nativeLintMatched": 3,
+    "ownedImports": 7,
+    "totalFiniteLabels": 35,
+    "explicitNativeControlSubprocesses": 13,
+    "nativeVersionAttestations": 5,
+    "upstreamSchemaControls": 4,
+    "selectedScriptPositiveLabels": 4,
+    "selectedScriptNegativeLabels": 1,
+    "selectedDirectoryPositiveLabels": 1,
+    "unselectedScopeControls": 1,
+    "selectedInputFailureControls": 1,
+    "duplicateCodeAndLocationDiagnostics": 0,
+    "confirmedOwnerDefects": 0
+  },
+  "pass60PythonEditOwnership": {
+    "registeredRules": 138,
+    "autofixPolicyCounts": {
+      "none": 135,
+      "suggestion": 3
+    },
+    "safeAutomaticEditRules": 0,
+    "manualSuggestionRules": [
+      "no-restated-comment",
+      "no-trailing-numeric-unit-assignment-comment",
+      "prefer-set-isdisjoint"
+    ],
+    "nativeFixtureCases": 24,
+    "controlledNativeExecutions": 48,
+    "ordinaryAndUnsupportedFixCliRuns": 72,
+    "sourceByteMutations": 0,
+    "readonlyRepeatedAnalysisStable": true,
+    "confirmedProductionDefects": 0
+  },
+  "environment": {
+    "node": "24.21.0",
+    "python": "3.15.0",
+    "typescript": "6.0.3",
+    "npm": "11.19.0",
+    "minimumPythonCI": "3.14",
+    "typescriptCI": [
+      "22.13.0",
+      "22.22.2",
+      "24"
+    ]
+  },
+  "sourceProvenance": {
+    "sharedScopeHelperSha256": "38b4f76f747020097b0654c9e93c8a9db213689d1e2b25f827c94df12b6d810f",
+    "promiseOwnerSha256": "af574cdfa8e0cb527ad2e87b2c00604d27d3decbee871a7e4ef11468e3e85d7a",
+    "serializationOwnerSha256": "477c3643fe3aedf1863f86087ff520b6759dba0cf87855347f32e2930fc8b625",
+    "typescriptEsmArtifactSha256": "5e5a7f4350434e9a7507fc7f4684b0adc1e0d2cf60e3fe8a559fff497d308619",
+    "typescriptIndexSourceSha256": "6dab9d821038857f88c00cd7a16efd806231e694bcd09af0788ec291605b4c60"
+  },
+  "pass58NativeMatrices": [
+    {
+      "name": "expanded",
+      "cases": 49,
+      "nativePassed": 49,
+      "supported": 43,
+      "matched": 43,
+      "unknown": 6
+    },
+    {
+      "name": "mutator",
+      "cases": 30,
+      "nativePassed": 30,
+      "supported": 27,
+      "matched": 27,
+      "unknown": 3
+    },
+    {
+      "name": "static",
+      "cases": 5,
+      "nativePassed": 5,
+      "supported": 5,
+      "matched": 5,
+      "unknown": 0
+    },
+    {
+      "name": "members",
+      "cases": 17,
+      "nativePassed": 17,
+      "supported": 15,
+      "matched": 15,
+      "unknown": 2
+    },
+    {
+      "name": "hooks",
+      "cases": 30,
+      "nativePassed": 30,
+      "supported": 29,
+      "matched": 29,
+      "unknown": 1
+    },
+    {
+      "name": "original45",
+      "cases": 11,
+      "nativePassed": 11,
+      "supported": 11,
+      "matched": 11,
+      "unknown": 0
+    },
+    {
+      "name": "original8",
+      "cases": 8,
+      "nativePassed": 8,
+      "supported": 6,
+      "matched": 6,
+      "unknown": 2
+    },
+    {
+      "name": "prototype",
+      "cases": 20,
+      "nativePassed": 20,
+      "supported": 19,
+      "matched": 19,
+      "unknown": 1
+    },
+    {
+      "name": "regexp",
+      "cases": 8,
+      "nativePassed": 8,
+      "supported": 7,
+      "matched": 7,
+      "unknown": 1
+    }
+  ],
+  "pass58PublicExamples": {
+    "cases": 16,
+    "analysisCalls": 32,
+    "matched": 16
+  },
+  "authoredInventory": {
+    "summary": {
+      "status": {
+        "pass": 1846,
+        "unsupported": 394
+      },
+      "rulesExercised": 299,
+      "rulesSelected": 299,
+      "files": 2403,
+      "labels": {
+        "TP": 912,
+        "TN": 934,
+        "FP": 0,
+        "FN": 0
+      }
+    },
+    "seconds": 72.83902454189956,
+    "sourceBindingStable": true,
+    "reportSha256": "19562c6913a41b59086195e517f4f55862b2165b2d9d678f5d4fb950d2462455",
+    "runtimeArtifacts": {
+      "nativePythonSha256": "6e9540e379ddb446b48e925a5f23ea18c6acba41e56af882349fe10b7666a58c",
+      "typescriptJsSha256": "f22814c8b9c15c8c50d824728ca1c9dd10478167a09436e13092ed7942f8a736"
+    },
+    "distinctImplementationOwners": 289,
+    "scope": "Source-owned expected labels under baseline/CRLF/eligible import aliases; unsupported transformations excluded, not passing."
+  },
+  "freshTypeScriptCorpus": {
+    "identityFields": [
+      "corpus",
+      "path",
+      "line",
+      "col",
+      "code",
+      "messageId",
+      "message"
+    ],
+    "baselineFindings": 12436,
+    "candidateFindings": 12436,
+    "introduced": 0,
+    "removed": 0,
+    "introducedByOwner": {},
+    "removedByOwner": {},
+    "exactDuplicateRowsBefore": 0,
+    "exactDuplicateRowsAfter": 0,
+    "baselineArtifactSha256": "1e2f2ede622f911b6069327d9838d9382d6736ecb0cedce18d48d73f3e7da8a8",
+    "candidateArtifactSha256": "5e5a7f4350434e9a7507fc7f4684b0adc1e0d2cf60e3fe8a559fff497d308619",
+    "eligibleCorpora": 5,
+    "excludedDriftedCorpora": 5,
+    "syntaxRules": 113,
+    "typeServiceRulesExcludedFromCorpus": 5,
+    "typeServiceRulesCoveredByAuthoredFixtures": true,
+    "files": 1468,
+    "bytes": 8515992,
+    "baselineSeconds": 8.013352165,
+    "candidateSeconds": 6.876126377,
+    "batchFileLimit": 250,
+    "freshProcessPerBatch": true,
+    "generalSpeedImprovementClaim": false,
+    "peakProcessBytes": 675299328
+  },
+  "ordinaryArtifactPerformance": {
+    "workloads": {
+      "rows": [
+        {
+          "workload": "no-SQL",
+          "sourceBytes": 10889,
+          "blocks": 200,
+          "parseMs": 24.493458000000004,
+          "sourceCodeReused": true,
+          "owningTimings": [
+            {
+              "subject": "before",
+              "rule": "no-json-stringify-error",
+              "coldMs": 16.31087499999998,
+              "warmMedianMs": 0.43812500000001364,
+              "count": 0
+            },
+            {
+              "subject": "after",
+              "rule": "no-json-stringify-error",
+              "coldMs": 0.42633299999999963,
+              "warmMedianMs": 0.3030420000000049,
+              "count": 0
+            }
+          ],
+          "registry": [
+            {
+              "subject": "before",
+              "rules": 118,
+              "warmMedianMs": 2.5604170000000295,
+              "coldMs": 16.230665999999985,
+              "diagnosticCount": 0
+            },
+            {
+              "subject": "after",
+              "rules": 118,
+              "warmMedianMs": 2.6717500000000314,
+              "coldMs": 7.141957999999988,
+              "diagnosticCount": 0
+            }
+          ]
+        },
+        {
+          "workload": "literal-heavy",
+          "sourceBytes": 10779,
+          "blocks": 200,
+          "parseMs": 6.744958999999994,
+          "sourceCodeReused": true,
+          "owningTimings": [
+            {
+              "subject": "before",
+              "rule": "no-json-stringify-error",
+              "coldMs": 0.2591249999999832,
+              "warmMedianMs": 0.186916999999994,
+              "count": 0
+            },
+            {
+              "subject": "after",
+              "rule": "no-json-stringify-error",
+              "coldMs": 0.15729099999998652,
+              "warmMedianMs": 0.18212500000004184,
+              "count": 0
+            }
+          ],
+          "registry": [
+            {
+              "subject": "before",
+              "rules": 118,
+              "warmMedianMs": 1.7992920000000368,
+              "coldMs": 4.008209000000022,
+              "diagnosticCount": 0
+            },
+            {
+              "subject": "after",
+              "rules": 118,
+              "warmMedianMs": 2.26966699999997,
+              "coldMs": 4.21058400000004,
+              "diagnosticCount": 0
+            }
+          ]
+        },
+        {
+          "workload": "direct-constructors",
+          "sourceBytes": 11579,
+          "blocks": 200,
+          "parseMs": 9.362415999999996,
+          "sourceCodeReused": true,
+          "owningTimings": [
+            {
+              "subject": "before",
+              "rule": "no-json-stringify-error",
+              "coldMs": 1.675042000000019,
+              "warmMedianMs": 0.5492920000000368,
+              "count": 200
+            },
+            {
+              "subject": "after",
+              "rule": "no-json-stringify-error",
+              "coldMs": 2.766124999999988,
+              "warmMedianMs": 0.65625,
+              "count": 200
+            }
+          ],
+          "registry": [
+            {
+              "subject": "before",
+              "rules": 118,
+              "warmMedianMs": 3.173833000000002,
+              "coldMs": 5.3163750000000505,
+              "diagnosticCount": 200
+            },
+            {
+              "subject": "after",
+              "rules": 118,
+              "warmMedianMs": 4.036541,
+              "coldMs": 6.8002500000000055,
+              "diagnosticCount": 200
+            }
+          ]
+        },
+        {
+          "workload": "native-error-and-dispatch",
+          "sourceBytes": 37689,
+          "blocks": 200,
+          "parseMs": 31.519334000000015,
+          "sourceCodeReused": true,
+          "owningTimings": [
+            {
+              "subject": "before",
+              "rule": "no-json-stringify-error",
+              "coldMs": 2.287207999999964,
+              "warmMedianMs": 1.5994170000000167,
+              "count": 200
+            },
+            {
+              "subject": "after",
+              "rule": "no-json-stringify-error",
+              "coldMs": 3.0860000000000127,
+              "warmMedianMs": 1.6846670000000472,
+              "count": 200
+            }
+          ],
+          "registry": [
+            {
+              "subject": "before",
+              "rules": 118,
+              "warmMedianMs": 6.57854199999997,
+              "coldMs": 14.207083000000011,
+              "diagnosticCount": 400
+            },
+            {
+              "subject": "after",
+              "rules": 118,
+              "warmMedianMs": 8.84520800000007,
+              "coldMs": 13.588833000000022,
+              "diagnosticCount": 400
+            }
+          ]
+        }
+      ],
+      "limits": [
+        "Finite scoped same-process native ESLint SourceCode reuse separates parser cost. Warm medians and cold times measured, no universal performance claim.",
+        "Registry totals include shared traversal; owner deltas measured separately. Existing canonical budgets unchanged."
+      ]
+    },
+    "note": "Same-process cold/warm native ESLint measurements, parse excluded from rule timings. Registry comparison includes both changed owners. No aggregate speedup or attribution to a single owner is claimed."
+  },
+  "independentReview": {
+    "owningSourceSha256": "477c3643fe3aedf1863f86087ff520b6759dba0cf87855347f32e2930fc8b625",
+    "sharedScopeHelperSha256": "38b4f76f747020097b0654c9e93c8a9db213689d1e2b25f827c94df12b6d810f",
+    "receiptSha256": "d7e8e4b4316eee1ff8d3caa7ec5c50c77bc5aad4b81efc673bbdb19315aba0f4",
+    "knownSupportedQueue": 0,
+    "nativeLexicalCache": {
+      "aliasChainLength": 800,
+      "sourceCodes": 2,
+      "scopeQueriesBefore": 801,
+      "scopeQueriesCached": 1
+    },
+    "limits": "Separate matrices overlap; unknown object prototypes, alias/body and runtime/global mutations remain explicitly unsupported.",
+    "qualityRefactorDiagnosticsByteEqual": true,
+    "qualityRefactorMetadataAndTestCasesUnchanged": true
+  },
+  "implementationQuality": {
+    "firstGateFound": {
+      "helperOrderingErrors": 6,
+      "cognitiveComplexityFunctions": 2
+    },
+    "fix": "Order private helpers below sole callers; separate member-lvalue proof from pattern traversal and Reflect receiver semantics; share single/batch descriptor writes and native property identity conversion.",
+    "strictAll118DogfoodDiagnostics": 0,
+    "thresholdsUnchanged": true,
+    "owningTestsAndPerformanceChecksPassed": 256,
+    "additionalAuditCount": 0
+  },
+  "ordinaryNativeReplay": {
+    "sourceSha256": "477c3643fe3aedf1863f86087ff520b6759dba0cf87855347f32e2930fc8b625",
+    "artifactCjsSha256": "d7962971e7da0c9ce6ae9369aeb2283bf2a0e911215ac1ad9791bfc278bfc5a9",
+    "sourceAndArtifactStable": true,
+    "repeatFailures": 0,
+    "fatalCases": 0,
+    "automaticEdits": 0
+  },
+  "canonicalIntegration": {
+    "packageVersion": "16.4.8",
+    "esmPluginMetaVersion": "16.4.8",
+    "cjsPluginMetaVersion": "16.4.8",
+    "nativeFixtureProjection": {
+      "before": 177,
+      "valid": 94,
+      "invalid": 83,
+      "nativeCompilerVersion": "6.0.3",
+      "parseErrors": 0,
+      "originalTripletsAndPartitionOrderPreserved": true,
+      "baselinePrefixBytesPreserved": true,
+      "beforeTestSha256": "1c957e65c1329017297461a3341b3239daabb43107b88af5b54a1c52b598a6f2",
+      "afterTestSha256": "c0f91aaa4e90883667c2d2bf1194d71467ca73e23fd16aa292edebcfa467e36a"
+    },
+    "focusedTestsPassed": 515,
+    "existingGuardsUnchanged": true,
+    "additionalAuditCount": 0,
+    "changes": [
+      "Derive plugin metadata from package.json, eliminating a duplicate version.",
+      "Use statically countable fixture groups, preserving the same native case code, names, counts and ordering."
+    ]
+  },
+  "canonicalVerification": {
+    "command": "make verify",
+    "exitCode": 0,
+    "passed": 27726,
+    "skipped": 9,
+    "typescriptTests": 7599,
+    "bootstrapTests": 18,
+    "contractTests": 15,
+    "pythonTests": 12530,
+    "sqlTests": 1428,
+    "iacTests": 1263,
+    "standardsTests": 4873,
+    "pythonRulesDogfood": 138,
+    "pythonFilesDogfood": 739,
+    "typescriptRulesDogfood": 118,
+    "blockingDogfoodDiagnostics": 0,
+    "typeCheckErrors": 0,
+    "existingStandardsWarnings": 87,
+    "performanceBudgetsUnchanged": true
+  }
+}

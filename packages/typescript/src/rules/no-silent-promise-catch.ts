@@ -4,9 +4,10 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-silent-promise-catch.test.ts
  */
 
-import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
+import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
 
 import { unwrapExpression } from "./_unwrap-expression.js";
+import { staticPropertyName } from "./_static-string.js";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isScriptFile, isTestFile } from "./_paths.js";
@@ -20,10 +21,12 @@ export const NO_SILENT_PROMISE_CATCH_DOCUMENTATION = {
   rationale: "A swallowed rejection hides failures and gives callers an indistinguishable fallback value.",
   remediation: "Log, rethrow, or explicitly recover from the rejection; explain intentional teardown suppression.",
   category: "correctness",
-  limitations: ["Test files, teardown calls, explanatory comments, non-function handlers, and handlers that consume or report the error are excluded.", "Recognized imported Zod construction chains and their stable local aliases are excluded. Other untyped catch-like APIs are not proven to be Promises."],
+  limitations: ["Test files, teardown calls, explanatory comments, non-function handlers, and handlers that consume or report the error are excluded.", "Recognized imported Zod construction chains and their stable local aliases are excluded. Other untyped catch-like APIs are not proven to be Promises.", "Computed methods resolve literal syntax and stable local string aliases in lexical scope. Function-derived, object-derived and mutated computed keys remain unproven."],
   examples: [
     { id: "reported-rejection", title: "Report the rejection", outcome: "no-match", files: [{ path: "src/load.ts", source: "load().catch((error) => logger.error({ error }, 'load failed'));" }], focusPath: "src/load.ts", expectedCount: 0, public: true },
     { id: "silent-rejection", title: "Do not swallow the rejection", outcome: "match", files: [{ path: "src/load.ts", source: "load().catch(() => null);" }], focusPath: "src/load.ts", expectedCount: 1, public: true },
+    { id: "stable-computed-catch", scenarioId: "computed-method-scope", title: "Report a rejection through a stable computed method", outcome: "match", files: [{ path: "src/load.ts", source: "const method = 'catch'; Promise.reject(new Error('lost'))[method](() => null);" }], focusPath: "src/load.ts", expectedCount: 1, public: true },
+    { id: "stable-computed-body-parser", scenarioId: "computed-method-scope", title: "Preserve a recognized optional body parse fallback", outcome: "no-match", files: [{ path: "src/load.ts", source: "const method = 'json'; new Response('')[method]().catch(() => null);" }], focusPath: "src/load.ts", expectedCount: 0, public: true },
   ],
 } as const satisfies RuleDocumentation;
 
@@ -47,15 +50,12 @@ const ZOD_CHAIN_METHODS: ReadonlySet<string> = new Set([
 ]);
 
 /** True for a standard Fetch body parser — the receiver of a parse-fallback catch. */
-function isBodyParseCall(node: TSESTree.Expression): boolean {
+function isBodyParseCall(node: TSESTree.Expression, sourceCode: Readonly<TSESLint.SourceCode>): boolean {
   const unwrappedNodeCallee = node.type === "CallExpression" || node.type === "NewExpression" ? unwrapExpression(node.callee) : null;
-  return (
-    node.type === AST_NODE_TYPES.CallExpression &&
-    node.arguments.length === 0 &&
-    unwrappedNodeCallee?.type === AST_NODE_TYPES.MemberExpression &&
-    ASTUtils.getPropertyName(unwrappedNodeCallee) !== null &&
-    BODY_PARSE_METHODS.has((ASTUtils.getPropertyName(unwrappedNodeCallee) ?? ""))
-  );
+  if (node.type !== AST_NODE_TYPES.CallExpression || node.arguments.length !== 0 ||
+    unwrappedNodeCallee?.type !== AST_NODE_TYPES.MemberExpression) return false;
+  const method = staticPropertyName(unwrappedNodeCallee, sourceCode);
+  return method !== null && BODY_PARSE_METHODS.has(method);
 }
 
 const TEARDOWN_METHODS: ReadonlySet<string> = new Set([
@@ -76,25 +76,22 @@ const isExplanatory = (comment: { value: string }): boolean =>
   !DIRECTIVE_COMMENT_RE.test(comment.value);
 
 /** True for `reader.cancel(reason)` / `stream.close()` — a teardown receiver. */
-function isTeardownCall(node: TSESTree.Expression): boolean {
+function isTeardownCall(node: TSESTree.Expression, sourceCode: Readonly<TSESLint.SourceCode>): boolean {
   const unwrappedNodeCallee = node.type === "CallExpression" || node.type === "NewExpression" ? unwrapExpression(node.callee) : null;
-  return (
-    node.type === AST_NODE_TYPES.CallExpression &&
-    unwrappedNodeCallee?.type === AST_NODE_TYPES.MemberExpression &&
-    ASTUtils.getPropertyName(unwrappedNodeCallee) !== null &&
-    TEARDOWN_METHODS.has((ASTUtils.getPropertyName(unwrappedNodeCallee) ?? ""))
-  );
+  if (node.type !== AST_NODE_TYPES.CallExpression || unwrappedNodeCallee?.type !== AST_NODE_TYPES.MemberExpression) return false;
+  const method = staticPropertyName(unwrappedNodeCallee, sourceCode);
+  return method !== null && TEARDOWN_METHODS.has(method);
 }
 
 /** Web Share rejects on ordinary user cancellation, which callers may ignore. */
-function isCancelledWebShare(node: TSESTree.Expression): boolean {
+function isCancelledWebShare(node: TSESTree.Expression, sourceCode: Readonly<TSESLint.SourceCode>): boolean {
   const unwrappedNodeCallee = node.type === "CallExpression" || node.type === "NewExpression" ? unwrapExpression(node.callee) : null;
   return (
     node.type === AST_NODE_TYPES.CallExpression &&
     unwrappedNodeCallee?.type === AST_NODE_TYPES.MemberExpression &&
     unwrappedNodeCallee.object.type === AST_NODE_TYPES.Identifier &&
     unwrappedNodeCallee.object.name === "navigator" &&
-    ASTUtils.getPropertyName(unwrappedNodeCallee) === "share"
+    staticPropertyName(unwrappedNodeCallee, sourceCode) === "share"
   );
 }
 
@@ -185,10 +182,9 @@ export default createRule<Options, MessageIds>({
         return binding.defs.length === 1 && definition?.node.type === AST_NODE_TYPES.VariableDeclarator &&
           definition.node.init !== null && isZodSchema(definition.node.init, seen);
       }
-      if (node.type !== AST_NODE_TYPES.CallExpression || unwrappedNodeCallee?.type !== AST_NODE_TYPES.MemberExpression ||
-        ASTUtils.getPropertyName(unwrappedNodeCallee) === null) return false;
+      if (node.type !== AST_NODE_TYPES.CallExpression || unwrappedNodeCallee?.type !== AST_NODE_TYPES.MemberExpression) return false;
       const { object } = unwrappedNodeCallee;
-      const method = ASTUtils.getPropertyName(unwrappedNodeCallee);
+      const method = staticPropertyName(unwrappedNodeCallee, context.sourceCode);
       if (object.type === AST_NODE_TYPES.Identifier && method !== null && ZOD_CONSTRUCTORS.has(method)) {
         const binding = ASTUtils.findVariable(context.sourceCode.getScope(object), object.name);
         if (binding?.defs.some((definition) => {
@@ -234,27 +230,24 @@ export default createRule<Options, MessageIds>({
     return {
       CallExpression(node: TSESTree.CallExpression): void {
         const unwrappedNodeCallee = unwrapExpression(node.callee);
-        if (
-          unwrappedNodeCallee.type !== AST_NODE_TYPES.MemberExpression ||
-          ASTUtils.getPropertyName(unwrappedNodeCallee) === null
-        ) {
+        if (unwrappedNodeCallee.type !== AST_NODE_TYPES.MemberExpression) {
           return;
         }
 
-        const method = (ASTUtils.getPropertyName(unwrappedNodeCallee) ?? "");
+        const method = staticPropertyName(unwrappedNodeCallee, context.sourceCode);
         const handlerIndex = method === "catch" ? 0 : method === "then" ? 1 : null;
         if (handlerIndex === null) return;
         if (method === "catch" && isZodSchema(unwrappedNodeCallee.object)) return;
 
-        if (isBodyParseCall(unwrappedNodeCallee.object)) {
+        if (isBodyParseCall(unwrappedNodeCallee.object, context.sourceCode)) {
           return;
         }
 
-        if (isTeardownCall(unwrappedNodeCallee.object)) {
+        if (isTeardownCall(unwrappedNodeCallee.object, context.sourceCode)) {
           return;
         }
 
-        if (isCancelledWebShare(unwrappedNodeCallee.object)) {
+        if (isCancelledWebShare(unwrappedNodeCallee.object, context.sourceCode)) {
           return;
         }
 
@@ -263,7 +256,7 @@ export default createRule<Options, MessageIds>({
         if (
           node.parent.type === AST_NODE_TYPES.MemberExpression &&
           node.parent.object === node &&
-          ASTUtils.getPropertyName(node.parent) === "then"
+          staticPropertyName(node.parent, context.sourceCode) === "then"
         ) {
           return;
         }

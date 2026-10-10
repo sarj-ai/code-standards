@@ -1,3 +1,4 @@
+import packageMetadata from "../package.json" with { type: "json" };
 import requireExplicitContractImplementation from "./rules/require-explicit-contract-implementation.js";
 import requireExplicitServiceContract from "./rules/require-explicit-service-contract.js";
 import noConditionalEmptyObjectSpread from "./rules/no-conditional-empty-object-spread.js";
@@ -248,7 +249,7 @@ const RULES = {
 
 const meta = {
   name: "@sarj/eslint-plugin",
-  version: "16.4.7",
+  version: packageMetadata.version,
 } as const;
 
 /** @deprecated All repositories use one policy; retained for import compatibility. */
