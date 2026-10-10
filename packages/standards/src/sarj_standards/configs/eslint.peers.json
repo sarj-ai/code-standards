@@ -43,7 +43,7 @@
     "typescript-eslint": "8.70.1"
   },
   "ageGatePreapprovals": {
-    "@sarj/eslint-plugin": "16.4.8"
+    "@sarj/eslint-plugin": "16.5.0"
   },
   "yarnIdentityPins": {
     "@typescript-eslint/eslint-plugin": "8.70.1",
