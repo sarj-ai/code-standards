@@ -478,7 +478,12 @@ def test_ci_base_detects_growth_from_an_earlier_pr_commit(tmp_path: Path, monkey
 
 
 @pytest.mark.parametrize("staged", [False, True])
-def test_selected_adoption_cannot_be_hidden_by_unstaged_marker_deletions(tmp_path: Path, staged: bool) -> None:
+def test_selected_adoption_cannot_be_hidden_by_unstaged_marker_deletions(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, staged: bool
+) -> None:
+    monkeypatch.delenv("SARJ_STANDARDS_BASE", raising=False)
+    monkeypatch.delenv("GITHUB_EVENT_NAME", raising=False)
+    monkeypatch.delenv("GITHUB_EVENT_PATH", raising=False)
     _enable_makefile_policy(tmp_path)
     (tmp_path / "Makefile").write_text("check:\n\tuv run pytest\n", encoding="utf-8")
     if staged:
