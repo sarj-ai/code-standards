@@ -131,7 +131,7 @@ def _run(tool: NativeTool, *, root: Path, paths: Sequence[str], runner: ProcessR
         # An explicit config stops jscpd from merging the repository's .jscpd.json or package.json settings.
         config = Path(directory) / "config.json"
         config.write_text("{}", encoding="utf-8")
-        invoke(tool, (*_arguments(directory, config), *paths), root=root, runner=runner)
+        invoke(tool, (*_arguments(directory, config), "--", *paths), root=root, runner=runner)
         return read_bounded_report(Path(directory) / _REPORT_NAME, tool=SOURCE)
 
 

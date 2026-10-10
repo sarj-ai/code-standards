@@ -126,7 +126,7 @@ def test_analysis_scans_the_whole_tree_with_the_pinned_detector(tmp_path: Path) 
     ((argv, cwd),) = calls
     assert cwd == tmp_path.resolve()
     assert argv[0] == "jscpd"
-    assert argv[-2:] == ("python", "web")
+    assert argv[-3:] == ("--", "python", "web")
     assert argv[argv.index("--min-tokens") + 1] == "50"
     assert argv[argv.index("--ignore") + 1] == ",".join(TEST_GLOBS)
 
