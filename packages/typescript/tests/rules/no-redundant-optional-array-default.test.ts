@@ -23,6 +23,16 @@ const PRODUCTION = "src/schema.ts";
 RULE_TESTER.run("no-redundant-optional-array-default", rule, {
   valid: [
     {
+      name: "preserves a relative builder whose directory name ends in zod",
+      filename: PRODUCTION,
+      code: 'import { z } from "./my-zod/index.js"; const Items = z.array(z.string()).optional().default([]);',
+    },
+    {
+      name: "preserves an unrelated scoped Zod integration package",
+      filename: PRODUCTION,
+      code: 'import { z } from "@hono/zod-validator"; const Items = z.array(z.string()).optional().default([]);',
+    },
+    {
       name: "preserves unvalidated data returned by a typed fallback",
       filename: PRODUCTION,
       code: 'import { z } from "zod/v3"; const fallback = (): string[] => JSON.parse("{}").missing; const Items = z.array(z.string()).optional().default(fallback);',

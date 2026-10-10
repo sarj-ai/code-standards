@@ -40,7 +40,7 @@ _CLOSED_TEXT_VALUES = re.compile(
 
 def _application_schema_checks(source: str) -> list[int]:
     findings: list[int] = []
-    code = mask_sql(source) if '"' in source else source
+    code = mask_sql(source, mask_dollar_literals=True) if '"' in source else source
     for match in sql_code_matches(_CHECK_START, source):
         opening_parenthesis = match.end() - 1
         depth = 0
@@ -163,7 +163,7 @@ class NoApplicationSchemaCheck(Rule):
             return []
         model_owned = is_generated_migration(path, source)
         diagnostics: list[Diagnostic] = []
-        for statement in split_statements(mask_sql_literals_and_comments(source)):
+        for statement in split_statements(mask_sql_literals_and_comments(source, mask_dollar_literals=True)):
             text = "\n".join(fragment for _, fragment in statement)
             for offset in _application_schema_checks(text):
                 line, col = locate(statement, offset)

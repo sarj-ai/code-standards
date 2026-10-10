@@ -87,6 +87,36 @@ class IndexConcurrently(Rule):
                 expected_count=0,
                 public=True,
             ),
+            RuleExample(
+                example_id="scalar-dollar-data",
+                title="SQL keywords inside scalar dollar data are not executed",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.sql(
+                        "supabase/migrations/001_data.sql",
+                        "SELECT $data$CREATE INDEX orders_idx ON orders(id);$data$;\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("supabase/migrations/001_data.sql"),
+                expected_count=0,
+                public=True,
+                scenario="dollar-quoted-sql",
+            ),
+            RuleExample(
+                example_id="executable-dollar-body",
+                title="Executable dollar-quoted migration SQL remains checked",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.sql(
+                        "supabase/migrations/001_body.sql",
+                        "DO $$ BEGIN CREATE INDEX orders_idx ON orders(id); END $$;\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("supabase/migrations/001_body.sql"),
+                expected_count=1,
+                public=True,
+                scenario="dollar-quoted-sql",
+            ),
         ),
     )
     description = documentation.summary
@@ -96,7 +126,7 @@ class IndexConcurrently(Rule):
         if is_dump_file(source, path):
             return []
 
-        masked = mask_sql(source)
+        masked = mask_sql(source, mask_dollar_literals=True)
         if not is_postgres(source):
             return []
 

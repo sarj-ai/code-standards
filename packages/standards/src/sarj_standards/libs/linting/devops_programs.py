@@ -675,29 +675,48 @@ def _compose_blocks(services: Node) -> list[ExecutionBlock]:
         owner = entrypoint if entrypoint is not None else command
         if owner is not None and words:
             blocks.append(_argv_block(owner, words, command))
-        healthcheck = _table(fields.get("healthcheck"))
-        test = healthcheck.get("test")
-        if test is not None:
-            value, argv = _scalar(test), _argv(test)
-            if value is not None:
-                blocks.append(_block(test))
-            elif argv and argv[0] == "CMD-SHELL":
-                blocks.append(
-                    ExecutionBlock(
-                        test.start_mark.line + 1,
-                        source=" ".join(argv[1:]),
-                        end_line=test.end_mark.line + 1,
-                        end_column=test.end_mark.column + 1,
-                    )
-                )
-            elif argv and argv[0] == "CMD":
-                blocks.append(_argv_block(test, argv[1:]))
+        blocks.extend(_compose_healthcheck_blocks(_table(fields.get("healthcheck"))))
     return [
         replace(
             block, source=block.source.replace("$$", "$"), argv=tuple(word.replace("$$", "$") for word in block.argv)
         )
         for block in blocks
     ]
+
+
+def _compose_healthcheck_blocks(healthcheck: Mapping[str, Node]) -> list[ExecutionBlock]:
+    test = healthcheck.get("test")
+    if _compose_healthcheck_disabled(healthcheck.get("disable")) or test is None:
+        return []
+    value, argv = _scalar(test), _argv(test)
+    if value is not None:
+        return [_block(test)]
+    if argv and argv[0] == "CMD-SHELL":
+        return [
+            ExecutionBlock(
+                test.start_mark.line + 1,
+                source=" ".join(argv[1:]),
+                end_line=test.end_mark.line + 1,
+                end_column=test.end_mark.column + 1,
+            )
+        ]
+    if argv and argv[0] == "CMD":
+        return [_argv_block(test, argv[1:])]
+    return []
+
+
+def _compose_healthcheck_disabled(node: Node | None) -> bool:
+    if node is None:
+        return False
+    if isinstance(node, ScalarNode) and node.tag in {"tag:yaml.org,2002:bool", "tag:yaml.org,2002:str"}:
+        # compose-go casts constant strings using its YAML boolean grammar.
+        value = _scalar_text(node).lower()
+        if value in {"true", "y", "yes", "on"}:
+            return True
+        if value in {"false", "n", "no", "off"}:
+            return False
+    msg = "Compose healthcheck disable value cannot be proven statically"
+    raise ProgramProjectionError(msg)
 
 
 def _compose_words(node: Node | None) -> tuple[str, ...] | None:

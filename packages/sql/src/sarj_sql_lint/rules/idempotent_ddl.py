@@ -126,7 +126,7 @@ class IdempotentDdl(Rule):
             return []
         model_owned = is_generated_migration(path, source)
 
-        masked = mask_sql(source)
+        masked = mask_sql(source, mask_dollar_literals=True)
         checks = _dialect_checks(source)
 
         diags: list[Diagnostic] = []

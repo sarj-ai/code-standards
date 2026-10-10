@@ -120,3 +120,36 @@ def test_alias_composition_preserves_a_bounded_shared_graph() -> None:
 def test_selected_yaml_expansion_fails_coverage_without_findings(source: str) -> None:
     with pytest.raises(CloudBuildParseError, match=r"bound|Recursive"):
         check_cloudbuild(Path("cloudbuild.yaml"), f"{source}steps:\n- name: builder\n", selected=True)
+
+
+@pytest.mark.parametrize(
+    ("args", "count"),
+    [
+        ("['bash', '-c', 'printf %s $_VALUE']", 1),
+        ("['MODE=fixture', 'bash', '-c', 'printf %s $_VALUE']", 1),
+        ("['-i', 'MODE=fixture', 'bash', '-c', 'printf %s $_VALUE']", 1),
+        ("['--', 'MODE=fixture', 'bash', '-c', 'printf %s $_VALUE']", 1),
+        ("['-uMODE', 'bash', '-c', 'printf %s $_VALUE']", 1),
+        ("['env', 'bash', '-c', 'printf %s $_VALUE']", 1),
+        ("['--help', 'bash', '-c', 'printf %s $_VALUE']", 0),
+        ("['--version', 'bash', '-c', 'printf %s $_VALUE']", 0),
+        ("['--unknown', 'bash', '-c', 'printf %s $_VALUE']", 0),
+        ("['-Sbash', '-c', 'printf %s $_VALUE']", 0),
+        ("['MODE=fixture', '-i', 'bash', '-c', 'printf %s $_VALUE']", 0),
+        ("['bash', 'scripts/build.sh', '$_VALUE']", 0),
+        ("['printf', '%s', '$_VALUE']", 0),
+        ("['command', 'bash', '-c', 'printf %s $_VALUE']", 0),
+        ("['exec', 'bash', '-c', 'printf %s $_VALUE']", 0),
+        ("['sudo', 'bash', '-c', 'printf %s $_VALUE']", 0),
+        ("['timeout', '1', 'bash', '-c', 'printf %s $_VALUE']", 0),
+    ],
+)
+def test_env_shell_source_execution_boundary(args: str, count: int) -> None:
+    source = f"steps:\n- name: builder\n  entrypoint: /usr/bin/env\n  args: {args}\n"
+    assert len(check_cloudbuild(Path("cloudbuild.yaml"), source)) == count
+
+
+def test_env_substitution_uses_original_payload_location() -> None:
+    source = "steps:\n- name: builder\n  entrypoint: env\n  args:\n  - MODE=fixture\n  - bash\n  - -c\n  - 'printf %s $_VALUE'\n"
+    findings = check_cloudbuild(Path("cloudbuild.yaml"), source)
+    assert [(finding.code, finding.line) for finding in findings] == [("SARJ315", 8)]

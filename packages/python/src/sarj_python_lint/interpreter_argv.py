@@ -85,18 +85,20 @@ class UnprovableCommandError(ValueError):
     """A wrapper executable position cannot be established safely."""
 
 
-def unwrap_command(argv: Sequence[str]) -> tuple[str, ...]:
+def unwrap_command(
+    argv: Sequence[str], *, allow_shell_builtins: bool = True, allowed_wrappers: frozenset[str] | None = None
+) -> tuple[str, ...]:
     current = tuple(argv)
     for _ in range(_MAX_WRAPPERS):
         if not current:
             return ()
         command = PurePosixPath(current[0]).name
-        if command in {"exec", "command"}:
+        if allow_shell_builtins and command in {"exec", "command"}:
             if command == "command" and any(argument in {"-v", "-V"} for argument in current[1:2]):
                 return current
             current = current[_command_wrapper_index(current, command) :]
             continue
-        if command not in _WRAPPER_VALUES:
+        if command not in _WRAPPER_VALUES or (allowed_wrappers is not None and command not in allowed_wrappers):
             return current
         current = current[_value_wrapper_index(current, command) :]
     msg = "command wrapper nesting exceeds analysis bound"
@@ -120,23 +122,67 @@ def _command_wrapper_index(arguments: Sequence[str], command: str) -> int:
 
 
 def _value_wrapper_index(arguments: Sequence[str], command: str) -> int:
+    if command == "env":
+        return _env_wrapper_index(arguments)
     index = 1
     while index < len(arguments):
         argument = arguments[index]
         if argument == "--":
             index += 1
             break
-        if command == "env" and re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", argument):
-            index += 1
-            continue
         if not argument.startswith("-") or argument == "-":
             break
-        if command == "env" and argument in {"-S", "--split-string"}:
-            msg = "env split-string has a separate unproven quoting grammar"
-            raise UnprovableCommandError(msg)
         index += 2 if argument in _WRAPPER_VALUES[command] else 1
     # Timeout's positional duration precedes its executable.
     return index + int(command == "timeout")
+
+
+def _env_wrapper_index(arguments: Sequence[str]) -> int:
+    index = 1
+    while index < len(arguments) and arguments[index].startswith("-"):
+        argument = arguments[index]
+        if argument == "-":
+            index += 1
+            break
+        if argument == "--":
+            index += 1
+            break
+        index += _env_option_size(arguments, index)
+    # Assignments follow options, including after --; later option-looking words
+    # are executable operands, not additional env options.
+    while index < len(arguments) and "=" in arguments[index]:
+        if arguments[index].startswith("="):
+            msg = "env assignment requires a nonempty variable name"
+            raise UnprovableCommandError(msg)
+        index += 1
+    return index
+
+
+def _env_option_size(arguments: Sequence[str], index: int) -> int:
+    argument = arguments[index]
+    if argument in {"--help", "--version"}:
+        return len(arguments) - index  # GNU env terminates without executing operands.
+    if argument in {"-S", "--split-string"} or argument.startswith(("-S", "--split-string=")):
+        msg = "env split-string has a separate unproven quoting grammar"
+        raise UnprovableCommandError(msg)
+    if argument in {"-i", "--ignore-environment", "-v", "--debug"}:
+        return 1
+    if argument in _WRAPPER_VALUES["env"]:
+        value = arguments[index + 1] if index + 1 < len(arguments) else ""
+        _validate_env_operand(argument, value)
+        return 2
+    for option in ("--unset=", "--chdir=", "-u", "-C"):
+        if argument.startswith(option):
+            _validate_env_operand(option, argument[len(option) :])
+            return 1
+    msg = "unsupported env wrapper option"
+    raise UnprovableCommandError(msg)
+
+
+def _validate_env_operand(option: str, value: str) -> None:
+    if not value or (option in {"-u", "--unset", "--unset="} and "=" in value):
+        msg = "env option requires a valid value"
+        raise UnprovableCommandError(msg)
 
 
 def is_python_executable(executable: str) -> bool:
@@ -175,6 +221,11 @@ def _python(arguments: Sequence[str]) -> InterpreterInvocation:
         if boundary is not None:
             return boundary
         argument = arguments[index]
+        if argument == "--check-hash-based-pycs":
+            if _following_operand(arguments, index) not in {"default", "always", "never"}:
+                return InterpreterInvocation("unknown")
+            index += 2
+            continue
         if argument.startswith("--"):
             return InterpreterInvocation(
                 "external"

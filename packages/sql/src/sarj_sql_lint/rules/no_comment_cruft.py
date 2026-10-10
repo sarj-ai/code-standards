@@ -403,7 +403,7 @@ def _is_supported_create_view(statement: str) -> bool:
 
 
 def _comment_groups(source: str) -> list[list[SourceComment]]:
-    comments = sql_comments(source)
+    comments = sql_comments(source, mask_dollar_literals=True)
     source_lines = source.splitlines()
     groups: list[list[SourceComment]] = []
     for comment in comments:

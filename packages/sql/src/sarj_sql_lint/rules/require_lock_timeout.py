@@ -101,7 +101,7 @@ class RequireLockTimeout(Rule):
             return []
 
         diags: list[Diagnostic] = []
-        masked = mask_sql(source)
+        masked = mask_sql(source, mask_dollar_literals=True)
 
         events = _timeout_events(source, masked)
 

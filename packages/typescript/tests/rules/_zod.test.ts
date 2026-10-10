@@ -40,14 +40,14 @@ describe("Zod schema names", () => {
 });
 
 describe("Zod module names", () => {
-  it.each(["zod", "zod/v4", "zod/mini", "@hono/zod-validator"])(
+  it.each(["zod", "zod/v3", "zod/v4", "zod/mini", "zod/v4/core"])(
     "recognises supported Zod imports: %s",
     (source) => {
       expect(isZodModule(source)).toBe(true);
     },
   );
 
-  it.each(["./zod.ts", "@scope/zodiac", "zodish", "validation"])(
+  it.each(["./zod.ts", "./my-zod/index.js", "@hono/zod-validator", "@scope/zod", "other-zod", "zodish", "validation"])(
     "ignores unrelated imports: %s",
     (source) => {
       expect(isZodModule(source)).toBe(false);
