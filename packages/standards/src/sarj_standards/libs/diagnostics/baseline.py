@@ -111,10 +111,11 @@ def touches_changed_lines(diagnostic: Diagnostic, scope: ChangedLineScope | None
     return True
 
 
-def is_baselineable(
-    diagnostic: Diagnostic,  # ruff: ignore[unused-function-argument] -- Preserve the public diagnostic policy keyword.
-) -> bool:
-    return True
+def is_baselineable(diagnostic: Diagnostic) -> bool:
+    return not (
+        diagnostic.source == "repo-standards"
+        and (diagnostic.rule_id or diagnostic.code) == "repository/artifacts/makefile-growth"
+    )
 
 
 def load(

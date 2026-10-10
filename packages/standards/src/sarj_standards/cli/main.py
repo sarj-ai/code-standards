@@ -138,6 +138,7 @@ class _Args:
     no_install: bool = False
     tools_only: bool = False
     commit_policy_only: bool = False
+    enable_repository_rules: list[str] = field(default_factory=list)
     repair: bool = False
     message_file: Path | None = None
     profile: manifest.Profile | None = None
@@ -850,6 +851,9 @@ def _resolve_and_run_update(
 
 def cmd_setup(args: _Args) -> int:
     root = _resolve_dest(args.dest)
+    if args.enable_repository_rules and (args.tools_only or args.commit_policy_only):
+        print("error: --enable-repository-rule requires full repository setup", file=sys.stderr)
+        return 2
     if args.tools_only:
         return _setup_tools_only(args, root)
     selected_configs = tuple(dict.fromkeys((*args.configs, *args.only)))
@@ -1027,6 +1031,7 @@ def _setup_plan(args: _Args, root: Path, selected_configs: tuple[str, ...]) -> s
         kotlin_dest=args.kotlin_dest,
         profile=args.profile,
         hook_manager=args.hooks,
+        enable_repository_rules=args.enable_repository_rules,
     )
 
 
@@ -2937,6 +2942,16 @@ def build_app(handler: Callable[[_Args], int] = _dispatch) -> typer.Typer:
         only: Annotated[
             list[_ConfigChoice] | None, typer.Option("--config", help="select one config explicitly (repeatable)")
         ] = None,
+        enable_repository_rule: Annotated[
+            list[str] | None,
+            typer.Option(
+                "--enable-repository-rule",
+                help=(
+                    "explicitly enable one reviewed, installed error-stage repository rule (repeatable); "
+                    "preserve existing rules and capped exceptions"
+                ),
+            ),
+        ] = None,
     ) -> int:
         return handler(
             _Args(
@@ -2954,6 +2969,7 @@ def build_app(handler: Callable[[_Args], int] = _dispatch) -> typer.Typer:
                 tools_only=tools_only,
                 commit_policy_only=commit_policy_only,
                 only=[item.value for item in only] if only is not None else [],
+                enable_repository_rules=enable_repository_rule or [],
             )
         )
 

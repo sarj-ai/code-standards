@@ -494,6 +494,27 @@ def test_rollout_apply_uses_exact_consumer_and_preserves_failure(
     ]
 
 
+@pytest.mark.parametrize("script", ["rollout-plan.sh", "rollout-apply.sh"])
+@pytest.mark.parametrize("event", ["schedule", "workflow_dispatch"])
+@pytest.mark.parametrize("requested", ["repository/artifacts/makefile-growth", "--help; $(touch unexpected)"])
+def test_manual_rule_activation_is_one_literal_argument_and_schedules_preserve_defaults(
+    tmp_path: Path, script: str, event: str, requested: str
+) -> None:
+    recorder = _rollout_recorder(
+        tmp_path,
+        EVENT_NAME=event,
+        REQUESTED_REPOSITORY_RULE=requested,
+        CONSUMER="example/app",
+        MATRIX_OUTPUT="consumers=[]\n",
+    )
+
+    assert _run_rollout(script, recorder.environment).returncode == 0
+    command = _recorded_commands(recorder.commands)[-1]
+    selected = [argument for argument in command if argument.startswith("--enable-repository-rule")]
+    assert selected == ([f"--enable-repository-rule={requested}"] if event == "workflow_dispatch" else [])
+    assert not (tmp_path / "unexpected").exists()
+
+
 @pytest.mark.parametrize(
     ("plan_status", "leg_status", "rollout_result", "fleet_status", "expected"),
     [

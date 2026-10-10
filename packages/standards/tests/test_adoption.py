@@ -1504,7 +1504,11 @@ def test_ci_snippet_for_a_typescript_repo_does_not_require_a_python_project(
     assert ".github/workflows/standards.yml" in proc.stdout
     assert "fetch-depth: 0" in workflow
     assert "  push:\n    branches: [main]\n" in workflow
-    assert "SARJ_STANDARDS_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}" in workflow
+    assert "  merge_group:\n" in workflow
+    assert (
+        "SARJ_STANDARDS_BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}"
+        in workflow
+    )
     assert "check --staged" not in workflow
 
 

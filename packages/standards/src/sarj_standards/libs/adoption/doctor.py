@@ -308,6 +308,13 @@ def _check_commit_policy_manifest(root: Path) -> Iterator[Finding]:
             "run `code-standards doctor --repair`",
         )
         return
+    if "repository/artifacts/makefile-growth" in configured.enabled_rules:
+        yield Finding(
+            Level.OK,
+            ".repo-standards/repository.toml",
+            "Makefile growth policy is explicitly enabled; shrinkage and deletion remain allowed",
+            "doctor.repository.makefile-growth",
+        )
     if configured.commit_message is None:
         yield Finding(
             Level.DRIFT,

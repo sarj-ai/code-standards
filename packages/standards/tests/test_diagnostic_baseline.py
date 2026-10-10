@@ -57,6 +57,41 @@ def _policy_baseline(diagnostics: tuple[Diagnostic, ...]) -> str:
     )
 
 
+def test_makefile_guard_cannot_be_captured_or_hidden_by_a_diagnostic_baseline(tmp_path: Path) -> None:
+    guarded = Diagnostic(
+        "repository/artifacts/makefile-growth",
+        "Makefile grew",
+        Severity.WARNING,
+        "repo-standards",
+        Location("Makefile"),
+        rule_id="repository/artifacts/makefile-growth",
+        fingerprint="a" * 64,
+    )
+    unrelated = replace(guarded, source="another-engine", fingerprint="b" * 64)
+    rendered: dict[str, object] = json.loads(  # pyright: ignore[reportAny] -- stdlib JSON boundary.
+        _policy_baseline((guarded, unrelated))
+    )
+    raw = report_from_tools(tmp_path, (ToolReport("repo-standards", Completion.COMPLETE, diagnostics=(guarded,)),))
+
+    visible = api._without_baselined_diagnostics(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+        raw, {"a" * 64: 100}
+    )
+
+    assert not baseline.is_baselineable(guarded)
+    assert baseline.is_baselineable(unrelated)
+    assert rendered["diagnostics"] == [
+        {
+            "count": 1,
+            "fingerprint": "b" * 64,
+            "path": "Makefile",
+            "ruleId": "repository/artifacts/makefile-growth",
+            "source": "another-engine",
+        }
+    ]
+    assert visible.diagnostics == (guarded,)
+    assert visible.tools[0].baselined_count == 0
+
+
 def test_policy_analysis_hides_only_exact_baselined_diagnostics(tmp_path: Path) -> None:
     selected = tmp_path / "selected.py"
     selected.write_text("logger.info('request', token=token)\n", encoding="utf-8")
