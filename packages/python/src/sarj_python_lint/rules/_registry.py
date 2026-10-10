@@ -207,6 +207,11 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
 
     from sarj_python_lint.rule_base import Rule
+from sarj_python_lint.rules.duplicate_adjacent_exception_handler import DuplicateAdjacentExceptionHandler
+from sarj_python_lint.rules.duplicate_closed_pure_helper import DuplicateClosedPureHelper
+from sarj_python_lint.rules.redundant_test_constructor_forwarder import RedundantTestConstructorForwarder
+from sarj_python_lint.rules.repeated_unimplemented_test_contract import RepeatedUnimplementedTestContract
+
 
 REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
     {
@@ -348,5 +353,9 @@ REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
         PreferRegexFullmatch.id: PreferRegexFullmatch,
         PreferMonotonicForElapsedTime.id: PreferMonotonicForElapsedTime,
         TypedErrorReasons.id: TypedErrorReasons,
+        RedundantTestConstructorForwarder.id: RedundantTestConstructorForwarder,
+        DuplicateAdjacentExceptionHandler.id: DuplicateAdjacentExceptionHandler,
+        DuplicateClosedPureHelper.id: DuplicateClosedPureHelper,
+        RepeatedUnimplementedTestContract.id: RepeatedUnimplementedTestContract,
     }
 )
