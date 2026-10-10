@@ -23,8 +23,8 @@ from sarj_standards.libs.diagnostics import (
     ToolReport,
     diagnostic_fingerprint,
 )
-from sarj_standards.libs.linting.devops_tools import checked_tool, invoke
-from sarj_standards.libs.linting.external import ProcessRunner, read_bounded_report, run_process
+from sarj_standards.libs.linting.devops_tools import NativeTool, checked_tool, invoke
+from sarj_standards.libs.linting.external import ProcessRunner, read_bounded_report, redact_message, run_process
 
 
 if TYPE_CHECKING:
@@ -119,18 +119,26 @@ def analyze_duplicates(
     root = root.resolve()
     try:
         tool = checked_tool(SOURCE, root=root, runner=runner)
-        with tempfile.TemporaryDirectory(prefix="code-standards-jscpd-") as directory:
-            invoke(tool, (*_arguments(directory), *paths), root=root, runner=runner)
-            payload = read_bounded_report(Path(directory) / _REPORT_NAME, tool=SOURCE)
-        diagnostics = parse_jscpd(payload, root, allows_path=allows_path)
+        diagnostics = parse_jscpd(_run(tool, root=root, paths=paths, runner=runner), root, allows_path=allows_path)
     except (OSError, ValueError, subprocess.SubprocessError) as error:
-        issue = ExecutionIssue(SOURCE, "tool-failure", str(error))
+        issue = ExecutionIssue(SOURCE, "tool-failure", redact_message(str(error), root))
         return ToolReport(SOURCE, Completion.FAILED, issues=(issue,))
     return ToolReport(SOURCE, Completion.COMPLETE, diagnostics=diagnostics, version=tool.version)
 
 
-def _arguments(output: str) -> tuple[str, ...]:
+def _run(tool: NativeTool, *, root: Path, paths: Sequence[str], runner: ProcessRunner) -> str:
+    with tempfile.TemporaryDirectory(prefix="code-standards-jscpd-") as directory:
+        # An explicit config stops jscpd from merging the repository's .jscpd.json or package.json settings.
+        config = Path(directory) / "config.json"
+        config.write_text("{}", encoding="utf-8")
+        invoke(tool, (*_arguments(directory, config), *paths), root=root, runner=runner)
+        return read_bounded_report(Path(directory) / _REPORT_NAME, tool=SOURCE)
+
+
+def _arguments(output: str, config: Path) -> tuple[str, ...]:
     return (
+        "--config",
+        str(config),
         "--min-tokens",
         str(MIN_TOKENS),
         "--mode",
@@ -194,6 +202,6 @@ def _diagnostic(block: _Block, others: Sequence[_Block], source: Callable[[str],
         help=_HELP,
         related=tuple(RelatedLocation("copy", location(other)) for other in others),
     )
-    # Anchor on the block's own tokens so moving it, reformatting it, or editing a copy keeps its baseline identity.
+    # Anchor on the block's own text so moving or reindenting it, or changing where its copies live, keeps its baseline identity.
     anchor = " ".join(" ".join(source(block.path).lines_of(block)).split())
     return replace(diagnostic, fingerprint=diagnostic_fingerprint(diagnostic, anchor=anchor))

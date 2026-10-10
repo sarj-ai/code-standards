@@ -105,8 +105,8 @@ ALL_CONFIGS: Final = (
     *SECURITY_CONFIGS,
 )
 DEVOPS_ANALYZERS: Final = ("actionlint", "hadolint", "terraform", "tflint", "compose", "devops-schema")
+# Opt-in analyzers: new manifests and upgrades from older bundles both record them as disabled.
 QUALITY_ANALYZERS: Final = ("jscpd",)
-# Existing consumers opt in: upgrading from an older bundle records these as disabled.
 _QUALITY_ANALYZERS_SINCE: Final = Version("8.43.0")
 ALL_CAPABILITIES: Final = (*ALL_CONFIGS, *PYTHON_ANALYZERS, *DEVOPS_ANALYZERS, *QUALITY_ANALYZERS)
 DEFAULT_DURABLE_ARTIFACTS: Final = (
@@ -145,7 +145,7 @@ class Manifest:
     profile: Profile = "standard"
     verify_paths: tuple[str, ...] = (".",)
     hook_manager: HookManager = "pre-commit"
-    disabled_capabilities: tuple[str, ...] = dataclass_field(default=(), compare=False)
+    disabled_capabilities: tuple[str, ...] = dataclass_field(default=QUALITY_ANALYZERS, compare=False)
     excluded_paths: tuple[str, ...] = ()
     excluded_rules: tuple[str, ...] = ()
     exclusion_overrides: tuple[ExclusionOverride, ...] = ()

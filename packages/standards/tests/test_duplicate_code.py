@@ -6,15 +6,16 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from sarj_standards.libs.adoption import devops
-from sarj_standards.libs.adoption.manifest import Manifest
+import sarj_standards.cli.main as cli
+from sarj_standards.libs.adoption import devops, lifecycle, upgrade
+from sarj_standards.libs.adoption.manifest import ALL_CAPABILITIES, MANIFEST_NAME, Manifest, adopted_version, load
 from sarj_standards.libs.diagnostics import Completion, Diagnostic, Severity
 from sarj_standards.libs.linting.duplicate_code import TEST_GLOBS, analyze_duplicates, parse_jscpd
 from sarj_standards.libs.linting.external import ProcessOutput, analyze_external
 
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Iterable, Sequence
 
     from sarj_standards.libs.linting.external import ProcessRunner
 
@@ -186,13 +187,51 @@ def test_enabled_capability_scans_the_tree_not_the_changed_files(tmp_path: Path)
     assert calls[0][0][-1] == "."
 
 
-def test_existing_consumers_opt_in_while_new_adopters_get_the_detector() -> None:
-    def manifest(version: str) -> Manifest:
-        return Manifest(version=version, configs=("ruff",), python_dest=".", typescript_dest=".")
+def test_detector_is_opt_in_for_new_and_upgraded_manifests() -> None:
+    def manifest(version: str, disabled: tuple[str, ...]) -> Manifest:
+        return Manifest(
+            version=version, configs=("ruff",), python_dest=".", typescript_dest=".", disabled_capabilities=disabled
+        )
 
-    assert "jscpd" in manifest("8.43.0").enabled_capabilities
-    assert "jscpd" not in manifest("8.42.2").enabled_capabilities
-    assert '"jscpd"' in manifest("8.42.2").render().split("[artifacts]")[0]
+    fresh = Manifest(version="8.43.0", configs=("ruff",), python_dest=".", typescript_dest=".")
+    assert "jscpd" not in fresh.enabled_capabilities
+    assert "jscpd" in manifest("8.43.0", ()).enabled_capabilities
+    assert "jscpd" not in manifest("8.42.2", ()).enabled_capabilities
+
+
+def test_setup_preserves_the_detector_choice(tmp_path: Path) -> None:
+    def setup() -> tuple[str, ...]:
+        assert cli.main(["--root", str(tmp_path), "setup", "--no-install"]) == 0
+        adopted = load(tmp_path)
+        assert adopted is not None
+        return adopted.disabled_capabilities
+
+    (tmp_path / "package.json").write_text('{"name":"fixture"}\n')
+    assert "jscpd" in setup()
+    path = tmp_path / MANIFEST_NAME
+    path.write_text(path.read_text().replace('  "jscpd",\n', ""))
+    assert "jscpd" not in setup()
+
+
+def test_upgrade_from_an_older_bundle_keeps_the_detector_off(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    others = [name for name in ALL_CAPABILITIES if name != "jscpd"]
+    (tmp_path / MANIFEST_NAME).write_text(
+        f'schema = 4\nbundle = "8.42.2"\n[capabilities]\ndisable = {json.dumps(others)}\n[hooks]\nmanager = "none"\n'
+    )
+
+    def install(_commands: Iterable[lifecycle.Command]) -> int:
+        return 0
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- skip native tool installation while exercising the real manifest upgrade.
+        lifecycle, "execute", install
+    )
+
+    assert upgrade.apply(upgrade.build_plan(tmp_path)) == 0
+
+    upgraded = load(tmp_path)
+    assert upgraded is not None
+    assert upgraded.version == adopted_version()
+    assert "jscpd" not in upgraded.enabled_capabilities
 
 
 def test_setup_installs_the_detector_only_when_enabled(tmp_path: Path) -> None:

@@ -511,7 +511,7 @@ def test_manifest_renders_formatter_stable_owned_fields(tmp_path: Path) -> None:
     expected = (
         "# Managed by `code-standards setup`; commit this file.\n"
         f'bundle = "{manifest.adopted_version()}"\nrule_profile = "all"\nschema = 4\n\n'
-        "[capabilities]\ndisable = []\n\n"
+        '[capabilities]\ndisable = ["jscpd"]\n\n'
         '[artifacts]\ndurable = [\n  "docs/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",\n'
         '  "docs/short",\n]\n\n'
         '[dest]\nkotlin = "."\npython = "."\nswift = "."\ntypescript = "."\n\n'

@@ -372,7 +372,7 @@ def analyze_external(
             )
         )
     except (OSError, TypeError, ValueError, RecursionError, yaml.YAMLError, zipfile.BadZipFile) as exc:
-        issue = ExecutionIssue("mobile-tools", "provisioning-failure", _redact_message(str(exc), root))
+        issue = ExecutionIssue("mobile-tools", "provisioning-failure", redact_message(str(exc), root))
         reports.append(ToolReport("mobile-tools", Completion.FAILED, issues=(issue,)))
 
     def collect_python_reports() -> None:
@@ -430,7 +430,7 @@ def analyze_external(
                 root, routed.typescript, label="analysis", expand_directories=True
             )
         except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
-            message = _redact_message(f"{type(exc).__name__}: {exc}", root)
+            message = redact_message(f"{type(exc).__name__}: {exc}", root)
             issue = ExecutionIssue("eslint", "configuration-failure", message)
             reports.append(ToolReport("eslint", Completion.FAILED, issues=(issue,)))
             return tuple(reports)
@@ -610,7 +610,7 @@ def _security_reports(
             files, root=root, capabilities=capabilities, checkov_rule_ids=checkov_checks
         )
     except (OSError, TypeError, ValueError) as exc:
-        issue = ExecutionIssue("security-tools", "invalid-input", _redact_message(str(exc), root))
+        issue = ExecutionIssue("security-tools", "invalid-input", redact_message(str(exc), root))
         return (ToolReport("security-tools", Completion.FAILED, issues=(issue,)),)
     reports: list[ToolReport] = []
     if selected.workflows and (capabilities is None or "zizmor" in capabilities):
@@ -987,7 +987,7 @@ def _invoke_text_tool(
     try:  # ruff: ignore[too-many-statements-in-try-clause] -- one boundary normalizes process failures and diagnostics.
         output = runner(argv, cwd=cwd)
         if output.returncode in fatal_codes or output.returncode not in {0, *finding_codes}:
-            message = _redact_message(output.stderr.strip() or f"{name} exited {output.returncode}", root)
+            message = redact_message(output.stderr.strip() or f"{name} exited {output.returncode}", root)
             issue = ExecutionIssue(name, "tool-failure", message, output.returncode)
             return ToolReport(name, Completion.FAILED, issues=(issue,))
         payload = output.stdout.strip() or empty_payload
@@ -996,7 +996,7 @@ def _invoke_text_tool(
         else:
             diagnostics = parser(payload, root=root)
         if output.returncode in finding_codes and not diagnostics:
-            message = _redact_message(output.stderr.strip() or f"{name} reported findings without diagnostics", root)
+            message = redact_message(output.stderr.strip() or f"{name} reported findings without diagnostics", root)
             issue = ExecutionIssue(name, "protocol-mismatch", message, output.returncode)
             return ToolReport(name, Completion.FAILED, issues=(issue,))
         return ToolReport(
@@ -1009,7 +1009,7 @@ def _invoke_text_tool(
             file_count=file_count,
         )
     except (OSError, TypeError, ValueError, RecursionError, json.JSONDecodeError, subprocess.SubprocessError) as exc:
-        issue = ExecutionIssue(name, "tool-failure", _redact_message(f"{type(exc).__name__}: {exc}", root))
+        issue = ExecutionIssue(name, "tool-failure", redact_message(f"{type(exc).__name__}: {exc}", root))
         return ToolReport(
             name,
             Completion.FAILED,
@@ -1035,13 +1035,13 @@ def _invoke_detekt(
             report_path = Path(temporary_directory) / "report.sarif"
             output = runner((*argv, "--report", f"sarif:{report_path}"), cwd=cwd)
             if output.returncode in {1, 3} or output.returncode not in {0, _DETEKT_FINDINGS}:
-                message = _redact_message(output.stderr.strip() or f"detekt exited {output.returncode}", root)
+                message = redact_message(output.stderr.strip() or f"detekt exited {output.returncode}", root)
                 issue = ExecutionIssue("detekt", "tool-failure", message, output.returncode)
                 return ToolReport("detekt", Completion.FAILED, issues=(issue,))
             payload = read_bounded_report(report_path, tool="detekt", format_name="SARIF")
             diagnostics = parse_sarif(payload, root=root)
             if output.returncode == _DETEKT_FINDINGS and not diagnostics:
-                message = _redact_message(
+                message = redact_message(
                     output.stderr.strip() or "detekt reported findings without diagnostics",
                     root,
                 )
@@ -1057,7 +1057,7 @@ def _invoke_detekt(
             file_count=file_count,
         )
     except (OSError, TypeError, ValueError, RecursionError, json.JSONDecodeError, subprocess.SubprocessError) as exc:
-        issue = ExecutionIssue("detekt", "tool-failure", _redact_message(f"{type(exc).__name__}: {exc}", root))
+        issue = ExecutionIssue("detekt", "tool-failure", redact_message(f"{type(exc).__name__}: {exc}", root))
         return ToolReport(
             "detekt",
             Completion.FAILED,
@@ -1883,7 +1883,7 @@ def _invoke_deptry_projects(
             payload = "\n".join(value for value in (output.stdout, output.stderr) if value)
             diagnostics = parse_deptry(payload, root=root, project=project)
             if output.returncode not in {0, 1} or (output.returncode == 1 and not diagnostics):
-                message = _redact_message(output.stderr.strip() or f"deptry exited {output.returncode}", root)
+                message = redact_message(output.stderr.strip() or f"deptry exited {output.returncode}", root)
                 issue = ExecutionIssue("deptry", "tool-failure", message, output.returncode)
                 reports.append(
                     ToolReport(
@@ -1909,7 +1909,7 @@ def _invoke_deptry_projects(
                 )
             )
         except (OSError, TypeError, ValueError, RecursionError, subprocess.SubprocessError) as exc:
-            issue = ExecutionIssue("deptry", "tool-failure", _redact_message(f"{type(exc).__name__}: {exc}", root))
+            issue = ExecutionIssue("deptry", "tool-failure", redact_message(f"{type(exc).__name__}: {exc}", root))
             reports.append(
                 ToolReport(
                     "deptry",
@@ -2004,7 +2004,7 @@ def _shellcheck_version_issue(root: Path) -> ExecutionIssue | None:
     try:
         output = run_process(("shellcheck", "--version"), cwd=root)
     except (OSError, subprocess.SubprocessError) as exc:
-        return ExecutionIssue("shellcheck", "missing-dependency", _redact_message(str(exc), root))
+        return ExecutionIssue("shellcheck", "missing-dependency", redact_message(str(exc), root))
     match = _SHELLCHECK_VERSION_RE.search(output.stdout)
     actual = None if match is None else match.group("version")
     if output.returncode != 0 or actual != _SHELLCHECK_VERSION:
@@ -2466,7 +2466,7 @@ def _invoke(
             version=version if report.completion is Completion.COMPLETE else None,
         )
     except (OSError, TypeError, ValueError, RecursionError, json.JSONDecodeError, subprocess.SubprocessError) as exc:
-        message = _redact_message(f"{type(exc).__name__}: {exc}", root)
+        message = redact_message(f"{type(exc).__name__}: {exc}", root)
         issue = ExecutionIssue(name, "tool-failure", message)
         return ToolReport(
             name,
@@ -2491,13 +2491,13 @@ def _invoke_unchecked(
 ) -> ToolReport:
     output = runner(argv, cwd=cwd)
     if output.returncode not in {0, 1}:
-        message = _redact_message(output.stderr.strip() or f"{name} exited {output.returncode}", root)
+        message = redact_message(output.stderr.strip() or f"{name} exited {output.returncode}", root)
         issue = ExecutionIssue(name, "tool-failure", message, output.returncode)
         return ToolReport(name, Completion.FAILED, issues=(issue,))
     if not output.stdout.strip():
         stderr = output.stderr.strip()
         kind = "tool-failure" if stderr else "protocol-mismatch"
-        message = _redact_message(stderr or f"{name} returned empty structured output", root)
+        message = redact_message(stderr or f"{name} returned empty structured output", root)
         issue = ExecutionIssue(name, kind, message, output.returncode)
         return ToolReport(name, Completion.FAILED, issues=(issue,))
     try:
@@ -2505,10 +2505,10 @@ def _invoke_unchecked(
     except json.JSONDecodeError as exc:
         stderr = output.stderr.strip()
         message = stderr or f"{name} returned invalid structured JSON at line {exc.lineno}, column {exc.colno}"
-        issue = ExecutionIssue(name, "protocol-mismatch", _redact_message(message, root), output.returncode)
+        issue = ExecutionIssue(name, "protocol-mismatch", redact_message(message, root), output.returncode)
         return ToolReport(name, Completion.FAILED, issues=(issue,))
     if output.returncode == 1 and not diagnostics:
-        message = _redact_message(output.stderr.strip() or f"{name} exited 1 but reported no diagnostics", root)
+        message = redact_message(output.stderr.strip() or f"{name} exited 1 but reported no diagnostics", root)
         issue = ExecutionIssue(name, "protocol-mismatch", message, output.returncode)
         return ToolReport(name, Completion.FAILED, issues=(issue,))
     if validator is not None and (issue := validator(output.stdout, root=root)) is not None:
@@ -2541,7 +2541,7 @@ def parse_ruff(payload: str, *, root: Path) -> tuple[Diagnostic, ...]:
         diagnostics.append(
             Diagnostic(
                 code,
-                _redact_message(_text(item, "message"), root),
+                redact_message(_text(item, "message"), root),
                 Severity.ERROR,
                 "ruff",
                 Location(_relative(path, root), region=Region(start, end)),
@@ -2567,7 +2567,7 @@ def parse_deptry(payload: str, *, root: Path, project: Path | None = None) -> tu
         diagnostics.append(
             Diagnostic(
                 code,
-                _redact_message(_github_command_unescape(match.group("message")), root),
+                redact_message(_github_command_unescape(match.group("message")), root),
                 Severity.WARNING,
                 "deptry",
                 Location(_relative(path, root), position=position),
@@ -2613,7 +2613,7 @@ def parse_swiftformat(payload: str, *, root: Path) -> tuple[Diagnostic, ...]:
         diagnostics.append(
             Diagnostic(
                 rule,
-                _redact_message(match.group("message"), root),
+                redact_message(match.group("message"), root),
                 Severity.ERROR,
                 "swiftformat",
                 Location(_relative(path, root), position=position),
@@ -2650,7 +2650,7 @@ def parse_swiftlint(payload: str, *, root: Path) -> tuple[Diagnostic, ...]:
         diagnostics.append(
             Diagnostic(
                 rule,
-                _redact_message(_text(item, "reason"), root),
+                redact_message(_text(item, "reason"), root),
                 severity,
                 "swiftlint",
                 Location(_relative(path, root), position=position),
@@ -2690,7 +2690,7 @@ def parse_ktlint(  # ruff: ignore[too-many-locals] -- protocol normalization kee
             diagnostics.append(
                 Diagnostic(
                     rule,
-                    _redact_message(message_value, root),
+                    redact_message(message_value, root),
                     Severity.ERROR,
                     "ktlint",
                     Location(_relative(path, root), position=position),
@@ -2741,7 +2741,7 @@ def parse_mobsfscan(  # ruff: ignore[too-many-locals] -- protocol normalization 
         diagnostics.append(
             Diagnostic(
                 rule,
-                _redact_message(_text(extra, "message"), root),
+                redact_message(_text(extra, "message"), root),
                 severity,
                 "mobsfscan",
                 Location(_relative(path, root), position=position),
@@ -2806,7 +2806,7 @@ def parse_sarif(  # ruff: ignore[too-many-locals] -- protocol normalization keep
             diagnostics.append(
                 Diagnostic(
                     rule,
-                    _redact_message(message, root),
+                    redact_message(message, root),
                     severity,
                     "detekt",
                     Location(_relative(path, root), position=position),
@@ -2831,7 +2831,7 @@ def parse_basedpyright(payload: str, *, root: Path) -> tuple[Diagnostic, ...]:
         diagnostics.append(
             Diagnostic(
                 rule,
-                _redact_message(item.message, root),
+                redact_message(item.message, root),
                 _severity_text(item.severity),
                 "basedpyright",
                 location,
@@ -2862,7 +2862,7 @@ def parse_shellcheck(payload: str, *, root: Path) -> tuple[Diagnostic, ...]:
         diagnostics.append(
             Diagnostic(
                 rule,
-                _redact_message(item.message, root),
+                redact_message(item.message, root),
                 severity,
                 "shellcheck",
                 Location(_relative(path, root), region=Region(start, end)),
@@ -2958,7 +2958,7 @@ def _parse_react_doctor_report(
             diagnostics.append(
                 Diagnostic(
                     rule,
-                    _redact_message(item.message, root),
+                    redact_message(item.message, root),
                     Severity.ERROR,
                     "react-doctor",
                     location,
@@ -3387,7 +3387,7 @@ def _parse_eslint_message(
         raise ValueError(msg)
     return Diagnostic(
         rule,
-        _redact_message(_text(item, "message"), root),
+        redact_message(_text(item, "message"), root),
         severity,
         "eslint",
         location,
@@ -3437,7 +3437,7 @@ def _relative(path: Path, root: Path) -> str:
         raise ValueError(msg) from exc
 
 
-def _redact_message(value: str, root: Path) -> str:
+def redact_message(value: str, root: Path) -> str:
     message = value.replace(str(root), ".")
     message = re.sub(r"(?i)\b(token|secret|password|api[_-]?key)=\S+", r"\1=<redacted>", message)
     message = re.sub(r"(?i)\b(authorization\s*:\s*bearer)\s+\S+", r"\1 <redacted>", message)
