@@ -17,7 +17,9 @@ from sarj_python_lint.rule_base import (
     is_suppressed,
 )
 from sarj_python_lint.rules._ast_index import nodes
+from sarj_python_lint.rules._closed_helpers import closed_references, direct_call
 from sarj_python_lint.rules._paths import is_test_path
+from sarj_python_lint.rules._resource_provenance import ResourceProvenance
 
 
 if TYPE_CHECKING:
@@ -44,13 +46,43 @@ class UnusedTestFactoryOption(Rule):
         category=RuleCategory.TESTING,
         autofix=AutofixPolicy.NONE,
         limitations=(
-            "Literal findings consider only private _make_ and _build_ helpers nested directly inside test functions, with at least two known direct callers and straight-line construction bodies.",
+            "Literal findings consider private module-level helpers or _make_ and _build_ helpers nested directly inside test functions, with at least two known direct callers and straight-line construction bodies.",
             "Callable findings consider module-level private helpers with the same construction shape and an earlier undecorated local function default, only when at least two known direct callers all omit that option.",
-            "Conftest callable factories, explicit callable arguments, exports, decorators, escaping references, reflection, unpacking, rebinding, shadowing and ambiguous mutation or patch targets are excluded.",
+            "Conftest module-level factories, explicit callable arguments, exports, decorators, escaping references, reflection, unpacking, rebinding, shadowing and ambiguous mutation or patch targets are excluded.",
             "Same-name declarations elsewhere in the file conservatively exclude a helper. No autofix: this warning identifies unexercised customization, not an invalid callable contract.",
             "Callable findings describe known callers in this file; cross-module and dynamic callers are not inferred. Retain intentional extension points with a reasoned exception, preserving definition-time default capture.",
         ),
         examples=(
+            RuleExample(
+                example_id="module-invariant-option",
+                scenario="module-literal",
+                title="A private shared helper's callers never vary the option",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "tests/test_widget.py",
+                        "def _widget(*, size=3):\n    return Widget(size=size)\n_widget()\n_widget(size=3)\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("tests/test_widget.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="module-varied-option",
+                scenario="module-literal",
+                title="A known caller exercises a distinct scenario value",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "tests/test_widget.py",
+                        "def _widget(*, size=3):\n    return Widget(size=size)\n_widget()\n_widget(size=4)\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("tests/test_widget.py"),
+                expected_count=0,
+                public=True,
+            ),
             RuleExample(
                 example_id="invariant-size-option",
                 title="Repeated calls never vary the option",
@@ -120,34 +152,61 @@ class UnusedTestFactoryOption(Rule):
     def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
         path = context.path
         signals = context.symbol_source
-        if not is_test_path(path) or context.generated or not ("_make_" in signals or "_build_" in signals):
+        if not is_test_path(path) or context.generated or "def _" not in signals:
             return []
         tree = context.tree
         if tree is None or (
             any(node.id in _REFLECTION for node in context.nodes(ast.Name))
-            or any(node.attr in _REFLECTION or node.attr == "__dict__" for node in context.nodes(ast.Attribute))
-            or any(node.name in _REFLECTION or node.name == "*" for node in context.nodes(ast.alias))
+            or any(node.attr in _REFLECTION | {"__dict__"} for node in context.nodes(ast.Attribute))
+            or any(node.name in _REFLECTION | {"*"} for node in context.nodes(ast.alias))
         ):
             return []
         lines = context.source_lines
         findings: list[Diagnostic] = []
+        provenance: ResourceProvenance | None = None
         for function in context.nodes(ast.FunctionDef):
             if not _is_factory(function):
                 continue
             owner = context.parents.get(function)
-            if isinstance(owner, ast.FunctionDef | ast.AsyncFunctionDef) and owner.name.startswith("test_"):
+            if (
+                isinstance(owner, ast.FunctionDef | ast.AsyncFunctionDef)
+                and owner.name.startswith("test_")
+                and function.name.startswith(("_make_", "_build_"))
+            ):
                 findings.extend(
                     _factory_findings(tree, function, path, lines, self.code, node_index=context.node_index)
                 )
-            elif owner is tree and path.name != "conftest.py":
-                findings.extend(_callable_factory_findings(context, function, self.code))
+                continue
+            if owner is not tree or path.name == "conftest.py":
+                continue
+            provenance = provenance or ResourceProvenance(context)
+            if _closed_module_factory(context, function, provenance):
+                findings.extend(
+                    _factory_findings(tree, function, path, lines, self.code, node_index=context.node_index)
+                )
+            findings.extend(_callable_factory_findings(context, function, self.code))
         return sorted(findings, key=lambda item: (item.line, item.col))
+
+
+def _closed_module_factory(
+    context: PythonFileContext, function: ast.FunctionDef, provenance: ResourceProvenance
+) -> bool:
+    references = closed_references(context, function, provenance)
+    arguments = {
+        argument.arg for argument in (*function.args.posonlyargs, *function.args.args, *function.args.kwonlyargs)
+    }
+    return (
+        references is not None
+        and all(direct_call(reference, context) is not None for reference in references)
+        and not any(node.id in arguments and not isinstance(node.ctx, ast.Load) for node in nodes(function, ast.Name))
+    )
 
 
 def _is_factory(node: ast.stmt) -> TypeGuard[ast.FunctionDef]:
     return (
         isinstance(node, ast.FunctionDef)
-        and node.name.startswith(("_make_", "_build_"))
+        and node.name.startswith("_")
+        and not node.name.startswith("__")
         and not node.decorator_list
         and node.args.vararg is None
         and node.args.kwarg is None
