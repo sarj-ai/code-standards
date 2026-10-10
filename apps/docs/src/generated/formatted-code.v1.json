@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "bac7e46583cc681b56a64ec3f958d8f53727c61dadec7077b2e847927d457099",
-  "cliSha256": "9dd48efe7501ae7aa520ec2f75af02cd4d67433c1c2bf15b2958c0ece63ecaff",
+  "catalogSha256": "8f0499c05e22590ef3ebf7730d3d2d2940b95918f1ea5fe572bba050f16befae",
+  "cliSha256": "67582ced83d715e30c046f9c31acbe3c73c65b42b869d76d713ab83dfc4104f4",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -1114,6 +1114,51 @@
     "eslint:no-json-stringify-error": {
       "examples": [
         {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/error.js",
+              "source": "JSON.stringify({\n  error: new Error(\"lost\"),\n  [\"__proto__\"]: {\n    toJSON() {\n      return { message: \"kept\" };\n    },\n  },\n});\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/error.js",
+          "id": "computed-prototype-data",
+          "outcome": "reject",
+          "scenarioId": "native-prototype-serializer",
+          "title": "A computed prototype name remains ordinary serialized data"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/error.js",
+              "source": "Error = class Other {\n  message = \"kept\";\n};\nconst value = new Error();\nJSON.stringify(value);\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/error.js",
+          "id": "constructor-after-write",
+          "outcome": "accept",
+          "scenarioId": "explicit-constructor-write",
+          "title": "A replaced constructor does not prove a native Error"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/error.js",
+              "source": "const value = new Error(\"lost\");\nError = class Other {\n  message = \"kept\";\n};\nJSON.stringify(value);\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/error.js",
+          "id": "constructor-before-write",
+          "outcome": "reject",
+          "scenarioId": "explicit-constructor-write",
+          "title": "A later write does not change an already constructed native Error"
+        },
+        {
           "expectedCount": 0,
           "files": [
             {
@@ -1144,6 +1189,96 @@
           "title": "Narrow an unknown catch value before selecting fields"
         },
         {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/error.js",
+              "source": "JSON.stringify({\n  error: new Error(\"lost\"),\n  toJSON() {\n    return { message: \"kept\" };\n  },\n});\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/error.js",
+          "id": "explicit-to-json-hook",
+          "outcome": "accept",
+          "scenarioId": "custom-serializer-contract",
+          "title": "An explicit callable toJSON owns its serialization contract"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/error.js",
+              "source": "JSON.stringify({\n  error: new Error(\"lost\"),\n  __proto__: {\n    toJSON() {\n      return { message: \"kept\" };\n    },\n  },\n});\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/error.js",
+          "id": "literal-prototype-hook",
+          "outcome": "accept",
+          "scenarioId": "native-prototype-serializer",
+          "title": "A literal prototype hook owns the payload serializer contract"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/error.js",
+              "source": "JSON.stringify = (value) => \"kept:\" + value.message;\nJSON.stringify(new Error(\"lost\"));\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/error.js",
+          "id": "native-serializer-after-write",
+          "outcome": "accept",
+          "scenarioId": "explicit-serializer-write",
+          "title": "A replaced serializer owns its error-field contract"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/error.js",
+              "source": "const result = JSON.stringify(new Error(\"lost\"));\nJSON.stringify = (value) => \"kept:\" + value.message;\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/error.js",
+          "id": "native-serializer-before-write",
+          "outcome": "reject",
+          "scenarioId": "explicit-serializer-write",
+          "title": "A later write does not change an earlier native serialization"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/error.js",
+              "source": "JSON.stringify({ error: new Error(\"lost\"), toJSON: 42 });\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/error.js",
+          "id": "noncallable-to-json",
+          "outcome": "reject",
+          "scenarioId": "custom-serializer-contract",
+          "title": "A noncallable toJSON does not replace native serialization"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/error.js",
+              "source": "const error = new Error(\"lost\", { cause: \"kept\" });\nJSON.stringify(error.cause);\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/error.js",
+          "id": "scalar-cause",
+          "outcome": "accept",
+          "scenarioId": "member-value-provenance",
+          "title": "Native Error cause can be a string value"
+        },
+        {
           "expectedCount": 1,
           "files": [
             {
@@ -1159,6 +1294,36 @@
           "title": "Keep native binding provenance"
         },
         {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/error.js",
+              "source": "const key = \"message\";\nconst error = new Error(\"lost\");\nJSON.stringify(error[key]);\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/error.js",
+          "id": "static-error-field",
+          "outcome": "accept",
+          "scenarioId": "static-property-provenance",
+          "title": "A constant message field selects the explicit string escape hatch"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/error.js",
+              "source": "const key = \"stringify\";\nJSON[key](new Error(\"lost\"));\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/error.js",
+          "id": "static-serializer-key",
+          "outcome": "reject",
+          "scenarioId": "static-property-provenance",
+          "title": "A constant computed serializer still loses native Error details"
+        },
+        {
           "expectedCount": 1,
           "files": [
             {
@@ -1172,6 +1337,21 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Do not stringify an Error object"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/error.js",
+              "source": "const error = new Error(\"lost\", { cause: \"kept\" });\nJSON.stringify(error);\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/error.js",
+          "id": "whole-error-with-cause",
+          "outcome": "reject",
+          "scenarioId": "member-value-provenance",
+          "title": "Serializing the whole Error still loses its native details"
         }
       ],
       "optionsSchemaSource": null
@@ -2063,6 +2243,36 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Do not swallow the rejection"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/load.ts",
+              "source": "const method = \"json\";\nnew Response(\"\")[method]().catch(() => null);\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/load.ts",
+          "id": "stable-computed-body-parser",
+          "outcome": "accept",
+          "scenarioId": "computed-method-scope",
+          "title": "Preserve a recognized optional body parse fallback"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/load.ts",
+              "source": "const method = \"catch\";\nPromise.reject(new Error(\"lost\"))[method](() => null);\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/load.ts",
+          "id": "stable-computed-catch",
+          "outcome": "reject",
+          "scenarioId": "computed-method-scope",
+          "title": "Report a rejection through a stable computed method"
         }
       ],
       "optionsSchemaSource": null
