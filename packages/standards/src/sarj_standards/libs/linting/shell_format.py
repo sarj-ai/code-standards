@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Annotated, Final
 
 import typer
 
-from sarj_standards.libs.adoption import transaction
+from sarj_standards.libs.adoption import manifest, transaction
 from sarj_standards.libs.diagnostics import (
     Completion,
     Diagnostic,
@@ -20,6 +20,7 @@ from sarj_standards.libs.diagnostics import (
 from . import textlint
 from .devops_tools import TOOLS, NativeToolError, checked_tool
 from .external import redact_message, run_process_input
+from .policy import Policy
 
 
 if TYPE_CHECKING:
@@ -54,11 +55,19 @@ def _executable(root: Path) -> Path:
 
 
 def _sources(root: Path, paths: Sequence[str]) -> tuple[tuple[Path, str, str], ...]:
+    adopted = manifest.load(root)
+    if adopted is not None and "shfmt" not in adopted.enabled_capabilities:
+        return ()
+    policy = Policy.from_manifest(root, adopted)
     sources: list[tuple[Path, str, str]] = []
     for raw in sorted(set(paths)):
         path = Path(raw)
         path = path if path.is_absolute() else root / path
-        path.resolve().relative_to(root)
+        relative = path.resolve().relative_to(root).as_posix()
+        if not policy.allows_path(path) or not policy.allows_rule(
+            format_diagnostic(path=relative, source="", formatted="")
+        ):
+            continue
         dialect = textlint.shell_dialect(path)
         if dialect is None:
             continue

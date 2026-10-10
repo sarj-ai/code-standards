@@ -2534,11 +2534,7 @@ def test_lefthook_setup_update_and_doctor_converge_installed_hooks(
     def install(commands: Iterable[lifecycle.Command]) -> int:
         nonlocal calls
         planned = tuple(commands)
-        assert [command.label for command in planned] == (
-            ["Lefthook repository hooks"]
-            if operation == "setup"
-            else ["Pinned native DevOps tools", "Lefthook repository hooks"]
-        )
+        assert [command.label for command in planned] == ["Pinned native DevOps tools", "Lefthook repository hooks"]
         calls += 1
         durable.write_text("pinned lefthook", encoding="utf-8")
         durable.chmod(0o755)

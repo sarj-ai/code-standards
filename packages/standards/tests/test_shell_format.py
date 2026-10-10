@@ -148,6 +148,30 @@ def test_fix_refuses_linked_targets(tmp_path: Path) -> None:
     assert source.read_text() == original
 
 
+@pytest.mark.parametrize("suppression", ["capability", "path", "rule", "override"])
+def test_labeled_suppressions_apply_to_check_and_fix(tmp_path: Path, suppression: str) -> None:
+    case = EvaluationCase("suppressed-indentation", Language.SHELL, "if true; then\necho ok\nfi\n")
+    path = tmp_path / "library.sh"
+    path.write_text(case.source)
+    adopted = manifest.Manifest(
+        version=manifest.adopted_version(),
+        configs=(),
+        python_dest=".",
+        typescript_dest=".",
+        disabled_capabilities=("shfmt",) if suppression == "capability" else (),
+        excluded_paths=("library.sh",) if suppression == "path" else (),
+        excluded_rules=("shfmt:format",) if suppression == "rule" else (),
+        exclusion_overrides=(manifest.ExclusionOverride(("library.sh",), ("shfmt:format",), "fixture"),)
+        if suppression == "override"
+        else (),
+    )
+    (tmp_path / manifest.MANIFEST_NAME).write_text(adopted.render())
+    assert shell_format.analyze_sources(root=tmp_path, paths=(str(path),)) == ()
+    assert lifecycle.selected_format_commands(tmp_path, (str(path),)) == []
+    assert shell_format.fix_sources(tmp_path, (str(path),)) == 0
+    assert path.read_text() == case.source
+
+
 def test_changed_file_formatting_cannot_hide_in_an_unchanged_hunk(tmp_path: Path) -> None:
     path = tmp_path / "job.sh"
     path.write_text("#!/bin/bash\nif true; then\necho ok\nfi\n")

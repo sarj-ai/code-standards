@@ -430,7 +430,7 @@ def selected_format_commands(root: Path, paths: Iterable[str]) -> list[Command]:
 
 
 def shell_format_commands(root: Path, paths: Iterable[str] | None = None) -> list[Command]:
-    from sarj_standards.libs.linting import textlint  # ruff: ignore[import-outside-top-level] -- only fix operations need shell source detection.
+    from sarj_standards.libs.linting import shell_format, textlint  # ruff: ignore[import-outside-top-level] -- only fix operations need shell source detection.
     from sarj_standards.libs.linting.policy import Policy  # ruff: ignore[import-outside-top-level] -- reuse adoption path exclusions.
 
     from . import doctor, manifest  # ruff: ignore[import-outside-top-level] -- shared source discovery avoids another tree walker.
@@ -441,7 +441,11 @@ def shell_format_commands(root: Path, paths: Iterable[str] | None = None) -> lis
     policy = Policy.from_manifest(root, adopted)
     selected = doctor.authored_files(root) if paths is None else tuple(Path(path) for path in paths)
     shells = tuple(
-        str(path) for path in selected if policy.allows_path(path) and textlint.shell_dialect(path) is not None
+        str(path)
+        for path in selected
+        if policy.allows_path(path)
+        and policy.allows_rule(shell_format.format_diagnostic(path=policy.relative(path), source="", formatted=""))
+        and textlint.shell_dialect(path) is not None
     )
     if not shells:
         return []

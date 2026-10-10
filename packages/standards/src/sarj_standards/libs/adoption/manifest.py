@@ -42,6 +42,7 @@ class _UpstreamRuleEngine(StrEnum):
     CHECKOV = "checkov"
     ESLINT = "eslint"
     SHELLCHECK = "shellcheck"
+    SHFMT = "shfmt"
     ZIZMOR = "zizmor"
 
 
@@ -693,6 +694,8 @@ def _validate_source_tool_rule(engine: _UpstreamRuleEngine, rule: str, selector:
 
     if engine is _UpstreamRuleEngine.SHELLCHECK:
         valid = re.fullmatch(r"SC[0-9]{4}", rule) is not None
+    elif engine is _UpstreamRuleEngine.SHFMT:
+        valid = rule == "format"
     else:
         known = security_tools.CHECKOV_CHECKS if engine is _UpstreamRuleEngine.CHECKOV else security_tools.ZIZMOR_RULES
         valid = rule in known
