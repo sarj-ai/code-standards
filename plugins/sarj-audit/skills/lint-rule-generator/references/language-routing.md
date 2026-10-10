@@ -27,3 +27,16 @@ Before custom code, record:
 Diagnostic messages name the observed construct and a concrete remediation.
 They do not claim AI authorship, speculate about intent, or shame the author.
 Suppressions must be exact-code, local, and auditable.
+
+For inherited TypeScript compiler options, use the native compiler to compare
+the current config with an in-memory omission before recommending deletion.
+Limit this review to scalar booleans already supplied explicitly by a known
+parent of a private leaf build config. Require unchanged parsed options, source
+selection, project references, watch/type-acquisition settings and diagnostics;
+do not infer defaults or manually reproduce `extends` resolution. Preserve
+intentional pins, migration overrides, independent consumers and public base
+configs. Arrays, paths, files, references and other config contracts remain out
+of scope even when their current parsed values happen to agree. The native
+equivalence scenarios live in `packages/typescript/tests/tsconfig-policy.test.ts`;
+this is audit guidance, not an enabled config detector. Do not add a separate
+checker or attach config findings to unrelated source files.
