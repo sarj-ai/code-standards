@@ -117,7 +117,7 @@ class NoPositionalPsycopgRowEscape(Rule):
     @override
     def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
         path = context.path
-        source = context.source
+        signals = context.symbol_source
         if (
             context.generated
             or is_test_path(path)
@@ -125,7 +125,7 @@ class NoPositionalPsycopgRowEscape(Rule):
             or "migrations" in {part.lower() for part in path.parts}
         ):
             return []
-        if ".cursor" not in source or not any(f".{method}" in source for method in _FETCH_METHODS):
+        if "cursor" not in signals or not any(method in signals for method in _FETCH_METHODS):
             return []
         tree = context.tree
         if tree is None:

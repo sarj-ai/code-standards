@@ -44,6 +44,8 @@ export const NO_ENUM_DOCUMENTATION = {
       expectedCount: 1,
       public: true,
     },
+    { id: "authored-after-comment", scenarioId: "native-header-boundary", title: "Keep executable authored code in scope", outcome: "match", files: [{ path: "src/status.ts", source: "// ordinary header\u2028const marker=\"auto-generated file\"; enum Mode {Start} console.log(Mode.Start, marker);" }], focusPath: "src/status.ts", expectedCount: 1, public: true },
+    { id: "generated-header", scenarioId: "native-header-boundary", title: "Respect a native generated banner", outcome: "no-match", files: [{ path: "src/status.ts", source: "// auto-generated file\u2028const marker=\"auto-generated file\"; enum Mode {Start} console.log(Mode.Start, marker);" }], focusPath: "src/status.ts", expectedCount: 0, public: true },
   ],
 } as const satisfies RuleDocumentation;
 

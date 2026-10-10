@@ -11,7 +11,7 @@ import re
 from types import MappingProxyType
 from typing import TYPE_CHECKING, final
 
-from sarj_python_lint._source import read_python_source
+from sarj_python_lint._source import read_python_source, symbol_prefilter_source
 from sarj_python_lint.rules._ast_index import walk as walk_ast
 from sarj_python_lint.rules._first_party import FirstPartyFacts, project_root
 from sarj_python_lint.rules._paths import is_generated
@@ -46,7 +46,6 @@ _MAX_FILES_PER_ROOT = 10_000
 _MAX_FILE_BYTES = 500_000
 _MAX_SOURCE_CHARS_PER_ROOT = 50_000_000
 _NEW_TYPE_MIN_ARGS = 2
-_MATCH_CLASS_RE: re.Pattern[str] = re.compile(r"\bcase\s+([A-Z][A-Za-z0-9_]*)\s*\(")
 
 
 @dataclass(frozen=True, slots=True)
@@ -210,7 +209,7 @@ class ProjectIndexSet:
         return frozenset(
             (candidate.path, node.name)
             for candidate in self._units.values()
-            if candidate.tree is not None and name in candidate.source
+            if candidate.tree is not None
             for node in candidate.tree.body
             if isinstance(node, ast.ClassDef)
             and any(_direct_base_symbol(candidate, base) == target for base in node.bases)
@@ -223,7 +222,7 @@ class ProjectIndexSet:
         return frozenset(
             (candidate.path, owner.name)
             for candidate in self._units.values()
-            if candidate.tree is not None and name in candidate.source
+            if candidate.tree is not None
             for owner in candidate.tree.body
             if isinstance(owner, ast.ClassDef) and _class_has_typed_dependency(candidate, owner, target)
         )
@@ -236,7 +235,6 @@ class ProjectIndexSet:
             candidate.path
             for candidate in self._units.values()
             if candidate.tree is not None
-            and name in candidate.source
             and any(
                 _is_mock_spec_for(candidate, call, target)
                 for call in walk_ast(candidate.tree)
@@ -265,15 +263,9 @@ class ProjectIndexSet:
 
 
 def _units(sources: Mapping[Path, str], roots: Sequence[Path] = ()) -> dict[Path, SourceUnit]:
-    matched_classes = {
-        match.group(1)
-        for source in sources.values()
-        if "match " in source and "str(" in source
-        for match in _MATCH_CLASS_RE.finditer(source)
-    }
     parsed: dict[Path, tuple[str | None, str, ast.Module | None]] = {}
     for path, source in sources.items():
-        if not _is_index_candidate(source, matched_classes):
+        if not _is_index_candidate(symbol_prefilter_source(source)):
             continue
         tree: ast.Module | None = None
         with suppress(SyntaxError):
@@ -291,16 +283,8 @@ def _units(sources: Mapping[Path, str], roots: Sequence[Path] = ()) -> dict[Path
     }
 
 
-def _is_index_candidate(source: str, matched_classes: set[str]) -> bool:
-    return (
-        "NewType(" in source
-        or "class " in source
-        or "spec=" in source
-        or "spec_set=" in source
-        or "create_autospec(" in source
-        or ("match " in source and "str(" in source)
-        or any(f"class {name}" in source for name in matched_classes)
-    )
+def _is_index_candidate(source: str) -> bool:
+    return "NewType" in source or "class" in source or "spec" in source or ("match" in source and "str" in source)
 
 
 def _module_name(path: Path, roots: Sequence[Path]) -> str | None:

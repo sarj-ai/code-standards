@@ -145,7 +145,6 @@ _OPEN_DOMAIN_SUFFIXES = ("_encoding", "_ext", "_protocol", "_username")
 
 #: A "short lowercase token" — the shape enum member values take.
 _LOWER_TOKEN_RE = re.compile(r"^[a-z][a-z0-9_-]{0,30}$")
-_STRING_MEMBERSHIP_RE = re.compile(r"\b(?:not\s+)?in\s*[({[]\s*[\"']")
 
 #: The stdlib `open()` mode vocabulary: 1-3 characters drawn from `rwxab+t`.
 _FILE_MODE_RE = re.compile(r"[rwxabt+]{1,3}")
@@ -208,6 +207,65 @@ class PreferStrEnum(Rule):
             "Generated code, external vocabularies, open-ended name domains, and test-only comparison clusters are excluded.",
         ),
         examples=(
+            RuleExample(
+                example_id="tabbed-rejecting-match",
+                scenario="tabbed-match-admission",
+                title="Tab-separated matching keeps the closed string domain",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/render.py",
+                        'def render(kind: str) -> str:\n    match\tkind:\n        case\t"text":\n            return "Text"\n        case\t"image":\n            return "Image"\n        case\t_:\n            raise ValueError("unsupported kind")\n',
+                    ),
+                ),
+                focus_path=PurePosixPath("app/render.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="tabbed-open-match",
+                scenario="tabbed-match-admission",
+                title="An open tab-separated match keeps string dispatch",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/render.py",
+                        'def render(kind: str) -> str:\n    match\tkind:\n        case\t"text":\n            return "Text"\n        case\t"image":\n            return "Image"\n        case\t_:\n            return kind\n',
+                    ),
+                ),
+                focus_path=PurePosixPath("app/render.py"),
+                expected_count=0,
+                public=True,
+            ),
+            RuleExample(
+                example_id="parenthesized-rejecting-membership",
+                scenario="membership-admission",
+                title="Parentheses do not open a rejecting string domain",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/render.py",
+                        'def render(kind: str) -> str:\n    if kind not in ({r"text", r"image"}):\n        raise ValueError("unsupported kind")\n    return kind\n',
+                    ),
+                ),
+                focus_path=PurePosixPath("app/render.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="parenthesized-open-membership",
+                scenario="membership-admission",
+                title="Membership data without rejection keeps strings",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/render.py", 'def render(kind: str) -> str:\n    return kind in ({r"text", r"image"})\n'
+                    ),
+                ),
+                focus_path=PurePosixPath("app/render.py"),
+                expected_count=0,
+                public=True,
+            ),
             RuleExample(
                 example_id="raw-string-choice-field",
                 title="String field backed by a closed choice collection",
@@ -287,18 +345,18 @@ class PreferStrEnum(Rule):
     @override
     def check_context(self, context: PythonFileContext) -> list[Diagnostic]:  # ruff: ignore[too-many-locals] -- traversal state.
         path = context.path
-        source = context.source
         if path.suffix != ".py":
             return []
         if context.generated:
             return []
-        if not _has_str_enum_signal(source):
+        if not _has_str_enum_signal(context.symbol_source):
             return []
         tree = context.tree
         if tree is None:
             return []
-        class_choice_signal = "str" in source and any(name in source.lower() for name in CHOICES_ATTR_NAMES)
-        imports = context.imports if class_choice_signal or "assert_never" in source else None
+        signals = context.symbol_source
+        class_choice_signal = "str" in signals and any(name in signals.lower() for name in CHOICES_ATTR_NAMES)
+        imports = context.imports if class_choice_signal or "assert_never" in signals else None
         test_path = is_test_path(path)
         check_clusters = not test_path
         literal_aliases = _module_literal_aliases(tree)
@@ -537,13 +595,7 @@ def _has_str_enum_signal(source: str) -> bool:
     return (
         has_string_literal
         and has_rejection
-        and (
-            "==" in source
-            or "!=" in source
-            or _STRING_MEMBERSHIP_RE.search(source) is not None
-            or "case " in source
-            or "match " in source
-        )
+        and ("==" in source or "!=" in source or "in" in source or "match" in source)
     )
 
 

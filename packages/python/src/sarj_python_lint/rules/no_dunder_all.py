@@ -85,6 +85,30 @@ class NoDunderAll(Rule):
                 expected_count=0,
                 public=True,
             ),
+            RuleExample(
+                example_id="normalized-module-export-binding",
+                title="Compatibility identifiers bind the native module export name",
+                outcome=ExampleOutcome.MATCH,
+                files=(ExampleFile.python("app/service.py", '__ａｌｌ__ = ["value"]\nvalue = 1\n'),),
+                focus_path=PurePosixPath("app/service.py"),
+                expected_count=1,
+                public=True,
+                scenario="normalized-module-name",
+            ),
+            RuleExample(
+                example_id="normalized-local-binding",
+                title="A local binding is outside the module export contract",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/service.py", 'def values():\n    __ａｌｌ__ = ["value"]\n    return __all__\n'
+                    ),
+                ),
+                focus_path=PurePosixPath("app/service.py"),
+                expected_count=0,
+                public=True,
+                scenario="normalized-module-name",
+            ),
         ),
     )
     description = documentation.summary
@@ -92,8 +116,8 @@ class NoDunderAll(Rule):
     @override
     def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
         path = context.path
-        source = context.source
-        if path.suffix != ".py" or "__all__" not in source or context.generated:
+        signals = context.symbol_source
+        if path.suffix != ".py" or "__all__" not in signals or context.generated:
             return []
         tree = context.tree
         if tree is None:

@@ -3,7 +3,6 @@ from __future__ import annotations
 import ast
 from functools import lru_cache
 from pathlib import PurePosixPath
-import re
 import tomllib
 from typing import TYPE_CHECKING, ClassVar, NotRequired, TypedDict, TypeGuard, final, override
 
@@ -37,7 +36,6 @@ _MAPPING_ARGUMENT_COUNT = 2
 _PYDANTIC_V2_MAJOR = 2
 _TYPING_SOURCES = frozenset({"typing", "typing_extensions"})
 _V2_CANDIDATES = tuple(Version(f"2.{minor}.{patch}") for minor in range(100) for patch in (0, 5, 99))
-_PEP695_ALIAS = re.compile(r"(?m)^[ \t]*type[ \t]+[A-Za-z_]\w*[ \t]*(?:\[|=)")
 
 
 class _ProjectTable(TypedDict):
@@ -94,6 +92,41 @@ class PreferPydanticJsonValue(Rule):
                 expected_count=0,
                 public=True,
             ),
+            RuleExample(
+                example_id="native-unicode-recursive-alias",
+                title="Native Unicode alias names preserve the recursive JSON domain",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile(
+                        path=PurePosixPath("pyproject.toml"),
+                        source='[project]\nname = "app"\nversion = "0.1.0"\ndependencies = ["pydantic>=2"]\n',
+                    ),
+                    ExampleFile.python(
+                        "src/app/types.py",
+                        "type 数据 = str | int | float | bool | None | list[数据] | dict[str, 数据]\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("src/app/types.py"),
+                expected_count=1,
+                public=True,
+                scenario="unicode-explicit-alias",
+            ),
+            RuleExample(
+                example_id="native-unicode-canonical-alias",
+                title="Import the canonical JSON value using a native Unicode binding",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile(
+                        path=PurePosixPath("pyproject.toml"),
+                        source='[project]\nname = "app"\nversion = "0.1.0"\ndependencies = ["pydantic>=2"]\n',
+                    ),
+                    ExampleFile.python("src/app/types.py", "from pydantic import JsonValue as 数据\nvalue: 数据\n"),
+                ),
+                focus_path=PurePosixPath("src/app/types.py"),
+                expected_count=0,
+                public=True,
+                scenario="unicode-explicit-alias",
+            ),
         ),
     )
     description = documentation.summary
@@ -104,7 +137,7 @@ class PreferPydanticJsonValue(Rule):
         source = context.source
         if context.generated or _is_vendor_path(path):
             return []
-        if "TypeAlias" not in source and _PEP695_ALIAS.search(source) is None:
+        if "TypeAlias" not in context.symbol_source and "type" not in source:
             return []
         tree = context.tree
         if tree is None:

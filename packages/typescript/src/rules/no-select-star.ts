@@ -22,6 +22,8 @@ export const NO_SELECT_STAR_DOCUMENTATION = {
   examples: [
     { id: "explicit-projection", title: "Select the required columns", outcome: "no-match", files: [{ path: "src/runs.ts", source: "db.prepare(`SELECT id, status FROM runs`).all();" }], focusPath: "src/runs.ts", expectedCount: 0, public: true },
     { id: "wildcard-projection", title: "Do not select every column", outcome: "match", files: [{ path: "src/runs.ts", source: "db.prepare(`SELECT * FROM runs`).all();" }], focusPath: "src/runs.ts", expectedCount: 1, public: true },
+    { id: "decoded-query", scenarioId: "native-decoded-sql", title: "Inspect native-decoded query text", outcome: "match", files: [{ path: "src/page.ts", source: "db.query(\"SEL\\u0045CT * FROM runs\");" }], focusPath: "src/page.ts", expectedCount: 1, public: true },
+    { id: "decoded-comment-data", scenarioId: "native-decoded-sql", title: "Ignore native-decoded comment data", outcome: "no-match", files: [{ path: "src/page.ts", source: "db.query(\"SEL\\x45CT id FROM runs /* SELECT * FROM runs */\");" }], focusPath: "src/page.ts", expectedCount: 0, public: true },
   ],
 } as const satisfies RuleDocumentation;
 
@@ -33,7 +35,6 @@ const EXISTS_BEFORE = /\bEXISTS\s*\(\s*$/i;
 /** A `word.` immediately preceding a `*` marks a qualified star (`c.*`, `main.runs.*`). */
 const QUALIFIED_PREFIX = /\w\.$/;
 
-const SELECT_GATE = /select/i;
 
 /** True when the query projects a star that is not inside an `EXISTS (...)` subquery. */
 function hasRealSelectStar(sql: string): boolean {
@@ -89,7 +90,7 @@ export default createRule<Options, MessageIds>({
   },
   defaultOptions: [],
   create(context) {
-    if (isTestFile(context.filename) || !SELECT_GATE.test(context.sourceCode.text)) {
+    if (isTestFile(context.filename)) {
       return {};
     }
     return createSqlListener((sql: string, node: TSESTree.Node): void => {

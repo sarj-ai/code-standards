@@ -108,13 +108,13 @@ class RequireNoDecodeForSplittingSettingsField(Rule):
     @override
     def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
         path = context.path
-        source = context.source
+        signals = context.symbol_source
         if (
             is_test_path(path)
             or context.generated
-            or "pydantic_settings" not in source
-            or "field_validator" not in source
-            or "split" not in source
+            or "pydantic_settings" not in signals
+            or "field_validator" not in signals
+            or "split" not in signals
         ):
             return []
         tree = context.tree

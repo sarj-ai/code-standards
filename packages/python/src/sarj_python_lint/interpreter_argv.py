@@ -28,9 +28,45 @@ class InterpreterInvocation:
 class ParsedOption:
     invocation: InterpreterInvocation | None = None
     consumed: int = 1
+    stdin_mode: bool = False
 
 
 _SHELLS = frozenset({"sh", "bash", "dash", "zsh", "ksh"})
+_SHELL_SHORT_FLAGS = frozenset("abefhkmnptuvxBCEHPrDilscoO")
+_SHELL_LONG_FLAGS = frozenset(
+    {"--norc", "--noprofile", "--posix", "--restricted", "--verbose", "--login", "--noediting"}
+)
+_SHELL_NAMED_OPTIONS = frozenset(
+    {
+        "allexport",
+        "braceexpand",
+        "emacs",
+        "errexit",
+        "errtrace",
+        "functrace",
+        "hashall",
+        "histexpand",
+        "history",
+        "ignoreeof",
+        "interactive-comments",
+        "keyword",
+        "monitor",
+        "noclobber",
+        "noexec",
+        "noglob",
+        "nolog",
+        "notify",
+        "nounset",
+        "onecmd",
+        "physical",
+        "pipefail",
+        "posix",
+        "privileged",
+        "verbose",
+        "vi",
+        "xtrace",
+    }
+)
 _NODE_VALUE_FLAGS = frozenset(
     {
         "--require",
@@ -200,7 +236,9 @@ def classify_interpreter(argv: Sequence[str]) -> InterpreterInvocation:
     if is_python_executable(executable):
         return _python(arguments[1:])
     if executable in _SHELLS:
-        return _short_options(arguments[1:], source="c", values=frozenset({"o", "O"}), shell_mode=True)
+        return _short_options(
+            arguments[1:], source="c", values=frozenset({"o", "O"}), shell_mode=True, bash_mode=executable == "bash"
+        )
     if executable in {"node", "nodejs"}:
         return _node(arguments[1:])
     if executable == "jq":
@@ -304,31 +342,66 @@ def _ruby_long_option(argument: str, following: str | None) -> ParsedOption:
 
 
 def _short_options(
-    arguments: Sequence[str], *, source: str, values: frozenset[str], shell_mode: bool = False
+    arguments: Sequence[str], *, source: str, values: frozenset[str], shell_mode: bool = False, bash_mode: bool = False
 ) -> InterpreterInvocation:
     index = 0
+    stdin_mode = False
+    short_seen = False
     while index < len(arguments):
         boundary = _external_boundary(arguments, index, plus_options=True)
         if boundary is not None:
-            return boundary
+            return InterpreterInvocation("stdin") if stdin_mode else boundary
         argument = arguments[index]
         if argument.startswith("--"):
-            index += 2 if shell_mode and argument in {"--rcfile", "--init-file"} else 1
-            continue
-        parsed = _short_option(arguments, index, source=source, values=values, shell_mode=shell_mode)
+            parsed = _long_option(arguments, index, shell_mode=shell_mode, bash_mode=bash_mode, short_seen=short_seen)
+        else:
+            short_seen = True
+            parsed = _short_option(
+                arguments, index, source=source, values=values, shell_mode=shell_mode, bash_mode=bash_mode
+            )
         if parsed.invocation is not None:
             return parsed.invocation
+        stdin_mode = stdin_mode or parsed.stdin_mode
         index += parsed.consumed
     return InterpreterInvocation("stdin")
 
 
-def _short_option(
-    arguments: Sequence[str], index: int, *, source: str, values: frozenset[str], shell_mode: bool
+def _long_option(
+    arguments: Sequence[str], index: int, *, shell_mode: bool, bash_mode: bool, short_seen: bool
 ) -> ParsedOption:
+    if not bash_mode:
+        consumed = 2 if shell_mode and arguments[index] in {"--rcfile", "--init-file"} else 1
+        return ParsedOption(consumed=consumed)
+    if short_seen:
+        return ParsedOption(InterpreterInvocation("unknown"))
+    argument = arguments[index]
+    if argument in {"--help", "--version"}:
+        return ParsedOption(InterpreterInvocation("other"))
+    if argument in {"--rcfile", "--init-file"}:
+        return (
+            ParsedOption(consumed=2)
+            if _following_operand(arguments, index) is not None
+            else ParsedOption(InterpreterInvocation("unknown"))
+        )
+    if argument not in _SHELL_LONG_FLAGS:
+        return ParsedOption(InterpreterInvocation("unknown"))
+    return ParsedOption()
+
+
+def _short_option(
+    arguments: Sequence[str],
+    index: int,
+    *,
+    source: str,
+    values: frozenset[str],
+    shell_mode: bool,
+    bash_mode: bool = False,
+) -> ParsedOption:
+    if bash_mode:
+        return _shell_short_option(arguments, index, values)
     argument = arguments[index]
     for cursor, flag in enumerate(argument[1:], 1):
         if flag in source:
-            # Shell -c always consumes the next word, including inside -ceu.
             attached = "" if shell_mode else argument[cursor + 1 :]
             operand = attached or _following_operand(arguments, index)
             forwarded = tuple(arguments[index + 3 :]) if shell_mode else ()
@@ -336,6 +409,26 @@ def _short_option(
         if flag in values:
             return ParsedOption(consumed=1 + int(cursor + 1 == len(argument)))
     return ParsedOption()
+
+
+def _shell_short_option(arguments: Sequence[str], index: int, values: frozenset[str]) -> ParsedOption:
+    flags = arguments[index][1:]
+    if any(flag not in _SHELL_SHORT_FLAGS for flag in flags):
+        return ParsedOption(InterpreterInvocation("unknown"))
+    consumed = 1
+    for flag in flags:
+        if flag in values:
+            operand = _following_operand(arguments, index + consumed - 1)
+            # Bash shopt (-O) has a separate, version-dependent namespace. Keep
+            # it unproven until a native option contract is available.
+            if flag == "O" or operand not in _SHELL_NAMED_OPTIONS:
+                return ParsedOption(InterpreterInvocation("unknown"))
+            consumed += 1
+    if "c" in flags:
+        operand = _following_operand(arguments, index + consumed - 1)
+        forwarded = tuple(arguments[index + consumed + 2 :])
+        return ParsedOption(InterpreterInvocation("shell", operand, forwarded))
+    return ParsedOption(consumed=consumed, stdin_mode="s" in flags)
 
 
 def _node(arguments: Sequence[str]) -> InterpreterInvocation:

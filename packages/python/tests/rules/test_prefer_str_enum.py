@@ -1,3 +1,4 @@
+import ast
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -1950,3 +1951,57 @@ def run_card_action(action: str) -> None:
 
     assert diagnostic.severity is Severity.ERROR
     assert "action" in diagnostic.message
+
+
+@pytest.mark.parametrize(("match_gap", "case_gap"), [(" ", "\t"), ("\t", " "), ("\t", "\t")])
+def test_rejecting_match_accepts_native_keyword_whitespace(match_gap: str, case_gap: str) -> None:
+    example = next(item for item in _PUBLIC_EXAMPLES if item.example_id == "rejecting-string-dispatch")
+    source = example.focus_file.source.replace("match kind", f"match{match_gap}kind").replace(
+        "case ", f"case{case_gap}"
+    )
+    assert ast.dump(ast.parse(source)) == ast.dump(ast.parse(example.focus_file.source))
+    [diagnostic] = _check(source, "app/render.py")
+    assert (diagnostic.code, diagnostic.line, diagnostic.col) == ("SARJ006", 2, 5)
+
+
+@pytest.mark.parametrize(
+    "collection",
+    [
+        '({"text", "image"})',
+        '{u"text", u"image"}',
+        '{r"text", r"image"}',
+        '{"te\\x78t", "im\\x61ge"}',
+        '{\n        "text", "image"\n    }',
+    ],
+)
+def test_rejecting_membership_admits_native_string_forms(collection: str) -> None:
+    source = f"def render(kind: str) -> str:\n    if kind not in {collection}:\n        raise ValueError('unsupported kind')\n    return kind\n"
+    [diagnostic] = _check(source, "app/render.py")
+    assert diagnostic.code == "SARJ006"
+    namespace: dict[str, object] = {}
+    exec(compile(source, "native_enum_guard.py", "exec"), namespace)  # ruff: ignore[exec-builtin] -- execute only these fixed public native grammar fixtures.
+    function = namespace["render"]
+    assert callable(function)
+    assert function("text") == "text"
+    assert function("image") == "image"
+    with pytest.raises(ValueError, match="unsupported kind"):
+        function("other")
+
+
+def test_rejecting_membership_accepts_explicit_line_joining() -> None:
+    source = "def render(kind: str) -> str:\n    if kind not in\\\n        {'text', 'image'}:\n        raise ValueError('unsupported kind')\n    return kind\n"
+    assert len(_check(source, "app/render.py")) == 1
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        'def render(kind: str) -> str:\n    match\tkind:\n        case\t"text":\n            return "Text"\n        case\t_:\n            return kind\n',
+        'def render(kind: str) -> str:\n    return kind in ({r"text", r"image"})\n',
+        'def render(kind: str) -> str:\n    if kind not in allowed:\n        raise ValueError("unsupported kind")\n    return kind\n',
+        'def render(payload: object) -> str:\n    if payload.kind not in {"text", "image"}:\n        raise ValueError("unsupported kind")\n    return payload.kind\n',
+        'def render(kind: str) -> str:\n    marker = "match case in source data"\n    raise ValueError(marker)\n',
+    ],
+)
+def test_widened_string_enum_hint_preserves_policy_boundaries(source: str) -> None:
+    assert _check(source, "app/render.py") == []

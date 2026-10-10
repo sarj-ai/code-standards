@@ -119,8 +119,8 @@ class UnusedTestFactoryOption(Rule):
 
     def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
         path = context.path
-        source = context.source
-        if not is_test_path(path) or context.generated or not ("_make_" in source or "_build_" in source):
+        signals = context.symbol_source
+        if not is_test_path(path) or context.generated or not ("_make_" in signals or "_build_" in signals):
             return []
         tree = context.tree
         if tree is None or (

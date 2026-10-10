@@ -129,3 +129,42 @@ def test_env_only_wrapper_policy_preserves_other_executable_operands() -> None:
         allowed_wrappers=frozenset({"env"}),
     ) == ("sudo", "bash", "-c", "printf fixture")
     assert unwrap_command(("env", "sudo", "bash", "-c", "printf fixture")) == ("bash", "-c", "printf fixture")
+
+
+@pytest.mark.parametrize(
+    ("argv", "expected"),
+    [
+        pytest.param(("bash", "-s", "external.sh"), "stdin", id="stdin-data"),
+        pytest.param(("bash", "-s", "--", "-c", "data"), "stdin", id="stdin-boundary"),
+        pytest.param(("bash", "-s"), "stdin", id="stdin-only"),
+        pytest.param(("bash", "-s", "+s", "data"), "stdin", id="stdin-plus-s"),
+        pytest.param(("bash", "+s", "data"), "stdin", id="plus-s"),
+        pytest.param(("bash", "-su", "data"), "stdin", id="stdin-cluster"),
+        pytest.param(("bash", "-o", "posix", "-s", "data"), "stdin", id="option-before-s"),
+        pytest.param(("bash", "-s", "-o", "posix", "data"), "stdin", id="option-after-s"),
+        pytest.param(("bash", "-os", "posix", "data"), "stdin", id="value-s-cluster"),
+        pytest.param(("bash", "-c", "printf NATIVE_COMMAND"), "shell", id="source-c"),
+        pytest.param(("bash", "-sc", "printf NATIVE_COMMAND"), "shell", id="source-sc"),
+        pytest.param(("bash", "+c", "printf NATIVE_COMMAND"), "shell", id="source-plus-c"),
+        pytest.param(("bash", "-oc", "posix", "printf NATIVE_COMMAND"), "shell", id="source-oc"),
+        pytest.param(("bash", "-co", "posix", "printf NATIVE_COMMAND"), "shell", id="source-co"),
+        pytest.param(("bash", "scripts/external.sh"), "external", id="external-script"),
+        pytest.param(("bash", "-s", "-Z", "data"), "unknown", id="unknown-short"),
+        pytest.param(("bash", "-s", "--unknown", "data"), "unknown", id="unknown-long"),
+        pytest.param(("bash", "-s", "-o", "s", "data"), "unknown", id="invalid-value"),
+        pytest.param(("bash", "--help", "-s", "data"), "other", id="help"),
+        pytest.param(("bash", "--version", "-s", "data"), "other", id="version"),
+        pytest.param(("bash", "--noprofile", "-s", "data"), "stdin", id="long-before-short"),
+        pytest.param(("bash", "-s", "--noprofile", "data"), "unknown", id="long-after-short"),
+    ],
+)
+def test_shell_stdin_source_arguments(argv: tuple[str, ...], expected: ProgramKind) -> None:
+    assert classify_interpreter(argv).kind == expected
+    assert classify_interpreter(argv) == classify_interpreter(argv)
+
+
+@pytest.mark.parametrize("option", ["-oc", "-co"])
+def test_shell_cluster_values_preserve_source_and_forwarded_args(option: str) -> None:
+    invocation = classify_interpreter(("bash", option, "posix", "python3 -c 1", "name", "scripts/data.py"))
+    assert invocation.payload == "python3 -c 1"
+    assert invocation.forwarded == ("scripts/data.py",)

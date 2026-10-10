@@ -104,7 +104,7 @@ class RequireInjectableRetrySleep(Rule):
     def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
         path = context.path
         if (
-            "tenacity" not in context.source
+            "tenacity" not in context.symbol_source
             or is_test_path(path)
             or is_test_support_path(path)
             or context.generated

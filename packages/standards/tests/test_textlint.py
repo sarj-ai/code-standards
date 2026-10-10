@@ -2859,3 +2859,18 @@ def test_utf8_signature_keeps_embedded_config_characters(tmp_path: Path) -> None
         textlint.check_paths([str(path)], root=tmp_path, rule_ids=frozenset({"no-wildcard-secret-read-permission"}))
         == []
     )
+
+
+@pytest.mark.parametrize("identifier", ["mise-program-use-site", "mise-inert-command-data"])
+def test_public_mise_examples_bind_findings_to_native_execution_fields(tmp_path: Path, identifier: str) -> None:
+    example = next(
+        example
+        for example in textlint.REGISTRY["workflow-embedded-program"].examples
+        if example.example_id == identifier
+    )
+    source = example.files[0].source
+    path = tmp_path / "mise.toml"
+    path.write_text(source)
+    findings = textlint.check_paths([str(path)], root=tmp_path, rule_ids=frozenset({"workflow-embedded-program"}))
+    expected_lines = [6] if example.outcome is ExpectedOutcome.MATCH else []
+    assert [finding.line for finding in findings] == expected_lines

@@ -96,7 +96,7 @@ class NoSwallowedAsyncioCancellation(Rule):
 
     @override
     def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
-        if "CancelledError" not in context.source:
+        if "CancelledError" not in context.symbol_source:
             return []
         if context.generated or is_test_path(context.path) or is_test_support_path(context.path):
             return []

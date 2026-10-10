@@ -7,7 +7,7 @@ import os
 from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, ClassVar, NamedTuple, final, override
 
-from sarj_python_lint._source import read_python_source
+from sarj_python_lint._source import read_python_source, symbol_prefilter_source
 from sarj_python_lint.rule_base import (
     Diagnostic,
     ExampleFile,
@@ -785,7 +785,7 @@ def _candidate_calls_class(
         source = read_python_source(candidate)
     except OSError, SyntaxError, UnicodeError:
         return False
-    if class_name not in source or is_generated(candidate, source):
+    if class_name not in symbol_prefilter_source(source) or is_generated(candidate, source):
         return False
     try:
         tree = ast.parse(source, filename=str(candidate))

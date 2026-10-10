@@ -126,6 +126,36 @@ class TypedErrorReasons(Rule):
                 expected_count=0,
                 public=True,
             ),
+            RuleExample(
+                example_id="spaced-string-reason-join",
+                title="Native token spacing preserves the string reason list",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/service.py",
+                        'class BatchError(Exception):\n    def __init__(self, reasons: list [ str ]) -> None:\n        super ().__init__("; ". join (reasons))\n',
+                    ),
+                ),
+                focus_path=PurePosixPath("app/service.py"),
+                expected_count=1,
+                public=True,
+                scenario="native-token-spacing",
+            ),
+            RuleExample(
+                example_id="spaced-contextual-string",
+                title="Separate contextual strings remain outside the sole list parameter contract",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/service.py",
+                        "class BatchError(Exception):\n    def __init__(self, reason: str) -> None:\n        super ().__init__(reason)\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/service.py"),
+                expected_count=0,
+                public=True,
+                scenario="native-token-spacing",
+            ),
         ),
     )
     description = documentation.summary
@@ -133,10 +163,10 @@ class TypedErrorReasons(Rule):
     @override
     def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
         path = context.path
-        source = context.source
+        signals = context.symbol_source
         if path.suffix != ".py" or is_test_path(path) or context.generated:
             return []
-        if "list[str]" not in source or ".join(" not in source or "super(" not in source:
+        if not all(symbol in signals for symbol in ("list", "str", "join", "super")):
             return []
         tree = context.tree
         if tree is None:

@@ -130,6 +130,36 @@ class PreferInjectedDependencyOverMonkeypatch(Rule):
                 expected_count=0,
                 public=True,
             ),
+            RuleExample(
+                example_id="native-monkeypatch-factory",
+                scenario="native-symbol-binding",
+                title="A normalized pytest factory replaces a dependency",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "tests/test_service.py",
+                        "import pytest\ndef test_service():\n    patcher = pytest.ＭｏｎｋｅｙＰａｔｃｈ()\n    patcher.setattr(service, 'clock', fake)\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("tests/test_service.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="native-process-state",
+                scenario="native-symbol-binding",
+                title="Process environment operations remain excluded",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "tests/test_service.py",
+                        "import pytest\ndef test_service():\n    patcher = pytest.ＭｏｎｋｅｙＰａｔｃｈ()\n    patcher.setenv('MODE', 'test')\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("tests/test_service.py"),
+                expected_count=0,
+                public=True,
+            ),
         ),
     )
     description: str = documentation.summary
@@ -144,7 +174,7 @@ class PreferInjectedDependencyOverMonkeypatch(Rule):
             return []
         imports = context.module_imports
         parents = parent_map(tree, index=context.node_index)
-        has_factory = "MonkeyPatch" in context.source and any(
+        has_factory = "MonkeyPatch" in context.symbol_source and any(
             _creates_monkeypatch(call, imports) for call in context.nodes(ast.Call)
         )
         replacements = [

@@ -5,6 +5,7 @@ from functools import cached_property
 from typing import TYPE_CHECKING, final
 
 from sarj_python_lint._analysis_session import AnalysisSession
+from sarj_python_lint._source import symbol_prefilter_source
 from sarj_python_lint.rules._ast_index import NodeIndex
 from sarj_python_lint.rules._fastapi import FastapiIndex
 from sarj_python_lint.rules._imports import ImportIndex
@@ -25,6 +26,10 @@ class PythonFileContext:
         self.path = path
         self.source = source
         self.session = session if session is not None else AnalysisSession()
+
+    @cached_property
+    def symbol_source(self) -> str:
+        return symbol_prefilter_source(self.source)
 
     @cached_property
     def tree(self) -> ast.Module | None:

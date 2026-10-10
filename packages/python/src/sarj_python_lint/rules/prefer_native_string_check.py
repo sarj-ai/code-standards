@@ -125,7 +125,7 @@ class PreferNativeStringCheck(Rule):
         if (
             context.generated
             or not {"vendor", "vendored", "third_party"}.isdisjoint(context.path.parts)
-            or "validate_python" not in context.source
+            or "validate_python" not in context.symbol_source
             or context.tree is None
         ):
             return []

@@ -1,0 +1,513 @@
+{
+  "schemaVersion": 1,
+  "baselineCommit": "6b4758f51bbd295770e9abab92ecb3651f34419b",
+  "priorAudit": {
+    "devopsPasses": 30,
+    "broaderPasses": 18,
+    "firstAdditionalBatchPullRequest": 1356,
+    "firstAdditionalBatchReportPath": "packages/standards/benchmarks/audit-continuation-20261009.json"
+  },
+  "minimumAdditionalPasses": 30,
+  "countingPolicy": "Distinct owner/invariant audits with fresh labeled native or first-class syntax cases and actual evidence; no test repetitions, variants, or residual-control counts counted as passes.",
+  "completedAdditionalPasses": 57,
+  "passes": [
+    {
+      "additionalPassId": 1,
+      "phase": "devops",
+      "scope": "Helm layered values/schema",
+      "confirmedChanges": false
+    },
+    {
+      "additionalPassId": 2,
+      "phase": "devops",
+      "scope": "Helm namespace/exception identity",
+      "confirmedChanges": false
+    },
+    {
+      "additionalPassId": 3,
+      "phase": "devops",
+      "scope": "Helm rendered document closure",
+      "confirmedChanges": false
+    },
+    {
+      "additionalPassId": 4,
+      "phase": "devops",
+      "scope": "Kubernetes exact GVK/custom payload",
+      "confirmedChanges": false
+    },
+    {
+      "additionalPassId": 5,
+      "phase": "devops",
+      "scope": "Kubernetes List/source attribution",
+      "confirmedChanges": false
+    },
+    {
+      "additionalPassId": 6,
+      "phase": "devops",
+      "scope": "Skaffold profile/hook execution",
+      "confirmedChanges": false
+    },
+    {
+      "additionalPassId": 7,
+      "phase": "devops",
+      "scope": "CloudDeploy actions/references/schema",
+      "confirmedChanges": false
+    },
+    {
+      "additionalPassId": 8,
+      "phase": "devops",
+      "scope": "CloudBuild shell option/argv",
+      "confirmedChanges": true
+    },
+    {
+      "additionalPassId": 9,
+      "phase": "devops",
+      "scope": "CloudBuild scripts/env/substitution",
+      "confirmedChanges": false
+    },
+    {
+      "additionalPassId": 10,
+      "phase": "devops",
+      "scope": "Standalone shell dialect/sourced coverage",
+      "confirmedChanges": false
+    },
+    {
+      "additionalPassId": 11,
+      "phase": "devops",
+      "scope": "DevOps native validation/capability coverage",
+      "confirmedChanges": true
+    },
+    {
+      "additionalPassId": 12,
+      "phase": "devops",
+      "scope": "Native version/cache/provenance",
+      "confirmedChanges": false
+    },
+    {
+      "additionalPassId": 13,
+      "phase": "devops",
+      "scope": "Native environment/path/invocation",
+      "confirmedChanges": true
+    },
+    {
+      "additionalPassId": 14,
+      "phase": "devops",
+      "scope": "Native TOML source attribution without duplicated grammar",
+      "confirmedChanges": true
+    },
+    {
+      "additionalPassId": 15,
+      "phase": "devops",
+      "scope": "DevOps CI/build/release configuration",
+      "confirmedChanges": false
+    },
+    {
+      "additionalPassId": 16,
+      "phase": "broader",
+      "scope": "Shared suppression/generated/scope boundaries",
+      "confirmedChanges": true
+    },
+    {
+      "additionalPassId": 17,
+      "phase": "broader",
+      "scope": "Immutable Git/import closure/source drift",
+      "confirmedChanges": false
+    },
+    {
+      "additionalPassId": 18,
+      "phase": "broader",
+      "scope": "Native fixture metadata/CLI API/ownership",
+      "confirmedChanges": false
+    },
+    {
+      "additionalPassId": 19,
+      "phase": "broader",
+      "scope": "Adoption/hooks/local environment",
+      "confirmedChanges": false
+    },
+    {
+      "additionalPassId": 20,
+      "phase": "broader",
+      "scope": "Release dependency/registry contracts",
+      "confirmedChanges": true
+    },
+    {
+      "additionalPassId": 21,
+      "phase": "broader",
+      "scope": "Python import/runtime/scopes",
+      "confirmedChanges": false
+    },
+    {
+      "additionalPassId": 22,
+      "phase": "broader",
+      "scope": "Python async/retry/loop ownership",
+      "confirmedChanges": false
+    },
+    {
+      "additionalPassId": 23,
+      "phase": "broader",
+      "scope": "Python literals/collections/annotations",
+      "confirmedChanges": false
+    },
+    {
+      "additionalPassId": 24,
+      "phase": "broader",
+      "scope": "TypeScript runtime/type/framework bindings",
+      "confirmedChanges": false
+    },
+    {
+      "additionalPassId": 25,
+      "phase": "broader",
+      "scope": "TypeScript autofix semantic/idempotence",
+      "confirmedChanges": true
+    },
+    {
+      "additionalPassId": 26,
+      "phase": "broader",
+      "scope": "TypeScript project/performance/cache",
+      "confirmedChanges": false
+    },
+    {
+      "additionalPassId": 27,
+      "phase": "broader",
+      "scope": "SQL native dialect/comments/suppression",
+      "confirmedChanges": true
+    },
+    {
+      "additionalPassId": 28,
+      "phase": "broader",
+      "scope": "SQL migration/statement contracts",
+      "confirmedChanges": true
+    },
+    {
+      "additionalPassId": 29,
+      "phase": "broader",
+      "scope": "HCL native headers/templates/depth/positions",
+      "confirmedChanges": false
+    },
+    {
+      "additionalPassId": 30,
+      "phase": "broader",
+      "scope": "HCL interactions/performance/native grammar",
+      "confirmedChanges": false
+    },
+    {
+      "additionalPassId": 31,
+      "phase": "broader",
+      "scope": "Shared Python AST index native traversal/order/subclass/parent and malformed-context invariants",
+      "confirmedChanges": false
+    },
+    {
+      "additionalPassId": 32,
+      "phase": "broader",
+      "scope": "All138 Python owners shared-file analysis parity, source-key isolation and bounded registry performance",
+      "confirmedChanges": false
+    },
+    {
+      "additionalPassId": 33,
+      "phase": "broader",
+      "scope": "Python set-overlap suggestion versus unsafe automatic transformation, native iterable/equality observability and conservative receiver provenance",
+      "confirmedChanges": false
+    },
+    {
+      "additionalPassId": 34,
+      "phase": "devops",
+      "scope": "GNU Make target/pattern variable source ownership",
+      "confirmedChanges": true
+    },
+    {
+      "additionalPassId": 35,
+      "phase": "devops",
+      "scope": "Bash stdin and interpreter option source ownership",
+      "confirmedChanges": true
+    },
+    {
+      "additionalPassId": 36,
+      "phase": "devops",
+      "scope": "CloudBuild YAML alias use-site provenance",
+      "confirmedChanges": true
+    },
+    {
+      "additionalPassId": 37,
+      "phase": "broader",
+      "scope": "Canonical native UTF8/UTF16 positions, repository URI paths and fingerprint identity",
+      "confirmedChanges": false
+    },
+    {
+      "additionalPassId": 38,
+      "phase": "broader",
+      "scope": "Strict unique JSON Schema decoder numeric grammar and escaped duplicate-key provenance",
+      "confirmedChanges": true
+    },
+    {
+      "additionalPassId": 39,
+      "phase": "broader",
+      "scope": "Native evaluation evidence completeness and repeated case identity",
+      "confirmedChanges": true
+    },
+    {
+      "additionalPassId": 40,
+      "phase": "broader",
+      "scope": "Python string-loop keyword prefilter native lexical boundaries",
+      "confirmedChanges": true
+    },
+    {
+      "additionalPassId": 41,
+      "phase": "broader",
+      "scope": "IaC redundant validation semantic ownership against native null/type constraints",
+      "confirmedChanges": false
+    },
+    {
+      "additionalPassId": 42,
+      "phase": "broader",
+      "scope": "Reviewed CI archive evidence identity and bounded native ZIP rejection",
+      "confirmedChanges": false
+    },
+    {
+      "additionalPassId": 43,
+      "phase": "broader",
+      "scope": "TypeScript decoded SQL literal keyword admission across three owners",
+      "confirmedChanges": true
+    },
+    {
+      "additionalPassId": 44,
+      "phase": "broader",
+      "scope": "Shared TypeScript generated-header native line terminator ownership",
+      "confirmedChanges": true
+    },
+    {
+      "additionalPassId": 45,
+      "phase": "broader",
+      "scope": "All118 TypeScript source-read inventory and native binding/discriminant identity",
+      "confirmedChanges": true
+    },
+    {
+      "additionalPassId": 46,
+      "phase": "devops",
+      "scope": "Literal YAML data cannot grant comment suppressions",
+      "confirmedChanges": true
+    },
+    {
+      "additionalPassId": 47,
+      "phase": "devops",
+      "scope": "Rendered simultaneous-check native attribution and message preservation",
+      "confirmedChanges": false
+    },
+    {
+      "additionalPassId": 48,
+      "phase": "devops",
+      "scope": "Multi-file ShellCheck native execution and external source coverage",
+      "confirmedChanges": false
+    },
+    {
+      "additionalPassId": 49,
+      "phase": "broader",
+      "scope": "Necessary Python symbol prefilters preserve native identifier normalization, token spacing, decoded literals and native project facts",
+      "confirmedChanges": true
+    },
+    {
+      "additionalPassId": 50,
+      "phase": "devops",
+      "scope": "Assembled DevOps composition: inherited Make execution into Bash stdin, alias provenance across custom CloudBuild rules and local suppressions, Skaffold selected schema and executable hooks, schema/syntax failure delegation through the public adapter, closed native Helm chart schemas/rendered List resource execution/data and namespace identities.",
+      "confirmedChanges": false
+    },
+    {
+      "additionalPassId": 51,
+      "phase": "broader",
+      "scope": "Cross-engine combined-owner projection, registry permutation, suppression-data ownership, and interleaved-document cache stability; distinct interaction closure beyond per-owner fixes.",
+      "confirmedChanges": false
+    },
+    {
+      "additionalPassId": 52,
+      "phase": "broader",
+      "scope": "Settings class shape uses native AST rather than redundant raw class regex",
+      "confirmedChanges": true
+    },
+    {
+      "additionalPassId": 53,
+      "phase": "broader",
+      "scope": "Module alias assignment uses native AST rather than raw assignment grammar",
+      "confirmedChanges": true
+    },
+    {
+      "additionalPassId": 54,
+      "phase": "broader",
+      "scope": "Residual native-symbol hint ownership: regex match, pytest MonkeyPatch factory and non-focus canonical NewType identity facts",
+      "confirmedChanges": true
+    },
+    {
+      "additionalPassId": 55,
+      "phase": "broader",
+      "scope": "Native grammar at source hints: AsyncMock called attributes and rejecting string-enum membership/match branches",
+      "confirmedChanges": true
+    },
+    {
+      "additionalPassId": 56,
+      "phase": "broader",
+      "scope": "Python shared contexts, AnalysisSession project facts, registry ordering, native invalid/generated/suppression boundaries and original source locations",
+      "confirmedChanges": false
+    },
+    {
+      "additionalPassId": 57,
+      "phase": "broader",
+      "scope": "Native Makefile documentation projection preserves recipe tabs, scopes, continuations, trailing whitespace and final-newline semantics with unsupported formats rejected",
+      "confirmedChanges": true
+    }
+  ],
+  "firstAdditionalBatch": {
+    "pullRequest": 1356,
+    "adminMerged": true,
+    "mainCommit": "6b4758f51bbd295770e9abab92ecb3651f34419b",
+    "mainCISuccess": true,
+    "automaticReleaseSuccess": true,
+    "publishedStandardsVersion": "8.41.3"
+  },
+  "universalNoFurtherImprovementClaim": false,
+  "universalFalsePositiveClaim": false,
+  "actualMergedAtReportCreation": false,
+  "limitations": [
+    "Finite native controls and supported authored examples only; unsupported variants are excluded from pass counts.",
+    "Native grammar validation does not establish cloud service behavior, cluster admission, database schemas, or consumer rollout.",
+    "Five drifted corpus pins remain ineligible and were not refreshed.",
+    "Existing corpus findings require intent calibration; parity alone does not establish that every finding is a true positive.",
+    "No controlled speedup is claimed.",
+    "New nominal factory examples exercise the documented warning branch and remain private severity-checked regression fixtures; existing blocking public examples remain unchanged."
+  ],
+  "secondAdditionalBatchCompletedPasses": 24,
+  "repairs": [
+    "Make target-specific execution scopes and native Bash stdin/option ownership",
+    "Cloud Build alias provenance and literal YAML suppression ownership",
+    "Native TOML decoded-value attribution without rewriting keys",
+    "Strict JSON constants and duplicate evaluation case identities",
+    "Python loop concatenation including fstrings and native token spacing",
+    "TypeScript decoded SQL literals, native generated-header line endings and identifier binding ownership",
+    "Cached necessary Python symbol hints preserve native identifier normalization, original AST values and UTF8 locations",
+    "Native settings class and module alias assignment ownership replace redundant raw grammar",
+    "Residual regex, pytest factory and non-focus NewType hints preserve native names",
+    "AsyncMock positive call-state attributes and closed string-enum membership/match syntax",
+    "Make documentation projection preserves native source bytes and refuses unsafe final-newline insertion"
+  ],
+  "nativeValidation": {
+    "customOwners": 299,
+    "supportedAuthoredCases": 1818,
+    "unsupportedCasesExcluded": 380,
+    "fixtureFiles": 2361,
+    "labeled": {
+      "TP": 898,
+      "TN": 920,
+      "FP": 0,
+      "FN": 0
+    },
+    "allAuthoredSourcesAndRuntimeArtifactsUnchanged": true,
+    "pythonSymbolComparisons": 1854,
+    "pythonSharedOwnerProjections": 65826,
+    "pythonRegistryOrderComparisons": 477,
+    "pythonSharedOwnerFileCalls": 78660,
+    "python314FinalFocusedTestsPassed": 1082,
+    "python314TOML10ControlsPassed": 29,
+    "python314TOML11CasesExcluded": 2,
+    "makeDocumentationNativePreservationPairs": 6,
+    "makeAutomaticFinalLFInsertionUnsafeCases": 1,
+    "ordinaryPythonCompileValidInstances": 179,
+    "topLevelAwaitCompileFlagOnlyInstances": 1,
+    "ordinaryScriptRuntimeExecutionClaimedForAllFixtures": false,
+    "finalCombinedSourceValidation": "passed after integrated main and metadata severity correction",
+    "distinctCustomOwnerSourceFiles": 289,
+    "docsLintPluginVersion": "16.4.7",
+    "docsDependenciesInstalledInOwnCheckout": true,
+    "nativeFactoryAuthoredCasesRemainPrivate": 2,
+    "residualNativePublicASTEquivalentPairs": 46,
+    "metadataAndResidualOwnerFocusedTestsPassed": 585,
+    "python314FinalFocusedSourceIncludesMetadataCorrection": true
+  },
+  "freshCorpus": {
+    "eligible": 5,
+    "driftedExcluded": 5,
+    "baselineContentCommit": "5d9a9b7484706691b21ab9f78faaae5379341136",
+    "baselineScope": "Prior audit baseline; this comparison includes both additional batches. Earlier batch corpus parity is retained in its report.",
+    "batchFileLimit": 250,
+    "maximumProcessOutputBytes": 8388608,
+    "families": {
+      "native": {
+        "baseline": {
+          "files": 741,
+          "bytes": 7997650,
+          "findings": 2573,
+          "seconds": 72.25475833076052,
+          "peakProcessRSSBytes": 459587584
+        },
+        "candidate": {
+          "files": 741,
+          "bytes": 7997650,
+          "findings": 2573,
+          "seconds": 62.44027820811607,
+          "peakProcessRSSBytes": 487440384
+        },
+        "introducedFullSerializedFindings": 0,
+        "removedFullSerializedFindings": 0,
+        "exactSerializedDuplicateRows": 0
+      },
+      "typescript": {
+        "baseline": {
+          "files": 1468,
+          "bytes": 8515992,
+          "findings": 12436,
+          "seconds": 7.6355875410000005,
+          "peakProcessRSSBytes": 671547392
+        },
+        "candidate": {
+          "files": 1468,
+          "bytes": 8515992,
+          "findings": 12436,
+          "seconds": 8.116085166,
+          "peakProcessRSSBytes": 670384128
+        },
+        "introducedFullSerializedFindings": 0,
+        "removedFullSerializedFindings": 0,
+        "exactSerializedDuplicateRows": 0
+      }
+    },
+    "diagnosticMessagesCompared": true,
+    "sourcePinsRefreshed": false,
+    "allFindingsClaimedTruePositive": false
+  },
+  "remainingConfirmedQueue": [],
+  "continuationRequired": false,
+  "canonicalGate": {
+    "command": "make verify",
+    "status": "passed",
+    "actualMerged": false,
+    "nonblockingLintWarnings": 87,
+    "lintErrors": 0,
+    "dogfood": {
+      "pythonRules": 138,
+      "pythonSourceFiles": 739,
+      "pythonBlockingDiagnostics": 0,
+      "typescriptRules": 118,
+      "typescriptDiagnostics": 0
+    },
+    "nativeTypeChecks": "passed",
+    "testsPassed": 27490,
+    "testsSkipped": 9,
+    "packageTestsPassed": {
+      "typescript": 7363,
+      "bootstrap": 18,
+      "contracts": 15,
+      "python": 12530,
+      "sql": 1428,
+      "iac": 1263,
+      "standards": 4873
+    },
+    "shellcheck": "passed",
+    "shfmt": "passed",
+    "repositoryPolicy": "passed",
+    "privateReferences": "delegated to trusted CI; required before merge"
+  },
+  "integratedMainCommit": "0f7769c5839242ab6d1571c254f1c69c97dbb66e",
+  "effectiveMergeBaseCommit": "0f7769c5839242ab6d1571c254f1c69c97dbb66e",
+  "releaseVersions": {
+    "standards": "8.42.1",
+    "python": "1.27.4",
+    "typescript": "16.4.7"
+  }
+}

@@ -586,3 +586,36 @@ def test_collaborator_exception_does_not_hide_adjacent_method_patch(tmp_path: Pa
     [diagnostic] = analyze([PreferInjectedDependencyOverMonkeypatch.id], [target])
     assert diagnostic.code == "SARJ445"
     assert diagnostic.line == 3
+
+
+@pytest.mark.parametrize(
+    ("setup", "construction", "operation", "expected"),
+    [
+        ("import pytest", "pytest.ＭｏｎｋｅｙＰａｔｃｈ()", "setattr(service, 'clock', fake)", 1),
+        ("import ｐｙｔｅｓｔ", "ｐｙｔｅｓｔ.ＭｏｎｋｅｙＰａｔｃｈ()", "setattr(service, 'clock', fake)", 1),
+        ("from pytest import ＭｏｎｋｅｙＰａｔｃｈ as MP", "MP()", "setattr(service, 'clock', fake)", 1),
+        ("import pytest", "pytest.ＭｏｎｋｅｙＰａｔｃｈ()", "setenv('MODE', 'test')", 0),
+        ("import unrelated as pytest", "pytest.ＭｏｎｋｅｙＰａｔｃｈ()", "setattr(service, 'clock', fake)", 0),
+    ],
+)
+def test_native_normalized_factory_preserves_constructor_provenance(
+    setup: str, construction: str, operation: str, expected: int
+) -> None:
+    source = f"{setup}\ndef test_service():\n    patcher = {construction}\n    patcher.{operation}\n"
+    diagnostics = _check(source)
+    assert len(diagnostics) == expected
+    assert all(item.code == "SARJ445" and item.line == 4 for item in diagnostics)
+
+
+def test_native_normalized_constructor_context_and_rebinding() -> None:
+    source = (
+        "import pytest\ndef test_service():\n"
+        "    with pytest.ＭｏｎｋｅｙＰａｔｃｈ.context() as patcher:\n"
+        "        patcher.setattr(service, 'clock', fake)\n"
+    )
+    assert len(_check(source)) == 1
+    rebound = (
+        "import pytest\ndef test_service():\n    patcher = pytest.ＭｏｎｋｅｙＰａｔｃｈ()\n"
+        "    patcher = custom\n    patcher.setattr(service, 'clock', fake)\n"
+    )
+    assert _check(rebound) == []

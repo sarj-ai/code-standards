@@ -591,3 +591,140 @@ def test_kubernetes_nested_lists_retain_a_coverage_bound() -> None:
     source = "".join(prefix) + "  " * 32 + "- apiVersion: v1\n" + "  " * 33 + "kind: Pod\n" + "  " * 33 + "spec: {}\n"
     with pytest.raises(ProgramProjectionError, match=r"nesting exceeds|node bound"):
         execution_blocks("resource.yaml", source)
+
+
+_MISE_NATIVE_SOURCE_LOCATIONS = (
+    pytest.param('[tasks]\nprobe = "printf first; printf second"\n', [2], id="shorthand"),
+    pytest.param('[tasks.probe]\n"run" = "printf first; printf second"\n', [2], id="quoted-run-key"),
+    pytest.param('tasks.probe.run = "printf first; printf second"\n', [1], id="dotted-task"),
+    pytest.param('[tasks]\nprobe = {run = "printf first; printf second"}\n', [2], id="inline-task"),
+    pytest.param(
+        "[vars]\ntext = '''\nrun = \"decoy\"\n'''\n[tasks.probe]\nrun = \"printf first; printf second\"\n",
+        [6],
+        id="multiline-decoy",
+    ),
+    pytest.param(
+        '[vars]\ndecoy = "printf first; printf second"\n[tasks.other]\nrun = "printf first; printf second"\n[tasks.probe]\nrun = "printf first; printf second" # sarj-noqa: SARJ310 - marker\n',
+        [4, 6],
+        id="repeated-command-data",
+    ),
+    pytest.param(
+        '[vars]\nlabel="λ"\n[tasks.probe]\n"run"="printf first; printf second"\n', [4], id="unicode-before-key"
+    ),
+    pytest.param(
+        '[tasks.probe]\nrun="printf \\x66irst; printf second"\n',
+        [2],
+        id="toml11-escape",
+        marks=pytest.mark.skipif("sys.version_info < (3, 15)", reason="native tomllib TOML 1.1 requires Python 3.15"),
+    ),
+    pytest.param(
+        '[tasks]\nprobe = {\n run="printf first; printf second",\n}\n',
+        [3],
+        id="toml11-inline-newline",
+        marks=pytest.mark.skipif("sys.version_info < (3, 15)", reason="native tomllib TOML 1.1 requires Python 3.15"),
+    ),
+    pytest.param(
+        "[tasks.probe]\nrun=[\n  \"printf first; printf second\", # decoy\n  'printf first; printf second',\n]\n",
+        [3, 4],
+        id="array-comments",
+    ),
+    pytest.param(
+        '["tasks"."probe".env]\nVAR="public"\n[tasks.probe]\n"run"="printf first; printf second"\n',
+        [4],
+        id="quoted-key-bare-extension",
+    ),
+    pytest.param(
+        '[tasks.probe.env]\nVAR="value"\n["tasks"."probe"]\nrun="printf first; printf second"\n',
+        [4],
+        id="bare-key-quoted-extension",
+    ),
+    pytest.param(
+        '[[data]]\nname="public"\n[other]\nvalue=1\n[data.child]\nvalue=2\n[tasks.probe]\nrun="printf first; printf second"\n',
+        [8],
+        id="out-of-order-aot",
+    ),
+    pytest.param(
+        '[["data"]]\nname="first"\n[[data]]\nname="second"\n[data.child]\nvalue="public"\n[tasks."probe"]\nrun="printf first; printf second"\n',
+        [8],
+        id="mixed-key-aot",
+    ),
+    pytest.param(
+        'value=nan\ntime=1979-05-27T07:32:00Z\n[tasks.probe]\nrun="printf first; printf second"\n',
+        [4],
+        id="nan-datetime-data",
+    ),
+    pytest.param(
+        'data="__sarj_source_span_0__"\n[tasks.probe]\nrun="printf first; printf second"\n',
+        [3],
+        id="marker-collision-data",
+    ),
+    pytest.param(
+        '"\\u005f_sarj_source_span_0__"="public"\n[tasks.probe]\nrun="printf first; printf second"\n',
+        [3],
+        id="escaped-marker-key",
+    ),
+    pytest.param(
+        'data="\\u005f_sarj_source_span_0__"\n[tasks.probe]\nrun="printf first; printf second"\n',
+        [3],
+        id="escaped-marker-value",
+    ),
+    pytest.param('[tasks.probe]\n"r\\u0075n"="printf first; printf second"\n', [2], id="escaped-run-key"),
+    pytest.param('[tasks."probe.name"]\nrun="printf first; printf second"\n', [2], id="dot-in-task-name"),
+    pytest.param(
+        "[tasks.probe]\nrun='''printf 'first'; printf 'second''''\n", [2], id="literal-command-four-closing-quotes"
+    ),
+    pytest.param(
+        '[tasks.probe]\nrun="""printf "first"; printf "second""""\n', [2], id="basic-command-four-closing-quotes"
+    ),
+    pytest.param(
+        "[tasks.probe]\nrun='''printf first; printf second'''''\n", [2], id="literal-command-five-closing-quotes"
+    ),
+    pytest.param(
+        '[tasks.probe]\nrun="""printf first; printf second"""""\n', [2], id="basic-command-five-closing-quotes"
+    ),
+    pytest.param(
+        '# run="decoy"\n[vars]\ntext=\'\'\'\n# quoted "data" and run="decoy"\n\'\'\'\n[tasks.probe]\nrun="printf first; printf second" # "decoy"\n',
+        [7],
+        id="multiline-comments",
+    ),
+    pytest.param('[tasks.probe]\nrun="""\nprintf first; printf second\n"""\n', [2], id="multiline-command"),
+    pytest.param(
+        "data=''''value''''\n[tasks.probe]\nrun=\"printf first; printf second\"\n", [3], id="four-literal-quotes"
+    ),
+    pytest.param(
+        'data="""""value"""""\n[tasks.probe]\nrun="printf first; printf second"\n', [3], id="five-basic-quotes"
+    ),
+    pytest.param(
+        '[vars]\ntext="""[tasks.decoy]\\nrun=\\"decoy\\""""\n[tasks.probe]\nrun="printf first; printf second"\n',
+        [4],
+        id="multiline-key-shaped-data",
+    ),
+    pytest.param(
+        'a=+nan\nb=-nan\nc=nan\n[tasks.probe]\nrun="printf first; printf second"\n',
+        [5],
+        id="positive-negative-nan-data",
+    ),
+    pytest.param(
+        'data="run = \\"decoy\\""\n[tasks.probe]\nrun="printf first; printf second"\n', [3], id="double-escaped-data"
+    ),
+)
+
+
+@pytest.mark.parametrize(("source", "expected_lines"), _MISE_NATIVE_SOURCE_LOCATIONS)
+def test_mise_runtime_strings_retain_exact_native_source_lines(source: str, expected_lines: list[int]) -> None:
+    blocks = execution_blocks("mise.toml", source)
+    assert [block.line for block in blocks] == expected_lines
+
+
+def test_mise_array_commands_report_at_their_individual_use_sites(tmp_path: Path) -> None:
+    source = '[tasks.probe]\nrun = [\n  "printf first; printf second", # first command use-site\n  "printf third; printf fourth",\n]\n'
+    path = tmp_path / "mise.toml"
+    path.write_text(source)
+    findings = textlint.check_paths([str(path)], root=tmp_path, rule_ids=frozenset({"workflow-embedded-program"}))
+    assert [(finding.code, finding.line) for finding in findings] == [("SARJ310", 3), ("SARJ310", 4)]
+
+
+@pytest.mark.parametrize("source", ["[tasks.probe]\nrun=1\n", '[tasks.probe]\nrun=["printf first", 2]\n'])
+def test_mise_non_string_runtime_values_fail_analysis_coverage(source: str) -> None:
+    with pytest.raises(ProgramProjectionError, match="mise task run must be"):
+        execution_blocks("mise.toml", source)

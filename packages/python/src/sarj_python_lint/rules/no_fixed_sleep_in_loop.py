@@ -139,7 +139,7 @@ class NoFixedSleepInLoop(Rule):
     def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
         path = context.path
         if (
-            "sleep" not in context.source
+            "sleep" not in context.symbol_source
             or is_test_path(path)
             or is_test_support_path(path)
             or context.generated

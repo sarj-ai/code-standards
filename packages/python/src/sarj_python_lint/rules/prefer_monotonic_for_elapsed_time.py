@@ -87,7 +87,12 @@ class PreferMonotonicForElapsedTime(Rule):
 
     @override
     def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
-        if "time" not in context.source or context.generated or context.tree is None or _clock_is_mutated(context):
+        if (
+            "time" not in context.symbol_source
+            or context.generated
+            or context.tree is None
+            or _clock_is_mutated(context)
+        ):
             return []
         findings: list[Diagnostic] = []
         for function in context.nodes(ast.FunctionDef, ast.AsyncFunctionDef):

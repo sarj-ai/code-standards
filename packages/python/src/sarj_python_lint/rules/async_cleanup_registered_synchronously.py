@@ -68,7 +68,7 @@ class AsyncCleanupRegisteredSynchronously(Rule):
 
     @override
     def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
-        if "callback" not in context.source or context.generated or context.tree is None:
+        if "callback" not in context.symbol_source or context.generated or context.tree is None:
             return []
         provenance = ResourceProvenance(context)
         findings: list[Diagnostic] = []

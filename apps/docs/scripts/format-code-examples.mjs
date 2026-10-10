@@ -189,6 +189,15 @@ async function formatCode(source, path, context) {
   const cached = cache.get(cacheKey);
   if (cached !== undefined) return cached;
 
+  // Make has no pinned formatter; recipe tabs and trailing variable spaces are semantic.
+  // Match the DevOps execution-block basenames without expanding unsupported extensions.
+  if (["makefile", "gnumakefile"].includes(basename(lower))) {
+    if (!source.endsWith("\n"))
+      throw new Error(`${context}: Make source must end with a newline`);
+    cache.set(cacheKey, source);
+    return source;
+  }
+
   let formatted;
   if (lower.endsWith("/.git/keep") || lower === ".git/keep") {
     formatted = normalize(source);

@@ -85,6 +85,36 @@ class NoStringConcatInLoop(Rule):
                 expected_count=0,
                 public=True,
             ),
+            RuleExample(
+                example_id="fstring-growth-in-loop",
+                title="F-string replacement repeatedly grows the accumulator",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/render.py",
+                        'def render(items):\n    result = ""\n    for item in items:\n        result = f"{result}{item}"\n    return result\n',
+                    ),
+                ),
+                focus_path=PurePosixPath("app/render.py"),
+                expected_count=1,
+                public=True,
+                scenario="fstring-growth",
+            ),
+            RuleExample(
+                example_id="joined-fstring-fragments",
+                title="Join rendered fragments after collecting them",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/render.py",
+                        'def render(items):\n    return "".join(f"{item}" for item in items)\n',
+                    ),
+                ),
+                focus_path=PurePosixPath("app/render.py"),
+                expected_count=0,
+                public=True,
+                scenario="fstring-growth",
+            ),
         ),
     )
     description = documentation.summary
@@ -95,7 +125,7 @@ class NoStringConcatInLoop(Rule):
         source = context.source
         if context.generated:
             return []
-        if "+" not in source or ("for " not in source and "while " not in source):
+        if ("+" not in source and "{" not in source) or ("for" not in source and "while" not in source):
             return []
         tree = context.tree
         if tree is None:

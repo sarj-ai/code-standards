@@ -1029,3 +1029,88 @@ def render(items):
         result += len(item)
 """
     assert _check(src) == []
+
+
+_NATIVE_LEXICAL_GROWTH_CASES = (
+    pytest.param(
+        'def render(items):\n    result = ""\n    for item in items:\n        result += item\n    return result\n',
+        1,
+        id="for-0",
+    ),
+    pytest.param(
+        'def render(items):\n    result = ""\n    for\titem in items:\n        result += item\n    return result\n',
+        1,
+        id="for-1",
+    ),
+    pytest.param(
+        'def render(items):\n    result = ""\n    for\x0citem in items:\n        result += item\n    return result\n',
+        1,
+        id="for-2",
+    ),
+    pytest.param(
+        'def render(items):\n    result = ""\n    for(item) in items:\n        result += item\n    return result\n',
+        1,
+        id="for-3",
+    ),
+    pytest.param(
+        'def render(items):\n    result = ""\n    for\\\n item in items:\n        result += item\n    return result\n',
+        1,
+        id="for-4",
+    ),
+    pytest.param(
+        'def render(items):\n    result = ""\n    counter = 0\n    while counter < len(items):\n        result += items[counter]\n        counter += 1\n    return result\n',
+        1,
+        id="while-5",
+    ),
+    pytest.param(
+        'def render(items):\n    result = ""\n    counter = 0\n    while\tcounter < len(items):\n        result += items[counter]\n        counter += 1\n    return result\n',
+        1,
+        id="while-6",
+    ),
+    pytest.param(
+        'def render(items):\n    result = ""\n    counter = 0\n    while(counter < len(items)):\n        result += items[counter]\n        counter += 1\n    return result\n',
+        1,
+        id="while-7",
+    ),
+    pytest.param(
+        'def render(items):\n    result = ""\n    counter = 0\n    while\\\n counter < len(items):\n        result += items[counter]\n        counter += 1\n    return result\n',
+        1,
+        id="while-8",
+    ),
+    pytest.param(
+        "def render(items):\n    result = 0\n    for\titem in items:\n        result += item\n    return result\n",
+        0,
+        id="numeric-loop",
+    ),
+    pytest.param(
+        'def render(items):\n    result = ""\n    for\titem in items:\n        def grow():\n            nonlocal result\n            result += item\n    return result\n',
+        0,
+        id="function-deferred-inside-loop",
+    ),
+    pytest.param('def render(items):\n    return "".join(items)\n', 0, id="join"),
+    pytest.param(
+        'def render(items):\n    result = ""\n    for item in items:\n        result = f"{result}{item}"\n    return result\n',
+        1,
+        id="fstring-no-plus",
+    ),
+    pytest.param(
+        'def render(items):\n    marker = "+"\n    result = ""\n    for item in items:\n        result = f"{result}{item}"\n    return result\n',
+        1,
+        id="fstring-inert-plus-data",
+    ),
+    pytest.param(
+        'def render(items):\n    result = ""\n    for item in items:\n        result = ""\n        result = f"{result}{item}"\n    return result\n',
+        0,
+        id="fstring-reset-per-iteration",
+    ),
+    pytest.param(
+        'def render(items):\n    result = ""\n    seen = []\n    for item in items:\n        result = f"{result}{item}"\n        seen.append(result)\n    return seen\n',
+        0,
+        id="fstring-consumed-each-iteration",
+    ),
+)
+
+
+@pytest.mark.parametrize(("source", "expected"), _NATIVE_LEXICAL_GROWTH_CASES)
+def test_native_loop_lexical_boundaries_and_fstring_growth(source: str, expected: int) -> None:
+    assert _count(source) == expected

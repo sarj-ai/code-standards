@@ -83,7 +83,7 @@ class RequireExplicitPsycopgTransaction(Rule):
     @override
     def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
         if (
-            "execute" not in context.source
+            "execute" not in context.symbol_source
             or context.generated
             or is_test_path(context.path)
             or is_test_support_path(context.path)

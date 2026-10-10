@@ -138,3 +138,21 @@ RULE_TESTER.run("no-select-star", rule, {
     },
   ],
 });
+
+
+RULE_TESTER.run("no-select-star native-decoded SQL", rule, {
+  valid: [
+    { name: "native escaped-comment", code: "db.query(\"SEL\\x45CT id FROM runs /* SELECT * FROM runs */\");" },
+    { name: "native escaped-value", code: "db.query(\"SEL\\x45CT id FROM runs WHERE note = 'SELECT'\");" },
+    { name: "native escaped-prose", code: "db.query(\"Invalid SEL\\x45CT value\");" },
+    { name: "native safe-query", code: "db.query(\"SELECT id FROM runs\");" },
+  ],
+  invalid: [
+    { name: "native plain", code: "db.query(\"SELECT * FROM runs\");", errors: [{ messageId: "noSelectStar" }] },
+    { name: "native unicode-four", code: "db.query(\"SEL\\u0045CT * FROM runs\");", errors: [{ messageId: "noSelectStar" }] },
+    { name: "native unicode-codepoint", code: "db.query(\"SEL\\u{45}CT * FROM runs\");", errors: [{ messageId: "noSelectStar" }] },
+    { name: "native hex", code: "db.query(\"SEL\\x45CT * FROM runs\");", errors: [{ messageId: "noSelectStar" }] },
+    { name: "native concatenated", code: "db.query(\"SEL\"+\"ECT * FROM runs\");", errors: [{ messageId: "noSelectStar" }] },
+    { name: "native joined", code: "db.query([\"SEL\"+\"ECT * FROM runs\"].join(\" \"));", errors: [{ messageId: "noSelectStar" }] },
+  ],
+});

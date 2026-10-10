@@ -360,10 +360,10 @@ class ProductionDerivedTestCases(Rule):
     @override
     def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
         path = context.path
-        source = context.source
-        lowered = source.lower()
+        signals = context.symbol_source
+        lowered = signals.lower()
         if (
-            "parametrize" not in source
+            "parametrize" not in signals
             or not any(token in lowered for token in _MEMBERSHIP_TOKENS)
             or not is_test_path(path)
             or context.generated

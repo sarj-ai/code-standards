@@ -67,7 +67,7 @@ class SubprocessKillWithoutReap(Rule):
 
     @override
     def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
-        if "kill" not in context.source or context.generated or context.tree is None:
+        if "kill" not in context.symbol_source or context.generated or context.tree is None:
             return []
         provenance = ResourceProvenance(context)
         findings: list[Diagnostic] = []
