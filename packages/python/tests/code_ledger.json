@@ -274,5 +274,9 @@
   "SARJ483": "no-unused-copy-result",
   "SARJ484": "no-interpreter-source-arguments",
   "SARJ485": "no-fixed-sleep-in-loop",
-  "SARJ486": "require-injectable-retry-sleep"
+  "SARJ486": "require-injectable-retry-sleep",
+  "SARJ487": "redundant-test-constructor-forwarder",
+  "SARJ488": "duplicate-adjacent-exception-handler",
+  "SARJ489": "duplicate-closed-pure-helper",
+  "SARJ490": "repeated-unimplemented-test-contract"
 }

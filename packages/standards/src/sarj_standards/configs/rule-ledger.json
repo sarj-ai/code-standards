@@ -30,6 +30,8 @@
       "defect-xfail-requires-explicit-strict",
       "docstring-args-restate-signature",
       "docstring-returns-restate-signature",
+      "duplicate-adjacent-exception-handler",
+      "duplicate-closed-pure-helper",
       "excessive-commentary",
       "fakes-in-shared-location",
       "fastapi-class-router-contract",
@@ -138,9 +140,11 @@
       "redundant-class-docstring",
       "redundant-docstring",
       "redundant-module-docstring",
+      "redundant-test-constructor-forwarder",
       "repeated-kwarg-heavy-call-in-test",
       "repeated-static-call-cases",
       "repeated-test-composition",
+      "repeated-unimplemented-test-contract",
       "replay-contract-insert-requires-duplicate-policy",
       "require-explicit-contract-implementation",
       "require-explicit-psycopg-transaction",
@@ -472,7 +476,11 @@
       "SARJ483",
       "SARJ484",
       "SARJ485",
-      "SARJ486"
+      "SARJ486",
+      "SARJ487",
+      "SARJ488",
+      "SARJ489",
+      "SARJ490"
     ],
     "sql": [
       "SARJ101",

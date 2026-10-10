@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "dbba9f8226b25e206247a82af13126ed13d82c82674adf1bb63b9d85d4afdb8a",
-  "cliSha256": "f1a0c521b2396603245acc1f9fb0a7193d3f464a49536e2b15b94f9dd40bf63e",
+  "catalogSha256": "516cee88f37188c14f23f2ade4c9582aad19ee1ec41f8eca9b72f415dd0e87eb",
+  "cliSha256": "a313c394e6390e9427518bc19991e74473533ddc89d995c457e4d14902f25940",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -5921,6 +5921,76 @@
       ],
       "optionsSchemaSource": null
     },
+    "python:duplicate-adjacent-exception-handler": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/service.py",
+              "source": "try:\n    action()\nexcept (ValueError, TypeError) as error:\n    raise RuntimeError(\"invalid\") from error\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/service.py",
+          "id": "one-tuple-handler",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "One handler owns the shared translation"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/service.py",
+              "source": "try:\n    action()\nexcept ValueError as error:\n    raise RuntimeError(\"invalid\") from error\nexcept TypeError as error:\n    raise RuntimeError(\"invalid\") from error\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/service.py",
+          "id": "repeated-translation",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Adjacent handlers translate identically"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:duplicate-closed-pure-helper": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/formatters.py",
+              "source": "import re\n\nFIRST = re.compile(r\"item (\\d+)\")\nSECOND = re.compile(r\"code (\\d+)\")\n\n\ndef _space(match: re.Match[str]) -> str:\n    full = match.group(0)\n    digits = match.group(1)\n    spaced = \" \".join(digits)\n    return full.replace(digits, spaced)\n\n\ndef _spread(match: re.Match[str]) -> str:\n    full = match.group(0)\n    digits = match.group(1)\n    spaced = \" \".join(digits)\n    return full.replace(digits, spaced)\n\n\nFIRST.sub(_space, text)\nSECOND.sub(_spread, text)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/formatters.py",
+          "id": "duplicate-native-transformation",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Different patterns use identical closed callbacks"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/formatters.py",
+              "source": "import re\n\nFIRST = re.compile(r\"item (\\d+)\")\nSECOND = re.compile(r\"code (\\d+)\")\n\n\ndef _space(match: re.Match[str]) -> str:\n    full = match.group(0)\n    digits = match.group(1)\n    spaced = \" \".join(digits)\n    return full.replace(digits, spaced)\n\n\nFIRST.sub(_space, text)\nSECOND.sub(_space, text)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/formatters.py",
+          "id": "shared-existing-transformation",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Patterns retain their choices and share one transformation"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "python:excessive-commentary": {
       "examples": [
         {
@@ -11077,6 +11147,41 @@
       ],
       "optionsSchemaSource": null
     },
+    "python:redundant-test-constructor-forwarder": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "tests/test_record.py",
+              "source": "from pydantic import BaseModel\n\n\nclass Record(BaseModel):\n    value: str\n\n\ndef test_record():\n    assert Record(value=\"item\").value == \"item\"\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_record.py",
+          "id": "direct-constructor",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "The record owns its signature and validation"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "tests/test_record.py",
+              "source": "from pydantic import BaseModel\n\n\nclass Record(BaseModel):\n    value: str\n\n\ndef _record(value: str) -> Record:\n    return Record(value=value)\n\n\ndef test_record():\n    assert _record(\"item\").value == \"item\"\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_record.py",
+          "id": "mirrored-constructor",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Required parameters only repeat record fields"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "python:repeated-kwarg-heavy-call-in-test": {
       "examples": [
         {
@@ -11178,6 +11283,41 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Share managed test-client assembly"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:repeated-unimplemented-test-contract": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "tests/test_store.py",
+              "source": "from abc import ABC, abstractmethod\n\n\nclass Store(ABC):\n    @abstractmethod\n    def read(self, key: str) -> str:\n        pass\n\n\nclass First(Store):\n    def read(self, key: str) -> str:\n        raise NotImplementedError\n\n\nclass Second(Store):\n    def read(self, key: str) -> str:\n        return key\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_store.py",
+          "id": "configured-operation",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Configured fake behavior belongs to the leaf"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "tests/test_store.py",
+              "source": "from abc import ABC, abstractmethod\n\n\nclass Store(ABC):\n    @abstractmethod\n    def read(self, key: str) -> str:\n        pass\n\n\nclass First(Store):\n    def read(self, key: str) -> str:\n        raise NotImplementedError\n\n\nclass Second(Store):\n    def read(self, key: str) -> str:\n        raise NotImplementedError\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_store.py",
+          "id": "repeated-strict-operation",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Two test fakes repeat one unconfigured operation"
         }
       ],
       "optionsSchemaSource": null
@@ -12156,6 +12296,36 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Repeated calls never vary the option"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "tests/test_widget.py",
+              "source": "def _widget(*, size=3):\n    return Widget(size=size)\n\n\n_widget()\n_widget(size=3)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_widget.py",
+          "id": "module-invariant-option",
+          "outcome": "reject",
+          "scenarioId": "module-literal",
+          "title": "A private shared helper's callers never vary the option"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "tests/test_widget.py",
+              "source": "def _widget(*, size=3):\n    return Widget(size=size)\n\n\n_widget()\n_widget(size=4)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_widget.py",
+          "id": "module-varied-option",
+          "outcome": "accept",
+          "scenarioId": "module-literal",
+          "title": "A known caller exercises a distinct scenario value"
         },
         {
           "expectedCount": 1,

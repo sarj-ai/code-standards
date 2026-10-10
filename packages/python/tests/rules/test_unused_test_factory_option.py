@@ -62,7 +62,9 @@ _CASES = (
         _inside_test((_FACTORY + "_make_widget()\n_make_widget()\n").replace("_make_", "_build_")),
         ExpectedOutcome.MATCH,
     ),
-    EvaluationCase("module-shared-helper", Language.PYTHON, _FACTORY + "_make_widget()\n_make_widget()\n"),
+    EvaluationCase(
+        "module-shared-helper", Language.PYTHON, _FACTORY + "_make_widget()\n_make_widget()\n", ExpectedOutcome.MATCH
+    ),
     EvaluationCase(
         "fixture-shared-helper",
         Language.PYTHON,
@@ -242,6 +244,37 @@ def test_metadata_retains_warning_without_autofix() -> None:
     assert documentation.autofix is AutofixPolicy.NONE
 
 
+_MODULE_LITERAL = "def _widget(*, width=3):\n    return Widget(width=width)\n_widget()\n_widget(width=3)\n"
+_MODULE_CASES = (
+    EvaluationCase("private-module-literal", Language.PYTHON, _MODULE_LITERAL, ExpectedOutcome.MATCH),
+    EvaluationCase("module-varied-option", Language.PYTHON, _MODULE_LITERAL.replace("width=3)\n", "width=4)\n")),
+    EvaluationCase("module-helper-escape", Language.PYTHON, _MODULE_LITERAL + "register(_widget)\n"),
+    EvaluationCase(
+        "module-helper-patch", Language.PYTHON, _MODULE_LITERAL + "patch('examples.test_widgets._widget')\n"
+    ),
+    EvaluationCase(
+        "module-helper-member-patch",
+        Language.PYTHON,
+        _MODULE_LITERAL + "patch('examples.test_widgets._widget.__defaults__')\n",
+    ),
+    EvaluationCase("module-public-contract", Language.PYTHON, _MODULE_LITERAL.replace("_widget", "make_widget")),
+    EvaluationCase("module-unpacked-calls", Language.PYTHON, _MODULE_LITERAL + "_widget(**options)\n"),
+    EvaluationCase("module-fixture", Language.PYTHON, "@fixture\n" + _MODULE_LITERAL),
+    EvaluationCase(
+        "module-argument-rebinding",
+        Language.PYTHON,
+        _MODULE_LITERAL.replace("    return", "    width = other\n    return"),
+    ),
+)
+
+
+@pytest.mark.parametrize("case", _MODULE_CASES, ids=tuple(case.case_id for case in _MODULE_CASES))
+def test_module_literal_option_cases(case: EvaluationCase) -> None:
+    findings = UnusedTestFactoryOption().check(Path("tests/test_widgets.py"), case.source)
+    assert bool(findings) is (case.expected is ExpectedOutcome.MATCH)
+    assert len(findings) <= 1
+
+
 _CALLABLE_FACTORY = "def _read():\n    return 'ready'\ndef _make_widget(*, read=_read):\n    return Widget(read=read)\n"
 _CALLABLE_BASE = _CALLABLE_FACTORY + "_make_widget()\n_make_widget()\n"
 _CALLABLE_CASES = (
@@ -400,7 +433,7 @@ def test_module_callable_default_cases(case: EvaluationCase) -> None:
     assert all(item.severity is Severity.WARNING for item in diagnostics)
 
 
-def test_callable_remediation_leaves_module_literals_and_exercised_callbacks_alone() -> None:
+def test_callable_remediation_keeps_remaining_literal_diagnostic() -> None:
     source = (
         "def _read():\n    return 'ready'\n"
         "def _make_widget(*, width=3, read=_read):\n    return Widget(width=width, read=read)\n"
@@ -408,13 +441,10 @@ def test_callable_remediation_leaves_module_literals_and_exercised_callbacks_alo
     )
     diagnostics = UnusedTestFactoryOption().check(Path("tests/test_widgets.py"), source)
 
-    assert len(diagnostics) == 1
-    assert "known direct caller" in diagnostics[0].message
-    assert "read" in diagnostics[0].message
-    assert (
-        UnusedTestFactoryOption().check(
-            Path("tests/test_widgets.py"),
-            source.replace("*, width=3, read=_read", "*, width=3").replace("read=read", "read=_read"),
-        )
-        == []
+    assert [".width`" in item.message for item in diagnostics] == [True, False]
+    assert "known direct caller" in diagnostics[1].message
+    remaining = UnusedTestFactoryOption().check(
+        Path("tests/test_widgets.py"),
+        source.replace("*, width=3, read=_read", "*, width=3").replace("read=read", "read=_read"),
     )
+    assert remaining == diagnostics[:1]

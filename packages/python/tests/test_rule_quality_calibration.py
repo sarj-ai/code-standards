@@ -150,12 +150,13 @@ _CALIBRATED_STYLE_CASES = (
         PurePosixPath("tests/test_value.py"),
     ),
     EvaluationCase(
-        "shared-factory-default",
+        "closed-module-invariant-option",
         Language.PYTHON,
         "def _make_value(*, size=3):\n    return str(size)\n"
         "def test_values():\n"
         "    assert _make_value() == '3'\n"
         "    assert _make_value(size=3) == '3'\n",
+        ExpectedOutcome.MATCH,
         path=PurePosixPath("tests/test_value.py"),
     ),
     EvaluationCase(
@@ -196,6 +197,7 @@ def test_narrowed_style_rules_preserve_unique_signals(tmp_path: Path, case: Eval
     path.write_text(case.source)
     expected = {
         "closed-local-invariant-option": ["SARJ443"],
+        "closed-module-invariant-option": ["SARJ443"],
         "fixed-module-loader-indirection": ["SARJ471"],
         "immediately-rejected-nullable-default": ["SARJ468"],
     }.get(case.case_id, [])
