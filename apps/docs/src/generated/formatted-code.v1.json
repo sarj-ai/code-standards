@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "cbc4c7447019eb6ef3c45b77b3e3779f9f6c43bbfef657a1b0fb3143192b08cf",
+  "catalogSha256": "2e800c35aff9d988863c00cc14b6cba8fe7b90b227dbc3abf9ffd825719d67d3",
   "cliSha256": "d3c69fb169fb71c8eedaad40a2a370aac50af68ecb0ece118b54806a441a6870",
   "formatterVersions": {
     "prettier": "3.9.6",
@@ -1488,6 +1488,26 @@
           "files": [
             {
               "path": "src/schema.ts",
+              "source": "import { array, string } from \"zod/v4\";\nconst Items = array(string()).optional().default([]);\n"
+            }
+          ],
+          "fixedFiles": [
+            {
+              "path": "src/schema.ts",
+              "source": "import { array, string } from \"zod/v4\";\nconst Items = array(string()).default([]);\n"
+            }
+          ],
+          "focusPath": "src/schema.ts",
+          "id": "official-zod-subpath-array",
+          "outcome": "reject",
+          "scenarioId": "module-identity",
+          "title": "Official Zod subpath constructors retain the safe fix"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/schema.ts",
               "source": "import { z } from \"zod\";\nconst Items = z.array(z.string()).optional().default([]);\n"
             }
           ],
@@ -1502,6 +1522,25 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Do not wrap a defaulted list in a redundant optional"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/my-zod/index.ts",
+              "source": "export const z = {\n  string: () => \"string\",\n  array: (_element: string) => ({\n    optional: () => ({\n      default: (value: readonly string[]) => ({ value, optional: true }),\n    }),\n    default: (value: readonly string[]) => ({ value, optional: false }),\n  }),\n};\n"
+            },
+            {
+              "path": "src/schema.ts",
+              "source": "import { z } from \"./my-zod/index.js\";\nexport const Items = z.array(z.string()).optional().default([]);\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/schema.ts",
+          "id": "unrelated-relative-builder",
+          "outcome": "accept",
+          "scenarioId": "module-identity",
+          "title": "Preserve an unrelated builder in a directory named zod"
         }
       ],
       "optionsSchemaSource": null
@@ -11553,6 +11592,36 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Concurrent index build"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "supabase/migrations/001_body.sql",
+              "source": "DO $$ BEGIN CREATE INDEX orders_idx ON orders(id); END $$;\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "supabase/migrations/001_body.sql",
+          "id": "executable-dollar-body",
+          "outcome": "reject",
+          "scenarioId": "dollar-quoted-sql",
+          "title": "Executable dollar-quoted migration SQL remains checked"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "supabase/migrations/001_data.sql",
+              "source": "SELECT\n  $data$CREATE INDEX orders_idx ON orders(id);$data$;\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "supabase/migrations/001_data.sql",
+          "id": "scalar-dollar-data",
+          "outcome": "accept",
+          "scenarioId": "dollar-quoted-sql",
+          "title": "SQL keywords inside scalar dollar data are not executed"
         }
       ],
       "optionsSchemaSource": null
@@ -11908,6 +11977,21 @@
           "expectedCount": 1,
           "files": [
             {
+              "path": "supabase/migrations/001_body.sql",
+              "source": "DO $$ BEGIN CREATE TYPE status AS ENUM ('ready'); END $$;\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "supabase/migrations/001_body.sql",
+          "id": "executable-dollar-body",
+          "outcome": "reject",
+          "scenarioId": "dollar-quoted-sql",
+          "title": "Executable dollar-quoted migration SQL remains checked"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
               "path": "supabase/migrations/001_status.sql",
               "source": "CREATE TYPE call_status AS ENUM('pending', 'active', 'completed');\n"
             }
@@ -11918,6 +12002,21 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "PostgreSQL enum type"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "supabase/migrations/001_data.sql",
+              "source": "SELECT\n  $data$CREATE TYPE status AS ENUM ('ready');$data$;\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "supabase/migrations/001_data.sql",
+          "id": "scalar-dollar-data",
+          "outcome": "accept",
+          "scenarioId": "dollar-quoted-sql",
+          "title": "SQL keywords inside scalar dollar data are not executed"
         },
         {
           "expectedCount": 0,
@@ -12589,6 +12688,36 @@
     },
     "text:workflow-embedded-program": {
       "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "compose.yaml",
+              "source": "services:\n  app:\n    image: fixture\n    healthcheck:\n      disable: false\n      test: [CMD-SHELL, \"printf first; printf second\"]\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "compose.yaml",
+          "id": "compose-active-healthcheck-program",
+          "outcome": "reject",
+          "scenarioId": "compose-healthcheck-execution",
+          "title": "An enabled healthcheck runs its shell program"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "compose.yaml",
+              "source": "services:\n  app:\n    image: fixture\n    healthcheck:\n      disable: \"true\"\n      test: [CMD-SHELL, \"printf first; printf second\"]\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "compose.yaml",
+          "id": "compose-disabled-healthcheck-data",
+          "outcome": "accept",
+          "scenarioId": "compose-healthcheck-execution",
+          "title": "A disabled healthcheck retains inert command data"
+        },
         {
           "expectedCount": 1,
           "files": [

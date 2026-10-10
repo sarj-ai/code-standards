@@ -144,8 +144,8 @@ class InsertRequiresOnConflict(Rule):
         if is_dump_file(source, path):
             return []
 
-        masked = mask_sql_literals_and_comments(source)
-        exempt = _guarded_dollar_body_lines(mask_sql(source), source)
+        masked = mask_sql_literals_and_comments(source, mask_dollar_literals=True)
+        exempt = _guarded_dollar_body_lines(mask_sql(source, mask_dollar_literals=True), source)
         diags: list[Diagnostic] = []
         for statement in split_statements(masked):
             text = "\n".join(line for _, line in statement)

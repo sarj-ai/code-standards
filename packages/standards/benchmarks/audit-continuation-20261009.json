@@ -1,0 +1,322 @@
+{
+  "schemaVersion": 1,
+  "baselineCommit": "5d9a9b7484706691b21ab9f78faaae5379341136",
+  "priorAudit": {
+    "devopsPasses": 30,
+    "broaderPasses": 18,
+    "pullRequest": 1353,
+    "reportPath": "packages/standards/benchmarks/rule-review-20261009.json"
+  },
+  "completedAdditionalPasses": 33,
+  "minimumAdditionalPasses": 30,
+  "countingPolicy": "Distinct owner/invariant audits with fresh labeled native or first-class syntax cases and actual evidence; no test repetitions, variants, or residual-control counts counted as passes.",
+  "passes": [
+    {
+      "additionalPass": 1,
+      "scope": "Helm layered values/schema",
+      "decision": "retain"
+    },
+    {
+      "additionalPass": 2,
+      "scope": "Helm namespace/exception identity",
+      "decision": "retain"
+    },
+    {
+      "additionalPass": 3,
+      "scope": "Helm rendered document closure",
+      "decision": "retain"
+    },
+    {
+      "additionalPass": 4,
+      "scope": "Kubernetes exact GVK/custom payload",
+      "decision": "retain"
+    },
+    {
+      "additionalPass": 5,
+      "scope": "Kubernetes List/source attribution",
+      "decision": "retain"
+    },
+    {
+      "additionalPass": 6,
+      "scope": "Skaffold profile/hook execution",
+      "decision": "retain"
+    },
+    {
+      "additionalPass": 7,
+      "scope": "CloudDeploy actions/references/schema",
+      "decision": "retain"
+    },
+    {
+      "additionalPass": 8,
+      "scope": "CloudBuild shell option/argv",
+      "decision": "repair"
+    },
+    {
+      "additionalPass": 9,
+      "scope": "CloudBuild scripts/env/substitution",
+      "decision": "retain"
+    },
+    {
+      "additionalPass": 10,
+      "scope": "Standalone shell dialect/sourced coverage",
+      "decision": "retain"
+    },
+    {
+      "additionalPass": 11,
+      "scope": "DevOps native validation/capability coverage",
+      "decision": "repair"
+    },
+    {
+      "additionalPass": 12,
+      "scope": "Native version/cache/provenance",
+      "decision": "retain"
+    },
+    {
+      "additionalPass": 13,
+      "scope": "Native environment/path/invocation",
+      "decision": "repair"
+    },
+    {
+      "additionalPass": 15,
+      "scope": "DevOps CI/build/release configuration",
+      "decision": "retain"
+    },
+    {
+      "additionalPass": 16,
+      "scope": "Shared suppression/generated/scope boundaries",
+      "decision": "repair"
+    },
+    {
+      "additionalPass": 17,
+      "scope": "Immutable Git/import closure/source drift",
+      "decision": "retain"
+    },
+    {
+      "additionalPass": 18,
+      "scope": "Native fixture metadata/CLI API/ownership",
+      "decision": "retain"
+    },
+    {
+      "additionalPass": 19,
+      "scope": "Adoption/hooks/local environment",
+      "decision": "retain"
+    },
+    {
+      "additionalPass": 20,
+      "scope": "Release dependency/registry contracts",
+      "decision": "repair"
+    },
+    {
+      "additionalPass": 21,
+      "scope": "Python import/runtime/scopes",
+      "decision": "retain"
+    },
+    {
+      "additionalPass": 22,
+      "scope": "Python async/retry/loop ownership",
+      "decision": "retain"
+    },
+    {
+      "additionalPass": 23,
+      "scope": "Python literals/collections/annotations",
+      "decision": "retain"
+    },
+    {
+      "additionalPass": 24,
+      "scope": "TypeScript runtime/type/framework bindings",
+      "decision": "retain"
+    },
+    {
+      "additionalPass": 25,
+      "scope": "TypeScript autofix semantic/idempotence",
+      "decision": "repair"
+    },
+    {
+      "additionalPass": 26,
+      "scope": "TypeScript project/performance/cache",
+      "decision": "retain"
+    },
+    {
+      "additionalPass": 27,
+      "scope": "SQL native dialect/comments/suppression",
+      "decision": "repair"
+    },
+    {
+      "additionalPass": 28,
+      "scope": "SQL migration/statement contracts",
+      "decision": "repair"
+    },
+    {
+      "additionalPass": 29,
+      "scope": "HCL native headers/templates/depth/positions",
+      "decision": "retain"
+    },
+    {
+      "additionalPass": 30,
+      "scope": "HCL interactions/performance/native grammar",
+      "decision": "retain"
+    },
+    {
+      "additionalPass": 31,
+      "scope": "Shared Python AST index native traversal/order/subclass/parent and malformed-context invariants",
+      "decision": "retain"
+    },
+    {
+      "additionalPass": 32,
+      "scope": "All138 Python owners shared-file analysis parity, source-key isolation and bounded registry performance",
+      "decision": "retain"
+    },
+    {
+      "additionalPass": 33,
+      "scope": "Python set-overlap suggestion versus unsafe automatic transformation, native iterable/equality observability and conservative receiver provenance",
+      "decision": "retain"
+    },
+    {
+      "additionalPass": 37,
+      "scope": "Canonical native UTF8/UTF16 positions, repository URI paths and fingerprint identity",
+      "decision": "retain"
+    }
+  ],
+  "repairs": [
+    "Skip constant disabled Compose healthchecks while retaining service commands.",
+    "Consume the native Python hash-pyc option operand.",
+    "Honor executable env option and assignment boundaries; unknown split grammar remains a coverage failure.",
+    "Reuse env argv ownership to detect Cloud Build substitutions in wrapped shell source.",
+    "Mask scalar dollar-quoted SQL data while retaining executable procedural bodies.",
+    "Keep dump exclusion markers scoped to file comments and executable settings.",
+    "Restrict Zod fixes to the official package and its subpaths.",
+    "Require parsed PyPI artifact distribution name and version to match the requested package."
+  ],
+  "nativeValidation": {
+    "customRuleOwners": 299,
+    "supportedExampleExecutions": 1713,
+    "unsupportedVariants": 353,
+    "labeledResults": {
+      "TP": 846,
+      "TN": 867,
+      "FP": 0,
+      "FN": 0
+    },
+    "syntheticFixtureFiles": 2223,
+    "batchFileLimit": 250,
+    "sourceAndRuntimeHashesVerified": true,
+    "runtimeHashes": {
+      "nativePythonSha256": "17d529ba8abd181ca7baf7985204015b78490c62ba9b394c728533751594a459",
+      "typescriptJsSha256": "fc9fca05e680201c01b42c16aa7a65e74dc4e9ceaa097990c7427105cf70f60a"
+    },
+    "projectFixtureContract": "minimal root pyproject + .git; authored project metadata wins; TS temporary typed tsconfig + real installed Zod declarations; explicit opt-in fixture restrictions",
+    "supportedVariants": {
+      "baseline": 730,
+      "crlf": 730,
+      "importAlias": 253
+    },
+    "composeNativeControls": 30,
+    "pythonHashPycNativeControls": 9,
+    "envLocallyExecutedControls": 28,
+    "envUpstreamSourceOnlyControls": 5,
+    "cloudBuildArgvControls": 14,
+    "harmlessInjectionNativeControls": 4,
+    "sqlScalarControls": 23,
+    "sqlNativeProceduralBodyControls": 4,
+    "sqlFalseCoverageControls": 2,
+    "sqlDumpProvenanceControls": 13,
+    "zodFixControls": 8,
+    "zodIdempotenceControls": 8,
+    "genuineZodSemanticComparisons": 15,
+    "registryNativeAndParserControls": 10
+  },
+  "focusedValidation": {
+    "composeTests": 179,
+    "interpreterAndCloudBuildTests": 740,
+    "sqlPackageTests": 1428,
+    "registryTests": 45,
+    "typeScriptSharedConsumerTests": 530
+  },
+  "freshCorpus": {
+    "eligibleSources": 5,
+    "ineligibleSources": 5,
+    "pinsRefreshed": false,
+    "publicPinRestoredFromAlreadyLocalGit": true,
+    "freshProcessPerRootAndBatch": true,
+    "maxBatchFiles": 250,
+    "introducedDiagnostics": 0,
+    "removedDiagnostics": 0,
+    "fullFindingPopulationReviewed": false,
+    "measurements": {
+      "native-baseline": {
+        "files": 741,
+        "bytes": 7997650,
+        "findings": 2573,
+        "batches": 11,
+        "engineSeconds": 68.608052,
+        "peakWorkerRssBytes": 464453632
+      },
+      "native-candidate": {
+        "files": 741,
+        "bytes": 7997650,
+        "findings": 2573,
+        "batches": 11,
+        "engineSeconds": 62.05946,
+        "peakWorkerRssBytes": 464715776
+      },
+      "typescript-baseline": {
+        "files": 1468,
+        "bytes": 8515992,
+        "findings": 12436,
+        "batches": 11,
+        "engineSeconds": 7.64386,
+        "peakWorkerRssBytes": 676560896
+      },
+      "typescript-candidate": {
+        "files": 1468,
+        "bytes": 8515992,
+        "findings": 12436,
+        "batches": 11,
+        "engineSeconds": 7.750496,
+        "peakWorkerRssBytes": 671137792
+      }
+    },
+    "diagnosticParityOnly": true
+  },
+  "limitations": [
+    "Finite native controls and supported authored examples only; unsupported variants are excluded from pass counts.",
+    "Native grammar validation does not establish cloud service behavior, cluster admission, or consumer rollout.",
+    "Five drifted corpus pins are ineligible; none was refreshed. Existing corpus findings remain a bounded observation, not universal zero false positives.",
+    "No controlled speedup is claimed for this batch.",
+    "Official Zod package/subpaths are supported; package aliases and unrelated adapters are not assumed to be Zod.",
+    "Static unknown Compose disable interpolation and env split-string grammar retain explicit coverage failure."
+  ],
+  "remainingConfirmedQueue": [
+    "Mise task source attribution",
+    "Make target and pattern variable ownership",
+    "Bash stdin invocation flags",
+    "Cloud Build YAML alias use-site locations",
+    "Strict JSON nonfinite constants",
+    "Evaluation case identity accounting"
+  ],
+  "continuationRequired": true,
+  "actualMergedAtReportCreation": false,
+  "universalNoFurtherImprovementClaim": false,
+  "universalFalsePositiveClaim": false,
+  "canonicalGate": {
+    "command": "make verify",
+    "exitCode": 0,
+    "passed": 26997,
+    "skipped": 9,
+    "packageTests": {
+      "typescript": 7274,
+      "bootstrap": 18,
+      "contracts": 15,
+      "python": 12308,
+      "sql": 1428,
+      "iac": 1263,
+      "standards": 4691
+    },
+    "pythonDogfoodRules": 138,
+    "pythonDogfoodSourceFiles": 728,
+    "typescriptDogfoodRules": 118,
+    "blockingDogfoodDiagnostics": 0,
+    "localPrivateReferenceCheckDelegatedToTrustedCI": true,
+    "nativeGitleaksTreeScanLeaks": 0
+  }
+}

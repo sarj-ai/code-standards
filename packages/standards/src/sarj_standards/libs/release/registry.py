@@ -15,7 +15,13 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import quote
 from urllib.request import Request, urlopen
 
-from packaging.utils import InvalidSdistFilename, InvalidWheelFilename, parse_sdist_filename, parse_wheel_filename
+from packaging.utils import (
+    InvalidSdistFilename,
+    InvalidWheelFilename,
+    canonicalize_name,
+    parse_sdist_filename,
+    parse_wheel_filename,
+)
 from packaging.version import InvalidVersion, Version
 from pydantic import BaseModel, ConfigDict, Field
 import typer
@@ -144,19 +150,19 @@ def _read_publication(request: Request, requirement: RegistryRequirement) -> boo
             return True
         payload: bytes = response.read()  # pyright: ignore[reportAny] -- urllib response is untyped.
         document = _PypiSimpleResponse.model_validate_json(payload)
-    return any(_pypi_filename_has_version(item.filename, requirement.version) for item in document.files)
+    return any(_pypi_filename_matches(item.filename, requirement) for item in document.files)
 
 
-def _pypi_filename_has_version(filename: str, version: str) -> bool:
+def _pypi_filename_matches(filename: str, requirement: RegistryRequirement) -> bool:
     try:
-        expected = Version(version)
+        expected = Version(requirement.version)
         if filename.endswith(".whl"):
-            _name, actual, _build, _tags = parse_wheel_filename(filename)
+            name, actual, _build, _tags = parse_wheel_filename(filename)
         else:
-            _name, actual = parse_sdist_filename(filename)
+            name, actual = parse_sdist_filename(filename)
     except InvalidSdistFilename, InvalidVersion, InvalidWheelFilename:
         return False
-    return actual == expected
+    return name == canonicalize_name(requirement.name) and actual == expected
 
 
 def require_publication(

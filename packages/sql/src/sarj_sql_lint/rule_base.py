@@ -84,18 +84,21 @@ _IDENT_CHAR_RE = re.compile(r"[A-Za-z0-9_$\u0080-\U0010ffff]")
 _STATEMENT_HEAD_SIZE = 4
 
 
+_DUMP_HEADER_RE = re.compile(r"postgresql database dump|dumped by pg_dump|dumped from database", re.IGNORECASE)
+
+
 def is_dump_file(source: str, path: Path | None = None) -> bool:
     if path is not None:
         name = path.name.lower()
         if name in {"structure.sql", "schema.sql"} or name.endswith("_dump.sql") or "restore" in path.parts:
             return True
-    first_chunk = source[:1024].lower()
-    return (
-        "postgresql database dump" in first_chunk
-        or "dumped by pg_dump" in first_chunk
-        or "dumped from database" in first_chunk
-        or ("set statement_timeout = 0;" in first_chunk and "set lock_timeout = 0;" in first_chunk)
-    )
+    if has_file_comment_match(source, _DUMP_HEADER_RE, limit=1024):
+        return True
+    header = source[:1024].lower()
+    if "set statement_timeout = 0;" not in header or "set lock_timeout = 0;" not in header:
+        return False
+    code = mask_sql(header, mask_dollar_literals=True)
+    return "set statement_timeout = 0;" in code and "set lock_timeout = 0;" in code
 
 
 # Tokens (like backticks or AUTO_INCREMENT) that exist in MySQL/SQLite and cannot appear in Postgres DDL.
@@ -732,8 +735,8 @@ def normalize_sql_identifier(value: str, *, unqualified: bool = False) -> str:
     return parts[-1] if unqualified else ".".join(parts)
 
 
-def sql_comments(source: str) -> tuple[SourceComment, ...]:
-    return tuple(_scan(source).comments)
+def sql_comments(source: str, *, mask_dollar_literals: bool = False) -> tuple[SourceComment, ...]:
+    return tuple(_scan(source, mask_dollar_literals=mask_dollar_literals).comments)
 
 
 def dollar_quoted_lines(source: str) -> frozenset[int]:

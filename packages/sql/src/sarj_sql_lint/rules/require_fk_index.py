@@ -111,7 +111,7 @@ def _tree_indexes(  # sarj-noqa: SARJ023 — bounded tree helpers stay adjacent.
             text = candidate.read_text(encoding="utf-8", errors="replace")
         except OSError:
             continue
-        for table, cols in _collect_indexes(mask_sql_literals_and_comments(text)).items():
+        for table, cols in _collect_indexes(mask_sql_literals_and_comments(text, mask_dollar_literals=True)).items():
             indexes.update(_IndexedColumns(table, index) for index in cols if index)
     return frozenset(indexes)
 
@@ -213,7 +213,7 @@ class RequireFkIndex(Rule):
         if is_mysql(source) or is_dump_file(source, path):
             return []
         diags: list[Diagnostic] = []
-        masked = mask_sql_literals_and_comments(source)
+        masked = mask_sql_literals_and_comments(source, mask_dollar_literals=True)
         indexed_cols_by_table = _collect_indexes(masked)
         is_dump = is_dump_file(source, path)
 

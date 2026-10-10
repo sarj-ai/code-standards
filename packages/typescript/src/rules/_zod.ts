@@ -13,5 +13,5 @@ export const ZOD_SUFFIX_RE = /Schema$/;
 export const ZOD_SCHEMA_NAME_RE = /Schema$|^Z[A-Z]/;
 
 export function isZodModule(source: string): boolean {
-  return /(^|[/@-])zod([/-]|$)/.test(source);
+  return source === "zod" || source.startsWith("zod/");
 }

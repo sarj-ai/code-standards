@@ -84,7 +84,7 @@ class PreferUuidv7Default(Rule):
             return []
         model_owned = is_generated_migration(path, source)
         diags: list[Diagnostic] = []
-        for match in sql_code_matches(PATTERN, mask_sql_literals_and_comments(source)):
+        for match in sql_code_matches(PATTERN, mask_sql_literals_and_comments(source, mask_dollar_literals=True)):
             location = source_location(source, match.start())
             diags.append(
                 Diagnostic(
