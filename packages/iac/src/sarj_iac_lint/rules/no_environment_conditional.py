@@ -329,6 +329,7 @@ class NoEnvironmentConditional(Rule):
                 message=_message(owner, attr, use),
             )
             for owner, attr in _attributes((document(source),))
+            if _CONTAINS in attr.value or any(operator in attr.value for operator in _COMPARISONS)
             if (use := _environment_use(attr.value)) is not None
         ]
         return sorted(diags, key=lambda d: (d.line, d.col))
