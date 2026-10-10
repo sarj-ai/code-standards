@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 from sarj_rule_contracts import EvaluationCase, ExpectedOutcome, Language
 
-from sarj_python_lint.interpreter_argv import ProgramKind, classify_interpreter
+from sarj_python_lint.interpreter_argv import ProgramKind, classify_interpreter, unwrap_command
 from sarj_python_lint.rules.no_interpreter_source_arguments import NoInterpreterSourceArguments
 
 
@@ -80,3 +80,52 @@ def test_interpreter_option_operands(case_id: str, argv: tuple[str, ...], kind: 
 def test_ruby_source_payload_is_preserved(source: str) -> None:
     result = classify_interpreter(("ruby", "-r", "json", "-e", source))
     assert (result.kind, result.payload) == ("inline", source)
+
+
+@pytest.mark.parametrize(
+    ("argv", "expected"),
+    [
+        (("env", "-Spython3", "-c", "print(1)"), "unknown"),
+        (("env", "--split-string=python3", "-c", "print(1)"), "unknown"),
+        (("env", "-iSpython3", "-c", "print(1)"), "unknown"),
+        (("env", "-S", "python3 -c print(1)"), "unknown"),
+        (("env", "--help", "python3", "-c", "print(1)"), "other"),
+        (("env", "--version", "python3", "-c", "print(1)"), "other"),
+        (("env", "--unknown", "python3", "-c", "print(1)"), "unknown"),
+        (("env", "-u"), "unknown"),
+        (("env", "-uMODE", "python3", "-c", "print(1)"), "inline"),
+        (("env", "-i", "MODE=fixture", "python3", "-c", "print(1)"), "inline"),
+        (("env", "--", "python3", "-c", "print(1)"), "inline"),
+        (("env", "--", "MODE=fixture", "python3", "-c", "print(1)"), "inline"),
+        (("env", "MODE=fixture", "-uMODE", "python3", "-c", "print(1)"), "other"),
+        (("env", "MODE=fixture", "--help", "python3", "-c", "print(1)"), "other"),
+        (("env", "-u", "", "python3", "-c", "print(1)"), "unknown"),
+        (("env", "-uBAD=VALUE", "python3", "-c", "print(1)"), "unknown"),
+        (("env", "-C", "", "python3", "-c", "print(1)"), "unknown"),
+        (("env", "BAD-NAME=fixture", "python3", "-c", "print(1)"), "inline"),
+        (("env", "1NAME=fixture", "python3", "-c", "print(1)"), "inline"),
+        (("env", "SPACE NAME=fixture", "python3", "-c", "print(1)"), "inline"),
+        (("env", "=fixture", "python3", "-c", "print(1)"), "unknown"),
+    ],
+)
+def test_env_execution_boundaries(argv: tuple[str, ...], expected: ProgramKind) -> None:
+    assert classify_interpreter(argv).kind == expected
+
+
+def test_executable_env_does_not_promote_shell_builtins() -> None:
+    assert unwrap_command(("env", "command", "bash", "-c", "printf fixture"), allow_shell_builtins=False) == (
+        "command",
+        "bash",
+        "-c",
+        "printf fixture",
+    )
+    assert unwrap_command(("command", "bash", "-c", "printf fixture")) == ("bash", "-c", "printf fixture")
+
+
+def test_env_only_wrapper_policy_preserves_other_executable_operands() -> None:
+    assert unwrap_command(
+        ("env", "sudo", "bash", "-c", "printf fixture"),
+        allow_shell_builtins=False,
+        allowed_wrappers=frozenset({"env"}),
+    ) == ("sudo", "bash", "-c", "printf fixture")
+    assert unwrap_command(("env", "sudo", "bash", "-c", "printf fixture")) == ("bash", "-c", "printf fixture")

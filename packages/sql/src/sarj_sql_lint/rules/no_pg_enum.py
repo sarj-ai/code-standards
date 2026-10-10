@@ -79,6 +79,36 @@ class NoPgEnum(Rule):
                 expected_count=0,
                 public=True,
             ),
+            RuleExample(
+                example_id="scalar-dollar-data",
+                title="SQL keywords inside scalar dollar data are not executed",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.sql(
+                        "supabase/migrations/001_data.sql",
+                        "SELECT $data$CREATE TYPE status AS ENUM ('ready');$data$;\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("supabase/migrations/001_data.sql"),
+                expected_count=0,
+                public=True,
+                scenario="dollar-quoted-sql",
+            ),
+            RuleExample(
+                example_id="executable-dollar-body",
+                title="Executable dollar-quoted migration SQL remains checked",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.sql(
+                        "supabase/migrations/001_body.sql",
+                        "DO $$ BEGIN CREATE TYPE status AS ENUM ('ready'); END $$;\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("supabase/migrations/001_body.sql"),
+                expected_count=1,
+                public=True,
+                scenario="dollar-quoted-sql",
+            ),
         ),
     )
     description = documentation.summary
@@ -90,7 +120,7 @@ class NoPgEnum(Rule):
         model_owned = is_generated_migration(path, source)
 
         diags: list[Diagnostic] = []
-        for statement in split_statements(mask_sql(source)):
+        for statement in split_statements(mask_sql(source, mask_dollar_literals=True)):
             text = "\n".join(t for _, t in statement)
             for pattern in (_CREATE_ENUM_RE, _ALTER_ADD_VALUE_RE):
                 match = pattern.search(text)

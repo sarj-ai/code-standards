@@ -101,7 +101,7 @@ class EnforceTimestamptz(Rule):
         model_owned = is_generated_migration(path, source)
 
         diags: list[Diagnostic] = []
-        masked = mask_sql(source)
+        masked = mask_sql(source, mask_dollar_literals=True)
         for match in PATTERN.finditer(masked):
             start = match.start()
             if _is_column_reference(masked, start, match.end()):

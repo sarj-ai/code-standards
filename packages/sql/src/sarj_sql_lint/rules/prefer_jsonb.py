@@ -98,7 +98,7 @@ class PreferJsonb(Rule):
         model_owned = is_generated_migration(path, source)
 
         diags: list[Diagnostic] = []
-        for statement in split_statements(mask_sql_literals_and_comments(source)):
+        for statement in split_statements(mask_sql_literals_and_comments(source, mask_dollar_literals=True)):
             text = "\n".join(fragment for _, fragment in statement)
             create_table = next(sql_code_matches(_CREATE_TABLE_RE, text), None) is not None
             alter_table = next(sql_code_matches(_ALTER_TABLE_RE, text), None) is not None

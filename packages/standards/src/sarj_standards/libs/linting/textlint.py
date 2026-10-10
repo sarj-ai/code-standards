@@ -768,9 +768,36 @@ REGISTRY: Final[Mapping[str, RuleMeta]] = MappingProxyType(
                     ),
                     expected_count=0,
                 ),
+                _public_example(
+                    example_id="compose-active-healthcheck-program",
+                    scenario="compose-healthcheck-execution",
+                    title="An enabled healthcheck runs its shell program",
+                    outcome=ExpectedOutcome.MATCH,
+                    path="compose.yaml",
+                    source=(
+                        "services:\n  app:\n    image: fixture\n    healthcheck:\n"
+                        "      disable: false\n"
+                        '      test: [CMD-SHELL, "printf first; printf second"]\n'
+                    ),
+                    expected_count=1,
+                ),
+                _public_example(
+                    example_id="compose-disabled-healthcheck-data",
+                    scenario="compose-healthcheck-execution",
+                    title="A disabled healthcheck retains inert command data",
+                    outcome=ExpectedOutcome.NO_MATCH,
+                    path="compose.yaml",
+                    source=(
+                        "services:\n  app:\n    image: fixture\n    healthcheck:\n"
+                        '      disable: "true"\n'
+                        '      test: [CMD-SHELL, "printf first; printf second"]\n'
+                    ),
+                    expected_count=0,
+                ),
             ),
             limitations=(
                 "Only semantic execution fields are analyzed: Actions/composite steps, Cloud Build steps, Skaffold hooks and containers, Kubernetes containers/probes/hooks, Compose commands, mise tasks, Docker instructions and Make recipe units.",
+                "Compose healthchecks disabled by a constant native boolean value are inert; unresolved disable interpolation fails analysis coverage.",
                 "Inline interpreter source, jq/awk filters, shell control flow, command substitutions and multiple invocations are rejected regardless of program size. External files/modules and recursively verified single-invocation shell wrappers are allowed.",
                 "Image-default entrypoints and dynamic executable identities cannot be inferred. Unsupported selected interpreter option grammars or unprovable shell payloads fail analysis coverage instead of passing silently.",
                 "Each ordinary Make logical recipe is a separate execution block; .ONESHELL groups contiguous recipe lines. YAML aliases are reported at each executable use site.",

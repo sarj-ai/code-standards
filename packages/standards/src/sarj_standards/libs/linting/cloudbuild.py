@@ -4,6 +4,7 @@ from copy import copy
 import re
 from typing import TYPE_CHECKING, override
 
+from sarj_python_lint.interpreter_argv import UnprovableCommandError, unwrap_command
 import yaml
 from yaml.events import AliasEvent
 from yaml.nodes import MappingNode, Node, ScalarNode, SequenceNode
@@ -17,6 +18,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 _CODE = "SARJ315"
+_ENV_WRAPPERS = frozenset({"env"})
 _SHELLS = frozenset({"sh", "bash", "dash", "ash", "zsh", "ksh"})
 _SUBSTITUTION = re.compile(r"\$(?:\{(?:_[A-Z0-9_]+|[A-Z][A-Z0-9_]*)\}|(?:_[A-Z0-9_]+|[A-Z][A-Z0-9_]*))")
 _SAFE_BUILTINS = frozenset({"PROJECT_ID", "BUILD_ID"})
@@ -220,24 +222,34 @@ def _step_problems(fields: dict[str, Node], prior_ids: set[str]) -> Iterator[tup
     arg_node = fields.get("args")
     args = _strings(arg_node)
     entrypoint = _string(fields.get("entrypoint"))
-    if (
-        args is None
-        or not isinstance(arg_node, SequenceNode)
-        or entrypoint is None
-        or entrypoint.rsplit("/", 1)[-1] not in _SHELLS
-    ):
+    if args is None or not isinstance(arg_node, SequenceNode) or entrypoint is None:
         return
-    command_index = _command_index(args)
-    if command_index is None:
+    source_index = _shell_source_index(entrypoint, args)
+    if source_index is None:
         return
-    if _has_build_substitution(args[command_index]):
+    if _has_build_substitution(args[source_index]):
         nodes = sequence_items(arg_node)
         yield (
-            nodes[command_index],
+            nodes[source_index],
             (
                 "Cloud Build substitutes values into shell source; pass values through env or separate direct argv instead"
             ),
         )
+
+
+def _shell_source_index(entrypoint: str, args: list[str]) -> int | None:
+    executable = entrypoint.rsplit("/", 1)[-1]
+    if executable not in _SHELLS and executable != "env":
+        return None
+    words = (entrypoint, *args)
+    try:
+        unwrapped = unwrap_command(words, allow_shell_builtins=False, allowed_wrappers=_ENV_WRAPPERS)
+    except UnprovableCommandError:
+        return None  # Unknown option/quoting grammars cannot prove shell-source use.
+    if not unwrapped or unwrapped[0].rsplit("/", 1)[-1] not in _SHELLS:
+        return None
+    command_index = _command_index(list(unwrapped[1:]))
+    return None if command_index is None else len(words) - len(unwrapped) + command_index
 
 
 def _strings(node: Node | None) -> list[str] | None:

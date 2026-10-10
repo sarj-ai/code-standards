@@ -78,7 +78,7 @@ class PreferTextOverVarchar(Rule):
         if is_dump_file(source, path):
             return []
         model_owned = is_generated_migration(path, source)
-        masked = mask_sql(source)
+        masked = mask_sql(source, mask_dollar_literals=True)
         if not is_postgres(source):
             return []
 

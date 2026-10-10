@@ -26,6 +26,7 @@ export const NO_REDUNDANT_OPTIONAL_ARRAY_DEFAULT_DOCUMENTATION = {
   autofix: "safe",
   limitations: [
     "Only syntactically local Zod array chains with adjacent `.optional().default(...)` calls are checked.",
+    "Imports must name the official zod package or its subpaths; relative modules and unproven npm aliases are excluded.",
     "String, scalar, tuple, set, record, aliased, composed, and dynamically constructed schemas are excluded.",
     "The reversed `.default(...).optional()` order is preserved because its outer optional can return undefined instead of the default.",
     "Defaults must be literal arrays or synchronous functions returning one literal array; dynamic or undefined fallbacks are excluded because Zod 3 reparses the fallback.",
@@ -66,6 +67,31 @@ export const NO_REDUNDANT_OPTIONAL_ARRAY_DEFAULT_DOCUMENTATION = {
       focusPath: "src/schema.ts",
       expectedCount: 1,
       public: true,
+    },
+
+    {
+      id: "unrelated-relative-builder",
+      title: "Preserve an unrelated builder in a directory named zod",
+      outcome: "no-match",
+      files: [
+        { path: "src/my-zod/index.ts", source: 'export const z = { string: () => "string", array: (_element: string) => ({ optional: () => ({ default: (value: readonly string[]) => ({ value, optional: true }) }), default: (value: readonly string[]) => ({ value, optional: false }) }) };' },
+        { path: "src/schema.ts", source: 'import { z } from "./my-zod/index.js"; export const Items = z.array(z.string()).optional().default([]);' },
+      ],
+      focusPath: "src/schema.ts",
+      expectedCount: 0,
+      public: true,
+      scenarioId: "module-identity",
+    },
+    {
+      id: "official-zod-subpath-array",
+      title: "Official Zod subpath constructors retain the safe fix",
+      outcome: "match",
+      files: [{ path: "src/schema.ts", source: 'import { array, string } from "zod/v4"; const Items = array(string()).optional().default([]);' }],
+      fixedFiles: [{ path: "src/schema.ts", source: 'import { array, string } from "zod/v4"; const Items = array(string()).default([]);' }],
+      focusPath: "src/schema.ts",
+      expectedCount: 1,
+      public: true,
+      scenarioId: "module-identity",
     },
   ],
 } as const satisfies RuleDocumentation;

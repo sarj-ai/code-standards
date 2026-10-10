@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from sarj_sql_lint.__main__ import main
+from sarj_sql_lint.__main__ import analyze, main
 from sarj_sql_lint.rule_base import dollar_quoted_lines, mask_sql, normalize_sql_identifier, split_statements
 
 
@@ -325,3 +325,63 @@ def test_statement_boundaries_ignore_semicolons_inside_quoted_identifiers(ending
 )
 def test_identifier_normalization_preserves_quoted_identity_and_unparsed_text(source: str, expected: str) -> None:
     assert normalize_sql_identifier(source) == expected
+
+
+@pytest.mark.parametrize(
+    ("rule_id", "source"),
+    [
+        ("enforce-timestamptz", "CREATE TABLE orders (created_at TIMESTAMP);"),
+        ("idempotent-ddl", "CREATE TABLE orders (id INT);"),
+        ("no-pg-enum", "CREATE TYPE status AS ENUM ('ready');"),
+        ("prefer-text-over-varchar", "CREATE TABLE orders (name VARCHAR(100));"),
+        ("insert-requires-replay-policy", "INSERT INTO orders (id) VALUES (1);"),
+        ("prefer-jsonb", "CREATE TABLE orders (payload JSON);"),
+        ("index-concurrently", "CREATE INDEX orders_idx ON orders(id);"),
+        ("no-application-schema-check", "CREATE TABLE orders (status TEXT CHECK (status IN ('ready', 'done')));"),
+        (
+            "prefer-uuidv7-default",
+            "CREATE TABLE orders (id UUID DEFAULT gen_random_uuid());",  # sarj-noqa: SARJ053 -- intentional positive SQL rule fixture
+        ),
+        ("require-lock-timeout", "ALTER TABLE orders ADD COLUMN note TEXT;"),
+        ("require-fk-index", "CREATE TABLE orders (owner_id INT REFERENCES owners(id) ON DELETE CASCADE);"),
+        ("no-migration-comment-cruft", "-- ALTER TABLE orders ADD COLUMN note TEXT;"),
+    ],
+)
+def test_scalar_dollar_data_is_not_an_executable_migration(tmp_path: Path, rule_id: str, source: str) -> None:
+    path = tmp_path / "supabase" / "migrations" / "001_orders.sql"
+    path.parent.mkdir(parents=True)
+    path.write_text(source + "\n")
+    assert len(analyze([rule_id], [path])) == 1
+    path.write_text(f"SELECT $data${source}$data$;\n")
+    assert analyze([rule_id], [path]) == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "DO $$ BEGIN CREATE TYPE status AS ENUM ('ready'); END $$;",
+        "CREATE FUNCTION define_status() RETURNS void AS $$ BEGIN CREATE TYPE status AS ENUM ('ready'); END $$ LANGUAGE plpgsql;",
+    ],
+)
+def test_executable_dollar_bodies_retain_migration_findings(tmp_path: Path, source: str) -> None:
+    path = tmp_path / "migration.sql"
+    path.write_text(source)
+    assert len(analyze(["no-pg-enum"], [path])) == 1
+
+
+def test_scalar_sibling_index_does_not_cover_a_real_foreign_key(tmp_path: Path) -> None:
+    project = tmp_path / "supabase" / "migrations"
+    project.mkdir(parents=True)
+    source = project / "001_orders.sql"
+    source.write_text("CREATE TABLE orders (owner_id BIGINT REFERENCES owners(id) ON DELETE CASCADE);\n")
+    (project / "002_data.sql").write_text("SELECT $$CREATE INDEX orders_owner_idx ON orders(owner_id);$$;\n")
+    assert len(analyze(["require-fk-index"], [source])) == 1
+
+
+def test_scalar_timeout_does_not_protect_executable_ddl(tmp_path: Path) -> None:
+    source = tmp_path / "supabase" / "migrations" / "001_orders.sql"
+    source.parent.mkdir(parents=True)
+    source.write_text(
+        "-- dialect: postgres\nSELECT $$SET lock_timeout = '5s';$$;\nALTER TABLE orders ADD COLUMN note TEXT;\n"
+    )
+    assert [(finding.code, finding.line) for finding in analyze(["require-lock-timeout"], [source])] == [("SARJ110", 3)]
