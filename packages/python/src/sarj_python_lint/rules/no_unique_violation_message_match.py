@@ -101,8 +101,8 @@ class NoUniqueViolationMessageMatch(Rule):
     @override
     def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
         path = context.path
-        source = context.source
-        if is_test_path(path) or context.generated or "UniqueViolation" not in source:
+        signals = context.symbol_source
+        if is_test_path(path) or context.generated or "UniqueViolation" not in signals:
             return []
         tree = context.tree
         if tree is None:

@@ -5,6 +5,8 @@
  *
  */
 
+const LINE_TERMINATOR_RE = /[\n\r\u2028\u2029]/u;
+
 const SCRIPT_FILE_RE = /(?:^|[\\/])scripts[\\/]|\.mjs$/;
 
 const STORY_FILE_RE = /\.stories\.[cm]?[jt]sx?$/i;
@@ -85,8 +87,8 @@ function leadingCommentBodies(sourceText: string): string[] {
   const bodies: string[] = [];
   let index = 0;
   if (sourceText.startsWith("#!")) {
-    const shebangEnd = sourceText.indexOf("\n");
-    index = shebangEnd === -1 ? sourceText.length : shebangEnd + 1;
+    const shebangEnd = commentLineEnd(sourceText, 2);
+    index = shebangEnd === sourceText.length ? sourceText.length : shebangEnd + 1;
   }
   while (index < sourceText.length) {
     while (/\s/u.test(sourceText[index] ?? "")) index++;
@@ -102,7 +104,7 @@ function leadingCommentBodies(sourceText: string): string[] {
       bodies.push(
         ...sourceText
           .slice(index + 2, end)
-          .split("\n")
+          .split(LINE_TERMINATOR_RE)
           .map((line) => line.replace(/^\s*\*?\s?/u, "").trim())
           .filter((line) => line.length > 0),
       );
@@ -126,6 +128,6 @@ export function isScriptFile(filename: string): boolean {
 }
 
 function commentLineEnd(sourceText: string, start: number): number {
-  const end = sourceText.indexOf("\n", start);
-  return end === -1 ? sourceText.length : end;
+  const end = sourceText.slice(start).search(LINE_TERMINATOR_RE);
+  return end === -1 ? sourceText.length : start + end;
 }

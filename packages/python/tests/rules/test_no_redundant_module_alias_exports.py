@@ -152,3 +152,60 @@ def test_excludes_other_module_cache_operations_and_ambiguous_bindings(source: s
 
 def test_stub_files_are_excluded() -> None:
     assert _check("import sys\nsys.modules[__name__] = canonical\n", "legacy/settings.pyi") == []
+
+
+_NATIVE_OWNER_SYNTAX_CASES = (
+    pytest.param(
+        "def _encode_cursor(value: str) -> str:\n    return value\n\n\nencode_phone_number_cursor = _encode_cursor\n",
+        1,
+        id="ordinary",
+    ),
+    pytest.param(
+        "def _encode_cursor(value: str) -> str:\n    return value\n\n\nencode_phone_number_cursor \\\n= _encode_cursor\n",
+        1,
+        id="continued-target",
+    ),
+    pytest.param(
+        "def _encode_cursor(value: str) -> str:\n    return value\n\n\nencode_phone_number_cursor = \\\n_encode_cursor\n",
+        1,
+        id="continued-value",
+    ),
+    pytest.param(
+        "def _encode_cursor(value: str) -> str:\n    return value\n\n\nencode_phone_number_cursor = (_encode_cursor)\n",
+        1,
+        id="parenthesized-value",
+    ),
+    pytest.param(
+        "def _encode_cursor(value: str) -> str:\n    return value\n\n\nencode_phone_number_cursor: object = (_encode_cursor)\n",
+        1,
+        id="annotated-parenthesized",
+    ),
+    pytest.param(
+        "def _encode_cursor(value: str) -> str:\n    return value\n\n\nA·cursor = _encode_cursor\n",
+        1,
+        id="native-middle-dot",
+    ),
+    pytest.param(
+        "def _encode_cursor(value: str) -> str:\n    return value\n\n\nsentinel = 1; encode_phone_number_cursor = _encode_cursor\n",
+        1,
+        id="semicolon-module-assignment",
+    ),
+    pytest.param(
+        "def _encode_cursor(value: str) -> str:\n    return value\n\n\ndef configure():\n    encode_phone_number_cursor = (_encode_cursor)\n",
+        0,
+        id="nested-alias-retained",
+    ),
+    pytest.param(
+        "def _encode_cursor(value: str) -> str:\n    return value\n\n\n_another_private = (_encode_cursor)\n",
+        0,
+        id="private-alias-remains-private",
+    ),
+    pytest.param('__version__ = "value"\npublic_version = (__version__)\n', 0, id="dunder-binding-retained"),
+    pytest.param('text = "public = (_private)"\n', 0, id="alias-marker-in-literal"),
+)
+
+
+@pytest.mark.parametrize(("source", "expected"), _NATIVE_OWNER_SYNTAX_CASES)
+def test_native_syntax_reaches_existing_ownership_checks(source: str, expected: int) -> None:
+    compile(source, "public_owner.py", "exec")
+    assert len(_check(source)) == expected

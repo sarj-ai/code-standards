@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "2e800c35aff9d988863c00cc14b6cba8fe7b90b227dbc3abf9ffd825719d67d3",
-  "cliSha256": "d3c69fb169fb71c8eedaad40a2a370aac50af68ecb0ece118b54806a441a6870",
+  "catalogSha256": "bac7e46583cc681b56a64ec3f958d8f53727c61dadec7077b2e847927d457099",
+  "cliSha256": "9dd48efe7501ae7aa520ec2f75af02cd4d67433c1c2bf15b2958c0ece63ecaff",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -678,6 +678,36 @@
           "files": [
             {
               "path": "src/status.ts",
+              "source": "// ordinary header\nconst marker = \"auto-generated file\";\nenum Mode {\n  Start,\n}\nconsole.log(Mode.Start, marker);\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/status.ts",
+          "id": "authored-after-comment",
+          "outcome": "reject",
+          "scenarioId": "native-header-boundary",
+          "title": "Keep executable authored code in scope"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/status.ts",
+              "source": "// auto-generated file\nconst marker = \"auto-generated file\";\nenum Mode {\n  Start,\n}\nconsole.log(Mode.Start, marker);\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/status.ts",
+          "id": "generated-header",
+          "outcome": "accept",
+          "scenarioId": "native-header-boundary",
+          "title": "Respect a native generated banner"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/status.ts",
               "source": "enum Status {\n  Active,\n  Inactive,\n}\n"
             }
           ],
@@ -1087,6 +1117,21 @@
           "expectedCount": 0,
           "files": [
             {
+              "path": "src/error.ts",
+              "source": "function probe() {\n  try {\n    throw { id: 1 };\n  } catch (err) {\n    if (err instanceof Error) return err.message;\n    return JSON.stringify(err);\n  }\n}\nconsole.log(probe());\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/error.ts",
+          "id": "escaped-fallback-binding",
+          "outcome": "accept",
+          "scenarioId": "binding-provenance",
+          "title": "Keep native binding provenance"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
               "path": "src/report.ts",
               "source": "try {\n  f();\n} catch (err) {\n  JSON.stringify({ error: err instanceof Error ? err.message : String(err) });\n}\n"
             }
@@ -1097,6 +1142,21 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Narrow an unknown catch value before selecting fields"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/error.ts",
+              "source": "function probe() {\n  try {\n    throw { id: 1 };\n  } catch (err) {\n    if (err instanceof Error) return err.message;\n    {\n      const err = new Error(\"lost\");\n      return JSON.stringify(err);\n    }\n  }\n}\nconsole.log(probe());\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/error.ts",
+          "id": "shadowed-error-binding",
+          "outcome": "reject",
+          "scenarioId": "binding-provenance",
+          "title": "Keep native binding provenance"
         },
         {
           "expectedCount": 1,
@@ -1258,6 +1318,36 @@
     },
     "eslint:no-offset-pagination": {
       "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/page.ts",
+              "source": "db.query(\"SELECT id FROM runs /* OFF\\x53ET 1 */\");\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/page.ts",
+          "id": "decoded-comment-data",
+          "outcome": "accept",
+          "scenarioId": "native-decoded-sql",
+          "title": "Ignore native-decoded comment data"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/page.ts",
+              "source": "db.query(\"SELECT id FROM runs ORDER BY id LIMIT 1 OFF\\u0053ET 1\");\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/page.ts",
+          "id": "decoded-query",
+          "outcome": "reject",
+          "scenarioId": "native-decoded-sql",
+          "title": "Inspect native-decoded query text"
+        },
         {
           "expectedCount": 0,
           "files": [
@@ -1809,6 +1899,36 @@
     },
     "eslint:no-select-star": {
       "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/page.ts",
+              "source": "db.query(\"SEL\\x45CT id FROM runs /* SELECT * FROM runs */\");\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/page.ts",
+          "id": "decoded-comment-data",
+          "outcome": "accept",
+          "scenarioId": "native-decoded-sql",
+          "title": "Ignore native-decoded comment data"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/page.ts",
+              "source": "db.query(\"SEL\\u0045CT * FROM runs\");\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/page.ts",
+          "id": "decoded-query",
+          "outcome": "reject",
+          "scenarioId": "native-decoded-sql",
+          "title": "Inspect native-decoded query text"
+        },
         {
           "expectedCount": 0,
           "files": [
@@ -3459,6 +3579,36 @@
     "eslint:prefer-switch-for-repeated-equality": {
       "examples": [
         {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/dispatch.ts",
+              "source": "function probe(kind) {\n  const other = \"other\";\n  if (kind === \"a\") return 1;\n  else if (other === \"b\") return 2;\n  else if (kind === \"c\") return 3;\n  return 0;\n}\nconsole.log(JSON.stringify([\"a\", \"b\", \"c\", \"d\"].map(probe)));\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/dispatch.ts",
+          "id": "different-discriminants",
+          "outcome": "accept",
+          "scenarioId": "native-discriminant",
+          "title": "Use native identifier identity"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/dispatch.ts",
+              "source": "function probe(kind) {\n  if (kind === \"a\") return 1;\n  else if (kind === \"b\") return 2;\n  else if (kind === \"c\") return 3;\n  return 0;\n}\nconsole.log(JSON.stringify([\"a\", \"b\", \"c\", \"d\"].map(probe)));\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/dispatch.ts",
+          "id": "escaped-middle",
+          "outcome": "reject",
+          "scenarioId": "native-discriminant",
+          "title": "Use native identifier identity"
+        },
+        {
           "expectedCount": 1,
           "files": [
             {
@@ -4343,6 +4493,36 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Review the conflict policy for a replayed insert"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/page.ts",
+              "source": "function seed() {\n  db.query(\"SELECT id FROM runs /* INS\\x45RT INTO runs(id,note) VALUES(4,'new') */\");\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/page.ts",
+          "id": "decoded-comment-data",
+          "outcome": "accept",
+          "scenarioId": "native-decoded-sql",
+          "title": "Ignore native-decoded comment data"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/page.ts",
+              "source": "function seed() {\n  db.query(\"INS\\u0045RT INTO runs(id,note) VALUES(4,'new')\");\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/page.ts",
+          "id": "decoded-query",
+          "outcome": "reject",
+          "scenarioId": "native-decoded-sql",
+          "title": "Inspect native-decoded query text"
         }
       ],
       "optionsSchemaSource": null
@@ -5312,6 +5492,36 @@
           "outcome": "accept",
           "scenarioId": "await-expectation-boundaries",
           "title": "Unresolved await expectations retain their acceptance"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "tests/test_delivery.py",
+              "source": "from unittest.mock import AsyncMock\n\n\nasync def test_delivery():\n    send = AsyncMock()\n    await send()\n    assert send.called\n    send.assert_awaited_once()\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_delivery.py",
+          "id": "spaced-called-with-await-evidence",
+          "outcome": "accept",
+          "scenarioId": "called-attribute-spacing",
+          "title": "Await evidence covers the same spaced call state"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "tests/test_delivery.py",
+              "source": "from unittest.mock import AsyncMock\n\n\nasync def test_delivery():\n    send = AsyncMock()\n    pending = send()\n    pending.close()\n    assert send.called\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_delivery.py",
+          "id": "spaced-positive-called-state",
+          "outcome": "reject",
+          "scenarioId": "called-attribute-spacing",
+          "title": "A spaced positive call state still needs await evidence"
         },
         {
           "expectedCount": 1,
@@ -6477,6 +6687,36 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Make the re-export explicit in the import"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/service.py",
+              "source": "def values():\n    __ａｌｌ__ = [\"value\"]\n    return __all__\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/service.py",
+          "id": "normalized-local-binding",
+          "outcome": "accept",
+          "scenarioId": "normalized-module-name",
+          "title": "A local binding is outside the module export contract"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/service.py",
+              "source": "__ａｌｌ__ = [\"value\"]\nvalue = 1\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/service.py",
+          "id": "normalized-module-export-binding",
+          "outcome": "reject",
+          "scenarioId": "normalized-module-name",
+          "title": "Compatibility identifiers bind the native module export name"
         }
       ],
       "optionsSchemaSource": null
@@ -7614,6 +7854,36 @@
           "expectedCount": 1,
           "files": [
             {
+              "path": "app/pagination.py",
+              "source": "def _encode_cursor(value: str) -> str:\n    return value\n\n\nencode_phone_number_cursor = _encode_cursor\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/pagination.py",
+          "id": "native-parenthesized-alias-matching",
+          "outcome": "reject",
+          "scenarioId": "native-parenthesized-alias",
+          "title": "Native syntax preserves the existing ownership contract"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/pagination.py",
+              "source": "__version__ = \"value\"\npublic_version = __version__\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/pagination.py",
+          "id": "native-parenthesized-alias-nonmatching",
+          "outcome": "accept",
+          "scenarioId": "native-parenthesized-alias",
+          "title": "Existing semantic ownership exclusions remain valid"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
               "path": "pagination.py",
               "source": "def _encode_cursor(value: str) -> str:\n    return value\n\n\nencode_phone_number_cursor = _encode_cursor\n"
             }
@@ -7921,6 +8191,36 @@
     "python:no-service-behavior-in-settings": {
       "examples": [
         {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/settings.py",
+              "source": "class Settings:\n    def __init__(self, store: ScheduleStore) -> None:\n        self._store = store\n\n    async def repoint(self, batch_id: str) -> int:\n        return await self._store.repoint(batch_id)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/settings.py",
+          "id": "bare-settings-matching",
+          "outcome": "reject",
+          "scenarioId": "bare-settings",
+          "title": "Native syntax preserves the existing ownership contract"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/settings.py",
+              "source": "class Settings:\n    def __init__(self, size: int):\n        self.size = size\n\n    def double(self):\n        return self.size * 2\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/settings.py",
+          "id": "bare-settings-nonmatching",
+          "outcome": "accept",
+          "scenarioId": "bare-settings",
+          "title": "Existing semantic ownership exclusions remain valid"
+        },
+        {
           "expectedCount": 0,
           "files": [
             {
@@ -8056,6 +8356,21 @@
     "python:no-string-concat-in-loop": {
       "examples": [
         {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/render.py",
+              "source": "def render(items):\n    result = \"\"\n    for item in items:\n        result = f\"{result}{item}\"\n    return result\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/render.py",
+          "id": "fstring-growth-in-loop",
+          "outcome": "reject",
+          "scenarioId": "fstring-growth",
+          "title": "F-string replacement repeatedly grows the accumulator"
+        },
+        {
           "expectedCount": 0,
           "files": [
             {
@@ -8069,6 +8384,21 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Fragments joined after the loop"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/render.py",
+              "source": "def render(items):\n    return \"\".join(f\"{item}\" for item in items)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/render.py",
+          "id": "joined-fstring-fragments",
+          "outcome": "accept",
+          "scenarioId": "fstring-growth",
+          "title": "Join rendered fragments after collecting them"
         },
         {
           "expectedCount": 1,
@@ -8964,6 +9294,36 @@
           "expectedCount": 1,
           "files": [
             {
+              "path": "tests/test_service.py",
+              "source": "import pytest\n\n\ndef test_service():\n    patcher = pytest.ＭｏｎｋｅｙＰａｔｃｈ()\n    patcher.setattr(service, \"clock\", fake)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_service.py",
+          "id": "native-monkeypatch-factory",
+          "outcome": "reject",
+          "scenarioId": "native-symbol-binding",
+          "title": "A normalized pytest factory replaces a dependency"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "tests/test_service.py",
+              "source": "import pytest\n\n\ndef test_service():\n    patcher = pytest.ＭｏｎｋｅｙＰａｔｃｈ()\n    patcher.setenv(\"MODE\", \"test\")\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_service.py",
+          "id": "native-process-state",
+          "outcome": "accept",
+          "scenarioId": "native-symbol-binding",
+          "title": "Process environment operations remain excluded"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
               "path": "tests/test_adapter.py",
               "source": "import pytest\nfrom unittest.mock import patch\n\n\ndef test_constructor_failure():\n    with patch(\"transport.Client\", side_effect=ConnectionError):\n        with pytest.raises(AdapterUnavailable):\n            open_adapter()\n"
             }
@@ -9598,6 +9958,44 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Use Pydantic's canonical recursive JSON value"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "pyproject.toml",
+              "source": "[project]\nname = \"app\"\nversion = \"0.1.0\"\ndependencies = [\"pydantic>=2\"]\n"
+            },
+            {
+              "path": "src/app/types.py",
+              "source": "from pydantic import JsonValue as 数据\n\nvalue: 数据\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/app/types.py",
+          "id": "native-unicode-canonical-alias",
+          "outcome": "accept",
+          "scenarioId": "unicode-explicit-alias",
+          "title": "Import the canonical JSON value using a native Unicode binding"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "pyproject.toml",
+              "source": "[project]\nname = \"app\"\nversion = \"0.1.0\"\ndependencies = [\"pydantic>=2\"]\n"
+            },
+            {
+              "path": "src/app/types.py",
+              "source": "type 数据 = str | int | float | bool | None | list[数据] | dict[str, 数据]\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/app/types.py",
+          "id": "native-unicode-recursive-alias",
+          "outcome": "reject",
+          "scenarioId": "unicode-explicit-alias",
+          "title": "Native Unicode alias names preserve the recursive JSON domain"
         }
       ],
       "optionsSchemaSource": null
@@ -9699,6 +10097,36 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "An end anchor permits a final newline"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/validation.py",
+              "source": "import re\n\n\ndef validate(value):\n    if not re.ｍａｔｃｈ(r\"^a$\", value):\n        raise ValueError(\"invalid\")\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/validation.py",
+          "id": "native-match-name",
+          "outcome": "reject",
+          "scenarioId": "native-symbol-binding",
+          "title": "Normalized match still permits a final newline"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/validation.py",
+              "source": "import re\n\n\ndef validate(value):\n    if not re.ｍａｔｃｈ(r\"^a\\Z\", value):\n        raise ValueError(\"invalid\")\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/validation.py",
+          "id": "native-strict-end",
+          "outcome": "accept",
+          "scenarioId": "native-symbol-binding",
+          "title": "A strict end anchor rejects the final newline"
         },
         {
           "expectedCount": 0,
@@ -9940,6 +10368,36 @@
           "title": "Dispatch forwards unlisted strings"
         },
         {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/render.py",
+              "source": "def render(kind: str) -> str:\n    return kind in ({r\"text\", r\"image\"})\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/render.py",
+          "id": "parenthesized-open-membership",
+          "outcome": "accept",
+          "scenarioId": "membership-admission",
+          "title": "Membership data without rejection keeps strings"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/render.py",
+              "source": "def render(kind: str) -> str:\n    if kind not in ({r\"text\", r\"image\"}):\n        raise ValueError(\"unsupported kind\")\n    return kind\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/render.py",
+          "id": "parenthesized-rejecting-membership",
+          "outcome": "reject",
+          "scenarioId": "membership-admission",
+          "title": "Parentheses do not open a rejecting string domain"
+        },
+        {
           "expectedCount": 1,
           "files": [
             {
@@ -9983,6 +10441,36 @@
           "outcome": "accept",
           "scenarioId": "choice-field",
           "title": "Closed domain represented by a string enum"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/render.py",
+              "source": "def render(kind: str) -> str:\n    match kind:\n        case \"text\":\n            return \"Text\"\n        case \"image\":\n            return \"Image\"\n        case _:\n            return kind\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/render.py",
+          "id": "tabbed-open-match",
+          "outcome": "accept",
+          "scenarioId": "tabbed-match-admission",
+          "title": "An open tab-separated match keeps string dispatch"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/render.py",
+              "source": "def render(kind: str) -> str:\n    match kind:\n        case \"text\":\n            return \"Text\"\n        case \"image\":\n            return \"Image\"\n        case _:\n            raise ValueError(\"unsupported kind\")\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/render.py",
+          "id": "tabbed-rejecting-match",
+          "outcome": "reject",
+          "scenarioId": "tabbed-match-admission",
+          "title": "Tab-separated matching keeps the closed string domain"
         }
       ],
       "optionsSchemaSource": null
@@ -11018,6 +11506,36 @@
           "expectedCount": 0,
           "files": [
             {
+              "path": "app/service.py",
+              "source": "from pydantic import BaseModel, Field\n\n\nclass Page(BaseModel):\n    page_number: int = Field(default=1, ge=1, description=\"1 for the \\x66irst page\")\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/service.py",
+          "id": "escaped-bounded-description",
+          "outcome": "accept",
+          "scenarioId": "decoded-description",
+          "title": "The same decoded ordinal description has an enforced lower bound"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/service.py",
+              "source": "from pydantic import BaseModel, Field\n\n\nclass Page(BaseModel):\n    page_number: int = Field(default=1, description=\"1 for the \\x66irst page\")\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/service.py",
+          "id": "escaped-ordinal-description",
+          "outcome": "reject",
+          "scenarioId": "decoded-description",
+          "title": "Escaped description values preserve the ordinal minimum contract"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
               "path": "api.py",
               "source": "from pydantic import BaseModel, Field, PositiveInt\n\n\nclass CallDetail(BaseModel):\n    retry_attempt_number: PositiveInt = Field(\n        default=1,\n        description=\"Which dial this call is within its retry group (1 for the first attempt).\",\n    )\n"
             }
@@ -11333,6 +11851,36 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "An exception renders raw reason strings"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/service.py",
+              "source": "class BatchError(Exception):\n    def __init__(self, reason: str) -> None:\n        super().__init__(reason)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/service.py",
+          "id": "spaced-contextual-string",
+          "outcome": "accept",
+          "scenarioId": "native-token-spacing",
+          "title": "Separate contextual strings remain outside the sole list parameter contract"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/service.py",
+              "source": "class BatchError(Exception):\n    def __init__(self, reasons: list[str]) -> None:\n        super().__init__(\"; \".join(reasons))\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/service.py",
+          "id": "spaced-string-reason-join",
+          "outcome": "reject",
+          "scenarioId": "native-token-spacing",
+          "title": "Native token spacing preserves the string reason list"
         },
         {
           "expectedCount": 0,
@@ -12214,6 +12762,36 @@
     "text:cloudbuild-contract": {
       "examples": [
         {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "build.yaml",
+              "source": "args: &args [scripts/check.sh, \"$_VALUE\"]\nsteps:\n  - name: builder\n    entrypoint: bash\n    args: *args\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "build.yaml",
+          "id": "alias-external-script-arguments",
+          "outcome": "accept",
+          "scenarioId": "cloudbuild-alias-location",
+          "title": "Aliased external-script arguments retain substitution as argv data"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "build.yaml",
+              "source": "args: &args [-c, \"printf %s $_VALUE\"]\nsteps:\n  - name: builder\n    entrypoint: bash\n    args: *args\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "build.yaml",
+          "id": "alias-shell-source-substitution",
+          "outcome": "reject",
+          "scenarioId": "cloudbuild-alias-location",
+          "title": "An aliased shell program reports substitution at its executable use"
+        },
+        {
           "expectedCount": 1,
           "files": [
             {
@@ -12302,6 +12880,21 @@
           "expectedCount": 1,
           "files": [
             {
+              "path": "config.yaml",
+              "source": "payload: |\n  # sarj-noqa: SARJ300\n# Set build name\nname: build\n# Run build command\nrun: make build\n# Set deploy image\nimage: app\n# Run deploy command\ncommand: deploy\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "config.yaml",
+          "id": "literal-marker-retains-comment-wall",
+          "outcome": "reject",
+          "scenarioId": "comment-wall-suppression-provenance",
+          "title": "A scalar payload marker cannot waive a narrated comment wall"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
               "path": "workflow.yml",
               "source": "# Set build name\nname: build\n# Run build command\nrun: make build\n# Set deploy image\nimage: app\n# Run deploy command\ncommand: deploy\n"
             }
@@ -12312,6 +12905,21 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Repeated comments restate adjacent entries"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "config.yaml",
+              "source": "# sarj-noqa: SARJ300\n# Set build name\nname: build\n# Run build command\nrun: make build\n# Set deploy image\nimage: app\n# Run deploy command\ncommand: deploy\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "config.yaml",
+          "id": "real-marker-waives-comment-wall",
+          "outcome": "accept",
+          "scenarioId": "comment-wall-suppression-provenance",
+          "title": "A real exact-code comment retains its local wall waiver"
         }
       ],
       "optionsSchemaSource": null
@@ -12478,6 +13086,36 @@
     },
     "text:exact-config-comment-restatement": {
       "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "config.yaml",
+              "source": "payload: |\n  # sarj-noqa: SARJ306\n# Retry count is 3\nretry_count: 3\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "config.yaml",
+          "id": "literal-marker-does-not-waive-comment",
+          "outcome": "reject",
+          "scenarioId": "config-comment-suppression-provenance",
+          "title": "A YAML string containing a suppression marker retains the real comment diagnostic"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "config.yaml",
+              "source": "# sarj-noqa: SARJ306\n# Retry count is 3\nretry_count: 3\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "config.yaml",
+          "id": "real-local-comment-waives-restatement",
+          "outcome": "accept",
+          "scenarioId": "config-comment-suppression-provenance",
+          "title": "A real local exact-code comment retains its waiver"
+        },
         {
           "expectedCount": 0,
           "files": [
@@ -12689,6 +13327,36 @@
     "text:workflow-embedded-program": {
       "examples": [
         {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": ".github/workflows/ci.yml",
+              "source": "jobs:\n  build:\n    steps:\n      - run: bash scripts/check.sh fixture-data\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": ".github/workflows/ci.yml",
+          "id": "bash-external-script-operand",
+          "outcome": "accept",
+          "scenarioId": "bash-stdin-source-selection",
+          "title": "The script operand selects an external Bash program"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": ".github/workflows/ci.yml",
+              "source": "jobs:\n  build:\n    steps:\n      - run: |\n          bash -s fixture-data <<'SOURCE'\n          printf fixture\n          SOURCE\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": ".github/workflows/ci.yml",
+          "id": "bash-stdin-data-operand",
+          "outcome": "reject",
+          "scenarioId": "bash-stdin-source-selection",
+          "title": "An argument after Bash -s is data, while stdin supplies the program"
+        },
+        {
           "expectedCount": 1,
           "files": [
             {
@@ -12717,6 +13385,66 @@
           "outcome": "accept",
           "scenarioId": "compose-healthcheck-execution",
           "title": "A disabled healthcheck retains inert command data"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "Makefile",
+              "source": "CMD = python3 -c 'print(1)'\nall: CMD = python3 scripts/check.py\nall:\n\t@$(CMD)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "Makefile",
+          "id": "make-target-external-script",
+          "outcome": "accept",
+          "scenarioId": "make-target-variable-execution",
+          "title": "A target variable selects the maintained external script"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "Makefile",
+              "source": "CMD = python3 scripts/check.py\nall: CMD = python3 -c 'print(1)'\nall:\n\t@$(CMD)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "Makefile",
+          "id": "make-target-inline-source",
+          "outcome": "reject",
+          "scenarioId": "make-target-variable-execution",
+          "title": "A target variable selects inline interpreter source"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "mise.toml",
+              "source": "[vars]\ntext = '''\nrun = \"printf inert; printf data\"\n'''\n[tasks.probe]\n\"run\" = \"printf public-marker\"\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "mise.toml",
+          "id": "mise-inert-command-data",
+          "outcome": "accept",
+          "scenarioId": "mise-source-attribution",
+          "title": "Literal command-shaped data does not become a mise task"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "mise.toml",
+              "source": "[vars]\ntext = '''\nrun = \"printf inert; printf data\"\n'''\n[tasks.probe]\n\"run\" = \"printf first; printf second\"\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "mise.toml",
+          "id": "mise-program-use-site",
+          "outcome": "reject",
+          "scenarioId": "mise-source-attribution",
+          "title": "An executable mise task retains its own source location"
         },
         {
           "expectedCount": 1,

@@ -129,7 +129,7 @@ class PreferAutospecForCallableMock(Rule):
 
     @override
     def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
-        if not is_test_path(context.path) or context.generated or "Mock" not in context.source:
+        if not is_test_path(context.path) or context.generated or "Mock" not in context.symbol_source:
             return []
         tree = context.tree
         if tree is None or _ambiguous_namespace(context):

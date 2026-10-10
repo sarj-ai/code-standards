@@ -182,9 +182,18 @@ def _mapping(
         if key_name in explicit:
             message = f"Duplicate YAML key {key_name!r} at line {key.start_mark.line + 1}"
             raise CloudBuildParseError(message)
-        explicit[key_name] = value
+        explicit[key_name] = _occurrence_child(node, value)
     result.update(explicit)
     return result
+
+
+def _occurrence_child(parent: Node, child: Node) -> Node:
+    if child.start_mark.index >= parent.start_mark.index:
+        return child
+    occurrence = copy(child)
+    occurrence.start_mark = parent.start_mark
+    occurrence.end_mark = parent.end_mark
+    return occurrence
 
 
 def _mapping_key(key: Node, *, ignore_non_string_keys: bool) -> str | None:
@@ -211,9 +220,12 @@ def _step_problems(fields: dict[str, Node], prior_ids: set[str]) -> Iterator[tup
     if waits is not None and isinstance(wait_node, SequenceNode):
         for dependency, node in zip(waits, sequence_items(wait_node), strict=True):
             if dependency == "-" and len(waits) != 1:
-                yield node, "Cloud Build waitFor '-' must be the sole dependency"
+                yield _occurrence_child(wait_node, node), "Cloud Build waitFor '-' must be the sole dependency"
             elif dependency != "-" and dependency not in prior_ids:
-                yield node, f"Cloud Build waitFor {dependency!r} does not name a prior step; order dependencies first"
+                yield (
+                    _occurrence_child(wait_node, node),
+                    f"Cloud Build waitFor {dependency!r} does not name a prior step; order dependencies first",
+                )
     if step_id is not None:
         prior_ids.add(step_id)
     script = fields.get("script")
@@ -230,7 +242,7 @@ def _step_problems(fields: dict[str, Node], prior_ids: set[str]) -> Iterator[tup
     if _has_build_substitution(args[source_index]):
         nodes = sequence_items(arg_node)
         yield (
-            nodes[source_index],
+            _occurrence_child(arg_node, nodes[source_index]),
             (
                 "Cloud Build substitutes values into shell source; pass values through env or separate direct argv instead"
             ),

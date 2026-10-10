@@ -273,3 +273,22 @@ it("preserves outcomes for static member access and unknown member keys", async 
   }
 ] } });
 });
+
+
+RULE_TESTER.run("no-json-stringify-error native binding provenance", rule, {
+  valid: [
+    { name: "plain-non-error-fallback", code: "function probe(){try{throw {id:1};}catch(err){if(err instanceof Error)return err.message;return JSON.stringify(err);}}\nconsole.log(probe());" },
+    { name: "escaped-fallback-binding", code: "function probe(){try{throw {id:1};}catch(err){if(err instanceof Error)return err.message;return JSON.stringify(\\u0065rr);}}\nconsole.log(probe());" },
+    { name: "escaped-guard-binding", code: "function probe(){try{throw {id:1};}catch(err){if(\\u0065rr instanceof Error)return err.message;return JSON.stringify(err);}}\nconsole.log(probe());" },
+    { name: "escaped-conditional-fallback", code: "function probe(){try{throw {id:1};}catch(err){return err instanceof Error?err.message:JSON.stringify(\\u0065rr);}}\nconsole.log(probe());" },
+    { name: "escaped-negated-fallback", code: "function probe(){try{throw {id:1};}catch(err){if(!(err instanceof Error))return JSON.stringify(\\u0065rr);return err.message;}}\nconsole.log(probe());" },
+    { name: "local-error-constructor", code: "function probe(){class Error{message=\"retained\"};const value=new Error();return JSON.stringify(value);}\nconsole.log(probe());" },
+    { name: "actual-error-message", code: "function probe(){try{throw new Error(\"retained\");}catch(err){if(err instanceof Error)return err.message;return JSON.stringify(err);}}\nconsole.log(probe());" },
+  ],
+  invalid: [
+    { name: "shadowed-error-binding", code: "function probe(){try{throw {id:1};}catch(err){if(err instanceof Error)return err.message;{const err=new Error(\"lost\");return JSON.stringify(err);}}}\nconsole.log(probe());", errors: [{ messageId: "noJsonStringifyError" }] },
+    { name: "shadowed-error-constructor", code: "function probe(){class Error{};try{throw new globalThis.Error(\"lost\");}catch(err){if(err instanceof Error)return \"local\";return JSON.stringify(err);}}\nconsole.log(probe());", errors: [{ messageId: "noJsonStringifyError" }] },
+    { name: "actual-unguarded-error", code: "function probe(){try{throw new Error(\"lost\");}catch(err){return JSON.stringify(err);}}\nconsole.log(probe());", errors: [{ messageId: "noJsonStringifyError" }] },
+    { name: "initializer-constructor-scope", code: "function probe(){const value=new Error(\"lost\");{class Error{};return JSON.stringify(value);}}\nconsole.log(probe());", errors: [{ messageId: "noJsonStringifyError" }] },
+  ],
+});

@@ -214,3 +214,26 @@ def test_returned_matches_and_unknown_predicates_are_excluded(expression: str) -
 def test_shadowed_bool_return_is_excluded() -> None:
     source = "import re\ndef valid(value, bool):\n    return bool(re.match(r'^a$', value))\n"
     assert not PreferRegexFullmatch().check(Path("app/validation.py"), source)
+
+
+@pytest.mark.parametrize(
+    ("call", "setup", "expected"),
+    [
+        ("re.ｍａｔｃｈ(r'^a$', value)", "import re", 1),
+        ("ｒｅ.ｍａｔｃｈ(r'^a$', value)", "import ｒｅ", 1),
+        ("probe(r'^a$', value)", "from re import ｍａｔｃｈ as probe", 1),
+        ("PATTERN.ｍａｔｃｈ(value)", "import re\nPATTERN = re.compile(r'^a$')", 1),
+        ("re.ｍａｔｃｈ(r'^a\\Z', value)", "import re", 0),
+        ("re.ｍａｔｃｈ(r'^a$', value)", "import unrelated as re", 0),
+    ],
+)
+def test_native_normalized_match_names_preserve_validation_contract(call: str, setup: str, expected: int) -> None:
+    source = _guard(call, setup=setup)
+    findings = PreferRegexFullmatch().check(Path("app/validation.py"), source)
+    assert len(findings) == expected
+    assert all(item.code == "SARJ460" and item.line == setup.count("\n") + 4 for item in findings)
+
+
+def test_match_spelling_inside_data_does_not_prove_a_validation_call() -> None:
+    source = "label = 'ｍａｔｃｈ'\ndef validate(value):\n    return value\n"
+    assert PreferRegexFullmatch().check(Path("app/validation.py"), source) == []

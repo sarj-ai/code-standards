@@ -66,13 +66,48 @@ class PreferRegexFullmatch(Rule):
                 expected_count=0,
                 public=True,
             ),
+            RuleExample(
+                example_id="native-match-name",
+                scenario="native-symbol-binding",
+                title="Normalized match still permits a final newline",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/validation.py",
+                        "import re\n\ndef validate(value):\n    if not re.ｍａｔｃｈ(r'^a$', value):\n        raise ValueError('invalid')\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/validation.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="native-strict-end",
+                scenario="native-symbol-binding",
+                title="A strict end anchor rejects the final newline",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/validation.py",
+                        "import re\n\ndef validate(value):\n    if not re.ｍａｔｃｈ(r'^a\\Z', value):\n        raise ValueError('invalid')\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/validation.py"),
+                expected_count=0,
+                public=True,
+            ),
         ),
     )
     description: str = documentation.summary
 
     @override
     def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
-        if "match" not in context.source or context.tree is None or context.generated or is_test_path(context.path):
+        if (
+            "match" not in context.symbol_source
+            or context.tree is None
+            or context.generated
+            or is_test_path(context.path)
+        ):
             return []
         bindings = _binding_counts(context)
         mutated = {

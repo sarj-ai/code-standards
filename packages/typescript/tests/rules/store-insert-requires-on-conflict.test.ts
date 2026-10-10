@@ -195,3 +195,21 @@ RULE_TESTER.run("store-insert-requires-on-conflict", rule, {
     },
   ],
 });
+
+
+RULE_TESTER.run("store-insert-requires-on-conflict native-decoded SQL", rule, {
+  valid: [
+    { name: "native escaped-comment", code: "function seed(){db.query(\"SELECT id FROM runs /* INS\\x45RT INTO runs(id,note) VALUES(4,'new') */\");}" },
+    { name: "native escaped-value", code: "function seed(){db.query(\"SELECT id FROM runs WHERE note = 'INS\\x45RT'\");}" },
+    { name: "native escaped-prose", code: "function seed(){db.query(\"Invalid INS\\x45RT value\");}" },
+    { name: "native safe-query", code: "function seed(){db.query(\"INSERT INTO runs(id,note) VALUES(4,'new') ON CONFLICT(id) DO NOTHING\");}" },
+  ],
+  invalid: [
+    { name: "native plain", code: "function seed(){db.query(\"INSERT INTO runs(id,note) VALUES(4,'new')\");}", errors: [{ messageId: "storeInsertRequiresOnConflict" }] },
+    { name: "native unicode-four", code: "function seed(){db.query(\"INS\\u0045RT INTO runs(id,note) VALUES(4,'new')\");}", errors: [{ messageId: "storeInsertRequiresOnConflict" }] },
+    { name: "native unicode-codepoint", code: "function seed(){db.query(\"INS\\u{45}RT INTO runs(id,note) VALUES(4,'new')\");}", errors: [{ messageId: "storeInsertRequiresOnConflict" }] },
+    { name: "native hex", code: "function seed(){db.query(\"INS\\x45RT INTO runs(id,note) VALUES(4,'new')\");}", errors: [{ messageId: "storeInsertRequiresOnConflict" }] },
+    { name: "native concatenated", code: "function seed(){db.query(\"INS\"+\"ERT INTO runs(id,note) VALUES(4,'new')\");}", errors: [{ messageId: "storeInsertRequiresOnConflict" }] },
+    { name: "native joined", code: "function seed(){db.query([\"INS\"+\"ERT INTO runs(id,note) VALUES(4,'new')\"].join(\" \"));}", errors: [{ messageId: "storeInsertRequiresOnConflict" }] },
+  ],
+});

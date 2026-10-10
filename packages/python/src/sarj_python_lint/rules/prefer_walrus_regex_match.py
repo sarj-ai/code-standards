@@ -123,7 +123,7 @@ class PreferWalrusRegexMatch(Rule):
     def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
         path = context.path
         source = context.source
-        if _CALL_CANDIDATE_RE.search(source) is None or is_test_path(path) or context.generated:
+        if _CALL_CANDIDATE_RE.search(context.symbol_source) is None or is_test_path(path) or context.generated:
             return []
         tree = context.tree
         if tree is None:

@@ -91,8 +91,8 @@ class PreferStructOverNamedtuple(Rule):
     @override
     def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
         path = context.path
-        source = context.source
-        if path.suffix != ".py" or "namedtuple" not in source or is_test_path(path) or context.generated:
+        signals = context.symbol_source
+        if path.suffix != ".py" or "namedtuple" not in signals or is_test_path(path) or context.generated:
             return []
         tree = context.tree
         if tree is None:

@@ -153,3 +153,27 @@ def test_env_substitution_uses_original_payload_location() -> None:
     source = "steps:\n- name: builder\n  entrypoint: env\n  args:\n  - MODE=fixture\n  - bash\n  - -c\n  - 'printf %s $_VALUE'\n"
     findings = check_cloudbuild(Path("cloudbuild.yaml"), source)
     assert [(finding.code, finding.line) for finding in findings] == [("SARJ315", 8)]
+
+
+@pytest.mark.parametrize(
+    ("source", "expected_lines"),
+    [
+        ("args: &args [-c, 'printf %s $_VALUE']\nsteps:\n- name: builder\n  entrypoint: bash\n  args: *args\n", [5]),
+        (
+            "base: &base\n  args: [-c, 'printf %s $_VALUE']\nsteps:\n- name: builder\n  entrypoint: bash\n  <<: *base\n",
+            [6],
+        ),
+        (
+            "args: &args [-c, 'printf %s $_VALUE']\nsteps:\n- name: builder\n  entrypoint: bash\n  args: *args\n- name: builder\n  entrypoint: bash\n  args: *args\n",
+            [5, 8],
+        ),
+        ("wait: &wait [later]\nsteps:\n- name: builder\n  waitFor: *wait\n", [4]),
+    ],
+)
+@pytest.mark.parametrize("newline", ["\n", "\r\n"])
+def test_nested_alias_findings_preserve_use_site(source: str, expected_lines: list[int], newline: str) -> None:
+    rendered = source.replace("\n", newline)
+    source = f"# café Unicode mark{newline}{rendered}"
+    findings = check_cloudbuild(Path("cloudbuild.yaml"), source, selected=True)
+    assert [finding.line for finding in findings] == [line + 1 for line in expected_lines]
+    assert findings == check_cloudbuild(Path("cloudbuild.yaml"), source, selected=True)

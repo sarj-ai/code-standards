@@ -25,7 +25,6 @@ if TYPE_CHECKING:
 
 
 _DATA_NAME_RE = re.compile(r"(?:Settings|Config|Configuration|Options)$")
-_DATA_CLASS_RE = re.compile(r"\bclass\s+\w+(?:Settings|Config|Configuration|Options)\b")
 _COLLABORATOR_RE = re.compile(
     r"(?:Client|Service|Store|Repository|Repo|Gateway|Provider|Pool|Publisher|Queue|Scheduler)$"
 )
@@ -104,6 +103,36 @@ class NoServiceBehaviorInSettings(Rule):
                 expected_count=0,
                 public=True,
             ),
+            RuleExample(
+                example_id="bare-settings-matching",
+                title="Native syntax preserves the existing ownership contract",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/settings.py",
+                        "class Settings:\n    def __init__(self, store: ScheduleStore) -> None:\n        self._store = store\n\n    async def repoint(self, batch_id: str) -> int:\n        return await self._store.repoint(batch_id)\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/settings.py"),
+                expected_count=1,
+                public=True,
+                scenario="bare-settings",
+            ),
+            RuleExample(
+                example_id="bare-settings-nonmatching",
+                title="Existing semantic ownership exclusions remain valid",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/settings.py",
+                        "class Settings:\n    def __init__(self, size: int): self.size = size\n    def double(self): return self.size * 2\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/settings.py"),
+                expected_count=0,
+                public=True,
+                scenario="bare-settings",
+            ),
         ),
     )
     description: str = documentation.summary
@@ -111,12 +140,13 @@ class NoServiceBehaviorInSettings(Rule):
     @override
     def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
         path = context.path
-        source = context.source
+        signals = context.symbol_source
         if (
             is_test_path(path)
             or is_test_support_path(path)
             or context.generated
-            or _DATA_CLASS_RE.search(source) is None
+            or "class" not in signals
+            or not any(name in signals for name in ("Settings", "Config", "Options"))
         ):
             return []
         tree = context.tree

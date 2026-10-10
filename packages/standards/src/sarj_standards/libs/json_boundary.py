@@ -16,7 +16,12 @@ def parse_json(text: str) -> object:
 
 
 def parse_unique_json(text: str) -> object:
-    return json.loads(text, object_pairs_hook=_unique_pairs)  # pyright: ignore[reportAny] -- untyped parser boundary.
+    return json.loads(text, object_pairs_hook=_unique_pairs, parse_constant=_reject_json_constant)  # pyright: ignore[reportAny] -- untyped parser boundary.
+
+
+def _reject_json_constant(value: str) -> None:
+    msg = f"non-finite JSON constant: {value}"
+    raise ValueError(msg)
 
 
 def _unique_pairs(pairs: list[tuple[str, object]]) -> dict[str, object]:

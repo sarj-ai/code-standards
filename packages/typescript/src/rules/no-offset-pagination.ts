@@ -22,14 +22,14 @@ export const NO_OFFSET_PAGINATION_DOCUMENTATION = {
   examples: [
     { id: "keyset-pagination", title: "Page from a stable cursor", outcome: "no-match", files: [{ path: "src/runs.ts", source: "db.prepare(`SELECT id FROM runs WHERE id > ? ORDER BY id LIMIT ?`).all();" }], focusPath: "src/runs.ts", expectedCount: 0, public: true },
     { id: "offset-pagination", title: "Do not page by offset", outcome: "match", files: [{ path: "src/runs.ts", source: "db.query(`SELECT id FROM runs ORDER BY id LIMIT ? OFFSET ?`);" }], focusPath: "src/runs.ts", expectedCount: 1, public: true },
+    { id: "decoded-query", scenarioId: "native-decoded-sql", title: "Inspect native-decoded query text", outcome: "match", files: [{ path: "src/page.ts", source: "db.query(\"SELECT id FROM runs ORDER BY id LIMIT 1 OFF\\u0053ET 1\");" }], focusPath: "src/page.ts", expectedCount: 1, public: true },
+    { id: "decoded-comment-data", scenarioId: "native-decoded-sql", title: "Ignore native-decoded comment data", outcome: "no-match", files: [{ path: "src/page.ts", source: "db.query(\"SELECT id FROM runs /* OFF\\x53ET 1 */\");" }], focusPath: "src/page.ts", expectedCount: 0, public: true },
   ],
 } as const satisfies RuleDocumentation;
 
 /** Match pagination across the parameter styles supported by the TS, Python, and SQL rules. */
 const OFFSET_PAGINATION = /\bOFFSET\s+(?:%s|%\(\w+\)s|\?\d*|:\w+|@\w+|\$\d+|\d+)/i;
 
-/** Cheap substring gate; noise-stripping can only ever remove keywords, never add them. */
-const OFFSET_GATE = /offset/i;
 const PAGINATION_CONTEXT = /\bSELECT\b[\s\S]*\bFROM\b[\s\S]*\bOFFSET\b|\bLIMIT\s+(?:%s|%\(\w+\)s|\?\d*|:\w+|@\w+|\$\d+|\d+)\s+OFFSET\b/i;
 
 export default createRule<Options, MessageIds>({
@@ -49,7 +49,7 @@ export default createRule<Options, MessageIds>({
   },
   defaultOptions: [],
   create(context) {
-    if (isTestFile(context.filename) || !OFFSET_GATE.test(context.sourceCode.text)) {
+    if (isTestFile(context.filename)) {
       return {};
     }
     return createSqlListener((sql: string, node: TSESTree.Node): void => {

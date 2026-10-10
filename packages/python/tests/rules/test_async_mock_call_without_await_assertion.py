@@ -1,3 +1,4 @@
+import ast
 import asyncio
 from pathlib import Path, PurePosixPath
 from textwrap import dedent
@@ -510,3 +511,55 @@ def test_numeric_call_cli_remains_warning(tmp_path: Path, capsys: CaptureFixture
     output = capsys.readouterr()
     assert output.out.count("SARJ456 warning:") == (0 if suppressed else 1)
     assert not output.err
+
+
+@pytest.mark.parametrize(
+    "receiver",
+    [
+        "send.called",
+        "send. called",
+        "send . called",
+        "send.\tcalled",
+        "(send.\n        called)",
+        "send.\\\n        called",
+    ],
+)
+def test_positive_called_state_uses_native_attribute_grammar(receiver: str) -> None:
+    source = (
+        "from unittest.mock import AsyncMock\nasync def test_delivery():\n"
+        "    send = AsyncMock()\n    pending = send()\n    pending.close()\n"
+        f"    assert {receiver}\n"
+    )
+    ordinary = source.replace(receiver, "send.called")
+    assert ast.dump(ast.parse(source)) == ast.dump(ast.parse(ordinary))
+    [diagnostic] = _check(source)
+    attribute = next(
+        node for node in ast.walk(ast.parse(source)) if isinstance(node, ast.Attribute) and node.attr == "called"
+    )
+    assert (diagnostic.line, diagnostic.col) == (attribute.lineno, attribute.col_offset + 1)
+    send = AsyncMock()
+    pending: Coroutine[object, object, object] = send()  # pyright: ignore[reportAny] -- native AsyncMock returns a coroutine through its untyped stub.
+    pending.close()
+    assert send.called is True  # sarj-noqa: SARJ456 -- prove a dropped coroutine records a call.
+    assert send.call_count == 1
+    assert send.await_count == 0
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "send = AsyncMock()\nassert not send. called",
+        "send = AsyncMock()\nassert send. called is False",
+        "send = AsyncMock()\nassert send. called == expected",
+        "send = AsyncMock()\nassert send. called\nsend.assert_awaited_once()",
+        "send = AsyncMock()\nsend = fixture\nassert send. called",
+        "send = fixture\nassert send. called",
+        "send = AsyncMock()\ncalled = 'unrelated string data'",
+        "send = AsyncMock()\nif enabled:\n    assert send. called",
+    ],
+)
+def test_called_hint_preserves_semantic_boundaries(body: str) -> None:
+    source = "from unittest.mock import AsyncMock\nasync def test_delivery():\n" + "\n".join(
+        f"    {line}" for line in body.splitlines()
+    )
+    assert _check(source) == []

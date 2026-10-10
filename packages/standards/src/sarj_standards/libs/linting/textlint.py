@@ -28,6 +28,7 @@ from sarj_standards.libs.linting.devops_programs import ShellParser, block_embed
 from sarj_standards.libs.linting.shell_ast import make_shell_parser
 from sarj_standards.libs.linting.text_rule_base import Finding as Finding, RuleMeta as RuleMeta
 from sarj_standards.libs.linting.text_rules._registry import REGISTRY as AUTHORED_RULES
+from sarj_standards.libs.linting.toml_literals import TOML_STRING_OR_COMMENT_RE as _TOML_STRING_OR_COMMENT_RE
 from sarj_standards.libs.rules.contracts import (
     DefaultLevel,
     ExampleFile,
@@ -495,6 +496,24 @@ REGISTRY: Final[Mapping[str, RuleMeta]] = MappingProxyType(
                     "# Set build image\nimage: app\n",
                     expected_count=0,
                 ),
+                _public_example(
+                    example_id="literal-marker-retains-comment-wall",
+                    scenario="comment-wall-suppression-provenance",
+                    title="A scalar payload marker cannot waive a narrated comment wall",
+                    outcome=ExpectedOutcome.MATCH,
+                    path="config.yaml",
+                    source="payload: |\n  # sarj-noqa: SARJ300\n# Set build name\nname: build\n# Run build command\nrun: make build\n# Set deploy image\nimage: app\n# Run deploy command\ncommand: deploy\n",
+                    expected_count=1,
+                ),
+                _public_example(
+                    example_id="real-marker-waives-comment-wall",
+                    scenario="comment-wall-suppression-provenance",
+                    title="A real exact-code comment retains its local wall waiver",
+                    outcome=ExpectedOutcome.NO_MATCH,
+                    path="config.yaml",
+                    source="# sarj-noqa: SARJ300\n# Set build name\nname: build\n# Run build command\nrun: make build\n# Set deploy image\nimage: app\n# Run deploy command\ncommand: deploy\n",
+                    expected_count=0,
+                ),
             ),
             limitations=(
                 "Only valid YAML, TOML, and JSONC are analyzed; literal payloads and other configuration dialects are excluded.",
@@ -769,6 +788,24 @@ REGISTRY: Final[Mapping[str, RuleMeta]] = MappingProxyType(
                     expected_count=0,
                 ),
                 _public_example(
+                    example_id="mise-program-use-site",
+                    scenario="mise-source-attribution",
+                    title="An executable mise task retains its own source location",
+                    outcome=ExpectedOutcome.MATCH,
+                    path="mise.toml",
+                    source="[vars]\ntext = '''\nrun = \"printf inert; printf data\"\n'''\n[tasks.probe]\n\"run\" = \"printf first; printf second\"\n",
+                    expected_count=1,
+                ),
+                _public_example(
+                    example_id="mise-inert-command-data",
+                    scenario="mise-source-attribution",
+                    title="Literal command-shaped data does not become a mise task",
+                    outcome=ExpectedOutcome.NO_MATCH,
+                    path="mise.toml",
+                    source="[vars]\ntext = '''\nrun = \"printf inert; printf data\"\n'''\n[tasks.probe]\n\"run\" = \"printf public-marker\"\n",
+                    expected_count=0,
+                ),
+                _public_example(
                     example_id="compose-active-healthcheck-program",
                     scenario="compose-healthcheck-execution",
                     title="An enabled healthcheck runs its shell program",
@@ -794,12 +831,50 @@ REGISTRY: Final[Mapping[str, RuleMeta]] = MappingProxyType(
                     ),
                     expected_count=0,
                 ),
+                _public_example(
+                    example_id="make-target-inline-source",
+                    scenario="make-target-variable-execution",
+                    title="A target variable selects inline interpreter source",
+                    outcome=ExpectedOutcome.MATCH,
+                    path="Makefile",
+                    source="CMD = python3 scripts/check.py\nall: CMD = python3 -c 'print(1)'\nall:\n\t@$(CMD)\n",
+                    expected_count=1,
+                ),
+                _public_example(
+                    example_id="make-target-external-script",
+                    scenario="make-target-variable-execution",
+                    title="A target variable selects the maintained external script",
+                    outcome=ExpectedOutcome.NO_MATCH,
+                    path="Makefile",
+                    source="CMD = python3 -c 'print(1)'\nall: CMD = python3 scripts/check.py\nall:\n\t@$(CMD)\n",
+                    expected_count=0,
+                ),
+                _public_example(
+                    example_id="bash-stdin-data-operand",
+                    scenario="bash-stdin-source-selection",
+                    title="An argument after Bash -s is data, while stdin supplies the program",
+                    outcome=ExpectedOutcome.MATCH,
+                    path=".github/workflows/ci.yml",
+                    source="jobs:\n  build:\n    steps:\n    - run: |\n        bash -s fixture-data <<'SOURCE'\n        printf fixture\n        SOURCE\n",
+                    expected_count=1,
+                ),
+                _public_example(
+                    example_id="bash-external-script-operand",
+                    scenario="bash-stdin-source-selection",
+                    title="The script operand selects an external Bash program",
+                    outcome=ExpectedOutcome.NO_MATCH,
+                    path=".github/workflows/ci.yml",
+                    source="jobs:\n  build:\n    steps:\n    - run: bash scripts/check.sh fixture-data\n",
+                    expected_count=0,
+                ),
             ),
             limitations=(
                 "Only semantic execution fields are analyzed: Actions/composite steps, Cloud Build steps, Skaffold hooks and containers, Kubernetes containers/probes/hooks, Compose commands, mise tasks, Docker instructions and Make recipe units.",
                 "Compose healthchecks disabled by a constant native boolean value are inert; unresolved disable interpolation fails analysis coverage.",
                 "Inline interpreter source, jq/awk filters, shell control flow, command substitutions and multiple invocations are rejected regardless of program size. External files/modules and recursively verified single-invocation shell wrappers are allowed.",
                 "Image-default entrypoints and dynamic executable identities cannot be inferred. Unsupported selected interpreter option grammars or unprovable shell payloads fail analysis coverage instead of passing silently.",
+                "Make target/pattern variables and prerequisite inheritance require statically provable names; conflicting pattern values with version-dependent precedence fail analysis coverage.",
+                "New explicit stdin and option-operand validation is native-proven for Bash; other shell dialects retain their existing grammar. Unknown Bash options and shopt options remain unproven coverage.",
                 "Each ordinary Make logical recipe is a separate execution block; .ONESHELL groups contiguous recipe lines. YAML aliases are reported at each executable use site.",
             ),
             default_level=DefaultLevel.ERROR,
@@ -867,6 +942,24 @@ REGISTRY: Final[Mapping[str, RuleMeta]] = MappingProxyType(
                     outcome=ExpectedOutcome.NO_MATCH,
                     path="config.toml",
                     source="# Keep three retries because the upstream API is eventually consistent.\nretry_count = 3\n",
+                    expected_count=0,
+                ),
+                _public_example(
+                    example_id="literal-marker-does-not-waive-comment",
+                    scenario="config-comment-suppression-provenance",
+                    title="A YAML string containing a suppression marker retains the real comment diagnostic",
+                    outcome=ExpectedOutcome.MATCH,
+                    path="config.yaml",
+                    source="payload: |\n  # sarj-noqa: SARJ306\n# Retry count is 3\nretry_count: 3\n",
+                    expected_count=1,
+                ),
+                _public_example(
+                    example_id="real-local-comment-waives-restatement",
+                    scenario="config-comment-suppression-provenance",
+                    title="A real local exact-code comment retains its waiver",
+                    outcome=ExpectedOutcome.NO_MATCH,
+                    path="config.yaml",
+                    source="# sarj-noqa: SARJ306\n# Retry count is 3\nretry_count: 3\n",
                     expected_count=0,
                 ),
             ),
@@ -964,7 +1057,12 @@ REGISTRY: Final[Mapping[str, RuleMeta]] = MappingProxyType(
             ),
             category=RuleCategory.ARCHITECTURE,
             languages=frozenset({Language.SHELL}),
-            file_patterns=("**/*.sh", "**/*.bash", "**/*.zsh", "extensionless shell scripts"),
+            file_patterns=(
+                "**/*.sh",
+                "**/*.bash",
+                "**/*.zsh",
+                "extensionless shell scripts",
+            ),
             examples=(
                 _public_example(
                     example_id="large-shell-program",
@@ -2346,7 +2444,7 @@ def _comment_findings(path: Path, source: str) -> list[Finding]:
             and not generated_comment_wall
             and unmasked_pair
             and _exact_config_restatement(path, body, lines, index)
-            and not _suppresses_previous_line(lines, index, "SARJ306")
+            and not _suppresses_previous_line(lines, index, "SARJ306", literal_lines=validated_literal_lines)
         ):
             findings.append(
                 Finding(
@@ -2380,7 +2478,9 @@ def _comment_findings(path: Path, source: str) -> list[Finding]:
             len(group) >= _WALL_MIN_ATTACHED
             and len(weak) >= _WALL_MIN_WEAK
             and len(weak) / len(group) >= _WALL_MIN_WEAK_RATIO
-            and not _suppresses_previous_line(lines, weak[0] - 1, "SARJ300", path=path)
+            and not _suppresses_previous_line(
+                lines, weak[0] - 1, "SARJ300", path=path, literal_lines=validated_literal_lines
+            )
         ):
             findings.append(
                 Finding(
@@ -2394,8 +2494,10 @@ def _comment_findings(path: Path, source: str) -> list[Finding]:
     return findings
 
 
-def _suppresses_previous_line(lines: list[str], index: int, code: str, *, path: Path = Path("workflow.yml")) -> bool:
-    if index == 0:
+def _suppresses_previous_line(
+    lines: list[str], index: int, code: str, *, path: Path = Path("workflow.yml"), literal_lines: set[int] | None = None
+) -> bool:
+    if index == 0 or (literal_lines is not None and index - 1 in literal_lines):
         return False
     parsed = _standalone_comment(path, lines[index - 1])
     if parsed is None:
@@ -2434,10 +2536,6 @@ def _commented_config_runs(path: Path, lines: list[str]) -> set[int]:
 
 _CONFIG_TOOL_DIRECTIVE_RE = re.compile(
     r"^(?:!|shellcheck\b|yamllint\b|prettier\b|eslint\b|renovate\b|dependabot\b)", re.IGNORECASE
-)
-_TOML_STRING_OR_COMMENT_RE = re.compile(
-    r"#[^\n]*|\"\"\"(?:\\.|(?!\"\"\")[^\\])*\"\"\"|'''(?:(?!''').)*'''|\"(?:\\.|[^\"\\])*\"|'[^'\n]*'",
-    re.DOTALL,
 )
 
 

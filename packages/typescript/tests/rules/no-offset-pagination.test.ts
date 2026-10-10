@@ -148,3 +148,21 @@ RULE_TESTER.run("no-offset-pagination", rule, {
     },
   ],
 });
+
+
+RULE_TESTER.run("no-offset-pagination native-decoded SQL", rule, {
+  valid: [
+    { name: "native escaped-comment", code: "db.query(\"SELECT id FROM runs /* OFF\\x53ET 1 */\");" },
+    { name: "native escaped-value", code: "db.query(\"SELECT id FROM runs WHERE note = 'OFF\\x53ET'\");" },
+    { name: "native escaped-prose", code: "db.query(\"Invalid OFF\\x53ET value\");" },
+    { name: "native safe-query", code: "db.query(\"SELECT id FROM runs ORDER BY id LIMIT 1\");" },
+  ],
+  invalid: [
+    { name: "native plain", code: "db.query(\"SELECT id FROM runs ORDER BY id LIMIT 1 OFFSET 1\");", errors: [{ messageId: "noOffsetPagination" }] },
+    { name: "native unicode-four", code: "db.query(\"SELECT id FROM runs ORDER BY id LIMIT 1 OFF\\u0053ET 1\");", errors: [{ messageId: "noOffsetPagination" }] },
+    { name: "native unicode-codepoint", code: "db.query(\"SELECT id FROM runs ORDER BY id LIMIT 1 OFF\\u{53}ET 1\");", errors: [{ messageId: "noOffsetPagination" }] },
+    { name: "native hex", code: "db.query(\"SELECT id FROM runs ORDER BY id LIMIT 1 OFF\\x53ET 1\");", errors: [{ messageId: "noOffsetPagination" }] },
+    { name: "native concatenated", code: "db.query(\"SELECT id FROM runs ORDER BY id LIMIT 1 OFF\"+\"SET 1\");", errors: [{ messageId: "noOffsetPagination" }] },
+    { name: "native joined", code: "db.query([\"SELECT id FROM runs ORDER BY id LIMIT 1 OFF\"+\"SET 1\"].join(\" \"));", errors: [{ messageId: "noOffsetPagination" }] },
+  ],
+});

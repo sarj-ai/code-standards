@@ -6,6 +6,7 @@ from pathlib import PurePosixPath
 import re
 from typing import TYPE_CHECKING, ClassVar, TypeGuard, final, override
 
+from sarj_python_lint._source import symbol_prefilter_source
 from sarj_python_lint.rule_base import (
     AutofixPolicy,
     Diagnostic,
@@ -176,6 +177,36 @@ class PreferNominalIdTypes(Rule):
                 focus_path=PurePosixPath("app/services/files.py"),
                 expected_count=0,
                 public=True,
+            ),
+            RuleExample(
+                example_id="native-canonical-factory",
+                scenario="native-symbol-binding",
+                title="A normalized canonical NewType proves domain roles",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/service.py",
+                        "import typing\nRoomName = typing.ＮｅｗＴｙｐｅ('RoomName', str)\nCallId = typing.ＮｅｗＴｙｐｅ('CallId', str)\ndef record(room_name: str, call_id: str) -> None: ...\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/service.py"),
+                expected_count=1,
+                public=False,
+            ),
+            RuleExample(
+                example_id="native-factory-data",
+                scenario="native-symbol-binding",
+                title="Factory spelling in data does not prove identity",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/service.py",
+                        "RoomName = 'ＮｅｗＴｙｐｅ'\ndef record(room_name: str, call_id: str) -> None: ...\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/service.py"),
+                expected_count=0,
+                public=False,
             ),
         ),
     )
@@ -817,7 +848,7 @@ def _boundary_message(roles: list[_IdRole], *, established: bool) -> str:
 
 def _canonical_source(source: NominalSource) -> bool:
     return (
-        "NewType" in source.text
+        "NewType" in symbol_prefilter_source(source.text)
         and not _is_excluded_path(source.path)
         and {"tests", "test", "fixtures", "fakes"}.isdisjoint(source.path.parts)
         and not source.path.name.startswith("test_")

@@ -335,7 +335,9 @@ def _dummy_source(source: str, code: str | None, engine: str, behavior: str) -> 
 
 
 def test_generated_native_test_helper_uses_the_public_analyzer() -> None:
-    assert verify_native_rule(NoDunderAll, analyze) == 2
+    spec = NoDunderAll.native_spec()
+    assert spec is not None
+    assert verify_native_rule(NoDunderAll, analyze) == len(spec.examples)
 
 
 @pytest.mark.parametrize("engine", ["python", "eslint"])

@@ -207,7 +207,7 @@ class RequirePydanticForExternalJson(Rule):
     def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
         path = context.path
         source = context.source
-        if _excluded(path, source) or ("loads" not in source and ".json(" not in source):
+        if _excluded(path, source) or ("loads" not in context.symbol_source and "json" not in context.symbol_source):
             return []
         tree = context.tree
         if tree is None:

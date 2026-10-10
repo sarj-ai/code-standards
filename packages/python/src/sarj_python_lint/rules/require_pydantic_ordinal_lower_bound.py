@@ -143,6 +143,36 @@ class RequirePydanticOrdinalLowerBound(Rule):
                 expected_count=0,
                 public=True,
             ),
+            RuleExample(
+                example_id="escaped-ordinal-description",
+                title="Escaped description values preserve the ordinal minimum contract",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/service.py",
+                        'from pydantic import BaseModel, Field\nclass Page(BaseModel):\n    page_number: int = Field(default=1, description="1 for the \\x66irst page")\n',
+                    ),
+                ),
+                focus_path=PurePosixPath("app/service.py"),
+                expected_count=1,
+                public=True,
+                scenario="decoded-description",
+            ),
+            RuleExample(
+                example_id="escaped-bounded-description",
+                title="The same decoded ordinal description has an enforced lower bound",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/service.py",
+                        'from pydantic import BaseModel, Field\nclass Page(BaseModel):\n    page_number: int = Field(default=1, ge=1, description="1 for the \\x66irst page")\n',
+                    ),
+                ),
+                focus_path=PurePosixPath("app/service.py"),
+                expected_count=0,
+                public=True,
+                scenario="decoded-description",
+            ),
         ),
     )
     description = documentation.summary
@@ -150,13 +180,8 @@ class RequirePydanticOrdinalLowerBound(Rule):
     @override
     def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
         path = context.path
-        source = context.source
-        if (
-            is_test_path(path)
-            or is_test_support_path(path)
-            or context.generated
-            or ("for first" not in source.lower() and "for the first" not in source.lower())
-        ):
+        signals = context.symbol_source
+        if is_test_path(path) or is_test_support_path(path) or context.generated or "Field" not in signals:
             return []
         tree = context.tree
         if tree is None:

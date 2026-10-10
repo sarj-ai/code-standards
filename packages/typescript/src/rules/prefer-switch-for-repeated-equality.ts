@@ -26,11 +26,12 @@ export const PREFER_SWITCH_FOR_REPEATED_EQUALITY_DOCUMENTATION = {
   examples: [
     { id: "switch-dispatch", title: "Make finite dispatch explicit", outcome: "no-match", files: [{ path: "src/render.ts", source: "switch (kind) { case 'a': return a(); case 'b': return b(); case 'c': return c(); default: return fallback(); }" }], focusPath: "src/render.ts", expectedCount: 0, public: true },
     { id: "repeated-equality", title: "Avoid repeating the discriminant", outcome: "match", files: [{ path: "src/render.ts", source: "if (kind === 'a') return a(); else if (kind === 'b') return b(); else if (kind === 'c') return c();" }], focusPath: "src/render.ts", expectedCount: 1, public: true },
+    { id: "escaped-middle", scenarioId: "native-discriminant", title: "Use native identifier identity", outcome: "match", files: [{ path: "src/dispatch.ts", source: "function probe(kind){if(kind==='a')return 1;else if(\\u006bind==='b')return 2;else if(kind==='c')return 3;return 0;}\nconsole.log(JSON.stringify([\"a\",\"b\",\"c\",\"d\"].map(probe)));" }], focusPath: "src/dispatch.ts", expectedCount: 1, public: true },
+    { id: "different-discriminants", scenarioId: "native-discriminant", title: "Use native identifier identity", outcome: "no-match", files: [{ path: "src/dispatch.ts", source: "function probe(kind){const other=\"other\";if(kind==='a')return 1;else if(other==='b')return 2;else if(kind==='c')return 3;return 0;}\nconsole.log(JSON.stringify([\"a\",\"b\",\"c\",\"d\"].map(probe)));" }], focusPath: "src/dispatch.ts", expectedCount: 0, public: true },
   ],
 } as const satisfies RuleDocumentation;
 
-function discriminantText(
-  sourceCode: Readonly<{ getText(node: TSESTree.Node): string }>,
+function discriminantName(
   test: TSESTree.Expression,
 ): string | null {
   if (test.type !== AST_NODE_TYPES.BinaryExpression || test.operator !== "===") return null;
@@ -38,7 +39,7 @@ function discriminantText(
   const rightIsCase = isCaseValue(test.right);
   if (leftIsCase === rightIsCase) return null;
   const discriminant = leftIsCase ? test.right : test.left;
-  return discriminant.type === AST_NODE_TYPES.Identifier ? sourceCode.getText(discriminant) : null;
+  return discriminant.type === AST_NODE_TYPES.Identifier ? discriminant.name : null;
 }
 
 function isCaseValue(node: TSESTree.Expression | TSESTree.PrivateIdentifier): boolean {
@@ -67,12 +68,12 @@ export default createRule<Options, MessageIds>({
     return {
       IfStatement(node): void {
         if (node.parent.type === AST_NODE_TYPES.IfStatement && node.parent.alternate === node) return;
-        const first = discriminantText(context.sourceCode, node.test);
+        const first = discriminantName(node.test);
         if (first === null) return;
         let count = 1;
         let current = node.alternate;
         while (current?.type === AST_NODE_TYPES.IfStatement) {
-          if (discriminantText(context.sourceCode, current.test) !== first) return;
+          if (discriminantName(current.test) !== first) return;
           count += 1;
           current = current.alternate;
         }

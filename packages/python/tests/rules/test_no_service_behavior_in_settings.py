@@ -174,3 +174,64 @@ def test_collection_or_class_of_collaborators_is_not_an_injected_service(annotat
 def test_wrapped_collaborator_still_reports_direct_orchestration(annotation: str) -> None:
     source = f"class AppSettings:\n    client: {annotation}\n    def fetch(self): return self.client.fetch()\n"
     assert len(_check(source)) == 1
+
+
+_NATIVE_OWNER_SYNTAX_CASES = (
+    pytest.param(
+        "class BatchSettings:\n    def __init__(self, store: ScheduleStore) -> None:\n        self._store = store\n\n    async def repoint(self, batch_id: str) -> int:\n        return await self._store.repoint(batch_id)\n",
+        1,
+        id="ordinary-prefix",
+    ),
+    pytest.param(
+        "class Settings:\n    def __init__(self, store: ScheduleStore) -> None:\n        self._store = store\n\n    async def repoint(self, batch_id: str) -> int:\n        return await self._store.repoint(batch_id)\n",
+        1,
+        id="bare-settings",
+    ),
+    pytest.param(
+        "class Config:\n    def __init__(self, store: ScheduleStore) -> None:\n        self._store = store\n\n    async def repoint(self, batch_id: str) -> int:\n        return await self._store.repoint(batch_id)\n",
+        1,
+        id="bare-config",
+    ),
+    pytest.param(
+        "class Configuration:\n    def __init__(self, store: ScheduleStore) -> None:\n        self._store = store\n\n    async def repoint(self, batch_id: str) -> int:\n        return await self._store.repoint(batch_id)\n",
+        1,
+        id="bare-configuration",
+    ),
+    pytest.param(
+        "class Options:\n    def __init__(self, store: ScheduleStore) -> None:\n        self._store = store\n\n    async def repoint(self, batch_id: str) -> int:\n        return await self._store.repoint(batch_id)\n",
+        1,
+        id="bare-options",
+    ),
+    pytest.param(
+        "class A·Settings:\n    def __init__(self, store: ScheduleStore) -> None:\n        self._store = store\n\n    async def repoint(self, batch_id: str) -> int:\n        return await self._store.repoint(batch_id)\n",
+        1,
+        id="native-middle-dot",
+    ),
+    pytest.param(
+        "class \\\nBatchSettings:\n    def __init__(self, store: ScheduleStore) -> None:\n        self._store = store\n\n    async def repoint(self, batch_id: str) -> int:\n        return await self._store.repoint(batch_id)\n",
+        1,
+        id="continued-class-keyword",
+    ),
+    pytest.param(
+        "class Scheduler:\n    def __init__(self, store: ScheduleStore) -> None:\n        self._store = store\n\n    async def repoint(self, batch_id: str) -> int:\n        return await self._store.repoint(batch_id)\n",
+        0,
+        id="non-settings-service-name",
+    ),
+    pytest.param(
+        "class Settings:\n    def __init__(self, store: object) -> None:\n        self._store = store\n\n    async def repoint(self, batch_id: str) -> int:\n        return await self._store.repoint(batch_id)\n",
+        0,
+        id="bare-settings-untyped-collaborator",
+    ),
+    pytest.param(
+        "class Settings:\n    def __init__(self, size: int): self.size = size\n    def double(self): return self.size * 2\n",
+        0,
+        id="bare-settings-data-only",
+    ),
+    pytest.param("text = 'class Settings calls ScheduleStore'\n", 0, id="settings-marker-in-data"),
+)
+
+
+@pytest.mark.parametrize(("source", "expected"), _NATIVE_OWNER_SYNTAX_CASES)
+def test_native_syntax_reaches_existing_ownership_checks(source: str, expected: int) -> None:
+    compile(source, "public_owner.py", "exec")
+    assert len(_check(source)) == expected

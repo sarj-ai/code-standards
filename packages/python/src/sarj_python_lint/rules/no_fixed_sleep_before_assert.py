@@ -135,8 +135,8 @@ class NoFixedSleepBeforeAssert(Rule):
     @override
     def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
         path = context.path
-        source = context.source
-        if not _is_collected_test_module(path) or "sleep" not in source or context.generated:
+        signals = context.symbol_source
+        if not _is_collected_test_module(path) or "sleep" not in signals or context.generated:
             return []
         tree = context.tree
         if tree is None:

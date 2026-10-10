@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
+from itertools import chain
+from operator import itemgetter
 import re
 import string
 import sys
@@ -15,6 +17,7 @@ from yaml.nodes import MappingNode, Node, ScalarNode, SequenceNode
 
 from sarj_standards.libs.json_boundary import parse_json
 from sarj_standards.libs.linting.kubernetes_context import CONTAINER_KINDS, POD_SPEC_PATHS
+from sarj_standards.libs.linting.toml_literals import TomlStringLocationError, parse_toml_string_lines
 from sarj_standards.libs.typed_containers import is_object_list, is_object_mapping
 from sarj_standards.libs.yaml_boundary import mapping_items, sequence_items
 
@@ -295,6 +298,9 @@ def _make_expansion_end(source: str, index: int) -> int:
 class _MakeRecipes:
     oneshell: bool
     variables: Mapping[str, str]
+    contexts: Mapping[int, tuple[Mapping[str, str], ...]] = field(
+        default_factory=dict[int, tuple[Mapping[str, str], ...]]
+    )
     prefix: str = "\t"
     pending: list[str] = field(default_factory=list)
     blocks: list[ExecutionBlock] = field(default_factory=list)
@@ -326,13 +332,14 @@ class _MakeRecipes:
     def flush(self) -> None:
         if not self.pending:
             return
-        self.blocks.append(
-            ExecutionBlock(
-                self.start,
-                _make_source("\n".join(self.pending), self.variables),
-                interpreter=self.variables.get("SHELL", "shell"),
+        for variables in self.contexts.get(self.start, (self.variables,)):
+            self.blocks.append(
+                ExecutionBlock(
+                    self.start,
+                    _make_source("\n".join(self.pending), variables),
+                    interpreter=variables.get("SHELL", "shell"),
+                )
             )
-        )
         self.pending = []
 
 
@@ -487,9 +494,14 @@ def execution_blocks(relative: str, source: str, *, platform: str | None = None)
 
 def _toml_blocks(source: str) -> list[ExecutionBlock]:
     try:
-        document: Mapping[str, object] = tomllib.loads(source)
+        parsed = parse_toml_string_lines(source)
+        document = parsed.document
+        string_lines = parsed.string_lines
     except tomllib.TOMLDecodeError as error:
         msg = "invalid selected mise configuration"
+        raise ProgramProjectionError(msg) from error
+    except TomlStringLocationError as error:
+        msg = "selected mise configuration has unverified native string locations"
         raise ProgramProjectionError(msg) from error
     _mise_environment(document.get("env"))
     _mise_environment(document.get("vars"))
@@ -499,15 +511,21 @@ def _toml_blocks(source: str) -> list[ExecutionBlock]:
     blocks: list[ExecutionBlock] = []
     task_config = document.get("task_config")
     default_shell = _mise_shell(task_config.get("shell", "shell") if is_object_mapping(task_config) else "shell")
-    run_lines = [number for number, line in enumerate(source.splitlines(), 1) if re.match(r"\s*run\s*=", line)]
-    cursor = 0
-    for task_value in tasks.values():
+    for name, task_value in tasks.items():
+        if not isinstance(name, str):
+            msg = "native mise task names must be TOML string keys"
+            raise ProgramProjectionError(msg)
         task = _mise_task_fields(task_value)
         if task is None:
             continue
-        line = run_lines[cursor] if cursor < len(run_lines) else 1
-        blocks.extend(_mise_task_blocks(task, line, default_shell))
-        cursor += 1
+        run_path = ("tasks", name) if isinstance(task_value, str) else ("tasks", name, "run")
+        for index, block in enumerate(_mise_task_blocks(task, 1, default_shell)):
+            command_path = run_path if isinstance(task["run"], str) else (*run_path, index)
+            line = string_lines.get(command_path)
+            if line is None:
+                msg = "mise task run has no native-verified source location"
+                raise ProgramProjectionError(msg)
+            blocks.append(replace(block, line=line))
     return blocks
 
 
@@ -602,39 +620,192 @@ def _docker_json_argv(command: str) -> tuple[str, ...] | None:
 def _make_blocks(source: str) -> list[ExecutionBlock]:
     lines = source.splitlines()
     oneshell = any(re.match(r"^\s*\.ONESHELL\s*:", line) for line in lines)
-    recipes = _MakeRecipes(oneshell, _make_variables(lines))
+    recipes = _MakeRecipes(oneshell, _make_variables(lines), _make_recipe_contexts(lines))
     for number, line in enumerate(lines, 1):
         recipes.consume(line, number)
     recipes.flush()
     return recipes.blocks
 
 
-def _make_variables(lines: Sequence[str]) -> dict[str, str]:
-    variables: dict[str, str] = {}
-    simple: set[str] = set()
-    for line in lines:
-        assignment = re.fullmatch(r"(?:export\s+)?([A-Za-z_][A-Za-z0-9_.]*)\s*(:::=|::=|:=|[?+]?=)\s*(.*)", line)
-        if assignment is None:
-            continue
+_MAKE_ASSIGNMENT = re.compile(r"(?:export\s+)?([A-Za-z_][A-Za-z0-9_.]*)\s*(:::=|::=|:=|[?+]?=)\s*(.*)")
+
+
+@dataclass(slots=True)
+class _MakeVariables:
+    values: dict[str, str] = field(default_factory=dict)
+    simple: set[str] = field(default_factory=set)
+
+    def fork(self) -> _MakeVariables:
+        return _MakeVariables(dict(self.values), set(self.simple))
+
+    def overlay(self, other: _MakeVariables) -> _MakeVariables:
+        if not other.values:
+            return self
+        values = self.values | other.values
+        simple = (self.simple - other.values.keys()) | other.simple
+        return _MakeVariables(values, simple)
+
+    def consume(self, assignment: re.Match[str]) -> bool:
         name, operator, value = assignment.groups()
-        # Make comments are independent of shell quoting; an unescaped #
-        # terminates the assignment before recipe expansion.
         value = re.split(r"(?<!\\)#", value, maxsplit=1)[0].rstrip()
-        if operator == "?=" and name in variables:
-            continue
-        if operator in {":=", "::=", ":::="} or (operator == "+=" and name in simple):
-            # Frozen values must survive the existing recursive expander verbatim:
-            # dollars belong to the shell after Make's single expansion pass.
-            value = _make_source(value, variables).replace("$", "$$")
-        if operator == "+=" and name in variables:
-            variables[name] += " " + value
-            continue
-        variables[name] = value
+        if operator == "?=" and name in self.values:
+            return False
+        if operator in {":=", "::=", ":::="} or (operator == "+=" and name in self.simple):
+            value = _make_source(value, self.values).replace("$", "$$")
+        if operator == "+=" and name in self.values:
+            self.values[name] += " " + value
+            return True
+        self.values[name] = value
         if operator in {":=", "::="}:
-            simple.add(name)
+            self.simple.add(name)
         else:
-            simple.discard(name)
-    return variables
+            self.simple.discard(name)
+        return True
+
+
+def _make_variables(lines: Sequence[str]) -> dict[str, str]:
+    state = _MakeVariables()
+    for line in lines:
+        if assignment := _MAKE_ASSIGNMENT.fullmatch(line):
+            state.consume(assignment)
+    return state.values
+
+
+@dataclass(slots=True)
+class _MakeScopes:
+    global_values: _MakeVariables = field(default_factory=_MakeVariables)
+    local_values: dict[str, _MakeVariables] = field(default_factory=dict)
+    parents: dict[str, list[str]] = field(default_factory=dict)
+    recipes: dict[int, tuple[str, ...]] = field(default_factory=dict)
+    owners: tuple[str, ...] = ()
+    variant_cache: dict[str, tuple[_MakeVariables, ...]] = field(default_factory=dict)
+    remaining: int = _MAX_NODES
+
+    def consume(self, line: str, number: int) -> None:
+        prefix = self.global_values.values.get(".RECIPEPREFIX", "\t")[:1] or "\t"
+        if line.startswith(prefix):
+            self.recipes[number] = self.owners
+            return
+        if assignment := _MAKE_ASSIGNMENT.fullmatch(line):
+            self.global_values.consume(assignment)
+            return
+        header, colon, body = line.partition(":")
+        if not colon:
+            return
+        names = _make_scope_words(header, self.global_values.values)
+        if assignment := _make_target_assignment(body):
+            self.assign(names, assignment)
+            return
+        self.owners = names
+        dependencies = _make_scope_words(body.split(";", 1)[0], self.global_values.values)
+        for dependency in dependencies:
+            if dependency != "|":
+                self.parents.setdefault(dependency, []).extend(name for name in names if name != dependency)
+
+    def assign(self, names: tuple[str, ...], assignment: re.Match[str]) -> None:
+        for name in names:
+            previous = self.local_values.get(name, _MakeVariables())
+            combined = self.global_values.fork().overlay(previous)
+            if combined.consume(assignment):
+                variable = assignment[1]
+                previous.values[variable] = combined.values[variable]
+                if variable in combined.simple:
+                    previous.simple.add(variable)
+                else:
+                    previous.simple.discard(variable)
+                self.local_values[name] = previous
+
+    def variants(self, name: str, active: tuple[str, ...] = ()) -> tuple[_MakeVariables, ...]:
+        if name in active or len(active) >= _MAX_DEPTH:
+            msg = "Make target variable inheritance cannot be bounded"
+            raise ProgramProjectionError(msg)
+        if name in self.variant_cache:
+            return self.variant_cache[name]
+        parents = (state for parent in self.parents.get(name, ()) for state in self.variants(parent, (*active, name)))
+        inherited = chain((self.global_values,), parents)
+        patterns = _make_pattern_states(name, self.local_values)
+        result: dict[tuple[tuple[str, str], ...], _MakeVariables] = {}
+        for initial in inherited:
+            self.remaining -= len(initial.values) + 1
+            state = initial
+            for _, pattern in patterns:
+                state = state.overlay(pattern)
+            state = state.overlay(self.local_values.get(name, _MakeVariables()))
+            result[tuple(sorted(state.values.items()))] = state
+            if self.remaining < 0:
+                msg = "Make target variable contexts exceed analysis bound"
+                raise ProgramProjectionError(msg)
+        self.variant_cache[name] = tuple(result.values())
+        return self.variant_cache[name]
+
+    def recipe_variants(self, owners: tuple[str, ...]) -> tuple[Mapping[str, str], ...]:
+        variants: list[Mapping[str, str]] = []
+        for owner in owners:
+            for name in self.recipe_names(owner):
+                variants.extend(state.values for state in self.variants(name))
+        return tuple(variants) or (self.global_values.values,)
+
+    def recipe_names(self, owner: str) -> tuple[str, ...]:
+        if "%" not in owner:
+            return (owner,)
+        declared = self.local_values.keys() | self.parents.keys()
+        names = tuple(name for name in sorted(declared) if _make_pattern_stem(owner, name) is not None)
+        return (owner, *names)
+
+
+def _make_target_assignment(body: str) -> re.Match[str] | None:
+    return _MAKE_ASSIGNMENT.fullmatch(body.strip().removeprefix("override "))
+
+
+def _make_scope_words(source: str, variables: Mapping[str, str]) -> tuple[str, ...]:
+    expanded = _make_source(source.split("#", 1)[0], variables)
+    if "make_expansion" in expanded or "\\" in expanded or "$(" in expanded or "${" in expanded:
+        msg = "Make target or prerequisite words cannot be proven statically"
+        raise ProgramProjectionError(msg)
+    return tuple(expanded.split())
+
+
+def _make_pattern_stem(pattern: str, name: str) -> int | None:
+    if "%" not in pattern:
+        return None
+    prefix, _, suffix = pattern.partition("%")
+    if "%" in suffix or not name.startswith(prefix) or not name.endswith(suffix):
+        return None
+    length = len(name) - len(prefix) - len(suffix)
+    return length if length >= 0 else None
+
+
+def _make_pattern_states(name: str, bindings: Mapping[str, _MakeVariables]) -> list[tuple[int, _MakeVariables]]:
+    patterns: list[tuple[int, _MakeVariables]] = []
+    values: dict[str, str] = {}
+    for pattern, state in bindings.items():
+        stem = _make_pattern_stem(pattern, name)
+        if stem is None:
+            continue
+        for variable, value in state.values.items():
+            if variable in values and values[variable] != value:
+                # GNU Make 3.81 uses declaration order; modern Make uses stem
+                # specificity. Configuration does not establish that version.
+                msg = "Make conflicting pattern variable precedence cannot be proven"
+                raise ProgramProjectionError(msg)
+            values[variable] = value
+        patterns.append((stem, state))
+    return sorted(patterns, key=itemgetter(0), reverse=True)
+
+
+def _make_recipe_contexts(lines: Sequence[str]) -> dict[int, tuple[Mapping[str, str], ...]]:
+    # Ordinary Makefiles keep the existing global assignment fast path.
+    if not any(
+        not line.startswith("\t") and ":" in line and _make_target_assignment(line.partition(":")[2]) for line in lines
+    ):
+        return {}
+    scopes = _MakeScopes()
+    for number, line in enumerate(lines, 1):
+        scopes.consume(line, number)
+    contexts: dict[int, tuple[Mapping[str, str], ...]] = {}
+    for number, owners in scopes.recipes.items():
+        contexts[number] = scopes.recipe_variants(owners)
+    return contexts
 
 
 def _yaml_blocks(relative: str, source: str, *, platform: str) -> list[ExecutionBlock]:

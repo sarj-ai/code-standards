@@ -149,6 +149,12 @@ def evaluate(
     thresholds: EvaluationThresholds | None = None,
     evidence: EvaluationEvidence | None = None,
 ) -> EvaluationReport:
+    case_ids: set[str] = set()
+    for case in cases:
+        if case.case_id in case_ids:
+            msg = f"duplicate evaluation case ID: {case.report_id}"
+            raise ValueError(msg)
+        case_ids.add(case.case_id)
     unsupported = [case.report_id for case in cases if case.language not in problem.languages]
     if unsupported:
         msg = f"cases use languages outside the problem: {', '.join(unsupported)}"

@@ -38,3 +38,16 @@ RULE_TESTER.run("prefer-switch-for-repeated-equality", rule, {
 });
 
 void PREFER_SWITCH_FOR_REPEATED_EQUALITY_DOCUMENTATION;
+
+
+RULE_TESTER.run("prefer-switch native discriminant identity", rule, {
+  valid: [
+    { name: "different-discriminants", code: "function probe(kind){const other=\"other\";if(kind==='a')return 1;else if(other==='b')return 2;else if(kind==='c')return 3;return 0;}\nconsole.log(JSON.stringify([\"a\",\"b\",\"c\",\"d\"].map(probe)));" },
+    { name: "loose-comparison", code: "function probe(kind){if(kind=='a')return 1;else if(kind=='b')return 2;else if(kind=='c')return 3;return 0;}\nconsole.log(JSON.stringify([\"a\",\"b\",\"c\",\"d\"].map(probe)));" },
+  ],
+  invalid: [
+    { name: "plain", code: "function probe(kind){if(kind==='a')return 1;else if(kind==='b')return 2;else if(kind==='c')return 3;return 0;}\nconsole.log(JSON.stringify([\"a\",\"b\",\"c\",\"d\"].map(probe)));", errors: [{ messageId: "preferSwitch" }] },
+    { name: "escaped-first", code: "function probe(kind){if(\\u006bind==='a')return 1;else if(kind==='b')return 2;else if(kind==='c')return 3;return 0;}\nconsole.log(JSON.stringify([\"a\",\"b\",\"c\",\"d\"].map(probe)));", errors: [{ messageId: "preferSwitch" }] },
+    { name: "escaped-middle", code: "function probe(kind){if(kind==='a')return 1;else if(\\u006bind==='b')return 2;else if(kind==='c')return 3;return 0;}\nconsole.log(JSON.stringify([\"a\",\"b\",\"c\",\"d\"].map(probe)));", errors: [{ messageId: "preferSwitch" }] },
+  ],
+});

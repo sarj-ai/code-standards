@@ -102,6 +102,36 @@ class AsyncMockCallWithoutAwaitAssertion(Rule):
         ),
         examples=(
             RuleExample(
+                example_id="spaced-positive-called-state",
+                scenario="called-attribute-spacing",
+                title="A spaced positive call state still needs await evidence",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "tests/test_delivery.py",
+                        "from unittest.mock import AsyncMock\nasync def test_delivery():\n    send = AsyncMock()\n    pending = send()\n    pending.close()\n    assert send. called\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("tests/test_delivery.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="spaced-called-with-await-evidence",
+                scenario="called-attribute-spacing",
+                title="Await evidence covers the same spaced call state",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "tests/test_delivery.py",
+                        "from unittest.mock import AsyncMock\nasync def test_delivery():\n    send = AsyncMock()\n    await send()\n    assert send. called\n    send.assert_awaited_once()\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("tests/test_delivery.py"),
+                expected_count=0,
+                public=True,
+            ),
+            RuleExample(
                 example_id="call-only-async-mock",
                 title="A call assertion does not prove awaiting",
                 outcome=ExampleOutcome.MATCH,
@@ -166,11 +196,11 @@ class AsyncMockCallWithoutAwaitAssertion(Rule):
     @override
     def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
         path = context.path
-        source = context.source
+        signals = context.symbol_source
         if (
             path.suffix != ".py"
-            or "AsyncMock" not in source
-            or not any(token in source for token in ("assert_called", "call_count", ".called"))
+            or "AsyncMock" not in signals
+            or not any(token in signals for token in ("called", "call_count"))
             or not (path.stem.startswith("test_") or path.stem.endswith("_test"))
             or context.generated
         ):

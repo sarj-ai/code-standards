@@ -311,3 +311,28 @@ def test_duplicate_distribution_names_are_scoped_by_declared_workspace(
     path.write_text(source)
     findings = PreferNominalIdTypes().check(path, source)
     assert len(findings) == int(include_brand and not excluded)
+
+
+@pytest.mark.parametrize(
+    ("definitions", "expected"),
+    [
+        (
+            "import typing\nRoomName = typing.ＮｅｗＴｙｐｅ('RoomName', str)\nCallId = typing.ＮｅｗＴｙｐｅ('CallId', str)\n",
+            1,
+        ),
+        (
+            "import ｔｙｐｉｎｇ\nRoomName = ｔｙｐｉｎｇ.ＮｅｗＴｙｐｅ('RoomName', str)\nCallId = ｔｙｐｉｎｇ.ＮｅｗＴｙｐｅ('CallId', str)\n",
+            1,
+        ),
+        ("import unrelated as typing\nRoomName = typing.ＮｅｗＴｙｐｅ('RoomName', str)\n", 0),
+        ("import typing\nRoomName = typing.ＮｅｗＴｙｐｅ('RoomName', int)\n", 0),
+        ("RoomName = 'ＮｅｗＴｙｐｅ'\nCallId = 'CallId'\n", 0),
+        ("import typing\nRoomName = typing.ＮｅｗＴｙｐｅ('RoomName', str)\ntyping = unrelated\n", 0),
+    ],
+)
+def test_native_normalized_nonfocus_factory_keeps_canonical_role_ownership(
+    tmp_path: Path, definitions: str, expected: int
+) -> None:
+    diagnostics = _project_check(tmp_path, "def record(room_name: str, call_id: str) -> None: ...\n", definitions)
+    assert len(diagnostics) == expected
+    assert all(item.code == "SARJ093" and item.severity is Severity.WARNING for item in diagnostics)

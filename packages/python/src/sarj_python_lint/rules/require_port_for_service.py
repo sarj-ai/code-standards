@@ -355,7 +355,7 @@ class RequirePortForService(ProjectRule):
     def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
         path = context.path
         source = context.source
-        if not _is_library_source(path) or context.generated or "class " not in source:
+        if not _is_library_source(path) or context.generated or "class" not in source:
             return []
         tree = context.tree
         if tree is None:

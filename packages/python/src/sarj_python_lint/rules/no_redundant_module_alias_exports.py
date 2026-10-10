@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import ast
 from pathlib import PurePosixPath
-import re
 from typing import TYPE_CHECKING, ClassVar, final, override
 
 from sarj_python_lint.rule_base import (
@@ -24,7 +23,6 @@ if TYPE_CHECKING:
 
 
 _SYS_SOURCES = frozenset({"sys"})
-_PRIVATE_ALIAS_CANDIDATE_RE = re.compile(r"(?m)^(?![\d_])\w+(?:\s*:[^=\n]+)?(?:\s*=\s*(?!_)\w+)*\s*=\s*_(?!_)\w")
 
 
 @final
@@ -126,6 +124,33 @@ class NoRedundantModuleAliasExports(Rule):
                 public=True,
                 scenario="module-replacement",
             ),
+            RuleExample(
+                example_id="native-parenthesized-alias-matching",
+                title="Native syntax preserves the existing ownership contract",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/pagination.py",
+                        "def _encode_cursor(value: str) -> str:\n    return value\n\n\nencode_phone_number_cursor = (_encode_cursor)\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/pagination.py"),
+                expected_count=1,
+                public=True,
+                scenario="native-parenthesized-alias",
+            ),
+            RuleExample(
+                example_id="native-parenthesized-alias-nonmatching",
+                title="Existing semantic ownership exclusions remain valid",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python("app/pagination.py", '__version__ = "value"\npublic_version = (__version__)\n'),
+                ),
+                focus_path=PurePosixPath("app/pagination.py"),
+                expected_count=0,
+                public=True,
+                scenario="native-parenthesized-alias",
+            ),
         ),
     )
     description: str = documentation.summary
@@ -133,13 +158,8 @@ class NoRedundantModuleAliasExports(Rule):
     @override
     def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
         path = context.path
-        source = context.source
-        has_module_replacement_candidate = "modules" in source and "__name__" in source
-        if (
-            path.suffix != ".py"
-            or (not has_module_replacement_candidate and _PRIVATE_ALIAS_CANDIDATE_RE.search(source) is None)
-            or context.generated
-        ):
+        signals = context.symbol_source
+        if path.suffix != ".py" or "=" not in context.source or "_" not in signals or context.generated:
             return []
         tree = context.tree
         if tree is None:
