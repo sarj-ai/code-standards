@@ -1,4 +1,8 @@
-/** @fileoverview named-child-schema-type — reuse the complete type of a named child passed to a Zod record. */
+/**
+ * @fileoverview named-child-schema-type — reuse the complete type of a named child passed to a Zod record.
+ *
+ * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/named-child-schema-type.test.ts
+ */
 import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
