@@ -104,7 +104,7 @@ ALL_CONFIGS: Final = (
     *SHARED_CONFIGS,
     *SECURITY_CONFIGS,
 )
-DEVOPS_ANALYZERS: Final = ("actionlint", "hadolint", "terraform", "tflint", "compose", "devops-schema")
+DEVOPS_ANALYZERS: Final = ("actionlint", "hadolint", "terraform", "tflint", "compose", "devops-schema", "shfmt")
 # Opt-in analyzers: new manifests and upgrades from older bundles both record them as disabled.
 QUALITY_ANALYZERS: Final = ("jscpd",)
 _QUALITY_ANALYZERS_SINCE: Final = Version("8.43.0")

@@ -1049,7 +1049,7 @@ def cmd_verify(args: _Args) -> int:
     adopted = _declared_manifest(args)
     return _run_canonical_check(
         root,
-        None if adopted is None else adopted.verify_paths,
+        None,
         raw=adopted is None,
         jobs=args.jobs,
         trusted=args.trust_repository_code,
@@ -2164,7 +2164,9 @@ def cmd_format(args: _Args) -> int:
     adopted = _declared_manifest(args)
     ecosystems = scaffold.detect(root) if adopted is None else scaffold.detect_adopted(root, adopted)
     commands = (
-        lifecycle.selected_format_commands(root, args.files) if args.files else lifecycle.format_commands(ecosystems)
+        lifecycle.selected_format_commands(root, args.files)
+        if args.files
+        else lifecycle.format_commands(ecosystems, root=root)
     )
     return lifecycle.execute(commands)
 

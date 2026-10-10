@@ -4,11 +4,11 @@ set -euo pipefail
 kind="${1:?analysis kind required}"
 destination="${2:?certificate destination required}"
 case "$kind" in
-static | docs | wheels | ci | codeql-python | codeql-javascript-typescript) ;;
-*)
-  echo "unknown reviewed analysis kind" >&2
-  exit 2
-  ;;
+  static | docs | wheels | ci | codeql-python | codeql-javascript-typescript) ;;
+  *)
+    echo "unknown reviewed analysis kind" >&2
+    exit 2
+    ;;
 esac
 mkdir -p "$destination"
 source_commit=$(git rev-parse HEAD)

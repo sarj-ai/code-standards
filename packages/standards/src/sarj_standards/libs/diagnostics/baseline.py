@@ -98,6 +98,8 @@ def touches_changed_lines(diagnostic: Diagnostic, scope: ChangedLineScope | None
     path = diagnostic.location.path
     if path not in scope.paths:
         return False
+    if diagnostic.source == "shfmt" and diagnostic.rule_id == "format":
+        return True  # Formatting owns the entire selected file, regardless of the changed hunk.
     changed = scope.lines.get(path)
     if not changed:
         return True
@@ -112,6 +114,8 @@ def touches_changed_lines(diagnostic: Diagnostic, scope: ChangedLineScope | None
 
 
 def is_baselineable(diagnostic: Diagnostic) -> bool:
+    if diagnostic.source == "shfmt" and diagnostic.rule_id == "format" and diagnostic.severity.value == "error":
+        return False
     return not (
         diagnostic.source == "repo-standards"
         and (diagnostic.rule_id or diagnostic.code) == "repository/artifacts/makefile-growth"

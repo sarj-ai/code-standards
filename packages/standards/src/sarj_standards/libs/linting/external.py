@@ -359,8 +359,11 @@ def analyze_external(
             security_selection=security_selection,
         )
     )
-    if capabilities is None or "shellcheck" in capabilities:
-        reports.extend(_shellcheck_reports(routed, root=root, runner=execute, attest_version=runner is None))
+    reports.extend(
+        _shell_source_reports(
+            routed, root=root, runner=execute, capabilities=capabilities, attest_version=runner is None
+        )
+    )
     try:
         reports.extend(
             _mobile_source_reports(
@@ -1921,6 +1924,24 @@ def _invoke_deptry_projects(
                     file_count=len(scoped_files),
                 )
             )
+    return tuple(reports)
+
+
+def _shell_source_reports(
+    grouped: GroupedPaths,
+    *,
+    root: Path,
+    runner: ProcessRunner,
+    capabilities: frozenset[str] | None,
+    attest_version: bool,
+) -> tuple[ToolReport, ...]:
+    from .shell_format import analyze_sources as analyze_shell_format  # ruff: ignore[import-outside-top-level] -- formatter reuses the bounded input runner without introducing an import cycle.
+
+    reports: list[ToolReport] = []
+    if capabilities is None or "shellcheck" in capabilities:
+        reports.extend(_shellcheck_reports(grouped, root=root, runner=runner, attest_version=attest_version))
+    if capabilities is None or "shfmt" in capabilities:
+        reports.extend(analyze_shell_format(root=root, paths=(*grouped.shellcheck, *grouped.unsupported_shell)))
     return tuple(reports)
 
 

@@ -360,6 +360,7 @@ class Standards:
         combined = report_from_tools(
             self.root, analyze_groups(self.root, native_analysis, external_analysis, jobs=jobs)
         )
+        combined = _with_shell_format_severity(combined, paths=paths, staged=staged, changed_scope=changed_scope)
         if normalized_mode in {AnalysisMode.POLICY, AnalysisMode.OBSERVE}:
             combined = _with_warning_severity(combined, _warning_rule_keys())
         return _with_coverage(
@@ -394,7 +395,7 @@ class Standards:
                 findings=(Finding("fix.input.invalid", "error", str(exc)),),
                 exit_code=_INVALID_EXIT,
             )
-        return _operation_result(lifecycle.execute(lifecycle.format_commands(ecosystems)))
+        return _operation_result(lifecycle.execute(lifecycle.format_commands(ecosystems, root=self.root)))
 
     def doctor(self) -> Result:
         diagnosed = diagnose(self.root)
@@ -597,6 +598,37 @@ def _failed_analysis(root: Path, kind: str, message: str) -> AnalysisReport:
     issue = ExecutionIssue("sarj-standards", kind, message)
     tool = ToolReport("sarj-standards", Completion.FAILED, issues=(issue,))
     return AnalysisReport(root, Completion.FAILED, Conclusion.INCONCLUSIVE, (tool,))
+
+
+def _with_shell_format_severity(
+    report: AnalysisReport,
+    *,
+    paths: Sequence[str] | None,
+    staged: bool,
+    changed_scope: diagnostic_baseline.ChangedLineScope | None,
+) -> AnalysisReport:
+    required = paths is not None or staged
+    tools = tuple(
+        replace(
+            tool,
+            diagnostics=tuple(
+                replace(item, severity=Severity.ERROR)
+                if item.source == "shfmt"
+                and item.rule_id == "format"
+                and (
+                    required
+                    or (
+                        changed_scope is not None
+                        and (changed_scope.failed or item.location.path in changed_scope.paths)
+                    )
+                )
+                else item
+                for item in tool.diagnostics
+            ),
+        )
+        for tool in report.tools
+    )
+    return report_from_tools(report.root, tools)
 
 
 def _without_baselined_diagnostics(
