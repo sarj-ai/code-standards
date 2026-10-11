@@ -57,10 +57,10 @@ class OpaqueParametrizeCaseNeedsId(Rule):
     code: str = "SARJ042"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
         default_level=Severity.WARNING,
-        summary="Opaque static pytest parameter cases rely on argument-name-and-index fallback IDs.",
-        rationale="Fallback IDs such as `payload0` are hard to diagnose and silently change when the table is reordered.",
+        summary="Opaque static pytest parameter cases lack table-local semantic IDs.",
+        rationale="Without a semantic naming owner, fallback IDs such as `payload0` are hard to diagnose and silently change when the table is reordered.",
         remediation=(
-            "Give each opaque row a semantic `pytest.param(..., id=...)`, or use a semantic callable `ids=` when one "
+            "Check the owning pytest_make_parametrize_id hook before adding IDs; reuse an existing semantic naming owner. Otherwise give each opaque row a semantic `pytest.param(..., id=...)`, or use a semantic callable `ids=` when one "
             "mapping applies to the entire table."
         ),
         category=RuleCategory.TESTING,
@@ -129,10 +129,12 @@ class OpaqueParametrizeCaseNeedsId(Rule):
 
 
 def _message(count: int) -> str:
-    subject = "case relies" if count == 1 else "cases rely"
+    subject = "case lacks" if count == 1 else "cases lack"
     return (
-        f"{count} {subject} on pytest's argument-name-and-index fallback (for example, `payload0`), which renumbers "
-        'when rows are reordered. Add semantic `pytest.param(..., id="...")` values or a semantic callable `ids=`.'
+        f"{count} {subject} a table-local semantic ID. Check the owning `pytest_make_parametrize_id` hook before "
+        'adding IDs; reuse an existing semantic naming owner, or add semantic `pytest.param(..., id="...")` values '
+        "or a semantic callable `ids=`. Without a semantic ID, pytest may use an argument-name-and-index fallback "
+        "(for example, `payload0`), which renumbers when rows are reordered."
     )
 
 

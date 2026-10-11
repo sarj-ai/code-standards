@@ -1,8 +1,15 @@
 from __future__ import annotations
 
 import ast
+import builtins
 from pathlib import PurePosixPath
-from typing import TYPE_CHECKING, ClassVar, NamedTuple, override
+from typing import (
+    TYPE_CHECKING,
+    ClassVar,
+    NamedTuple,
+    cast,  # ruff: ignore[banned-api] -- vars exposes Any; the object view permits native exception narrowing.
+    override,
+)
 
 from sarj_python_lint.rule_base import (
     AutofixPolicy,
@@ -16,18 +23,23 @@ from sarj_python_lint.rule_base import (
     Severity,
 )
 from sarj_python_lint.rules._ast_index import children, walk
+from sarj_python_lint.rules._closed_helpers import dynamic_namespace
 from sarj_python_lint.rules._paths import is_test_path
+from sarj_python_lint.rules._resource_provenance import ResourceProvenance
 
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Iterator, Mapping
 
     from sarj_python_lint._file_context import PythonFileContext
-    from sarj_python_lint.rules._imports import ImportIndex
 
 
 # The two attributes that *configure* what a mock does when called.
 _CONFIG_ATTRS = frozenset({"return_value", "side_effect"})
+_BUILTIN_NAMESPACE = cast("Mapping[str, object]", vars(builtins))
+_EXCEPTION_TYPES = frozenset(
+    name for name, value in _BUILTIN_NAMESPACE.items() if isinstance(value, type) and issubclass(value, BaseException)
+)
 
 # Callables whose constructor keywords configure the returned double.  Import
 # resolution is required for bare/module-qualified spellings; the pytest-mock
@@ -45,6 +57,7 @@ _MOCK_CONSTRUCTORS = frozenset(
 _MOCKER_CONFIGURATORS = _MOCK_CONSTRUCTORS | {"patch"}
 _UNITTEST_MOCK = frozenset({"unittest.mock"})
 _MOCKER = "mocker"
+_PATCH_OBJECT_POSITIONAL_ARGUMENTS = 2
 
 # Assertions that the mock was never reached.
 _NOT_CALLED_ASSERTIONS = frozenset({"assert_not_called", "assert_not_awaited"})
@@ -89,14 +102,14 @@ class UnusedMockSetup(Rule):
             "terminal exact-path assertion proves the configured mock was never called."
         ),
         remediation=(
-            "Delete the earlier overwritten configuration, or place the intended action before reconfiguration; "
+            "Delete the earlier inert configuration, retaining the mock constructor and binding when removing a keyword, or place the intended action before reconfiguration; "
             "delete behavior configuration contradicted by a terminal never-called assertion."
         ),
         category=RuleCategory.TESTING,
         autofix=AutofixPolicy.NONE,
         limitations=(
-            "Only non-generated test paths and mock values proven from unittest.mock or an unshadowed pytest-mock fixture are analyzed.",
-            "Only same-block overwrites and exact-path terminal never-called assertions are checked; uncertain evaluation, control flow, reads, and escapes are excluded.",
+            "Only non-generated test paths and stable local names unconditionally initialized from unittest.mock or an unshadowed pytest-mock fixture before configuration are analyzed. Dotted stores, auto-children, configured return-value chains, replacement or unpacked options, dynamic namespace access, and direct constructor-root or builtin namespace mutation are excluded. Unseen external mutations are not resolved.",
+            "Only same-block overwrites and exact-path terminal never-called assertions are checked; uncertain evaluation, native setter/iteration effects, custom hash/equality, control flow, reads, and terminal receiver escapes are excluded. Configuration values require literal/native primitive provenance.",
         ),
         examples=(
             RuleExample(
@@ -138,14 +151,16 @@ class UnusedMockSetup(Rule):
         if not is_test_path(path) or context.generated:
             return []
         tree = context.tree
-        if tree is None:
+        if tree is None or dynamic_namespace(context):
             return []
 
-        imports = context.imports
+        provenance = ResourceProvenance(context)
+        if not provenance.builtin_namespace_untouched:
+            return []
         seen: set[tuple[int, int]] = set()
         diags: list[Diagnostic] = []
         for fn in context.nodes(*_FUNC_NODES):
-            for finding in _dead_setups(fn, imports):
+            for finding in _dead_setups(fn, provenance):
                 position = (finding.node.lineno, finding.node.col_offset + 1)
                 if position in seen:
                     continue
@@ -164,20 +179,22 @@ class UnusedMockSetup(Rule):
         return diags
 
 
-def _dead_setups(fn: ast.FunctionDef | ast.AsyncFunctionDef, imports: ImportIndex) -> Iterator[_Finding]:
-    origins = _mock_origins(fn, imports)
+def _dead_setups(fn: ast.FunctionDef | ast.AsyncFunctionDef, provenance: ResourceProvenance) -> Iterator[_Finding]:
+    origins = _mock_origins(fn, provenance)
     if not origins:
         return
-    yield from _overwritten_before_use(fn, imports, origins)
-    yield from _asserted_never_called(fn, origins)
+    yield from _overwritten_before_use(fn, origins, provenance)
+    yield from _asserted_never_called(fn, origins, provenance)
 
 
 def _overwritten_before_use(
-    fn: ast.FunctionDef | ast.AsyncFunctionDef, imports: ImportIndex, origins: frozenset[str]
+    fn: ast.FunctionDef | ast.AsyncFunctionDef,
+    origins: frozenset[str],
+    provenance: ResourceProvenance,
 ) -> Iterator[_Finding]:
     has_mocker_fixture = _has_unshadowed_mocker_fixture(fn)
     for block in _blocks(fn):
-        yield from _overwritten_block_setups(block, imports, origins, has_mocker_fixture=has_mocker_fixture)
+        yield from _overwritten_block_setups(block, origins, provenance, has_mocker_fixture=has_mocker_fixture)
 
 
 def _has_unshadowed_mocker_fixture(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
@@ -202,39 +219,37 @@ def _owned_nodes(root: ast.AST) -> Iterator[ast.AST]:
         stack.extend(reversed(list(ast.iter_child_nodes(node))))
 
 
-def _mock_origins(fn: ast.FunctionDef | ast.AsyncFunctionDef, imports: ImportIndex) -> frozenset[str]:
+def _mock_origins(fn: ast.FunctionDef | ast.AsyncFunctionDef, provenance: ResourceProvenance) -> frozenset[str]:
     has_mocker_fixture = _has_unshadowed_mocker_fixture(fn)
-    binding_counts: dict[str, int] = {}
-    for argument in (*fn.args.posonlyargs, *fn.args.args, *fn.args.kwonlyargs):
-        binding_counts[argument.arg] = binding_counts.get(argument.arg, 0) + 1
-    for node in _owned_nodes(fn):
-        if isinstance(node, (ast.Name, ast.Attribute)) and isinstance(node.ctx, (ast.Store, ast.Del)):
-            path = _dotted(node)
-            if path is not None:
-                binding_counts[path] = binding_counts.get(path, 0) + 1
     origins: set[str] = set()
-    for stmt in _scope_statements(fn):
+    for stmt in fn.body:
         match stmt:
-            case ast.Assign(targets=[target], value=ast.Call() as call):
+            case ast.Assign(targets=[ast.Name() as target], value=ast.Call() as call):
                 pass
-            case ast.AnnAssign(target=target, value=ast.Call() as call):
+            case ast.AnnAssign(target=ast.Name() as target, value=ast.Call() as call):
                 pass
             case _:
                 continue
-        path = _dotted(target)
-        if (
-            path is not None
-            and binding_counts.get(path) == 1
-            and _is_mock_configurator(call.func, imports, has_mocker_fixture=has_mocker_fixture)
+        if provenance.binding(target.id, call) is target and _is_mock_configurator(
+            call, provenance, has_mocker_fixture=has_mocker_fixture
         ):
-            origins.add(path)
+            origins.add(target.id)
     return frozenset(origins)
 
 
-def _is_mock_configurator(func: ast.expr, imports: ImportIndex, *, has_mocker_fixture: bool) -> bool:
+def _is_mock_configurator(call: ast.Call, provenance: ResourceProvenance, *, has_mocker_fixture: bool) -> bool:
+    func = call.func
+    path = _dotted(func)
+    if (
+        path is None
+        or path.partition(".")[0] in provenance.mutated
+        or any(isinstance(argument, ast.Starred) for argument in call.args)
+        or any(keyword.arg in {None, "new", "new_callable", "_mock_delegate"} for keyword in call.keywords)
+    ):
+        return False
     if has_mocker_fixture and isinstance(func, ast.Attribute):
         if isinstance(func.value, ast.Name) and func.value.id == _MOCKER:
-            return func.attr in _MOCKER_CONFIGURATORS
+            return func.attr in _MOCKER_CONFIGURATORS and (func.attr != "patch" or len(call.args) <= 1)
         if (
             func.attr == "object"
             and isinstance(func.value, ast.Attribute)
@@ -242,11 +257,16 @@ def _is_mock_configurator(func: ast.expr, imports: ImportIndex, *, has_mocker_fi
             and isinstance(func.value.value, ast.Name)
             and func.value.value.id == _MOCKER
         ):
-            return True
-    return any(imports.resolves(func, sources=_UNITTEST_MOCK, symbol=symbol) for symbol in _MOCK_CONSTRUCTORS)
+            return len(call.args) <= _PATCH_OBJECT_POSITIONAL_ARGUMENTS
+    return any(
+        provenance.context.imports.resolves(func, sources=_UNITTEST_MOCK, symbol=symbol)
+        for symbol in _MOCK_CONSTRUCTORS
+    )
 
 
-def _asserted_never_called(fn: ast.FunctionDef | ast.AsyncFunctionDef, origins: frozenset[str]) -> Iterator[_Finding]:
+def _asserted_never_called(
+    fn: ast.FunctionDef | ast.AsyncFunctionDef, origins: frozenset[str], provenance: ResourceProvenance
+) -> Iterator[_Finding]:
     if not fn.name.startswith("test_") or _is_fixture(fn):
         return
     introspected = _introspected_paths(fn)
@@ -256,13 +276,35 @@ def _asserted_never_called(fn: ast.FunctionDef | ast.AsyncFunctionDef, origins: 
     for block in _blocks(fn):
         not_called = _not_called_assertions(block, origins)
         for stmt in block:
-            target = _config_target(stmt, origins)
-            if target is None or id(stmt) in loop_statements or target in loaded_configs:
+            target = _config_target(stmt, origins, provenance)
+            if (
+                target is None
+                or id(stmt) in loop_statements
+                or target in loaded_configs
+                or not _inert_configuration(stmt, target, provenance)
+                or _receiver_escapes(target.rsplit(".", 1)[0], stmt, provenance)
+            ):
                 continue
             configured = target.rsplit(".", 1)[0]
             if any(_touches(configured, other) for other in introspected):
                 continue
             yield from _unused_asserted_setup(stmt, target, configured, not_called, last_effect)
+
+
+def _receiver_escapes(name: str, at: ast.stmt, provenance: ResourceProvenance) -> bool:
+    binding = provenance.binding(name, at)
+    for read in provenance.reads.get(name, ()):
+        if provenance.binding(name, read) is not binding:
+            continue
+        parent = provenance.context.parents.get(read)
+        if not isinstance(parent, ast.Attribute) or parent.value is not read:
+            return True
+        if isinstance(parent.ctx, ast.Store) and parent.attr in _CONFIG_ATTRS:
+            continue
+        call = provenance.context.parents.get(parent)
+        if not (isinstance(call, ast.Call) and call.func is parent and parent.attr in _NOT_CALLED_ASSERTIONS):
+            return True
+    return False
 
 
 def _is_fixture(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
@@ -327,22 +369,19 @@ def _child_blocks(node: ast.AST) -> list[list[ast.stmt]]:
     return [block for block in blocks if block]
 
 
-def _scope_statements(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> Iterator[ast.stmt]:
-    for block in _blocks(fn):
-        yield from block
-
-
-def _config_target(stmt: ast.stmt, origins: frozenset[str]) -> str | None:
+def _config_target(stmt: ast.stmt, origins: frozenset[str], provenance: ResourceProvenance) -> str | None:
     if not isinstance(stmt, ast.Assign) or len(stmt.targets) != 1:
         return None
     target = stmt.targets[0]
-    if not isinstance(target, ast.Attribute) or target.attr not in _CONFIG_ATTRS:
+    if (
+        not isinstance(target, ast.Attribute)
+        or target.attr not in _CONFIG_ATTRS
+        or not isinstance(target.value, ast.Name)
+        or target.value.id not in origins
+        or provenance.constructor(target.value, stmt) is None
+    ):
         return None
-    path = _dotted(target)
-    if path is None:
-        return None
-    configured = path.rsplit(".", 1)[0]
-    return path if any(_is_prefix(origin, configured) for origin in origins) else None
+    return f"{target.value.id}.{target.attr}"
 
 
 def _dotted(node: ast.expr) -> str | None:
@@ -357,18 +396,43 @@ def _dotted(node: ast.expr) -> str | None:
     return ".".join(reversed(parts))
 
 
-def _is_safe_value(node: ast.expr) -> bool:
+def _is_safe_value(node: ast.expr, provenance: ResourceProvenance, *, hash_key: bool = False) -> bool:
     match node:
-        case ast.Constant() | ast.Name():
+        case ast.Constant():
             return True
-        case ast.List() | ast.Tuple() | ast.Set():
-            return all(not isinstance(element, ast.Starred) and _is_safe_value(element) for element in node.elts)
+        case ast.Name():
+            binding = provenance.binding(node.id, node)
+            if binding is None:
+                return node.id in _EXCEPTION_TYPES and provenance.context.imports.builtin_is_unshadowed(node.id)
+            if not isinstance(binding, ast.Name) or provenance.scope(binding) is not provenance.scope(node):
+                return False
+            # Stable, already executed scalar assignments prove both initialization and native hashing.
+            return isinstance(provenance.assignment_value(binding, node), ast.Constant)
+        case ast.List() | ast.Tuple():
+            return (not hash_key or isinstance(node, ast.Tuple)) and all(
+                _is_safe_value(element, provenance, hash_key=hash_key) for element in node.elts
+            )
+        case ast.Set():
+            return not hash_key and all(_is_safe_value(element, provenance, hash_key=True) for element in node.elts)
         case ast.Dict():
-            return all(key is not None and _is_safe_value(key) for key in node.keys) and all(
-                _is_safe_value(value) for value in node.values
+            return (
+                not hash_key
+                and all(key is not None and _is_safe_value(key, provenance, hash_key=True) for key in node.keys)
+                and all(_is_safe_value(value, provenance) for value in node.values)
             )
         case _:
             return False
+
+
+def _inert_configuration(stmt: ast.stmt, target: str, provenance: ResourceProvenance) -> bool:
+    if not isinstance(stmt, ast.Assign | ast.AnnAssign):
+        return False
+    value = stmt.value
+    assigned = stmt.targets[0] if isinstance(stmt, ast.Assign) else stmt.target
+    if isinstance(assigned, ast.Name) and isinstance(value, ast.Call):
+        attribute = target.rsplit(".", 1)[1]
+        value = next((keyword.value for keyword in value.keywords if keyword.arg == attribute), None)
+    return value is not None and _is_safe_value(value, provenance)
 
 
 def _not_called_assertions(statements: list[ast.stmt], origins: frozenset[str]) -> dict[str, int]:
@@ -437,15 +501,24 @@ def _touches(path: str, other: str) -> bool:
 
 
 def _overwritten_block_setups(
-    block: list[ast.stmt], imports: ImportIndex, origins: frozenset[str], *, has_mocker_fixture: bool
+    block: list[ast.stmt],
+    origins: frozenset[str],
+    provenance: ResourceProvenance,
+    *,
+    has_mocker_fixture: bool,
 ) -> Iterator[_Finding]:
     pending: dict[str, ast.stmt] = {}
     for stmt in block:
-        target = _config_target(stmt, origins)
+        target = _config_target(stmt, origins, provenance)
         if target is None:
-            pending = _pending_after_statement(stmt, imports, origins, pending, has_mocker_fixture=has_mocker_fixture)
+            pending = _pending_after_statement(
+                stmt, origins, pending, provenance, has_mocker_fixture=has_mocker_fixture
+            )
             continue
-        if _statement_observes_pending(stmt, pending):
+        if not _inert_configuration(stmt, target, provenance):
+            pending.clear()
+            continue
+        if _statement_observes_pending(stmt, pending, provenance):
             pending.clear()
         previous = pending.get(target)
         if previous is not None:
@@ -453,14 +526,18 @@ def _overwritten_block_setups(
                 previous,
                 (
                     f"`{target}` is set here and overwritten on line {stmt.lineno} with nothing in "
-                    "between that could call the mock, so this value is never used. Delete the dead "
-                    "setup, or move the code under test between the two configurations"
+                    "between that could call the mock, so this value is never used. "
+                    + (
+                        "Remove the overwritten constructor keyword, retaining the mock constructor and binding"
+                        if isinstance(previous, ast.Assign | ast.AnnAssign) and isinstance(previous.value, ast.Call)
+                        else "Delete the dead setup, or move the code under test between the two configurations"
+                    )
                 ),
             )
         pending[target] = stmt
 
 
-def _statement_observes_pending(stmt: ast.stmt, pending: dict[str, ast.stmt]) -> bool:
+def _statement_observes_pending(stmt: ast.stmt, pending: dict[str, ast.stmt], provenance: ResourceProvenance) -> bool:
     if not pending:
         return False
     value = stmt.value if isinstance(stmt, (ast.Assign, ast.AnnAssign)) else None
@@ -472,7 +549,7 @@ def _statement_observes_pending(stmt: ast.stmt, pending: dict[str, ast.stmt]) ->
         path = _dotted(node)
         if path is not None and any(_touches(path, target.rsplit(".", 1)[0]) for target in pending):
             return True
-    return not _is_safe_value(value)
+    return not _is_safe_value(value, provenance)
 
 
 def _unused_asserted_setup(
@@ -484,7 +561,7 @@ def _unused_asserted_setup(
                 stmt,
                 (
                     f"`{target}` is configured here, but the test ends by proving `{asserted}` was never "
-                    "called, so its behavior cannot affect the test. Delete the contradictory configuration"
+                    "called, so its behavior cannot affect the test. Delete this inert configuration; retain the mock constructor and binding"
                 ),
             )
             break
@@ -492,32 +569,34 @@ def _unused_asserted_setup(
 
 def _pending_after_statement(
     stmt: ast.stmt,
-    imports: ImportIndex,
     origins: frozenset[str],
     pending: dict[str, ast.stmt],
+    provenance: ResourceProvenance,
     *,
     has_mocker_fixture: bool,
 ) -> dict[str, ast.stmt]:
-    initial = _initial_mock_configs(stmt, imports, has_mocker_fixture=has_mocker_fixture)
+    initial = _initial_mock_configs(stmt, provenance, has_mocker_fixture=has_mocker_fixture)
     if initial and initial[0].partition(".")[0] in origins:
-        if _constructor_observes_pending(stmt, pending):
+        if _constructor_observes_pending(stmt, pending, provenance):
             pending.clear()
         configured_name = initial[0].partition(".")[0]
         pending = {target: setup for target, setup in pending.items() if not target.startswith(f"{configured_name}.")}
-        pending.update((configured, stmt) for configured in initial)
+        pending.update(
+            (configured, stmt) for configured in initial if _inert_configuration(stmt, configured, provenance)
+        )
         return pending
-    if not _is_inert(stmt):
+    if not _is_inert(stmt, provenance):
         pending.clear()
     return pending
 
 
-def _constructor_observes_pending(stmt: ast.stmt, pending: dict[str, ast.stmt]) -> bool:
+def _constructor_observes_pending(stmt: ast.stmt, pending: dict[str, ast.stmt], provenance: ResourceProvenance) -> bool:
     value = stmt.value if isinstance(stmt, (ast.Assign, ast.AnnAssign)) else None
     if not isinstance(value, ast.Call):
         return True
     expressions = (*value.args, *(keyword.value for keyword in value.keywords))
     return any(
-        not _is_safe_value(expression)
+        not _is_safe_value(expression, provenance)
         or any(
             isinstance(node, (ast.Name, ast.Attribute))
             and isinstance(node.ctx, ast.Load)
@@ -529,7 +608,7 @@ def _constructor_observes_pending(stmt: ast.stmt, pending: dict[str, ast.stmt]) 
     )
 
 
-def _is_inert(stmt: ast.stmt) -> bool:
+def _is_inert(stmt: ast.stmt, provenance: ResourceProvenance) -> bool:
     if isinstance(stmt, (ast.Pass, ast.Import, ast.ImportFrom)):
         return True
     if isinstance(stmt, ast.Expr):
@@ -539,10 +618,12 @@ def _is_inert(stmt: ast.stmt) -> bool:
     if not all(isinstance(target, ast.Name) for target in stmt.targets):
         # `obj.attr = 1` can hit a property setter, `d[k] = 1` a `__setitem__`.
         return False
-    return _is_safe_value(stmt.value)
+    return _is_safe_value(stmt.value, provenance)
 
 
-def _initial_mock_configs(stmt: ast.stmt, imports: ImportIndex, *, has_mocker_fixture: bool) -> tuple[str, ...]:
+def _initial_mock_configs(
+    stmt: ast.stmt, provenance: ResourceProvenance, *, has_mocker_fixture: bool
+) -> tuple[str, ...]:
     match stmt:
         case ast.Assign(targets=[ast.Name(id=name)], value=ast.Call() as call):
             pass
@@ -550,6 +631,6 @@ def _initial_mock_configs(stmt: ast.stmt, imports: ImportIndex, *, has_mocker_fi
             pass
         case _:
             return ()
-    if not _is_mock_configurator(call.func, imports, has_mocker_fixture=has_mocker_fixture):
+    if not _is_mock_configurator(call, provenance, has_mocker_fixture=has_mocker_fixture):
         return ()
     return tuple(f"{name}.{keyword.arg}" for keyword in call.keywords if keyword.arg in _CONFIG_ATTRS)

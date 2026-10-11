@@ -1,4 +1,6 @@
 from pathlib import Path
+import subprocess
+import sys
 from typing import TYPE_CHECKING
 
 import pytest
@@ -16,6 +18,13 @@ if TYPE_CHECKING:
 _BASE = "try:\n    action()\nexcept ValueError as error:\n    raise RuntimeError('invalid') from error\nexcept TypeError as error:\n    raise RuntimeError('invalid') from error\n"
 _CASES = (
     EvaluationCase("identical-adjacent-handlers", Language.PYTHON, _BASE, ExpectedOutcome.MATCH),
+    EvaluationCase(
+        "initialized-first-party-types",
+        Language.PYTHON,
+        "class First(Exception): pass\nclass Second(Exception): pass\n"
+        + _BASE.replace("ValueError", "First").replace("TypeError", "Second"),
+        ExpectedOutcome.MATCH,
+    ),
     EvaluationCase("duplicate-type-upstream-owner", Language.PYTHON, _BASE.replace("TypeError", "ValueError")),
     EvaluationCase(
         "overlapping-tuple-upstream-owner",
@@ -66,6 +75,9 @@ _CASES = (
         "conditional-error-binding", Language.PYTHON, "if configured:\n    from vendor import ValueError\n" + _BASE
     ),
     EvaluationCase("builtin-shadow", Language.PYTHON, "ValueError = provider_error\n" + _BASE),
+    EvaluationCase("builtin-module-alias", Language.PYTHON, "import builtins as native\n" + _BASE),
+    EvaluationCase("builtin-import", Language.PYTHON, "from builtins import TypeError\n" + _BASE),
+    EvaluationCase("builtin-namespace", Language.PYTHON, "namespace = __builtins__\n" + _BASE),
     EvaluationCase("dynamic-error", Language.PYTHON, _BASE.replace("TypeError as", "errors.TypeError as")),
     EvaluationCase("exception-group", Language.PYTHON, _BASE.replace("except ", "except* ")),
     EvaluationCase(
@@ -126,13 +138,66 @@ def test_resolved_first_party_exceptions(tmp_path: Path, mutation: str) -> None:
     errors = package / "errors.py"
     path = package / "service.py"
     errors.write_text(
-        "class Failure(Exception): pass\nclass First(Failure): pass\nclass Second(Failure): pass\n" + mutation
+        f"class Failure(Exception): pass\nclass First(Failure): pass\nclass Second(Failure): pass\n{mutation}"
     )
-    source = "from app.errors import First, Second\n" + _BASE.replace("ValueError", "First").replace(
-        "TypeError", "Second"
+    source = (
+        f"from app.errors import First, Second\n{_BASE.replace('ValueError', 'First').replace('TypeError', 'Second')}"
     )
     path.write_text(source)
     sources = {errors: errors.read_text(), path: source}
     rule = DuplicateAdjacentExceptionHandler()
     rule.prepare(ProjectIndexSet.build(list(sources), sources))
     assert bool(rule.check(path, source)) is (not mutation)
+
+
+@pytest.mark.parametrize("initialize_before_call", [False, True])
+def test_later_class_initialization_is_not_proven_by_a_function_definition(
+    tmp_path: Path, *, initialize_before_call: bool
+) -> None:
+    source = (
+        "class First(Exception): pass\n"
+        "def translate():\n"
+        "    try:\n        raise First('invalid')\n"
+        "    except First as error:\n        return 'handled'\n"
+        "    except Second as error:\n        return 'handled'\n"
+    )
+    declaration = "class Second(Exception): pass\n"
+    call = "assert translate() == 'handled'\n"
+    source += declaration + call if initialize_before_call else call + declaration
+    assert DuplicateAdjacentExceptionHandler().check(Path("app/service.py"), source) == []
+    combined = source.replace("except First as error", "except (First, Second) as error").replace(
+        "    except Second as error:\n        return 'handled'\n", ""
+    )
+    for index, program in enumerate((source, combined)):
+        path = tmp_path / f"translation_{index}.py"
+        path.write_text(program)
+        result = subprocess.run([sys.executable, str(path)], capture_output=True, text=True, timeout=10, check=False)
+        if index == 1 and not initialize_before_call:
+            assert result.returncode == 1
+            assert "NameError" in result.stderr
+        else:
+            assert result.returncode == 0, result.stderr
+
+
+def test_mutated_builtin_namespace_invalidates_native_exception_types(tmp_path: Path) -> None:
+    source = (
+        "import builtins\nsaved = builtins.TypeError\nclass NotAnException: pass\n"
+        "def translate():\n    try:\n        raise ValueError('input')\n"
+        "    except ValueError:\n        return 'handled'\n"
+        "    except TypeError:\n        return 'handled'\n"
+        "try:\n    builtins.TypeError = NotAnException\n    assert translate() == 'handled'\n"
+        "finally:\n    builtins.TypeError = saved\n"
+    )
+    assert DuplicateAdjacentExceptionHandler().check(Path("app/service.py"), source) == []
+    combined = source.replace("except ValueError:", "except (ValueError, TypeError):").replace(
+        "    except TypeError:\n        return 'handled'\n", ""
+    )
+    for index, program in enumerate((source, combined)):
+        path = tmp_path / f"translation_{index}.py"
+        path.write_text(program)
+        result = subprocess.run([sys.executable, str(path)], capture_output=True, text=True, timeout=10, check=False)
+        if index == 0:
+            assert result.returncode == 0, result.stderr
+        else:
+            assert result.returncode == 1
+            assert "catching classes that do not inherit from BaseException" in result.stderr

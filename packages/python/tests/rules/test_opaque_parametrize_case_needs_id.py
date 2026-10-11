@@ -1,4 +1,6 @@
 from pathlib import Path
+import subprocess
+import sys
 from textwrap import dedent
 from typing import TYPE_CHECKING
 
@@ -132,7 +134,7 @@ def test_thing(payload):
     assert payload
 """
     [diag] = _check(src)
-    assert "3 cases rely" in diag.message
+    assert "3 cases lack" in diag.message
     assert "payload0" in diag.message
 
 
@@ -206,7 +208,7 @@ def test_thing(cfg):
     assert cfg
 """
     [diag] = _check(src)
-    assert "1 case relies" in diag.message
+    assert "1 case lacks" in diag.message
 
 
 @pytest.mark.parametrize(
@@ -522,7 +524,7 @@ def test_thing(payload):
     assert payload
 """
     [diagnostic] = _check(source)
-    assert "1 case relies" in diagnostic.message
+    assert "1 case lacks" in diagnostic.message
 
 
 def test_positional_none_ids_leave_only_corresponding_cases_unnamed() -> None:
@@ -534,7 +536,7 @@ def test_thing(payload):
     assert payload
 """
     [diagnostic] = _check(source)
-    assert "1 case relies" in diagnostic.message
+    assert "1 case lacks" in diagnostic.message
 
 
 def test_pytest_param_id_none_does_not_exempt_case() -> None:
@@ -546,7 +548,31 @@ def test_thing(payload):
     assert payload
 """
     [diagnostic] = _check(source)
-    assert "1 case relies" in diagnostic.message
+    assert "1 case lacks" in diagnostic.message
+
+
+@pytest.mark.parametrize("semantic_hook", [False, True])
+def test_diagnostic_preserves_the_native_semantic_hook_owner(tmp_path: Path, *, semantic_hook: bool) -> None:
+    source = _OPAQUE_TABLE.replace("assert handle(payload)", "assert payload['a'] in (1, 2)")
+    [diagnostic] = _check(source)
+    assert "Check the owning `pytest_make_parametrize_id` hook before adding IDs" in diagnostic.message
+    (tmp_path / "test_payload.py").write_text(source)
+    if semantic_hook:
+        (tmp_path / "conftest.py").write_text(
+            "def pytest_make_parametrize_id(val):\n    return {1: 'one', 2: 'two'}[val['a']]\n"
+        )
+    result = subprocess.run(
+        [sys.executable, "-m", "pytest", "-q", "-vv", str(tmp_path)],
+        capture_output=True,
+        text=True,
+        env={"PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1"},
+        timeout=20,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr + result.stdout
+    assert "2 passed" in result.stdout
+    expected = ("one", "two") if semantic_hook else ("payload0", "payload1")
+    assert all(f"test_thing[{name}]" in result.stdout for name in expected)
 
 
 def test_imported_pytest_param_alias_is_supported() -> None:
