@@ -125,7 +125,7 @@ export function attributeText(
   return attribute.value === null ? "" : staticText(attribute.value);
 }
 
-export function isHidden(node: TSESTree.JSXOpeningElement): boolean {
+export function isHidden(node: TSESTree.JSXOpeningElement, source: TSESLint.SourceCode): boolean {
   if (attributeText(node, "aria-hidden") === "true") return true;
   const hidden = node.attributes.findLast(
     (attribute) =>
@@ -135,6 +135,15 @@ export function isHidden(node: TSESTree.JSXOpeningElement): boolean {
   );
   if (hidden?.type !== AST_NODE_TYPES.JSXAttribute) return false;
   if (hidden.value === null) return true;
+  if (hidden.value.type === AST_NODE_TYPES.JSXExpressionContainer) {
+    const value = hidden.value.expression;
+    if (value.type === AST_NODE_TYPES.Identifier && value.name === "undefined") {
+      const binding = ASTUtils.findVariable(source.getScope(value), value.name);
+      if (binding === null || binding.defs.length === 0) return false;
+    }
+    if (value.type === AST_NODE_TYPES.UnaryExpression && value.operator === "void" &&
+      value.argument.type === AST_NODE_TYPES.Literal && value.argument.value === 0) return false;
+  }
   if (
     hidden.value.type === AST_NODE_TYPES.JSXExpressionContainer &&
     hidden.value.expression.type === AST_NODE_TYPES.Literal
@@ -182,7 +191,7 @@ export function childrenNameStatus(
       return childrenNameStatus(child.children, source, iconModules);
     if (child.type !== AST_NODE_TYPES.JSXElement) return "unknown";
     const opening = child.openingElement;
-    if (isHidden(opening)) return "empty";
+    if (isHidden(opening, source)) return "empty";
     const imported = importedComponent(opening.name, source);
     const intrinsic =
       opening.name.type === AST_NODE_TYPES.JSXIdentifier &&
@@ -231,7 +240,7 @@ export function hasHiddenAncestor(
     .some(
       (ancestor) =>
         ancestor.type === AST_NODE_TYPES.JSXElement &&
-        isHidden(ancestor.openingElement),
+        isHidden(ancestor.openingElement, source),
     );
 }
 

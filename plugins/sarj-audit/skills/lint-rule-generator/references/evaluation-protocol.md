@@ -28,6 +28,12 @@ Zero findings is not evidence of correctness. Seed the corpus with known bad
 examples and prove that the rule fires. Likewise, a high hit count is not
 evidence of value until matches are inspected.
 
+Distinct IDs or titles do not make repeated execution contexts independent
+coverage. Compare source, path, options, virtual files, supported runtime,
+expected diagnostics and integration contracts; equal source alone does not
+prove duplication. Interpret raw case-count thresholds as reporting measures,
+not semantic coverage or a reason to add clone cases.
+
 ## Interaction and developer experience
 
 Run the candidate alongside every nearby rule. Assert precedence when a

@@ -1,7 +1,7 @@
 // vitest: shared-module-graph
 import * as tsParser from "@typescript-eslint/parser";
 import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
 
 import rule, { NO_JSON_STRINGIFY_ERROR_DOCUMENTATION } from "../../src/rules/no-json-stringify-error.js";
 
@@ -11,6 +11,13 @@ RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
 RuleTester.it = it;
 RuleTester.itOnly = it.only;
+
+it("native Node DOMException serialization omits diagnostic fields", () => {
+  const error = new DOMException("cancelled", "AbortError");
+  const serialize = JSON.stringify;
+  expect(serialize(error)).toBe("{}");
+  expect(serialize({ name: error.name, message: error.message })).toBe('{"name":"AbortError","message":"cancelled"}');
+});
 
 const RULE_TESTER = new RuleTester({
   languageOptions: {
@@ -29,6 +36,12 @@ RULE_TESTER.run("no-json-stringify-error", rule, {
     { name: "does not inherit a shadowed catch binding", code: "try { f(); } catch (err) { function encode(err: string) { return JSON.stringify(err); } }" },
     { name: "does not assume an injected JSON API is native", code: "function encode(JSON) { return JSON.stringify(new Error('x')); }" },
     { name: "does not assume an injected constructor is native", code: "function encode(Error) { return JSON.stringify(new Error('x')); }" },
+    { name: "preserves explicit DOMException fields and replacers", code: "const error = new DOMException('cancelled', 'AbortError'); JSON.stringify({ name: error.name, message: error.message }); JSON.stringify(error, ['name', 'message']);" },
+    { name: "preserves an explicit DOMException serializer hook", code: "const error = new DOMException('cancelled', 'AbortError'); error.toJSON = () => ({ message: error.message }); JSON.stringify(error);" },
+    { name: "does not assume a shadowed DOMException constructor is native", code: "function encode(DOMException) { return JSON.stringify(new DOMException('cancelled')); }" },
+    { name: "preserves an explicitly replaced DOMException constructor", code: "globalThis.DOMException = class { message = 'retained'; }; JSON.stringify(new DOMException());" },
+    { name: "preserves a DOMException prototype serializer hook", code: "DOMException.prototype.toJSON = () => ({ message: 'retained' }); JSON.stringify(new DOMException('cancelled'));" },
+    { name: "preserves an explicitly replaced serializer for DOMException", code: "JSON.stringify = value => value.message; JSON.stringify(new DOMException('cancelled'));" },
     { name: "does not treat a reassigned catch binding as a proven error", code: "try { f(); } catch (err) { err = { status: 'failed' }; JSON.stringify(err); }" },
     { name: "allows the documented explicit error field", code: NO_JSON_STRINGIFY_ERROR_DOCUMENTATION.examples[0].files[0].source },
     { name: "allows non-error objects", code: "JSON.stringify(user);" },
@@ -174,6 +187,8 @@ RULE_TESTER.run("no-json-stringify-error", rule, {
     },
   ],
   invalid: [
+    { name: "reports native DOMException serialization", code: "JSON.stringify(new DOMException('cancelled', 'AbortError'));", errors: [{ messageId: "noJsonStringifyError" }] },
+    { name: "reports a stable local DOMException inside a payload", code: "const error = new DOMException('cancelled', 'AbortError'); JSON.stringify({ error });", errors: [{ messageId: "noJsonStringifyError" }] },
     { name: "reports the documented Error payload", code: NO_JSON_STRINGIFY_ERROR_DOCUMENTATION.examples[1].files[0].source, errors: [{ messageId: "noJsonStringifyError" }] },
     {
       name: "reports a catch binding nested in an object literal",

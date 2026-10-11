@@ -47,6 +47,9 @@ RULE_TESTER.run("require-button-accessible-name", rule, {
     "<button hidden><svg /></button>",
     "<button aria-hidden={true}><svg /></button>",
     "<button hidden={true}><svg /></button>",
+    { name: "preserves shadowed undefined and unknown hidden values", code: "function render(undefined, visible) { return <><button hidden={undefined} /><button hidden={visible} /></>; }" },
+    { name: "preserves nonliteral void evaluation and forwarded props", code: "<><button hidden={void effect()} /><button hidden={undefined} {...props} /></>" },
+    { name: "visible undefined children still provide the button name", code: "<button><span hidden={undefined}>Save</span><span hidden={void 0}>now</span></button>" },
     {
       code: 'import { Button as Action } from "@design/actions"; function render(Action) { return <Action><svg /></Action>; }',
       options: OPTIONS,
@@ -66,6 +69,9 @@ RULE_TESTER.run("require-button-accessible-name", rule, {
     },
   ],
   invalid: [
+    { name: "reports an unnamed button with global undefined or void zero hidden props", code: "<><button hidden={undefined} /><button hidden={void 0} /></>", errors: [{ messageId: "missingName" }, { messageId: "missingName" }] },
+    { name: "global undefined and void zero do not hide unnamed descendants", code: "<><div hidden={undefined}><button /></div><div hidden={void 0}><button /></div></>", errors: [{ messageId: "missingName" }, { messageId: "missingName" }] },
+    { name: "local undefined keeps child and ancestor hidden behavior", code: "function render() { const undefined = true; return <><div hidden={undefined}><button /></div><button><span hidden={undefined}>Save</span></button></>; }", errors: [{ messageId: "missingName" }] },
     { code: "<Button />", errors: [{ messageId: "missingName" }] },
     {
       code: "<Button><svg /></Button>",

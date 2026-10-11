@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ast
 from collections import defaultdict
+from functools import cached_property
 from typing import TYPE_CHECKING, final
 
 
@@ -43,6 +44,15 @@ class ResourceProvenance:
                 root = _root_name(node)
                 if root is not None:
                     self.mutated.add(root)
+
+    @cached_property
+    def builtin_namespace_untouched(self) -> bool:
+        return not any(
+            (isinstance(node, ast.Import) and any(alias.name == "builtins" for alias in node.names))
+            or (isinstance(node, ast.ImportFrom) and node.module == "builtins")
+            or (isinstance(node, ast.Name) and node.id == "__builtins__")
+            for node in self.context.nodes(ast.Import, ast.ImportFrom, ast.Name)
+        )
 
     def scope(self, node: ast.AST) -> ast.AST | None:
         parent = self.context.parents.get(node)

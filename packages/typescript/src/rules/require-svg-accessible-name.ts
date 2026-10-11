@@ -27,6 +27,7 @@ export const REQUIRE_SVG_ACCESSIBLE_NAME_DOCUMENTATION = {
   category: "correctness",
   limitations: [
     "Only intrinsic svg elements are checked. Dynamic labels, forwarded props, and dynamic title content remain runtime concerns. IDs, CSS visibility and graphic meaning are not inferred. Tests, stories, fixtures and generated files are excluded. No automatic title or decorative marker is invented.",
+    "A hidden prop with unshadowed undefined or exact void 0 does not hide the element. Shadowed undefined and dynamic hidden values remain unproven.",
   ],
   examples: [
     {
@@ -89,7 +90,7 @@ export default createRule<readonly [], "missingName">({
         )
           return;
         if (
-          isHidden(opening) ||
+          isHidden(opening, context.sourceCode) ||
           ["none", "presentation"].includes(
             attributeText(opening, "role") ?? "",
           )

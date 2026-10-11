@@ -24,6 +24,8 @@ RULE_TESTER.run("require-svg-accessible-name", rule, {
     "<svg><title>{title}</title></svg>",
     '<svg aria-hidden="true" />',
     "<svg aria-hidden={true} />",
+    { name: "preserves a shadowed undefined hidden value", code: "function render(undefined) { return <svg hidden={undefined} />; }" },
+    { name: "preserves unknown hidden values and later spreads", code: "<><svg hidden={visible} /><svg hidden={undefined} {...props} /></>" },
     '<svg role="presentation" />',
     '<svg role="none" />',
     "<svg {...props}><path /></svg>",
@@ -33,6 +35,7 @@ RULE_TESTER.run("require-svg-accessible-name", rule, {
     { code: "<svg />", filename: "/repo/src/icon.stories.tsx" },
   ],
   invalid: [
+    { name: "reports unnamed SVGs with global undefined or void zero hidden props", code: "<><svg hidden={undefined} /><svg hidden={void 0} /></>", errors: [{ messageId: "missingName" }, { messageId: "missingName" }] },
     { code: "<svg />", errors: [{ messageId: "missingName" }] },
     { code: "<svg><path /></svg>", errors: [{ messageId: "missingName" }] },
     {

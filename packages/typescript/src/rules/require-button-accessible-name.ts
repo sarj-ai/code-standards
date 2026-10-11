@@ -37,6 +37,7 @@ export const REQUIRE_BUTTON_ACCESSIBLE_NAME_DOCUMENTATION = {
   limitations: [
     "Native button and conventional Button elements are checked by default. Other custom buttons require exact module/export configuration; aliases and namespace imports are resolved by scope. Lucide icons are recognized by default; other icon modules are configurable.",
     "Composed JSX passed as props, render/asChild adapters, dynamic labels, children, unknown components, and prop spreads are left to runtime accessibility testing. Referenced IDs, CSS visibility, and meaningful wording are not verified. Generated files, tests, fixtures, and stories are excluded. No automatic labels are invented.",
+    "A hidden prop with unshadowed undefined or exact void 0 does not hide the element or its children. Shadowed undefined and dynamic hidden values remain unproven.",
   ],
   examples: [
     {
@@ -143,7 +144,7 @@ export default createRule<Options, "missingName">({
           hasHiddenAncestor(node, context.sourceCode)
         )
           return;
-        if (isHidden(opening) || attributeNameStatus(opening) !== "empty")
+        if (isHidden(opening, context.sourceCode) || attributeNameStatus(opening) !== "empty")
           return;
         if (
           childrenNameStatus(node.children, context.sourceCode, iconModules) !==
