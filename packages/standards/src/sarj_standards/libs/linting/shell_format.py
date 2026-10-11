@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from io import StringIO
+from itertools import zip_longest
 from pathlib import Path
 import subprocess  # ruff: ignore[suspicious-subprocess-import] -- catches bounded native formatter failures.
 from typing import TYPE_CHECKING, Annotated, Final
@@ -55,12 +57,13 @@ def format_source(source: str, *, dialect: str, filename: str, executable: Path,
 
 
 def validate_format_fix(source: str, formatted: str, *, filename: str) -> None:
-    if source.count("\r") > formatted.count("\r"):
-        message = (
-            f"Refusing shfmt fix for {filename}: the formatter removes carriage-return bytes; "
-            "review line endings and literal shell data manually."
-        )
-        raise NativeToolError(message)
+    for character, name in (("\r", "carriage-return"), ("\v", "vertical-tab"), ("\f", "form-feed")):
+        if source.count(character) > formatted.count(character):
+            message = (
+                f"Refusing shfmt fix for {filename}: the formatter removes {name} bytes; "
+                "review line endings and literal shell data manually."
+            )
+            raise NativeToolError(message)
 
 
 def _executable(root: Path) -> Path:
@@ -132,19 +135,21 @@ def _format_diagnostics(root: Path, sources: tuple[tuple[Path, str, str], ...]) 
 
 
 def format_diagnostic(*, path: str, source: str, formatted: str, line: int = 0) -> Diagnostic:
-    original_lines = source.splitlines(keepends=True)
-    formatted_lines = formatted.splitlines(keepends=True)
-    first = next(
-        (i for i, pair in enumerate(zip(original_lines, formatted_lines, strict=False)) if pair[0] != pair[1]), 0
-    )
+    first = offset = 0
+    for index, (original, updated) in enumerate(zip_longest(StringIO(source), StringIO(formatted))):
+        if original != updated:
+            first = index
+            break
+        if original is not None:
+            offset += len(original.encode("utf-8"))
+    else:
+        offset = 0
     return Diagnostic(
         "format",
         "Format shell source with shfmt (two spaces and indented case clauses).",
         Severity.WARNING,
         "shfmt",
-        Location(
-            path, position=Position(line + first, 0, sum(len(item.encode("utf-8")) for item in original_lines[:first]))
-        ),
+        Location(path, position=Position(line + first, 0, offset)),
         rule_id="format",
         help="Run `code-standards fix` on this path.",
         help_url="https://github.com/mvdan/sh",

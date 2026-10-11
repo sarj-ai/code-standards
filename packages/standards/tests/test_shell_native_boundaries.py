@@ -28,27 +28,28 @@ PROBLEM = RuleProblem(
 
 
 @pytest.mark.parametrize(
-    ("name", "source", "dialect"),
+    ("name", "source", "dialect", "fix_status"),
     [
-        pytest.param("entry", "#!/opt/tools/bin/bash\nprintf '%s' $1\n", "bash", id="custom-bash-location"),
-        pytest.param("entry.sh", "#!\v/bin/bash\nprintf '%s' $1\n", "bash", id="legacy-shebang-whitespace"),
-        pytest.param("entry.sh", "#!/usr/bin/env\vbash\nprintf '%s' $1\n", "bash", id="legacy-env-whitespace"),
-        pytest.param("entry.sh", "#!/opt/tools/bin/dash\nprintf '%s' $1\n", "dash", id="custom-posix-location"),
-        pytest.param("entry", "#!/opt/tools/bin/env bash\nprintf '%s' $1\n", "bash", id="custom-env-location"),
-        pytest.param("suite.bats", "@test 'example' {\nprintf '%s' $1\n}\n", "bats", id="bats-source"),
+        pytest.param("entry", "#!/opt/tools/bin/bash\nprintf '%s' $1\n", "bash", 0, id="custom-bash-location"),
+        pytest.param("entry.sh", "#!\v/bin/bash\nprintf '%s' $1\n", "bash", 2, id="legacy-shebang-whitespace"),
+        pytest.param("entry.sh", "#!/usr/bin/env\vbash\nprintf '%s' $1\n", "bash", 2, id="legacy-env-whitespace"),
+        pytest.param("entry.sh", "#!/opt/tools/bin/dash\nprintf '%s' $1\n", "dash", 0, id="custom-posix-location"),
+        pytest.param("entry", "#!/opt/tools/bin/env bash\nprintf '%s' $1\n", "bash", 0, id="custom-env-location"),
+        pytest.param("suite.bats", "@test 'example' {\nprintf '%s' $1\n}\n", "bats", 0, id="bats-source"),
         pytest.param(
             "suite.bats",
             "# shellcheck shell=bash\n@test 'example' {\nprintf '%s' $1\n}\n",
             "bats",
+            0,
             id="bats-bash-analysis-directive",
         ),
         pytest.param(
-            "suite.bats", "#!/usr/bin/env bats\n@test 'example' {\nprintf '%s' $1\n}\n", "bats", id="bats-executable"
+            "suite.bats", "#!/usr/bin/env bats\n@test 'example' {\nprintf '%s' $1\n}\n", "bats", 0, id="bats-executable"
         ),
     ],
 )
 def test_native_dialects_receive_existing_correctness_checks_and_safe_formatting(
-    tmp_path: Path, name: str, source: str, dialect: str
+    tmp_path: Path, name: str, source: str, dialect: str, fix_status: int
 ) -> None:
     case = EvaluationCase(name, Language.SHELL, source, ExpectedOutcome.MATCH)
     assert case.language in PROBLEM.languages
@@ -61,6 +62,10 @@ def test_native_dialects_receive_existing_correctness_checks_and_safe_formatting
     assert all(item.completion is Completion.COMPLETE for item in reports)
     assert textlint.shell_dialect(path) == dialect
     assert sum(finding.rule_id == "SC2086" for item in reports for finding in item.diagnostics) == 1
+    if fix_status:
+        assert shell_format.fix_sources(tmp_path, [str(path)]) == fix_status
+        assert path.read_bytes() == case.source.encode()
+        return
     formatter = checked_tool("shfmt", root=tmp_path).executable
     assert formatter is not None
     expected = subprocess.run(

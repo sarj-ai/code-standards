@@ -5,12 +5,17 @@ from itertools import starmap
 import re
 from typing import TYPE_CHECKING, NamedTuple
 
+from sarj_python_lint.rules._ast_index import walk as walk_ast
 from sarj_python_lint.rules._comments import split_identifier, stem
 
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
+    from sarj_python_lint.rules._ast_index import NodeIndex
+
+
+_GETATTR_MIN_ARGS = 2
 
 # Docstring filler that says nothing about *which* thing is being described.
 _BASE_STOPWORDS = frozenset(
@@ -325,3 +330,88 @@ def restates(text: str, known: Iterable[str]) -> bool:
     if not content:
         return False
     return all(stem(word) in known_stems for word in content)
+
+
+def consumed_docstring_names(tree: ast.Module, *, node_index: NodeIndex | None = None) -> frozenset[str]:
+    consumed: set[str] = set()
+    aliases: dict[str, set[str]] = {}
+    for node in walk_ast(tree, index=node_index):
+        _record_docstring_use(node, consumed, aliases)
+    changed = True
+    while changed:
+        changed = False
+        for alias, originals in aliases.items():
+            if alias not in consumed:
+                continue
+            before = len(consumed)
+            consumed.update(originals)
+            changed |= len(consumed) != before
+    return frozenset(consumed)
+
+
+def _terminal_name(node: ast.expr) -> str | None:
+    match node:
+        case ast.Name():
+            return node.id
+        case ast.Attribute():
+            return node.attr
+        case _:
+            return None
+
+
+def _record_docstring_use(node: ast.AST, consumed: set[str], aliases: dict[str, set[str]]) -> None:
+    if isinstance(node, ast.Attribute) and node.attr == "__doc__":
+        if name := _terminal_name(node.value):
+            consumed.add(name)
+    elif isinstance(node, ast.Call) and _is_docstring_reader(node):
+        if name := _terminal_name(node.args[0]):
+            consumed.add(name)
+    elif isinstance(node, ast.Subscript):
+        if name := _subscripted_docstring_owner(node):
+            consumed.add(name)
+    else:
+        _record_docstring_alias(node, aliases)
+
+
+def _subscripted_docstring_owner(node: ast.Subscript) -> str | None:
+    if not isinstance(node.slice, ast.Constant) or node.slice.value != "__doc__":
+        return None
+    value = node.value
+    if isinstance(value, ast.Attribute) and value.attr == "__dict__":
+        return _terminal_name(value.value)
+    if isinstance(value, ast.Call) and isinstance(value.func, ast.Name) and value.func.id == "vars" and value.args:
+        return _terminal_name(value.args[0])
+    return None
+
+
+def _is_docstring_reader(node: ast.Call) -> bool:
+    if not node.args:
+        return False
+    function = node.func
+    if isinstance(function, ast.Name) and function.id == "help":
+        return True
+    if isinstance(function, ast.Attribute) and function.attr in {"getdoc", "render_doc"}:
+        return True
+    return (
+        isinstance(function, ast.Name)
+        and function.id == "getattr"
+        and len(node.args) >= _GETATTR_MIN_ARGS
+        and isinstance(node.args[1], ast.Constant)
+        and node.args[1].value == "__doc__"
+    )
+
+
+def _record_docstring_alias(node: ast.AST, aliases: dict[str, set[str]]) -> None:
+    if isinstance(node, ast.Assign) and isinstance(node.value, (ast.Name, ast.Attribute)):
+        original = _terminal_name(node.value)
+        for target in node.targets:
+            if isinstance(target, ast.Name) and original is not None:
+                aliases.setdefault(target.id, set()).add(original)
+    elif (
+        isinstance(node, ast.AnnAssign)
+        and isinstance(node.target, ast.Name)
+        and isinstance(node.value, (ast.Name, ast.Attribute))
+    ):
+        original = _terminal_name(node.value)
+        if original is not None:
+            aliases.setdefault(node.target.id, set()).add(original)

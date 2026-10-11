@@ -28,6 +28,76 @@ PROBLEM = RuleProblem(
 )
 
 
+POSITION_PROBLEM = RuleProblem(
+    key="shell-format-physical-position",
+    summary="Formatter diagnostics must point to the first changed physical shell line.",
+    harm="Literal separators and trailing blank lines produce misleading CI source locations.",
+    languages=frozenset({Language.SHELL}),
+    bad_examples=("# comment\u2028data\nprintf  '%s'   ok\n", "printf ok\n\n"),
+    good_examples=("# comment\u2028data\nprintf '%s' ok\n", "printf ok\n"),
+)
+
+
+BYTE_LOSS_PROBLEM = RuleProblem(
+    key="shell-native-format-byte-loss",
+    summary="A native formatting fix must not remove literal shell control bytes.",
+    harm="Removing a vertical tab changes an argument; replacing a form feed can activate comment data.",
+    languages=frozenset({Language.SHELL}),
+    bad_examples=("printf '%s' before\vafter\n", "# comment\fprintf '%s' accidental\n"),
+    good_examples=("printf '%b' 'before\\vafter'\n", "printf '%b' 'before\\fafter'\n"),
+)
+
+
+@pytest.mark.parametrize("separator", ["\v", "\f", "\r", "\x85", "\u2028", "\u2029"])
+def test_formatter_position_counts_physical_shell_lines(separator: str) -> None:
+    case = EvaluationCase(
+        "literal-separator", Language.SHELL, f"# comment{separator}data\nprintf  '%s'   ok\n", ExpectedOutcome.MATCH
+    )
+    assert case.language in POSITION_PROBLEM.languages
+    formatted = case.source.replace("printf  '%s'   ok", "printf '%s' ok")
+    finding = shell_format.format_diagnostic(path="job.sh", source=case.source, formatted=formatted, line=4)
+    position = finding.location.position
+    assert position is not None
+    assert (position.line, position.byte_offset) == (5, case.source.encode().index(b"printf"))
+
+
+@pytest.mark.parametrize("separator", ["\r", "\x85", "\u2028", "\u2029"])
+def test_native_formatter_position_preserves_literal_comment_data(tmp_path: Path, separator: str) -> None:
+    source = f"# comment{separator}data\nprintf  '%s'   ok\n"
+    path = tmp_path / "job.sh"
+    path.write_bytes(source.encode())
+    [report] = shell_format.analyze_sources(root=tmp_path, paths=(str(path),))
+    assert report.completion is Completion.COMPLETE
+    [finding] = report.diagnostics
+    position = finding.location.position
+    assert position is not None
+    assert (position.line, position.byte_offset) == (1, source.encode().index(b"printf"))
+
+
+@pytest.mark.parametrize(
+    ("source", "formatted", "line", "offset"),
+    [
+        pytest.param("printf ok\n\n", "printf ok\n", 1, 10, id="removed-trailing-line"),
+        pytest.param("printf ok\n", "printf ok\n\n", 1, 10, id="added-trailing-line"),
+        pytest.param("printf ok", "printf ok\n", 0, 0, id="missing-final-newline"),
+        pytest.param("printf ok\n\n\n", "printf ok\n", 1, 10, id="several-removed-lines"),
+    ],
+)
+def test_formatter_position_includes_unequal_suffixes(source: str, formatted: str, line: int, offset: int) -> None:
+    case = EvaluationCase("suffix-boundary", Language.SHELL, source)
+    finding = shell_format.format_diagnostic(path="job.sh", source=case.source, formatted=formatted, line=4)
+    position = finding.location.position
+    assert position is not None
+    assert (position.line, position.byte_offset) == (4 + line, offset)
+
+
+def test_formatter_position_accepts_the_empty_policy_placeholder() -> None:
+    finding = shell_format.format_diagnostic(path="job.sh", source="", formatted="", line=4)
+    position = finding.location.position
+    assert position is not None
+    assert (position.line, position.byte_offset) == (4, 0)
+
+
 @pytest.mark.parametrize(
     "case",
     [
@@ -186,6 +256,47 @@ def test_format_check_remains_available_for_carriage_return_source(tmp_path: Pat
     [report] = shell_format.analyze_sources(root=tmp_path, paths=[str(source)])
     assert report.completion is Completion.COMPLETE
     assert len(report.diagnostics) == 1
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        EvaluationCase("vertical-tab-argument", Language.SHELL, "printf '%s' before\vafter\n", ExpectedOutcome.MATCH),
+        EvaluationCase(
+            "form-feed-comment",
+            Language.SHELL,
+            "# comment\fprintf '%s' accidental\nprintf '%s' retained\n",
+            ExpectedOutcome.MATCH,
+        ),
+    ],
+    ids=("vertical-tab-argument", "form-feed-comment"),
+)
+def test_fix_refuses_native_non_shell_whitespace_data_loss_atomically(tmp_path: Path, case: EvaluationCase) -> None:
+    assert case.language in BYTE_LOSS_PROBLEM.languages
+    safe = tmp_path / "a.sh"
+    safe.write_text("#!/bin/bash\nif true; then\necho ok\nfi\n")
+    source = tmp_path / "z.sh"
+    source.write_bytes(case.source.encode())
+    safe_before = safe.read_bytes()
+    assert shell_format.fix_sources(tmp_path, [str(safe), str(source)]) == 2
+    assert safe.read_bytes() == safe_before
+    assert source.read_bytes() == case.source.encode()
+    [report] = shell_format.analyze_sources(root=tmp_path, paths=[str(source)])
+    assert report.completion is Completion.COMPLETE
+    assert len(report.diagnostics) == 1
+
+
+@pytest.mark.parametrize("escape", [r"\v", r"\f"])
+def test_native_fix_keeps_escaped_control_data_and_converges(tmp_path: Path, escape: str) -> None:
+    case = EvaluationCase("escaped-control-data", Language.SHELL, f"printf  '%b'   'before{escape}after'\n")
+    path = tmp_path / "job.sh"
+    path.write_bytes(case.source.encode())
+    assert shell_format.fix_sources(tmp_path, [str(path)]) == 0
+    expected = case.source.replace("printf  '%b'   ", "printf '%b' ")
+    assert path.read_bytes() == expected.encode()
+    assert shell_format.fix_sources(tmp_path, [str(path)]) == 0
+    [report] = shell_format.analyze_sources(root=tmp_path, paths=[str(path)])
+    assert report.diagnostics == ()
 
 
 @pytest.mark.parametrize("suppression", ["capability", "path", "rule", "override"])
