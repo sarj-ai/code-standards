@@ -55,12 +55,13 @@ def analyze_sources(
     trust_repository_code: bool = False,
     runner: ProcessRunner = run_process,
     compose_version: str | None = None,
+    shared_shellcheck: bool = False,
 ) -> tuple[ToolReport, ...]:
     root = root.resolve()
     sources = _select_sources(root, paths)
     reports: list[ToolReport] = []
     if "actionlint" in selected and sources.workflows:
-        reports.append(_actionlint_report(root, sources.workflows, runner))
+        reports.append(_actionlint_report(root, sources.workflows, runner, shared_shellcheck=shared_shellcheck))
     if "hadolint" in selected and sources.dockerfiles:
         reports.append(
             _json_tool(
@@ -129,16 +130,20 @@ def _compose_reports(
     return tuple(_compose_report(root, path, runner, version=version) for path in paths)
 
 
-def _actionlint_report(root: Path, paths: tuple[Path, ...], runner: ProcessRunner) -> ToolReport:
-    try:
-        shellcheck = checked_tool("shellcheck", root=root, runner=runner)
-    except (OSError, ValueError, subprocess.SubprocessError) as error:
-        return _failed("actionlint", error, len(paths))
-    shellcheck_path = (
-        str(shellcheck.executable)
-        if shellcheck.executable is not None
-        else shutil.which(shellcheck.name) or shellcheck.name
-    )
+def _actionlint_report(
+    root: Path, paths: tuple[Path, ...], runner: ProcessRunner, *, shared_shellcheck: bool = False
+) -> ToolReport:
+    shellcheck_path = ""
+    if not shared_shellcheck:
+        try:
+            shellcheck = checked_tool("shellcheck", root=root, runner=runner)
+        except (OSError, ValueError, subprocess.SubprocessError) as error:
+            return _failed("actionlint", error, len(paths))
+        shellcheck_path = (
+            str(shellcheck.executable)
+            if shellcheck.executable is not None
+            else shutil.which(shellcheck.name) or shellcheck.name
+        )
     try:
         labels = _actionlint_runner_labels(root)
         with tempfile.TemporaryDirectory(prefix="sarj-actionlint-") as directory:

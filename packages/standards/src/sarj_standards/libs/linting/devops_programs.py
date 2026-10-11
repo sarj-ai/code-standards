@@ -46,6 +46,19 @@ class ExecutionBlock:
     interpreter: str = "shell"
     end_line: int | None = None
     end_column: int | None = None
+    literal: LiteralSource | None = field(default=None, compare=False)
+    context: str = field(default="", compare=False)
+    runtime_shell: str | None = field(default=None, compare=False)
+
+
+@dataclass(frozen=True, slots=True)
+class LiteralSource:
+    start: int
+    end: int
+    line: int
+    indent: int
+    newline: str
+    fixable: bool = True
 
 
 @dataclass(frozen=True, slots=True)
@@ -100,11 +113,13 @@ class _OccurrenceLoader(yaml.SafeLoader):
         super().__init__(stream)
         self._budget: _ComposeBudget = _ComposeBudget()
         self._active_anchors: set[str] = set()
+        self.references: bool = False
 
     @override
     def compose_node(self, parent: Node | None, index: int) -> Node | None:
         self._budget.consume()
         if self.check_event(AliasEvent):  # pyright: ignore[reportUnknownMemberType] -- PyYAML composer boundary.
+            self.references = True
             event: object = self.get_event()  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType] -- PyYAML event boundary.
             if not isinstance(event, AliasEvent):
                 msg = "expected YAML alias event"
@@ -125,6 +140,7 @@ class _OccurrenceLoader(yaml.SafeLoader):
             raw_anchor = pending.anchor  # pyright: ignore[reportAny] -- PyYAML event anchor boundary.
         active = raw_anchor if isinstance(raw_anchor, str) else None
         if active is not None:
+            self.references = True
             self._active_anchors.add(active)
         try:
             return super().compose_node(parent, index)
@@ -195,8 +211,41 @@ def _block(node: Node, *, interpreter: str = "shell") -> ExecutionBlock:
         raise ProgramProjectionError(msg)
     end = _node_end(node)
     return ExecutionBlock(
-        node.start_mark.line + 1, value, interpreter=interpreter, end_line=end.line, end_column=end.column
+        node.start_mark.line + 1,
+        value,
+        interpreter=interpreter,
+        end_line=end.line,
+        end_column=end.column,
+        literal=_literal_source(node, value),
     )
+
+
+def _literal_source(node: Node, value: str) -> LiteralSource | None:
+    buffer: object = node.start_mark.buffer
+    if not isinstance(node, ScalarNode) or node.style != "|" or not isinstance(buffer, str):
+        return None
+    header_end = buffer.find("\n", node.start_mark.index, node.end_mark.index)
+    if header_end < 0 or buffer[node.start_mark.index] == "*":
+        return None
+    end = node.end_mark.index
+    line_start = buffer.rfind("\n", 0, end) + 1
+    if not buffer[line_start:end].strip():
+        end = line_start
+    body = buffer[header_end + 1 : end]
+    decoded = value.splitlines()
+    for raw, normalized in zip(body.splitlines(), decoded, strict=False):
+        if normalized.strip():
+            indent = len(raw) - len(normalized)
+            if indent < 0 or raw[indent:] != normalized:
+                return None
+            return LiteralSource(
+                header_end + 1,
+                end,
+                node.start_mark.line + 2,
+                indent,
+                "\r\n" if buffer[header_end - 1 : header_end + 1] == "\r\n" else "\n",
+            )
+    return None
 
 
 def _node_end(node: Node) -> SourceEnd:
@@ -938,14 +987,24 @@ def _make_recipe_contexts(lines: Sequence[str]) -> dict[int, tuple[Mapping[str, 
 
 
 def _yaml_blocks(relative: str, source: str, *, platform: str) -> list[ExecutionBlock]:
+    loader = _OccurrenceLoader(source)
     try:
-        documents: list[Node | None] = list(yaml.compose_all(source, Loader=_OccurrenceLoader))  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType] -- PyYAML composition boundary.
+        documents: list[Node | None] = []
+        while loader.check_node():
+            documents.append(loader.get_node())
     except yaml.YAMLError:
         return []  # The YAML syntax adapter owns malformed document diagnostics.
+    finally:
+        loader.dispose()  # pyright: ignore[reportUnknownMemberType] -- PyYAML loader cleanup boundary.
     blocks: list[ExecutionBlock] = []
     for document in documents:
         if document is not None:
             blocks.extend(_yaml_consumer_blocks(relative, document, platform=platform))
+    if loader.references:
+        blocks = [
+            replace(block, literal=replace(block.literal, fixable=False)) if block.literal is not None else block
+            for block in blocks
+        ]
     return blocks
 
 
@@ -1039,7 +1098,8 @@ def _cloudbuild_blocks(top: Mapping[str, Node]) -> list[ExecutionBlock]:
     for step in _items(top.get("steps")):
         fields = _table(step)
         if "script" in fields:
-            blocks.append(_block(fields["script"]))
+            block = _block(fields["script"])
+            blocks.append(replace(block, runtime_shell=_script_interpreter(block.source), context="cloudbuild"))
             continue
         entrypoint = _scalar(fields.get("entrypoint"))
         arguments = _argv(fields.get("args"))
@@ -1047,6 +1107,26 @@ def _cloudbuild_blocks(top: Mapping[str, Node]) -> list[ExecutionBlock]:
             words = tuple(word.replace("$$", "$") for word in (entrypoint, *(arguments or ())))
             blocks.append(_argv_block(fields["entrypoint"], words, fields.get("args")))
     return blocks
+
+
+def _script_interpreter(source: str) -> str:
+    import shlex  # ruff: ignore[import-outside-top-level] -- native script shebangs use argv, not shell evaluation.
+
+    first = source.splitlines()[0] if source else ""
+    if not first.startswith("#!"):
+        return "sh"
+    words = shlex.split(first[2:].strip())
+    if words and words[0].rsplit("/", 1)[-1] == "env":
+        if words[1:2] == ["-S"]:
+            if words != first[2:].strip().split():
+                msg = "env split-string shebang quoting cannot be proven statically"
+                raise ProgramProjectionError(msg)
+            words = [words[0], *words[2:]]
+        words = list(unwrap_command(tuple(words)))
+    if not words:
+        msg = "script shebang has no interpreter"
+        raise ProgramProjectionError(msg)
+    return shlex.join(words)
 
 
 def _actions_blocks(top: Mapping[str, Node]) -> list[ExecutionBlock]:
@@ -1057,9 +1137,32 @@ def _actions_blocks(top: Mapping[str, Node]) -> list[ExecutionBlock]:
         fields = _table(job)
         defaults = _table(_table(fields.get("defaults")).get("run"))
         shell = _scalar(defaults.get("shell")) or workflow_shell
-        blocks.extend(_actions_step_blocks(_items(fields.get("steps")), interpreter=shell))
+        blocks.extend(
+            replace(block, runtime_shell=_actions_runtime_shell(fields, block.interpreter))
+            for block in _actions_step_blocks(_items(fields.get("steps")), interpreter=shell)
+        )
     blocks.extend(_actions_step_blocks(_items(_table(top.get("runs")).get("steps")), interpreter="shell"))
     return blocks
+
+
+def _actions_runtime_shell(fields: Mapping[str, Node], interpreter: str) -> str | None:
+    if interpreter != "shell":
+        return interpreter
+    if "container" in fields:
+        return "sh"
+    runner = fields.get("runs-on")
+    labels = (
+        [_scalar(item) or "" for item in _items(runner)]
+        if isinstance(runner, SequenceNode)
+        else [_scalar(runner) or ""]
+    )
+    if any(label.casefold().startswith("windows") for label in labels):
+        return "pwsh"
+    if any(label.casefold().startswith(("ubuntu", "macos", "linux")) for label in labels):
+        return "bash"
+    if any("${{" in label for label in labels):
+        return "unproven-actions-shell"
+    return None
 
 
 def _actions_step_blocks(steps: Sequence[Node], *, interpreter: str) -> list[ExecutionBlock]:
@@ -1067,7 +1170,9 @@ def _actions_step_blocks(steps: Sequence[Node], *, interpreter: str) -> list[Exe
     for step in steps:
         fields = _table(step)
         if (run := fields.get("run")) is not None:
-            blocks.append(_block(run, interpreter=_scalar(fields.get("shell")) or interpreter))
+            blocks.append(
+                replace(_block(run, interpreter=_scalar(fields.get("shell")) or interpreter), context="actions")
+            )
     return blocks
 
 

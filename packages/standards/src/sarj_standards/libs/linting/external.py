@@ -48,6 +48,7 @@ from sarj_standards.libs.yaml_boundary import parse_yaml
 
 from . import mobile_tools, security_tools
 from .runner import GroupedPaths, group_paths
+from .shell_policy import SHELLCHECK_ARGS
 
 
 if TYPE_CHECKING:
@@ -417,6 +418,7 @@ def analyze_external(
             selected=SUPPORTED if capabilities is None else SUPPORTED.intersection(capabilities),
             trust_repository_code=normalized_trust is TrustMode.TRUSTED,
             runner=execute,
+            shared_shellcheck=capabilities is None or "shellcheck" in capabilities,
         )
     )
     reports.extend(_duplicate_code_reports(root, capabilities=capabilities, policy=policy, runner=execute))
@@ -1942,7 +1944,20 @@ def _shell_source_reports(
         reports.extend(_shellcheck_reports(grouped, root=root, runner=runner, attest_version=attest_version))
     if capabilities is None or "shfmt" in capabilities:
         reports.extend(analyze_shell_format(root=root, paths=(*grouped.shellcheck, *grouped.unsupported_shell)))
+    reports.extend(_embedded_shell_reports(grouped, root=root, capabilities=capabilities))
     return tuple(reports)
+
+
+def _embedded_shell_reports(
+    grouped: GroupedPaths, *, root: Path, capabilities: frozenset[str] | None
+) -> tuple[ToolReport, ...]:
+    from .embedded_shell import analyze_sources as analyze_embedded  # ruff: ignore[import-outside-top-level] -- stdin adapters reuse this module's protocol parser and bounded process runner.
+
+    selected = frozenset({"shellcheck", "shfmt"}) if capabilities is None else capabilities & {"shellcheck", "shfmt"}
+    if not selected:
+        return ()
+    paths = tuple(path for path in grouped.text if path not in {*grouped.shellcheck, *grouped.unsupported_shell})
+    return analyze_embedded(root=root, paths=paths, selected=selected)
 
 
 def _shellcheck_reports(
@@ -1991,12 +2006,7 @@ def _invoke_shellcheck(files: Sequence[str], *, root: Path, runner: ProcessRunne
         "shellcheck",
         (
             "shellcheck",
-            "--norc",
-            "--extended-analysis=true",
-            "--enable=check-extra-masked-returns",
-            "--severity=info",
-            "--source-path=SCRIPTDIR",
-            "--format=json1",
+            *SHELLCHECK_ARGS,
             "--",
             *files,
         ),
@@ -2862,12 +2872,15 @@ def parse_basedpyright(payload: str, *, root: Path) -> tuple[Diagnostic, ...]:
     return tuple(diagnostics)
 
 
-def parse_shellcheck(payload: str, *, root: Path) -> tuple[Diagnostic, ...]:
+def parse_shellcheck(
+    payload: str, *, root: Path, source: SourceDocument | None = None, path: Path | None = None
+) -> tuple[Diagnostic, ...]:
     report = _ShellCheckReport.model_validate_json(payload)
-    documents: dict[Path, SourceDocument | None] = {}
+    documents = _shellcheck_documents(root, source, path)
+    virtual = None if path is None else path.resolve()
     diagnostics: list[Diagnostic] = []
     for item in report.comments:
-        path = _reported_path(item.file, root)
+        path = _shellcheck_reported_path(item.file, root, virtual)
         rule = f"SC{item.code}"
         try:
             level = _ShellCheckLevel(item.level)
@@ -2902,6 +2915,26 @@ def parse_shellcheck(payload: str, *, root: Path) -> tuple[Diagnostic, ...]:
             ),
         )
     )
+
+
+def _shellcheck_documents(
+    root: Path, source: SourceDocument | None, path: Path | None
+) -> dict[Path, SourceDocument | None]:
+    if source is None and path is None:
+        return {}
+    if source is None or path is None:
+        message = "embedded ShellCheck input requires a source document and authored path"
+        raise ValueError(message)
+    return {_reported_path(str(path), root): source}
+
+
+def _shellcheck_reported_path(value: str, root: Path, virtual: Path | None) -> Path:
+    if virtual is None:
+        return _reported_path(value, root)
+    if value != "-":
+        message = "embedded ShellCheck output must refer to stdin"
+        raise ValueError(message)
+    return virtual
 
 
 def parse_eslint(payload: str, *, root: Path) -> tuple[Diagnostic, ...]:
