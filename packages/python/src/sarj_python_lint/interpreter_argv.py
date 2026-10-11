@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
 from pathlib import PurePosixPath
 import re
 from types import MappingProxyType
@@ -22,6 +22,8 @@ class InterpreterInvocation:
     kind: ProgramKind
     payload: str | None = None
     forwarded: tuple[str, ...] = ()
+    # Runtime options do not change source-payload identity.
+    execution_options: frozenset[str] = field(default=frozenset[str](), compare=False)
 
 
 @dataclass(frozen=True, slots=True)
@@ -374,15 +376,21 @@ def _short_options(
     short_seen = False
     bash_mode = shell_name == "bash"
     validated_shell = shell_name in {"bash", "sh", "dash"}
+    execution_options: set[str] = set()
     while index < len(arguments):
         boundary = _external_boundary(arguments, index, plus_options=True)
         if boundary is not None and command_mode:
             index += int(arguments[index] in {"-", "--"})
             if index >= len(arguments):
                 return InterpreterInvocation("unknown")
-            return InterpreterInvocation("shell", arguments[index], tuple(arguments[index + 2 :]))
+            return InterpreterInvocation(
+                "shell", arguments[index], tuple(arguments[index + 2 :]), frozenset(execution_options)
+            )
         if boundary is not None:
-            return InterpreterInvocation("stdin") if stdin_mode else boundary
+            return replace(
+                InterpreterInvocation("stdin") if stdin_mode else boundary,
+                execution_options=frozenset(execution_options),
+            )
         argument = arguments[index]
         if argument.startswith("--"):
             parsed = _long_option(arguments, index, shell_mode=shell_mode, bash_mode=bash_mode, short_seen=short_seen)
@@ -393,10 +401,29 @@ def _short_options(
             )
         if parsed.invocation is not None:
             return parsed.invocation
+        _record_shell_execution_options(
+            execution_options, argument, arguments[index + 1 : index + parsed.consumed], shell_name=shell_name
+        )
         stdin_mode = stdin_mode or parsed.stdin_mode
         command_mode = command_mode or parsed.command_mode
         index += parsed.consumed
-    return InterpreterInvocation("unknown" if command_mode else "stdin")
+    return InterpreterInvocation("unknown" if command_mode else "stdin", execution_options=frozenset(execution_options))
+
+
+def _record_shell_execution_options(
+    options: set[str], argument: str, operands: Sequence[str], *, shell_name: str
+) -> None:
+    if shell_name not in _SHELLS or argument.startswith("--"):
+        return
+    values = iter(operands)
+    for flag in argument[1:]:
+        name = "errexit" if flag == "e" else next(values, None) if flag == "o" else None
+        if name is None or name not in {"errexit", "pipefail"}:
+            continue
+        if argument.startswith("-"):
+            options.add(name)
+        else:
+            options.discard(name)
 
 
 def _long_option(

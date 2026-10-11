@@ -155,7 +155,8 @@ class NoEnvironmentConditional(Rule):
                 'An interpolated value such as "cache-${var.environment}" names a resource and is not a branch. '
                 "Quoted templates used as comparison operands or literal-list contains needles are inspected "
                 "only when their interpolations are references or pure normalizers. Escaped markers, branches "
-                "inside templates, directives, arbitrary function results, and heredoc bodies remain opaque."
+                "inside templates, directives, brace-containing interpolation bodies, arbitrary function results, "
+                "and heredoc bodies remain opaque."
             ),
             (
                 "Pure case/whitespace normalization with lower, upper, or trimspace is unwrapped; arbitrary function "
@@ -568,7 +569,7 @@ def _template_identity(tok: str, *, literal: str | None) -> bool:
     references: list[str] = []
     for interpolation in interpolations:
         try:
-            operand = _peel(tokens(interpolation))
+            operand = _peel(tokens(interpolation.strip().removeprefix("~").removesuffix("~")))
         except ValueError:
             return False
         while (

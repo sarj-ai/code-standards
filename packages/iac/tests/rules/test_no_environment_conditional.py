@@ -968,3 +968,28 @@ def test_template_branch_operands_report_once_and_keep_attribute_suppression() -
     (finding,) = _check(source)
     assert (finding.line, finding.col) == (2, 3)
     assert is_suppressed(source.splitlines(), finding.line, finding.code)
+
+
+@pytest.mark.parametrize(
+    ("expression", "expected_count"),
+    [
+        pytest.param('"${~ var.env}" == "qa"', 1, id="opening-trim-marker"),
+        pytest.param('"${var.env ~}" == "qa"', 1, id="closing-trim-marker"),
+        pytest.param('"${~ var.env ~}" == "qa"', 1, id="both-trim-markers"),
+        pytest.param('contains(["qa"], "${~ trimspace(lower(var.environment)) ~}")', 1, id="trimmed-normalizer"),
+        pytest.param('"acme-prod:prod" != "${~ var.project ~}:${~ var.environment ~}"', 1, id="trimmed-composition"),
+        pytest.param('contains(["qa"], "$${~ var.env ~}")', 0, id="escaped-trim-markers"),
+        pytest.param('contains(["qa"], "$$${~ var.env ~}")', 0, id="escaped-prefixed-trim-markers"),
+        pytest.param('"cache-${~ var.environment ~}"', 0, id="trimmed-naming-only"),
+        pytest.param('"${~ var.project ~}" == "analytics"', 0, id="trimmed-business-identity"),
+        pytest.param('"${~ coalesce(var.env, "qa") ~}" == "qa"', 0, id="trimmed-arbitrary-function"),
+        pytest.param('"${~ var.env /* { brace } */ ~}" == "qa"', 0, id="brace-comment-remains-opaque"),
+        pytest.param('"${~~ var.env ~~}" == "qa"', 0, id="repeated-trim-markers-remain-invalid"),
+    ],
+)
+def test_template_trim_markers_preserve_expression_boundaries(expression: str, expected_count: int) -> None:
+    diagnostics = _check(f"locals {{\n  selected = {expression}\n}}\n")
+
+    assert [(finding.code, finding.line, finding.col) for finding in diagnostics] == (
+        [("SARJ204", 2, 3)] if expected_count else []
+    )
