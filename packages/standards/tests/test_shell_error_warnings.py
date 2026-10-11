@@ -4,8 +4,10 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from sarj_standards._meta import CONFIGS_DIR
 from sarj_standards.libs.diagnostics import Completion, Severity, TrustMode
-from sarj_standards.libs.linting.external import analyze_external
+from sarj_standards.libs.linting.devops_tools import checked_tool, invoke
+from sarj_standards.libs.linting.external import analyze_external, parse_shellcheck
 from sarj_standards.libs.repository import shell_checks
 from sarj_standards.libs.rules import EvaluationCase, ExpectedOutcome, Language, RuleProblem
 
@@ -154,3 +156,43 @@ def test_native_repository_gate_keeps_new_review_rules_nonblocking(
     output = capsys.readouterr().out
     assert ".github/scripts/job.sh:" in output
     assert rule in output
+
+
+@pytest.mark.parametrize(
+    ("source", "status", "rules"),
+    [
+        pytest.param(
+            "set -e\nf() { false; echo continued; }\nif f; then :; fi\n",
+            0,
+            frozenset[str](),
+            id="conditional-call-advisory",
+        ),
+        pytest.param(
+            'set -e\nf() { false; echo continued; }\nvalue=$(f)\nprintf "%s\\n" "$value"\n',
+            0,
+            frozenset[str](),
+            id="substitution-call-advisory",
+        ),
+        pytest.param(
+            'set -e\nprintf "%s\\n" "$(false)"\n',
+            1,
+            frozenset({"SC2312"}),
+            id="masked-return-still-blocks",
+        ),
+        pytest.param("echo $1\n", 1, frozenset({"SC2086"}), id="word-splitting-still-blocks"),
+    ],
+)
+def test_direct_native_config_preserves_advisory_exit_behavior(
+    tmp_path: Path, source: str, status: int, rules: frozenset[str]
+) -> None:
+    config = tmp_path / ".shellcheckrc"
+    config.write_bytes((CONFIGS_DIR / "shellcheck.strict.rc").read_bytes())
+    script = tmp_path / "job.sh"
+    script.write_text("#!/bin/bash\n" + source)
+    output = invoke(
+        checked_tool("shellcheck", root=tmp_path),
+        ("--rcfile", str(config), "--format=json1", str(script)),
+        root=tmp_path,
+    )
+    assert output.returncode == status
+    assert frozenset(item.rule_id for item in parse_shellcheck(output.stdout, root=tmp_path)) == rules
