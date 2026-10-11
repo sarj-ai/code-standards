@@ -1,7 +1,7 @@
-# Canonical interactive defaults. The Standards adapter passes these options
-# explicitly with --norc so repository and user configuration cannot weaken CI.
+# Direct ShellCheck defaults preserve existing native gates. Standards enables
+# advisory checks explicitly with --norc and controls their warning severity.
 external-sources=false
 extended-analysis=true
-enable=check-extra-masked-returns,check-set-e-suppressed
+enable=check-extra-masked-returns
 severity=info
 source-path=SCRIPTDIR
