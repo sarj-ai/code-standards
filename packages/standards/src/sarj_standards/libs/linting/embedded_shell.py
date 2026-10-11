@@ -22,7 +22,13 @@ from sarj_standards.libs.diagnostics import (
 )
 
 from . import shell_format
-from .devops_programs import ExecutionBlock, LiteralSource, ProgramProjectionError, execution_blocks
+from .devops_programs import (
+    WORKFLOW_EXPRESSION_RE,
+    ExecutionBlock,
+    LiteralSource,
+    ProgramProjectionError,
+    execution_blocks,
+)
 from .devops_tools import TOOLS, NativeToolError, checked_tool
 from .external import parse_shellcheck, redact_message, run_process_input
 from .policy import Policy
@@ -34,7 +40,6 @@ if TYPE_CHECKING:
 
 
 _SHELLS: Final = {"bash": "bash", "sh": "posix", "dash": "posix", "ksh": "mksh", "zsh": "zsh"}
-_EXPRESSIONS: Final = re.compile(r"\$\{\{.*?\}\}", re.DOTALL)
 _OTHER_INTERPRETERS: Final = frozenset({"python", "python3", "node", "ruby", "perl", "pwsh", "powershell", "cmd"})
 
 
@@ -105,7 +110,7 @@ def _mask_expression(match: re.Match[str]) -> str:
 
 def _checked_source(candidate: ShellBlock) -> str:
     return (
-        _EXPRESSIONS.sub(_mask_expression, candidate.source)
+        WORKFLOW_EXPRESSION_RE.sub(_mask_expression, candidate.source)
         if candidate.block.context == "actions"
         else candidate.source
     )
