@@ -57,20 +57,24 @@ def _file_tools(path: Path, relative: str, selected: frozenset[str]) -> set[str]
         and "compose" in selected
     ):
         names.add("docker")
-    if not selected.isdisjoint({"shellcheck", *manifest.DEVOPS_ANALYZERS}) and _has_shell_input(path, relative):
+    if not selected.isdisjoint({"shellcheck", *manifest.DEVOPS_ANALYZERS}) and has_shell_input(path, relative):
         names.add("shfmt")
     return names
 
 
-def _has_shell_input(path: Path, relative: str) -> bool:
-    from sarj_standards.libs.linting.devops_programs import ProgramProjectionError, execution_blocks  # ruff: ignore[import-outside-top-level] -- reuse semantic config selection without parsing a shell program.
+def has_shell_input(path: Path, relative: str) -> bool:
+    from sarj_standards.libs.linting.devops_programs import execution_blocks  # ruff: ignore[import-outside-top-level] -- reuse semantic config selection without parsing a shell program.
     from sarj_standards.libs.linting.textlint import shell_dialect  # ruff: ignore[import-outside-top-level] -- runtime identity includes extensionless and Zsh entrypoints.
 
     if shell_dialect(path) is not None:
         return True
     try:
-        return any(block.source for block in execution_blocks(relative, path.read_text(encoding="utf-8")))
-    except OSError, UnicodeDecodeError, ProgramProjectionError:
+        from sarj_standards.libs.linting.embedded_shell import shell_block  # ruff: ignore[import-outside-top-level] -- use the same interpreter argv classification as the shared native adapter.
+
+        return any(
+            shell_block(block) is not None for block in execution_blocks(relative, path.read_text(encoding="utf-8"))
+        )
+    except OSError, UnicodeError, ValueError:
         return False
 
 
