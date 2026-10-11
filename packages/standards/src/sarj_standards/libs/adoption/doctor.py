@@ -1297,7 +1297,7 @@ def _rewrite_repo_standards_actions(source: str) -> VersionPinRewrite:
         replacement = f"{quote}{match['action']}@{manifest.REPO_STANDARDS_REVISION}{quote}"
         if comment := _ACTION_VERSION_COMMENT.match(source, end):
             end = comment.end()
-            replacement += f"{comment[1]}# v{manifest.REPO_STANDARDS_VERSION}{comment[2]}"
+            replacement += f"{comment[1]}# v{manifest.REPO_STANDARDS_ACTION_VERSION}{comment[2]}"
         if source[start:end] != replacement:
             replacements[start] = (end, replacement)
     fragments: list[str] = []
