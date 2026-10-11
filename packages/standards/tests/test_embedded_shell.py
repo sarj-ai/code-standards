@@ -249,6 +249,13 @@ def test_windows_default_does_not_get_bash_analysis(tmp_path: Path) -> None:
     )
 
 
+def test_make_shell_file_operand_is_not_an_inline_command(tmp_path: Path) -> None:
+    path = _path(tmp_path, "Makefile", "SHELL := /bin/sh\n.SHELLFLAGS := -e\nall:\n\techo $$value\n")
+    [report] = embedded_shell.analyze_sources(root=tmp_path, paths=(str(path),), selected=frozenset({"shellcheck"}))
+    assert report.completion is Completion.FAILED
+    assert not report.diagnostics
+
+
 def test_cloudbuild_shebang_flags_preserve_script_coverage_and_literal_fixes(tmp_path: Path) -> None:
     path = _path(
         tmp_path,

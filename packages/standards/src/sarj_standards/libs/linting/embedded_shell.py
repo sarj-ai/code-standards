@@ -82,7 +82,7 @@ def _configured_shell_block(block: ExecutionBlock, words: tuple[str, ...], diale
             raise ProgramProjectionError(message)
         owner = block if invocation.payload == block.source else replace(block, literal=None)
         return ShellBlock(owner, invocation.payload, dialect)
-    if invocation.kind != "external" or (block.context == "actions" and "{0}" not in words):
+    if invocation.kind != "external" or (block.context != "cloudbuild" and "{0}" not in words):
         message = "configured shell argv cannot be proven to execute the authored script"
         raise ProgramProjectionError(message)
     return ShellBlock(block, block.source, dialect)
