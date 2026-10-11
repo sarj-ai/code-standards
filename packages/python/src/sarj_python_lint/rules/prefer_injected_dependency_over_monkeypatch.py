@@ -55,7 +55,9 @@ class PreferInjectedDependencyOverMonkeypatch(Rule):
             "fake when rebuilding the fixture would add wiring without improving the boundary. Keep attribute-existence "
             "checks enabled and the tested implementation intact. Suppress SARJ445 only at that call, naming the "
             "owned instance and injection seam. For inherently global boundaries or lookup interception, explain why "
-            "injection would invalidate the test. Do not switch to bare assignment merely to avoid this rule."
+            "injection would invalidate the test. Establish the binding the exercised consumer actually reads, "
+            "including already-bound import aliases, and show that the oracle rejects a wrong consumer. "
+            "Do not switch to bare assignment merely to avoid this rule."
         ),
         category=RuleCategory.TESTING,
         autofix=AutofixPolicy.NONE,
@@ -65,7 +67,7 @@ class PreferInjectedDependencyOverMonkeypatch(Rule):
             "Environment, mapping, import-path, and working-directory mutations are intentionally allowed.",
             "Untyped handles are recognized only on pytest tests or fixtures; directly parametrized values are excluded.",
             "A nested function that captures a monkeypatch handle from an outer scope is not inferred.",
-            "Instance ownership and collaborator contracts are not inferred; justified scoped patches need a local suppression.",
+            "Instance ownership, collaborator contracts, and active consumer lookups are not inferred; justified scoped patches need a local suppression.",
         ),
         examples=(
             RuleExample(

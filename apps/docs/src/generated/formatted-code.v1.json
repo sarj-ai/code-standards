@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "1f3edef9ab336fbbeb3e05bc0c719a72fedce5c47ea7dc78abb22c3e0c8e6f48",
-  "cliSha256": "f1d24ffd3b31736c5e35af19c18516d3ca9c25a3106406ccbffbe54a90c97a1b",
+  "catalogSha256": "ecc54e2ee994cfc22c6d1f4552a8aa58bdbeb6fd9f84b6c78f90ab50c7036a18",
+  "cliSha256": "e0e647a3ffbaf59f7a0bdefa031c2392051bddfff23e314a240fe2b1236a31ee",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -11748,6 +11748,21 @@
     "python:require-precise-factory-signature": {
       "examples": [
         {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/service.py",
+              "source": "from functools import partial\n\n\nclass Result:\n    def __init__(self, *, size: int):\n        self.size = size\n\n\ndef build():\n    factory = partial(Result)\n    return factory(size=4)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/service.py",
+          "id": "direct-partial-factory",
+          "outcome": "accept",
+          "scenarioId": "partial-erasure",
+          "title": "Direct partial construction keeps native argument checking"
+        },
+        {
           "expectedCount": 1,
           "files": [
             {
@@ -11761,6 +11776,21 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Keyword arguments escape checking"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/service.py",
+              "source": "from functools import partial\n\n\nclass Result:\n    pass\n\n\ndef build(factory: partial[Result]):\n    return factory(size=4)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/service.py",
+          "id": "erased-partial-factory",
+          "outcome": "reject",
+          "scenarioId": "partial-erasure",
+          "title": "An injected partial retains its result type but loses argument checking"
         },
         {
           "expectedCount": 0,

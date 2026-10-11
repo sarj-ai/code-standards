@@ -99,7 +99,12 @@ the weakness:
 9. **Dependency fidelity** — Prefer real stores/services or maintained fakes.
    Interaction assertions are appropriate at true adapter boundaries, but an
    observable returned value, persisted row, emitted event, or rendered payload
-   is the stronger oracle elsewhere.
+   is the stronger oracle elsewhere. Mock call history retains argument
+   references: when ordinary values at invocation are the contract, record them
+   at that seam before later mutation, preserving return and error behavior.
+   Preserve identity-sensitive, nested,
+   custom, and noncopyable contracts; do not mandate deep copying or a new mock
+   framework.
 10. **Delegation contracts** — A forwarding test uses non-default sentinels and
     proves the exact arguments and returned/yielded value that distinguish the
     delegate. `None`, an empty iterator, or a no-throw loop is not evidence of
@@ -107,7 +112,10 @@ the weakness:
 11. **Structured results** — A decoder, response, or error test observes the
     domain fields or stable diagnostic it promises. Container type, non-null,
     key presence, or success status alone is sufficient only when that narrow
-    shape is explicitly the contract.
+    shape is explicitly the contract. Approximate numeric equality does not
+    establish a promised scalar shape: NumPy comparison with a scalar
+    `pytest.approx` can broadcast. Retain the independent shape observation;
+    NumPy scalar, zero-dimensional, and elementwise contracts remain valid.
 12. **Pagination and competing cases** — A cursor is consumed, both traversal
     directions are checked when supported, and seeded controls distinguish
     tenant, filter, ordering, and boundary behavior. Merely producing a cursor
@@ -152,9 +160,16 @@ test. These defaults complement the judgment checks above:
   Boundary mocks remain useful when their interface and assertions are precise.
 - Use ordinary typed factories for data that varies by case. Use fixtures for
   dependency reuse and lifecycle ownership; use a factory fixture when it needs
-  pytest-managed resources or must create several instances in one test.
+  pytest-managed resources or must create several instances in one test. For a
+  cached parametrized fixture, check the native cache key: parameters treated as
+  equal for reuse must imply the same resource configuration. Preserve
+  intentionally equivalent parameters and native scope,
+  invalidation, and teardown behavior; do not force identity-only caching.
 - Give mutable fakes function scope. Configure their documented result/error
   hooks before invoking the subject, and fail clearly on unsupported calls.
+  Native `reset_mock()` clears history, not configured behavior. Use behavior
+  reset flags only when their recursive child reset is intended; preserve
+  retained child effects and explicit return values.
 - Keep closely coupled collaborators in a small typed harness with named fields.
   Share one session/state object across them; separate session copies can make a
   language-switch test pass while the live state remains wrong.
@@ -171,6 +186,13 @@ test. These defaults complement the judgment checks above:
   Remove setup defaults, explanatory prose, and intermediate aliases that merely
   repeat visible code. Retain comments explaining a surprising boundary or bug;
   concision must leave the action and independent oracle readable.
+- For a complete flat numeric mapping, native `pytest.approx(expected)` observes
+  both keys and values. Preserve tolerances and deliberate partial-field,
+  nested, custom-mapping, ordering, and diagnostic contracts.
+- For a complete exception-group contract, native `pytest.RaisesGroup`, where
+  supported, can observe independently specified leaves, multiplicity, and
+  nesting. `group_contains` proves containment only; retain any additional
+  ordering or message requirements and intentional containment-only tests.
 - Use scoped monkeypatching for process boundaries such as environment, clocks,
   or unavoidable third-party globals. Prefer constructor injection for service
   dependencies. A scoped patch may replace an existing constructor-injected
@@ -180,7 +202,14 @@ test. These defaults complement the judgment checks above:
   explain ownership and the injection seam in an exact local `SARJ445` suppression.
   Replacing `subject.method` still bypasses the behavior being tested. Do not
   convert scoped patches to bare assignment just to silence the rule; restoration
-  alone also does not justify a patch.
+  alone also does not justify a patch. For lookup interception, establish the
+  binding the exercised consumer actually reads, including already-bound import
+  aliases, and show that the oracle rejects a wrong consumer.
+- When a known-defect `xfail` has an independently established exception type or
+  group shape, native `raises=...`, where supported, narrows unrelated failures.
+  `strict=True` addresses XPASS, and even a typed marker can accept an unrelated same-type
+  failure. Preserve intentional broad or unknown expected-failure policies;
+  use `pytest.raises` for intentional exceptions rather than defect markers.
 
 ## Writing TypeScript tests
 
@@ -197,6 +226,9 @@ test. These defaults complement the judgment checks above:
 - Assert the complete relevant value with `toEqual` or `toStrictEqual`, or a
   deliberate `toMatchObject` for a partial contract. Keep identity, ordering,
   negative controls, and adapter interactions when those are the behavior.
+  A complete inline snapshot computed solely from the actual value is not an
+  independent oracle. Preserve independent static interpolation, intentional
+  partial masking, and serialization/update policies; this remains manual review.
 - For UI contracts, query by role and accessible name and await observable state
   with the existing Testing Library helpers. Reuse provider/render helpers;
   avoid fixed sleeps, implementation snapshots, and duplicate rendering layers.

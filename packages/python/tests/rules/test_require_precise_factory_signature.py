@@ -1,3 +1,5 @@
+from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -15,6 +17,8 @@ if TYPE_CHECKING:
 
 
 _PREFIX = "from collections.abc import Callable\nclass Result: pass\n"
+_PARTIAL_PREFIX = "from functools import partial\nclass Result: pass\n"
+_PARTIAL_SOURCE = _PARTIAL_PREFIX + "def build(factory: partial[Result]):\n    return factory(size=4)\n"
 _CASES = (
     EvaluationCase(
         "fixed-keyword",
@@ -242,6 +246,54 @@ _CASES = (
         + "def configure():\n    global other\n    other = None\ndef build(factory: Callable[..., Result]):\n    return factory(size=4)\n",
         ExpectedOutcome.MATCH,
     ),
+    EvaluationCase("partial-fixed-keyword", Language.PYTHON, _PARTIAL_SOURCE, ExpectedOutcome.MATCH),
+    EvaluationCase(
+        "partial-alias-async",
+        Language.PYTHON,
+        "from functools import partial as Factory\nclass Result: pass\nasync def build(factory: Factory[Result]):\n    return factory(size=4)\n",
+        ExpectedOutcome.MATCH,
+    ),
+    EvaluationCase(
+        "partial-qualified",
+        Language.PYTHON,
+        "import functools as factories\nclass Result: pass\ndef build(factory: factories.partial[Result]):\n    return factory(size=4)\n",
+        ExpectedOutcome.MATCH,
+    ),
+    EvaluationCase(
+        "partial-other-import",
+        Language.PYTHON,
+        _PARTIAL_SOURCE.replace("from functools", "from custom"),
+    ),
+    EvaluationCase(
+        "partial-mutated-namespace",
+        Language.PYTHON,
+        "import functools\nclass Result: pass\nfunctools.partial = custom\ndef build(factory: functools.partial[Result]):\n    return factory(size=4)\n",
+    ),
+    EvaluationCase(
+        "partial-annotation-arity",
+        Language.PYTHON,
+        _PARTIAL_SOURCE.replace("partial[Result]", "partial[Result, Result]"),
+    ),
+)
+_PARTIAL_EXCLUSIONS = tuple(
+    case
+    for case in _CASES
+    if case.case_id
+    in {
+        "positional-only",
+        "unpacking",
+        "starred",
+        "forwarded",
+        "nested-capture",
+        "rebound",
+        "rebound-class",
+        "shadowed-callable",
+        "decorated",
+        "string-annotation",
+        "callable-walrus-in-function-default",
+        "pattern-captured-callable",
+        "global-callable-writer",
+    }
 )
 
 
@@ -257,20 +309,42 @@ def test_labeled_cases(case: EvaluationCase) -> None:
     assert all(item.severity is Severity.WARNING for item in findings)
 
 
+@pytest.mark.parametrize(
+    "case",
+    _PARTIAL_EXCLUSIONS,
+    ids=tuple(case.case_id for case in _PARTIAL_EXCLUSIONS),
+)
+def test_partial_preserves_shared_exclusions(case: EvaluationCase) -> None:
+    source = (
+        case.source.replace(_PREFIX, _PARTIAL_PREFIX)
+        .replace("Callable[..., Result]", "partial[Result]")
+        .replace("Callable", "partial")
+    )
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize("result", ["str", "External", "list[Result]", "Result | None"])
+def test_partial_requires_owned_result(result: str) -> None:
+    assert _check(_PARTIAL_SOURCE.replace("partial[Result]", f"partial[{result}]")) == []
+
+
 @pytest.mark.parametrize("path", ["tests/test_factory.py", "app/fakes/service.py", "app/generated/client.py"])
-def test_excluded_paths(path: str) -> None:
-    assert _check(_CASES[0].source, Path(path)) == []
+@pytest.mark.parametrize("source", [_CASES[0].source, _PARTIAL_SOURCE], ids=("callable", "partial"))
+def test_excluded_paths(path: str, source: str) -> None:
+    assert _check(source, Path(path)) == []
 
 
-def test_exact_suppression() -> None:
-    source = _CASES[0].source.replace("):\n", "):  # sarj-noqa: SARJ473 -- intentionally dynamic plugin contract.\n")
+@pytest.mark.parametrize("source", [_CASES[0].source, _PARTIAL_SOURCE], ids=("callable", "partial"))
+def test_exact_suppression(source: str) -> None:
+    source = source.replace("):\n", "):  # sarj-noqa: SARJ473 -- intentionally dynamic plugin contract.\n")
     findings = _check(source)
     assert len(findings) == 1
     assert is_suppressed(source.splitlines(), findings[0].line, findings[0].code)
 
 
 @pytest.mark.parametrize("mutation", ["", "Result = external\n", "del Result\n"])
-def test_imported_owned_result(tmp_path: Path, mutation: str) -> None:
+@pytest.mark.parametrize("carrier", ["Callable[..., Result]", "partial[Result]"])
+def test_imported_owned_result(tmp_path: Path, mutation: str, carrier: str) -> None:
     root = tmp_path / "project"
     package = root / "app"
     package.mkdir(parents=True)
@@ -280,7 +354,7 @@ def test_imported_owned_result(tmp_path: Path, mutation: str) -> None:
     service = package / "service.py"
     definition.write_text(f"class Result: pass\n{mutation}")
     service.write_text(
-        "from collections.abc import Callable\nfrom app.result import Result\ndef build(factory: Callable[..., Result]):\n    return factory(size=4)\n"
+        f"from collections.abc import Callable\nfrom functools import partial\nfrom app.result import Result\ndef build(factory: {carrier}):\n    return factory(size=4)\n"
     )
     sources = {path: path.read_text() for path in (definition, service)}
     rule = RequirePreciseFactorySignature()
@@ -323,9 +397,10 @@ def test_imported_owned_result_capture(
     assert rule.check(service, sources[service]) == []
 
 
-def test_cli_and_interactions_are_stable(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+@pytest.mark.parametrize("source", [_CASES[0].source, _PARTIAL_SOURCE], ids=("callable", "partial"))
+def test_cli_and_interactions_are_stable(tmp_path: Path, capsys: pytest.CaptureFixture[str], source: str) -> None:
     path = tmp_path / "service.py"
-    path.write_text(_CASES[0].source)
+    path.write_text(source)
     rules = [
         RequirePreciseFactorySignature.id,
         "no-unused-underscored-keyword-parameter",
@@ -335,3 +410,17 @@ def test_cli_and_interactions_are_stable(tmp_path: Path, capsys: pytest.CaptureF
     assert [finding.code for finding in analyze(rules, [path])] == ["SARJ473"]
     assert main(["check", "--rule", RequirePreciseFactorySignature.id, str(path)]) == 0
     assert "SARJ473" in capsys.readouterr().out
+
+
+def test_native_partial_erases_keyword_contract() -> None:
+    @dataclass(frozen=True, slots=True, kw_only=True)
+    class Result:
+        size: int
+
+    def build(factory: partial[Result]) -> Result:
+        return factory(szie=4)
+
+    factory = partial(Result)
+    assert factory(size=4).size == 4
+    with pytest.raises(TypeError, match="unexpected keyword argument 'szie'"):
+        build(factory)
