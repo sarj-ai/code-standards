@@ -408,7 +408,7 @@ _SHELL_LANGUAGE_NAMES: Final = frozenset({"", "bash", "console", "sh", "shell", 
 _SHELL_DIALECT_BY_SUFFIX: Final = MappingProxyType(
     {
         ".bash": "bash",
-        ".bats": "bash",
+        ".bats": "bats",
         ".dash": "dash",
         ".ksh": "ksh",
         ".sh": "sh",
@@ -416,10 +416,14 @@ _SHELL_DIALECT_BY_SUFFIX: Final = MappingProxyType(
     }
 )
 _SHELL_SHEBANG_RE: Final = re.compile(
-    rb"^#!\s*(?:/usr/bin/env(?:\s+-S)?\s+|/(?:usr/)?bin/)(?P<shell>bash|busybox|dash|ksh|sh|zsh)(?:\s|$)"
+    rb"^#!\s*(?:/(?:[^ \t\r\n/]+/)*env(?:\s+-S)?\s+|/(?:[^ \t\r\n/]+/)*)"
+    rb"(?P<shell>bash|bats|busybox|dash|ksh|sh|zsh)(?:\s|$)"
 )
 _SHELL_HEADER_LIMIT: Final = 8192
-_SHELL_DIRECTIVE_RE: Final = re.compile(r"^#[ \t]*shellcheck[ \t]+shell=(?P<shell>bash|dash|ksh|sh)(?:[ \t]|$)")
+_SHELL_DIRECTIVE_RE: Final = re.compile(r"^#[ \t]*shellcheck[ \t]+")
+_SHELL_DIRECTIVE_FIELD_RE: Final = re.compile(
+    r"(?P<key>[A-Za-z-]+)=(?:'(?P<single>[^'\r\n]+)'|\"(?P<double>[^\"\r\n]+)\"|(?P<plain>[^'\" \t\r\n]+))(?:[ \t]+|$)"
+)
 _LARGE_SHELL_SUBSTANTIVE_LINES: Final = 200
 _QUERY_TOKEN_RE: Final = re.compile(
     r"(?<![\w./-])(?:SELECT|INSERT|UPDATE|DELETE|WHERE|FROM|logQl)(?![\w./-])", re.IGNORECASE
@@ -1144,9 +1148,25 @@ def shell_dialect(path: Path) -> str | None:
         return None
     if not path.suffix or path.suffix.casefold() in _SHELL_DIALECT_BY_SUFFIX:
         for line in shell_header_comments(header.decode("utf-8", errors="replace")):
-            if (directive := _SHELL_DIRECTIVE_RE.match(line)) is not None:
-                return directive.group("shell")
+            if (dialect := _shell_directive_dialect(line)) is not None:
+                # Bash analysis also describes Bats' additional test syntax.
+                if dialect == "bash" and path.suffix.casefold() == ".bats":
+                    return "bats"
+                return dialect
     return _SHELL_DIALECT_BY_SUFFIX.get(path.suffix.casefold())
+
+
+def _shell_directive_dialect(line: str) -> str | None:
+    prefix = _SHELL_DIRECTIVE_RE.match(line)
+    if prefix is None:
+        return None
+    cursor = prefix.end()
+    while (field := _SHELL_DIRECTIVE_FIELD_RE.match(line, cursor)) is not None:
+        if field.group("key") == "shell":
+            value = field.group("single") or field.group("double") or field.group("plain")
+            return value if value in {"bash", "dash", "ksh", "sh"} else None
+        cursor = field.end()
+    return None
 
 
 def shell_header_comments(source: str) -> tuple[str, ...]:

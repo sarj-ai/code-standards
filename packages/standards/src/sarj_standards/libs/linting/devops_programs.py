@@ -32,6 +32,9 @@ type ShellParser = Callable[[str], Mapping[str, object]]
 _MAX_DEPTH = 32
 _MAX_NODES = 100_000
 _WORKFLOW_PATH_COMPONENTS = 3
+# Actions strings use single quotes and escape apostrophes as ''. Possessive
+# repetitions keep malformed or long expressions from causing backtracking.
+WORKFLOW_EXPRESSION_RE = re.compile(r"\$\{\{(?:[^'}]++|'(?:[^']++|'')*+'|}(?!}))*+\}\}")
 
 
 class ProgramProjectionError(ValueError):
@@ -1363,7 +1366,7 @@ def _shell_embeds_program(
         raise ProgramProjectionError(msg)
     # Workflow expressions are evaluated by Actions before shell parsing. Treat
     # each expression as an opaque word, never interpret its contents as shell.
-    source = re.sub(r"\$\{\{.*?\}\}", "workflow_expression", source, flags=re.DOTALL)
+    source = WORKFLOW_EXPRESSION_RE.sub("workflow_expression", source)
     tree = parse_shell(source)
     if tree.get("Type") != "File":
         msg = "shfmt did not return a File AST"
