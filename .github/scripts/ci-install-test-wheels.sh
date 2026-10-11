@@ -2,4 +2,4 @@
 set -e
 
 uv venv --clear --python "${STANDARDS_PYTHON:-3.15}" --seed
-uv pip install ./dist/deps/*.whl ./dist/code_standards-*.whl pytest==9.1.1 pytest-xdist==3.8.0 jsonschema==4.25.1 ruff
+uv pip install ./dist/deps/*.whl ./dist/code_standards-*.whl pytest==9.1.1 pytest-xdist==3.8.0 pytest-unused-fixtures==0.3.1 jsonschema==4.25.1 ruff
