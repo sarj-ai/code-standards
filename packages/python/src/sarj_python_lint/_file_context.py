@@ -57,6 +57,10 @@ class PythonFileContext:
     def nodes[NodeT: ast.AST](self, *types: type[NodeT]) -> list[NodeT]:
         return [node for node in self.node_index.query(types) if isinstance(node, types)]
 
+    @cached_property
+    def has_wildcard_import(self) -> bool:
+        return any(alias.name == "*" for node in self.nodes(ast.ImportFrom) for alias in node.names)
+
     @property
     def parents(self) -> Mapping[ast.AST, ast.AST]:
         return self.node_index.parents

@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "02915f9813ef7c42eb7bdfb1166d12ef99f83d8a0ecc2b8ce80b893643322979",
-  "cliSha256": "fe8324d990c19f9a008a82a4d43c94960383e63f03c4dbd55f21ccaa27df4f59",
+  "catalogSha256": "1f3edef9ab336fbbeb3e05bc0c719a72fedce5c47ea7dc78abb22c3e0c8e6f48",
+  "cliSha256": "e284c2b67c54579073e9883cfffd4227d416b9aec746a194330050ddbfcaf5cd",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -11218,6 +11218,10 @@
           "expectedCount": 0,
           "files": [
             {
+              "path": "tests/__init__.py",
+              "source": "# Example test package.\n"
+            },
+            {
               "path": "tests/test_record.py",
               "source": "from pydantic import BaseModel\n\n\nclass Record(BaseModel):\n    value: str\n\n\ndef test_record():\n    assert Record(value=\"item\").value == \"item\"\n"
             }
@@ -11232,6 +11236,10 @@
         {
           "expectedCount": 1,
           "files": [
+            {
+              "path": "tests/__init__.py",
+              "source": "# Example test package.\n"
+            },
             {
               "path": "tests/test_record.py",
               "source": "from pydantic import BaseModel\n\n\nclass Record(BaseModel):\n    value: str\n\n\ndef _record(value: str) -> Record:\n    return Record(value=value)\n\n\ndef test_record():\n    assert _record(\"item\").value == \"item\"\n"
@@ -11358,6 +11366,10 @@
           "expectedCount": 0,
           "files": [
             {
+              "path": "tests/__init__.py",
+              "source": "# Example test package.\n"
+            },
+            {
               "path": "tests/test_store.py",
               "source": "from abc import ABC, abstractmethod\n\n\nclass Store(ABC):\n    @abstractmethod\n    def read(self, key: str) -> str:\n        pass\n\n\nclass First(Store):\n    def read(self, key: str) -> str:\n        raise NotImplementedError\n\n\nclass Second(Store):\n    def read(self, key: str) -> str:\n        return key\n"
             }
@@ -11372,6 +11384,10 @@
         {
           "expectedCount": 1,
           "files": [
+            {
+              "path": "tests/__init__.py",
+              "source": "# Example test package.\n"
+            },
             {
               "path": "tests/test_store.py",
               "source": "from abc import ABC, abstractmethod\n\n\nclass Store(ABC):\n    @abstractmethod\n    def read(self, key: str) -> str:\n        pass\n\n\nclass First(Store):\n    def read(self, key: str) -> str:\n        raise NotImplementedError\n\n\nclass Second(Store):\n    def read(self, key: str) -> str:\n        raise NotImplementedError\n"

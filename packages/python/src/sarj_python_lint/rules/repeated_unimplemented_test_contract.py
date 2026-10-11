@@ -60,6 +60,7 @@ class RepeatedUnimplementedTestContract(ProjectRule):
                 title="Two test fakes repeat one unconfigured operation",
                 outcome=ExampleOutcome.MATCH,
                 files=(
+                    ExampleFile.python("tests/__init__.py", "# Example test package.\n"),
                     ExampleFile.python(
                         "tests/test_store.py",
                         "from abc import ABC, abstractmethod\nclass Store(ABC):\n    @abstractmethod\n    def read(self, key: str) -> str:\n        pass\nclass First(Store):\n    def read(self, key: str) -> str:\n        raise NotImplementedError\nclass Second(Store):\n    def read(self, key: str) -> str:\n        raise NotImplementedError\n",
@@ -74,6 +75,7 @@ class RepeatedUnimplementedTestContract(ProjectRule):
                 title="Configured fake behavior belongs to the leaf",
                 outcome=ExampleOutcome.NO_MATCH,
                 files=(
+                    ExampleFile.python("tests/__init__.py", "# Example test package.\n"),
                     ExampleFile.python(
                         "tests/test_store.py",
                         "from abc import ABC, abstractmethod\nclass Store(ABC):\n    @abstractmethod\n    def read(self, key: str) -> str:\n        pass\nclass First(Store):\n    def read(self, key: str) -> str:\n        raise NotImplementedError\nclass Second(Store):\n    def read(self, key: str) -> str:\n        return key\n",

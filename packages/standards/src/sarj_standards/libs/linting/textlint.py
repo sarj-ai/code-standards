@@ -1171,7 +1171,7 @@ def _shell_directive_dialect(line: str) -> str | None:
 
 def shell_header_comments(source: str) -> tuple[str, ...]:
     comments: list[str] = []
-    for raw in source[:_SHELL_HEADER_LIMIT].splitlines():
+    for raw in source[:_SHELL_HEADER_LIMIT].split("\n"):
         line = raw.strip()
         if line and not line.startswith("#"):
             break
