@@ -854,3 +854,142 @@ def test_public_environment_expression_helper_preserves_malformed_input_errors(v
 @pytest.mark.parametrize("value", ['"unterminated', "/* unterminated", "<<EOF\nbody"])
 def test_non_candidate_attributes_preserve_malformed_document_abstention(value: str) -> None:
     assert _check(f"locals {{\n  ordinary = {value}") == []
+
+
+@pytest.mark.parametrize(
+    ("expression", "expected_count"),
+    [
+        pytest.param(
+            '!contains(["acme-dev:dev", "acme-preview:preview"], "${var.project}:${var.environment}")',
+            1,
+            id="composed-identity-membership",
+        ),
+        pytest.param('"${var.project}:${var.environment}" == "acme-dev:dev"', 1, id="template-comparison"),
+        pytest.param('"acme-dev:dev" != "${var.project}:${var.environment}"', 1, id="flipped-comparison"),
+        pytest.param('"${var.project}" == "acme-prod"', 1, id="qualified-identity-literal-evidence"),
+        pytest.param('contains(["acme-dev:dev"], ("${var.project}:${var.environment}"))', 1, id="needle-parentheses"),
+        pytest.param('contains((["acme-dev:dev"]), "${var.project}:${var.environment}")', 1, id="list-parentheses"),
+        pytest.param('contains(["DEV"], upper("${var.environment}"))', 1, id="outer-normalizer"),
+        pytest.param('contains(["dev"], "${trimspace(lower(var.environment))}")', 1, id="inner-normalizers"),
+        pytest.param('"dev" == lower("${var.environment}")', 1, id="flipped-normalizer"),
+        pytest.param('contains(["dev"], "${terraform.workspace}")', 1, id="workspace-template"),
+        pytest.param('contains(["dev"], "${local.deployment.environment}")', 1, id="strong-local-identity"),
+        pytest.param('"cache-${var.environment}"', 0, id="resource-naming-only"),
+        pytest.param('contains(["dev"], "$${var.environment}")', 0, id="escaped-template-marker"),
+        pytest.param('contains(["dev"], "$$${var.environment}")', 0, id="escaped-marker-with-prefix"),
+        pytest.param('contains(["dev"], "$${var.project}:$${var.environment}")', 0, id="escaped-composed-identity"),
+        pytest.param('contains(["dev"], "var.environment")', 0, id="identity-shaped-literal"),
+        pytest.param('contains(["enterprise:billing"], "${var.account}:${var.product}")', 0, id="business-identity"),
+        pytest.param('"${var.project}" == "analytics"', 0, id="ambiguous-business-comparison"),
+        pytest.param('contains(["acme-prod"], "${var.project}")', 0, id="ambiguous-membership-opaque"),
+        pytest.param('contains(var.allowed_environments, "${var.environment}")', 0, id="typed-input-haystack"),
+        pytest.param(
+            'contains(local.allowed_environments, "${var.environment}")', 0, id="unresolved-template-haystack"
+        ),
+        pytest.param('contains(["${var.allowed_environment}"], "${var.environment}")', 0, id="interpolated-haystack"),
+        pytest.param(
+            'contains(["%{ if var.enabled }dev%{ endif }"], "${var.environment}")',
+            0,
+            id="directive-haystack",
+        ),
+        pytest.param('contains(["%%{dev}"], "${var.environment}")', 1, id="escaped-directive-literal-haystack"),
+        pytest.param('contains(["dev"], "$${literal}:${var.environment}")', 1, id="mixed-escaped-and-real-markers"),
+        pytest.param('contains([1, 2], "${var.environment}")', 0, id="non-string-haystack"),
+        pytest.param('contains([], "${var.environment}")', 0, id="empty-haystack"),
+        pytest.param('contains([""], "${var.environment}")', 0, id="empty-literal-haystack"),
+        pytest.param('"${var.environment}" == "${var.allowed_environment}"', 0, id="dynamic-comparison"),
+        pytest.param(
+            '"${var.environment}" == "%{ if var.enabled }dev%{ endif }"',
+            0,
+            id="directive-comparison-operand",
+        ),
+        pytest.param('"${var.environment}" == "%%{dev}"', 1, id="escaped-directive-comparison-literal"),
+        pytest.param('contains(["dev"], "${format("%s", var.environment)}")', 0, id="arbitrary-template-function"),
+        pytest.param('contains(["dev"], "${jsondecode("${var.environment}")}")', 0, id="nested-template-opaque"),
+        pytest.param(
+            'contains(["dev"], "%{ if var.enabled }${var.environment}%{ endif }")', 0, id="template-directive-opaque"
+        ),
+        pytest.param(
+            'contains(["dev"], "${var.environment == "prod" ? "dev" : "qa"}")', 0, id="template-branch-opaque"
+        ),
+        pytest.param('contains(["dev"], "${local.selected_key}")', 0, id="unresolved-alias-opaque"),
+        pytest.param('contains(["dev"], "${var.developmental}")', 0, id="identity-substring-near-miss"),
+        pytest.param('true /* contains(["dev"], "${var.environment}") */', 0, id="commented-template-branch"),
+    ],
+)
+def test_template_branch_operands_preserve_expression_boundaries(expression: str, expected_count: int) -> None:
+    source = f"locals {{\n  selected = {expression}\n}}\n"
+
+    diagnostics = _check(source)
+
+    assert [(finding.code, finding.line, finding.col) for finding in diagnostics] == (
+        [("SARJ204", 2, 3)] if expected_count else []
+    )
+    assert diagnostics == _check(source)
+
+
+@pytest.mark.parametrize("name", ["setup.tftest.hcl", "fixtures/main.tf", "testdata/main.tf", "values.yaml"])
+def test_template_branch_operands_preserve_file_exclusions(name: str) -> None:
+    source = 'locals {\n  selected = contains(["dev"], "${var.environment}")\n}\n'
+    assert _check(source, name=name) == []
+
+
+def test_template_branch_operands_preserve_generated_header_exclusion() -> None:
+    source = (
+        "# Code generated by a provider. DO NOT EDIT.\n"
+        'locals {\n  selected = contains(["dev"], "${var.environment}")\n}\n'
+    )
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    "wrapper",
+    [
+        'variable "environment" {{\n  validation {{\n    {condition}\n  }}\n}}',
+        'resource "test" "r" {{\n  lifecycle {{\n    precondition {{\n      {condition}\n    }}\n  }}\n}}',
+        'resource "test" "r" {{\n  lifecycle {{\n    postcondition {{\n      {condition}\n    }}\n  }}\n}}',
+        'check "identity" {{\n  assert {{\n    {condition}\n  }}\n}}',
+    ],
+    ids=["variable-validation", "lifecycle-precondition", "lifecycle-postcondition", "check-assertion"],
+)
+def test_template_branch_operands_preserve_safety_assertion_exemptions(wrapper: str) -> None:
+    source = wrapper.format(condition='condition = contains(["dev"], "${var.environment}")')
+    assert _check(source) == []
+
+
+def test_template_branch_operands_report_once_and_keep_attribute_suppression() -> None:
+    source = (
+        "locals {\n"
+        "  selected = (  # sarj-noqa: SARJ204 -- reviewed identity policy\n"
+        '    contains(["dev"], "${var.environment}") || "${var.environment}" == "prod"\n'
+        "  )\n"
+        "}\n"
+    )
+    (finding,) = _check(source)
+    assert (finding.line, finding.col) == (2, 3)
+    assert is_suppressed(source.splitlines(), finding.line, finding.code)
+
+
+@pytest.mark.parametrize(
+    ("expression", "expected_count"),
+    [
+        pytest.param('"${~ var.env}" == "qa"', 1, id="opening-trim-marker"),
+        pytest.param('"${var.env ~}" == "qa"', 1, id="closing-trim-marker"),
+        pytest.param('"${~ var.env ~}" == "qa"', 1, id="both-trim-markers"),
+        pytest.param('contains(["qa"], "${~ trimspace(lower(var.environment)) ~}")', 1, id="trimmed-normalizer"),
+        pytest.param('"acme-prod:prod" != "${~ var.project ~}:${~ var.environment ~}"', 1, id="trimmed-composition"),
+        pytest.param('contains(["qa"], "$${~ var.env ~}")', 0, id="escaped-trim-markers"),
+        pytest.param('contains(["qa"], "$$${~ var.env ~}")', 0, id="escaped-prefixed-trim-markers"),
+        pytest.param('"cache-${~ var.environment ~}"', 0, id="trimmed-naming-only"),
+        pytest.param('"${~ var.project ~}" == "analytics"', 0, id="trimmed-business-identity"),
+        pytest.param('"${~ coalesce(var.env, "qa") ~}" == "qa"', 0, id="trimmed-arbitrary-function"),
+        pytest.param('"${~ var.env /* { brace } */ ~}" == "qa"', 0, id="brace-comment-remains-opaque"),
+        pytest.param('"${~~ var.env ~~}" == "qa"', 0, id="repeated-trim-markers-remain-invalid"),
+    ],
+)
+def test_template_trim_markers_preserve_expression_boundaries(expression: str, expected_count: int) -> None:
+    diagnostics = _check(f"locals {{\n  selected = {expression}\n}}\n")
+
+    assert [(finding.code, finding.line, finding.col) for finding in diagnostics] == (
+        [("SARJ204", 2, 3)] if expected_count else []
+    )

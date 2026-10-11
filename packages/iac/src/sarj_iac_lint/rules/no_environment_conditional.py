@@ -84,6 +84,7 @@ _ENVIRONMENT_LITERAL_SEGMENTS = frozenset(
     }
 )
 _LITERAL_SEGMENT_RE = re.compile(r"[^a-z0-9]+")
+_TEMPLATE_INTERPOLATION_RE = re.compile(r"\$\{([^{}]*)\}")
 
 _WORKSPACE = "terraform.workspace"
 _IDENTITY_PREFIXES = ("var.", "local.")
@@ -152,9 +153,10 @@ class NoEnvironmentConditional(Rule):
             "Comparison against the empty string is an unset-input test, not an environment branch, and is ignored.",
             (
                 'An interpolated value such as "cache-${var.environment}" names a resource and is not a branch. '
-                'A branch written inside a template — "${var.environment == \\"prod\\" ? ... }", a %{ if } '
-                "directive, or a heredoc body — goes unscanned: strings tokenize opaquely and heredoc bodies "
-                "are masked."
+                "Quoted templates used as comparison operands or literal-list contains needles are inspected "
+                "only when their interpolations are references or pure normalizers. Escaped markers, branches "
+                "inside templates, directives, brace-containing interpolation bodies, arbitrary function results, "
+                "and heredoc bodies remain opaque."
             ),
             (
                 "Pure case/whitespace normalization with lower, upper, or trimspace is unwrapped; arbitrary function "
@@ -305,6 +307,31 @@ class NoEnvironmentConditional(Rule):
                 expected_count=0,
                 public=True,
             ),
+            RuleExample(
+                example_id="composed-environment-membership",
+                title="Composed deployment identity selects hard-coded policy",
+                outcome=ExampleOutcome.MATCH,
+                scenario="template-operand",
+                files=(
+                    ExampleFile.iac(
+                        "main.tf",
+                        'locals {\n  selected = !contains(["acme-dev:dev"], "${var.project}:${var.environment}")\n}\n',
+                    ),
+                ),
+                focus_path=PurePosixPath("main.tf"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="environment-resource-name",
+                title="Environment interpolation only names a resource",
+                outcome=ExampleOutcome.NO_MATCH,
+                scenario="template-operand",
+                files=(ExampleFile.iac("main.tf", 'locals { name = "cache-${var.environment}" }\n'),),
+                focus_path=PurePosixPath("main.tf"),
+                expected_count=0,
+                public=True,
+            ),
         ),
     )
     description = documentation.summary
@@ -428,6 +455,10 @@ def _call(toks: tuple[str, ...], index: int) -> _Use | None:
     haystack = _single_token(args[0])
     if needle is None or (haystack is not None and haystack.startswith("var.")):
         return None
+    if needle.startswith('"') and (
+        not _is_literal_list(list(_peel(args[0]))) or any("%{" in item.replace("%%{", "") for item in args[0])
+    ):
+        return None
     listing = "[...]" if _is_literal_list(args[0]) else "..."
     return _Use(needle, f"contains({listing}, {needle})")
 
@@ -515,12 +546,44 @@ def _is_literal_list(arg: list[str]) -> bool:
 
 
 def _is_environment_identity(tok: str, *, literal: str | None = None) -> bool:
+    if tok.startswith('"'):
+        return _template_identity(tok, literal=literal)
     lowered = tok.lower()
     if lowered == _WORKSPACE:
         return True
     if not lowered.startswith(_IDENTITY_PREFIXES):
         return False
     return any(_is_environment_name(component, literal=literal) for component in lowered.split(".")[1:])
+
+
+def _template_identity(tok: str, *, literal: str | None) -> bool:
+    # Inspect only an already-lexed operand, never strings elsewhere in the source.
+    if len(tok) < _MIN_QUOTED_LENGTH or not tok.endswith('"'):
+        return False
+    if literal is not None and "%{" in literal.replace("%%{", ""):
+        return False
+    body = tok[1:-1].replace("$${", "").replace("%%{", "")
+    interpolations = tuple(match.group(1) for match in _TEMPLATE_INTERPOLATION_RE.finditer(body))
+    if not interpolations or "${" in _TEMPLATE_INTERPOLATION_RE.sub("", body) or "%{" in body:
+        return False
+    references: list[str] = []
+    for interpolation in interpolations:
+        try:
+            operand = _peel(tokens(interpolation.strip().removeprefix("~").removesuffix("~")))
+        except ValueError:
+            return False
+        while (
+            len(operand) >= _GROUP_TOKENS + 1
+            and operand[0] in _NORMALIZERS
+            and operand[1] == "("
+            and _matching_close(operand, 1) == len(operand) - 1
+        ):
+            operand = _peel(operand[2:-1])
+        reference = _single_token(operand)
+        if reference is None or not (reference.lower().startswith(_IDENTITY_PREFIXES) or reference == _WORKSPACE):
+            return False
+        references.append(reference)
+    return any(_is_environment_identity(reference, literal=literal) for reference in references)
 
 
 def _is_environment_name(name: str, *, literal: str | None) -> bool:

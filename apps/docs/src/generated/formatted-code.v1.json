@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "3a931cadfcf9adf20fc7eca0cd54916619b6ef63faf4a9da1fbd5ac068ee98dd",
-  "cliSha256": "ff779714e11f604cceb46541caf6fc9455fc233a1f44cb0e0a21ca273cdc164c",
+  "catalogSha256": "02915f9813ef7c42eb7bdfb1166d12ef99f83d8a0ecc2b8ce80b893643322979",
+  "cliSha256": "fe8324d990c19f9a008a82a4d43c94960383e63f03c4dbd55f21ccaa27df4f59",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -5152,6 +5152,21 @@
           "expectedCount": 1,
           "files": [
             {
+              "path": "main.tf",
+              "source": "locals {\n  selected = !contains([\"acme-dev:dev\"], \"${var.project}:${var.environment}\")\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "main.tf",
+          "id": "composed-environment-membership",
+          "outcome": "reject",
+          "scenarioId": "template-operand",
+          "title": "Composed deployment identity selects hard-coded policy"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
               "path": "sandbox.tf",
               "source": "resource \"google_storage_bucket\" \"cache\" {\n  count = var.environment == \"sandbox\" ? 1 : 0\n  name  = \"cache\"\n}\n"
             }
@@ -5177,6 +5192,21 @@
           "outcome": "accept",
           "scenarioId": "data-selection",
           "title": "Externally supplied map selects a value without hard-coded branches"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "main.tf",
+              "source": "locals { name = \"cache-${var.environment}\" }\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "main.tf",
+          "id": "environment-resource-name",
+          "outcome": "accept",
+          "scenarioId": "template-operand",
+          "title": "Environment interpolation only names a resource"
         },
         {
           "expectedCount": 1,
