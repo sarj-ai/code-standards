@@ -4,44 +4,44 @@ set -e
 package=$1
 format=$2
 case "$package" in
-bootstrap)
-  module=sarj_standards_bootstrap
-  cli=code-standards
-  ;;
-contracts)
-  module=sarj_rule_contracts
-  cli=
-  ;;
-python)
-  module=sarj_python_lint
-  cli=sarj-python-lint
-  ;;
-sql)
-  module=sarj_sql_lint
-  cli=sarj-sql-lint
-  ;;
-iac)
-  module=sarj_iac_lint
-  cli=sarj-iac-lint
-  ;;
-standards)
-  module=
-  cli=code-standards
-  ;;
-*) exit 64 ;;
+  bootstrap)
+    module=sarj_standards_bootstrap
+    cli=code-standards
+    ;;
+  contracts)
+    module=sarj_rule_contracts
+    cli=
+    ;;
+  python)
+    module=sarj_python_lint
+    cli=sarj-python-lint
+    ;;
+  sql)
+    module=sarj_sql_lint
+    cli=sarj-sql-lint
+    ;;
+  iac)
+    module=sarj_iac_lint
+    cli=sarj-iac-lint
+    ;;
+  standards)
+    module=
+    cli=code-standards
+    ;;
+  *) exit 64 ;;
 esac
 environment="$RUNNER_TEMP/$package-$format"
 uv venv --python "${STANDARDS_PYTHON:-3.15}" "$environment"
 case "$format" in
-wheel) uv pip install --python "$environment/bin/python" dist/*.whl ;;
-sdist)
-  if [[ "$package" == standards ]]; then
-    uv pip install --python "$environment/bin/python" --find-links dist/deps dist/*.tar.gz
-  else
-    uv pip install --python "$environment/bin/python" dist/*.tar.gz
-  fi
-  ;;
-*) exit 64 ;;
+  wheel) uv pip install --python "$environment/bin/python" dist/*.whl ;;
+  sdist)
+    if [[ "$package" == standards ]]; then
+      uv pip install --python "$environment/bin/python" --find-links dist/deps dist/*.tar.gz
+    else
+      uv pip install --python "$environment/bin/python" dist/*.tar.gz
+    fi
+    ;;
+  *) exit 64 ;;
 esac
 if [[ "$format" == wheel || "$package" == contracts ]]; then
   "$environment/bin/python" ../../.github/scripts/release-import-smoke.py "$module"

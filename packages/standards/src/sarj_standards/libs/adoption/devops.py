@@ -64,8 +64,9 @@ def _file_tools(path: Path, relative: str, selected: frozenset[str]) -> set[str]
 
 def _has_shell_input(path: Path, relative: str) -> bool:
     from sarj_standards.libs.linting.devops_programs import ProgramProjectionError, execution_blocks  # ruff: ignore[import-outside-top-level] -- reuse semantic config selection without parsing a shell program.
+    from sarj_standards.libs.linting.textlint import shell_dialect  # ruff: ignore[import-outside-top-level] -- runtime identity includes extensionless and Zsh entrypoints.
 
-    if path.suffix.lower() in {".sh", ".bash"}:
+    if shell_dialect(path) is not None:
         return True
     try:
         return any(block.source for block in execution_blocks(relative, path.read_text(encoding="utf-8")))

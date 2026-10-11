@@ -377,7 +377,7 @@ def _contains_skill_artifacts(directory: Path) -> bool:
     return False
 
 
-def format_commands(ecosystems: scaffold.Ecosystems) -> list[Command]:
+def format_commands(ecosystems: scaffold.Ecosystems, *, root: Path | None = None) -> list[Command]:
     commands: list[Command] = []
     if ecosystems.python_root is not None:
         for project in _python_verification_roots(ecosystems.python_root):
@@ -403,6 +403,8 @@ def format_commands(ecosystems: scaffold.Ecosystems) -> list[Command]:
                 ecosystems.typescript_root,
             )
         )
+    if root is not None:
+        commands.extend(shell_format_commands(root))
     return commands
 
 
@@ -423,7 +425,44 @@ def selected_format_commands(root: Path, paths: Iterable[str]) -> list[Command]:
             )
         )
     commands.extend(select_eslint_commands(repository, selected, label="selected", fix=True).commands)
+    commands.extend(shell_format_commands(repository, selected))
     return commands
+
+
+def shell_format_commands(root: Path, paths: Iterable[str] | None = None) -> list[Command]:
+    from sarj_standards.libs.linting import shell_format, textlint  # ruff: ignore[import-outside-top-level] -- only fix operations need shell source detection.
+    from sarj_standards.libs.linting.policy import Policy  # ruff: ignore[import-outside-top-level] -- reuse adoption path exclusions.
+
+    from . import doctor, manifest  # ruff: ignore[import-outside-top-level] -- shared source discovery avoids another tree walker.
+
+    adopted = manifest.load(root)
+    if adopted is not None and "shfmt" not in adopted.enabled_capabilities:
+        return []
+    policy = Policy.from_manifest(root, adopted)
+    selected = doctor.authored_files(root) if paths is None else tuple(Path(path) for path in paths)
+    shells = tuple(
+        str(path)
+        for path in selected
+        if policy.allows_path(path)
+        and policy.allows_rule(shell_format.format_diagnostic(path=policy.relative(path), source="", formatted=""))
+        and textlint.shell_dialect(path) is not None
+    )
+    if not shells:
+        return []
+    return [
+        Command(
+            "Shell format",
+            (
+                _environment_binary("python"),
+                "-m",
+                "sarj_standards.libs.linting.shell_format",
+                "--root",
+                str(root),
+                *shells,
+            ),
+            root,
+        )
+    ]
 
 
 def execute(commands: Iterable[Command]) -> int:

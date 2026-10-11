@@ -609,7 +609,7 @@ def test_explicit_repository_root_overrides_pull_request_change_scope(
     )
 
     assert cli.main(["--root", str(tmp_path), "check", *arguments]) == 0
-    assert selected == [(".",)]
+    assert selected == [None]
 
 
 def test_check_rejects_output_outside_repository_before_analysis(

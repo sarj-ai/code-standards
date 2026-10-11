@@ -35,7 +35,7 @@ def check(root: Path, *, tool: Literal["shellcheck", "shfmt"]) -> int:
             "--",
         )
         if tool == "shellcheck"
-        else ("-d", "-i", "2")
+        else ("-d", "-i", "2", "-ci")
     )
     try:
         result = run_process((str(_executable(tool, root)), *arguments, *files), cwd=root)

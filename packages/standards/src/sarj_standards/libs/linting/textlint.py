@@ -1130,17 +1130,16 @@ def is_text_path(path: Path) -> bool:
 
 
 def shell_dialect(path: Path) -> str | None:
-    if dialect := _SHELL_DIALECT_BY_SUFFIX.get(path.suffix.casefold()):
-        return dialect
-    if path.suffix:
-        return None
     try:
         with path.open("rb") as stream:
             first_line = stream.readline(256)
     except OSError:
+        return _SHELL_DIALECT_BY_SUFFIX.get(path.suffix.casefold())
+    if (match := _SHELL_SHEBANG_RE.match(first_line)) is not None:
+        return match.group("shell").decode("ascii")
+    if first_line.startswith(b"#!"):
         return None
-    match = _SHELL_SHEBANG_RE.match(first_line)
-    return None if match is None else match.group("shell").decode("ascii")
+    return _SHELL_DIALECT_BY_SUFFIX.get(path.suffix.casefold())
 
 
 def check_paths(
