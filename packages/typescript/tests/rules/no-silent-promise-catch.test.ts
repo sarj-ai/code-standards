@@ -1,7 +1,8 @@
 // vitest: shared-module-graph
 import * as tsParser from "@typescript-eslint/parser";
 import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
+import { z } from "zod";
 
 import rule, { NO_SILENT_PROMISE_CATCH_DOCUMENTATION } from "../../src/rules/no-silent-promise-catch.js";
 
@@ -11,6 +12,14 @@ RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
 RuleTester.it = it;
 RuleTester.itOnly = it.only;
+
+it("keeps native Zod URL and primitive coercion catch factories as schema fallbacks", () => {
+  expect(z.url().catch(() => "https://example.com").parse("invalid")).toBe("https://example.com");
+  expect(z.coerce.string().catch(() => "").parse(undefined)).toBe("undefined");
+  expect(z.coerce.number().catch(() => 0).parse("invalid")).toBe(0);
+  expect(z.coerce.boolean().catch(() => false).parse(null)).toBe(false);
+  expect(z.coerce.bigint().catch(() => 0n).parse("invalid")).toBe(0n);
+});
 
 const RULE_TESTER = new RuleTester({
   languageOptions: {
@@ -44,6 +53,10 @@ RULE_TESTER.run("no-silent-promise-catch", rule, {
     { name: "preserves Zod fallback factories", code: "import { z } from 'zod'; z.string().catch(() => '');" },
     { name: "preserves a bound Zod schema fallback", code: "import { z as schema } from 'zod'; const value = schema.number(); value.catch(() => 0);" },
     { name: "preserves namespace Zod schema fallback", code: "import * as z from 'zod'; z.array(z.string()).catch(() => []);" },
+    { name: "preserves imported Zod URL fallback factories", code: "import { z as schema } from 'zod/v4'; schema.url().catch(() => 'https://example.com');" },
+    { name: "preserves default and namespace Zod URL construction", code: "import schema from 'zod'; import * as namespace from 'zod'; schema.url().catch(() => ''); namespace.url().catch(() => '');" },
+    { name: "preserves primitive Zod coercion fallbacks", code: "import { z } from 'zod'; z.coerce.string().catch(() => ''); z.coerce.number().catch(() => 0); z.coerce.boolean().catch(() => false); z.coerce.bigint().catch(() => 0n);" },
+    { name: "preserves stable computed Zod coercion and schema aliases", code: "import { z } from 'zod'; const coerce = 'coerce'; const number = 'number'; const schema = z[coerce][number](); const alias = schema; alias.catch(() => 0);" },
     { name: "accepts the documented reported rejection", code: NO_SILENT_PROMISE_CATCH_DOCUMENTATION.examples[0].files[0].source },
     {
       name: "allows a cancelled optional web-share action",
@@ -204,6 +217,11 @@ RULE_TESTER.run("no-silent-promise-catch", rule, {
     { name: "does not exempt a shadowed Zod name", code: "import { z } from 'zod'; function run(z) { z.string().catch(() => null); }", errors: [{ messageId: "silentCatch" }] },
     { name: "does not exempt Zod async parsing rejections", code: "import { z } from 'zod'; z.string().parseAsync(input).catch(() => null);", errors: [{ messageId: "silentCatch" }] },
     { name: "does not exempt reassigned schema bindings", code: "import { z } from 'zod'; let value = z.string(); value = load(); value.catch(() => null);", errors: [{ messageId: "silentCatch" }] },
+    { name: "does not exempt URL factories from another module", code: "import { z } from 'other-schema'; z.url().catch(() => null);", errors: [{ messageId: "silentCatch" }] },
+    { name: "does not exempt shadowed Zod coercion receivers", code: "import { z } from 'zod'; function run(z) { z.coerce.number().catch(() => null); }", errors: [{ messageId: "silentCatch" }] },
+    { name: "does not exempt a local Promise factory with Zod-like names", code: "const z = { coerce: { number: () => Promise.reject(new Error('lost')) } }; z.coerce.number().catch(() => null);", errors: [{ messageId: "silentCatch" }] },
+    { name: "does not exempt reassigned coercion schemas", code: "import { z } from 'zod'; let schema = z.coerce.number(); schema = load(); schema.catch(() => null);", errors: [{ messageId: "silentCatch" }] },
+    { name: "does not exempt unknown coercion factories or async parsing", code: "import { z } from 'zod'; z.coerce.custom().catch(() => null); z.url().parseAsync(input).catch(() => null);", errors: [{ messageId: "silentCatch" }, { messageId: "silentCatch" }] },
     { name: "reports the documented silent rejection", code: NO_SILENT_PROMISE_CATCH_DOCUMENTATION.examples[1].files[0].source, errors: [{ messageId: "silentCatch" }] },
     {
       name: "reports a silent catch followed only by finally",

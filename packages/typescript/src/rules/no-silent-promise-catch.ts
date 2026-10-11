@@ -21,7 +21,7 @@ export const NO_SILENT_PROMISE_CATCH_DOCUMENTATION = {
   rationale: "A swallowed rejection hides failures and gives callers an indistinguishable fallback value.",
   remediation: "Log, rethrow, or explicitly recover from the rejection; explain intentional teardown suppression.",
   category: "correctness",
-  limitations: ["Test files, teardown calls, explanatory comments, non-function handlers, and handlers that consume or report the error are excluded.", "Recognized imported Zod construction chains and their stable local aliases are excluded. Other untyped catch-like APIs are not proven to be Promises.", "Computed methods resolve literal syntax and stable local string aliases in lexical scope. Function-derived, object-derived and mutated computed keys remain unproven."],
+  limitations: ["Test files, teardown calls, explanatory comments, non-function handlers, and handlers that consume or report the error are excluded.", "Recognized imported Zod construction chains and their stable local aliases are excluded, including URL schemas and primitive bigint, boolean, number and string coercion. Other untyped catch-like APIs are not proven to be Promises.", "Computed methods resolve literal syntax and stable local string aliases in lexical scope. Function-derived, object-derived and mutated computed keys remain unproven."],
   examples: [
     { id: "reported-rejection", title: "Report the rejection", outcome: "no-match", files: [{ path: "src/load.ts", source: "load().catch((error) => logger.error({ error }, 'load failed'));" }], focusPath: "src/load.ts", expectedCount: 0, public: true },
     { id: "silent-rejection", title: "Do not swallow the rejection", outcome: "match", files: [{ path: "src/load.ts", source: "load().catch(() => null);" }], focusPath: "src/load.ts", expectedCount: 1, public: true },
@@ -42,7 +42,7 @@ const BODY_PARSE_METHODS: ReadonlySet<string> = new Set([
 const ZOD_CONSTRUCTORS: ReadonlySet<string> = new Set([
   "any", "array", "bigint", "boolean", "custom", "date", "enum", "literal",
   "map", "never", "null", "number", "object", "record", "set", "string",
-  "tuple", "undefined", "union", "unknown",
+  "tuple", "undefined", "union", "unknown", "url",
 ]);
 const ZOD_CHAIN_METHODS: ReadonlySet<string> = new Set([
   "array", "catch", "default", "describe", "max", "min", "nullable", "nullish",
@@ -183,8 +183,10 @@ export default createRule<Options, MessageIds>({
           definition.node.init !== null && isZodSchema(definition.node.init, seen);
       }
       if (node.type !== AST_NODE_TYPES.CallExpression || unwrappedNodeCallee?.type !== AST_NODE_TYPES.MemberExpression) return false;
-      const { object } = unwrappedNodeCallee;
+      let { object } = unwrappedNodeCallee;
       const method = staticPropertyName(unwrappedNodeCallee, context.sourceCode);
+      if (object.type === AST_NODE_TYPES.MemberExpression && staticPropertyName(object, context.sourceCode) === "coerce" &&
+        method !== null && ["bigint", "boolean", "number", "string"].includes(method)) object = object.object;
       if (object.type === AST_NODE_TYPES.Identifier && method !== null && ZOD_CONSTRUCTORS.has(method)) {
         const binding = ASTUtils.findVariable(context.sourceCode.getScope(object), object.name);
         if (binding?.defs.some((definition) => {

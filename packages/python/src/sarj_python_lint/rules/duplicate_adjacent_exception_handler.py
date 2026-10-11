@@ -59,8 +59,8 @@ class DuplicateAdjacentExceptionHandler(ProjectRule):
         autofix=AutofixPolicy.NONE,
         limitations=(
             "Only ordinary try statements with adjacent handlers, identical exception bindings, executable ASTs and comments are compared; exception groups and bare re-raise/pass handlers are excluded.",
-            "Handler types must be simple names or tuples of unshadowed builtin or statically resolved first-party Exception subclasses, with unconditional stable declarations/imports.",
-            "Dynamic namespace access, unknown external exception classes, generated/vendor sources, different comments, and intervening handlers are excluded. No autofix preserves intentional translation seams.",
+            "Handler types must be simple names or tuples of unshadowed builtin or statically resolved first-party Exception subclasses, with stable declarations/imports initialized before the enclosing module statement. Declarations after a callable's definition are unresolved and excluded.",
+            "Dynamic or explicit builtin namespace access, unknown external exception classes, generated/vendor sources, different comments, and intervening handlers are excluded. Unseen external builtin mutations are not resolved. No autofix preserves intentional translation seams.",
         ),
         examples=tuple(
             RuleExample(
@@ -88,6 +88,8 @@ class DuplicateAdjacentExceptionHandler(ProjectRule):
         project = context.session.project or ProjectIndexSet.single(context.path, context.source)
         unit = project.unit_or_source(context.path, context.source, tree)
         provenance = ResourceProvenance(context)
+        if not provenance.builtin_namespace_untouched:
+            return []
         comments = scan_comments(context.source)
         findings: list[Diagnostic] = []
         for statement in context.nodes(ast.Try):
@@ -176,7 +178,11 @@ def _first_party_exception(
     from sarj_python_lint._file_context import PythonFileContext  # ruff: ignore[import-outside-top-level] -- defer until the rule registry finishes loading.
 
     binding = provenance.binding(expression.id, expression)
-    if not isinstance(binding, ast.ClassDef | ast.alias) or unit is None:
+    if (
+        not isinstance(binding, ast.ClassDef | ast.alias)
+        or unit is None
+        or not _initialized_before(binding, expression, context)
+    ):
         return False
     if isinstance(binding, ast.alias):
         statement = context.parents.get(binding)
@@ -200,6 +206,7 @@ def _first_party_exception(
     )
     return (
         declaration is not None
+        and definition_provenance.builtin_namespace_untouched
         and stable_class(definition_context, declaration, definition_provenance)
         and len(declaration.bases) == 1
         and _safe_types(
@@ -210,4 +217,17 @@ def _first_party_exception(
             owner,
             seen=seen | {summary.symbol},
         )
+    )
+
+
+def _initialized_before(binding: ast.ClassDef | ast.alias, read: ast.Name, context: PythonFileContext) -> bool:
+    declaration = context.parents.get(binding) if isinstance(binding, ast.alias) else binding
+    boundary: ast.AST = read
+    while (parent := context.parents.get(boundary)) is not None and parent is not context.tree:
+        boundary = parent
+    return (
+        isinstance(declaration, ast.stmt)
+        and context.parents.get(declaration) is context.tree
+        and isinstance(boundary, ast.stmt)
+        and (declaration.end_lineno or declaration.lineno) < boundary.lineno
     )
