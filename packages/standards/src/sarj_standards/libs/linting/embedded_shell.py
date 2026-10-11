@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
-from itertools import pairwise
 from pathlib import Path
 import re
 import shlex
@@ -44,6 +43,7 @@ class ShellBlock:
     block: ExecutionBlock
     source: str
     dialect: str
+    execution_options: frozenset[str] = frozenset[str]()
 
 
 def shell_block(block: ExecutionBlock) -> ShellBlock | None:
@@ -53,7 +53,7 @@ def shell_block(block: ExecutionBlock) -> ShellBlock | None:
         if invocation.kind != "shell" or invocation.payload is None:
             return None
         shell = Path(words[0]).name
-        return ShellBlock(block, invocation.payload, _SHELLS[shell])
+        return ShellBlock(block, invocation.payload, _SHELLS[shell], invocation.execution_options)
     words = unwrap_command(tuple(shlex.split(block.runtime_shell or block.interpreter)))
     if not words:
         message = "configuration execution interpreter is empty"
@@ -81,11 +81,11 @@ def _configured_shell_block(block: ExecutionBlock, words: tuple[str, ...], diale
             message = "configured shell command template cannot be proven to execute the authored script"
             raise ProgramProjectionError(message)
         owner = block if invocation.payload == block.source else replace(block, literal=None)
-        return ShellBlock(owner, invocation.payload, dialect)
+        return ShellBlock(owner, invocation.payload, dialect, invocation.execution_options)
     if invocation.kind != "external" or (block.context != "cloudbuild" and "{0}" not in words):
         message = "configured shell argv cannot be proven to execute the authored script"
         raise ProgramProjectionError(message)
-    return ShellBlock(block, block.source, dialect)
+    return ShellBlock(block, block.source, dialect, invocation.execution_options)
 
 
 def source_blocks(path: Path, root: Path, *, source: str | None = None) -> tuple[ShellBlock, ...]:
@@ -206,18 +206,8 @@ def _runtime_prefix(candidate: ShellBlock) -> str:
         return "set -e\nset -o pipefail\n"
     if candidate.block.context == "actions" and interpreter in {"shell", "sh"}:
         return "set -e\n"
-    words = unwrap_command(candidate.block.argv or tuple(shlex.split(interpreter)))
-    if candidate.source in words[1:]:
-        words = words[: words.index(candidate.source, 1)]
-    prefix = (
-        "set -e\n"
-        if any(word.startswith("-") and not word.startswith("--") and "e" in word[1:] for word in words[1:])
-        or any(left == "-o" and right == "errexit" for left, right in pairwise(words))
-        else ""
-    )
-    if "pipefail" in words:
-        prefix += "set -o pipefail\n"
-    return prefix
+    options = candidate.execution_options
+    return ("set -e\n" if "errexit" in options else "") + ("set -o pipefail\n" if "pipefail" in options else "")
 
 
 def _map_finding(finding: Diagnostic, block: ExecutionBlock, document: SourceDocument, prefix: int = 0) -> Diagnostic:
@@ -349,6 +339,7 @@ def _rewrite_source(root: Path, path: Path, source: str, executable: Path) -> st
             _checked_source(candidate), dialect=candidate.dialect, filename=relative, executable=executable, root=root
         )
         if fixable(candidate) and formatted.rstrip("\n") != candidate.source.rstrip("\n"):
+            shell_format.validate_format_fix(candidate.source, formatted, filename=relative)
             origin = candidate.block.literal
             if origin is None:
                 message = "fixable shell block has no verified literal location"
