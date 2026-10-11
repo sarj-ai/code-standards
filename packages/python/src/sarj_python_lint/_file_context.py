@@ -61,6 +61,12 @@ class PythonFileContext:
     def has_wildcard_import(self) -> bool:
         return any(alias.name == "*" for node in self.nodes(ast.ImportFrom) for alias in node.names)
 
+    @cached_property
+    def consumed_docstring_names(self) -> frozenset[str]:
+        from sarj_python_lint.rules._docstrings import consumed_docstring_names  # ruff: ignore[import-outside-top-level] -- share runtime docstring analysis only when requested.
+
+        return consumed_docstring_names(self._valid_tree(), node_index=self.node_index)
+
     @property
     def parents(self) -> Mapping[ast.AST, ast.AST]:
         return self.node_index.parents
