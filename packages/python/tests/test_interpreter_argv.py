@@ -191,6 +191,46 @@ def test_shell_stdin_source_arguments(argv: tuple[str, ...], expected: ProgramKi
     assert classify_interpreter(argv) == classify_interpreter(argv)
 
 
+@pytest.mark.parametrize(
+    ("argv", "options"),
+    [
+        pytest.param(("bash", "-e", "script.sh"), frozenset({"errexit"}), id="file-short-option"),
+        pytest.param(("bash", "-e", "+e", "script.sh"), frozenset[str](), id="short-disable-last"),
+        pytest.param(("bash", "+e", "-e", "script.sh"), frozenset({"errexit"}), id="short-enable-last"),
+        pytest.param(("bash", "-e", "+o", "errexit", "script.sh"), frozenset[str](), id="named-disable-last"),
+        pytest.param(("bash", "-o", "errexit", "+e", "script.sh"), frozenset[str](), id="mixed-short-disable"),
+        pytest.param(("bash", "--init-file", "-e", "script.sh"), frozenset[str](), id="option-operand"),
+        pytest.param(("bash", "script.sh", "-e", "pipefail"), frozenset[str](), id="file-argument-boundary"),
+        pytest.param(("bash", "--", "script.sh", "-e"), frozenset[str](), id="option-terminator"),
+        pytest.param(("bash", "-c", "printf done", "-e", "pipefail"), frozenset[str](), id="command-argument-boundary"),
+        pytest.param(("bash", "-ec", "printf done"), frozenset({"errexit"}), id="command-cluster"),
+        pytest.param(
+            ("bash", "-ceo", "pipefail", "printf done"), frozenset({"errexit", "pipefail"}), id="value-cluster"
+        ),
+        pytest.param(("bash", "-s", "-e", "--", "-e"), frozenset({"errexit"}), id="stdin-option"),
+        pytest.param(
+            ("bash", "-o", "pipefail", "+o", "pipefail", "-c", "printf done"),
+            frozenset[str](),
+            id="pipefail-disable-last",
+        ),
+        pytest.param(
+            ("bash", "+o", "pipefail", "-o", "pipefail", "-c", "printf done"),
+            frozenset({"pipefail"}),
+            id="pipefail-enable-last",
+        ),
+        pytest.param(
+            ("env", "MODE=test", "bash", "-e", "+e", "-c", "printf done"), frozenset[str](), id="wrapped-shell"
+        ),
+        pytest.param(("python3", "-c", "print(1)", "-e"), frozenset[str](), id="foreign-interpreter"),
+        pytest.param(("php", "-e", "script.php"), frozenset[str](), id="foreign-short-option"),
+    ],
+)
+def test_shell_execution_options_follow_proven_parser_boundaries(
+    argv: tuple[str, ...], options: frozenset[str]
+) -> None:
+    assert classify_interpreter(argv).execution_options == options
+
+
 @pytest.mark.parametrize("option", ["-oc", "-co"])
 def test_shell_cluster_values_preserve_source_and_forwarded_args(option: str) -> None:
     invocation = classify_interpreter(("bash", option, "posix", "python3 -c 1", "name", "scripts/data.py"))

@@ -418,6 +418,8 @@ _SHELL_DIALECT_BY_SUFFIX: Final = MappingProxyType(
 _SHELL_SHEBANG_RE: Final = re.compile(
     rb"^#!\s*(?:/usr/bin/env(?:\s+-S)?\s+|/(?:usr/)?bin/)(?P<shell>bash|busybox|dash|ksh|sh|zsh)(?:\s|$)"
 )
+_SHELL_HEADER_LIMIT: Final = 8192
+_SHELL_DIRECTIVE_RE: Final = re.compile(r"^#[ \t]*shellcheck[ \t]+shell=(?P<shell>bash|dash|ksh|sh)(?:[ \t]|$)")
 _LARGE_SHELL_SUBSTANTIVE_LINES: Final = 200
 _QUERY_TOKEN_RE: Final = re.compile(
     r"(?<![\w./-])(?:SELECT|INSERT|UPDATE|DELETE|WHERE|FROM|logQl)(?![\w./-])", re.IGNORECASE
@@ -1132,14 +1134,30 @@ def is_text_path(path: Path) -> bool:
 def shell_dialect(path: Path) -> str | None:
     try:
         with path.open("rb") as stream:
-            first_line = stream.readline(256)
+            header = stream.read(_SHELL_HEADER_LIMIT)
     except OSError:
         return _SHELL_DIALECT_BY_SUFFIX.get(path.suffix.casefold())
+    first_line = header.partition(b"\n")[0]
     if (match := _SHELL_SHEBANG_RE.match(first_line)) is not None:
         return match.group("shell").decode("ascii")
     if first_line.startswith(b"#!"):
         return None
+    if not path.suffix or path.suffix.casefold() in _SHELL_DIALECT_BY_SUFFIX:
+        for line in shell_header_comments(header.decode("utf-8", errors="replace")):
+            if (directive := _SHELL_DIRECTIVE_RE.match(line)) is not None:
+                return directive.group("shell")
     return _SHELL_DIALECT_BY_SUFFIX.get(path.suffix.casefold())
+
+
+def shell_header_comments(source: str) -> tuple[str, ...]:
+    comments: list[str] = []
+    for raw in source[:_SHELL_HEADER_LIMIT].splitlines():
+        line = raw.strip()
+        if line and not line.startswith("#"):
+            break
+        if line:
+            comments.append(line)
+    return tuple(comments)
 
 
 def check_paths(
