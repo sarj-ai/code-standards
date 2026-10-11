@@ -430,10 +430,10 @@ def selected_format_commands(root: Path, paths: Iterable[str]) -> list[Command]:
 
 
 def shell_format_commands(root: Path, paths: Iterable[str] | None = None) -> list[Command]:
-    from sarj_standards.libs.linting import shell_format, textlint  # ruff: ignore[import-outside-top-level] -- only fix operations need shell source detection.
+    from sarj_standards.libs.linting import shell_format  # ruff: ignore[import-outside-top-level] -- only fix operations need shell source detection.
     from sarj_standards.libs.linting.policy import Policy  # ruff: ignore[import-outside-top-level] -- reuse adoption path exclusions.
 
-    from . import doctor, manifest  # ruff: ignore[import-outside-top-level] -- shared source discovery avoids another tree walker.
+    from . import devops, doctor, manifest  # ruff: ignore[import-outside-top-level] -- shared source discovery avoids another tree walker.
 
     adopted = manifest.load(root)
     if adopted is not None and "shfmt" not in adopted.enabled_capabilities:
@@ -445,7 +445,7 @@ def shell_format_commands(root: Path, paths: Iterable[str] | None = None) -> lis
         for path in selected
         if policy.allows_path(path)
         and policy.allows_rule(shell_format.format_diagnostic(path=policy.relative(path), source="", formatted=""))
-        and textlint.shell_dialect(path) is not None
+        and devops.has_shell_input(path, policy.relative(path))
     )
     if not shells:
         return []

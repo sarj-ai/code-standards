@@ -155,9 +155,23 @@ def fix_sources(root: Path, paths: Sequence[str]) -> int:
 
 
 def _plan_fixes(root: Path, paths: Sequence[str]) -> list[tuple[Path, str, bytes]]:
+    from . import embedded_shell  # ruff: ignore[import-outside-top-level] -- embedded adapters reuse the canonical formatter without an import cycle.
+
+    adopted = manifest.load(root)
+    if adopted is not None and "shfmt" not in adopted.enabled_capabilities:
+        return []
+    policy = Policy.from_manifest(root, adopted)
     sources = _sources(root, paths)
     transaction.validate_targets(root, tuple(path for path, _source, _dialect in sources))
-    if not sources:
+    embedded = tuple(
+        raw
+        for raw in paths
+        if policy.allows_path(path := Path(raw) if Path(raw).is_absolute() else root / raw)
+        and policy.allows_rule(format_diagnostic(path=path.relative_to(root).as_posix(), source="", formatted=""))
+        and textlint.shell_dialect(path) is None
+        and embedded_shell.source_blocks(path, root)
+    )
+    if not sources and not embedded:
         return []
     executable = _executable(root)
     pending: list[tuple[Path, str, bytes]] = []
@@ -167,6 +181,7 @@ def _plan_fixes(root: Path, paths: Sequence[str]) -> list[tuple[Path, str, bytes
         )
         if source != formatted:
             pending.append((path, formatted, source.encode("utf-8")))
+    pending.extend(embedded_shell.plan_fixes(root, embedded, executable))
     return pending
 
 
