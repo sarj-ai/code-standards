@@ -117,8 +117,8 @@ def analyze_sources(*, root: Path, paths: Sequence[str], selected: frozenset[str
     reports: list[ToolReport] = []
     for raw in sorted(set(paths)):
         path = Path(raw)
-        path = path if path.is_absolute() else root / path
-        path.resolve().relative_to(root)
+        path = (path if path.is_absolute() else root / path).resolve()
+        path.relative_to(root)
         active = _selected_analyzers(root, path, selected, policy)
         if not active:
             continue
@@ -251,8 +251,14 @@ def _map_position(position: Position, block: ExecutionBlock, document: SourceDoc
         mapped = document.utf16_point(
             line=origin.line - 1 + position.line - prefix, character=origin.indent + position.character
         )
-        if mapped is not None:
-            return mapped
+        if mapped is not None and mapped.byte_offset is not None:
+            start = len(document.text[: origin.start].encode("utf-8", errors="surrogateescape"))
+            end = len(document.text[: origin.end].encode("utf-8", errors="surrogateescape"))
+            if mapped.byte_offset > end:
+                # Native EOF belongs to the scalar boundary, before the next YAML field.
+                return document.region(start_byte=end, end_byte=end).start
+            if mapped.byte_offset >= start:
+                return mapped
     fallback = document.point(line=block.line, column=1)
     if fallback is None:
         message = "execution block source position is outside the authored document"

@@ -60,6 +60,7 @@ type ProviderEngine = Literal[
     "devops",
     "eslint",
     "jscpd",
+    "knip",
     "ktlint",
     "mobsfscan",
     "react-doctor",
@@ -225,7 +226,12 @@ def build(root: Path) -> _CatalogArtifact:
     react_doctor = _react_doctor_projection(resolved, node)
     ruff_projection = _ruff_projection(resolved, ruff)
     deptry_projection = _deptry_projection(resolved, deptry)
-    supplemental = (_mobile_projections(resolved), _security_projections(), _duplicate_code_projection())
+    supplemental = (
+        _mobile_projections(resolved),
+        _security_projections(),
+        _duplicate_code_projection(),
+        _application_modules_projection(),
+    )
     rules = (
         *eslint.rules,
         *react_doctor.rules,
@@ -552,6 +558,32 @@ def _duplicate_code_projection() -> _ToolProjection:
         display_id=DisplayRuleId(duplicate_code.RULE),
         summary=f"Source block of at least {duplicate_code.MIN_TOKENS} tokens is repeated elsewhere in the repository.",
         docs_url="https://github.com/kucherenko/jscpd#readme",
+        family="maintainability",
+        autofix="none",
+        has_suggestions=False,
+        profiles=tuple(_Profile(name=name, contexts=(context,)) for name in ("application", "standard")),
+    )
+    return _ToolProjection((provider,), (rule,))
+
+
+def _application_modules_projection() -> _ToolProjection:
+    provider = _Provider(
+        id="knip",
+        label="Knip",
+        engine="knip",
+        package="knip",
+        version=TOOLS["knip"].version,
+        homepage="https://knip.dev/",
+        projection_scope="config-explicit",
+    )
+    context = _Context(id=ContextId("application-source"), label="Declared application source", level="warning")
+    rule = _Rule(
+        key="knip:files",
+        provider="knip",
+        id=RuleId("files"),
+        display_id=DisplayRuleId("files"),
+        summary="Opt-in production-mode evidence that an authored module has no configured application entry-point owner.",
+        docs_url="https://knip.dev/features/production-mode",
         family="maintainability",
         autofix="none",
         has_suggestions=False,

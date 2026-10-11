@@ -43,7 +43,7 @@ def test_integration_installer_failure_preserves_consumer_optouts_and_stops_befo
     monkeypatch.setenv("GITHUB_PATH", str(output))
     assert native_test_setup.setup(tmp_path) == 7
     command: object = json.loads(recorded.read_text())  # pyright: ignore[reportAny] -- JSON command recording boundary.
-    required = ("actionlint", "helm", "kube-linter", "kubeconform", "shellcheck", "shfmt")
+    required = ("actionlint", "helm", "knip", "kube-linter", "kubeconform", "shellcheck", "shfmt")
     assert command == [
         "--no-config",
         "--no-env",

@@ -6,7 +6,7 @@ from typing import Annotated
 
 import typer
 
-from sarj_standards.libs.adoption import devops, lifecycle
+from sarj_standards.libs.adoption import devops, lifecycle, manifest
 from sarj_standards.libs.linting.devops_tools import checked_tool
 
 
@@ -19,15 +19,16 @@ def main(root: Annotated[Path, typer.Option("--root")]) -> None:
 
 
 def setup(root: Path) -> int:
-    # This suite exercises native workflow/shell parsing and prepared Helm/Kubernetes
-    # artifacts regardless of the repository's consumer capability opt-outs.
+    # Native workflow/shell, prepared Helm/Kubernetes, and application graph tests
+    # exercise their tools regardless of the repository's consumer opt-outs.
     files = (root / ".github/workflows/ci.yml",)
-    commands = devops.install_commands(root, files, prepared=True)
+    capabilities = (*manifest.DEVOPS_ANALYZERS, "knip")
+    commands = devops.install_commands(root, files, capabilities=capabilities, prepared=True)
     status = lifecycle.execute(commands)
     if status:
         return status
     directories: set[Path] = set()
-    for name in devops.required_tools(root, files, prepared=True):
+    for name in devops.required_tools(root, files, capabilities=capabilities, prepared=True):
         tool = checked_tool(name, root=root)
         if tool.executable is None:
             message = f"installed {name} has no attested executable"

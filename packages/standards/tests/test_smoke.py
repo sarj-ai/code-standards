@@ -31,6 +31,8 @@ from sarj_standards._meta import (
     YAMLLINT_STRICT,
 )
 from sarj_standards.libs.adoption import manifest
+from sarj_standards.libs.diagnostics import Severity
+from sarj_standards.libs.linting.external import parse_basedpyright
 from sarj_standards.libs.repository import config_generation
 
 
@@ -442,6 +444,102 @@ def test_pyright_config_is_valid_jsonc() -> None:
     assert re.search(r'"reportExplicitAny"\s*:\s*"error"', based)
     assert re.search(r'"enableBasedFeatures"\s*:\s*false', based)
     assert '"allowedUntypedLibraries"' not in based
+
+
+def test_native_unused_helpers_preserve_test_and_framework_dispatch(tmp_path: Path) -> None:
+    tests = tmp_path / "tests"
+    tests.mkdir()
+    (tmp_path / "pyrightconfig.json").write_text(
+        json.dumps(
+            {
+                "typeCheckingMode": "basic",
+                "reportUnusedFunction": "none",
+                "executionEnvironments": [
+                    {"root": "tests", "reportUnusedFunction": "warning"},
+                    {"root": ".", "reportUnusedFunction": "warning"},
+                ],
+            }
+        )
+    )
+    source = tests / "test_behavior.py"
+    source.write_text(
+        "from collections.abc import Callable\n\n"
+        "def register(function: Callable[[], int]) -> Callable[[], int]:\n    return function\n\n"
+        "def _unused() -> int:\n    return 1\n\n"
+        "def _used() -> int:\n    return 2\n\n"
+        "@register\ndef _callback() -> int:\n    return 3\n\n"
+        "def test_result() -> None:\n    assert _used() == 2\n"
+    )
+    (tmp_path / "production.py").write_text("def _dispatch() -> int:\n    return 4\n")
+
+    proc = subprocess.run(
+        [sys.executable, "-m", "basedpyright", "--outputjson"],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    findings = parse_basedpyright(proc.stdout, root=tmp_path)
+
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert {(item.rule_id, item.severity, item.location.path) for item in findings} == {
+        ("reportUnusedFunction", Severity.WARNING, "tests/test_behavior.py"),
+        ("reportUnusedFunction", Severity.WARNING, "production.py"),
+    }
+    assert any("_unused" in item.message for item in findings)
+
+
+def test_native_fixture_audit_tracks_runtime_requests_and_exposes_incomplete_profile_evidence(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    assert importlib.metadata.version("pytest-unused-fixtures") == "0.3.1"
+    monkeypatch.setenv("PYTEST_DISABLE_PLUGIN_AUTOLOAD", "1")
+    (tmp_path / "pytest.ini").write_text("[pytest]\ntestpaths = tests\n")
+    (tmp_path / "conftest.py").write_text("import pytest\n@pytest.fixture\ndef root_support():\n    return True\n")
+    tests = tmp_path / "tests"
+    tests.mkdir()
+    (tests / "conftest.py").write_text(
+        "import pytest\n"
+        "@pytest.fixture\ndef _unrequested_private():\n    return True\n"
+        "@pytest.fixture\ndef skipped_support():\n    return True\n"
+        "@pytest.fixture(autouse=True)\ndef active_autouse():\n    yield\n"
+        "@pytest.fixture\ndef indirect_support(request):\n    return request.param\n"
+        "@pytest.fixture\ndef dynamic_support():\n    return 'requested'\n"
+        "@pytest.fixture\ndef marked_support():\n    return True\n"
+    )
+    (tests / "test_behavior.py").write_text(
+        "import pytest\n"
+        "@pytest.mark.usefixtures('marked_support')\n"
+        "@pytest.mark.parametrize('indirect_support', ['value'], indirect=True)\n"
+        "def test_runtime_requests(request, indirect_support):\n"
+        "    assert indirect_support == 'value'\n"
+        "    assert request.getfixturevalue('dynamic_support') == 'requested'\n"
+        "@pytest.mark.skip(reason='optional profile unavailable')\n"
+        "def test_optional_profile(skipped_support):\n    assert skipped_support\n"
+    )
+
+    proc = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            "-p",
+            "pytest_unused_fixtures",
+            "--unused-fixtures",
+            "-v",
+            "--unused-fixtures-context",
+            ".",
+        ],
+        capture_output=True,
+        text=True,
+        cwd=tmp_path,
+        check=False,
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    inactive = set(re.findall(r"^(\w+) -- (?:tests/)?conftest\.py:\d+$", proc.stdout, re.MULTILINE))
+    assert inactive == {"root_support", "_unrequested_private", "skipped_support"}
+    assert "1 passed, 1 skipped" in proc.stdout
 
 
 @pytest.mark.parametrize("config", [BASEDPYRIGHT_STRICT, BASEDPYRIGHT_PYTHON315_WATCH])

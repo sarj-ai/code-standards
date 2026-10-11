@@ -2965,6 +2965,78 @@ def test_basedpyright_preserves_project_diagnostic_without_range(tmp_path: Path)
     assert finding.location.region is None
 
 
+@pytest.mark.parametrize(
+    ("name", "source", "line", "severity", "completion"),
+    [
+        ("tests/helpers.py", "def _unused() -> int:\n    return 1\n", 0, Severity.WARNING, Completion.COMPLETE),
+        ("src/dispatch.py", "def _callback() -> int:\n    return 1\n", 0, Severity.ERROR, Completion.COMPLETE),
+        ("tests/helpers.py", "@fixture\ndef _resource() -> int:\n    return 1\n", 1, None, Completion.COMPLETE),
+        ("tests/helpers.py", "def public_helper() -> int:\n    return 1\n", 0, None, Completion.COMPLETE),
+        (
+            "tests/helpers.py",
+            "class Hook:\n    def __callback(self) -> int:\n        return 1\n",
+            1,
+            None,
+            Completion.COMPLETE,
+        ),
+        (
+            "tests/generated.py",
+            "# @generated; do not edit\ndef _unused() -> int:\n    return 1\n",
+            1,
+            None,
+            Completion.COMPLETE,
+        ),
+        ("tests/helpers.py", "def _unused() -> int:\n    return 1\ninvalid (\n", 0, None, Completion.PARTIAL),
+    ],
+    ids=[
+        "private-helper",
+        "production-config",
+        "decorated-fixture",
+        "public-contract",
+        "class-hook",
+        "generated",
+        "unknown-source",
+    ],
+)
+def test_unused_function_diagnostics_are_bounded_advisory_test_helpers(
+    tmp_path: Path, name: str, source: str, line: int, *, severity: Severity | None, completion: Completion
+) -> None:
+    path = tmp_path / name
+    path.parent.mkdir()
+    path.write_text(source)
+    payload = json.dumps(
+        {
+            "generalDiagnostics": [
+                {
+                    "file": str(path),
+                    "severity": "error",
+                    "message": "Function is not accessed",
+                    "rule": "reportUnusedFunction",
+                    "range": {"start": {"line": line, "character": 4}, "end": {"line": line, "character": 11}},
+                }
+            ]
+        }
+    )
+
+    def runner(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
+        assert argv == ("basedpyright", "--outputjson")
+        assert cwd == tmp_path
+        return ProcessOutput(1, payload, "")
+
+    reports = analyze_external(
+        (str(path),), root=tmp_path, trust=TrustMode.SAFE, runner=runner, capabilities=frozenset({"pyright"})
+    )
+    findings = tuple(item for report in reports for item in report.diagnostics)
+
+    assert all(report.completion is completion for report in reports)
+    assert len(findings) == int(severity is not None)
+    if severity is not None:
+        assert findings[0].severity is severity
+        assert findings[0].rule_id == "reportUnusedFunction"
+    if completion is Completion.PARTIAL:
+        assert reports[0].issues[0].kind == "helper-source-inconclusive"
+
+
 def test_basedpyright_accepts_range_ending_at_trailing_newline_eof(tmp_path: Path) -> None:
     source = tmp_path / "example.py"
     source.write_text("value = 1\n", encoding="utf-8")

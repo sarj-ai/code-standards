@@ -217,6 +217,7 @@ def test_wheel_tests_preserve_existing_distributions_and_use_fresh_local_wheels(
     wheel_tests.run_wheel_tests(tmp_path, jobs=jobs, pytest_args=("-k", "release"), runner=runner)
     assert existing.read_text() == "existing artifact"
     assert len([item for item in installed if item.endswith(".whl")]) == 5
+    assert "pytest-unused-fixtures==0.3.1" in installed
     assert all(str(existing) != item for item in installed)
     assert not test_paths[0].parent.parent.exists()
 

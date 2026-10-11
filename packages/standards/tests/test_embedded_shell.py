@@ -269,3 +269,25 @@ def test_cloudbuild_shebang_flags_preserve_script_coverage_and_literal_fixes(tmp
     assert any(item.rule_id == "SC2086" for report in reports for item in report.diagnostics)
     assert shell_format.fix_sources(tmp_path, (str(path),)) == 0
     assert "        echo $value\n" in path.read_text()
+
+
+def test_shell_syntax_eof_position_stays_within_the_literal(tmp_path: Path) -> None:
+    path = _path(tmp_path, ".github/workflows/checks.yml", _workflow("if true; then\n"))
+    [report] = embedded_shell.analyze_sources(root=tmp_path, paths=(str(path),), selected=frozenset({"shellcheck"}))
+    assert report.completion is Completion.COMPLETE
+    [finding] = [item for item in report.diagnostics if item.rule_id == "SC1072"]
+    assert finding.location.region is not None
+    assert finding.location.region.start.byte_offset == path.read_bytes().index(b"        name: checks")
+
+
+def test_projected_shell_analysis_accepts_a_root_directory_alias(tmp_path: Path) -> None:
+    target = tmp_path / "checkout"
+    target.mkdir()
+    alias = tmp_path / "alias"
+    alias.symlink_to(target, target_is_directory=True)
+    path = _path(alias, ".github/workflows/checks.yml", _workflow("echo $value\n"))
+    [report] = embedded_shell.analyze_sources(root=alias, paths=(str(path),), selected=frozenset({"shellcheck"}))
+    assert report.completion is Completion.COMPLETE
+    assert any(
+        item.rule_id == "SC2086" and item.location.path == ".github/workflows/checks.yml" for item in report.diagnostics
+    )
