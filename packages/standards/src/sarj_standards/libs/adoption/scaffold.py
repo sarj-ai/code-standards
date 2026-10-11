@@ -131,7 +131,20 @@ _SCHEMA_LESS_CONFIGS_START: Final = re.compile(r"^[ \t]*configs\s*=")
 _FIRST_TOML_TABLE: Final = re.compile(r"(?m)^\s*\[")
 _TOML_TABLE_HEADER: Final = re.compile(r"(?m)^\s*\[\[?(?P<name>[A-Za-z0-9_.-]+)\]\]?\s*(?:#.*)?$")
 _OWNED_MANIFEST_TABLES: Final = frozenset(
-    {"artifacts", "baseline", "capabilities", "ci", "dest", "devops", "doctor", "exclude", "hooks", "text", "verify"}
+    {
+        "artifacts",
+        "baseline",
+        "capabilities",
+        "ci",
+        "dest",
+        "devops",
+        "doctor",
+        "exclude",
+        "hooks",
+        "knip",
+        "text",
+        "verify",
+    }
 )
 _OWNED_MANIFEST_ROOT_KEYS: Final = frozenset({"schema", "bundle", "profile", "rule_profile", *_OWNED_MANIFEST_TABLES})
 _GRADLE_PROJECT_FILES: Final = ("build.gradle", "build.gradle.kts", "settings.gradle", "settings.gradle.kts")
@@ -1167,6 +1180,7 @@ def _desired_manifest(root: Path, plan: Plan, current: manifest.Manifest | None)
         prepared_targets=() if current is None else current.prepared_targets,
         compose_version=_new_compose_version(root) if current is None else current.compose_version,
         ci_runner=None if current is None else current.ci_runner,
+        knip_application=False if current is None else current.knip_application,
     )
 
 

@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import ast
 import contextlib
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import timedelta
 from enum import StrEnum
 from functools import partial
@@ -47,11 +48,11 @@ from sarj_standards.libs.typed_containers import is_object_list, is_object_mappi
 from sarj_standards.libs.yaml_boundary import parse_yaml
 
 from . import mobile_tools, security_tools
-from .runner import GroupedPaths, group_paths
+from .runner import GroupedPaths, accepts_hook_path, group_paths
 
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Callable, Sequence
     from typing import BinaryIO
 
     from .policy import Policy
@@ -115,6 +116,9 @@ _CGROUP_MEMORY_LIMIT_FILES: Final = (
 )
 _ESLINT_FORMATTER: Final = Path(__file__).parents[2] / "configs" / "eslint-compact-formatter.mjs"
 _ESLINT_SELECTED_RUNNER: Final = Path(__file__).parents[2] / "configs" / "eslint-selected-rules.mjs"
+_PYTHON_TEST_PATHS: Final = PathSpec.from_lines(
+    "gitignore", ("**/test/**", "**/tests/**", "**/test_*.py", "**/*_test.py", "**/conftest.py")
+)
 
 
 class _JsonToolReport(RootModel[dict[str, object]]):
@@ -419,7 +423,9 @@ def analyze_external(
             runner=execute,
         )
     )
-    reports.extend(_duplicate_code_reports(root, capabilities=capabilities, policy=policy, runner=execute))
+    reports.extend(
+        _quality_reports(root, capabilities=capabilities, policy=policy, trust=normalized_trust, runner=execute)
+    )
     if capabilities is None or "devops-schema" in capabilities:
         from .devops_schema import analyze_source_schemas  # ruff: ignore[import-outside-top-level] -- schema validation is a selected local runtime adapter.
 
@@ -578,22 +584,30 @@ def analyze_external(
     )
 
 
-def _duplicate_code_reports(
-    root: Path, *, capabilities: frozenset[str] | None, policy: Policy | None, runner: ProcessRunner
+def _quality_reports(
+    root: Path, *, capabilities: frozenset[str] | None, policy: Policy | None, trust: TrustMode, runner: ProcessRunner
 ) -> tuple[ToolReport, ...]:
-    if capabilities is None or "jscpd" not in capabilities:
+    if capabilities is None or capabilities.isdisjoint(manifest.QUALITY_ANALYZERS):
         return ()
-    from .duplicate_code import analyze_duplicates  # ruff: ignore[import-outside-top-level] -- the detector reuses the bounded runner defined in this module.
+    from .duplicate_code import analyze_duplicates  # ruff: ignore[import-outside-top-level] -- whole-tree adapters reuse this module's bounded runner.
+    from .unused_modules import analyze_application_modules  # ruff: ignore[import-outside-top-level] -- application ownership depends on the whole native production graph.
 
-    adopted = manifest.load(root)
-    # A copy is found by comparing it with unchanged code, so the scan ignores the changed-file selection.
-    report = analyze_duplicates(
-        root=root,
-        paths=(".",) if adopted is None else adopted.verify_paths,
-        allows_path=(lambda _path: True) if policy is None else policy.allows_path,
-        runner=runner,
-    )
-    return (report,)
+    allows_path: Callable[[str], bool] = (lambda _path: True) if policy is None else policy.allows_path
+    reports: list[ToolReport] = []
+    # Both adapters require unchanged source, so neither uses the changed-file selection.
+    if "jscpd" in capabilities:
+        adopted = manifest.load(root)
+        reports.append(
+            analyze_duplicates(
+                root=root,
+                paths=(".",) if adopted is None else adopted.verify_paths,
+                allows_path=allows_path,
+                runner=runner,
+            )
+        )
+    if "knip" in capabilities:
+        reports.append(analyze_application_modules(root=root, trust=trust, allows_path=allows_path, runner=runner))
+    return tuple(reports)
 
 
 def _security_reports(
@@ -1819,20 +1833,28 @@ def _invoke_python_projects(
             file_count=len(scoped_files),
         )
         selected = frozenset(_relative(Path(path), root) for path in scoped_files)
+        unused_helpers: dict[Path, frozenset[int] | None] = {}
+        diagnostics = tuple(
+            bounded
+            for diagnostic in report.diagnostics
+            if diagnostic.location.path in selected
+            and (bounded := _bounded_python_diagnostic(diagnostic, root=root, helpers=unused_helpers)) is not None
+        )
+        helper_issues = tuple(
+            ExecutionIssue(
+                name, "helper-source-inconclusive", f"Cannot bound unused helper evidence for {_relative(path, root)}"
+            )
+            for path, lines in unused_helpers.items()
+            if lines is None
+        )
         reports.append(
-            ToolReport(
-                report.name,
-                report.completion,
-                diagnostics=tuple(
-                    diagnostic for diagnostic in report.diagnostics if diagnostic.location.path in selected
-                ),
-                issues=report.issues,
-                analyzer_id=report.analyzer_id,
-                invocation_id=report.invocation_id,
-                version=report.version,
-                duration_ms=report.duration_ms,
-                file_count=report.file_count,
-                cache_status=report.cache_status,
+            replace(
+                report,
+                completion=Completion.PARTIAL
+                if helper_issues and report.completion is Completion.COMPLETE
+                else report.completion,
+                diagnostics=diagnostics,
+                issues=(*report.issues, *helper_issues),
             )
         )
     return tuple(reports)
@@ -2860,6 +2882,46 @@ def parse_basedpyright(payload: str, *, root: Path) -> tuple[Diagnostic, ...]:
             )
         )
     return tuple(diagnostics)
+
+
+def _bounded_python_diagnostic(
+    diagnostic: Diagnostic, *, root: Path, helpers: dict[Path, frozenset[int] | None]
+) -> Diagnostic | None:
+    if diagnostic.rule_id != "reportUnusedFunction":
+        return diagnostic
+    path = root / diagnostic.location.path
+    if not _PYTHON_TEST_PATHS.match_file(_relative(path, root)):
+        return diagnostic
+    region = diagnostic.location.region
+    if not accepts_hook_path(path, root=root):
+        return None
+    if region is None:
+        helpers[path] = None
+        return None
+    if path not in helpers:
+        helpers[path] = _private_helper_lines(path)
+    lines = helpers[path]
+    if lines is None or region.start.line + 1 not in lines:
+        return None
+    return replace(diagnostic, severity=Severity.WARNING)
+
+
+def _private_helper_lines(path: Path) -> frozenset[int] | None:
+    try:
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+    except OSError, UnicodeDecodeError, SyntaxError:
+        return None
+    # BasedPyright owns whether the function is unused. This only bounds its
+    # diagnostic to authored module-level helpers, preserving fixture, method,
+    # decorator, and production callback contracts.
+    return frozenset(
+        node.lineno
+        for node in tree.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and node.name.startswith("_")
+        and not node.name.endswith("__")
+        and not node.decorator_list
+    )
 
 
 def parse_shellcheck(payload: str, *, root: Path) -> tuple[Diagnostic, ...]:
