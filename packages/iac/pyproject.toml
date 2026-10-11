@@ -15,7 +15,7 @@ classifiers = [
   "Programming Language :: Python :: 3.14",
   "Topic :: Software Development :: Quality Assurance",
 ]
-dependencies = ["sarj-rule-contracts==0.2.2", "typer==0.27.2"]
+dependencies = ["sarj-rule-contracts==0.2.2", "typer==0.27.3"]
 
 [project.scripts]
 sarj-iac-lint = "sarj_iac_lint.__main__:main"
