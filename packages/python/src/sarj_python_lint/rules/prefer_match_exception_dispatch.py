@@ -177,7 +177,7 @@ class PreferMatchExceptionDispatch(Rule):
         imports = context.imports
         if (
             not imports.builtin_is_unshadowed("isinstance")
-            or _has_wildcard_import(tree, node_index=context.node_index)
+            or context.has_wildcard_import
             or _has_local_import(tree, node_index=context.node_index)
         ):
             return []
@@ -410,13 +410,6 @@ def _body_terminates(body: list[ast.stmt]) -> bool:
             return bool(else_body) and _body_terminates(if_body) and _body_terminates(else_body)
         case _:
             return False
-
-
-def _has_wildcard_import(tree: ast.Module, *, node_index: NodeIndex | None = None) -> bool:
-    return any(
-        isinstance(node, ast.ImportFrom) and any(alias.name == "*" for alias in node.names)
-        for node in walk_ast(tree, index=node_index)
-    )
 
 
 def _has_local_import(tree: ast.Module, *, node_index: NodeIndex | None = None) -> bool:

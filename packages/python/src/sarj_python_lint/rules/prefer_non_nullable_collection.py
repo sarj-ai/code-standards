@@ -23,7 +23,6 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
 
     from sarj_python_lint._file_context import PythonFileContext
-    from sarj_python_lint.rules._ast_index import NodeIndex
     from sarj_python_lint.rules._imports import ImportIndex
 
 
@@ -99,7 +98,7 @@ class PreferNonNullableCollection(Rule):
         if is_test_path(path) or is_test_support_path(path) or context.generated:
             return []
         tree = context.tree
-        if tree is None or _has_wildcard_import(tree, node_index=context.node_index):
+        if tree is None or context.has_wildcard_import:
             return []
 
         imports = context.imports
@@ -123,13 +122,6 @@ class PreferNonNullableCollection(Rule):
                 for argument in _collapsed_empty_parameters(function, imports)
             )
         return sorted(diagnostics, key=lambda diagnostic: (diagnostic.line, diagnostic.col))
-
-
-def _has_wildcard_import(tree: ast.Module, *, node_index: NodeIndex | None = None) -> bool:
-    return any(
-        isinstance(node, ast.ImportFrom) and any(alias.name == "*" for alias in node.names)
-        for node in walk_ast(tree, index=node_index)
-    )
 
 
 def _eligible_functions(tree: ast.Module, imports: ImportIndex) -> list[ast.FunctionDef | ast.AsyncFunctionDef]:

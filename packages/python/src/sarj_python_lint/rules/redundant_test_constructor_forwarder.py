@@ -61,7 +61,10 @@ class RedundantTestConstructorForwarder(ProjectRule):
                 example_id=name,
                 title=title,
                 outcome=outcome,
-                files=(ExampleFile.python("tests/test_record.py", source),),
+                files=(
+                    ExampleFile.python("tests/__init__.py", "# Example test package.\n"),
+                    ExampleFile.python("tests/test_record.py", source),
+                ),
                 focus_path=PurePosixPath("tests/test_record.py"),
                 expected_count=count,
                 public=True,

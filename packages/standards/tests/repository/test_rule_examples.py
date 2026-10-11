@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+from tempfile import TemporaryDirectory
 from typing import TYPE_CHECKING
 
 import pytest
+from sarj_rule_contracts import examples
 
 from sarj_standards.libs.repository import rule_examples
 from sarj_standards.libs.rules import RuleSelector
@@ -62,3 +64,22 @@ def test_native_verifier_routes_to_selected_installed_package(
     assert command[:3] == ("/installed/node", "--input-type=module", "--eval")
     assert command[-1] == str(selector.rule_id)
     assert cwd == tmp_path / "packages/typescript"
+
+
+def test_native_multifile_example_uses_canonical_temporary_workspace(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    storage = tmp_path / "storage"
+    storage.mkdir()
+    alias = tmp_path / "temporary-alias"
+    alias.symlink_to(storage, target_is_directory=True)
+
+    def temporary_directory(*, prefix: str) -> TemporaryDirectory[str]:
+        return TemporaryDirectory(prefix=prefix, dir=alias)
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- Intercept the runner's temporary-workspace factory; injecting a canonical root would bypass the alias boundary under test.
+        examples, "TemporaryDirectory", temporary_directory
+    )
+    selector = RuleSelector.parse("python:prefer-pytest-fixture-injection")
+    assert rule_examples.verify(tmp_path, selector) == 4
+    assert not list(storage.iterdir())

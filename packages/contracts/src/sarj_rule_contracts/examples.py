@@ -33,7 +33,7 @@ def verify_examples(examples: Sequence[RuleExample], analyze: ExampleAnalyzer) -
             msg = f"{example.example_id}: this analyzer has no fix adapter"
             raise ValueError(msg)
         with TemporaryDirectory(prefix="sarj-rule-example-") as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             (root / ".git").mkdir()
             for file in example.files:
                 path = root / file.path

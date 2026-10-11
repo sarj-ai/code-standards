@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from textwrap import dedent
 from typing import TYPE_CHECKING
 
 import pytest
+from sarj_rule_contracts import EvaluationCase, ExpectedOutcome, Language, RuleProblem
 
 from sarj_python_lint.rules.no_conftest_test_module_import import NoConftestTestModuleImport
 
@@ -81,3 +82,39 @@ def test_reports_test_modules_registered_as_pytest_plugins(source: str) -> None:
 
 def test_allows_dedicated_support_modules_registered_as_pytest_plugins() -> None:
     assert _check('pytest_plugins = ("tests.fixtures.database", "tests.support.api")') == []
+
+
+_PLUGIN_PROBLEM = RuleProblem(
+    key="literal-pytest-plugin-assignment-targets",
+    summary="Chained literal pytest_plugins assignments still register individual test modules.",
+    harm="Test-module plugin imports create the same collection cycles and ordering coupling as direct imports.",
+    languages=frozenset({Language.PYTHON}),
+    bad_examples=('pytest_plugins = shared = ("tests.test_api",)\n',),
+    good_examples=('pytest_plugins = shared = ("tests.support.api",)\n',),
+    exclusions=("Dynamic values and targets that do not directly bind pytest_plugins remain excluded.",),
+)
+_PLUGIN_CASES = tuple(
+    EvaluationCase(label, Language.PYTHON, source, expected, PurePosixPath("tests/conftest.py"))
+    for label, source, expected in (
+        ("plugin-first", 'pytest_plugins = shared = ("tests.test_api",)\n', ExpectedOutcome.MATCH),
+        ("plugin-last", 'shared = pytest_plugins = ["tests.test_api"]\n', ExpectedOutcome.MATCH),
+        ("repeated-target", 'pytest_plugins = pytest_plugins = "tests.test_api"\n', ExpectedOutcome.MATCH),
+        ("support-module", 'shared = pytest_plugins = ("tests.support.api",)\n', ExpectedOutcome.NO_MATCH),
+        ("dynamic-value", "pytest_plugins = shared = plugin_names\n", ExpectedOutcome.NO_MATCH),
+        ("attribute-target", 'config.pytest_plugins = shared = "tests.test_api"\n', ExpectedOutcome.NO_MATCH),
+        ("destructuring-target", '(pytest_plugins, other) = ("tests.test_api", None)\n', ExpectedOutcome.NO_MATCH),
+        (
+            "function-local",
+            'def configure():\n    pytest_plugins = shared = "tests.test_api"\n',
+            ExpectedOutcome.NO_MATCH,
+        ),
+    )
+)
+
+
+@pytest.mark.parametrize("case", _PLUGIN_CASES, ids=tuple(case.case_id for case in _PLUGIN_CASES))
+def test_labeled_plugin_assignment_cases(case: EvaluationCase) -> None:
+    assert case.language in _PLUGIN_PROBLEM.languages
+    findings = _check(case.source)
+    assert len(findings) == (1 if case.expected is ExpectedOutcome.MATCH else 0)
+    assert all(finding.code == "SARJ426" for finding in findings)

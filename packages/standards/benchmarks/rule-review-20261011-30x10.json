@@ -1,0 +1,3130 @@
+{
+  "schema": 1,
+  "date": "2026-10-11",
+  "initialAuthoringRevision": "d02e9cab698a9309efc709dc1f33dc82342d9945",
+  "integrationBase": "12359655b2adfd769bbd9e7a456fb98ff72aa14e",
+  "selection": {
+    "seed": 202610111630,
+    "method": "uniform random.sample: ten unique active Sarj-owned catalog rules per round, replacement between rounds",
+    "catalogSha256": "3a931cadfcf9adf20fc7eca0cd54916619b6ef63faf4a9da1fbd5ac068ee98dd",
+    "poolSize": 304,
+    "uniqueRules": 190
+  },
+  "shellPasses": [
+    {
+      "pass": 1,
+      "title": "Physical shell comment boundaries preserve literal separator data",
+      "decision": "correct-shared-header-boundary",
+      "evidence": {
+        "variants": [
+          {
+            "separator": "'\\x0b'",
+            "generated": false,
+            "dialect": "sh",
+            "nativeFormatAccepted": true
+          },
+          {
+            "separator": "'\\x0c'",
+            "generated": false,
+            "dialect": "sh",
+            "nativeFormatAccepted": true
+          },
+          {
+            "separator": "'\\r'",
+            "generated": false,
+            "dialect": "sh",
+            "nativeFormatAccepted": true
+          },
+          {
+            "separator": "'\\x85'",
+            "generated": false,
+            "dialect": "sh",
+            "nativeFormatAccepted": true
+          },
+          {
+            "separator": "'\\u2028'",
+            "generated": false,
+            "dialect": "sh",
+            "nativeFormatAccepted": true
+          },
+          {
+            "separator": "'\\u2029'",
+            "generated": false,
+            "dialect": "sh",
+            "nativeFormatAccepted": true
+          }
+        ],
+        "successful": true
+      }
+    },
+    {
+      "pass": 2,
+      "title": "Native first shell directive wins",
+      "decision": "retain-existing-owner",
+      "evidence": {
+        "dialect": "sh",
+        "expected": "sh",
+        "successful": true
+      }
+    },
+    {
+      "pass": 3,
+      "title": "Ordinary comment backslash does not continue the next directive",
+      "decision": "retain-existing-owner",
+      "evidence": {
+        "dialect": "bash",
+        "expected": "bash",
+        "successful": true
+      }
+    },
+    {
+      "pass": 4,
+      "title": "Bounded header does not read a distant annotation",
+      "decision": "retain-existing-owner",
+      "evidence": {
+        "dialect": "sh",
+        "expected": "sh",
+        "successful": true
+      }
+    },
+    {
+      "pass": 5,
+      "title": "Ambient ShellCheck options cannot change deterministic policy",
+      "decision": "retain-existing-owner",
+      "evidence": {
+        "successful": true,
+        "codes": [
+          "SC2086",
+          "SC2154"
+        ]
+      }
+    },
+    {
+      "pass": 6,
+      "title": "Explicit native ash basename remains supported as BusyBox dialect",
+      "decision": "retain-existing-owner",
+      "evidence": {
+        "successful": true,
+        "expected": "busybox",
+        "observed": "busybox"
+      }
+    },
+    {
+      "pass": 7,
+      "title": "Unsupported shell source remains a visible coverage failure",
+      "decision": "retain-existing-owner",
+      "evidence": {
+        "successful": true,
+        "expected": "zsh",
+        "observed": "zsh"
+      }
+    },
+    {
+      "pass": 8,
+      "title": "Header analysis pragma does not activate foreign interpreter source",
+      "decision": "retain-existing-owner",
+      "evidence": {
+        "successful": true,
+        "expected": null,
+        "observed": null
+      }
+    },
+    {
+      "pass": 9,
+      "title": "ANSI-C quoted tab data survives native formatting",
+      "decision": "retain-existing-owner",
+      "evidence": {
+        "successful": true
+      }
+    },
+    {
+      "pass": 10,
+      "title": "Quoted process substitution remains a native shell expression",
+      "decision": "retain-existing-owner",
+      "evidence": {
+        "successful": true
+      }
+    },
+    {
+      "pass": 11,
+      "title": "Here-string data survives native formatting",
+      "decision": "retain-existing-owner",
+      "evidence": {
+        "successful": true
+      }
+    },
+    {
+      "pass": 12,
+      "title": "Unquoted heredoc expansion survives native formatting",
+      "decision": "retain-existing-owner",
+      "evidence": {
+        "successful": true
+      }
+    },
+    {
+      "pass": 13,
+      "title": "Cached shell syntax trees do not share mutable result objects",
+      "decision": "retain-existing-owner",
+      "evidence": {
+        "successful": true
+      }
+    },
+    {
+      "pass": 14,
+      "title": "Custom Actions command template propagates shell options",
+      "decision": "retain-existing-owner",
+      "evidence": {
+        "observed": [
+          "complete"
+        ],
+        "successful": true
+      }
+    },
+    {
+      "pass": 15,
+      "title": "Foreign Actions interpreter skips shell analyzers",
+      "decision": "retain-existing-owner",
+      "evidence": {
+        "observed": [
+          "skipped"
+        ],
+        "successful": true
+      }
+    },
+    {
+      "pass": 16,
+      "title": "Invalid custom command payload fails analysis coverage",
+      "decision": "retain-existing-owner",
+      "evidence": {
+        "observed": [
+          "failed"
+        ],
+        "successful": true
+      }
+    },
+    {
+      "pass": 17,
+      "title": "Disabled Compose healthcheck remains inert",
+      "decision": "retain-existing-owner",
+      "evidence": {
+        "successful": true
+      }
+    },
+    {
+      "pass": 18,
+      "title": "Kubernetes argv projection preserves direct shell command",
+      "decision": "retain-existing-owner",
+      "evidence": {
+        "successful": true
+      }
+    },
+    {
+      "pass": 19,
+      "title": "Local exact-code directive remains effective with native execution prefix",
+      "decision": "retain-existing-owner",
+      "evidence": {
+        "successful": true
+      }
+    },
+    {
+      "pass": 20,
+      "title": "Shell diagnostic byte positions preserve Unicode comment data",
+      "decision": "retain-existing-owner",
+      "evidence": {
+        "successful": true
+      }
+    },
+    {
+      "pass": 21,
+      "title": "Check cd before acting on a relative directory",
+      "decision": "upstream-already-owns-invariant",
+      "evidence": {
+        "rule": "SC2164",
+        "positive": [
+          "SC2164"
+        ],
+        "negative": [],
+        "successful": true
+      }
+    },
+    {
+      "pass": 22,
+      "title": "Preserve literal backslashes when reading input",
+      "decision": "upstream-already-owns-invariant",
+      "evidence": {
+        "rule": "SC2162",
+        "positive": [
+          "SC2162"
+        ],
+        "negative": [],
+        "successful": true
+      }
+    },
+    {
+      "pass": 23,
+      "title": "Variable does not store shell quotation semantics",
+      "decision": "upstream-already-owns-invariant",
+      "evidence": {
+        "rule": "SC2089",
+        "positive": [
+          "SC2086",
+          "SC2089",
+          "SC2090"
+        ],
+        "negative": [],
+        "successful": true
+      }
+    },
+    {
+      "pass": 24,
+      "title": "Remote heredoc expansion belongs to remote runtime",
+      "decision": "upstream-already-owns-invariant",
+      "evidence": {
+        "rule": "SC2087",
+        "positive": [
+          "SC2087"
+        ],
+        "negative": [],
+        "successful": true
+      }
+    },
+    {
+      "pass": 25,
+      "title": "Prevent empty path interpolation during recursive removal",
+      "decision": "upstream-already-owns-invariant",
+      "evidence": {
+        "rule": "SC2115",
+        "positive": [
+          "SC2115",
+          "SC2154"
+        ],
+        "negative": [],
+        "successful": true
+      }
+    },
+    {
+      "pass": 26,
+      "title": "Keep last exit status attached to the tested command",
+      "decision": "upstream-already-owns-invariant",
+      "evidence": {
+        "rule": "SC2181",
+        "positive": [
+          "SC1010",
+          "SC2181"
+        ],
+        "negative": [
+          "SC1010"
+        ],
+        "successful": true
+      }
+    },
+    {
+      "pass": 27,
+      "title": "Append block once instead of opening the same file repeatedly",
+      "decision": "upstream-already-owns-invariant",
+      "evidence": {
+        "rule": "SC2129",
+        "positive": [
+          "SC2129"
+        ],
+        "negative": [],
+        "successful": true
+      }
+    },
+    {
+      "pass": 28,
+      "title": "Test numeric values with numeric comparison",
+      "decision": "upstream-already-owns-invariant",
+      "evidence": {
+        "rule": "SC2071",
+        "positive": [
+          "SC2071",
+          "SC2154"
+        ],
+        "negative": [
+          "SC2154"
+        ],
+        "successful": true
+      }
+    },
+    {
+      "pass": 29,
+      "title": "Avoid accidental pattern match in case glob",
+      "decision": "upstream-already-owns-invariant",
+      "evidence": {
+        "rule": "SC2221",
+        "positive": [
+          "SC2221",
+          "SC2222"
+        ],
+        "negative": [],
+        "successful": true
+      }
+    },
+    {
+      "pass": 30,
+      "title": "Pinned local corpora preserve native ownership and bounded process isolation",
+      "decision": "compare-native-corpus-baseline",
+      "evidence": {
+        "repositories": 18,
+        "files": 763,
+        "bytes": 2952141,
+        "shellFiles": 371,
+        "nativeBatches": 12,
+        "maxBatchFiles": 116,
+        "nativeFindings": {
+          "SC1083": 2,
+          "SC1091": 3,
+          "SC2010": 1,
+          "SC2012": 3,
+          "SC2015": 6,
+          "SC2016": 5,
+          "SC2034": 12,
+          "SC2046": 9,
+          "SC2086": 74,
+          "SC2088": 1,
+          "SC2115": 1,
+          "SC2148": 1,
+          "SC2154": 33,
+          "SC2155": 1,
+          "SC2162": 11,
+          "SC2164": 4,
+          "SC2166": 8,
+          "SC2196": 4,
+          "SC2310": 127,
+          "SC2311": 72,
+          "SC2312": 318,
+          "SC3045": 4
+        },
+        "formatCounts": {
+          "files": 369,
+          "failed": 1,
+          "findings": 210
+        },
+        "elapsedSeconds": 21.87595529202372,
+        "successful": true
+      }
+    }
+  ],
+  "randomRuleRounds": [
+    {
+      "round": 1,
+      "rules": [
+        {
+          "rule": "eslint:no-duplicate-lifecycle-refresh-listeners",
+          "source": "packages/typescript/src/rules/no-duplicate-lifecycle-refresh-listeners.ts",
+          "test": "packages/typescript/tests/rules/no-duplicate-lifecycle-refresh-listeners.test.ts",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:require-pydantic-for-structured-payload",
+          "source": "packages/python/src/sarj_python_lint/rules/require_pydantic_for_structured_payload.py",
+          "test": "packages/python/tests/rules/test_require_pydantic_for_structured_payload.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "eslint:prefer-shadcn-primitives",
+          "source": "packages/typescript/src/rules/prefer-shadcn-primitives.ts",
+          "test": "packages/typescript/tests/rules/prefer-shadcn-primitives.test.ts",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:duplicate-adjacent-exception-handler",
+          "source": "packages/python/src/sarj_python_lint/rules/duplicate_adjacent_exception_handler.py",
+          "test": "packages/python/tests/rules/test_duplicate_adjacent_exception_handler.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:no-conftest-test-module-import",
+          "source": "packages/python/src/sarj_python_lint/rules/no_conftest_test_module_import.py",
+          "test": "packages/python/tests/rules/test_no_conftest_test_module_import.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "expand existing literal-plugin owner to direct targets of chained assignments",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "sql:existing-table-check-or-foreign-key-requires-not-valid",
+          "source": "packages/sql/src/sarj_sql_lint/rules/add_constraint_requires_not_valid.py",
+          "test": "packages/sql/tests/rules/test_add_constraint_requires_not_valid.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "eslint:test-loops-over-literal-cases",
+          "source": "packages/typescript/src/rules/test-loops-over-literal-cases.ts",
+          "test": "packages/typescript/tests/rules/test-loops-over-literal-cases.test.ts",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:no-analytical-aggregation-in-postgres-store",
+          "source": "packages/python/src/sarj_python_lint/rules/no_analytical_aggregation_in_postgres_store.py",
+          "test": "packages/python/tests/rules/test_no_analytical_aggregation_in_postgres_store.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:stepdown",
+          "source": "packages/python/src/sarj_python_lint/rules/stepdown.py",
+          "test": "packages/python/tests/rules/test_stepdown.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:redundant-module-docstring",
+          "source": "packages/python/src/sarj_python_lint/rules/redundant_module_docstring.py",
+          "test": "packages/python/tests/rules/test_redundant_module_docstring.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        }
+      ]
+    },
+    {
+      "round": 2,
+      "rules": [
+        {
+          "rule": "iac:no-restated-comment",
+          "source": "packages/iac/src/sarj_iac_lint/rules/no_restated_comment.py",
+          "test": "packages/iac/tests/rules/test_no_restated_comment.py",
+          "verifiedDeclaredExamples": 6,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:no-duplicate-dunder-all-entry",
+          "source": "packages/python/src/sarj_python_lint/rules/no_duplicate_dunder_all_entry.py",
+          "test": "packages/python/tests/rules/test_no_duplicate_dunder_all_entry.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:no-provably-dead-mock-configuration",
+          "source": "packages/python/src/sarj_python_lint/rules/unused_mock_setup.py",
+          "test": "packages/python/tests/rules/test_unused_mock_setup.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:require-explicit-service-contract",
+          "source": "packages/python/src/sarj_python_lint/rules/require_explicit_service_contract.py",
+          "test": "packages/python/tests/rules/test_require_explicit_service_contract.py",
+          "verifiedDeclaredExamples": 3,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:prefer-pytest-fixture-injection",
+          "source": "packages/python/src/sarj_python_lint/rules/prefer_pytest_fixture_injection.py",
+          "test": "packages/python/tests/rules/test_prefer_pytest_fixture_injection.py",
+          "verifiedDeclaredExamples": 4,
+          "decision": "repair canonical temporary-workspace identity in the shared native example runner; preserve source resolver boundaries",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "eslint:no-insecure-random-id",
+          "source": "packages/typescript/src/rules/no-insecure-random-id.ts",
+          "test": "packages/typescript/tests/rules/no-insecure-random-id.test.ts",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "eslint:no-unlocalized-jsx-text",
+          "source": "packages/typescript/src/rules/no-unlocalized-jsx-text.ts",
+          "test": "packages/typescript/tests/rules/no-unlocalized-jsx-text.test.ts",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "text:no-wildcard-secret-read-permission",
+          "source": "packages/standards/src/sarj_standards/libs/linting/textlint.py",
+          "test": "packages/standards/tests/test_textlint.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "iac:no-dead-environment-input",
+          "source": "packages/iac/src/sarj_iac_lint/rules/no_dead_environment_input.py",
+          "test": "packages/iac/tests/rules/test_no_dead_environment_input.py",
+          "verifiedDeclaredExamples": 10,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:prefer-match-exception-dispatch",
+          "source": "packages/python/src/sarj_python_lint/rules/prefer_match_exception_dispatch.py",
+          "test": "packages/python/tests/rules/test_prefer_match_exception_dispatch.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "share cached wildcard-import fact",
+          "behaviorVerified": true
+        }
+      ]
+    },
+    {
+      "round": 3,
+      "rules": [
+        {
+          "rule": "python:over-mocked-test",
+          "source": "packages/python/src/sarj_python_lint/rules/over_mocked_test.py",
+          "test": "packages/python/tests/rules/test_over_mocked_test.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:fastapi-class-router-contract",
+          "source": "packages/python/src/sarj_python_lint/rules/fastapi_class_router_contract.py",
+          "test": "packages/python/tests/rules/test_fastapi_class_router_contract.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "eslint:no-repeated-string-literal",
+          "source": "packages/typescript/src/rules/no-repeated-string-literal.ts",
+          "test": "packages/typescript/tests/rules/no-repeated-string-literal.test.ts",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "eslint:require-sql-access-class",
+          "source": "packages/typescript/src/rules/require-sql-access-class.ts",
+          "test": "packages/typescript/tests/rules/require-sql-access-class.test.ts",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:prefer-monotonic-for-elapsed-time",
+          "source": "packages/python/src/sarj_python_lint/rules/prefer_monotonic_for_elapsed_time.py",
+          "test": "packages/python/tests/rules/test_prefer_monotonic_for_elapsed_time.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:no-raw-source-text-test-oracle",
+          "source": "packages/python/src/sarj_python_lint/rules/no_raw_source_text_test_oracle.py",
+          "test": "packages/python/tests/rules/test_no_raw_source_text_test_oracle.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "eslint:no-silent-promise-catch",
+          "source": "packages/typescript/src/rules/no-silent-promise-catch.ts",
+          "test": "packages/typescript/tests/rules/no-silent-promise-catch.test.ts",
+          "verifiedDeclaredExamples": 4,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:prefer-library-fake",
+          "source": "packages/python/src/sarj_python_lint/rules/prefer_library_fake.py",
+          "test": "packages/python/tests/rules/test_prefer_library_fake.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:prefer-monkeypatch-for-process-state-in-test",
+          "source": "packages/python/src/sarj_python_lint/rules/prefer_monkeypatch_for_process_state_in_test.py",
+          "test": "packages/python/tests/rules/test_prefer_monkeypatch_for_process_state_in_test.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "eslint:require-button-accessible-name",
+          "source": "packages/typescript/src/rules/require-button-accessible-name.ts",
+          "test": "packages/typescript/tests/rules/require-button-accessible-name.test.ts",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        }
+      ]
+    },
+    {
+      "round": 4,
+      "rules": [
+        {
+          "rule": "text:config-comment-wall",
+          "source": "packages/standards/src/sarj_standards/libs/linting/textlint.py",
+          "test": "packages/standards/tests/test_textlint.py",
+          "verifiedDeclaredExamples": 4,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "eslint:no-json-stringify-object-equality",
+          "source": "packages/typescript/src/rules/no-json-stringify-object-equality.ts",
+          "test": "packages/typescript/tests/rules/no-json-stringify-object-equality.test.ts",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:prefer-match-type-dispatch",
+          "source": "packages/python/src/sarj_python_lint/rules/prefer_match_type_dispatch.py",
+          "test": "packages/python/tests/rules/test_prefer_match_type_dispatch.py",
+          "verifiedDeclaredExamples": 6,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:prefer-self-type-annotation",
+          "source": "packages/python/src/sarj_python_lint/rules/prefer_self_type_annotation.py",
+          "test": "packages/python/tests/rules/test_prefer_self_type_annotation.py",
+          "verifiedDeclaredExamples": 4,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:no-service-behavior-in-settings",
+          "source": "packages/python/src/sarj_python_lint/rules/no_service_behavior_in_settings.py",
+          "test": "packages/python/tests/rules/test_no_service_behavior_in_settings.py",
+          "verifiedDeclaredExamples": 4,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "eslint:require-use-server-in-actions-file",
+          "source": "packages/typescript/src/rules/require-use-server-in-actions-file.ts",
+          "test": "packages/typescript/tests/rules/require-use-server-in-actions-file.test.ts",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:no-copied-inherited-docstring",
+          "source": "packages/python/src/sarj_python_lint/rules/no_copied_inherited_docstring.py",
+          "test": "packages/python/tests/rules/test_no_copied_inherited_docstring.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "sql:no-pg-enum",
+          "source": "packages/sql/src/sarj_sql_lint/rules/no_pg_enum.py",
+          "test": "packages/sql/tests/rules/test_no_pg_enum.py",
+          "verifiedDeclaredExamples": 4,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "sql:prefer-jsonb",
+          "source": "packages/sql/src/sarj_sql_lint/rules/prefer_jsonb.py",
+          "test": "packages/sql/tests/rules/test_prefer_jsonb.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:repeated-test-composition",
+          "source": "packages/python/src/sarj_python_lint/rules/repeated_test_composition.py",
+          "test": "packages/python/tests/rules/test_repeated_test_composition.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        }
+      ]
+    },
+    {
+      "round": 5,
+      "rules": [
+        {
+          "rule": "eslint:no-duplicate-lifecycle-refresh-listeners",
+          "source": "packages/typescript/src/rules/no-duplicate-lifecycle-refresh-listeners.ts",
+          "test": "packages/typescript/tests/rules/no-duplicate-lifecycle-refresh-listeners.test.ts",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "eslint:interface-contract-members-private",
+          "source": "packages/typescript/src/rules/interface-contract-members-private.ts",
+          "test": "packages/typescript/tests/rules/interface-contract-members-private.test.ts",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:no-offset-pagination",
+          "source": "packages/python/src/sarj_python_lint/rules/no_offset_pagination.py",
+          "test": "packages/python/tests/rules/test_no_offset_pagination.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:prefer-struct-over-namedtuple",
+          "source": "packages/python/src/sarj_python_lint/rules/prefer_struct_over_namedtuple.py",
+          "test": "packages/python/tests/rules/test_prefer_struct_over_namedtuple.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:no-whole-request-response-payload-in-log",
+          "source": "packages/python/src/sarj_python_lint/rules/no_whole_request_response_payload_in_log.py",
+          "test": "packages/python/tests/rules/test_no_whole_request_response_payload_in_log.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "sql:no-pg-enum",
+          "source": "packages/sql/src/sarj_sql_lint/rules/no_pg_enum.py",
+          "test": "packages/sql/tests/rules/test_no_pg_enum.py",
+          "verifiedDeclaredExamples": 4,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "text:workflow-embedded-program",
+          "source": "packages/standards/src/sarj_standards/libs/linting/textlint.py",
+          "test": "packages/standards/tests/test_textlint.py",
+          "verifiedDeclaredExamples": 12,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "eslint:prefer-shared-zod-enum",
+          "source": "packages/typescript/src/rules/prefer-shared-zod-enum.ts",
+          "test": "packages/typescript/tests/rules/prefer-shared-zod-enum.test.ts",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "text:declarative-deployment-boundary",
+          "source": "packages/standards/src/sarj_standards/libs/linting/textlint.py",
+          "test": "packages/standards/tests/test_textlint.py",
+          "verifiedDeclaredExamples": 8,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:pytest-fixture-returns-bare-tuple",
+          "source": "packages/python/src/sarj_python_lint/rules/pytest_fixture_returns_bare_tuple.py",
+          "test": "packages/python/tests/rules/test_pytest_fixture_returns_bare_tuple.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        }
+      ]
+    },
+    {
+      "round": 6,
+      "rules": [
+        {
+          "rule": "python:require-pydantic-ordinal-lower-bound",
+          "source": "packages/python/src/sarj_python_lint/rules/require_pydantic_ordinal_lower_bound.py",
+          "test": "packages/python/tests/rules/test_require_pydantic_ordinal_lower_bound.py",
+          "verifiedDeclaredExamples": 4,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "eslint:require-use-server-in-actions-file",
+          "source": "packages/typescript/src/rules/require-use-server-in-actions-file.ts",
+          "test": "packages/typescript/tests/rules/require-use-server-in-actions-file.test.ts",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:no-before-validator-input-mutation",
+          "source": "packages/python/src/sarj_python_lint/rules/no_before_validator_input_mutation.py",
+          "test": "packages/python/tests/rules/test_no_before_validator_input_mutation.py",
+          "verifiedDeclaredExamples": 4,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "iac:no-redundant-variable-validation",
+          "source": "packages/iac/src/sarj_iac_lint/rules/no_redundant_variable_validation.py",
+          "test": "packages/iac/tests/rules/test_no_redundant_variable_validation.py",
+          "verifiedDeclaredExamples": 4,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:redundant-test-constructor-forwarder",
+          "source": "packages/python/src/sarj_python_lint/rules/redundant_test_constructor_forwarder.py",
+          "test": "packages/python/tests/rules/test_redundant_test_constructor_forwarder.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "declare package identity in both native examples",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:prefer-set-isdisjoint",
+          "source": "packages/python/src/sarj_python_lint/rules/prefer_set_isdisjoint.py",
+          "test": "packages/python/tests/rules/test_prefer_set_isdisjoint.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "text:no-unsafe-command-argument-interpolation",
+          "source": "packages/standards/src/sarj_standards/libs/linting/textlint.py",
+          "test": "packages/standards/tests/test_textlint.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "eslint:no-comment-cruft",
+          "source": "packages/typescript/src/rules/no-comment-cruft.ts",
+          "test": "packages/typescript/tests/rules/no-comment-cruft.test.ts",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:no-repeated-test-body",
+          "source": "packages/python/src/sarj_python_lint/rules/no_repeated_test_body.py",
+          "test": "packages/python/tests/rules/test_no_repeated_test_body.py",
+          "verifiedDeclaredExamples": 4,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:no-swallowed-asyncio-cancellation",
+          "source": "packages/python/src/sarj_python_lint/rules/no_swallowed_asyncio_cancellation.py",
+          "test": "packages/python/tests/rules/test_no_swallowed_asyncio_cancellation.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        }
+      ]
+    },
+    {
+      "round": 7,
+      "rules": [
+        {
+          "rule": "sql:idempotent-ddl",
+          "source": "packages/sql/src/sarj_sql_lint/rules/idempotent_ddl.py",
+          "test": "packages/sql/tests/rules/test_idempotent_ddl.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:no-swallowed-asyncio-cancellation",
+          "source": "packages/python/src/sarj_python_lint/rules/no_swallowed_asyncio_cancellation.py",
+          "test": "packages/python/tests/rules/test_no_swallowed_asyncio_cancellation.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:prefer-constant-time-secret-compare",
+          "source": "packages/python/src/sarj_python_lint/rules/prefer_constant_time_secret_compare.py",
+          "test": "packages/python/tests/rules/test_prefer_constant_time_secret_compare.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "eslint:named-child-schema-type",
+          "source": "packages/typescript/src/rules/named-child-schema-type.ts",
+          "test": "packages/typescript/tests/rules/named-child-schema-type.test.ts",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:prefer-pydantic-json-value",
+          "source": "packages/python/src/sarj_python_lint/rules/prefer_pydantic_json_value.py",
+          "test": "packages/python/tests/rules/test_prefer_pydantic_json_value.py",
+          "verifiedDeclaredExamples": 4,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:prefer-library-fake",
+          "source": "packages/python/src/sarj_python_lint/rules/prefer_library_fake.py",
+          "test": "packages/python/tests/rules/test_prefer_library_fake.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "eslint:no-comment-cruft",
+          "source": "packages/typescript/src/rules/no-comment-cruft.ts",
+          "test": "packages/typescript/tests/rules/no-comment-cruft.test.ts",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "eslint:no-secret-in-log",
+          "source": "packages/typescript/src/rules/no-secret-in-log.ts",
+          "test": "packages/typescript/tests/rules/no-secret-in-log.test.ts",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:no-vague-suppression-description",
+          "source": "packages/python/src/sarj_python_lint/rules/no_vague_suppression_description.py",
+          "test": "packages/python/tests/rules/test_no_vague_suppression_description.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "sql:existing-table-check-or-foreign-key-requires-not-valid",
+          "source": "packages/sql/src/sarj_sql_lint/rules/add_constraint_requires_not_valid.py",
+          "test": "packages/sql/tests/rules/test_add_constraint_requires_not_valid.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        }
+      ]
+    },
+    {
+      "round": 8,
+      "rules": [
+        {
+          "rule": "python:no-fixed-sleep-before-assert",
+          "source": "packages/python/src/sarj_python_lint/rules/no_fixed_sleep_before_assert.py",
+          "test": "packages/python/tests/rules/test_no_fixed_sleep_before_assert.py",
+          "verifiedDeclaredExamples": 4,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:prefer-pytest-fixture-injection",
+          "source": "packages/python/src/sarj_python_lint/rules/prefer_pytest_fixture_injection.py",
+          "test": "packages/python/tests/rules/test_prefer_pytest_fixture_injection.py",
+          "verifiedDeclaredExamples": 4,
+          "decision": "repair canonical temporary-workspace identity in the shared native example runner; preserve source resolver boundaries",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:no-broad-keyword-capture",
+          "source": "packages/python/src/sarj_python_lint/rules/no_broad_keyword_capture.py",
+          "test": "packages/python/tests/rules/test_no_broad_keyword_capture.py",
+          "verifiedDeclaredExamples": 6,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:mock-without-spec",
+          "source": "packages/python/src/sarj_python_lint/rules/mock_without_spec.py",
+          "test": "packages/python/tests/rules/test_mock_without_spec.py",
+          "verifiedDeclaredExamples": 4,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "sql:no-migration-comment-cruft",
+          "source": "packages/sql/src/sarj_sql_lint/rules/no_comment_cruft.py",
+          "test": "packages/sql/tests/rules/test_no_comment_cruft.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "eslint:prefer-millisecond-control-duration-schema",
+          "source": "packages/typescript/src/rules/prefer-millisecond-control-duration-schema.ts",
+          "test": "packages/typescript/tests/rules/prefer-millisecond-control-duration-schema.test.ts",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:prefer-self-type-annotation",
+          "source": "packages/python/src/sarj_python_lint/rules/prefer_self_type_annotation.py",
+          "test": "packages/python/tests/rules/test_prefer_self_type_annotation.py",
+          "verifiedDeclaredExamples": 4,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "sql:no-offset-pagination",
+          "source": "packages/sql/src/sarj_sql_lint/rules/no_offset_pagination.py",
+          "test": "packages/sql/tests/rules/test_no_offset_pagination.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "text:iac-source-coupled-test",
+          "source": "packages/standards/src/sarj_standards/libs/linting/textlint.py",
+          "test": "packages/standards/tests/test_textlint.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:no-vague-suppression-description",
+          "source": "packages/python/src/sarj_python_lint/rules/no_vague_suppression_description.py",
+          "test": "packages/python/tests/rules/test_no_vague_suppression_description.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        }
+      ]
+    },
+    {
+      "round": 9,
+      "rules": [
+        {
+          "rule": "python:opaque-parametrize-case-needs-id",
+          "source": "packages/python/src/sarj_python_lint/rules/opaque_parametrize_case_needs_id.py",
+          "test": "packages/python/tests/rules/test_opaque_parametrize_case_needs_id.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "eslint:no-dynamic-sql",
+          "source": "packages/typescript/src/rules/no-dynamic-sql.ts",
+          "test": "packages/typescript/tests/rules/no-dynamic-sql.test.ts",
+          "verifiedDeclaredExamples": 4,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:no-frozen-after-validator-field-write",
+          "source": "packages/python/src/sarj_python_lint/rules/no_frozen_after_validator_field_write.py",
+          "test": "packages/python/tests/rules/test_no_frozen_after_validator_field_write.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:no-injected-module-loader",
+          "source": "packages/python/src/sarj_python_lint/rules/no_injected_module_loader.py",
+          "test": "packages/python/tests/rules/test_no_injected_module_loader.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:subprocess-kill-without-reap",
+          "source": "packages/python/src/sarj_python_lint/rules/subprocess_kill_without_reap.py",
+          "test": "packages/python/tests/rules/test_subprocess_kill_without_reap.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "eslint:iac-source-coupled-test",
+          "source": "packages/typescript/src/rules/iac-source-coupled-test.ts",
+          "test": "packages/typescript/tests/rules/iac-source-coupled-test.test.ts",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "eslint:no-enum",
+          "source": "packages/typescript/src/rules/no-enum.ts",
+          "test": "packages/typescript/tests/rules/no-enum.test.ts",
+          "verifiedDeclaredExamples": 4,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "eslint:no-unlocalized-jsx-attributes",
+          "source": "packages/typescript/src/rules/no-unlocalized-jsx-attributes.ts",
+          "test": "packages/typescript/tests/rules/no-unlocalized-jsx-attributes.test.ts",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:no-duplicate-dunder-all-entry",
+          "source": "packages/python/src/sarj_python_lint/rules/no_duplicate_dunder_all_entry.py",
+          "test": "packages/python/tests/rules/test_no_duplicate_dunder_all_entry.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:no-swallowed-asyncio-cancellation",
+          "source": "packages/python/src/sarj_python_lint/rules/no_swallowed_asyncio_cancellation.py",
+          "test": "packages/python/tests/rules/test_no_swallowed_asyncio_cancellation.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        }
+      ]
+    },
+    {
+      "round": 10,
+      "rules": [
+        {
+          "rule": "python:prefer-walrus-stream-loop",
+          "source": "packages/python/src/sarj_python_lint/rules/prefer_walrus_stream_loop.py",
+          "test": "packages/python/tests/rules/test_prefer_walrus_stream_loop.py",
+          "verifiedDeclaredExamples": 4,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:prefer-match-type-dispatch",
+          "source": "packages/python/src/sarj_python_lint/rules/prefer_match_type_dispatch.py",
+          "test": "packages/python/tests/rules/test_prefer_match_type_dispatch.py",
+          "verifiedDeclaredExamples": 6,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:require-public-dependency-contract",
+          "source": "packages/python/src/sarj_python_lint/rules/require_public_dependency_contract.py",
+          "test": "packages/python/tests/rules/test_require_public_dependency_contract.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "eslint:no-unlocalized-toast",
+          "source": "packages/typescript/src/rules/no-unlocalized-toast.ts",
+          "test": "packages/typescript/tests/rules/no-unlocalized-toast.test.ts",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "eslint:no-restated-comment",
+          "source": "packages/typescript/src/rules/no-restated-comment.ts",
+          "test": "packages/typescript/tests/rules/no-restated-comment.test.ts",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "iac:no-mocked-terraform-test-oracle",
+          "source": "packages/iac/src/sarj_iac_lint/rules/no_mocked_terraform_test_oracle.py",
+          "test": "packages/iac/tests/rules/test_no_mocked_terraform_test_oracle.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "eslint:prefer-module-level-schema",
+          "source": "packages/typescript/src/rules/prefer-module-level-schema.ts",
+          "test": "packages/typescript/tests/rules/prefer-module-level-schema.test.ts",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:no-analytical-aggregation-in-postgres-store",
+          "source": "packages/python/src/sarj_python_lint/rules/no_analytical_aggregation_in_postgres_store.py",
+          "test": "packages/python/tests/rules/test_no_analytical_aggregation_in_postgres_store.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:no-repeated-structured-string-literal",
+          "source": "packages/python/src/sarj_python_lint/rules/no_repeated_string_literal.py",
+          "test": "packages/python/tests/rules/test_no_repeated_string_literal.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "eslint:prefer-module-level-constant",
+          "source": "packages/typescript/src/rules/prefer-module-level-constant.ts",
+          "test": "packages/typescript/tests/rules/prefer-module-level-constant.test.ts",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        }
+      ]
+    },
+    {
+      "round": 11,
+      "rules": [
+        {
+          "rule": "eslint:prefer-non-nullable-collection",
+          "source": "packages/typescript/src/rules/prefer-non-nullable-collection.ts",
+          "test": "packages/typescript/tests/rules/prefer-non-nullable-collection.test.ts",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "iac:no-managed-service-account-key",
+          "source": "packages/iac/src/sarj_iac_lint/rules/no_managed_service_account_key.py",
+          "test": "packages/iac/tests/rules/test_no_managed_service_account_key.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:no-secret-in-log",
+          "source": "packages/python/src/sarj_python_lint/rules/no_secret_in_log.py",
+          "test": "packages/python/tests/rules/test_no_secret_in_log.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "eslint:no-unlocalized-jsx-text",
+          "source": "packages/typescript/src/rules/no-unlocalized-jsx-text.ts",
+          "test": "packages/typescript/tests/rules/no-unlocalized-jsx-text.test.ts",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "eslint:require-use-server-in-actions-file",
+          "source": "packages/typescript/src/rules/require-use-server-in-actions-file.ts",
+          "test": "packages/typescript/tests/rules/require-use-server-in-actions-file.test.ts",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "eslint:require-sql-access-class",
+          "source": "packages/typescript/src/rules/require-sql-access-class.ts",
+          "test": "packages/typescript/tests/rules/require-sql-access-class.test.ts",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:no-raw-connection-in-tests",
+          "source": "packages/python/src/sarj_python_lint/rules/no_raw_connection_in_tests.py",
+          "test": "packages/python/tests/rules/test_no_raw_connection_in_tests.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "eslint:no-sentinel-return-on-catch",
+          "source": "packages/typescript/src/rules/no-sentinel-return-on-catch.ts",
+          "test": "packages/typescript/tests/rules/no-sentinel-return-on-catch.test.ts",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:typed-error-reasons",
+          "source": "packages/python/src/sarj_python_lint/rules/typed_error_reasons.py",
+          "test": "packages/python/tests/rules/test_typed_error_reasons.py",
+          "verifiedDeclaredExamples": 6,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "eslint:no-comment-cruft",
+          "source": "packages/typescript/src/rules/no-comment-cruft.ts",
+          "test": "packages/typescript/tests/rules/no-comment-cruft.test.ts",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        }
+      ]
+    },
+    {
+      "round": 12,
+      "rules": [
+        {
+          "rule": "python:require-nodecode-for-splitting-settings-field",
+          "source": "packages/python/src/sarj_python_lint/rules/require_nodecode_for_splitting_settings_field.py",
+          "test": "packages/python/tests/rules/test_require_nodecode_for_splitting_settings_field.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "iac:no-environment-conditional",
+          "source": "packages/iac/src/sarj_iac_lint/rules/no_environment_conditional.py",
+          "test": "packages/iac/tests/rules/test_no_environment_conditional.py",
+          "verifiedDeclaredExamples": 8,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "eslint:no-enum",
+          "source": "packages/typescript/src/rules/no-enum.ts",
+          "test": "packages/typescript/tests/rules/no-enum.test.ts",
+          "verifiedDeclaredExamples": 4,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:defect-xfail-requires-explicit-strict",
+          "source": "packages/python/src/sarj_python_lint/rules/defect_xfail_requires_explicit_strict.py",
+          "test": "packages/python/tests/rules/test_defect_xfail_requires_explicit_strict.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:require-explicit-psycopg-transaction",
+          "source": "packages/python/src/sarj_python_lint/rules/require_explicit_psycopg_transaction.py",
+          "test": "packages/python/tests/rules/test_require_explicit_psycopg_transaction.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "eslint:enforce-file-structure",
+          "source": "packages/typescript/src/rules/enforce-file-structure.ts",
+          "test": "packages/typescript/tests/rules/enforce-file-structure.test.ts",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:no-repeated-unseeded-stdlib-random-in-test",
+          "source": "packages/python/src/sarj_python_lint/rules/uncontrolled_randomness_in_test.py",
+          "test": "packages/python/tests/rules/test_uncontrolled_randomness_in_test.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:no-fixed-sleep-before-assert",
+          "source": "packages/python/src/sarj_python_lint/rules/no_fixed_sleep_before_assert.py",
+          "test": "packages/python/tests/rules/test_no_fixed_sleep_before_assert.py",
+          "verifiedDeclaredExamples": 4,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:prefer-walrus-awaited-none-guard",
+          "source": "packages/python/src/sarj_python_lint/rules/prefer_walrus_awaited_none_guard.py",
+          "test": "packages/python/tests/rules/test_prefer_walrus_awaited_none_guard.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "eslint:prefer-non-nullable-collection",
+          "source": "packages/typescript/src/rules/prefer-non-nullable-collection.ts",
+          "test": "packages/typescript/tests/rules/prefer-non-nullable-collection.test.ts",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        }
+      ]
+    },
+    {
+      "round": 13,
+      "rules": [
+        {
+          "rule": "eslint:no-restricted-library-load",
+          "source": "packages/typescript/src/rules/no-restricted-library-load.ts",
+          "test": "packages/typescript/tests/rules/no-restricted-library-load.test.ts",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "eslint:no-insecure-random-id",
+          "source": "packages/typescript/src/rules/no-insecure-random-id.ts",
+          "test": "packages/typescript/tests/rules/no-insecure-random-id.test.ts",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:no-analytical-aggregation-in-postgres-store",
+          "source": "packages/python/src/sarj_python_lint/rules/no_analytical_aggregation_in_postgres_store.py",
+          "test": "packages/python/tests/rules/test_no_analytical_aggregation_in_postgres_store.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:repeated-test-composition",
+          "source": "packages/python/src/sarj_python_lint/rules/repeated_test_composition.py",
+          "test": "packages/python/tests/rules/test_repeated_test_composition.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "eslint:prefer-await-in-async-return",
+          "source": "packages/typescript/src/rules/prefer-await-in-async-return.ts",
+          "test": "packages/typescript/tests/rules/prefer-await-in-async-return.test.ts",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:prefer-or-pattern",
+          "source": "packages/python/src/sarj_python_lint/rules/prefer_or_pattern.py",
+          "test": "packages/python/tests/rules/test_prefer_or_pattern.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "eslint:no-reduce-accumulator-copy",
+          "source": "packages/typescript/src/rules/no-reduce-accumulator-copy.ts",
+          "test": "packages/typescript/tests/rules/no-reduce-accumulator-copy.test.ts",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "eslint:prefer-named-callback-domain",
+          "source": "packages/typescript/src/rules/prefer-named-callback-domain.ts",
+          "test": "packages/typescript/tests/rules/prefer-named-callback-domain.test.ts",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "eslint:require-explicit-service-contract",
+          "source": "packages/typescript/src/rules/require-explicit-service-contract.ts",
+          "test": "packages/typescript/tests/rules/require-explicit-service-contract.test.ts",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:no-positional-tuple-record",
+          "source": "packages/python/src/sarj_python_lint/rules/prefer_namedtuple_over_tuple_return.py",
+          "test": "packages/python/tests/rules/test_prefer_namedtuple_over_tuple_return.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "share cached wildcard-import fact",
+          "behaviorVerified": true
+        }
+      ]
+    },
+    {
+      "round": 14,
+      "rules": [
+        {
+          "rule": "text:workflow-embedded-program",
+          "source": "packages/standards/src/sarj_standards/libs/linting/textlint.py",
+          "test": "packages/standards/tests/test_textlint.py",
+          "verifiedDeclaredExamples": 12,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "eslint:no-select-star",
+          "source": "packages/typescript/src/rules/no-select-star.ts",
+          "test": "packages/typescript/tests/rules/no-select-star.test.ts",
+          "verifiedDeclaredExamples": 4,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "eslint:no-dangerously-allow-svg",
+          "source": "packages/typescript/src/rules/no-dangerously-allow-svg.ts",
+          "test": "packages/typescript/tests/rules/no-dangerously-allow-svg.test.ts",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:complex-postgres-query-requires-architecture-review",
+          "source": "packages/python/src/sarj_python_lint/rules/complex_postgres_query_requires_architecture_review.py",
+          "test": "packages/python/tests/rules/test_complex_postgres_query_requires_architecture_review.py",
+          "verifiedDeclaredExamples": 4,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "text:config-comment-wall",
+          "source": "packages/standards/src/sarj_standards/libs/linting/textlint.py",
+          "test": "packages/standards/tests/test_textlint.py",
+          "verifiedDeclaredExamples": 4,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "eslint:prefer-zod-infer",
+          "source": "packages/typescript/src/rules/prefer-zod-infer.ts",
+          "test": "packages/typescript/tests/rules/prefer-zod-infer.test.ts",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "eslint:no-known-value-widening",
+          "source": "packages/typescript/src/rules/no-known-value-widening.ts",
+          "test": "packages/typescript/tests/rules/no-known-value-widening.test.ts",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "eslint:no-trailing-value-narration",
+          "source": "packages/typescript/src/rules/no-trailing-value-narration.ts",
+          "test": "packages/typescript/tests/rules/no-trailing-value-narration.test.ts",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:no-injected-module-loader",
+          "source": "packages/python/src/sarj_python_lint/rules/no_injected_module_loader.py",
+          "test": "packages/python/tests/rules/test_no_injected_module_loader.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "eslint:require-use-form-default-values",
+          "source": "packages/typescript/src/rules/require-use-form-default-values.ts",
+          "test": "packages/typescript/tests/rules/require-use-form-default-values.test.ts",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        }
+      ]
+    },
+    {
+      "round": 15,
+      "rules": [
+        {
+          "rule": "text:exact-config-comment-restatement",
+          "source": "packages/standards/src/sarj_standards/libs/linting/textlint.py",
+          "test": "packages/standards/tests/test_textlint.py",
+          "verifiedDeclaredExamples": 4,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "eslint:prefer-shadcn-primitives",
+          "source": "packages/typescript/src/rules/prefer-shadcn-primitives.ts",
+          "test": "packages/typescript/tests/rules/prefer-shadcn-primitives.test.ts",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "eslint:require-interface-for-exported-class",
+          "source": "packages/typescript/src/rules/require-interface-for-exported-class.ts",
+          "test": "packages/typescript/tests/rules/require-interface-for-exported-class.test.ts",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:no-select-star",
+          "source": "packages/python/src/sarj_python_lint/rules/no_select_star.py",
+          "test": "packages/python/tests/rules/test_no_select_star.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:prefer-self-type-annotation",
+          "source": "packages/python/src/sarj_python_lint/rules/prefer_self_type_annotation.py",
+          "test": "packages/python/tests/rules/test_prefer_self_type_annotation.py",
+          "verifiedDeclaredExamples": 4,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "sql:prefer-text-over-varchar",
+          "source": "packages/sql/src/sarj_sql_lint/rules/prefer_text_over_varchar.py",
+          "test": "packages/sql/tests/rules/test_prefer_text_over_varchar.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "eslint:no-restricted-library-load",
+          "source": "packages/typescript/src/rules/no-restricted-library-load.ts",
+          "test": "packages/typescript/tests/rules/no-restricted-library-load.test.ts",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "eslint:no-zod-native-enum",
+          "source": "packages/typescript/src/rules/no-zod-native-enum.ts",
+          "test": "packages/typescript/tests/rules/no-zod-native-enum.test.ts",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "eslint:no-storage-in-stateless-modules",
+          "source": "packages/typescript/src/rules/no-storage-in-stateless-modules.ts",
+          "test": "packages/typescript/tests/rules/no-storage-in-stateless-modules.test.ts",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:prefer-match-value-dispatch",
+          "source": "packages/python/src/sarj_python_lint/rules/prefer_match_value_dispatch.py",
+          "test": "packages/python/tests/rules/test_prefer_match_value_dispatch.py",
+          "verifiedDeclaredExamples": 4,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        }
+      ]
+    },
+    {
+      "round": 16,
+      "rules": [
+        {
+          "rule": "iac:no-managed-service-account-key",
+          "source": "packages/iac/src/sarj_iac_lint/rules/no_managed_service_account_key.py",
+          "test": "packages/iac/tests/rules/test_no_managed_service_account_key.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:prefer-walrus-comprehension-filter",
+          "source": "packages/python/src/sarj_python_lint/rules/prefer_walrus_comprehension_filter.py",
+          "test": "packages/python/tests/rules/test_prefer_walrus_comprehension_filter.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:no-unused-underscored-keyword-parameter",
+          "source": "packages/python/src/sarj_python_lint/rules/no_unused_underscored_keyword_parameter.py",
+          "test": "packages/python/tests/rules/test_no_unused_underscored_keyword_parameter.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "eslint:require-port-for-service",
+          "source": "packages/typescript/src/rules/require-port-for-service.ts",
+          "test": "packages/typescript/tests/rules/require-port-for-service.test.ts",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "eslint:no-storage-in-stateless-modules",
+          "source": "packages/typescript/src/rules/no-storage-in-stateless-modules.ts",
+          "test": "packages/typescript/tests/rules/no-storage-in-stateless-modules.test.ts",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:no-shallow-container-type-guard",
+          "source": "packages/python/src/sarj_python_lint/rules/no_shallow_container_type_guard.py",
+          "test": "packages/python/tests/rules/test_no_shallow_container_type_guard.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "eslint:no-insecure-random-id",
+          "source": "packages/typescript/src/rules/no-insecure-random-id.ts",
+          "test": "packages/typescript/tests/rules/no-insecure-random-id.test.ts",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "eslint:prefer-named-complex-return-type",
+          "source": "packages/typescript/src/rules/prefer-named-complex-return-type.ts",
+          "test": "packages/typescript/tests/rules/prefer-named-complex-return-type.test.ts",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:require-nodecode-for-splitting-settings-field",
+          "source": "packages/python/src/sarj_python_lint/rules/require_nodecode_for_splitting_settings_field.py",
+          "test": "packages/python/tests/rules/test_require_nodecode_for_splitting_settings_field.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "eslint:no-client-side-data-fetching",
+          "source": "packages/typescript/src/rules/no-client-side-data-fetching.ts",
+          "test": "packages/typescript/tests/rules/no-client-side-data-fetching.test.ts",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        }
+      ]
+    },
+    {
+      "round": 17,
+      "rules": [
+        {
+          "rule": "python:no-psycopg-execution-outside-injected-owner",
+          "source": "packages/python/src/sarj_python_lint/rules/no_psycopg_execution_outside_injected_owner.py",
+          "test": "packages/python/tests/rules/test_no_psycopg_execution_outside_injected_owner.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "eslint:prefer-constant-time-secret-compare",
+          "source": "packages/typescript/src/rules/prefer-constant-time-secret-compare.ts",
+          "test": "packages/typescript/tests/rules/prefer-constant-time-secret-compare.test.ts",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:complex-postgres-query-requires-architecture-review",
+          "source": "packages/python/src/sarj_python_lint/rules/complex_postgres_query_requires_architecture_review.py",
+          "test": "packages/python/tests/rules/test_complex_postgres_query_requires_architecture_review.py",
+          "verifiedDeclaredExamples": 4,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:no-unique-violation-message-match",
+          "source": "packages/python/src/sarj_python_lint/rules/no_unique_violation_message_match.py",
+          "test": "packages/python/tests/rules/test_no_unique_violation_message_match.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "eslint:no-restated-comment",
+          "source": "packages/typescript/src/rules/no-restated-comment.ts",
+          "test": "packages/typescript/tests/rules/no-restated-comment.test.ts",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:no-comment-cruft",
+          "source": "packages/python/src/sarj_python_lint/rules/no_comment_cruft.py",
+          "test": "packages/python/tests/rules/test_no_comment_cruft.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:no-redundant-module-alias-exports",
+          "source": "packages/python/src/sarj_python_lint/rules/no_redundant_module_alias_exports.py",
+          "test": "packages/python/tests/rules/test_no_redundant_module_alias_exports.py",
+          "verifiedDeclaredExamples": 6,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:prefer-pytest-fixture-injection",
+          "source": "packages/python/src/sarj_python_lint/rules/prefer_pytest_fixture_injection.py",
+          "test": "packages/python/tests/rules/test_prefer_pytest_fixture_injection.py",
+          "verifiedDeclaredExamples": 4,
+          "decision": "repair canonical temporary-workspace identity in the shared native example runner; preserve source resolver boundaries",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:prefer-autospec-for-callable-mock",
+          "source": "packages/python/src/sarj_python_lint/rules/prefer_autospec_for_callable_mock.py",
+          "test": "packages/python/tests/rules/test_prefer_autospec_for_callable_mock.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "text:large-shell-program",
+          "source": "packages/standards/src/sarj_standards/libs/linting/textlint.py",
+          "test": "packages/standards/tests/test_textlint.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        }
+      ]
+    },
+    {
+      "round": 18,
+      "rules": [
+        {
+          "rule": "sql:mixed-migration-phases",
+          "source": "packages/sql/src/sarj_sql_lint/rules/mixed_migration_phases.py",
+          "test": "packages/sql/tests/rules/test_mixed_migration_phases.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:negative-only-http-status-assertion",
+          "source": "packages/python/src/sarj_python_lint/rules/negative_only_http_status_assertion.py",
+          "test": "packages/python/tests/rules/test_negative_only_http_status_assertion.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "text:large-shell-program",
+          "source": "packages/standards/src/sarj_standards/libs/linting/textlint.py",
+          "test": "packages/standards/tests/test_textlint.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:no-first-party-private-import",
+          "source": "packages/python/src/sarj_python_lint/rules/no_first_party_private_import.py",
+          "test": "packages/python/tests/rules/test_no_first_party_private_import.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:no-secret-in-log",
+          "source": "packages/python/src/sarj_python_lint/rules/no_secret_in_log.py",
+          "test": "packages/python/tests/rules/test_no_secret_in_log.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "text:no-wildcard-secret-read-permission",
+          "source": "packages/standards/src/sarj_standards/libs/linting/textlint.py",
+          "test": "packages/standards/tests/test_textlint.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:require-port-for-service",
+          "source": "packages/python/src/sarj_python_lint/rules/require_port_for_service.py",
+          "test": "packages/python/tests/rules/test_require_port_for_service.py",
+          "verifiedDeclaredExamples": 4,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "eslint:no-string-concat-in-loop",
+          "source": "packages/typescript/src/rules/no-string-concat-in-loop.ts",
+          "test": "packages/typescript/tests/rules/no-string-concat-in-loop.test.ts",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "eslint:no-production-browser-source-maps",
+          "source": "packages/typescript/src/rules/no-production-browser-source-maps.ts",
+          "test": "packages/typescript/tests/rules/no-production-browser-source-maps.test.ts",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:prefer-fstring-over-concat",
+          "source": "packages/python/src/sarj_python_lint/rules/prefer_fstring_over_concat.py",
+          "test": "packages/python/tests/rules/test_prefer_fstring_over_concat.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        }
+      ]
+    },
+    {
+      "round": 19,
+      "rules": [
+        {
+          "rule": "text:workflow-embedded-program",
+          "source": "packages/standards/src/sarj_standards/libs/linting/textlint.py",
+          "test": "packages/standards/tests/test_textlint.py",
+          "verifiedDeclaredExamples": 12,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "eslint:no-trailing-value-narration",
+          "source": "packages/typescript/src/rules/no-trailing-value-narration.ts",
+          "test": "packages/typescript/tests/rules/no-trailing-value-narration.test.ts",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:no-docstring-type-restatement",
+          "source": "packages/python/src/sarj_python_lint/rules/no_typed_doc_sections.py",
+          "test": "packages/python/tests/rules/test_no_typed_doc_sections.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:no-bare-test-phase-comments",
+          "source": "packages/python/src/sarj_python_lint/rules/phase_label_comment.py",
+          "test": "packages/python/tests/rules/test_phase_label_comment.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:prefer-nominal-id-types",
+          "source": "packages/python/src/sarj_python_lint/rules/prefer_nominal_id_types.py",
+          "test": "packages/python/tests/rules/test_prefer_nominal_id_types.py",
+          "verifiedDeclaredExamples": 4,
+          "decision": "share cached wildcard-import fact",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:no-trailing-numeric-unit-assignment-comment",
+          "source": "packages/python/src/sarj_python_lint/rules/trailing_value_narration.py",
+          "test": "packages/python/tests/rules/test_trailing_value_narration.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "eslint:require-zod-form-validation",
+          "source": "packages/typescript/src/rules/require-zod-form-validation.ts",
+          "test": "packages/typescript/tests/rules/require-zod-form-validation.test.ts",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "eslint:no-json-stringify-object-equality",
+          "source": "packages/typescript/src/rules/no-json-stringify-object-equality.ts",
+          "test": "packages/typescript/tests/rules/no-json-stringify-object-equality.test.ts",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:prefer-pydantic-json-value",
+          "source": "packages/python/src/sarj_python_lint/rules/prefer_pydantic_json_value.py",
+          "test": "packages/python/tests/rules/test_prefer_pydantic_json_value.py",
+          "verifiedDeclaredExamples": 4,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:prefer-walrus-comprehension-filter",
+          "source": "packages/python/src/sarj_python_lint/rules/prefer_walrus_comprehension_filter.py",
+          "test": "packages/python/tests/rules/test_prefer_walrus_comprehension_filter.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        }
+      ]
+    },
+    {
+      "round": 20,
+      "rules": [
+        {
+          "rule": "python:require-explicit-service-contract",
+          "source": "packages/python/src/sarj_python_lint/rules/require_explicit_service_contract.py",
+          "test": "packages/python/tests/rules/test_require_explicit_service_contract.py",
+          "verifiedDeclaredExamples": 3,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "eslint:prefer-server-actions",
+          "source": "packages/typescript/src/rules/prefer-server-actions.ts",
+          "test": "packages/typescript/tests/rules/prefer-server-actions.test.ts",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "iac:require-prevent-destroy-on-irreplaceable",
+          "source": "packages/iac/src/sarj_iac_lint/rules/require_prevent_destroy.py",
+          "test": "packages/iac/tests/rules/test_require_prevent_destroy.py",
+          "verifiedDeclaredExamples": 4,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "text:hidden-markdown-heading",
+          "source": "packages/standards/src/sarj_standards/libs/linting/textlint.py",
+          "test": "packages/standards/tests/test_textlint.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "eslint:interface-contract-members-private",
+          "source": "packages/typescript/src/rules/interface-contract-members-private.ts",
+          "test": "packages/typescript/tests/rules/interface-contract-members-private.test.ts",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "sql:existing-table-check-or-foreign-key-requires-not-valid",
+          "source": "packages/sql/src/sarj_sql_lint/rules/add_constraint_requires_not_valid.py",
+          "test": "packages/sql/tests/rules/test_add_constraint_requires_not_valid.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:fakes-in-shared-location",
+          "source": "packages/python/src/sarj_python_lint/rules/fakes_in_shared_location.py",
+          "test": "packages/python/tests/rules/test_fakes_in_shared_location.py",
+          "verifiedDeclaredExamples": 3,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "eslint:require-sql-access-class",
+          "source": "packages/typescript/src/rules/require-sql-access-class.ts",
+          "test": "packages/typescript/tests/rules/require-sql-access-class.test.ts",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:prefer-self-type-annotation",
+          "source": "packages/python/src/sarj_python_lint/rules/prefer_self_type_annotation.py",
+          "test": "packages/python/tests/rules/test_prefer_self_type_annotation.py",
+          "verifiedDeclaredExamples": 4,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:no-nullable-dependency-fallback",
+          "source": "packages/python/src/sarj_python_lint/rules/no_nullable_dependency_fallback.py",
+          "test": "packages/python/tests/rules/test_no_nullable_dependency_fallback.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        }
+      ]
+    },
+    {
+      "round": 21,
+      "rules": [
+        {
+          "rule": "sql:prefer-jsonb",
+          "source": "packages/sql/src/sarj_sql_lint/rules/prefer_jsonb.py",
+          "test": "packages/sql/tests/rules/test_prefer_jsonb.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:no-excessive-cognitive-complexity",
+          "source": "packages/python/src/sarj_python_lint/rules/no_excessive_cognitive_complexity.py",
+          "test": "packages/python/tests/rules/test_no_excessive_cognitive_complexity.py",
+          "verifiedDeclaredExamples": 4,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:no-docstring-type-restatement",
+          "source": "packages/python/src/sarj_python_lint/rules/no_typed_doc_sections.py",
+          "test": "packages/python/tests/rules/test_no_typed_doc_sections.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "eslint:no-secret-in-log",
+          "source": "packages/typescript/src/rules/no-secret-in-log.ts",
+          "test": "packages/typescript/tests/rules/no-secret-in-log.test.ts",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "eslint:named-child-schema-type",
+          "source": "packages/typescript/src/rules/named-child-schema-type.ts",
+          "test": "packages/typescript/tests/rules/named-child-schema-type.test.ts",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "eslint:prefer-input-group-search",
+          "source": "packages/typescript/src/rules/prefer-input-group-search.ts",
+          "test": "packages/typescript/tests/rules/prefer-input-group-search.test.ts",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:prefer-or-pattern",
+          "source": "packages/python/src/sarj_python_lint/rules/prefer_or_pattern.py",
+          "test": "packages/python/tests/rules/test_prefer_or_pattern.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "eslint:test-loops-over-literal-cases",
+          "source": "packages/typescript/src/rules/test-loops-over-literal-cases.ts",
+          "test": "packages/typescript/tests/rules/test-loops-over-literal-cases.test.ts",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "eslint:require-explicit-service-contract",
+          "source": "packages/typescript/src/rules/require-explicit-service-contract.ts",
+          "test": "packages/typescript/tests/rules/require-explicit-service-contract.test.ts",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "text:workflow-embedded-program",
+          "source": "packages/standards/src/sarj_standards/libs/linting/textlint.py",
+          "test": "packages/standards/tests/test_textlint.py",
+          "verifiedDeclaredExamples": 12,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        }
+      ]
+    },
+    {
+      "round": 22,
+      "rules": [
+        {
+          "rule": "eslint:require-zod-form-validation",
+          "source": "packages/typescript/src/rules/require-zod-form-validation.ts",
+          "test": "packages/typescript/tests/rules/require-zod-form-validation.test.ts",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "eslint:no-type-member-comment-wall",
+          "source": "packages/typescript/src/rules/no-type-member-comment-wall.ts",
+          "test": "packages/typescript/tests/rules/no-type-member-comment-wall.test.ts",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:repeated-static-call-cases",
+          "source": "packages/python/src/sarj_python_lint/rules/repeated_static_call_cases.py",
+          "test": "packages/python/tests/rules/test_repeated_static_call_cases.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "eslint:no-declaration-comment-wall",
+          "source": "packages/typescript/src/rules/no-declaration-comment-wall.ts",
+          "test": "packages/typescript/tests/rules/no-declaration-comment-wall.test.ts",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "eslint:no-known-value-widening",
+          "source": "packages/typescript/src/rules/no-known-value-widening.ts",
+          "test": "packages/typescript/tests/rules/no-known-value-widening.test.ts",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "eslint:no-string-concat-in-loop",
+          "source": "packages/typescript/src/rules/no-string-concat-in-loop.ts",
+          "test": "packages/typescript/tests/rules/no-string-concat-in-loop.test.ts",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "eslint:no-vague-suppression-description",
+          "source": "packages/typescript/src/rules/no-vague-suppression-description.ts",
+          "test": "packages/typescript/tests/rules/no-vague-suppression-description.test.ts",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:no-mocked-pydantic-value-object",
+          "source": "packages/python/src/sarj_python_lint/rules/no_mocked_pydantic_value_object.py",
+          "test": "packages/python/tests/rules/test_no_mocked_pydantic_value_object.py",
+          "verifiedDeclaredExamples": 3,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:prefer-struct-over-namedtuple",
+          "source": "packages/python/src/sarj_python_lint/rules/prefer_struct_over_namedtuple.py",
+          "test": "packages/python/tests/rules/test_prefer_struct_over_namedtuple.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:named-record-at-boundaries",
+          "source": "packages/python/src/sarj_python_lint/rules/named_record_at_boundaries.py",
+          "test": "packages/python/tests/rules/test_named_record_at_boundaries.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        }
+      ]
+    },
+    {
+      "round": 23,
+      "rules": [
+        {
+          "rule": "eslint:test-loops-over-literal-cases",
+          "source": "packages/typescript/src/rules/test-loops-over-literal-cases.ts",
+          "test": "packages/typescript/tests/rules/test-loops-over-literal-cases.test.ts",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:prefer-fstring-over-concat",
+          "source": "packages/python/src/sarj_python_lint/rules/prefer_fstring_over_concat.py",
+          "test": "packages/python/tests/rules/test_prefer_fstring_over_concat.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "eslint:no-dangerously-allow-svg",
+          "source": "packages/typescript/src/rules/no-dangerously-allow-svg.ts",
+          "test": "packages/typescript/tests/rules/no-dangerously-allow-svg.test.ts",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:no-analytical-aggregation-in-postgres-store",
+          "source": "packages/python/src/sarj_python_lint/rules/no_analytical_aggregation_in_postgres_store.py",
+          "test": "packages/python/tests/rules/test_no_analytical_aggregation_in_postgres_store.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "eslint:no-bespoke-api-case-conversion",
+          "source": "packages/typescript/src/rules/no-bespoke-api-case-conversion.ts",
+          "test": "packages/typescript/tests/rules/no-bespoke-api-case-conversion.test.ts",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "eslint:no-broad-return-type",
+          "source": "packages/typescript/src/rules/no-broad-return-type.ts",
+          "test": "packages/typescript/tests/rules/no-broad-return-type.test.ts",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:no-database-programmability",
+          "source": "packages/python/src/sarj_python_lint/rules/no_database_programmability.py",
+          "test": "packages/python/tests/rules/test_no_database_programmability.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:no-frozen-after-validator-field-write",
+          "source": "packages/python/src/sarj_python_lint/rules/no_frozen_after_validator_field_write.py",
+          "test": "packages/python/tests/rules/test_no_frozen_after_validator_field_write.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:async-cleanup-registered-synchronously",
+          "source": "packages/python/src/sarj_python_lint/rules/async_cleanup_registered_synchronously.py",
+          "test": "packages/python/tests/rules/test_async_cleanup_registered_synchronously.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "text:no-wildcard-secret-read-permission",
+          "source": "packages/standards/src/sarj_standards/libs/linting/textlint.py",
+          "test": "packages/standards/tests/test_textlint.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        }
+      ]
+    },
+    {
+      "round": 24,
+      "rules": [
+        {
+          "rule": "eslint:prefer-native-random-uuid",
+          "source": "packages/typescript/src/rules/prefer-native-random-uuid.ts",
+          "test": "packages/typescript/tests/rules/prefer-native-random-uuid.test.ts",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "eslint:no-type-member-comment-wall",
+          "source": "packages/typescript/src/rules/no-type-member-comment-wall.ts",
+          "test": "packages/typescript/tests/rules/no-type-member-comment-wall.test.ts",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "eslint:prefer-module-level-schema",
+          "source": "packages/typescript/src/rules/prefer-module-level-schema.ts",
+          "test": "packages/typescript/tests/rules/prefer-module-level-schema.test.ts",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "eslint:interface-contract-members-private",
+          "source": "packages/typescript/src/rules/interface-contract-members-private.ts",
+          "test": "packages/typescript/tests/rules/interface-contract-members-private.test.ts",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "eslint:no-unlocalized-jsx-attributes",
+          "source": "packages/typescript/src/rules/no-unlocalized-jsx-attributes.ts",
+          "test": "packages/typescript/tests/rules/no-unlocalized-jsx-attributes.test.ts",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "eslint:no-union-in-comment",
+          "source": "packages/typescript/src/rules/no-union-in-comment.ts",
+          "test": "packages/typescript/tests/rules/no-union-in-comment.test.ts",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "eslint:no-cors-wildcard-with-credentials",
+          "source": "packages/typescript/src/rules/no-cors-wildcard-with-credentials.ts",
+          "test": "packages/typescript/tests/rules/no-cors-wildcard-with-credentials.test.ts",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "eslint:no-restricted-library-load",
+          "source": "packages/typescript/src/rules/no-restricted-library-load.ts",
+          "test": "packages/typescript/tests/rules/no-restricted-library-load.test.ts",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "iac:require-prevent-destroy-on-irreplaceable",
+          "source": "packages/iac/src/sarj_iac_lint/rules/require_prevent_destroy.py",
+          "test": "packages/iac/tests/rules/test_require_prevent_destroy.py",
+          "verifiedDeclaredExamples": 4,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:prefer-match-type-dispatch",
+          "source": "packages/python/src/sarj_python_lint/rules/prefer_match_type_dispatch.py",
+          "test": "packages/python/tests/rules/test_prefer_match_type_dispatch.py",
+          "verifiedDeclaredExamples": 6,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        }
+      ]
+    },
+    {
+      "round": 25,
+      "rules": [
+        {
+          "rule": "eslint:no-redundant-optional-array-default",
+          "source": "packages/typescript/src/rules/no-redundant-optional-array-default.ts",
+          "test": "packages/typescript/tests/rules/no-redundant-optional-array-default.test.ts",
+          "verifiedDeclaredExamples": 4,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:defect-xfail-requires-explicit-strict",
+          "source": "packages/python/src/sarj_python_lint/rules/defect_xfail_requires_explicit_strict.py",
+          "test": "packages/python/tests/rules/test_defect_xfail_requires_explicit_strict.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "eslint:prefer-module-level-schema",
+          "source": "packages/typescript/src/rules/prefer-module-level-schema.ts",
+          "test": "packages/typescript/tests/rules/prefer-module-level-schema.test.ts",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:prefer-self-type-annotation",
+          "source": "packages/python/src/sarj_python_lint/rules/prefer_self_type_annotation.py",
+          "test": "packages/python/tests/rules/test_prefer_self_type_annotation.py",
+          "verifiedDeclaredExamples": 4,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:no-bare-test-phase-comments",
+          "source": "packages/python/src/sarj_python_lint/rules/phase_label_comment.py",
+          "test": "packages/python/tests/rules/test_phase_label_comment.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:require-nodecode-for-splitting-settings-field",
+          "source": "packages/python/src/sarj_python_lint/rules/require_nodecode_for_splitting_settings_field.py",
+          "test": "packages/python/tests/rules/test_require_nodecode_for_splitting_settings_field.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "sql:idempotent-ddl",
+          "source": "packages/sql/src/sarj_sql_lint/rules/idempotent_ddl.py",
+          "test": "packages/sql/tests/rules/test_idempotent_ddl.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "eslint:no-hand-rolled-sleep",
+          "source": "packages/typescript/src/rules/no-hand-rolled-sleep.ts",
+          "test": "packages/typescript/tests/rules/no-hand-rolled-sleep.test.ts",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:fastapi-explicit-openapi-contract",
+          "source": "packages/python/src/sarj_python_lint/rules/fastapi_explicit_openapi_contract.py",
+          "test": "packages/python/tests/rules/test_fastapi_explicit_openapi_contract.py",
+          "verifiedDeclaredExamples": 6,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "eslint:prefer-schema-for-api-payload",
+          "source": "packages/typescript/src/rules/prefer-schema-for-api-payload.ts",
+          "test": "packages/typescript/tests/rules/prefer-schema-for-api-payload.test.ts",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        }
+      ]
+    },
+    {
+      "round": 26,
+      "rules": [
+        {
+          "rule": "python:async-cleanup-registered-synchronously",
+          "source": "packages/python/src/sarj_python_lint/rules/async_cleanup_registered_synchronously.py",
+          "test": "packages/python/tests/rules/test_async_cleanup_registered_synchronously.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:prefer-immutable-module-constant",
+          "source": "packages/python/src/sarj_python_lint/rules/prefer_immutable_module_constant.py",
+          "test": "packages/python/tests/rules/test_prefer_immutable_module_constant.py",
+          "verifiedDeclaredExamples": 6,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "eslint:no-typed-doc-sections",
+          "source": "packages/typescript/src/rules/no-typed-doc-sections.ts",
+          "test": "packages/typescript/tests/rules/no-typed-doc-sections.test.ts",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "eslint:prefer-semantic-colors",
+          "source": "packages/typescript/src/rules/prefer-semantic-colors.ts",
+          "test": "packages/typescript/tests/rules/prefer-semantic-colors.test.ts",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "eslint:require-interface-for-exported-class",
+          "source": "packages/typescript/src/rules/require-interface-for-exported-class.ts",
+          "test": "packages/typescript/tests/rules/require-interface-for-exported-class.test.ts",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:no-test-method-grafting",
+          "source": "packages/python/src/sarj_python_lint/rules/no_test_method_grafting.py",
+          "test": "packages/python/tests/rules/test_no_test_method_grafting.py",
+          "verifiedDeclaredExamples": 3,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:no-repeated-unseeded-stdlib-random-in-test",
+          "source": "packages/python/src/sarj_python_lint/rules/uncontrolled_randomness_in_test.py",
+          "test": "packages/python/tests/rules/test_uncontrolled_randomness_in_test.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "eslint:prefer-zod-infer",
+          "source": "packages/typescript/src/rules/prefer-zod-infer.ts",
+          "test": "packages/typescript/tests/rules/prefer-zod-infer.test.ts",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:repeated-static-call-cases",
+          "source": "packages/python/src/sarj_python_lint/rules/repeated_static_call_cases.py",
+          "test": "packages/python/tests/rules/test_repeated_static_call_cases.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "eslint:require-sql-access-class",
+          "source": "packages/typescript/src/rules/require-sql-access-class.ts",
+          "test": "packages/typescript/tests/rules/require-sql-access-class.test.ts",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        }
+      ]
+    },
+    {
+      "round": 27,
+      "rules": [
+        {
+          "rule": "python:require-pydantic-ordinal-lower-bound",
+          "source": "packages/python/src/sarj_python_lint/rules/require_pydantic_ordinal_lower_bound.py",
+          "test": "packages/python/tests/rules/test_require_pydantic_ordinal_lower_bound.py",
+          "verifiedDeclaredExamples": 4,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:no-restated-closed-domain-description",
+          "source": "packages/python/src/sarj_python_lint/rules/no_redundant_literal_description.py",
+          "test": "packages/python/tests/rules/test_no_redundant_literal_description.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "iac:require-deletion-protection",
+          "source": "packages/iac/src/sarj_iac_lint/rules/require_deletion_protection.py",
+          "test": "packages/iac/tests/rules/test_require_deletion_protection.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:no-raw-source-text-test-oracle",
+          "source": "packages/python/src/sarj_python_lint/rules/no_raw_source_text_test_oracle.py",
+          "test": "packages/python/tests/rules/test_no_raw_source_text_test_oracle.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "eslint:no-router-refresh-polling",
+          "source": "packages/typescript/src/rules/no-router-refresh-polling.ts",
+          "test": "packages/typescript/tests/rules/no-router-refresh-polling.test.ts",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "iac:no-comment-cruft",
+          "source": "packages/iac/src/sarj_iac_lint/rules/no_comment_cruft.py",
+          "test": "packages/iac/tests/rules/test_no_comment_cruft.py",
+          "verifiedDeclaredExamples": 4,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:no-cors-wildcard-with-credentials",
+          "source": "packages/python/src/sarj_python_lint/rules/no_cors_wildcard_with_credentials.py",
+          "test": "packages/python/tests/rules/test_no_cors_wildcard_with_credentials.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:prefer-pytest-fixture-injection",
+          "source": "packages/python/src/sarj_python_lint/rules/prefer_pytest_fixture_injection.py",
+          "test": "packages/python/tests/rules/test_prefer_pytest_fixture_injection.py",
+          "verifiedDeclaredExamples": 4,
+          "decision": "repair canonical temporary-workspace identity in the shared native example runner; preserve source resolver boundaries",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:no-restated-comment",
+          "source": "packages/python/src/sarj_python_lint/rules/no_restated_comment.py",
+          "test": "packages/python/tests/rules/test_no_restated_comment.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "text:cloudbuild-contract",
+          "source": "packages/standards/src/sarj_standards/libs/linting/text_rules/cloudbuild_contract.py",
+          "test": "packages/standards/tests/text_rules/test_cloudbuild_contract.py",
+          "verifiedDeclaredExamples": 4,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        }
+      ]
+    },
+    {
+      "round": 28,
+      "rules": [
+        {
+          "rule": "python:redundant-class-docstring",
+          "source": "packages/python/src/sarj_python_lint/rules/redundant_class_docstring.py",
+          "test": "packages/python/tests/rules/test_redundant_class_docstring.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "iac:no-environment-conditional",
+          "source": "packages/iac/src/sarj_iac_lint/rules/no_environment_conditional.py",
+          "test": "packages/iac/tests/rules/test_no_environment_conditional.py",
+          "verifiedDeclaredExamples": 8,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:no-bare-test-phase-comments",
+          "source": "packages/python/src/sarj_python_lint/rules/phase_label_comment.py",
+          "test": "packages/python/tests/rules/test_phase_label_comment.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "eslint:require-camelcase-properties",
+          "source": "packages/typescript/src/rules/require-camelcase-properties.ts",
+          "test": "packages/typescript/tests/rules/require-camelcase-properties.test.ts",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "eslint:store-insert-requires-on-conflict",
+          "source": "packages/typescript/src/rules/store-insert-requires-on-conflict.ts",
+          "test": "packages/typescript/tests/rules/store-insert-requires-on-conflict.test.ts",
+          "verifiedDeclaredExamples": 4,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "iac:no-redundant-variable-validation",
+          "source": "packages/iac/src/sarj_iac_lint/rules/no_redundant_variable_validation.py",
+          "test": "packages/iac/tests/rules/test_no_redundant_variable_validation.py",
+          "verifiedDeclaredExamples": 4,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "eslint:no-generic-single-export-module",
+          "source": "packages/typescript/src/rules/no-generic-single-export-module.ts",
+          "test": "packages/typescript/tests/rules/no-generic-single-export-module.test.ts",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "eslint:no-hand-rolled-sleep",
+          "source": "packages/typescript/src/rules/no-hand-rolled-sleep.ts",
+          "test": "packages/typescript/tests/rules/no-hand-rolled-sleep.test.ts",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:negative-only-http-status-assertion",
+          "source": "packages/python/src/sarj_python_lint/rules/negative_only_http_status_assertion.py",
+          "test": "packages/python/tests/rules/test_negative_only_http_status_assertion.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "eslint:no-server-env-in-client-component",
+          "source": "packages/typescript/src/rules/no-server-env-in-client-component.ts",
+          "test": "packages/typescript/tests/rules/no-server-env-in-client-component.test.ts",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        }
+      ]
+    },
+    {
+      "round": 29,
+      "rules": [
+        {
+          "rule": "python:repeated-unimplemented-test-contract",
+          "source": "packages/python/src/sarj_python_lint/rules/repeated_unimplemented_test_contract.py",
+          "test": "packages/python/tests/rules/test_repeated_unimplemented_test_contract.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "declare package identity in both native examples",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "sql:prefer-jsonb",
+          "source": "packages/sql/src/sarj_sql_lint/rules/prefer_jsonb.py",
+          "test": "packages/sql/tests/rules/test_prefer_jsonb.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:no-frozen-after-validator-field-write",
+          "source": "packages/python/src/sarj_python_lint/rules/no_frozen_after_validator_field_write.py",
+          "test": "packages/python/tests/rules/test_no_frozen_after_validator_field_write.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "text:config-comment-wall",
+          "source": "packages/standards/src/sarj_standards/libs/linting/textlint.py",
+          "test": "packages/standards/tests/test_textlint.py",
+          "verifiedDeclaredExamples": 4,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "eslint:no-declaration-comment-wall",
+          "source": "packages/typescript/src/rules/no-declaration-comment-wall.ts",
+          "test": "packages/typescript/tests/rules/no-declaration-comment-wall.test.ts",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "eslint:prefer-ecmascript-private-members",
+          "source": "packages/typescript/src/rules/prefer-ecmascript-private-members.ts",
+          "test": "packages/typescript/tests/rules/prefer-ecmascript-private-members.test.ts",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "eslint:no-hand-rolled-sleep",
+          "source": "packages/typescript/src/rules/no-hand-rolled-sleep.ts",
+          "test": "packages/typescript/tests/rules/no-hand-rolled-sleep.test.ts",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "iac:require-deletion-protection",
+          "source": "packages/iac/src/sarj_iac_lint/rules/require_deletion_protection.py",
+          "test": "packages/iac/tests/rules/test_require_deletion_protection.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "sql:excess-migration-index-requires-justification",
+          "source": "packages/sql/src/sarj_sql_lint/rules/index_budget.py",
+          "test": "packages/sql/tests/rules/test_index_budget.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "eslint:prefer-zod-infer",
+          "source": "packages/typescript/src/rules/prefer-zod-infer.ts",
+          "test": "packages/typescript/tests/rules/prefer-zod-infer.test.ts",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        }
+      ]
+    },
+    {
+      "round": 30,
+      "rules": [
+        {
+          "rule": "python:no-redundant-module-alias-exports",
+          "source": "packages/python/src/sarj_python_lint/rules/no_redundant_module_alias_exports.py",
+          "test": "packages/python/tests/rules/test_no_redundant_module_alias_exports.py",
+          "verifiedDeclaredExamples": 6,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "text:config-comment-wall",
+          "source": "packages/standards/src/sarj_standards/libs/linting/textlint.py",
+          "test": "packages/standards/tests/test_textlint.py",
+          "verifiedDeclaredExamples": 4,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:pytest-fixture-returns-bare-tuple",
+          "source": "packages/python/src/sarj_python_lint/rules/pytest_fixture_returns_bare_tuple.py",
+          "test": "packages/python/tests/rules/test_pytest_fixture_returns_bare_tuple.py",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "eslint:no-type-member-comment-wall",
+          "source": "packages/typescript/src/rules/no-type-member-comment-wall.ts",
+          "test": "packages/typescript/tests/rules/no-type-member-comment-wall.test.ts",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "eslint:no-secret-in-log",
+          "source": "packages/typescript/src/rules/no-secret-in-log.ts",
+          "test": "packages/typescript/tests/rules/no-secret-in-log.test.ts",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:require-port-for-service",
+          "source": "packages/python/src/sarj_python_lint/rules/require_port_for_service.py",
+          "test": "packages/python/tests/rules/test_require_port_for_service.py",
+          "verifiedDeclaredExamples": 4,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:prefer-self-documenting-constant",
+          "source": "packages/python/src/sarj_python_lint/rules/prefer_self_documenting_constant.py",
+          "test": "packages/python/tests/rules/test_prefer_self_documenting_constant.py",
+          "verifiedDeclaredExamples": 4,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "eslint:no-generic-single-export-module",
+          "source": "packages/typescript/src/rules/no-generic-single-export-module.ts",
+          "test": "packages/typescript/tests/rules/no-generic-single-export-module.test.ts",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "python:prefer-nominal-id-types",
+          "source": "packages/python/src/sarj_python_lint/rules/prefer_nominal_id_types.py",
+          "test": "packages/python/tests/rules/test_prefer_nominal_id_types.py",
+          "verifiedDeclaredExamples": 4,
+          "decision": "share cached wildcard-import fact",
+          "behaviorVerified": true
+        },
+        {
+          "rule": "eslint:require-fetch-timeout",
+          "source": "packages/typescript/src/rules/require-fetch-timeout.ts",
+          "test": "packages/typescript/tests/rules/require-fetch-timeout.test.ts",
+          "verifiedDeclaredExamples": 2,
+          "decision": "retain: source/test scan and native declared examples did not establish an admitted improvement",
+          "behaviorVerified": true
+        }
+      ]
+    }
+  ],
+  "coverage": {
+    "shellPasses": 30,
+    "randomRuleRounds": 30,
+    "randomDraws": 300,
+    "distinctOwnedRules": 190,
+    "distinctSourceFilesRead": 182,
+    "verifiedDeclaredExamplesAcrossUniqueRules": 500,
+    "focusedTests": 395,
+    "shellFocusedTests": 85,
+    "newRuleIds": 0,
+    "defaultLevelChanges": 0
+  },
+  "admissions": [
+    {
+      "failureMode": "Unicode/control separators inside one comment become fake header comments",
+      "reproduction": "native shfmt accepts six literal separator forms; adapter falsely exempts them as generated, and falsely selects Bash from comment data",
+      "owner": "textlint.shell_header_comments, shared by shell_dialect and shell_format.is_generated",
+      "gap": "Python str.splitlines treats literal shell comment data as physical source line boundaries",
+      "harm": "Authored files bypass the formatter or use an unintended parsing dialect",
+      "invalidStateVersusPreference": "Generated marker and analysis-directive recognition require actual header comment lines; no style preference is added",
+      "smallestFix": "Split the bounded shell header at LF only; keep existing trimming and CRLF compatibility",
+      "performanceBefore": {
+        "callsPerSample": 60000,
+        "samplesSeconds": [
+          0.015382125042378902,
+          0.01575204194523394,
+          0.015613666037097573,
+          0.015609916998073459,
+          0.01681358297355473,
+          0.016846542013809085,
+          0.015777665888890624
+        ],
+        "medianSeconds": 0.01575204194523394,
+        "peakMemoryBytes": 45252608
+      }
+    },
+    {
+      "key": "literal-pytest-plugin-assignment-targets",
+      "repro": "pytest_plugins = shared = (\"tests.test_api\",) produces zero SARJ426 diagnostics; ordinary single assignment reports one",
+      "owner": "python:no-conftest-test-module-import",
+      "gap": "The ast.Assign match requires exactly one target",
+      "harm": "Literal test-module plugin imports retain collection cycles/order coupling while escaping the existing invariant",
+      "invalidState": "The same literal test-module plugin declaration is already disallowed; chained assignments do not alter pytest_plugins ownership",
+      "fix": "Inspect every direct Name assignment target; preserve dynamic-value exclusions"
+    },
+    {
+      "key": "canonical-example-workspace",
+      "repro": "Native prefer-pytest-fixture-injection examples fail from an aliased TemporaryDirectory root and pass from its canonical root",
+      "owner": "sarj-rule-contracts verify_examples temporary workspace",
+      "gap": "The native example runner supplies an unresolved temporary-root alias; bounded source resolution correctly rejects it before any ancestor comparison",
+      "harm": "A declared valid multi-file rule example fails verification on aliased temporary storage",
+      "invalidState": "Normalize the runner-owned virtual workspace without changing source resolver symlink exclusions",
+      "fix": "Resolve the newly created temporary root once before writing and analyzing its virtual files"
+    },
+    {
+      "key": "project-example-package-context",
+      "repro": "Two published project-rule positive examples fail natively and pass when their tests package has __init__.py",
+      "owner": "python:redundant-test-constructor-forwarder and python:repeated-unimplemented-test-contract source-owned RuleExamples",
+      "gap": "Declared virtual files omit the package identity needed by the documented first-party contract proof",
+      "harm": "maintain rules verify rejects the rules own public examples",
+      "invalidState": "Repair incomplete example context; preserve conservative unresolved-module exclusions",
+      "fix": "Declare the tests package marker in both positive and negative virtual fixtures"
+    },
+    {
+      "key": "shared-wildcard-import-fact",
+      "repro": "Three selected rules and one adjacent rule independently scan all cached AST nodes to compute the same wildcard-import boolean",
+      "owner": "PythonFileContext and python:no-positional-tuple-record, python:prefer-match-exception-dispatch, python:prefer-nominal-id-types, python:prefer-non-nullable-collection",
+      "gap": "Four byte-equivalent helper implementations repeat broad immutable-source scans despite the existing type-indexed context",
+      "harm": "Repeated traversal on every checked module; identical facts can drift independently",
+      "invalidState": "No new guard or preference; existing all-scope wildcard exclusion is preserved",
+      "fix": "One lazy cached context fact using the existing ImportFrom node bucket; admit only after equal-results baseline measurement",
+      "validation": "Identical private finding tuples on the paired pinned corpus; 395 owning tests pass; interleaved native four-rule benchmark measures lower combined and cold medians with equal diagnostics."
+    }
+  ],
+  "adjacentOwnerChange": {
+    "rule": "python:prefer-non-nullable-collection",
+    "reason": "Fourth identical wildcard-import scan consolidated with the three selected owners"
+  },
+  "pythonCorpusComparison": {
+    "baselineRepositories": 9,
+    "pairedRepositories": 8,
+    "postBaselineDriftExcluded": 1,
+    "pairedFiles": 1347,
+    "pairedBytes": 11769406,
+    "reason": "Exclude changed source inventories from both sides; original pins retained; no source revision or digest refreshed.",
+    "pairedFindingsIdentical": true,
+    "counts": {
+      "SARJ026": 65,
+      "SARJ082": 1,
+      "SARJ093": 106
+    },
+    "unavailableRootsAtSelection": 6,
+    "staleRootsExcludedAtSelection": 1,
+    "method": "Seeded sample of at most 250 tracked Python files per repository, isolated native process per repository batch. Exact path/location/code/message tuples compared privately."
+  },
+  "performance": {
+    "method": "Four interleaved before/after process pairs; AB, BA, AB, BA. Same interpreter and dependency environment; before restores only the five affected Python source files. Seven samples per process; 28 fresh child processes per side.",
+    "inputBytes": 42854,
+    "astNodes": 10013,
+    "coldSamplesPerSide": 28,
+    "equalDiagnostics": true,
+    "results": {
+      "before": {
+        "warmMedianSeconds": 0.25303474999964237,
+        "combinedMedianSeconds": 0.17640397907234728,
+        "coldMedianSeconds": 0.2671171249821782,
+        "peakMemoryMedianBytes": 70049792.0
+      },
+      "after": {
+        "warmMedianSeconds": 4.345807246863842e-05,
+        "combinedMedianSeconds": 0.1602897085249424,
+        "coldMedianSeconds": 0.26179070852231234,
+        "peakMemoryMedianBytes": 69951488.0
+      }
+    },
+    "afterDividedByBefore": {
+      "warmMedianSeconds": 0.00017174744760828242,
+      "combinedMedianSeconds": 0.9086513204965969,
+      "coldMedianSeconds": 0.9800596219346803,
+      "peakMemoryMedianBytes": 0.998596655361946
+    }
+  },
+  "validation": {
+    "makeVerify": {
+      "passed": true,
+      "testCounts": {
+        "bootstrap": 18,
+        "contracts": 15,
+        "python": 12863,
+        "sql": 1428,
+        "iac": 1323,
+        "standardsFreshWheel": 5240,
+        "typescript": 7670
+      },
+      "standardsSkipped": 9,
+      "otherGates": [
+        "doctor",
+        "docs and generated artifacts",
+        "format",
+        "lint",
+        "all-rule dogfood",
+        "typecheck",
+        "repository policy",
+        "ShellCheck",
+        "shfmt",
+        "tsconfig validation"
+      ],
+      "privateReferenceGate": "Native local target delegates the private-reference scan to trusted CI; verify it on the exact PR head before merge."
+    },
+    "publication": "Planned after authoring merge; exact manifests and sibling pins are bumped together.",
+    "consumerRollout": "Planned after publication; five previously registered consumers retain automatic merge disabled."
+  },
+  "limitations": [
+    "Source review used machine-assisted inventory and duplicate-function analysis, with manual probes concentrated on admitted candidates; it is not a claim of exhaustive human review of 190 rules.",
+    "Repeated random draws rerun the same declared examples and do not establish additional independent semantic coverage.",
+    "The performance fixture is one synthetic 42,854-byte Python module; timing results do not establish a universal speedup.",
+    "Native shell corpus findings and pre-existing formatter/coverage failures were unchanged; this run does not claim those findings were fully classified.",
+    "No existing Bash script was rewritten in this run."
+  ],
+  "upstreamOwnersRetained": [
+    "ShellCheck 0.11.0",
+    "shfmt 3.14.1",
+    "Existing AST index and native rule-example runners"
+  ],
+  "integrationNote": "Rebased onto the independently merged IaC environment-template fix; the affected selected IaC rule was reverified after rebase.",
+  "postRebaseDeclaredExampleCheck": {
+    "rule": "iac:no-environment-conditional",
+    "verifiedExamples": 10
+  }
+}

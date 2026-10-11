@@ -27,7 +27,6 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from sarj_python_lint._file_context import PythonFileContext
-    from sarj_python_lint.rules._ast_index import NodeIndex
     from sarj_python_lint.rules._imports import ImportIndex
 
 
@@ -221,7 +220,7 @@ class PreferNominalIdTypes(Rule):
         if _is_excluded_path(path) or context.generated:
             return []
         tree = context.tree
-        if tree is None or _has_wildcard_import(tree, node_index=context.node_index):
+        if tree is None or context.has_wildcard_import:
             return []
 
         imports = context.imports
@@ -308,13 +307,6 @@ def _is_excluded_path(path: Path) -> bool:
         bool(lowered & _MIGRATION_PARTS)
         or bool((lowered | path_tokens) & _OPERATIONAL_PATH_PARTS)
         or _is_external_adapter_path(path)
-    )
-
-
-def _has_wildcard_import(tree: ast.Module, *, node_index: NodeIndex | None = None) -> bool:
-    return any(
-        isinstance(node, ast.ImportFrom) and any(alias.name == "*" for alias in node.names)
-        for node in walk_ast(tree, index=node_index)
     )
 
 

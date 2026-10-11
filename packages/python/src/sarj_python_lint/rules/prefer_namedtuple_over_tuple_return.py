@@ -16,12 +16,10 @@ from sarj_python_lint.rule_base import (
     Severity,
     parse_or_none,
 )
-from sarj_python_lint.rules._ast_index import walk as walk_ast
 
 
 if TYPE_CHECKING:
     from sarj_python_lint._file_context import PythonFileContext
-    from sarj_python_lint.rules._ast_index import NodeIndex
     from sarj_python_lint.rules._imports import ImportIndex
 
 
@@ -101,7 +99,7 @@ class PreferNamedtupleOverTupleReturn(Rule):
         if context.generated or _is_documentation_path(path):
             return []
         tree = context.tree
-        if tree is None or _has_wildcard_import(tree, node_index=context.node_index):
+        if tree is None or context.has_wildcard_import:
             return []
         imports = context.imports
         diagnostics: list[Diagnostic] = []
@@ -125,13 +123,6 @@ class PreferNamedtupleOverTupleReturn(Rule):
 
 def _is_documentation_path(path: Path) -> bool:
     return any(part.lower() in _DOCUMENTATION_DIR_NAMES for part in path.parts)
-
-
-def _has_wildcard_import(tree: ast.Module, *, node_index: NodeIndex | None = None) -> bool:
-    return any(
-        isinstance(node, ast.ImportFrom) and any(alias.name == "*" for alias in node.names)
-        for node in walk_ast(tree, index=node_index)
-    )
 
 
 def _is_public_record_tuple(annotation: ast.expr, imports: ImportIndex) -> bool:
