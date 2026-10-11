@@ -271,6 +271,7 @@ def test_manifest_round_trips(tmp_path: Path) -> None:
         python_dest=".",
         typescript_dest="web",
         ci_bootstrap=("yarn generate",),
+        knip_application=True,
     )
     (tmp_path / manifest.MANIFEST_NAME).write_text(written.render())
     assert manifest.load(tmp_path) == written
@@ -303,7 +304,7 @@ def test_legacy_profile_is_readable_but_not_written(tmp_path: Path, legacy_profi
     assert rendered["rule_profile"] == "all"
 
 
-@pytest.mark.parametrize("section", ["capabilities", "dest", "hooks", "exclude", "ci"])
+@pytest.mark.parametrize("section", ["capabilities", "dest", "hooks", "exclude", "ci", "knip"])
 def test_manifest_rejects_wrong_typed_optional_tables(tmp_path: Path, section: str) -> None:
     (tmp_path / manifest.MANIFEST_NAME).write_text(
         f'schema = 4\nbundle = "1.2.3"\n{section} = "not-a-table"\n',
@@ -312,6 +313,30 @@ def test_manifest_rejects_wrong_typed_optional_tables(tmp_path: Path, section: s
 
     with pytest.raises(TypeError, match=rf"manifest \[{section}\] must be a table"):
         manifest.load(tmp_path)
+
+
+@pytest.mark.parametrize(
+    ("declaration", "error", "message"),
+    [
+        ('application = "true"', TypeError, r"manifest \[knip\].application must be a boolean"),
+        ('entry = ["src/index.ts!"]', ValueError, r"manifest \[knip\] supports only the application declaration"),
+    ],
+    ids=["boolean-required", "unowned-values-preserved-by-refusal"],
+)
+def test_manifest_rejects_unsupported_application_declarations(
+    tmp_path: Path, declaration: str, error: type[Exception], message: str
+) -> None:
+    _python_repo(tmp_path)
+    path = tmp_path / manifest.MANIFEST_NAME
+    path.write_text(f'schema = 4\nbundle = "8.47.0"\n[knip]\n{declaration}\n', encoding="utf-8")
+    original = path.read_bytes()
+
+    with pytest.raises(error, match=message):
+        manifest.load(tmp_path)
+    setup = _cli("--root", str(tmp_path), "setup", "--no-install")
+    assert setup.returncode == 2, setup.stdout + setup.stderr
+    assert "[knip]" in setup.stderr
+    assert path.read_bytes() == original
 
 
 def test_manifest_loads_contained_custom_verification_paths(tmp_path: Path) -> None:
@@ -490,6 +515,7 @@ def test_manifest_renders_as_valid_toml() -> None:
         "zizmor",
         "checkov",
         "jscpd",
+        "knip",
     ]
 
 
@@ -511,7 +537,7 @@ def test_manifest_renders_formatter_stable_owned_fields(tmp_path: Path) -> None:
     expected = (
         "# Managed by `code-standards setup`; commit this file.\n"
         f'bundle = "{manifest.adopted_version()}"\nrule_profile = "all"\nschema = 4\n\n'
-        '[capabilities]\ndisable = ["jscpd"]\n\n'
+        '[capabilities]\ndisable = ["jscpd", "knip"]\n\n'
         '[artifacts]\ndurable = [\n  "docs/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",\n'
         '  "docs/short",\n]\n\n'
         '[dest]\nkotlin = "."\npython = "."\nswift = "."\ntypescript = "."\n\n'
@@ -537,7 +563,10 @@ def _exercise_manifest_formatting(tmp_path: Path, operation: str) -> None:
     path = tmp_path / manifest.MANIFEST_NAME
     extension = '\n# Consumer-maintained values stay byte-for-byte intact.\n[repository]\ncustom = "fixture"\n'
     original = path.read_text(encoding="utf-8")
-    path.write_text(original.replace(manifest.adopted_version(), "0.0.1") + extension, encoding="utf-8")
+    path.write_text(
+        original.replace(manifest.adopted_version(), "0.0.1") + "\n[knip]\napplication = true\n" + extension,
+        encoding="utf-8",
+    )
     options = ("--config", "taplo") if operation == "setup" else ("--offline",)
 
     first = _cli("--root", str(tmp_path), operation, *options, "--no-install")
@@ -547,6 +576,7 @@ def _exercise_manifest_formatting(tmp_path: Path, operation: str) -> None:
     assert updated.endswith(extension)
     adopted = manifest.load(tmp_path)
     assert adopted is not None
+    assert adopted.knip_application
     assert updated == adopted.render() + extension
     repeated = _cli("--root", str(tmp_path), operation, *options, "--no-install")
     assert repeated.returncode == 0, repeated.stderr
@@ -668,7 +698,8 @@ def test_schema_three_manifest_is_available_to_setup_without_enabling_mobile_too
     (tmp_path / manifest.MANIFEST_NAME).write_text(
         'schema = 3\nbundle = "1.2.3"\nprofile = "application"\n'
         '[capabilities]\ndisable = ["ruff"]\n'
-        '[dest]\npython = "backend"\ntypescript = "web"\n',
+        '[dest]\npython = "backend"\ntypescript = "web"\n'
+        "[knip]\napplication = true\n",
         encoding="utf-8",
     )
 
@@ -676,6 +707,7 @@ def test_schema_three_manifest_is_available_to_setup_without_enabling_mobile_too
 
     assert adopted is not None
     assert adopted.profile == "application"
+    assert adopted.knip_application
     assert adopted.python_dest == "backend"
     assert adopted.typescript_dest == "web"
     assert adopted.swift_dest == "."
@@ -879,6 +911,7 @@ def test_setup_preserves_compatible_policy_from_the_schema_less_manifest(tmp_pat
         '[hooks]\nmanager = "none"\n\n'
         '[exclude]\npaths = ["generated/**"]\nrules = ["python:SARJ012"]\n\n'
         '[[exclude.overrides]]\npaths = ["tests/**"]\nrules = ["python:SARJ012"]\nreason = "legacy fixtures"\n\n'
+        "[knip]\napplication = true\n\n"
         '# Keep consumer documentation intact.\n[consumer]\nkeep = true\nnotes = """\nprofile = "application"\n"""\n',
         encoding="utf-8",
     )
@@ -894,6 +927,7 @@ def test_setup_preserves_compatible_policy_from_the_schema_less_manifest(tmp_pat
     assert "# Keep consumer documentation intact." in manifest_path.read_text()
     assert adopted.verify_paths == ("src",)
     assert adopted.hook_manager == "none"
+    assert adopted.knip_application
     assert adopted.excluded_paths == ("generated/**",)
     assert adopted.excluded_rules == ("python:SARJ012",)
     assert adopted.exclusion_overrides == (
@@ -1234,7 +1268,7 @@ def test_setup_preserves_every_supported_manifest_policy_section(tmp_path: Path)
     path = tmp_path / manifest.MANIFEST_NAME
     adopted = manifest.load(tmp_path)
     assert adopted is not None
-    current = replace(adopted, durable_artifacts=("evidence/**",)).render()
+    current = replace(adopted, durable_artifacts=("evidence/**",), knip_application=True).render()
     path.write_text(
         f'{current}\n[text]\nexclude = ["templates/**"]\n\n[doctor]\nexclude = ["tests/fixtures/**"]\n'
         '\n[baseline]\ndiagnostics = "quality/diagnostics.json"\n'
@@ -1252,6 +1286,7 @@ def test_setup_preserves_every_supported_manifest_policy_section(tmp_path: Path)
     assert adopted.doctor_excluded_paths == ("tests/fixtures/**",)
     assert adopted.diagnostic_baseline == "quality/diagnostics.json"
     assert adopted.ci_bootstrap == ("yarn generate",)
+    assert adopted.knip_application
 
 
 def test_sync_uses_canonical_config_with_legacy_profile(tmp_path: Path) -> None:

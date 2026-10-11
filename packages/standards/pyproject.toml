@@ -1,6 +1,6 @@
 [project]
 name = "code-standards"
-version = "8.46.0"
+version = "8.47.0"
 description = "One deterministic quality gate for Sarj Python, TypeScript, Swift, Kotlin, shell, SQL, IaC, and repository policy."
 readme = "README.md"
 requires-python = ">=3.14"
@@ -66,6 +66,7 @@ include = [
 [dependency-groups]
 dev = [
   "pytest>=9.1.1",
+  "pytest-unused-fixtures==0.3.1",
 ]
 
 

@@ -31,6 +31,33 @@ assessing which contracts execute. Establish the intended lane and available
 prerequisites; do not infer execution from a test's presence or require every
 lane to run every test.
 
+For fixture-liveness evidence, use `pytest-unused-fixtures==0.3.1` in the test
+environment and add `--unused-fixtures -v` to the already owned complete pytest
+command for each supported profile. Bound `--unused-fixtures-context` to authored
+test support; retain the ordinary test exit status and do not use
+`--unused-fixtures-fail-when-present`. Record supported profiles and prerequisites
+from existing CI configuration, rather than adding a second suite runner.
+Collection-only, focused, deselected, sharded, interrupted, or skipped execution
+cannot establish fixture inactivity across the complete suite.
+
+Treat an inactive fixture as review evidence, never deletion proof. Check fixture
+dependencies, autouse behavior, indirect parameters, `usefixtures`, dynamic
+`getfixturevalue` requests, plugin registration, shadowing, and optional profiles
+before removal. Preserve intentional autouse overrides and exported fixture
+libraries. An unexecuted dynamic path or unavailable profile is inconclusive;
+absence from one run does not justify a suppression, replacement, or deletion.
+The upstream report hides private fixture names without verbosity; it cannot
+establish liveness for fixtures omitted by collection or the selected context.
+
+For unused Python helper evidence, enable native BasedPyright
+`"reportUnusedFunction": "warning"` only in the existing execution environments
+that own authored tests, preserving their import paths and interpreter settings.
+The source adapter bounds this diagnostic to private, undecorated, module-level
+helpers in conventional test paths and keeps it advisory. The shared production
+setting stays disabled; adopting the bundle does not activate or rewrite
+consumer test environments. Decorated fixtures, methods, generated support,
+public helpers, and production callbacks are outside this finding.
+
 ## Judgment checks
 
 Report only a concrete test whose code and nearby production behavior establish
