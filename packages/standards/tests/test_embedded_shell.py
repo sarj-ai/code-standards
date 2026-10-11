@@ -157,6 +157,46 @@ def test_cloudbuild_script_shebang_controls_native_coverage(tmp_path: Path, sheb
         assert next(item for item in reports if item.name == "shellcheck").diagnostics
 
 
+ARGV_PROBLEM = RuleProblem(
+    key="embedded-shell-unproven-argv",
+    summary="Unproven supported-shell argv must produce a visible coverage failure.",
+    harm="Skipping unknown shell invocations presents incomplete analysis as clean coverage.",
+    languages=frozenset({Language.SHELL}),
+    bad_examples=("bash -Z -c 'printf unsafe'", "bash -c"),
+    good_examples=("bash -c 'printf safe'", "python3 -c 'print(1)'"),
+)
+
+
+@pytest.mark.parametrize(
+    ("argv", "completion"),
+    [
+        pytest.param('[bash, -Z, -c, "printf unsafe"]', Completion.FAILED, id="unknown-short-option"),
+        pytest.param('[bash, --invented, -c, "printf unsafe"]', Completion.FAILED, id="unknown-long-option"),
+        pytest.param('[bash, -o, invented, -c, "printf unsafe"]', Completion.FAILED, id="unknown-named-option"),
+        pytest.param("[bash, -c]", Completion.FAILED, id="missing-command-payload"),
+        pytest.param('[bash, -c, "printf safe"]', Completion.COMPLETE, id="valid-inline-shell"),
+        pytest.param("[bash, scripts/check.sh]", None, id="external-script"),
+        pytest.param('[python3, -c, "print(1)"]', None, id="foreign-interpreter"),
+        pytest.param('[bash, --help, -c, "printf unused"]', None, id="terminating-option"),
+    ],
+)
+def test_labeled_known_shell_argv_cannot_disappear_from_coverage(
+    tmp_path: Path, argv: str, completion: Completion | None
+) -> None:
+    case = EvaluationCase("shell-argv", Language.SHELL, argv)
+    assert case.language in ARGV_PROBLEM.languages
+    path = _path(tmp_path, "compose.yaml", f"services:\n  app:\n    image: fixture\n    command: {case.source}\n")
+    reports = embedded_shell.analyze_sources(
+        root=tmp_path, paths=(str(path),), selected=frozenset({"shellcheck", "shfmt"})
+    )
+    if completion is None:
+        assert reports == ()
+    else:
+        assert {report.name for report in reports} == {"shellcheck", "shfmt"}
+        assert all(report.completion is completion for report in reports)
+        assert all(not report.diagnostics for report in reports)
+
+
 def test_make_mise_composite_and_shell_argv_share_shellcheck(tmp_path: Path) -> None:
     sources = {
         "Makefile": "check:\n\techo $$value\n",

@@ -55,6 +55,9 @@ def shell_block(block: ExecutionBlock) -> ShellBlock | None:
     if block.argv:
         words = unwrap_command(block.argv)
         invocation = classify_interpreter(words)
+        if words and Path(words[0]).name in _SHELLS and invocation.kind == "unknown":
+            message = "configuration execution shell argv cannot be proven to execute an authored script"
+            raise ProgramProjectionError(message)
         if invocation.kind != "shell" or invocation.payload is None:
             return None
         shell = Path(words[0]).name
