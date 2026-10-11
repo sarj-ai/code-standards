@@ -2,6 +2,6 @@
 # explicitly with --norc so repository and user configuration cannot weaken CI.
 external-sources=false
 extended-analysis=true
-enable=check-extra-masked-returns
+enable=check-extra-masked-returns,check-set-e-suppressed
 severity=info
 source-path=SCRIPTDIR
