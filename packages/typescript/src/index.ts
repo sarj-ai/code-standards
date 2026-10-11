@@ -106,6 +106,7 @@ import preferServerActions from "./rules/prefer-server-actions.js";
 import preferWholeObjectAssertion from "./rules/prefer-whole-object-assertion.js";
 import repeatedStaticCallCases from "./rules/repeated-static-call-cases.js";
 import preferZodInfer from "./rules/prefer-zod-infer.js";
+import namedChildSchemaType from "./rules/named-child-schema-type.js";
 import preferZodParseOutputType from "./rules/prefer-zod-parse-output-type.js";
 import requireAssertNever from "./rules/require-assert-never.js";
 import requireFetchTimeout from "./rules/require-fetch-timeout.js";
@@ -232,6 +233,7 @@ const RULES = {
   "prefer-whole-object-assertion": preferWholeObjectAssertion,
   "repeated-static-call-cases": repeatedStaticCallCases,
   "prefer-zod-infer": preferZodInfer,
+  "named-child-schema-type": namedChildSchemaType,
   "prefer-zod-parse-output-type": preferZodParseOutputType,
   "require-assert-never": requireAssertNever,
   "require-fetch-timeout": requireFetchTimeout,
@@ -263,6 +265,7 @@ const LIBRARY_IMPORT_POLICY = ["error", {
 /** Rules staged as non-blocking warnings while corpus adoption evidence accumulates. */
 const ADVISORY_RULES = [
   "@sarj/excessive-commentary",
+  "@sarj/named-child-schema-type",
   "@sarj/no-bespoke-api-case-conversion",
   "@sarj/no-duplicate-test-case",
   "@sarj/no-json-stringify-object-equality",
@@ -286,6 +289,7 @@ const ADVISORY_RULES = [
 ] as const;
 
 const RECOMMENDED_RULES = {
+  "@sarj/named-child-schema-type": "warn",
   "@sarj/no-conditional-empty-object-spread": "error",
   "@sarj/prefer-typed-reflection": "error",
   "@sarj/no-broad-return-type": "error",
@@ -404,6 +408,7 @@ const RECOMMENDED_RULES = {
 } as const;
 
 const STRICT_RULES = {
+  "@sarj/named-child-schema-type": "warn",
   "@sarj/no-conditional-empty-object-spread": "error",
   "@sarj/prefer-typed-reflection": "error",
   "@sarj/no-broad-return-type": "error",

@@ -1246,6 +1246,7 @@ export function createConfig(options = {}) {
       // the paired tests, which its `meta.docs.url` points at.
       //
       "@sarj/require-pascal-case-zod-schema-name": "error",
+      "@sarj/named-child-schema-type": "warn",
       "@sarj/require-explicit-contract-implementation": "warn",
       "@sarj/require-explicit-service-contract": "warn",
       "@sarj/require-interface-for-exported-class": "warn",

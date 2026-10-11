@@ -208,6 +208,7 @@
       "excessive-commentary",
       "iac-source-coupled-test",
       "interface-contract-members-private",
+      "named-child-schema-type",
       "no-bare-return-from-test-catch",
       "no-bespoke-api-case-conversion",
       "no-broad-return-type",

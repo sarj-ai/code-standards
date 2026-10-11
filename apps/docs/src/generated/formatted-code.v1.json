@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "516cee88f37188c14f23f2ade4c9582aad19ee1ec41f8eca9b72f415dd0e87eb",
-  "cliSha256": "a313c394e6390e9427518bc19991e74473533ddc89d995c457e4d14902f25940",
+  "catalogSha256": "68ed06b33246442e43a3b95e77dd81e1258afb795fe4214eb07de006882ccbef",
+  "cliSha256": "7f75fd3fe40275e35fb3d622eafe1a7dcdb883f16e08042cd600f7fe8bf0ba1c",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -182,6 +182,41 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Do not grow an undeclared public surface"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "eslint:named-child-schema-type": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/record.ts",
+              "source": "import { z } from \"zod\";\nconst KeySchema: z.ZodEnum<{ a: \"a\"; b: \"b\" }> = z.enum([\"a\", \"b\"]);\nexport const RecordSchema: z.ZodRecord<\n  z.ZodEnum<{ a: \"a\"; b: \"b\" }>,\n  z.ZodString\n> = z.record(KeySchema, z.string());\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/record.ts",
+          "id": "copied-child",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Do not repeat the complete child annotation"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/record.ts",
+              "source": "import { z } from \"zod\";\nconst KeySchema: z.ZodEnum<{ a: \"a\"; b: \"b\" }> = z.enum([\"a\", \"b\"]);\nexport const RecordSchema: z.ZodRecord<typeof KeySchema, z.ZodString> = z.record(\n  KeySchema,\n  z.string(),\n);\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/record.ts",
+          "id": "named-child",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Reference the named child contract"
         }
       ],
       "optionsSchemaSource": null
