@@ -1612,7 +1612,7 @@ def test_init_on_an_empty_directory_adopts_repository_wide_policy(tmp_path: Path
     assert commit_policy.is_file()
     assert (
         f"sarj-ai/repo-standards/pull-request-commits@{manifest.REPO_STANDARDS_REVISION}"
-        f" # v{manifest.REPO_STANDARDS_VERSION}" in commit_policy.read_text(encoding="utf-8")
+        f" # v{manifest.REPO_STANDARDS_ACTION_VERSION}" in commit_policy.read_text(encoding="utf-8")
     )
 
 

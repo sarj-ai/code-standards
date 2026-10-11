@@ -2720,7 +2720,7 @@ jobs:
           persist-credentials: false
 """
         f"      - uses: sarj-ai/repo-standards/pull-request-commits@{manifest.REPO_STANDARDS_REVISION}"
-        f" # v{manifest.REPO_STANDARDS_VERSION}\n"
+        f" # v{manifest.REPO_STANDARDS_ACTION_VERSION}\n"
     )
 
 
