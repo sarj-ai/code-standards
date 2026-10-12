@@ -16,7 +16,7 @@ from sarj_python_lint.rule_base import (
     RuleExample,
     Severity,
 )
-from sarj_python_lint.rules._ast_index import nodes, walk
+from sarj_python_lint.rules._ast_index import walk
 from sarj_python_lint.rules._sql import is_store_module, sql_string_value, strip_sql_noise
 
 
@@ -24,7 +24,6 @@ if TYPE_CHECKING:
     from sqlglot import exp
 
     from sarj_python_lint._file_context import PythonFileContext
-    from sarj_python_lint.rules._ast_index import NodeIndex
 
 
 _QUERY_SHAPE = re.compile(r"\bSELECT\b[\s\S]*?\bFROM\b", re.IGNORECASE)
@@ -63,18 +62,6 @@ _STRONG_ANALYTICAL: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("REGR", re.compile(r"\bREGR_[A-Z_]+\s*\(", re.IGNORECASE)),
     ("PERCENTILE", re.compile(r"\bPERCENTILE_(?:CONT|DISC)\s*\(", re.IGNORECASE)),
 )
-
-
-def _docstring_node_ids(tree: ast.AST, *, node_index: NodeIndex | None = None) -> set[int]:
-    result: set[int] = set()
-    for owner in nodes(tree, ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef, index=node_index):
-        body = owner.body
-        if not body or not isinstance(body[0], ast.Expr):
-            continue
-        value = body[0].value
-        if isinstance(value, ast.Constant) and isinstance(value.value, str):
-            result.add(id(value))
-    return result
 
 
 def analytical_signal(sql: str) -> str | None:
@@ -217,7 +204,7 @@ class NoAnalyticalAggregationInPostgresStore(Rule):
         if tree is None:
             return []
 
-        docstrings = _docstring_node_ids(tree, node_index=context.node_index)
+        docstrings = context.docstring_node_ids
         diagnostics: list[Diagnostic] = []
         consumed: set[int] = set()
         for node in context.nodes(ast.Constant, ast.BinOp):
