@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "488459dcb1e9677ded0a93f436a5c2c79c3ac8b64fbd878a88f3936fa611a796",
-  "cliSha256": "19d2eb3a93ca93cf43f40a62d5c9288701ec62e7d580ea1febb3e4ce419854a5",
+  "catalogSha256": "ff55ac245e6be0db538191204f3fca83b5138da2baaa21229a59ef1590fc99c1",
+  "cliSha256": "d51d4cd6bde029a84897c103dc11de793d4d850ad0a05da8a113dbf7f32ed035",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -9582,6 +9582,41 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Request API key uses ordinary equality"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:prefer-declarative-batch-validation": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/batches.py",
+              "source": "from pydantic import BaseModel\n\n\nclass Item(BaseModel):\n    value: int\n\n\ndef load(rows: list[object]):\n    return [Item.model_validate(row) for row in rows]\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/batches.py",
+          "id": "homogeneous-validation-comprehension",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Declare collection validation once"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/batches.py",
+              "source": "from pydantic import BaseModel, RootModel\n\n\nclass Item(BaseModel):\n    value: int\n\n\nclass Items(RootModel[list[Item]]):\n    pass\n\n\ndef load(rows: list[object]):\n    return Items.model_validate(rows).root\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/batches.py",
+          "id": "named-batch-validation",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "A named collection schema owns the batch"
         }
       ],
       "optionsSchemaSource": null

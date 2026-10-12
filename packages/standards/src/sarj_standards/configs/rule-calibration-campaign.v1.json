@@ -3,6 +3,14 @@
   "precisionGate": "Review every finding up to 200; above 200, review every major cluster and a deterministic stratified sample of at least 50. Treat ambiguous findings as false positives for error-level rules.",
   "tasks": [
     {
+      "task": "rule-audit/python/prefer-declarative-batch-validation",
+      "family": "python",
+      "ruleId": "prefer-declarative-batch-validation",
+      "state": "complete",
+      "evidence": "Five agents contributed policy/provenance reviews, database verification and false-positive checks. 85 focused tests and 357 tests with neighboring rules pass. Seven labeled inputs have three true positives and four true negatives, zero false positives, false negatives or duplicate locations. The motivating full module reports one warning before refactoring and zero after. Digest-pinned candidate calibration selects 2,685 Python files (27,125,282 bytes), including installed Pydantic 2.14.0: zero live matches. Each corpus and default-250-file batch runs in a fresh process. A deterministic 200-file/1,776,029-byte panel (100 per private Git corpus, files at most 64 KiB) compares all 145 existing rules against 146 rules. First runs were 12.788/12.777 seconds; the next two alternating warm pairs have medians 12.802/12.709 seconds (0.993x). The small difference is noise, not a speedup claim. Median per-process peak RSS is 133.28/133.19 MiB. Python 3.15 on macOS; verification ran concurrently and OS caches were not flushed. Very large modules and dependency-library source are excluded from the normal-runner performance panel; the full candidate scan includes the library. The unrestricted full-registry library benchmark exceeded its 120-second batch limit and is not a performance result. Private pins, source and raw reports remain owner-only. Reproduce focused checks with the three corresponding Python rule test modules and run make verify; private corpus reproduction requires its verified owner-readable overlay. Finite calibration does not establish universal precision or fleet-wide performance.",
+      "outcome": "Stage SARJ494 as a warning without autofix. Recommend a typed Psycopg row factory or named RootModel collection with an explicit reject-or-omit policy. Preserve required logging and rejection reports. Only locally proven Pydantic ancestry and materialized homogeneous batches qualify; imported models, streaming inputs, dynamic context and secondary effects remain unreported. Existing database-rule precedence and Ruff ownership avoid duplicate diagnostics. Bounded tests and corpus calibration do not establish universal precision."
+    },
+    {
       "task": "rule-audit/python/redundant-test-constructor-forwarder",
       "family": "python",
       "ruleId": "redundant-test-constructor-forwarder",
