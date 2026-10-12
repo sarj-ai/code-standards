@@ -701,8 +701,8 @@
       "family": "python",
       "ruleId": "no-any-mapping-types",
       "state": "complete",
-      "evidence": "Focused fixtures cover object, nested object, dict and Mapping with Any, forward references, precise named schemas, generated files, vendor files, local shadowing, and cycle-safe explicit alias chains. Three existing application corpora produced 2,706 findings; cluster sampling confirmed widespread pre-existing schema-erasure debt, so adoption requires shrink-only baselines. Follow-up alias resolution passed the 457-case combined suite and produced an identical 214-diagnostic, 86-file Platform baseline.",
-      "outcome": "Promoted after calibration. Reject proven string-keyed mappings whose values recursively contain typing.Any across annotations, explicit aliases, casts, TypeAdapter targets, and type comments. Preserve object and dict[str, object] as safe opaque boundary types requiring narrowing; recommend TypedDict first for fixed records, Pydantic models for untrusted runtime input, and pydantic.JsonValue for arbitrary JSON trees."
+      "evidence": "Focused fixtures cover object, nested object, dict and Mapping with Any, forward references, precise named schemas, generated files, vendor files, local shadowing, and cycle-safe explicit alias chains. Three existing application corpora produced 2,706 findings; cluster sampling confirmed widespread pre-existing schema-erasure debt, so adoption requires shrink-only baselines. Follow-up alias resolution passed the 457-case combined suite and produced an identical 214-diagnostic, 86-file Platform baseline. The 2026-10-11 campaign adds eight negative regressions for Annotated metadata, Literal values, unknown generic parameter positions and metadata-only implicit aliases; 41 focused cases pass. Only actual type positions are traversed. Independent judge approves this precision repair; separate promotion gate remains pending.",
+      "outcome": "Promoted after calibration. Reject proven string-keyed mappings whose values recursively contain typing.Any across annotations, explicit aliases, casts, TypeAdapter targets, and type comments. Preserve object and dict[str, object] as safe opaque boundary types requiring narrowing; recommend TypedDict first for fixed records, Pydantic models for untrusted runtime input, and pydantic.JsonValue for arbitrary JSON trees. Current authored catalog severity remains warning pending a separate promotion decision; native diagnostics already use error."
     },
     {
       "task": "rule-audit/python/require-pydantic-for-structured-payload",
@@ -1303,8 +1303,8 @@
       "family": "typescript",
       "ruleId": "no-impossible-zod-literal-bounds",
       "state": "complete",
-      "evidence": "Three independent reviews accepted finite same-chain bounds, import identity and transform/unknown-chain abstention. All 36 focused cases pass within a 121-case unchanged-owner batch, including equal-inclusive and contradictory-exclusive boundaries. No corpus findings; tests provide positive evidence.",
-      "outcome": "Retain bounded contradiction detection without guessing a corrected endpoint. Discrete integer domains and transformed schemas are not a complete constraint solver; runtime schema validation remains complementary."
+      "evidence": "Three independent reviews accepted finite same-chain bounds, import identity and transform/unknown-chain abstention. All 36 focused cases pass within a 121-case unchanged-owner batch, including equal-inclusive and contradictory-exclusive boundaries. No corpus findings; tests provide positive evidence. The 2026-10-11 campaign extends integer-domain analysis with 46 focused cases and upstream owner integration; 2,078 immutable TypeScript files produce no selected diagnostics. The independent fifth judge pass approves the narrowed extension.",
+      "outcome": "Retain bounded contradiction detection without guessing a corrected endpoint. Discrete integer domains and transformed schemas are not a complete constraint solver; runtime schema validation remains complementary. Existing error scope now includes nonempty real intervals with no safe integer member; upstream zod/no-conflicting-checks owns real contradictions in integer chains. Skip integer options and unsafe numeric edges; no autofix."
     },
     {
       "task": "rule-audit/eslint/no-in-operator-on-built-in-collections",
@@ -2401,6 +2401,30 @@
       "state": "complete",
       "evidence": "131 focused semantic and native compiler cases cover exact complete child annotations, import provenance, comment/cycle exclusions, adjacent owner precedence and inherited boolean review. Native compiler probes preserve input/output/default/readonly contracts and isolated declaration emit. The strict/recommended preset registration is validated separately. A previously inspected positive file from an already-local immutable snapshot was reverified: one file, 126,232 bytes, three individually inspected findings, zero known predicate violations or duplicate locations, and 12 annotation lines / 111 bytes removable by the three manual replacements. This is a targeted positive sample, not unbiased fleet evidence. Private identity, source and pins remain owner-only. Fifteen alternating warm pairs after three warmups measured 37.67ms baseline and 38.50ms enabled medians with overlapping ranges; no speedup or fleet performance claim. The native compiler reports 6.0.3 while its declared package alias is 6.0.2; the actual locked tool was used.",
       "outcome": "Stage eslint:named-child-schema-type at warning severity without autofix. Replace only an exactly repeated full local child-schema generic argument with typeof ChildSchema, preserving outer annotations and runtime initializers. Imported/unknown children, broad contracts, type queries, cycles, mutable bindings, comments and generated source abstain. Independently pinned exported contracts require manual review. Inherited compiler boolean review remains guidance and native tests in the existing tsconfig-policy suite, with no additional configuration detector or runner."
+    },
+    {
+      "task": "rule-audit/python/no-impossible-pydantic-field-bounds",
+      "family": "python",
+      "ruleId": "no-impossible-pydantic-field-bounds",
+      "state": "complete",
+      "evidence": "Forty targeted design/admission passes and five independent judge passes, followed by supplemental namespace-mutation regressions. 169 focused rule cases and20 precedence cases pass. Final pinned corpus rerun covers3,976 Python files and retains four expected public seed findings with no natural findings. Zero natural hits are not a broad precision guarantee. See packages/python/benchmarks/strict-typing-campaign.json for evidence, timings, limitations and final verification state. Supplemental independent review passes205 cases and approves warning-first publication; native severity, exit status, suppression and blocking-baseline precedence are confirmed. Final make verify passes28,865 tests with9 existing skips, all native lint/type/dogfood, generated artifacts/docs, repository policy and shell checks on integrated462303b8 main.",
+      "outcome": "Ship warning in source metadata and native diagnostics for the first release; promote separately after correctness, compatibility, corpus and severity review. No autofix. Dynamic or escaped imported objects and uncertain custom contracts abstain. Exact full verification and CI gate merge."
+    },
+    {
+      "task": "rule-audit/python/no-unknown-pydantic-validator-field",
+      "family": "python",
+      "ruleId": "no-unknown-pydantic-validator-field",
+      "state": "complete",
+      "evidence": "Forty targeted design/admission passes and five independent judge passes, followed by supplemental namespace-mutation regressions. 169 focused rule cases and20 precedence cases pass. Final pinned corpus rerun covers3,976 Python files and retains four expected public seed findings with no natural findings. Zero natural hits are not a broad precision guarantee. See packages/python/benchmarks/strict-typing-campaign.json for evidence, timings, limitations and final verification state. Supplemental independent review passes205 cases and approves warning-first publication; native severity, exit status, suppression and blocking-baseline precedence are confirmed. Final make verify passes28,865 tests with9 existing skips, all native lint/type/dogfood, generated artifacts/docs, repository policy and shell checks on integrated462303b8 main.",
+      "outcome": "Ship warning in source metadata and native diagnostics for the first release; promote separately after correctness, compatibility, corpus and severity review. No autofix. Dynamic or escaped imported objects and uncertain custom contracts abstain. Exact full verification and CI gate merge."
+    },
+    {
+      "task": "rule-audit/python/no-conflicting-pydantic-alias-validation",
+      "family": "python",
+      "ruleId": "no-conflicting-pydantic-alias-validation",
+      "state": "complete",
+      "evidence": "Forty targeted design/admission passes and five independent judge passes, followed by supplemental namespace-mutation regressions. 169 focused rule cases and20 precedence cases pass. Final pinned corpus rerun covers3,976 Python files and retains four expected public seed findings with no natural findings. Zero natural hits are not a broad precision guarantee. See packages/python/benchmarks/strict-typing-campaign.json for evidence, timings, limitations and final verification state. Supplemental independent review passes205 cases and approves warning-first publication; native severity, exit status, suppression and blocking-baseline precedence are confirmed. Final make verify passes28,865 tests with9 existing skips, all native lint/type/dogfood, generated artifacts/docs, repository policy and shell checks on integrated462303b8 main.",
+      "outcome": "Ship warning in source metadata and native diagnostics for the first release; promote separately after correctness, compatibility, corpus and severity review. No autofix. Dynamic or escaped imported objects and uncertain custom contracts abstain. Exact full verification and CI gate merge."
     }
   ]
 }

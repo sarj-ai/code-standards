@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "355a450cc6499b5ecbdb5824d4bf4c8b03cf4da5c10a073ffb6e25c47af5f2a2",
-  "cliSha256": "b27764995c048949bea9782603517b6fdddd480384598066f01bfd3ca965b50f",
+  "catalogSha256": "8f981a081282a0a5a14f67e4c282460b06241bf1dd3057879b85b7649649b164",
+  "cliSha256": "1b6822c83f01c2b5b1d9d4368279567576afd07c0f8064ef20f2965bad72a978",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -6791,6 +6791,49 @@
       ],
       "optionsSchemaSource": null
     },
+    "python:no-conflicting-pydantic-alias-validation": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/models.py",
+              "source": "from pydantic import BaseModel, ConfigDict\n\n\nclass Model(BaseModel):\n    model_config = ConfigDict(validate_by_alias=False, validate_by_name=False)\n"
+            },
+            {
+              "path": "pyproject.toml",
+              "source": "[project]\nname = \"example\"\nversion = \"0.1\"\ndependencies = [\"pydantic>=2.11\"]\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/models.py",
+          "id": "disabled-paths",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Both validation paths are explicitly disabled"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/models.py",
+              "source": "from pydantic import BaseModel, ConfigDict\n\n\nclass Model(BaseModel):\n    model_config = ConfigDict(validate_by_alias=False)\n"
+            },
+            {
+              "path": "pyproject.toml",
+              "source": "[project]\nname = \"example\"\nversion = \"0.1\"\ndependencies = [\"pydantic>=2.11\"]\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/models.py",
+          "id": "name-fallback",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Disabling alias alone retains name validation"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "python:no-conftest-test-module-import": {
       "examples": [
         {
@@ -7574,6 +7617,41 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Constructor requires its dependency"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:no-impossible-pydantic-field-bounds": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/models.py",
+              "source": "from pydantic import BaseModel, Field\n\n\nclass Model(BaseModel):\n    value: int = Field(gt=0, lt=1)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/models.py",
+          "id": "empty-integer-interval",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "No integer lies strictly between zero and one"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/models.py",
+              "source": "from pydantic import BaseModel, Field\n\n\nclass Model(BaseModel):\n    value: int = Field(ge=0, lt=1)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/models.py",
+          "id": "integer-singleton",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Zero is admitted by the interval"
         }
       ],
       "optionsSchemaSource": null
@@ -8899,6 +8977,41 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Unique constraint selected from structured diagnostics"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:no-unknown-pydantic-validator-field": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/models.py",
+              "source": "from pydantic import BaseModel, field_validator\n\n\nclass Model(BaseModel):\n    value: int\n\n    @field_validator(\"value\")\n    @classmethod\n    def check(cls, value: int) -> int:\n        return value\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/models.py",
+          "id": "declared-field",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Decorator names the declared field"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/models.py",
+              "source": "from pydantic import BaseModel, field_validator\n\n\nclass Model(BaseModel):\n    value: int\n\n    @field_validator(\"missing\")\n    @classmethod\n    def check(cls, value: int) -> int:\n        return value\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/models.py",
+          "id": "missing-field",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Decorator targets a field the model does not declare"
         }
       ],
       "optionsSchemaSource": null

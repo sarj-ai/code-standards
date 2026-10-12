@@ -1,0 +1,484 @@
+{
+  "schemaVersion": 1,
+  "scope": "sarj-ai/code-standards only",
+  "baseCommit": "9b4c1a844ecae36b35e04e671936463e3242c9df",
+  "designPasses": [
+    {
+      "pass": 1,
+      "topic": "str-enum-mixin",
+      "decision": "covered",
+      "evidence": "Ruff UP042 already replaces str/Enum inheritance; no custom duplicate."
+    },
+    {
+      "pass": 2,
+      "topic": "closed-string-domain",
+      "decision": "covered",
+      "evidence": "SARJ006 already reports rejecting closed-domain string dispatch."
+    },
+    {
+      "pass": 3,
+      "topic": "wire-literal-domain",
+      "decision": "preserve",
+      "evidence": "SARJ006 permits a named Literal where enum runtime behavior is unnecessary."
+    },
+    {
+      "pass": 4,
+      "topic": "nominal-identifiers",
+      "decision": "covered",
+      "evidence": "Python prefer-nominal-id-types is already error; TypeScript counterpart needs business-role review."
+    },
+    {
+      "pass": 5,
+      "topic": "canonical-json-value",
+      "decision": "keep-warning",
+      "evidence": "Runtime coercion differs between a local recursive alias and Pydantic JsonValue."
+    },
+    {
+      "pass": 6,
+      "topic": "external-json-records",
+      "decision": "keep-warning",
+      "evidence": "SARJ411 can report safe optional projection after container narrowing."
+    },
+    {
+      "pass": 7,
+      "topic": "structured-wire-payload",
+      "decision": "covered",
+      "evidence": "require-pydantic-for-structured-payload already owns fixed runtime payload contracts."
+    },
+    {
+      "pass": 8,
+      "topic": "any-mapping-types",
+      "decision": "revise",
+      "evidence": "SARJ447 owns mapping erasure, but metadata/value positions must be excluded."
+    },
+    {
+      "pass": 9,
+      "topic": "annotated-any-metadata",
+      "decision": "fix",
+      "evidence": "Added negative fixtures and traversed only Annotated first type argument."
+    },
+    {
+      "pass": 10,
+      "topic": "literal-any-string",
+      "decision": "fix",
+      "evidence": "Literal values are not parsed as forward-reference types."
+    },
+    {
+      "pass": 11,
+      "topic": "unknown-generic-positions",
+      "decision": "fix",
+      "evidence": "Unknown generic parameter positions now abstain instead of assuming type arguments."
+    },
+    {
+      "pass": 12,
+      "topic": "precise-factory-signatures",
+      "decision": "keep-warning",
+      "evidence": "Fixed keyword calls do not invalidate a deliberately dynamic plugin contract."
+    },
+    {
+      "pass": 13,
+      "topic": "pydantic-invalid-default",
+      "decision": "covered",
+      "evidence": "SARJ400 already detects invalid defaults; empty domains get SARJ491 precedence."
+    },
+    {
+      "pass": 14,
+      "topic": "pydantic-input-model-mutation",
+      "decision": "keep-warning",
+      "evidence": "Existing ownership policy must preserve explicit mutation contracts."
+    },
+    {
+      "pass": 15,
+      "topic": "before-validator-mutation",
+      "decision": "keep-warning",
+      "evidence": "SARJ482 already owns raw-input mutation; caller ownership remains policy sensitive."
+    },
+    {
+      "pass": 16,
+      "topic": "frozen-after-validator-write",
+      "decision": "covered",
+      "evidence": "Existing no-frozen-after-validator-field-write is already error."
+    },
+    {
+      "pass": 17,
+      "topic": "nested-field-validator",
+      "decision": "covered",
+      "evidence": "Existing no-nested-pydantic-field-validator is already error."
+    },
+    {
+      "pass": 18,
+      "topic": "ordinal-field-minimum",
+      "decision": "keep-warning",
+      "evidence": "Description-derived ordinal intent is not sufficient for blocking."
+    },
+    {
+      "pass": 19,
+      "topic": "shared-default-factory",
+      "decision": "keep-warning",
+      "evidence": "Independent judge reproduced a valid intentional shared registry."
+    },
+    {
+      "pass": 20,
+      "topic": "missing-field-decorator",
+      "decision": "new-warning-first",
+      "evidence": "SARJ492 detects Pydantic decorator-missing-field with literal target proof."
+    },
+    {
+      "pass": 21,
+      "topic": "computed-serializer-target",
+      "decision": "refine",
+      "evidence": "Computed-field models abstain; a computed serializer target is valid."
+    },
+    {
+      "pass": 22,
+      "topic": "effective-decorator-stack",
+      "decision": "refine",
+      "evidence": "Only one effective outermost field decorator and known inner descriptor qualify."
+    },
+    {
+      "pass": 23,
+      "topic": "dynamic-annotations",
+      "decision": "refine",
+      "evidence": "Dunder namespace replacement and evaluated mutation calls abstain."
+    },
+    {
+      "pass": 24,
+      "topic": "empty-integer-interval",
+      "decision": "new-warning-first",
+      "evidence": "SARJ491 detects an interval with no admitted integer, including adjacent exclusive bounds."
+    },
+    {
+      "pass": 25,
+      "topic": "reversed-numeric-bounds",
+      "decision": "new-warning-first",
+      "evidence": "SARJ491 detects mathematically empty finite float intervals."
+    },
+    {
+      "pass": 26,
+      "topic": "annotated-field-bounds",
+      "decision": "refine",
+      "evidence": "Assignment and Annotated bounds are combined only when each constraint name is unique."
+    },
+    {
+      "pass": 27,
+      "topic": "repeated-field-bounds",
+      "decision": "preserve",
+      "evidence": "Pydantic overrides repeated constraint names; duplicate names now abstain."
+    },
+    {
+      "pass": 28,
+      "topic": "disabled-alias-validation",
+      "decision": "new-warning-first",
+      "evidence": "SARJ493 detects both explicitly disabled validation paths."
+    },
+    {
+      "pass": 29,
+      "topic": "pydantic-option-version",
+      "decision": "refine",
+      "evidence": "Alias flags require a project Pydantic lower bound of at least 2.11."
+    },
+    {
+      "pass": 30,
+      "topic": "class-config-keyword-override",
+      "decision": "preserve",
+      "evidence": "Class keywords can override model_config; all class keywords abstain."
+    },
+    {
+      "pass": 31,
+      "topic": "import-symbol-mutation",
+      "decision": "refine",
+      "evidence": "Attribute-root provenance detects mutation of imported modules and from-imported functions."
+    },
+    {
+      "pass": 32,
+      "topic": "field-diagnostic-precedence",
+      "decision": "refine",
+      "evidence": "Field spans and columns preserve unrelated same-line default diagnostics."
+    },
+    {
+      "pass": 33,
+      "topic": "zod-schema-inference",
+      "decision": "covered",
+      "evidence": "prefer-zod-infer and prefer-zod-parse-output-type are already error."
+    },
+    {
+      "pass": 34,
+      "topic": "zod-any-schema",
+      "decision": "covered",
+      "evidence": "Upstream zod/no-any-schema is already error in strict."
+    },
+    {
+      "pass": 35,
+      "topic": "zod-native-enum",
+      "decision": "covered",
+      "evidence": "Existing no-zod-native-enum is already error; prefer maintained Zod 4 vocabulary APIs."
+    },
+    {
+      "pass": 36,
+      "topic": "zod-shared-enum",
+      "decision": "keep-warning",
+      "evidence": "Equal literal values do not prove one business domain."
+    },
+    {
+      "pass": 37,
+      "topic": "zod-multi-value-literal",
+      "decision": "keep-warning",
+      "evidence": "Changing union to literal changes introspection and validation-error contracts."
+    },
+    {
+      "pass": 38,
+      "topic": "zod-default-sentinel",
+      "decision": "reject",
+      "evidence": "Defaults intentionally bypass refinements; no invalid-state invariant was proven."
+    },
+    {
+      "pass": 39,
+      "topic": "zod-integer-gap",
+      "decision": "expand-error",
+      "evidence": "Existing no-impossible-zod-literal-bounds now detects nonempty real intervals containing no integer."
+    },
+    {
+      "pass": 40,
+      "topic": "zod-upstream-precedence",
+      "decision": "refine",
+      "evidence": "Upstream owns real contradictions in int chains; integration fixture requires exactly one owner."
+    }
+  ],
+  "problems": [
+    {
+      "key": "no-impossible-pydantic-field-bounds",
+      "summary": "Pydantic field bounds must admit at least one value.",
+      "harm": "Contradictory literal constraints reject every field value, including integer intervals with no integer member.",
+      "languages": [
+        "python"
+      ],
+      "badExamples": [
+        "from pydantic import BaseModel, Field\nclass Model(BaseModel):\n    value: int = Field(gt=0, lt=1)\n"
+      ],
+      "goodExamples": [
+        "from pydantic import BaseModel, Field\nclass Model(BaseModel):\n    value: int = Field(ge=0, lt=1)\n"
+      ],
+      "exclusions": [
+        "Only plain direct module-level BaseModel subclasses and built-in int, float, str and list fields are inspected.",
+        "Bounds must be finite literals; int and length bounds must be integers, and float bounds must convert exactly.",
+        "Unknown metadata, nullable types, repeated bound names, methods, dynamic namespaces and generated files are excluded.",
+        "No autofix chooses a domain or changes validation behavior."
+      ],
+      "autofix": "none"
+    },
+    {
+      "key": "no-unknown-pydantic-validator-field",
+      "summary": "Pydantic field decorators must target declared fields.",
+      "harm": "A field validator or serializer naming a missing field prevents the model from being constructed.",
+      "languages": [
+        "python"
+      ],
+      "badExamples": [
+        "from pydantic import BaseModel, field_validator\nclass Model(BaseModel):\n    value: int\n    @field_validator('missing')\n    @classmethod\n    def check(cls, value: int) -> int: return value\n"
+      ],
+      "goodExamples": [
+        "from pydantic import BaseModel, field_validator\nclass Model(BaseModel):\n    value: int\n    @field_validator('value')\n    @classmethod\n    def check(cls, value: int) -> int: return value\n"
+      ],
+      "exclusions": [
+        "Only direct module-level BaseModel subclasses with a static namespace and resolved field decorators are inspected.",
+        "Unknown inheritance, computed fields, custom decorators, overwritten methods, wildcard fields and uncertain check_fields are excluded.",
+        "One diagnostic is emitted per decorator even if several field targets are missing."
+      ],
+      "autofix": "none"
+    },
+    {
+      "key": "no-conflicting-pydantic-alias-validation",
+      "summary": "Pydantic alias configuration must retain a validation path.",
+      "harm": "Explicitly disabling validation by both alias and field name prevents model construction.",
+      "languages": [
+        "python"
+      ],
+      "badExamples": [
+        "from pydantic import BaseModel, ConfigDict\nclass Model(BaseModel):\n    model_config = ConfigDict(validate_by_alias=False, validate_by_name=False)\n"
+      ],
+      "goodExamples": [
+        "from pydantic import BaseModel, ConfigDict\nclass Model(BaseModel):\n    model_config = ConfigDict(validate_by_alias=False)\n"
+      ],
+      "exclusions": [
+        "Requires a project dependency whose Pydantic lower bound is at least 2.11.",
+        "Only plain direct module-level BaseModel subclasses and literal model_config declarations are inspected.",
+        "Class keywords, duplicate keys, config mutation, unpacking, unknown factories and generated source are excluded."
+      ],
+      "autofix": "none"
+    }
+  ],
+  "judgePasses": [
+    {
+      "pass": 1,
+      "decision": "revise",
+      "evidence": "Dropped Zod default candidate; preserved repeated Field overrides, computed fields, class config overrides and Pydantic option versions."
+    },
+    {
+      "pass": 2,
+      "decision": "revise",
+      "evidence": "Added dynamic namespace/import mutation and decorator-stack exclusions, plus upstream Zod ownership."
+    },
+    {
+      "pass": 3,
+      "decision": "revise",
+      "evidence": "Added imported-symbol mutation guard and column-aware field precedence; retained valid coercion, wall-clock, inheritance and sharing contracts."
+    },
+    {
+      "pass": 4,
+      "decision": "revise",
+      "evidence": "Independent judge verified all11 corpus digests and repeated findings, and requested relative/conditional import exclusions and annotation-effect checks. Added evaluated/quoted annotation and import-replacement regressions."
+    },
+    {
+      "pass": 5,
+      "decision": "approve",
+      "evidence": "Independent 153 Python cases, 46 Zod cases and 12 final edge probes passed. Repaired relative/conditional builtin import shadowing and abstained on inexact or nonfinite float-bound conversion; exact integer arithmetic remains supported. Approved three new correctness errors, existing Zod error extension and warning-level Any repair. Merge is gated on exact final full verification."
+    }
+  ],
+  "verification": {
+    "state": "passed",
+    "focusedPythonCases": 169,
+    "focusedZodCases": 46,
+    "noAutofixes": true,
+    "privateCorpusPolicy": "Private identities, revisions, roots, snippets and digests remain in owner-only overlays; published counts are aggregate.",
+    "corpusProtocol": "Fresh linter process per repository and batch, at most250 files; content digests verified before and after evaluation. Public installed sources are copied to avoid generated-path exclusions. TypeScript corpus ignores inline ESLint configuration so uninstalled foreign rule directives cannot affect the selected AST evaluation; native integration tests verify rule interactions.",
+    "independentFinalEdgeProbes": 12,
+    "corpora": {
+      "verifiedContentDigests": 11,
+      "pythonFiles": 3976,
+      "pythonBytes": 38444889,
+      "typescriptFiles": 2078,
+      "typescriptBytes": 12563492,
+      "pythonBatchesPerRun": 21,
+      "typescriptBatchesPerRun": 10,
+      "newPythonSeedTruePositives": 4,
+      "newPythonNaturalMatches": 0,
+      "newPythonSeedTrueNegatives": 20,
+      "knownFalsePositives": 0,
+      "seedFalseNegatives": 0,
+      "duplicateLocations": 0,
+      "zodNaturalMatches": 0,
+      "precisionLimit": "Zero natural matches do not establish natural-code precision. Narrow scope is supported by labeled native fixtures, independent runtime probes and explicit abstentions."
+    },
+    "selectedEngineTiming": {
+      "python": {
+        "new": {
+          "runs": 3,
+          "firstProcessPassWallSeconds": 11.992229,
+          "medianWallSeconds": 11.992229,
+          "medianNativeSeconds": 4.056492,
+          "maximumWorkerBytes": 90603520
+        },
+        "baseline": {
+          "runs": 3,
+          "firstProcessPassWallSeconds": 35.877093,
+          "medianWallSeconds": 33.699129,
+          "medianNativeSeconds": 27.192034,
+          "maximumWorkerBytes": 95354880
+        },
+        "combined": {
+          "runs": 3,
+          "firstProcessPassWallSeconds": 33.85915,
+          "medianWallSeconds": 33.85915,
+          "medianNativeSeconds": 27.413993,
+          "maximumWorkerBytes": 95240192
+        },
+        "combinedWallRatio": 1.0047
+      },
+      "typescript": {
+        "baseline": {
+          "runs": 3,
+          "firstProcessPassWallSeconds": 8.650455,
+          "medianWallSeconds": 8.672312,
+          "medianNativeSeconds": 6.08061
+        },
+        "combined": {
+          "runs": 3,
+          "firstProcessPassWallSeconds": 9.322987,
+          "medianWallSeconds": 9.223802,
+          "medianNativeSeconds": 6.525448
+        },
+        "combinedWallRatio": 1.0636
+      }
+    },
+    "timingLimitations": "Three fresh-process passes per mode, with OS caches unflushed and concurrent verification load. Python selected shipped controls are prefer-str-enum and invalid-pydantic-field-default; TypeScript control is upstream zod/no-conflicting-checks. These are selected normal-engine comparisons, not full-registry or fleet guarantees. Measurements precede the final two conservative provenance/numeric exclusions and precedence lookup refactor; final semantic probes verify those refinements. No optimization claim.",
+    "reproducePublicChecks": [
+      "uv run --project packages/standards --frozen pytest -q packages/python/tests/rules/test_no_impossible_pydantic_field_bounds.py packages/python/tests/rules/test_no_unknown_pydantic_validator_field.py packages/python/tests/rules/test_no_conflicting_pydantic_alias_validation.py packages/python/tests/rules/test_no_any_mapping_types.py packages/python/tests/test_diagnostic_precedence.py",
+      "npm --prefix packages/typescript test -- tests/rules/no-impossible-zod-literal-bounds.test.ts",
+      "make verify",
+      "uv run --project packages/standards --frozen code-standards --root . maintain rules changes --before origin/main --after HEAD"
+    ],
+    "fullRepositoryGate": {
+      "command": "make verify",
+      "testsPassed": 28774,
+      "testsSkipped": 9,
+      "lint": "passed",
+      "typecheck": "passed",
+      "dogfood": "passed",
+      "docsAndGeneratedArtifacts": "passed",
+      "repositoryPolicy": "passed",
+      "shellChecks": "passed"
+    },
+    "fullRegistrySeedTiming": {
+      "files": 8,
+      "bytes": 1019,
+      "runsPerMode": 3,
+      "baselineMedianWallSeconds": 0.385277,
+      "combinedMedianWallSeconds": 0.36663,
+      "maximumWorkerBytes": 72728576,
+      "expectedNewDefectsPerCombinedRun": 4,
+      "limitations": "Eight independently authored public seed files only. Balanced private/public full-registry baseline attempts exceeded the180-second first-batch limit before candidate execution; no broad full-registry overhead claim. Selected-engine corpus comparisons completed. Fresh processes do not imply flushed OS caches and no speedup is claimed."
+    },
+    "existingAnySeverity": "The authored SARJ447 catalog level remains warning in this batch. Its native diagnostic already defaults to error before the campaign; separate promotion review will address catalog alignment and API-compatibility scope.",
+    "focusedPrecedenceCases": 20,
+    "lifecycle": "New SARJ491\u2013493 use warning in both source metadata and native diagnostics for their first publication. Separate promotion follows source/corpus/CLI review.",
+    "finalNamespaceCorpus": {
+      "files": 3976,
+      "bytes": 38444889,
+      "runs": [
+        {
+          "mode": "new",
+          "run": 0,
+          "files": 3976,
+          "batches": 21,
+          "wallSeconds": 9.450727,
+          "nativeSeconds": 3.453236165223643,
+          "peakBytes": 90800128,
+          "findings": 4
+        }
+      ],
+      "knownNaturalMatches": 0,
+      "expectedSeedMatches": 4,
+      "limitation": "Final-scope fresh-process rerun; no speedup or broad precision claim."
+    },
+    "fullVerify": {
+      "command": "make verify",
+      "passedTests": 28865,
+      "existingSkips": 9,
+      "typescriptTests": 7721,
+      "bootstrapTests": 18,
+      "contractTests": 15,
+      "pythonTests": 13061,
+      "sqlTests": 1428,
+      "iacTests": 1323,
+      "standardsTests": 5299,
+      "nativeLintTypeDogfood": true,
+      "artifactsDocsRepositoryShell": true
+    }
+  },
+  "references": [
+    "https://docs.python.org/3/library/enum.html#enum.StrEnum",
+    "https://docs.astral.sh/ruff/rules/replace-str-enum/",
+    "https://docs.pydantic.dev/latest/errors/usage_errors/",
+    "https://zod.dev/api#defaults"
+  ],
+  "integratedMainCommit": "462303b87fdb8bd6e5286081ca4f7d89e6746c32",
+  "supplementalReview": {
+    "state": "approved",
+    "counterexamples": "Runtime reproductions showed globals/builtin replacement, bound setters and escaped module-member code mutation can invalidate lexical import assumptions. File-level abstention and regression cases preserve those valid dynamic contracts.",
+    "warningPrecedence": "A SARJ491 warning does not suppress an existing SARJ400 error on the same field.",
+    "independentFocusedCases": 205,
+    "independentCliEvidence": "Metadata/native warnings exit0. Overlapping SARJ491 warning retains SARJ400 error, exits1 and records only SARJ400 in the blocking baseline.",
+    "scope": "No remaining concrete false positive found within the inspected static scope. Arbitrary external mutation and runtime hooks remain outside the finite proof.",
+    "crossAliasRepair": "Nested canonical namespace imports are rejected by syntactic origin, including class-local aliases absent from the module import index. Qualified positives remain detectable."
+  }
+}

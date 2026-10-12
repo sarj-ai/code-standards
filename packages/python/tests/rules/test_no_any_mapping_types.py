@@ -145,3 +145,34 @@ b: dict[str, Any]
 )
 def test_local_shadowing_makes_type_provenance_ambiguous(source: str) -> None:
     assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    "annotation",
+    [
+        pytest.param("dict[str, Annotated[int, Any]]", id="any-is-metadata"),
+        pytest.param("Annotated[int, dict[str, Any]]", id="mapping-is-metadata"),
+        pytest.param('dict[str, Literal["Any"]]', id="literal-string"),
+        pytest.param("dict[str, Custom[int, Any]]", id="unknown-parameter-positions"),
+    ],
+)
+def test_metadata_and_literal_values_do_not_erase_types(annotation: str) -> None:
+    assert _check(f"from typing import Annotated, Any, Literal\nvalue: {annotation}\n") == []
+
+
+@pytest.mark.parametrize(
+    "annotation",
+    [
+        pytest.param("dict[str, Annotated[Any, 'tag']]", id="annotated-any-type"),
+        pytest.param("Annotated[dict[str, Any], 'tag']", id="annotated-mapping-type"),
+        pytest.param("dict[str, list[Any]]", id="builtin-type-argument"),
+    ],
+)
+def test_actual_type_positions_remain_checked(annotation: str) -> None:
+    assert len(_check(f"from typing import Annotated, Any\nvalue: {annotation}\n")) == 1
+
+
+def test_metadata_use_does_not_make_a_runtime_value_a_type_alias() -> None:
+    assert (
+        _check("from typing import Annotated, Any\nMetadata = dict[str, Any]\nvalue: Annotated[int, Metadata]\n") == []
+    )

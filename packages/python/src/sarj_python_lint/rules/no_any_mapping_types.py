@@ -33,6 +33,7 @@ _PYDANTIC_SOURCES = frozenset({"pydantic"})
 _MAPPING_SOURCES = frozenset({"collections.abc", "typing"})
 _MAPPING_NAMES = frozenset({"dict", "Dict", "Mapping", "MutableMapping"})
 _MAPPING_ARGUMENT_COUNT = 2
+_BUILTIN_TYPE_CONTAINERS = frozenset({"dict", "list", "set", "frozenset", "tuple", "type"})
 
 
 @final
@@ -65,6 +66,7 @@ class NoAnyMappingTypes(Rule):
                 "used in a module-level annotation; imported, conditional, rebound, and ambiguous aliases are excluded."
             ),
             "Generated and vendored sources are excluded; exact local suppressions remain auditable.",
+            "Annotated metadata, Literal values and unresolved generic parameter positions are excluded; only type arguments are inspected.",
         ),
         examples=(
             RuleExample(
@@ -117,7 +119,7 @@ class NoAnyMappingTypes(Rule):
         seen: set[tuple[int, int]] = set()
         expressions = [
             *_type_expressions(tree, imports, parents, scope_cache, node_index=context.node_index),
-            *_implicit_mapping_aliases(tree),
+            *_implicit_mapping_aliases(tree, semantics),
         ]
         for expression, owner in expressions:
             for mapping, location in _unshadowed_any_mappings(expression, owner, semantics, parents, scope_cache):
@@ -140,7 +142,7 @@ class NoAnyMappingTypes(Rule):
         return sorted(findings, key=lambda finding: (finding.line, finding.col))
 
 
-def _implicit_mapping_aliases(tree: ast.Module) -> list[tuple[ast.expr, ast.Assign]]:
+def _implicit_mapping_aliases(tree: ast.Module, semantics: AnnotationSemantics) -> list[tuple[ast.expr, ast.Assign]]:
     bindings = [scope_bound_names([statement]) for statement in tree.body]
     aliases: list[tuple[ast.expr, ast.Assign]] = []
     for statement in tree.body:
@@ -151,14 +153,14 @@ def _implicit_mapping_aliases(tree: ast.Module) -> list[tuple[ast.expr, ast.Assi
             continue
         if sum(target.id in names for names in bindings) != 1:
             continue
-        if _used_in_module_annotation(tree, target.id):
+        if _used_in_module_annotation(tree, target.id, semantics):
             aliases.append((statement.value, statement))
     return aliases
 
 
-def _used_in_module_annotation(tree: ast.Module, name: str) -> bool:
+def _used_in_module_annotation(tree: ast.Module, name: str, semantics: AnnotationSemantics) -> bool:
     return any(
-        _annotation_contains_name(annotation, name)
+        _annotation_contains_name(annotation, name, semantics)
         for statement in tree.body
         for annotation in _module_statement_annotations(statement, name)
     )
@@ -179,14 +181,17 @@ def _module_statement_annotations(statement: ast.stmt, alias_name: str) -> list[
     return annotations
 
 
-def _annotation_contains_name(annotation: ast.expr, name: str) -> bool:
-    parsed = annotation
-    if isinstance(annotation, ast.Constant) and isinstance(annotation.value, str):
-        try:
-            parsed = ast.parse(annotation.value, mode="eval").body
-        except SyntaxError:
-            return False
-    return any(isinstance(node, ast.Name) and node.id == name for node in walk_ast(parsed))
+def _annotation_contains_name(annotation: ast.expr, name: str, semantics: AnnotationSemantics) -> bool:
+    parsed = semantics.parse(annotation)
+    if parsed is None:
+        return False
+    pending = [parsed]
+    while pending:
+        node = pending.pop()
+        if isinstance(node, ast.Name) and node.id == name:
+            return True
+        pending.extend(_type_children(node, semantics))
+    return False
 
 
 def _unshadowed_any_mappings(
@@ -320,7 +325,14 @@ def _any_mappings(annotation: ast.expr, semantics: AnnotationSemantics) -> list[
     resolved = semantics.parse(annotation)
     if resolved is None:
         return []
-    return [node for node in walk_ast(resolved) if isinstance(node, ast.Subscript) and _is_any_mapping(node, semantics)]
+    pending = [resolved]
+    mappings: list[ast.Subscript] = []
+    while pending:
+        node = pending.pop()
+        if isinstance(node, ast.Subscript) and _is_any_mapping(node, semantics):
+            mappings.append(node)
+        pending.extend(_type_children(node, semantics))
+    return mappings
 
 
 def _is_any_mapping(node: ast.Subscript, semantics: AnnotationSemantics) -> bool:
@@ -355,11 +367,29 @@ def _contains_any(
         return True
     if isinstance(parsed, ast.Name) and parsed.id in semantics.aliases and parsed.id not in seen:
         return _contains_any(semantics.aliases[parsed.id], semantics, seen=seen | {parsed.id})
-    return any(
-        _contains_any(child, semantics, seen=seen)
-        for child in ast.iter_child_nodes(parsed)
-        if isinstance(child, ast.expr)
-    )
+    return any(_contains_any(child, semantics, seen=seen) for child in _type_children(parsed, semantics))
+
+
+def _type_children(node: ast.expr, semantics: AnnotationSemantics) -> tuple[ast.expr, ...]:
+    if isinstance(node, ast.Subscript):
+        imports = semantics.imports
+        symbol = imports.resolved_symbol(node.value, sources=_TYPING_SOURCES | _MAPPING_SOURCES)
+        if symbol == "Literal":
+            return ()
+        members = tuple(node.slice.elts) if isinstance(node.slice, ast.Tuple) else (node.slice,)
+        if symbol == "Annotated":
+            return members[:1]
+        builtin = (
+            isinstance(node.value, ast.Name)
+            and node.value.id in _BUILTIN_TYPE_CONTAINERS
+            and imports.builtin_is_unshadowed(node.value.id)
+        )
+        return members if builtin or symbol is not None else ()
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitOr):
+        return node.left, node.right
+    if isinstance(node, (ast.Tuple, ast.List)):
+        return tuple(node.elts)
+    return ()
 
 
 def _is_vendor_path(path: Path) -> bool:
