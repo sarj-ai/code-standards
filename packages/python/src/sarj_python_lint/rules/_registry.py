@@ -112,6 +112,7 @@ from sarj_python_lint.rules.prefer_collection_comprehension import PreferCollect
 from sarj_python_lint.rules.prefer_constant_time_secret_compare import (
     PreferConstantTimeSecretCompare,
 )
+from sarj_python_lint.rules.prefer_declarative_batch_validation import PreferDeclarativeBatchValidation
 from sarj_python_lint.rules.prefer_fstring_over_concat import PreferFstringOverConcat
 from sarj_python_lint.rules.prefer_immutable_module_constant import (
     PreferImmutableModuleConstant,
@@ -245,6 +246,7 @@ REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
         NoStringConcatInLoop.id: NoStringConcatInLoop,
         PreferClassRow.id: PreferClassRow,
         PreferCollectionComprehension.id: PreferCollectionComprehension,
+        PreferDeclarativeBatchValidation.id: PreferDeclarativeBatchValidation,
         PreferStrEnum.id: PreferStrEnum,
         NoOffsetPagination.id: NoOffsetPagination,
         NoExcessiveCognitiveComplexity.id: NoExcessiveCognitiveComplexity,
