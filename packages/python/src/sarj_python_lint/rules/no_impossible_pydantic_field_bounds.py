@@ -57,7 +57,7 @@ class NoImpossiblePydanticFieldBounds(Rule):
     id = "no-impossible-pydantic-field-bounds"
     code = "SARJ491"
     documentation = RuleDocumentation(
-        default_level=Severity.WARNING,
+        default_level=Severity.ERROR,
         summary="Pydantic field bounds must admit at least one value.",
         rationale="Contradictory literal constraints reject every field value, including integer intervals with no integer member.",
         remediation="Correct the conflicting bounds so the declared field domain admits the intended values.",
@@ -121,7 +121,7 @@ class NoImpossiblePydanticFieldBounds(Rule):
                     field.col_offset + 1,
                     self.code,
                     "These literal Field bounds admit no values. Correct the bounds for the declared field type.",
-                    severity=Severity.WARNING,
+                    severity=Severity.ERROR,
                 )
             )
         return diagnostics

@@ -24,14 +24,15 @@ if TYPE_CHECKING:
 
 
 _BAD = "import subprocess\ndef run(args):\n    process = subprocess.Popen(args)\n    try:\n        process.communicate(timeout=1)\n    except subprocess.TimeoutExpired:\n        process.kill()\n"
-_REAP_METHODS = frozenset({"wait", "communicate", "poll"})
+_REAP_METHODS = frozenset({"wait", "communicate", "poll", "_wait", "_try_wait", "_internal_poll", "__exit__"})
+_GLOBAL_REAPERS = frozenset({"wait", "waitpid", "waitid", "wait3", "wait4"})
 
 
 class SubprocessKillWithoutReap(Rule):
     id: str = "subprocess-kill-without-reap"
     code: str = "SARJ464"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        default_level=Severity.WARNING,
+        default_level=Severity.ERROR,
         summary="Reap a locally owned subprocess after killing it on timeout.",
         rationale="Sending a kill signal does not wait for process termination or collect the exit status; deterministic cleanup still requires waiting or communication.",
         remediation="After kill(), call communicate() when owning captured pipes, or wait() when output is handled separately; an enclosing Popen context manager can also own cleanup.",
@@ -41,6 +42,8 @@ class SubprocessKillWithoutReap(Rule):
             "Requires a unique, dominating local subprocess.Popen assignment and a resolved TimeoutExpired handler ending with a direct kill() after that process's wait or communicate.",
             "Borrowed processes, custom factories, context-managed ownership, aliases, escaped handles or cleanup callbacks, and any later wait/communicate/poll are excluded conservatively.",
             "Only direct timeout handlers are checked. Cross-function lifecycle, fields, dynamic mutation, arbitrary exit paths, and generated files are not analyzed. Choosing wait versus communicate requires reviewing output ownership.",
+            "Visible os child-reaper imports/calls and SIGCHLD ownership exclude the file. Later internal Popen cleanup helpers are recognized conservatively, without recommending private APIs.",
+            "Visible namespace APIs, frame/module introspection, code mutation and bound attribute setters invalidate the file's provenance proof.",
         ),
         examples=(
             RuleExample(
@@ -67,9 +70,14 @@ class SubprocessKillWithoutReap(Rule):
 
     @override
     def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
-        if "kill" not in context.symbol_source or context.generated or context.tree is None:
+        if (
+            "kill" not in context.symbol_source
+            or context.generated
+            or context.tree is None
+            or _global_child_owner(context)
+        ):
             return []
-        provenance = ResourceProvenance(context)
+        provenance = ResourceProvenance(context, require_static_namespace=True)
         findings: list[Diagnostic] = []
         for handler in context.nodes(ast.ExceptHandler):
             call = _unreaped_kill(context, provenance, handler)
@@ -81,11 +89,50 @@ class SubprocessKillWithoutReap(Rule):
                     line=call.lineno,
                     col=call.col_offset + 1,
                     code=self.code,
-                    severity=Severity.WARNING,
+                    severity=Severity.ERROR,
                     message="this Popen timeout handler kills the child without a subsequent reap; call communicate() for owned pipes or wait() when output is handled separately",
                 )
             )
         return findings
+
+
+def _global_child_owner(context: PythonFileContext) -> bool:
+    namespaces = _child_owner_namespaces(context)
+    for node in context.nodes(ast.ImportFrom, ast.Attribute, ast.Name):
+        if isinstance(node, ast.ImportFrom) and _imports_child_owner(node):
+            return True
+        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load) and node.id in namespaces:
+            parent = context.parents.get(node)
+            if not isinstance(parent, ast.Attribute) or parent.value is not node or parent.attr == "__dict__":
+                return True
+        elif isinstance(node, ast.Attribute) and _child_owner_member(node, namespaces):
+            return True
+    return False
+
+
+def _child_owner_namespaces(context: PythonFileContext) -> dict[str, set[str]]:
+    namespaces: dict[str, set[str]] = {}
+    for node in context.nodes(ast.Import):
+        for alias in node.names:
+            if alias.name in {"os", "signal"}:
+                namespaces.setdefault(alias.asname or alias.name, set()).add(alias.name)
+    return namespaces
+
+
+def _child_owner_member(node: ast.Attribute, namespaces: dict[str, set[str]]) -> bool:
+    root: ast.expr = node.value
+    while isinstance(root, ast.Attribute):
+        root = root.value
+    if not isinstance(root, ast.Name):
+        return False
+    modules = namespaces.get(root.id, set())
+    return ("os" in modules and node.attr in _GLOBAL_REAPERS) or ("signal" in modules and node.attr == "SIGCHLD")
+
+
+def _imports_child_owner(node: ast.ImportFrom) -> bool:
+    return (node.module == "os" and any(alias.name in _GLOBAL_REAPERS for alias in node.names)) or (
+        node.module == "signal" and any(alias.name == "SIGCHLD" for alias in node.names)
+    )
 
 
 def _unreaped_kill(

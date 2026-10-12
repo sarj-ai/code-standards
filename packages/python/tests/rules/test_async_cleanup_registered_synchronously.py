@@ -121,3 +121,78 @@ def test_labeled_cases(case: EvaluationCase) -> None:
 )
 def test_uncertain_binding_exclusions(source: str) -> None:
     assert not AsyncCleanupRegisteredSynchronously().check(Path("app/resources.py"), source)
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        pytest.param("alias = close\nalias.__code__ = synchronous.__code__", id="alias-code-mutation"),
+        pytest.param("alias = close\nother = alias\nother.__code__ = synchronous.__code__", id="alias-chain-mutation"),
+        pytest.param("alias: object = close\nalias.__code__ = synchronous.__code__", id="annotated-alias-mutation"),
+        pytest.param("callbacks = [close]\ncallbacks[0].__code__ = synchronous.__code__", id="container-escape"),
+        pytest.param("configure(close)", id="unknown-function-escape"),
+        pytest.param("def exported():\n    return close", id="returned-function"),
+        pytest.param("close.__setattr__('__code__', synchronous.__code__)", id="bound-code-setter"),
+        pytest.param("close.__globals__['close'].__code__ = synchronous.__code__", id="function-global-escape"),
+        pytest.param("globals()['close'] = synchronous", id="global-binding-write"),
+        pytest.param("namespace = globals()\nnamespace['close'] = synchronous", id="global-namespace-escape"),
+        pytest.param("def change():\n    global close\n    close = synchronous\nchange()", id="global-declaration"),
+        pytest.param("namespace = globals\nnamespace()['close'] = synchronous", id="aliased-global-function"),
+        pytest.param(
+            "from builtins import globals as namespace\nnamespace()['close'] = synchronous",
+            id="imported-global-function",
+        ),
+    ],
+)
+def test_mutated_or_escaped_coroutine_contracts(change: str) -> None:
+    source = _BASE.replace("async def run", "def synchronous():\n    finish()\n" + change + "\nasync def run")
+    assert not AsyncCleanupRegisteredSynchronously().check(Path("app/resources.py"), source)
+
+
+def test_unmutated_aliases_and_direct_calls_remain_checked() -> None:
+    source = _BASE.replace("async def run", "cleanup = close\nasync def run").replace(
+        "    async with", "    await cleanup()\n    async with"
+    )
+    assert len(AsyncCleanupRegisteredSynchronously().check(Path("app/resources.py"), source)) == 1
+
+
+def test_bound_stack_setter_invalidates_callback_proof() -> None:
+    source = _BASE.replace(
+        "        stack.callback(close)",
+        "        stack.__setattr__('callback', stack.push_async_callback)\n        stack.callback(close)",
+    )
+    assert not AsyncCleanupRegisteredSynchronously().check(Path("app/resources.py"), source)
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        "contextlib.AsyncExitStack.callback = proper_callback",
+        "klass = contextlib.AsyncExitStack\nklass.callback = proper_callback",
+        "setattr(contextlib.AsyncExitStack, 'callback', proper_callback)",
+        "class Holder:\n    import contextlib as local_c\n    local_c.AsyncExitStack.callback = proper_callback",
+        "class Holder:\n    import contextlib as local_c\n    klass = local_c.AsyncExitStack\n    klass.callback = proper_callback",
+    ],
+)
+def test_canonical_stack_aliases_can_replace_the_registration_api(change: str) -> None:
+    source = "import contextlib\n" + _BASE.replace("async def run", change + "\nasync def run")
+    assert not AsyncCleanupRegisteredSynchronously().check(Path("app/resources.py"), source)
+
+
+def test_relative_import_is_not_a_proven_stdlib_stack() -> None:
+    assert not AsyncCleanupRegisteredSynchronously().check(
+        Path("app/resources.py"), _BASE.replace("from contextlib", "from .contextlib")
+    )
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        "from contextlib import _BaseExitStack\n_BaseExitStack.callback = proper_callback",
+        "from contextlib import _BaseExitStack as Provider\nconfigure(Provider)",
+        "class Holder:\n    from contextlib import _BaseExitStack as Provider\n    Provider.callback = proper_callback",
+    ],
+)
+def test_inherited_stack_provider_mutations_invalidate_callback_proof(change: str) -> None:
+    source = _BASE.replace("async def run", change + "\nasync def run")
+    assert not AsyncCleanupRegisteredSynchronously().check(Path("app/resources.py"), source)

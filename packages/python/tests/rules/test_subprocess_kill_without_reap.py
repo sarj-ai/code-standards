@@ -77,3 +77,105 @@ def test_labeled_cases(case: EvaluationCase) -> None:
 )
 def test_managed_borrowed_and_mutated_resources_are_excluded(source: str) -> None:
     assert not SubprocessKillWithoutReap().check(Path("app/processes.py"), source)
+
+
+@pytest.mark.parametrize(
+    "cleanup",
+    [
+        pytest.param("process._wait(timeout=None)", id="internal-wait"),
+        pytest.param("process._try_wait(0)", id="internal-try-wait"),
+        pytest.param("process._internal_poll()", id="internal-poll"),
+        pytest.param("process.__exit__(None, None, None)", id="explicit-context-exit"),
+        pytest.param("os.waitpid(-1, 0)", id="wait-any-child"),
+        pytest.param("os.wait()", id="wait"),
+        pytest.param("os.wait3(0)", id="wait3"),
+        pytest.param("os.wait4(-1, 0)", id="wait4"),
+        pytest.param("os.waitid(os.P_ALL, 0, os.WEXITED)", id="waitid"),
+    ],
+)
+def test_visible_alternative_reapers(cleanup: str) -> None:
+    source = "import os\n" + _BASE + "    " + cleanup + "\n"
+    assert not SubprocessKillWithoutReap().check(Path("app/processes.py"), source)
+
+
+@pytest.mark.parametrize(
+    "ownership",
+    [
+        pytest.param("import signal\nsignal.signal(signal.SIGCHLD, signal.SIG_IGN)\n", id="ignored-child-signal"),
+        pytest.param(
+            "import os, signal\ndef reap(*args): os.waitpid(-1, os.WNOHANG)\nsignal.signal(signal.SIGCHLD, reap)\n",
+            id="global-signal-reaper",
+        ),
+        pytest.param("from signal import SIGCHLD as child_signal\nconfigure(child_signal)\n", id="signal-alias"),
+        pytest.param("from os import waitpid as reap\n", id="reaper-import"),
+        pytest.param("import os\nalias = os\n", id="os-module-alias"),
+        pytest.param("import signal\nalias = signal\n", id="signal-module-alias"),
+    ],
+)
+def test_global_child_ownership_is_not_inferred(ownership: str) -> None:
+    assert not SubprocessKillWithoutReap().check(Path("app/processes.py"), ownership + _BASE)
+
+
+@pytest.mark.parametrize(
+    "ownership",
+    [
+        "def configure():\n    import signal as local_signal\n    local_signal.signal(local_signal.SIGCHLD, local_signal.SIG_IGN)\nconfigure()\n",
+        "def reap():\n    import os as local_os\n    local_os.waitpid(-1, 0)\n",
+        "def configure():\n    import signal as local_signal\n    configure_children(local_signal)\nconfigure()\n",
+        "def configure():\n    import os as local_os\n    configure_children(local_os)\nconfigure()\n",
+        "def reap():\n    import os as local_os\n    local_os.waitid(local_os.P_ALL, 0, local_os.WEXITED)\n",
+    ],
+)
+def test_nested_child_ownership_is_not_inferred(ownership: str) -> None:
+    source = ownership + _BASE + "    reap()\n"
+    assert not SubprocessKillWithoutReap().check(Path("app/processes.py"), source)
+
+
+def test_bound_process_setter_invalidates_kill_proof() -> None:
+    source = _BASE.replace(
+        "        process.kill()",
+        "        process.__setattr__('kill', lambda: (process.terminate(), process.wait()))\n        process.kill()",
+    )
+    assert not SubprocessKillWithoutReap().check(Path("app/processes.py"), source)
+
+
+@pytest.mark.parametrize(
+    "replacement",
+    [
+        "globals()['subprocess'] = custom",
+        "namespace = globals\nnamespace()['subprocess'] = custom",
+        "import sys\nsys.modules['subprocess'].Popen = custom",
+        "from importlib import import_module as load\nload('subprocess').Popen = custom",
+    ],
+)
+def test_dynamic_process_constructors_are_not_proven(replacement: str) -> None:
+    assert not SubprocessKillWithoutReap().check(
+        Path("app/processes.py"), _BASE.replace("def run", replacement + "\ndef run")
+    )
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        "subprocess.Popen.kill = proper_kill",
+        "klass = subprocess.Popen\nklass.kill = proper_kill",
+        "setattr(subprocess.Popen, 'kill', proper_kill)",
+        "class Holder:\n    import subprocess as local_s\n    local_s.Popen.kill = proper_kill",
+        "class Holder:\n    import subprocess as local_s\n    klass = local_s.Popen\n    klass.kill = proper_kill",
+    ],
+)
+def test_canonical_process_aliases_can_replace_kill_with_complete_cleanup(change: str) -> None:
+    source = _BASE.replace("subprocess.Popen(args)", "Popen(args)").replace(
+        "subprocess.TimeoutExpired", "TimeoutExpired"
+    )
+    source = source.replace("def run", "from subprocess import Popen, TimeoutExpired\n" + change + "\ndef run")
+    assert not SubprocessKillWithoutReap().check(Path("app/processes.py"), source)
+
+
+def test_relative_import_is_not_a_proven_stdlib_process() -> None:
+    source = (
+        _BASE.replace("import subprocess", "from .subprocess import Popen, TimeoutExpired")
+        .replace("subprocess.Popen", "Popen")
+        .replace("subprocess.TimeoutExpired", "TimeoutExpired")
+    )
+    assert not SubprocessKillWithoutReap().check(Path("app/processes.py"), source)
