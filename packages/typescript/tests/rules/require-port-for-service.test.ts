@@ -25,6 +25,20 @@ RULE_TESTER.run("require-port-for-service", rule, {
     { name: "callable port aliases retain their capability across local aliases", code: "type Run = Fn; type Fn = () => void; interface Handler { handle: Run } export class RequestHandler implements Handler { constructor(private readonly store: TaskStore) {} handle() { this.store.handle(); } }" },
     { name: "locally shadowed constructor names do not prove retained injection", code: "export class RequestHandler { private store: TaskStore; constructor(store: TaskStore) { { const store = new TaskStore(); this.store = store; } } handle() { this.store.handle(); } }" },
     { name: "a parameter property replaced with a constructed value is not injection", code: "export class RequestHandler { constructor(private readonly store: TaskStore) { this.store = new TaskStore(); } handle() { this.store.handle(); } }" },
+    { name: "a later global store replaces retained injection", code: "export class RequestHandler { private store: TaskStore; constructor(store: TaskStore) { this.store = store; this.store = fixedStore; } handle() { this.store.handle(); } }" },
+    { name: "a parameter property replaced with a global value is not injection", code: "export class RequestHandler { constructor(private store: TaskStore) { this.store = fixedStore; } handle() { this.store.handle(); } }" },
+    { name: "a conditional store does not prove retained injection", code: "export class RequestHandler { private store = fixedStore; constructor(store: TaskStore, enabled: boolean) { if (enabled) this.store = store; } handle() { this.store.handle(); } }" },
+    { name: "logical assignment does not prove which collaborator is retained", code: "export class RequestHandler { private store = fixedStore; constructor(store: TaskStore) { this.store ??= store; } handle() { this.store.handle(); } }" },
+    { name: "nested replacement invalidates the earlier direct store", code: "export class RequestHandler { private store: TaskStore; constructor(store: TaskStore) { this.store = store; this.other = (this.store = fixedStore); } handle() { this.store.handle(); } }" },
+    { name: "an object-pattern target replaces retained injection", code: "export class RequestHandler { private store: TaskStore; constructor(store: TaskStore) { this.store = store; ({ store: this.store } = { store: fixedStore }); } handle() { this.store.handle(); } }" },
+    { name: "an array-pattern target replaces a parameter property", code: "export class RequestHandler { constructor(private store: TaskStore) { [this.store] = [fixedStore]; } handle() { this.store.handle(); } }" },
+    { name: "an erased wrapper remains a pattern write target", code: "export class RequestHandler { constructor(private store: TaskStore) { [this.store as TaskStore] = [fixedStore]; } handle() { this.store.handle(); } }" },
+    { name: "an assignment-pattern left replaces retained injection", code: "export class RequestHandler { private store: TaskStore; constructor(store: TaskStore) { this.store = store; ({ store: this.store = fixedStore } = {}); } handle() { this.store.handle(); } }" },
+    { name: "an object rest target replaces retained injection", code: "export class RequestHandler { private store: TaskStore; constructor(store: TaskStore) { this.store = store; ({ ...this.store } = fixedStore); } handle() { this.store.handle(); } }" },
+    { name: "a direct for-of target replaces retained injection", code: "export class RequestHandler { private store: TaskStore; constructor(store: TaskStore) { this.store = store; for (this.store of stores) {} } handle() { this.store.handle(); } }" },
+    { name: "a nested for-of pattern replaces a parameter property", code: "export class RequestHandler { constructor(private store: TaskStore) { for ({ store: this.store } of stores) {} } handle() { this.store.handle(); } }" },
+    { name: "a for-in target invalidates retained injection", code: "export class RequestHandler { private store: TaskStore | string; constructor(store: TaskStore) { this.store = store; for (this.store in values) {} } handle() { if (typeof this.store !== 'string') this.store.handle(); } }" },
+    { name: "conditional nullable storage remains unresolved", filename: SRC, code: "export class RequestHandler { private readonly store: TaskStore; constructor(store: TaskStore | undefined, enabled: boolean) { if (enabled) this.store = store!; else this.store = fallbackStore(); } handle() { this.store.handle(); } }" },
     { name: "quoted callable keys match equivalent interface keys", code: 'interface Handler { "handle"(): void } export class RequestHandler implements Handler { constructor(private readonly store: TaskStore) {} "handle"(): void { this.store.handle(); } }' },
     { name: "quoted function properties match equivalent port properties", code: 'interface Handler { "handle": () => void } export class RequestHandler implements Handler { constructor(private readonly store: TaskStore) {} "handle" = () => { this.store.handle(); }; }' },
     { name: "accepts the documented service port", filename: REQUIRE_PORT_FOR_SERVICE_DOCUMENTATION.examples[0].focusPath, code: REQUIRE_PORT_FOR_SERVICE_DOCUMENTATION.examples[0].files[0].source },
@@ -964,6 +978,9 @@ RULE_TESTER.run("require-port-for-service", rule, {
   ],
 
   invalid: [
+    { name: "a computed pattern key only reads the retained store", code: "export class RequestHandler { private store: TaskStore; constructor(store: TaskStore) { this.store = store; let value; ({ [this.store]: value } = values); } handle() { this.store.handle(); } }", errors: [{ messageId: "requireInterface" }] },
+    { name: "a pattern default RHS only reads the retained store", code: "export class RequestHandler { private store: TaskStore; constructor(store: TaskStore) { this.store = store; let value; ({ value = this.store } = {}); } handle() { this.store.handle(); } }", errors: [{ messageId: "requireInterface" }] },
+    { name: "loop declarations and defaults only read retained injection", code: "export class RequestHandler { private store: TaskStore; constructor(store: TaskStore) { this.store = store; for (const { value = this.store } of [{}]) {} } handle() { this.store.handle(); } }", errors: [{ messageId: "requireInterface" }] },
     {
       name: "a same-stem interface does not replace an implements clause",
       filename: SRC,
@@ -1073,12 +1090,12 @@ RULE_TESTER.run("require-port-for-service", rule, {
       errors: [{ messageId: "requireInterface", data: { name: "RequestHandler", deps: "store: TaskStore", methods: "handle" } }],
     },
     {
-      name: "recognizes nullish assignment and type-asserted constructor storage",
+      name: "recognizes direct type-asserted constructor storage",
       filename: SRC,
       code: `
         export class RequestHandler {
           private store?: TaskStore;
-          constructor(store: TaskStore) { this.store ??= store as TaskStore; }
+          constructor(store: TaskStore) { this.store = store as TaskStore; }
           handle(): void { this.store?.handle(); }
         }
       `,
@@ -1109,21 +1126,7 @@ RULE_TESTER.run("require-port-for-service", rule, {
       `,
       errors: [{ messageId: "requireInterface", data: { name: "RequestHandler", deps: "store: TaskStore", methods: "handle" } }],
     },
-    {
-      name: "recognizes a nullable collaborator stored through a non-null assertion in control flow",
-      filename: SRC,
-      code: `
-        export class RequestHandler {
-          private readonly store: TaskStore;
-          constructor(store: TaskStore | undefined, enabled: boolean) {
-            if (enabled) this.store = store!;
-            else this.store = fallbackStore();
-          }
-          handle(): void { this.store.handle(); }
-        }
-      `,
-      errors: [{ messageId: "requireInterface", data: { name: "RequestHandler", deps: "store: TaskStore", methods: "handle" } }],
-    },
+    { name: "a direct nullable store retains its unwrapped collaborator", code: "export class RequestHandler { private readonly store: TaskStore; constructor(store: TaskStore | undefined) { this.store = store!; } handle() { this.store.handle(); } }", errors: [{ messageId: "requireInterface" }] },
     {
       name: "counts public arrow properties as callable service surface",
       filename: SRC,

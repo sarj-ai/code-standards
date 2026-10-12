@@ -25,6 +25,7 @@ export const REQUIRE_EXPLICIT_SERVICE_CONTRACT_DOCUMENTATION = {
     "The rule checks service, store, and provider class declarations whose constructor stores a typed behavioral collaborator and whose public method reaches that collaborator.",
     "Existing local interfaces, type aliases, and inherited contracts can cover the operations; the compiler owns signature compatibility.",
     "Imported or dynamic base classes with unavailable declarations and decorated classes or operations are unresolved and do not produce a finding.",
+    "Constructor retention requires an untouched parameter property or one direct, unconditional assignment. Written or replaced operation members do not prove their declared bodies execute; external aliases, mutators, and callbacks are not resolved.",
     "Generated files and JavaScript without implements syntax are excluded.",
   ],
   examples: [
