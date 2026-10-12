@@ -5,7 +5,9 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from sarj_python_lint.__main__ import main
+from sarj_python_lint.__main__ import analyze, main
+from sarj_python_lint.rule_base import Severity
+from sarj_python_lint.rules import REGISTRY
 
 
 if TYPE_CHECKING:
@@ -79,6 +81,75 @@ def test_promoted_repeated_test_body_blocks_and_enters_baseline(
     baseline = tmp_path / "baseline.json"
     assert main([*command, "--update-baseline", str(baseline), str(target)]) == 0
     assert json.loads(baseline.read_text()) == {str(target): {"SARJ066": 1}}
+
+
+@pytest.mark.parametrize(
+    ("rule", "code", "source"),
+    [
+        ("no-any-mapping-types", "SARJ447", "from typing import Any\ndef details() -> dict[str, Any]: ...\n"),
+        (
+            "async-cleanup-registered-synchronously",
+            "SARJ463",
+            "from contextlib import AsyncExitStack\nasync def close():\n    await release()\nasync def run():\n    async with AsyncExitStack() as stack:\n        stack.callback(close)\n",
+        ),
+        (
+            "subprocess-kill-without-reap",
+            "SARJ464",
+            "import subprocess\ndef run(args):\n    process = subprocess.Popen(args)\n    try:\n        process.communicate(timeout=1)\n    except subprocess.TimeoutExpired:\n        process.kill()\n",
+        ),
+        (
+            "no-impossible-pydantic-field-bounds",
+            "SARJ491",
+            "from pydantic import BaseModel, Field\nclass Model(BaseModel):\n    value: int = Field(gt=0, lt=1)\n",
+        ),
+        (
+            "no-unknown-pydantic-validator-field",
+            "SARJ492",
+            "from pydantic import BaseModel, field_validator\nclass Model(BaseModel):\n    value: int\n    @field_validator('missing')\n    @classmethod\n    def check(cls, value: int) -> int: return value\n",
+        ),
+        (
+            "no-conflicting-pydantic-alias-validation",
+            "SARJ493",
+            "from pydantic import BaseModel, ConfigDict\nclass Model(BaseModel):\n    model_config = ConfigDict(validate_by_alias=False, validate_by_name=False)\n",
+        ),
+    ],
+    ids=(
+        "mapping-erasure",
+        "dropped-async-cleanup",
+        "unreaped-child",
+        "empty-field-domain",
+        "missing-validator-field",
+        "disabled-alias-paths",
+    ),
+)
+def test_typing_campaign_promotions_block_baseline_and_allow_exact_suppression(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], rule: str, code: str, source: str
+) -> None:
+    target = tmp_path / "example.py"
+    target.write_text(source, encoding="utf-8")
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname = "sample"\nversion = "1.0"\ndependencies = ["pydantic>=2.11"]\n', encoding="utf-8"
+    )
+    documentation = REGISTRY[rule].documentation
+    assert documentation is not None
+    assert documentation.default_level is Severity.ERROR
+    findings = analyze([rule], [target])
+    assert len(findings) == 1
+    assert findings[0].severity is Severity.ERROR
+    command = ["check", "--rule", rule]
+    assert main([*command, str(target)]) == 1
+    assert code in capsys.readouterr().out
+    baseline = tmp_path / "baseline.json"
+    assert main([*command, "--update-baseline", str(baseline), str(target)]) == 0
+    assert json.loads(baseline.read_text()) == {str(target): {code: 1}}
+    capsys.readouterr()
+    assert main([*command, "--baseline", str(baseline), str(target)]) == 0
+    capsys.readouterr()
+    lines = source.splitlines()
+    lines[findings[0].line - 1] += f"  # sarj-noqa: {code} -- preserve the reviewed compatibility contract"
+    target.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    assert main([*command, str(target)]) == 0
+    assert code not in capsys.readouterr().out
 
 
 def test_baseline_written_from_absolute_repo_path_is_portable(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

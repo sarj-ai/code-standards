@@ -104,7 +104,7 @@ def test_documented_examples() -> None:
     [
         pytest.param(
             "class Model(BaseModel):\n    value: int = Field(default=0, gt=0, lt=1)\n",
-            ["SARJ491", "SARJ400"],
+            ["SARJ491"],
             id="primary-domain",
         ),
         pytest.param(
@@ -114,7 +114,7 @@ def test_documented_examples() -> None:
         ),
         pytest.param(
             "class Model(BaseModel):\n    value: int = Field(\n        default=0,\n        gt=0,\n        lt=1,\n    )\n",
-            ["SARJ491", "SARJ400"],
+            ["SARJ491"],
             id="multiline-field",
         ),
     ],

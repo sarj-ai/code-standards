@@ -32,7 +32,7 @@ class NoUnknownPydanticValidatorField(Rule):
     id = "no-unknown-pydantic-validator-field"
     code = "SARJ492"
     documentation = RuleDocumentation(
-        default_level=Severity.WARNING,
+        default_level=Severity.ERROR,
         summary="Pydantic field decorators must target declared fields.",
         rationale="A field validator or serializer naming a missing field prevents the model from being constructed.",
         remediation="Use the declared field name, or explicitly set check_fields=False for a validator intended for subclass fields.",
@@ -93,7 +93,7 @@ class NoUnknownPydanticValidatorField(Rule):
                         decorator.col_offset + 1,
                         self.code,
                         f"This field decorator targets undeclared fields: {', '.join(sorted(missing))}. Correct the field name or explicitly defer field checks.",
-                        severity=Severity.WARNING,
+                        severity=Severity.ERROR,
                     )
                 )
         return diagnostics

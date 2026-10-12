@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import ast
+from collections.abc import Mapping
+from dataclasses import dataclass
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, ClassVar, final, override
 
@@ -18,6 +20,7 @@ from sarj_python_lint.rule_base import (
 )
 from sarj_python_lint.rules._annotation_semantics import AnnotationSemantics, scope_bound_names
 from sarj_python_lint.rules._ast_index import walk as walk_ast
+from sarj_python_lint.rules._namespace_access import dynamic_namespace_access
 
 
 if TYPE_CHECKING:
@@ -34,6 +37,20 @@ _MAPPING_SOURCES = frozenset({"collections.abc", "typing"})
 _MAPPING_NAMES = frozenset({"dict", "Dict", "Mapping", "MutableMapping"})
 _MAPPING_ARGUMENT_COUNT = 2
 _BUILTIN_TYPE_CONTAINERS = frozenset({"dict", "list", "set", "frozenset", "tuple", "type"})
+_TYPE_MODULES = frozenset({"typing", "typing_extensions", "pydantic", "collections", "builtins"})
+
+
+@dataclass(frozen=True, slots=True)
+class _TypeReferenceContext:
+    semantics: AnnotationSemantics
+    parents: Mapping[int, ast.AST]
+    implicit_aliases: frozenset[int]
+
+
+@dataclass(frozen=True, slots=True)
+class _TypeOrigins:
+    names: frozenset[str]
+    namespaces: frozenset[str]
 
 
 @final
@@ -41,7 +58,7 @@ class NoAnyMappingTypes(Rule):
     id = "no-any-mapping-types"
     code = "SARJ447"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        default_level=Severity.WARNING,
+        default_level=Severity.ERROR,
         summary="String-keyed mapping types must not erase their values with `Any`.",
         rationale=(
             "An `Any`-valued mapping disables checking transitively and conceals whether the value is a fixed record, "
@@ -50,7 +67,7 @@ class NoAnyMappingTypes(Rule):
         remediation=(
             "Use `TypedDict` (and `Unpack[TypedDict]` for closed keyword arguments) for fixed records, a Pydantic model "
             "for untrusted runtime input, `pydantic.JsonValue` for arbitrary JSON, or `object` plus explicit narrowing "
-            "for a genuinely opaque Python value."
+            "for a genuinely opaque Python value. Preserve unchanged external API signatures with an exact explained suppression; do not automatically widen published returns."
         ),
         category=RuleCategory.CORRECTNESS,
         autofix=AutofixPolicy.NONE,
@@ -67,6 +84,8 @@ class NoAnyMappingTypes(Rule):
             ),
             "Generated and vendored sources are excluded; exact local suppressions remain auditable.",
             "Annotated metadata, Literal values and unresolved generic parameter positions are excluded; only type arguments are inspected.",
+            "Proven override method signatures and direct BaseModel.model_dump return contracts are excluded; local annotations, casts and TypeAdapter targets remain checked.",
+            "Ambiguous type-import origins, attribute mutations, escaped canonical type namespaces and dynamic namespace access cause conservative file abstention.",
         ),
         examples=(
             RuleExample(
@@ -113,13 +132,18 @@ class NoAnyMappingTypes(Rule):
         semantics = AnnotationSemantics.from_tree(tree)
         imports = semantics.imports
         parents = {id(child): parent for parent in walk_ast(tree) for child in ast.iter_child_nodes(parent)}
+        implicit_aliases = _implicit_mapping_aliases(tree, semantics)
+        if not _stable_type_imports(tree, semantics, parents, implicit_aliases) or dynamic_namespace_access(
+            context.nodes(ast.AST), imports, context.parents
+        ):
+            return []
         scope_cache: dict[int, frozenset[str]] = {}
         lines = context.source_lines
         findings: list[Diagnostic] = []
         seen: set[tuple[int, int]] = set()
         expressions = [
             *_type_expressions(tree, imports, parents, scope_cache, node_index=context.node_index),
-            *_implicit_mapping_aliases(tree, semantics),
+            *implicit_aliases,
         ]
         for expression, owner in expressions:
             for mapping, location in _unshadowed_any_mappings(expression, owner, semantics, parents, scope_cache):
@@ -225,18 +249,294 @@ def _type_expressions(
         (annotation, node)
         for node in walk_ast(tree, index=node_index)
         if (annotation := _node_annotation(node, imports)) is not None
+        and not _inherited_signature(node, imports, parents, scope_cache)
     ]
     for node in walk_ast(tree, index=node_index):
         if not isinstance(node, ast.Call) or not node.args:
             continue
-        function_names = {child.id for child in walk_ast(node.func) if isinstance(child, ast.Name)}
-        if not function_names.isdisjoint(_shadowed_names(node, parents, scope_cache)):
+        if not _unshadowed_type_expression(node.func, parents, scope_cache):
             continue
         if imports.resolves(node.func, sources=_TYPING_SOURCES, symbol="cast") or imports.resolves(
             node.func, sources=_PYDANTIC_SOURCES, symbol="TypeAdapter"
         ):
             expressions.append((node.args[0], node))
     return expressions
+
+
+def _inherited_signature(
+    node: ast.AST,
+    imports: ImportIndex,
+    parents: dict[int, ast.AST],
+    scope_cache: dict[int, frozenset[str]],
+) -> bool:
+    function: ast.AST | None = node
+    if isinstance(node, ast.arg):
+        arguments = parents.get(id(node))
+        function = parents.get(id(arguments)) if arguments is not None else None
+    if not isinstance(function, (ast.FunctionDef, ast.AsyncFunctionDef)):
+        return False
+    owner = parents.get(id(function))
+    if not isinstance(owner, ast.ClassDef):
+        return False
+    for decorator in function.decorator_list:
+        if _class_local_override(decorator, owner):
+            return True
+        if _unshadowed_type_expression(decorator, parents, scope_cache) and imports.resolves(
+            decorator, sources=_TYPING_SOURCES, symbol="override"
+        ):
+            return True
+    return (
+        node is function
+        and function.name == "model_dump"
+        and any(
+            _unshadowed_type_expression(base, parents, scope_cache)
+            and imports.resolves(base, sources=_PYDANTIC_SOURCES, symbol="BaseModel")
+            for base in owner.bases
+        )
+    )
+
+
+def _class_local_override(decorator: ast.expr, owner: ast.ClassDef) -> bool:
+    name = _expression_root(decorator)
+    if name is None:
+        return False
+    bindings = [statement for statement in owner.body if name in scope_bound_names([statement])]
+    if len(bindings) != 1:
+        return False
+    statement = bindings[0]
+    if isinstance(decorator, ast.Name) and isinstance(statement, ast.ImportFrom):
+        return (
+            statement.level == 0
+            and statement.module in _TYPING_SOURCES
+            and any(alias.name == "override" and (alias.asname or alias.name) == name for alias in statement.names)
+        )
+    if isinstance(decorator, ast.Attribute) and decorator.attr == "override" and isinstance(statement, ast.Import):
+        return isinstance(decorator.value, ast.Name) and any(
+            alias.name in _TYPING_SOURCES and (alias.asname or alias.name) == name for alias in statement.names
+        )
+    return False
+
+
+def _stable_type_imports(
+    tree: ast.Module,
+    semantics: AnnotationSemantics,
+    parents: dict[int, ast.AST],
+    implicit_aliases: list[tuple[ast.expr, ast.Assign]],
+) -> bool:
+    imports = semantics.imports
+    nodes = tuple(walk_ast(tree))
+    references = _TypeReferenceContext(
+        semantics, parents, frozenset(id(expression) for expression, _ in implicit_aliases)
+    )
+    bindings = _type_import_bindings(imports)
+    origins = _canonical_type_origins(nodes)
+    sensitive = set(bindings.names)
+    mutation_roots = set(origins.names | bindings.names)
+    namespaces = set(bindings.namespaces | origins.namespaces)
+    providers = _mapping_provider_aliases(nodes, _mapping_provider_names(nodes), namespaces)
+    mutation_roots.update(providers)
+    for node in nodes:
+        if isinstance(node, ast.Name) and node.id == "__builtins__":
+            return False
+        if isinstance(node, (ast.Import, ast.ImportFrom)) and not _canonical_type_import(node, imports, sensitive):
+            return False
+        if (
+            isinstance(node, (ast.Attribute, ast.Subscript))
+            and isinstance(node.ctx, (ast.Store, ast.Del))
+            and _expression_root(node) in mutation_roots
+        ):
+            return False
+        if isinstance(node, ast.Call) and _type_attribute_mutation(node, imports, mutation_roots):
+            return False
+        if _type_namespace_escape(node, providers, namespaces, references):
+            return False
+    return True
+
+
+def _type_import_bindings(imports: ImportIndex) -> _TypeOrigins:
+    sensitive = frozenset(
+        name for name, target in imports.bindings.items() if target.module.partition(".")[0] in _TYPE_MODULES
+    )
+    return _TypeOrigins(sensitive, frozenset(name for name in sensitive if imports.bindings[name].symbol is None))
+
+
+def _canonical_type_origins(nodes: tuple[ast.AST, ...]) -> _TypeOrigins:
+    roots: set[str] = set()
+    namespaces: set[str] = set()
+    for node in nodes:
+        if not isinstance(node, (ast.Import, ast.ImportFrom)):
+            continue
+        names = _canonical_type_names(node)
+        roots.update(names)
+        if isinstance(node, ast.Import):
+            namespaces.update(names)
+    return _TypeOrigins(frozenset(roots), frozenset(namespaces))
+
+
+def _canonical_type_names(node: ast.Import | ast.ImportFrom) -> set[str]:
+    if isinstance(node, ast.ImportFrom):
+        if (node.module or "").partition(".")[0] not in _TYPE_MODULES:
+            return set()
+        return {alias.asname or alias.name for alias in node.names}
+    return {
+        alias.asname or module_root
+        for alias in node.names
+        if (module_root := alias.name.partition(".")[0]) in _TYPE_MODULES
+    }
+
+
+def _mapping_provider_names(nodes: tuple[ast.AST, ...]) -> set[str]:
+    return {
+        alias.asname or alias.name
+        for node in nodes
+        if isinstance(node, ast.ImportFrom) and node.module in _MAPPING_SOURCES
+        for alias in node.names
+        if alias.name in _MAPPING_NAMES
+    }
+
+
+def _mapping_provider_aliases(nodes: tuple[ast.AST, ...], providers: set[str], namespaces: set[str]) -> set[str]:
+    dependencies: dict[str, set[str]] = {}
+    known = set(providers)
+    for statement in nodes:
+        alias = _mapping_alias_assignment(statement)
+        if alias is None:
+            continue
+        name, value = alias
+        for node in walk_ast(value):
+            if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load):
+                dependencies.setdefault(node.id, set()).add(name)
+            elif _mapping_provider_reference(node, providers, namespaces):
+                known.add(name)
+    pending = list(known)
+    while pending:
+        for alias in dependencies.get(pending.pop(), ()):
+            if alias not in known:
+                known.add(alias)
+                pending.append(alias)
+    return known
+
+
+def _mapping_alias_assignment(node: ast.AST) -> tuple[str, ast.expr] | None:
+    if isinstance(node, ast.TypeAlias):
+        target, value = node.name, node.value
+    elif isinstance(node, ast.AnnAssign):
+        target, value = node.target, node.value
+    elif isinstance(node, ast.Assign) and len(node.targets) == 1:
+        target, value = node.targets[0], node.value
+    else:
+        return None
+    if not isinstance(target, ast.Name) or not isinstance(
+        value, (ast.Name, ast.Attribute, ast.Subscript, ast.BinOp, ast.Tuple, ast.List)
+    ):
+        return None
+    return target.id, value
+
+
+def _type_namespace_escape(
+    node: ast.AST, providers: set[str], namespaces: set[str], references: _TypeReferenceContext
+) -> bool:
+    if _mapping_provider_reference(node, providers, namespaces):
+        return isinstance(node, ast.expr) and not _provider_type_reference(node, references)
+    if isinstance(node, ast.Attribute) and _expression_root(node) in namespaces:
+        return node.attr != "Any" and _bare_runtime_value(node, references.parents)
+    if not isinstance(node, ast.Name) or not isinstance(node.ctx, ast.Load) or node.id not in namespaces:
+        return False
+    parent = references.parents.get(id(node))
+    return (
+        not isinstance(parent, ast.Attribute)
+        or parent.value is not node
+        or parent.attr in {"__dict__", "__setattr__", "__delattr__", "__getattribute__"}
+    )
+
+
+def _bare_runtime_value(node: ast.expr, parents: Mapping[int, ast.AST]) -> bool:
+    parent = parents.get(id(node))
+    return isinstance(parent, (ast.Assign, ast.AnnAssign, ast.NamedExpr, ast.Return)) and parent.value is node
+
+
+def _mapping_provider_reference(node: ast.AST, providers: set[str], namespaces: set[str]) -> bool:
+    if isinstance(node, ast.Name):
+        return isinstance(node.ctx, ast.Load) and node.id in providers
+    return isinstance(node, ast.Attribute) and node.attr in _MAPPING_NAMES and _expression_root(node) in namespaces
+
+
+def _provider_type_reference(node: ast.expr, references: _TypeReferenceContext) -> bool:
+    parent = references.parents.get(id(node))
+    if isinstance(parent, ast.Call) and parent.func is node:
+        return True
+    if isinstance(parent, ast.ClassDef) and node in parent.bases:
+        return True
+    root = node
+    while isinstance(parent, (ast.Subscript, ast.Tuple, ast.List, ast.BinOp)):
+        root, parent = parent, references.parents.get(id(parent))
+    annotation = _node_annotation(parent, references.semantics.imports) if parent is not None else None
+    if (
+        annotation is root
+        or id(root) in references.implicit_aliases
+        or _runtime_type_argument(root, parent, references.semantics.imports)
+    ):
+        return _contains_type_reference(root, node, references.semantics)
+    return False
+
+
+def _runtime_type_argument(node: ast.expr, parent: ast.AST | None, imports: ImportIndex) -> bool:
+    if not isinstance(parent, ast.Call) or not parent.args or parent.args[0] is not node:
+        return False
+    return imports.resolves(parent.func, sources=_TYPING_SOURCES, symbol="cast") or imports.resolves(
+        parent.func, sources=_PYDANTIC_SOURCES, symbol="TypeAdapter"
+    )
+
+
+def _contains_type_reference(root: ast.expr, target: ast.expr, semantics: AnnotationSemantics) -> bool:
+    pending: list[ast.expr] = [root]
+    while pending:
+        node = pending.pop()
+        if node is target or (isinstance(node, ast.Subscript) and node.value is target):
+            return True
+        pending.extend(_type_children(node, semantics))
+    return False
+
+
+def _canonical_type_import(node: ast.Import | ast.ImportFrom, imports: ImportIndex, sensitive: set[str]) -> bool:
+    for alias in node.names:
+        if alias.name == "*":
+            return False
+        name = alias.asname or alias.name.partition(".")[0]
+        if name in _BUILTIN_TYPE_CONTAINERS | {"str"}:
+            return False
+        if name not in sensitive:
+            continue
+        binding = imports.bindings[name]
+        if isinstance(node, ast.ImportFrom):
+            if node.level or node.module != binding.module or alias.name != binding.symbol:
+                return False
+        elif binding.symbol is not None or (alias.name if alias.asname else name) != binding.module:
+            return False
+    return True
+
+
+def _type_attribute_mutation(call: ast.Call, imports: ImportIndex, sensitive: set[str]) -> bool:
+    if not call.args:
+        return False
+    mutators = {"setattr", "delattr"}
+    known = (
+        isinstance(call.func, ast.Name) and call.func.id in mutators and imports.builtin_is_unshadowed(call.func.id)
+    ) or imports.resolved_symbol(call.func, sources=frozenset({"builtins"})) in mutators
+    return known and _expression_root(call.args[0]) in sensitive
+
+
+def _expression_root(node: ast.expr) -> str | None:
+    while isinstance(node, (ast.Attribute, ast.Subscript)):
+        node = node.value
+    return node.id if isinstance(node, ast.Name) else None
+
+
+def _unshadowed_type_expression(
+    node: ast.expr, parents: dict[int, ast.AST], scope_cache: dict[int, frozenset[str]]
+) -> bool:
+    names = {child.id for child in walk_ast(node) if isinstance(child, ast.Name)}
+    return names.isdisjoint(_shadowed_names(node, parents, scope_cache))
 
 
 def _shadowed_names(

@@ -176,3 +176,196 @@ def test_metadata_use_does_not_make_a_runtime_value_a_type_alias() -> None:
     assert (
         _check("from typing import Annotated, Any\nMetadata = dict[str, Any]\nvalue: Annotated[int, Metadata]\n") == []
     )
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        pytest.param(
+            "from typing import Any, override\nclass Child(Parent):\n    @override\n    def value(self, data: dict[str, Any]) -> dict[str, Any]: return data\n",
+            id="explicit-override-signature",
+        ),
+        pytest.param(
+            "from typing import Any\nclass Child(Parent):\n    from typing import override\n    @override\n    def value(self) -> dict[str, Any]: return {}\n",
+            id="class-local-override",
+        ),
+        pytest.param(
+            "from typing import Any\nclass Child(Parent):\n    from typing import override as inherited\n    @inherited\n    def value(self) -> dict[str, Any]: return {}\n",
+            id="class-local-override-alias",
+        ),
+        pytest.param(
+            "from typing import Any\nclass Child(Parent):\n    import typing as t\n    @t.override\n    def value(self) -> dict[str, Any]: return {}\n",
+            id="class-local-override-namespace",
+        ),
+        pytest.param(
+            "import typing as t\nclass Child(Parent):\n    @t.override\n    def value(self) -> dict[str, t.Any]: return {}\n",
+            id="namespace-override",
+        ),
+        pytest.param(
+            "from typing_extensions import Any, override as inherited\nclass Child(Parent):\n    @inherited\n    async def value(self) -> dict[str, Any]: return {}\n",
+            id="extension-override-alias",
+        ),
+        pytest.param(
+            "from typing import Any\nfrom pydantic import BaseModel as Model\nclass Child(Model):\n    def model_dump(self, **kwargs) -> dict[str, Any]: return super().model_dump(**kwargs)\n",
+            id="pydantic-public-dump-return",
+        ),
+    ],
+)
+def test_inherited_public_signature_contracts_are_preserved(source: str) -> None:
+    assert not _check(source)
+
+
+def test_override_exemption_does_not_hide_local_type_erasure() -> None:
+    source = (
+        "from typing import Any, cast, override\nfrom pydantic import TypeAdapter\n"
+        "class Child(Parent):\n    @override\n    def value(self) -> dict[str, Any]:\n"
+        "        local: dict[str, Any] = {}\n        cast(dict[str, Any], local)\n"
+        "        TypeAdapter(dict[str, Any])\n        return local\n"
+    )
+    assert len(_check(source)) == 3
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        pytest.param(
+            "from typing import Any, override\n@override\ndef value() -> dict[str, Any]: return {}\n",
+            id="standalone-function",
+        ),
+        pytest.param(
+            "from typing import Any, override\nclass Child(Parent):\n    override = custom\n    @override\n    def value(self) -> dict[str, Any]: return {}\n",
+            id="shadowed-override",
+        ),
+        pytest.param(
+            "from typing import Any\nfrom custom import BaseModel\nclass Child(BaseModel):\n    def model_dump(self) -> dict[str, Any]: return {}\n",
+            id="unknown-model-base",
+        ),
+        pytest.param(
+            "from typing import Any\nfrom pydantic import BaseModel\ndef factory(BaseModel):\n    class Child(BaseModel):\n        def model_dump(self) -> dict[str, Any]: return {}\n",
+            id="lexically-shadowed-model-base",
+        ),
+    ],
+)
+def test_unproven_contract_exemptions_remain_checked(source: str) -> None:
+    assert len(_check(source)) == 1
+
+
+@pytest.mark.parametrize(
+    "replacement",
+    [
+        pytest.param("typing.Any = int", id="attribute-replacement"),
+        pytest.param("setattr(typing, 'Any', int)", id="setattr"),
+        pytest.param("from builtins import setattr as change\nchange(typing, 'Any', int)", id="setattr-alias"),
+        pytest.param("typing.__dict__['Any'] = int", id="namespace-dictionary-write"),
+        pytest.param("typing.__setattr__('Any', int)", id="bound-attribute-setter"),
+        pytest.param("typing.__dict__.update({'Any': int})", id="namespace-dictionary-update"),
+        pytest.param("namespace = typing.__dict__\nnamespace['Any'] = int", id="namespace-dictionary-escape"),
+        pytest.param("from .helpers import typing", id="relative-module"),
+        pytest.param("if flag:\n    import custom as typing", id="conditional-module"),
+        pytest.param("alias = typing\nalias.Any = int", id="escaped-module-alias"),
+        pytest.param("alias = typing.Dict\nalias.__origin__ = Custom", id="type-factory-origin-mutation"),
+        pytest.param("alias = typing.Dict\nconfigure(alias)", id="type-factory-escape"),
+        pytest.param(
+            "class Holder:\n    import typing as local_t\n    local_t.Any = int",
+            id="nested-canonical-namespace-mutation",
+        ),
+    ],
+)
+def test_mutated_or_ambiguous_type_namespaces_are_excluded(replacement: str) -> None:
+    assert not _check("import typing\n" + replacement + "\ndef value() -> dict[str, typing.Any]: ...\n")
+
+
+@pytest.mark.parametrize(
+    "replacement",
+    [
+        pytest.param("from .helpers import Any", id="relative-any"),
+        pytest.param("if flag:\n    from custom import Any", id="conditional-any"),
+        pytest.param("from .helpers import dict", id="relative-container"),
+        pytest.param("if flag:\n    from custom import str", id="conditional-key-type"),
+        pytest.param("globals()['Any'] = int", id="global-type-binding-write"),
+        pytest.param("namespace = globals()\nnamespace['Any'] = int", id="global-type-namespace-escape"),
+        pytest.param("namespace = globals\nnamespace()['Any'] = int", id="aliased-global-function"),
+        pytest.param("from custom import *", id="wildcard-type-replacement"),
+        pytest.param("import sys\nsys.modules['typing'].Any = int", id="module-cache-replacement"),
+        pytest.param("__import__('typing').Any = int", id="dynamic-import-replacement"),
+        pytest.param("from importlib import import_module as load\nload('typing').Any = int", id="aliased-loader"),
+        pytest.param("__builtins__['dict'] = Custom", id="implicit-builtin-replacement"),
+    ],
+)
+def test_replaced_named_type_bindings_are_excluded(replacement: str) -> None:
+    assert not _check("from typing import Any\n" + replacement + "\ndef value() -> dict[str, Any]: ...\n")
+
+
+def test_named_type_factory_escape_invalidates_its_canonical_origin() -> None:
+    source = "from typing import Dict, Any\nalias = Dict\nsetattr(alias, '__origin__', Custom)\ndef value() -> Dict[str, Any]: ...\n"
+    assert not _check(source)
+
+
+@pytest.mark.parametrize(
+    "escape",
+    ["configure(Dict)", "providers = [Dict]", "providers = (Dict,)", "configure(t.Dict)", "providers = [t.Dict]"],
+)
+def test_mapping_provider_runtime_escapes_are_unproven(escape: str) -> None:
+    source = "import typing as t\nfrom typing import Dict, Any\n" + escape + "\ndef value() -> Dict[str, Any]: ...\n"
+    assert not _check(source)
+
+
+@pytest.mark.parametrize("value", ["Any", "t.Any"])
+def test_harmless_any_value_assignment_preserves_other_mapping_checks(value: str) -> None:
+    source = "import typing as t\nfrom typing import Any\nPlain = " + value + "\ndef value() -> dict[str, Any]: ...\n"
+    assert len(_check(source)) == 1
+
+
+def test_mapping_provider_type_positions_preserve_an_unrelated_erasure_finding() -> None:
+    source = "from typing import Any, Dict, TypeAlias, cast\nfrom pydantic import TypeAdapter\nRecord: TypeAlias = Dict[str, int]\ndef consume(value: tuple[Dict, ...]) -> None: ...\ncast(Dict, value)\nTypeAdapter(Dict)\ndef details() -> Dict[str, Any]: ...\n"
+    assert len(_check(source)) == 1
+
+
+@pytest.mark.parametrize(
+    "escape",
+    [
+        "configure(Dict[str, Any])",
+        "providers = [Dict[str, Any]]",
+        "configure(t.Dict[str, Any])",
+        "providers = (t.Dict[str, Any],)",
+    ],
+)
+def test_parameterized_mapping_provider_runtime_escapes_are_unproven(escape: str) -> None:
+    source = "import typing as t\nfrom typing import Dict, Any\n" + escape + "\ndef value() -> Dict[str, Any]: ...\n"
+    assert not _check(source)
+
+
+@pytest.mark.parametrize("alias", ["Record = Dict[str, Any]", "Record: TypeAlias = Dict[str, Any]"])
+def test_parameterized_mapping_aliases_in_type_positions_remain_checked(alias: str) -> None:
+    source = "from typing import Any, Dict, TypeAlias\n" + alias + "\ndef value() -> Record: ...\n"
+    assert len(_check(source)) == 1
+
+
+def test_parameterized_mapping_casts_and_adapters_remain_checked() -> None:
+    source = "from typing import Any, Dict, cast\nfrom pydantic import TypeAdapter\ncast(Dict[str, Any], value)\nTypeAdapter(Dict[str, Any])\n"
+    assert len(_check(source)) == 2
+
+
+@pytest.mark.parametrize(
+    "alias",
+    [
+        "Provider: TypeAlias = Dict",
+        "Provider: TypeAlias = Dict[str, Any]",
+        "Provider: TypeAlias = Dict\nOther: TypeAlias = Provider",
+    ],
+)
+def test_explicit_mapping_provider_alias_runtime_mutation_is_unproven(alias: str) -> None:
+    name = "Other" if "Other" in alias else "Provider"
+    source = (
+        "from typing import Any, Dict, TypeAlias\n"
+        + alias
+        + "\nsetattr("
+        + name
+        + ", '__origin__', Custom)\ndef value() -> Dict[str, Any]: ...\n"
+    )
+    assert not _check(source)
+
+
+def test_clean_explicit_provider_alias_chain_preserves_unrelated_erasure() -> None:
+    source = "from typing import Any, Dict, TypeAlias\nProvider: TypeAlias = Dict\nOther: TypeAlias = Provider\ndef consume(value: Other) -> None: ...\ndef value() -> Dict[str, Any]: ...\n"
+    assert len(_check(source)) == 1

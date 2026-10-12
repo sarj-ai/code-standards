@@ -33,7 +33,7 @@ class NoConflictingPydanticAliasValidation(Rule):
     id = "no-conflicting-pydantic-alias-validation"
     code = "SARJ493"
     documentation = RuleDocumentation(
-        default_level=Severity.WARNING,
+        default_level=Severity.ERROR,
         summary="Pydantic alias configuration must retain a validation path.",
         rationale="Explicitly disabling validation by both alias and field name prevents model construction.",
         remediation="Enable validation by alias, by field name, or both; disabling alias alone retains Pydantic's name fallback.",
@@ -105,7 +105,7 @@ class NoConflictingPydanticAliasValidation(Rule):
                         member.col_offset + 1,
                         self.code,
                         "Both validate_by_alias and validate_by_name are False. Enable at least one validation path.",
-                        severity=Severity.WARNING,
+                        severity=Severity.ERROR,
                     )
                 )
         return diagnostics

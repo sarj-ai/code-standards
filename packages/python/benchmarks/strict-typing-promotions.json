@@ -1,0 +1,1195 @@
+{
+  "schemaVersion": 1,
+  "scope": "sarj-ai/code-standards only",
+  "state": "complete-local-verification; exact-head-CI-required-before-merge",
+  "designReport": "packages/python/benchmarks/strict-typing-campaign.json",
+  "promotionPasses": [
+    {
+      "pass": 1,
+      "selector": "eslint:excessive-commentary",
+      "decision": "keep-warning",
+      "reason": "Narrative relevance and documentation value require editorial judgment; a length threshold is not a correctness defect.",
+      "focusedTest": "packages/typescript/tests/rules/excessive-commentary.test.ts",
+      "testExit": 0
+    },
+    {
+      "pass": 2,
+      "selector": "eslint:named-child-schema-type",
+      "decision": "keep-warning",
+      "reason": "A repeated annotation can deliberately pin an independent public input/output contract; structural reuse needs API-owner review.",
+      "focusedTest": "packages/typescript/tests/rules/named-child-schema-type.test.ts",
+      "testExit": 0
+    },
+    {
+      "pass": 3,
+      "selector": "eslint:no-bespoke-api-case-conversion",
+      "decision": "keep-warning",
+      "reason": "An adapter can intentionally own wire-name translation; an SDK-looking type does not establish that the SDK performs conversion.",
+      "focusedTest": "packages/typescript/tests/rules/no-bespoke-api-case-conversion.test.ts",
+      "testExit": 0
+    },
+    {
+      "pass": 4,
+      "selector": "eslint:no-duplicate-test-case",
+      "decision": "keep-warning",
+      "reason": "Identical inputs can exercise repeated execution, concurrency or state; syntax identity alone does not prove a redundant test.",
+      "focusedTest": "packages/typescript/tests/rules/no-duplicate-test-case.test.ts",
+      "testExit": 0
+    },
+    {
+      "pass": 5,
+      "selector": "eslint:no-json-stringify-object-equality",
+      "decision": "keep-warning",
+      "reason": "Serialized-text identity can be intentional; direct comparison does not establish that structural object equivalence was intended.",
+      "focusedTest": "packages/typescript/tests/rules/no-json-stringify-object-equality.test.ts",
+      "testExit": 0
+    },
+    {
+      "pass": 6,
+      "selector": "eslint:no-restated-comment",
+      "decision": "keep-warning",
+      "reason": "The prose classifier is advisory and can remove context relevant to maintainers or an external API.",
+      "focusedTest": "packages/typescript/tests/rules/no-restated-comment.test.ts",
+      "testExit": 0
+    },
+    {
+      "pass": 7,
+      "selector": "eslint:no-restated-jsdoc",
+      "decision": "keep-warning",
+      "reason": "Public documentation repetition can support generated API references; prose novelty does not prove a blocking defect.",
+      "focusedTest": "packages/typescript/tests/rules/no-restated-jsdoc.test.ts",
+      "testExit": 0
+    },
+    {
+      "pass": 8,
+      "selector": "eslint:prefer-millisecond-control-duration-schema",
+      "decision": "keep-warning",
+      "reason": "Duration units and wire compatibility require ownership evidence; a field spelling cannot establish the intended contract.",
+      "focusedTest": "packages/typescript/tests/rules/prefer-millisecond-control-duration-schema.test.ts",
+      "testExit": 0
+    },
+    {
+      "pass": 9,
+      "selector": "eslint:prefer-module-level-refined-schema",
+      "decision": "keep-warning",
+      "reason": "Hoisting can change callback effects, schema identity and initialization order; the rule explicitly does not prove purity.",
+      "focusedTest": "packages/typescript/tests/rules/prefer-module-level-refined-schema.test.ts",
+      "testExit": 0
+    },
+    {
+      "pass": 10,
+      "selector": "eslint:prefer-multi-value-zod-literal",
+      "decision": "keep-warning",
+      "reason": "ZodUnion and ZodLiteral expose different introspection and error contracts even when accepted values agree.",
+      "focusedTest": "packages/typescript/tests/rules/prefer-multi-value-zod-literal.test.ts",
+      "testExit": 0
+    },
+    {
+      "pass": 11,
+      "selector": "eslint:prefer-named-complex-return-type",
+      "decision": "keep-warning",
+      "reason": "Extracting a shape can expose local type parameters or an unwanted public name; complexity alone is not unsound typing.",
+      "focusedTest": "packages/typescript/tests/rules/prefer-named-complex-return-type.test.ts",
+      "testExit": 0
+    },
+    {
+      "pass": 12,
+      "selector": "eslint:prefer-node-crypto-hash",
+      "decision": "keep-warning",
+      "reason": "Runtime availability, encoding and library contract differ; a Node replacement needs deployment-specific review.",
+      "focusedTest": "packages/typescript/tests/rules/prefer-node-crypto-hash.test.ts",
+      "testExit": 0
+    },
+    {
+      "pass": 13,
+      "selector": "eslint:prefer-node-fs-promises",
+      "decision": "keep-warning",
+      "reason": "Startup-only and synchronously required filesystem contracts are valid; converting to promises changes callers.",
+      "focusedTest": "packages/typescript/tests/rules/prefer-node-fs-promises.test.ts",
+      "testExit": 0
+    },
+    {
+      "pass": 14,
+      "selector": "eslint:prefer-nominal-id-types",
+      "decision": "keep-warning",
+      "reason": "Identifier roles, external signatures and wire contracts need business-owner evidence; names alone do not prove domain interchangeability.",
+      "focusedTest": "packages/typescript/tests/rules/prefer-nominal-id-types.test.ts",
+      "testExit": 0
+    },
+    {
+      "pass": 15,
+      "selector": "eslint:prefer-shared-zod-enum",
+      "decision": "keep-warning",
+      "reason": "Equal literal values can belong to independently evolving business domains; extraction can also change initialization order.",
+      "focusedTest": "packages/typescript/tests/rules/prefer-shared-zod-enum.test.ts",
+      "testExit": 0
+    },
+    {
+      "pass": 16,
+      "selector": "eslint:prefer-switch-for-repeated-equality",
+      "decision": "keep-warning",
+      "reason": "An if-chain can be a deliberate readable control-flow contract; the diagnostic is a style preference.",
+      "focusedTest": "packages/typescript/tests/rules/prefer-switch-for-repeated-equality.test.ts",
+      "testExit": 0
+    },
+    {
+      "pass": 17,
+      "selector": "eslint:prefer-whole-object-assertion",
+      "decision": "keep-warning",
+      "reason": "Grouping assertions can change getter/proxy reads and failure reporting; valid observation contracts remain possible.",
+      "focusedTest": "packages/typescript/tests/rules/prefer-whole-object-assertion.test.ts",
+      "testExit": 0
+    },
+    {
+      "pass": 18,
+      "selector": "eslint:require-camelcase-properties",
+      "decision": "keep-warning",
+      "reason": "Renaming properties can break module, protocol or generated-client compatibility; syntax does not prove ownership.",
+      "focusedTest": "packages/typescript/tests/rules/require-camelcase-properties.test.ts",
+      "testExit": 0
+    },
+    {
+      "pass": 19,
+      "selector": "eslint:require-explicit-contract-implementation",
+      "decision": "keep-warning",
+      "reason": "Nominal interface/ABC registration is architectural policy; supported structural or compatibility seams require owner review.",
+      "focusedTest": "packages/typescript/tests/rules/require-explicit-contract-implementation.test.ts",
+      "testExit": 0
+    },
+    {
+      "pass": 20,
+      "selector": "eslint:require-explicit-service-contract",
+      "decision": "keep-warning",
+      "reason": "An explicit service interface is an architectural recommendation, not proof that a structurally typed service is incorrect.",
+      "focusedTest": "packages/typescript/tests/rules/require-explicit-service-contract.test.ts",
+      "testExit": 0
+    },
+    {
+      "pass": 21,
+      "selector": "eslint:require-interface-for-exported-class",
+      "decision": "keep-warning",
+      "reason": "Published classes can themselves be the stable contract; adding an interface is not universally beneficial.",
+      "focusedTest": "packages/typescript/tests/rules/require-interface-for-exported-class.test.ts",
+      "testExit": 0
+    },
+    {
+      "pass": 22,
+      "selector": "eslint:require-sql-access-class",
+      "decision": "keep-warning",
+      "reason": "Function-oriented SQL ownership can be deliberate; constructor ownership is not fully inferred through wrappers or inheritance.",
+      "focusedTest": "packages/typescript/tests/rules/require-sql-access-class.test.ts",
+      "testExit": 0
+    },
+    {
+      "pass": 23,
+      "selector": "iac:no-dead-environment-input",
+      "decision": "keep-warning",
+      "reason": "The rule mixes undeclared inputs with intentionally repeated scalar values; invocation order and fail-closed environment contracts are not proven.",
+      "focusedTest": "packages/iac/tests/rules/test_no_dead_environment_input.py",
+      "testExit": 0
+    },
+    {
+      "pass": 24,
+      "selector": "iac:no-restated-comment",
+      "decision": "keep-warning",
+      "reason": "The prose classifier is advisory and can remove context relevant to maintainers or an external API.",
+      "focusedTest": "packages/iac/tests/rules/test_no_restated_comment.py",
+      "testExit": 0
+    },
+    {
+      "pass": 25,
+      "selector": "iac:require-deletion-protection",
+      "decision": "keep-warning",
+      "reason": "Disposable resources can legitimately omit deletion protection; irreplaceability and recovery policy need deployment ownership.",
+      "focusedTest": "packages/iac/tests/rules/test_require_deletion_protection.py",
+      "testExit": 0
+    },
+    {
+      "pass": 26,
+      "selector": "iac:require-prevent-destroy-on-irreplaceable",
+      "decision": "keep-warning",
+      "reason": "Data recovery and replacement procedures require operational review; resource syntax cannot establish every intended destroy contract.",
+      "focusedTest": "packages/iac/tests/rules/test_require_prevent_destroy.py",
+      "testExit": 0
+    },
+    {
+      "pass": 27,
+      "selector": "python:async-cleanup-registered-synchronously",
+      "decision": "promote-error",
+      "reason": "Promotion candidate: a proven synchronous ExitStack callback drops a visible coroutine cleanup; requires adversarial provenance, runtime and exact error-exit verification.",
+      "focusedTest": "packages/python/tests/rules/test_async_cleanup_registered_synchronously.py",
+      "testExit": 0
+    },
+    {
+      "pass": 28,
+      "selector": "python:async-mock-call-without-await-assertion",
+      "decision": "keep-warning",
+      "reason": "Scheduling contracts and custom assertion helpers can deliberately observe calls separately from awaits.",
+      "focusedTest": "packages/python/tests/rules/test_async_mock_call_without_await_assertion.py",
+      "testExit": 0
+    },
+    {
+      "pass": 29,
+      "selector": "python:complex-postgres-query-requires-architecture-review",
+      "decision": "keep-warning",
+      "reason": "The rule expressly requests architecture review and does not infer optimizer behavior, performance or datastore placement.",
+      "focusedTest": "packages/python/tests/rules/test_complex_postgres_query_requires_architecture_review.py",
+      "testExit": 0
+    },
+    {
+      "pass": 30,
+      "selector": "python:duplicate-adjacent-exception-handler",
+      "decision": "keep-warning",
+      "reason": "Adjacent equal handlers can preserve intentional translation seams; merging is not a universal behavioral requirement.",
+      "focusedTest": "packages/python/tests/rules/test_duplicate_adjacent_exception_handler.py",
+      "testExit": 0
+    },
+    {
+      "pass": 31,
+      "selector": "python:duplicate-closed-pure-helper",
+      "decision": "keep-warning",
+      "reason": "Independent domain helpers can intentionally evolve separately; current pure-body equality does not prove one ownership boundary.",
+      "focusedTest": "packages/python/tests/rules/test_duplicate_closed_pure_helper.py",
+      "testExit": 0
+    },
+    {
+      "pass": 32,
+      "selector": "python:fakes-in-shared-location",
+      "decision": "keep-warning",
+      "reason": "A local fake can be an intentional test-specific contract; placement and future reuse require human judgment.",
+      "focusedTest": "packages/python/tests/rules/test_fakes_in_shared_location.py",
+      "testExit": 0
+    },
+    {
+      "pass": 33,
+      "selector": "python:fastapi-explicit-openapi-contract",
+      "decision": "keep-warning",
+      "reason": "Explicit operation metadata is API policy; inferred FastAPI contracts can be valid without the preferred explicit declaration.",
+      "focusedTest": "packages/python/tests/rules/test_fastapi_explicit_openapi_contract.py",
+      "testExit": 0
+    },
+    {
+      "pass": 34,
+      "selector": "python:iac-source-coupled-test",
+      "decision": "keep-warning",
+      "reason": "Exact source representation can be an intentional compatibility oracle; source coupling must distinguish that contract from behavioral testing.",
+      "focusedTest": "packages/python/tests/rules/test_iac_source_coupled_test.py",
+      "testExit": 0
+    },
+    {
+      "pass": 35,
+      "selector": "python:named-record-at-boundaries",
+      "decision": "keep-warning",
+      "reason": "Record extraction and return compatibility need owner review; a source-proven fixed shape does not alone invalidate a mapping API.",
+      "focusedTest": "packages/python/tests/rules/test_named_record_at_boundaries.py",
+      "testExit": 0
+    },
+    {
+      "pass": 36,
+      "selector": "python:no-analytical-aggregation-in-postgres-store",
+      "decision": "keep-warning",
+      "reason": "Query/data-store placement is architectural judgment; supported SQL aggregates can be appropriate in a PostgreSQL store.",
+      "focusedTest": "packages/python/tests/rules/test_no_analytical_aggregation_in_postgres_store.py",
+      "testExit": 0
+    },
+    {
+      "pass": 37,
+      "selector": "python:no-any-mapping-types",
+      "decision": "promote-error",
+      "reason": "Promotion candidate: proven Any in a string-keyed mapping erases value checking. Metadata/value positions were repaired; inspect a deterministic live sample and verify no conflicting strict contract.",
+      "focusedTest": "packages/python/tests/rules/test_no_any_mapping_types.py",
+      "testExit": 0
+    },
+    {
+      "pass": 38,
+      "selector": "python:no-before-validator-input-mutation",
+      "decision": "keep-warning",
+      "reason": "Caller-owned versus transferred raw input is not globally proven; intentional mutation and identity contracts must remain possible.",
+      "focusedTest": "packages/python/tests/rules/test_no_before_validator_input_mutation.py",
+      "testExit": 0
+    },
+    {
+      "pass": 39,
+      "selector": "python:no-broad-keyword-capture",
+      "decision": "keep-warning",
+      "reason": "Dynamic payload and formatting APIs can intentionally require an open keyword contract; fixed callers do not establish closed-world ownership.",
+      "focusedTest": "packages/python/tests/rules/test_no_broad_keyword_capture.py",
+      "testExit": 0
+    },
+    {
+      "pass": 40,
+      "selector": "python:no-docstring-type-restatement",
+      "decision": "keep-warning",
+      "reason": "Generated API docs and selected documentation conventions can require signature restatement; prose policy is advisory.",
+      "focusedTest": "packages/python/tests/rules/test_no_typed_doc_sections.py",
+      "testExit": 0
+    },
+    {
+      "pass": 41,
+      "selector": "python:no-fixed-sleep-in-loop",
+      "decision": "keep-warning",
+      "reason": "A fixed operational pacing interval can be intentional; testability guidance does not establish a universal runtime defect.",
+      "focusedTest": "packages/python/tests/rules/test_no_fixed_sleep_in_loop.py",
+      "testExit": 0
+    },
+    {
+      "pass": 42,
+      "selector": "python:no-injected-module-loader",
+      "decision": "keep-warning",
+      "reason": "Fixed local import calls do not disprove deliberate injection or initialization seams; API ownership remains review-sensitive.",
+      "focusedTest": "packages/python/tests/rules/test_no_injected_module_loader.py",
+      "testExit": 0
+    },
+    {
+      "pass": 43,
+      "selector": "python:no-input-model-mutation",
+      "decision": "keep-warning",
+      "reason": "A caller can explicitly transfer mutable model ownership; source-local field writes do not establish the public mutation contract.",
+      "focusedTest": "packages/python/tests/rules/test_no_input_model_mutation.py",
+      "testExit": 0
+    },
+    {
+      "pass": 44,
+      "selector": "python:no-mocked-pydantic-value-object",
+      "decision": "keep-warning",
+      "reason": "Tests can intentionally exercise malformed or lazy value-object boundaries; model ancestry alone is insufficient to prove the test is invalid.",
+      "focusedTest": "packages/python/tests/rules/test_no_mocked_pydantic_value_object.py",
+      "testExit": 0
+    },
+    {
+      "pass": 45,
+      "selector": "python:no-nullable-dependency-fallback",
+      "decision": "keep-warning",
+      "reason": "Explicit None acceptance can be part of a published callable contract; removing it can alter initialization and errors.",
+      "focusedTest": "packages/python/tests/rules/test_no_nullable_dependency_fallback.py",
+      "testExit": 0
+    },
+    {
+      "pass": 46,
+      "selector": "python:no-raw-source-text-test-oracle",
+      "decision": "keep-warning",
+      "reason": "Representation-preservation tests are valid compatibility contracts; blanket blocking would penalize them.",
+      "focusedTest": "packages/python/tests/rules/test_no_raw_source_text_test_oracle.py",
+      "testExit": 0
+    },
+    {
+      "pass": 47,
+      "selector": "python:no-redundant-module-alias-exports",
+      "decision": "keep-warning",
+      "reason": "Alias identity can preserve a public compatibility surface; exported API intent requires review.",
+      "focusedTest": "packages/python/tests/rules/test_no_redundant_module_alias_exports.py",
+      "testExit": 0
+    },
+    {
+      "pass": 48,
+      "selector": "python:no-restated-closed-domain-description",
+      "decision": "keep-warning",
+      "reason": "Repeated schema descriptions can be consumed by external generated documentation; lexical repetition is insufficient for error severity.",
+      "focusedTest": "packages/python/tests/rules/test_no_redundant_literal_description.py",
+      "testExit": 0
+    },
+    {
+      "pass": 49,
+      "selector": "python:no-restated-comment",
+      "decision": "keep-warning",
+      "reason": "The prose classifier is advisory and can remove context relevant to maintainers or an external API.",
+      "focusedTest": "packages/python/tests/rules/test_no_restated_comment.py",
+      "testExit": 0
+    },
+    {
+      "pass": 50,
+      "selector": "python:no-shallow-container-type-guard",
+      "decision": "keep-warning",
+      "reason": "Retain warning: all14 natural matches inspected by the independent judge use parser/framework origin or separate validation guarantees. The13 TypeGuard and1 TypeIs contracts cannot be invalidated from the shallow predicate alone.",
+      "focusedTest": "packages/python/tests/rules/test_no_shallow_container_type_guard.py",
+      "testExit": 0
+    },
+    {
+      "pass": 51,
+      "selector": "python:no-swallowed-asyncio-cancellation",
+      "decision": "keep-warning",
+      "reason": "Cancellation ownership, intentional translation and task-shutdown effects are not fully inferred; child versus caller cancellation needs more proof.",
+      "focusedTest": "packages/python/tests/rules/test_no_swallowed_asyncio_cancellation.py",
+      "testExit": 0
+    },
+    {
+      "pass": 52,
+      "selector": "python:no-test-method-grafting",
+      "decision": "keep-warning",
+      "reason": "An intentional test seam may require a narrowly documented graft; source provenance does not prove a wrong observed contract in every test.",
+      "focusedTest": "packages/python/tests/rules/test_no_test_method_grafting.py",
+      "testExit": 0
+    },
+    {
+      "pass": 53,
+      "selector": "python:no-unused-copy-result",
+      "decision": "keep-warning",
+      "reason": "Resolved replacement APIs can invoke user hooks for effects or expected exceptions; a discarded value is not universally useless.",
+      "focusedTest": "packages/python/tests/rules/test_no_unused_copy_result.py",
+      "testExit": 0
+    },
+    {
+      "pass": 54,
+      "selector": "python:no-unused-underscored-keyword-parameter",
+      "decision": "keep-warning",
+      "reason": "Ignored keyword parameters can retain a published interface or callback compatibility contract.",
+      "focusedTest": "packages/python/tests/rules/test_no_unused_underscored_keyword_parameter.py",
+      "testExit": 0
+    },
+    {
+      "pass": 55,
+      "selector": "python:no-unused-value-marker",
+      "decision": "keep-warning",
+      "reason": "Binding a value can intentionally control lifetime or evaluation effects; an unused marker is not a universal defect.",
+      "focusedTest": "packages/python/tests/rules/test_no_unused_value_marker.py",
+      "testExit": 0
+    },
+    {
+      "pass": 56,
+      "selector": "python:no-whole-request-response-payload-in-log",
+      "decision": "keep-warning",
+      "reason": "Payload sensitivity and sanitization ownership need runtime/domain evidence; whole-body logging is risk guidance, not proof of secret disclosure.",
+      "focusedTest": "packages/python/tests/rules/test_no_whole_request_response_payload_in_log.py",
+      "testExit": 0
+    },
+    {
+      "pass": 57,
+      "selector": "python:opaque-parametrize-case-needs-id",
+      "decision": "keep-warning",
+      "reason": "Repository pytest ID hooks and plugin-provided naming are not fully evaluated; syntactic missing IDs can still produce semantic case names.",
+      "focusedTest": "packages/python/tests/rules/test_opaque_parametrize_case_needs_id.py",
+      "testExit": 0
+    },
+    {
+      "pass": 58,
+      "selector": "python:over-mocked-test",
+      "decision": "keep-warning",
+      "reason": "Mock count is a review heuristic; a composition-root test can legitimately need several boundary mocks.",
+      "focusedTest": "packages/python/tests/rules/test_over_mocked_test.py",
+      "testExit": 0
+    },
+    {
+      "pass": 59,
+      "selector": "python:prefer-autospec-for-callable-mock",
+      "decision": "keep-warning",
+      "reason": "The source-owned calibration explicitly retains preventive warning; no current runtime incident or broad live precision proof exists.",
+      "focusedTest": "packages/python/tests/rules/test_prefer_autospec_for_callable_mock.py",
+      "testExit": 0
+    },
+    {
+      "pass": 60,
+      "selector": "python:prefer-collection-comprehension",
+      "decision": "keep-warning",
+      "reason": "Imperative construction can preserve debugging and future branching seams; supported syntax equivalence is a readability preference.",
+      "focusedTest": "packages/python/tests/rules/test_prefer_collection_comprehension.py",
+      "testExit": 0
+    },
+    {
+      "pass": 61,
+      "selector": "python:prefer-fstring-over-concat",
+      "decision": "keep-warning",
+      "reason": "String formatting choice is stylistic; protocol fragments and explicit construction contracts remain valid.",
+      "focusedTest": "packages/python/tests/rules/test_prefer_fstring_over_concat.py",
+      "testExit": 0
+    },
+    {
+      "pass": 62,
+      "selector": "python:prefer-immutable-module-constant",
+      "decision": "keep-warning",
+      "reason": "Published constants can intentionally expose mutable identity; immutability changes the consumer contract.",
+      "focusedTest": "packages/python/tests/rules/test_prefer_immutable_module_constant.py",
+      "testExit": 0
+    },
+    {
+      "pass": 63,
+      "selector": "python:prefer-library-fake",
+      "decision": "keep-warning",
+      "reason": "Maintained fake availability does not prove semantic equivalence to a domain-specific test fake.",
+      "focusedTest": "packages/python/tests/rules/test_prefer_library_fake.py",
+      "testExit": 0
+    },
+    {
+      "pass": 64,
+      "selector": "python:prefer-match-exception-dispatch",
+      "decision": "keep-warning",
+      "reason": "Exception dispatch syntax is a style recommendation; external runtime support and deliberate branch layout remain valid.",
+      "focusedTest": "packages/python/tests/rules/test_prefer_match_exception_dispatch.py",
+      "testExit": 0
+    },
+    {
+      "pass": 65,
+      "selector": "python:prefer-match-value-dispatch",
+      "decision": "keep-warning",
+      "reason": "Missing target metadata does not prove Python 3.10 support; match migration cannot universally block compatible code.",
+      "focusedTest": "packages/python/tests/rules/test_prefer_match_value_dispatch.py",
+      "testExit": 0
+    },
+    {
+      "pass": 66,
+      "selector": "python:prefer-module-level-constant",
+      "decision": "keep-warning",
+      "reason": "Hoisting regex/object construction changes capture and initialization timing; the rule does not prove hot-path benefit.",
+      "focusedTest": "packages/python/tests/rules/test_prefer_module_level_constant.py",
+      "testExit": 0
+    },
+    {
+      "pass": 67,
+      "selector": "python:prefer-monkeypatch-for-process-state-in-test",
+      "decision": "keep-warning",
+      "reason": "Process state restoration and framework ownership require context; a scoped alternative can preserve equivalent isolation.",
+      "focusedTest": "packages/python/tests/rules/test_prefer_monkeypatch_for_process_state_in_test.py",
+      "testExit": 0
+    },
+    {
+      "pass": 68,
+      "selector": "python:prefer-monotonic-for-elapsed-time",
+      "decision": "keep-warning",
+      "reason": "Independent judge reproduced deliberate wall-clock delta measurement; subtraction syntax cannot distinguish clock diagnostics from elapsed duration.",
+      "focusedTest": "packages/python/tests/rules/test_prefer_monotonic_for_elapsed_time.py",
+      "testExit": 0
+    },
+    {
+      "pass": 69,
+      "selector": "python:prefer-native-string-check",
+      "decision": "keep-warning",
+      "reason": "Pydantic validation and byte-decoding can intentionally establish an exception/coercion contract; replacing them is not behavior-equivalent.",
+      "focusedTest": "packages/python/tests/rules/test_prefer_native_string_check.py",
+      "testExit": 0
+    },
+    {
+      "pass": 70,
+      "selector": "python:prefer-non-nullable-collection",
+      "decision": "keep-warning",
+      "reason": "None can be an intentional public sentinel even when implementation normalizes it; removing acceptance changes callers.",
+      "focusedTest": "packages/python/tests/rules/test_prefer_non_nullable_collection.py",
+      "testExit": 0
+    },
+    {
+      "pass": 71,
+      "selector": "python:prefer-or-pattern",
+      "decision": "keep-warning",
+      "reason": "Combining cases is a readability preference and can alter source-level observation or future domain ownership.",
+      "focusedTest": "packages/python/tests/rules/test_prefer_or_pattern.py",
+      "testExit": 0
+    },
+    {
+      "pass": 72,
+      "selector": "python:prefer-pydantic-json-value",
+      "decision": "keep-warning",
+      "reason": "Independent judge reproduced differing coercion for recursive aliases, tuples and Decimal; canonical JsonValue is not a behavior-neutral replacement.",
+      "focusedTest": "packages/python/tests/rules/test_prefer_pydantic_json_value.py",
+      "testExit": 0
+    },
+    {
+      "pass": 73,
+      "selector": "python:prefer-pytest-fixture-injection",
+      "decision": "keep-warning",
+      "reason": "External plugin registration and conftest discovery overrides are not fully inferred; setup ownership needs context.",
+      "focusedTest": "packages/python/tests/rules/test_prefer_pytest_fixture_injection.py",
+      "testExit": 0
+    },
+    {
+      "pass": 74,
+      "selector": "python:prefer-regex-fullmatch",
+      "decision": "keep-warning",
+      "reason": "The matched span and terminal-newline semantics can be intentional; boolean usage alone does not prove the intended validation domain.",
+      "focusedTest": "packages/python/tests/rules/test_prefer_regex_fullmatch.py",
+      "testExit": 0
+    },
+    {
+      "pass": 75,
+      "selector": "python:prefer-required-constructor-parameters",
+      "decision": "keep-warning",
+      "reason": "Constructor defaults can preserve useful or published caller contracts; removing them is a compatibility change.",
+      "focusedTest": "packages/python/tests/rules/test_prefer_required_constructor_parameters.py",
+      "testExit": 0
+    },
+    {
+      "pass": 76,
+      "selector": "python:prefer-self-type-annotation",
+      "decision": "keep-warning",
+      "reason": "Independent judge reproduced valid subclass override behavior that differs from Self; nominal return promises require API-owner review.",
+      "focusedTest": "packages/python/tests/rules/test_prefer_self_type_annotation.py",
+      "testExit": 0
+    },
+    {
+      "pass": 77,
+      "selector": "python:prefer-walrus-awaited-none-guard",
+      "decision": "keep-warning",
+      "reason": "Combining an awaited assignment and condition is a style preference; explicit intermediate state can aid debugging.",
+      "focusedTest": "packages/python/tests/rules/test_prefer_walrus_awaited_none_guard.py",
+      "testExit": 0
+    },
+    {
+      "pass": 78,
+      "selector": "python:prefer-walrus-comprehension-filter",
+      "decision": "keep-warning",
+      "reason": "The rule cannot prove referential transparency and the assignment expression binds in the containing callable.",
+      "focusedTest": "packages/python/tests/rules/test_prefer_walrus_comprehension_filter.py",
+      "testExit": 0
+    },
+    {
+      "pass": 79,
+      "selector": "python:prefer-walrus-regex-match",
+      "decision": "keep-warning",
+      "reason": "Assignment-expression migration is a style choice; named intermediate results can deliberately express flow.",
+      "focusedTest": "packages/python/tests/rules/test_prefer_walrus_regex_match.py",
+      "testExit": 0
+    },
+    {
+      "pass": 80,
+      "selector": "python:prefer-walrus-stream-loop",
+      "decision": "keep-warning",
+      "reason": "Producer ownership is unresolved and loop syntax is a readability preference rather than a correctness invariant.",
+      "focusedTest": "packages/python/tests/rules/test_prefer_walrus_stream_loop.py",
+      "testExit": 0
+    },
+    {
+      "pass": 81,
+      "selector": "python:redundant-docstring",
+      "decision": "keep-warning",
+      "reason": "Lexically repeated words can support public documentation and API discovery; prose novelty cannot justify a universal blocking rule.",
+      "focusedTest": "packages/python/tests/rules/test_redundant_docstring.py",
+      "testExit": 0
+    },
+    {
+      "pass": 82,
+      "selector": "python:redundant-test-constructor-forwarder",
+      "decision": "keep-warning",
+      "reason": "Forwarding can preserve an intentional constructor seam and definition-time snapshots; source equality is insufficient.",
+      "focusedTest": "packages/python/tests/rules/test_redundant_test_constructor_forwarder.py",
+      "testExit": 0
+    },
+    {
+      "pass": 83,
+      "selector": "python:repeated-static-call-cases",
+      "decision": "keep-warning",
+      "reason": "Case boundaries and stateful execution require judgment; repeated source does not prove parametrization is equivalent.",
+      "focusedTest": "packages/python/tests/rules/test_repeated_static_call_cases.py",
+      "testExit": 0
+    },
+    {
+      "pass": 84,
+      "selector": "python:repeated-unimplemented-test-contract",
+      "decision": "keep-warning",
+      "reason": "Independent fake contracts can intentionally evolve separately; equal unimplemented method shape does not prove common ownership.",
+      "focusedTest": "packages/python/tests/rules/test_repeated_unimplemented_test_contract.py",
+      "testExit": 0
+    },
+    {
+      "pass": 85,
+      "selector": "python:replay-contract-insert-requires-duplicate-policy",
+      "decision": "keep-warning",
+      "reason": "Replay ownership and external idempotency constraints need application evidence beyond direct SQL spelling.",
+      "focusedTest": "packages/python/tests/rules/test_store_insert_requires_on_conflict.py",
+      "testExit": 0
+    },
+    {
+      "pass": 86,
+      "selector": "python:require-explicit-contract-implementation",
+      "decision": "keep-warning",
+      "reason": "Nominal interface/ABC registration is architectural policy; supported structural or compatibility seams require owner review.",
+      "focusedTest": "packages/python/tests/rules/test_require_explicit_contract_implementation.py",
+      "testExit": 0
+    },
+    {
+      "pass": 87,
+      "selector": "python:require-explicit-psycopg-transaction",
+      "decision": "keep-warning",
+      "reason": "A non-autocommit connection can already own an implicit transaction; manual commit is not itself an atomicity defect.",
+      "focusedTest": "packages/python/tests/rules/test_require_explicit_psycopg_transaction.py",
+      "testExit": 0
+    },
+    {
+      "pass": 88,
+      "selector": "python:require-explicit-service-contract",
+      "decision": "keep-warning",
+      "reason": "An explicit service interface is an architectural recommendation, not proof that a structurally typed service is incorrect.",
+      "focusedTest": "packages/python/tests/rules/test_require_explicit_service_contract.py",
+      "testExit": 0
+    },
+    {
+      "pass": 89,
+      "selector": "python:require-injectable-retry-sleep",
+      "decision": "keep-warning",
+      "reason": "A fixed retry policy can be intentionally production-owned; injectability is testability guidance rather than a universal invalid state.",
+      "focusedTest": "packages/python/tests/rules/test_require_injectable_retry_sleep.py",
+      "testExit": 0
+    },
+    {
+      "pass": 90,
+      "selector": "python:require-keyword-only-swap-prone-params",
+      "decision": "keep-warning",
+      "reason": "Changing positional acceptance can break published callers; one-file analysis cannot establish all callers.",
+      "focusedTest": "packages/python/tests/rules/test_require_keyword_only_swap_prone_params.py",
+      "testExit": 0
+    },
+    {
+      "pass": 91,
+      "selector": "python:require-port-for-service",
+      "decision": "keep-warning",
+      "reason": "A concrete collaborator contract can be an intentional architecture boundary; interface extraction requires ownership review.",
+      "focusedTest": "packages/python/tests/rules/test_require_port_for_service.py",
+      "testExit": 0
+    },
+    {
+      "pass": 92,
+      "selector": "python:require-precise-factory-signature",
+      "decision": "keep-warning",
+      "reason": "Independent judge reproduced a deliberately dynamic plugin API; fixed local calls do not prove that the public factory contract is closed.",
+      "focusedTest": "packages/python/tests/rules/test_require_precise_factory_signature.py",
+      "testExit": 0
+    },
+    {
+      "pass": 93,
+      "selector": "python:require-public-dependency-contract",
+      "decision": "keep-warning",
+      "reason": "Published dependency members and local ownership cannot be fully inferred; an additional public Protocol can duplicate an existing contract.",
+      "focusedTest": "packages/python/tests/rules/test_require_public_dependency_contract.py",
+      "testExit": 0
+    },
+    {
+      "pass": 94,
+      "selector": "python:require-pydantic-for-external-json",
+      "decision": "keep-warning",
+      "reason": "Independent judge reproduced safe optional projection after container narrowing; every external object does not require a new runtime model.",
+      "focusedTest": "packages/python/tests/rules/test_require_pydantic_for_external_json.py",
+      "testExit": 0
+    },
+    {
+      "pass": 95,
+      "selector": "python:require-pydantic-ordinal-lower-bound",
+      "decision": "keep-warning",
+      "reason": "Description-derived ordinal intent is insufficient to distinguish valid zero-based or sentinel protocols.",
+      "focusedTest": "packages/python/tests/rules/test_require_pydantic_ordinal_lower_bound.py",
+      "testExit": 0
+    },
+    {
+      "pass": 96,
+      "selector": "python:shared-mutable-pydantic-factory",
+      "decision": "keep-warning",
+      "reason": "Independent judge reproduced a valid intentionally shared registry; stable shared identity can be the explicit model contract.",
+      "focusedTest": "packages/python/tests/rules/test_shared_mutable_pydantic_factory.py",
+      "testExit": 0
+    },
+    {
+      "pass": 97,
+      "selector": "python:store-get-delegates-to-bulk-read",
+      "decision": "keep-warning",
+      "reason": "Singular reads can have intentional cache, locking or error behavior; equal visible bodies do not prove all external effects.",
+      "focusedTest": "packages/python/tests/rules/test_store_get_delegates_to_bulk_read.py",
+      "testExit": 0
+    },
+    {
+      "pass": 98,
+      "selector": "python:subprocess-kill-without-reap",
+      "decision": "promote-error",
+      "reason": "Promotion candidate: a locally owned timeout handler ending in kill has no proven reap. Requires adversarial ownership and valid external-reaper review.",
+      "focusedTest": "packages/python/tests/rules/test_subprocess_kill_without_reap.py",
+      "testExit": 0
+    },
+    {
+      "pass": 99,
+      "selector": "python:timestamp-order-requires-tiebreaker",
+      "decision": "keep-warning",
+      "reason": "Equal-timestamp rows can intentionally be interchangeable; ordering determinism depends on the result contract and uniqueness constraints.",
+      "focusedTest": "packages/python/tests/rules/test_timestamp_order_requires_tiebreaker.py",
+      "testExit": 0
+    },
+    {
+      "pass": 100,
+      "selector": "python:typed-error-reasons",
+      "decision": "keep-warning",
+      "reason": "Exception constructor and formatting contracts can be public; extracting a new enum or record needs compatibility review.",
+      "focusedTest": "packages/python/tests/rules/test_typed_error_reasons.py",
+      "testExit": 0
+    },
+    {
+      "pass": 101,
+      "selector": "python:unused-test-factory-option",
+      "decision": "keep-warning",
+      "reason": "Cross-module/dynamic callers and definition-time default capture are not fully inferred; an extension option can be intentional.",
+      "focusedTest": "packages/python/tests/rules/test_unused_test_factory_option.py",
+      "testExit": 0
+    },
+    {
+      "pass": 102,
+      "selector": "sql:excess-migration-index-requires-justification",
+      "decision": "keep-warning",
+      "reason": "Index count does not establish workload benefit or redundancy; EXPLAIN and fleet index state require operational evidence.",
+      "focusedTest": "packages/sql/tests/rules/test_index_budget.py",
+      "testExit": 0
+    },
+    {
+      "pass": 103,
+      "selector": "sql:existing-table-check-or-foreign-key-requires-not-valid",
+      "decision": "keep-warning",
+      "reason": "Empty-table and deliberately bounded migrations can be safe; source cannot prove row volume or transaction boundaries.",
+      "focusedTest": "packages/sql/tests/rules/test_add_constraint_requires_not_valid.py",
+      "testExit": 0
+    },
+    {
+      "pass": 104,
+      "selector": "sql:mixed-migration-phases",
+      "decision": "keep-warning",
+      "reason": "A reviewed atomic migration can intentionally combine phases; recorded operational evidence is a human declaration.",
+      "focusedTest": "packages/sql/tests/rules/test_mixed_migration_phases.py",
+      "testExit": 0
+    },
+    {
+      "pass": 105,
+      "selector": "sql:no-application-schema-check",
+      "decision": "keep-warning",
+      "reason": "Database CHECK constraints can intentionally enforce a cross-client integrity contract; model ownership is not universally the sole boundary.",
+      "focusedTest": "packages/sql/tests/rules/test_no_application_schema_check.py",
+      "testExit": 0
+    },
+    {
+      "pass": 106,
+      "selector": "sql:no-duplicate-index",
+      "decision": "keep-warning",
+      "reason": "The rule includes left-prefix candidates requiring workload and uniqueness review; those are not proven duplicate physical contracts.",
+      "focusedTest": "packages/sql/tests/rules/test_no_duplicate_index.py",
+      "testExit": 0
+    },
+    {
+      "pass": 107,
+      "selector": "text:declarative-deployment-boundary",
+      "decision": "keep-warning",
+      "reason": "Deployment authorization can intentionally require a bounded imperative step; structured policy must distinguish it from mutation ownership.",
+      "focusedTest": "packages/standards/tests/test_textlint.py",
+      "testExit": 0
+    },
+    {
+      "pass": 108,
+      "selector": "text:large-shell-program",
+      "decision": "keep-warning",
+      "reason": "Program length is architectural guidance; a substantial shell tool can be valid and appropriate.",
+      "focusedTest": "packages/standards/tests/test_textlint.py",
+      "testExit": 0
+    },
+    {
+      "pass": 109,
+      "selector": "python:no-impossible-pydantic-field-bounds",
+      "decision": "promote-error",
+      "reason": "New correctness rule completed five independent review passes and supplemental namespace/CLI review. Native+catalog severity is warning in the first PR; a separate promotion will recheck final interactions and baselines.",
+      "focusedTest": "packages/python/tests/rules/test_no_impossible_pydantic_field_bounds.py",
+      "testExit": 0
+    },
+    {
+      "pass": 110,
+      "selector": "python:no-unknown-pydantic-validator-field",
+      "decision": "promote-error",
+      "reason": "New correctness rule completed five independent review passes and supplemental namespace/CLI review. Native+catalog severity is warning in the first PR; a separate promotion will recheck final interactions and baselines.",
+      "focusedTest": "packages/python/tests/rules/test_no_unknown_pydantic_validator_field.py",
+      "testExit": 0
+    },
+    {
+      "pass": 111,
+      "selector": "python:no-conflicting-pydantic-alias-validation",
+      "decision": "promote-error",
+      "reason": "New correctness rule completed five independent review passes and supplemental namespace/CLI review. Native+catalog severity is warning in the first PR; a separate promotion will recheck final interactions and baselines.",
+      "focusedTest": "packages/python/tests/rules/test_no_conflicting_pydantic_alias_validation.py",
+      "testExit": 0
+    }
+  ],
+  "method": "Each of108 existing warning rules received a focused native test invocation and source-owned rationale/exclusion admission review. These are distinct candidate reviews, not108 full-repository implementation rounds. Three new warnings receive separate lifecycle/promotion passes109\u2013111.",
+  "judgePasses": [
+    {
+      "pass": 1,
+      "decision": "revise",
+      "evidence": "Preserve external override/model_dump contracts; keep shallow guards warning based on all14 inspected findings. Distinguish syntactic Any erasure from API helpfulness."
+    },
+    {
+      "pass": 2,
+      "decision": "revise",
+      "evidence": "Reject coroutine aliases, bound resource setters, global namespace escapes, dynamic module loaders and external process reapers; add before-fix failing regressions."
+    },
+    {
+      "pass": 3,
+      "decision": "revise",
+      "evidence": "Preserved class-local override contracts and guarded cross-owner/class-local canonical imports; native211 cases pass. Remaining class-local constructor member escape required an all-scope owner-origin map."
+    },
+    {
+      "pass": 4,
+      "decision": "revise",
+      "evidence": "Owned resource cleanup guards pass independent normal/pipe/escape probes. Narrowed overly broad Any value abstention to mutable mapping providers and protected helper/container escapes while preserving genuine type positions."
+    },
+    {
+      "pass": 5,
+      "decision": "approve-after-supplemental-repairs",
+      "evidence": "Independent review found parameterized provider and explicit alias-chain escapes, nested os/signal ownership, inherited contextlib provider mutation and waitid cleanup. Regression cases failed before repairs and passed afterward. Final reviewed existing-rule source passed 244 focused cases; known counterexamples abstain and useful positives remain. Five sequential review rounds plus supplemental regression checks; no universal precision or external-hook guarantee."
+    }
+  ],
+  "corpus": {
+    "files": 3976,
+    "bytes": 38444889,
+    "verifiedSnapshotSources": 11,
+    "maximumBatchFiles": 250,
+    "baselineFindings": 1175,
+    "candidateFindings": 954,
+    "finalScopeFindings": 954,
+    "knownNaturalAsyncCleanupMatches": 0,
+    "knownNaturalSubprocessMatches": 0,
+    "classification": "Final scope has 954 Any-erasure predicate matches: 405 parameters, 238 returns, 126 fields, 146 local/module annotations, 36 casts/adapters and 3 aliases/type comments. Seed 20261011 deterministically selects 50 findings plus all 3 missing alias/type-comment cluster cases. Independent sample reproduces 53/53 (49 private, 4 public): 14 parameters, 16 returns, 8 fields, 10 local/module annotations, 2 casts/adapters and 3 aliases/type comments; zero parse failures. API compatibility intent remains unclassified for all 53, so no semantic-TP or universal helpfulness claim is made. The 221 excluded baseline matches are conservative exclusions, not independently measured false positives. No natural cleanup matches establish fleet-wide precision.",
+    "privacy": "Private source identity, roots, snippets, revisions and digests remain in owner-only overlays; only aggregate findings are published.",
+    "finalPydanticRun": {
+      "mode": "new",
+      "run": 0,
+      "files": 3976,
+      "batches": 21,
+      "wallSeconds": 9.850594,
+      "nativeSeconds": 3.562821626663208,
+      "peakBytes": 91209728,
+      "findings": 4
+    }
+  },
+  "performance": {
+    "selectedControls": [
+      "no-any-mapping-types",
+      "async-cleanup-registered-synchronously",
+      "subprocess-kill-without-reap"
+    ],
+    "baselineRuns": [
+      {
+        "mode": "baseline",
+        "pair": 0,
+        "files": 3976,
+        "batches": 21,
+        "wallSeconds": 22.625621,
+        "nativeSeconds": 16.36304208333604,
+        "peakBytes": 103415808,
+        "findings": 1175
+      },
+      {
+        "mode": "baseline",
+        "pair": 1,
+        "files": 3976,
+        "batches": 21,
+        "wallSeconds": 21.678909,
+        "nativeSeconds": 15.91636671172455,
+        "peakBytes": 104022016,
+        "findings": 1175
+      },
+      {
+        "mode": "baseline",
+        "pair": 2,
+        "files": 3976,
+        "batches": 21,
+        "wallSeconds": 21.645381,
+        "nativeSeconds": 15.88366133486852,
+        "peakBytes": 103006208,
+        "findings": 1175
+      }
+    ],
+    "candidateRuns": [
+      {
+        "mode": "candidate",
+        "pair": 0,
+        "files": 3976,
+        "batches": 21,
+        "wallSeconds": 26.406089,
+        "nativeSeconds": 20.517619834281504,
+        "peakBytes": 106184704,
+        "findings": 954
+      },
+      {
+        "mode": "candidate",
+        "pair": 1,
+        "files": 3976,
+        "batches": 21,
+        "wallSeconds": 26.344648,
+        "nativeSeconds": 20.49871583469212,
+        "peakBytes": 105005056,
+        "findings": 954
+      },
+      {
+        "mode": "candidate",
+        "pair": 2,
+        "files": 3976,
+        "batches": 21,
+        "wallSeconds": 26.601743,
+        "nativeSeconds": 20.661813917336985,
+        "peakBytes": 103923712,
+        "findings": 954
+      }
+    ],
+    "baselineMedianWallSeconds": 21.678909,
+    "candidateMedianWallSeconds": 26.406089,
+    "relativeWallOverhead": 0.2180543310551284,
+    "incrementalWallMillisecondsPerFile": 1.1889285714285716,
+    "finalScopeRun": {
+      "mode": "candidate",
+      "pair": 2,
+      "files": 3976,
+      "batches": 21,
+      "wallSeconds": 26.601743,
+      "nativeSeconds": 20.661813917336985,
+      "peakBytes": 103923712,
+      "findings": 954
+    },
+    "limitations": "Three alternating baseline/candidate pairs use fresh-process batches, identical verified snapshots and no concurrent agent-started local verification. OS caches remain unflushed, so first measured runs are not proven cold. Before-cache paired and concurrent-verification measurements remain separately recorded. These are selected-engine measurements; no full-registry or fleet performance inference.",
+    "admissionBudget": "All three serialized baseline/candidate pairs are below the 2 ms/file budget; median paired incremental cost is 1.173 ms/file. Difference of mode medians is 1.189 ms/file. All 954 candidate diagnostics exactly equal the pre-cache scope in every run.",
+    "concurrentVerificationRuns": [
+      {
+        "mode": "promotion",
+        "run": 0,
+        "files": 3976,
+        "batches": 21,
+        "wallSeconds": 31.899839,
+        "nativeSeconds": 25.385396041208878,
+        "peakBytes": 103317504,
+        "findings": 954
+      },
+      {
+        "mode": "promotion",
+        "run": 1,
+        "files": 3976,
+        "batches": 21,
+        "wallSeconds": 37.247353,
+        "nativeSeconds": 29.494947666535154,
+        "peakBytes": 104513536,
+        "findings": 954
+      },
+      {
+        "mode": "promotion",
+        "run": 2,
+        "files": 3976,
+        "batches": 21,
+        "wallSeconds": 31.031996,
+        "nativeSeconds": 24.784430916421115,
+        "peakBytes": 102825984,
+        "findings": 954
+      }
+    ],
+    "comparisonState": "passed-final-serialized-pairs",
+    "beforeTraversalCachePairs": [
+      {
+        "mode": "baseline",
+        "pair": 0,
+        "files": 3976,
+        "batches": 21,
+        "wallSeconds": 22.349909,
+        "nativeSeconds": 16.2653743729461,
+        "peakBytes": 103563264,
+        "findings": 1175
+      },
+      {
+        "mode": "candidate",
+        "pair": 0,
+        "files": 3976,
+        "batches": 21,
+        "wallSeconds": 30.469098,
+        "nativeSeconds": 24.387957164552063,
+        "peakBytes": 103432192,
+        "findings": 954
+      },
+      {
+        "mode": "baseline",
+        "pair": 1,
+        "files": 3976,
+        "batches": 21,
+        "wallSeconds": 21.850788,
+        "nativeSeconds": 15.98917321045883,
+        "peakBytes": 103694336,
+        "findings": 1175
+      },
+      {
+        "mode": "candidate",
+        "pair": 1,
+        "files": 3976,
+        "batches": 21,
+        "wallSeconds": 29.855415,
+        "nativeSeconds": 23.959253914421424,
+        "peakBytes": 104202240,
+        "findings": 954
+      },
+      {
+        "mode": "baseline",
+        "pair": 2,
+        "files": 3976,
+        "batches": 21,
+        "wallSeconds": 21.997829,
+        "nativeSeconds": 16.06804291997105,
+        "peakBytes": 103317504,
+        "findings": 1175
+      },
+      {
+        "mode": "candidate",
+        "pair": 2,
+        "files": 3976,
+        "batches": 21,
+        "wallSeconds": 30.46479,
+        "nativeSeconds": 24.352894166018814,
+        "peakBytes": 105414656,
+        "findings": 954
+      }
+    ],
+    "repair": "Reuse the same breadth-first AST traversal for inventory and guard checks. Before-cache paired cost exceeded budget; preserve the observed runs and require equivalent diagnostics plus a new comparable measurement.",
+    "pairedIncrementalWallMillisecondsPerFile": [
+      0.9508219315895379,
+      1.17347560362173,
+      1.2465699195171023
+    ],
+    "medianPairedIncrementalWallMillisecondsPerFile": 1.17347560362173,
+    "diagnosticsExactlyEquivalentToBeforeCache": true
+  },
+  "verification": {
+    "state": "complete-local",
+    "focusedCases": 372,
+    "cliPromotionCases": 6,
+    "nativeSeverityContract": "All six eventual promotions require matching source metadata and native ERROR, exit1, blocking-baseline inclusion and exact explained suppression. Tests were written before existing severity changes; all three original candidates failed until promoted.",
+    "noAutofixes": true,
+    "existingRuleFocusedCases": 244,
+    "integratedFocusedExit": 0,
+    "integratedJudge": "approved-final-scoped-source-and-admission-rationale",
+    "independentIntegratedCases": 1054,
+    "sharedHelperCompatibility": "File-level namespace mutation proof is opt-in for the two cleanup rules; other clients retain their own binding/scope analysis. Existing independent-adapter regression and expanded helper-client suites pass.",
+    "warningSweepExit": 0,
+    "fullRepository": "all-required-gates-passed-with-environmental-retries",
+    "fullRepositoryPassed": 29041,
+    "fullRepositorySkipped": 9,
+    "fullRepositoryExit": 2,
+    "fullRepositoryChecks": "make verify passed formatting, lint, dogfood, all package type checks and tests, source-derived artifacts, version policy, repository policy and shell checks. Existing advisory diagnostics and two SC2310 warnings are nonblocking.",
+    "performanceGate": "passed",
+    "sourceJudge": "approved-including-immutable-record-and-traversal-equivalence-supplements",
+    "remainingRepositoryAndShellRetryExit": 0,
+    "environmentalRetry": "The final make verify invocation completed every test and static/package check. UV cache cleanup interfered with the final interpreter lookup; repository policy and both shell checks subsequently passed on unchanged source. The warning sweep separately retried one ENOSPC file-creation failure successfully.",
+    "exactHeadCi": "required-before-admin-merge"
+  },
+  "plateau": {
+    "state": "complete",
+    "expectedRemainingWarnings": 105,
+    "criterion": "No additional warning candidate has source-proven helpful blocking behavior after contract and compatibility exclusions. Retained rules keep their per-rule hold reasons; stronger severity is not assumed from passing detector fixtures alone.",
+    "remainingWarnings": 105,
+    "focusedTestPasses": 105,
+    "focusedTestFailures": 0,
+    "independentReview": "The retained selectors exactly equal all 105 current catalog warnings. Independent judge approved per-rule hold rationale; no additional unambiguous helpful blocking rule was supported. Passing detector tests alone does not establish error-level helpfulness."
+  },
+  "reproduction": [
+    "uv run --project packages/standards --frozen pytest -q packages/python/tests/rules/test_no_any_mapping_types.py packages/python/tests/rules/test_async_cleanup_registered_synchronously.py packages/python/tests/rules/test_subprocess_kill_without_reap.py packages/python/tests/rules/test_no_impossible_pydantic_field_bounds.py packages/python/tests/rules/test_no_unknown_pydantic_validator_field.py packages/python/tests/rules/test_no_conflicting_pydantic_alias_validation.py packages/python/tests/test_cli_severity.py packages/python/tests/test_diagnostic_precedence.py",
+    "make verify",
+    "uv run --project packages/standards --frozen code-standards --root . maintain rules changes --before origin/main --after HEAD"
+  ],
+  "compatibilityRepairs": [
+    "Inherited signatures retain typing/typing_extensions override contracts, including unique class-local imports and module aliases. Direct BaseModel.model_dump return annotations remain compatible; method-local annotations/casts/adapters are still checked.",
+    "Actual annotations, explicit aliases, cast targets and TypeAdapter targets remain eligible. Plain Any value assignments do not suppress unrelated mapping erasure. Mutable provider helper/container escapes abstain.",
+    "Coroutine aliases, namespace/frame/code mutation and escaped canonical constructor/class-member aliases invalidate ownership proof. Visible global child-reaping/SIGCHLD ownership and later internal cleanup helpers preserve valid process cleanup."
+  ],
+  "integratedBase": "46869975839fc7c26a45f008047e9f7ab68eedc0",
+  "warningFirstPr": "https://github.com/sarj-ai/code-standards/pull/1404",
+  "references": [
+    {
+      "title": "Python waitid child completion",
+      "url": "https://docs.python.org/3/library/os.html#os.waitid"
+    }
+  ],
+  "lifecycle": {
+    "firstPr": "https://github.com/sarj-ai/code-standards/pull/1404",
+    "mergedCommit": "fe3e2476f0db6dff8da9b1613864605527c24f4a",
+    "warningFirst": "Three new Pydantic rules were merged and automatically published at warning severity; both release workflow runs completed successfully. Error promotion is separate.",
+    "defaultLevelPromotions": 6,
+    "nativeWarningToErrorPromotions": 5,
+    "nativeErrorMetadataAlignment": "SARJ447 already emitted native ERROR; its default catalog severity now agrees, with API-signature exclusions."
+  }
+}

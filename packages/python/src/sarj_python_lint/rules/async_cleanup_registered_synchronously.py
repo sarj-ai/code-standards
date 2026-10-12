@@ -30,7 +30,7 @@ class AsyncCleanupRegisteredSynchronously(Rule):
     id: str = "async-cleanup-registered-synchronously"
     code: str = "SARJ463"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        default_level=Severity.WARNING,
+        default_level=Severity.ERROR,
         summary="Do not register a proven async cleanup function with ExitStack.callback.",
         rationale="The synchronous callback API discards the returned coroutine without awaiting it, so the cleanup body never runs.",
         remediation="Use AsyncExitStack and register the coroutine function with push_async_callback.",
@@ -40,6 +40,8 @@ class AsyncCleanupRegisteredSynchronously(Rule):
             "Requires a proven contextlib ExitStack or AsyncExitStack constructor and an undecorated, visible async function, optionally through simple function aliases.",
             "Unknown methods/callables, decorated functions, async generators, conditional bindings, transferred stacks, wildcard imports, and generated files are excluded.",
             "Resource aliases and interprocedural mutation are not inferred. No autofix is offered because executing previously dropped cleanup can raise new exceptions.",
+            "Coroutine-function assignment aliases must remain unmutated and unescaped; attribute inspection, containers, returned functions and unknown helper arguments abstain. Direct calls and proven stack registrations remain supported.",
+            "Visible namespace APIs, frame/module introspection, code mutation and bound attribute setters invalidate the file's provenance proof.",
         ),
         examples=(
             RuleExample(
@@ -70,7 +72,7 @@ class AsyncCleanupRegisteredSynchronously(Rule):
     def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
         if "callback" not in context.symbol_source or context.generated or context.tree is None:
             return []
-        provenance = ResourceProvenance(context)
+        provenance = ResourceProvenance(context, require_static_namespace=True)
         findings: list[Diagnostic] = []
         for call in context.nodes(ast.Call):
             if not _wrong_callback(call, provenance) or is_suppressed(context.source_lines, call.lineno, self.code):
@@ -81,7 +83,7 @@ class AsyncCleanupRegisteredSynchronously(Rule):
                     line=call.lineno,
                     col=call.col_offset + 1,
                     code=self.code,
-                    severity=Severity.WARNING,
+                    severity=Severity.ERROR,
                     message="synchronous ExitStack.callback does not await this async cleanup function; use AsyncExitStack.push_async_callback",
                 )
             )

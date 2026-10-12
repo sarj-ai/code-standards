@@ -3,7 +3,10 @@ from __future__ import annotations
 import ast
 from collections import defaultdict
 from functools import cached_property
+from types import MappingProxyType
 from typing import TYPE_CHECKING, final
+
+from sarj_python_lint.rules._namespace_access import dynamic_namespace_access
 
 
 if TYPE_CHECKING:
@@ -21,18 +24,28 @@ _SCOPES = (
     ast.DictComp,
     ast.GeneratorExp,
 )
+_RESOURCE_OWNERS = MappingProxyType(
+    {
+        "contextlib": frozenset({"ExitStack", "AsyncExitStack", "_BaseExitStack"}),
+        "subprocess": frozenset({"Popen", "TimeoutExpired"}),
+    }
+)
 
 
 @final
 class ResourceProvenance:
-    def __init__(self, context: PythonFileContext) -> None:
+    def __init__(self, context: PythonFileContext, *, require_static_namespace: bool = False) -> None:
         self.context = context
+        self.require_static_namespace = require_static_namespace
         self.bindings: dict[ast.AST | None, dict[str, list[ast.AST]]] = defaultdict(lambda: defaultdict(list))
         self.reads: dict[str, list[ast.Name]] = defaultdict(list)
         self._reads_by_binding: dict[str, dict[ast.AST, list[ast.Name]]] = {}
         self.escape_cache: dict[tuple[ast.AST, bool], bool] = {}
+        self.async_contract_cache: dict[ast.AsyncFunctionDef, bool] = {}
+        self.import_contract_cache: dict[str, bool] = {}
         self.wildcard = False
         self.mutated: set[str] = set()
+        self.external_bindings: set[str] = set()
         for node in context.nodes(ast.AST):
             if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load):
                 self.reads[node.id].append(node)
@@ -40,6 +53,8 @@ class ResourceProvenance:
             for name in _bound_names(node):
                 self.bindings[self.scope(node)][name].append(node)
                 self.wildcard |= name == "*"
+            if isinstance(node, ast.Global | ast.Nonlocal):
+                self.external_bindings.update(node.names)
             if isinstance(node, ast.Attribute) and isinstance(node.ctx, ast.Store | ast.Del):
                 root = _root_name(node)
                 if root is not None:
@@ -71,7 +86,13 @@ class ResourceProvenance:
 
     def imported(self, node: ast.expr, qualified: str) -> bool:
         root = _root_name(node)
-        if self.wildcard or root is None or root in self.mutated:
+        if (
+            self.wildcard
+            or self.dynamic_namespace
+            or root is None
+            or root in self.mutated
+            or not self._owner_namespace_untouched(qualified.partition(".")[0])
+        ):
             return False
         binding = self.binding(root, node)
         for read in self.reads.get(root, ()):
@@ -84,6 +105,48 @@ class ResourceProvenance:
             isinstance(binding, ast.alias)
             and isinstance(self.scope(binding), ast.Module)
             and self.context.imports.resolved_qualified_name(node) == qualified
+        )
+
+    def _owner_namespace_untouched(self, module: str) -> bool:
+        if module not in _RESOURCE_OWNERS:
+            return True
+        if module not in self.import_contract_cache:
+            self.import_contract_cache[module] = self._inspect_owner_namespace(module)
+        return self.import_contract_cache[module]
+
+    def _inspect_owner_namespace(self, module: str) -> bool:
+        origins: dict[str, set[str]] = defaultdict(set)
+        for node in self.context.nodes(ast.Import, ast.ImportFrom):
+            for name, target in _owner_import_targets(node, module).items():
+                origins[name].add(target)
+        if not self.mutated.isdisjoint(origins):
+            return False
+        owners = frozenset(f"{module}.{name}" for name in _RESOURCE_OWNERS[module])
+        return all(
+            self._safe_import_use(node)
+            for node in self.context.nodes(ast.Name, ast.Attribute)
+            if self._owner_reference(node, origins, owners)
+        )
+
+    def _owner_reference(
+        self, node: ast.Name | ast.Attribute, origins: dict[str, set[str]], owners: frozenset[str]
+    ) -> bool:
+        if not isinstance(node.ctx, ast.Load):
+            return False
+        if isinstance(node, ast.Name):
+            return node.id in origins
+        return any(
+            qualified == owner or qualified.startswith(owner + ".")
+            for qualified in _owner_attribute_targets(node, origins)
+            for owner in owners
+        )
+
+    def _safe_import_use(self, node: ast.Name | ast.Attribute) -> bool:
+        parent = self.context.parents.get(node)
+        return (
+            (isinstance(parent, ast.Attribute) and parent.value is node)
+            or (isinstance(parent, ast.Call) and parent.func is node)
+            or (isinstance(parent, ast.ExceptHandler) and parent.type is node)
         )
 
     def constructor(self, name: ast.Name, at: ast.AST) -> ast.Call | None:
@@ -114,6 +177,8 @@ class ResourceProvenance:
         return statement.value if statement.lineno < getattr(at, "lineno", 0) else None
 
     def async_function(self, value: ast.expr, at: ast.AST) -> ast.AsyncFunctionDef | None:
+        if self.dynamic_namespace:
+            return None
         seen: set[str] = set()
         while isinstance(value, ast.Name) and value.id not in seen:
             seen.add(value.id)
@@ -121,14 +186,7 @@ class ResourceProvenance:
                 return None
             binding = self.binding(value.id, at)
             if isinstance(binding, ast.AsyncFunctionDef):
-                owner = self.context.parents.get(binding)
-                if not isinstance(owner, ast.Module | ast.FunctionDef | ast.AsyncFunctionDef):
-                    return None
-                if binding.decorator_list or any(
-                    isinstance(node, ast.Yield | ast.YieldFrom) for node in ast.walk(binding)
-                ):
-                    return None
-                return binding
+                return self._stable_async_definition(binding)
             if not isinstance(binding, ast.Name):
                 return None
             resolved = self.assignment_value(binding, at)
@@ -137,21 +195,92 @@ class ResourceProvenance:
             value, at = resolved, binding
         return None
 
+    @cached_property
+    def dynamic_namespace(self) -> bool:
+        return self.require_static_namespace and dynamic_namespace_access(
+            self.context.nodes(ast.AST), self.context.imports, self.context.parents
+        )
+
+    def _stable_async_definition(self, function: ast.AsyncFunctionDef) -> ast.AsyncFunctionDef | None:
+        owner = self.context.parents.get(function)
+        if not isinstance(owner, ast.Module | ast.FunctionDef | ast.AsyncFunctionDef):
+            return None
+        if function.decorator_list or any(isinstance(node, ast.Yield | ast.YieldFrom) for node in ast.walk(function)):
+            return None
+        if function not in self.async_contract_cache:
+            self.async_contract_cache[function] = self._async_aliases_untouched(function)
+        return function if self.async_contract_cache[function] else None
+
+    def _async_aliases_untouched(self, function: ast.AsyncFunctionDef) -> bool:
+        pending: list[ast.AsyncFunctionDef | ast.Name] = [function]
+        seen: set[ast.AST] = set()
+        while pending:
+            binding = pending.pop()
+            if binding in seen:
+                continue
+            seen.add(binding)
+            name = binding.id if isinstance(binding, ast.Name) else binding.name
+            if name in self.mutated or name in self.external_bindings:
+                return False
+            for read in self._binding_reads(name, binding):
+                alias = self._function_alias(read)
+                if alias is not None:
+                    pending.append(alias)
+                elif not self._safe_async_read(read):
+                    return False
+        return True
+
+    def _function_alias(self, read: ast.Name) -> ast.Name | None:
+        parent = self.context.parents.get(read)
+        if not isinstance(parent, ast.Assign | ast.AnnAssign) or parent.value is not read:
+            return None
+        if not isinstance(self.context.parents.get(parent), ast.Module | ast.FunctionDef | ast.AsyncFunctionDef):
+            return None
+        targets = parent.targets if isinstance(parent, ast.Assign) else [parent.target]
+        if len(targets) != 1 or not isinstance(targets[0], ast.Name):
+            return None
+        target = targets[0]
+        return target if self.binding(target.id, target) is target else None
+
+    def _safe_async_read(self, read: ast.Name) -> bool:
+        parent = self.context.parents.get(read)
+        if not isinstance(parent, ast.Call):
+            return False
+        if parent.func is read:
+            return True
+        if not parent.args or parent.args[0] is not read or not isinstance(parent.func, ast.Attribute):
+            return False
+        receiver = parent.func.value
+        if parent.func.attr not in {"callback", "push_async_callback"} or not isinstance(receiver, ast.Name):
+            return False
+        if not self.unescaped(receiver, parent, allow_context=True):
+            return False
+        constructor = self.constructor(receiver, parent)
+        return (
+            constructor is not None
+            and not constructor.args
+            and not constructor.keywords
+            and any(self.imported(constructor.func, f"contextlib.{kind}") for kind in ("ExitStack", "AsyncExitStack"))
+        )
+
+    def _binding_reads(self, name: str, binding: ast.AST) -> list[ast.Name]:
+        if name not in self._reads_by_binding:
+            grouped: dict[ast.AST, list[ast.Name]] = defaultdict(list)
+            for read in self.reads.get(name, ()):
+                if (owner := self.binding(read.id, read)) is not None:
+                    grouped[owner].append(read)
+            self._reads_by_binding[name] = grouped
+        return self._reads_by_binding[name].get(binding, [])
+
     def unescaped(self, name: ast.Name, at: ast.AST, *, allow_context: bool = False) -> bool:
         binding = self.binding(name.id, at)
-        if binding is None or name.id in self.mutated:
+        if self.dynamic_namespace or binding is None or name.id in self.mutated:
             return False
         key = (binding, allow_context)
         if key not in self.escape_cache:
-            if name.id not in self._reads_by_binding:
-                grouped: dict[ast.AST, list[ast.Name]] = defaultdict(list)
-                for read in self.reads.get(name.id, ()):
-                    if (read_binding := self.binding(read.id, read)) is not None:
-                        grouped[read_binding].append(read)
-                self._reads_by_binding[name.id] = grouped
             self.escape_cache[key] = all(
                 self._method_or_context_read(read, allow_context=allow_context)
-                for read in self._reads_by_binding[name.id].get(binding, ())
+                for read in self._binding_reads(name.id, binding)
             )
         return self.escape_cache[key]
 
@@ -159,7 +288,11 @@ class ResourceProvenance:
         parent = self.context.parents.get(read)
         if allow_context and isinstance(parent, ast.withitem) and parent.context_expr is read:
             return True
-        if not isinstance(parent, ast.Attribute) or parent.value is not read:
+        if (
+            not isinstance(parent, ast.Attribute)
+            or parent.value is not read
+            or parent.attr in {"__setattr__", "__delattr__", "__getattribute__"}
+        ):
             return False
         call = self.context.parents.get(parent)
         return isinstance(call, ast.Call) and call.func is parent
@@ -170,6 +303,30 @@ class ResourceProvenance:
             if node is owner:
                 return True
         return False
+
+
+def _owner_import_targets(node: ast.Import | ast.ImportFrom, module: str) -> dict[str, str]:
+    if isinstance(node, ast.Import):
+        return {alias.asname or alias.name: module for alias in node.names if alias.name == module}
+    if node.module == module:
+        return {
+            alias.asname or alias.name: f"{module}.{alias.name}"
+            for alias in node.names
+            if alias.name in _RESOURCE_OWNERS[module]
+        }
+    return {}
+
+
+def _owner_attribute_targets(node: ast.Attribute, origins: dict[str, set[str]]) -> frozenset[str]:
+    parts: list[str] = []
+    current: ast.expr = node
+    while isinstance(current, ast.Attribute):
+        parts.append(current.attr)
+        current = current.value
+    if not isinstance(current, ast.Name):
+        return frozenset()
+    suffix = ".".join(reversed(parts))
+    return frozenset(f"{origin}.{suffix}" for origin in origins.get(current.id, ()))
 
 
 def _root_name(node: ast.expr) -> str | None:
