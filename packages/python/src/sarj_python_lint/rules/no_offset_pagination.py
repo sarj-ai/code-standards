@@ -16,13 +16,12 @@ from sarj_python_lint.rule_base import (
     RuleExample,
     Severity,
 )
-from sarj_python_lint.rules._ast_index import nodes, walk
+from sarj_python_lint.rules._ast_index import walk
 from sarj_python_lint.rules._sql import is_store_module, sql_string_value, strip_sql_noise
 
 
 if TYPE_CHECKING:
     from sarj_python_lint._file_context import PythonFileContext
-    from sarj_python_lint.rules._ast_index import NodeIndex
 
 
 _DYNAMIC_VALUE = r"(?:%s|%\(\w+\)s|\?\d*|:\w+|@\w+|\$\d+|:__sarj_dynamic__)"
@@ -107,7 +106,7 @@ class NoOffsetPagination(Rule):
 
         diags: list[Diagnostic] = []
         consumed: set[int] = set()
-        docstrings = _docstring_node_ids(tree, node_index=context.node_index)
+        docstrings = context.docstring_node_ids
         for node in context.nodes(ast.Constant, ast.BinOp, ast.JoinedStr):
             if id(node) in consumed or id(node) in docstrings:
                 continue
@@ -149,17 +148,6 @@ def _sql_value(node: ast.expr) -> str | None:
                 pieces.append(":__sarj_dynamic__")
         return "".join(pieces)
     return sql_string_value(node)
-
-
-def _docstring_node_ids(tree: ast.Module, *, node_index: NodeIndex | None = None) -> set[int]:
-    result: set[int] = set()
-    for owner in nodes(tree, ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef, index=node_index):
-        if not owner.body or not isinstance(owner.body[0], ast.Expr):
-            continue
-        value = owner.body[0].value
-        if isinstance(value, ast.Constant) and isinstance(value.value, str):
-            result.add(id(value))
-    return result
 
 
 def _mask_dialect_noise(sql: str) -> str:

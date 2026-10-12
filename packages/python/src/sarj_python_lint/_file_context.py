@@ -67,6 +67,17 @@ class PythonFileContext:
 
         return consumed_docstring_names(self._valid_tree(), node_index=self.node_index)
 
+    @cached_property
+    def docstring_node_ids(self) -> frozenset[int]:
+        result: set[int] = set()
+        for owner in self.nodes(ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef):
+            if not owner.body or not isinstance(owner.body[0], ast.Expr):
+                continue
+            value = owner.body[0].value
+            if isinstance(value, ast.Constant) and isinstance(value.value, str):
+                result.add(id(value))
+        return frozenset(result)
+
     @property
     def parents(self) -> Mapping[ast.AST, ast.AST]:
         return self.node_index.parents
