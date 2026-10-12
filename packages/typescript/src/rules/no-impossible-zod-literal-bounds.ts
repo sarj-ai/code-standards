@@ -28,7 +28,8 @@ export const NO_IMPOSSIBLE_ZOD_LITERAL_BOUNDS_DOCUMENTATION = {
     "Choose compatible lower and upper bounds, or remove the constraint that does not express the intended domain.",
   category: "correctness",
   limitations: [
-    "Only finite numeric literals in a single number, string, or array schema chain are compared.",
+    "Only finite numeric literals in a single number, string, or array schema chain are compared; explicit int() chains also require an admitted integer.",
+    "Integer-domain comparisons abstain near the JavaScript safe-integer boundary.",
     "Chains with dynamic bounds, non-bound validators, transforms, pipes, or preprocessors are skipped.",
     "Test and generated files are excluded.",
   ],
@@ -79,6 +80,7 @@ const KINDS: ReadonlySet<SchemaKind> = new Set(["array", "number", "string"]);
 const NUMBER_METHODS: ReadonlySet<string> = new Set([
   "gt",
   "gte",
+  "int",
   "lt",
   "lte",
   "max",
@@ -142,12 +144,22 @@ function strongerUpper(current: Bound | null, candidate: Bound): Bound {
   return current;
 }
 
-function isEmpty(lower: Bound | null, upper: Bound | null): boolean {
+function isEmpty(lower: Bound | null, upper: Bound | null, integer: boolean): boolean {
   if (lower === null || upper === null) return false;
-  return (
-    lower.value > upper.value ||
-    (lower.value === upper.value && (lower.exclusive || upper.exclusive))
-  );
+  const realEmpty = lower.value > upper.value ||
+    (lower.value === upper.value && (lower.exclusive || upper.exclusive));
+  if (integer) {
+    // The strict preset's upstream conflicting-checks rule owns real contradictions.
+    if (realEmpty) return false;
+    const safeMargin = Number.MAX_SAFE_INTEGER - 1;
+    if (Math.abs(lower.value) >= safeMargin || Math.abs(upper.value) >= safeMargin) {
+      return false;
+    }
+    const minimum = lower.exclusive ? Math.floor(lower.value) + 1 : Math.ceil(lower.value);
+    const maximum = upper.exclusive ? Math.ceil(upper.value) - 1 : Math.floor(upper.value);
+    return minimum > maximum;
+  }
+  return realEmpty;
 }
 
 function isOutermostCall(node: TSESTree.CallExpression): boolean {
@@ -283,6 +295,7 @@ export default createRule<Options, MessageIds>({
       const allowed = chain.kind === "number" ? NUMBER_METHODS : LENGTH_METHODS;
       let lower: Bound | null = null;
       let upper: Bound | null = null;
+      let integer = false;
 
       function addBound(method: string, semantic: ReturnType<typeof zeroBoundSemantic>, value: number): void {
         const label = `${method}(${String(value)})`;
@@ -320,6 +333,11 @@ export default createRule<Options, MessageIds>({
 
       for (const { method, node } of chain.calls) {
         if (!allowed.has(method)) return null;
+        if (method === "int") {
+          if (node.arguments.length !== 0) return null;
+          integer = true;
+          continue;
+        }
         const semantic = zeroBoundSemantic(method);
         const value = semantic?.value ?? finiteNumber(node.arguments[0]);
         if (value === null) return null;
@@ -330,7 +348,7 @@ export default createRule<Options, MessageIds>({
         addBound(method, semantic, value);
 
       }
-      return isEmpty(lower, upper) && lower !== null && upper !== null
+      return isEmpty(lower, upper, integer) && lower !== null && upper !== null
         ? { lower, upper }
         : null;
     }

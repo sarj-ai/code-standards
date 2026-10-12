@@ -47,6 +47,7 @@
       "no-before-validator-input-mutation",
       "no-broad-keyword-capture",
       "no-comment-cruft",
+      "no-conflicting-pydantic-alias-validation",
       "no-conftest-test-module-import",
       "no-copied-inherited-docstring",
       "no-cors-wildcard-with-credentials",
@@ -64,6 +65,7 @@
       "no-frozen-after-validator-field-write",
       "no-generic-single-export-module",
       "no-hidden-constructor-fallback",
+      "no-impossible-pydantic-field-bounds",
       "no-injected-module-loader",
       "no-input-model-mutation",
       "no-interpreter-source-arguments",
@@ -95,6 +97,7 @@
       "no-test-method-grafting",
       "no-trailing-numeric-unit-assignment-comment",
       "no-unique-violation-message-match",
+      "no-unknown-pydantic-validator-field",
       "no-unnecessary-docstring",
       "no-unused-copy-result",
       "no-unused-underscored-keyword-parameter",
@@ -481,7 +484,10 @@
       "SARJ487",
       "SARJ488",
       "SARJ489",
-      "SARJ490"
+      "SARJ490",
+      "SARJ491",
+      "SARJ492",
+      "SARJ493"
     ],
     "sql": [
       "SARJ101",

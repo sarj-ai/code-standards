@@ -1,7 +1,9 @@
 // vitest: shared-module-graph
 import * as tsParser from "@typescript-eslint/parser";
 import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
+import { Linter } from "eslint";
+import zodPlugin from "eslint-plugin-zod";
 
 import rule, {
   NO_IMPOSSIBLE_ZOD_LITERAL_BOUNDS_DOCUMENTATION,
@@ -26,6 +28,12 @@ RULE_TESTER.run("no-impossible-zod-literal-bounds", rule, {
     },
     { code: withZod("const S = z.number().min(3).max(3);"), filename: PRODUCTION },
     { code: withZod("const S = z.number().gt(3).lt(4);"), filename: PRODUCTION },
+    { code: withZod("const S = z.number().int().gte(0).lt(1);"), filename: PRODUCTION },
+    { code: withZod("const S = z.number().int().min(5).max(4);"), filename: PRODUCTION },
+    { code: withZod("const S = z.number().int().gt(-2).lte(-1);"), filename: PRODUCTION },
+    { code: withZod("const S = z.number().int().min(0.1).max(1);"), filename: PRODUCTION },
+    { code: withZod("const S = z.number().int().min(lower).max(1);"), filename: PRODUCTION },
+    { code: withZod("const S = z.number().int().gt(9007199254740990).lt(9007199254740992);"), filename: PRODUCTION },
     { code: withZod("const S = z.number().gte(-2).lt(+2);"), filename: PRODUCTION },
     { code: withZod("const S = z.number().positive().max(1);"), filename: PRODUCTION },
     { code: withZod("const S = z.number().nonnegative().max(0);"), filename: PRODUCTION },
@@ -99,6 +107,24 @@ RULE_TESTER.run("no-impossible-zod-literal-bounds", rule, {
     },
   ],
   invalid: [
+    {
+      name: "integer interval excludes both adjacent integers",
+      code: withZod("const S = z.number().int().gt(0).lt(1);"),
+      filename: PRODUCTION,
+      errors: [{ messageId: "impossibleBounds" }],
+    },
+    {
+      name: "fractional closed interval contains no integer",
+      code: withZod("const S = z.number().int().min(0.1).max(0.9);"),
+      filename: PRODUCTION,
+      errors: [{ messageId: "impossibleBounds" }],
+    },
+    {
+      name: "negative integer interval contains no integer",
+      code: withZod("const S = z.number().gt(-2).lt(-1).int();"),
+      filename: PRODUCTION,
+      errors: [{ messageId: "impossibleBounds" }],
+    },
     {
       name: "reports positive constrained to at most zero",
       code: withZod("const S = z.number().positive().max(0);"),
@@ -175,4 +201,18 @@ RULE_TESTER.run("no-impossible-zod-literal-bounds", rule, {
       errors: [{ messageId: "impossibleBounds" }],
     },
   ],
+});
+
+it("assigns integer gaps and real contradictions to different owners", () => {
+  const linter = new Linter();
+  const config = [{
+    files: ["**/*.ts"],
+    languageOptions: { parser: tsParser },
+    plugins: { zod: zodPlugin, sarj: { rules: { "bounds": rule } } },
+    rules: { "zod/no-conflicting-checks": "error", "sarj/bounds": "error" },
+  }] as const;
+  const gap = linter.verify(withZod("const S = z.number().int().gt(0).lt(1);"), config, PRODUCTION);
+  const contradiction = linter.verify(withZod("const S = z.number().int().min(5).max(4);"), config, PRODUCTION);
+  expect(gap.map(({ ruleId }) => ruleId)).toEqual(["sarj/bounds"]);
+  expect(contradiction.map(({ ruleId }) => ruleId)).toEqual(["zod/no-conflicting-checks"]);
 });

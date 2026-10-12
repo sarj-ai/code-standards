@@ -278,5 +278,8 @@
   "SARJ487": "redundant-test-constructor-forwarder",
   "SARJ488": "duplicate-adjacent-exception-handler",
   "SARJ489": "duplicate-closed-pure-helper",
-  "SARJ490": "repeated-unimplemented-test-contract"
+  "SARJ490": "repeated-unimplemented-test-contract",
+  "SARJ491": "no-impossible-pydantic-field-bounds",
+  "SARJ492": "no-unknown-pydantic-validator-field",
+  "SARJ493": "no-conflicting-pydantic-alias-validation"
 }

@@ -177,6 +177,7 @@ _DIAGNOSTIC_PRECEDENCE = MappingProxyType(
         "SARJ447": frozenset({"SARJ008"}),
         "SARJ457": frozenset({"SARJ045"}),
         "SARJ465": frozenset({"SARJ071"}),
+        "SARJ491": frozenset({"SARJ400"}),
     }
 )
 
@@ -188,6 +189,33 @@ _DOCSTRING_PRECEDENCE_CODES = frozenset(
 class _OwnerLocation(NamedTuple):
     line: int
     column: int
+
+
+@dataclass(frozen=True, slots=True)
+class _DiagnosticOwners:
+    docstrings: dict[int, _OwnerLocation]
+    signatures: dict[int, _OwnerLocation]
+    fields: tuple[ast.AnnAssign, ...]
+
+    def location(self, diagnostic: Diagnostic) -> _OwnerLocation:
+        if diagnostic.code in {"SARJ400", "SARJ491"}:
+            return _field_owner_location(diagnostic, self.fields)
+        owners = (
+            self.signatures
+            if diagnostic.code in {"SARJ008", "SARJ034", "SARJ093", "SARJ094", "SARJ447"}
+            else self.docstrings
+        )
+        return _OwnerLocation(*owners.get(diagnostic.line, (diagnostic.line, diagnostic.col)))
+
+    def presence(self, diags: list[Diagnostic]) -> dict[tuple[Path, int, int], dict[str, set[Severity]]]:
+        present: dict[tuple[Path, int, int], dict[str, set[Severity]]] = {}
+        for diagnostic in diags:
+            if diagnostic.code == "SARJ094" and not diagnostic.message.startswith("[return]"):
+                continue
+            location = self.location(diagnostic)
+            by_code = present.setdefault((diagnostic.path, location.line, location.column), {})
+            by_code.setdefault(diagnostic.code, set()).add(diagnostic.severity)
+        return present
 
 
 def deduplicate_diagnostics(
@@ -203,30 +231,20 @@ def deduplicate_diagnostics(
         or ("SARJ094" in codes and not codes.isdisjoint(_DIAGNOSTIC_PRECEDENCE["SARJ094"]))
     )
     needs_composition_owners = {"SARJ066", "SARJ457"} <= codes
+    needs_field_owners = {"SARJ400", "SARJ491"} <= codes
     tree = (
         _diagnostic_owner_tree(source, context)
-        if needs_docstring_owners or needs_signature_owners or needs_composition_owners
+        if needs_docstring_owners or needs_signature_owners or needs_composition_owners or needs_field_owners
         else None
     )
     diags = _deduplicate_test_composition(diags, tree)
-    docstring_owners = _docstring_owner_locations(tree) if needs_docstring_owners else {}
-    signature_owners = _function_signature_owner_locations(tree) if needs_signature_owners else {}
+    owners = _DiagnosticOwners(
+        docstrings=_docstring_owner_locations(tree) if needs_docstring_owners else {},
+        signatures=_function_signature_owner_locations(tree) if needs_signature_owners else {},
+        fields=_field_owners(tree) if needs_field_owners else (),
+    )
 
-    def owner_location(diagnostic: Diagnostic) -> _OwnerLocation:
-        if diagnostic.code in {"SARJ008", "SARJ034", "SARJ093", "SARJ094", "SARJ447"}:
-            line, column = signature_owners.get(diagnostic.line, (diagnostic.line, diagnostic.col))
-        else:
-            line, column = docstring_owners.get(diagnostic.line, (diagnostic.line, diagnostic.col))
-        return _OwnerLocation(line, column)
-
-    present: dict[tuple[Path, int, int], dict[str, set[Severity]]] = {}
-    for diagnostic in diags:
-        if diagnostic.code == "SARJ094" and not diagnostic.message.startswith("[return]"):
-            continue
-        location = owner_location(diagnostic)
-        by_code = present.setdefault((diagnostic.path, location.line, location.column), {})
-        by_code.setdefault(diagnostic.code, set()).add(diagnostic.severity)
-    suppressed = _suppressed_diagnostics(present)
+    suppressed = _suppressed_diagnostics(owners.presence(diags))
     return [
         diagnostic
         for diagnostic in diags
@@ -234,8 +252,8 @@ def deduplicate_diagnostics(
             (
                 (
                     diagnostic.path,
-                    owner_location(diagnostic).line,
-                    owner_location(diagnostic).column,
+                    owners.location(diagnostic).line,
+                    owners.location(diagnostic).column,
                 ),
                 diagnostic.code,
                 diagnostic.severity,
@@ -253,6 +271,22 @@ def _diagnostic_owner_tree(source: str | None, context: PythonFileContext | None
     with suppress(SyntaxError):
         return ast.parse(source)
     return None
+
+
+def _field_owners(tree: ast.Module | None) -> tuple[ast.AnnAssign, ...]:
+    if tree is None:
+        return ()
+    return tuple(node for node in ast.walk(tree) if isinstance(node, ast.AnnAssign))
+
+
+def _field_owner_location(diagnostic: Diagnostic, fields: tuple[ast.AnnAssign, ...]) -> _OwnerLocation:
+    location = (diagnostic.line, diagnostic.col - 1)
+    for field in fields:
+        start = (field.lineno, field.col_offset)
+        end = (field.end_lineno or field.lineno, field.end_col_offset or field.col_offset)
+        if start <= location < end:
+            return _OwnerLocation(field.lineno, field.col_offset + 1)
+    return _OwnerLocation(diagnostic.line, diagnostic.col)
 
 
 def _deduplicate_test_composition(diags: list[Diagnostic], tree: ast.Module | None) -> list[Diagnostic]:
