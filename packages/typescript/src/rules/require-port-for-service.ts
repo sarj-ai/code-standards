@@ -8,7 +8,7 @@ import { ASTUtils, AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/util
 
 import { forEachOwnAstChild } from "./_for-each-own-ast-child.js";
 import { createRule, type RuleDocumentation } from "./_docs.js";
-import { unwrapExpression } from "./_unwrap-expression.js";
+import { outerExpression, unwrapExpression } from "./_unwrap-expression.js";
 import { isGeneratedFile, isScriptFile, isStoryFile, isTestFile } from "./_paths.js";
 
 type MessageIds = "requireInterface";
@@ -539,10 +539,34 @@ const instanceField = (candidate: TSESTree.Node): string | null => {
 
 /** Direct instance-field writes shared by constructor retention and operation identity. */
 function writtenInstanceField(node: TSESTree.Node): string | null {
-  if (node.type === AST_NODE_TYPES.AssignmentExpression) return instanceField(node.left);
+  if (node.type === AST_NODE_TYPES.AssignmentExpression ||
+      node.type === AST_NODE_TYPES.ForOfStatement || node.type === AST_NODE_TYPES.ForInStatement) return instanceField(node.left);
   if (node.type === AST_NODE_TYPES.UpdateExpression) return instanceField(node.argument);
   if (node.type === AST_NODE_TYPES.UnaryExpression && node.operator === "delete") return instanceField(node.argument);
+  if (node.type === AST_NODE_TYPES.MemberExpression && isDestructuredWriteTarget(node)) return instanceField(node);
   return null;
+}
+
+/** Pattern values are writes only when their enclosing pattern is an assignment or loop target. */
+function isDestructuredWriteTarget(node: TSESTree.MemberExpression): boolean {
+  const access = outerExpression(node);
+  let target: TSESTree.Node = access;
+  for (;;) {
+    const parent: TSESTree.Node = target.parent;
+    if (parent.type === AST_NODE_TYPES.Property && parent.value === target && parent.parent.type === AST_NODE_TYPES.ObjectPattern) {
+      target = parent.parent;
+      continue;
+    }
+    if (parent.type === AST_NODE_TYPES.ArrayPattern || parent.type === AST_NODE_TYPES.ObjectPattern ||
+        (parent.type === AST_NODE_TYPES.RestElement && parent.argument === target) ||
+        (parent.type === AST_NODE_TYPES.AssignmentPattern && parent.left === target)) {
+      target = parent;
+      continue;
+    }
+    return target !== access &&
+      (parent.type === AST_NODE_TYPES.AssignmentExpression || parent.type === AST_NODE_TYPES.ForOfStatement || parent.type === AST_NODE_TYPES.ForInStatement) &&
+      parent.left === target;
+  }
 }
 
 /** Instance fields whose retained object is called or receives a direct method call. */
