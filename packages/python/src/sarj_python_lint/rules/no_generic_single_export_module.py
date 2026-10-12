@@ -15,6 +15,7 @@ from sarj_python_lint.rule_base import (
     RuleExample,
 )
 from sarj_python_lint.rules._ast_index import walk as walk_ast
+from sarj_python_lint.rules._exports import mentions_dunder_all
 
 
 if TYPE_CHECKING:
@@ -145,7 +146,7 @@ def _has_additional_public_export(tree: ast.Module, primary_name: str) -> bool:
 
 
 def _dunder_all_matches_primary(tree: ast.Module, primary_name: str) -> bool:
-    owners = [statement for statement in tree.body if _mentions_dunder_all(statement)]
+    owners = [statement for statement in tree.body if mentions_dunder_all(statement)]
     if not owners:
         return True
     if len(owners) != 1:
@@ -161,28 +162,6 @@ def _dunder_all_matches_primary(tree: ast.Module, primary_name: str) -> bool:
         return False
     (entry,) = value.elts
     return isinstance(entry, ast.Constant) and entry.value == primary_name
-
-
-def _mentions_dunder_all(node: ast.AST) -> bool:
-    for child in walk_ast(node):
-        match child:
-            case ast.Name(id="__all__"):
-                return True
-            case ast.alias() if (child.asname or child.name).split(".")[0] == "__all__":
-                return True
-            case ast.FunctionDef() | ast.AsyncFunctionDef() | ast.ClassDef() if child.name == "__all__":
-                return True
-            case ast.arg(arg="__all__") | ast.ExceptHandler(name="__all__"):
-                return True
-            case ast.MatchAs() | ast.MatchStar() if child.name == "__all__":
-                return True
-            case ast.MatchMapping(rest="__all__"):
-                return True
-            case ast.Global() | ast.Nonlocal() if "__all__" in child.names:
-                return True
-            case _:
-                pass
-    return False
 
 
 def _annotation_name(node: ast.expr) -> str:

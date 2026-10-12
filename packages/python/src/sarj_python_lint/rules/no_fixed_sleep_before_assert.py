@@ -17,6 +17,7 @@ from sarj_python_lint.rule_base import (
     RuleExample,
     Severity,
 )
+from sarj_python_lint.rules._pytest import collected_tests
 
 
 if TYPE_CHECKING:
@@ -144,7 +145,7 @@ class NoFixedSleepBeforeAssert(Rule):
         imports = context.imports
         diagnostics = [
             Diagnostic(path=path, line=statement.lineno, col=statement.col_offset + 1, code=self.code, message=_MESSAGE)
-            for test in _collected_tests(tree.body)
+            for test in collected_tests(tree.body)
             for statement, following in _adjacent_statements(test.body)
             if isinstance(following, ast.Assert) and _is_fixed_sleep(statement, test, imports)
         ]
@@ -153,17 +154,6 @@ class NoFixedSleepBeforeAssert(Rule):
 
 def _is_collected_test_module(path: Path) -> bool:
     return path.suffix == ".py" and (path.stem.startswith("test_") or path.stem.endswith("_test"))
-
-
-def _collected_tests(statements: list[ast.stmt]) -> Iterator[_TestFunction]:
-    for statement in statements:
-        match statement:
-            case ast.FunctionDef() | ast.AsyncFunctionDef() if statement.name.startswith("test"):
-                yield statement
-            case ast.ClassDef() if statement.name.startswith("Test"):
-                yield from _collected_tests(statement.body)
-            case _:
-                pass
 
 
 def _adjacent_statements(block: list[ast.stmt]) -> Iterator[tuple[ast.stmt, ast.stmt]]:
