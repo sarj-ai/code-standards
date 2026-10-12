@@ -11,6 +11,21 @@ it("executes the documented examples", async () => {
   await verifyRuleExamples(rule);
 });
 
+it("checks a fifth owned module that changes the runtime contract", async () => {
+  for (const [customization, expectedCount] of [["", 1], ["Object.defineProperty(Publisher, Symbol.hasInstance, { value: () => true });", 0]] as const) {
+    await verifyRuleExamples({ ...rule, documentation: { ...rule.documentation, examples: [{
+      id: "owned-side-effect-origin", outcome: expectedCount === 0 ? "no-match" : "match", expectedCount,
+      public: false, focusPath: "usage.ts", files: [
+        { path: "contract.ts", source: "export abstract class Publisher { abstract publish(): void }" },
+        { path: "consumer.ts", source: "import { Publisher } from './contract'; export class Consumer { constructor(readonly publisher: Publisher) { if (!(publisher instanceof Publisher)) throw new Error(); } }" },
+        { path: "implementation.ts", source: "export class Fake { publish(): void {} }" },
+        { path: "customize.ts", source: `import { Publisher } from './contract'; ${customization}` },
+        { path: "usage.ts", source: "import './customize'; import { Consumer } from './consumer'; import { Fake } from './implementation'; new Consumer(new Fake());" },
+      ],
+    }] } });
+  }
+});
+
 it("a structural fake actually fails the nominal runtime guard", () => {
   abstract class Publisher { abstract publish(): void }
   class Consumer {
@@ -20,6 +35,60 @@ it("a structural fake actually fails the nominal runtime guard", () => {
   }
   class FakePublisher { publish(): void {} }
   expect(() => new Consumer(new FakePublisher())).toThrow(TypeError);
+});
+
+it("tracks escaped owned namespaces while preserving qualified constructors", async () => {
+  for (const [customization, expectedCount] of [["", 1], ["configure(contract);", 0], ["const alias = contract; configure(alias);", 0]] as const) {
+    await verifyRuleExamples({ ...rule, documentation: { ...rule.documentation, examples: [{
+      id: "owned-namespace-value", outcome: expectedCount === 0 ? "no-match" : "match", expectedCount,
+      public: false, focusPath: "usage.ts", files: [
+        { path: "contract.ts", source: "export abstract class Publisher { abstract publish(): void }" },
+        { path: "consumer.ts", source: "import * as contract from './contract'; export class Consumer { constructor(readonly publisher: contract.Publisher) { if (!(publisher instanceof contract.Publisher)) throw new Error(); } }" },
+        { path: "implementation.ts", source: "export class Fake { publish(): void {} }" },
+        { path: "customize.ts", source: "export function configure(value: object): void { const constructor = Reflect.get(value, 'Publisher'); Object.defineProperty(constructor, Symbol.hasInstance, { value: () => true }); }" },
+        { path: "usage.ts", source: `import * as contract from './contract'; import * as consumer from './consumer'; import * as implementation from './implementation'; import { configure } from './customize'; ${customization} new consumer.Consumer(new implementation.Fake());` },
+      ],
+    }] } });
+  }
+});
+
+it("tracks literal element reads from an owned namespace", async () => {
+  await verifyRuleExamples({ ...rule, documentation: { ...rule.documentation, examples: [{
+    id: "owned-namespace-element", outcome: "no-match", expectedCount: 0,
+    public: false, focusPath: "usage.ts", files: [
+      { path: "contract.ts", source: "export abstract class Publisher { abstract publish(): void }" },
+      { path: "consumer.ts", source: "import { Publisher } from './contract'; export class Consumer { constructor(readonly publisher: Publisher) { if (!(publisher instanceof Publisher)) throw new Error(); } }" },
+      { path: "implementation.ts", source: "export class Fake { publish(): void {} }" },
+      { path: "customize.ts", source: "export function configure(value: object): void { Object.defineProperty(value, Symbol.hasInstance, { value: () => true }); }" },
+      { path: "usage.ts", source: "import * as contract from './contract'; import { configure } from './customize'; import { Consumer } from './consumer'; import { Fake } from './implementation'; configure(contract['Publisher']); new Consumer(new Fake());" },
+    ],
+  }] } });
+});
+
+it("tracks an owned namespace passed implicitly as a method receiver", async () => {
+  await verifyRuleExamples({ ...rule, documentation: { ...rule.documentation, examples: [{
+    id: "owned-namespace-receiver", outcome: "no-match", expectedCount: 0,
+    public: false, focusPath: "usage.ts", files: [
+      { path: "contract.ts", source: "export abstract class Publisher { abstract publish(): void } export { configure as helper } from './customize';" },
+      { path: "consumer.ts", source: "import { Publisher } from './contract'; export class Consumer { constructor(readonly publisher: Publisher) { if (!(publisher instanceof Publisher)) throw new Error(); } }" },
+      { path: "implementation.ts", source: "export class Fake { publish(): void {} }" },
+      { path: "customize.ts", source: "export function configure(this: object): void { const constructor = Reflect.get(this, 'Publisher'); Object.defineProperty(constructor, Symbol.hasInstance, { value: () => true }); }" },
+      { path: "usage.ts", source: "import * as contract from './contract'; import { Consumer } from './consumer'; import { Fake } from './implementation'; contract.helper(); new Consumer(new Fake());" },
+    ],
+  }] } });
+});
+
+it("excludes constructor escapes through static this", async () => {
+  await verifyRuleExamples({ ...rule, documentation: { ...rule.documentation, examples: [{
+    id: "static-constructor-escape", outcome: "no-match", expectedCount: 0,
+    public: false, focusPath: "usage.ts", files: [
+      { path: "contract.ts", source: "export abstract class Publisher { abstract publish(): void }" },
+      { path: "consumer.ts", source: "import { Publisher } from './contract'; export class Consumer { constructor(readonly publisher: Publisher) { if (!(publisher instanceof Publisher)) throw new Error(); } }" },
+      { path: "implementation.ts", source: "import { configure } from './customize'; export class Fake { static { configure(this); } publish(): void {} }" },
+      { path: "customize.ts", source: "import { Publisher } from './contract'; class Real extends Publisher { publish(): void {} } export function configure(value: { prototype: object }) { Object.setPrototypeOf(value.prototype, new Real()); }" },
+      { path: "usage.ts", source: "import { Consumer } from './consumer'; import { Fake } from './implementation'; new Consumer(new Fake());" },
+    ],
+  }] } });
 });
 
 it("prototype changes make structural fakes pass the nominal runtime guard", () => {
@@ -73,6 +142,9 @@ TESTER.run("require-explicit-contract-implementation", rule, {
     "abstract class Publisher { abstract publish(): void } class Consumer { constructor(readonly publisher: Publisher) { if (!(publisher instanceof Publisher)) throw new Error(); } } class Fake { initialize = Object.setPrototypeOf(this, Publisher.prototype); publish() {} } new Consumer(new Fake());",
     "abstract class Publisher { abstract publish(): void } class Consumer { constructor(readonly publisher: Publisher) { if (!(publisher instanceof Publisher)) throw new Error(); } } class Fake { publish() {} } Object.setPrototypeOf(Fake.prototype, Publisher.prototype); new Consumer(new Fake());",
     "abstract class Publisher { abstract publish(): void } class Consumer { constructor(readonly publisher: Publisher) { if (!(publisher instanceof Publisher)) throw new Error(); } } class Fake { publish() {} } Reflect.setPrototypeOf(Fake.prototype, Publisher.prototype); new Consumer(new Fake());",
+    "declare function configure(value: object): void; abstract class Publisher { abstract publish(): void } class Consumer { constructor(readonly publisher: Publisher) { if (!(publisher instanceof Publisher)) throw new Error(); } } class Fake { publish() {} } configure(Publisher); new Consumer(new Fake());",
+    "abstract class Publisher { abstract publish(): void } class Consumer { constructor(readonly publisher: Publisher) { if (!(publisher instanceof Publisher)) throw new Error(); } } class Fake { publish() {} } const alias = Publisher; Object.defineProperty(alias, Symbol.hasInstance, { value: () => true }); new Consumer(new Fake());",
+    "declare function configure(value: object): void; abstract class Publisher { abstract publish(): void } class Consumer { constructor(readonly publisher: Publisher) { if (!(publisher instanceof Publisher)) throw new Error(); } } class Fake { publish() {} } configure(Fake); new Consumer(new Fake());",
     "abstract class Publisher { abstract publish(): void } class Consumer { constructor(readonly publisher: Publisher) { if (!(publisher instanceof Publisher)) throw new Error(); } } class Fake { publish() {} } const setPrototype = Object.setPrototypeOf; setPrototype(Fake.prototype, Publisher.prototype); new Consumer(new Fake());",
     "declare function initialize(value: object): void; abstract class Publisher { abstract publish(): void } class Consumer { constructor(readonly publisher: Publisher) { if (!(publisher instanceof Publisher)) throw new Error(); } } class Fake { constructor() { initialize(this); } publish() {} } new Consumer(new Fake());",
     "abstract class Publisher { abstract publish(): void } class Consumer { constructor(readonly publisher: Publisher) { if (!(publisher instanceof Publisher)) throw new Error(); } } class Fake { publish() {} } class Real extends Publisher { publish() {} } function build(): Fake { return new Real(); } new Consumer(build());",

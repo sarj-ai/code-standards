@@ -16,6 +16,7 @@ from sarj_python_lint.rule_base import (
     Severity,
     is_suppressed,
 )
+from sarj_python_lint.rules._annotation_semantics import scope_bound_names
 from sarj_python_lint.rules._contract_annotation import annotation_reference
 from sarj_python_lint.rules._imports import ABC_SOURCES, TYPING_SOURCES, ImportIndex
 
@@ -30,7 +31,7 @@ class RequireExplicitContractImplementation(ProjectRule):
     id = "require-explicit-contract-implementation"
     code = "SARJ467"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        default_level=Severity.WARNING,
+        default_level=Severity.ERROR,
         summary="Require owned substitutes to inherit an injected nominal abstract contract.",
         rationale=(
             "An ABC is a nominal contract: inheriting it makes its abstract operations enforceable at instantiation. "
@@ -40,8 +41,9 @@ class RequireExplicitContractImplementation(ProjectRule):
         category=RuleCategory.ARCHITECTURE,
         autofix=AutofixPolicy.NONE,
         limitations=(
-            "Only direct constructor arguments and unreassigned local constructor results supplied to a resolvable typed parameter are checked.",
+            "Only direct constructor arguments and unreassigned local constructor results supplied to a resolvable typed parameter are checked. Opaque argument escapes and receiver calls invalidate cached origins, including aliases and TypeGuard adaptation.",
             "Structural Protocols, dynamic factories, containers, casts, unresolved or multiple owned ABC ancestry, and third-party implementations are excluded.",
+            "Contracts with virtual registration, subclass/instance hooks, custom metaclasses or decorators, escaped class values, or dynamic namespaces are excluded. Consumer constructors must have one effective direct declaration; implementation constructors, __new__, class-creation hooks, custom descriptors and unknown ancestry are excluded throughout the hierarchy.",
         ),
         examples=(
             RuleExample(
@@ -118,6 +120,11 @@ class RequireExplicitContractImplementation(ProjectRule):
     @override
     def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
         if context.generated or context.tree is None or context.session.project is None:
+            return []
+        if context.dynamic_namespace or any(
+            node.attr == "__class__" and isinstance(node.ctx, ast.Store | ast.Del)
+            for node in context.nodes(ast.Attribute)
+        ):
             return []
         project = context.session.project
         unit = project.unit_or_source(context.path, context.source, context.tree)
@@ -227,28 +234,32 @@ class _InjectionVisitor(ast.NodeVisitor):
                 self.origins.pop(child.id, None)
 
     def visit_Call(self, node: ast.Call) -> None:
+        self.generic_visit(node)
         target = self.project.class_for(self.unit, node.func)
         if target is not None:
-            target_unit = self.project.source_unit(target.symbol.module)
-            if target_unit is not None and target_unit.tree is not None:
-                declaration = next(
-                    (
-                        item
-                        for item in target_unit.tree.body
-                        if isinstance(item, ast.ClassDef) and item.name == target.symbol.name
-                    ),
-                    None,
-                )
-                if declaration is not None:
-                    self._check_constructor(node, declaration, target_unit)
-        self.generic_visit(node)
+            owned = _owned_declaration(target, self.project)
+            if owned is not None and _ordinary_consumer_shape(target, owned[1]):
+                self._check_constructor(node, owned[1], owned[0], consumer=target.symbol)
+        values = (*node.args, *(keyword.value for keyword in node.keywords))
+        if isinstance(node.func, ast.Attribute):
+            values = (*values, node.func.value)
+        if any(
+            isinstance(reference, ast.Name) and reference.id in self.origins
+            for value in values
+            for reference in ast.walk(value)
+        ):
+            self.origins.clear()
 
-    def _check_constructor(self, call: ast.Call, declaration: ast.ClassDef, target_unit: SourceUnit) -> None:
+    def _check_constructor(
+        self, call: ast.Call, declaration: ast.ClassDef, target_unit: SourceUnit, *, consumer: SymbolRef
+    ) -> None:
         constructor = next(
             (item for item in declaration.body if isinstance(item, ast.FunctionDef) and item.name == "__init__"),
             None,
         )
-        if constructor is None:
+        if constructor is None or constructor.name in scope_bound_names(
+            [member for member in declaration.body if member is not constructor]
+        ):
             return
         positional = [*constructor.args.posonlyargs, *constructor.args.args][1:]
         parameters = {argument.arg: argument for argument in (*positional, *constructor.args.kwonlyargs)}
@@ -257,9 +268,11 @@ class _InjectionVisitor(ast.NodeVisitor):
         ]
         supplied.extend((parameter, value) for parameter, value in zip(positional, call.args, strict=False))
         for parameter, value in supplied:
-            self._check_argument(parameter, value, target_unit)
+            self._check_argument(parameter, value, target_unit, consumer=consumer)
 
-    def _check_argument(self, parameter: ast.arg | None, value: ast.expr, target_unit: SourceUnit) -> None:
+    def _check_argument(
+        self, parameter: ast.arg | None, value: ast.expr, target_unit: SourceUnit, *, consumer: SymbolRef
+    ) -> None:
         if parameter is None or parameter.annotation is None:
             return
         reference = annotation_reference(parameter.annotation)
@@ -269,10 +282,12 @@ class _InjectionVisitor(ast.NodeVisitor):
         if contract is None or not _is_direct_contract(contract, self.project):
             return
         origin = self._origin(value)
-        if origin is None:
+        if origin is None or not _plain_implementation(origin, self.project, set()):
             return
         inherits = _inherits_contract(origin, contract.symbol, self.project, set())
         if inherits is not False or is_suppressed(self.context.source_lines, value.lineno, self.code):
+            return
+        if self.project.nominal_membership_is_dynamic(consumer):
             return
         self.findings.append(
             Diagnostic(
@@ -280,7 +295,7 @@ class _InjectionVisitor(ast.NodeVisitor):
                 line=value.lineno,
                 col=value.col_offset + 1,
                 code=self.code,
-                severity=Severity.WARNING,
+                severity=Severity.ERROR,
                 message=(
                     f"`{origin.symbol.name}` is supplied as `{contract.symbol.name}` without explicitly "
                     "inheriting that contract. Declare the relationship on the implementation class."
@@ -308,13 +323,47 @@ def _is_direct_contract(summary: ClassSummary, project: ProjectIndexSet) -> bool
         (item for item in unit.tree.body if isinstance(item, ast.ClassDef) and item.name == summary.symbol.name),
         None,
     )
-    if declaration is None:
-        return False
-    if protocol:
+    if declaration is None or protocol:
         return False
     if not project.class_inherits_from(unit, summary.symbol.name, frozenset({"abc.ABC"})):
         return False
+    if not _has_plain_nominal_membership(summary, declaration, project, set()):
+        return False
     return bool(_remaining_abstract_operations(summary, project, set()))
+
+
+def _has_plain_nominal_membership(
+    summary: ClassSummary, declaration: ast.ClassDef, project: ProjectIndexSet, seen: set[SymbolRef]
+) -> bool:
+    if (
+        summary.symbol in seen
+        or declaration.decorator_list
+        or declaration.keywords
+        or project.nominal_membership_is_dynamic(summary.symbol)
+    ):
+        return False
+    seen.add(summary.symbol)
+    if not scope_bound_names(declaration.body).isdisjoint(
+        {"__subclasshook__", "__instancecheck__", "__subclasscheck__"}
+    ):
+        return False
+    for base in summary.bases:
+        if (base.module, base.name) in {("abc", "ABC"), ("typing", "Generic"), ("builtins", "object")}:
+            continue
+        unit = project.source_unit(base.module)
+        if unit is None or unit.tree is None:
+            return False
+        parent = project.class_for(unit, ast.Name(id=base.name, ctx=ast.Load()))
+        parent_declaration = next(
+            (node for node in unit.tree.body if isinstance(node, ast.ClassDef) and node.name == base.name), None
+        )
+        if (
+            parent is None
+            or parent_declaration is None
+            or not _has_plain_nominal_membership(parent, parent_declaration, project, seen.copy())
+        ):
+            return False
+    return True
 
 
 def _remaining_abstract_operations(summary: ClassSummary, project: ProjectIndexSet, seen: set[SymbolRef]) -> set[str]:
@@ -381,3 +430,59 @@ def _inherits_contract(
             return True
         unknown |= relationship is None
     return None if unknown else False
+
+
+def _plain_implementation(summary: ClassSummary, project: ProjectIndexSet, seen: set[SymbolRef]) -> bool:
+    if summary.symbol in seen or project.nominal_membership_is_dynamic(summary.symbol):
+        return False
+    seen.add(summary.symbol)
+    owned = _owned_declaration(summary, project)
+    if owned is None:
+        return False
+    _, declaration = owned
+    if declaration.decorator_list or declaration.keywords or not _ordinary_implementation_body(declaration):
+        return False
+    for base in summary.bases:
+        if (base.module, base.name) == ("builtins", "object"):
+            continue
+        parent_unit = project.source_unit(base.module)
+        parent = project.class_for(parent_unit, ast.Name(id=base.name, ctx=ast.Load())) if parent_unit else None
+        if parent is None or not _plain_implementation(parent, project, seen.copy()):
+            return False
+    return True
+
+
+def _owned_declaration(summary: ClassSummary, project: ProjectIndexSet) -> tuple[SourceUnit, ast.ClassDef] | None:
+    unit = project.source_unit(summary.symbol.module)
+    if unit is None or unit.tree is None:
+        return None
+    declaration = next(
+        (node for node in unit.tree.body if isinstance(node, ast.ClassDef) and node.name == summary.symbol.name), None
+    )
+    return (unit, declaration) if declaration is not None else None
+
+
+def _ordinary_implementation_body(declaration: ast.ClassDef) -> bool:
+    for member in declaration.body:
+        if isinstance(member, ast.FunctionDef | ast.AsyncFunctionDef):
+            if member.name in {"__init__", "__new__", "__init_subclass__", "__set_name__"} or member.decorator_list:
+                return False
+        elif (
+            isinstance(member, ast.Assign | ast.AnnAssign)
+            and member.value is not None
+            and not isinstance(member.value, ast.Constant)
+        ):
+            return False
+    return True
+
+
+def _ordinary_consumer_shape(summary: ClassSummary, declaration: ast.ClassDef) -> bool:
+    if declaration.decorator_list or declaration.keywords:
+        return False
+    if any(
+        isinstance(member, ast.FunctionDef | ast.AsyncFunctionDef)
+        and (member.name == "__new__" or (member.name == "__init__" and member.decorator_list))
+        for member in declaration.body
+    ):
+        return False
+    return all((base.module, base.name) == ("builtins", "object") for base in summary.bases)

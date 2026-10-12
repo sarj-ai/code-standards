@@ -37,7 +37,7 @@ class PreferOrPattern(Rule):
     id: str = "prefer-or-pattern"
     code: str = "SARJ070"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        default_level=Severity.WARNING,
+        default_level=Severity.ERROR,
         summary="Merge adjacent `case` arms with identical bodies into one or-pattern.",
         rationale="An or-pattern expresses shared handling once and prevents identical arms from drifting apart.",
         remediation="Join the equivalent patterns with `|` and keep their shared body under the merged arm.",
@@ -109,7 +109,7 @@ class PreferOrPattern(Rule):
                 col=run[0].pattern.col_offset + 1,
                 code=self.code,
                 message=_message(run),
-                severity=Severity.WARNING,
+                severity=Severity.ERROR,
             )
             for node in match_nodes
             for run in _mergeable_runs(node, comments)

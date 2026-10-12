@@ -38,7 +38,7 @@ def test_flags_compact_awaited_none_guard() -> None:
 
     assert len(diagnostics) == 1
     assert diagnostics[0].code == "SARJ432"
-    assert diagnostics[0].severity is Severity.WARNING
+    assert diagnostics[0].severity is Severity.ERROR
     assert "if (call_detail := await store.get_detail(call_id)) is None:" in diagnostics[0].message
 
 

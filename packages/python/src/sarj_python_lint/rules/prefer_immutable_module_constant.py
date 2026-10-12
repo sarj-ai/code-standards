@@ -75,25 +75,26 @@ class PreferImmutableModuleConstant(Rule):
     id: str = "prefer-immutable-module-constant"
     code: str = "SARJ096"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        default_level=Severity.WARNING,
+        default_level=Severity.ERROR,
         summary=(
-            "Module collection constants should use native immutable containers or declare dictionary bindings as Final."
+            "Module collection constants should use native immutable containers or declare their bindings as Final."
         ),
         rationale=(
-            "Tuple and frozenset protect collection membership. Final makes a dictionary's constant binding explicit "
-            "without changing its runtime type or concrete dictionary API."
+            "Tuple and frozenset protect collection membership. Final makes a collection's constant binding explicit "
+            "without changing its runtime type, identity, serialization, or concrete collection API."
         ),
         remediation=(
             "When the concrete list or set API is not part of the contract, use a tuple for ordered values or a frozenset "
-            "for membership. Annotate dictionary constants with Final[dict[K, V]]. Final prevents reassignment in type-checked "
-            "code but does not freeze dictionary contents. Use MappingProxyType when runtime write protection is required."
+            "for membership. Preserve a concrete list or set contract with Final[list[T]] or Final[set[T]], and a "
+            "dictionary contract with Final[dict[K, V]]. Final prevents reassignment in type-checked code but does not "
+            "freeze contents. Use MappingProxyType when runtime mapping write protection is required."
         ),
         category=RuleCategory.MAINTAINABILITY,
         autofix=AutofixPolicy.NONE,
         limitations=(
             "Empty collections and collections intentionally mutated or passed to unknown calls are not reported.",
             "Direct declarations and declarations in module-level if/try suites are checked; repeated bindings, loops, functions, and class bodies are excluded.",
-            "Final has no runtime enforcement and permits item mutation on dictionaries; tuple and frozenset are shallow.",
+            "Final has no runtime enforcement and permits item mutation on collections; tuple and frozenset are shallow.",
             "Changing a list or set to an immutable type can affect consumers, serialization, and concrete API methods.",
             "Test, test-support, and generated files are excluded.",
         ),
@@ -194,7 +195,7 @@ class PreferImmutableModuleConstant(Rule):
                 kind = _mutable_literal_kind(value, shadowed_builtins=shadowed_builtins)
                 if kind is None or name in mutated or not _CONSTANT_NAME.fullmatch(name) or name.startswith("__"):
                     continue
-                if kind == "dict" and name in final_names:
+                if name in final_names:
                     continue
                 findings.append(
                     Diagnostic(
@@ -203,7 +204,7 @@ class PreferImmutableModuleConstant(Rule):
                         statement.col_offset + 1,
                         self.code,
                         _message(name, kind),
-                        Severity.WARNING,
+                        Severity.ERROR,
                     )
                 )
         return findings
@@ -250,6 +251,14 @@ def _is_final_annotation(annotation: ast.expr, context: PythonFileContext, non_i
             annotation = ast.parse(annotation.value.strip(), mode="eval").body
         except SyntaxError:
             return False
+    while (
+        isinstance(annotation, ast.Subscript)
+        and isinstance(annotation.slice, ast.Tuple)
+        and annotation.slice.elts[1:]
+        and _root_name(annotation.value) not in non_import_bindings
+        and context.module_imports.resolves(annotation.value, sources=_TYPING_SOURCES, symbol="Annotated")
+    ):
+        annotation = annotation.slice.elts[0]
     if isinstance(annotation, ast.Subscript):
         if isinstance(annotation.slice, ast.Tuple):
             return False
@@ -734,8 +743,8 @@ def _message(name: str, kind: str) -> str:
         )
     replacement = {"list": "tuple", "set": "frozenset"}[kind]
     return (
-        f"uppercase module collection `{name}` is a mutable {kind} — consider {replacement} to prevent top-level "
-        "membership changes; preserve concrete APIs and recursively freeze nested values when required."
+        f"uppercase module collection `{name}` should declare constant intent with Final[{kind}[T]] to preserve its "
+        f"concrete API, or use {replacement} when immutable membership is intended; Final does not freeze contents."
     )
 
 

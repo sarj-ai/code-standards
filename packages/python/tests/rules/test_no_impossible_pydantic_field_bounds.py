@@ -12,6 +12,20 @@ from sarj_python_lint.rules.no_impossible_pydantic_field_bounds import NoImpossi
 
 
 _PREFIX = "from pydantic import BaseModel, Field\nfrom typing import Annotated\n"
+
+
+@pytest.mark.parametrize("member_value", ["Descriptor()", "guard", "guards[0]"])
+def test_class_creation_descriptor_can_replace_an_apparently_impossible_field(member_value: str) -> None:
+    source = (
+        "from pydantic import BaseModel, Field\nfrom typing import ClassVar\n"
+        "class Descriptor:\n    def __set_name__(self, owner, name): owner.value = Field(gt=0, lt=2)\n"
+        "guard = Descriptor()\nguards = [guard]\n"
+        "class Record(BaseModel):\n    value: int = Field(gt=0, lt=1)\n"
+        f"    marker: ClassVar[Descriptor] = {member_value}\n"
+    )
+    assert NoImpossiblePydanticFieldBounds().check(Path("app/records.py"), source) == []
+
+
 _CASES = (
     ("reverse-numeric", "value: float = Field(ge=5, le=4)", True),
     ("exclusive-equal", "value: float = Field(gt=1, le=1)", True),

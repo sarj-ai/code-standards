@@ -18,7 +18,9 @@ from sarj_python_lint.rule_base import (
     is_suppressed,
 )
 from sarj_python_lint.rules._ast_index import nodes, walk
+from sarj_python_lint.rules._closed_helpers import call_matches, closed_references, direct_call
 from sarj_python_lint.rules._paths import is_test_path
+from sarj_python_lint.rules._resource_provenance import ResourceProvenance
 
 
 if TYPE_CHECKING:
@@ -120,7 +122,7 @@ class RequireKeywordOnlySwapProneParams(Rule):
     id: str = "require-keyword-only-swap-prone-params"
     code: str = "SARJ034"
     documentation = RuleDocumentation(
-        default_level=Severity.WARNING,
+        default_level=Severity.ERROR,
         summary="Risky-name positional parameters sharing a primitive annotation may be confused.",
         rationale="A caller can exchange semantically distinct positional values without a type-checking failure.",
         remediation=(
@@ -131,9 +133,10 @@ class RequireKeywordOnlySwapProneParams(Rule):
         autofix=AutofixPolicy.NONE,
         aliases=("kwonly-same-type-params",),
         limitations=(
+            "Private module functions with closed, statically resolved direct callers block as errors; public and compatibility-sensitive signatures retain advisory findings. Use distinct nominal parameter types when positional ABI must remain unchanged.",
             "Only high-risk groups of bare `str`, `int`, or `float` annotations are reported.",
             "Tests, generated code, migrations, conventional ordered groups, explicit inheritance, local structural protocols, and recognized routes, CLI handlers, callbacks, and runtime protocols are excluded.",
-            "External and published calling contracts cannot be proven from one file, so this compatibility-sensitive rule remains a warning without autofix.",
+            "External and published calling contracts cannot be proven from one file, so those signatures remain advisory without autofix; only proven closed private owners block.",
         ),
         examples=(
             RuleExample(
@@ -143,7 +146,7 @@ class RequireKeywordOnlySwapProneParams(Rule):
                 files=(
                     ExampleFile.python(
                         "service.py",
-                        "def move(source_id: str, target_id: str) -> None: ...\n\nmove('inbox', 'archive')\n",
+                        "def _move(source_id: str, target_id: str) -> None: ...\n\n_move('inbox', 'archive')\n",
                     ),
                 ),
                 focus_path=PurePosixPath("service.py"),
@@ -213,7 +216,7 @@ class RequireKeywordOnlySwapProneParams(Rule):
                     line=node.lineno,
                     col=node.col_offset + 1,
                     code=self.code,
-                    severity=Severity.WARNING,
+                    severity=Severity.ERROR if _closed_owner(node, context) else Severity.WARNING,
                     message=(
                         f"`{node.name}` has confusable positional `{offending.annotation}` parameters "
                         f"{_parameter_list(offending.parameters)}; make them keyword-only only if this callable owns "
@@ -223,6 +226,16 @@ class RequireKeywordOnlySwapProneParams(Rule):
             )
         diags.sort(key=lambda d: (d.line, d.col))
         return diags
+
+
+def _closed_owner(function: ast.FunctionDef | ast.AsyncFunctionDef, context: PythonFileContext) -> bool:
+    if not isinstance(function, ast.FunctionDef) or not function.name.startswith("_"):
+        return False
+    references = closed_references(context, function, ResourceProvenance(context))
+    return bool(references) and all(
+        (call := direct_call(reference, context)) is not None and call_matches(function, call)
+        for reference in references
+    )
 
 
 def _is_exempt_path(path: Path) -> bool:

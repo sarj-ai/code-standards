@@ -44,7 +44,7 @@ class RedundantTestConstructorForwarder(ProjectRule):
     id = "redundant-test-constructor-forwarder"
     code = "SARJ487"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        default_level=Severity.WARNING,
+        default_level=Severity.ERROR,
         summary="A private test helper mirrors a resolved value-record constructor without adding a contract.",
         rationale="A forwarding helper repeats the constructor's fields and types, creating a second signature to maintain without scenario defaults or setup.",
         remediation="Use the real typed constructor at known callers. Keep helpers that choose defaults, transform data, own resources, narrow types, or provide an intentional patch boundary.",
@@ -119,7 +119,7 @@ class RedundantTestConstructorForwarder(ProjectRule):
                         line=function.lineno,
                         col=function.col_offset + 1,
                         code=self.code,
-                        severity=Severity.WARNING,
+                        severity=Severity.ERROR,
                         message=f"`{function.name}` only forwards required fields to the resolved record constructor; use that constructor at known callers, or retain an intentional narrower contract or patch seam.",
                     )
                 )

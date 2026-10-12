@@ -12,6 +12,7 @@ from packaging.version import InvalidVersion, Version
 from sarj_python_lint.json_boundary import is_object_mapping
 from sarj_python_lint.rules._first_party import distribution_root
 from sarj_python_lint.rules._namespace_access import dynamic_namespace_access
+from sarj_python_lint.rules._resource_provenance import ResourceProvenance
 
 
 if TYPE_CHECKING:
@@ -38,6 +39,7 @@ def direct_models(context: PythonFileContext, *, methods: bool = False) -> tuple
         or dynamic_namespace_access(context.nodes(ast.AST), context.imports, context.parents)
     ):
         return ()
+    provenance = ResourceProvenance(context, require_static_namespace=True)
     return tuple(
         node
         for node in tree.body
@@ -47,25 +49,25 @@ def direct_models(context: PythonFileContext, *, methods: bool = False) -> tuple
         and not node.decorator_list
         and not node.keywords
         and not node.type_params
-        and all(_plain_member(member, context, methods=methods) for member in node.body)
+        and all(_plain_member(member, context, provenance, methods=methods) for member in node.body)
     )
 
 
-def _plain_member(node: ast.stmt, context: PythonFileContext, *, methods: bool) -> bool:
+def _plain_member(node: ast.stmt, context: PythonFileContext, provenance: ResourceProvenance, *, methods: bool) -> bool:
     match node:
         case ast.AnnAssign(target=ast.Name(id=name), annotation=annotation, value=value):
             return (
                 not name.startswith("__")
-                and _inert_annotation(annotation, context)
-                and (value is None or _inert_expr(value, context))
+                and inert_annotation(annotation, context)
+                and (value is None or inert_class_value(context, value, provenance, pydantic_fields=True))
             )
         case ast.Assign(targets=targets, value=value):
             return all(
                 isinstance(target, ast.Name) and not target.id.startswith("__") for target in targets
-            ) and _inert_expr(value, context)
+            ) and inert_class_value(context, value, provenance, pydantic_fields=True)
         case ast.FunctionDef(name=name) | ast.AsyncFunctionDef(name=name):
             return (
-                methods and not name.startswith("__") and name != "model_post_init" and _inert_signature(node, context)
+                methods and not name.startswith("__") and name != "model_post_init" and inert_signature(node, context)
             )
         case ast.Pass() | ast.Expr(value=ast.Constant(value=str())):
             return True
@@ -73,7 +75,7 @@ def _plain_member(node: ast.stmt, context: PythonFileContext, *, methods: bool) 
             return False
 
 
-def _inert_annotation(node: ast.expr, context: PythonFileContext) -> bool:
+def inert_annotation(node: ast.expr, context: PythonFileContext) -> bool:
     if isinstance(node, ast.Constant) and isinstance(node.value, str):
         try:
             node = ast.parse(node.value, mode="eval").body
@@ -82,7 +84,7 @@ def _inert_annotation(node: ast.expr, context: PythonFileContext) -> bool:
     return _inert_expr(node, context)
 
 
-def _inert_signature(node: ast.FunctionDef | ast.AsyncFunctionDef, context: PythonFileContext) -> bool:
+def inert_signature(node: ast.FunctionDef | ast.AsyncFunctionDef, context: PythonFileContext) -> bool:
     if node.type_params:
         return False
     arguments = (
@@ -96,7 +98,7 @@ def _inert_signature(node: ast.FunctionDef | ast.AsyncFunctionDef, context: Pyth
     if node.returns is not None:
         annotations.append(node.returns)
     defaults = (*node.args.defaults, *(value for value in node.args.kw_defaults if value is not None))
-    return all(_inert_annotation(annotation, context) for annotation in annotations) and all(
+    return all(inert_annotation(annotation, context) for annotation in annotations) and all(
         _inert_expr(value, context) for value in defaults
     )
 
@@ -123,6 +125,45 @@ def _inert_expr(node: ast.AST, context: PythonFileContext) -> bool:
     ):
         return False
     return all(_inert_expr(child, context) for child in ast.iter_child_nodes(node))
+
+
+def literal_value(value: ast.expr) -> bool:
+    if any(isinstance(node, ast.Call) for node in ast.walk(value)):
+        return False
+    try:
+        ast.literal_eval(value)
+    except ValueError, TypeError, SyntaxError, RecursionError, OverflowError:
+        return False
+    return True
+
+
+def inert_class_value(
+    context: PythonFileContext, value: ast.expr, provenance: ResourceProvenance, *, pydantic_fields: bool
+) -> bool:
+    if not isinstance(value, ast.Call):
+        return literal_value(value)
+    qualified = context.module_imports.resolved_qualified_name(value.func)
+    if (
+        not pydantic_fields
+        or qualified
+        not in {"pydantic.Field", "pydantic.fields.Field", "pydantic.ConfigDict", "pydantic.config.ConfigDict"}
+        or not provenance.imported(value.func, qualified)
+    ):
+        return False
+    return all(literal_value(argument) for argument in value.args) and all(
+        keyword.arg is not None
+        and (
+            literal_value(keyword.value)
+            or (
+                keyword.arg == "default_factory"
+                and isinstance(keyword.value, ast.Name)
+                and keyword.value.id in {"dict", "list", "set", "tuple", "str", "int", "float", "bool"}
+                and context.imports.builtin_is_unshadowed(keyword.value.id)
+                and provenance.builtin_namespace_untouched
+            )
+        )
+        for keyword in value.keywords
+    )
 
 
 def _mutated_imports(context: PythonFileContext) -> bool:
@@ -175,9 +216,12 @@ def _type_reference(node: ast.expr, parent: ast.AST | None) -> bool:
             return node in bases
         case ast.Subscript(value=value):
             return value is node
-        case ast.arg(annotation=annotation) | ast.AnnAssign(annotation=annotation):
-            return annotation is node
-        case ast.FunctionDef(returns=annotation) | ast.AsyncFunctionDef(returns=annotation):
+        case (
+            ast.arg(annotation=annotation)
+            | ast.AnnAssign(annotation=annotation)
+            | ast.FunctionDef(returns=annotation)
+            | ast.AsyncFunctionDef(returns=annotation)
+        ):
             return annotation is node
         case _:
             return False

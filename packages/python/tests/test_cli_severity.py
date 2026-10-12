@@ -18,13 +18,13 @@ def test_warning_is_excluded_when_baseline_records_a_blocking_error(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     target = tmp_path / "example.py"
-    target.write_text("VALUES = [1]\n\n# ----------------\nerror_value = 2\n")
+    target.write_text("def render(name: str) -> str: return 'hello ' + name\n\n# ----------------\nerror_value = 2\n")
     baseline = tmp_path / "baseline.json"
-    rules = ["check", "--rule", "prefer-immutable-module-constant", "--rule", "no-comment-cruft"]
+    rules = ["check", "--rule", "prefer-fstring-over-concat", "--rule", "no-comment-cruft"]
 
     assert main([*rules, str(target)]) == 1
     control = capsys.readouterr().out
-    assert "SARJ096 " in control
+    assert "SARJ068 " in control
     assert "SARJ016 " in control
 
     assert main([*rules, "--update-baseline", str(baseline), str(target)]) == 0
@@ -33,12 +33,12 @@ def test_warning_is_excluded_when_baseline_records_a_blocking_error(
     assert "1 blocking diagnostics over 1 files; 1 warnings excluded" in baseline_output
 
     assert main([*rules, "--baseline", str(baseline), str(target)]) == 0
-    assert "SARJ096 warning:" in capsys.readouterr().out
+    assert "SARJ068 warning:" in capsys.readouterr().out
 
 
 def test_warning_only_baseline_excludes_the_finding(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     target = tmp_path / "example.py"
-    target.write_text("VALUES = [1]\n")
+    target.write_text("def render(name: str) -> str: return 'hello ' + name\n")
     baseline = tmp_path / "baseline.json"
 
     assert (
@@ -46,7 +46,7 @@ def test_warning_only_baseline_excludes_the_finding(tmp_path: Path, capsys: pyte
             [
                 "check",
                 "--rule",
-                "prefer-immutable-module-constant",
+                "prefer-fstring-over-concat",
                 "--update-baseline",
                 str(baseline),
                 str(target),
@@ -57,6 +57,113 @@ def test_warning_only_baseline_excludes_the_finding(tmp_path: Path, capsys: pyte
 
     assert json.loads(baseline.read_text()) == {}
     assert "0 blocking diagnostics over 0 files; 1 warnings excluded" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(
+    "rule_id",
+    [
+        "prefer-or-pattern",
+        "prefer-walrus-awaited-none-guard",
+        "prefer-walrus-regex-match",
+        "prefer-walrus-stream-loop",
+        "no-unused-value-marker",
+        "require-explicit-contract-implementation",
+        "prefer-autospec-for-callable-mock",
+        "named-record-at-boundaries",
+        "duplicate-adjacent-exception-handler",
+        "duplicate-closed-pure-helper",
+        "redundant-test-constructor-forwarder",
+        "prefer-immutable-module-constant",
+        "no-before-validator-input-mutation",
+        "prefer-self-type-annotation",
+        "require-precise-factory-signature",
+        "require-keyword-only-swap-prone-params",
+        "prefer-monotonic-for-elapsed-time",
+        "prefer-collection-comprehension",
+        "prefer-match-value-dispatch",
+        "unused-test-factory-option",
+        "no-unused-underscored-keyword-parameter",
+    ],
+)
+def test_strict_promotions_block_enter_baselines_and_accept_exact_exceptions(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], rule_id: str
+) -> None:
+    rule_type = REGISTRY[rule_id]
+    example = next(example for example in rule_type.public_examples() if example.expected_count)
+    root = tmp_path.parent / "strict-cli-examples" / rule_id
+    root.mkdir(parents=True)
+    (root / "pyproject.toml").write_text(
+        "[project]\nname = 'strict-example'\nversion = '1.0'\nrequires-python = '>=3.14'\n"
+    )
+    for file in example.files:
+        path = root / file.path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(file.source)
+    target = root / example.focus_path
+    command = ["check", "--rule", rule_id]
+    assert main([*command, str(target)]) == 1
+    assert rule_type.code in capsys.readouterr().out
+    baseline = root / "baseline.json"
+    assert main([*command, "--update-baseline", str(baseline), str(target)]) == 0
+    assert json.loads(baseline.read_text()) == {str(target): {rule_type.code: example.expected_count}}
+    capsys.readouterr()
+    assert main([*command, "--baseline", str(baseline), str(target)]) == 0
+    findings = analyze([rule_id], [target])
+    lines = target.read_text().splitlines()
+    for line in {finding.line for finding in findings}:
+        lines[line - 1] += f"  # sarj-noqa: {rule_type.code} -- deliberate compatibility contract"
+    target.write_text("\n".join(lines) + "\n")
+    assert main([*command, str(target)]) == 0
+    assert rule_type.code not in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(
+    ("rule_id", "source"),
+    [
+        ("prefer-self-type-annotation", "class Builder:\n    def fluent(self) -> 'Builder': return self\n"),
+        (
+            "require-precise-factory-signature",
+            "from collections.abc import Callable\nclass Result: pass\ndef build(factory: Callable[..., Result]): return factory(size=4)\n",
+        ),
+        (
+            "require-keyword-only-swap-prone-params",
+            "def move(source_id: str, target_id: str): return source_id, target_id\n",
+        ),
+        (
+            "prefer-monotonic-for-elapsed-time",
+            "import time\ndef measure():\n    start = time.time()\n    work()\n    return time.time() - start\n",
+        ),
+        (
+            "prefer-collection-comprehension",
+            "def values(rows):\n    result = {}\n    for row in rows:\n        result[row.key] = row.value\n    return result\n",
+        ),
+        (
+            "prefer-match-value-dispatch",
+            "def parse(row):\n    if row.kind == 'json': return json_parser()\n    elif row.kind == 'yaml': return yaml_parser()\n    else: return fallback()\n",
+        ),
+        (
+            "unused-test-factory-option",
+            "def _widget(*, size=300):\n    return Widget(size=size)\n_widget()\n_widget(size=300)\n",
+        ),
+        ("no-unused-underscored-keyword-parameter", "def emit(*, _unused=True): return 'ready'\nemit(_unused=True)\n"),
+    ],
+)
+def test_promoted_rules_keep_unproven_cases_advisory_and_out_of_baselines(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], rule_id: str, source: str
+) -> None:
+    root = tmp_path.parent / "advisory-cli-examples" / rule_id
+    root.mkdir(parents=True)
+    target = root / ("test_widget.py" if rule_id == "unused-test-factory-option" else "service.py")
+    target.write_text(source)
+    (root / "pyproject.toml").write_text(
+        "[project]\nname = 'advisory-example'\nversion = '1.0'\nrequires-python = '>=3.14'\n"
+    )
+    assert [finding.severity for finding in analyze([rule_id], [target])] == [Severity.WARNING]
+    assert main(["check", "--rule", rule_id, str(target)]) == 0
+    assert f"{REGISTRY[rule_id].code} warning:" in capsys.readouterr().out
+    baseline = root / "baseline.json"
+    assert main(["check", "--rule", rule_id, "--update-baseline", str(baseline), str(target)]) == 0
+    assert json.loads(baseline.read_text()) == {}
 
 
 def test_promoted_repeated_test_body_blocks_and_enters_baseline(

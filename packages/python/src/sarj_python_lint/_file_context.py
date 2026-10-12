@@ -9,6 +9,7 @@ from sarj_python_lint._source import symbol_prefilter_source
 from sarj_python_lint.rules._ast_index import NodeIndex
 from sarj_python_lint.rules._fastapi import FastapiIndex
 from sarj_python_lint.rules._imports import ImportIndex
+from sarj_python_lint.rules._namespace_access import dynamic_namespace_access
 from sarj_python_lint.rules._paths import is_generated
 
 
@@ -89,6 +90,10 @@ class PythonFileContext:
     @cached_property
     def module_imports(self) -> ImportIndex:
         return ImportIndex.from_tree(self._valid_tree(), module_scope_only=True)
+
+    @cached_property
+    def dynamic_namespace(self) -> bool:
+        return dynamic_namespace_access(self.nodes(ast.AST), self.imports, self.parents)
 
     @cached_property
     def fastapi(self) -> FastapiIndex:

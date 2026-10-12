@@ -45,7 +45,7 @@ class DuplicateClosedPureHelper(Rule):
     id = "duplicate-closed-pure-helper"
     code = "SARJ489"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        default_level=Severity.WARNING,
+        default_level=Severity.ERROR,
         summary="Closed private helpers repeat one proven native regex/string transformation.",
         rationale="Identical private transformations duplicate maintained behavior even when different caller patterns choose the domains in which they run.",
         remediation="Reuse one existing transformation while keeping each caller's pattern, order and examples. Preserve documented independent versioning or patch contracts explicitly.",
@@ -102,6 +102,9 @@ class DuplicateClosedPureHelper(Rule):
                 or not _pure_body(function, context)
             ):
                 continue
+            annotation = function.args.args[0].annotation if function.args.args else None
+            if not isinstance(annotation, ast.Subscript) or not provenance.imported(annotation.value, "re.Match"):
+                continue
             references = closed_references(context, function, provenance)
             if references is None or any(
                 not _known_reference(reference, function, context, provenance) for reference in references
@@ -121,7 +124,7 @@ class DuplicateClosedPureHelper(Rule):
                         line=function.lineno,
                         col=function.col_offset + 1,
                         code=self.code,
-                        severity=Severity.WARNING,
+                        severity=Severity.ERROR,
                         message=f"`{function.name}` repeats the closed native transformation in `{owners[key].name}`; reuse that helper while preserving caller patterns, useful examples, and intentional independent contracts.",
                     )
                 )

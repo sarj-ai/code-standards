@@ -18,7 +18,9 @@ from sarj_python_lint.rule_base import (
     Severity,
     is_suppressed,
 )
+from sarj_python_lint.rules._closed_helpers import call_matches, closed_references, direct_call
 from sarj_python_lint.rules._imports import ImportIndex
+from sarj_python_lint.rules._resource_provenance import ResourceProvenance
 
 
 if TYPE_CHECKING:
@@ -30,7 +32,7 @@ class NoUnusedUnderscoredKeywordParameter(Rule):
     id = "no-unused-underscored-keyword-parameter"
     code = "SARJ475"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        default_level=Severity.WARNING,
+        default_level=Severity.ERROR,
         summary="Remove unused underscore-prefixed keyword-only parameters instead of hiding them from lint.",
         rationale=(
             "A keyword-only parameter requires callers to use its declared name. Prefixing an unused input with an "
@@ -45,6 +47,7 @@ class NoUnusedUnderscoredKeywordParameter(Rule):
         category=RuleCategory.MAINTAINABILITY,
         autofix=AutofixPolicy.NONE,
         limitations=(
+            "ERROR is limited to private synchronous module functions with proven direct callers, no dynamic namespace or variadic/decorated contract, inert builtin bool/None annotations or no annotation, and bool/None defaults and supplied values. Public, method, callback, required-slot and effectful signature/argument cases retain WARNING.",
             "Only underscore-prefixed keyword-only declarations are checked; positional and variadic callback slots are excluded.",
             "Decorated functions other than unshadowed builtin staticmethod/classmethod, inherited methods, and intentional stubs are excluded.",
             "Any reference within the body counts as use, including nested scopes; shadowing and reassignment can produce false negatives.",
@@ -54,13 +57,27 @@ class NoUnusedUnderscoredKeywordParameter(Rule):
         ),
         examples=(
             RuleExample(
+                example_id="closed-singleton-keyword-input",
+                title="A private helper's unused singleton keyword has no contract or retained value",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/sink.py",
+                        "def _emit(*, _unused: bool=True):\n    return 'ready'\n_emit()\n_emit(_unused=False)\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/sink.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
                 example_id="discarded-keyword-input",
                 title="An ignored keyword input is kept just to silence unused-argument lint",
                 outcome=ExampleOutcome.MATCH,
                 files=(ExampleFile.python("app/sink.py", "def emit(*, _email=None):\n    return 'ready'\n"),),
                 focus_path=PurePosixPath("app/sink.py"),
                 expected_count=1,
-                public=True,
+                public=False,
             ),
             RuleExample(
                 example_id="removed-keyword-input",
@@ -80,17 +97,21 @@ class NoUnusedUnderscoredKeywordParameter(Rule):
         if context.generated or "_" not in context.source or context.tree is None:
             return []
         findings: list[Diagnostic] = []
+        provenance: ResourceProvenance | None = None
         for function in context.nodes(ast.FunctionDef, ast.AsyncFunctionDef):
             for argument in _unused_parameters(context, function):
                 if is_suppressed(context.source_lines, argument.lineno, self.code):
                     continue
+                provenance = provenance or ResourceProvenance(context)
                 findings.append(
                     Diagnostic(
                         path=context.path,
                         line=argument.lineno,
                         col=argument.col_offset + 1,
                         code=self.code,
-                        severity=Severity.WARNING,
+                        severity=Severity.ERROR
+                        if _blocking_keyword(context, function, argument, provenance)
+                        else Severity.WARNING,
                         message=(
                             f"keyword-only parameter `{argument.arg}` is never referenced; remove the unused input "
                             "and its callers instead of hiding it from unused-argument lint"
@@ -98,6 +119,53 @@ class NoUnusedUnderscoredKeywordParameter(Rule):
                     )
                 )
         return sorted(findings, key=lambda item: (item.line, item.col))
+
+
+def _blocking_keyword(
+    context: PythonFileContext,
+    function: ast.FunctionDef | ast.AsyncFunctionDef,
+    argument: ast.arg,
+    provenance: ResourceProvenance,
+) -> bool:
+    if not isinstance(function, ast.FunctionDef) or not _inert_annotation(argument.annotation, context, provenance):
+        return False
+    default = dict(zip((item.arg for item in function.args.kwonlyargs), function.args.kw_defaults, strict=True)).get(
+        argument.arg
+    )
+    if not _singleton(default):
+        return False
+    references = closed_references(context, function, provenance)
+    if not references:
+        return False
+    for reference in references:
+        call = direct_call(reference, context)
+        if call is None or not call_matches(function, call):
+            return False
+        supplied = next((keyword.value for keyword in call.keywords if keyword.arg == argument.arg), default)
+        if not _singleton(supplied):
+            return False
+    return True
+
+
+def _singleton(value: ast.expr | None) -> bool:
+    return isinstance(value, ast.Constant) and (value.value is None or isinstance(value.value, bool))
+
+
+def _inert_annotation(annotation: ast.expr | None, context: PythonFileContext, provenance: ResourceProvenance) -> bool:
+    if annotation is None or (isinstance(annotation, ast.Constant) and annotation.value is None):
+        return True
+    if isinstance(annotation, ast.Name):
+        return (
+            annotation.id == "bool"
+            and context.imports.builtin_is_unshadowed("bool")
+            and provenance.builtin_namespace_untouched
+        )
+    return (
+        isinstance(annotation, ast.BinOp)
+        and isinstance(annotation.op, ast.BitOr)
+        and _inert_annotation(annotation.left, context, provenance)
+        and _inert_annotation(annotation.right, context, provenance)
+    )
 
 
 def _unused_parameters(

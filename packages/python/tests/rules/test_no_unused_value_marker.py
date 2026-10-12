@@ -47,7 +47,7 @@ def test_flags_standalone_underscore_assignments(statement: str) -> None:
     diagnostics = _check(statement)
 
     assert [(item.line, item.col, item.code, item.severity) for item in diagnostics] == [
-        (1, 1, "SARJ452", Severity.WARNING)
+        (1, 1, "SARJ452", Severity.ERROR)
     ]
 
 
@@ -94,7 +94,7 @@ def test_reports_pure_parameter_markers(source: str) -> None:
     diagnostics = _check(source)
 
     assert len(diagnostics) == 1
-    assert diagnostics[0].severity is Severity.WARNING
+    assert diagnostics[0].severity is Severity.ERROR
 
 
 @pytest.mark.parametrize(
@@ -133,6 +133,10 @@ def test_reports_other_discard_assignments_inside_functions(source: str) -> None
 
 def test_exact_reasoned_suppression_is_respected() -> None:
     assert _check("_ = value  # sarj-noqa: SARJ452 — protocol fixture exercises the marker itself\n") == []
+
+
+def test_named_retained_result_preserves_lifetime_intent() -> None:
+    assert _check("def work():\n    _retained_lease = acquire()\n    perform()\n") == []
 
 
 @pytest.mark.parametrize(

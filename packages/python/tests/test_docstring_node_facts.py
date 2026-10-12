@@ -43,7 +43,7 @@ def test_docstring_ids_are_lazy_immutable_and_file_local() -> None:
 
 def test_docstring_ids_require_a_valid_tree_without_poisoning_later_files() -> None:
     with pytest.raises(ValueError, match="successfully parsed"):
-        _ = PythonFileContext(Path("app.py"), "def broken(:").docstring_node_ids
+        _docstring_ids = PythonFileContext(Path("app.py"), "def broken(:").docstring_node_ids
     assert PythonFileContext(Path("app.py"), "value = 1\n").docstring_node_ids == frozenset()
 
 

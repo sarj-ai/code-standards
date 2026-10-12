@@ -13,6 +13,9 @@ const RULE_TESTER = new RuleTester({ languageOptions: { parser: tsParser, parser
 
 RULE_TESTER.run("prefer-switch-for-repeated-equality", rule, {
   valid: [
+    { name: "keeps dynamic case getters and selector mutation", code: "function dispatch(kind) { if (kind === Kind.A) a(); else if (Kind.B === kind) b(); else if (kind === Kind.C) c(); }" },
+    { name: "keeps unresolved case constants", code: "function dispatch(kind) { if (kind === STATUS_A) a(); else if (STATUS_B === kind) b(); else if (kind === STATUS_C) c(); }" },
+    { name: "keeps unowned global selector reads", code: "if (kind === 'a') a(); else if ('b' === kind) b(); else if (kind === 'c') c();" },
     { name: "does not collapse repeated effectful selector evaluation", code: "if (next() === 'a') a(); else if (next() === 'b') b(); else if (next() === 'c') c();" },
     { name: "does not collapse a selector with an observable getter", code: "if (state.kind === 'a') a(); else if (state.kind === 'b') b(); else if (state.kind === 'c') c();" },
     { name: "does not collapse indexed selector reads", code: "if (state[key] === 'a') a(); else if (state[key] === 'b') b(); else if (state[key] === 'c') c();" },
@@ -23,15 +26,7 @@ RULE_TESTER.run("prefer-switch-for-repeated-equality", rule, {
   ],
   invalid: [
     {
-      code: "if (kind === 'a') a(); else if ('b' === kind) b(); else if (kind === 'c') c(); else fallback();",
-      errors: [{ messageId: "preferSwitch", data: { discriminant: "kind" } }],
-    },
-    {
-      code: "if (kind === Kind.A) a(); else if (Kind.B === kind) b(); else if (kind === Kind.C) c();",
-      errors: [{ messageId: "preferSwitch", data: { discriminant: "kind" } }],
-    },
-    {
-      code: "if (kind === STATUS_A) a(); else if (STATUS_B === kind) b(); else if (kind === STATUS_C) c();",
+      code: "function dispatch(kind) { if (kind === 'a') a(); else if ('b' === kind) b(); else if (kind === 'c') c(); else fallback(); }",
       errors: [{ messageId: "preferSwitch", data: { discriminant: "kind" } }],
     },
   ],

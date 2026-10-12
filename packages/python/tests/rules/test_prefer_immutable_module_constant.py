@@ -45,13 +45,21 @@ def test_warns_for_literal_mutable_module_constants(source: str, replacement: st
 
     assert len(findings) == 1
     assert findings[0].code == "SARJ096"
-    assert findings[0].severity is Severity.WARNING
+    assert findings[0].severity is Severity.ERROR
     assert replacement in findings[0].message
 
 
 @pytest.mark.parametrize(
     "source",
     [
+        pytest.param(
+            "from typing import Annotated, Final\nVALUES: Annotated[Final[list[str]], 'documented'] = ['item']",
+            id="annotated-final-list",
+        ),
+        pytest.param(
+            "from typing import Annotated as A, Final as F\nVALUES: A[A[F[set[str]], 'inner'], 'outer'] = {'item'}",
+            id="nested-annotated-final-set",
+        ),
         pytest.param("from typing import Final\nLABELS: Final = {'a': 'A'}", id="bare"),
         pytest.param("from typing import Final\nLABELS: Final[dict[str, str]] = {'a': 'A'}", id="typed"),
         pytest.param("from typing import Final as F\nLABELS: F[dict[str, str]] = {'a': 'A'}", id="alias"),
@@ -125,17 +133,22 @@ def test_final_dictionary_expressions_are_accepted(value: str) -> None:
 def test_final_lookalikes_do_not_hide_dictionary_findings(source: str) -> None:
     findings = PreferImmutableModuleConstant().check(Path("service.py"), source)
     assert len(findings) == 1
-    assert findings[0].severity is Severity.WARNING
+    assert findings[0].severity is Severity.ERROR
     assert "Final[dict" in findings[0].message
     assert "does not freeze" in findings[0].message
 
 
-@pytest.mark.parametrize(("value", "replacement"), [("[1, 2]", "tuple"), ("{1, 2}", "frozenset")])
-def test_final_does_not_replace_native_immutable_collections(value: str, replacement: str) -> None:
+@pytest.mark.parametrize("value", ["[1, 2]", "{1, 2}"])
+def test_final_preserves_concrete_collection_contracts(value: str) -> None:
     source = f"from typing import Final\nVALUES: Final = {value}"
     findings = PreferImmutableModuleConstant().check(Path("service.py"), source)
-    assert len(findings) == 1
-    assert replacement in findings[0].message
+    assert findings == []
+
+
+@pytest.mark.parametrize(("annotation", "value"), [("list[int]", "[1, 2]"), ("set[int]", "{1, 2}")])
+def test_typed_final_preserves_concrete_collection_contracts(annotation: str, value: str) -> None:
+    source = f"from typing import Final\nVALUES: Final[{annotation}] = {value}"
+    assert PreferImmutableModuleConstant().check(Path("service.py"), source) == []
 
 
 def test_runtime_immutable_mapping_remains_accepted() -> None:
@@ -146,7 +159,7 @@ def test_runtime_immutable_mapping_remains_accepted() -> None:
 def test_rule_retains_warning_and_no_autofix_policy() -> None:
     documentation = PreferImmutableModuleConstant.documentation
     assert documentation is not None
-    assert documentation.default_level is Severity.WARNING
+    assert documentation.default_level is Severity.ERROR
     assert documentation.autofix is AutofixPolicy.NONE
 
 

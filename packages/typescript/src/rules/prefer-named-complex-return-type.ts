@@ -7,20 +7,21 @@
 import { AST_NODE_TYPES, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
+import { forEachOwnAstChild } from "./_for-each-own-ast-child.js";
 import { isGeneratedFile, isTestFile } from "./_paths.js";
 
 type MessageIds = "nameComplexReturnType";
 type Options = [];
 
 export const PREFER_NAMED_COMPLEX_RETURN_TYPE_DOCUMENTATION = {
-  defaultLevel: "warning",
+  defaultLevel: "error",
   summary: "Prefer a named contract for structurally complex function return types.",
   rationale: "A large inline return annotation hides a reusable domain concept and makes signatures difficult to scan.",
   remediation: "Name the complex nested shape while preserving its generic wrappers and type parameters; reference the named contract from the return annotation.",
   category: "maintainability",
   limitations: [
     "Only explicit object types with at least three members and unions with at least three object variants are reported.",
-    "Any single-argument generic wrapper is traversed to find nested shapes, not assumed semantically transparent. Inferred return types are outside this rule; extraction is manual and must preserve locally bound type parameters.",
+    "Any single-argument generic wrapper is traversed to find nested shapes, not assumed semantically transparent. Inferred return types are outside this rule; extraction is manual and must preserve locally bound type parameters with generic named contracts. Types depending on polymorphic this or a local value query are excluded.",
   ],
   examples: [
     { id: "named-result", title: "Name a multi-state result", outcome: "no-match", files: [{ path: "src/queue.ts", source: "type ClaimResult = { state: 'idle' } | { state: 'waiting'; retryAt: number } | { state: 'claimed'; id: string }; export function claim(): ClaimResult { return { state: 'idle' }; }" }], focusPath: "src/queue.ts", expectedCount: 0, public: true },
@@ -44,9 +45,14 @@ function report(
   node: TSESTree.Node & { readonly returnType: TSESTree.TSTypeAnnotation | undefined },
 ): void {
   const annotation = node.returnType?.typeAnnotation;
-  if (annotation !== undefined && isComplex(annotation)) {
+  if (annotation !== undefined && isComplex(annotation) && !hasValueDependency(annotation)) {
     context.report({ node: annotation, messageId: "nameComplexReturnType" });
   }
+}
+
+function hasValueDependency(node: TSESTree.Node): boolean {
+  return node.type === AST_NODE_TYPES.TSThisType || node.type === AST_NODE_TYPES.TSTypeQuery ||
+    forEachOwnAstChild(node, hasValueDependency);
 }
 
 function isComplex(node: TSESTree.TypeNode): boolean {

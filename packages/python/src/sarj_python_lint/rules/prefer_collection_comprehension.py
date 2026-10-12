@@ -89,7 +89,7 @@ class PreferCollectionComprehension(Rule):
     id = "prefer-collection-comprehension"
     code = "SARJ430"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        default_level=Severity.WARNING,
+        default_level=Severity.ERROR,
         summary="Single-purpose fresh collection builder loop — prefer a direct comprehension.",
         rationale=(
             "An empty collection followed by a loop whose only behavior is one projection or filtered insertion "
@@ -103,6 +103,7 @@ class PreferCollectionComprehension(Rule):
         category=RuleCategory.STYLE,
         autofix=AutofixPolicy.NONE,
         limitations=(
+            "Supported list/set builders and dictionary builders with stable loop-local-name or literal keys block as errors. Dictionary attribute/descriptor keys remain advisory because assignment evaluates value before key while a comprehension evaluates key before value.",
             "Only function-local, adjacent empty initializers and one synchronous single-purpose loop are checked.",
             (
                 "The rule fills gaps left by Ruff PERF401, PERF403, and FURB142: derived dict projections, "
@@ -136,8 +137,8 @@ class PreferCollectionComprehension(Rule):
                         "app/views.py",
                         "def views(rows, labels):\n"
                         "    result = {}\n"
-                        "    for row in rows:\n"
-                        "        result[row.id] = EntryView(id=row.id, label=labels.get(row.id))\n"
+                        "    for key, row in rows:\n"
+                        "        result[key] = EntryView(id=key, label=labels.get(key))\n"
                         "    return result\n",
                     ),
                 ),
@@ -154,7 +155,7 @@ class PreferCollectionComprehension(Rule):
                     ExampleFile.python(
                         "app/views.py",
                         "def views(rows, labels):\n"
-                        "    return {row.id: EntryView(id=row.id, label=labels.get(row.id)) for row in rows}\n",
+                        "    return {key: EntryView(id=key, label=labels.get(key)) for key, row in rows}\n",
                     ),
                 ),
                 focus_path=PurePosixPath("app/views.py"),
@@ -171,8 +172,8 @@ class PreferCollectionComprehension(Rule):
                         "app/capacity.py",
                         "def organization_caps(rows):\n"
                         "    caps: dict[str, int] = {}\n"
-                        "    for row in rows:\n"
-                        "        caps[row.organization_id] = row.organization_cap\n"
+                        "    for key, row in rows:\n"
+                        "        caps[key] = row.organization_cap\n"
                         "    return caps\n",
                     ),
                 ),
@@ -228,8 +229,7 @@ class PreferCollectionComprehension(Rule):
                 files=(
                     ExampleFile.python(
                         "app/capacity.py",
-                        "def organization_caps(rows):\n"
-                        "    return {row.organization_id: row.organization_cap for row in rows}\n",
+                        "def organization_caps(rows):\n    return {key: row.organization_cap for key, row in rows}\n",
                     ),
                 ),
                 focus_path=PurePosixPath("app/capacity.py"),
@@ -266,9 +266,26 @@ class PreferCollectionComprehension(Rule):
                         col=loop.col_offset + 1,
                         code=self.code,
                         message=_message(finding),
+                        severity=Severity.ERROR
+                        if not context.dynamic_namespace and _preserves_dict_key_order(loop, finding.kind)
+                        else Severity.WARNING,
                     )
                 )
         return sorted(diagnostics, key=lambda diagnostic: (diagnostic.line, diagnostic.col))
+
+
+def _preserves_dict_key_order(loop: ast.For, kind: _CollectionKind) -> bool:
+    if kind is not _CollectionKind.DICT:
+        return True
+    filtered = _filtered_statement_parts(loop.body)
+    statement = filtered[0] if filtered is not None else loop.body[0]
+    if not isinstance(statement, ast.Assign) or len(statement.targets) != 1:
+        return False
+    target = statement.targets[0]
+    if not isinstance(target, ast.Subscript):
+        return False
+    key = target.slice
+    return isinstance(key, ast.Constant) or (isinstance(key, ast.Name) and key.id in _bound_names(loop.target))
 
 
 def _owner_candidates(

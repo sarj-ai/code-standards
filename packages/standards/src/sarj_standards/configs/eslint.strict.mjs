@@ -1248,11 +1248,11 @@ export function createConfig(options = {}) {
       // the paired tests, which its `meta.docs.url` points at.
       //
       "@sarj/require-pascal-case-zod-schema-name": "error",
-      "@sarj/named-child-schema-type": "warn",
-      "@sarj/require-explicit-contract-implementation": "warn",
+      "@sarj/named-child-schema-type": "error",
+      "@sarj/require-explicit-contract-implementation": "error",
       "@sarj/require-explicit-service-contract": "warn",
       "@sarj/require-interface-for-exported-class": "warn",
-      "@sarj/prefer-named-complex-return-type": "warn",
+      "@sarj/prefer-named-complex-return-type": "error",
       "@sarj/prefer-module-level-refined-schema": "warn",
       "@sarj/prefer-multi-value-zod-literal": ["warn", { zodMajorVersion: 4 }],
       "@sarj/prefer-named-callback-domain": "error",
@@ -1260,7 +1260,7 @@ export function createConfig(options = {}) {
       "@sarj/prefer-node-crypto-hash": "warn",
       "@sarj/prefer-node-fs-promises": "warn",
       "@sarj/prefer-shared-zod-enum": "warn",
-      "@sarj/prefer-switch-for-repeated-equality": "warn",
+      "@sarj/prefer-switch-for-repeated-equality": "error",
       "@sarj/require-sql-access-class": "warn",
       "@sarj/sole-export-matches-filename": "error",
       "@sarj/require-assert-never": "error",

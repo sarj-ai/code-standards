@@ -43,10 +43,10 @@ class NamedRecordAtBoundaries(Rule):
     id: str = "named-record-at-boundaries"
     code: str = "SARJ008"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        default_level=Severity.WARNING,
+        default_level=Severity.ERROR,
         summary="Public Python API returns an unnamed fixed-shape record.",
         rationale="A named record makes field types and required keys explicit to callers and static tooling.",
-        remediation="Define and return a `TypedDict`, Pydantic model, or frozen dataclass for the fixed record shape.",
+        remediation="Define and return a `TypedDict`, Pydantic model, or frozen dataclass for a closed record shape. When the API intentionally exposes an extensible concrete dictionary, use one explicit named mapping type alias to preserve its dictionary contract and runtime API.",
         category=RuleCategory.ARCHITECTURE,
         aliases=("pydantic-at-boundaries", "named-fixed-record-return"),
         limitations=(
@@ -56,6 +56,7 @@ class NamedRecordAtBoundaries(Rule):
                 "static string-key writes, and unique unconditional local type aliases are recognized. Dynamic keys, "
                 "opaque escapes, ambiguous control flow, generic aliases, and cross-module aliases make the rule abstain."
             ),
+            "An explicit unique local mapping type alias preserves a named open/pinned mapping contract. Type aliases do not add required-key validation; stricter Any-value typing remains owned by SARJ447.",
         ),
         examples=(
             RuleExample(
@@ -154,7 +155,7 @@ class NamedRecordAtBoundaries(Rule):
                     code=self.code,
                     message=(
                         f"`{node.name}` returns unnamed fixed record `{ann_text}` — define a "
-                        "`TypedDict`, Pydantic model, or frozen dataclass for this shape."
+                        "`TypedDict`, Pydantic model, or frozen dataclass for a closed shape, or name the intentionally open mapping contract with a type alias."
                     ),
                 )
             )
@@ -267,9 +268,7 @@ def _classify_return(
     imports = semantics.imports
     node = semantics.parse(node) or node
     if isinstance(node, ast.Name) and node.id in semantics.aliases:
-        if node.id in seen:
-            return None
-        return _classify_return(semantics.aliases[node.id], semantics, seen=seen | {node.id})
+        return None
     # Look through `X | None` / Optional[X] / Union[...] members.
     if isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitOr):
         return _classify_return(node.left, semantics, seen=seen) or _classify_return(node.right, semantics, seen=seen)

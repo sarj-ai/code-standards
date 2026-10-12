@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+import math
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, ClassVar, final, override
 
@@ -35,7 +36,7 @@ class PreferMonotonicForElapsedTime(Rule):
     id = "prefer-monotonic-for-elapsed-time"
     code = "SARJ461"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        default_level=Severity.WARNING,
+        default_level=Severity.ERROR,
         summary="Use a monotonic clock for a local wall-clock value used only to measure elapsed time.",
         rationale=(
             "System-clock corrections can make wall-clock differences negative or unexpectedly large. "
@@ -48,6 +49,7 @@ class PreferMonotonicForElapsedTime(Rule):
         category=RuleCategory.CORRECTNESS,
         autofix=AutofixPolicy.NONE,
         limitations=(
+            "A start used exclusively in direct while-loop duration comparisons against finite nonnegative literal thresholds blocks as an error. Returned, logged, and other elapsed-time measurements retain advisory findings because wall-clock telemetry can be intentional.",
             "Only an unconditional, single-assignment function-local start reading whose every read is the right operand of time.time() - start is reported.",
             "Only unshadowed module-level clock imports are resolved. Reassignment, additional timestamp uses, escapes, nested-scope reads, comprehensions, reflection, and mixed-clock expressions are excluded.",
             "Instance fields, process or persisted deadlines, indirect end-clock readings, and generated files are not inferred. No automatic rewrite is provided.",
@@ -60,7 +62,7 @@ class PreferMonotonicForElapsedTime(Rule):
                 files=(
                     ExampleFile.python(
                         "app/metrics.py",
-                        "import time\n\ndef measure():\n    started = time.time()\n    work()\n    return time.time() - started\n",
+                        "import time\n\ndef measure():\n    started = time.time()\n    while time.time() - started < 5:\n        work()\n",
                     ),
                 ),
                 focus_path=PurePosixPath("app/metrics.py"),
@@ -74,7 +76,7 @@ class PreferMonotonicForElapsedTime(Rule):
                 files=(
                     ExampleFile.python(
                         "app/metrics.py",
-                        "import time\n\ndef measure():\n    started = time.monotonic()\n    work()\n    return time.monotonic() - started\n",
+                        "import time\n\ndef measure():\n    started = time.monotonic()\n    while time.monotonic() - started < 5:\n        work()\n",
                     ),
                 ),
                 focus_path=PurePosixPath("app/metrics.py"),
@@ -91,6 +93,7 @@ class PreferMonotonicForElapsedTime(Rule):
             "time" not in context.symbol_source
             or context.generated
             or context.tree is None
+            or context.dynamic_namespace
             or _clock_is_mutated(context)
         ):
             return []
@@ -105,7 +108,7 @@ class PreferMonotonicForElapsedTime(Rule):
                         line=start.lineno,
                         col=start.col_offset + 1,
                         code=self.code,
-                        severity=Severity.WARNING,
+                        severity=Severity.ERROR if _duration_loop_start(context, function, start) else Severity.WARNING,
                         message="this wall-clock reading is used only for elapsed time; use a monotonic clock for both the start and elapsed readings",
                     )
                 )
@@ -126,6 +129,32 @@ def _elapsed_starts(context: PythonFileContext, function: _Function) -> Iterator
         reads = _reads_of(nodes, target.id)
         if reads and all(_elapsed_read(context, function, call, read) for read in reads):
             yield call
+
+
+def _duration_loop_start(context: PythonFileContext, function: _Function, start: ast.Call) -> bool:
+    assignment = context.parents.get(start)
+    candidate = _start_assignment(assignment) if isinstance(assignment, ast.stmt) else None
+    if candidate is None:
+        return False
+    reads = _reads_of(tuple(ast.walk(function)), candidate[0].id)
+    return bool(reads) and all(_direct_duration_loop(context, read) for read in reads)
+
+
+def _direct_duration_loop(context: PythonFileContext, read: ast.Name) -> bool:
+    delta = context.parents.get(read)
+    comparison = context.parents.get(delta) if delta is not None else None
+    loop = context.parents.get(comparison) if comparison is not None else None
+    if not isinstance(comparison, ast.Compare) or comparison.left is not delta:
+        return False
+    if len(comparison.ops) != 1 or not isinstance(comparison.ops[0], ast.Lt | ast.LtE | ast.Gt | ast.GtE):
+        return False
+    if len(comparison.comparators) != 1 or not isinstance(loop, ast.While) or loop.test is not comparison:
+        return False
+    threshold = comparison.comparators[0]
+    if not isinstance(threshold, ast.Constant) or isinstance(threshold.value, bool):
+        return False
+    value = threshold.value
+    return isinstance(value, int | float) and value >= 0 and not (isinstance(value, float) and not math.isfinite(value))
 
 
 def _start_assignment(statement: ast.stmt) -> tuple[ast.Name, ast.Call] | None:
@@ -198,24 +227,44 @@ def _reflective_call(node: ast.AST) -> bool:
 
 
 def _clock_is_mutated(context: PythonFileContext) -> bool:
-    if any(
-        isinstance(node.ctx, (ast.Store, ast.Del)) and context.imports.resolved_qualified_name(node) == "time.time"
-        for node in context.nodes(ast.Attribute)
-    ):
+    if _clock_attribute_is_written(context):
         return True
     clocks = _clock_imports(context)
     if context.tree is None:
         return False
     for node in ast.walk(context.tree):
-        if isinstance(node, ast.alias):
-            if node.name == "*":
-                return True
-            statement = context.parents.get(node)
-            if _is_direct_clock_import(context, statement, node):
-                continue
+        if _reflective_call(node) or (
+            isinstance(node, ast.Attribute) and node.attr in {"__dict__", "__getattribute__"}
+        ):
+            return True
+        if _clock_reference_escapes(context, node, clocks):
+            return True
+        if isinstance(node, ast.alias) and node.name == "*":
+            return True
+        if isinstance(node, ast.alias) and _is_direct_clock_import(context, context.parents.get(node), node):
+            continue
         if any(_rebinds(node, clock) for clock in clocks):
             return True
     return False
+
+
+def _clock_reference_escapes(context: PythonFileContext, node: ast.AST, clocks: list[ast.Name]) -> bool:
+    parent = context.parents.get(node)
+    if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load) and any(node.id == clock.id for clock in clocks):
+        return not (
+            (isinstance(parent, ast.Attribute) and parent.value is node)
+            or (isinstance(parent, ast.Call) and parent.func is node)
+        )
+    if isinstance(node, ast.Attribute) and context.imports.resolved_qualified_name(node) == "time.time":
+        return not isinstance(parent, ast.Call) or parent.func is not node
+    return False
+
+
+def _clock_attribute_is_written(context: PythonFileContext) -> bool:
+    return any(
+        isinstance(node.ctx, (ast.Store, ast.Del)) and context.imports.resolved_qualified_name(node) == "time.time"
+        for node in context.nodes(ast.Attribute)
+    )
 
 
 def _clock_imports(context: PythonFileContext) -> list[ast.Name]:

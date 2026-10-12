@@ -27,7 +27,7 @@ class NoUnusedValueMarker(Rule):
     id = "no-unused-value-marker"
     code = "SARJ452"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        default_level=Severity.WARNING,
+        default_level=Severity.ERROR,
         summary="Do not use standalone assignments to `_` to discard values.",
         rationale=(
             "A standalone `_ = value` assignment adds a binding without clarifying intent. A side-effecting call can "
@@ -35,7 +35,8 @@ class NoUnusedValueMarker(Rule):
             "intentionally inert or implements an incomplete contract."
         ),
         remediation=(
-            "Invoke calls directly instead of assigning their result to `_`. Remove or rename locally owned unused "
+            "Invoke calls directly when their result needs no retention. When a result owns a lease or resource lifetime, "
+            "retain it under an informative name such as `_retained_lease`; do not drop it. Remove or rename locally owned unused "
             "values; when an external interface requires the exact unused parameter, put a narrow reasoned linter "
             "suppression on its declaration. Use an explicit empty body for an intentional stub, `@override` for "
             "a real override, or `NotImplementedError` for an unsupported operation; preserve required keyword names."
@@ -161,10 +162,10 @@ class NoUnusedValueMarker(Rule):
                 line=node.lineno,
                 col=node.col_offset + 1,
                 code=self.code,
-                severity=Severity.WARNING,
+                severity=Severity.ERROR,
                 message=(
-                    "standalone assignment to `_` discards a value through an unnecessary binding — invoke calls "
-                    "directly or address unused values at their declaration."
+                    "standalone assignment to `_` hides the binding's intent — use an informative retained-result "
+                    "name for lifetime ownership, invoke calls directly when retention is unnecessary, or address unused values at their declaration."
                 ),
             )
             for node in markers

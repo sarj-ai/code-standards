@@ -29,15 +29,16 @@ PROBLEM = RuleProblem(
 @pytest.mark.parametrize("context", ["recipe", "inline", "oneshell"])
 def test_recipe_separator_data_preserves_source_and_physical_lines(separator: str, context: str) -> None:
     command = f"printf '%s' 'before{separator}after'; printf '%s' end"
-    if context == "inline":
-        source = f"check: ; @{command}\nnext:\n\tprintf next\n"
-        expected = [(1, command), (4 if separator == "\r" else 3, "printf next")]
-    elif context == "oneshell":
-        source = f".ONESHELL:\ncheck:\n\t@{command}\n\tprintf next\n"
-        expected = [(3, command + "\nprintf next")]
-    else:
-        source = f"check:\n\t@{command}\n\tprintf next\n"
-        expected = [(2, command), (4 if separator == "\r" else 3, "printf next")]
+    match context:
+        case "inline":
+            source = f"check: ; @{command}\nnext:\n\tprintf next\n"
+            expected = [(1, command), (4 if separator == "\r" else 3, "printf next")]
+        case "oneshell":
+            source = f".ONESHELL:\ncheck:\n\t@{command}\n\tprintf next\n"
+            expected = [(3, command + "\nprintf next")]
+        case _:
+            source = f"check:\n\t@{command}\n\tprintf next\n"
+            expected = [(2, command), (4 if separator == "\r" else 3, "printf next")]
     case = EvaluationCase("recipe-separator-data", Language.CONFIG, source, path=PurePosixPath("Makefile"))
     assert case.language in PROBLEM.languages
     assert [(block.line, block.source) for block in execution_blocks("Makefile", case.source)] == expected

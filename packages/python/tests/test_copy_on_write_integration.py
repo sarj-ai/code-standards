@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 _RULES = ("no-input-model-mutation", "no-before-validator-input-mutation", "no-unused-copy-result")
 
 
-@pytest.mark.parametrize("rule_id", _RULES)
+@pytest.mark.parametrize("rule_id", ["no-input-model-mutation", "no-unused-copy-result"])
 def test_warning_does_not_fail_cli_or_enter_blocking_baseline(
     rule_id: str, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

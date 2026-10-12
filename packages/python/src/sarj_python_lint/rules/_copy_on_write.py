@@ -2,23 +2,28 @@ from __future__ import annotations
 
 import ast
 from dataclasses import dataclass, replace
+from functools import cached_property
 from types import MappingProxyType
 from typing import TYPE_CHECKING, final
 
+from sarj_python_lint._analysis_session import AnalysisSession
+from sarj_python_lint._file_context import PythonFileContext
 from sarj_python_lint.rules._annotation_semantics import AnnotationSemantics, scope_bound_names
+from sarj_python_lint.rules._closed_helpers import plain_class_members
 from sarj_python_lint.rules._imports import ImportIndex
-from sarj_python_lint.rules._project_index import ProjectIndexSet, SourceUnit, SymbolRef
+from sarj_python_lint.rules._project_index import ProjectIndexSet, SourceUnit, SymbolRef, imports_outside
+from sarj_python_lint.rules._resource_provenance import ResourceProvenance
 
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
-
-    from sarj_python_lint._file_context import PythonFileContext
+    from pathlib import Path
 
 
 type _Function = ast.FunctionDef | ast.AsyncFunctionDef
 _MODEL_BASES = frozenset({"pydantic.BaseModel", "pydantic.main.BaseModel"})
 _PYDANTIC = frozenset({"pydantic", "pydantic.functional_validators"})
+_MAX_BEFORE_VALIDATOR_DECORATORS = 2
 _TYPING = frozenset({"typing", "typing_extensions"})
 _COLLECTIONS = frozenset({"collections.abc", "typing", "typing_extensions"})
 _TWO_ARGUMENTS = 2
@@ -62,6 +67,12 @@ class Mutation:
     before_validator: bool
 
 
+@dataclass(frozen=True, slots=True)
+class _ValidationOwner:
+    context: PythonFileContext
+    provenance: ResourceProvenance
+
+
 @final
 class _Models:
     def __init__(self, context: PythonFileContext) -> None:
@@ -81,10 +92,27 @@ class _Models:
                 },
             )
         )
+        if (
+            (unit is None or unit.module is None)
+            and self.unit.tree is not None
+            and any(isinstance(node, ast.ClassDef) for node in self.unit.tree.body)
+        ):
+            self.indexes = self.indexes.with_unit(self.unit)
+        self._validation_session = AnalysisSession()
+        self._validation_session.project = self.indexes
+        self._validation_owners: dict[Path, _ValidationOwner] = {}
         self._classes: dict[SymbolRef, tuple[SourceUnit, ast.ClassDef] | None] = {}
         self._ancestry: dict[SymbolRef, bool] = {}
         self._fields: dict[tuple[SymbolRef, str], _Shape | None] = {}
         self._annotations: dict[str | None, AnnotationSemantics] = {}
+
+    def validation_owner(self, unit: SourceUnit) -> _ValidationOwner:
+        if unit.path not in self._validation_owners:
+            context = PythonFileContext(unit.path, unit.source, self._validation_session)
+            self._validation_owners[unit.path] = _ValidationOwner(
+                context, ResourceProvenance(context, require_static_namespace=True)
+            )
+        return self._validation_owners[unit.path]
 
     def annotations(self, unit: SourceUnit) -> AnnotationSemantics:
         if unit.module not in self._annotations:
@@ -177,6 +205,39 @@ class _Models:
         return bool(bases) and all(
             base is not None
             and (f"{base.module}.{base.name}" in _MODEL_BASES or self.standard_copy(base, seen | {symbol}))
+            for base in bases
+        )
+
+    def plain_validation(self, symbol: SymbolRef, seen: frozenset[SymbolRef] = frozenset()) -> bool:
+        if (
+            symbol in seen
+            or self.indexes.nominal_membership_is_dynamic(symbol)
+            or (resolved := self.class_node(symbol)) is None
+        ):
+            return False
+        unit, node = resolved
+        if node.decorator_list or (
+            unit.module == "__copy_source__" and imports_outside(unit.tree, _PYDANTIC | _TYPING)
+        ):
+            return False
+        owner = self.validation_owner(unit)
+        if not plain_class_members(owner.context, node, owner.provenance, pydantic_fields=True):
+            return False
+        if any(
+            name
+            in {
+                "__init_subclass__",
+                "__pydantic_init_subclass__",
+                "__pydantic_on_complete__",
+                "__get_pydantic_core_schema__",
+            }
+            for name in scope_bound_names(node.body)
+        ):
+            return False
+        bases = [self.symbol(base, unit) for base in node.bases]
+        return bool(bases) and all(
+            base is not None
+            and (f"{base.module}.{base.name}" in _MODEL_BASES or self.plain_validation(base, seen | {symbol}))
             for base in bases
         )
 
@@ -314,6 +375,10 @@ class CopyOnWriteAnalysis:
         for function in context.nodes(ast.FunctionDef, ast.AsyncFunctionDef):
             self._function(function)
 
+    @cached_property
+    def _validator_provider(self) -> ResourceProvenance:
+        return ResourceProvenance(self.context, require_static_namespace=True)
+
     def _function(self, function: _Function) -> None:
         parameters = [*function.args.posonlyargs, *function.args.args, *function.args.kwonlyargs]
         names = {parameter.arg for parameter in parameters}
@@ -343,9 +408,11 @@ class CopyOnWriteAnalysis:
         receiver = self._receiver(function, parameters)
         for parameter in parameters:
             shape = self.models.shape(parameter.annotation, blocked=self._blocked)
-            if receiver is not None and parameter is parameters[0]:
+            if parameter.arg == before_input:
+                bindings[parameter.arg] = _Value(shape, borrowed=True, shared_children=True)
+            elif receiver is not None and parameter is parameters[0]:
                 bindings[parameter.arg] = receiver
-            elif _contains_model(shape) or parameter.arg == before_input:
+            elif _contains_model(shape):
                 bindings[parameter.arg] = _Value(shape, borrowed=True, shared_children=True)
         return bindings
 
@@ -362,25 +429,75 @@ class CopyOnWriteAnalysis:
 
     def _validator_input(self, function: _Function) -> str | None:
         parent = self.context.parents.get(function)
-        class_bindings: set[str] = scope_bound_names(parent.body) if isinstance(parent, ast.ClassDef) else set()
-        if not any(
-            isinstance(decorator, ast.Call)
-            and not any(isinstance(node, ast.Name) and node.id in class_bindings for node in ast.walk(decorator.func))
-            and self.context.module_imports.resolved_symbol(decorator.func, sources=_PYDANTIC)
-            in {"model_validator", "field_validator"}
-            and any(
+        if (
+            not isinstance(parent, ast.ClassDef)
+            or self.context.parents.get(parent) is not self.context.tree
+            or not function.decorator_list
+            or self.context.dynamic_namespace
+        ):
+            return None
+        decorator = self._before_decorator(function)
+        if decorator is None:
+            return None
+        symbol = self.models.symbol(ast.Name(id=parent.name))
+        if symbol is None or not self.models.plain_validation(symbol):
+            return None
+        if function.name in scope_bound_names([member for member in parent.body if member is not function]):
+            return None
+        class_bindings = scope_bound_names(parent.body)
+        if any(isinstance(node, ast.Name) and node.id in class_bindings for node in ast.walk(decorator.func)):
+            return None
+        descriptor = self._validator_descriptor(function, class_bindings)
+        if descriptor is None:
+            return None
+        parameters = [*function.args.posonlyargs, *function.args.args]
+        qualified = self.context.module_imports.resolved_qualified_name(decorator.func)
+        if qualified is None or not self._validator_provider.imported(decorator.func, qualified):
+            return None
+        offset = int(
+            descriptor == "builtins.classmethod"
+            or (descriptor == "auto" and bool(parameters and parameters[0].arg == "cls"))
+        )
+        return parameters[offset].arg if len(parameters) > offset else None
+
+    def _before_decorator(self, function: _Function) -> ast.Call | None:
+        decorator = function.decorator_list[0]
+        if not isinstance(decorator, ast.Call) or len(function.decorator_list) > _MAX_BEFORE_VALIDATOR_DECORATORS:
+            return None
+        if self.context.module_imports.resolved_symbol(decorator.func, sources=_PYDANTIC) not in {
+            "model_validator",
+            "field_validator",
+        }:
+            return None
+        return (
+            decorator
+            if any(
                 keyword.arg == "mode" and isinstance(keyword.value, ast.Constant) and keyword.value.value == "before"
                 for keyword in decorator.keywords
             )
-            for decorator in function.decorator_list
-        ):
-            return None
-        parameters = [*function.args.posonlyargs, *function.args.args]
-        is_classmethod = any(
-            isinstance(decorator, ast.Name) and decorator.id == "classmethod" for decorator in function.decorator_list
+            else None
         )
-        offset = int(is_classmethod or bool(parameters and parameters[0].arg == "cls"))
-        return parameters[offset].arg if len(parameters) > offset else None
+
+    def _validator_descriptor(self, function: _Function, class_bindings: set[str]) -> str | None:
+        if not self._validator_provider.builtin_namespace_untouched:
+            return None
+        if len(function.decorator_list) == _MAX_BEFORE_VALIDATOR_DECORATORS:
+            inner = function.decorator_list[1]
+            qualified = self.context.module_imports.resolved_qualified_name(inner)
+            if (
+                isinstance(inner, ast.Name)
+                and inner.id in {"classmethod", "staticmethod"}
+                and (
+                    inner.id not in class_bindings
+                    and inner.id not in self.context.module_imports.shadowed_names
+                    and inner.id not in self.context.module_imports.bindings
+                )
+            ):
+                qualified = f"builtins.{inner.id}"
+            if qualified not in {"builtins.classmethod", "builtins.staticmethod"}:
+                return None
+            return qualified
+        return "auto"
 
     def _value(self, node: ast.expr, bindings: Mapping[str, _Value]) -> _Value | None:
         match node:

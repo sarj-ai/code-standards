@@ -16,7 +16,9 @@ from sarj_python_lint.rule_base import (
     Severity,
 )
 from sarj_python_lint.rules._ast_index import walk
+from sarj_python_lint.rules._closed_helpers import call_matches, closed_references, direct_call
 from sarj_python_lint.rules._paths import is_generated, is_test_path, is_test_support_path
+from sarj_python_lint.rules._resource_provenance import ResourceProvenance
 
 
 if TYPE_CHECKING:
@@ -33,7 +35,7 @@ class RequirePreciseFactorySignature(ProjectRule):
     id = "require-precise-factory-signature"
     code = "SARJ473"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        default_level=Severity.WARNING,
+        default_level=Severity.ERROR,
         summary="Keep fixed keyword factory calls behind a precise callable signature.",
         rationale="Callable[..., T] and functools.partial[T] erase argument checking at injected boundaries, so misspelled keywords and incompatible factories pass strict typing and can fail at runtime.",
         remediation=(
@@ -46,6 +48,7 @@ class RequirePreciseFactorySignature(ProjectRule):
         category=RuleCategory.ARCHITECTURE,
         autofix=AutofixPolicy.NONE,
         limitations=(
+            "Private module-level functions with closed, statically resolved direct callers block as errors. Public, async, or escaped callable contracts retain advisory findings so published dynamic APIs are preserved.",
             "Only undecorated module-level functions with proven standard Callable[..., OwnedClass] or functools.partial[OwnedClass] parameters directly called with at least one named keyword are considered. Imported classes require scanned first-party declarations; direct partial construction and calls remain native type-checker ownership.",
             "Tests, test support, generated code, unresolved/string/generic annotations, positional-only calls, unpacking, forwarding, nested captures, rebinding and ambiguous imports are excluded. Import capture checks are conservative across the file, so an unrelated local pattern, exception or walrus binding can prevent a warning.",
             "A fixed call demonstrates signature erasure, not a current runtime defect. Genuine dynamic APIs can use a reasoned suppression. No autofix: the correct contract depends on whether classes or function factories are intended.",
@@ -58,7 +61,7 @@ class RequirePreciseFactorySignature(ProjectRule):
                 files=(
                     ExampleFile.python(
                         "app/service.py",
-                        "from collections.abc import Callable\nclass Result: pass\ndef build(factory: Callable[..., Result]):\n    return factory(size=4)\n",
+                        "from collections.abc import Callable\nclass Result: pass\ndef _build(factory: Callable[..., Result]):\n    return factory(size=4)\n_build(Result)\n",
                     ),
                 ),
                 focus_path=PurePosixPath("app/service.py"),
@@ -72,7 +75,7 @@ class RequirePreciseFactorySignature(ProjectRule):
                 files=(
                     ExampleFile.python(
                         "app/service.py",
-                        "from functools import partial\nclass Result: pass\ndef build(factory: partial[Result]):\n    return factory(size=4)\n",
+                        "from functools import partial\nclass Result: pass\ndef _build(factory: partial[Result]):\n    return factory(size=4)\n_build(Result)\n",
                     ),
                 ),
                 focus_path=PurePosixPath("app/service.py"),
@@ -147,10 +150,20 @@ class RequirePreciseFactorySignature(ProjectRule):
                             "argument contract; remove unnecessary factory indirection or reuse a precise callable "
                             "contract that preserves the accepted keywords."
                         ),
-                        severity=Severity.WARNING,
+                        severity=Severity.ERROR if _closed_owner(function, context) else Severity.WARNING,
                     )
                 )
         return sorted(findings, key=lambda finding: (finding.line, finding.col))
+
+
+def _closed_owner(function: ast.FunctionDef | ast.AsyncFunctionDef, context: PythonFileContext) -> bool:
+    if not isinstance(function, ast.FunctionDef) or not function.name.startswith("_"):
+        return False
+    references = closed_references(context, function, ResourceProvenance(context))
+    return bool(references) and all(
+        (call := direct_call(reference, context)) is not None and call_matches(function, call)
+        for reference in references
+    )
 
 
 def _factory_result(annotation: ast.expr | None, context: PythonFileContext) -> ast.Name | ast.Attribute | None:

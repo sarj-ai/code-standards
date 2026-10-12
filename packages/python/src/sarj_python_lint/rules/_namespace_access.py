@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import ast
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 
 if TYPE_CHECKING:
@@ -27,11 +27,13 @@ _DYNAMIC_MEMBERS = frozenset(
         "f_builtins",
     }
 )
-_MODULE_APIS = {
+_MODULE_APIS: Final[dict[str, frozenset[str]]] = {
     "sys": frozenset({"modules", "_getframe"}),
+    "inspect": frozenset({"currentframe"}),
     "importlib": frozenset({"import_module"}),
     "builtins": _NAMESPACE_APIS,
 }
+_RESOLVED_MEMBERS = _NAMESPACE_APIS | {"modules", "import_module"}
 
 
 def dynamic_namespace_access(
@@ -72,6 +74,8 @@ def _namespace_reference(
     if isinstance(node, ast.Attribute):
         if node.attr in _DYNAMIC_MEMBERS:
             return True
+        if node.attr not in _RESOLVED_MEMBERS:
+            return False
         qualified = imports.resolved_qualified_name(node)
         return qualified in {"sys.modules", "importlib.import_module"} or (
             imports.resolved_symbol(node, sources=frozenset({"builtins"})) in _NAMESPACE_APIS
