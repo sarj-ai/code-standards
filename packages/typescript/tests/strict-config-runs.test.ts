@@ -24,6 +24,7 @@
 import { readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { runInNewContext } from "node:vm";
 
 import { ESLint, type Linter } from "eslint";
 import reactHooks from "eslint-plugin-react-hooks";
@@ -69,6 +70,40 @@ function severity(setting: unknown): unknown {
 const ESLINT_MAJOR = Number.parseInt(ESLint.version.split(".")[0] ?? "0", 10);
 
 describe("the shipped eslint.strict.mjs can actually lint", () => {
+  it.each([
+    ["new Array(3)", null, { calls: 0, length: 3, keys: [], has0: false }],
+    ["Array(3)", "unicorn/new-for-builtins", { calls: 0, length: 3, keys: [], has0: false }],
+    ["new Array(-1)", null, { error: "RangeError" }],
+    ["new Array(1.5)", null, { error: "RangeError" }],
+    ["Array.from({ length: 3 })", null, { calls: 3, length: 3, keys: ["0", "1", "2"], has0: true }],
+    ["new Array('x', 'y')", "@typescript-eslint/no-array-constructor", { calls: 2, length: 2, keys: ["0", "1"], has0: true }],
+    ["new Array('x')", null, { calls: 1, length: 1, keys: ["0"], has0: true }],
+  ] as const)("preserves native Array behavior when fixing %s", async (construction, ruleId, expected) => {
+    const arrayRules = new Set(["unicorn/no-new-array", "unicorn/new-for-builtins", "@typescript-eslint/no-array-constructor", "no-sparse-arrays"]);
+    const focused = STRICT_CONFIG_FACTORY({ projectService: false }).map(entry => ({
+      ...entry,
+      rules: Object.fromEntries(Object.entries(entry.rules ?? {}).filter(([id]) => arrayRules.has(id))),
+    }));
+    const source = `(() => {
+      try {
+        const values = ${construction};
+        let calls = 0;
+        values.map(() => { calls += 1; });
+        return { calls, length: values.length, keys: Object.keys(values), has0: Object.hasOwn(values, 0) };
+      } catch (error) { return { error: error.name }; }
+    })()`;
+    const options = { cwd: FIXTURE_DIR, overrideConfigFile: true as const, overrideConfig: focused };
+    const [diagnostic] = await new ESLint(options).lintText(source, { filePath: "array.ts" });
+    expect(diagnostic?.messages.map(message => message.ruleId)).toEqual(ruleId === null ? [] : [ruleId]);
+    const [fixed] = await new ESLint({ ...options, fix: true }).lintText(source, { filePath: "array.ts" });
+    expect(fixed?.messages).toEqual([]);
+    const output = fixed?.output ?? source;
+    expect(runInNewContext(source)).toEqual(expected);
+    expect(runInNewContext(output)).toEqual(expected);
+    const [second] = await new ESLint({ ...options, fix: true }).lintText(output, { filePath: "array.ts" });
+    expect(second?.output).toBeUndefined();
+  });
+
   it.each(CONFIG_FACTORIES)(
     "%s rejects void-discarded promises while retaining handled promises",
     async (_name, createConfig) => {

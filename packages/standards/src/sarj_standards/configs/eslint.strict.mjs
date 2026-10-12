@@ -268,7 +268,9 @@ const UNICORN_CORRECTNESS_RULES = {
   "unicorn/no-missing-local-resource": "error",
   "unicorn/no-multiple-promise-resolver-calls": "error",
   "unicorn/no-negation-in-equality-check": "error",
-  "unicorn/no-new-array": "error",
+  // Numeric Array construction preserves holes and RangeErrors; Array.from does not.
+  // This loses single non-number literal advice; no-array-constructor still owns safe literals.
+  "unicorn/no-new-array": "off",
   "unicorn/no-new-buffer": "error",
   "unicorn/no-nonstandard-builtin-properties": "error",
   "unicorn/no-object-as-default-parameter": "error",

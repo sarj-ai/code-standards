@@ -108,6 +108,15 @@ function severityOf(setting: unknown): unknown {
 }
 
 describe("the shipped eslint.strict.mjs actually loads", () => {
+  it.each(CONFIG_FACTORIES)("%s preserves native numeric Array construction", async (_name, createConfig) => {
+    const eslint = new ESLint({ overrideConfigFile: true, overrideConfig: createConfig({ projectService: false }) });
+    const configured = await eslint.calculateConfigForFile("src/index.ts") as Linter.Config;
+    expect(severityOf(configured?.rules?.["unicorn/no-new-array"])).toBe(0);
+    expect(severityOf(configured?.rules?.["@typescript-eslint/no-array-constructor"])).toBe(2);
+    expect(severityOf(configured?.rules?.["unicorn/new-for-builtins"])).toBe(2);
+    expect(severityOf(configured?.rules?.["no-sparse-arrays"])).toBe(1);
+  });
+
   it("composes ESLint recommended before TypeScript duplicate ownership", async () => {
     const configured = await configFor("src/index.ts");
     const rules = configured.rules ?? {};

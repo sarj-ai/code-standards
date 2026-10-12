@@ -20,6 +20,9 @@ export const REQUIRE_PORT_FOR_SERVICE_DOCUMENTATION = {
   remediation: "Declare and implement an interface covering the service's public methods.",
   category: "architecture",
   aliases: ["require-interface-for-injected-service"],
+  limitations: [
+    "Retained injection requires an untouched parameter property or a single direct, unconditional constructor assignment. Conditional, repeated, replaced, updated, or deleted stores are unresolved rather than proof of retained injection.",
+  ],
   examples: [
     { id: "declared-service-port", title: "Implement the service port", outcome: "no-match", files: [{ path: "src/service.ts", source: "interface Handler { handle(): void }\nexport class RequestHandler implements Handler { constructor(private readonly store: TaskStore) {} handle(): void { this.store.handle(); } }" }], focusPath: "src/service.ts", expectedCount: 0, public: true },
     { id: "concrete-injected-service", title: "Do not expose only the concrete service", outcome: "match", files: [{ path: "src/service.ts", source: "export class RequestHandler { constructor(private readonly store: TaskStore) {} handle(): void { this.store.handle(); } }" }], focusPath: "src/service.ts", expectedCount: 1, public: true },
@@ -243,6 +246,8 @@ const readConstructor = (
   const storedFieldsFrom = new Map<string, Set<string>>();
   const storedMemberFieldsFrom = new Map<string, Map<string, Set<string>>>();
   const constructedFieldNames = new Set<string>();
+  const writtenFieldNames = new Set<string>();
+  const unstableFieldNames = new Set<string>();
   const localBindings = new Set<string>();
   let constructedFields = 0;
 
@@ -259,13 +264,15 @@ const readConstructor = (
         current.type === AST_NODE_TYPES.ClassDeclaration
       ) return;
       if (current.type === AST_NODE_TYPES.VariableDeclarator && current.id.type === AST_NODE_TYPES.Identifier) localBindings.add(current.id.name);
-      const expression = current.type === AST_NODE_TYPES.ExpressionStatement ? current.expression : null;
-      const storedField =
-        expression?.type === AST_NODE_TYPES.AssignmentExpression &&
-          expression.left.type === AST_NODE_TYPES.MemberExpression &&
-          expression.left.object.type === AST_NODE_TYPES.ThisExpression
-          ? staticMemberName(expression.left)
-          : null;
+      const expression = current.type === AST_NODE_TYPES.AssignmentExpression ? current : null;
+      const storedField = writtenInstanceField(current);
+      if (storedField !== null) {
+        if (writtenFieldNames.has(storedField)) unstableFieldNames.add(storedField);
+        writtenFieldNames.add(storedField);
+        if (expression?.operator !== "=" ||
+            expression.parent.type !== AST_NODE_TYPES.ExpressionStatement ||
+            expression.parent.parent !== body) unstableFieldNames.add(storedField);
+      }
       if (
         expression?.type !== AST_NODE_TYPES.AssignmentExpression ||
         !STORAGE_ASSIGNMENT_OPERATORS.has(expression.operator) ||
@@ -276,13 +283,7 @@ const readConstructor = (
         enqueueChildren(current);
         return;
       }
-      let source = expression.right;
-      while (
-        source.type === AST_NODE_TYPES.TSNonNullExpression ||
-        source.type === AST_NODE_TYPES.TSAsExpression ||
-        source.type === AST_NODE_TYPES.TSSatisfiesExpression ||
-        source.type === AST_NODE_TYPES.TSTypeAssertion
-      ) source = source.expression;
+      const source = unwrapExpression(expression.right);
       if (source.type === AST_NODE_TYPES.NewExpression) {
         constructedFields += 1;
         constructedFieldNames.add(storedField);
@@ -308,6 +309,7 @@ const readConstructor = (
           storedMemberFieldsFrom.set(source.object.name, members);
         }
       }
+      enqueueChildren(current);
     }
 
     function enqueueChildren(current: TSESTree.Node): void {
@@ -327,19 +329,24 @@ const readConstructor = (
     for (const reference of parameterCollaborators(parameter, declared, storedMemberFieldsFrom)) {
       if (localBindings.has(reference.name)) continue;
       let fields = reference.fields;
-      if (parameter.type === AST_NODE_TYPES.TSParameterProperty) fields = [reference.name];
+      if (parameter.type === AST_NODE_TYPES.TSParameterProperty) {
+        if (writtenFieldNames.has(reference.name)) continue;
+        fields = [reference.name];
+      }
       else if (fields.length === 0) fields = [...(storedFieldsFrom.get(reference.name) ?? [])];
-      const injectedFields = fields.filter((field) => !constructedFieldNames.has(field));
+      const injectedFields = fields.filter((field) => !constructedFieldNames.has(field) && !unstableFieldNames.has(field));
       if (injectedFields.length === 0) continue;
       if (CONFIGISH_TYPE_RE.test(reference.typeName)) continue;
       if (CONFIGISH_NAME_RE.test(reference.name)) continue;
       // A bare type reference can still be one of three things a port would
       // protect nothing about, each of them the inline shape this rule already
       // rejects wearing a nominal name.
-      if (typeParameters.has(reference.typeName)) continue;
-      if (BUILTIN_CONTAINER_TYPE_RE.test(reference.typeName)) continue;
-      if (VALUE_TYPE_RE.test(reference.typeName)) continue;
-      if (declared().functionAliases.has(reference.typeName)) continue;
+      if (
+        typeParameters.has(reference.typeName) ||
+        BUILTIN_CONTAINER_TYPE_RE.test(reference.typeName) ||
+        VALUE_TYPE_RE.test(reference.typeName) ||
+        declared().functionAliases.has(reference.typeName)
+      ) continue;
       collaborators.push({ ...reference, fields: injectedFields });
     }
 
@@ -529,6 +536,14 @@ const instanceField = (candidate: TSESTree.Node): string | null => {
     ? staticMemberName(node)
     : null;
 };
+
+/** Direct instance-field writes shared by constructor retention and operation identity. */
+function writtenInstanceField(node: TSESTree.Node): string | null {
+  if (node.type === AST_NODE_TYPES.AssignmentExpression) return instanceField(node.left);
+  if (node.type === AST_NODE_TYPES.UpdateExpression) return instanceField(node.argument);
+  if (node.type === AST_NODE_TYPES.UnaryExpression && node.operator === "delete") return instanceField(node.argument);
+  return null;
+}
 
 /** Instance fields whose retained object is called or receives a direct method call. */
 const behaviorallyInvokedFields = (body: TSESTree.ClassBody): ReadonlySet<string> => {
@@ -944,13 +959,22 @@ export function createServiceOperationResolver(program: TSESTree.Program): (node
 /** Method and function-property bodies, excluding static or rewritten operations. */
 function serviceOperationBodies(node: TSESTree.ClassDeclaration): ReadonlyMap<string, TSESTree.Node> {
   const bodies = new Map<string, TSESTree.Node>();
+  const written = new Set<string>();
+  const pending: TSESTree.Node[] = [node.body];
+  while (pending.length > 0) {
+    const current = pending.pop();
+    if (current === undefined) break;
+    const name = writtenInstanceField(current);
+    if (name !== null) written.add(name);
+    forEachOwnAstChild(current, child => { pending.push(child); });
+  }
   for (const member of node.body.body) {
     if (member.type !== AST_NODE_TYPES.MethodDefinition && member.type !== AST_NODE_TYPES.PropertyDefinition) continue;
-    if (member.static || member.decorators.length > 0) continue;
-    if (member.type === AST_NODE_TYPES.MethodDefinition && member.kind !== "method") continue;
+    if (member.static || member.decorators.length > 0 ||
+        (member.type === AST_NODE_TYPES.MethodDefinition && member.kind !== "method")) continue;
     if (member.value?.type !== AST_NODE_TYPES.FunctionExpression && member.value?.type !== AST_NODE_TYPES.ArrowFunctionExpression) continue;
     const name = declaredMemberName(member);
-    if (name !== null && member.value.body !== null) bodies.set(name, member.value.body);
+    if (name !== null && !written.has(name) && member.value.body !== null) bodies.set(name, member.value.body);
   }
   return bodies;
 }
