@@ -19,11 +19,12 @@ export const NO_TAUTOLOGICAL_EXPECT_DOCUMENTATION = {
     "Disallow supported assertions known to pass from literals or immutable scalar setup.",
   rationale:
     "An assertion determined entirely by literals does not observe the code under test and can keep passing after that code is removed.",
-  remediation: "Assert on a value produced by the behavior under test, or remove the assertion.",
+  remediation: "Assert on a value produced by the behavior under test against an independently specified expectation, or remove only the redundant assertion while preserving coverage.",
   category: "testing",
   limitations: [
     "Only direct supported `expect` matcher calls in recognized test files are inspected. Local expect bindings, regular expressions, and unsupported coercions are excluded; failing constant assertions are not tautologies.",
     "Scalar const bindings and aliases resolve through lexical scope; mutable bindings, objects, arrays, destructuring, runtime initializers and forward references are excluded.",
+    "Expected-side runtime dependence, including a complete inline snapshot computed from its actual value, remains manual review; independent static interpolation and intentional partial masking are valid.",
   ],
   examples: [
     {

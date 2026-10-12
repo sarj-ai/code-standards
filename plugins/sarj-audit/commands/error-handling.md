@@ -8,5 +8,9 @@ Audit exception and failure handling using the shared [audit protocol](../skills
 - Expected failures converted to ambiguous sentinels or unrelated exception types.
 - Partial state left behind after a failure, missing cleanup, or retries that duplicate side effects.
 - Error responses that leak internals or erase actionable domain context.
+- Shell failure handlers that need the original exit status but capture the
+  negated status from `if ! command` or overwrite `$?` through intervening commands.
+  Capture the original status immediately in the failure arm of `if command`;
+  boolean-only negation and intentional recovery remain valid.
 
 Do not demand local logging when a higher boundary records the error once with context. Avoid duplicate logging and catch/rethrow wrappers that add no information.

@@ -35,7 +35,7 @@ class RequirePreciseFactorySignature(ProjectRule):
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
         default_level=Severity.WARNING,
         summary="Keep fixed keyword factory calls behind a precise callable signature.",
-        rationale="Callable[..., T] erases argument checking, so misspelled keywords and incompatible injected factories pass strict typing and can fail at runtime.",
+        rationale="Callable[..., T] and functools.partial[T] erase argument checking at injected boundaries, so misspelled keywords and incompatible factories pass strict typing and can fail at runtime.",
         remediation=(
             "If factory substitution is unnecessary, call the existing constructor directly. Otherwise reuse an "
             "existing precise callable contract; use type[T] when the dependency requires a class, accounting "
@@ -46,7 +46,7 @@ class RequirePreciseFactorySignature(ProjectRule):
         category=RuleCategory.ARCHITECTURE,
         autofix=AutofixPolicy.NONE,
         limitations=(
-            "Only undecorated module-level functions with proven standard Callable[..., OwnedClass] parameters directly called with at least one named keyword are considered. Imported classes require scanned first-party declarations.",
+            "Only undecorated module-level functions with proven standard Callable[..., OwnedClass] or functools.partial[OwnedClass] parameters directly called with at least one named keyword are considered. Imported classes require scanned first-party declarations; direct partial construction and calls remain native type-checker ownership.",
             "Tests, test support, generated code, unresolved/string/generic annotations, positional-only calls, unpacking, forwarding, nested captures, rebinding and ambiguous imports are excluded. Import capture checks are conservative across the file, so an unrelated local pattern, exception or walrus binding can prevent a warning.",
             "A fixed call demonstrates signature erasure, not a current runtime defect. Genuine dynamic APIs can use a reasoned suppression. No autofix: the correct contract depends on whether classes or function factories are intended.",
         ),
@@ -63,6 +63,36 @@ class RequirePreciseFactorySignature(ProjectRule):
                 ),
                 focus_path=PurePosixPath("app/service.py"),
                 expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="erased-partial-factory",
+                title="An injected partial retains its result type but loses argument checking",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/service.py",
+                        "from functools import partial\nclass Result: pass\ndef build(factory: partial[Result]):\n    return factory(size=4)\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/service.py"),
+                expected_count=1,
+                scenario="partial-erasure",
+                public=True,
+            ),
+            RuleExample(
+                example_id="direct-partial-factory",
+                title="Direct partial construction keeps native argument checking",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/service.py",
+                        "from functools import partial\nclass Result:\n    def __init__(self, *, size: int):\n        self.size = size\ndef build():\n    factory = partial(Result)\n    return factory(size=4)\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/service.py"),
+                expected_count=0,
+                scenario="partial-erasure",
                 public=True,
             ),
             RuleExample(
@@ -113,7 +143,7 @@ class RequirePreciseFactorySignature(ProjectRule):
                         col=argument.col_offset + 1,
                         code=self.code,
                         message=(
-                            f"`{argument.arg}` is called with fixed keywords but Callable[..., T] erases its "
+                            f"`{argument.arg}` is called with fixed keywords but its factory annotation erases its "
                             "argument contract; remove unnecessary factory indirection or reuse a precise callable "
                             "contract that preserves the accepted keywords."
                         ),
@@ -124,19 +154,20 @@ class RequirePreciseFactorySignature(ProjectRule):
 
 
 def _factory_result(annotation: ast.expr | None, context: PythonFileContext) -> ast.Name | ast.Attribute | None:
-    if (
-        not isinstance(annotation, ast.Subscript)
-        or context.module_imports.resolved_qualified_name(annotation.value) not in _CALLABLES
-    ):
+    if not isinstance(annotation, ast.Subscript):
         return None
-    if not isinstance(annotation.slice, ast.Tuple) or len(annotation.slice.elts) != _CALLABLE_ARITY:
+    carrier = context.module_imports.resolved_qualified_name(annotation.value)
+    if carrier in _CALLABLES:
+        if not isinstance(annotation.slice, ast.Tuple) or len(annotation.slice.elts) != _CALLABLE_ARITY:
+            return None
+        parameters, result = annotation.slice.elts
+        if not isinstance(parameters, ast.Constant) or parameters.value is not Ellipsis:
+            return None
+    elif carrier == "functools.partial":
+        result = annotation.slice
+    else:
         return None
-    parameters, result = annotation.slice.elts
-    if (
-        not isinstance(parameters, ast.Constant)
-        or parameters.value is not Ellipsis
-        or not isinstance(result, (ast.Name, ast.Attribute))
-    ):
+    if not isinstance(result, (ast.Name, ast.Attribute)):
         return None
     root = _root(annotation.value)
     if (root is not None and _captured_import_root(root, context)) or any(

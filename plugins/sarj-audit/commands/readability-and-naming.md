@@ -10,6 +10,19 @@ Audit clarity problems not already enforced by deterministic comment or file-ord
 - Dense expressions, deep nesting, clever control flow, or re-export indirection that materially impedes comprehension.
 - Stale explanatory text whose claims conflict with the implementation.
 - Lint-driven aliases or repeated annotations where an existing typed API or inferred type already expresses the same contract. Prefer supplied callback values over re-reading mutable state; preserve evaluation count, captured snapshots, intentional type contracts, public-library attributes, and framework-required annotations.
+- SQL anti-filters whose compact spelling obscures the required NULL policy.
+  Recommend `NOT EXISTS` over `NOT IN` only for an independently established
+  anti-existence contract, preserving outer NULL policy, row bags, correlation,
+  types, order, security, and evaluation/error behavior. Intentional unknown
+  rejection and known nonnullable membership remain valid.
+- Nested configuration merges whose replacement policy is unclear. HCL `merge`
+  replaces a shared nested value; establish nested-default retention before
+  recommending a nested merge. Preserve whole-object replacement and null
+  clearing, and inspect unknown, sensitive, and conversion contracts.
+- YAML command blocks whose visible lines misrepresent the decoded program.
+  Preserve intended command boundaries before simplifying scalar style;
+  folded argument joining and blank-line-preserved breaks remain valid. Native
+  syntax acceptance does not prove the intended commands executed.
 
 Do not report subjective renames without showing the ambiguity they resolve. Prefer local simplification and established project vocabulary over new naming schemes.
 

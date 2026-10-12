@@ -124,13 +124,16 @@ class PreferFstringOverConcat(Rule):
         summary="Prefer f-strings for short human-readable interpolation when they make the result clearer.",
         rationale="For prose-like strings, f-strings keep interpolated values and surrounding text visible together.",
         remediation=(
-            "Replace the interpolation with one f-string. Preserve an explicit `str(value)` conversion as `{value!s}` "
-            "and `repr(value)` as `{value!r}` when those conversion semantics matter."
+            "Use one f-string when it preserves the required conversion and operator semantics. Preserve an explicit "
+            "`str(value)` conversion as `{value!s}` "
+            "and `repr(value)` as `{value!r}` when those conversion semantics matter. Retain required custom "
+            "concatenation or formatting behavior; a `str` annotation alone does not prove equivalence."
         ),
         category=RuleCategory.STYLE,
         autofix=AutofixPolicy.NONE,
         limitations=(
             "Runtime operands must have concrete string evidence.",
+            "String evidence does not prove that custom concatenation operators and `__format__` agree; this remains manual review.",
             (
                 "Logging, common direct SQL and regular-expression forms, lazy strings, ORM expressions, generated files, long "
                 "literals, and punctuation-oriented fragment composition are excluded."

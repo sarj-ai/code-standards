@@ -12,6 +12,29 @@ Audit separation of concerns and dependency direction using the shared [audit pr
 
 Do not require a class, interface, or service layer for pure functions, trivial CRUD, framework-provided dependencies, or a single stable implementation when added abstraction would not improve testing or substitution.
 
+For an existing decorator or adapter that only forwards a callable's inputs and
+result, preserve its input contract with `ParamSpec` or an equally accurate
+existing type. Keep intentionally transformed, dynamic, overloaded, reflected,
+and async contracts; annotation changes do not prove runtime equivalence.
+
+For an owned, nonmerged TypeScript input port, check that implementations accept
+every allowed input. Function-property syntax can enforce contravariance under
+`strictFunctionTypes` where method syntax does not. Do not require class arrow
+fields or readonly scaffolding, or rewrite merged overloads and receiver contracts.
+
+Establish acquisition and close ownership before changing provider lifetimes.
+A request provider borrowing an app-owned resource leaves its single shutdown
+close with the application; fresh request-owned resources may close per request.
+Keep dependencies alive until their actual consumer finishes. With supported
+FastAPI cleanup scopes, a lazy response using the resource needs request-lifetime
+cleanup; a body using only materialized values may release it earlier. Do not
+force yielded providers or request scope for every stream.
+
+When substituting dependency edges, preserve graph-carried authorization
+requirements, enforcement, and generated security schema. The same provider
+callable does not make FastAPI `Security` and `Depends` interchangeable. Intentional
+empty scopes remain valid; names and cache behavior do not establish authorization.
+
 ## Input ownership and transformations
 
 Prefer pure transformations that return replacement values. Report mutation of

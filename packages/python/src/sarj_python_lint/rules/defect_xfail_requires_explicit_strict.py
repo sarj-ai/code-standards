@@ -64,13 +64,16 @@ class DefectXfailRequiresExplicitStrict(Rule):
         ),
         remediation=(
             "Set literal `strict=True` so an unexpected pass fails. If only some parameter cases carry the defect, "
-            "move the marker to those `pytest.param(...)` cases before making it strict."
+            "move the marker to those `pytest.param(...)` cases before making it strict. When the defect's exception "
+            "type or group shape is independently known, native `raises=...`, where supported, can narrow unrelated failures; "
+            "same-type failures still need an origin oracle. Keep intentional broad expected-failure policies."
         ),
         category=RuleCategory.TESTING,
         aliases=("defect-xfail-requires-strict", "xfail-requires-strict"),
         limitations=(
             "Only markers resolved through an unambiguous pytest or pytest.mark import are analyzed.",
             "Only xfail reasons that explicitly identify a defect are analyzed.",
+            "Exception narrowing and defect identity remain manual review; strictness or a typed marker alone does not establish failure origin.",
             "Nondeterministic, recognized Hypothesis, network, environment-gated, run=False, and statically disabled pins are excluded.",
             "Repository-level strict_xfail / xfail_strict configuration is intentionally not consulted: defect pins remain locally explicit.",
             "Default pytest test_/Test collection names are recognized; repositories with custom collection patterns may need a local suppression.",
