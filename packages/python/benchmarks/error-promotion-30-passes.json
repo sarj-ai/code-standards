@@ -1,0 +1,802 @@
+{
+  "schemaVersion": 1,
+  "scope": "sarj-ai/code-standards only",
+  "baseCommit": "e9cbc245309d6ce2d5e439dca3da34c32dbf4e1b",
+  "state": "locally-verified-awaiting-exact-head-ci",
+  "request": "Thirty substantive promotion passes under the user's explicit strict modern typing and maintainability policy.",
+  "policy": "Deterministic style and typing conventions may block when a useful manual remedy preserves existing contracts. No unsafe autofixes; exact reasoned exceptions remain available. Ambiguous behavior-changing rewrites retain warnings.",
+  "promotionPasses": [
+    {
+      "pass": 1,
+      "selectors": [
+        "python:prefer-or-pattern"
+      ],
+      "decision": "error",
+      "evidence": "Adjacent unguarded cases have identical bodies and bindings; use an OR pattern, preserving comments and useful boundaries."
+    },
+    {
+      "pass": 2,
+      "selectors": [
+        "python:prefer-walrus-awaited-none-guard"
+      ],
+      "decision": "error",
+      "evidence": "The assignment followed by an explicit None guard has one evaluation; declared pre-3.8 projects are excluded."
+    },
+    {
+      "pass": 3,
+      "selectors": [
+        "python:prefer-walrus-regex-match"
+      ],
+      "decision": "error",
+      "evidence": "The local regex result and truthiness guard can share one binding; declared legacy targets remain excluded."
+    },
+    {
+      "pass": 4,
+      "selectors": [
+        "python:prefer-walrus-stream-loop"
+      ],
+      "decision": "error",
+      "evidence": "The supported read/termination loop has one binding and preserved termination semantics; legacy targets are excluded."
+    },
+    {
+      "pass": 5,
+      "selectors": [
+        "python:no-unused-value-marker"
+      ],
+      "decision": "error",
+      "evidence": "Replace a bare unused marker with an informative retained name; preserve object/resource lifetime instead of deleting the assignment."
+    },
+    {
+      "pass": 6,
+      "selectors": [
+        "python:require-explicit-contract-implementation"
+      ],
+      "decision": "error",
+      "evidence": "Owned ordinary classes and stable constructor origins prove a missing declared nominal relationship. Dynamic hooks, class escapes, aliases, opaque value escapes and reassignment abstain."
+    },
+    {
+      "pass": 7,
+      "selectors": [
+        "python:prefer-autospec-for-callable-mock"
+      ],
+      "decision": "error",
+      "evidence": "A closed canonical callable mock with known invocation syntax lacks argument checking. Escaped providers and altered or escaped specs abstain."
+    },
+    {
+      "pass": 8,
+      "selectors": [
+        "python:named-record-at-boundaries"
+      ],
+      "decision": "error",
+      "evidence": "A named contract improves record typing. Explicit named open Mapping/dict aliases remain valid, preserving wire and extension behavior."
+    },
+    {
+      "pass": 9,
+      "selectors": [
+        "python:duplicate-adjacent-exception-handler",
+        "python:duplicate-closed-pure-helper",
+        "python:redundant-test-constructor-forwarder"
+      ],
+      "decision": "error",
+      "evidence": "Consolidate supported adjacent handlers, closed native transformations or redundant record forwarders. Namespace/frame access, escaping references, provider mutation and independent extension contracts are excluded; manual edits preserve intentional seams."
+    },
+    {
+      "pass": 10,
+      "selectors": [
+        "python:prefer-immutable-module-constant"
+      ],
+      "decision": "error",
+      "evidence": "Declare owned constant intent explicitly; Final[list[T]], Final[set[T]] and Final[dict[K,V]], including Annotated wrappers, preserve mutable APIs and identity."
+    },
+    {
+      "pass": 11,
+      "selectors": [
+        "python:no-before-validator-input-mutation"
+      ],
+      "decision": "error",
+      "evidence": "Effective canonical before validators on owned plain Pydantic model ancestry must preserve raw inputs. Decorator replacement, provider/model escapes, nested lexical owners and class-creation/schema hooks abstain."
+    },
+    {
+      "pass": 12,
+      "selectors": [
+        "python:prefer-self-type-annotation"
+      ],
+      "decision": "bounded-error",
+      "evidence": "Only final instance methods on stable undecorated module classes without bases, with a closed canonical final provider and returns equal to the unrebound receiver, block. Other nominal/override promises stay advisory."
+    },
+    {
+      "pass": 13,
+      "selectors": [
+        "python:require-precise-factory-signature"
+      ],
+      "decision": "bounded-error",
+      "evidence": "Only private undecorated synchronous module functions with known direct callers block broad Callable signatures. Public, escaped and asynchronous contracts remain advisory."
+    },
+    {
+      "pass": 14,
+      "selectors": [
+        "python:require-keyword-only-swap-prone-params"
+      ],
+      "decision": "bounded-error",
+      "evidence": "Only closed private synchronous functions with known calls block interchangeable positional roles. Public APIs remain advisory; nominal role types can preserve positional ABI."
+    },
+    {
+      "pass": 15,
+      "selectors": [
+        "python:prefer-monotonic-for-elapsed-time"
+      ],
+      "decision": "bounded-error",
+      "evidence": "Only start values used exclusively in direct duration-loop comparisons against finite nonnegative literal thresholds block. Returned or logged clock telemetry remains advisory."
+    },
+    {
+      "pass": 16,
+      "selectors": [
+        "python:prefer-collection-comprehension"
+      ],
+      "decision": "bounded-error",
+      "evidence": "Supported list/set builders and dict builders with stable local/literal keys block. Descriptor keys and visible namespace/frame access retain warnings to preserve evaluation order."
+    },
+    {
+      "pass": 17,
+      "selectors": [
+        "eslint:require-explicit-contract-implementation"
+      ],
+      "decision": "error",
+      "evidence": "The typed owned abstract contract, implementation and rejecting instanceof consumer must be ordinary. All owned program modules are checked for class escapes; static blocks, constructors and prototype changes abstain."
+    },
+    {
+      "pass": 18,
+      "selectors": [
+        "eslint:named-child-schema-type"
+      ],
+      "decision": "error",
+      "evidence": "Name the exact copied child schema type with typeof Child or a shared explicit alias. Preserve independently pinned public types and runtime schema identity."
+    },
+    {
+      "pass": 19,
+      "selectors": [
+        "eslint:prefer-named-complex-return-type"
+      ],
+      "decision": "error",
+      "evidence": "Name supported complex return shapes while preserving generic parameters. Polymorphic this and local typeof dependencies are excluded."
+    },
+    {
+      "pass": 20,
+      "selectors": [
+        "eslint:prefer-switch-for-repeated-equality"
+      ],
+      "decision": "error",
+      "evidence": "Only lexically resolved local subjects and primitive literal equality cases qualify; getters, enum/named constants, RegExp values and unresolved globals are excluded."
+    },
+    {
+      "pass": 21,
+      "selectors": [
+        "python:prefer-match-value-dispatch"
+      ],
+      "decision": "bounded-error",
+      "evidence": "Only direct literal equality ladders on an unrebound parameter in its own function scope block, with a proven declared Python minimum of 3.10. Captured/class selectors, attributes, grouped membership, guards and unknown targets remain advisory."
+    },
+    {
+      "pass": 22,
+      "selectors": [
+        "python:unused-test-factory-option"
+      ],
+      "decision": "bounded-error",
+      "evidence": "Only invariant actual bool/None values across at least two closed direct callers block, without parameter rebinding or namespace access. Other literals and callable default capture remain advisory."
+    },
+    {
+      "pass": 23,
+      "selectors": [
+        "python:typed-error-reasons"
+      ],
+      "decision": "keep-warning",
+      "evidence": "A public error can carry dynamic context such as missing paths. Names and error suffixes do not prove a finite reason-code domain."
+    },
+    {
+      "pass": 24,
+      "selectors": [
+        "python:no-unused-copy-result"
+      ],
+      "decision": "keep-warning",
+      "evidence": "copy.replace invokes __replace__ and dataclasses.replace invokes __post_init__; deleting discarded calls can remove effects."
+    },
+    {
+      "pass": 25,
+      "selectors": [
+        "python:prefer-pydantic-json-value"
+      ],
+      "decision": "keep-warning",
+      "evidence": "Canonical JsonValue rejects inputs that a recursive local alias can coerce, including Decimal and tuples; replacement can change accepted data."
+    },
+    {
+      "pass": 26,
+      "selectors": [
+        "python:no-swallowed-asyncio-cancellation"
+      ],
+      "decision": "keep-warning",
+      "evidence": "Cancellation translation and task ownership can be deliberate; exception syntax alone does not prove that propagation is required."
+    },
+    {
+      "pass": 27,
+      "selectors": [
+        "python:prefer-match-exception-dispatch"
+      ],
+      "decision": "keep-warning",
+      "evidence": "Custom instance checks, imported exception classes and guard overlap can change refined matching; preserve the advisory contract."
+    },
+    {
+      "pass": 28,
+      "selectors": [
+        "eslint:prefer-node-crypto-hash"
+      ],
+      "decision": "keep-warning",
+      "evidence": "A Node replacement requires runtime availability, encoding and closed provider proof; current warning scope does not establish these."
+    },
+    {
+      "pass": 29,
+      "selectors": [
+        "eslint:prefer-shared-zod-enum",
+        "eslint:prefer-multi-value-zod-literal"
+      ],
+      "decision": "keep-warning",
+      "evidence": "Equal values do not imply equal schema transformations, independent domains or identity. ZodUnion and multi-value literal introspection/error contracts differ."
+    },
+    {
+      "pass": 30,
+      "selectors": [
+        "eslint:prefer-whole-object-assertion"
+      ],
+      "decision": "keep-warning",
+      "evidence": "Whole-object reads can invoke extra getters or Proxy traps; partial and prefix assertions can deliberately observe fewer fields."
+    }
+  ],
+  "outcome": {
+    "catalogWarningDefaultsPromoted": 25,
+    "fullScopeDefaults": 17,
+    "boundedNativeErrorTiers": 8,
+    "heldWarningSelectors": 9,
+    "consumerRepositoriesModified": 0
+  },
+  "severitySemantics": "The eight bounded Python rules preserve native WARNING for unsupported compatibility cases. The Standards catalog/preset enables the rule at ERROR without converting those native warnings; CLI warning-only findings exit zero and stay out of blocking baselines.",
+  "scopeRepairs": [
+    "Preserve Final mutable-container APIs and unwrap canonical Annotated[Final[...], metadata].",
+    "Preserve explicit named open record aliases and schema aliases rather than force runtime model conversions.",
+    "Prove effective method, constructor and validator bindings; skip overwritten and nested lexical owners.",
+    "Inventory escaped canonical providers, namespace/frame access and owned class values, including parent imported namespaces.",
+    "Track all owned TypeScript program modules; skip effectful static blocks, prototype mutation and constructor hooks.",
+    "Invalidate Python constructor origins after opaque value escapes, receiver calls and TypeGuard adaptation.",
+    "Require literal-dispatch parameter ownership in the same function, and actual singleton values across all known test-factory calls.",
+    "Preserve imported-model indexes when adding synthetic standalone class units.",
+    "Keep patched or escaped classes advisory for Self; require an intact builtin descriptor provider for Pydantic validators.",
+    "Split provenance, descriptor, class-origin and clock checks into coherent helpers that meet the repository complexity limit.",
+    "Inspect all runtime owned class references with explicit annotation/base/direct-constructor exclusions, retaining captured defaults, operators, iteration and yielded aliases.",
+    "Require inert class member values and closed canonical Field/ConfigDict; apply descriptor alias precision to existing SARJ491–493.",
+    "Resolve escaped TypeScript namespace exports, bracket members and implicit namespace method receivers.",
+    "Reject self-imported private function member aliases throughout known-caller proof.",
+    "Retain imports-only sibling modules and canonical named, module, wildcard and cyclic reexports in owned class escape proofs.",
+    "Bound each canonical origin query to 4,096 traversal states; exhaustion treats every owned class as escaped and preserves advisory or abstaining behavior.",
+    "Use a named immutable validator ownership record and cohesive TypeScript nominal-contract helpers.",
+    "Treat base/annotation call arguments and unknown generic subscription values as runtime escapes; only source-proven generic providers retain type exclusions.",
+    "Invalidate generic provider proof for wildcard replacement, direct/member/namespace mutation, first-class escapes and nested import aliases across the owned project.",
+    "Resolve named and qualified re-exported generic provider namespaces across owned units; normalize single-part namespace origins and conservatively handle incomplete closure."
+  ],
+  "corpora": {
+    "privacy": "Only aggregate counts are public; private identities, roots, source, revisions, digests and classification records remain in owner-only scratch files.",
+    "snapshots": 11,
+    "python": {
+      "files": 3976,
+      "bytes": 38444889,
+      "batches": 21
+    },
+    "typescript": {
+      "files": 2078,
+      "bytes": 12563492,
+      "batches": 10
+    },
+    "batchSize": 250,
+    "processPolicy": "Fresh process per repository and batch. All recorded original snapshot digests were reverified. Drifted shared temporary snapshots were restored into task-owned roots from exact already-local git archives; consumers were read only.",
+    "typescriptCoverage": "Natural corpus scans use syntax-only parsing. The nominal contract rule has no natural typed coverage there; owned typed multi-module fixtures and a separate typed performance panel cover it."
+  },
+  "judgePasses": [
+    {
+      "pass": 1,
+      "verdict": "revise",
+      "evidence": "Closed-scope methods, provider escapes, namespace/frame use, Annotated Final and fifth-module mutation required repairs."
+    },
+    {
+      "pass": 2,
+      "verdict": "revise",
+      "evidence": "Model and parent-namespace escapes, class-creation hooks, static this and TypeGuard origin changes required repairs."
+    },
+    {
+      "pass": 3,
+      "verdict": "approve-source-scope",
+      "evidence": "Same-function parameter ownership, actual singleton call values and nested parameter rebinding repaired. Independent regression sweep:864 passed; one stale SARJ482 warning integration expectation was updated."
+    },
+    {
+      "pass": 4,
+      "verdict": "approve-bounded-corpus-admission",
+      "evidence": "Inspected119 Python and all9 TypeScript hits; every sampled policy predicate/manual alternative is supported, concrete predicate/remediation FP0. API compatibility intent remains unclassified. One additional bounded unused-keyword tier proposed."
+    },
+    {
+      "pass": 5,
+      "verdict": "approve-bounded-source-and-convergence",
+      "evidence": "Independent459 Python cases and four fresh-source typed TypeScript projects preserve canonical positives and reject reproduced class-creation, alias, descriptor, namespace and implicit receiver effects. No further immediately supported promotion found; new tiers require additional ownership/API/purity proof. Repository/performance/exact-head CI remain release gates."
+    }
+  ],
+  "verification": {
+    "focusedPythonCrossLayer": "617 passed",
+    "typescriptPromoted": "90 passed",
+    "typescriptHeld": "144 passed",
+    "types": "All Python package typechecks: zero errors/warnings/notes; TypeScript typecheck exit 0.",
+    "repository": "make verify exit 0 on the final source; docs/build/format/native lint/strict types/package suites/repository policy/shell gates pass. Private-reference scan is delegated to trusted exact-head CI.",
+    "exactHeadCI": "required-before-admin-merge",
+    "latestSharedRepairs": "989 expanded Python cases; 0 Python type/Ruff/cognitive errors; 35 nominal TypeScript cases, typecheck and ESLint pass.",
+    "fullPython": "13599 passed on the final source.",
+    "importClosure": "368 focused tests pass, including imports-only siblings, reexports, cyclic wildcard projects, runtime base/annotation calls, opaque subscription providers and project-wide provider mutation.",
+    "pythonDogfood": "146 rules over 779 source files; zero blocking diagnostics.",
+    "repositoryTotals": {
+      "passed": 29470,
+      "skipped": 9,
+      "packages": {
+        "typescript": 7735,
+        "python": 13599,
+        "bootstrap": 18,
+        "contracts": 15,
+        "sql": 1428,
+        "iac": 1323,
+        "standards": 5352
+      }
+    },
+    "typescriptDogfood": "119 rules; zero diagnostics."
+  },
+  "limitations": [
+    "Precision is bounded by labeled cases and inspected immutable corpus hits; unobserved dynamic code can require exact exceptions.",
+    "Some promoted detectors already emitted native ERROR before this catalog change; catalog/default alignment is distinguished from newly blocking natural findings.",
+    "No natural new ERROR evidence exists for final-method Self, monotonic deadlines, private factory callbacks, unused underscored keywords, autospec, Pydantic before-input or nominal-contract scopes in these snapshots; those admissions rely on labeled or typed fixtures.",
+    "Source-proven dynamic ownership and lifetime compatibility exclusions deliberately preserve false negatives.",
+    "Cold means first measured fresh process with ordinary filesystem caches, not a forced hardware/disk-cache reset."
+  ],
+  "reproduce": [
+    "Use Python 3.15.0, Node 24.21.0 and uv 0.12.24 from the repository toolchain.",
+    "make verify",
+    "code-standards --root . maintain rules changes --before origin/main --after HEAD",
+    "Build both frozen baseline and candidate native engines; run only these selected rules plus the unchanged SARJ447 control over reverified local snapshots in batches of at most 250.",
+    "Alternate baseline/candidate fresh processes for three repeats, retain native severities and private findings, then require stable location/code/severity digests.",
+    "For local rule-only timing: code-standards --root . maintain rules bench --repeats 3 --rule python:prefer-match-value-dispatch <verified-local-corpus-paths>. Supply every promoted Python selector and the unchanged SARJ447 control for the selected native panel. The normal comparison uses the common native registry and excludes python:prefer-declarative-batch-validation, absent from the frozen baseline."
+  ],
+  "additionalPromotionPasses": [
+    {
+      "pass": 31,
+      "selectors": [
+        "python:no-unused-underscored-keyword-parameter"
+      ],
+      "decision": "bounded-error",
+      "evidence": "Judge convergence found another safe tier: private synchronous module functions with closed known direct callers, unused keyword-only singleton defaults/arguments and inert signature annotations. Required, callback, public, method and effectful cases remain advisory."
+    }
+  ],
+  "corpusReview": {
+    "python": {
+      "inspected": 119,
+      "privateSourceHits": 110,
+      "publicSourceHits": 9,
+      "sampling": "Inspect all59 minor new-catalog-ERROR cluster records, plus20 each from SARJ096/SARJ432/SARJ452 ordered by SHA-256 with seed error-promotion-30-v1.",
+      "roles": {
+        "public-method": 33,
+        "public-function": 34,
+        "private-function": 24,
+        "private-method": 8,
+        "module": 20
+      }
+    },
+    "typescript": {
+      "inspected": 9,
+      "privateSourceHits": 9,
+      "publicSourceHits": 0,
+      "clusters": {
+        "named-child-schema-type": 3,
+        "prefer-named-complex-return-type": 5,
+        "prefer-switch-for-repeated-equality": 1
+      }
+    },
+    "supportedPolicyPredicates": 128,
+    "concretePredicateOrRemediationFalsePositives": 0,
+    "compatibilityIntent": "Unclassified for all128 inspected findings. These are policy findings, not independently established runtime defects.",
+    "semanticTruePositives": "Not estimated",
+    "corpusFalseNegatives": "Not estimated",
+    "nativeChanges": {
+      "baselineErrors": 986,
+      "candidateErrors": 1459,
+      "newErrors": 476,
+      "downgradedPriorErrors": 3,
+      "finalWarnings": 116
+    },
+    "unchangedPriorErrorControl": {
+      "code": "SARJ447",
+      "count": 954
+    },
+    "stablePreFinalNativeLocations": true,
+    "finalSourceReplay": "All three final candidate Python runs exactly match the 1,575 approved tuples, with zero added/removed findings or duplicates. All three TypeScript runs preserve nine baseline locations, with zero duplicates and three reviewed remediation-message changes.",
+    "finalTypeScriptReplays": [
+      {
+        "pair": 0,
+        "findings": 9,
+        "sameBaselineLocations": true,
+        "duplicateLocations": 0,
+        "changedMessages": 3
+      },
+      {
+        "pair": 1,
+        "findings": 9,
+        "sameBaselineLocations": true,
+        "duplicateLocations": 0,
+        "changedMessages": 3
+      },
+      {
+        "pair": 2,
+        "findings": 9,
+        "sameBaselineLocations": true,
+        "duplicateLocations": 0,
+        "changedMessages": 3
+      }
+    ]
+  },
+  "performance": {
+    "environment": {
+      "python": "3.15.0",
+      "node": "24.21.0",
+      "uv": "0.12.24",
+      "processes": "Fresh process per snapshot/batch; finite fixtures are repeated for timing, not counted as independent semantic coverage.",
+      "load": "Shared workstation; times are load-sensitive and filesystem caches were not forcibly cleared."
+    },
+    "admissionBudget": {
+      "pythonSelectedIncrementalMedianMsPerFile": 5,
+      "normalNativePanelMedianOverheadPercent": 25,
+      "typescriptSyntaxIncrementalMedianMsPerFile": 2,
+      "typedPanelIncrementalSecondsPerContext": 0.25,
+      "incrementalPeakMemoryBytes": 134217728
+    },
+    "gate": "passed-original-budgets-on-final-source",
+    "sourceSha256": "9ce760662c07faffde87df59100f6d7d76e2299426db669786d62e12848bc315",
+    "measurementScope": "Three alternating baseline/candidate fresh-process pairs on the final source; difference of per-version medians, normal ratio of per-version medians, native and orchestration times recorded separately.",
+    "interpretation": "Bounded final-source authoring panels; shared workstation, ordinary filesystem caches, no fleet-wide performance claim.",
+    "pythonSelected": {
+      "files": 3976,
+      "bytes": 38444889,
+      "runs": [
+        {
+          "mode": "baseline",
+          "pair": 0,
+          "files": 3976,
+          "batches": 21,
+          "wallSeconds": 90.757955,
+          "nativeSeconds": 75.65578721254133,
+          "peakBytes": 478265344,
+          "findings": 1590
+        },
+        {
+          "mode": "candidate",
+          "pair": 0,
+          "files": 3976,
+          "batches": 21,
+          "wallSeconds": 114.570099,
+          "nativeSeconds": 92.17773983534425,
+          "peakBytes": 532037632,
+          "findings": 1575
+        },
+        {
+          "mode": "baseline",
+          "pair": 1,
+          "files": 3976,
+          "batches": 21,
+          "wallSeconds": 90.449494,
+          "nativeSeconds": 75.32604158553295,
+          "peakBytes": 477298688,
+          "findings": 1590
+        },
+        {
+          "mode": "candidate",
+          "pair": 1,
+          "files": 3976,
+          "batches": 21,
+          "wallSeconds": 111.909619,
+          "nativeSeconds": 90.61146333068609,
+          "peakBytes": 531922944,
+          "findings": 1575
+        },
+        {
+          "mode": "baseline",
+          "pair": 2,
+          "files": 3976,
+          "batches": 21,
+          "wallSeconds": 107.358355,
+          "nativeSeconds": 88.50329808495007,
+          "peakBytes": 479019008,
+          "findings": 1590
+        },
+        {
+          "mode": "candidate",
+          "pair": 2,
+          "files": 3976,
+          "batches": 21,
+          "wallSeconds": 119.157883,
+          "nativeSeconds": 96.14367275335826,
+          "peakBytes": 531496960,
+          "findings": 1575
+        }
+      ],
+      "incrementalNativeMedianMsPerFile": 4.155420679779408,
+      "incrementalPeakMemoryBytes": 53018624
+    },
+    "normalNativePanel": {
+      "selectionSeed": "error-promotion-30-normal-v1",
+      "perSnapshotMaximum": 20,
+      "runs": [
+        {
+          "mode": "baseline",
+          "pair": 0,
+          "files": 128,
+          "bytes": 1727151,
+          "batches": 7,
+          "wallSeconds": 20.575349,
+          "nativeSeconds": 16.579630916938186,
+          "peakBytes": 492748800,
+          "findings": 1298
+        },
+        {
+          "mode": "candidate",
+          "pair": 0,
+          "files": 128,
+          "bytes": 1727151,
+          "batches": 7,
+          "wallSeconds": 23.553275,
+          "nativeSeconds": 17.819753336021677,
+          "peakBytes": 533217280,
+          "findings": 1298
+        },
+        {
+          "mode": "baseline",
+          "pair": 1,
+          "files": 128,
+          "bytes": 1727151,
+          "batches": 7,
+          "wallSeconds": 20.941918,
+          "nativeSeconds": 16.901064332574606,
+          "peakBytes": 493223936,
+          "findings": 1298
+        },
+        {
+          "mode": "candidate",
+          "pair": 1,
+          "files": 128,
+          "bytes": 1727151,
+          "batches": 7,
+          "wallSeconds": 24.09289,
+          "nativeSeconds": 18.213507872773334,
+          "peakBytes": 533184512,
+          "findings": 1298
+        },
+        {
+          "mode": "baseline",
+          "pair": 2,
+          "files": 128,
+          "bytes": 1727151,
+          "batches": 7,
+          "wallSeconds": 20.943978,
+          "nativeSeconds": 16.829213415505365,
+          "peakBytes": 492716032,
+          "findings": 1298
+        },
+        {
+          "mode": "candidate",
+          "pair": 2,
+          "files": 128,
+          "bytes": 1727151,
+          "batches": 7,
+          "wallSeconds": 24.502369,
+          "nativeSeconds": 18.47431045700796,
+          "peakBytes": 533643264,
+          "findings": 1298
+        }
+      ],
+      "registryScope": "Common native registry; exclude the unrelated python:prefer-declarative-batch-validation rule, absent from the frozen baseline.",
+      "medianOverheadPercent": 8.22554461156555,
+      "incrementalPeakMemoryBytes": 40419328
+    },
+    "typedTypeScript": {
+      "runs": [
+        {
+          "pair": 0,
+          "mode": "baseline",
+          "contexts": 3,
+          "files": 15,
+          "seconds": 0.456040625,
+          "peakBytes": 366837760
+        },
+        {
+          "pair": 0,
+          "mode": "candidate",
+          "contexts": 3,
+          "files": 15,
+          "seconds": 0.45373349999999996,
+          "peakBytes": 367034368
+        },
+        {
+          "pair": 1,
+          "mode": "baseline",
+          "contexts": 3,
+          "files": 15,
+          "seconds": 0.41077508400000007,
+          "peakBytes": 421527552
+        },
+        {
+          "pair": 1,
+          "mode": "candidate",
+          "contexts": 3,
+          "files": 15,
+          "seconds": 0.423143333,
+          "peakBytes": 373997568
+        },
+        {
+          "pair": 2,
+          "mode": "baseline",
+          "contexts": 3,
+          "files": 15,
+          "seconds": 0.40203962499999996,
+          "peakBytes": 375209984
+        },
+        {
+          "pair": 2,
+          "mode": "candidate",
+          "contexts": 3,
+          "files": 15,
+          "seconds": 0.39624695899999995,
+          "peakBytes": 428883968
+        }
+      ],
+      "incrementalMedianSecondsPerContext": 0.0041227496666666474,
+      "incrementalPeakMemoryBytes": 7356416
+    },
+    "typescriptSyntax": {
+      "files": 2078,
+      "bytes": 12563492,
+      "runs": [
+        {
+          "mode": "baseline",
+          "pair": 0,
+          "files": 2078,
+          "batches": 10,
+          "wallSeconds": 8.63851,
+          "nativeSeconds": 6.105790748,
+          "peakBytes": 629899264,
+          "findings": 9
+        },
+        {
+          "mode": "candidate",
+          "pair": 0,
+          "files": 2078,
+          "batches": 10,
+          "wallSeconds": 8.619172,
+          "nativeSeconds": 6.106278625,
+          "peakBytes": 625147904,
+          "findings": 9
+        },
+        {
+          "mode": "baseline",
+          "pair": 1,
+          "files": 2078,
+          "batches": 10,
+          "wallSeconds": 8.812955,
+          "nativeSeconds": 6.184923751,
+          "peakBytes": 620314624,
+          "findings": 9
+        },
+        {
+          "mode": "candidate",
+          "pair": 1,
+          "files": 2078,
+          "batches": 10,
+          "wallSeconds": 8.706133,
+          "nativeSeconds": 6.19301875,
+          "peakBytes": 588201984,
+          "findings": 9
+        },
+        {
+          "mode": "baseline",
+          "pair": 2,
+          "files": 2078,
+          "batches": 10,
+          "wallSeconds": 8.53018,
+          "nativeSeconds": 6.046157248,
+          "peakBytes": 624082944,
+          "findings": 9
+        },
+        {
+          "mode": "candidate",
+          "pair": 2,
+          "files": 2078,
+          "batches": 10,
+          "wallSeconds": 8.604023,
+          "nativeSeconds": 6.115269583,
+          "peakBytes": 604028928,
+          "findings": 9
+        }
+      ],
+      "incrementalNativeMedianMsPerFile": 0.004561518286813986,
+      "incrementalPeakMemoryBytes": 0
+    }
+  },
+  "convergence": {
+    "additionalAdmission": "python:no-unused-underscored-keyword-parameter",
+    "remainingWarningDefaults": 81,
+    "conclusion": "No additional unchanged warning or immediately supported bounded tier found by the independent judge; further expansions need new ownership/API/purity proof and fixtures.",
+    "limit": "Finite source review does not prove that no useful future rule or tier is possible."
+  },
+  "sourceSnapshot": {
+    "files": 341,
+    "sha256": "9ce760662c07faffde87df59100f6d7d76e2299426db669786d62e12848bc315",
+    "method": "Sorted tracked relative paths under packages/python/src and packages/typescript/src, each followed by NUL, file bytes, and NUL."
+  },
+  "supplementalOptimizationReview": {
+    "formalJudgePasses": 5,
+    "semanticImportClosure": {
+      "targetedCases": 230,
+      "finiteWildcardAndCycleProjects": 16,
+      "decision": "Approved; mutation cases stay advisory or abstain and named/qualified constructor controls retain ERROR."
+    },
+    "originMemoizationAndFastPath": {
+      "projectIndexes": 171,
+      "unitInventories": 310,
+      "canonicalRoots": 2266,
+      "decision": "Exact canonical origins, namespaces and escaped classes matched the saved implementation."
+    },
+    "statementSuiteImports": {
+      "statementImports": 29,
+      "decision": "All requested nested statement forms preserve import inventory and order."
+    },
+    "resourceBound": {
+      "targetedCases": 234,
+      "finiteControls": 16,
+      "denseExhaustionPhases": 2,
+      "decision": "Both namespace-closure and reference-scan exhaustion mark all owned classes escaped; clean ERROR controls remain detected."
+    },
+    "escapePruning": {
+      "projectIndexes": 171,
+      "unitInventories": 310,
+      "canonicalRoots": 2266,
+      "unitOrderComparisons": 513,
+      "mixedClassAndNamespaceControls": 20,
+      "decision": "Exact origins, namespace and escaped class sets preserved; both origin exhaustion phases stay conservative."
+    },
+    "counting": "Supplemental equivalence replays reuse cases; these counts are not additive independent semantic coverage.",
+    "bindingRootFilter": {
+      "projectIndexes": 260,
+      "unitInventories": 542,
+      "canonicalRoots": 4375,
+      "unitOrderComparisons": 780,
+      "decision": "Matched the saved unfiltered scanner with the same runtime type-context correction; exact namespace and escaped class sets and canonical sequences match."
+    },
+    "singleReferenceTraversal": {
+      "references": 3590,
+      "intentionallyNarrowedTypeExemptions": 222,
+      "newTypeExemptions": 0,
+      "decision": "Reference identity/order and namespace flags match the saved parent-map implementation; runtime call/subscription values deliberately lose unsupported exemptions."
+    },
+    "deferredConsumerProof": {
+      "contextComparisons": 200,
+      "decision": "Exact findings preserved across inheritance, Protocol, public and suppression controls."
+    },
+    "genericProviderOwnership": {
+      "independentFocusedTests": 314,
+      "analyzerProbes": 56,
+      "exhaustionOrdersPerPhase": 3,
+      "decision": "Independent local, direct, cross-unit, named and qualified re-export probes pass for Self/Pydantic; clean canonical controls retain ERROR. Namespace, reference and provider-first exhaustion mark every owned class escaped and terminate conservatively."
+    },
+    "matchStyleRefactor": {
+      "independentFocusedTests": 314,
+      "providerReferenceComparisons": 91,
+      "childContextComparisons": 12592,
+      "decision": "Exact returns match the saved implementation; no new formal judge round or detector scope."
+    }
+  }
+}

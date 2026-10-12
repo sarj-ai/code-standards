@@ -17,7 +17,7 @@ from sarj_python_lint.rule_base import (
     is_suppressed,
 )
 from sarj_python_lint.rules._ast_index import nodes
-from sarj_python_lint.rules._closed_helpers import closed_references, direct_call
+from sarj_python_lint.rules._closed_helpers import closed_references, direct_call, has_member_import
 from sarj_python_lint.rules._paths import is_test_path
 from sarj_python_lint.rules._resource_provenance import ResourceProvenance
 
@@ -39,13 +39,14 @@ class UnusedTestFactoryOption(Rule):
     id = "unused-test-factory-option"
     code = "SARJ443"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        default_level=Severity.WARNING,
+        default_level=Severity.ERROR,
         summary="A private test factory exposes an invariant literal or unexercised local callable option.",
         rationale="Unused customization obscures the values that actually distinguish test scenarios.",
         remediation="Consider keeping the invariant literal or stable local callable in the construction instead of exposing an unexercised option. Preserve intentional dependency contracts and callable default binding timing.",
         category=RuleCategory.TESTING,
         autofix=AutofixPolicy.NONE,
         limitations=(
+            "Invariant bool and None options are ERROR when the closed caller proof succeeds and the file has no visible namespace access. Other literals and callable defaults remain WARNING because identity and default binding timing may differ.",
             "Literal findings consider private module-level helpers or _make_ and _build_ helpers nested directly inside test functions, with at least two known direct callers and straight-line construction bodies.",
             "Callable findings consider module-level private helpers with the same construction shape and an earlier undecorated local function default, only when at least two known direct callers all omit that option.",
             "Conftest module-level factories, explicit callable arguments, exports, decorators, escaping references, reflection, unpacking, rebinding, shadowing and ambiguous mutation or patch targets are excluded.",
@@ -53,6 +54,20 @@ class UnusedTestFactoryOption(Rule):
             "Callable findings describe known callers in this file; cross-module and dynamic callers are not inferred. Retain intentional extension points with a reasoned exception, preserving definition-time default capture.",
         ),
         examples=(
+            RuleExample(
+                example_id="module-invariant-singleton-option",
+                title="A private test helper's callers never vary a singleton option",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "tests/test_widget.py",
+                        "def _widget(*, enabled=True):\n    return Widget(enabled=enabled)\n_widget()\n_widget(enabled=True)\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("tests/test_widget.py"),
+                expected_count=1,
+                public=True,
+            ),
             RuleExample(
                 example_id="module-invariant-option",
                 scenario="module-literal",
@@ -66,7 +81,7 @@ class UnusedTestFactoryOption(Rule):
                 ),
                 focus_path=PurePosixPath("tests/test_widget.py"),
                 expected_count=1,
-                public=True,
+                public=False,
             ),
             RuleExample(
                 example_id="module-varied-option",
@@ -81,7 +96,7 @@ class UnusedTestFactoryOption(Rule):
                 ),
                 focus_path=PurePosixPath("tests/test_widget.py"),
                 expected_count=0,
-                public=True,
+                public=False,
             ),
             RuleExample(
                 example_id="invariant-size-option",
@@ -95,7 +110,7 @@ class UnusedTestFactoryOption(Rule):
                 ),
                 focus_path=PurePosixPath("tests/test_widget.py"),
                 expected_count=1,
-                public=True,
+                public=False,
             ),
             RuleExample(
                 example_id="unused-local-callable-option",
@@ -112,7 +127,7 @@ class UnusedTestFactoryOption(Rule):
                 ),
                 focus_path=PurePosixPath("tests/test_widget.py"),
                 expected_count=1,
-                public=True,
+                public=False,
             ),
             RuleExample(
                 example_id="exercised-local-callable-option",
@@ -129,7 +144,7 @@ class UnusedTestFactoryOption(Rule):
                 ),
                 focus_path=PurePosixPath("tests/test_widget.py"),
                 expected_count=0,
-                public=True,
+                public=False,
             ),
             RuleExample(
                 example_id="exercised-size-option",
@@ -174,7 +189,15 @@ class UnusedTestFactoryOption(Rule):
                 and function.name.startswith(("_make_", "_build_"))
             ):
                 findings.extend(
-                    _factory_findings(tree, function, path, lines, self.code, node_index=context.node_index)
+                    _factory_findings(
+                        tree,
+                        function,
+                        path,
+                        lines,
+                        self.code,
+                        node_index=context.node_index,
+                        strict=not context.dynamic_namespace,
+                    )
                 )
                 continue
             if owner is not tree or path.name == "conftest.py":
@@ -182,7 +205,15 @@ class UnusedTestFactoryOption(Rule):
             provenance = provenance or ResourceProvenance(context)
             if _closed_module_factory(context, function, provenance):
                 findings.extend(
-                    _factory_findings(tree, function, path, lines, self.code, node_index=context.node_index)
+                    _factory_findings(
+                        tree,
+                        function,
+                        path,
+                        lines,
+                        self.code,
+                        node_index=context.node_index,
+                        strict=not context.dynamic_namespace,
+                    )
                 )
             findings.extend(_callable_factory_findings(context, function, self.code))
         return sorted(findings, key=lambda item: (item.line, item.col))
@@ -244,6 +275,7 @@ def _factory_findings(
     code: str,
     *,
     node_index: NodeIndex | None = None,
+    strict: bool = False,
 ) -> list[Diagnostic]:
     findings: list[Diagnostic] = []
     calls = _direct_calls(tree, function, node_index=node_index)
@@ -253,6 +285,7 @@ def _factory_findings(
     if bound is None:
         return []
     supplied = {name for arguments in bound for name in arguments}
+    rebound = {node.id for node in nodes(function, ast.Name) if not isinstance(node.ctx, ast.Load)}
     for argument, default in _literal_factory_options(function):
         explicitly_supplied = argument.arg in supplied
         if explicitly_supplied and not _factory_argument_is_invariant(argument, default, bound):
@@ -265,7 +298,9 @@ def _factory_findings(
                 line=argument.lineno,
                 col=argument.col_offset + 1,
                 code=code,
-                severity=Severity.WARNING,
+                severity=Severity.ERROR
+                if _strict_factory_option(argument, default, bound, rebound, strict=strict)
+                else Severity.WARNING,
                 message=(
                     f"Direct callers in this file always use the same literal for `{function.name}.{argument.arg}`; "
                     "consider keeping that value in the factory instead of repeating an invariant option. Keep the option if it expresses an intentional test contract."
@@ -275,6 +310,25 @@ def _factory_findings(
             )
         )
     return findings
+
+
+def _strict_factory_option(
+    argument: ast.arg,
+    default: ast.Constant,
+    bound: list[dict[str, ast.expr]],
+    rebound: set[str],
+    *,
+    strict: bool,
+) -> bool:
+    return (
+        strict
+        and argument.arg not in rebound
+        and all(
+            isinstance(value := arguments.get(argument.arg, default), ast.Constant)
+            and (value.value is None or isinstance(value.value, bool))
+            for arguments in bound
+        )
+    )
 
 
 def _bound_calls(function: ast.FunctionDef, calls: list[ast.Call]) -> list[dict[str, ast.expr]] | None:
@@ -305,7 +359,9 @@ def _direct_calls(
     tree: ast.Module, function: ast.FunctionDef, *, node_index: NodeIndex | None = None
 ) -> list[ast.Call]:
     name = function.name
-    if not _has_unambiguous_factory_name(tree, name, node_index=node_index):
+    if has_member_import(tree, name, node_index=node_index) or not _has_unambiguous_factory_name(
+        tree, name, node_index=node_index
+    ):
         return []
     references = [node for node in nodes(tree, ast.Name, index=node_index) if node.id == name]
     calls = [

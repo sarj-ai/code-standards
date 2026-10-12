@@ -107,7 +107,7 @@ def test_labeled_cases(case: EvaluationCase) -> None:
     findings = RedundantTestConstructorForwarder().check(Path("tests/test_record.py"), case.source)
     assert bool(findings) is (case.expected is ExpectedOutcome.MATCH)
     assert len(findings) <= 1
-    assert all(item.severity is Severity.WARNING for item in findings)
+    assert all(item.severity is Severity.ERROR for item in findings)
 
 
 @pytest.mark.parametrize(

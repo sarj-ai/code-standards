@@ -11,6 +11,191 @@ from sarj_python_lint.__main__ import analyze
 from sarj_python_lint.rules.no_before_validator_input_mutation import NoBeforeValidatorInputMutation
 
 
+@pytest.mark.parametrize(
+    "source",
+    [
+        "from pydantic import model_validator\nclass Ordinary:\n    @model_validator(mode='before')\n    @classmethod\n    def normalize(cls, data: dict[str, object]):\n        data['name'] = 'new'\n        return data\n",
+        "from pydantic import BaseModel, model_validator\nclass Record(BaseModel):\n    name: str\n    @staticmethod\n    @model_validator(mode='before')\n    def normalize(data: dict[str, object]):\n        data['name'] = 'new'\n        return data\n",
+        "from pydantic import BaseModel, model_validator\nclass Record(BaseModel):\n    name: str\n    @model_validator(mode='before')\n    @unknown_wrapper\n    def normalize(data: dict[str, object]):\n        data['name'] = 'new'\n        return data\n",
+        "from pydantic import BaseModel, model_validator\nclass Record(BaseModel):\n    name: str\n    @model_validator(mode='before')\n    @classmethod\n    def normalize(cls, data: dict[str, object]):\n        data['name'] = 'new'\n        return data\n    def normalize(self): return self\n",
+        "from pydantic import BaseModel, model_validator\nfrom plugin import UnknownMixin\nclass Record(UnknownMixin, BaseModel):\n    name: str\n    @model_validator(mode='before')\n    @classmethod\n    def normalize(cls, data: dict[str, object]):\n        data['name'] = 'new'\n        return data\n",
+        "from pydantic import BaseModel, model_validator\nclass Record(BaseModel):\n    name: str\n    @model_validator(mode='before')\n    @classmethod\n    def normalize(cls, data: dict[str, object]):\n        data['name'] = 'new'\n        return data\n    locals()['normalize'] = lambda self: self\n",
+        "from pydantic import BaseModel, model_validator\nfrom custom_hooks import configure\nconfigure(model_validator)\nclass Record(BaseModel):\n    name: str\n    @model_validator(mode='before')\n    @classmethod\n    def normalize(cls, data: dict[str, object]):\n        data['name'] = 'new'\n        return data\n",
+        "from pydantic import BaseModel, model_validator\nclass Record(BaseModel):\n    name: str\ndef create():\n    class Record:\n        @model_validator(mode='before')\n        @classmethod\n        def normalize(cls, data: dict[str, object]):\n            data['name'] = 'new'\n            return data\ncreate()\n",
+        "import typing\nfrom pydantic import BaseModel, model_validator\nclass Replacement(BaseModel):\n    name: str\ntyping.final = lambda original: Replacement\n@typing.final\nclass Record(BaseModel):\n    name: str\n    @model_validator(mode='before')\n    @classmethod\n    def normalize(cls, data: dict[str, object]):\n        data['name'] = 'new'\n        return data\n",
+    ],
+)
+def test_requires_effective_validator_on_a_proven_pydantic_model(source: str) -> None:
+    assert NoBeforeValidatorInputMutation().check(Path("app/records.py"), source) == []
+
+
+def test_plain_before_validator_receives_raw_data_in_its_first_parameter() -> None:
+    source = "from pydantic import BaseModel, model_validator\nclass Record(BaseModel):\n    name: str\n    @model_validator(mode='before')\n    def normalize(data: dict[str, object]):\n        data['name'] = 'new'\n        return data\n"
+    assert len(NoBeforeValidatorInputMutation().check(Path("app/records.py"), source)) == 1
+
+
+@pytest.mark.parametrize("descriptor", ["classmethod", "staticmethod"])
+@pytest.mark.parametrize(
+    "provider_change",
+    [
+        "import builtins\nbuiltins.{descriptor} = replacement\n",
+        "__builtins__['{descriptor}'] = replacement\n",
+        "from builtins import {descriptor} as original\nconfigure(original)\n",
+    ],
+)
+def test_explicit_validator_descriptor_requires_an_untouched_builtin_provider(
+    descriptor: str, provider_change: str
+) -> None:
+    receiver = "cls, " if descriptor == "classmethod" else ""
+    source = (
+        provider_change.format(descriptor=descriptor)
+        + "from pydantic import BaseModel, model_validator\nclass Record(BaseModel):\n    name: str\n"
+        + f"    @model_validator(mode='before')\n    @{descriptor}\n"
+        + f"    def normalize({receiver}data: dict[str, object]):\n"
+        + "        data['name'] = 'new'\n        return data\n"
+    )
+    assert NoBeforeValidatorInputMutation().check(Path("app/records.py"), source) == []
+
+
+@pytest.mark.parametrize("descriptor", ["classmethod", "staticmethod"])
+def test_canonical_validator_descriptor_remains_blocking(descriptor: str) -> None:
+    receiver = "cls, " if descriptor == "classmethod" else ""
+    source = (
+        "from pydantic import BaseModel, model_validator\nclass Record(BaseModel):\n    name: str\n"
+        f"    @model_validator(mode='before')\n    @{descriptor}\n"
+        f"    def normalize({receiver}data: dict[str, object]):\n"
+        "        data['name'] = 'new'\n        return data\n"
+    )
+    [finding] = NoBeforeValidatorInputMutation().check(Path("app/records.py"), source)
+    assert finding.severity.value == "error"
+
+
+@pytest.mark.parametrize(
+    "provider_change",
+    ["import builtins\nbuiltins.classmethod = replacement\n", "__builtins__['classmethod'] = replacement\n"],
+)
+def test_automatic_classmethod_conversion_requires_an_untouched_provider(provider_change: str) -> None:
+    source = (
+        provider_change
+        + "from pydantic import BaseModel, model_validator\nclass Record(BaseModel):\n    name: str\n"
+        + "    @model_validator(mode='before')\n    def normalize(cls, data: dict[str, object]):\n"
+        + "        data['name'] = 'new'\n        return data\n"
+    )
+    assert NoBeforeValidatorInputMutation().check(Path("app/records.py"), source) == []
+
+
+def test_canonical_automatic_classmethod_conversion_remains_blocking() -> None:
+    source = (
+        "from pydantic import BaseModel, model_validator\nclass Record(BaseModel):\n    name: str\n"
+        "    @model_validator(mode='before')\n    def normalize(cls, data: dict[str, object]):\n"
+        "        data['name'] = 'new'\n        return data\n"
+    )
+    [finding] = NoBeforeValidatorInputMutation().check(Path("app/records.py"), source)
+    assert finding.severity.value == "error"
+
+
+@pytest.mark.parametrize(
+    "customization", ["configure(Record)", "Record.__pydantic_validator__ = replacement", "alias = Record"]
+)
+def test_model_class_must_retain_its_validation_contract(customization: str) -> None:
+    source = (
+        "from pydantic import BaseModel, model_validator\nfrom custom_hooks import configure\nclass Record(BaseModel):\n    name: str\n    @model_validator(mode='before')\n    @classmethod\n    def normalize(cls, data: dict[str, object]):\n        data['name'] = 'new'\n        return data\n"
+        + customization
+        + "\n"
+    )
+    assert NoBeforeValidatorInputMutation().check(Path("app/records.py"), source) == []
+
+
+@pytest.mark.parametrize(
+    "alias_import",
+    [
+        "from app.records import Record as OwnedRecord\ndetach(OwnedRecord)\n",
+        "import app.records as owned\ndetach(owned.Record)\n",
+        "from app.records import Record as OwnedRecord\nOwnedRecord = OwnedRecord\ndetach(OwnedRecord)\n",
+        "import app.records as owned\nowned = owned\ndetach(owned.Record)\n",
+        "def alter():\n    from app.records import Record as Alias\n    detach(Alias)\nalter()\n",
+        "def alter():\n    import app.records as owned\n    detach(owned.Record)\nalter()\n",
+        "def detach_module(module): detach(module.Record)\nimport app.records as owned\ndetach_module(owned)\n",
+        "def detach_module(module): detach(module.Record)\nimport app.records\ndetach_module(app.records)\n",
+        "def detach_module(module): detach(module.Record)\nfrom app import records as owned\ndetach_module(owned)\n",
+        "def types(): yield Record\ndetach(next(types()))\n",
+        "if (owned := Record): detach(owned)\n",
+        "for owned in (Record,): detach(owned)\n",
+        "match Record:\n    case owned: detach(owned)\n",
+        "def detach_default(owner=Record): detach(owner)\ndetach_default()\n",
+        "class Registry:\n    def __getitem__(self, owner): detach(owner)\nRegistry()[Record]\n",
+        "class Registry:\n    def __eq__(self, owner): detach(owner); return True\nif Registry() == Record: pass\n",
+    ],
+)
+@pytest.mark.parametrize("absolute_path", [False, True])
+def test_self_module_with_imported_model_alias_abstains(tmp_path: Path, alias_import: str, absolute_path: bool) -> None:
+    source = (
+        "from pydantic import BaseModel, model_validator\n"
+        "class Replacement(BaseModel):\n    name: str\n"
+        "def detach(owner):\n    owner.__pydantic_validator__ = Replacement.__pydantic_validator__\n"
+        "class Record(BaseModel):\n    name: str\n"
+        "    @model_validator(mode='before')\n    @classmethod\n"
+        "    def normalize(cls, data: dict[str, object]):\n"
+        "        data['name'] = 'new'\n        return data\n" + alias_import
+    )
+    path = tmp_path / "app" / "records.py" if absolute_path else Path("app/records.py")
+    assert NoBeforeValidatorInputMutation().check(path, source) == []
+
+
+@pytest.mark.parametrize(
+    "constructor_call",
+    [
+        "from app.records import Record as Alias\nAlias(name='old')\n",
+        "import app.records as owned\nowned.Record(name='old')\n",
+    ],
+)
+def test_known_self_module_direct_imported_constructor_keeps_error(constructor_call: str) -> None:
+    source = (
+        "from pydantic import BaseModel, model_validator\nclass Record(BaseModel):\n    name: str\n"
+        "    @model_validator(mode='before')\n    @classmethod\n"
+        "    def normalize(cls, data: dict[str, object]):\n"
+        "        data['name'] = 'new'\n        return data\n" + constructor_call
+    )
+    [finding] = NoBeforeValidatorInputMutation().check(Path("app/records.py"), source)
+    assert finding.severity.value == "error"
+
+
+def test_validator_parent_module_must_not_escape_to_unknown_configuration() -> None:
+    source = "from pydantic import BaseModel\nimport pydantic.functional_validators\nfrom custom_hooks import configure\nconfigure(pydantic.functional_validators)\nclass Record(BaseModel):\n    name: str\n    @pydantic.functional_validators.model_validator(mode='before')\n    @classmethod\n    def normalize(cls, data: dict[str, object]):\n        data['name'] = 'new'\n        return data\n"
+    assert NoBeforeValidatorInputMutation().check(Path("app/records.py"), source) == []
+
+
+@pytest.mark.parametrize("member_value", ["Descriptor()", "guard"])
+def test_class_creation_descriptor_cannot_detach_the_before_validator(member_value: str) -> None:
+    source = (
+        "from typing import ClassVar\nfrom pydantic import BaseModel, model_validator\n"
+        "class Descriptor:\n"
+        "    def __set_name__(self, owner, name):\n"
+        "        def identity(cls, value): return value\n"
+        "        owner.normalize = classmethod(identity)\n"
+        "guard = Descriptor()\nclass Record(BaseModel):\n    name: str\n"
+        f"    marker: ClassVar[Descriptor] = {member_value}\n"
+        "    @model_validator(mode='before')\n    @classmethod\n"
+        "    def normalize(cls, data: dict[str, object]):\n"
+        "        data['name'] = 'new'\n        return data\n"
+    )
+    assert NoBeforeValidatorInputMutation().check(Path("app/records.py"), source) == []
+
+
+def test_literal_fields_and_canonical_pydantic_class_values_remain_blocking() -> None:
+    source = (
+        "from pydantic import BaseModel, Field, ConfigDict, model_validator\n"
+        "class Record(BaseModel):\n    name: str = Field(default='old', min_length=1)\n"
+        "    tags: list[str] = Field(default_factory=list)\n"
+        "    model_config = ConfigDict(frozen=True)\n"
+        "    @model_validator(mode='before')\n    @classmethod\n"
+        "    def normalize(cls, data: dict[str, object]):\n"
+        "        data['name'] = 'new'\n        return data\n"
+    )
+    [finding] = NoBeforeValidatorInputMutation().check(Path("app/records.py"), source)
+    assert finding.severity.value == "error"
+
+
 if TYPE_CHECKING:
     from sarj_python_lint.rule_base import Diagnostic
 

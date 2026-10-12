@@ -20,6 +20,33 @@ _BASE = (
     "def test_send():\n    double = Mock(spec=send)\n    double(recipient='sample')\n"
 )
 _CASES = (
+    EvaluationCase(
+        "escaped-parent-mock-namespace",
+        Language.PYTHON,
+        _BASE.replace(
+            "from unittest.mock import Mock",
+            "import unittest.mock\nfrom custom_hooks import configure\nconfigure(unittest.mock)",
+        ).replace("Mock(spec", "unittest.mock.Mock(spec"),
+    ),
+    EvaluationCase(
+        "escaped-mock-constructor",
+        Language.PYTHON,
+        _BASE.replace(
+            "from unittest.mock import Mock",
+            "from unittest.mock import Mock\nfrom custom_hooks import configure\nconfigure(Mock)",
+        ),
+    ),
+    EvaluationCase(
+        "escaped-namespace-mock-constructor",
+        Language.PYTHON,
+        _BASE.replace(
+            "from unittest.mock import Mock",
+            "import unittest.mock as doubles\nfrom custom_hooks import configure\nconfigure(doubles.Mock)",
+        ).replace("Mock(spec", "doubles.Mock(spec"),
+    ),
+    EvaluationCase("spec-signature-mutation", Language.PYTHON, _BASE + "send.__signature__ = replacement\n"),
+    EvaluationCase("spec-helper-escape", Language.PYTHON, _BASE + "configure(send)\n"),
+    EvaluationCase("spec-alias-escape", Language.PYTHON, _BASE + "alias = send\n"),
     EvaluationCase("fixed-keyword", Language.PYTHON, _BASE, ExpectedOutcome.MATCH),
     EvaluationCase(
         "mock-autospec-keyword-is-not-autospec",
@@ -254,7 +281,7 @@ def _check(source: str, path: Path = Path("tests/test_delivery.py")) -> list[Dia
 def test_labeled_cases(case: EvaluationCase) -> None:
     findings = _check(case.source)
     assert len(findings) == (1 if case.expected is ExpectedOutcome.MATCH else 0)
-    assert all(finding.severity is Severity.WARNING for finding in findings)
+    assert all(finding.severity is Severity.ERROR for finding in findings)
 
 
 @pytest.mark.parametrize(
@@ -272,7 +299,7 @@ def test_public_examples(example: RuleExample) -> None:
 def test_metadata_and_anchor() -> None:
     documentation = PreferAutospecForCallableMock.documentation
     assert documentation is not None
-    assert documentation.default_level is Severity.WARNING
+    assert documentation.default_level is Severity.ERROR
     assert documentation.autofix is AutofixPolicy.NONE
     finding = _check(_BASE)[0]
     assert (finding.code, finding.line, finding.col) == ("SARJ474", 5, 14)
@@ -291,11 +318,11 @@ def test_autospec_rejects_call_shape_that_plain_function_spec_accepts() -> None:
         create_autospec(send, spec_set=True)(wrong_keyword="sample")
 
 
-def test_suppression_and_warning_exit(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_suppression_and_error_exit(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     path = tmp_path / "test_delivery.py"
     path.write_text(_BASE)
-    assert main(["check", "--rule", PreferAutospecForCallableMock.id, str(path)]) == 0
-    assert "SARJ474 warning:" in capsys.readouterr().out
+    assert main(["check", "--rule", PreferAutospecForCallableMock.id, str(path)]) == 1
+    assert "SARJ474 " in capsys.readouterr().out
     path.write_text(
         _BASE.replace("Mock(spec=send)", "Mock(spec=send)  # sarj-noqa: SARJ474 -- deliberate permissive double")
     )

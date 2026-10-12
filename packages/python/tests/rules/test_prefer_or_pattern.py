@@ -1091,4 +1091,4 @@ def test_rule_metadata():
     assert rule.code == "SARJ070"
     assert len(rule.description) >= 10
     (diag,) = _check(_TWO_CLASS_ARMS)
-    assert diag.severity is Severity.WARNING
+    assert diag.severity is Severity.ERROR

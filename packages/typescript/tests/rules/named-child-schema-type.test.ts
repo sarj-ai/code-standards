@@ -16,6 +16,7 @@ const SOURCE = `import { z } from "zod"; ${CHILD} ${RECORD}`;
 
 new RuleTester({ languageOptions: { parser } }).run("named-child-schema-type", rule, {
   valid: [
+    { name: "shares an independently named child contract", code: 'import { z } from "zod"; type KeyContract = z.ZodEnum<{ a: "a"; b: "b" }>; const KeySchema: KeyContract = z.enum(["a", "b"]); export const RecordSchema: z.ZodRecord<KeyContract, z.ZodString> = z.record(KeySchema, z.string());' },
     { name: "references the complete named child type", code: NAMED_CHILD_SCHEMA_TYPE_DOCUMENTATION.examples[0].files[0].source },
     { name: "keeps a distinct literal domain", code: SOURCE.replace('b: "b" }>,', 'c: "c" }>,') },
     { name: "does not equate schema input and output", code: 'import { z } from "zod"; const ValueSchema: z.ZodPipe<z.ZodString, z.ZodTransform<number, string>> = z.string().transform(Number); const RecordSchema: z.ZodRecord<z.ZodString, z.ZodTransform<number, string>> = z.record(z.string(), ValueSchema);' },

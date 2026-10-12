@@ -227,7 +227,9 @@ def test_error_level_python_rules_emit_blocking_public_examples(tmp_path: Path, 
     examples = [example for example in REGISTRY[rule_id].public_examples() if example.outcome is ExampleOutcome.MATCH]
     assert examples, f"{rule_id}: no published rejecting example to test severity"
     for example in examples:
-        findings = _analyze_public_example(rule_id, example, tmp_path / example.example_id)
+        findings = _analyze_public_example(
+            rule_id, example, tmp_path.parent / "error-examples" / rule_id / example.example_id
+        )
         assert len(findings) == example.expected_count, f"{rule_id}:{example.example_id}"
         assert all(diagnostic.severity is Severity.ERROR for diagnostic in findings), (
             f"{rule_id}:{example.example_id} is cataloged as error but emits a warning"

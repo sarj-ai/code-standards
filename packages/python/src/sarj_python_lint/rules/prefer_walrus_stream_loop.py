@@ -33,7 +33,7 @@ class PreferWalrusStreamLoop(Rule):
     id: str = "prefer-walrus-stream-loop"
     code: str = "SARJ077"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        default_level=Severity.WARNING,
+        default_level=Severity.ERROR,
         summary="Collapse a compact producer assignment and immediate sentinel break into a named-expression loop.",
         rationale="A named-expression loop can state a repeated producer call and its termination condition together.",
         remediation=(
@@ -190,6 +190,8 @@ class PreferWalrusStreamLoop(Rule):
 
         for node in context.nodes(ast.While):
             collect_stream_loop(node)
+        if diags and context.session.python_target.has_declared_support_before(path, (3, 8)):
+            return []
         return sorted(diags, key=lambda d: (d.line, d.col))
 
 

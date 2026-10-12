@@ -19,6 +19,7 @@ from sarj_python_lint.rule_base import (
 )
 from sarj_python_lint.rules._ast_index import walk
 from sarj_python_lint.rules._paths import is_test_path
+from sarj_python_lint.rules._resource_provenance import ResourceProvenance
 
 
 if TYPE_CHECKING:
@@ -83,7 +84,7 @@ class PreferAutospecForCallableMock(Rule):
     id = "prefer-autospec-for-callable-mock"
     code = "SARJ474"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        default_level=Severity.WARNING,
+        default_level=Severity.ERROR,
         summary="Prefer autospec for specced function mocks called with explicit keywords.",
         rationale=(
             "Mock, MagicMock and AsyncMock with spec or spec_set allow incompatible arguments during invocation. "
@@ -100,9 +101,9 @@ class PreferAutospecForCallableMock(Rule):
             "Only authored test files, proven unittest.mock constructors, earlier undecorated non-generic module-local function specs without **kwargs, and unconditional simple mock assignments are analyzed.",
             "Requires a stable binding and at least one direct call with explicit keywords in the same scope. Escapes, aliases, rebinding, dynamic argument unpacking, wildcard imports and reflective namespace mutation are excluded.",
             "Imported functions, class or descriptor specs, wrapping, side effects and uncertain configuration are excluded. AsyncMock requires an async function spec so autospec preserves awaiting. Import and function shadow checks, including exception/pattern captures and importer-root walrus/global writes, are conservative across the file. Proven builtins reflection aliases are excluded.",
-            "Exact call-shape assertions such as assert_called_once_with can already validate a spec's signature; this advisory warning asks for validation during invocation. Autospec does not enforce argument value types.",
+            "Exact call-shape assertions such as assert_called_once_with can already validate a spec's signature; this policy requires validation during invocation. Autospec does not enforce argument value types.",
             "Passing autospec=True to a Mock constructor merely configures an attribute; it does not activate autospeccing. Use create_autospec instead.",
-            "The initial bounded private-platform survey found zero direct matches within this scope; this is a preventive contract warning, not evidence of a current platform incident. No autofix or blocking promotion is proposed.",
+            "Specs whose function objects escape to aliases, helpers, or attribute access are excluded so altered signatures and descriptor metadata remain explicit contracts. No autofix is offered.",
         ),
         examples=(
             RuleExample(
@@ -132,36 +133,49 @@ class PreferAutospecForCallableMock(Rule):
         if not is_test_path(context.path) or context.generated or "Mock" not in context.symbol_source:
             return []
         tree = context.tree
-        if tree is None or _ambiguous_namespace(context):
+        if tree is None or context.dynamic_namespace or _ambiguous_namespace(context):
             return []
-        specs = _stable_specs(tree)
+        specs = {name: function for name, function in _stable_specs(tree).items() if _spec_is_closed(name, context)}
         if not specs:
             return []
+        provenance = ResourceProvenance(context, require_static_namespace=True)
         findings: list[Diagnostic] = []
         scopes = [tree, *context.nodes(ast.FunctionDef, ast.AsyncFunctionDef)]
         for scope in scopes:
-            scope_nodes = tuple(walk(scope))
-            bindings = _binding_counts(scope_nodes)
-            for statement in scope.body:
-                candidate = _mock_binding(statement, specs, context)
-                if candidate is None:
-                    continue
-                name, call = candidate
-                if bindings[name] != 1 or not _closed_fixed_calls(name, call, scope, scope_nodes, context.parents):
-                    continue
-                if is_suppressed(context.source_lines, call.lineno, self.code):
-                    continue
-                findings.append(
-                    Diagnostic(
-                        path=context.path,
-                        line=call.lineno,
-                        col=call.col_offset + 1,
-                        code=self.code,
-                        message="A function spec does not check arguments during invocation; use create_autospec(function, spec_set=True) for this callable mock.",
-                        severity=Severity.WARNING,
-                    )
-                )
+            findings.extend(_scope_findings(scope, specs, context, provenance, self.code))
         return findings
+
+
+def _scope_findings(
+    scope: ast.Module | ast.FunctionDef | ast.AsyncFunctionDef,
+    specs: Mapping[str, ast.FunctionDef | ast.AsyncFunctionDef],
+    context: PythonFileContext,
+    provenance: ResourceProvenance,
+    code: str,
+) -> list[Diagnostic]:
+    scope_nodes = tuple(walk(scope))
+    bindings = _binding_counts(scope_nodes)
+    findings: list[Diagnostic] = []
+    for statement in scope.body:
+        candidate = _mock_binding(statement, specs, context, provenance)
+        if candidate is None:
+            continue
+        name, call = candidate
+        if bindings[name] != 1 or not _closed_fixed_calls(name, call, scope, scope_nodes, context.parents):
+            continue
+        if is_suppressed(context.source_lines, call.lineno, code):
+            continue
+        findings.append(
+            Diagnostic(
+                path=context.path,
+                line=call.lineno,
+                col=call.col_offset + 1,
+                code=code,
+                message="A function spec does not check arguments during invocation; use create_autospec(function, spec_set=True) for this callable mock.",
+                severity=Severity.ERROR,
+            )
+        )
+    return findings
 
 
 def _stable_specs(tree: ast.Module) -> dict[str, ast.FunctionDef | ast.AsyncFunctionDef]:
@@ -175,6 +189,24 @@ def _stable_specs(tree: ast.Module) -> dict[str, ast.FunctionDef | ast.AsyncFunc
         and node.args.kwarg is None
         and bindings[node.name] == 1
     }
+
+
+def _spec_is_closed(name: str, context: PythonFileContext) -> bool:
+    for reference in context.nodes(ast.Name):
+        if reference.id != name or not isinstance(reference.ctx, ast.Load):
+            continue
+        parent = context.parents.get(reference)
+        if isinstance(parent, ast.Call) and parent.func is reference:
+            continue
+        if isinstance(parent, ast.keyword) and parent.arg in {"spec", "spec_set"}:
+            call = context.parents.get(parent)
+            if (
+                isinstance(call, ast.Call)
+                and context.imports.resolved_symbol(call.func, sources=_MOCK_SOURCES) in _CONSTRUCTORS
+            ):
+                continue
+        return False
+    return True
 
 
 def _binding_counts(nodes: Iterable[ast.AST]) -> Counter[str]:
@@ -203,7 +235,10 @@ def _binding_counts(nodes: Iterable[ast.AST]) -> Counter[str]:
 
 
 def _mock_binding(
-    statement: ast.stmt, specs: Mapping[str, ast.FunctionDef | ast.AsyncFunctionDef], context: PythonFileContext
+    statement: ast.stmt,
+    specs: Mapping[str, ast.FunctionDef | ast.AsyncFunctionDef],
+    context: PythonFileContext,
+    provenance: ResourceProvenance,
 ) -> tuple[str, ast.Call] | None:
     match statement:
         case (
@@ -215,6 +250,8 @@ def _mock_binding(
             return None
     constructor = context.imports.resolved_symbol(call.func, sources=_MOCK_SOURCES)
     if call.args or constructor not in _CONSTRUCTORS:
+        return None
+    if not provenance.imported(call.func, f"unittest.mock.{constructor}"):
         return None
     if any(keyword.arg not in _CONSTRUCTOR_OPTIONS for keyword in call.keywords):
         return None

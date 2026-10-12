@@ -23,25 +23,38 @@ class PythonTargetFacts:
         self._projects: dict[Path, str | None] = {}
         self._installed: dict[Path, dict[Path, str | None]] = {}
         self._witnesses: dict[tuple[str, tuple[int, int]], bool] = {}
+        self._minimums: dict[tuple[str, tuple[int, int]], bool] = {}
 
     def has_declared_support_before(self, path: Path, minimum: tuple[int, int]) -> bool:
-        try:
-            absolute = path.absolute()
-            resolved = path.resolve()
-        except OSError, RuntimeError:
-            return False
-        if absolute not in self._declarations:
-            try:
-                self._declarations[absolute] = self._declaration(absolute, resolved)
-            except OSError, RuntimeError:
-                self._declarations[absolute] = None
-        declaration = self._declarations[absolute]
+        declaration = self._declared_target(path)
         if not declaration:
             return False
         key = declaration, minimum
         if key not in self._witnesses:
             self._witnesses[key] = _has_legacy_witness(declaration, minimum)
         return self._witnesses[key]
+
+    def has_declared_minimum(self, path: Path, minimum: tuple[int, int]) -> bool:
+        declaration = self._declared_target(path)
+        if not declaration:
+            return False
+        key = declaration, minimum
+        if key not in self._minimums:
+            self._minimums[key] = _proves_minimum(declaration, minimum)
+        return self._minimums[key]
+
+    def _declared_target(self, path: Path) -> str | None:
+        try:
+            absolute = path.absolute()
+            resolved = path.resolve()
+        except OSError, RuntimeError:
+            return None
+        if absolute not in self._declarations:
+            try:
+                self._declarations[absolute] = self._declaration(absolute, resolved)
+            except OSError, RuntimeError:
+                self._declarations[absolute] = None
+        return self._declarations[absolute]
 
     def _declaration(self, absolute: Path, resolved: Path) -> str | None:
         ancestors = [*list(absolute.parents)[:_MAX_ANCESTORS], *list(resolved.parents)[:_MAX_ANCESTORS]]
@@ -142,3 +155,21 @@ def _has_legacy_witness(declaration: str, minimum: tuple[int, int]) -> bool:
         and specifiers.contains(candidate, prereleases=False)
         for candidate in candidates
     )
+
+
+def _proves_minimum(declaration: str, minimum: tuple[int, int]) -> bool:
+    try:
+        specifiers = SpecifierSet(declaration)
+    except InvalidSpecifier:
+        return False
+    threshold = Version(".".join(map(str, minimum)))
+    for specifier in specifiers:
+        if specifier.operator not in {">=", ">", "==", "~="}:
+            continue
+        try:
+            boundary = Version(specifier.version.removesuffix(".*"))
+        except InvalidVersion:
+            continue
+        if not boundary.epoch and boundary >= threshold:
+            return True
+    return False

@@ -14,6 +14,10 @@ const RULE_TESTER = new RuleTester({ languageOptions: { parser: tsParser } });
 
 RULE_TESTER.run("prefer-named-complex-return-type", rule, {
   valid: [
+    "type Result<T> = { id: string; value: T; active: boolean }; function generic<T>(value: T): Result<T> { return { id: '', value, active: true }; }",
+    "class Port { read(): { owner: this; id: string; active: boolean } { return { owner: this, id: '', active: true }; } }",
+    "function captured(value: string): { value: typeof value; id: string; active: boolean } { return { value, id: '', active: true }; }",
+    "function dependent(value: string): { [K in keyof typeof value]: { id: string; active: boolean; value: K } } { return {} as never; }",
     PREFER_NAMED_COMPLEX_RETURN_TYPE_DOCUMENTATION.examples[0].files[0].source,
     "function small(): { id: string; name: string } { return { id: '', name: '' }; }",
     "function inferred() { return { id: '', name: '', active: true }; }",

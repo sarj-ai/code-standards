@@ -51,7 +51,7 @@ class DuplicateAdjacentExceptionHandler(ProjectRule):
     id = "duplicate-adjacent-exception-handler"
     code = "SARJ488"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        default_level=Severity.WARNING,
+        default_level=Severity.ERROR,
         summary="Adjacent exception handlers repeat the same executable translation.",
         rationale="Repeating one translation for adjacent statically known exception classes creates extra branches to maintain without different behavior.",
         remediation="Consider one tuple handler for the adjacent exception types. Preserve distinct messages, cleanup, ordering, and intentional independently maintained translations.",
@@ -105,7 +105,7 @@ class DuplicateAdjacentExceptionHandler(ProjectRule):
                                 line=handler.lineno,
                                 col=handler.col_offset + 1,
                                 code=self.code,
-                                severity=Severity.WARNING,
+                                severity=Severity.ERROR,
                                 message="Adjacent exception handlers have identical translations; consider one tuple handler, preserving intentional separate error contracts.",
                             )
                         )

@@ -683,9 +683,9 @@ def test_allows_kwargs_any_without_return_annotation():
     assert _check("def f(**kwargs: Any):\n    return {'id': 1}\n") == []
 
 
-def test_flags_type_alias_return():
+def test_named_open_mapping_alias_preserves_dictionary_contract():
     src = "type Payload = dict[str, Any]\ndef f() -> Payload:\n    return {'id': 1}\n"
-    assert len(_check(src)) == 1
+    assert _check(src) == []
 
 
 def test_annotated_dict_return_should_be_flagged():
@@ -1209,7 +1209,7 @@ def test_unreachable_dynamic_mutation_does_not_erase_return_evidence() -> None:
     assert len(_check(source)) == 1
 
 
-def test_alias_chain_return_is_transparent() -> None:
+def test_named_open_mapping_alias_chain_preserves_dictionary_contract() -> None:
     source = (
         "from typing import TypeAlias\n"
         "Record: TypeAlias = dict[str, object]\n"
@@ -1218,7 +1218,7 @@ def test_alias_chain_return_is_transparent() -> None:
         "    return {'id': 1}\n"
     )
 
-    assert len(_check(source)) == 1
+    assert _check(source) == []
 
 
 def test_generic_alias_is_not_guessed() -> None:

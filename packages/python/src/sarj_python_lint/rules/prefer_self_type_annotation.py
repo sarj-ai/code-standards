@@ -18,7 +18,11 @@ from sarj_python_lint.rule_base import (
     Severity,
     is_suppressed,
 )
+from sarj_python_lint.rules._annotation_semantics import scope_bound_names
 from sarj_python_lint.rules._ast_index import walk as walk_ast
+from sarj_python_lint.rules._closed_helpers import plain_class_members, stable_class
+from sarj_python_lint.rules._project_index import ProjectIndexSet, SourceUnit, SymbolRef, imports_outside
+from sarj_python_lint.rules._resource_provenance import ResourceProvenance
 
 
 if TYPE_CHECKING:
@@ -35,6 +39,7 @@ _TRANSPARENT_DECORATORS = frozenset(
     {
         (frozenset({"abc"}), "abstractmethod"),
         (frozenset({"typing", "typing_extensions"}), "override"),
+        (frozenset({"typing", "typing_extensions"}), "final"),
     }
 )
 
@@ -114,13 +119,17 @@ class PreferSelfTypeAnnotation(Rule):
     id: str = "prefer-self-type-annotation"
     code: str = "SARJ078"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        default_level=Severity.WARNING,
+        default_level=Severity.ERROR,
         summary="Prefer `Self` for self-returning methods and alternate constructors.",
         rationale="`Self` preserves the concrete subclass type when an inherited method returns its receiver or constructs through its class receiver.",
         remediation="Import `Self` from `typing` (or `typing_extensions` on Python before 3.11) and use it as the return annotation.",
         category=RuleCategory.MAINTAINABILITY,
         autofix=AutofixPolicy.NONE,
         limitations=(
+            "Only final instance methods on stable undecorated module classes without bases, with a closed canonical final provider and every return equal to the unrebound receiver, block as errors. Other fluent methods and class constructors remain advisory to preserve valid override and construction contracts.",
+            "Owned class and method mutation, namespace access, and escaped class references retain warning severity.",
+            "Class creation must have inert literal members and supported method signatures/decorators; special methods and unknown descriptor values remain advisory.",
+            "Standalone files with unknown module identity and non-typing imports retain warnings because self-imported class aliases cannot be resolved safely.",
             "Only undecorated or provenance-safe methods whose every return directly preserves the receiver type are analyzed.",
             "Static methods, generators, final classes, metaclasses, inherited-base annotations, and behavior-changing decorators are excluded.",
         ),
@@ -132,7 +141,7 @@ class PreferSelfTypeAnnotation(Rule):
                 files=(
                     ExampleFile.python(
                         "app/builder.py",
-                        "class Builder:\n"
+                        "from typing import final\nclass Builder:\n    @final\n"
                         '    def set_name(self, name: str) -> "Builder":\n'
                         "        self.name = name\n"
                         "        return self\n",
@@ -174,7 +183,7 @@ class PreferSelfTypeAnnotation(Rule):
                 ),
                 focus_path=PurePosixPath("app/builder.py"),
                 expected_count=1,
-                public=True,
+                public=False,
                 scenario="alternate-constructor",
             ),
             RuleExample(
@@ -193,7 +202,7 @@ class PreferSelfTypeAnnotation(Rule):
                 ),
                 focus_path=PurePosixPath("app/builder.py"),
                 expected_count=0,
-                public=True,
+                public=False,
                 scenario="alternate-constructor",
             ),
         ),
@@ -232,6 +241,8 @@ class PreferSelfTypeAnnotation(Rule):
                 if node.name == "__init__" or _ruff_owns_self_annotation(node.name):
                     return
                 current_class = self.class_stack[-1]
+                if node.name in scope_bound_names([member for member in current_class.body if member is not node]):
+                    return
                 if id(current_class) in metaclass_ids or _is_final_class(current_class, imports):
                     return
                 if _ruff_owns_iterator_method(node.name, current_class, imports):
@@ -269,7 +280,9 @@ class PreferSelfTypeAnnotation(Rule):
                                 f"Method `{node.name}` returns an instance of its class but annotates it as `{matched_name}` — "
                                 "consider `Self` to preserve the receiver's concrete subclass type."
                             ),
-                            severity=Severity.WARNING,
+                            severity=Severity.ERROR
+                            if _blocking_final_instance(node, method_kind, context, imports, current_class)
+                            else Severity.WARNING,
                         )
                     )
 
@@ -277,6 +290,46 @@ class PreferSelfTypeAnnotation(Rule):
         visitor.visit(tree)
 
         return sorted(diags, key=lambda d: (d.line, d.col))
+
+
+def _blocking_final_instance(
+    node: ast.FunctionDef | ast.AsyncFunctionDef,
+    method_kind: _MethodKind,
+    context: PythonFileContext,
+    imports: ImportIndex,
+    declaration: ast.ClassDef,
+) -> bool:
+    if method_kind is not _MethodKind.INSTANCE or context.dynamic_namespace or declaration.bases:
+        return False
+    decorators = [
+        decorator
+        for decorator in node.decorator_list
+        if imports.resolves(decorator, sources=frozenset({"typing", "typing_extensions"}), symbol="final")
+    ]
+    if not decorators:
+        return False
+    provenance = ResourceProvenance(context, require_static_namespace=True)
+    return (
+        stable_class(context, declaration, provenance)
+        and plain_class_members(context, declaration, provenance)
+        and not _class_is_dynamic(context, declaration)
+        and any(
+            (qualified := imports.resolved_qualified_name(decorator)) is not None
+            and provenance.imported(decorator, qualified)
+            for decorator in decorators
+        )
+    )
+
+
+def _class_is_dynamic(context: PythonFileContext, declaration: ast.ClassDef) -> bool:
+    project = context.session.project or ProjectIndexSet.single(context.path, context.source)
+    unit = project.unit(context.path)
+    if unit is None or unit.module is None:
+        if imports_outside(context.tree, frozenset({"typing", "typing_extensions"})):
+            return True
+        unit = SourceUnit(context.path, "__self_source__", context.source, context.tree, {})
+        project = project.with_unit(unit)
+    return project.nominal_membership_is_dynamic(SymbolRef(unit.module or "__self_source__", declaration.name))
 
 
 def _method_kind(

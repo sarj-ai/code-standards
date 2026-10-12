@@ -230,7 +230,7 @@ def build_active(rows):
     findings = _check(source)
 
     assert [(finding.line, finding.code, finding.severity) for finding in findings] == [
-        (3, "SARJ430", Severity.ERROR),
+        (3, "SARJ430", Severity.WARNING),
         (9, "SARJ430", Severity.ERROR),
         (15, "SARJ430", Severity.ERROR),
     ]

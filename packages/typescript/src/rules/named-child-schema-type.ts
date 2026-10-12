@@ -20,17 +20,17 @@ const UNRESOLVED_TYPE_NODES: ReadonlySet<AST_NODE_TYPES> = new Set([
 ]);
 
 export const NAMED_CHILD_SCHEMA_TYPE_DOCUMENTATION = {
-  defaultLevel: "warning",
+  defaultLevel: "error",
   summary: "Reference a named Zod record child's complete schema type instead of repeating its explicit annotation.",
   rationale: "Repeating a child schema's generic contract creates a second maintained declaration even though the record already uses that child at runtime.",
-  remediation: "Replace only the matching record type argument with `typeof ChildSchema`; retain the outer annotation required by isolatedDeclarations and every runtime schema operation.",
+  remediation: "Replace only the matching record type argument with `typeof ChildSchema`, or share one explicit named schema type alias between child and record to retain an independently named public contract. Keep the outer annotation required by isolatedDeclarations and every runtime schema operation.",
   category: "maintainability",
   autofix: "none",
   limitations: [
     "Only direct module-level const z.record calls with two arguments, a ZodRecord annotation, and an earlier local const child with a complete explicit Zod type are inspected.",
     "The entire generic child annotation must match token for token; input/output, defaults, transforms, readonly modifiers and brands are never compared by output shape alone.",
     "Bare leaf types, broad ZodType constraints, type queries, imported or unqualified type references, annotation cycles, comments on the repeated argument, mutable bindings and generated files are excluded.",
-    "Import aliases and namespace imports resolve through scope bindings. Independent public contract pins require review; this warning does not remove annotations or change runtime validation.",
+    "Import aliases and namespace imports resolve through scope bindings. Independent public contract pins can use one shared named type alias or an exact reasoned suppression; runtime validation and outer annotations are preserved.",
   ],
   examples: [
     { id: "named-child", title: "Reference the named child contract", outcome: "no-match", files: [{ path: "src/record.ts", source: 'import { z } from "zod"; const KeySchema: z.ZodEnum<{ a: "a"; b: "b" }> = z.enum(["a", "b"]); export const RecordSchema: z.ZodRecord<typeof KeySchema, z.ZodString> = z.record(KeySchema, z.string());' }], focusPath: "src/record.ts", expectedCount: 0, public: true },
@@ -52,7 +52,7 @@ export default createRule<Options, MessageIds>({
     type: "suggestion",
     docs: { description: NAMED_CHILD_SCHEMA_TYPE_DOCUMENTATION.summary },
     schema: [],
-    messages: { namedChildType: "Use `typeof {{name}}` for this exact child contract; keep the outer schema annotation and runtime operations." },
+    messages: { namedChildType: "Use `typeof {{name}}` or one shared named type alias for this exact child contract; keep the outer schema annotation and runtime operations." },
   },
   defaultOptions: [],
   create(context) {

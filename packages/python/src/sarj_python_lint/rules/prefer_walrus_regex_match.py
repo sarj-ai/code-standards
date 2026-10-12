@@ -63,7 +63,7 @@ class PreferWalrusRegexMatch(Rule):
     id: str = "prefer-walrus-regex-match"
     code: str = "SARJ081"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        default_level=Severity.WARNING,
+        default_level=Severity.ERROR,
         summary="A proven regex Match-or-None result is assigned only for the following condition.",
         rationale="A named expression can keep a short regex operation with its only condition while preserving access to the result.",
         remediation=(
@@ -160,6 +160,8 @@ class PreferWalrusRegexMatch(Rule):
             body: list[ast.stmt] = [st for st in raw_body if isinstance(st, ast.stmt)]
             diags.extend(_check_body(node, body, analysis_context))
 
+        if diags and context.session.python_target.has_declared_support_before(path, (3, 8)):
+            return []
         return sorted(diags, key=lambda d: (d.line, d.col))
 
 

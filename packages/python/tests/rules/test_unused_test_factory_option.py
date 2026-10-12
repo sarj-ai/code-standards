@@ -237,10 +237,10 @@ def test_native_warning_and_rule_order_are_stable(tmp_path: Path, capsys: pytest
     assert len(analyze(rules, [path])) == 1
 
 
-def test_metadata_retains_warning_without_autofix() -> None:
+def test_metadata_promotes_singleton_proof_without_autofix() -> None:
     documentation = UnusedTestFactoryOption.documentation
     assert documentation is not None
-    assert documentation.default_level is Severity.WARNING
+    assert documentation.default_level is Severity.ERROR
     assert documentation.autofix is AutofixPolicy.NONE
 
 

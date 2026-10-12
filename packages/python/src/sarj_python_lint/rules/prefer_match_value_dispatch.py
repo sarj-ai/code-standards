@@ -18,6 +18,7 @@ from sarj_python_lint.rule_base import (
     Severity,
 )
 from sarj_python_lint.rules._ast_index import walk as walk_ast
+from sarj_python_lint.rules._resource_provenance import ResourceProvenance
 
 
 if TYPE_CHECKING:
@@ -38,7 +39,7 @@ class PreferMatchValueDispatch(Rule):
     id: str = "prefer-match-value-dispatch"
     code: str = "SARJ439"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        default_level=Severity.WARNING,
+        default_level=Severity.ERROR,
         summary="Prefer match/case for repeated dispatch on one value with a fallback.",
         rationale="A single dispatch subject makes distinct value cases and their fallback easier to review.",
         remediation=(
@@ -49,6 +50,7 @@ class PreferMatchValueDispatch(Rule):
         category=RuleCategory.MAINTAINABILITY,
         autofix=AutofixPolicy.NONE,
         limitations=(
+            "ERROR is limited to direct literal equality ladders on an unrebound local parameter, without visible namespace access, in a project with a proven minimum Python version of 3.10. All other supported ladders remain WARNING; no autofix is offered.",
             "Equality-only ladders require two or more tests on the same left-hand name or attribute chain, followed by else.",
             "Cases must be distinct string, bytes, or numeric literals, or singly bound module constants containing them; shadowed constants and singleton values are excluded.",
             "This is a readability suggestion, not proof of exhaustiveness or a safe automatic rewrite: attributes can have side effects and match evaluates its subject once.",
@@ -57,6 +59,21 @@ class PreferMatchValueDispatch(Rule):
             "Declared support for Python before 3.10 suppresses this recommendation when proven by the nearest project metadata or exact installed-distribution ownership. Missing or ambiguous target metadata retains advisory behavior; it does not prove a modern target.",
         ),
         examples=(
+            RuleExample(
+                example_id="stable-literal-parameter",
+                title="Dispatch a stable parameter through literal cases",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile(PurePosixPath("pyproject.toml"), "[project]\nrequires-python = '>=3.10'\n"),
+                    ExampleFile.python(
+                        "app/parse.py",
+                        "def parse(kind):\n    if kind == 'json': return json_parser()\n    elif kind == 'yaml': return yaml_parser()\n    else: return fallback()\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/parse.py"),
+                expected_count=1,
+                public=True,
+            ),
             RuleExample(
                 example_id="grouped-terminal-suffix-dispatch",
                 scenario="grouped-terminal-dispatch",
@@ -77,7 +94,7 @@ class PreferMatchValueDispatch(Rule):
                 ),
                 focus_path=PurePosixPath("app/formats.py"),
                 expected_count=1,
-                public=True,
+                public=False,
             ),
             RuleExample(
                 example_id="grouped-suffix-match-with-guard",
@@ -101,7 +118,7 @@ class PreferMatchValueDispatch(Rule):
                 ),
                 focus_path=PurePosixPath("app/formats.py"),
                 expected_count=0,
-                public=True,
+                public=False,
             ),
             RuleExample(
                 example_id="named-file-dispatch",
@@ -124,7 +141,7 @@ class PreferMatchValueDispatch(Rule):
                 ),
                 focus_path=PurePosixPath("app/migrate.py"),
                 expected_count=1,
-                public=True,
+                public=False,
             ),
             RuleExample(
                 example_id="literal-match-dispatch",
@@ -159,28 +176,11 @@ class PreferMatchValueDispatch(Rule):
         tree = context.tree
         if tree is None:
             return []
-        constants = _module_constants(tree, node_index=context.node_index)
-        lines = context.source_lines
-        continuations: set[int] = set()
         findings: list[Diagnostic] = []
-        candidates: list[tuple[ast.If, str]] = []
-        for node in context.nodes(ast.AST):
-            if not isinstance(node, ast.If) or id(node) in continuations:
-                continue
-            chain = _elif_chain(node, lines, continuations)
-            if len(chain.branches) < _MIN_TESTS or not chain.last.orelse:
-                continue
-            subject = _dispatch_subject(chain.branches, constants)
-            if subject is None:
-                subject = _expanded_dispatch_subject(chain.branches, constants)
-            if subject is not None:
-                candidates.append((node, subject))
-        for branches in _terminal_sibling_dispatches(tree, node_index=context.node_index):
-            subject = _expanded_dispatch_subject(branches, constants)
-            if subject is not None:
-                candidates.append((branches[0], subject))
+        candidates = _candidate_dispatches(context, tree)
         if candidates and context.session.python_target.has_declared_support_before(path, (3, 10)):
             return []
+        provenance = ResourceProvenance(context, require_static_namespace=True) if candidates else None
         for node, subject in sorted(candidates, key=lambda candidate: candidate[0].lineno):
             findings.append(
                 Diagnostic(
@@ -188,7 +188,11 @@ class PreferMatchValueDispatch(Rule):
                     line=node.lineno,
                     col=node.col_offset + 1,
                     code=self.code,
-                    severity=Severity.WARNING,
+                    severity=(
+                        Severity.ERROR
+                        if provenance is not None and _blocking_literal_dispatch(context, node, provenance)
+                        else Severity.WARNING
+                    ),
                     message=(
                         f"Repeated value dispatch on '{subject}' with a fallback — consider match/case; "
                         "preserve fallback and constant semantics, and review repeated attribute evaluation, "
@@ -197,6 +201,61 @@ class PreferMatchValueDispatch(Rule):
                 )
             )
         return findings
+
+
+def _candidate_dispatches(context: PythonFileContext, tree: ast.Module) -> list[tuple[ast.If, str]]:
+    constants = _module_constants(tree, node_index=context.node_index)
+    continuations: set[int] = set()
+    candidates: list[tuple[ast.If, str]] = []
+    for node in context.nodes(ast.If):
+        if id(node) in continuations:
+            continue
+        chain = _elif_chain(node, context.source_lines, continuations)
+        if len(chain.branches) < _MIN_TESTS or not chain.last.orelse:
+            continue
+        subject = _dispatch_subject(chain.branches, constants)
+        if subject is None:
+            subject = _expanded_dispatch_subject(chain.branches, constants)
+        if subject is not None:
+            candidates.append((node, subject))
+    for branches in _terminal_sibling_dispatches(tree, node_index=context.node_index):
+        subject = _expanded_dispatch_subject(branches, constants)
+        if subject is not None:
+            candidates.append((branches[0], subject))
+    return candidates
+
+
+def _blocking_literal_dispatch(context: PythonFileContext, node: ast.If, provenance: ResourceProvenance) -> bool:
+    if context.dynamic_namespace or not context.session.python_target.has_declared_minimum(context.path, (3, 10)):
+        return False
+    chain = _elif_chain(node, context.source_lines, set())
+    if not chain.last.orelse:
+        return False
+    subject: str | None = None
+    for branch in chain.branches:
+        test = branch.test
+        if not (
+            isinstance(test, ast.Compare)
+            and isinstance(test.left, ast.Name)
+            and len(test.ops) == 1
+            and isinstance(test.ops[0], ast.Eq)
+            and len(test.comparators) == 1
+            and isinstance(test.comparators[0], ast.Constant)
+        ):
+            return False
+        if subject is not None and subject != test.left.id:
+            return False
+        subject = test.left.id
+        binding = provenance.binding(subject, test.left)
+        owner = provenance.scope(test)
+        if (
+            subject in provenance.external_bindings
+            or not isinstance(binding, ast.arg)
+            or not isinstance(owner, ast.FunctionDef | ast.AsyncFunctionDef)
+            or provenance.scope(binding) is not owner
+        ):
+            return False
+    return len(chain.branches) >= _MIN_TESTS
 
 
 def _terminal_sibling_dispatches(tree: ast.Module, *, node_index: NodeIndex | None = None) -> list[list[ast.If]]:

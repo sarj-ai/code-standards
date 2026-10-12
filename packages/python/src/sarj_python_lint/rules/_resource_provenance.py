@@ -28,6 +28,24 @@ _RESOURCE_OWNERS = MappingProxyType(
     {
         "contextlib": frozenset({"ExitStack", "AsyncExitStack", "_BaseExitStack"}),
         "subprocess": frozenset({"Popen", "TimeoutExpired"}),
+        "re": frozenset({"compile", "Match", "Pattern"}),
+        "unittest": frozenset({"mock.Mock", "mock.MagicMock", "mock.AsyncMock"}),
+        "typing": frozenset({"final"}),
+        "typing_extensions": frozenset({"final"}),
+        "pydantic": frozenset(
+            {
+                "BaseModel",
+                "main.BaseModel",
+                "Field",
+                "fields.Field",
+                "ConfigDict",
+                "config.ConfigDict",
+                "model_validator",
+                "field_validator",
+                "functional_validators.model_validator",
+                "functional_validators.field_validator",
+            }
+        ),
     }
 )
 
@@ -80,9 +98,23 @@ class ResourceProvenance:
         while scope is not None:
             nodes = self.bindings.get(scope, {}).get(name)
             if nodes:
-                return nodes[0] if len(nodes) == 1 else None
+                return nodes[0] if len(nodes) == 1 or self._same_import_bindings(nodes) else None
             scope = self.scope(scope)
         return None
+
+    def _same_import_bindings(self, nodes: list[ast.AST]) -> bool:
+        targets: set[tuple[str, str | None, int, str]] = set()
+        for node in nodes:
+            if not isinstance(node, ast.alias):
+                return False
+            parent = self.context.parents.get(node)
+            if isinstance(parent, ast.Import):
+                targets.add(("import", None, 0, node.name))
+            elif isinstance(parent, ast.ImportFrom):
+                targets.add(("from", parent.module, parent.level, node.name))
+            else:
+                return False
+        return len(targets) == 1
 
     def imported(self, node: ast.expr, qualified: str) -> bool:
         root = _root_name(node)
@@ -99,7 +131,7 @@ class ResourceProvenance:
             parent = self.context.parents.get(read)
             if isinstance(parent, ast.Attribute | ast.ExceptHandler):
                 continue
-            if not (isinstance(parent, ast.Call) and parent.func is read):
+            if not self._safe_import_use(read):
                 return False
         return (
             isinstance(binding, ast.alias)
@@ -136,7 +168,7 @@ class ResourceProvenance:
         if isinstance(node, ast.Name):
             return node.id in origins
         return any(
-            qualified == owner or qualified.startswith(owner + ".")
+            qualified == owner or qualified.startswith(owner + ".") or owner.startswith(qualified + ".")
             for qualified in _owner_attribute_targets(node, origins)
             for owner in owners
         )
@@ -147,6 +179,15 @@ class ResourceProvenance:
             (isinstance(parent, ast.Attribute) and parent.value is node)
             or (isinstance(parent, ast.Call) and parent.func is node)
             or (isinstance(parent, ast.ExceptHandler) and parent.type is node)
+            or (isinstance(parent, ast.ClassDef) and node in parent.bases)
+            or (isinstance(parent, ast.Subscript) and parent.value is node)
+            or (isinstance(parent, ast.arg | ast.AnnAssign) and parent.annotation is node)
+            or (isinstance(parent, ast.FunctionDef | ast.AsyncFunctionDef) and parent.returns is node)
+            or (
+                isinstance(parent, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef)
+                and node in parent.decorator_list
+                and self.context.imports.resolved_qualified_name(node) in {"typing.final", "typing_extensions.final"}
+            )
         )
 
     def constructor(self, name: ast.Name, at: ast.AST) -> ast.Call | None:
@@ -306,15 +347,25 @@ class ResourceProvenance:
 
 
 def _owner_import_targets(node: ast.Import | ast.ImportFrom, module: str) -> dict[str, str]:
-    if isinstance(node, ast.Import):
-        return {alias.asname or alias.name: module for alias in node.names if alias.name == module}
-    if node.module == module:
-        return {
-            alias.asname or alias.name: f"{module}.{alias.name}"
-            for alias in node.names
-            if alias.name in _RESOURCE_OWNERS[module]
-        }
-    return {}
+    if isinstance(node, ast.ImportFrom):
+        return _owner_from_targets(node, module)
+    targets: dict[str, str] = {}
+    for alias in node.names:
+        if alias.name == module or alias.name.startswith(module + "."):
+            targets[alias.asname or alias.name.partition(".")[0]] = alias.name if alias.asname else module
+    return targets
+
+
+def _owner_from_targets(node: ast.ImportFrom, module: str) -> dict[str, str]:
+    if node.module is None or not (node.module == module or node.module.startswith(module + ".")):
+        return {}
+    owners = frozenset(f"{module}.{name}" for name in _RESOURCE_OWNERS[module])
+    targets: dict[str, str] = {}
+    for alias in node.names:
+        target = f"{node.module}.{alias.name}"
+        if any(owner == target or owner.startswith(target + ".") for owner in owners):
+            targets[alias.asname or alias.name] = target
+    return targets
 
 
 def _owner_attribute_targets(node: ast.Attribute, origins: dict[str, set[str]]) -> frozenset[str]:

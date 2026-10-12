@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "ff55ac245e6be0db538191204f3fca83b5138da2baaa21229a59ef1590fc99c1",
-  "cliSha256": "d51d4cd6bde029a84897c103dc11de793d4d850ad0a05da8a113dbf7f32ed035",
+  "catalogSha256": "27639d227aa54d35e9d1211749d005f26df616025b53103205e0cbfd65d83268",
+  "cliSha256": "a9898854b7fc93efbc9d7d8f76c657d08d30de2bb5104d8c60ce3a35d45e75c6",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -3858,7 +3858,7 @@
           "files": [
             {
               "path": "src/render.ts",
-              "source": "if (kind === \"a\") return a();\nelse if (kind === \"b\") return b();\nelse if (kind === \"c\") return c();\n"
+              "source": "function render(kind: string) {\n  if (kind === \"a\") return a();\n  else if (kind === \"b\") return b();\n  else if (kind === \"c\") return c();\n}\n"
             }
           ],
           "fixedFiles": [],
@@ -9123,15 +9123,15 @@
           "files": [
             {
               "path": "app/sink.py",
-              "source": "def emit(*, _email=None):\n    return \"ready\"\n"
+              "source": "def _emit(*, _unused: bool = True):\n    return \"ready\"\n\n\n_emit()\n_emit(_unused=False)\n"
             }
           ],
           "fixedFiles": [],
           "focusPath": "app/sink.py",
-          "id": "discarded-keyword-input",
+          "id": "closed-singleton-keyword-input",
           "outcome": "reject",
           "scenarioId": "primary",
-          "title": "An ignored keyword input is kept just to silence unused-argument lint"
+          "title": "A private helper's unused singleton keyword has no contract or retained value"
         },
         {
           "expectedCount": 0,
@@ -9493,7 +9493,7 @@
           "files": [
             {
               "path": "app/views.py",
-              "source": "def views(rows, labels):\n    return {row.id: EntryView(id=row.id, label=labels.get(row.id)) for row in rows}\n"
+              "source": "def views(rows, labels):\n    return {key: EntryView(id=key, label=labels.get(key)) for key, row in rows}\n"
             }
           ],
           "fixedFiles": [],
@@ -9508,7 +9508,7 @@
           "files": [
             {
               "path": "app/views.py",
-              "source": "def views(rows, labels):\n    result = {}\n    for row in rows:\n        result[row.id] = EntryView(id=row.id, label=labels.get(row.id))\n    return result\n"
+              "source": "def views(rows, labels):\n    result = {}\n    for key, row in rows:\n        result[key] = EntryView(id=key, label=labels.get(key))\n    return result\n"
             }
           ],
           "fixedFiles": [],
@@ -9523,7 +9523,7 @@
           "files": [
             {
               "path": "app/capacity.py",
-              "source": "def organization_caps(rows):\n    caps: dict[str, int] = {}\n    for row in rows:\n        caps[row.organization_id] = row.organization_cap\n    return caps\n"
+              "source": "def organization_caps(rows):\n    caps: dict[str, int] = {}\n    for key, row in rows:\n        caps[key] = row.organization_cap\n    return caps\n"
             }
           ],
           "fixedFiles": [],
@@ -9538,7 +9538,7 @@
           "files": [
             {
               "path": "app/capacity.py",
-              "source": "def organization_caps(rows):\n    return {row.organization_id: row.organization_cap for row in rows}\n"
+              "source": "def organization_caps(rows):\n    return {key: row.organization_cap for key, row in rows}\n"
             }
           ],
           "fixedFiles": [],
@@ -10052,36 +10052,6 @@
           "expectedCount": 0,
           "files": [
             {
-              "path": "app/formats.py",
-              "source": "def parse_config(suffix: str, source: str, jsonc_is_valid: bool):\n    match suffix:\n        case \".yaml\" | \".yml\":\n            return (\"yaml\", source)\n        case \".toml\":\n            return (\"toml\", source)\n        case \".jsonc\" if jsonc_is_valid:\n            return (\"jsonc\", source)\n        case _:\n            return None\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "app/formats.py",
-          "id": "grouped-suffix-match-with-guard",
-          "outcome": "accept",
-          "scenarioId": "grouped-terminal-dispatch",
-          "title": "Retain grouped alternatives, the guard, and the fallback"
-        },
-        {
-          "expectedCount": 1,
-          "files": [
-            {
-              "path": "app/formats.py",
-              "source": "def parse_config(suffix: str, source: str, jsonc_is_valid: bool):\n    if suffix in {\".yaml\", \".yml\"}:\n        return (\"yaml\", source)\n    if suffix == \".toml\":\n        return (\"toml\", source)\n    if suffix == \".jsonc\" and jsonc_is_valid:\n        return (\"jsonc\", source)\n    return None\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "app/formats.py",
-          "id": "grouped-terminal-suffix-dispatch",
-          "outcome": "reject",
-          "scenarioId": "grouped-terminal-dispatch",
-          "title": "Group terminal format dispatch under one subject"
-        },
-        {
-          "expectedCount": 0,
-          "files": [
-            {
               "path": "app/migrate.py",
               "source": "def migrate(path):\n    match path.name:\n        case \"eslint.json\":\n            return rewrite_eslint(path)\n        case \"ratchet.json\":\n            return rewrite_ratchet(path)\n        case _:\n            return rewrite(path)\n"
             }
@@ -10097,16 +10067,20 @@
           "expectedCount": 1,
           "files": [
             {
-              "path": "app/migrate.py",
-              "source": "_ESLINT_SUPPRESSIONS = \"eslint.json\"\n_RATCHET_SUPPRESSIONS = \"ratchet.json\"\n\n\ndef migrate(path):\n    if path.name == _ESLINT_SUPPRESSIONS:\n        migrated = rewrite_eslint(path)\n    elif path.name == _RATCHET_SUPPRESSIONS:\n        migrated = rewrite_ratchet(path)\n    else:\n        migrated = rewrite(path)\n    return migrated\n"
+              "path": "app/parse.py",
+              "source": "def parse(kind):\n    if kind == \"json\":\n        return json_parser()\n    elif kind == \"yaml\":\n        return yaml_parser()\n    else:\n        return fallback()\n"
+            },
+            {
+              "path": "pyproject.toml",
+              "source": "[project]\nrequires-python = '>=3.10'\n"
             }
           ],
           "fixedFiles": [],
-          "focusPath": "app/migrate.py",
-          "id": "named-file-dispatch",
+          "focusPath": "app/parse.py",
+          "id": "stable-literal-parameter",
           "outcome": "reject",
           "scenarioId": "primary",
-          "title": "Make repeated filename dispatch explicit"
+          "title": "Dispatch a stable parameter through literal cases"
         }
       ],
       "optionsSchemaSource": null
@@ -10218,7 +10192,7 @@
           "files": [
             {
               "path": "app/metrics.py",
-              "source": "import time\n\n\ndef measure():\n    started = time.monotonic()\n    work()\n    return time.monotonic() - started\n"
+              "source": "import time\n\n\ndef measure():\n    started = time.monotonic()\n    while time.monotonic() - started < 5:\n        work()\n"
             }
           ],
           "fixedFiles": [],
@@ -10233,7 +10207,7 @@
           "files": [
             {
               "path": "app/metrics.py",
-              "source": "import time\n\n\ndef measure():\n    started = time.time()\n    work()\n    return time.time() - started\n"
+              "source": "import time\n\n\ndef measure():\n    started = time.time()\n    while time.time() - started < 5:\n        work()\n"
             }
           ],
           "fixedFiles": [],
@@ -10746,22 +10720,7 @@
           "files": [
             {
               "path": "app/builder.py",
-              "source": "class Builder:\n    @classmethod\n    def create(cls) -> \"Builder\":\n        return cls()\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "app/builder.py",
-          "id": "concrete-classmethod-return",
-          "outcome": "reject",
-          "scenarioId": "alternate-constructor",
-          "title": "Alternate constructor names its enclosing class"
-        },
-        {
-          "expectedCount": 1,
-          "files": [
-            {
-              "path": "app/builder.py",
-              "source": "class Builder:\n    def set_name(self, name: str) -> \"Builder\":\n        self.name = name\n        return self\n"
+              "source": "from typing import final\n\n\nclass Builder:\n    @final\n    def set_name(self, name: str) -> \"Builder\":\n        self.name = name\n        return self\n"
             }
           ],
           "fixedFiles": [],
@@ -10770,21 +10729,6 @@
           "outcome": "reject",
           "scenarioId": "fluent-method",
           "title": "Fluent method names its enclosing class"
-        },
-        {
-          "expectedCount": 0,
-          "files": [
-            {
-              "path": "app/builder.py",
-              "source": "from typing import Self\n\n\nclass Builder:\n    @classmethod\n    def create(cls) -> Self:\n        return cls()\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "app/builder.py",
-          "id": "self-classmethod-return",
-          "outcome": "accept",
-          "scenarioId": "alternate-constructor",
-          "title": "Alternate constructor preserves subclass type"
         },
         {
           "expectedCount": 0,
@@ -11772,7 +11716,7 @@
           "files": [
             {
               "path": "service.py",
-              "source": "def move(source_id: str, target_id: str) -> None: ...\n\n\nmove(\"inbox\", \"archive\")\n"
+              "source": "def _move(source_id: str, target_id: str) -> None: ...\n\n\n_move(\"inbox\", \"archive\")\n"
             }
           ],
           "fixedFiles": [],
@@ -11915,7 +11859,7 @@
           "files": [
             {
               "path": "app/service.py",
-              "source": "from collections.abc import Callable\n\n\nclass Result:\n    pass\n\n\ndef build(factory: Callable[..., Result]):\n    return factory(size=4)\n"
+              "source": "from collections.abc import Callable\n\n\nclass Result:\n    pass\n\n\ndef _build(factory: Callable[..., Result]):\n    return factory(size=4)\n\n\n_build(Result)\n"
             }
           ],
           "fixedFiles": [],
@@ -11930,7 +11874,7 @@
           "files": [
             {
               "path": "app/service.py",
-              "source": "from functools import partial\n\n\nclass Result:\n    pass\n\n\ndef build(factory: partial[Result]):\n    return factory(size=4)\n"
+              "source": "from functools import partial\n\n\nclass Result:\n    pass\n\n\ndef _build(factory: partial[Result]):\n    return factory(size=4)\n\n\n_build(Result)\n"
             }
           ],
           "fixedFiles": [],
@@ -12516,21 +12460,6 @@
           "files": [
             {
               "path": "tests/test_widget.py",
-              "source": "def _read():\n    return \"ready\"\n\n\ndef _make_widget(*, read=_read):\n    return Widget(read=read)\n\n\n_make_widget()\n_make_widget(read=_read)\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "tests/test_widget.py",
-          "id": "exercised-local-callable-option",
-          "outcome": "accept",
-          "scenarioId": "callable-default",
-          "title": "An explicit callback preserves the dependency contract"
-        },
-        {
-          "expectedCount": 0,
-          "files": [
-            {
-              "path": "tests/test_widget.py",
               "source": "def test_widgets():\n    def _make_widget(*, size=3):\n        return Widget(size=size)\n\n    _make_widget()\n    _make_widget(size=4)\n"
             }
           ],
@@ -12546,60 +12475,15 @@
           "files": [
             {
               "path": "tests/test_widget.py",
-              "source": "def test_widgets():\n    def _make_widget(*, size=3):\n        return Widget(size=size)\n\n    _make_widget()\n    _make_widget(size=3)\n"
+              "source": "def _widget(*, enabled=True):\n    return Widget(enabled=enabled)\n\n\n_widget()\n_widget(enabled=True)\n"
             }
           ],
           "fixedFiles": [],
           "focusPath": "tests/test_widget.py",
-          "id": "invariant-size-option",
+          "id": "module-invariant-singleton-option",
           "outcome": "reject",
           "scenarioId": "primary",
-          "title": "Repeated calls never vary the option"
-        },
-        {
-          "expectedCount": 1,
-          "files": [
-            {
-              "path": "tests/test_widget.py",
-              "source": "def _widget(*, size=3):\n    return Widget(size=size)\n\n\n_widget()\n_widget(size=3)\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "tests/test_widget.py",
-          "id": "module-invariant-option",
-          "outcome": "reject",
-          "scenarioId": "module-literal",
-          "title": "A private shared helper's callers never vary the option"
-        },
-        {
-          "expectedCount": 0,
-          "files": [
-            {
-              "path": "tests/test_widget.py",
-              "source": "def _widget(*, size=3):\n    return Widget(size=size)\n\n\n_widget()\n_widget(size=4)\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "tests/test_widget.py",
-          "id": "module-varied-option",
-          "outcome": "accept",
-          "scenarioId": "module-literal",
-          "title": "A known caller exercises a distinct scenario value"
-        },
-        {
-          "expectedCount": 1,
-          "files": [
-            {
-              "path": "tests/test_widget.py",
-              "source": "def _read():\n    return \"ready\"\n\n\ndef _make_widget(*, read=_read):\n    return Widget(read=read)\n\n\n_make_widget()\n_make_widget()\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "tests/test_widget.py",
-          "id": "unused-local-callable-option",
-          "outcome": "reject",
-          "scenarioId": "callable-default",
-          "title": "Known callers do not replace a stable local dependency"
+          "title": "A private test helper's callers never vary a singleton option"
         }
       ],
       "optionsSchemaSource": null

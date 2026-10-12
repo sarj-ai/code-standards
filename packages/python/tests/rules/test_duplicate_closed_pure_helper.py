@@ -21,6 +21,16 @@ _BASE = (
     + "PATTERN.sub(_expand, text)\nOTHER.sub(_separate, text)\n"
 )
 _CASES = (
+    EvaluationCase(
+        "escaped-native-compile-provider",
+        Language.PYTHON,
+        _BASE.replace("import re", "import re\nfrom custom_hooks import customize\ncustomize(re.compile)"),
+    ),
+    EvaluationCase(
+        "escaped-native-match-provider",
+        Language.PYTHON,
+        _BASE.replace("import re", "import re\nfrom custom_hooks import customize\ncustomize(re.Match)"),
+    ),
     EvaluationCase("closed-native-callbacks", Language.PYTHON, _BASE, ExpectedOutcome.MATCH),
     EvaluationCase(
         "immutable-pattern-fragment",
@@ -103,7 +113,7 @@ def test_labeled_cases(case: EvaluationCase) -> None:
     findings = DuplicateClosedPureHelper().check(Path("app/formatters.py"), case.source)
     assert bool(findings) is (case.expected is ExpectedOutcome.MATCH)
     assert len(findings) <= 1
-    assert all(item.severity is Severity.WARNING for item in findings)
+    assert all(item.severity is Severity.ERROR for item in findings)
 
 
 @pytest.mark.parametrize(

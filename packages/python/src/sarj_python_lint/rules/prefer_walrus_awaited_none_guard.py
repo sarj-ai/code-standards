@@ -42,7 +42,7 @@ class PreferWalrusAwaitedNoneGuard(Rule):
     id = "prefer-walrus-awaited-none-guard"
     code = "SARJ432"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        default_level=Severity.WARNING,
+        default_level=Severity.ERROR,
         summary="Bind a compact awaited lookup in its immediately following terminal None guard.",
         rationale=(
             "When an awaited lookup and its terminal None guard are adjacent, binding in the condition keeps "
@@ -142,7 +142,7 @@ class PreferWalrusAwaitedNoneGuard(Rule):
                         line=assignment.lineno,
                         col=assignment.col_offset + 1,
                         code=self.code,
-                        severity=Severity.WARNING,
+                        severity=Severity.ERROR,
                         message=(
                             f"`{name}` only separates an awaited lookup from its terminal None guard; "
                             f"bind it as `if ({name} := {expression.strip()}) "
@@ -153,6 +153,8 @@ class PreferWalrusAwaitedNoneGuard(Rule):
 
         for body in _statement_lists(tree, node_index=context.node_index):
             collect_body_candidates(body)
+        if diagnostics and context.session.python_target.has_declared_support_before(path, (3, 8)):
+            return []
         return sorted(diagnostics, key=lambda item: (item.line, item.col))
 
 
