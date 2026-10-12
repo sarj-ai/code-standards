@@ -145,7 +145,11 @@ def _version_output(argv: Sequence[str], *, root: Path, runner: ProcessRunner) -
 
 def _version(tool: NativeTool, source: str) -> str:
     if tool.name == "docker":
-        value = parse_json(source)
+        try:
+            value = parse_json(source)
+        except ValueError as error:
+            message = "Compose version protocol must be one JSON object"
+            raise NativeToolError(message) from error
         if not is_object_mapping(value) or set(value) != {"version"} or not isinstance(value.get("version"), str):
             message = "Compose version protocol must contain exactly one version string"
             raise NativeToolError(message)

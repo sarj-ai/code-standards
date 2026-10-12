@@ -144,8 +144,52 @@ def test_compose_ambiguous_version_protocol_is_rejected(tmp_path: Path, payload:
         assert cwd == tmp_path
         return ProcessOutput(0, payload, "")
 
-    with pytest.raises(ValueError, match=r"Compose|exact version|Expecting value"):
+    with pytest.raises(NativeToolError, match=r"Compose|exact version"):
         checked_tool("docker", root=tmp_path, runner=runner)
+
+
+def test_unparseable_path_compose_preserves_pinned_mise_fallback(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    binary_directory = tmp_path / "bin"
+    binary_directory.mkdir()
+    suffix = ".exe" if sys.platform == "win32" else ""
+    multicall = binary_directory / f"docker{suffix}"
+    mise = binary_directory / f"mise{suffix}"
+    installation = tmp_path / "installed"
+    installation.mkdir()
+    installed = installation / f"docker-compose{suffix}"
+    for executable in (multicall, mise, installed):
+        executable.write_text("native protocol fixture", encoding="utf-8")
+        executable.chmod(0o755)
+    monkeypatch.setenv("PATH", str(binary_directory))
+    calls: list[tuple[str, ...]] = []
+
+    def resolve(argv: Sequence[str], *, cwd: Path, timeout_seconds: float | None = None) -> ProcessOutput:
+        assert cwd == tmp_path
+        assert timeout_seconds == 5
+        calls.append(tuple(argv))
+        if argv[0] == str(multicall):
+            return ProcessOutput(127, "", 'unsupported argv0 "docker-tools"\n')
+        if argv[0] == str(mise):
+            path = installation if argv[4] == "where" else installed
+            return ProcessOutput(0, f"{path}\n", "")
+        assert argv == (str(installed), "version", "--format", "json")
+        return ProcessOutput(0, '{"version":"v5.1.2"}\n', "")
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- exercise production lookup after a PATH multicall binary rejects its resolved argv0; the ordinary runner injection bypasses discovery.
+        devops_tools, "run_process", resolve
+    )
+    tool = checked_tool("docker", root=tmp_path, runner=resolve, expected_version="5.1.2")
+    assert tool.executable == installed
+    assert tool.standalone_compose
+    reference = "github:docker/compose@5.1.2"
+    assert calls == [
+        (str(multicall), "compose", "version", "--format", "json"),
+        (str(mise), "--no-config", "--no-env", "--no-hooks", "where", reference),
+        (str(mise), "--no-config", "--no-env", "--no-hooks", "which", "--tool", reference, "docker-compose"),
+        (str(installed), "version", "--format", "json"),
+    ]
 
 
 def test_tools_only_requires_existing_current_manifest(tmp_path: Path) -> None:
