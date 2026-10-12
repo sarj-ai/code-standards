@@ -1,8 +1,24 @@
 from __future__ import annotations
 
 import ast
+from typing import TYPE_CHECKING
 
 from sarj_python_lint.rules._ast_index import walk
+
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
+
+
+def collected_tests(statements: list[ast.stmt]) -> Iterator[ast.FunctionDef | ast.AsyncFunctionDef]:
+    for statement in statements:
+        match statement:
+            case ast.FunctionDef() | ast.AsyncFunctionDef() if statement.name.startswith("test"):
+                yield statement
+            case ast.ClassDef() if statement.name.startswith("Test"):
+                yield from collected_tests(statement.body)
+            case _:
+                pass
 
 
 # The pytest-benchmark fixture: the test measures time, it does not verify.

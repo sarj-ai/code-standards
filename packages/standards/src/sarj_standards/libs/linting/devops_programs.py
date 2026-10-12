@@ -551,7 +551,7 @@ def execution_blocks(relative: str, source: str, *, platform: str | None = None)
     if not name.endswith(".dockerignore") and (
         name == "dockerfile" or name.startswith("dockerfile.") or name.endswith(".dockerfile")
     ):
-        return _docker_blocks(source)
+        return _docker_blocks(relative, source)
     if (
         name in {"mise.toml", ".mise.toml"}
         or (name.startswith("mise.") and name.endswith(".toml"))
@@ -692,12 +692,13 @@ class _DockerStage:
         ]
 
 
-def _docker_blocks(source: str) -> list[ExecutionBlock]:
+def _docker_blocks(relative: str, source: str) -> list[ExecutionBlock]:
     blocks: list[ExecutionBlock] = []
     state = _DockerStage()
     stages: dict[str, _DockerStage] = {}
     stage = ""
-    lines = source.splitlines()
+    # Docker's scanner splits on LF and trims trailing CR, preserving other data.
+    lines = [line.rstrip("\r") for line in source.split("\n")] if "\r" in source else source.split("\n")
     cursor = _DockerCursor(lines, _docker_escape(lines))
     while cursor.index < len(cursor.lines):
         instruction = cursor.read_instruction()
@@ -719,7 +720,8 @@ def _docker_blocks(source: str) -> list[ExecutionBlock]:
             continue
         blocks.extend(state.consume(instruction))
     blocks.extend(state.blocks())
-    return sorted(dict.fromkeys(blocks), key=lambda block: (block.line, block.end_line or block.line))
+    ordered = sorted(dict.fromkeys(blocks), key=lambda block: (block.line, block.end_line or block.line))
+    return _physical_block_locations(relative, source, ordered)
 
 
 def _docker_escape(lines: Sequence[str]) -> str:
@@ -783,19 +785,37 @@ def _make_blocks(relative: str, source: str) -> list[ExecutionBlock]:
     for number, line in enumerate(lines, 1):
         recipes.consume(line, number)
     recipes.flush()
+    return _physical_block_locations(relative, source, recipes.blocks)
+
+
+def _physical_block_locations(relative: str, source: str, blocks: list[ExecutionBlock]) -> list[ExecutionBlock]:
+    # Native LF coordinates need translation only when CR is literal editor data.
     if "\r" not in source or source.count("\r") == source.count("\r\n"):
-        return recipes.blocks
+        return blocks
     document = SourceDocument(Path(relative), source)
+    raw_lines = source.split("\n")
     offsets = list(
         accumulate((len(line.encode("utf-8", errors="surrogateescape")) + 1 for line in raw_lines), initial=0)
     )
-    return [
-        replace(
-            block,
-            line=document.region(start_byte=offsets[block.line - 1], end_byte=offsets[block.line - 1]).start.line + 1,
+    result: list[ExecutionBlock] = []
+    for block in blocks:
+        start = offsets[block.line - 1]
+        end = start
+        end_column = block.end_column
+        if block.end_line is not None and end_column is not None:
+            prefix = raw_lines[block.end_line - 1][: end_column - 1]
+            end = offsets[block.end_line - 1] + len(prefix.encode("utf-8", errors="surrogateescape"))
+            end_column = len(prefix.rsplit("\r", 1)[-1]) + 1
+        region = document.region(start_byte=start, end_byte=end)
+        result.append(
+            replace(
+                block,
+                line=region.start.line + 1,
+                end_line=region.end.line + 1 if block.end_line is not None else None,
+                end_column=end_column,
+            )
         )
-        for block in recipes.blocks
-    ]
+    return result
 
 
 _MAKE_ASSIGNMENT = re.compile(r"(?:export\s+)?([A-Za-z_.][A-Za-z0-9_.]*)\s*(:::=|::=|:=|[?+]?=)\s*(.*)")

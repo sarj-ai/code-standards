@@ -20,6 +20,7 @@ from sarj_python_lint.rule_base import (
 )
 from sarj_python_lint.rules._ast_index import walk as walk_ast
 from sarj_python_lint.rules._imports import ImportIndex
+from sarj_python_lint.rules._pytest import collected_tests
 
 
 if TYPE_CHECKING:
@@ -224,22 +225,11 @@ class AsyncMockCallWithoutAwaitAssertion(Rule):
                 severity=Severity.WARNING,
                 message="AsyncMock call assertions do not prove awaiting; keep this assertion and add an await assertion",
             )
-            for test in _collected_tests(tree.body)
+            for test in collected_tests(tree.body)
             if not _is_pytest_fixture(test, imports)
             for call in _uncovered_calls(_test_imports(imports, test), test, writes)
             if not is_suppressed(lines, call.lineno, self.code)
         ]
-
-
-def _collected_tests(statements: list[ast.stmt]) -> Iterator[_TestFunction]:
-    for statement in statements:
-        match statement:
-            case ast.FunctionDef() | ast.AsyncFunctionDef() if statement.name.startswith("test"):
-                yield statement
-            case ast.ClassDef() if statement.name.startswith("Test"):
-                yield from _collected_tests(statement.body)
-            case _:
-                pass
 
 
 def _is_pytest_fixture(test: _TestFunction, imports: ImportIndex) -> bool:

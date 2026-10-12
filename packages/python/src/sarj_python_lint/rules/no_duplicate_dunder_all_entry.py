@@ -14,7 +14,7 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
 )
-from sarj_python_lint.rules._ast_index import walk as walk_ast
+from sarj_python_lint.rules._exports import mentions_dunder_all
 
 
 if TYPE_CHECKING:
@@ -140,7 +140,7 @@ def _has_other_dunder_all_rebindings(tree: ast.Module, declaration: ast.stmt) ->
             continue
         if _is_supported_dunder_all_growth(statement):
             continue
-        if _mentions_dunder_all(statement):
+        if mentions_dunder_all(statement):
             return True
     return False
 
@@ -153,28 +153,6 @@ def _is_supported_dunder_all_growth(statement: ast.stmt) -> bool:
             return True
         case _:
             return False
-
-
-def _mentions_dunder_all(node: ast.AST) -> bool:
-    for child in walk_ast(node):
-        match child:
-            case ast.Name(id="__all__"):
-                return True
-            case ast.alias() if (child.asname or child.name).split(".")[0] == "__all__":
-                return True
-            case ast.FunctionDef() | ast.AsyncFunctionDef() | ast.ClassDef() if child.name == "__all__":
-                return True
-            case ast.arg(arg="__all__") | ast.ExceptHandler(name="__all__"):
-                return True
-            case ast.MatchAs() | ast.MatchStar() if child.name == "__all__":
-                return True
-            case ast.MatchMapping(rest="__all__"):
-                return True
-            case ast.Global() | ast.Nonlocal() if "__all__" in child.names:
-                return True
-            case _:
-                pass
-    return False
 
 
 def _literal_elements(statement: ast.stmt) -> list[_LiteralElement] | None:
