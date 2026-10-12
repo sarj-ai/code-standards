@@ -1,0 +1,2429 @@
+{
+  "schema": 1,
+  "date": "2026-10-12",
+  "run": 6,
+  "initialAuthoringRevision": "bdb993bbcc42c233a27ffc7ddede254ba81a9846",
+  "selection": {
+    "seed": 202610120013,
+    "poolSize": 304,
+    "catalogSha256": "ecc54e2ee994cfc22c6d1f4552a8aa58bdbeb6fd9f84b6c78f90ab50c7036a18",
+    "baselineRevision": "bdb993bbcc42c233a27ffc7ddede254ba81a9846",
+    "sampling": "10 rules without replacement within each round; independent rounds permit repeat selections",
+    "draws": 300,
+    "uniqueRules": 197,
+    "sourceFiles": 190,
+    "declaredExamplesAcrossDistinctRules": 542
+  },
+  "admissions": [
+    {
+      "reproduction": "GNU Make executes printf '%s' 'before\\u2028after' unchanged; the adapter truncates after before. A comment with U+2028 followed by SHELL=python3 makes the adapter skip shell analysis although native Make still uses /bin/sh.",
+      "owner": "sarj_standards.libs.linting.devops_programs._make_blocks",
+      "gap": "str.splitlines treats literal non-LF separator data as Make line boundaries.",
+      "harm": "Commands are truncated, diagnostics use wrong physical lines, and fake assignments in comments can bypass shell analysis.",
+      "invalidStateVersusPreference": "Project exactly the physical Make recipe; keep existing syntax, shells and formatting policy.",
+      "smallestFix": "Split Make input only at LF, retaining internal carriage returns and removing a terminal CR for native CRLF lines."
+    },
+    {
+      "reproduction": "Both randomly selected PostgreSQL rules build the same docstring constant-id set for a shared PythonFileContext; no-offset-pagination duplicates the same owner test.",
+      "owner": "sarj_python_lint._file_context.PythonFileContext",
+      "gap": "Three copies repeat identical indexed AST owner classification per file.",
+      "harm": "Repeated deterministic work and duplicated exclusions can drift.",
+      "invalidStateVersusPreference": "Implementation-only consolidation, requiring unchanged findings in both rule orders and standalone contexts.",
+      "smallestFix": "One lazy immutable docstring_node_ids fact per file context, used by all three existing callers."
+    }
+  ],
+  "shellPasses": [
+    {
+      "pass": 1,
+      "title": "Make preserves vertical-tab literal recipe data",
+      "evidence": {
+        "nativeBehaviorPreserved": true,
+        "fullProjection": true,
+        "successful": true
+      }
+    },
+    {
+      "pass": 2,
+      "title": "Make preserves form-feed literal recipe data",
+      "evidence": {
+        "nativeBehaviorPreserved": true,
+        "fullProjection": true,
+        "successful": true
+      }
+    },
+    {
+      "pass": 3,
+      "title": "Make preserves carriage-return literal recipe data",
+      "evidence": {
+        "nativeBehaviorPreserved": true,
+        "fullProjection": true,
+        "successful": true
+      }
+    },
+    {
+      "pass": 4,
+      "title": "Make preserves next-line literal recipe data",
+      "evidence": {
+        "nativeBehaviorPreserved": true,
+        "fullProjection": true,
+        "successful": true
+      }
+    },
+    {
+      "pass": 5,
+      "title": "Make preserves line-separator literal recipe data",
+      "evidence": {
+        "nativeBehaviorPreserved": true,
+        "fullProjection": true,
+        "successful": true
+      }
+    },
+    {
+      "pass": 6,
+      "title": "Make preserves paragraph-separator literal recipe data",
+      "evidence": {
+        "nativeBehaviorPreserved": true,
+        "fullProjection": true,
+        "successful": true
+      }
+    },
+    {
+      "pass": 7,
+      "title": "Make comment vertical-tab cannot introduce an interpreter assignment",
+      "evidence": {
+        "nativeDryRunAccepted": true,
+        "shellProjectionRetained": true,
+        "successful": true
+      }
+    },
+    {
+      "pass": 8,
+      "title": "Make comment form-feed cannot introduce an interpreter assignment",
+      "evidence": {
+        "nativeDryRunAccepted": true,
+        "shellProjectionRetained": true,
+        "successful": true
+      }
+    },
+    {
+      "pass": 9,
+      "title": "Make comment carriage-return cannot introduce an interpreter assignment",
+      "evidence": {
+        "nativeDryRunAccepted": true,
+        "shellProjectionRetained": true,
+        "successful": true
+      }
+    },
+    {
+      "pass": 10,
+      "title": "Make comment next-line cannot introduce an interpreter assignment",
+      "evidence": {
+        "nativeDryRunAccepted": true,
+        "shellProjectionRetained": true,
+        "successful": true
+      }
+    },
+    {
+      "pass": 11,
+      "title": "Make comment line-separator cannot introduce an interpreter assignment",
+      "evidence": {
+        "nativeDryRunAccepted": true,
+        "shellProjectionRetained": true,
+        "successful": true
+      }
+    },
+    {
+      "pass": 12,
+      "title": "Make comment paragraph-separator cannot introduce an interpreter assignment",
+      "evidence": {
+        "nativeDryRunAccepted": true,
+        "shellProjectionRetained": true,
+        "successful": true
+      }
+    },
+    {
+      "pass": 13,
+      "title": "Make CRLF retains actual recipe boundaries",
+      "evidence": {
+        "successful": true
+      }
+    },
+    {
+      "pass": 14,
+      "title": "Make continuation preserves literal separator and escaped LF",
+      "evidence": {
+        "successful": true
+      }
+    },
+    {
+      "pass": 15,
+      "title": "Make custom recipe prefix preserves quoted separator bytes",
+      "evidence": {
+        "successful": true
+      }
+    },
+    {
+      "pass": 16,
+      "title": "Make inline recipe retains next physical recipe coordinates",
+      "evidence": {
+        "successful": true
+      }
+    },
+    {
+      "pass": 17,
+      "title": "Make target-local flags remain scoped after comment separator data",
+      "evidence": {
+        "successful": true
+      }
+    },
+    {
+      "pass": 18,
+      "title": "Avoid reading and truncating a file in one pipeline",
+      "evidence": {
+        "rule": "SC2094",
+        "positive": [
+          "SC2094",
+          "SC2094"
+        ],
+        "negative": [],
+        "decision": "upstream-already-owns-invariant",
+        "successful": true
+      }
+    },
+    {
+      "pass": 19,
+      "title": "Branch on the command status directly",
+      "evidence": {
+        "rule": "SC2181",
+        "positive": [
+          "SC2181"
+        ],
+        "negative": [],
+        "decision": "upstream-already-owns-invariant",
+        "successful": true
+      }
+    },
+    {
+      "pass": 20,
+      "title": "Keep conditional branches explicit when the success action can fail",
+      "evidence": {
+        "rule": "SC2015",
+        "positive": [
+          "SC2015"
+        ],
+        "negative": [],
+        "decision": "upstream-already-owns-invariant",
+        "successful": true
+      }
+    },
+    {
+      "pass": 21,
+      "title": "Terminate option parsing before filename globs",
+      "evidence": {
+        "rule": "SC2035",
+        "positive": [
+          "SC2035"
+        ],
+        "negative": [],
+        "decision": "upstream-already-owns-invariant",
+        "successful": true
+      }
+    },
+    {
+      "pass": 22,
+      "title": "Mark leading-zero decimal arithmetic explicitly",
+      "evidence": {
+        "rule": "SC2080",
+        "positive": [
+          "SC2080"
+        ],
+        "negative": [],
+        "decision": "upstream-already-owns-invariant",
+        "successful": true
+      }
+    },
+    {
+      "pass": 23,
+      "title": "Order stderr redirection after stdout redirection",
+      "evidence": {
+        "rule": "SC2069",
+        "positive": [
+          "SC2069"
+        ],
+        "negative": [],
+        "decision": "upstream-already-owns-invariant",
+        "successful": true
+      }
+    },
+    {
+      "pass": 24,
+      "title": "Iterate glob paths without parsing ls output",
+      "evidence": {
+        "rule": "SC2045",
+        "positive": [
+          "SC2045"
+        ],
+        "negative": [],
+        "decision": "upstream-already-owns-invariant",
+        "successful": true
+      }
+    },
+    {
+      "pass": 25,
+      "title": "Handle cd failure before dependent work",
+      "evidence": {
+        "rule": "SC2164",
+        "positive": [
+          "SC2164"
+        ],
+        "negative": [],
+        "decision": "upstream-already-owns-invariant",
+        "successful": true
+      }
+    },
+    {
+      "pass": 26,
+      "title": "Native shfmt preserves quoted Unicode separator data",
+      "evidence": {
+        "successful": true
+      }
+    },
+    {
+      "pass": 27,
+      "title": "Shell argv keeps command source and runtime failure options",
+      "evidence": {
+        "successful": true
+      }
+    },
+    {
+      "pass": 28,
+      "title": "Native AST cache returns isolated mutable trees",
+      "evidence": {
+        "successful": true
+      }
+    },
+    {
+      "pass": 29,
+      "title": "Make ONESHELL preserves authored grouping and separator data",
+      "evidence": {
+        "successful": true
+      }
+    },
+    {
+      "pass": 30,
+      "title": "Fresh pinned shell corpora retain native ownership and process isolation",
+      "evidence": {
+        "inventoriedRepositories": 13,
+        "nativeShellRepositories": 11,
+        "inventoryOnlyNoShellSources": 2,
+        "files": 701,
+        "bytes": 2769087,
+        "shellFiles": 347,
+        "nativeBatches": 11,
+        "maxBatchFiles": 119,
+        "nativeFindings": {
+          "SC1083": 2,
+          "SC1091": 3,
+          "SC2010": 1,
+          "SC2012": 3,
+          "SC2016": 4,
+          "SC2034": 12,
+          "SC2046": 9,
+          "SC2086": 74,
+          "SC2088": 1,
+          "SC2115": 1,
+          "SC2148": 1,
+          "SC2154": 33,
+          "SC2155": 1,
+          "SC2162": 11,
+          "SC2164": 4,
+          "SC2166": 8,
+          "SC2196": 4,
+          "SC2310": 121,
+          "SC2311": 62,
+          "SC2312": 276,
+          "SC3045": 4
+        },
+        "formatCounts": {
+          "files": 345,
+          "failed": 1,
+          "findings": 186
+        },
+        "elapsedSeconds": 20.497894499916583,
+        "successful": true
+      }
+    }
+  ],
+  "shellReproductionsBeforeFix": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    14,
+    15,
+    16,
+    17,
+    29
+  ],
+  "randomRuleRounds": [
+    {
+      "round": 1,
+      "rules": [
+        "eslint:store-insert-requires-on-conflict",
+        "eslint:iac-source-coupled-test",
+        "eslint:prefer-logical-tailwind-utilities",
+        "eslint:prefer-shared-zod-enum",
+        "python:repeated-kwarg-heavy-call-in-test",
+        "python:no-delete-statement",
+        "eslint:no-duplicate-test-case",
+        "eslint:require-explicit-contract-implementation",
+        "python:no-repeated-test-body",
+        "iac:require-prevent-destroy-on-irreplaceable"
+      ]
+    },
+    {
+      "round": 2,
+      "rules": [
+        "eslint:no-duplicate-test-case",
+        "python:prefer-struct-over-namedtuple",
+        "python:fastapi-explicit-openapi-contract",
+        "python:prefer-monkeypatch-for-process-state-in-test",
+        "sql:excess-migration-index-requires-justification",
+        "python:require-explicit-contract-implementation",
+        "python:require-pydantic-for-structured-payload",
+        "iac:no-restated-comment",
+        "eslint:prefer-millisecond-control-duration-schema",
+        "python:repeated-kwarg-heavy-call-in-test"
+      ]
+    },
+    {
+      "round": 3,
+      "rules": [
+        "eslint:prefer-node-crypto-hash",
+        "eslint:require-explicit-contract-implementation",
+        "eslint:prefer-named-complex-return-type",
+        "eslint:prefer-module-level-constant",
+        "python:no-mocked-pydantic-value-object",
+        "eslint:prefer-non-nullable-collection",
+        "python:repeated-test-composition",
+        "python:require-explicit-contract-implementation",
+        "python:production-derived-test-cases",
+        "sql:no-pg-enum"
+      ]
+    },
+    {
+      "round": 4,
+      "rules": [
+        "python:prefer-class-row",
+        "eslint:no-unnecessary-use-client",
+        "eslint:no-secret-in-log",
+        "text:iac-source-coupled-test",
+        "python:require-injectable-retry-sleep",
+        "iac:no-managed-service-account-key",
+        "python:duplicate-adjacent-exception-handler",
+        "python:no-bare-test-phase-comments",
+        "python:no-select-star",
+        "eslint:no-redundant-optional-array-default"
+      ]
+    },
+    {
+      "round": 5,
+      "rules": [
+        "sql:index-concurrently",
+        "text:declarative-deployment-boundary",
+        "python:no-restated-closed-domain-description",
+        "python:prefer-walrus-awaited-none-guard",
+        "iac:no-redundant-variable-validation",
+        "eslint:no-silent-promise-catch",
+        "sql:no-database-triggers",
+        "python:no-any-mapping-types",
+        "eslint:no-production-browser-source-maps",
+        "eslint:prefer-immutable-module-constant"
+      ]
+    },
+    {
+      "round": 6,
+      "rules": [
+        "python:replay-contract-insert-requires-duplicate-policy",
+        "eslint:no-json-stringify-error",
+        "python:no-comment-cruft",
+        "eslint:no-restated-jsdoc",
+        "python:prefer-match-assert-never",
+        "eslint:prefer-await-in-async-return",
+        "python:no-restated-comment",
+        "python:no-positional-psycopg-row-escape",
+        "python:no-string-concat-in-loop",
+        "iac:no-restated-comment"
+      ]
+    },
+    {
+      "round": 7,
+      "rules": [
+        "eslint:prefer-whole-object-assertion",
+        "text:workflow-embedded-program",
+        "python:prefer-walrus-stream-loop",
+        "python:duplicate-closed-pure-helper",
+        "text:large-shell-program",
+        "python:unused-test-factory-option",
+        "python:no-provably-dead-mock-configuration",
+        "python:no-analytical-aggregation-in-postgres-store",
+        "python:pytest-fixture-returns-bare-tuple",
+        "eslint:no-unlocalized-toast"
+      ]
+    },
+    {
+      "round": 8,
+      "rules": [
+        "eslint:prefer-server-actions",
+        "iac:require-prevent-destroy-on-irreplaceable",
+        "iac:no-comment-cruft",
+        "iac:no-dead-environment-input",
+        "eslint:prefer-input-group-search",
+        "python:no-repeated-test-body",
+        "iac:require-deletion-protection",
+        "python:require-explicit-psycopg-transaction",
+        "text:ephemeral-execution-artifact",
+        "python:prefer-pytest-fixture-injection"
+      ]
+    },
+    {
+      "round": 9,
+      "rules": [
+        "text:iac-source-coupled-test",
+        "sql:mixed-migration-phases",
+        "python:no-unique-violation-message-match",
+        "python:prefer-native-string-check",
+        "eslint:no-json-stringify-error",
+        "python:require-nodecode-for-splitting-settings-field",
+        "python:prefer-regex-fullmatch",
+        "python:redundant-module-docstring",
+        "python:over-mocked-test",
+        "eslint:no-production-browser-source-maps"
+      ]
+    },
+    {
+      "round": 10,
+      "rules": [
+        "python:require-explicit-service-contract",
+        "python:no-injected-module-loader",
+        "eslint:no-unsafe-test-double-cast",
+        "sql:no-offset-pagination",
+        "eslint:no-raw-env",
+        "python:no-service-behavior-in-settings",
+        "eslint:prefer-logical-tailwind-utilities",
+        "eslint:no-conditional-empty-object-spread",
+        "eslint:prefer-module-level-refined-schema",
+        "python:prefer-nominal-id-types"
+      ]
+    },
+    {
+      "round": 11,
+      "rules": [
+        "sql:require-lock-timeout",
+        "python:require-explicit-service-contract",
+        "eslint:require-zod-form-validation",
+        "eslint:no-dynamic-sql",
+        "eslint:stepdown",
+        "python:prefer-match-assert-never",
+        "python:no-repeated-structured-string-literal",
+        "iac:no-terraform-data-condition",
+        "eslint:prefer-switch-for-repeated-equality",
+        "eslint:no-union-in-comment"
+      ]
+    },
+    {
+      "round": 12,
+      "rules": [
+        "eslint:no-unlocalized-jsx-attributes",
+        "eslint:no-raw-env",
+        "sql:require-fk-index",
+        "python:no-database-programmability",
+        "eslint:no-json-stringify-error",
+        "eslint:no-production-browser-source-maps",
+        "python:prefer-required-constructor-parameters",
+        "python:require-pydantic-for-structured-payload",
+        "python:unused-test-factory-option",
+        "eslint:prefer-module-level-schema"
+      ]
+    },
+    {
+      "round": 13,
+      "rules": [
+        "python:prefer-match-exception-dispatch",
+        "iac:no-dead-environment-input",
+        "iac:no-managed-service-account-key",
+        "python:no-before-validator-input-mutation",
+        "python:no-positional-psycopg-row-escape",
+        "python:no-any-mapping-types",
+        "python:require-pydantic-ordinal-lower-bound",
+        "python:no-comment-cruft",
+        "python:require-explicit-contract-implementation",
+        "python:no-conftest-test-module-import"
+      ]
+    },
+    {
+      "round": 14,
+      "rules": [
+        "python:no-unused-value-marker",
+        "eslint:no-restricted-library-load",
+        "eslint:prefer-module-level-constant",
+        "python:no-dunder-all",
+        "python:unused-test-factory-option",
+        "python:prefer-constant-time-secret-compare",
+        "python:subprocess-kill-without-reap",
+        "python:no-restated-closed-domain-description",
+        "python:fastapi-explicit-openapi-contract",
+        "sql:prefer-uuidv7-default"
+      ]
+    },
+    {
+      "round": 15,
+      "rules": [
+        "python:over-mocked-test",
+        "eslint:prefer-typed-reflection",
+        "python:no-analytical-aggregation-in-postgres-store",
+        "eslint:prefer-millisecond-control-duration-schema",
+        "python:docstring-returns-restate-signature",
+        "eslint:no-trailing-value-narration",
+        "python:no-delete-statement",
+        "python:no-excessive-cognitive-complexity",
+        "python:require-explicit-contract-implementation",
+        "python:require-port-for-service"
+      ]
+    },
+    {
+      "round": 16,
+      "rules": [
+        "sql:insert-requires-replay-policy",
+        "eslint:no-sleep-in-test-body",
+        "iac:require-prevent-destroy-on-irreplaceable",
+        "python:duplicate-closed-pure-helper",
+        "text:no-unsafe-command-argument-interpolation",
+        "eslint:no-log-only-catch",
+        "python:unused-test-factory-option",
+        "eslint:sole-export-matches-filename",
+        "python:prefer-pydantic-json-value",
+        "python:docstring-returns-restate-signature"
+      ]
+    },
+    {
+      "round": 17,
+      "rules": [
+        "python:prefer-non-nullable-collection",
+        "python:no-bare-test-phase-comments",
+        "text:cloudbuild-contract",
+        "eslint:no-bespoke-api-case-conversion",
+        "eslint:no-hand-rolled-sleep",
+        "python:require-explicit-psycopg-transaction",
+        "python:prefer-or-pattern",
+        "python:replay-contract-insert-requires-duplicate-policy",
+        "python:no-database-programmability",
+        "eslint:no-in-operator-on-built-in-collections"
+      ]
+    },
+    {
+      "round": 18,
+      "rules": [
+        "python:prefer-injected-dependency-over-monkeypatch",
+        "python:excessive-commentary",
+        "eslint:require-explicit-service-contract",
+        "python:over-mocked-test",
+        "python:no-cors-wildcard-with-credentials",
+        "iac:no-managed-service-account-key",
+        "python:redundant-test-constructor-forwarder",
+        "sql:no-database-functions",
+        "python:require-port-for-service",
+        "sql:require-fk-index"
+      ]
+    },
+    {
+      "round": 19,
+      "rules": [
+        "eslint:no-hand-rolled-spinner",
+        "eslint:prefer-whole-object-assertion",
+        "eslint:prefer-schema-for-api-payload",
+        "python:prefer-autospec-for-callable-mock",
+        "python:no-unused-underscored-keyword-parameter",
+        "python:no-duplicate-dunder-all-entry",
+        "python:complex-postgres-query-requires-architecture-review",
+        "python:prefer-monkeypatch-for-process-state-in-test",
+        "python:prefer-pydantic-json-value",
+        "sql:prefer-text-over-varchar"
+      ]
+    },
+    {
+      "round": 20,
+      "rules": [
+        "python:prefer-walrus-comprehension-filter",
+        "eslint:prefer-native-random-uuid",
+        "python:redundant-class-docstring",
+        "eslint:no-secret-in-log",
+        "python:fakes-in-shared-location",
+        "python:no-nested-pydantic-field-validator",
+        "sql:no-application-schema-check",
+        "sql:prefer-jsonb",
+        "iac:no-dead-environment-input",
+        "eslint:no-raw-env"
+      ]
+    },
+    {
+      "round": 21,
+      "rules": [
+        "python:redundant-test-constructor-forwarder",
+        "python:no-redundant-module-alias-exports",
+        "eslint:prefer-module-level-refined-schema",
+        "python:no-restated-comment",
+        "python:prefer-monotonic-for-elapsed-time",
+        "python:no-any-mapping-types",
+        "eslint:require-use-server-in-actions-file",
+        "eslint:require-sql-access-class",
+        "python:unused-test-factory-option",
+        "eslint:prefer-schema-for-api-payload"
+      ]
+    },
+    {
+      "round": 22,
+      "rules": [
+        "python:prefer-constant-time-secret-compare",
+        "eslint:no-in-operator-on-built-in-collections",
+        "eslint:prefer-input-group-search",
+        "python:no-repeated-structured-string-literal",
+        "python:named-record-at-boundaries",
+        "python:iac-source-coupled-test",
+        "python:require-pydantic-for-external-json",
+        "python:replay-contract-insert-requires-duplicate-policy",
+        "eslint:no-zod-native-enum",
+        "python:prefer-walrus-awaited-none-guard"
+      ]
+    },
+    {
+      "round": 23,
+      "rules": [
+        "text:no-wildcard-secret-read-permission",
+        "eslint:no-enum",
+        "python:no-fixed-sleep-before-assert",
+        "python:no-swallowed-asyncio-cancellation",
+        "eslint:require-pascal-case-zod-schema-name",
+        "eslint:no-unlocalized-jsx-attributes",
+        "eslint:require-camelcase-properties",
+        "python:no-fixed-sleep-in-loop",
+        "python:no-database-programmability",
+        "python:prefer-str-enum"
+      ]
+    },
+    {
+      "round": 24,
+      "rules": [
+        "eslint:prefer-non-nullable-collection",
+        "sql:no-database-triggers",
+        "text:large-shell-program",
+        "python:no-trailing-numeric-unit-assignment-comment",
+        "eslint:no-broad-return-type",
+        "eslint:no-json-stringify-object-equality",
+        "python:prefer-required-constructor-parameters",
+        "eslint:named-child-schema-type",
+        "python:production-derived-test-cases",
+        "python:prefer-library-fake"
+      ]
+    },
+    {
+      "round": 25,
+      "rules": [
+        "eslint:no-redundant-optional-array-default",
+        "eslint:named-child-schema-type",
+        "python:subprocess-kill-without-reap",
+        "eslint:iac-source-coupled-test",
+        "eslint:repeated-static-call-cases",
+        "eslint:no-server-env-in-client-component",
+        "eslint:no-sleep-in-test-body",
+        "eslint:no-fat-try-blocks",
+        "python:async-cleanup-registered-synchronously",
+        "eslint:require-fetch-timeout"
+      ]
+    },
+    {
+      "round": 26,
+      "rules": [
+        "python:docstring-returns-restate-signature",
+        "eslint:require-button-accessible-name",
+        "eslint:require-camelcase-properties",
+        "iac:no-dead-environment-input",
+        "text:declarative-deployment-boundary",
+        "iac:no-terraform-data-condition",
+        "python:no-delete-statement",
+        "sql:insert-requires-replay-policy",
+        "python:prefer-match-assert-never",
+        "python:no-service-behavior-in-settings"
+      ]
+    },
+    {
+      "round": 27,
+      "rules": [
+        "python:prefer-library-fake",
+        "eslint:prefer-multi-value-zod-literal",
+        "python:prefer-regex-fullmatch",
+        "python:no-generic-single-export-module",
+        "python:prefer-monkeypatch-for-process-state-in-test",
+        "python:named-record-at-boundaries",
+        "sql:no-application-schema-check",
+        "python:no-injected-module-loader",
+        "python:defect-xfail-requires-explicit-strict",
+        "python:no-hidden-constructor-fallback"
+      ]
+    },
+    {
+      "round": 28,
+      "rules": [
+        "python:subprocess-kill-without-reap",
+        "eslint:prefer-millisecond-control-duration-schema",
+        "python:no-positional-tuple-record",
+        "eslint:no-dynamic-sql",
+        "python:prefer-walrus-comprehension-filter",
+        "python:repeated-test-composition",
+        "python:prefer-autospec-for-callable-mock",
+        "python:require-precise-factory-signature",
+        "iac:no-managed-service-account-key",
+        "sql:no-duplicate-index"
+      ]
+    },
+    {
+      "round": 29,
+      "rules": [
+        "eslint:require-port-for-service",
+        "text:commented-out-config",
+        "python:no-hidden-constructor-fallback",
+        "eslint:no-duplicate-lifecycle-refresh-listeners",
+        "python:async-mock-call-without-await-assertion",
+        "python:prefer-immutable-module-constant",
+        "eslint:no-string-concat-in-loop",
+        "python:require-pydantic-for-structured-payload",
+        "sql:enforce-timestamptz",
+        "eslint:no-positional-tuple-return"
+      ]
+    },
+    {
+      "round": 30,
+      "rules": [
+        "python:no-cors-wildcard-with-credentials",
+        "python:no-raw-source-text-test-oracle",
+        "eslint:store-insert-requires-on-conflict",
+        "eslint:no-first-party-module-mock",
+        "eslint:no-insecure-random-id",
+        "eslint:prefer-named-callback-domain",
+        "python:prefer-str-enum",
+        "eslint:no-long-comment",
+        "eslint:no-detached-global-fetch",
+        "eslint:no-bespoke-api-case-conversion"
+      ]
+    }
+  ],
+  "ruleReviews": {
+    "eslint:iac-source-coupled-test": {
+      "source": "packages/typescript/src/rules/iac-source-coupled-test.ts",
+      "test": "packages/typescript/tests/rules/iac-source-coupled-test.test.ts",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "eslint:named-child-schema-type": {
+      "source": "packages/typescript/src/rules/named-child-schema-type.ts",
+      "test": "packages/typescript/tests/rules/named-child-schema-type.test.ts",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "eslint:no-bespoke-api-case-conversion": {
+      "source": "packages/typescript/src/rules/no-bespoke-api-case-conversion.ts",
+      "test": "packages/typescript/tests/rules/no-bespoke-api-case-conversion.test.ts",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "eslint:no-broad-return-type": {
+      "source": "packages/typescript/src/rules/no-broad-return-type.ts",
+      "test": "packages/typescript/tests/rules/no-broad-return-type.test.ts",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "eslint:no-conditional-empty-object-spread": {
+      "source": "packages/typescript/src/rules/no-conditional-empty-object-spread.ts",
+      "test": "packages/typescript/tests/rules/no-conditional-empty-object-spread.test.ts",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "eslint:no-detached-global-fetch": {
+      "source": "packages/typescript/src/rules/no-detached-global-fetch.ts",
+      "test": "packages/typescript/tests/rules/no-detached-global-fetch.test.ts",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "eslint:no-duplicate-lifecycle-refresh-listeners": {
+      "source": "packages/typescript/src/rules/no-duplicate-lifecycle-refresh-listeners.ts",
+      "test": "packages/typescript/tests/rules/no-duplicate-lifecycle-refresh-listeners.test.ts",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "eslint:no-duplicate-test-case": {
+      "source": "packages/typescript/src/rules/no-duplicate-test-case.ts",
+      "test": "packages/typescript/tests/rules/no-duplicate-test-case.test.ts",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "eslint:no-dynamic-sql": {
+      "source": "packages/typescript/src/rules/no-dynamic-sql.ts",
+      "test": "packages/typescript/tests/rules/no-dynamic-sql.test.ts",
+      "nativeDeclaredExamples": 4,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "eslint:no-enum": {
+      "source": "packages/typescript/src/rules/no-enum.ts",
+      "test": "packages/typescript/tests/rules/no-enum.test.ts",
+      "nativeDeclaredExamples": 4,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "eslint:no-fat-try-blocks": {
+      "source": "packages/typescript/src/rules/no-fat-try-blocks.ts",
+      "test": "packages/typescript/tests/rules/no-fat-try-blocks.test.ts",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "eslint:no-first-party-module-mock": {
+      "source": "packages/typescript/src/rules/no-first-party-module-mock.ts",
+      "test": "packages/typescript/tests/rules/no-first-party-module-mock.test.ts",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "eslint:no-hand-rolled-sleep": {
+      "source": "packages/typescript/src/rules/no-hand-rolled-sleep.ts",
+      "test": "packages/typescript/tests/rules/no-hand-rolled-sleep.test.ts",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "eslint:no-hand-rolled-spinner": {
+      "source": "packages/typescript/src/rules/no-hand-rolled-spinner.ts",
+      "test": "packages/typescript/tests/rules/no-hand-rolled-spinner.test.ts",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "eslint:no-in-operator-on-built-in-collections": {
+      "source": "packages/typescript/src/rules/no-in-operator-on-built-in-collections.ts",
+      "test": "packages/typescript/tests/rules/no-in-operator-on-built-in-collections.test.ts",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "eslint:no-insecure-random-id": {
+      "source": "packages/typescript/src/rules/no-insecure-random-id.ts",
+      "test": "packages/typescript/tests/rules/no-insecure-random-id.test.ts",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "eslint:no-json-stringify-error": {
+      "source": "packages/typescript/src/rules/no-json-stringify-error.ts",
+      "test": "packages/typescript/tests/rules/no-json-stringify-error.test.ts",
+      "nativeDeclaredExamples": 16,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "eslint:no-json-stringify-object-equality": {
+      "source": "packages/typescript/src/rules/no-json-stringify-object-equality.ts",
+      "test": "packages/typescript/tests/rules/no-json-stringify-object-equality.test.ts",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "eslint:no-log-only-catch": {
+      "source": "packages/typescript/src/rules/no-log-only-catch.ts",
+      "test": "packages/typescript/tests/rules/no-log-only-catch.test.ts",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "eslint:no-long-comment": {
+      "source": "packages/typescript/src/rules/no-long-comment.ts",
+      "test": "packages/typescript/tests/rules/no-long-comment.test.ts",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "eslint:no-positional-tuple-return": {
+      "source": "packages/typescript/src/rules/no-positional-tuple-return.ts",
+      "test": "packages/typescript/tests/rules/no-positional-tuple-return.test.ts",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "eslint:no-production-browser-source-maps": {
+      "source": "packages/typescript/src/rules/no-production-browser-source-maps.ts",
+      "test": "packages/typescript/tests/rules/no-production-browser-source-maps.test.ts",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "eslint:no-raw-env": {
+      "source": "packages/typescript/src/rules/no-raw-env.ts",
+      "test": "packages/typescript/tests/rules/no-raw-env.test.ts",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "eslint:no-redundant-optional-array-default": {
+      "source": "packages/typescript/src/rules/no-redundant-optional-array-default.ts",
+      "test": "packages/typescript/tests/rules/no-redundant-optional-array-default.test.ts",
+      "nativeDeclaredExamples": 4,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "eslint:no-restated-jsdoc": {
+      "source": "packages/typescript/src/rules/no-restated-jsdoc.ts",
+      "test": "packages/typescript/tests/rules/no-restated-jsdoc.test.ts",
+      "nativeDeclaredExamples": 4,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "eslint:no-restricted-library-load": {
+      "source": "packages/typescript/src/rules/no-restricted-library-load.ts",
+      "test": "packages/typescript/tests/rules/no-restricted-library-load.test.ts",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "eslint:no-secret-in-log": {
+      "source": "packages/typescript/src/rules/no-secret-in-log.ts",
+      "test": "packages/typescript/tests/rules/no-secret-in-log.test.ts",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "eslint:no-server-env-in-client-component": {
+      "source": "packages/typescript/src/rules/no-server-env-in-client-component.ts",
+      "test": "packages/typescript/tests/rules/no-server-env-in-client-component.test.ts",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "eslint:no-silent-promise-catch": {
+      "source": "packages/typescript/src/rules/no-silent-promise-catch.ts",
+      "test": "packages/typescript/tests/rules/no-silent-promise-catch.test.ts",
+      "nativeDeclaredExamples": 4,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "eslint:no-sleep-in-test-body": {
+      "source": "packages/typescript/src/rules/no-sleep-in-test-body.ts",
+      "test": "packages/typescript/tests/rules/no-sleep-in-test-body.test.ts",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "eslint:no-string-concat-in-loop": {
+      "source": "packages/typescript/src/rules/no-string-concat-in-loop.ts",
+      "test": "packages/typescript/tests/rules/no-string-concat-in-loop.test.ts",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "eslint:no-trailing-value-narration": {
+      "source": "packages/typescript/src/rules/no-trailing-value-narration.ts",
+      "test": "packages/typescript/tests/rules/no-trailing-value-narration.test.ts",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "eslint:no-union-in-comment": {
+      "source": "packages/typescript/src/rules/no-union-in-comment.ts",
+      "test": "packages/typescript/tests/rules/no-union-in-comment.test.ts",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "eslint:no-unlocalized-jsx-attributes": {
+      "source": "packages/typescript/src/rules/no-unlocalized-jsx-attributes.ts",
+      "test": "packages/typescript/tests/rules/no-unlocalized-jsx-attributes.test.ts",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "eslint:no-unlocalized-toast": {
+      "source": "packages/typescript/src/rules/no-unlocalized-toast.ts",
+      "test": "packages/typescript/tests/rules/no-unlocalized-toast.test.ts",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "eslint:no-unnecessary-use-client": {
+      "source": "packages/typescript/src/rules/no-unnecessary-use-client.ts",
+      "test": "packages/typescript/tests/rules/no-unnecessary-use-client.test.ts",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "eslint:no-unsafe-test-double-cast": {
+      "source": "packages/typescript/src/rules/no-unsafe-test-double-cast.ts",
+      "test": "packages/typescript/tests/rules/no-unsafe-test-double-cast.test.ts",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "eslint:no-zod-native-enum": {
+      "source": "packages/typescript/src/rules/no-zod-native-enum.ts",
+      "test": "packages/typescript/tests/rules/no-zod-native-enum.test.ts",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "eslint:prefer-await-in-async-return": {
+      "source": "packages/typescript/src/rules/prefer-await-in-async-return.ts",
+      "test": "packages/typescript/tests/rules/prefer-await-in-async-return.test.ts",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "eslint:prefer-immutable-module-constant": {
+      "source": "packages/typescript/src/rules/prefer-immutable-module-constant.ts",
+      "test": "packages/typescript/tests/rules/prefer-immutable-module-constant.test.ts",
+      "nativeDeclaredExamples": 4,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "eslint:prefer-input-group-search": {
+      "source": "packages/typescript/src/rules/prefer-input-group-search.ts",
+      "test": "packages/typescript/tests/rules/prefer-input-group-search.test.ts",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "eslint:prefer-logical-tailwind-utilities": {
+      "source": "packages/typescript/src/rules/prefer-logical-tailwind-utilities.ts",
+      "test": "packages/typescript/tests/rules/prefer-logical-tailwind-utilities.test.ts",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "eslint:prefer-millisecond-control-duration-schema": {
+      "source": "packages/typescript/src/rules/prefer-millisecond-control-duration-schema.ts",
+      "test": "packages/typescript/tests/rules/prefer-millisecond-control-duration-schema.test.ts",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "eslint:prefer-module-level-constant": {
+      "source": "packages/typescript/src/rules/prefer-module-level-constant.ts",
+      "test": "packages/typescript/tests/rules/prefer-module-level-constant.test.ts",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "eslint:prefer-module-level-refined-schema": {
+      "source": "packages/typescript/src/rules/prefer-module-level-refined-schema.ts",
+      "test": "packages/typescript/tests/rules/prefer-module-level-refined-schema.test.ts",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "eslint:prefer-module-level-schema": {
+      "source": "packages/typescript/src/rules/prefer-module-level-schema.ts",
+      "test": "packages/typescript/tests/rules/prefer-module-level-schema.test.ts",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "eslint:prefer-multi-value-zod-literal": {
+      "source": "packages/typescript/src/rules/prefer-multi-value-zod-literal.ts",
+      "test": "packages/typescript/tests/rules/prefer-multi-value-zod-literal.test.ts",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "eslint:prefer-named-callback-domain": {
+      "source": "packages/typescript/src/rules/prefer-named-callback-domain.ts",
+      "test": "packages/typescript/tests/rules/prefer-named-callback-domain.test.ts",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "eslint:prefer-named-complex-return-type": {
+      "source": "packages/typescript/src/rules/prefer-named-complex-return-type.ts",
+      "test": "packages/typescript/tests/rules/prefer-named-complex-return-type.test.ts",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "eslint:prefer-native-random-uuid": {
+      "source": "packages/typescript/src/rules/prefer-native-random-uuid.ts",
+      "test": "packages/typescript/tests/rules/prefer-native-random-uuid.test.ts",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "eslint:prefer-node-crypto-hash": {
+      "source": "packages/typescript/src/rules/prefer-node-crypto-hash.ts",
+      "test": "packages/typescript/tests/rules/prefer-node-crypto-hash.test.ts",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "eslint:prefer-non-nullable-collection": {
+      "source": "packages/typescript/src/rules/prefer-non-nullable-collection.ts",
+      "test": "packages/typescript/tests/rules/prefer-non-nullable-collection.test.ts",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "eslint:prefer-schema-for-api-payload": {
+      "source": "packages/typescript/src/rules/prefer-schema-for-api-payload.ts",
+      "test": "packages/typescript/tests/rules/prefer-schema-for-api-payload.test.ts",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "eslint:prefer-server-actions": {
+      "source": "packages/typescript/src/rules/prefer-server-actions.ts",
+      "test": "packages/typescript/tests/rules/prefer-server-actions.test.ts",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "eslint:prefer-shared-zod-enum": {
+      "source": "packages/typescript/src/rules/prefer-shared-zod-enum.ts",
+      "test": "packages/typescript/tests/rules/prefer-shared-zod-enum.test.ts",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "eslint:prefer-switch-for-repeated-equality": {
+      "source": "packages/typescript/src/rules/prefer-switch-for-repeated-equality.ts",
+      "test": "packages/typescript/tests/rules/prefer-switch-for-repeated-equality.test.ts",
+      "nativeDeclaredExamples": 4,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "eslint:prefer-typed-reflection": {
+      "source": "packages/typescript/src/rules/prefer-typed-reflection.ts",
+      "test": "packages/typescript/tests/rules/prefer-typed-reflection.test.ts",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "eslint:prefer-whole-object-assertion": {
+      "source": "packages/typescript/src/rules/prefer-whole-object-assertion.ts",
+      "test": "packages/typescript/tests/rules/prefer-whole-object-assertion.test.ts",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "eslint:repeated-static-call-cases": {
+      "source": "packages/typescript/src/rules/repeated-static-call-cases.ts",
+      "test": "packages/typescript/tests/rules/repeated-static-call-cases.test.ts",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "eslint:require-button-accessible-name": {
+      "source": "packages/typescript/src/rules/require-button-accessible-name.ts",
+      "test": "packages/typescript/tests/rules/require-button-accessible-name.test.ts",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "eslint:require-camelcase-properties": {
+      "source": "packages/typescript/src/rules/require-camelcase-properties.ts",
+      "test": "packages/typescript/tests/rules/require-camelcase-properties.test.ts",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "eslint:require-explicit-contract-implementation": {
+      "source": "packages/typescript/src/rules/require-explicit-contract-implementation.ts",
+      "test": "packages/typescript/tests/rules/require-explicit-contract-implementation.test.ts",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "eslint:require-explicit-service-contract": {
+      "source": "packages/typescript/src/rules/require-explicit-service-contract.ts",
+      "test": "packages/typescript/tests/rules/require-explicit-service-contract.test.ts",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "eslint:require-fetch-timeout": {
+      "source": "packages/typescript/src/rules/require-fetch-timeout.ts",
+      "test": "packages/typescript/tests/rules/require-fetch-timeout.test.ts",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "eslint:require-pascal-case-zod-schema-name": {
+      "source": "packages/typescript/src/rules/require-pascal-case-zod-schema-name.ts",
+      "test": "packages/typescript/tests/rules/require-pascal-case-zod-schema-name.test.ts",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "eslint:require-port-for-service": {
+      "source": "packages/typescript/src/rules/require-port-for-service.ts",
+      "test": "packages/typescript/tests/rules/require-port-for-service.test.ts",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "eslint:require-sql-access-class": {
+      "source": "packages/typescript/src/rules/require-sql-access-class.ts",
+      "test": "packages/typescript/tests/rules/require-sql-access-class.test.ts",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "eslint:require-use-server-in-actions-file": {
+      "source": "packages/typescript/src/rules/require-use-server-in-actions-file.ts",
+      "test": "packages/typescript/tests/rules/require-use-server-in-actions-file.test.ts",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "eslint:require-zod-form-validation": {
+      "source": "packages/typescript/src/rules/require-zod-form-validation.ts",
+      "test": "packages/typescript/tests/rules/require-zod-form-validation.test.ts",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "eslint:sole-export-matches-filename": {
+      "source": "packages/typescript/src/rules/sole-export-matches-filename.ts",
+      "test": "packages/typescript/tests/rules/sole-export-matches-filename.test.ts",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "eslint:stepdown": {
+      "source": "packages/typescript/src/rules/stepdown.ts",
+      "test": "packages/typescript/tests/rules/stepdown.test.ts",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "eslint:store-insert-requires-on-conflict": {
+      "source": "packages/typescript/src/rules/store-insert-requires-on-conflict.ts",
+      "test": "packages/typescript/tests/rules/store-insert-requires-on-conflict.test.ts",
+      "nativeDeclaredExamples": 4,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "iac:no-comment-cruft": {
+      "source": "packages/iac/src/sarj_iac_lint/rules/no_comment_cruft.py",
+      "test": "packages/iac/tests/rules/test_no_comment_cruft.py",
+      "nativeDeclaredExamples": 4,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "iac:no-dead-environment-input": {
+      "source": "packages/iac/src/sarj_iac_lint/rules/no_dead_environment_input.py",
+      "test": "packages/iac/tests/rules/test_no_dead_environment_input.py",
+      "nativeDeclaredExamples": 10,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "iac:no-managed-service-account-key": {
+      "source": "packages/iac/src/sarj_iac_lint/rules/no_managed_service_account_key.py",
+      "test": "packages/iac/tests/rules/test_no_managed_service_account_key.py",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "iac:no-redundant-variable-validation": {
+      "source": "packages/iac/src/sarj_iac_lint/rules/no_redundant_variable_validation.py",
+      "test": "packages/iac/tests/rules/test_no_redundant_variable_validation.py",
+      "nativeDeclaredExamples": 4,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "iac:no-restated-comment": {
+      "source": "packages/iac/src/sarj_iac_lint/rules/no_restated_comment.py",
+      "test": "packages/iac/tests/rules/test_no_restated_comment.py",
+      "nativeDeclaredExamples": 6,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "iac:no-terraform-data-condition": {
+      "source": "packages/iac/src/sarj_iac_lint/rules/no_terraform_data_condition.py",
+      "test": "packages/iac/tests/rules/test_no_terraform_data_condition.py",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "iac:require-deletion-protection": {
+      "source": "packages/iac/src/sarj_iac_lint/rules/require_deletion_protection.py",
+      "test": "packages/iac/tests/rules/test_require_deletion_protection.py",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "iac:require-prevent-destroy-on-irreplaceable": {
+      "source": "packages/iac/src/sarj_iac_lint/rules/require_prevent_destroy.py",
+      "test": "packages/iac/tests/rules/test_require_prevent_destroy.py",
+      "nativeDeclaredExamples": 4,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "python:async-cleanup-registered-synchronously": {
+      "source": "packages/python/src/sarj_python_lint/rules/async_cleanup_registered_synchronously.py",
+      "test": "packages/python/tests/rules/test_async_cleanup_registered_synchronously.py",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "python:async-mock-call-without-await-assertion": {
+      "source": "packages/python/src/sarj_python_lint/rules/async_mock_call_without_await_assertion.py",
+      "test": "packages/python/tests/rules/test_async_mock_call_without_await_assertion.py",
+      "nativeDeclaredExamples": 6,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "python:complex-postgres-query-requires-architecture-review": {
+      "source": "packages/python/src/sarj_python_lint/rules/complex_postgres_query_requires_architecture_review.py",
+      "test": "packages/python/tests/rules/test_complex_postgres_query_requires_architecture_review.py",
+      "nativeDeclaredExamples": 4,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "consolidate-immutable-docstring-node-fact"
+    },
+    "python:defect-xfail-requires-explicit-strict": {
+      "source": "packages/python/src/sarj_python_lint/rules/defect_xfail_requires_explicit_strict.py",
+      "test": "packages/python/tests/rules/test_defect_xfail_requires_explicit_strict.py",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "python:docstring-returns-restate-signature": {
+      "source": "packages/python/src/sarj_python_lint/rules/docstring_returns_restate_signature.py",
+      "test": "packages/python/tests/rules/test_docstring_returns_restate_signature.py",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "python:duplicate-adjacent-exception-handler": {
+      "source": "packages/python/src/sarj_python_lint/rules/duplicate_adjacent_exception_handler.py",
+      "test": "packages/python/tests/rules/test_duplicate_adjacent_exception_handler.py",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "python:duplicate-closed-pure-helper": {
+      "source": "packages/python/src/sarj_python_lint/rules/duplicate_closed_pure_helper.py",
+      "test": "packages/python/tests/rules/test_duplicate_closed_pure_helper.py",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "python:excessive-commentary": {
+      "source": "packages/python/src/sarj_python_lint/rules/excessive_commentary.py",
+      "test": "packages/python/tests/rules/test_excessive_commentary.py",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "python:fakes-in-shared-location": {
+      "source": "packages/python/src/sarj_python_lint/rules/fakes_in_shared_location.py",
+      "test": "packages/python/tests/rules/test_fakes_in_shared_location.py",
+      "nativeDeclaredExamples": 3,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "python:fastapi-explicit-openapi-contract": {
+      "source": "packages/python/src/sarj_python_lint/rules/fastapi_explicit_openapi_contract.py",
+      "test": "packages/python/tests/rules/test_fastapi_explicit_openapi_contract.py",
+      "nativeDeclaredExamples": 6,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "python:iac-source-coupled-test": {
+      "source": "packages/python/src/sarj_python_lint/rules/iac_source_coupled_test.py",
+      "test": "packages/python/tests/rules/test_iac_source_coupled_test.py",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "python:named-record-at-boundaries": {
+      "source": "packages/python/src/sarj_python_lint/rules/named_record_at_boundaries.py",
+      "test": "packages/python/tests/rules/test_named_record_at_boundaries.py",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "python:no-analytical-aggregation-in-postgres-store": {
+      "source": "packages/python/src/sarj_python_lint/rules/no_analytical_aggregation_in_postgres_store.py",
+      "test": "packages/python/tests/rules/test_no_analytical_aggregation_in_postgres_store.py",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "consolidate-immutable-docstring-node-fact"
+    },
+    "python:no-any-mapping-types": {
+      "source": "packages/python/src/sarj_python_lint/rules/no_any_mapping_types.py",
+      "test": "packages/python/tests/rules/test_no_any_mapping_types.py",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "python:no-bare-test-phase-comments": {
+      "source": "packages/python/src/sarj_python_lint/rules/phase_label_comment.py",
+      "test": "packages/python/tests/rules/test_phase_label_comment.py",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "python:no-before-validator-input-mutation": {
+      "source": "packages/python/src/sarj_python_lint/rules/no_before_validator_input_mutation.py",
+      "test": "packages/python/tests/rules/test_no_before_validator_input_mutation.py",
+      "nativeDeclaredExamples": 4,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "python:no-comment-cruft": {
+      "source": "packages/python/src/sarj_python_lint/rules/no_comment_cruft.py",
+      "test": "packages/python/tests/rules/test_no_comment_cruft.py",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "python:no-conftest-test-module-import": {
+      "source": "packages/python/src/sarj_python_lint/rules/no_conftest_test_module_import.py",
+      "test": "packages/python/tests/rules/test_no_conftest_test_module_import.py",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "python:no-cors-wildcard-with-credentials": {
+      "source": "packages/python/src/sarj_python_lint/rules/no_cors_wildcard_with_credentials.py",
+      "test": "packages/python/tests/rules/test_no_cors_wildcard_with_credentials.py",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "python:no-database-programmability": {
+      "source": "packages/python/src/sarj_python_lint/rules/no_database_programmability.py",
+      "test": "packages/python/tests/rules/test_no_database_programmability.py",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "python:no-delete-statement": {
+      "source": "packages/python/src/sarj_python_lint/rules/no_delete_statement.py",
+      "test": "packages/python/tests/rules/test_no_delete_statement.py",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "python:no-dunder-all": {
+      "source": "packages/python/src/sarj_python_lint/rules/no_dunder_all.py",
+      "test": "packages/python/tests/rules/test_no_dunder_all.py",
+      "nativeDeclaredExamples": 4,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "python:no-duplicate-dunder-all-entry": {
+      "source": "packages/python/src/sarj_python_lint/rules/no_duplicate_dunder_all_entry.py",
+      "test": "packages/python/tests/rules/test_no_duplicate_dunder_all_entry.py",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "python:no-excessive-cognitive-complexity": {
+      "source": "packages/python/src/sarj_python_lint/rules/no_excessive_cognitive_complexity.py",
+      "test": "packages/python/tests/rules/test_no_excessive_cognitive_complexity.py",
+      "nativeDeclaredExamples": 4,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "python:no-fixed-sleep-before-assert": {
+      "source": "packages/python/src/sarj_python_lint/rules/no_fixed_sleep_before_assert.py",
+      "test": "packages/python/tests/rules/test_no_fixed_sleep_before_assert.py",
+      "nativeDeclaredExamples": 4,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "python:no-fixed-sleep-in-loop": {
+      "source": "packages/python/src/sarj_python_lint/rules/no_fixed_sleep_in_loop.py",
+      "test": "packages/python/tests/rules/test_no_fixed_sleep_in_loop.py",
+      "nativeDeclaredExamples": 4,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "python:no-generic-single-export-module": {
+      "source": "packages/python/src/sarj_python_lint/rules/no_generic_single_export_module.py",
+      "test": "packages/python/tests/rules/test_no_generic_single_export_module.py",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "python:no-hidden-constructor-fallback": {
+      "source": "packages/python/src/sarj_python_lint/rules/no_hidden_constructor_fallback.py",
+      "test": "packages/python/tests/rules/test_no_hidden_constructor_fallback.py",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "python:no-injected-module-loader": {
+      "source": "packages/python/src/sarj_python_lint/rules/no_injected_module_loader.py",
+      "test": "packages/python/tests/rules/test_no_injected_module_loader.py",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "python:no-mocked-pydantic-value-object": {
+      "source": "packages/python/src/sarj_python_lint/rules/no_mocked_pydantic_value_object.py",
+      "test": "packages/python/tests/rules/test_no_mocked_pydantic_value_object.py",
+      "nativeDeclaredExamples": 3,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "python:no-nested-pydantic-field-validator": {
+      "source": "packages/python/src/sarj_python_lint/rules/no_nested_pydantic_field_validator.py",
+      "test": "packages/python/tests/rules/test_no_nested_pydantic_field_validator.py",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "python:no-positional-psycopg-row-escape": {
+      "source": "packages/python/src/sarj_python_lint/rules/no_positional_psycopg_row_escape.py",
+      "test": "packages/python/tests/rules/test_no_positional_psycopg_row_escape.py",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "python:no-positional-tuple-record": {
+      "source": "packages/python/src/sarj_python_lint/rules/prefer_namedtuple_over_tuple_return.py",
+      "test": "packages/python/tests/rules/test_prefer_namedtuple_over_tuple_return.py",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "python:no-provably-dead-mock-configuration": {
+      "source": "packages/python/src/sarj_python_lint/rules/unused_mock_setup.py",
+      "test": "packages/python/tests/rules/test_unused_mock_setup.py",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "python:no-raw-source-text-test-oracle": {
+      "source": "packages/python/src/sarj_python_lint/rules/no_raw_source_text_test_oracle.py",
+      "test": "packages/python/tests/rules/test_no_raw_source_text_test_oracle.py",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "python:no-redundant-module-alias-exports": {
+      "source": "packages/python/src/sarj_python_lint/rules/no_redundant_module_alias_exports.py",
+      "test": "packages/python/tests/rules/test_no_redundant_module_alias_exports.py",
+      "nativeDeclaredExamples": 6,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "python:no-repeated-structured-string-literal": {
+      "source": "packages/python/src/sarj_python_lint/rules/no_repeated_string_literal.py",
+      "test": "packages/python/tests/rules/test_no_repeated_string_literal.py",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "python:no-repeated-test-body": {
+      "source": "packages/python/src/sarj_python_lint/rules/no_repeated_test_body.py",
+      "test": "packages/python/tests/rules/test_no_repeated_test_body.py",
+      "nativeDeclaredExamples": 4,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "python:no-restated-closed-domain-description": {
+      "source": "packages/python/src/sarj_python_lint/rules/no_redundant_literal_description.py",
+      "test": "packages/python/tests/rules/test_no_redundant_literal_description.py",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "python:no-restated-comment": {
+      "source": "packages/python/src/sarj_python_lint/rules/no_restated_comment.py",
+      "test": "packages/python/tests/rules/test_no_restated_comment.py",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "python:no-select-star": {
+      "source": "packages/python/src/sarj_python_lint/rules/no_select_star.py",
+      "test": "packages/python/tests/rules/test_no_select_star.py",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "python:no-service-behavior-in-settings": {
+      "source": "packages/python/src/sarj_python_lint/rules/no_service_behavior_in_settings.py",
+      "test": "packages/python/tests/rules/test_no_service_behavior_in_settings.py",
+      "nativeDeclaredExamples": 4,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "python:no-string-concat-in-loop": {
+      "source": "packages/python/src/sarj_python_lint/rules/no_string_concat_in_loop.py",
+      "test": "packages/python/tests/rules/test_no_string_concat_in_loop.py",
+      "nativeDeclaredExamples": 4,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "python:no-swallowed-asyncio-cancellation": {
+      "source": "packages/python/src/sarj_python_lint/rules/no_swallowed_asyncio_cancellation.py",
+      "test": "packages/python/tests/rules/test_no_swallowed_asyncio_cancellation.py",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "python:no-trailing-numeric-unit-assignment-comment": {
+      "source": "packages/python/src/sarj_python_lint/rules/trailing_value_narration.py",
+      "test": "packages/python/tests/rules/test_trailing_value_narration.py",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "python:no-unique-violation-message-match": {
+      "source": "packages/python/src/sarj_python_lint/rules/no_unique_violation_message_match.py",
+      "test": "packages/python/tests/rules/test_no_unique_violation_message_match.py",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "python:no-unused-underscored-keyword-parameter": {
+      "source": "packages/python/src/sarj_python_lint/rules/no_unused_underscored_keyword_parameter.py",
+      "test": "packages/python/tests/rules/test_no_unused_underscored_keyword_parameter.py",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "python:no-unused-value-marker": {
+      "source": "packages/python/src/sarj_python_lint/rules/no_unused_value_marker.py",
+      "test": "packages/python/tests/rules/test_no_unused_value_marker.py",
+      "nativeDeclaredExamples": 6,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "python:over-mocked-test": {
+      "source": "packages/python/src/sarj_python_lint/rules/over_mocked_test.py",
+      "test": "packages/python/tests/rules/test_over_mocked_test.py",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "python:prefer-autospec-for-callable-mock": {
+      "source": "packages/python/src/sarj_python_lint/rules/prefer_autospec_for_callable_mock.py",
+      "test": "packages/python/tests/rules/test_prefer_autospec_for_callable_mock.py",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "python:prefer-class-row": {
+      "source": "packages/python/src/sarj_python_lint/rules/prefer_class_row.py",
+      "test": "packages/python/tests/rules/test_prefer_class_row.py",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "python:prefer-constant-time-secret-compare": {
+      "source": "packages/python/src/sarj_python_lint/rules/prefer_constant_time_secret_compare.py",
+      "test": "packages/python/tests/rules/test_prefer_constant_time_secret_compare.py",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "python:prefer-immutable-module-constant": {
+      "source": "packages/python/src/sarj_python_lint/rules/prefer_immutable_module_constant.py",
+      "test": "packages/python/tests/rules/test_prefer_immutable_module_constant.py",
+      "nativeDeclaredExamples": 6,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "python:prefer-injected-dependency-over-monkeypatch": {
+      "source": "packages/python/src/sarj_python_lint/rules/prefer_injected_dependency_over_monkeypatch.py",
+      "test": "packages/python/tests/rules/test_prefer_injected_dependency_over_monkeypatch.py",
+      "nativeDeclaredExamples": 6,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "python:prefer-library-fake": {
+      "source": "packages/python/src/sarj_python_lint/rules/prefer_library_fake.py",
+      "test": "packages/python/tests/rules/test_prefer_library_fake.py",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "python:prefer-match-assert-never": {
+      "source": "packages/python/src/sarj_python_lint/rules/prefer_match_assert_never.py",
+      "test": "packages/python/tests/rules/test_prefer_match_assert_never.py",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "python:prefer-match-exception-dispatch": {
+      "source": "packages/python/src/sarj_python_lint/rules/prefer_match_exception_dispatch.py",
+      "test": "packages/python/tests/rules/test_prefer_match_exception_dispatch.py",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "python:prefer-monkeypatch-for-process-state-in-test": {
+      "source": "packages/python/src/sarj_python_lint/rules/prefer_monkeypatch_for_process_state_in_test.py",
+      "test": "packages/python/tests/rules/test_prefer_monkeypatch_for_process_state_in_test.py",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "python:prefer-monotonic-for-elapsed-time": {
+      "source": "packages/python/src/sarj_python_lint/rules/prefer_monotonic_for_elapsed_time.py",
+      "test": "packages/python/tests/rules/test_prefer_monotonic_for_elapsed_time.py",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "python:prefer-native-string-check": {
+      "source": "packages/python/src/sarj_python_lint/rules/prefer_native_string_check.py",
+      "test": "packages/python/tests/rules/test_prefer_native_string_check.py",
+      "nativeDeclaredExamples": 4,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "python:prefer-nominal-id-types": {
+      "source": "packages/python/src/sarj_python_lint/rules/prefer_nominal_id_types.py",
+      "test": "packages/python/tests/rules/test_prefer_nominal_id_types.py",
+      "nativeDeclaredExamples": 4,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "python:prefer-non-nullable-collection": {
+      "source": "packages/python/src/sarj_python_lint/rules/prefer_non_nullable_collection.py",
+      "test": "packages/python/tests/rules/test_prefer_non_nullable_collection.py",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "python:prefer-or-pattern": {
+      "source": "packages/python/src/sarj_python_lint/rules/prefer_or_pattern.py",
+      "test": "packages/python/tests/rules/test_prefer_or_pattern.py",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "python:prefer-pydantic-json-value": {
+      "source": "packages/python/src/sarj_python_lint/rules/prefer_pydantic_json_value.py",
+      "test": "packages/python/tests/rules/test_prefer_pydantic_json_value.py",
+      "nativeDeclaredExamples": 4,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "python:prefer-pytest-fixture-injection": {
+      "source": "packages/python/src/sarj_python_lint/rules/prefer_pytest_fixture_injection.py",
+      "test": "packages/python/tests/rules/test_prefer_pytest_fixture_injection.py",
+      "nativeDeclaredExamples": 4,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "python:prefer-regex-fullmatch": {
+      "source": "packages/python/src/sarj_python_lint/rules/prefer_regex_fullmatch.py",
+      "test": "packages/python/tests/rules/test_prefer_regex_fullmatch.py",
+      "nativeDeclaredExamples": 4,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "python:prefer-required-constructor-parameters": {
+      "source": "packages/python/src/sarj_python_lint/rules/prefer_required_constructor_parameters.py",
+      "test": "packages/python/tests/rules/test_prefer_required_constructor_parameters.py",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "python:prefer-str-enum": {
+      "source": "packages/python/src/sarj_python_lint/rules/prefer_str_enum.py",
+      "test": "packages/python/tests/rules/test_prefer_str_enum.py",
+      "nativeDeclaredExamples": 8,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "python:prefer-struct-over-namedtuple": {
+      "source": "packages/python/src/sarj_python_lint/rules/prefer_struct_over_namedtuple.py",
+      "test": "packages/python/tests/rules/test_prefer_struct_over_namedtuple.py",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "python:prefer-walrus-awaited-none-guard": {
+      "source": "packages/python/src/sarj_python_lint/rules/prefer_walrus_awaited_none_guard.py",
+      "test": "packages/python/tests/rules/test_prefer_walrus_awaited_none_guard.py",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "python:prefer-walrus-comprehension-filter": {
+      "source": "packages/python/src/sarj_python_lint/rules/prefer_walrus_comprehension_filter.py",
+      "test": "packages/python/tests/rules/test_prefer_walrus_comprehension_filter.py",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "python:prefer-walrus-stream-loop": {
+      "source": "packages/python/src/sarj_python_lint/rules/prefer_walrus_stream_loop.py",
+      "test": "packages/python/tests/rules/test_prefer_walrus_stream_loop.py",
+      "nativeDeclaredExamples": 4,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "python:production-derived-test-cases": {
+      "source": "packages/python/src/sarj_python_lint/rules/production_derived_test_cases.py",
+      "test": "packages/python/tests/rules/test_production_derived_test_cases.py",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "python:pytest-fixture-returns-bare-tuple": {
+      "source": "packages/python/src/sarj_python_lint/rules/pytest_fixture_returns_bare_tuple.py",
+      "test": "packages/python/tests/rules/test_pytest_fixture_returns_bare_tuple.py",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "python:redundant-class-docstring": {
+      "source": "packages/python/src/sarj_python_lint/rules/redundant_class_docstring.py",
+      "test": "packages/python/tests/rules/test_redundant_class_docstring.py",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "python:redundant-module-docstring": {
+      "source": "packages/python/src/sarj_python_lint/rules/redundant_module_docstring.py",
+      "test": "packages/python/tests/rules/test_redundant_module_docstring.py",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "python:redundant-test-constructor-forwarder": {
+      "source": "packages/python/src/sarj_python_lint/rules/redundant_test_constructor_forwarder.py",
+      "test": "packages/python/tests/rules/test_redundant_test_constructor_forwarder.py",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "python:repeated-kwarg-heavy-call-in-test": {
+      "source": "packages/python/src/sarj_python_lint/rules/repeated_kwarg_heavy_call_in_test.py",
+      "test": "packages/python/tests/rules/test_repeated_kwarg_heavy_call_in_test.py",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "python:repeated-test-composition": {
+      "source": "packages/python/src/sarj_python_lint/rules/repeated_test_composition.py",
+      "test": "packages/python/tests/rules/test_repeated_test_composition.py",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "python:replay-contract-insert-requires-duplicate-policy": {
+      "source": "packages/python/src/sarj_python_lint/rules/store_insert_requires_on_conflict.py",
+      "test": "packages/python/tests/rules/test_store_insert_requires_on_conflict.py",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "python:require-explicit-contract-implementation": {
+      "source": "packages/python/src/sarj_python_lint/rules/require_explicit_contract_implementation.py",
+      "test": "packages/python/tests/rules/test_require_explicit_contract_implementation.py",
+      "nativeDeclaredExamples": 3,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "python:require-explicit-psycopg-transaction": {
+      "source": "packages/python/src/sarj_python_lint/rules/require_explicit_psycopg_transaction.py",
+      "test": "packages/python/tests/rules/test_require_explicit_psycopg_transaction.py",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "python:require-explicit-service-contract": {
+      "source": "packages/python/src/sarj_python_lint/rules/require_explicit_service_contract.py",
+      "test": "packages/python/tests/rules/test_require_explicit_service_contract.py",
+      "nativeDeclaredExamples": 3,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "python:require-injectable-retry-sleep": {
+      "source": "packages/python/src/sarj_python_lint/rules/require_injectable_retry_sleep.py",
+      "test": "packages/python/tests/rules/test_require_injectable_retry_sleep.py",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "python:require-nodecode-for-splitting-settings-field": {
+      "source": "packages/python/src/sarj_python_lint/rules/require_nodecode_for_splitting_settings_field.py",
+      "test": "packages/python/tests/rules/test_require_nodecode_for_splitting_settings_field.py",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "python:require-port-for-service": {
+      "source": "packages/python/src/sarj_python_lint/rules/require_port_for_service.py",
+      "test": "packages/python/tests/rules/test_require_port_for_service.py",
+      "nativeDeclaredExamples": 4,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "python:require-precise-factory-signature": {
+      "source": "packages/python/src/sarj_python_lint/rules/require_precise_factory_signature.py",
+      "test": "packages/python/tests/rules/test_require_precise_factory_signature.py",
+      "nativeDeclaredExamples": 4,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "python:require-pydantic-for-external-json": {
+      "source": "packages/python/src/sarj_python_lint/rules/require_pydantic_for_external_json.py",
+      "test": "packages/python/tests/rules/test_require_pydantic_for_external_json.py",
+      "nativeDeclaredExamples": 4,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "python:require-pydantic-for-structured-payload": {
+      "source": "packages/python/src/sarj_python_lint/rules/require_pydantic_for_structured_payload.py",
+      "test": "packages/python/tests/rules/test_require_pydantic_for_structured_payload.py",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "python:require-pydantic-ordinal-lower-bound": {
+      "source": "packages/python/src/sarj_python_lint/rules/require_pydantic_ordinal_lower_bound.py",
+      "test": "packages/python/tests/rules/test_require_pydantic_ordinal_lower_bound.py",
+      "nativeDeclaredExamples": 4,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "python:subprocess-kill-without-reap": {
+      "source": "packages/python/src/sarj_python_lint/rules/subprocess_kill_without_reap.py",
+      "test": "packages/python/tests/rules/test_subprocess_kill_without_reap.py",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "python:unused-test-factory-option": {
+      "source": "packages/python/src/sarj_python_lint/rules/unused_test_factory_option.py",
+      "test": "packages/python/tests/rules/test_unused_test_factory_option.py",
+      "nativeDeclaredExamples": 6,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "sql:enforce-timestamptz": {
+      "source": "packages/sql/src/sarj_sql_lint/rules/enforce_timestamptz.py",
+      "test": "packages/sql/tests/rules/test_enforce_timestamptz.py",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "sql:excess-migration-index-requires-justification": {
+      "source": "packages/sql/src/sarj_sql_lint/rules/index_budget.py",
+      "test": "packages/sql/tests/rules/test_index_budget.py",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "sql:index-concurrently": {
+      "source": "packages/sql/src/sarj_sql_lint/rules/index_concurrently.py",
+      "test": "packages/sql/tests/rules/test_index_concurrently.py",
+      "nativeDeclaredExamples": 4,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "sql:insert-requires-replay-policy": {
+      "source": "packages/sql/src/sarj_sql_lint/rules/insert_requires_on_conflict.py",
+      "test": "packages/sql/tests/rules/test_insert_requires_on_conflict.py",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "sql:mixed-migration-phases": {
+      "source": "packages/sql/src/sarj_sql_lint/rules/mixed_migration_phases.py",
+      "test": "packages/sql/tests/rules/test_mixed_migration_phases.py",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "sql:no-application-schema-check": {
+      "source": "packages/sql/src/sarj_sql_lint/rules/no_application_schema_check.py",
+      "test": "packages/sql/tests/rules/test_no_application_schema_check.py",
+      "nativeDeclaredExamples": 4,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "sql:no-database-functions": {
+      "source": "packages/sql/src/sarj_sql_lint/rules/no_database_functions.py",
+      "test": "packages/sql/tests/rules/test_no_database_functions.py",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "sql:no-database-triggers": {
+      "source": "packages/sql/src/sarj_sql_lint/rules/no_create_trigger.py",
+      "test": "packages/sql/tests/rules/test_no_create_trigger.py",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "sql:no-duplicate-index": {
+      "source": "packages/sql/src/sarj_sql_lint/rules/no_duplicate_index.py",
+      "test": "packages/sql/tests/rules/test_no_duplicate_index.py",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "sql:no-offset-pagination": {
+      "source": "packages/sql/src/sarj_sql_lint/rules/no_offset_pagination.py",
+      "test": "packages/sql/tests/rules/test_no_offset_pagination.py",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "sql:no-pg-enum": {
+      "source": "packages/sql/src/sarj_sql_lint/rules/no_pg_enum.py",
+      "test": "packages/sql/tests/rules/test_no_pg_enum.py",
+      "nativeDeclaredExamples": 4,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "sql:prefer-jsonb": {
+      "source": "packages/sql/src/sarj_sql_lint/rules/prefer_jsonb.py",
+      "test": "packages/sql/tests/rules/test_prefer_jsonb.py",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "sql:prefer-text-over-varchar": {
+      "source": "packages/sql/src/sarj_sql_lint/rules/prefer_text_over_varchar.py",
+      "test": "packages/sql/tests/rules/test_prefer_text_over_varchar.py",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "sql:prefer-uuidv7-default": {
+      "source": "packages/sql/src/sarj_sql_lint/rules/prefer_uuidv7_default.py",
+      "test": "packages/sql/tests/rules/test_prefer_uuidv7_default.py",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "sql:require-fk-index": {
+      "source": "packages/sql/src/sarj_sql_lint/rules/require_fk_index.py",
+      "test": "packages/sql/tests/rules/test_require_fk_index.py",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "sql:require-lock-timeout": {
+      "source": "packages/sql/src/sarj_sql_lint/rules/require_lock_timeout.py",
+      "test": "packages/sql/tests/rules/test_require_lock_timeout.py",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "text:cloudbuild-contract": {
+      "source": "packages/standards/src/sarj_standards/libs/linting/text_rules/cloudbuild_contract.py",
+      "test": "packages/standards/tests/text_rules/test_cloudbuild_contract.py",
+      "nativeDeclaredExamples": 4,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "text:commented-out-config": {
+      "source": "packages/standards/src/sarj_standards/libs/linting/textlint.py",
+      "test": "packages/standards/tests/test_textlint.py",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "text:declarative-deployment-boundary": {
+      "source": "packages/standards/src/sarj_standards/libs/linting/textlint.py",
+      "test": "packages/standards/tests/test_textlint.py",
+      "nativeDeclaredExamples": 8,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "text:ephemeral-execution-artifact": {
+      "source": "packages/standards/src/sarj_standards/libs/linting/textlint.py",
+      "test": "packages/standards/tests/test_textlint.py",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "text:iac-source-coupled-test": {
+      "source": "packages/standards/src/sarj_standards/libs/linting/textlint.py",
+      "test": "packages/standards/tests/test_textlint.py",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "text:large-shell-program": {
+      "source": "packages/standards/src/sarj_standards/libs/linting/textlint.py",
+      "test": "packages/standards/tests/test_textlint.py",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "text:no-unsafe-command-argument-interpolation": {
+      "source": "packages/standards/src/sarj_standards/libs/linting/textlint.py",
+      "test": "packages/standards/tests/test_textlint.py",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "text:no-wildcard-secret-read-permission": {
+      "source": "packages/standards/src/sarj_standards/libs/linting/textlint.py",
+      "test": "packages/standards/tests/test_textlint.py",
+      "nativeDeclaredExamples": 2,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    },
+    "text:workflow-embedded-program": {
+      "source": "packages/standards/src/sarj_standards/libs/linting/textlint.py",
+      "test": "packages/standards/tests/test_textlint.py",
+      "nativeDeclaredExamples": 12,
+      "examplesPassBeforeAndAfter": true,
+      "decision": "retain-existing-owner"
+    }
+  },
+  "retainedRuleDecision": "Machine-assisted source/test and metadata review plus native declared examples; no additional change admitted without a concrete gap.",
+  "duplicateAnalysis": {
+    "exactAstHelperGroupsNominated": 20,
+    "consolidatedHelpers": 3,
+    "randomlySelectedAffectedRules": [
+      "python:complex-postgres-query-requires-architecture-review",
+      "python:no-analytical-aggregation-in-postgres-store"
+    ],
+    "adjacentEquivalentCaller": "python:no-offset-pagination",
+    "remainingDecision": "Retain helpers unless complete globals, scope and semantic contracts justify consolidation."
+  },
+  "evaluation": {
+    "selectedNativeExamplesPassBeforeAndAfter": true,
+    "focusedTestsPassed": 702,
+    "focusedTestsSkipped": 2,
+    "initialMakeRegressionVariants": 24,
+    "additionalPositionFailuresAfterInitialParsingFix": 4,
+    "newCachedFactInitiallyAbsent": true,
+    "pythonCorpusBefore": {
+      "phase": "before",
+      "repositories": 10,
+      "files": 1680,
+      "bytes": 17164507,
+      "batches": 10,
+      "maxBatchFiles": 250,
+      "findings": 0,
+      "syntaxUnparsed": 0,
+      "peakMemoryBytes": 82591744,
+      "processSeconds": 7.792207876918837,
+      "exclusions": {
+        "deterministic-250-file-cap": 4795,
+        "changed-authoring-file": 5,
+        "vendor-generated-or-fixture": 25,
+        "absent-or-symlink": 2
+      },
+      "selection": "sorted tracked existing Python paths, first 250 per repository after explicit exclusions"
+    },
+    "pythonCorpusAfter": {
+      "phase": "after",
+      "repositories": 10,
+      "files": 1680,
+      "bytes": 17164507,
+      "batches": 10,
+      "maxBatchFiles": 250,
+      "findings": 0,
+      "syntaxUnparsed": 0,
+      "peakMemoryBytes": 82198528,
+      "processSeconds": 4.029049625387415,
+      "exclusions": {
+        "deterministic-250-file-cap": 4795,
+        "changed-authoring-file": 5,
+        "vendor-generated-or-fixture": 25,
+        "absent-or-symlink": 2
+      },
+      "selection": "sorted tracked existing Python paths, first 250 per repository after explicit exclusions"
+    },
+    "equalPythonFindingTuples": true,
+    "seededCorpus": {
+      "files": 12,
+      "bytes": 1868,
+      "findings": 4,
+      "positiveCases": 4,
+      "negativeCases": 8,
+      "equalFindingTuples": true,
+      "falsePositives": 0,
+      "falseNegatives": 0,
+      "duplicateLocations": 0,
+      "notes": [
+        "Public declared examples retain their distinct runtime contracts; four additional negatives exercise module/class/sync/async docstring ownership.",
+        "Every seeded finding was compared by complete tuple before/after and with the expected owning rule count."
+      ]
+    },
+    "makeCorpus": {
+      "repositories": 9,
+      "files": 73,
+      "blocks": 1871,
+      "unchangedProjectionFailures": 2,
+      "differentFiles": 0,
+      "freshProcesses": 9,
+      "maximumBatch": 25,
+      "seconds": 0.051926124608144164,
+      "completeProjectionTuplesEqual": true,
+      "recognizedMakefileInputs": 69,
+      "otherInputsRetainingExistingRouting": 4
+    }
+  },
+  "performance": {
+    "sharedDocstringFact": {
+      "fixture": {
+        "bytes": 74755,
+        "astNodes": 7207,
+        "functions": 1200,
+        "nativeRunner": "check_source with three SQL rules",
+        "warmCallsPerSample": 45,
+        "combinedFilesPerSample": 5,
+        "repetitionsPerPhase": 28,
+        "recipe": "import psycopg; 1200 def record_i functions, each with Documentation i. as its first string expression and return i; one dynamic OFFSET query at module scope."
+      },
+      "order": "AB BA AB BA",
+      "summary": {
+        "warmMedianSeconds": {
+          "before": 0.012320458074100316,
+          "after": 0.000500750495120883,
+          "ratio": 0.04064382120446845
+        },
+        "combinedMedianSeconds": {
+          "before": 0.07333014602772892,
+          "after": 0.07044822897296399,
+          "ratio": 0.9606994229402576
+        },
+        "coldMedianSeconds": {
+          "before": 0.27700735395774245,
+          "after": 0.27663450001273304,
+          "ratio": 0.9986539926118124
+        },
+        "peakMemoryMedianBytes": {
+          "before": 71680000.0,
+          "after": 71647232.0,
+          "ratio": 0.9995428571428572
+        }
+      },
+      "equalDiagnostics": true,
+      "limitations": [
+        "Fixture-specific; repeated cached facts are not ordinary full-file runner speed.",
+        "Baseline package overlay adds pkgutil namespace import overhead; cold startup timings cannot isolate this optimization.",
+        "Native combined runner parses and executes all three rules per file; no universal performance claim."
+      ]
+    },
+    "makeProjection": {
+      "measurements": [
+        {
+          "recipes": 3,
+          "newline": "LF",
+          "bytes": 55,
+          "callsPerSample": 100,
+          "samplesPerPhase": 8,
+          "beforeMedianSeconds": 0.0009759790264070034,
+          "afterMedianSeconds": 0.0009979789610952139,
+          "ratio": 1.0225414010885066,
+          "equalProjection": true
+        },
+        {
+          "recipes": 200,
+          "newline": "LF",
+          "bytes": 3497,
+          "callsPerSample": 100,
+          "samplesPerPhase": 8,
+          "beforeMedianSeconds": 0.05273535393644124,
+          "afterMedianSeconds": 0.052643437404185534,
+          "ratio": 0.9982570225589745,
+          "equalProjection": true
+        },
+        {
+          "recipes": 200,
+          "newline": "CRLF",
+          "bytes": 3698,
+          "callsPerSample": 100,
+          "samplesPerPhase": 8,
+          "beforeMedianSeconds": 0.05229833361227065,
+          "afterMedianSeconds": 0.054833416477777064,
+          "ratio": 1.0484734921823897,
+          "equalProjection": true
+        }
+      ],
+      "scope": "Warm execution_blocks adapter overhead on correctly handled recipes; no native shell subprocess included.",
+      "limitations": [
+        "Baseline projections that truncate data are not a fair optimization baseline, so malformed prior projections are correctness probes only.",
+        "No universal formatter or CI speed claim."
+      ]
+    }
+  },
+  "reproductionCommands": [
+    "make verify TEST_JOBS=1",
+    "code-standards --root . maintain rules changes --before origin/main --after HEAD",
+    "python -m pytest packages/standards/tests/test_make_physical_lines.py packages/python/tests/test_docstring_node_facts.py -q -o addopts="
+  ],
+  "release": {
+    "standards": "8.48.5",
+    "python": "1.28.6",
+    "newRuleIds": 0,
+    "severityChanges": 0,
+    "defaultPolicyChanges": 0
+  },
+  "limitations": [
+    "This is a reproducible machine-assisted source/test review with native examples. Deep manual analysis and adversarial probes focus on admitted candidates; it is not exhaustive manual review of every selected rule.",
+    "300 draws cover 197 distinct rules. Repeated selections reuse evidence and are not independent semantic coverage.",
+    "Native case counts can contain equivalent contracts; counts do not imply independent coverage.",
+    "Only already-local repositories were scanned; Python selection takes the first 250 sorted eligible tracked paths per root, rather than an unbiased whole-repository sample.",
+    "The unseeded Python corpus has zero findings; unchanged zeros are not correctness evidence. Twelve separately pinned seeded files establish positive and negative contracts.",
+    "A private inventory-only root advanced during the run. It has no selected native shell or Python files, so it is outside the evaluated native source set; no evaluated revision or digest was refreshed.",
+    "One pre-existing native formatter failure remains in the shell corpus. Aggregate native ShellCheck and formatter findings are unchanged.",
+    "The initial SC2015 probe used printf, which native ShellCheck treats as a low-risk branch. The final probe uses a fallible command and proves existing upstream ownership; this was a fixture correction, not a linter defect.",
+    "Make parses recipes using LF and native CRLF handling; returned finding anchors use canonical SourceDocument editor coordinates when literal carriage returns are present.",
+    "The shared-fact benchmark measures three SQL rules on one 74,755-byte fixture. Warm repeated fact access is not ordinary full-file speed; combined median gain is fixture-specific. Cold baseline namespace loader overhead and small memory differences are observational.",
+    "Private identities, source pins, paths, hashes, snippets and finding tuples remain in owner-readable overlays; this report exposes only public rule data and redacted aggregates.",
+    "Make corpus comparison runs both exact baseline and candidate projections in each fresh per-root process; it does not execute private recipes. Full serialized ExecutionBlock tuples and failure outcomes are equal across 73 pinned files.",
+    "The Make corpus includes tracked .mk inputs that retain the existing empty-projection routing; 73 input files is not a claim that every input yields an executable block."
+  ],
+  "verification": {
+    "command": "make verify TEST_JOBS=1",
+    "initialUnchangedTypeScriptPerformanceFailure": "no-excessive-cognitive-complexity exceeded the existing relative gate; 7669 other TypeScript tests passed.",
+    "focusedPerformanceRetry": "3 tests passed without source or threshold changes.",
+    "finalFullGate": "passed",
+    "testsPassed": 28672,
+    "testsSkipped": 9,
+    "packageTestsPassed": {
+      "typescript": 7670,
+      "python": 12919,
+      "standards": 5299,
+      "sql": 1428,
+      "iac": 1323,
+      "contracts": 15,
+      "bootstrap": 18
+    }
+  },
+  "upstreamLibraries": [
+    "ShellCheck 0.11.0",
+    "shfmt 3.14.1",
+    "Python stdlib ast"
+  ]
+}

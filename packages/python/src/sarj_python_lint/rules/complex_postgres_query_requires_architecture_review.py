@@ -71,18 +71,6 @@ class _ConstructorImport(NamedTuple):
     name: str
 
 
-def _docstring_node_ids(tree: ast.AST, *, node_index: NodeIndex | None = None) -> set[int]:
-    result: set[int] = set()
-    for owner in nodes(tree, ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef, index=node_index):
-        body = owner.body
-        if not body or not isinstance(body[0], ast.Expr):
-            continue
-        value = body[0].value
-        if isinstance(value, ast.Constant) and isinstance(value.value, str):
-            result.add(id(value))
-    return result
-
-
 def _is_query_context(node: ast.expr, parents: Mapping[ast.AST, ast.AST], roots: frozenset[int]) -> bool:
     current: ast.AST = node
     while True:
@@ -368,7 +356,7 @@ class ComplexPostgresQueryRequiresArchitectureReview(Rule):
         if not _is_postgres_module(tree, node_index=context.node_index):
             return []
 
-        docstrings = _docstring_node_ids(tree, node_index=context.node_index)
+        docstrings = context.docstring_node_ids
         parents = context.parents
         query_roots = _query_roots(tree, parents, node_index=context.node_index)
         diagnostics: list[Diagnostic] = []

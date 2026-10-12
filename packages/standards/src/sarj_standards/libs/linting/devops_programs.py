@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
-from itertools import chain
+from itertools import accumulate, chain
 from operator import itemgetter
+from pathlib import Path
 import re
 import string
 import sys
@@ -15,6 +16,7 @@ import yaml
 from yaml.events import AliasEvent, MappingStartEvent, ScalarEvent, SequenceStartEvent
 from yaml.nodes import MappingNode, Node, ScalarNode, SequenceNode
 
+from sarj_standards.libs.diagnostics import SourceDocument
 from sarj_standards.libs.json_boundary import parse_json
 from sarj_standards.libs.linting.kubernetes_context import CONTAINER_KINDS, POD_SPEC_PATHS
 from sarj_standards.libs.linting.toml_literals import TomlStringLocationError, parse_toml_string_lines
@@ -545,7 +547,7 @@ def _mise_shell(value: object) -> str:
 def execution_blocks(relative: str, source: str, *, platform: str | None = None) -> list[ExecutionBlock]:
     name = relative.rsplit("/", 1)[-1].casefold()
     if name in {"makefile", "gnumakefile"}:
-        return _make_blocks(source)
+        return _make_blocks(relative, source)
     if not name.endswith(".dockerignore") and (
         name == "dockerfile" or name.startswith("dockerfile.") or name.endswith(".dockerfile")
     ):
@@ -773,14 +775,27 @@ def _docker_json_argv(command: str) -> tuple[str, ...] | None:
     return tuple(argument for argument in argv if isinstance(argument, str))
 
 
-def _make_blocks(source: str) -> list[ExecutionBlock]:
-    lines = source.splitlines()
+def _make_blocks(relative: str, source: str) -> list[ExecutionBlock]:
+    raw_lines = source.split("\n")
+    lines = [line.removesuffix("\r") for line in raw_lines] if "\r" in source else raw_lines
     oneshell = any(re.match(r"^\s*\.ONESHELL\s*:", line) for line in lines)
     recipes = _MakeRecipes(oneshell, _make_variables(lines), _make_recipe_contexts(lines))
     for number, line in enumerate(lines, 1):
         recipes.consume(line, number)
     recipes.flush()
-    return recipes.blocks
+    if "\r" not in source or source.count("\r") == source.count("\r\n"):
+        return recipes.blocks
+    document = SourceDocument(Path(relative), source)
+    offsets = list(
+        accumulate((len(line.encode("utf-8", errors="surrogateescape")) + 1 for line in raw_lines), initial=0)
+    )
+    return [
+        replace(
+            block,
+            line=document.region(start_byte=offsets[block.line - 1], end_byte=offsets[block.line - 1]).start.line + 1,
+        )
+        for block in recipes.blocks
+    ]
 
 
 _MAKE_ASSIGNMENT = re.compile(r"(?:export\s+)?([A-Za-z_.][A-Za-z0-9_.]*)\s*(:::=|::=|:=|[?+]?=)\s*(.*)")
