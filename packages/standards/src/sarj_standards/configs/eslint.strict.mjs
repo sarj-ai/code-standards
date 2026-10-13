@@ -1254,7 +1254,7 @@ export function createConfig(options = {}) {
       "@sarj/require-interface-for-exported-class": "error",
       "@sarj/prefer-named-complex-return-type": "error",
       "@sarj/prefer-module-level-refined-schema": "warn",
-      "@sarj/prefer-multi-value-zod-literal": ["warn", { zodMajorVersion: 4 }],
+      "@sarj/prefer-multi-value-zod-literal": ["error", { zodMajorVersion: 4 }],
       "@sarj/prefer-named-callback-domain": "error",
       "@sarj/prefer-nominal-id-types": "error",
       "@sarj/prefer-node-crypto-hash": "warn",
@@ -1304,7 +1304,7 @@ export function createConfig(options = {}) {
       "@sarj/no-conditional-empty-object-spread": "error",
       "@sarj/no-reduce-accumulator-copy": "error",
       "@sarj/require-button-accessible-name": "error",
-      "@sarj/require-camelcase-properties": "warn",
+      "@sarj/require-camelcase-properties": "error",
       // Wire keys need bracket access so they remain visibly external. The
       // TypeScript dot-notation rule must not undo that spelling.
       "@typescript-eslint/dot-notation": ["error", { allowPattern: "^[A-Za-z_$][\\w$]*_[\\w$]*$" }],

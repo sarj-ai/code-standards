@@ -18,7 +18,9 @@ from sarj_python_lint.rule_base import (
 )
 from sarj_python_lint.rules._ast_index import walk as walk_ast
 from sarj_python_lint.rules._imports import ImportIndex
+from sarj_python_lint.rules._inert_model_annotation import inert_direct_model_body
 from sarj_python_lint.rules._paths import is_test_path
+from sarj_python_lint.rules._resource_provenance import ResourceProvenance
 
 
 if TYPE_CHECKING:
@@ -44,7 +46,7 @@ class NoRedundantLiteralDescription(Rule):
     id = "no-restated-closed-domain-description"
     code = "SARJ423"
     documentation = RuleDocumentation(
-        default_level=Severity.WARNING,
+        default_level=Severity.ERROR,
         summary="Do not restate a string Literal or local string Enum domain in its Pydantic description.",
         rationale=(
             "Pydantic already publishes literal and enum domains in JSON Schema; duplicate must-be prose can "
@@ -61,6 +63,7 @@ class NoRedundantLiteralDescription(Rule):
             "Only direct fields on classes with a direct BaseModel base are inspected.",
             "Domains are resolved only from direct string Literals and static Literal aliases or string-valued Enums in the same module.",
             "Descriptions are reported only when a narrow clause repeats the complete domain without mapping or rationale.",
+            "ERROR requires an inert direct model with no json_schema_extra options; custom construction, schema metadata, local aliases and Enum annotations retain WARNING with schema-ownership review guidance.",
             "Test and generated files are excluded.",
         ),
         examples=(
@@ -116,7 +119,9 @@ class NoRedundantLiteralDescription(Rule):
         local_domains = _local_closed_domains(tree, imports)
         diagnostics: list[Diagnostic] = []
 
-        def collect_field_descriptions(statement: ast.AnnAssign, field_name: str, domain: frozenset[str]) -> None:
+        def collect_field_descriptions(
+            statement: ast.AnnAssign, field_name: str, domain: frozenset[str], *, severity: Severity
+        ) -> None:
             for field_call in _field_calls(statement, imports):
                 description = next(
                     (keyword.value for keyword in field_call.keywords if keyword.arg == "description"), None
@@ -134,24 +139,72 @@ class NoRedundantLiteralDescription(Rule):
                         col=description.col_offset + 1,
                         code=self.code,
                         message=(
-                            f"`{field_name}` repeats values already emitted by its Literal or Enum schema; "
-                            "remove the repeated domain while preserving behavioral guidance."
+                            f"`{field_name}` repeats its declared Literal or Enum domain; "
+                            "remove the repeated list only after preserving required schema metadata and behavioral guidance."
                         ),
-                        severity=Severity.WARNING,
+                        severity=severity,
                     )
                 )
 
-        for model in (node for node in context.nodes(ast.AST) if isinstance(node, ast.ClassDef)):
+        for model in context.nodes(ast.ClassDef):
             if not _is_direct_model(model, imports) or _has_custom_schema_hook(model):
                 continue
+            severity = _description_level(model, context)
             for statement in model.body:
                 if not isinstance(statement, ast.AnnAssign) or not isinstance(statement.target, ast.Name):
                     continue
                 domain = _closed_domain(statement.annotation, imports, local_domains)
                 if domain is None or _has_schema_override(statement.annotation, imports):
                     continue
-                collect_field_descriptions(statement, statement.target.id, domain)
+                collect_field_descriptions(
+                    statement,
+                    statement.target.id,
+                    domain,
+                    severity=severity,
+                )
         return diagnostics
+
+
+def _description_level(model: ast.ClassDef, context: PythonFileContext) -> Severity:
+    return Severity.ERROR if _inert_description_model(model, context) else Severity.WARNING
+
+
+def _inert_description_model(model: ast.ClassDef, context: PythonFileContext) -> bool:
+    if context.dynamic_namespace or not inert_direct_model_body(model, context.imports):
+        return False
+    provenance = ResourceProvenance(context, require_static_namespace=True)
+    for node in walk_ast(model):
+        if isinstance(node, ast.keyword) and node.arg == "json_schema_extra":
+            return False
+        if not _annotation_provider_proven(node, context, provenance):
+            return False
+        if isinstance(node, ast.Call) and not provenance.imported(
+            node.func, context.imports.resolved_qualified_name(node.func) or "pydantic.Field"
+        ):
+            return False
+    return any(
+        provenance.imported(base, context.imports.resolved_qualified_name(base) or "pydantic.BaseModel")
+        for base in model.bases
+    )
+
+
+def _annotation_provider_proven(node: ast.AST, context: PythonFileContext, provenance: ResourceProvenance) -> bool:
+    if isinstance(node, ast.AnnAssign) and isinstance(node.annotation, ast.Constant):
+        return False
+    if isinstance(node, ast.Subscript) and context.imports.resolved_qualified_name(node.value) in {
+        "typing.Annotated",
+        "typing_extensions.Annotated",
+    }:
+        argument = node.slice.elts[0] if isinstance(node.slice, ast.Tuple) and node.slice.elts else node.slice
+        return not isinstance(argument, ast.Constant)
+    if isinstance(node, ast.Name | ast.Attribute) and (qualified := context.imports.resolved_qualified_name(node)) in {
+        "typing.Literal",
+        "typing.Annotated",
+        "typing_extensions.Literal",
+        "typing_extensions.Annotated",
+    }:
+        return provenance.imported(node, qualified)
+    return True
 
 
 def _is_direct_model(node: ast.ClassDef, imports: ImportIndex) -> bool:

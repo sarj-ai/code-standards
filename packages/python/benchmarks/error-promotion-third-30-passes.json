@@ -1,0 +1,1508 @@
+{
+  "schemaVersion": 1,
+  "scope": "sarj-ai/code-standards only",
+  "baseCommit": "55b2d3fa32c6d08d300396d9d8c427c0366d6a44",
+  "state": "locally-verified-closing-judge-approved-exact-head-release-gates-required",
+  "request": "Thirty additional substantive existing WARNING-to-ERROR promotion passes under the explicitly requested strict modern typing and maintainability policy.",
+  "policy": "Deterministic source conventions can block with a useful manual remedy and reasoned exact local exceptions. ERROR is not a claim of universal runtime defect or behavioral equivalence. Ambiguous transformations retain WARNING. No promoted rule autofixes.",
+  "promotionPasses": [
+    {
+      "pass": 1,
+      "selector": "python:prefer-pydantic-json-value",
+      "code": "SARJ454",
+      "decision": "bounded-error",
+      "summary": "Recursive JSON value alias duplicates `pydantic.JsonValue`.",
+      "implementationPath": "packages/python/src/sarj_python_lint/rules/prefer_pydantic_json_value.py",
+      "testPath": "packages/python/tests/rules/test_prefer_pydantic_json_value.py",
+      "evidence": "Private nonescaping static annotations only, declared Pydantic >=2.5; preserve binding. Public, decorated, schema/runtime or introspected uses remain WARNING because validation/coercion differs.",
+      "admission": "Existing registered detector owns the convention; WARNING does not enforce the requested strict policy.",
+      "smallestFix": "Existing matching predicates and exact local exceptions, with severity tier where proof is bounded; no autofix."
+    },
+    {
+      "pass": 2,
+      "selector": "python:async-mock-call-without-await-assertion",
+      "code": "SARJ456",
+      "decision": "bounded-error",
+      "summary": "Pair positive AsyncMock call assertions with evidence that the mock was awaited.",
+      "implementationPath": "packages/python/src/sarj_python_lint/rules/async_mock_call_without_await_assertion.py",
+      "testPath": "packages/python/tests/rules/test_async_mock_call_without_await_assertion.py",
+      "evidence": "Require await evidence for positive AsyncMock call assertions or a reasoned scheduling exception; call assertions alone cannot prove awaiting. Only source-proven unmodified AsyncMock providers block; provider mutations and lexical ambiguity remain WARNING.",
+      "admission": "Existing registered detector owns the convention; WARNING does not enforce the requested strict policy.",
+      "smallestFix": "Existing matching predicates and exact local exceptions, with severity tier where proof is bounded; no autofix."
+    },
+    {
+      "pass": 3,
+      "selector": "python:no-unused-copy-result",
+      "code": "SARJ483",
+      "decision": "error",
+      "summary": "Use the replacement returned by a resolved copy API.",
+      "implementationPath": "packages/python/src/sarj_python_lint/rules/no_unused_copy_result.py",
+      "testPath": "packages/python/tests/rules/test_no_unused_copy_result.py",
+      "evidence": "Consume-or-explain the returned copy. Intentional copy-hook effects require an exact exception; no call deletion fix.",
+      "admission": "Existing registered detector owns the convention; WARNING does not enforce the requested strict policy.",
+      "smallestFix": "Existing matching predicates and exact local exceptions, with severity tier where proof is bounded; no autofix."
+    },
+    {
+      "pass": 4,
+      "selector": "python:no-test-method-grafting",
+      "code": "SARJ478",
+      "decision": "error",
+      "summary": "Avoid assigning replacement implementations directly onto resolved methods in tests.",
+      "implementationPath": "packages/python/src/sarj_python_lint/rules/no_test_method_grafting.py",
+      "testPath": "packages/python/tests/rules/test_no_test_method_grafting.py",
+      "evidence": "Require a scoped patch or declared callback seam for source-resolved methods in tests; preserve intentional interception with an exact exception.",
+      "admission": "Existing registered detector owns the convention; WARNING does not enforce the requested strict policy.",
+      "smallestFix": "Existing matching predicates and exact local exceptions, with severity tier where proof is bounded; no autofix."
+    },
+    {
+      "pass": 5,
+      "selector": "python:no-swallowed-asyncio-cancellation",
+      "code": "SARJ458",
+      "decision": "bounded-error",
+      "summary": "Preserve cancellation when an async operation is cancelled.",
+      "implementationPath": "packages/python/src/sarj_python_lint/rules/no_swallowed_asyncio_cancellation.py",
+      "testPath": "packages/python/tests/rules/test_no_swallowed_asyncio_cancellation.py",
+      "evidence": "Only a single unmodified canonical asyncio.sleep with literal arguments proves caller cancellation. Unknown operations and child cancellation remain WARNING.",
+      "admission": "Existing registered detector owns the convention; WARNING does not enforce the requested strict policy.",
+      "smallestFix": "Existing matching predicates and exact local exceptions, with severity tier where proof is bounded; no autofix."
+    },
+    {
+      "pass": 6,
+      "selector": "python:no-whole-request-response-payload-in-log",
+      "code": "SARJ436",
+      "decision": "hold-warning",
+      "summary": "Whole request or response payloads passed to logging calls require review.",
+      "implementationPath": "packages/python/src/sarj_python_lint/rules/no_whole_request_response_payload_in_log.py",
+      "testPath": "packages/python/tests/rules/test_no_whole_request_response_payload_in_log.py",
+      "evidence": "Baseline flags its recommended safe metadata remedy request.payload[\"id\"]. Full promotion would block the remediation; sanitized/public-payload ownership is also unknown.",
+      "admission": "Current owner cannot prove behavior-preserving remediation; hold rather than broaden blocking scope.",
+      "smallestFix": "No severity change."
+    },
+    {
+      "pass": 7,
+      "selector": "python:no-redundant-module-alias-exports",
+      "code": "SARJ440",
+      "decision": "error",
+      "summary": "Do not manufacture public APIs from private names or replace the current module.",
+      "implementationPath": "packages/python/src/sarj_python_lint/rules/no_redundant_module_alias_exports.py",
+      "testPath": "packages/python/tests/rules/test_no_redundant_module_alias_exports.py",
+      "evidence": "Explicit public visibility/import-identity policy: define maintained APIs by public names and use canonical imports; required compatibility or identity contracts have reasoned exact exceptions.",
+      "admission": "Existing registered detector owns the convention; WARNING does not enforce the requested strict policy.",
+      "smallestFix": "Existing matching predicates and exact local exceptions, with severity tier where proof is bounded; no autofix."
+    },
+    {
+      "pass": 8,
+      "selector": "python:no-restated-closed-domain-description",
+      "code": "SARJ423",
+      "decision": "bounded-error",
+      "summary": "Do not restate a string Literal or local string Enum domain in its Pydantic description.",
+      "implementationPath": "packages/python/src/sarj_python_lint/rules/no_redundant_literal_description.py",
+      "testPath": "packages/python/tests/rules/test_no_redundant_literal_description.py",
+      "evidence": "Inert direct Literal model bodies only. json_schema_extra, callbacks, custom class creation and unresolved domains remain WARNING because metadata may be required.",
+      "admission": "Existing registered detector owns the convention; WARNING does not enforce the requested strict policy.",
+      "smallestFix": "Existing matching predicates and exact local exceptions, with severity tier where proof is bounded; no autofix."
+    },
+    {
+      "pass": 9,
+      "selector": "python:redundant-docstring",
+      "code": "SARJ050",
+      "decision": "bounded-error",
+      "summary": "Function or plain-method docstring only repeats its declaration.",
+      "implementationPath": "packages/python/src/sarj_python_lint/rules/redundant_docstring.py",
+      "testPath": "packages/python/tests/rules/test_redundant_docstring.py",
+      "evidence": "Only ordered alphabetic function-name restatements block. Reordered words, directional punctuation and stem-only matches can describe behavior and remain WARNING.",
+      "admission": "Existing registered detector owns the convention; WARNING does not enforce the requested strict policy.",
+      "smallestFix": "Existing matching predicates and exact local exceptions, with severity tier where proof is bounded; no autofix."
+    },
+    {
+      "pass": 10,
+      "selector": "python:prefer-fstring-over-concat",
+      "code": "SARJ068",
+      "decision": "hold-warning",
+      "summary": "Prefer f-strings for short human-readable interpolation when they make the result clearer.",
+      "implementationPath": "packages/python/src/sarj_python_lint/rules/prefer_fstring_over_concat.py",
+      "testPath": "packages/python/tests/rules/test_prefer_fstring_over_concat.py",
+      "evidence": "Annotated str may be a subclass with different __add__ and __format__ behavior; current broad detector does not prove builtin-string operands.",
+      "admission": "Current owner cannot prove behavior-preserving remediation; hold rather than broaden blocking scope.",
+      "smallestFix": "No severity change."
+    },
+    {
+      "pass": 11,
+      "selector": "python:prefer-match-exception-dispatch",
+      "code": "SARJ453",
+      "decision": "hold-warning",
+      "summary": "Prefer guarded match/case for refined exception type dispatch.",
+      "implementationPath": "packages/python/src/sarj_python_lint/rules/prefer_match_exception_dispatch.py",
+      "testPath": "packages/python/tests/rules/test_prefer_match_exception_dispatch.py",
+      "evidence": "Imported exception groups and supported match runtime are not fully proven by current syntax advice; preserve ordered guards and fallthrough.",
+      "admission": "Current owner cannot prove behavior-preserving remediation; hold rather than broaden blocking scope.",
+      "smallestFix": "No severity change."
+    },
+    {
+      "pass": 12,
+      "selector": "python:typed-error-reasons",
+      "code": "SARJ435",
+      "decision": "hold-warning",
+      "summary": "Review joined exception strings for fixed reason identities versus dynamic context.",
+      "implementationPath": "packages/python/src/sarj_python_lint/rules/typed_error_reasons.py",
+      "testPath": "packages/python/tests/rules/test_typed_error_reasons.py",
+      "evidence": "Joined list[str] can contain arbitrary paths/messages; names and joins do not prove a finite reason identity domain.",
+      "admission": "Current owner cannot prove behavior-preserving remediation; hold rather than broaden blocking scope.",
+      "smallestFix": "No severity change."
+    },
+    {
+      "pass": 13,
+      "selector": "python:require-explicit-psycopg-transaction",
+      "code": "SARJ462",
+      "decision": "hold-warning",
+      "summary": "Make Psycopg locking reads and related writes explicitly transactional.",
+      "implementationPath": "packages/python/src/sarj_python_lint/rules/require_explicit_psycopg_transaction.py",
+      "testPath": "packages/python/tests/rules/test_require_explicit_psycopg_transaction.py",
+      "evidence": "Manual BEGIN/commit and implicit or nested ownership are valid. Current detector cannot prove autocommit or the absence of an owning transaction.",
+      "admission": "Current owner cannot prove behavior-preserving remediation; hold rather than broaden blocking scope.",
+      "smallestFix": "No severity change."
+    },
+    {
+      "pass": 14,
+      "selector": "python:timestamp-order-requires-tiebreaker",
+      "code": "SARJ407",
+      "decision": "hold-warning",
+      "summary": "Bounded store SQL whose final result-order key looks like a `*_at` timestamp should include a deterministic secondary key.",
+      "implementationPath": "packages/python/src/sarj_python_lint/rules/timestamp_order_requires_tiebreaker.py",
+      "testPath": "packages/python/tests/rules/test_timestamp_order_requires_tiebreaker.py",
+      "evidence": "ORDER BY id,created_at can already be total through an earlier primary key. Schema uniqueness and upstream keys are unresolved.",
+      "admission": "Current owner cannot prove behavior-preserving remediation; hold rather than broaden blocking scope.",
+      "smallestFix": "No severity change."
+    },
+    {
+      "pass": 15,
+      "selector": "python:store-get-delegates-to-bulk-read",
+      "code": "SARJ421",
+      "decision": "hold-warning",
+      "summary": "A store singleton operation should reuse its equivalent bulk implementation.",
+      "implementationPath": "packages/python/src/sarj_python_lint/rules/store_get_delegates_to_bulk_read.py",
+      "testPath": "packages/python/tests/rules/test_store_get_delegates_to_bulk_read.py",
+      "evidence": "Matching singleton/bulk signatures do not prove identical filtering, authorization or missing-row behavior.",
+      "admission": "Current owner cannot prove behavior-preserving remediation; hold rather than broaden blocking scope.",
+      "smallestFix": "No severity change."
+    },
+    {
+      "pass": 16,
+      "selector": "python:fakes-in-shared-location",
+      "code": "SARJ428",
+      "decision": "hold-warning",
+      "summary": "Review named top-level test doubles for shared-support ownership unless they are intentionally scenario-local.",
+      "implementationPath": "packages/python/src/sarj_python_lint/rules/fakes_in_shared_location.py",
+      "testPath": "packages/python/tests/rules/test_fakes_in_shared_location.py",
+      "evidence": "Top-level Fake names and test placement do not establish shared reuse or ownership.",
+      "admission": "Current owner cannot prove behavior-preserving remediation; hold rather than broaden blocking scope.",
+      "smallestFix": "No severity change."
+    },
+    {
+      "pass": 17,
+      "selector": "python:repeated-static-call-cases",
+      "code": "SARJ413",
+      "decision": "hold-warning",
+      "summary": "Three same-shape literal call assertions may be independent parameter cases.",
+      "implementationPath": "packages/python/src/sarj_python_lint/rules/repeated_static_call_cases.py",
+      "testPath": "packages/python/tests/rules/test_repeated_static_call_cases.py",
+      "evidence": "Sequential same-shaped assertions may intentionally exercise shared mutable state; parameterization can reset it.",
+      "admission": "Current owner cannot prove behavior-preserving remediation; hold rather than broaden blocking scope.",
+      "smallestFix": "No severity change."
+    },
+    {
+      "pass": 18,
+      "selector": "eslint:prefer-multi-value-zod-literal",
+      "code": null,
+      "decision": "error",
+      "summary": "Use the Zod 4 multi-value literal API instead of a union of literal schemas.",
+      "implementationPath": "packages/typescript/src/rules/prefer-multi-value-zod-literal.ts",
+      "testPath": "packages/typescript/tests/rules/prefer-multi-value-zod-literal.test.ts",
+      "evidence": "Explicit declared-Zod-4 modern literal policy. Preserve required union introspection and error-shape contracts with a reasoned local exception; no autofix.",
+      "admission": "Existing registered detector owns the convention; WARNING does not enforce the requested strict policy.",
+      "smallestFix": "Existing matching predicates and exact local exceptions, with severity tier where proof is bounded; no autofix."
+    },
+    {
+      "pass": 19,
+      "selector": "eslint:prefer-shared-zod-enum",
+      "code": null,
+      "decision": "hold-warning",
+      "summary": "Give repeated literal Zod enum domains one reusable module-level schema.",
+      "implementationPath": "packages/typescript/src/rules/prefer-shared-zod-enum.ts",
+      "testPath": "packages/typescript/tests/rules/prefer-shared-zod-enum.test.ts",
+      "evidence": "Equal Zod enum values do not prove the same domain, ownership or lifetime; separate schema contracts may intentionally evolve.",
+      "admission": "Current owner cannot prove behavior-preserving remediation; hold rather than broaden blocking scope.",
+      "smallestFix": "No severity change."
+    },
+    {
+      "pass": 20,
+      "selector": "eslint:prefer-node-crypto-hash",
+      "code": null,
+      "decision": "hold-warning",
+      "summary": "Prefer the modern one-shot node:crypto hash API when streaming state is unnecessary.",
+      "implementationPath": "packages/typescript/src/rules/prefer-node-crypto-hash.ts",
+      "testPath": "packages/typescript/tests/rules/prefer-node-crypto-hash.test.ts",
+      "evidence": "One-shot hash availability and output semantics depend on the supported Node runtime and options; current source pattern does not prove both.",
+      "admission": "Current owner cannot prove behavior-preserving remediation; hold rather than broaden blocking scope.",
+      "smallestFix": "No severity change."
+    },
+    {
+      "pass": 21,
+      "selector": "eslint:prefer-node-fs-promises",
+      "code": null,
+      "decision": "hold-warning",
+      "summary": "Prefer promise-based Node.js filesystem APIs over synchronous calls in production modules.",
+      "implementationPath": "packages/typescript/src/rules/prefer-node-fs-promises.ts",
+      "testPath": "packages/typescript/tests/rules/prefer-node-fs-promises.test.ts",
+      "evidence": "Synchronous startup or public APIs cannot become async without changing scheduling and return contracts.",
+      "admission": "Current owner cannot prove behavior-preserving remediation; hold rather than broaden blocking scope.",
+      "smallestFix": "No severity change."
+    },
+    {
+      "pass": 22,
+      "selector": "eslint:require-camelcase-properties",
+      "code": null,
+      "decision": "error",
+      "summary": "Require unquoted lower snake_case TypeScript properties and dot access to use camelCase.",
+      "implementationPath": "packages/typescript/src/rules/require-camelcase-properties.ts",
+      "testPath": "packages/typescript/tests/rules/require-camelcase-properties.test.ts",
+      "evidence": "Use camelCase for source-owned unquoted properties. Quote external snake_case keys and retain bracket access; no renaming of wire contracts.",
+      "admission": "Existing registered detector owns the convention; WARNING does not enforce the requested strict policy.",
+      "smallestFix": "Existing matching predicates and exact local exceptions, with severity tier where proof is bounded; no autofix."
+    },
+    {
+      "pass": 23,
+      "selector": "eslint:require-sql-access-class",
+      "code": null,
+      "decision": "hold-warning",
+      "summary": "Keep SQL reads and writes inside a class that receives its database dependency.",
+      "implementationPath": "packages/typescript/src/rules/require-sql-access-class.ts",
+      "testPath": "packages/typescript/tests/rules/require-sql-access-class.test.ts",
+      "evidence": "Conventional receiver names do not prove database ownership. Free dependency-injected functions can be valid access boundaries.",
+      "admission": "Current owner cannot prove behavior-preserving remediation; hold rather than broaden blocking scope.",
+      "smallestFix": "No severity change."
+    },
+    {
+      "pass": 24,
+      "selector": "eslint:prefer-whole-object-assertion",
+      "code": null,
+      "decision": "hold-warning",
+      "summary": "Collapse consecutive assertions on one object into a whole-object assertion so related mismatches are reported together.",
+      "implementationPath": "packages/typescript/src/rules/prefer-whole-object-assertion.ts",
+      "testPath": "packages/typescript/tests/rules/prefer-whole-object-assertion.test.ts",
+      "evidence": "Whole-object assertions can change getter/proxy, property presence or identity expectations; existing adjacency alone is insufficient.",
+      "admission": "Current owner cannot prove behavior-preserving remediation; hold rather than broaden blocking scope.",
+      "smallestFix": "No severity change."
+    },
+    {
+      "pass": 25,
+      "selector": "sql:no-duplicate-index",
+      "code": "SARJ117",
+      "decision": "bounded-error",
+      "summary": "Report duplicate and conservatively covered indexes that remain active in one authored migration.",
+      "implementationPath": "packages/sql/src/sarj_sql_lint/rules/no_duplicate_index.py",
+      "testPath": "packages/sql/tests/rules/test_no_duplicate_index.py",
+      "evidence": "Exact normalized active index duplicates block. Prefix and unique/nonunique access-path advice stays WARNING because query plans differ.",
+      "admission": "Existing registered detector owns the convention; WARNING does not enforce the requested strict policy.",
+      "smallestFix": "Existing matching predicates and exact local exceptions, with severity tier where proof is bounded; no autofix."
+    },
+    {
+      "pass": 26,
+      "selector": "sql:existing-table-check-or-foreign-key-requires-not-valid",
+      "code": "SARJ111",
+      "decision": "error",
+      "summary": "CHECK and foreign-key constraints added to existing PostgreSQL tables should defer validation.",
+      "implementationPath": "packages/sql/src/sarj_sql_lint/rules/add_constraint_requires_not_valid.py",
+      "testPath": "packages/sql/tests/rules/test_add_constraint_requires_not_valid.py",
+      "evidence": "Explicit online-migration policy: defer validation for CHECK/foreign-key additions on existing PostgreSQL tables; local exceptions preserve intentional offline migrations.",
+      "admission": "Existing registered detector owns the convention; WARNING does not enforce the requested strict policy.",
+      "smallestFix": "Existing matching predicates and exact local exceptions, with severity tier where proof is bounded; no autofix."
+    },
+    {
+      "pass": 27,
+      "selector": "sql:no-application-schema-check",
+      "code": "SARJ118",
+      "decision": "hold-warning",
+      "summary": "Keep JSON shape and closed application value sets out of database CHECK constraints.",
+      "implementationPath": "packages/sql/src/sarj_sql_lint/rules/no_application_schema_check.py",
+      "testPath": "packages/sql/tests/rules/test_no_application_schema_check.py",
+      "evidence": "Application ownership and all writers are unknown; database constraints may intentionally enforce invariants across services.",
+      "admission": "Current owner cannot prove behavior-preserving remediation; hold rather than broaden blocking scope.",
+      "smallestFix": "No severity change."
+    },
+    {
+      "pass": 28,
+      "selector": "sql:excess-migration-index-requires-justification",
+      "code": "SARJ116",
+      "decision": "error",
+      "summary": "Require a structured local justification for excess explicit indexes in an authored migration.",
+      "implementationPath": "packages/sql/src/sarj_sql_lint/rules/index_budget.py",
+      "testPath": "packages/sql/tests/rules/test_index_budget.py",
+      "evidence": "Enforce the existing explicit migration index budget with structured justify-or-remove remediation; no guess that every extra index is useless.",
+      "admission": "Existing registered detector owns the convention; WARNING does not enforce the requested strict policy.",
+      "smallestFix": "Existing matching predicates and exact local exceptions, with severity tier where proof is bounded; no autofix."
+    },
+    {
+      "pass": 29,
+      "selector": "iac:require-deletion-protection",
+      "code": "SARJ201",
+      "decision": "bounded-error",
+      "summary": "Warn when a curated stateful Terraform resource lacks a proven provider-native deletion guard or literal lifecycle destroy guard.",
+      "implementationPath": "packages/iac/src/sarj_iac_lint/rules/require_deletion_protection.py",
+      "testPath": "packages/iac/tests/rules/test_require_deletion_protection.py",
+      "evidence": "Curated resources with absent or literal-disabled guards block. Dynamic guards and nonliteral/provider-policy alternatives remain WARNING.",
+      "admission": "Existing registered detector owns the convention; WARNING does not enforce the requested strict policy.",
+      "smallestFix": "Existing matching predicates and exact local exceptions, with severity tier where proof is bounded; no autofix."
+    },
+    {
+      "pass": 30,
+      "selector": "iac:require-prevent-destroy-on-irreplaceable",
+      "code": "SARJ203",
+      "decision": "bounded-error",
+      "summary": "Warn when a curated durable-data container lacks a literal provider-side deletion guard or Terraform lifecycle destroy guard.",
+      "implementationPath": "packages/iac/src/sarj_iac_lint/rules/require_prevent_destroy.py",
+      "testPath": "packages/iac/tests/rules/test_require_prevent_destroy.py",
+      "evidence": "Curated durable containers with absent/literal-disabled guards block. Unknown guard or destructive options and ABANDON alternatives remain WARNING.",
+      "admission": "Existing registered detector owns the convention; WARNING does not enforce the requested strict policy.",
+      "smallestFix": "Existing matching predicates and exact local exceptions, with severity tier where proof is bounded; no autofix."
+    }
+  ],
+  "counts": {
+    "passes": 30,
+    "promotedDefaults": 15,
+    "fullErrorPolicies": 7,
+    "boundedErrorPolicies": 8,
+    "heldDefaults": 15,
+    "warningDefaultsBefore": 60,
+    "warningDefaultsAfter": 45
+  },
+  "judgeRounds": [
+    {
+      "round": 1,
+      "verdict": "revise",
+      "evidence": "Independent native/managed controls and runtime reproductions found mock/sleep/Field provider proof gaps and multiline-docstring exception gap. Four scopes repaired; eleven provisionally admitted."
+    },
+    {
+      "round": 2,
+      "verdict": "revise-advisory-message",
+      "evidence": "350 focused cases pass after visible provider and Literal ownership repairs. Require conditional asynchronous-provider advice on unresolved SARJ456; repaired before round3."
+    },
+    {
+      "round": 3,
+      "verdict": "approve-source-scopes",
+      "evidence": "459 focused/precedence cases pass with one stale severity assertion identified and then repaired. Eight positional/API/format/allowance controls pass. All30 decisions match catalog/native metadata; no autofixes. Final corpus/performance/release gates pending."
+    },
+    {
+      "round": 4,
+      "verdict": "approve-corpus-admission-with-method-disclosures",
+      "evidence": "Reviewed 442 source contexts: 107 Python, 114 SQL, 20 IaC, 151 TypeScript advisory contexts and a deterministic sample of 50 CamelCase matches. The complete AST inventory validates 10,292 CamelCase findings across 454 parsed files; the sample includes all three observed AST kinds. All seven performance panels pass their original budgets. API intent and recall remain unclassified; fixture-only scopes and the native/default severity distinction are disclosed."
+    },
+    {
+      "round": 5,
+      "verdict": "revise-one-v1-provider-gap",
+      "evidence": "Final independent audit passed 41 native/managed integration cases, default/catalog ID and version-pin consistency, but reproduced a Pydantic v1 BaseModel alias escape bypassing the finite owner inventory. Added the four existing v1 BaseModel/Field identities and canonical-positive/escape regressions; affected Python panels and full verification are rerun before merge."
+    },
+    {
+      "round": 6,
+      "verdict": "approve-repaired-source-closing-review",
+      "evidence": "After the fifth round requested a v1 inventory repair, an extra closing review passed 64 focused tests and eight independent canonical-vs-alias-escape controls across all four v1 provider identities. The exact runtime counterexample retains WARNING; canonical v1 positives remain ERROR. Source fingerprint, 15 promotions/15 holds, and zero autofixes agree. Refreshed Python panels and full verification remain required before commit."
+    }
+  ],
+  "sourceFingerprint": {
+    "sha256": "3a325a56358ad6391a107db4610ca6cd58784a2eaf83334da42baeea7bc20f73",
+    "sourceFiles": 393,
+    "scope": "All Python, TypeScript, SQL and IaC authored src files, plus the managed native-severity adapter.",
+    "algorithm": "SHA-256 of sorted repository-relative UTF-8 paths, NUL, file bytes, NUL."
+  },
+  "versions": {
+    "python": "1.34.0",
+    "typescript": "16.9.0",
+    "sql": "0.19.0",
+    "iac": "0.20.0",
+    "standards": "8.53.0",
+    "standardsCompat": "8.53.0"
+  },
+  "integration": "49 new execution contexts across Python, SQL, IaC, managed adapters and TypeScript presets cover ERROR/WARNING exits, real local exceptions, repeatability, declaration floors, provider mutation and native/central baseline contracts. Native Python/IaC blocking baselines exclude WARNING (native SQL has no baseline CLI); the existing central diagnostic baseline can capture either severity.",
+  "repairs": [
+    "Bound static JsonValue ownership and require a declared Pydantic >=2.5 floor; preserve runtime coercion and public alias contracts.",
+    "Use the existing closed import-provider and lexical ownership proof for AsyncMock, asyncio cancellation, Field and Literal/Annotated providers.",
+    "Allow genuine function-header and closing-quote comments for multiline redundant docstrings.",
+    "Preserve SQL/IaC native WARNING in the managed adapter using a severity-only protocol; append new native diagnostic fields without shifting existing positional arguments.",
+    "Preserve SQL prefix/unique access-path advice and unresolved Terraform guards at WARNING.",
+    "Refactor cohesive alias-use, signature-ownership and per-test diagnostic responsibilities to satisfy existing cognitive limits without suppressing them.",
+    "Include all four supported Pydantic v1 BaseModel/Field identities in the existing finite provider inventory; canonical controls block and alias escapes retain WARNING."
+  ],
+  "performanceBudgets": {
+    "pythonSelectedMsPerFile": 5,
+    "sqlSelectedMsPerFile": 5,
+    "iacSelectedMsPerFile": 5,
+    "typescriptSyntaxMsPerFile": 2,
+    "normalMedianOverheadPercent": 25,
+    "additionalPeakMiB": 128,
+    "pairs": 3,
+    "batchSize": 250,
+    "execution": "fresh process per root/batch; alternating baseline/candidate order; native selected and all-rule panels for Python/SQL/IaC; TS syntax selected; no changed typed detector"
+  },
+  "corpusPanels": [
+    {
+      "engine": "python",
+      "panel": "selected",
+      "corpora": 7,
+      "files": 3976,
+      "bytes": 38444889,
+      "pairs": 3,
+      "batchSize": 250,
+      "runs": [
+        {
+          "mode": "baseline",
+          "pair": 0,
+          "files": 3976,
+          "batches": 21,
+          "wallSeconds": 92.039791,
+          "nativeSeconds": 69.97597258118913,
+          "peakBytes": 526925824,
+          "findings": 107
+        },
+        {
+          "mode": "candidate",
+          "pair": 0,
+          "files": 3976,
+          "batches": 21,
+          "wallSeconds": 88.378125,
+          "nativeSeconds": 68.24711641692556,
+          "peakBytes": 528728064,
+          "findings": 107
+        },
+        {
+          "mode": "candidate",
+          "pair": 1,
+          "files": 3976,
+          "batches": 21,
+          "wallSeconds": 95.55749,
+          "nativeSeconds": 72.86062162765302,
+          "peakBytes": 526958592,
+          "findings": 107
+        },
+        {
+          "mode": "baseline",
+          "pair": 1,
+          "files": 3976,
+          "batches": 21,
+          "wallSeconds": 88.472857,
+          "nativeSeconds": 67.90058891871013,
+          "peakBytes": 527613952,
+          "findings": 107
+        },
+        {
+          "mode": "baseline",
+          "pair": 2,
+          "files": 3976,
+          "batches": 21,
+          "wallSeconds": 99.521162,
+          "nativeSeconds": 76.02792133181356,
+          "peakBytes": 527859712,
+          "findings": 107
+        },
+        {
+          "mode": "candidate",
+          "pair": 2,
+          "files": 3976,
+          "batches": 21,
+          "wallSeconds": 87.459134,
+          "nativeSeconds": 67.79967741318978,
+          "peakBytes": 527220736,
+          "findings": 107
+        }
+      ],
+      "medians": {
+        "baseline": {
+          "nativeSeconds": 69.97597258118913,
+          "wallSeconds": 92.039791,
+          "peakBytes": 527859712,
+          "findingsPerRun": 107
+        },
+        "candidate": {
+          "nativeSeconds": 68.24711641692556,
+          "wallSeconds": 88.378125,
+          "peakBytes": 528728064,
+          "findingsPerRun": 107
+        }
+      },
+      "nativeIncrementMsPerFile": -0.4348229789395275,
+      "nativeMedianOverheadPercent": -2.4706425655715902,
+      "additionalPeakMiB": 0.828125,
+      "performanceGatePassed": true,
+      "stableCandidateDiagnostics": true,
+      "candidatePolicyCounts": [
+        {
+          "code": "SARJ050",
+          "severity": "warning",
+          "count": 2
+        },
+        {
+          "code": "SARJ068",
+          "severity": "warning",
+          "count": 14
+        },
+        {
+          "code": "SARJ407",
+          "severity": "warning",
+          "count": 12
+        },
+        {
+          "code": "SARJ413",
+          "severity": "warning",
+          "count": 1
+        },
+        {
+          "code": "SARJ421",
+          "severity": "warning",
+          "count": 5
+        },
+        {
+          "code": "SARJ423",
+          "severity": "warning",
+          "count": 6
+        },
+        {
+          "code": "SARJ428",
+          "severity": "warning",
+          "count": 36
+        },
+        {
+          "code": "SARJ436",
+          "severity": "warning",
+          "count": 16
+        },
+        {
+          "code": "SARJ440",
+          "severity": "error",
+          "count": 4
+        },
+        {
+          "code": "SARJ454",
+          "severity": "warning",
+          "count": 1
+        },
+        {
+          "code": "SARJ456",
+          "severity": "error",
+          "count": 1
+        },
+        {
+          "code": "SARJ458",
+          "severity": "warning",
+          "count": 4
+        },
+        {
+          "code": "SARJ462",
+          "severity": "warning",
+          "count": 5
+        }
+      ],
+      "colocatedAdditionalDiagnostics": 0,
+      "identicalDiagnosticDuplicates": 0
+    },
+    {
+      "engine": "python",
+      "panel": "normal",
+      "corpora": 7,
+      "files": 128,
+      "bytes": 1727151,
+      "pairs": 3,
+      "batchSize": 250,
+      "runs": [
+        {
+          "mode": "baseline",
+          "pair": 0,
+          "files": 128,
+          "batches": 7,
+          "wallSeconds": 25.230182,
+          "nativeSeconds": 19.069738833000883,
+          "peakBytes": 530202624,
+          "findings": 1297
+        },
+        {
+          "mode": "candidate",
+          "pair": 0,
+          "files": 128,
+          "batches": 7,
+          "wallSeconds": 23.933789,
+          "nativeSeconds": 18.166131750680506,
+          "peakBytes": 530366464,
+          "findings": 1297
+        },
+        {
+          "mode": "candidate",
+          "pair": 1,
+          "files": 128,
+          "batches": 7,
+          "wallSeconds": 23.674609,
+          "nativeSeconds": 17.953924043336883,
+          "peakBytes": 530792448,
+          "findings": 1297
+        },
+        {
+          "mode": "baseline",
+          "pair": 1,
+          "files": 128,
+          "batches": 7,
+          "wallSeconds": 23.609975,
+          "nativeSeconds": 17.946986083174124,
+          "peakBytes": 530087936,
+          "findings": 1297
+        },
+        {
+          "mode": "baseline",
+          "pair": 2,
+          "files": 128,
+          "batches": 7,
+          "wallSeconds": 23.654702,
+          "nativeSeconds": 17.92208516714163,
+          "peakBytes": 530169856,
+          "findings": 1297
+        },
+        {
+          "mode": "candidate",
+          "pair": 2,
+          "files": 128,
+          "batches": 7,
+          "wallSeconds": 23.778617,
+          "nativeSeconds": 18.064593084156513,
+          "peakBytes": 530530304,
+          "findings": 1297
+        }
+      ],
+      "medians": {
+        "baseline": {
+          "nativeSeconds": 17.946986083174124,
+          "wallSeconds": 23.654702,
+          "peakBytes": 530202624,
+          "findingsPerRun": 1297
+        },
+        "candidate": {
+          "nativeSeconds": 18.064593084156513,
+          "wallSeconds": 23.778617,
+          "peakBytes": 530792448,
+          "findingsPerRun": 1297
+        }
+      },
+      "nativeIncrementMsPerFile": 0.9188046951749129,
+      "nativeMedianOverheadPercent": 0.6553022353577687,
+      "additionalPeakMiB": 0.5625,
+      "performanceGatePassed": true,
+      "stableCandidateDiagnostics": true,
+      "candidatePolicyCounts": [],
+      "colocatedAdditionalDiagnostics": 5,
+      "identicalDiagnosticDuplicates": 0
+    },
+    {
+      "engine": "typescript",
+      "panel": "selected",
+      "corpora": 4,
+      "files": 2078,
+      "bytes": 12563492,
+      "pairs": 3,
+      "batchSize": 250,
+      "runs": [
+        {
+          "mode": "baseline",
+          "pair": 0,
+          "files": 2078,
+          "batches": 10,
+          "wallSeconds": 9.257205,
+          "nativeSeconds": 6.493385083,
+          "peakBytes": 633208832,
+          "findings": 10443
+        },
+        {
+          "mode": "candidate",
+          "pair": 0,
+          "files": 2078,
+          "batches": 10,
+          "wallSeconds": 8.94361,
+          "nativeSeconds": 6.404101291,
+          "peakBytes": 598605824,
+          "findings": 10443
+        },
+        {
+          "mode": "candidate",
+          "pair": 1,
+          "files": 2078,
+          "batches": 10,
+          "wallSeconds": 9.021102,
+          "nativeSeconds": 6.438803458,
+          "peakBytes": 633077760,
+          "findings": 10443
+        },
+        {
+          "mode": "baseline",
+          "pair": 1,
+          "files": 2078,
+          "batches": 10,
+          "wallSeconds": 9.02781,
+          "nativeSeconds": 6.471236542,
+          "peakBytes": 595820544,
+          "findings": 10443
+        },
+        {
+          "mode": "baseline",
+          "pair": 2,
+          "files": 2078,
+          "batches": 10,
+          "wallSeconds": 9.465497,
+          "nativeSeconds": 6.802662,
+          "peakBytes": 631930880,
+          "findings": 10443
+        },
+        {
+          "mode": "candidate",
+          "pair": 2,
+          "files": 2078,
+          "batches": 10,
+          "wallSeconds": 9.32131,
+          "nativeSeconds": 6.681328167,
+          "peakBytes": 632078336,
+          "findings": 10443
+        }
+      ],
+      "medians": {
+        "baseline": {
+          "nativeSeconds": 6.493385083,
+          "wallSeconds": 9.257205,
+          "peakBytes": 633208832,
+          "findingsPerRun": 10443
+        },
+        "candidate": {
+          "nativeSeconds": 6.438803458,
+          "wallSeconds": 9.021102,
+          "peakBytes": 633077760,
+          "findingsPerRun": 10443
+        }
+      },
+      "nativeIncrementMsPerFile": -0.026266422040423468,
+      "nativeMedianOverheadPercent": -0.8405727413717923,
+      "additionalPeakMiB": -0.125,
+      "performanceGatePassed": true,
+      "stableCandidateDiagnostics": true,
+      "candidatePolicyCounts": [
+        {
+          "code": "@sarj/prefer-node-crypto-hash",
+          "severity": "1",
+          "count": 20
+        },
+        {
+          "code": "@sarj/prefer-node-fs-promises",
+          "severity": "1",
+          "count": 12
+        },
+        {
+          "code": "@sarj/prefer-shared-zod-enum",
+          "severity": "1",
+          "count": 9
+        },
+        {
+          "code": "@sarj/prefer-whole-object-assertion",
+          "severity": "1",
+          "count": 6
+        },
+        {
+          "code": "@sarj/require-camelcase-properties",
+          "severity": "2",
+          "count": 10292
+        },
+        {
+          "code": "@sarj/require-sql-access-class",
+          "severity": "1",
+          "count": 104
+        }
+      ],
+      "colocatedAdditionalDiagnostics": 0,
+      "identicalDiagnosticDuplicates": 0
+    },
+    {
+      "engine": "sql",
+      "panel": "selected",
+      "corpora": 3,
+      "files": 413,
+      "bytes": 934691,
+      "pairs": 3,
+      "batchSize": 250,
+      "runs": [
+        {
+          "mode": "baseline",
+          "pair": 0,
+          "files": 413,
+          "batches": 4,
+          "wallSeconds": 1.341906,
+          "nativeSeconds": 0.6650211249943823,
+          "peakBytes": 44466176,
+          "findings": 114
+        },
+        {
+          "mode": "candidate",
+          "pair": 0,
+          "files": 413,
+          "batches": 4,
+          "wallSeconds": 1.345321,
+          "nativeSeconds": 0.658858000067994,
+          "peakBytes": 45088768,
+          "findings": 114
+        },
+        {
+          "mode": "candidate",
+          "pair": 1,
+          "files": 413,
+          "batches": 4,
+          "wallSeconds": 1.328105,
+          "nativeSeconds": 0.6643419170286506,
+          "peakBytes": 44761088,
+          "findings": 114
+        },
+        {
+          "mode": "baseline",
+          "pair": 1,
+          "files": 413,
+          "batches": 4,
+          "wallSeconds": 1.375195,
+          "nativeSeconds": 0.6725019158329815,
+          "peakBytes": 45072384,
+          "findings": 114
+        },
+        {
+          "mode": "baseline",
+          "pair": 2,
+          "files": 413,
+          "batches": 4,
+          "wallSeconds": 1.28191,
+          "nativeSeconds": 0.6465755829121917,
+          "peakBytes": 45056000,
+          "findings": 114
+        },
+        {
+          "mode": "candidate",
+          "pair": 2,
+          "files": 413,
+          "batches": 4,
+          "wallSeconds": 1.332665,
+          "nativeSeconds": 0.6656407488044351,
+          "peakBytes": 45367296,
+          "findings": 114
+        }
+      ],
+      "medians": {
+        "baseline": {
+          "nativeSeconds": 0.6650211249943823,
+          "wallSeconds": 1.341906,
+          "peakBytes": 45072384,
+          "findingsPerRun": 114
+        },
+        "candidate": {
+          "nativeSeconds": 0.6643419170286506,
+          "wallSeconds": 1.332665,
+          "peakBytes": 45367296,
+          "findingsPerRun": 114
+        }
+      },
+      "nativeIncrementMsPerFile": -0.0016445713455971447,
+      "nativeMedianOverheadPercent": -0.10213329174127983,
+      "additionalPeakMiB": 0.28125,
+      "performanceGatePassed": true,
+      "stableCandidateDiagnostics": true,
+      "candidatePolicyCounts": [
+        {
+          "code": "SARJ111",
+          "severity": "error",
+          "count": 20
+        },
+        {
+          "code": "SARJ116",
+          "severity": "error",
+          "count": 51
+        },
+        {
+          "code": "SARJ117",
+          "severity": "warning",
+          "count": 4
+        },
+        {
+          "code": "SARJ118",
+          "severity": "warning",
+          "count": 39
+        }
+      ],
+      "colocatedAdditionalDiagnostics": 0,
+      "identicalDiagnosticDuplicates": 0
+    },
+    {
+      "engine": "sql",
+      "panel": "normal",
+      "corpora": 3,
+      "files": 413,
+      "bytes": 934691,
+      "pairs": 3,
+      "batchSize": 250,
+      "runs": [
+        {
+          "mode": "baseline",
+          "pair": 0,
+          "files": 413,
+          "batches": 4,
+          "wallSeconds": 2.521821,
+          "nativeSeconds": 1.8663010827731341,
+          "peakBytes": 46071808,
+          "findings": 904
+        },
+        {
+          "mode": "candidate",
+          "pair": 0,
+          "files": 413,
+          "batches": 4,
+          "wallSeconds": 2.483827,
+          "nativeSeconds": 1.8568742498755455,
+          "peakBytes": 46219264,
+          "findings": 904
+        },
+        {
+          "mode": "candidate",
+          "pair": 1,
+          "files": 413,
+          "batches": 4,
+          "wallSeconds": 2.483659,
+          "nativeSeconds": 1.860602457774803,
+          "peakBytes": 45793280,
+          "findings": 904
+        },
+        {
+          "mode": "baseline",
+          "pair": 1,
+          "files": 413,
+          "batches": 4,
+          "wallSeconds": 2.494468,
+          "nativeSeconds": 1.8710570000112057,
+          "peakBytes": 45563904,
+          "findings": 904
+        },
+        {
+          "mode": "baseline",
+          "pair": 2,
+          "files": 413,
+          "batches": 4,
+          "wallSeconds": 2.501151,
+          "nativeSeconds": 1.8724823747761548,
+          "peakBytes": 46252032,
+          "findings": 904
+        },
+        {
+          "mode": "candidate",
+          "pair": 2,
+          "files": 413,
+          "batches": 4,
+          "wallSeconds": 2.510224,
+          "nativeSeconds": 1.8778999159112573,
+          "peakBytes": 46235648,
+          "findings": 904
+        }
+      ],
+      "medians": {
+        "baseline": {
+          "nativeSeconds": 1.8710570000112057,
+          "wallSeconds": 2.501151,
+          "peakBytes": 46252032,
+          "findingsPerRun": 904
+        },
+        "candidate": {
+          "nativeSeconds": 1.860602457774803,
+          "wallSeconds": 2.483827,
+          "peakBytes": 46235648,
+          "findingsPerRun": 904
+        }
+      },
+      "nativeIncrementMsPerFile": -0.025313661589352617,
+      "nativeMedianOverheadPercent": -0.5587506012024179,
+      "additionalPeakMiB": -0.015625,
+      "performanceGatePassed": true,
+      "stableCandidateDiagnostics": true,
+      "candidatePolicyCounts": [],
+      "colocatedAdditionalDiagnostics": 0,
+      "identicalDiagnosticDuplicates": 0
+    },
+    {
+      "engine": "iac",
+      "panel": "selected",
+      "corpora": 3,
+      "files": 408,
+      "bytes": 2090120,
+      "pairs": 3,
+      "batchSize": 250,
+      "runs": [
+        {
+          "mode": "baseline",
+          "pair": 0,
+          "files": 408,
+          "batches": 3,
+          "wallSeconds": 0.894579,
+          "nativeSeconds": 0.45172712532803416,
+          "peakBytes": 47874048,
+          "findings": 20
+        },
+        {
+          "mode": "candidate",
+          "pair": 0,
+          "files": 408,
+          "batches": 3,
+          "wallSeconds": 0.888631,
+          "nativeSeconds": 0.4527771659195423,
+          "peakBytes": 47939584,
+          "findings": 20
+        },
+        {
+          "mode": "candidate",
+          "pair": 1,
+          "files": 408,
+          "batches": 3,
+          "wallSeconds": 0.978363,
+          "nativeSeconds": 0.4765214587096125,
+          "peakBytes": 48349184,
+          "findings": 20
+        },
+        {
+          "mode": "baseline",
+          "pair": 1,
+          "files": 408,
+          "batches": 3,
+          "wallSeconds": 0.948143,
+          "nativeSeconds": 0.45940266619436443,
+          "peakBytes": 48119808,
+          "findings": 20
+        },
+        {
+          "mode": "baseline",
+          "pair": 2,
+          "files": 408,
+          "batches": 3,
+          "wallSeconds": 1.008326,
+          "nativeSeconds": 0.48162912484258413,
+          "peakBytes": 48381952,
+          "findings": 20
+        },
+        {
+          "mode": "candidate",
+          "pair": 2,
+          "files": 408,
+          "batches": 3,
+          "wallSeconds": 0.922709,
+          "nativeSeconds": 0.45487616606988013,
+          "peakBytes": 47972352,
+          "findings": 20
+        }
+      ],
+      "medians": {
+        "baseline": {
+          "nativeSeconds": 0.45940266619436443,
+          "wallSeconds": 0.948143,
+          "peakBytes": 48381952,
+          "findingsPerRun": 20
+        },
+        "candidate": {
+          "nativeSeconds": 0.45487616606988013,
+          "wallSeconds": 0.922709,
+          "peakBytes": 48349184,
+          "findingsPerRun": 20
+        }
+      },
+      "nativeIncrementMsPerFile": -0.01109436305020662,
+      "nativeMedianOverheadPercent": -0.9853012308311704,
+      "additionalPeakMiB": -0.03125,
+      "performanceGatePassed": true,
+      "stableCandidateDiagnostics": true,
+      "candidatePolicyCounts": [
+        {
+          "code": "SARJ201",
+          "severity": "error",
+          "count": 2
+        },
+        {
+          "code": "SARJ201",
+          "severity": "warning",
+          "count": 1
+        },
+        {
+          "code": "SARJ203",
+          "severity": "error",
+          "count": 17
+        }
+      ],
+      "colocatedAdditionalDiagnostics": 0,
+      "identicalDiagnosticDuplicates": 0
+    },
+    {
+      "engine": "iac",
+      "panel": "normal",
+      "corpora": 3,
+      "files": 408,
+      "bytes": 2090120,
+      "pairs": 3,
+      "batchSize": 250,
+      "runs": [
+        {
+          "mode": "baseline",
+          "pair": 0,
+          "files": 408,
+          "batches": 3,
+          "wallSeconds": 1.144151,
+          "nativeSeconds": 0.7223775000311434,
+          "peakBytes": 49790976,
+          "findings": 103
+        },
+        {
+          "mode": "candidate",
+          "pair": 0,
+          "files": 408,
+          "batches": 3,
+          "wallSeconds": 1.146388,
+          "nativeSeconds": 0.7439409580547363,
+          "peakBytes": 49528832,
+          "findings": 103
+        },
+        {
+          "mode": "candidate",
+          "pair": 1,
+          "files": 408,
+          "batches": 3,
+          "wallSeconds": 1.136823,
+          "nativeSeconds": 0.725259541766718,
+          "peakBytes": 49823744,
+          "findings": 103
+        },
+        {
+          "mode": "baseline",
+          "pair": 1,
+          "files": 408,
+          "batches": 3,
+          "wallSeconds": 1.199008,
+          "nativeSeconds": 0.7531360411085188,
+          "peakBytes": 49299456,
+          "findings": 103
+        },
+        {
+          "mode": "baseline",
+          "pair": 2,
+          "files": 408,
+          "batches": 3,
+          "wallSeconds": 1.168059,
+          "nativeSeconds": 0.7398845008574426,
+          "peakBytes": 49152000,
+          "findings": 103
+        },
+        {
+          "mode": "candidate",
+          "pair": 2,
+          "files": 408,
+          "batches": 3,
+          "wallSeconds": 1.173044,
+          "nativeSeconds": 0.7405525832436979,
+          "peakBytes": 49250304,
+          "findings": 103
+        }
+      ],
+      "medians": {
+        "baseline": {
+          "nativeSeconds": 0.7398845008574426,
+          "wallSeconds": 1.168059,
+          "peakBytes": 49790976,
+          "findingsPerRun": 103
+        },
+        "candidate": {
+          "nativeSeconds": 0.7405525832436979,
+          "wallSeconds": 1.146388,
+          "peakBytes": 49823744,
+          "findingsPerRun": 103
+        }
+      },
+      "nativeIncrementMsPerFile": 0.0016374568290570203,
+      "nativeMedianOverheadPercent": 0.09029549686214722,
+      "additionalPeakMiB": 0.03125,
+      "performanceGatePassed": true,
+      "stableCandidateDiagnostics": true,
+      "candidatePolicyCounts": [],
+      "colocatedAdditionalDiagnostics": 0,
+      "identicalDiagnosticDuplicates": 0
+    }
+  ],
+  "inspection": {
+    "schemaVersion": 1,
+    "formalJudgeRound": 4,
+    "verdict": "approve-corpus-admission-with-method-disclosures",
+    "scope": "Finite selected 30-candidate campaign; 15 promoted defaults and 15 holds.",
+    "sourceFreeze": {
+      "sourceFiles": 393,
+      "matchesFrozenFingerprint": true
+    },
+    "review": {
+      "sourceContextsStructurallyReviewed": 442,
+      "strictPolicyErrorContextsInDetailedReview": 145,
+      "warningContextsInDetailedReview": 297,
+      "python": {
+        "contexts": 107,
+        "files": 80,
+        "strictPolicyErrorContexts": 5,
+        "warningContexts": 102,
+        "errorPolicyRoles": {
+          "publicVisibilityAliases": 4,
+          "closedAsyncMockPositiveCallEvidence": 1
+        }
+      },
+      "sql": {
+        "contexts": 114,
+        "files": 51,
+        "strictPolicyErrorContexts": 71,
+        "warningContexts": 43,
+        "policyRoles": {
+          "onlineConstraintReview": 20,
+          "unjustifiedIndexBudget": 51,
+          "prefixIndexAdvice": 4,
+          "unprovedApplicationSchemaOwnership": 39
+        }
+      },
+      "iac": {
+        "contexts": 20,
+        "files": 13,
+        "strictPolicyErrorContexts": 19,
+        "warningContexts": 1,
+        "policyRoles": {
+          "curatedResourcesWithoutRecognizedProtection": 19,
+          "dynamicProviderGuard": 1
+        }
+      },
+      "typescript": {
+        "selectedFindings": 10443,
+        "parsedFiles": 454,
+        "parseFailures": 0,
+        "camelcaseAutomatedAstPredicateMatches": 10292,
+        "deterministicCamelcaseContextSample": 50,
+        "sampleSeed": 20261013,
+        "allObservedAstKindsCovered": true,
+        "camelcaseAstKinds": {
+          "MemberExpression": 2271,
+          "Property": 5770,
+          "TSPropertySignature": 2251
+        },
+        "heldContextsStructurallyReviewed": 151,
+        "heldContextCounts": {
+          "@sarj/prefer-node-fs-promises": 12,
+          "@sarj/prefer-whole-object-assertion": 6,
+          "@sarj/prefer-shared-zod-enum": 9,
+          "@sarj/prefer-node-crypto-hash": 20,
+          "@sarj/require-sql-access-class": 104
+        },
+        "allowInlineConfig": false
+      }
+    },
+    "policyFindingTupleAudit": {
+      "python": {
+        "baseline": 107,
+        "candidate": 107,
+        "added": 0,
+        "removed": 0,
+        "identicalDuplicates": 0
+      },
+      "sql": {
+        "baseline": 114,
+        "candidate": 114,
+        "added": 0,
+        "removed": 0,
+        "identicalDuplicates": 0
+      },
+      "iac": {
+        "baseline": 20,
+        "candidate": 20,
+        "added": 0,
+        "removed": 0,
+        "identicalDuplicates": 0
+      },
+      "typescript": {
+        "baseline": 10443,
+        "candidate": 10443,
+        "added": 0,
+        "removed": 0,
+        "identicalDuplicates": 0
+      }
+    },
+    "nativeSeverityChanges": [
+      {
+        "engine": "python",
+        "rule": "SARJ454",
+        "before": "error",
+        "after": "warning",
+        "count": 1
+      },
+      {
+        "engine": "python",
+        "rule": "SARJ456",
+        "before": "warning",
+        "after": "error",
+        "count": 1
+      },
+      {
+        "engine": "sql",
+        "rule": "SARJ117",
+        "before": "error",
+        "after": "warning",
+        "count": 4
+      },
+      {
+        "engine": "iac",
+        "rule": "SARJ201",
+        "before": "error",
+        "after": "warning",
+        "count": 1
+      },
+      {
+        "engine": "typescript",
+        "rule": "@sarj/require-camelcase-properties",
+        "before": "1",
+        "after": "2",
+        "count": 10292
+      }
+    ],
+    "nativeSeverityDisclosure": "Catalog WARNING-to-ERROR promotions are not uniformly native flips. SARJ440 already emitted native ERROR; six ambiguous natural findings across SARJ454/SARJ117/SARJ201 now retain native WARNING within bounded tiers. Managed default policy is stricter for admitted scopes.",
+    "fixtureOnlyErrorScopes": [
+      "eslint:prefer-multi-value-zod-literal",
+      "python:no-restated-closed-domain-description",
+      "python:no-swallowed-asyncio-cancellation",
+      "python:no-test-method-grafting",
+      "python:no-unused-copy-result",
+      "python:prefer-pydantic-json-value",
+      "python:redundant-docstring",
+      "sql:no-duplicate-index"
+    ],
+    "performanceChecks": [
+      {
+        "engine": "python",
+        "panel": "selected",
+        "pairs": 3,
+        "measuredNativeIncrementMsPerFile": -0.4348229789395275,
+        "measuredNativeOverheadPercent": -2.4706425655715902,
+        "measuredExtraPeakMiB": 0.828125,
+        "originalBudgetPassed": true
+      },
+      {
+        "engine": "python",
+        "panel": "normal",
+        "pairs": 3,
+        "measuredNativeIncrementMsPerFile": 0.9188046951749129,
+        "measuredNativeOverheadPercent": 0.6553022353577687,
+        "measuredExtraPeakMiB": 0.5625,
+        "originalBudgetPassed": true
+      },
+      {
+        "engine": "typescript",
+        "panel": "selected",
+        "pairs": 3,
+        "measuredNativeIncrementMsPerFile": -0.026266422040423468,
+        "measuredNativeOverheadPercent": -0.8405727413717923,
+        "measuredExtraPeakMiB": -0.125,
+        "originalBudgetPassed": true
+      },
+      {
+        "engine": "sql",
+        "panel": "selected",
+        "pairs": 3,
+        "measuredNativeIncrementMsPerFile": -0.0016445713455971447,
+        "measuredNativeOverheadPercent": -0.10213329174127983,
+        "measuredExtraPeakMiB": 0.28125,
+        "originalBudgetPassed": true
+      },
+      {
+        "engine": "sql",
+        "panel": "normal",
+        "pairs": 3,
+        "measuredNativeIncrementMsPerFile": -0.025313661589352617,
+        "measuredNativeOverheadPercent": -0.5587506012024179,
+        "measuredExtraPeakMiB": -0.015625,
+        "originalBudgetPassed": true
+      },
+      {
+        "engine": "iac",
+        "panel": "selected",
+        "pairs": 3,
+        "measuredNativeIncrementMsPerFile": -0.01109436305020662,
+        "measuredNativeOverheadPercent": -0.9853012308311704,
+        "measuredExtraPeakMiB": -0.03125,
+        "originalBudgetPassed": true
+      },
+      {
+        "engine": "iac",
+        "panel": "normal",
+        "pairs": 3,
+        "measuredNativeIncrementMsPerFile": 0.0016374568290570203,
+        "measuredNativeOverheadPercent": 0.09029549686214722,
+        "measuredExtraPeakMiB": 0.03125,
+        "originalBudgetPassed": true
+      }
+    ],
+    "publicReportMethodDisclosuresRequired": [
+      "TS selected syntax corpus runs with allowInlineConfig:false; counts ignore inline configuration. Exact suppression behavior is separately verified by fixtures.",
+      "Native blocking baselines exclude WARNING where supported by Python/IaC. Native SQL has no baseline CLI; managed diagnostic baselines can capture either severity."
+    ],
+    "claimLimits": [
+      "ERROR contexts fit explicitly admitted strict source policies and require manual remedy or an explained exception; they are not labeled universal runtime defects.",
+      "External API, wire ownership, workload, resource criticality, scheduling and runtime intent remain unclassified. No semantic true-positive/false-positive rate is estimated.",
+      "The complete camelcase count is automated AST inventory; the deterministic sample is 50 source contexts and covers all three observed AST kinds.",
+      "Advisory contexts have structural/ownership review only. No zero-false-positive or universal helpfulness claim is made for pre-existing held WARNING rules.",
+      "Eight promoted ERROR scopes have no natural ERROR finding in these selected corpora; labeled fixtures, rather than zero findings, establish firing and abstention.",
+      "Recall and false negatives outside fixture/corpus coverage are unestimated; stronger future tiers are not ruled out.",
+      "All selected finding tuples are unchanged between versions; native severity and managed default policy are distinguished.",
+      "The normal Python panel has five additional colocated SARJ094 messages at four locations in both modes; messages differ and there are zero identical duplicates. These are outside the selected campaign.",
+      "No performance budget was changed. Negative timings are observations, not a speedup claim."
+    ],
+    "privacy": {
+      "rawPrivateIdentitiesPathsSnippetsHashesIncluded": false,
+      "detailedArtifactsOwnerOnly": true
+    },
+    "remainingGates": [
+      "Final formal judge round 5",
+      "Hook-protected commit and postcommit lifecycle inventory",
+      "Exact-head required trusted CI and code-standards-only merge"
+    ],
+    "finalRepairRevalidation": "After the finite v1 provider inventory repair, all three complete Python baseline/candidate pairs and the original normal panel were rerun. Selected findings and their ERROR/WARNING scopes remain stable; the prior structural inspection applies to the same unchanged contexts. The repaired source fingerprint matches."
+  },
+  "method": "Verify all 11 existing private local pins. Derive SQL/IaC panels once from the seven already captured unique local roots; do not fetch or modify consumers. Use the required isolated-corpus runner, fresh process per root and 250-file batch, three alternating baseline/candidate pairs. Baseline checkout is source/lock-equivalent to the base merge and each worker asserts its imported source belongs to the distinct selected root. Selected panels compare previously shipped WARNING implementations with candidate tiers; normal panels exercise all native rules including existing controls. No cache flushing or speedup claim. Only aggregate counts and authored-source fingerprints are public. Python normal panel retains the previously declared error-promotion-30-normal-v1 SHA-256 selection: at most 20 files per frozen Python root (128 files total), exercising all 146 native rules. SQL/IaC normal panels use their full respective selections. An unnecessarily broader Python normal attempt was stopped before any complete comparison and excluded; the original 128-file selection and 25% budget were retained. TypeScript corpus scans intentionally set allowInlineConfig=false: counts are selected AST findings ignoring inline ESLint configuration, not a consumer CI/debt census. Exact explained suppression behavior is verified separately by fixtures. Native Python/SQL/IaC scans retain their normal source suppression handling.",
+  "limitations": [
+    "The 15 holds concern current predicates; stronger future tiers may be possible with separate evidence.",
+    "Strict-policy matches do not establish external API intent, wire ownership, workload requirements or resource criticality. These remain unclassified unless independently proven; use manual review and exact exceptions.",
+    "No live match for a bounded tier is not evidence of precision; labeled canonical positives and counterexamples establish that the tier can fire and abstain.",
+    "Pre-existing held WARNING rules retain documented ambiguity; do not claim zero false positives across all advisory rules.",
+    "Normal corpus timing and CI outcomes must pass before merge; no performance budget is relaxed."
+  ],
+  "primaryReferences": [
+    "https://raw.githubusercontent.com/pydantic/pydantic/v2.4.0/pydantic/types.py",
+    "https://raw.githubusercontent.com/pydantic/pydantic/v2.5.0/pydantic/types.py",
+    "https://docs.python.org/3/library/asyncio-task.html#task-cancellation",
+    "https://zod.dev/api?id=literals",
+    "https://www.postgresql.org/docs/current/sql-altertable.html",
+    "https://developer.hashicorp.com/terraform/language/meta-arguments/lifecycle#prevent_destroy"
+  ],
+  "validation": {
+    "state": "make-verify-passed-after-final-provider-repair",
+    "testsPassed": 29593,
+    "testsSkipped": 9,
+    "newIntegrationContexts": 49,
+    "commands": [
+      "make verify",
+      "uv run --project packages/standards --frozen pytest -q packages/standards/tests/test_rule_calibration_campaign.py",
+      "code-standards --root . maintain rules changes --before origin/main --after HEAD"
+    ],
+    "releaseGate": "Normal hooks, postcommit lifecycle inventory, and exact-head required CI must pass before admin squash merge of only this code-standards PR."
+  },
+  "nativeSeverityDisclosure": "Default policy changes are not uniformly native WARNING-to-ERROR flips. Several formerly WARNING-catalog rules already emitted native ERROR. New bounded tiers deliberately demote natural ambiguous native findings, including public/runtime JsonValue aliases, prefix-index advice and dynamic Terraform guards. The managed adapter now preserves those native warnings; policy counts reflect catalog/default policy.",
+  "performanceEnvironment": {
+    "python": "3.15.0",
+    "node": "24.21.0",
+    "uv": "0.12.24",
+    "conditions": "Shared workstation with concurrent repository verification; filesystem caches were not cleared. Medians compare per-version native timings, with orchestration wall and peak RSS recorded separately. Negative deltas do not establish a speedup."
+  },
+  "diagnosticIdentityDisclosure": "All promoted-selector panels have zero diagnostic co-locations and zero identical duplicates. The unchanged all-rule Python control has five additional SARJ094 diagnostics at four existing locations; they have distinct messages, appear equally in baseline and candidate, and are outside the promotion set. Co-location counts and identical-repeat counts are reported separately.",
+  "convergence": "Thirty distinct candidate decisions completed. Fifteen current predicates remain advisory for the recorded concrete counterexamples or unproven behavioral equivalence; no further promotion was admitted for those predicates in this campaign. Future narrowed tiers require separate evidence."
+}

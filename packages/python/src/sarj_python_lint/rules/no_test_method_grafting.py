@@ -28,7 +28,7 @@ class NoTestMethodGrafting(ProjectRule):
     id = "no-test-method-grafting"
     code = "SARJ478"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        default_level=Severity.WARNING,
+        default_level=Severity.ERROR,
         summary="Avoid assigning replacement implementations directly onto resolved methods in tests.",
         rationale=(
             "Grafting a function onto a collaborator or mock hides the boundary's callable contract and bypasses "
@@ -135,7 +135,7 @@ class NoTestMethodGrafting(ProjectRule):
                     line=position.line,
                     col=position.column + 1,
                     code=self.code,
-                    severity=Severity.WARNING,
+                    severity=Severity.ERROR,
                     message=(
                         f"Test assigns an implementation directly to resolved method `{method}`; inject a fake, "
                         "or configure the existing autospecced mock method's side_effect"

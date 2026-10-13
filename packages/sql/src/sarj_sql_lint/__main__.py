@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Annotated
 import typer
 
 from sarj_sql_lint import __version__
-from sarj_sql_lint.rule_base import Diagnostic, clear_path_caches, is_suppressed
+from sarj_sql_lint.rule_base import DefaultLevel, Diagnostic, clear_path_caches, is_suppressed
 from sarj_sql_lint.rules import REGISTRY
 
 
@@ -131,7 +131,7 @@ def _run_check(rule: list[str], files: list[Path]) -> int:
         return 2
     for d in diags:
         sys.stdout.write(d.format() + "\n")
-    return 1 if diags else 0
+    return 1 if any(d.severity is DefaultLevel.ERROR for d in diags) else 0
 
 
 def main(argv: list[str] | None = None) -> int:

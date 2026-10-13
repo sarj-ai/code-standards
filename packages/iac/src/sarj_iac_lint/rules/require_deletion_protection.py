@@ -16,6 +16,7 @@ from sarj_iac_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
 )
+from sarj_iac_lint.rules._deletion_guard import unresolved_deletion_guard
 
 
 if TYPE_CHECKING:
@@ -130,9 +131,9 @@ class RequireDeletionProtection(Rule):
     id = "require-deletion-protection"
     code = "SARJ201"
     documentation = RuleDocumentation(
-        default_level=DefaultLevel.WARNING,
+        default_level=DefaultLevel.ERROR,
         summary=(
-            "Warn when a curated stateful Terraform resource lacks a proven provider-native deletion guard or literal "
+            "Require a curated stateful Terraform resource to declare a proven provider-native deletion guard or literal "
             "lifecycle destroy guard."
         ),
         rationale=(
@@ -221,6 +222,16 @@ class RequireDeletionProtection(Rule):
                     col=block.col,
                     code=self.code,
                     message=f'resource "{rtype}" "{rname}" has {detail} — {_remediation_for(rtype)}',
+                    severity=(
+                        DefaultLevel.WARNING
+                        if unresolved_deletion_guard(
+                            block,
+                            _RESOURCE_PROTECTION_ATTRS[rtype],
+                            policy=rtype in _DELETION_POLICY_TYPES,
+                            nested=rtype == "google_sql_database_instance",
+                        )
+                        else DefaultLevel.ERROR
+                    ),
                 )
             )
         return diags

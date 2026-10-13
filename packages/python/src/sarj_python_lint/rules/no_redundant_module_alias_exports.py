@@ -30,7 +30,7 @@ class NoRedundantModuleAliasExports(Rule):
     id: str = "no-redundant-module-alias-exports"
     code: str = "SARJ440"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        default_level=Severity.WARNING,
+        default_level=Severity.ERROR,
         summary="Do not manufacture public APIs from private names or replace the current module.",
         rationale=(
             "Binding a public name to a private implementation creates two names for one API and disguises the "
@@ -41,7 +41,8 @@ class NoRedundantModuleAliasExports(Rule):
         remediation=(
             "Define maintained APIs under their public names and update local callers directly. Import the canonical "
             "path inside maintained code. If a compatibility module is still required, expose its supported names with "
-            "explicit same-name imports grouped by source module."
+            "explicit same-name imports grouped by source module. Preserve a required compatibility or module-identity "
+            "contract with a reasoned exact suppression rather than renaming automatically."
         ),
         category=RuleCategory.MAINTAINABILITY,
         autofix=AutofixPolicy.NONE,

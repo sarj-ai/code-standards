@@ -23,6 +23,7 @@ from sarj_python_lint.rule_base import (
 )
 from sarj_python_lint.rules._annotation_semantics import AnnotationSemantics
 from sarj_python_lint.rules._first_party import FirstPartyFacts, distribution_root
+from sarj_python_lint.rules._static_json_alias import private_static_json_alias
 
 
 if TYPE_CHECKING:
@@ -51,18 +52,23 @@ class PreferPydanticJsonValue(Rule):
     id = "prefer-pydantic-json-value"
     code = "SARJ454"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        default_level=Severity.WARNING,
+        default_level=Severity.ERROR,
         summary="Recursive JSON value alias duplicates `pydantic.JsonValue`.",
         rationale=(
-            "Pydantic's canonical JSON value alias keeps the static contract aligned with runtime validation and "
-            "prevents subtly divergent recursive definitions inside packages that already depend on Pydantic v2."
+            "Pydantic's canonical JSON value type avoids divergent recursive static domains in packages that "
+            "already support it. Runtime schema coercion is a separate contract and must be preserved deliberately."
         ),
-        remediation="Import and use `pydantic.JsonValue` instead of maintaining an equivalent recursive alias.",
+        remediation=(
+            "For private static contracts, import pydantic.JsonValue under the existing alias name. Preserve public "
+            "alias ownership and runtime coercion/validation contracts; equivalent static JSON domains do not "
+            "guarantee equivalent TypeAdapter behavior."
+        ),
         category=RuleCategory.CORRECTNESS,
         autofix=AutofixPolicy.NONE,
         limitations=(
             "Only exact recursive JSON domains in distributions proven to depend on Pydantic v2 are reported.",
             "Generic, imported, narrower, extended, mutually recursive, ambiguous, generated, and vendored aliases are excluded.",
+            "ERROR requires a declared Pydantic floor of at least 2.5 and private annotation-only uses in undecorated, non-escaping module functions. Public aliases, runtime schemas/metadata/introspection, dynamic namespaces and older supported Pydantic targets retain WARNING.",
         ),
         examples=(
             RuleExample(
@@ -72,11 +78,12 @@ class PreferPydanticJsonValue(Rule):
                 files=(
                     ExampleFile(
                         path=PurePosixPath("pyproject.toml"),
-                        source='[project]\nname = "app"\nversion = "0.1.0"\ndependencies = ["pydantic>=2"]\n',
+                        source='[project]\nname = "app"\nversion = "0.1.0"\ndependencies = ["pydantic>=2.5"]\n',
                     ),
                     ExampleFile.python(
                         "src/app/types.py",
-                        "type JsonValue = str | int | float | bool | None | list[JsonValue] | dict[str, JsonValue]\n",
+                        "type _JsonValue = str | int | float | bool | None | list[_JsonValue] | dict[str, _JsonValue]\n"
+                        "def _accept(value: _JsonValue) -> None:\n    pass\n",
                     ),
                 ),
                 focus_path=PurePosixPath("src/app/types.py"),
@@ -99,11 +106,12 @@ class PreferPydanticJsonValue(Rule):
                 files=(
                     ExampleFile(
                         path=PurePosixPath("pyproject.toml"),
-                        source='[project]\nname = "app"\nversion = "0.1.0"\ndependencies = ["pydantic>=2"]\n',
+                        source='[project]\nname = "app"\nversion = "0.1.0"\ndependencies = ["pydantic>=2.5"]\n',
                     ),
                     ExampleFile.python(
                         "src/app/types.py",
-                        "type 数据 = str | int | float | bool | None | list[数据] | dict[str, 数据]\n",
+                        "type _数据 = str | int | float | bool | None | list[_数据] | dict[str, _数据]\n"
+                        "def _accept(value: _数据) -> None:\n    pass\n",
                     ),
                 ),
                 focus_path=PurePosixPath("src/app/types.py"),
@@ -162,11 +170,65 @@ class PreferPydanticJsonValue(Rule):
                     col=location.col_offset + 1,
                     code=self.code,
                     message=(
-                        f"recursive JSON alias `{name}` duplicates `pydantic.JsonValue`; import the canonical alias instead"
+                        f"recursive JSON alias `{name}` repeats the static `pydantic.JsonValue` domain; "
+                        "retain its binding name and preserve public or runtime coercion contracts when choosing the canonical type"
+                    ),
+                    severity=(
+                        Severity.ERROR
+                        if not context.dynamic_namespace
+                        and _json_value_available(path, facts)
+                        and private_static_json_alias(tree, name, semantics)
+                        else Severity.WARNING
                     ),
                 )
             )
         return findings
+
+
+def _json_value_available(path: Path, facts: FirstPartyFacts) -> bool:
+    root = distribution_root(path, facts=facts)
+    if root is None:
+        return False
+    try:
+        source = (root / "pyproject.toml").read_text(encoding="utf-8")
+    except OSError:
+        return False
+    return _document_has_json_value_floor(source)
+
+
+@lru_cache(maxsize=256)
+def _document_has_json_value_floor(source: str) -> bool:
+    try:
+        document: object = tomllib.loads(source)
+    except tomllib.TOMLDecodeError:
+        return False
+    requirements: list[Requirement] = []
+    for raw in _project_dependencies(document):
+        if not isinstance(raw, str):
+            continue
+        try:
+            requirement = Requirement(raw)
+        except InvalidRequirement:
+            continue
+        if requirement.name.casefold() != "pydantic":
+            continue
+        if requirement.marker is not None or requirement.url is not None:
+            return False
+        requirements.append(requirement)
+    return bool(requirements) and all(_json_value_floor(requirement) for requirement in requirements)
+
+
+def _json_value_floor(requirement: Requirement) -> bool:
+    for specifier in requirement.specifier:
+        if specifier.operator not in {">", ">=", "~=", "==", "==="}:
+            continue
+        try:
+            version = Version(specifier.version.removesuffix(".*"))
+        except ValueError:
+            continue
+        if version >= Version("2.5"):
+            return True
+    return False
 
 
 def _explicit_alias(statement: ast.stmt, semantics: AnnotationSemantics) -> tuple[str, ast.expr, ast.expr] | None:

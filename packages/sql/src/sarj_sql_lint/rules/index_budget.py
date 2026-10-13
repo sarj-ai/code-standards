@@ -31,7 +31,7 @@ class IndexBudget(Rule):
     id = "excess-migration-index-requires-justification"
     code = "SARJ116"
     documentation = RuleDocumentation(
-        default_level=DefaultLevel.WARNING,
+        default_level=DefaultLevel.ERROR,
         summary="Require a structured local justification for excess explicit indexes in an authored migration.",
         rationale=(
             "Every explicit index adds write amplification, storage, vacuum work, and planner surface; bursts of indexes "
@@ -52,7 +52,7 @@ class IndexBudget(Rule):
             "Only authored production migrations are checked; tests, dumps, fixtures, and recognized generator-owned migrations are excluded.",
             "Duplicate index shapes and same-name replacement statements do not consume this budget; SARJ117 reports structural duplicates.",
             "Index declarations inside dollar-quoted stored or anonymous program bodies are not inferred.",
-            "The warning budgets distinct explicit index definitions in one file; it does not dereference query or EXPLAIN links, estimate workload selectivity, or reconstruct fleet-wide index state.",
+            "The policy budgets distinct explicit index definitions in one file; it does not dereference query or EXPLAIN links, estimate workload selectivity, or reconstruct fleet-wide index state.",
         ),
         examples=(
             RuleExample(

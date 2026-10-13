@@ -57,7 +57,7 @@ class _NativeDiagnostic(Protocol):
 
 
 @runtime_checkable
-class _SeverityDiagnostic(_NativeDiagnostic, Protocol):
+class _SeverityDiagnostic(Protocol):
     @property
     def severity(self) -> object: ...
 

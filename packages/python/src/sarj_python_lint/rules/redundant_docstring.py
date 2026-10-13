@@ -47,7 +47,7 @@ class RedundantDocstring(Rule):
     id: str = "redundant-docstring"
     code: str = "SARJ050"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        default_level=Severity.WARNING,
+        default_level=Severity.ERROR,
         summary="Function or plain-method docstring only repeats its declaration.",
         rationale="Restating a clear name and signature creates maintenance work without helping callers.",
         remediation=(
@@ -60,6 +60,7 @@ class RedundantDocstring(Rule):
         limitations=(
             "Decorated functions, methods on decorated or inherited classes, recognized in-file runtime docstring reads, generated files, and docstring-only bodies are excluded.",
             "Every non-grammatical Unicode word or number must already occur in the function name, parameters, or annotations; multi-parameter prose must include a distinguishing word from every parameter.",
+            "ERROR is limited to exact ordered function-name restatements with grammatical filler and an optional terminal period; directional punctuation, reordered words and broader stem-set matches retain WARNING.",
         ),
         examples=(
             RuleExample(
@@ -153,7 +154,10 @@ class RedundantDocstring(Rule):
         ):
             return
         expr = node.body[0]
-        if is_suppressed(context.source_lines, expr.lineno, self.code):
+        if any(
+            is_suppressed(context.source_lines, line, self.code)
+            for line in (node.lineno, expr.lineno, expr.end_lineno or expr.lineno)
+        ):
             return
         context.diagnostics.append(
             Diagnostic(
@@ -162,9 +166,17 @@ class RedundantDocstring(Rule):
                 col=expr.col_offset + 1,
                 code=self.code,
                 message=self.description,
-                severity=Severity.WARNING,
+                severity=Severity.ERROR if _ordered_name_restatement(node.name, docstring) else Severity.WARNING,
             )
         )
+
+
+def _ordered_name_restatement(name: str, docstring: str) -> bool:
+    prose = docstring.strip().removesuffix(".")
+    if not prose or any(not (character.isalpha() or character.isspace()) for character in prose):
+        return False
+    words = [word for token in prose.split() if (word := token.lower()) not in _GRAMMATICAL_FILLER]
+    return words == [part.lower() for part in split_identifier(name)]
 
 
 def _parameter_stem_groups(node: ast.FunctionDef | ast.AsyncFunctionDef) -> list[set[str]]:

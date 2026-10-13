@@ -26,18 +26,23 @@ _SCOPES = (
 )
 _RESOURCE_OWNERS = MappingProxyType(
     {
+        "asyncio": frozenset({"sleep", "CancelledError", "exceptions.CancelledError"}),
         "contextlib": frozenset({"ExitStack", "AsyncExitStack", "_BaseExitStack"}),
         "subprocess": frozenset({"Popen", "TimeoutExpired"}),
         "re": frozenset({"compile", "Match", "Pattern"}),
         "unittest": frozenset({"mock.Mock", "mock.MagicMock", "mock.AsyncMock"}),
-        "typing": frozenset({"final"}),
-        "typing_extensions": frozenset({"final"}),
+        "typing": frozenset({"final", "Literal", "Annotated"}),
+        "typing_extensions": frozenset({"final", "Literal", "Annotated"}),
         "pydantic": frozenset(
             {
                 "BaseModel",
                 "main.BaseModel",
+                "v1.BaseModel",
+                "v1.main.BaseModel",
                 "Field",
                 "fields.Field",
+                "v1.Field",
+                "v1.fields.Field",
                 "ConfigDict",
                 "config.ConfigDict",
                 "model_validator",

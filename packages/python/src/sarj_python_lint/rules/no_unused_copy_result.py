@@ -26,7 +26,7 @@ class NoUnusedCopyResult(ProjectRule):
     id = "no-unused-copy-result"
     code = "SARJ483"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        default_level=Severity.WARNING,
+        default_level=Severity.ERROR,
         summary="Use the replacement returned by a resolved copy API.",
         rationale="Copy-on-write replacement APIs return another value rather than updating the original. Discarding their result can silently leave subsequent operations using unchanged data.",
         remediation="Assign, return, or otherwise consume the replacement. A copy hook intentionally exercised for its effects or exceptions can use a narrow suppression; do not automatically delete the call.",
@@ -113,7 +113,7 @@ class NoUnusedCopyResult(ProjectRule):
                 col=node.col_offset + 1,
                 code=self.code,
                 message="This copy API returns a replacement that is discarded; assign or return it, or document intentional copy-hook effects.",
-                severity=Severity.WARNING,
+                severity=Severity.ERROR,
             )
             for node in (context.copy_on_write.discarded)
             if not is_suppressed(context.source_lines, node.lineno, self.code)

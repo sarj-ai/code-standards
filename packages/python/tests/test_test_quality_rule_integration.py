@@ -24,7 +24,7 @@ _NEIGHBORS = (
 
 
 @pytest.mark.parametrize("rule_id", ["no-test-method-grafting"])
-def test_remaining_warning_does_not_enter_blocking_baseline(
+def test_method_grafting_error_enters_blocking_baseline(
     rule_id: str, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     example: RuleExample = REGISTRY[rule_id].public_examples()[0]
@@ -34,10 +34,11 @@ def test_remaining_warning_does_not_enter_blocking_baseline(
     baseline = tmp_path / "baseline.json"
     command = ["check", "--rule", rule_id]
 
-    assert main([*command, str(target)]) == 0
-    assert "warning:" in capsys.readouterr().out
+    assert main([*command, str(target)]) == 1
+    assert "warning:" not in capsys.readouterr().out
     assert main([*command, "--update-baseline", str(baseline), str(target)]) == 0
-    assert baseline.read_text().strip() == "{}"
+    assert REGISTRY[rule_id].code in baseline.read_text()
+    assert main([*command, "--baseline", str(baseline), str(target)]) == 0
 
 
 @pytest.mark.parametrize("rule_id", _RULES)

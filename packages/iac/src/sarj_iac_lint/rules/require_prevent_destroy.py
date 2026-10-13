@@ -16,6 +16,7 @@ from sarj_iac_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
 )
+from sarj_iac_lint.rules._deletion_guard import unresolved_deletion_guard
 
 
 if TYPE_CHECKING:
@@ -76,9 +77,9 @@ class RequirePreventDestroyOnIrreplaceable(Rule):
     id = "require-prevent-destroy-on-irreplaceable"
     code = "SARJ203"
     documentation = RuleDocumentation(
-        default_level=DefaultLevel.WARNING,
+        default_level=DefaultLevel.ERROR,
         summary=(
-            "Warn when a curated durable-data container lacks a literal provider-side deletion guard or Terraform "
+            "Require a curated durable-data container to declare a literal provider-side deletion guard or Terraform "
             "lifecycle destroy guard."
         ),
         rationale=(
@@ -94,6 +95,7 @@ class RequirePreventDestroyOnIrreplaceable(Rule):
         limitations=(
             "Only the curated resource types and documented Google provider guards are recognized.",
             "Provider controls are version-sensitive; unsupported or dynamic guard expressions do not prove safety.",
+            "Dynamic guards, ABANDON retention policies, and unresolved destructive options retain WARNING; missing or literal-disabled protection enforces the explicit protect-or-explain policy.",
             (
                 "Terraform lifecycle.prevent_destroy is plan-time protection and does not survive removal of the "
                 "resource block."
@@ -198,9 +200,22 @@ class RequirePreventDestroyOnIrreplaceable(Rule):
                         f'resource "{rtype}" "{rname}" may contain durable data and {detail} — '
                         f"{_remediation_for(rtype)}"
                     ),
+                    severity=(DefaultLevel.WARNING if _unresolved_protection(block) else DefaultLevel.ERROR),
                 )
             )
         return diags
+
+
+def _unresolved_protection(block: Block) -> bool:
+    resource_type = block.labels[0]
+    attributes = ("deletion_protection",) if resource_type in _GOOGLE_DELETION_PROTECTION_TYPES else ()
+    if unresolved_deletion_guard(block, attributes, policy=resource_type in _GOOGLE_DELETION_POLICY_TYPES):
+        return True
+    return any(
+        attribute is not None and literal_token(attribute.value) not in {"true", "false"}
+        for name in _DESTRUCTIVE_ATTRIBUTES.get(resource_type, ())
+        if (attribute := block.attribute(name)) is not None
+    )
 
 
 def _violation(block: Block) -> str | None:

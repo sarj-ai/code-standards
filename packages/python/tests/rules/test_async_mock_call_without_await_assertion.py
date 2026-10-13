@@ -237,16 +237,16 @@ def test_reports_one_diagnostic_for_redundant_call_assertions() -> None:
 
 
 @pytest.mark.parametrize("suppression", ["", "  # sarj-noqa: SARJ456 — contract checks scheduling before awaiting"])
-def test_cli_is_advisory_and_supports_scheduling_exceptions(
+def test_cli_blocks_uncovered_calls_and_supports_scheduling_exceptions(
     tmp_path: Path, capsys: CaptureFixture[str], suppression: str
 ) -> None:
     source = f"from unittest.mock import AsyncMock\ndef test_schedules():\n    send = AsyncMock()\n    schedule(send)\n    send.assert_called_once(){suppression}\n"
     path = tmp_path / "test_delivery.py"
     path.write_text(source)
 
-    assert main(["check", "--rule", "async-mock-call-without-await-assertion", str(path)]) == 0
+    assert main(["check", "--rule", "async-mock-call-without-await-assertion", str(path)]) == (0 if suppression else 1)
     output = capsys.readouterr()
-    assert output.out.count("SARJ456 warning:") == (0 if suppression else 1)
+    assert output.out.count("SARJ456 ") == (0 if suppression else 1)
     assert not output.err
 
 
@@ -502,14 +502,16 @@ def test_redundant_numeric_and_method_assertions_deduplicate() -> None:
 
 
 @pytest.mark.parametrize("suppressed", [False, True])
-def test_numeric_call_cli_remains_warning(tmp_path: Path, capsys: CaptureFixture[str], *, suppressed: bool) -> None:
+def test_numeric_call_cli_blocks_unless_suppressed(
+    tmp_path: Path, capsys: CaptureFixture[str], *, suppressed: bool
+) -> None:
     suffix = "  # sarj-noqa: SARJ456 -- checks scheduling before execution" if suppressed else ""
     case = _assertion_case("numeric-warning", f"assert send.call_count == 1{suffix}", ExpectedOutcome.MATCH)
     path = tmp_path / "test_delivery.py"
     path.write_text(case.source)
-    assert main(["check", "--rule", "async-mock-call-without-await-assertion", str(path)]) == 0
+    assert main(["check", "--rule", "async-mock-call-without-await-assertion", str(path)]) == (0 if suppressed else 1)
     output = capsys.readouterr()
-    assert output.out.count("SARJ456 warning:") == (0 if suppressed else 1)
+    assert output.out.count("SARJ456 ") == (0 if suppressed else 1)
     assert not output.err
 
 

@@ -46,7 +46,7 @@ class AddConstraintRequiresNotValid(Rule):
     id = "existing-table-check-or-foreign-key-requires-not-valid"
     code = "SARJ111"
     documentation = RuleDocumentation(
-        default_level=DefaultLevel.WARNING,
+        default_level=DefaultLevel.ERROR,
         summary="CHECK and foreign-key constraints added to existing PostgreSQL tables should defer validation.",
         rationale=(
             "Validating a CHECK or foreign key while adding it scans existing rows while PostgreSQL holds locks "

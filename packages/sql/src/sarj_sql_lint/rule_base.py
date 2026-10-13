@@ -800,9 +800,11 @@ class Diagnostic:
     col: int
     code: str
     message: str
+    severity: DefaultLevel = DefaultLevel.ERROR
 
     def format(self) -> str:
-        return f"{self.path}:{self.line}:{self.col}: {self.code} {self.message}"
+        label = "warning: " if self.severity is DefaultLevel.WARNING else ""
+        return f"{self.path}:{self.line}:{self.col}: {self.code} {label}{self.message}"
 
 
 _MODEL_OWNED_SUFFIX = (
