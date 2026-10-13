@@ -1739,13 +1739,23 @@
       "skipped": 9,
       "dogfoodBlockingDiagnostics": 0,
       "strictTypeErrors": 0,
-      "privacy": "delegated to trusted exact-head CI by the canonical local gate"
+      "privacy": "delegated to trusted exact-head CI by the canonical local gate",
+      "finalSourceFingerprint": "b06e435e211dfc910d2a87108456777369137ad7f601c3b52dbed26f230f9b09"
     },
     "finalCompatibilityTests": {
       "passed": 406,
       "skipped": 9
     },
-    "immutableTagValidation": "make release-check-tags passed both valid-tag and rejection controls"
+    "immutableTagValidation": "make release-check-tags passed both valid-tag and rejection controls",
+    "localNativeNpmProvisioning": {
+      "miseVersion": "2026.10.8",
+      "installer": "npm",
+      "explicitNode": "24.21.0",
+      "knipVersion": "6.41.0",
+      "installationScope": "isolated",
+      "focusedTests": 31,
+      "verification": "Exact executable remained available through the full repository gate after rebuilding with explicit npm provisioning and isolated Node/shim paths."
+    }
   },
   "limits": [
     "Finite tests do not establish universal false-positive rates.",
@@ -1768,7 +1778,7 @@
   },
   "sourceVerification": {
     "algorithm": "sha256(sorted path + NUL + bytes + NUL)",
-    "sourceSha256": "ce16e767da433d1810f0abd2913a87f4e8534628e3a309033db90d89a6f313c9",
+    "sourceSha256": "b06e435e211dfc910d2a87108456777369137ad7f601c3b52dbed26f230f9b09",
     "reportExcludedToAvoidSelfReference": "packages/standards/benchmarks/dependency-upgrade-20261013.json",
     "fileCount": 98
   },
@@ -1793,5 +1803,19 @@
     "beforeAfterRegistryCases": 25,
     "sourceFingerprintIndependentlyVerified": true,
     "workflowBashDeclarations": 4
+  },
+  "extraClosingActionReview": {
+    "pass": 7,
+    "status": "passed",
+    "repair": "Refresh the bare setup-uv reference in the trusted private-reference workflow to the reviewed stable full SHA.",
+    "liveWorkflowActionReferences": 221,
+    "allLiveWorkflowReferencesMatchReviewedStablePins": true,
+    "focusedTests": 68,
+    "sourceCheck": "0 diagnostics, 0 execution issues",
+    "independentFocusedTests": 6,
+    "renderedScaffoldVariants": 7,
+    "renderedScaffoldActionReferences": 23,
+    "allRenderedScaffoldReferencesMatchReviewedStablePins": true,
+    "sourceFingerprintIndependentlyVerified": true
   }
 }
