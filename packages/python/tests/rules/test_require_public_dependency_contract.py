@@ -6,6 +6,7 @@ import pytest
 from sarj_rule_contracts.examples import verify_native_rule
 
 from sarj_python_lint.__main__ import analyze
+from sarj_python_lint.rule_base import Severity
 from sarj_python_lint.rules._project_index import ProjectIndexSet
 from sarj_python_lint.rules.require_public_dependency_contract import RequirePublicDependencyContract
 
@@ -127,3 +128,52 @@ def test_private_consumer_owned_protocol_does_not_need_public_export(tmp_path: P
         "    def run(self) -> None: self.worker.run()\n"
     )
     assert RequirePublicDependencyContract().check(tmp_path / "service.py", source) == []
+
+
+@pytest.mark.parametrize(
+    ("contract_input", "concrete_input", "contract_return", "concrete_return", "severity"),
+    [
+        pytest.param("str", "str", "str", "str", Severity.ERROR, id="identical-resolved-contract"),
+        pytest.param("str", "str", "object", "str", Severity.WARNING, id="covariant-return-postcondition"),
+        pytest.param("int", "object", "str", "str", Severity.WARNING, id="contravariant-accepted-input"),
+        pytest.param("str", "str", "Unknown", "Unknown", Severity.WARNING, id="unresolved-equal-spelling"),
+        pytest.param("str", "str", "Self", "Self", Severity.WARNING, id="owner-relative-self-return"),
+        pytest.param("str", "str", "list[Self]", "list[Self]", Severity.WARNING, id="nested-owner-relative-self"),
+    ],
+)
+def test_signature_variance_does_not_force_unsafe_dependency_widening(
+    tmp_path: Path,
+    *,
+    contract_input: str,
+    concrete_input: str,
+    contract_return: str,
+    concrete_return: str,
+    severity: Severity,
+) -> None:
+    package = tmp_path / "app"
+    package.mkdir()
+    (package / "__init__.py").write_text("")
+    (tmp_path / "pyproject.toml").write_text("[project]\nname = 'example'\nversion = '0.1.0'\n")
+    contract = package / "contracts.py"
+    contract.write_text(
+        "from abc import ABC, abstractmethod\nfrom typing import Self\nclass Publisher(ABC):\n    @abstractmethod\n"
+        f"    def publish(self, value: {contract_input}) -> {contract_return}: ...\n"
+    )
+    implementation = package / "implementations.py"
+    implementation.write_text(
+        "from app.contracts import Publisher\nfrom typing import Self\nclass HttpPublisher(Publisher):\n"
+        f"    def publish(self, value: {concrete_input}) -> {concrete_return}: return str(value)\n"
+        "class NumericPublisher(Publisher):\n"
+        f"    def publish(self, value: {contract_input}) -> {contract_return}: return 42\n"
+    )
+    consumer = package / "consumer.py"
+    consumer.write_text(
+        "from app.implementations import HttpPublisher\nclass Consumer:\n"
+        "    def __init__(self, publisher: HttpPublisher) -> None: self.publisher = publisher\n"
+        "    def run(self) -> str: return self.publisher.publish('text').upper()\n"
+    )
+    findings = analyze([RequirePublicDependencyContract.id], [consumer])
+    assert len(findings) == 1
+    assert findings[0].severity is severity
+    if severity is Severity.WARNING:
+        assert "preserve concrete postconditions and accepted inputs" in findings[0].message

@@ -4,7 +4,7 @@ import json
 import os
 import subprocess
 import sys
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Unpack
 
 import pytest
 
@@ -24,6 +24,7 @@ if TYPE_CHECKING:
     from sarj_standards.libs.adoption.doctor import Finding
     from sarj_standards.libs.diagnostics import AnalysisReport
     from sarj_standards.libs.linting.external import ProcessRunner
+    from tests.call_contracts import CanonicalCheckOptions, StandardsAnalyzeOptions
 
 
 PUBLIC_COMMANDS = (
@@ -405,9 +406,11 @@ def test_empty_pull_request_scope_does_not_expand_to_the_repository(
     seen: list[tuple[str, ...] | None] = []
     original = Standards.analyze
 
-    def capture_paths(self: Standards, paths: tuple[str, ...] | None = None, **kwargs: object) -> object:
+    def capture_paths(
+        self: Standards, paths: tuple[str, ...] | None = None, **kwargs: Unpack[StandardsAnalyzeOptions]
+    ) -> object:
         seen.append(paths)
-        return original(self, paths, **kwargs)  # pyright: ignore[reportArgumentType]
+        return original(self, paths, **kwargs)
 
     monkeypatch.setattr(Standards, "analyze", capture_paths)  # sarj-noqa: SARJ445 -- intercepts consumer path routing
 
@@ -449,9 +452,11 @@ def test_non_default_push_runs_adoption_gate_without_expanding_to_repository(
     seen: list[tuple[str, ...] | None] = []
     original = Standards.analyze
 
-    def capture_paths(self: Standards, paths: tuple[str, ...] | None = None, **kwargs: object) -> object:
+    def capture_paths(
+        self: Standards, paths: tuple[str, ...] | None = None, **kwargs: Unpack[StandardsAnalyzeOptions]
+    ) -> object:
         seen.append(paths)
-        return original(self, paths, **kwargs)  # pyright: ignore[reportArgumentType]
+        return original(self, paths, **kwargs)
 
     monkeypatch.setattr(Standards, "analyze", capture_paths)  # sarj-noqa: SARJ445 -- intercepts consumer path routing
 
@@ -510,7 +515,9 @@ def test_non_default_push_honors_explicit_change_scope(
     monkeypatch.setenv("SARJ_STANDARDS_BASE", base if scope == "committed-base" else scope)
     seen: list[Sequence[str] | None] = []
 
-    def capture_paths(self: Standards, paths: Sequence[str] | None = None, **_kwargs: object) -> AnalysisReport:
+    def capture_paths(
+        self: Standards, paths: Sequence[str] | None = None, **_kwargs: Unpack[StandardsAnalyzeOptions]
+    ) -> AnalysisReport:
         seen.append(paths)
         return report_from_tools(self.root, ())
 
@@ -597,7 +604,7 @@ def test_explicit_repository_root_overrides_pull_request_change_scope(
 
     selected: list[Sequence[str] | None] = []
 
-    def capture_check(_root: Path, paths: Sequence[str] | None, **_kwargs: object) -> int:
+    def capture_check(_root: Path, paths: Sequence[str] | None, **_kwargs: Unpack[CanonicalCheckOptions]) -> int:
         selected.append(paths)
         return 0
 
@@ -620,7 +627,7 @@ def test_check_rejects_output_outside_repository_before_analysis(
     source = tmp_path / "source.py"
     source.write_text("value = 1\n", encoding="utf-8")
 
-    def forbidden_analysis(*_args: object, **_kwargs: object) -> object:
+    def forbidden_analysis(*_args: object, **_kwargs: Unpack[StandardsAnalyzeOptions]) -> object:
         pytest.fail("analysis ran before report output validation")
 
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- intercepts consumer path routing

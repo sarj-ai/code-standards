@@ -26,7 +26,7 @@ class NoInputModelMutation(ProjectRule):
     id = "no-input-model-mutation"
     code = "SARJ481"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        default_level=Severity.WARNING,
+        default_level=Severity.ERROR,
         summary="Return replacement values instead of mutating caller-owned Pydantic models.",
         rationale="Assignments through shared model inputs also change every caller alias. Copying only the outer list or model retains nested aliases and can make repeated transformations observe each other's changes.",
         remediation="Return replacement models and explicitly capture the result. Copy each changed ancestor; permit fresh local builders and use exact suppressions for documented in-place APIs. model_copy updates must already satisfy the complete model contract.",
@@ -127,7 +127,7 @@ class NoInputModelMutation(ProjectRule):
                 col=node.col_offset + 1,
                 code=self.code,
                 message="This write changes a caller-owned model or shared descendant; return replacements and copy each changed ancestor, or document an intentional in-place contract.",
-                severity=Severity.WARNING,
+                severity=Severity.ERROR,
             )
             for node in (mutation.node for mutation in context.copy_on_write.mutations if not mutation.before_validator)
             if not is_suppressed(context.source_lines, node.lineno, self.code)

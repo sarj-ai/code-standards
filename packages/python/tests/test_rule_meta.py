@@ -206,6 +206,8 @@ def _warning_python_rule_ids() -> set[str]:
 
 
 def _analyze_public_example(rule_id: str, example: RuleExample, root: Path) -> list[Diagnostic]:
+    root.mkdir(parents=True, exist_ok=True)
+    (root / "pyproject.toml").touch(exist_ok=True)
     paths: list[Path] = []
     for item in example.files:
         target = root / item.path

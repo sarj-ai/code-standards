@@ -19,7 +19,7 @@ interface ClassBinding {
 }
 
 export const REQUIRE_INTERFACE_FOR_EXPORTED_CLASS_DOCUMENTATION = {
-  defaultLevel: "warning",
+  defaultLevel: "error",
   summary: "Require exported concrete classes with public behavior to declare a contract.",
   rationale:
     "An explicit contract names the intended public capability separately from implementation details. TypeScript already supports structural compatibility; this is an architecture policy, not a prerequisite for substitution.",
@@ -28,8 +28,8 @@ export const REQUIRE_INTERFACE_FOR_EXPORTED_CLASS_DOCUMENTATION = {
   category: "architecture",
   limitations: [
     "JavaScript files are excluded because implements is TypeScript syntax; imported framework base contracts still require manual policy review.",
-    "An exported injected service may also receive require-port-for-service: its service-boundary error and this general exported-contract warning intentionally enforce distinct policy scopes.",
-    "The warning-stage rule checks module-level class declarations and direct class-expression values exported directly, through local export specifiers, or through a default identifier; re-exports and expressions wrapped in other calls require review.",
+    "An exported injected service may also receive require-port-for-service: the two diagnostics intentionally enforce distinct service-boundary and general exported-contract policy scopes.",
+    "The rule checks module-level class declarations and direct class-expression values exported directly, through local export specifiers, or through a default identifier; re-exports and expressions wrapped in other calls require review.",
     "An extends clause satisfies the contract only when its target is a locally declared abstract class; imported base-class contracts require an explicit implements clause.",
     "Static factories and data-only classes without public instance methods are outside the contract requirement.",
   ],

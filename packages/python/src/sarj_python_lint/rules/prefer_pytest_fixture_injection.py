@@ -47,7 +47,7 @@ class PreferPytestFixtureInjection(Rule):
     id: str = "prefer-pytest-fixture-injection"
     code: str = "SARJ476"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        default_level=Severity.WARNING,
+        default_level=Severity.ERROR,
         summary="Request shared database-pool setup through a pytest fixture.",
         rationale=(
             "Calling a shared conftest pool helper during initial test setup bypasses an explicit pytest "
@@ -199,7 +199,7 @@ class PreferPytestFixtureInjection(Rule):
                             "open/close with application lifespan when it owns them; keep factories for variants "
                             "or fresh instances."
                         ),
-                        severity=Severity.WARNING,
+                        severity=Severity.ERROR,
                     )
                 )
         return diagnostics

@@ -8,7 +8,7 @@ import importlib.util
 from pathlib import Path
 import subprocess
 import sys
-from typing import TYPE_CHECKING, NamedTuple, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, NamedTuple, Protocol, Unpack, runtime_checkable
 from urllib.error import HTTPError
 
 import pytest
@@ -16,6 +16,8 @@ import pytest
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+
+    from tests.call_contracts import SubprocessOptions
 
 
 @runtime_checkable
@@ -459,7 +461,7 @@ def test_attested_commit_must_be_an_unchanged_ancestor(
     calls: list[tuple[str, ...]] = []
     codes = iter(returncodes)
 
-    def run(argv: tuple[str, ...], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+    def run(argv: tuple[str, ...], **_kwargs: Unpack[SubprocessOptions]) -> subprocess.CompletedProcess[str]:
         calls.append(argv)
         return subprocess.CompletedProcess(argv, next(codes))
 

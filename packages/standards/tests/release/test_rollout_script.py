@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 import subprocess
 import tempfile
-from typing import TYPE_CHECKING, final
+from typing import TYPE_CHECKING, Unpack, final
 
 import pytest
 
@@ -24,6 +24,8 @@ from .fakes import FakeRolloutRunner as FakeRunner
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
+
+    from tests.call_contracts import TemporaryDirectoryOptions
 
 
 def consumer() -> rollout.Consumer:
@@ -1209,7 +1211,7 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
         def fresh_branch(*_args: object) -> rollout.BranchPreparation:
             return rollout.BranchPreparation("standards-rollout/current", None)
 
-        def fixed_temporary_directory(**kwargs: object) -> FixedTemporaryDirectory:
+        def fixed_temporary_directory(**kwargs: Unpack[TemporaryDirectoryOptions]) -> FixedTemporaryDirectory:
             assert kwargs == {"prefix": "standards-rollout-", "ignore_cleanup_errors": True}
             return FixedTemporaryDirectory()
 
@@ -1432,7 +1434,7 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
         ) -> rollout.BranchPreparation:
             return rollout.BranchPreparation("standards-rollout/current", None)
 
-        def fixed_temporary_directory(**_kwargs: object) -> FixedTemporaryDirectory:
+        def fixed_temporary_directory(**_kwargs: Unpack[TemporaryDirectoryOptions]) -> FixedTemporaryDirectory:
             return FixedTemporaryDirectory()
 
         def no_version_pin_updates(_root: Path) -> tuple[()]:

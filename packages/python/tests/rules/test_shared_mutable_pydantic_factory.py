@@ -129,7 +129,7 @@ CASES = (
 def test_labeled_cases(case: EvaluationCase) -> None:
     diagnostics = SharedMutablePydanticFactory().check(Path("models.py"), case.source)
     assert len(diagnostics) == (1 if case.expected is ExpectedOutcome.MATCH else 0)
-    assert all(item.severity is Severity.WARNING for item in diagnostics)
+    assert all(item.severity is Severity.ERROR for item in diagnostics)
 
 
 def test_documented_examples() -> None:

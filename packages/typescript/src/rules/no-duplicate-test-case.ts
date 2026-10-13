@@ -18,7 +18,7 @@ const TEST_NAMES: ReadonlySet<string> = new Set(["it", "test"]);
 const MODIFIERS: ReadonlySet<string> = new Set(["only", "skip", "concurrent", "fails", "failing", "todo"]);
 
 export const NO_DUPLICATE_TEST_CASE_DOCUMENTATION = {
-  defaultLevel: "warning",
+  defaultLevel: "error",
   summary: "Report repeated literal rows in framework test.each or it.each tables.",
   rationale: "Identical rows repeat the same inputs and expected values without exposing a distinct case. Accidental duplicates consume test time and hide a missing boundary vector.",
   remediation: "Remove the accidental duplicate or replace it with the intended distinct boundary. Preserve intentional repeated or stateful scenarios with a local explanation; do not delete their coverage automatically.",

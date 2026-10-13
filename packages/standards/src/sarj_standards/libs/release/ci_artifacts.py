@@ -235,7 +235,9 @@ def extract_verified_archive(archive: Path, destination: Path, *, digest: str, s
                 shutil.copyfileobj(source, output)
 
 
-def reuse_ci_artifact(root: Path, repository: str, sha: str, destination: Path, *, timeout: int = 2700) -> bool:
+def reuse_ci_artifact(
+    root: Path, repository: str, sha: str, destination: Path, *, timeout: int = 2700, poll_interval: float = 10
+) -> bool:
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         lookup = find_tested_artifact(root, repository, sha)
@@ -258,7 +260,7 @@ def reuse_ci_artifact(root: Path, repository: str, sha: str, destination: Path, 
             return False
         sys.stdout.write(f"Waiting for tested main artifact at {sha}\n")
         sys.stdout.flush()
-        time.sleep(10)
+        time.sleep(poll_interval)
     msg = "timed out waiting for exact-revision tested artifact"
     raise ValueError(msg)
 

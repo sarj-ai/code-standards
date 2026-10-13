@@ -35,10 +35,10 @@ class PreferRegexFullmatch(Rule):
     id: str = "prefer-regex-fullmatch"
     code: str = "SARJ460"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        default_level=Severity.WARNING,
+        default_level=Severity.ERROR,
         summary="An anchored regex validation predicate does not require a full-string match.",
         rationale="The regex `$` anchor can match before a final newline, so an anchored match can accept a value that was not fully validated.",
-        remediation="Use `re.fullmatch` or the compiled pattern's `fullmatch` method for whole-value validation; review whether a terminal newline is intentionally allowed.",
+        remediation="Use `re.fullmatch` or the compiled pattern's `fullmatch` method for strict whole-value validation. Preserve deliberate terminal-newline acceptance or an existing match contract with a reasoned exact SARJ460 exception; do not rewrite that behavior automatically.",
         category=RuleCategory.CORRECTNESS,
         autofix=AutofixPolicy.NONE,
         limitations=(
@@ -133,8 +133,8 @@ class PreferRegexFullmatch(Rule):
                     line=call.lineno,
                     col=call.col_offset + 1,
                     code=self.code,
-                    message="anchored match is used as a validation predicate, but `$` can accept a final newline; use fullmatch for whole-value validation and review newline handling.",
-                    severity=Severity.WARNING,
+                    message="anchored match is used as a validation predicate, but `$` can accept a final newline; use fullmatch for the strict whole-value policy, or preserve an intentional newline contract with a reasoned SARJ460 exception.",
+                    severity=Severity.ERROR,
                 )
             )
         return sorted(findings, key=lambda item: (item.line, item.col))

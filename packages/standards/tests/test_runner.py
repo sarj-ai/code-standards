@@ -286,9 +286,11 @@ def test_directory_walk_stats_only_supported_file_types(
     real_stat = os.stat
     stat_paths: list[str] = []
 
-    def recording_stat(path: os.PathLike[str] | str, *args: object, **kwargs: object) -> os.stat_result:
+    def recording_stat(
+        path: os.PathLike[str] | str, *, dir_fd: int | None = None, follow_symlinks: bool = True
+    ) -> os.stat_result:
         stat_paths.append(os.fspath(path))
-        return real_stat(path, *args, **kwargs)
+        return real_stat(path, dir_fd=dir_fd, follow_symlinks=follow_symlinks)
 
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- tool loading and runner dispatch interception is the behavior under test.
         os, "stat", recording_stat

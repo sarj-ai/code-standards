@@ -45,13 +45,13 @@ class NoBroadKeywordCapture(Rule):
     id = "no-broad-keyword-capture"
     code = "SARJ477"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        default_level=Severity.WARNING,
+        default_level=Severity.ERROR,
         summary="Prefer precise keyword interfaces over missing, Any- or object-valued captures.",
         rationale=(
             "Replacing a fixed typed interface with broad **kwargs can erase required keyword names and per-key "
             "value types, making test doubles accept calls the real implementation rejects. object remains a safe "
-            "typed top type, and deliberately open data interfaces can be valid; this warning requests interface "
-            "review rather than proving every broad capture is defective."
+            "typed top type, and deliberately open data interfaces can be valid; this strict interface policy "
+            "requires a precise contract or a documented open-boundary exception."
         ),
         remediation=(
             "Keep explicit typed parameters at fixed interfaces. Preserve required keyword names with named unused "
@@ -61,13 +61,14 @@ class NoBroadKeywordCapture(Rule):
         category=RuleCategory.MAINTAINABILITY,
         autofix=AutofixPolicy.NONE,
         limitations=(
-            "This is an advisory interface policy, not proof of incorrect behavior or a universal ban on the object type.",
+            "This strict interface policy is not proof of incorrect behavior or a universal ban on the object type; genuinely open boundaries use a reasoned exact-code exception.",
             "Reports missing, Any- or object-valued keyword captures whether discarded, read or forwarded.",
             "Precise or unresolved decorated signature-declaration families and functions with unresolved decorator effects are excluded; known classmethod/staticmethod/abstractmethod/final/override declarations remain eligible.",
             "Homogeneous keyword types constrain values but allow arbitrary names; ParamSpec preserves only its target's existing contract.",
             "Generated/vendor source and stubs are excluded. Unresolved imports, wildcard imports, conflicting imports, actual global or definition-time writes and shadowed annotation provenance are conservative. Identical imports and read-only global declarations remain eligible.",
             "Cross-file aliases, external stubs, generated signatures and runtime reflection are not resolved; transparent annotation metadata and ambiguous decorated declaration families can cause conservative false negatives.",
             "No autofix can infer the intended contract. Dynamic payload/formatting APIs can intentionally need an exact-code exception.",
+            "Runtime special methods and canonical override declarations retain WARNING because framework and inherited signatures can require an open keyword contract; ordinary declared interfaces use ERROR.",
         ),
         examples=(
             RuleExample(
@@ -196,7 +197,7 @@ class NoBroadKeywordCapture(Rule):
                     line=argument.lineno,
                     col=argument.col_offset + 1,
                     code=self.code,
-                    severity=Severity.WARNING,
+                    severity=_interface_severity(function, context, semantics, mutated_members),
                     message=(
                         f"keyword capture `{argument.arg}` has no declared names or narrow value type; "
                         "prefer an explicit typed interface or document a deliberately open contract."
@@ -204,6 +205,23 @@ class NoBroadKeywordCapture(Rule):
                 )
             )
         return sorted(findings, key=lambda finding: (finding.line, finding.col))
+
+
+def _interface_severity(
+    function: ast.FunctionDef | ast.AsyncFunctionDef,
+    context: PythonFileContext,
+    semantics: AnnotationSemantics,
+    mutated_members: frozenset[str],
+) -> Severity:
+    if function.name.startswith("__") and function.name.endswith("__"):
+        return Severity.WARNING
+    if any(
+        _known_decorator(decorator, function, context, semantics, mutated_members)
+        in {"typing.override", "typing_extensions.override"}
+        for decorator in function.decorator_list
+    ):
+        return Severity.WARNING
+    return Severity.ERROR
 
 
 def _stable_annotation_semantics(context: PythonFileContext, tree: ast.Module) -> AnnotationSemantics:

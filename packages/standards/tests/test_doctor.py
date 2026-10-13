@@ -1,6 +1,5 @@
 # sarj-doctor-ignore-retired-rules -- this module intentionally embeds retired
 # identifiers to prove that doctor diagnoses consumer repositories correctly.
-
 from __future__ import annotations
 
 import os
@@ -9,12 +8,17 @@ import shutil
 import subprocess
 import sys
 import tomllib
+from typing import TYPE_CHECKING, Unpack
 
 import pytest
 
 import sarj_standards.cli.main as cli
 from sarj_standards.libs.adoption import doctor, lifecycle, manifest, scaffold
 from sarj_standards.libs.adoption.doctor import Level, check_pyright_deprecated, check_ruff_policy_authority
+
+
+if TYPE_CHECKING:
+    from tests.call_contracts import SubprocessOptions
 
 
 @pytest.mark.parametrize("profile", ["standard", "application"])
@@ -139,7 +143,7 @@ def test_authored_files_git_walk_excludes_skills_but_keeps_agent_tools(
     def which(_name: str) -> str:
         return "/usr/bin/git"
 
-    def run(*_args: object, **_kwargs: object) -> subprocess.CompletedProcess[bytes]:
+    def run(*_args: object, **_kwargs: Unpack[SubprocessOptions]) -> subprocess.CompletedProcess[bytes]:
         return subprocess.CompletedProcess(
             args=(),
             returncode=0,
@@ -169,7 +173,7 @@ def test_git_discovery_timeouts_are_nonfatal(
         encoding="utf-8",
     )
 
-    def run(command: tuple[str, ...], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+    def run(command: tuple[str, ...], **_kwargs: Unpack[SubprocessOptions]) -> subprocess.CompletedProcess[str]:
         if timed_out_argument in command:
             raise subprocess.TimeoutExpired(command, 5)
         return subprocess.CompletedProcess(command, 0, "true\n", "")
@@ -472,7 +476,7 @@ def test_doctor_falls_back_to_bounded_filesystem_walk_when_git_times_out(
 ) -> None:
     (tmp_path / "requirements.txt").write_text("sarj-standards==0.0.1\n", encoding="utf-8")
 
-    def timed_out(*_args: object, **_kwargs: object) -> subprocess.CompletedProcess[bytes]:
+    def timed_out(*_args: object, **_kwargs: Unpack[SubprocessOptions]) -> subprocess.CompletedProcess[bytes]:
         command = "git"
         raise subprocess.TimeoutExpired(command, 5)
 

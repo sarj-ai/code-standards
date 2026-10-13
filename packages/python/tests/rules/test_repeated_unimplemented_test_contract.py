@@ -51,7 +51,7 @@ def test_executable_documentation(example: RuleExample) -> None:
 def test_reports_one_warning_for_the_duplicate_class() -> None:
     [finding] = _check(_CONTRACT + _SECOND)
     assert finding.code == "SARJ490"
-    assert finding.severity is Severity.WARNING
+    assert finding.severity is Severity.ERROR
     assert "read" in finding.message
     assert finding.line == len(textwrap.dedent(_CONTRACT).splitlines()) + 2
 

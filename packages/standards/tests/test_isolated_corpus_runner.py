@@ -4,7 +4,7 @@ from datetime import timedelta
 import sys
 import threading
 from types import SimpleNamespace
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Unpack
 
 import pytest
 
@@ -14,6 +14,8 @@ from sarj_standards.libs.rules import CorpusLintError, corpus_runner, run_isolat
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+    from tests.call_contracts import CorpusProcessOptions
 
 
 _UNSET_DIGEST = "sha256:" + "0" * 64
@@ -37,7 +39,7 @@ def test_each_corpus_and_bounded_batch_gets_a_fresh_process(
     (second / "only.py").write_text("VALUE = 1\n", encoding="utf-8")
     calls: list[tuple[tuple[str, ...], Path]] = []
 
-    def run(argv: tuple[str, ...], **kwargs: object) -> SimpleNamespace:
+    def run(argv: tuple[str, ...], **kwargs: Unpack[CorpusProcessOptions]) -> SimpleNamespace:
         cwd = kwargs["cwd"]
         assert isinstance(cwd, type(tmp_path))
         calls.append((argv, cwd))
@@ -122,7 +124,7 @@ def test_verified_inventory_mutation_fails_closed(
     source_path.write_text("VALUE = 1\n", encoding="utf-8")
     source = _source(corpus, "sample")
 
-    def mutate(_argv: tuple[str, ...], **_kwargs: object) -> SimpleNamespace:
+    def mutate(_argv: tuple[str, ...], **_kwargs: Unpack[CorpusProcessOptions]) -> SimpleNamespace:
         source_path.write_text("VALUE = 2\n", encoding="utf-8")
         empty = SimpleNamespace(retained_bytes=0, total_bytes=0, lines=0, truncated=False)
         return SimpleNamespace(returncode=0, stdout=empty, stderr=empty)
@@ -144,7 +146,7 @@ def test_matching_file_added_during_evaluation_fails_closed(
     (corpus / "service.py").write_text("VALUE = 1\n", encoding="utf-8")
     source = _source(corpus, "sample")
 
-    def add_file(_argv: tuple[str, ...], **_kwargs: object) -> SimpleNamespace:
+    def add_file(_argv: tuple[str, ...], **_kwargs: Unpack[CorpusProcessOptions]) -> SimpleNamespace:
         (corpus / "added.py").write_text("VALUE = 2\n", encoding="utf-8")
         empty = SimpleNamespace(retained_bytes=0, total_bytes=0, lines=0, truncated=False)
         return SimpleNamespace(returncode=0, stdout=empty, stderr=empty)
@@ -162,7 +164,7 @@ def test_unexpected_linter_exit_does_not_leak_output(monkeypatch: pytest.MonkeyP
     corpus.mkdir()
     (corpus / "secret.py").write_text("VALUE = 1\n", encoding="utf-8")
 
-    def fail(_argv: tuple[str, ...], **_kwargs: object) -> SimpleNamespace:
+    def fail(_argv: tuple[str, ...], **_kwargs: Unpack[CorpusProcessOptions]) -> SimpleNamespace:
         private = SimpleNamespace(retained_bytes=15, total_bytes=15, lines=1, truncated=False)
         return SimpleNamespace(returncode=2, stdout=private, stderr=private)
 

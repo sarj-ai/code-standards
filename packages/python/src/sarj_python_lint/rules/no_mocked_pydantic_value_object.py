@@ -27,7 +27,7 @@ class NoMockedPydanticValueObject(ProjectRule):
     id = "no-mocked-pydantic-value-object"
     code = "SARJ479"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        default_level=Severity.WARNING,
+        default_level=Severity.ERROR,
         summary="Build real Pydantic models when test doubles supply model field data.",
         rationale=(
             "Mocking a Pydantic value object bypasses validation, defaults, serialization, and field relationships. "
@@ -126,7 +126,7 @@ class NoMockedPydanticValueObject(ProjectRule):
                 line=call.lineno,
                 col=call.col_offset + 1,
                 code=self.code,
-                severity=Severity.WARNING,
+                severity=Severity.ERROR,
                 message=(
                     f"Mock supplies field data for Pydantic model `{model}`; construct the real model "
                     "or use a typed factory with valid defaults"

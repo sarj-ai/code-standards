@@ -8,6 +8,7 @@ import pytest
 
 from sarj_standards.libs.adoption import manifest, transaction
 from sarj_standards.libs.repository import docs
+from sarj_standards.libs.typed_containers import is_object_mapping
 
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -28,7 +29,7 @@ GENERATED_READMES = (
 
 
 def _is_object_table(value: object) -> TypeGuard[dict[str, object]]:
-    return isinstance(value, dict)
+    return is_object_mapping(value) and all(isinstance(key, str) for key in value)
 
 
 def _is_string_table(value: object) -> TypeGuard[dict[str, str]]:

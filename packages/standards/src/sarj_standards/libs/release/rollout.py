@@ -41,6 +41,7 @@ from sarj_standards.libs.json_boundary import parse_json
 from sarj_standards.libs.release import metadata_verification, retirement
 from sarj_standards.libs.release.verification_process import BaseWatch
 from sarj_standards.libs.repository import ledger as rule_ledger, rule_catalog_artifact
+from sarj_standards.libs.typed_containers import is_object_mapping
 from sarj_standards.libs.yaml_boundary import parse_yaml
 
 
@@ -197,7 +198,7 @@ class ConsumerBaseMovedError(RolloutError):
 
 
 def is_object(value: object) -> TypeGuard[dict[str, object]]:
-    return isinstance(value, dict)
+    return is_object_mapping(value) and all(isinstance(key, str) for key in value)
 
 
 def is_array(value: object) -> TypeGuard[list[object]]:

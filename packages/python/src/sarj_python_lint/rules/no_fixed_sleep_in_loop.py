@@ -45,7 +45,7 @@ class NoFixedSleepInLoop(Rule):
     id = "no-fixed-sleep-in-loop"
     code = "SARJ485"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        default_level=Severity.WARNING,
+        default_level=Severity.ERROR,
         summary="Do not sleep for a fixed literal interval inside a production loop.",
         rationale=(
             "A polling or cleanup loop that sleeps for a literal interval gives tests no seam: every test that "
@@ -161,7 +161,7 @@ class NoFixedSleepInLoop(Rule):
                 col=reported.col_offset + 1,
                 code=self.code,
                 message=_MESSAGE,
-                severity=Severity.WARNING,
+                severity=Severity.ERROR,
             )
             for reported, duration in sleeps
             if (seconds := _folded_seconds(duration, constants)) is not None

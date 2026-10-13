@@ -4,7 +4,7 @@ import ast
 import codecs
 import json
 import tokenize
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Unpack
 
 import pytest
 
@@ -56,6 +56,8 @@ from sarj_standards.libs.linting.policy import Policy
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
     from pathlib import Path
+
+    from tests.call_contracts import EslintSelectionOptions, ExternalAnalyzeOptions
 
 
 def test_source_document_preserves_byte_offsets_and_utf16_columns(tmp_path: Path) -> None:
@@ -453,7 +455,7 @@ def test_raw_scoped_eslint_analysis_does_not_run_unselected_external_tools(
     source.write_text("export const value = 1;\n", encoding="utf-8")
     captured: list[object] = []
 
-    def analyze_external(*_args: object, **kwargs: object) -> tuple[ToolReport, ...]:
+    def analyze_external(*_args: object, **kwargs: Unpack[ExternalAnalyzeOptions]) -> tuple[ToolReport, ...]:
         captured.append(kwargs.get("capabilities"))
         return ()
 
@@ -479,7 +481,7 @@ def test_skipped_python_type_check_is_reported_as_not_requested_coverage(
     (tmp_path / ".sarj-standards.toml").write_text(adopted.render(), encoding="utf-8")
     captured: list[object] = []
 
-    def analyze_external(*_args: object, **kwargs: object) -> tuple[ToolReport, ...]:
+    def analyze_external(*_args: object, **kwargs: Unpack[ExternalAnalyzeOptions]) -> tuple[ToolReport, ...]:
         captured.append(kwargs.get("python_type_check"))
         return ()
 
@@ -507,7 +509,7 @@ def test_standards_analysis_forwards_scoped_eslint_suppression_policy_to_the_pro
     source.write_text("export const value = 1;\n", encoding="utf-8")
     seen: list[tuple[str, ...]] = []
 
-    def select_commands(*_args: object, **_kwargs: object) -> EslintSelection:
+    def select_commands(*_args: object, **_kwargs: Unpack[EslintSelectionOptions]) -> EslintSelection:
         return EslintSelection((Command("eslint", ("npx", "eslint", "--", str(source)), tmp_path),), 0)
 
     def local_argv(argv: Sequence[str], *_args: object) -> tuple[str, ...]:

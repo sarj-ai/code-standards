@@ -9,7 +9,7 @@ import shutil
 import subprocess
 import sys
 import tomllib
-from typing import TYPE_CHECKING, NamedTuple
+from typing import TYPE_CHECKING, NamedTuple, Unpack
 
 import pytest
 import yaml
@@ -30,6 +30,8 @@ from sarj_standards.libs.repository import hooks as repository_hooks
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
+
+    from tests.call_contracts import SubprocessOptions
 
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -3823,7 +3825,8 @@ def test_doctor_git_walk_isolates_hook_environment_and_prunes_generated_paths(
     monkeypatch.setenv("GIT_CONFIG_KEY_0", "core.bare")
     monkeypatch.setenv("GIT_CONFIG_VALUE_0", "true")
 
-    def git_files(*_args: object, **kwargs: object) -> subprocess.CompletedProcess[bytes]:
+    def git_files(*_args: object, **kwargs: Unpack[SubprocessOptions]) -> subprocess.CompletedProcess[bytes]:
+        assert "env" in kwargs
         environment = kwargs["env"]
         assert isinstance(environment, dict)
         assert "GIT_DIR" not in environment

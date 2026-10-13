@@ -362,7 +362,7 @@ def _check(source: str, path: Path = Path("app/values.py")) -> list[Diagnostic]:
 def test_labeled_cases(case: EvaluationCase) -> None:
     findings = _check(case.source)
     assert len(findings) == (1 if case.expected is ExpectedOutcome.MATCH else 0)
-    assert all(finding.severity is Severity.WARNING for finding in findings)
+    assert all(finding.severity is Severity.ERROR for finding in findings)
 
 
 @pytest.mark.parametrize("path", ["src/generated/values.py", "vendor/values.py"])
@@ -379,7 +379,7 @@ def test_public_examples(example: RuleExample) -> None:
 def test_metadata_and_diagnostic_are_actionable() -> None:
     documentation = NoShallowContainerTypeGuard.documentation
     assert documentation is not None
-    assert documentation.default_level is Severity.WARNING
+    assert documentation.default_level is Severity.ERROR
     assert documentation.autofix is AutofixPolicy.NONE
     finding = _check(_BASE)[0]
     assert (finding.code, finding.line, finding.col) == ("SARJ472", 3, 5)
@@ -387,11 +387,11 @@ def test_metadata_and_diagnostic_are_actionable() -> None:
     assert "object" in finding.message
 
 
-def test_exact_suppression_and_warning_exit(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_exact_suppression_and_error_exit(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     path = tmp_path / "values.py"
     path.write_text(_BASE)
-    assert main(["check", "--rule", NoShallowContainerTypeGuard.id, str(path)]) == 0
-    assert "SARJ472 warning:" in capsys.readouterr().out
+    assert main(["check", "--rule", NoShallowContainerTypeGuard.id, str(path)]) == 1
+    assert "SARJ472 Container-only" in capsys.readouterr().out
     marked = _BASE.replace(
         "return isinstance(value, dict)",
         "return isinstance(value, dict)  # sarj-noqa: SARJ472 -- compatibility contract",

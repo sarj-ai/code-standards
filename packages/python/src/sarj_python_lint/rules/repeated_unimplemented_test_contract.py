@@ -18,6 +18,7 @@ from sarj_python_lint.rule_base import (
 )
 from sarj_python_lint.rules._imports import ABC_SOURCES, TYPING_SOURCES, ImportIndex
 from sarj_python_lint.rules._paths import is_generated, is_test_path
+from sarj_python_lint.rules._resolved_operation_signature import resolved_operation_signature, stable_local_class
 
 
 if TYPE_CHECKING:
@@ -28,7 +29,6 @@ if TYPE_CHECKING:
 
 
 type _Method = ast.FunctionDef | ast.AsyncFunctionDef
-_BUILTINS = frozenset({"str", "bytes", "int", "float", "bool", "object", "list", "dict", "tuple", "set", "frozenset"})
 _REFLECTION = frozenset({"globals", "locals", "vars", "eval", "exec", "getattr", "setattr", "delattr", "__import__"})
 _IDENTITY = frozenset(
     {"__dict__", "__mro__", "__base__", "__bases__", "__func__", "__code__", "__annotations__", "__defaults__"}
@@ -41,7 +41,7 @@ class RepeatedUnimplementedTestContract(ProjectRule):
     id = "repeated-unimplemented-test-contract"
     code = "SARJ490"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        default_level=Severity.WARNING,
+        default_level=Severity.ERROR,
         summary="Share repeated typed fail-fast abstract operations between test fakes.",
         rationale="Copied unconfigured operations add test support code and drift independently when a contract changes.",
         remediation="Use one explicit typed strict test base for the contract. Preserve each leaf fake's configured behavior and failure timing; verify that the complete base and wiring reduce maintained code.",
@@ -52,7 +52,7 @@ class RepeatedUnimplementedTestContract(ProjectRule):
             "Duplicate operations must implement the same abstract member with identical resolved typed signatures and immutable literal defaults. Only bare built-in raise NotImplementedError bodies, optionally with typing.override, qualify.",
             "Methods with messages, side effects, generator bodies, other decorators, captured defaults or super dispatch remain leaf-owned. Signatures must match the abstract contract; unresolved names are not guessed.",
             "Visible non-call observations of abstract operations, imported namespace writes and subclass/MRO hooks exclude a contract family. String annotation references are unresolved; external or dynamic observations still require review.",
-            "One advisory is emitted per duplicate class, retaining the first source occurrence as the comparison owner. No autofix or dynamic mock generation; intentional independent contracts require a reasoned exception.",
+            "One diagnostic is emitted per duplicate class, retaining the first source occurrence as the comparison owner. No autofix or dynamic mock generation; intentional independent contracts require a reasoned exception.",
         ),
         examples=(
             RuleExample(
@@ -123,7 +123,7 @@ class RepeatedUnimplementedTestContract(ProjectRule):
                         line=node.lineno,
                         col=node.col_offset + 1,
                         code=self.code,
-                        severity=Severity.WARNING,
+                        severity=Severity.ERROR,
                         message=f"Test fake repeats fail-fast `{base.symbol.name}` operations: {', '.join(methods)}. Share an explicit typed strict test base, preserving configured leaf behavior and failure timing.",
                     )
                 )
@@ -225,13 +225,13 @@ def _abstract_contract(indexes: ProjectIndexSet, symbol: SymbolRef) -> tuple[Sou
     )
     if (
         contract is None
-        or not _stable_local_class(unit, symbol.name)
+        or not stable_local_class(unit, symbol.name)
         or not _plain_class(contract, imports)
         or not imports.resolves(contract.bases[0], sources=ABC_SOURCES, symbol="ABC")
     ):
         return None
     abstract = {
-        method.name: _signature(method, unit, imports)
+        method.name: resolved_operation_signature(method, unit, imports)
         for method in contract.body
         if isinstance(method, ast.FunctionDef | ast.AsyncFunctionDef)
         and len(method.decorator_list) == 1
@@ -241,7 +241,7 @@ def _abstract_contract(indexes: ProjectIndexSet, symbol: SymbolRef) -> tuple[Sou
 
 
 def _test_fake(unit: SourceUnit, name: str) -> ast.ClassDef | None:
-    if unit.tree is None or not is_test_path(unit.path) or not _stable_local_class(unit, name):
+    if unit.tree is None or not is_test_path(unit.path) or not stable_local_class(unit, name):
         return None
     imports = ImportIndex.from_tree(unit.tree, module_scope_only=True)
     node = next((child for child in unit.tree.body if isinstance(child, ast.ClassDef) and child.name == name), None)
@@ -272,7 +272,7 @@ def _strict_operations(node: ast.ClassDef, unit: SourceUnit, abstract: dict[str,
         if isinstance(method, ast.FunctionDef | ast.AsyncFunctionDef)
         and abstract.get(method.name) is not None
         and _bare_stub(method, imports)
-        and _signature(method, unit, imports) == abstract[method.name]
+        and resolved_operation_signature(method, unit, imports) == abstract[method.name]
     ]
 
 
@@ -288,98 +288,10 @@ def _bare_stub(method: _Method, imports: ImportIndex) -> bool:
     return error.cause is None and isinstance(error.exc, ast.Name) and error.exc.id == "NotImplementedError"
 
 
-def _stable_local_class(unit: SourceUnit, name: str) -> bool:
-    if unit.tree is None:
-        return False
-    return sum(
-        isinstance(node, ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef) and node.name == name
-        for node in ast.walk(unit.tree)
-    ) == 1 and not any(
-        (isinstance(node, ast.Name) and node.id == name and not isinstance(node.ctx, ast.Load))
-        or (isinstance(node, ast.arg) and node.arg == name)
-        for node in ast.walk(unit.tree)
-    )
-
-
 def _stable_base(unit: SourceUnit, expression: ast.expr) -> bool:
     if unit.tree is None:
         return False
     imports = ImportIndex.from_tree(unit.tree, module_scope_only=True)
     return imports.resolved_qualified_name(expression) is not None or (
-        isinstance(expression, ast.Name) and _stable_local_class(unit, expression.id)
+        isinstance(expression, ast.Name) and stable_local_class(unit, expression.id)
     )
-
-
-def _signature(method: _Method, unit: SourceUnit, imports: ImportIndex) -> str | None:
-    arguments = method.args
-    if method.type_params or arguments.vararg is not None or arguments.kwarg is not None or method.returns is None:
-        return None
-    positional = [*arguments.posonlyargs, *arguments.args]
-    if not positional or positional[0].arg != "self" or positional[0].annotation is not None:
-        return None
-    keys = [_type_key(argument.annotation, unit, imports) for argument in (*positional[1:], *arguments.kwonlyargs)]
-    result = _type_key(method.returns, unit, imports)
-    defaults = [*arguments.defaults, *(default for default in arguments.kw_defaults if default is not None)]
-    if (
-        result is None
-        or any(key is None for key in keys)
-        or any(not isinstance(default, ast.Constant) for default in defaults)
-    ):
-        return None
-    return repr(
-        (
-            type(method).__name__,
-            len(arguments.posonlyargs),
-            tuple(argument.arg for argument in (*positional, *arguments.kwonlyargs)),
-            keys,
-            result,
-            tuple(ast.dump(default) for default in arguments.defaults),
-            tuple(None if default is None else ast.dump(default) for default in arguments.kw_defaults),
-        )
-    )
-
-
-def _type_key(node: ast.expr | None, unit: SourceUnit, imports: ImportIndex) -> str | None:
-    if node is None or unit.tree is None:
-        return None
-    match node:
-        case ast.Name():
-            return _name_type_key(node, unit, imports)
-        case ast.Attribute():
-            return imports.resolved_qualified_name(node)
-        case ast.Constant(value=str()):
-            return None
-        case ast.Constant():
-            return ast.dump(node)
-        case _:
-            return _compound_type_key(node, unit, imports)
-
-
-def _name_type_key(node: ast.Name, unit: SourceUnit, imports: ImportIndex) -> str | None:
-    if unit.tree is None:
-        return None
-    name = node.id
-    if name in _BUILTINS and imports.builtin_is_unshadowed(name):
-        return f"builtins.{name}"
-    imported = imports.resolved_qualified_name(node)
-    if imported is not None:
-        return imported
-    if any(isinstance(child, ast.ClassDef) and child.name == name for child in unit.tree.body) and _stable_local_class(
-        unit, name
-    ):
-        return f"{unit.module}.{name}"
-    return None
-
-
-def _compound_type_key(node: ast.expr, unit: SourceUnit, imports: ImportIndex) -> str | None:
-    match node:
-        case ast.Subscript(value=value, slice=argument):
-            kind, parts = "subscript", (value, argument)
-        case ast.BinOp(left=left, op=ast.BitOr(), right=right):
-            kind, parts = "union", (left, right)
-        case ast.Tuple(elts=elements):
-            kind, parts = "tuple", tuple(elements)
-        case _:
-            return None
-    keys = tuple(_type_key(part, unit, imports) for part in parts)
-    return repr((kind, keys)) if all(key is not None for key in keys) else None

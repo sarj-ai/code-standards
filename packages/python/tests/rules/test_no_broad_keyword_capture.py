@@ -658,7 +658,19 @@ def _check(source: str, path: Path = Path("app/service.py")) -> list[Diagnostic]
 def test_labeled_contract_cases(case: EvaluationCase) -> None:
     findings = _check(case.source)
     assert len(findings) == (1 if case.expected is ExpectedOutcome.MATCH else 0)
-    assert all(f.code == "SARJ477" and f.severity is Severity.WARNING for f in findings)
+    expected_severity = (
+        Severity.WARNING
+        if case.case_id
+        in {
+            "callable-fake",
+            "dynamic-attribute-api",
+            "known-override-contract",
+            "known-extensions-override",
+            "runtime-keyword-hook",
+        }
+        else Severity.ERROR
+    )
+    assert all(f.code == "SARJ477" and f.severity is expected_severity for f in findings)
 
 
 @pytest.mark.parametrize("path", ["generated/service.py", "vendor/service.py", "service.pyi"])

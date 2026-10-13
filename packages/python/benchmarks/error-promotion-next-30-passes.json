@@ -1,0 +1,1041 @@
+{
+  "schemaVersion": 1,
+  "scope": "sarj-ai/code-standards only",
+  "baseCommit": "fea73015da9defce7b38b338b32bfe2385cf9e9a",
+  "state": "locally-verified-awaiting-postcommit-lifecycle-and-exact-head-ci",
+  "request": "Thirty additional substantive WARNING-to-ERROR promotion passes under the explicit strict modern typing and maintainability policy.",
+  "policy": "Source-proven deterministic conventions may block with a useful manual remedy and reasoned exact-code exceptions. ERROR does not imply every syntactically valid match is a runtime defect. Unknown behavior-changing transformations remain warnings; no unsafe autofixes.",
+  "promotionPasses": [
+    {
+      "pass": 1,
+      "selector": "python:no-broad-keyword-capture",
+      "decision": "bounded-error",
+      "evidence": "Ordinary broad keyword interfaces enforce precise parameters, ParamSpec or Unpack[TypedDict]. Runtime special methods and canonical override declarations retain WARNING to preserve open framework/inherited signatures.",
+      "existingOwner": "packages/python/src/sarj_python_lint/rules/no_broad_keyword_capture.py",
+      "labeledCases": "packages/python/tests/rules/test_no_broad_keyword_capture.py",
+      "smallestFix": "Severity metadata and native diagnostic tier; retain existing AST predicates and manual remediation."
+    },
+    {
+      "pass": 2,
+      "selector": "python:no-shallow-container-type-guard",
+      "decision": "error",
+      "evidence": "A bare container isinstance check cannot prove narrower element, key, or value types; retain object slots or validate contents.",
+      "existingOwner": "packages/python/src/sarj_python_lint/rules/no_shallow_container_type_guard.py",
+      "labeledCases": "packages/python/tests/rules/test_no_shallow_container_type_guard.py",
+      "smallestFix": "Severity metadata and native diagnostic tier; retain existing AST predicates and manual remediation."
+    },
+    {
+      "pass": 3,
+      "selector": "python:no-input-model-mutation",
+      "decision": "error",
+      "evidence": "Writes through proven borrowed Pydantic inputs and shallow aliases change caller state; return trusted replacement models and copy changed ancestors, preserving intentional in-place APIs explicitly.",
+      "existingOwner": "packages/python/src/sarj_python_lint/rules/no_input_model_mutation.py",
+      "labeledCases": "packages/python/tests/rules/test_no_input_model_mutation.py",
+      "smallestFix": "Severity metadata and native diagnostic tier; retain existing AST predicates and manual remediation."
+    },
+    {
+      "pass": 4,
+      "selector": "python:no-mocked-pydantic-value-object",
+      "decision": "error",
+      "evidence": "A field-configured mock of a source-proven Pydantic value bypasses validation; construct the real value and retain behavior/failure-injection mocks at collaborator boundaries.",
+      "existingOwner": "packages/python/src/sarj_python_lint/rules/no_mocked_pydantic_value_object.py",
+      "labeledCases": "packages/python/tests/rules/test_no_mocked_pydantic_value_object.py",
+      "smallestFix": "Severity metadata and native diagnostic tier; retain existing AST predicates and manual remediation."
+    },
+    {
+      "pass": 5,
+      "selector": "python:require-public-dependency-contract",
+      "decision": "bounded-error",
+      "evidence": "ERROR requires exact source-resolved signatures for every used operation. Covariant postconditions, contravariant accepted inputs, nested owner-relative Self, generics/decorators/descriptors and unresolved signatures retain WARNING with explicit variance-preserving guidance.",
+      "existingOwner": "packages/python/src/sarj_python_lint/rules/require_public_dependency_contract.py",
+      "labeledCases": "packages/python/tests/rules/test_require_public_dependency_contract.py",
+      "smallestFix": "Severity metadata and native diagnostic tier; retain existing AST predicates and manual remediation."
+    },
+    {
+      "pass": 6,
+      "selector": "python:shared-mutable-pydantic-factory",
+      "decision": "bounded-error",
+      "evidence": "ERROR requires an inert direct model body, bounded inert annotation proof, and inert Field arguments with deferred factory references. Descriptors, effectful or quoted annotations, computed Field metadata and unknown class-creation effects retain WARNING.",
+      "existingOwner": "packages/python/src/sarj_python_lint/rules/shared_mutable_pydantic_factory.py",
+      "labeledCases": "packages/python/tests/rules/test_shared_mutable_pydantic_factory.py",
+      "smallestFix": "Severity metadata and native diagnostic tier; retain existing AST predicates and manual remediation."
+    },
+    {
+      "pass": 7,
+      "selector": "python:require-pydantic-ordinal-lower-bound",
+      "decision": "bounded-error",
+      "evidence": "ERROR requires an inert direct model body and bounded inert annotation proof; descriptors, decorators, methods/configuration, computed values, evaluated/quoted annotation effects and unresolved custom metadata retain WARNING. Sentinel descriptions and validators still abstain.",
+      "existingOwner": "packages/python/src/sarj_python_lint/rules/require_pydantic_ordinal_lower_bound.py",
+      "labeledCases": "packages/python/tests/rules/test_require_pydantic_ordinal_lower_bound.py",
+      "smallestFix": "Severity metadata and native diagnostic tier; retain existing AST predicates and manual remediation."
+    },
+    {
+      "pass": 8,
+      "selector": "python:require-pydantic-for-external-json",
+      "decision": "error",
+      "evidence": "Import-proven external JSON is accessed as a record before validation; validate its actual schema before field consumption, preserving intentionally open payloads with a reasoned boundary exception.",
+      "existingOwner": "packages/python/src/sarj_python_lint/rules/require_pydantic_for_external_json.py",
+      "labeledCases": "packages/python/tests/rules/test_require_pydantic_for_external_json.py",
+      "smallestFix": "Severity metadata and native diagnostic tier; retain existing AST predicates and manual remediation."
+    },
+    {
+      "pass": 9,
+      "selector": "python:require-explicit-service-contract",
+      "decision": "error",
+      "evidence": "A retained collaborator and invoked public operations establish a service boundary whose operations lack a declared ABC or Protocol; reuse or declare a focused contract.",
+      "existingOwner": "packages/python/src/sarj_python_lint/rules/require_explicit_service_contract.py",
+      "labeledCases": "packages/python/tests/rules/test_require_explicit_service_contract.py",
+      "smallestFix": "Severity metadata and native diagnostic tier; retain existing AST predicates and manual remediation."
+    },
+    {
+      "pass": 10,
+      "selector": "python:no-nullable-dependency-fallback",
+      "decision": "retain-warning",
+      "evidence": "Omitted or explicit None can intentionally create a fresh lazy dependency per call. Removing None or using a concrete default can change public acceptance, lifetime and initialization timing; retain the existing WARNING.",
+      "existingOwner": "packages/python/src/sarj_python_lint/rules/no_nullable_dependency_fallback.py",
+      "labeledCases": "packages/python/tests/rules/test_no_nullable_dependency_fallback.py",
+      "smallestFix": "Retain the existing warning and its documented review guidance."
+    },
+    {
+      "pass": 11,
+      "selector": "python:no-fixed-sleep-in-loop",
+      "decision": "error",
+      "evidence": "A proven positive literal wall-clock sleep in a production loop prevents a test seam; inject the interval or sleeper while preserving zero yields and documented fixed scheduling contracts.",
+      "existingOwner": "packages/python/src/sarj_python_lint/rules/no_fixed_sleep_in_loop.py",
+      "labeledCases": "packages/python/tests/rules/test_no_fixed_sleep_in_loop.py",
+      "smallestFix": "Severity metadata and native diagnostic tier; retain existing AST predicates and manual remediation."
+    },
+    {
+      "pass": 12,
+      "selector": "python:require-injectable-retry-sleep",
+      "decision": "error",
+      "evidence": "A resolved Tenacity waiting policy without an injected wait or sleep forces retry tests onto wall time; pass an explicit seam. Zero-wait policies and unresolved calls abstain.",
+      "existingOwner": "packages/python/src/sarj_python_lint/rules/require_injectable_retry_sleep.py",
+      "labeledCases": "packages/python/tests/rules/test_require_injectable_retry_sleep.py",
+      "smallestFix": "Severity metadata and native diagnostic tier; retain existing AST predicates and manual remediation."
+    },
+    {
+      "pass": 13,
+      "selector": "python:prefer-pytest-fixture-injection",
+      "decision": "error",
+      "evidence": "Initial collected-test setup calls a source-proven shared conftest pool allocator; use a function-scoped fixture while preserving opening, cleanup, setup ordering and fresh-allocation ownership.",
+      "existingOwner": "packages/python/src/sarj_python_lint/rules/prefer_pytest_fixture_injection.py",
+      "labeledCases": "packages/python/tests/rules/test_prefer_pytest_fixture_injection.py",
+      "smallestFix": "Severity metadata and native diagnostic tier; retain existing AST predicates and manual remediation."
+    },
+    {
+      "pass": 14,
+      "selector": "python:repeated-unimplemented-test-contract",
+      "decision": "error",
+      "evidence": "Closed test fake implementations repeat identical typed bare NotImplementedError operations from one ABC; share a typed strict base only when it reduces total code and preserves independent extension contracts.",
+      "existingOwner": "packages/python/src/sarj_python_lint/rules/repeated_unimplemented_test_contract.py",
+      "labeledCases": "packages/python/tests/rules/test_repeated_unimplemented_test_contract.py",
+      "smallestFix": "Severity metadata and native diagnostic tier; retain existing AST predicates and manual remediation."
+    },
+    {
+      "pass": 15,
+      "selector": "python:no-docstring-type-restatement",
+      "decision": "error",
+      "evidence": "A fully typed signature and a parsed matching docstring type label duplicate one owner; remove only the label, keep behavior, and support genuine exact-code comments at the declaration or closing quote.",
+      "existingOwner": "packages/python/src/sarj_python_lint/rules/no_typed_doc_sections.py",
+      "labeledCases": "packages/python/tests/rules/test_no_typed_doc_sections.py",
+      "smallestFix": "Severity metadata and native diagnostic tier; retain existing AST predicates and manual remediation."
+    },
+    {
+      "pass": 16,
+      "selector": "python:prefer-module-level-constant",
+      "decision": "bounded-error",
+      "evidence": "Substantial immutable literal tables with supported nonescaping reads enforce explicit static lifetime. Regex cache advice and visible frame/dynamic-namespace observation remain WARNING.",
+      "existingOwner": "packages/python/src/sarj_python_lint/rules/prefer_module_level_constant.py",
+      "labeledCases": "packages/python/tests/rules/test_prefer_module_level_constant.py",
+      "smallestFix": "Severity metadata and native diagnostic tier; retain existing AST predicates and manual remediation."
+    },
+    {
+      "pass": 17,
+      "selector": "python:no-injected-module-loader",
+      "decision": "retain-warning",
+      "evidence": "A fixed import hook is still a legitimate substitution or initialization seam; no source proof establishes that removing it is helpful for all admitted matches.",
+      "existingOwner": "packages/python/src/sarj_python_lint/rules/no_injected_module_loader.py",
+      "labeledCases": "packages/python/tests/rules/test_no_injected_module_loader.py",
+      "smallestFix": "Retain the existing warning and its documented review guidance."
+    },
+    {
+      "pass": 18,
+      "selector": "python:prefer-declarative-batch-validation",
+      "decision": "retain-warning",
+      "evidence": "Collection validation changes aggregation, omission, failure timing, logging and evaluation of later rows; ownership of those behaviors is unproved, so the existing advisory remains.",
+      "existingOwner": "packages/python/src/sarj_python_lint/rules/prefer_declarative_batch_validation.py",
+      "labeledCases": "packages/python/tests/rules/test_prefer_declarative_batch_validation.py",
+      "smallestFix": "Retain the existing warning and its documented review guidance."
+    },
+    {
+      "pass": 19,
+      "selector": "python:prefer-native-string-check",
+      "decision": "retain-warning",
+      "evidence": "Native string checks and JSON adaptation can change coercion, bytes decoding, recursive validation and ValidationError contracts; source shape does not prove equivalence.",
+      "existingOwner": "packages/python/src/sarj_python_lint/rules/prefer_native_string_check.py",
+      "labeledCases": "packages/python/tests/rules/test_prefer_native_string_check.py",
+      "smallestFix": "Retain the existing warning and its documented review guidance."
+    },
+    {
+      "pass": 20,
+      "selector": "python:prefer-walrus-comprehension-filter",
+      "decision": "retain-warning",
+      "evidence": "Identical call syntax does not prove purity or that reevaluation is unintended; a walrus can change effects and containing-scope bindings.",
+      "existingOwner": "packages/python/src/sarj_python_lint/rules/prefer_walrus_comprehension_filter.py",
+      "labeledCases": "packages/python/tests/rules/test_prefer_walrus_comprehension_filter.py",
+      "smallestFix": "Retain the existing warning and its documented review guidance."
+    },
+    {
+      "pass": 21,
+      "selector": "python:opaque-parametrize-case-needs-id",
+      "decision": "retain-warning",
+      "evidence": "An opaque parametrized row may already receive a semantic ID from pytest_make_parametrize_id; project or plugin hook ownership is unresolved.",
+      "existingOwner": "packages/python/src/sarj_python_lint/rules/opaque_parametrize_case_needs_id.py",
+      "labeledCases": "packages/python/tests/rules/test_opaque_parametrize_case_needs_id.py",
+      "smallestFix": "Retain the existing warning and its documented review guidance."
+    },
+    {
+      "pass": 22,
+      "selector": "python:prefer-monkeypatch-for-process-state-in-test",
+      "decision": "retain-warning",
+      "evidence": "A process-state mutation can be deliberate restoration or cleanup; replacing teardown with restoring helpers may reinstall state. Cleanup ownership is unresolved.",
+      "existingOwner": "packages/python/src/sarj_python_lint/rules/prefer_monkeypatch_for_process_state_in_test.py",
+      "labeledCases": "packages/python/tests/rules/test_prefer_monkeypatch_for_process_state_in_test.py",
+      "smallestFix": "Retain the existing warning and its documented review guidance."
+    },
+    {
+      "pass": 23,
+      "selector": "python:prefer-regex-fullmatch",
+      "decision": "error",
+      "evidence": "A bounded whole-field regex predicate using an outer dollar anchor can accept a trailing newline; fullmatch expresses the strict whole-value policy. Preserve intentional newline or match contracts explicitly; no automatic rewrite.",
+      "existingOwner": "packages/python/src/sarj_python_lint/rules/prefer_regex_fullmatch.py",
+      "labeledCases": "packages/python/tests/rules/test_prefer_regex_fullmatch.py",
+      "smallestFix": "Severity metadata and native diagnostic tier; retain existing AST predicates and manual remediation."
+    },
+    {
+      "pass": 24,
+      "selector": "eslint:prefer-nominal-id-types",
+      "decision": "error",
+      "evidence": "Distinct ID roles sharing a proven primitive carrier permit accidental swaps; validated branded domain identifiers distinguish roles while wire schemas remain primitive and external signatures may keep reasoned exceptions.",
+      "existingOwner": "packages/typescript/src/rules/prefer-nominal-id-types.ts",
+      "labeledCases": "packages/typescript/tests/rules/prefer-nominal-id-types.test.ts",
+      "smallestFix": "Severity metadata and native diagnostic tier; retain existing AST predicates and manual remediation."
+    },
+    {
+      "pass": 25,
+      "selector": "eslint:require-explicit-service-contract",
+      "decision": "error",
+      "evidence": "A source-proven retained behavioral collaborator and uncovered invoked service operations require an explicit focused interface; unresolved ancestry and rewritten members abstain.",
+      "existingOwner": "packages/typescript/src/rules/require-explicit-service-contract.ts",
+      "labeledCases": "packages/typescript/tests/rules/require-explicit-service-contract.test.ts",
+      "smallestFix": "Severity metadata and native diagnostic tier; retain existing AST predicates and manual remediation."
+    },
+    {
+      "pass": 26,
+      "selector": "eslint:require-interface-for-exported-class",
+      "decision": "error",
+      "evidence": "Exported concrete public behavior needs an explicit substitutable contract; data-only values and static factories remain excluded, and framework contracts receive explicit local review.",
+      "existingOwner": "packages/typescript/src/rules/require-interface-for-exported-class.ts",
+      "labeledCases": "packages/typescript/tests/rules/require-interface-for-exported-class.test.ts",
+      "smallestFix": "Severity metadata and native diagnostic tier; retain existing AST predicates and manual remediation."
+    },
+    {
+      "pass": 27,
+      "selector": "eslint:no-json-stringify-object-equality",
+      "decision": "error",
+      "evidence": "Object serialization equality can depend on property order or collapse distinct values; compare a domain projection or deliberately reviewed canonical serialization, preserving intentional JSON-text contracts explicitly.",
+      "existingOwner": "packages/typescript/src/rules/no-json-stringify-object-equality.ts",
+      "labeledCases": "packages/typescript/tests/rules/no-json-stringify-object-equality.test.ts",
+      "smallestFix": "Severity metadata and native diagnostic tier; retain existing AST predicates and manual remediation."
+    },
+    {
+      "pass": 28,
+      "selector": "eslint:no-duplicate-test-case",
+      "decision": "error",
+      "evidence": "Identical literal test rows do not describe distinct vectors; remove accidental copies or document deliberate repeated/stateful cases. Preserve property order and all IDs; no autofix.",
+      "existingOwner": "packages/typescript/src/rules/no-duplicate-test-case.ts",
+      "labeledCases": "packages/typescript/tests/rules/no-duplicate-test-case.test.ts",
+      "smallestFix": "Severity metadata and native diagnostic tier; retain existing AST predicates and manual remediation."
+    },
+    {
+      "pass": 29,
+      "selector": "eslint:prefer-module-level-refined-schema",
+      "decision": "retain-warning",
+      "evidence": "Closed-looking Zod refinements can still observe getters, callback effects, error options, identity or initialization order; construction ownership is unproved.",
+      "existingOwner": "packages/typescript/src/rules/prefer-module-level-refined-schema.ts",
+      "labeledCases": "packages/typescript/tests/rules/prefer-module-level-refined-schema.test.ts",
+      "smallestFix": "Retain the existing warning and its documented review guidance."
+    },
+    {
+      "pass": 30,
+      "selector": "eslint:prefer-millisecond-control-duration-schema",
+      "decision": "retain-warning",
+      "evidence": "Changing second-based Zod fields to milliseconds changes a public unit contract; syntactic field names do not establish migration ownership or runtime consumers.",
+      "existingOwner": "packages/typescript/src/rules/prefer-millisecond-control-duration-schema.ts",
+      "labeledCases": "packages/typescript/tests/rules/prefer-millisecond-control-duration-schema.test.ts",
+      "smallestFix": "Retain the existing warning and its documented review guidance."
+    }
+  ],
+  "promotions": {
+    "total": 21,
+    "python": 16,
+    "typescript": 5,
+    "fullSupportedScopes": 16,
+    "boundedNativeTiers": 5,
+    "remainingCatalogWarnings": 60
+  },
+  "admission": {
+    "failureEvidence": "Each candidate has executable maintained positive/near-miss fixtures recorded before editing source. All 2,202 existing candidate Python tests pass on the baseline.",
+    "gap": "Existing warning diagnostics identify maintained policy failures but do not block CI or enter blocking baselines. The user explicitly requests strict helpful policy enforcement.",
+    "noChangeHarm": "Weak boundary types, unchecked narrowing, aliased model state, missing validation or substitutable contracts, uncontrolled retry wall time, and duplicate test vectors remain advisory.",
+    "upstreamOwnership": "Reuse all existing custom AST detectors and catalog IDs; BasedPyright owns annotation/signature compatibility, Ruff owns blocking sleep and simple append loops, and Pydantic/Zod own runtime validation. No new detector or overlapping upstream rule.",
+    "authoritativeReferences": [
+      "https://typing.python.org/en/latest/spec/callables.html#unpack-for-keyword-arguments",
+      "https://pydantic.dev/docs/validation/latest/concepts/fields/",
+      "https://zod.dev/api?id=branded-types"
+    ],
+    "classification": "Promotion enforces the explicit user-selected strict policy; finite matches are classified against observed source predicates and remedy feasibility, not universal correctness or inferred API intent."
+  },
+  "judgePasses": [
+    {
+      "pass": 1,
+      "decision": "revise",
+      "evidence": "Independent runtime probes found legitimate framework keyword signatures, dynamic builtin replacement, descriptor-supplied ordinal bounds, None factory lifetime, shared-factory replacement and observed frame locals. Repairs narrow tiers; None default promotion withdrawn."
+    },
+    {
+      "pass": 2,
+      "decision": "revise",
+      "evidence": "Independent temporary public projects found covariant-return and contravariant-input contracts, evaluated/quoted model annotation effects, and globals provider replacement. Shared signature/annotation admission and dynamic namespace gates added."
+    },
+    {
+      "pass": 3,
+      "decision": "approve-source",
+      "evidence": "673 independently run focused tests pass. Replayed effectful Field options and canonical/nested Self now remain WARNING; ordinary identical signatures remain ERROR. No remaining concrete blocker in the finite 21-rule scope; corpus/performance/full verification and exact-head CI remain gates."
+    },
+    {
+      "pass": 4,
+      "decision": "approve-evaluation",
+      "evidence": "Independent immutable-pin, stable-full-Counter, control, duplicate, source-fingerprint, managed severity, ESLint preset and private structural-context checks pass. The normal runner baseline error was repaired and all three pairs rerun; original budgets pass. Report discloses policy-only classification, unknown API intent, fixture-only tiers and disabled corpus inline configuration."
+    },
+    {
+      "pass": 5,
+      "decision": "approve-source-metadata-evaluation-and-convergence",
+      "evidence": "Independent final audit confirms 21 promotions, five bounded WARNING tiers, nine reasoned holds, exact 30-candidate plan/catalog/preset ownership, useful manual remedies and no autofixes. Source fingerprint is unchanged; make verify passes 29,536 tests with nine existing skips and all local repository gates. Approval is scoped to this campaign; postcommit lifecycle and trusted exact-head CI remain release gates."
+    }
+  ],
+  "verification": {
+    "baselineCandidateCases": 2202,
+    "commands": [
+      "uv run --project packages/standards --frozen python -m pytest -q <candidate test modules> packages/python/tests/test_error_promotion_next_30.py packages/python/tests/test_diagnostic_precedence.py",
+      "npm --prefix packages/typescript run lint",
+      "npm --prefix packages/typescript run typecheck",
+      "npm --prefix packages/typescript test -- --run",
+      "make verify",
+      "code-standards --root . maintain rules changes --before origin/main --after HEAD"
+    ],
+    "focusedPythonCases": 2264,
+    "typescriptPresetIntegrationCases": 106,
+    "standardsSelfFixCases": 838,
+    "publicExampleIntegrationCases": 454,
+    "managedBoundedTierCases": 10,
+    "sourceFingerprintStable": true,
+    "types": "All Python package typechecks: 0 errors, 0 warnings, 0 notes; TypeScript typecheck exit 0.",
+    "fullPython": "13655 passed on the final analyzer source.",
+    "fullTypeScript": "7745 passed on the final analyzer source.",
+    "pythonDogfood": "146 native rules over 784 source files; zero blocking diagnostics.",
+    "typescriptDogfood": "119 native rules; zero diagnostics.",
+    "repository": "make verify exit 0: docs/build/format/native lint/strict types/all package suites/repository policy/shell gates pass. Existing nonblocking shell warnings remain; the private-reference scan is delegated to trusted exact-head CI.",
+    "repositoryTotals": {
+      "passed": 29536,
+      "skipped": 9,
+      "packages": {
+        "typescript": 7745,
+        "python": 13655,
+        "bootstrap": 18,
+        "contracts": 15,
+        "sql": 1428,
+        "iac": 1323,
+        "standards": 5352
+      }
+    },
+    "exactHeadCI": "required-before-admin-merge",
+    "postCommitLifecycle": "Required before PR creation: code-standards --root . maintain rules changes --before origin/main --after HEAD."
+  },
+  "privacy": "Private corpus identities, roots, source, revisions, digests and raw findings remain in owner-only scratch storage; public evidence reports aggregates only.",
+  "limitations": [
+    "No unsafe autofix and no universal precision, recall, semantic TP/FN, or API-compatibility claim.",
+    "Runtime reflection, external plugins, unresolved ancestry and ambiguous provenance stay bounded by each existing detector.",
+    "Intentional in-place, open-interface, framework, serialization and repeat-test contracts retain reasoned local exceptions.",
+    "Regex-hoisting WARNING diagnostics remain nonblocking even though the static-table catalog default is ERROR.",
+    "The native ERROR tiers preserve WARNING for runtime signatures, model construction/annotation effects, variance/Self, regex initialization and observed frame state.",
+    "Promotion changes enforcement of explicit conventions; intentional open or in-place APIs, wire equality, external primitive ID signatures and repeat-test contracts may still require a reasoned local exception."
+  ],
+  "versions": {
+    "python": "1.33.0",
+    "typescript": "16.8.0",
+    "standards": "8.52.0"
+  },
+  "selfTyping": {
+    "keywordCaptureFixes": 73,
+    "implementationShallowGuardsWidened": 2,
+    "additionalStringKeyGuardsValidated": 7,
+    "details": "Replace test catch-alls with named TypedDict/Unpack analyzer, subprocess and corpus call contracts; preserve optional-key checks and type-safe forwarding. Two filesystem wrappers declare their actual parameters. Drain polling uses its injected Event; release artifact polling accepts an explicit interval. Two obsolete argument-type ignores are removed.",
+    "keywordCaptureFixesScope": "72 standards test interfaces and one Python ratchet subprocess test stub now declare their precise accepted keywords through named TypedDict/Unpack contracts or explicit parameters.",
+    "standardsKeywordCaptureFixes": 72,
+    "pythonKeywordCaptureFixes": 1
+  },
+  "sourceFingerprint": {
+    "files": 343,
+    "sha256": "3e293b156100c81d6d517207ac8b7e68cbebbd642a9541b32e2ccd0d63d30fb8"
+  },
+  "performance": {
+    "environment": {
+      "python": "3.15.0",
+      "node": "24.21.0",
+      "uv": "0.12.24",
+      "processes": "Fresh process per frozen snapshot/batch. Three complete baseline/candidate pairs for each panel.",
+      "load": "Shared workstation with concurrent repository verification during some measurements; ordinary filesystem caches were not cleared."
+    },
+    "admissionBudget": {
+      "pythonSelectedIncrementalMedianMsPerFile": 5,
+      "normalNativePanelMedianOverheadPercent": 25,
+      "typescriptSyntaxIncrementalMedianMsPerFile": 2,
+      "typedPanelIncrementalSecondsPerContext": 0.25,
+      "incrementalPeakMemoryBytes": 134217728
+    },
+    "sourceSha256": "3e293b156100c81d6d517207ac8b7e68cbebbd642a9541b32e2ccd0d63d30fb8",
+    "measurementScope": "Difference of per-version native medians and maximum per-version peak RSS. Selected Python, TypeScript syntax and typed panels use baseline-first order; the corrected normal panel alternates order. Orchestration wall times are recorded separately.",
+    "interpretation": "Finite authoring panels under load; negative deltas do not establish an algorithmic speedup. Pair zero is the first-process observation; later pairs retain ordinary filesystem cache warmth.",
+    "invalidatedEvidence": "An earlier normal runner incorrectly pointed both modes at candidate. Those measurements were quarantined and excluded; all three normal pairs were rerun with distinct source roots.",
+    "pythonSelected": {
+      "runs": [
+        {
+          "mode": "baseline",
+          "pair": 0,
+          "files": 3976,
+          "batches": 21,
+          "wallSeconds": 144.776588,
+          "nativeSeconds": 117.00157754099928,
+          "peakBytes": 531021824,
+          "findings": 1816
+        },
+        {
+          "mode": "candidate",
+          "pair": 0,
+          "files": 3976,
+          "batches": 21,
+          "wallSeconds": 117.485267,
+          "nativeSeconds": 95.36088837543502,
+          "peakBytes": 532447232,
+          "findings": 1814
+        },
+        {
+          "mode": "baseline",
+          "pair": 1,
+          "files": 3976,
+          "batches": 21,
+          "wallSeconds": 115.311465,
+          "nativeSeconds": 93.07139591732994,
+          "peakBytes": 531546112,
+          "findings": 1816
+        },
+        {
+          "mode": "candidate",
+          "pair": 1,
+          "files": 3976,
+          "batches": 21,
+          "wallSeconds": 119.853327,
+          "nativeSeconds": 96.62493191589601,
+          "peakBytes": 531955712,
+          "findings": 1814
+        },
+        {
+          "mode": "baseline",
+          "pair": 2,
+          "files": 3976,
+          "batches": 21,
+          "wallSeconds": 129.984152,
+          "nativeSeconds": 103.42022399953566,
+          "peakBytes": 531562496,
+          "findings": 1816
+        },
+        {
+          "mode": "candidate",
+          "pair": 2,
+          "files": 3976,
+          "batches": 21,
+          "wallSeconds": 117.979079,
+          "nativeSeconds": 95.67730933288112,
+          "peakBytes": 531267584,
+          "findings": 1814
+        }
+      ],
+      "baselineNativeMedianSeconds": 103.42022399953566,
+      "candidateNativeMedianSeconds": 95.67730933288112,
+      "incrementalPeakMemoryBytes": 884736,
+      "gate": "passed",
+      "incrementalNativeMedianMsPerFile": -1.9474131455368566,
+      "files": 3976,
+      "bytes": 38444889
+    },
+    "normalNativePanel": {
+      "runs": [
+        {
+          "mode": "baseline",
+          "pair": 0,
+          "files": 128,
+          "bytes": 1727151,
+          "batches": 7,
+          "wallSeconds": 24.811309,
+          "nativeSeconds": 18.615768540883437,
+          "peakBytes": 530300928,
+          "findings": 1298
+        },
+        {
+          "mode": "candidate",
+          "pair": 0,
+          "files": 128,
+          "bytes": 1727151,
+          "batches": 7,
+          "wallSeconds": 24.681093,
+          "nativeSeconds": 18.595345000037923,
+          "peakBytes": 530202624,
+          "findings": 1297
+        },
+        {
+          "mode": "candidate",
+          "pair": 1,
+          "files": 128,
+          "bytes": 1727151,
+          "batches": 7,
+          "wallSeconds": 23.848827,
+          "nativeSeconds": 18.063541123876348,
+          "peakBytes": 530169856,
+          "findings": 1297
+        },
+        {
+          "mode": "baseline",
+          "pair": 1,
+          "files": 128,
+          "bytes": 1727151,
+          "batches": 7,
+          "wallSeconds": 24.211753,
+          "nativeSeconds": 18.500883292173967,
+          "peakBytes": 529793024,
+          "findings": 1298
+        },
+        {
+          "mode": "baseline",
+          "pair": 2,
+          "files": 128,
+          "bytes": 1727151,
+          "batches": 7,
+          "wallSeconds": 23.530623,
+          "nativeSeconds": 17.91822637594305,
+          "peakBytes": 530333696,
+          "findings": 1298
+        },
+        {
+          "mode": "candidate",
+          "pair": 2,
+          "files": 128,
+          "bytes": 1727151,
+          "batches": 7,
+          "wallSeconds": 22.959102,
+          "nativeSeconds": 17.372621374204755,
+          "peakBytes": 529547264,
+          "findings": 1297
+        }
+      ],
+      "baselineNativeMedianSeconds": 18.500883292173967,
+      "candidateNativeMedianSeconds": 18.063541123876348,
+      "incrementalPeakMemoryBytes": 0,
+      "gate": "passed",
+      "medianOverheadPercent": -2.363898854940716,
+      "selectionSeed": "error-promotion-30-normal-v1",
+      "perSnapshotMaximum": 20,
+      "registryRules": 146,
+      "registryScope": "All 146 native rules shared by the clean baseline and candidate."
+    },
+    "typescriptSyntax": {
+      "runs": [
+        {
+          "mode": "baseline",
+          "pair": 0,
+          "files": 2078,
+          "batches": 10,
+          "wallSeconds": 8.600405,
+          "nativeSeconds": 6.141175208,
+          "peakBytes": 590659584,
+          "findings": 72
+        },
+        {
+          "mode": "candidate",
+          "pair": 0,
+          "files": 2078,
+          "batches": 10,
+          "wallSeconds": 8.685076,
+          "nativeSeconds": 6.224500376,
+          "peakBytes": 632913920,
+          "findings": 72
+        },
+        {
+          "mode": "baseline",
+          "pair": 1,
+          "files": 2078,
+          "batches": 10,
+          "wallSeconds": 8.639052,
+          "nativeSeconds": 6.1632281650000005,
+          "peakBytes": 637435904,
+          "findings": 72
+        },
+        {
+          "mode": "candidate",
+          "pair": 1,
+          "files": 2078,
+          "batches": 10,
+          "wallSeconds": 8.820074,
+          "nativeSeconds": 6.337649042,
+          "peakBytes": 631947264,
+          "findings": 72
+        },
+        {
+          "mode": "baseline",
+          "pair": 2,
+          "files": 2078,
+          "batches": 10,
+          "wallSeconds": 17.762166,
+          "nativeSeconds": 13.809586084,
+          "peakBytes": 603504640,
+          "findings": 72
+        },
+        {
+          "mode": "candidate",
+          "pair": 2,
+          "files": 2078,
+          "batches": 10,
+          "wallSeconds": 12.295616,
+          "nativeSeconds": 8.948281917,
+          "peakBytes": 644481024,
+          "findings": 72
+        }
+      ],
+      "baselineNativeMedianSeconds": 6.1632281650000005,
+      "candidateNativeMedianSeconds": 6.337649042,
+      "incrementalPeakMemoryBytes": 7045120,
+      "gate": "passed",
+      "incrementalNativeMedianMsPerFile": 0.08393689942252133,
+      "files": 2078,
+      "bytes": 12563492
+    },
+    "typedTypeScript": {
+      "runs": [
+        {
+          "mode": "baseline",
+          "pair": 0,
+          "contexts": 3,
+          "files": 3,
+          "seconds": 0.40856025,
+          "peakBytes": 428523520
+        },
+        {
+          "mode": "candidate",
+          "pair": 0,
+          "contexts": 3,
+          "files": 3,
+          "seconds": 0.39439979199999997,
+          "peakBytes": 428294144
+        },
+        {
+          "mode": "baseline",
+          "pair": 1,
+          "contexts": 3,
+          "files": 3,
+          "seconds": 0.41073225,
+          "peakBytes": 426541056
+        },
+        {
+          "mode": "candidate",
+          "pair": 1,
+          "contexts": 3,
+          "files": 3,
+          "seconds": 0.37488525000000006,
+          "peakBytes": 428507136
+        },
+        {
+          "mode": "baseline",
+          "pair": 2,
+          "contexts": 3,
+          "files": 3,
+          "seconds": 0.401543166,
+          "peakBytes": 368705536
+        },
+        {
+          "mode": "candidate",
+          "pair": 2,
+          "contexts": 3,
+          "files": 3,
+          "seconds": 0.41104195799999993,
+          "peakBytes": 426229760
+        }
+      ],
+      "baselineNativeMedianSeconds": 0.40856025,
+      "candidateNativeMedianSeconds": 0.39439979199999997,
+      "incrementalPeakMemoryBytes": 0,
+      "gate": "passed",
+      "incrementalMedianSecondsPerContext": -0.004720152666666681,
+      "coverage": "Three maintained synthetic type-aware JSON equality contexts: object values, object arrays, and primitive-array near miss. No natural-corpus hit or independent semantic-coverage claim."
+    },
+    "gate": "passed-original-budgets-on-final-source"
+  },
+  "corpora": {
+    "snapshotCount": 11,
+    "pythonSnapshots": 7,
+    "typescriptSnapshots": 4,
+    "pythonFiles": 3976,
+    "pythonBytes": 38444889,
+    "typescriptFiles": 2078,
+    "typescriptBytes": 12563492,
+    "ownership": "Reuse the 11 existing locally frozen snapshots; verify every immutable pin before each run. No consumer checkout was fetched, cloned, mutated or merged. Baseline is the clean prior campaign checkout, whose analyzer sources exactly match the current base commit."
+  },
+  "corpusReview": {
+    "seed": "error-promotion-next-30-review-v1",
+    "classification": "Finite source-owner/type/shape/policy-predicate inspection and manual-remedy review, not runtime semantic TP/FP/FN labels. Public API and caller intent remain unclassified.",
+    "pythonStructuralContexts": 284,
+    "pythonSelection": "Inspect every promoted-rule match for clusters of at most 200. For SARJ477, inspect a deterministic sample of 50 extended to cover all 21 severity, owner, annotation, runtime-special and forwarding shape clusters (56 contexts).",
+    "keywordShapeReview": {
+      "findings": 566,
+      "inspectedStructuralContexts": 56,
+      "shapeClusters": 21,
+      "clusterCoverage": 21,
+      "selection": "Deterministic SHA-256 sample of 50, extended to at least one context from every severity, owner, annotation, runtime-special and forwarding shape cluster.",
+      "clusters": [
+        {
+          "severity": "error",
+          "owner": "AsyncFunctionDef",
+          "annotation": "broad-Any",
+          "runtimeSpecial": false,
+          "forwardsCapturedKeywords": false,
+          "findings": 13,
+          "inspected": 2
+        },
+        {
+          "severity": "error",
+          "owner": "AsyncFunctionDef",
+          "annotation": "broad-Any",
+          "runtimeSpecial": false,
+          "forwardsCapturedKeywords": true,
+          "findings": 5,
+          "inspected": 1
+        },
+        {
+          "severity": "error",
+          "owner": "AsyncFunctionDef",
+          "annotation": "broad-object",
+          "runtimeSpecial": false,
+          "forwardsCapturedKeywords": false,
+          "findings": 106,
+          "inspected": 7
+        },
+        {
+          "severity": "error",
+          "owner": "AsyncFunctionDef",
+          "annotation": "broad-object",
+          "runtimeSpecial": false,
+          "forwardsCapturedKeywords": true,
+          "findings": 3,
+          "inspected": 1
+        },
+        {
+          "severity": "error",
+          "owner": "AsyncFunctionDef",
+          "annotation": "unannotated",
+          "runtimeSpecial": false,
+          "forwardsCapturedKeywords": false,
+          "findings": 19,
+          "inspected": 2
+        },
+        {
+          "severity": "error",
+          "owner": "AsyncFunctionDef",
+          "annotation": "unannotated",
+          "runtimeSpecial": false,
+          "forwardsCapturedKeywords": true,
+          "findings": 19,
+          "inspected": 3
+        },
+        {
+          "severity": "error",
+          "owner": "FunctionDef",
+          "annotation": "broad-Any",
+          "runtimeSpecial": false,
+          "forwardsCapturedKeywords": false,
+          "findings": 25,
+          "inspected": 3
+        },
+        {
+          "severity": "error",
+          "owner": "FunctionDef",
+          "annotation": "broad-Any",
+          "runtimeSpecial": false,
+          "forwardsCapturedKeywords": true,
+          "findings": 21,
+          "inspected": 1
+        },
+        {
+          "severity": "error",
+          "owner": "FunctionDef",
+          "annotation": "broad-object",
+          "runtimeSpecial": false,
+          "forwardsCapturedKeywords": false,
+          "findings": 207,
+          "inspected": 18
+        },
+        {
+          "severity": "error",
+          "owner": "FunctionDef",
+          "annotation": "broad-object",
+          "runtimeSpecial": false,
+          "forwardsCapturedKeywords": true,
+          "findings": 19,
+          "inspected": 1
+        },
+        {
+          "severity": "error",
+          "owner": "FunctionDef",
+          "annotation": "unannotated",
+          "runtimeSpecial": false,
+          "forwardsCapturedKeywords": false,
+          "findings": 32,
+          "inspected": 3
+        },
+        {
+          "severity": "error",
+          "owner": "FunctionDef",
+          "annotation": "unannotated",
+          "runtimeSpecial": false,
+          "forwardsCapturedKeywords": true,
+          "findings": 31,
+          "inspected": 3
+        },
+        {
+          "severity": "warning",
+          "owner": "AsyncFunctionDef",
+          "annotation": "broad-Any",
+          "runtimeSpecial": true,
+          "forwardsCapturedKeywords": false,
+          "findings": 1,
+          "inspected": 1
+        },
+        {
+          "severity": "warning",
+          "owner": "AsyncFunctionDef",
+          "annotation": "broad-Any",
+          "runtimeSpecial": true,
+          "forwardsCapturedKeywords": true,
+          "findings": 1,
+          "inspected": 1
+        },
+        {
+          "severity": "warning",
+          "owner": "AsyncFunctionDef",
+          "annotation": "broad-object",
+          "runtimeSpecial": false,
+          "forwardsCapturedKeywords": false,
+          "findings": 1,
+          "inspected": 1
+        },
+        {
+          "severity": "warning",
+          "owner": "FunctionDef",
+          "annotation": "broad-Any",
+          "runtimeSpecial": true,
+          "forwardsCapturedKeywords": false,
+          "findings": 20,
+          "inspected": 2
+        },
+        {
+          "severity": "warning",
+          "owner": "FunctionDef",
+          "annotation": "broad-Any",
+          "runtimeSpecial": true,
+          "forwardsCapturedKeywords": true,
+          "findings": 7,
+          "inspected": 1
+        },
+        {
+          "severity": "warning",
+          "owner": "FunctionDef",
+          "annotation": "broad-object",
+          "runtimeSpecial": true,
+          "forwardsCapturedKeywords": false,
+          "findings": 20,
+          "inspected": 2
+        },
+        {
+          "severity": "warning",
+          "owner": "FunctionDef",
+          "annotation": "broad-object",
+          "runtimeSpecial": true,
+          "forwardsCapturedKeywords": true,
+          "findings": 1,
+          "inspected": 1
+        },
+        {
+          "severity": "warning",
+          "owner": "FunctionDef",
+          "annotation": "unannotated",
+          "runtimeSpecial": true,
+          "forwardsCapturedKeywords": false,
+          "findings": 6,
+          "inspected": 1
+        },
+        {
+          "severity": "warning",
+          "owner": "FunctionDef",
+          "annotation": "unannotated",
+          "runtimeSpecial": true,
+          "forwardsCapturedKeywords": true,
+          "findings": 9,
+          "inspected": 1
+        }
+      ]
+    },
+    "pythonSelectedFindings": {
+      "baseline": 1816,
+      "candidate": 1814,
+      "warningToError": 723,
+      "retainedWarning": 122,
+      "unchangedError": 969,
+      "unchangedSARJ447Control": 954,
+      "unchangedExistingSARJ076Error": 15,
+      "added": 0,
+      "removedSARJ472": 2,
+      "abstentionEvidence": "Both removed guards have visible dynamic namespace access; their provider identity is not source-proven.",
+      "repeatability": "All three pairs have exactly stable full path/location/code/severity/message Counters in each mode; no identical duplicate findings."
+    },
+    "pythonPromotedNativeCounts": [
+      {
+        "code": "SARJ039",
+        "error": 4,
+        "warning": 2
+      },
+      {
+        "code": "SARJ092",
+        "error": 13,
+        "warning": 0
+      },
+      {
+        "code": "SARJ411",
+        "error": 31,
+        "warning": 0
+      },
+      {
+        "code": "SARJ418",
+        "error": 0,
+        "warning": 1
+      },
+      {
+        "code": "SARJ459",
+        "error": 0,
+        "warning": 1
+      },
+      {
+        "code": "SARJ460",
+        "error": 4,
+        "warning": 0
+      },
+      {
+        "code": "SARJ465",
+        "error": 71,
+        "warning": 0
+      },
+      {
+        "code": "SARJ466",
+        "error": 1,
+        "warning": 1
+      },
+      {
+        "code": "SARJ472",
+        "error": 12,
+        "warning": 0
+      },
+      {
+        "code": "SARJ476",
+        "error": 1,
+        "warning": 0
+      },
+      {
+        "code": "SARJ477",
+        "error": 500,
+        "warning": 66
+      },
+      {
+        "code": "SARJ479",
+        "error": 5,
+        "warning": 0
+      },
+      {
+        "code": "SARJ481",
+        "error": 40,
+        "warning": 0
+      },
+      {
+        "code": "SARJ485",
+        "error": 17,
+        "warning": 0
+      },
+      {
+        "code": "SARJ486",
+        "error": 19,
+        "warning": 0
+      },
+      {
+        "code": "SARJ490",
+        "error": 5,
+        "warning": 0
+      }
+    ],
+    "normalNativeFindings": {
+      "baseline": 1298,
+      "candidate": 1297,
+      "warningToError": 49,
+      "added": 0,
+      "removedSARJ420": 1,
+      "unchangedSARJ447Control": 32,
+      "precedenceEvidence": "The removed generic docstring diagnostic shares the same owner as promoted SARJ092; existing ERROR precedence keeps the specific owner diagnostic.",
+      "repeatability": "All three complete pairs have stable full Counters. Four pre-existing SARJ094 multi-message spans are unchanged; zero identical duplicate findings."
+    },
+    "typescriptStructuralContexts": 72,
+    "typescriptSyntaxFindings": {
+      "baseline": 72,
+      "candidate": 72,
+      "warningToError": 67,
+      "retainedWarning": 5,
+      "added": 0,
+      "removed": 0,
+      "repeatability": "All three pairs have exactly stable full path/location/rule/severity/message Counters; no duplicate findings.",
+      "nominalIdError": 52,
+      "exportedClassInterfaceError": 15,
+      "durationSchemaWarning": 5,
+      "configuration": "The native corpus runner sets allowInlineConfig:false to measure AST-rule findings; consumer inline suppressions and per-file configuration are excluded from this panel. Real exact ESLint suppression behavior is exercised separately in native preset tests."
+    },
+    "fixtureOnlyPromotions": [
+      "python:require-pydantic-ordinal-lower-bound",
+      "python:shared-mutable-pydantic-factory",
+      "eslint:require-explicit-service-contract",
+      "eslint:no-json-stringify-object-equality",
+      "eslint:no-duplicate-test-case"
+    ],
+    "fixtureOnlyScope": "These five promoted tiers have no natural ERROR hit in the selected panels. Python ERROR tiers have maintained positive/near-miss, adapter, CLI/blocking-baseline and exact-local-exception fixtures. The three TypeScript rules have native ESLint positive/near-miss, recommended/strict preset severity and exact-exception coverage; no per-rule TypeScript CLI/baseline or corpus-precision claim."
+  },
+  "convergence": {
+    "passes": 30,
+    "promoted": 21,
+    "held": 9,
+    "criterion": "All 30 candidates received an explicit source/remedy/compatibility decision. The nine retained warnings require additional lifecycle, purity, public-contract, plugin or validation-effect evidence; no further unreviewed promotion is admitted in this campaign.",
+    "warningDefaultsBefore": 81,
+    "warningDefaultsAfter": 60
+  }
+}

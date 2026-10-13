@@ -95,7 +95,7 @@ def test_reports_field_only_schema_doubles(source: str) -> None:
     findings = _check(source)
     assert len(findings) == 1
     assert findings[0].code == "SARJ479"
-    assert findings[0].severity is Severity.WARNING
+    assert findings[0].severity is Severity.ERROR
 
 
 @pytest.mark.parametrize(

@@ -99,7 +99,7 @@ def _project_declaration(path: Path) -> str | None:
     return declaration if isinstance(declaration, str) else None
 
 
-def _is_toml_table(value: object) -> TypeGuard[dict[str, object]]:
+def _is_toml_table(value: object) -> TypeGuard[dict[object, object]]:
     return isinstance(value, dict)
 
 

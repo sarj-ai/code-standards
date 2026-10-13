@@ -11,6 +11,7 @@ from sarj_standards.cli.main import build_app, main
 from sarj_standards.libs.adoption.manifest import as_table, list_field
 from sarj_standards.libs.repository import rule_lifecycle
 from sarj_standards.libs.rules import RuleEngine, RuleId, RuleSelector
+from sarj_standards.libs.typed_containers import is_object_mapping
 
 
 if TYPE_CHECKING:
@@ -41,7 +42,7 @@ def _report(output: str) -> dict[str, object]:
 
 
 def _is_object(value: object) -> TypeGuard[dict[str, object]]:
-    return isinstance(value, dict)
+    return is_object_mapping(value) and all(isinstance(key, str) for key in value)
 
 
 @pytest.mark.parametrize(

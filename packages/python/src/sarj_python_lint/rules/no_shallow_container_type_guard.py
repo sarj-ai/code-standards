@@ -43,7 +43,7 @@ class NoShallowContainerTypeGuard(Rule):
     id = "no-shallow-container-type-guard"
     code = "SARJ472"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        default_level=Severity.WARNING,
+        default_level=Severity.ERROR,
         summary="Do not claim typed container contents from a container-only type guard.",
         rationale="TypeGuard and TypeIs let callers trust their declared narrowing. Checking only dict, list, or set does not validate keys, values, or elements, so callers can perform operations that fail at runtime.",
         remediation="Use object for unchecked container slots, or validate their contents when the narrower contract is required. Keep constrained input types that already prove the contents.",
@@ -56,6 +56,7 @@ class NoShallowContainerTypeGuard(Rule):
             "Annotation imports include TYPE_CHECKING imports. Runtime imports use conservative file-wide shadow facts, so unrelated local rebinding can cause false negatives. Wildcard imports, explicit writes to relevant builtin or typing attributes, and exception, pattern or walrus bindings that shadow relevant names or imported aliases exclude the file; dynamic namespace mutation is not inferred.",
             "Relative or conditional imports that replace relevant builtin or typing names exclude the file unless the import proves the same canonical symbol. Unrelated relative imports remain in scope.",
             "No autofix: widening the return contract can require caller changes, while adding content validation changes behavior and cost.",
+            "Visible __builtins__ namespace access abstains because mapping-backed replacement can change the meaning of builtin checks.",
         ),
         examples=(
             RuleExample(
@@ -98,7 +99,7 @@ class NoShallowContainerTypeGuard(Rule):
                     col=statement.col_offset + 1,
                     code=self.code,
                     message="Container-only isinstance check does not validate the declared container contents; use object for unchecked slots or validate the contents required by the return type.",
-                    severity=Severity.WARNING,
+                    severity=Severity.ERROR,
                 )
             )
         return findings
@@ -176,6 +177,8 @@ def _builtin_symbol(node: ast.expr | None, imports: ImportIndex) -> str | None:
 
 
 def _ambiguous_symbols(context: PythonFileContext) -> bool:
+    if context.dynamic_namespace or any(node.id == "__builtins__" for node in context.nodes(ast.Name)):
+        return True
     sensitive_names = _BUILTINS | {
         name
         for name, target in context.module_imports.bindings.items()

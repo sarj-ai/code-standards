@@ -3,10 +3,15 @@ from __future__ import annotations
 from pathlib import Path
 import shutil
 import subprocess
+from typing import TYPE_CHECKING, Unpack
 
 import pytest
 
 import sarj_standards.cli.main as cli
+
+
+if TYPE_CHECKING:
+    from tests.call_contracts import SubprocessCallOptions, SubprocessOptions
 
 
 def _find_uvx(_name: str) -> str:
@@ -22,8 +27,8 @@ def test_update_to_bootstraps_the_exact_requested_version(
     monkeypatch.delenv("SARJ_STANDARDS_BOOTSTRAPPED", raising=False)
     monkeypatch.setattr(shutil, "which", _find_uvx)  # sarj-noqa: SARJ445 -- intercepts updater process execution
 
-    def run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
-        observed.append((command, kwargs))
+    def run(command: list[str], **kwargs: Unpack[SubprocessOptions]) -> subprocess.CompletedProcess[str]:
+        observed.append((command, dict(kwargs)))
         return subprocess.CompletedProcess(command, 0, "/resolved/bin/python\n")
 
     monkeypatch.setattr(subprocess, "run", run)  # sarj-noqa: SARJ445 -- intercepts updater process execution
@@ -52,7 +57,8 @@ def test_update_timeout_identifies_the_phase(
 ) -> None:
     calls: list[list[str]] = []
 
-    def run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+    def run(command: list[str], **kwargs: Unpack[SubprocessOptions]) -> subprocess.CompletedProcess[str]:
+        assert "timeout" in kwargs
         calls.append(command)
         if len(calls) == 1 and phase == "execution":
             return subprocess.CompletedProcess(command, 0, "/resolved/bin/python\n")
@@ -80,7 +86,8 @@ def test_update_allows_successful_execution_longer_than_resolution_budget(
 ) -> None:
     calls: list[list[str]] = []
 
-    def run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+    def run(command: list[str], **kwargs: Unpack[SubprocessOptions]) -> subprocess.CompletedProcess[str]:
+        assert "timeout" in kwargs
         calls.append(command)
         if len(calls) == 1:
             return subprocess.CompletedProcess(command, 0, "/resolved/bin/python\n")
@@ -105,7 +112,7 @@ def test_update_does_not_execute_after_failed_resolution(
 ) -> None:
     calls: list[list[str]] = []
 
-    def run(command: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+    def run(command: list[str], **_kwargs: Unpack[SubprocessOptions]) -> subprocess.CompletedProcess[str]:
         calls.append(command)
         return subprocess.CompletedProcess(command, exit_code, "")
 
@@ -123,7 +130,7 @@ def test_update_rejects_invalid_resolved_interpreter(
 ) -> None:
     calls: list[list[str]] = []
 
-    def run(command: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+    def run(command: list[str], **_kwargs: Unpack[SubprocessOptions]) -> subprocess.CompletedProcess[str]:
         calls.append(command)
         return subprocess.CompletedProcess(command, 0, resolved_path)
 
@@ -142,7 +149,7 @@ def test_update_preserves_resolved_execution_failure(
 ) -> None:
     calls: list[list[str]] = []
 
-    def run(command: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+    def run(command: list[str], **_kwargs: Unpack[SubprocessOptions]) -> subprocess.CompletedProcess[str]:
         calls.append(command)
         if len(calls) == 1:
             return subprocess.CompletedProcess(command, 0, "/resolved/bin/python\n")
@@ -166,7 +173,9 @@ def test_no_cache_update_keeps_interpreter_until_execution_and_cleans_up(
     cache_paths: list[Path] = []
     persistent_cache = tmp_path / "persistent-cache"
 
-    def run(command: list[str], *, env: dict[str, str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+    def run(
+        command: list[str], *, env: dict[str, str], **_kwargs: Unpack[SubprocessCallOptions]
+    ) -> subprocess.CompletedProcess[str]:
         calls.append(command)
         if len(calls) == 1:
             assert "UV_NO_CACHE" not in env
@@ -199,7 +208,9 @@ def test_update_preserves_disabled_or_invalid_no_cache_settings(
 ) -> None:
     calls: list[list[str]] = []
 
-    def run(command: list[str], *, env: dict[str, str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+    def run(
+        command: list[str], *, env: dict[str, str], **_kwargs: Unpack[SubprocessCallOptions]
+    ) -> subprocess.CompletedProcess[str]:
         calls.append(command)
         assert env["UV_NO_CACHE"] == no_cache
         assert env["UV_CACHE_DIR"] == str(tmp_path)

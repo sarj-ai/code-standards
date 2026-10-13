@@ -245,7 +245,7 @@ def test_collapses_multiple_restatements_to_one_warning() -> None:
     findings = NoTypedDocSections().check(Path("app.py"), source)
 
     assert len(findings) == 1
-    assert findings[0].severity is Severity.WARNING
+    assert findings[0].severity is Severity.ERROR
     assert "3 type label(s)" in findings[0].message
 
 

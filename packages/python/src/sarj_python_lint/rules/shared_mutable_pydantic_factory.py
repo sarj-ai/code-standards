@@ -18,9 +18,12 @@ from sarj_python_lint.rule_base import (
     is_suppressed,
 )
 from sarj_python_lint.rules._imports import ImportIndex
+from sarj_python_lint.rules._inert_model_annotation import inert_model_annotation
 
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from sarj_python_lint._file_context import PythonFileContext
 
 
@@ -39,7 +42,7 @@ class SharedMutablePydanticFactory(Rule):
     id = "shared-mutable-pydantic-factory"
     code = "SARJ459"
     documentation = RuleDocumentation(
-        default_level=Severity.WARNING,
+        default_level=Severity.ERROR,
         summary="Pydantic default factories should not return a captured mutable singleton.",
         rationale=(
             "A default factory returning an existing mutable object gives different models the same state. "
@@ -55,6 +58,7 @@ class SharedMutablePydanticFactory(Rule):
             "Rebound names, shadowed imports, inherited or configured models, unknown services, nested scopes, and generated files are excluded.",
             "Fields enabling default validation or supplying unknown keyword options are excluded because validation may copy or transform the factory result.",
             "Factories producing new values, explicit copies, or values derived from validated data are excluded; intentional sharing needs a local suppression.",
+            "ERROR requires an inert body of plain field declarations, literal values, docstrings and pass statements. Descriptors, computed members and other class-creation effects retain WARNING because they can replace the source factory.",
         ),
         examples=(
             RuleExample(
@@ -99,6 +103,7 @@ class SharedMutablePydanticFactory(Rule):
         models = {
             model for model in tree.body if isinstance(model, ast.ClassDef) and _unconfigured_model(model, imports)
         }
+        inert_models = {model for model in models if _inert_factory_model(model, imports)}
         diagnostics: list[Diagnostic] = []
         for field in context.nodes(ast.AnnAssign):
             if context.parents.get(field) not in models:
@@ -112,16 +117,30 @@ class SharedMutablePydanticFactory(Rule):
             if is_suppressed(context.source_lines, field.lineno, self.code):
                 continue
             diagnostics.append(
-                Diagnostic(
-                    path=context.path,
-                    line=field.lineno,
-                    col=field.col_offset + 1,
+                _factory_diagnostic(
+                    context.path,
+                    field,
                     code=self.code,
-                    message=_MESSAGE,
-                    severity=Severity.WARNING,
+                    inert=context.parents[field] in inert_models,
                 )
             )
         return diagnostics
+
+
+def _factory_diagnostic(path: Path, field: ast.AnnAssign, *, code: str, inert: bool) -> Diagnostic:
+    message = (
+        _MESSAGE
+        if inert
+        else "The source default factory returns a captured mutable value; review descriptor and class-creation effects before choosing a fresh default."
+    )
+    return Diagnostic(
+        path=path,
+        line=field.lineno,
+        col=field.col_offset + 1,
+        code=code,
+        message=message,
+        severity=Severity.ERROR if inert else Severity.WARNING,
+    )
 
 
 def _stable_bindings(tree: ast.Module) -> dict[str, ast.AST]:
@@ -178,6 +197,47 @@ def _unconfigured_model(node: ast.ClassDef, imports: ImportIndex) -> bool:
         and not node.keywords
         and not any(_customizes_model(statement) for statement in node.body)
     )
+
+
+def _inert_factory_model(node: ast.AST, imports: ImportIndex) -> bool:
+    if not isinstance(node, ast.ClassDef) or node.type_params:
+        return False
+    for statement in node.body:
+        match statement:
+            case ast.Pass() | ast.Expr(value=ast.Constant(value=str())):
+                continue
+            case ast.AnnAssign(target=ast.Name(), annotation=annotation, value=value):
+                if not inert_model_annotation(annotation, imports):
+                    return False
+                if value is None or isinstance(value, ast.Constant):
+                    continue
+                if (
+                    isinstance(value, ast.Call)
+                    and imports.resolves(value.func, sources=_FIELD_SOURCES, symbol="Field")
+                    and _inert_field_arguments(value)
+                ):
+                    continue
+                return False
+            case _:
+                return False
+    return True
+
+
+def _inert_field_arguments(call: ast.Call) -> bool:
+    if not all(isinstance(argument, ast.Constant) for argument in call.args):
+        return False
+    for keyword in call.keywords:
+        if keyword.arg is None:
+            return False
+        if keyword.arg == "default_factory":
+            if isinstance(keyword.value, ast.Name):
+                continue
+            if isinstance(keyword.value, ast.Lambda) and _no_arguments(keyword.value.args):
+                continue
+            return False
+        if not isinstance(keyword.value, ast.Constant):
+            return False
+    return True
 
 
 def _field_factory(node: ast.stmt, imports: ImportIndex) -> ast.expr | None:

@@ -39,7 +39,7 @@ class RequireExplicitServiceContract(ProjectRule):
     id = "require-explicit-service-contract"
     code = "SARJ465"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        default_level=Severity.WARNING,
+        default_level=Severity.ERROR,
         summary="Require an explicit contract for a service that invokes a retained collaborator.",
         rationale=(
             "A one-operation service can orchestrate other services without declaring "
@@ -56,7 +56,7 @@ class RequireExplicitServiceContract(ProjectRule):
             "Resolvable inherited ABC and Protocol operations, including private and generic contracts, satisfy this policy; unresolved ancestry is not treated as a missing contract.",
             "Generated code, tests, data values, abstract declarations, descriptors, static/class helpers, and unknown rewriting decorators are excluded.",
             "The bounded analysis follows directly retained constructor parameters and private instance helpers; dynamic field aliases and structurally implemented Protocols declared only by external consumers are not inferred.",
-            "Method signatures are checked by the type checker. The rule is an architectural warning and has no automatic rewrite.",
+            "Method signatures are checked by the type checker. This explicit-contract policy has no automatic rewrite; preserve required framework boundaries with a reasoned exact-code exception.",
         ),
         examples=(
             RuleExample(
@@ -154,7 +154,7 @@ class RequireExplicitServiceContract(ProjectRule):
                     line=node.lineno,
                     col=node.col_offset + 1,
                     code=self.code,
-                    severity=Severity.WARNING,
+                    severity=Severity.ERROR,
                     message=(
                         f"`{node.name}` invokes a retained collaborator from "
                         f"{', '.join(sorted(operations))} without a declared ABC or Protocol covering its service operations."

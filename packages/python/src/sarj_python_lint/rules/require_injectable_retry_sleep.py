@@ -42,7 +42,7 @@ class RequireInjectableRetrySleep(Rule):
     id = "require-injectable-retry-sleep"
     code = "SARJ486"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        default_level=Severity.WARNING,
+        default_level=Severity.ERROR,
         summary="Pass an injectable sleep to a tenacity retry policy that waits between attempts.",
         rationale=(
             "A tenacity policy built with a backoff wait and no sleep argument sleeps on the wall clock. Every test "
@@ -119,7 +119,7 @@ class RequireInjectableRetrySleep(Rule):
                 col=call.col_offset + 1,
                 code=self.code,
                 message=_MESSAGE,
-                severity=Severity.WARNING,
+                severity=Severity.ERROR,
             )
             for call in context.nodes(ast.Call)
             if imports.resolved_qualified_name(call.func) in _POLICIES
