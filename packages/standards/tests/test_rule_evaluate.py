@@ -12,6 +12,7 @@ from sarj_standards.libs.adoption.manifest import MANIFEST_NAME, Manifest
 from sarj_standards.libs.corpus import CorpusKind, CorpusSource, snapshot
 from sarj_standards.libs.linting import policy as lint_policy
 from sarj_standards.libs.rules import RuleSelector
+from sarj_standards.libs.typed_containers import is_object_mapping
 
 
 if TYPE_CHECKING:
@@ -70,7 +71,7 @@ def _evaluate(root: Path, scope: str, capsys: pytest.CaptureFixture[str]) -> _Ev
 
 
 def _diagnostic(value: object) -> TypeGuard[dict[str, object]]:
-    return isinstance(value, dict)
+    return is_object_mapping(value) and all(isinstance(key, str) for key in value)
 
 
 def test_corpus_evaluation_runs_only_the_selected_rule(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

@@ -7,6 +7,7 @@ from pathlib import Path
 import re
 import stat
 import subprocess
+from typing import TYPE_CHECKING, Unpack
 
 import pytest
 
@@ -14,7 +15,11 @@ import sarj_standards.cli.main as cli
 from sarj_standards.libs.repository import comment_corpus, hooks, ledger, repository, rule_maintenance
 
 
-def _policy(**changes: object) -> repository.RepositoryPolicy:
+if TYPE_CHECKING:
+    from tests.call_contracts import RepositoryPolicyOptions, SubprocessOptions
+
+
+def _policy(**changes: Unpack[RepositoryPolicyOptions]) -> repository.RepositoryPolicy:
     values: dict[str, object] = {
         "distinctive": ("secret-repo",),
         "contextual": ("quartzscope",),
@@ -1018,7 +1023,7 @@ def test_hook_install_resolves_environment_binaries(monkeypatch: pytest.MonkeyPa
         assert path is not None
         return f"/bin/{name}"
 
-    def run(argv: list[str], **_kwargs: object) -> None:
+    def run(argv: list[str], **_kwargs: Unpack[SubprocessOptions]) -> None:
         calls.append(argv)
 
     def git(_root: Path, *_args: str) -> str:
@@ -1116,7 +1121,7 @@ def test_hook_install_rolls_back_every_hook_when_validation_fails(
 
     calls = 0
 
-    def run(argv: list[str], **_kwargs: object) -> None:
+    def run(argv: list[str], **_kwargs: Unpack[SubprocessOptions]) -> None:
         nonlocal calls
         calls += 1
         if calls == 1:
@@ -1188,7 +1193,7 @@ def test_hook_install_refuses_linked_durable_binary_without_overwriting_its_targ
         durable.hardlink_to(victim)
     (tmp_path / "lefthook.yml").write_text("pre-commit: {}\n", encoding="utf-8")
 
-    def run(argv: list[str], **_kwargs: object) -> None:
+    def run(argv: list[str], **_kwargs: Unpack[SubprocessOptions]) -> None:
         calls.append(argv)
 
     def binary(_name: str) -> Path:
@@ -1239,7 +1244,7 @@ def test_native_hook_binary_matches_the_runtime_platform(
         assert path is not None
         return f"/bin/{name}"
 
-    def run(_argv: list[str], **_kwargs: object) -> None:
+    def run(_argv: list[str], **_kwargs: Unpack[SubprocessOptions]) -> None:
         return None
 
     def git(_root: Path, *_args: str) -> str:

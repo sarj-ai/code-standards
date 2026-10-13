@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import subprocess
 import sys
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Unpack
 
 import pytest
 
@@ -19,6 +19,13 @@ if TYPE_CHECKING:
 
     from sarj_standards.libs.linting.policy import Policy
     from sarj_standards.libs.linting.runner import GroupedPaths
+    from tests.call_contracts import (
+        CheckOptions,
+        ExternalAnalyzeOptions,
+        NativeAnalyzeOptions,
+        SubprocessCallOptions,
+        SubprocessOptions,
+    )
 
 
 def test_package_root_exposes_the_small_consumer_facade() -> None:
@@ -94,11 +101,13 @@ def test_canonical_analysis_routes_the_repository_only_once(
         routed.append(grouped)
         return grouped
 
-    def native(_paths: Sequence[str], **kwargs: object) -> api.AnalysisReport:
+    def native(_paths: Sequence[str], **kwargs: Unpack[NativeAnalyzeOptions]) -> api.AnalysisReport:
+        assert "grouped" in kwargs
         assert kwargs["grouped"] is routed[0]
         return api.AnalysisReport(tmp_path, api.Completion.COMPLETE, api.Conclusion.PASSED, ())
 
-    def external(_paths: Sequence[str], **kwargs: object) -> tuple[api.ToolReport, ...]:
+    def external(_paths: Sequence[str], **kwargs: Unpack[ExternalAnalyzeOptions]) -> tuple[api.ToolReport, ...]:
+        assert "grouped" in kwargs
         assert kwargs["grouped"] is routed[0]
         return ()
 
@@ -118,10 +127,10 @@ def test_external_router_can_intentionally_ignore_managed_eslint_config(
     managed_config = tmp_path / "eslint.strict.mjs"
     managed_config.write_text("export default [];\n", encoding="utf-8")
 
-    def native(_paths: Sequence[str], **_kwargs: object) -> api.AnalysisReport:
+    def native(_paths: Sequence[str], **_kwargs: Unpack[NativeAnalyzeOptions]) -> api.AnalysisReport:
         return api.AnalysisReport(tmp_path, api.Completion.COMPLETE, api.Conclusion.PASSED, ())
 
-    def external(_paths: Sequence[str], **_kwargs: object) -> tuple[api.ToolReport, ...]:
+    def external(_paths: Sequence[str], **_kwargs: Unpack[ExternalAnalyzeOptions]) -> tuple[api.ToolReport, ...]:
         return ()
 
     monkeypatch.setattr(api, "analyze_paths", native)  # sarj-noqa: SARJ445 -- intercepts API orchestration
@@ -140,10 +149,12 @@ def test_explicit_typescript_ci_scope_still_includes_react_doctor(
     source.write_text("export const Component = () => <button />;\n", encoding="utf-8")
     included: list[tuple[bool, bool]] = []
 
-    def native(_paths: Sequence[str], **_kwargs: object) -> api.AnalysisReport:
+    def native(_paths: Sequence[str], **_kwargs: Unpack[NativeAnalyzeOptions]) -> api.AnalysisReport:
         return api.AnalysisReport(tmp_path, api.Completion.COMPLETE, api.Conclusion.PASSED, ())
 
-    def external(_paths: Sequence[str], **kwargs: object) -> tuple[api.ToolReport, ...]:
+    def external(_paths: Sequence[str], **kwargs: Unpack[ExternalAnalyzeOptions]) -> tuple[api.ToolReport, ...]:
+        assert "include_react_doctor" in kwargs
+        assert "react_doctor_full_scan" in kwargs
         included.append(
             (
                 kwargs["include_react_doctor"] is True,
@@ -165,10 +176,11 @@ def test_repository_wide_analysis_uses_full_react_doctor_scope(monkeypatch: pyte
     source.write_text("export const Component = () => <button />;\n", encoding="utf-8")
     full_scan: list[bool] = []
 
-    def native(_paths: Sequence[str], **_kwargs: object) -> api.AnalysisReport:
+    def native(_paths: Sequence[str], **_kwargs: Unpack[NativeAnalyzeOptions]) -> api.AnalysisReport:
         return api.AnalysisReport(tmp_path, api.Completion.COMPLETE, api.Conclusion.PASSED, ())
 
-    def external(_paths: Sequence[str], **kwargs: object) -> tuple[api.ToolReport, ...]:
+    def external(_paths: Sequence[str], **kwargs: Unpack[ExternalAnalyzeOptions]) -> tuple[api.ToolReport, ...]:
+        assert "react_doctor_full_scan" in kwargs
         full_scan.append(kwargs["react_doctor_full_scan"] is True)
         return (api.ToolReport("eslint", api.Completion.COMPLETE),)
 
@@ -196,10 +208,11 @@ def test_default_analysis_without_verification_paths_uses_full_react_doctor_scop
     )
     full_scan: list[bool] = []
 
-    def native(_paths: Sequence[str], **_kwargs: object) -> api.AnalysisReport:
+    def native(_paths: Sequence[str], **_kwargs: Unpack[NativeAnalyzeOptions]) -> api.AnalysisReport:
         return api.AnalysisReport(tmp_path, api.Completion.COMPLETE, api.Conclusion.PASSED, ())
 
-    def external(_paths: Sequence[str], **kwargs: object) -> tuple[api.ToolReport, ...]:
+    def external(_paths: Sequence[str], **kwargs: Unpack[ExternalAnalyzeOptions]) -> tuple[api.ToolReport, ...]:
+        assert "react_doctor_full_scan" in kwargs
         full_scan.append(kwargs["react_doctor_full_scan"] is True)
         return (api.ToolReport("eslint", api.Completion.COMPLETE),)
 
@@ -216,10 +229,11 @@ def test_explicit_repository_root_uses_full_react_doctor_scope(monkeypatch: pyte
     source.write_text("export const Component = () => <button />;\n", encoding="utf-8")
     full_scan: list[bool] = []
 
-    def native(_paths: Sequence[str], **_kwargs: object) -> api.AnalysisReport:
+    def native(_paths: Sequence[str], **_kwargs: Unpack[NativeAnalyzeOptions]) -> api.AnalysisReport:
         return api.AnalysisReport(tmp_path, api.Completion.COMPLETE, api.Conclusion.PASSED, ())
 
-    def external(_paths: Sequence[str], **kwargs: object) -> tuple[api.ToolReport, ...]:
+    def external(_paths: Sequence[str], **kwargs: Unpack[ExternalAnalyzeOptions]) -> tuple[api.ToolReport, ...]:
+        assert "react_doctor_full_scan" in kwargs
         full_scan.append(kwargs["react_doctor_full_scan"] is True)
         return (api.ToolReport("eslint", api.Completion.COMPLETE),)
 
@@ -247,10 +261,11 @@ def test_default_analysis_respects_scoped_verification_paths(monkeypatch: pytest
     )
     full_scan: list[bool] = []
 
-    def native(_paths: Sequence[str], **_kwargs: object) -> api.AnalysisReport:
+    def native(_paths: Sequence[str], **_kwargs: Unpack[NativeAnalyzeOptions]) -> api.AnalysisReport:
         return api.AnalysisReport(tmp_path, api.Completion.COMPLETE, api.Conclusion.PASSED, ())
 
-    def external(_paths: Sequence[str], **kwargs: object) -> tuple[api.ToolReport, ...]:
+    def external(_paths: Sequence[str], **kwargs: Unpack[ExternalAnalyzeOptions]) -> tuple[api.ToolReport, ...]:
+        assert "react_doctor_full_scan" in kwargs
         full_scan.append(kwargs["react_doctor_full_scan"] is True)
         return (api.ToolReport("eslint", api.Completion.COMPLETE),)
 
@@ -371,7 +386,7 @@ def test_standards_facade_enforces_selected_application_dependency_policy(
     package = tmp_path / "package.json"
     package.write_text('{"dependencies":{"moment":"1"}}\n', encoding="utf-8")
 
-    def clean_check(_paths: Sequence[str], **_kwargs: object) -> int:
+    def clean_check(_paths: Sequence[str], **_kwargs: Unpack[CheckOptions]) -> int:
         return 0
 
     monkeypatch.setattr(api, "check", clean_check)  # sarj-noqa: SARJ445 -- intercepts API orchestration
@@ -390,7 +405,7 @@ def test_standards_facade_runs_eslint_for_selected_typescript(
     source.write_text("export const value = 1;\n", encoding="utf-8")
     command = Command("ESLint", ("true",), tmp_path)
 
-    def clean_check(_paths: Sequence[str], **_kwargs: object) -> int:
+    def clean_check(_paths: Sequence[str], **_kwargs: Unpack[CheckOptions]) -> int:
         return 0
 
     def selected(_root: Path, _paths: Sequence[str]) -> list[Command]:
@@ -461,7 +476,7 @@ def test_standards_facade_init_dry_run_reports_invalid_plan(tmp_path: Path) -> N
 def test_standards_facade_update_targets_latest_by_default(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     commands: list[list[str]] = []
 
-    def run(command: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+    def run(command: list[str], **_kwargs: Unpack[SubprocessOptions]) -> subprocess.CompletedProcess[str]:
         commands.append(command)
         return subprocess.CompletedProcess(command, 0, "upgraded", "")
 
@@ -497,7 +512,7 @@ def test_standards_facade_update_targets_latest_by_default(tmp_path: Path, monke
 def test_standards_facade_update_exposes_exact_offline_target(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     commands: list[list[str]] = []
 
-    def run(command: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+    def run(command: list[str], **_kwargs: Unpack[SubprocessOptions]) -> subprocess.CompletedProcess[str]:
         commands.append(command)
         return subprocess.CompletedProcess(command, 0, "upgraded", "")
 
@@ -547,8 +562,10 @@ def test_latest_update_exit_one_is_truthful_and_has_no_parent_timeout(
     calls: list[dict[str, object]] = []
     environments: list[dict[str, str]] = []
 
-    def run(command: list[str], *, env: dict[str, str], **kwargs: object) -> subprocess.CompletedProcess[str]:
-        calls.append(kwargs)
+    def run(
+        command: list[str], *, env: dict[str, str], **kwargs: Unpack[SubprocessCallOptions]
+    ) -> subprocess.CompletedProcess[str]:
+        calls.append(dict(kwargs))
         environments.append(env)
         return subprocess.CompletedProcess(command, 1, "", "postflight drift")
 

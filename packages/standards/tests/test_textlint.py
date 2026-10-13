@@ -2407,11 +2407,13 @@ def test_manifest_is_read_once_per_textlint_run(monkeypatch: pytest.MonkeyPatch,
     real_read_text = Path.read_text
     manifest_reads = 0
 
-    def recording_read_text(path: Path, *args: object, **kwargs: object) -> str:
+    def recording_read_text(
+        path: Path, encoding: str | None = None, errors: str | None = None, *, newline: str | None = None
+    ) -> str:
         nonlocal manifest_reads
         if path == manifest:
             manifest_reads += 1
-        return real_read_text(path, *args, **kwargs)  # type: ignore[arg-type]
+        return real_read_text(path, encoding=encoding, errors=errors, newline=newline)
 
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- global file reads are counted to verify cache behavior.
         Path, "read_text", recording_read_text

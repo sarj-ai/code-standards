@@ -10,6 +10,7 @@ from typer.main import get_command
 
 from sarj_standards._meta import CONFIGS_DIR, __version__
 from sarj_standards.libs.json_boundary import parse_json
+from sarj_standards.libs.typed_containers import is_object_mapping
 
 
 if TYPE_CHECKING:
@@ -114,7 +115,7 @@ def validate(value: object) -> CliReference:
 
 
 def _is_object(value: object) -> TypeGuard[dict[str, object]]:
-    return isinstance(value, dict)
+    return is_object_mapping(value) and all(isinstance(key, str) for key in value)
 
 
 def _is_object_list(value: object) -> TypeGuard[list[object]]:

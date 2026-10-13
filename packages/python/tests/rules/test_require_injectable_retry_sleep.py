@@ -33,7 +33,7 @@ def test_reports_one_warning_at_the_policy_call() -> None:
     findings = _check(_policy("stop=stop_after_attempt(4), wait=wait_exponential(multiplier=2), reraise=True"))
 
     assert [(item.code, item.line, item.col, item.severity) for item in findings] == [
-        ("SARJ486", 3, 10, Severity.WARNING)
+        ("SARJ486", 3, 10, Severity.ERROR)
     ]
 
 

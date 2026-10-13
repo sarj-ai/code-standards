@@ -20,7 +20,7 @@ const OPERATIONAL_ROLES: ReadonlySet<string> = new Set([
 const MAX_ALIAS_DEPTH = 16;
 
 export const PREFER_NOMINAL_ID_TYPES_DOCUMENTATION = {
-  defaultLevel: "warning",
+  defaultLevel: "error",
   summary: "Distinguish identifier roles sharing primitive types at callable boundaries.",
   rationale: "Two identifier roles represented by the same primitive accept each other's values, so swapped arguments survive type checking. Transparent aliases do not prevent this.",
   remediation: "Introduce distinct branded identifier types at a validated domain boundary and use them in the callable contract. Keep wire representations primitive until validation; suppress a required external signature locally with a reason.",

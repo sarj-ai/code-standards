@@ -582,10 +582,10 @@ def test_regex_bound_but_never_used_is_ignored():
     assert _check(src) == []
 
 
-def test_diagnostic_is_advisory() -> None:
+def test_static_collection_diagnostic_is_error() -> None:
     diagnostic = _check(_fn(f"allowed = {EIGHT_LIST}\nreturn payload in allowed"))[0]
 
-    assert diagnostic.severity.value == "warning"
+    assert diagnostic.severity.value == "error"
 
 
 @pytest.mark.parametrize(

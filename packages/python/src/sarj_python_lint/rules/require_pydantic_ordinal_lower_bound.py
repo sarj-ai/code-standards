@@ -19,6 +19,7 @@ from sarj_python_lint.rule_base import (
     Severity,
     is_suppressed,
 )
+from sarj_python_lint.rules._inert_model_annotation import inert_model_annotation
 from sarj_python_lint.rules._paths import is_test_path, is_test_support_path
 
 
@@ -96,7 +97,7 @@ class RequirePydanticOrdinalLowerBound(Rule):
     id = "require-pydantic-ordinal-lower-bound"
     code = "SARJ418"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        default_level=Severity.WARNING,
+        default_level=Severity.ERROR,
         summary="A Pydantic ordinal field maps its first position to N but accepts smaller integers.",
         rationale=(
             "An unqualified `N for the first ...` mapping defines the origin of an ordinal field; matching schema "
@@ -113,6 +114,7 @@ class RequirePydanticOrdinalLowerBound(Rule):
             "Descriptions that mention a smaller numeric value or explicit sentinel and exception language are skipped because the ordinal origin may not be the field minimum.",
             "Import-proven field or model validators cause conservative abstention; their bodies are not interpreted.",
             "Unknown named aliases, indirect model subclasses, nested container constraints, tests, and generated files are out of scope.",
+            "ERROR requires one direct BaseModel base, no class decorators or keywords, and an inert field/docstring/pass body. Descriptors, methods, configuration, mixed bases and computed field values retain WARNING because class-creation effects can change validation.",
         ),
         examples=(
             RuleExample(
@@ -191,12 +193,50 @@ class RequirePydanticOrdinalLowerBound(Rule):
         source_lines = context.source_lines
         diagnostics: list[Diagnostic] = []
         for cls in (node for node in tree.body if isinstance(node, ast.ClassDef) and _is_model(node, imports)):
-            diagnostics.extend(_ordinal_class_findings(cls, imports, aliases, path, source_lines, code=self.code))
+            diagnostics.extend(
+                _ordinal_class_findings(
+                    cls,
+                    imports,
+                    aliases,
+                    path,
+                    source_lines,
+                    code=self.code,
+                    severity=Severity.ERROR if _inert_model_body(cls, imports) else Severity.WARNING,
+                )
+            )
         return sorted(diagnostics, key=lambda item: (item.line, item.col))
 
 
 def _is_model(cls: ast.ClassDef, imports: ImportIndex) -> bool:
     return any(imports.resolves(base, sources=_PYDANTIC_MODEL_SOURCES, symbol="BaseModel") for base in cls.bases)
+
+
+def _inert_model_body(cls: ast.ClassDef, imports: ImportIndex) -> bool:
+    if cls.decorator_list or cls.keywords or cls.type_params or len(cls.bases) != 1:
+        return False
+    for statement in cls.body:
+        match statement:
+            case ast.Pass() | ast.Expr(value=ast.Constant(value=str())):
+                continue
+            case ast.AnnAssign(target=ast.Name(), annotation=annotation, value=value):
+                if not inert_model_annotation(annotation, imports):
+                    return False
+                if value is None or isinstance(value, ast.Constant):
+                    continue
+                if (
+                    isinstance(value, ast.Call)
+                    and imports.resolves(value.func, sources=_PYDANTIC_FIELD_SOURCES, symbol="Field")
+                    and not value.args
+                    and all(
+                        keyword.arg is not None and _literal_value(keyword.value) is not None
+                        for keyword in value.keywords
+                    )
+                ):
+                    continue
+                return False
+            case _:
+                return False
+    return True
 
 
 def _annotation_aliases(tree: ast.Module) -> dict[str, ast.expr]:
@@ -470,6 +510,7 @@ def _ordinal_class_findings(
     source_lines: list[str],
     *,
     code: str,
+    severity: Severity,
 ) -> list[Diagnostic]:
     diagnostics: list[Diagnostic] = []
     validated = _validated_fields(cls, imports)
@@ -507,7 +548,7 @@ def _ordinal_class_findings(
                 line=field.lineno,
                 col=field.col_offset + 1,
                 code=code,
-                severity=Severity.WARNING,
+                severity=severity,
                 message=f"`{field.target.id}` maps the first position to {default} but accepts smaller integers; encode the ordinal origin with `ge={default}` or an equivalent top-level integer constraint",
             )
         )

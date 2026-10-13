@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Unpack
 
 import pytest
 
@@ -24,6 +24,8 @@ from sarj_standards.libs.corpus.snapshot import verify_inventory
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+    from tests.call_contracts import SubprocessOptions
 
 
 _EMPTY_DIGEST = "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
@@ -239,7 +241,7 @@ def test_git_corpus_root_must_match_repository_top_level(monkeypatch: pytest.Mon
     def which(_name: str) -> str:
         return "/usr/bin/git"
 
-    def run(*_args: object, **_kwargs: object) -> subprocess.CompletedProcess[str]:
+    def run(*_args: object, **_kwargs: Unpack[SubprocessOptions]) -> subprocess.CompletedProcess[str]:
         argv = _args[0]
         if isinstance(argv, tuple) and "ls-files" in argv:
             return subprocess.CompletedProcess(("git",), 0, "app.py\0")
@@ -273,7 +275,7 @@ def test_git_corpus_ignores_ambient_repository_routing(monkeypatch: pytest.Monke
 
     monkeypatch.setattr(shutil, "which", which)  # sarj-noqa: SARJ445 -- intercepts Git process discovery
 
-    def run(*_args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
+    def run(*_args: object, **kwargs: Unpack[SubprocessOptions]) -> subprocess.CompletedProcess[str]:
         environment = kwargs.get("env")
         assert isinstance(environment, dict)
         assert "GIT_DIR" not in environment

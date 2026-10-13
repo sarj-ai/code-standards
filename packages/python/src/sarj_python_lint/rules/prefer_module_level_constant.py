@@ -98,7 +98,7 @@ class PreferModuleLevelConstant(Rule):
     id: str = "prefer-module-level-constant"
     code: str = "SARJ039"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        default_level=Severity.WARNING,
+        default_level=Severity.ERROR,
         summary="Hoist repeatedly read static values when a module constant preserves behavior.",
         rationale=(
             "Rebuilding a substantial static collection repeats allocation, while calling `re.compile` with a "
@@ -116,7 +116,8 @@ class PreferModuleLevelConstant(Rule):
             "Test, test-support, and generated files are excluded.",
             "Collections require at least eight deeply immutable elements, or three when allocated inside a loop; only representation-insensitive reads are accepted.",
             "Final dictionaries retain mutable contents at runtime; unknown calls, mutation, and escaping references are excluded from hoisting candidates.",
-            "Regex findings require a proven stdlib `re.compile` binding and exclude `re.DEBUG`; the rule cannot prove that a function is hot, so findings remain advisory.",
+            "Visible frame or dynamic-namespace observation retains WARNING because moving a local binding can change observed caller state.",
+            "Regex findings require a proven stdlib `re.compile` binding and exclude `re.DEBUG`; regex cache lookup findings remain warnings because invocation frequency and initialization timing are unproved. Immutable literal collection tables enforce the explicit static-lifetime policy at error severity; preserve any intentional per-call ownership with an exact-code exception.",
         ),
         examples=(
             RuleExample(
@@ -209,7 +210,9 @@ class PreferModuleLevelConstant(Rule):
                         col=stmt.col_offset + 1,
                         code=self.code,
                         message=_message(name, candidate),
-                        severity=Severity.WARNING,
+                        severity=Severity.WARNING
+                        if candidate.kind == "regex" or context.dynamic_namespace
+                        else Severity.ERROR,
                     )
                 )
         diags.sort(key=lambda d: (d.line, d.col))

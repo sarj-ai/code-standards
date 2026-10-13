@@ -23,8 +23,8 @@ _NEIGHBORS = (
 )
 
 
-@pytest.mark.parametrize("rule_id", _RULES)
-def test_new_warning_does_not_enter_blocking_baseline(
+@pytest.mark.parametrize("rule_id", ["no-test-method-grafting"])
+def test_remaining_warning_does_not_enter_blocking_baseline(
     rule_id: str, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     example: RuleExample = REGISTRY[rule_id].public_examples()[0]

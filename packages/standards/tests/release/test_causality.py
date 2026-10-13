@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Unpack
 
 import pytest
 
@@ -11,6 +11,8 @@ from sarj_standards.libs.release.registry import RegistryRequirement
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+    from tests.call_contracts import VerifiedTagOptions
 
 
 def _write_manifest(tmp_path: Path, relative: str, version: str, *, json: bool = False) -> None:
@@ -339,7 +341,7 @@ def test_non_publishable_push_is_a_clean_release_recovery_barrier(tmp_path: Path
             return ProcessResult(0, ".github/workflows/release.yml\0")
         return ProcessResult(0, "")
 
-    def tag_checker(*_args: object, **_kwargs: object) -> bool:
+    def tag_checker(*_args: object, **_kwargs: Unpack[VerifiedTagOptions]) -> bool:
         checked_tags.append("unexpected")
         return False
 

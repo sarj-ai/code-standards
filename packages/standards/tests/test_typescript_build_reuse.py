@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 import shutil
 import subprocess
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Unpack
 
 import pytest
 
@@ -13,13 +13,15 @@ from sarj_standards.libs.repository import rule_catalog_artifact
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
+    from tests.call_contracts import SubprocessOptions
+
 
 def test_projection_builds_fresh_unless_the_invocation_explicitly_provides_a_build(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     commands: list[tuple[str, ...]] = []
 
-    def run(argv: Sequence[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+    def run(argv: Sequence[str], **_kwargs: Unpack[SubprocessOptions]) -> subprocess.CompletedProcess[str]:
         commands.append(tuple(argv))
         return subprocess.CompletedProcess(argv, 0, stdout="[]", stderr="")
 

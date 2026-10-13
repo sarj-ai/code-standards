@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Final, TypedDict, TypeGuard
 
 from sarj_standards._meta import CONFIGS_DIR
 from sarj_standards.libs.json_boundary import parse_json
+from sarj_standards.libs.typed_containers import is_object_mapping
 
 
 if TYPE_CHECKING:
@@ -39,7 +40,7 @@ class RuleInventory(TypedDict):
 
 
 def _is_object(value: object) -> TypeGuard[dict[str, object]]:
-    return isinstance(value, dict)
+    return is_object_mapping(value) and all(isinstance(key, str) for key in value)
 
 
 def validate(value: object) -> RuleInventory:

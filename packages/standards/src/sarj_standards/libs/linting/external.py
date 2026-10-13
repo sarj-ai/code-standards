@@ -2429,7 +2429,7 @@ def _wait_for_process(
             process.wait(timeout=5)
             _join_capture_threads(threads)
             raise subprocess.TimeoutExpired(argv, timeout_seconds)
-        time.sleep(0.01)
+        _output_limit_reached = exceeded.wait(0.01)
     if exceeded.is_set():
         _terminate_process(process)
     returncode = process.wait(timeout=5 if exceeded.is_set() else None)

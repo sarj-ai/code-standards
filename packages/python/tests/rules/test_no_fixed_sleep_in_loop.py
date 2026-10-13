@@ -29,9 +29,7 @@ def test_documented_examples() -> None:
 def test_reports_one_warning_at_the_awaited_sleep() -> None:
     findings = _check(_polling("await asyncio.sleep(2)"))
 
-    assert [(item.code, item.line, item.col, item.severity) for item in findings] == [
-        ("SARJ485", 5, 9, Severity.WARNING)
-    ]
+    assert [(item.code, item.line, item.col, item.severity) for item in findings] == [("SARJ485", 5, 9, Severity.ERROR)]
 
 
 @pytest.mark.parametrize(

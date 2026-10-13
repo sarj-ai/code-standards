@@ -19,6 +19,7 @@ from sarj_python_lint.rule_base import (
 from sarj_python_lint.rules._contract_annotation import annotation_reference
 from sarj_python_lint.rules._imports import ABC_SOURCES, TYPING_SOURCES, ImportIndex
 from sarj_python_lint.rules._paths import is_test_path
+from sarj_python_lint.rules._resolved_operation_signature import resolved_operation_signature
 from sarj_python_lint.rules.require_port_for_service import class_methods, is_data_type, self_stored_parameters
 
 
@@ -32,7 +33,7 @@ class RequirePublicDependencyContract(ProjectRule):
     id = "require-public-dependency-contract"
     code = "SARJ466"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        default_level=Severity.WARNING,
+        default_level=Severity.ERROR,
         summary="Reuse an existing substitutable contract instead of its concrete implementation annotation.",
         rationale="A concrete dependency annotation obstructs substitution even when an existing public contract already has multiple implementations.",
         remediation="Annotate the dependency with the existing public contract; do not create a new interface.",
@@ -42,6 +43,7 @@ class RequirePublicDependencyContract(ProjectRule):
             "Requires a resolved direct public ABC or Protocol base with multiple owned implementations explicitly covering its public operations.",
             "Only directly retained constructor dependencies used exclusively through the contract's declared operations are checked; parameter aliases or other constructor uses are excluded.",
             "Private consumer-owned Protocols, unresolved bases, indirect inheritance, single implementations, data-only dependencies, tests, and generated files are excluded.",
+            "ERROR requires identical resolved signatures for every used operation, including return type, accepted inputs, parameter kinds, names and literal defaults. Generic/decorated classes, descriptor methods and unresolved or variant signatures retain WARNING; preserve concrete postconditions and accepted-input variance before widening an annotation.",
         ),
         examples=tuple(
             RuleExample(
@@ -119,14 +121,83 @@ class RequirePublicDependencyContract(ProjectRule):
         members = _dependency_members(node, fields, context)
         if contract is None or members is None or not members <= _public_operations(contract):
             return None
+        signatures_match = _matching_operation_signatures(implementation, contract, members, project)
         return Diagnostic(
             path=context.path,
             line=parameter.lineno,
             col=parameter.col_offset + 1,
             code=self.code,
-            severity=Severity.WARNING,
-            message=f"`{parameter.arg}` uses concrete `{implementation.symbol.name}` despite an existing substitutable `{contract.name}` contract; annotate with that existing contract.",
+            severity=Severity.ERROR if signatures_match else Severity.WARNING,
+            message=(
+                f"`{parameter.arg}` uses concrete `{implementation.symbol.name}` despite an existing substitutable `{contract.name}` contract; annotate with that existing contract."
+                if signatures_match
+                else f"`{parameter.arg}` uses concrete `{implementation.symbol.name}` with operations also declared by `{contract.name}`; review signature variance and preserve concrete postconditions and accepted inputs before widening the annotation."
+            ),
         )
+
+
+def _matching_operation_signatures(
+    implementation: ClassSummary, contract: ast.ClassDef, members: frozenset[str], project: ProjectIndexSet
+) -> bool:
+    unit = project.source_unit(implementation.symbol.module)
+    if unit is None:
+        return False
+    declaration = _declaration(unit, implementation.symbol.name)
+    if (
+        declaration is None
+        or declaration.type_params
+        or declaration.decorator_list
+        or contract.type_params
+        or contract.decorator_list
+    ):
+        return False
+    for base in implementation.bases:
+        contract_unit = project.source_unit(base.module)
+        if contract_unit is None or _declaration(contract_unit, base.name) is not contract:
+            continue
+        return (
+            _operation_signatures(declaration, unit, members)
+            == _operation_signatures(contract, contract_unit, members)
+            is not None
+        )
+    return False
+
+
+def _operation_signatures(
+    declaration: ast.ClassDef, unit: SourceUnit, members: frozenset[str]
+) -> dict[str, str] | None:
+    if unit.tree is None:
+        return None
+    imports = ImportIndex.from_tree(unit.tree, module_scope_only=True)
+    signatures: dict[str, str] = {}
+    for method in class_methods(declaration):
+        if method.name not in members:
+            continue
+        if any(
+            imports.resolved_qualified_name(decorator)
+            not in {"abc.abstractmethod", "typing.override", "typing_extensions.override"}
+            for decorator in method.decorator_list
+        ):
+            return None
+        signature = resolved_operation_signature(method, unit, imports)
+        if signature is None or method.name in signatures or _owner_relative_signature(method, imports):
+            return None
+        signatures[method.name] = signature
+    return signatures if signatures.keys() == members else None
+
+
+def _owner_relative_signature(method: ast.FunctionDef | ast.AsyncFunctionDef, imports: ImportIndex) -> bool:
+    annotations = [
+        method.returns,
+        *(argument.annotation for argument in (*method.args.posonlyargs, *method.args.args, *method.args.kwonlyargs)),
+    ]
+    return any(
+        imports.resolved_qualified_name(node) in {"typing.Self", "typing_extensions.Self"}
+        for annotation in annotations
+        if annotation is not None
+        for node in ast.walk(annotation)
+        if isinstance(node, ast.Name | ast.Attribute)
+    )
 
 
 def _only_retains_parameter(

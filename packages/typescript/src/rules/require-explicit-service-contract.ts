@@ -14,7 +14,7 @@ type MessageIds = "requireExplicitServiceContract";
 type Options = readonly [];
 
 export const REQUIRE_EXPLICIT_SERVICE_CONTRACT_DOCUMENTATION = {
-  defaultLevel: "warning",
+  defaultLevel: "error",
   summary: "Require explicit contracts for classes that invoke retained collaborators.",
   rationale:
     "A one-operation service can orchestrate a collaborator without declaring the contract that callers consume and implementations and fakes satisfy.",

@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import replace
 import json
 import subprocess
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Unpack
 
 import pytest
 
@@ -30,6 +30,8 @@ from sarj_standards.libs.linting.policy import Policy
 if TYPE_CHECKING:
     from collections.abc import Sequence
     from pathlib import Path
+
+    from tests.call_contracts import ExternalAnalyzeOptions, StandardsAnalyzeOptions
 
 
 def _manifest(
@@ -573,7 +575,7 @@ def test_scoped_baseline_update_normalizes_native_sarj_rule_source(
     def analyze(
         _self: api.Standards,
         paths: object = None,  # ruff: ignore[unused-function-argument] -- Standards.analyze fixes this keyword.
-        **kwargs: object,
+        **kwargs: Unpack[StandardsAnalyzeOptions],
     ) -> AnalysisReport:
         captured.append(
             (
@@ -630,7 +632,7 @@ def test_scoped_baseline_update_runs_only_shellcheck_for_native_selector(
     )
     calls: list[object] = []
 
-    def analyze_shellcheck(files: object, **kwargs: object) -> tuple[ToolReport, ...]:
+    def analyze_shellcheck(files: object, **kwargs: Unpack[ExternalAnalyzeOptions]) -> tuple[ToolReport, ...]:
         calls.append((files, kwargs.get("capabilities"), kwargs.get("include_react_doctor")))
         return (ToolReport("shellcheck", Completion.COMPLETE, (finding,)),)
 
@@ -749,7 +751,7 @@ def test_scoped_baseline_update_replaces_native_debt_for_canonical_selector(
     def analyze(
         _self: api.Standards,
         paths: object = None,  # ruff: ignore[unused-function-argument] -- Standards.analyze fixes this keyword.
-        **_kwargs: object,
+        **_kwargs: Unpack[StandardsAnalyzeOptions],
     ) -> AnalysisReport:
         return report_from_tools(tmp_path, (ToolReport(source, Completion.COMPLETE, (replacement,)),))
 
@@ -811,7 +813,7 @@ def test_scoped_baseline_update_replaces_debt_recorded_under_a_catalogued_alias(
     def analyze(
         _self: api.Standards,
         paths: object = None,  # ruff: ignore[unused-function-argument] -- Standards.analyze fixes this keyword.
-        **_kwargs: object,
+        **_kwargs: Unpack[StandardsAnalyzeOptions],
     ) -> AnalysisReport:
         return report_from_tools(tmp_path, (ToolReport("sarj-iac-lint", Completion.COMPLETE, (replacement,)),))
 
@@ -871,7 +873,7 @@ def test_scoped_baseline_update_replaces_plugin_qualified_eslint_alias_debt(
     def analyze(
         _self: api.Standards,
         paths: object = None,  # ruff: ignore[unused-function-argument] -- Standards.analyze fixes this keyword.
-        **_kwargs: object,
+        **_kwargs: Unpack[StandardsAnalyzeOptions],
     ) -> AnalysisReport:
         return report_from_tools(
             tmp_path,
@@ -954,7 +956,7 @@ def test_scoped_baseline_update_captures_react_doctor_and_preserves_unrelated_de
     replacement = replace(old, message="replacement debt", location=Location("new.tsx"), fingerprint="b" * 64)
     calls: list[tuple[object, object, object, object]] = []
 
-    def analyze_react_doctor(files: object, **kwargs: object) -> tuple[ToolReport, ...]:
+    def analyze_react_doctor(files: object, **kwargs: Unpack[ExternalAnalyzeOptions]) -> tuple[ToolReport, ...]:
         calls.append(
             (
                 files,
@@ -1030,7 +1032,7 @@ def test_scoped_react_doctor_wildcard_replaces_every_react_doctor_rule(
         fingerprint="b" * 64,
     )
 
-    def analyze_react_doctor(files: object, **kwargs: object) -> tuple[ToolReport, ...]:
+    def analyze_react_doctor(files: object, **kwargs: Unpack[ExternalAnalyzeOptions]) -> tuple[ToolReport, ...]:
         assert files == [str(tmp_path)]
         assert kwargs.get("react_doctor_full_scan") is True
         return (ToolReport("react-doctor", Completion.COMPLETE, (replacement,)),)
@@ -1075,7 +1077,7 @@ def test_scoped_baseline_update_uses_manifest_verification_paths(
     (tmp_path / MANIFEST_NAME).write_text(adopted.render(), encoding="utf-8")
     captured: list[object] = []
 
-    def analyze_eslint(files: object, **_kwargs: object) -> tuple[ToolReport, ...]:
+    def analyze_eslint(files: object, **_kwargs: Unpack[ExternalAnalyzeOptions]) -> tuple[ToolReport, ...]:
         captured.append(files)
         return ()
 
@@ -1134,7 +1136,9 @@ def test_scoped_baseline_update_includes_tracked_terraform_tests_outside_verific
     )
     captured: list[object] = []
 
-    def analyze(_self: api.Standards, paths: object = None, **_kwargs: object) -> AnalysisReport:
+    def analyze(
+        _self: api.Standards, paths: object = None, **_kwargs: Unpack[StandardsAnalyzeOptions]
+    ) -> AnalysisReport:
         captured.append(paths)
         diagnostics = (finding,) if isinstance(paths, list) and str(source) in paths else ()
         return report_from_tools(tmp_path, (ToolReport("sarj-iac-lint", Completion.COMPLETE, diagnostics),))
@@ -1183,7 +1187,9 @@ def test_scoped_baseline_update_runs_only_eslint_for_upstream_selector(
     (tmp_path / MANIFEST_NAME).write_text(adopted.render(), encoding="utf-8")
     captured: list[tuple[object, object]] = []
 
-    def analyze(_self: api.Standards, paths: object = None, **kwargs: object) -> AnalysisReport:
+    def analyze(
+        _self: api.Standards, paths: object = None, **kwargs: Unpack[StandardsAnalyzeOptions]
+    ) -> AnalysisReport:
         captured.append((paths, kwargs.get("rules")))
         return report_from_tools(tmp_path, ())
 
@@ -1191,7 +1197,7 @@ def test_scoped_baseline_update_runs_only_eslint_for_upstream_selector(
 
     external_calls: list[object] = []
 
-    def analyze_eslint(files: object, **kwargs: object) -> tuple[ToolReport, ...]:
+    def analyze_eslint(files: object, **kwargs: Unpack[ExternalAnalyzeOptions]) -> tuple[ToolReport, ...]:
         policy = kwargs.get("policy")
         assert isinstance(policy, Policy)
         external_calls.append(

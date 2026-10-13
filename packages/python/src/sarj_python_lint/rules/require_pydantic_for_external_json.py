@@ -118,7 +118,7 @@ class RequirePydanticForExternalJson(Rule):
     id = "require-pydantic-for-external-json"
     code = "SARJ411"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        default_level=Severity.WARNING,
+        default_level=Severity.ERROR,
         summary="Proven external JSON record fields are consumed before runtime schema validation.",
         rationale=(
             "Annotations, casts, and partial key checks do not validate a wire protocol; a maintained runtime "
@@ -234,7 +234,7 @@ class RequirePydanticForExternalJson(Rule):
                     "with `model_validate_json`/`validate_json`, or validate this decoded object with "
                     "`model_validate`/`validate_python` first."
                 ),
-                severity=Severity.WARNING,
+                severity=Severity.ERROR,
             )
             for sink, _origin in first_by_origin.values()
         ]

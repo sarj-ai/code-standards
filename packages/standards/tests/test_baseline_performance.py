@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from threading import Barrier
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Unpack
 
 import pytest
 
@@ -24,6 +24,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from sarj_standards.libs.diagnostics import AnalysisReport
+    from tests.call_contracts import ExternalAnalyzeOptions, StandardsAnalyzeOptions
 
 
 @pytest.mark.parametrize("failed", [False, True], ids=("complete", "analyzer-failure"))
@@ -38,14 +39,19 @@ def test_mixed_baseline_scans_overlap_once_and_preserve_selected_debt(
     ready = Barrier(2, timeout=10)
     calls: list[str] = []
 
-    def analyze(_self: api.Standards, _paths: object = None, **kwargs: object) -> AnalysisReport:
+    def analyze(
+        _self: api.Standards, _paths: object = None, **kwargs: Unpack[StandardsAnalyzeOptions]
+    ) -> AnalysisReport:
+        assert "jobs" in kwargs
+        assert "rules" in kwargs
         assert kwargs["rules"] == ["python:no-dunder-all"]
         assert kwargs["jobs"] == 1
         calls.append("native")
         ready.wait()
         return report_from_tools(tmp_path, ())
 
-    def eslint(_files: object, **kwargs: object) -> tuple[ToolReport, ...]:
+    def eslint(_files: object, **kwargs: Unpack[ExternalAnalyzeOptions]) -> tuple[ToolReport, ...]:
+        assert "capabilities" in kwargs
         assert kwargs["capabilities"] == frozenset({"eslint"})
         calls.append("eslint")
         ready.wait()
@@ -121,7 +127,10 @@ def test_single_baseline_operation_uses_requested_analysis_workers(
 ) -> None:
     seen: list[int] = []
 
-    def analyze(_self: api.Standards, _paths: object = None, **kwargs: object) -> AnalysisReport:
+    def analyze(
+        _self: api.Standards, _paths: object = None, **kwargs: Unpack[StandardsAnalyzeOptions]
+    ) -> AnalysisReport:
+        assert "jobs" in kwargs
         assert kwargs["jobs"] == jobs
         seen.append(jobs)
         return report_from_tools(tmp_path, ())

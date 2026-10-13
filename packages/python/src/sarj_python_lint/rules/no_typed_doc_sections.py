@@ -14,6 +14,7 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
+    is_suppressed,
 )
 from sarj_python_lint.rules._prose_budget import groups
 
@@ -29,7 +30,7 @@ class NoTypedDocSections(Rule):
     id = "no-docstring-type-restatement"
     code = "SARJ092"
     documentation = RuleDocumentation(
-        default_level=Severity.WARNING,
+        default_level=Severity.ERROR,
         summary="A docstring type label repeats an annotation from the fully typed signature.",
         rationale=(
             "A repeated type spelling can drift from the annotation and obscures the behavioral contract that only prose "
@@ -47,6 +48,7 @@ class NoTypedDocSections(Rule):
             "A documented label must parse as a Python type expression and match the corresponding annotation.",
             "Generated files, runtime-consumed prompt, CLI, and route docstrings, properties, abstract methods, overloads, protocol methods, and partially typed signatures are excluded.",
             "NumPy underlined sections and Sphinx type fields intentionally remain with their selected documentation convention.",
+            "A reasoned exact-code suppression on the function declaration or closing docstring line preserves required documentation tooling conventions; markers inside string content are not suppression comments.",
         ),
         examples=(
             RuleExample(
@@ -96,7 +98,7 @@ class NoTypedDocSections(Rule):
                     f"This docstring repeats {len(group.typed_restatements)} type label(s) already present in the "
                     "signature; remove only the type labels and keep the behavioral descriptions."
                 ),
-                severity=Severity.WARNING,
+                severity=Severity.ERROR,
                 column_encoding=group.column_encoding,
             )
             for group in groups(path, source)
@@ -120,7 +122,11 @@ def _public_contract_docstring_lines(context: PythonFileContext) -> frozenset[in
         first = node.body[0]
         if not (isinstance(first, ast.Expr) and isinstance(first.value, ast.Constant)):
             continue
-        if _is_public_contract(node, parents):
+        if (
+            _is_public_contract(node, parents)
+            or is_suppressed(context.source_lines, node.lineno, NoTypedDocSections.code)
+            or is_suppressed(context.source_lines, first.end_lineno or first.lineno, NoTypedDocSections.code)
+        ):
             excluded.add(first.lineno)
     return frozenset(excluded)
 

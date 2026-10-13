@@ -385,7 +385,7 @@ def test_labeled_cases(case: EvaluationCase, project: Callable[[str, Mapping[str
         else PreferPytestFixtureInjection().check(path, case.source)
     )
     assert len(findings) == (1 if case.expected is ExpectedOutcome.MATCH else 0)
-    assert all(finding.code == "SARJ476" and finding.severity is Severity.WARNING for finding in findings)
+    assert all(finding.code == "SARJ476" and finding.severity is Severity.ERROR for finding in findings)
 
 
 @pytest.mark.parametrize("example", PreferPytestFixtureInjection.public_examples())
@@ -398,7 +398,7 @@ def test_public_examples(example: RuleExample, project: Callable[[str, Mapping[s
 def test_metadata_anchor_and_no_autofix(project: Callable[[str, Mapping[str, str]], Path]) -> None:
     documentation = PreferPytestFixtureInjection.documentation
     assert documentation is not None
-    assert documentation.default_level is Severity.WARNING
+    assert documentation.default_level is Severity.ERROR
     assert documentation.autofix is AutofixPolicy.NONE
     assert _PROBLEM.autofix is AutofixPolicy.NONE
     path = project("tests/test_service.py", {**_FILES, "tests/test_service.py": _BASE})
@@ -444,12 +444,12 @@ def test_allocation_fixture_caches_without_taking_application_lifecycle(
     assert result.returncode == 0, result.stdout + result.stderr
 
 
-def test_warning_cli_and_exact_suppression(
+def test_error_cli_and_exact_suppression(
     project: Callable[[str, Mapping[str, str]], Path], capsys: pytest.CaptureFixture[str]
 ) -> None:
     path = project("tests/test_service.py", {**_FILES, "tests/test_service.py": _BASE})
-    assert main(["check", "--rule", PreferPytestFixtureInjection.id, str(path)]) == 0
-    assert "SARJ476 warning:" in capsys.readouterr().out
+    assert main(["check", "--rule", PreferPytestFixtureInjection.id, str(path)]) == 1
+    assert "SARJ476 " in capsys.readouterr().out
     path.write_text(
         _BASE.replace("new_resource()", "new_resource()  # sarj-noqa: SARJ476 -- deliberate manual lifecycle"),
         encoding="utf-8",
@@ -470,8 +470,8 @@ def test_relative_paths_in_rule_and_cli(
     monkeypatch.chdir(path.parent.parent)
     relative = Path("tests/test_service.py")
     assert len(PreferPytestFixtureInjection().check(relative, _BASE)) == 1
-    assert main(["check", "--rule", PreferPytestFixtureInjection.id, str(relative)]) == 0
-    assert "SARJ476 warning:" in capsys.readouterr().out
+    assert main(["check", "--rule", PreferPytestFixtureInjection.id, str(relative)]) == 1
+    assert "SARJ476 " in capsys.readouterr().out
 
 
 def test_reused_rule_observes_helper_edits(project: Callable[[str, Mapping[str, str]], Path]) -> None:

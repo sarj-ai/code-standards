@@ -110,12 +110,16 @@ def test_ruff_catalog_is_decoded_as_utf8_on_every_platform(
 ):
     observed_encoding = ""
 
-    def run(*_args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
+    def run(
+        args: list[str], *, check: bool, capture_output: bool, encoding: str, text: bool
+    ) -> subprocess.CompletedProcess[str]:
         nonlocal observed_encoding
-        encoding = kwargs.get("encoding")
-        observed_encoding = encoding if isinstance(encoding, str) else ""
+        assert check
+        assert capture_output
+        assert text
+        observed_encoding = encoding
         return subprocess.CompletedProcess(
-            args=[],
+            args=args,
             returncode=0,
             stdout=(
                 '[{"code": null, "name": "pytest-fixture-autouse"},'

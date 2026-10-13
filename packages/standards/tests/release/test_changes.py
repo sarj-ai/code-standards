@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Unpack
 
 import pytest
 
@@ -13,6 +13,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from sarj_standards.libs.release.registry import RegistryRequirement
+    from tests.call_contracts import TagVerifierOptions
 
 
 def _manifests(root: Path) -> None:
@@ -215,7 +216,7 @@ def test_registry_visible_target_with_verified_tag_is_complete(tmp_path: Path) -
 def test_wrong_commit_verification_tag_fails_closed(tmp_path: Path) -> None:
     _manifests(tmp_path)
 
-    def reject_wrong_commit(*_args: object, **_kwargs: object) -> tuple[str, ...]:
+    def reject_wrong_commit(*_args: object, **_kwargs: Unpack[TagVerifierOptions]) -> tuple[str, ...]:
         message = "existing remote tag typescript-v1.0.0 points to wrong-commit"
         raise ValueError(message)
 

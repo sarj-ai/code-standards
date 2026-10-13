@@ -148,7 +148,7 @@ def _ruff_selector_aliases() -> dict[str, str]:
         raise TypeError(msg)
     aliases: dict[str, str] = {}
     for raw_item in raw:
-        if not _is_string_object_mapping(raw_item):
+        if not _is_object_mapping(raw_item):
             msg = "Ruff rule catalog contains a non-object entry"
             raise TypeError(msg)
         code = raw_item.get("code")
@@ -173,8 +173,7 @@ def _is_object_list(value: object) -> TypeGuard[list[object]]:
     return isinstance(value, list)
 
 
-def _is_string_object_mapping(value: object) -> TypeGuard[dict[str, object]]:
-    # JSON object keys are strings by definition; json.loads supplied `value`.
+def _is_object_mapping(value: object) -> TypeGuard[dict[object, object]]:
     return isinstance(value, dict)
 
 

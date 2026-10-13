@@ -94,7 +94,7 @@ CASES = (
 def test_labeled_cases(case: EvaluationCase) -> None:
     diagnostics = PreferRegexFullmatch().check(Path("app/validation.py"), case.source)
     assert len(diagnostics) == (1 if case.expected is ExpectedOutcome.MATCH else 0)
-    assert all(diagnostic.severity is Severity.WARNING for diagnostic in diagnostics)
+    assert all(diagnostic.severity is Severity.ERROR for diagnostic in diagnostics)
 
 
 @pytest.mark.parametrize(
