@@ -12,6 +12,7 @@ from sarj_standards.libs.linting.external import UpstreamESLintRules, analyze_ex
 
 
 @pytest.mark.parametrize("upstream", [False, True])
+@pytest.mark.parametrize("unselected_directive", ["disable", "configure"])
 @pytest.mark.parametrize(
     ("suppressed", "bulk_count", "pass_unpruned", "failed"),
     [
@@ -23,7 +24,14 @@ from sarj_standards.libs.linting.external import UpstreamESLintRules, analyze_ex
     ],
 )
 def test_selected_eslint_preserves_parser_options_and_suppressions_without_running_other_rules(
-    tmp_path: Path, *, suppressed: bool, bulk_count: int | None, pass_unpruned: bool, failed: bool, upstream: bool
+    tmp_path: Path,
+    unselected_directive: str,
+    *,
+    suppressed: bool,
+    bulk_count: int | None,
+    pass_unpruned: bool,
+    failed: bool,
+    upstream: bool,
 ) -> None:
     modules = Path(__file__).resolve().parents[2] / "typescript/node_modules"
     if shutil.which("node") is None or not (modules / "eslint/package.json").is_file():
@@ -45,12 +53,18 @@ def test_selected_eslint_preserves_parser_options_and_suppressions_without_runni
         "context.report({node,messageId:'found'});}};}};\n"
         "const unrelated={create(){throw new Error('UNRELATED RULE EXECUTED');}};\n"
         "export default [{files:['**/*.ts'],languageOptions:{parser},"
+        "linterOptions:{reportUnusedDisableDirectives:'error',reportUnusedInlineConfigs:'error'},"
         f"plugins:{{'{namespace}':{{rules:{{selected,unrelated}}}}}},"
         f"rules:{{'{selected_id}':['{severity}','needle'],'{namespace}/unrelated':'error'}}}}];\n",
         encoding="utf-8",
     )
+    unrelated = (
+        f"// eslint-disable {namespace}/unrelated\n"
+        if unselected_directive == "disable"
+        else f'/* eslint {namespace}/unrelated: "error" */\n'
+    )
     directive = f"// eslint-disable-next-line {selected_id}\n" if suppressed else ""
-    (tmp_path / "sample.ts").write_text(directive + "const needle: number = 1;\n", encoding="utf-8")
+    (tmp_path / "sample.ts").write_text(unrelated + directive + "const needle: number = 1;\n", encoding="utf-8")
     reports = analyze_external(
         [str(tmp_path / "sample.ts")],
         root=tmp_path,
