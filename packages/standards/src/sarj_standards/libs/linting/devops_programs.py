@@ -23,7 +23,7 @@ from sarj_standards.libs.linting.toml_literals import TomlStringLocationError, p
 from sarj_standards.libs.typed_containers import is_object_list, is_object_mapping
 from sarj_standards.libs.yaml_boundary import mapping_items, sequence_items
 
-from .shell_ast import parse_shell as parse_shell
+from .shell_ast import ShellParseError, make_shell_parser, parse_shell as parse_shell
 
 
 if TYPE_CHECKING:
@@ -34,6 +34,7 @@ type ShellParser = Callable[[str], Mapping[str, object]]
 _MAX_DEPTH = 32
 _MAX_NODES = 100_000
 _WORKFLOW_PATH_COMPONENTS = 3
+_MAKE_UNKNOWN = "\0make_unknown\0"
 # Actions strings use single quotes and escape apostrophes as ''. Possessive
 # repetitions keep malformed or long expressions from causing backtracking.
 WORKFLOW_EXPRESSION_RE = re.compile(r"\$\{\{(?:[^'}]++|'(?:[^']++|'')*+'|}(?!}))*+\}\}")
@@ -322,17 +323,113 @@ def _make_source(source: str, variables: Mapping[str, str] | None = None, depth:
         if source.startswith(("$(", "${"), index):
             cursor = _make_expansion_end(source, index)
             name = source[index + 2 : cursor - 1]
-            if name.lstrip().startswith(("shell ", "eval ")):
-                result.append("$(embedded_make_program)")
-            elif variables is not None and name in variables:
-                result.append(_make_source(variables[name], variables, depth + 1))
-            else:
-                result.append("make_expansion")
+            result.append(_make_variable_source(name, variables, depth))
             index = cursor
+            continue
+        if source[index] == "$" and index + 1 < len(source):
+            name = source[index + 1]
+            result.append(_make_variable_source(name, variables, depth))
+            index += 2
             continue
         result.append(source[index])
         index += 1
     return "".join(result)
+
+
+def _make_variable_source(name: str, variables: Mapping[str, str] | None, depth: int) -> str:
+    if name.lstrip().startswith(("shell ", "eval ")):
+        return "$(embedded_make_program)"
+    if variables is not None and name in variables:
+        return _make_source(variables[name], variables, depth + 1)
+    return _MAKE_UNKNOWN
+
+
+def _make_shell_source(source: str, shell_parser: ShellParser) -> str:
+    if _MAKE_UNKNOWN not in source:
+        return source
+    # An internal marker carries provenance through recursive/simple aliases.
+    # Parse an equal-byte-length mask so authored marker-like text stays literal.
+    masked = source.replace(_MAKE_UNKNOWN, "_" * len(_MAKE_UNKNOWN))
+    raw = source.encode("utf-8")
+    marker = _MAKE_UNKNOWN.encode()
+    positions = [match.start() for match in re.finditer(re.escape(marker), raw)]
+    replacements: dict[int, bytes] = {}
+    try:
+        tree = shell_parser(masked)
+    except ShellParseError as error:
+        msg = f"Make unknown value shell parser failed: {error}"
+        raise ProgramProjectionError(msg) from error
+    _make_unknown_words(tree, raw, positions, replacements)
+    if len(replacements) != len(positions):
+        msg = "Make unknown value shell context cannot be proven statically"
+        raise ProgramProjectionError(msg)
+    for position in reversed(positions):
+        raw = raw[:position] + replacements[position] + raw[position + len(marker) :]
+    return raw.decode("utf-8")
+
+
+def _make_unknown_words(
+    node: object,
+    source: bytes,
+    positions: Sequence[int],
+    replacements: dict[int, bytes],
+    *,
+    quote: str = "",
+    depth: int = 0,
+) -> None:
+    if depth >= _MAX_DEPTH:
+        msg = "Make unknown value shell AST exceeds analysis bound"
+        raise ProgramProjectionError(msg)
+    if is_object_list(node):
+        for child in node:
+            _make_unknown_words(child, source, positions, replacements, quote=quote, depth=depth + 1)
+        return
+    if not is_object_mapping(node):
+        return
+    kind = node.get("Type")
+    if kind == "ParamExp" and (
+        "Repl" in node or ("Exp" in node and _mapping(node["Exp"]).get("Op") in {"#", "##", "%", "%%"})
+    ):
+        return  # Unknown patterns need glob semantics, not scalar word rendering.
+    if kind == "DblQuoted":
+        quote = '"'
+    elif kind in {"CmdSubst", "ProcSubst"}:
+        quote = ""
+    if kind in {"Lit", "SglQuoted"} or "Hash" in node:
+        _make_unknown_leaf(_mapping(node), source, positions, replacements, quote=quote)
+    for key, value in node.items():
+        if key not in {"Pos", "End"}:
+            _make_unknown_words(value, source, positions, replacements, quote=quote, depth=depth + 1)
+
+
+def _make_unknown_leaf(
+    node: Mapping[str, object],
+    source: bytes,
+    positions: Sequence[int],
+    replacements: dict[int, bytes],
+    *,
+    quote: str,
+) -> None:
+    start = _mapping(node.get("Pos")).get("Offset")
+    end = _mapping(node.get("End")).get("Offset")
+    if not isinstance(start, int) or not isinstance(end, int):
+        return
+    for position in positions:
+        if start <= position < end:
+            replacement = _make_unknown_word(node, source[:position], quote)
+            if replacement is not None:
+                replacements[position] = replacement
+
+
+def _make_unknown_word(node: Mapping[str, object], preceding: bytes, quote: str) -> bytes | None:
+    if "Hash" in node:
+        return b"make_expansion"  # Proven shell comment data cannot assert a value.
+    if node.get("Type") == "SglQuoted":
+        # ANSI-C quote closure needs a different grammar.
+        return None if node.get("Dollar") else b"'\"${SARJ_MAKE_UNKNOWN}\"'"
+    if (len(preceding) - len(preceding.rstrip(b"\\"))) % 2:
+        return None
+    return b"${SARJ_MAKE_UNKNOWN}" if quote else b'"${SARJ_MAKE_UNKNOWN}"'
 
 
 def _make_expansion_end(source: str, index: int) -> int:
@@ -356,6 +453,7 @@ class _MakeRecipes:
         default_factory=dict[int, tuple[Mapping[str, str], ...]]
     )
     prefix: str = "\t"
+    shell_parser: ShellParser = field(default_factory=make_shell_parser)
     pending: list[str] = field(default_factory=list)
     blocks: list[ExecutionBlock] = field(default_factory=list)
     start: int = 0
@@ -389,13 +487,17 @@ class _MakeRecipes:
         if not self.pending:
             return
         for variables in self.contexts.get(self.start, (self.variables,)):
+            interpreter = _make_source(
+                variables.get("SHELL", "/bin/sh") + " " + variables.get(".SHELLFLAGS", "-c"), variables
+            )
+            if _MAKE_UNKNOWN in interpreter:
+                msg = "Make execution interpreter cannot be proven statically"
+                raise ProgramProjectionError(msg)
             self.blocks.append(
                 ExecutionBlock(
                     self.start,
-                    _make_source("\n".join(self.pending), variables),
-                    interpreter=_make_source(
-                        variables.get("SHELL", "/bin/sh") + " " + variables.get(".SHELLFLAGS", "-c"), variables
-                    ),
+                    _make_shell_source(_make_source("\n".join(self.pending), variables), self.shell_parser),
+                    interpreter=interpreter,
                 )
             )
         self.pending = []
@@ -778,6 +880,9 @@ def _docker_json_argv(command: str) -> tuple[str, ...] | None:
 
 
 def _make_blocks(relative: str, source: str) -> list[ExecutionBlock]:
+    if "\0" in source:
+        msg = "Make source contains unsupported NUL data"
+        raise ProgramProjectionError(msg)
     raw_lines = source.split("\n")
     lines = [line.removesuffix("\r") for line in raw_lines] if "\r" in source else raw_lines
     lines = _make_without_comment_lines(lines)
@@ -823,13 +928,17 @@ _MAKE_ASSIGNMENT = re.compile(r"(?:export\s+)?([A-Za-z_.][A-Za-z0-9_.]*)\s*(:::=
 
 
 def _make_without_comment_lines(lines: Sequence[str]) -> list[str]:
-    # Keep physical coordinates while all Make consumers share comment ownership.
+    # Share logical assignment/comment ownership without losing physical slots.
     result: list[str] = []
     prefix = "\t"
     comment_continues = False
     recipe_continues = False
     variables = _MakeVariables()
-    for line in lines:
+    posix = False
+    index = 0
+    while index < len(lines):
+        line = lines[index]
+        index += 1
         trailing_slashes = len(line) - len(line.rstrip("\\"))
         if comment_continues or (
             not recipe_continues and not line.startswith(prefix) and line.lstrip().startswith("#")
@@ -837,13 +946,43 @@ def _make_without_comment_lines(lines: Sequence[str]) -> list[str]:
             result.append("")
             comment_continues = bool(trailing_slashes % 2)
             continue
-        result.append(line)
         if recipe_continues or line.startswith(prefix) or _make_inline_recipe(line) is not None:
             recipe_continues = bool(trailing_slashes)
-        elif assignment := _MAKE_ASSIGNMENT.fullmatch(line):
-            variables.consume(assignment)
-            prefix = variables.values.get(".RECIPEPREFIX", "\t")[:1] or "\t"
+            result.append(line)
+            continue
+        posix |= bool(re.match(r"^\s*\.POSIX\s*:", line))
+        assignment = _MAKE_ASSIGNMENT.fullmatch(line)
+        target_assignment = _make_target_assignment(line.partition(":")[2]) if ":" in line else None
+        if assignment is not None or target_assignment is not None:
+            start = index - 1
+            logical = _make_assignment_continuation(lines, start, posix=posix)
+            line, index = logical.source, logical.next_index
+            result.extend((line, *([""] * (index - start - 1))))
+            if assignment is not None and (logical_assignment := _MAKE_ASSIGNMENT.fullmatch(line)) is not None:
+                variables.consume(logical_assignment)
+                prefix = variables.values.get(".RECIPEPREFIX", "\t")[:1] or "\t"
+        else:
+            result.append(line)
     return result
+
+
+@dataclass(frozen=True, slots=True)
+class _MakeAssignmentLine:
+    source: str
+    next_index: int
+
+
+def _make_assignment_continuation(lines: Sequence[str], index: int, *, posix: bool) -> _MakeAssignmentLine:
+    line = lines[index]
+    index += 1
+    while (len(line) - len(line.rstrip("\\"))) % 2 and index < len(lines):
+        if posix:
+            msg = "Make POSIX assignment continuation whitespace cannot be proven statically"
+            raise ProgramProjectionError(msg)
+        slashes = len(line) - len(line.rstrip("\\"))
+        line = line[:-slashes].rstrip(" \t") + "\\" * (slashes // 2) + " " + lines[index].lstrip(" \t")
+        index += 1
+    return _MakeAssignmentLine(line, index)
 
 
 @dataclass(slots=True)
@@ -1002,7 +1141,7 @@ def _make_inline_recipe(line: str) -> str | None:
 
 def _make_scope_words(source: str, variables: Mapping[str, str]) -> tuple[str, ...]:
     expanded = _make_source(source.split("#", 1)[0], variables)
-    if "make_expansion" in expanded or "\\" in expanded or "$(" in expanded or "${" in expanded:
+    if _MAKE_UNKNOWN in expanded or "\\" in expanded or "$(" in expanded or "${" in expanded:
         msg = "Make target or prerequisite words cannot be proven statically"
         raise ProgramProjectionError(msg)
     return tuple(expanded.split())
