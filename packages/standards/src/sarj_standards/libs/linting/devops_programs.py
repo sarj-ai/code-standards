@@ -780,6 +780,7 @@ def _docker_json_argv(command: str) -> tuple[str, ...] | None:
 def _make_blocks(relative: str, source: str) -> list[ExecutionBlock]:
     raw_lines = source.split("\n")
     lines = [line.removesuffix("\r") for line in raw_lines] if "\r" in source else raw_lines
+    lines = _make_without_comment_lines(lines)
     oneshell = any(re.match(r"^\s*\.ONESHELL\s*:", line) for line in lines)
     recipes = _MakeRecipes(oneshell, _make_variables(lines), _make_recipe_contexts(lines))
     for number, line in enumerate(lines, 1):
@@ -819,6 +820,30 @@ def _physical_block_locations(relative: str, source: str, blocks: list[Execution
 
 
 _MAKE_ASSIGNMENT = re.compile(r"(?:export\s+)?([A-Za-z_.][A-Za-z0-9_.]*)\s*(:::=|::=|:=|[?+]?=)\s*(.*)")
+
+
+def _make_without_comment_lines(lines: Sequence[str]) -> list[str]:
+    # Keep physical coordinates while all Make consumers share comment ownership.
+    result: list[str] = []
+    prefix = "\t"
+    comment_continues = False
+    recipe_continues = False
+    variables = _MakeVariables()
+    for line in lines:
+        trailing_slashes = len(line) - len(line.rstrip("\\"))
+        if comment_continues or (
+            not recipe_continues and not line.startswith(prefix) and line.lstrip().startswith("#")
+        ):
+            result.append("")
+            comment_continues = bool(trailing_slashes % 2)
+            continue
+        result.append(line)
+        if recipe_continues or line.startswith(prefix) or _make_inline_recipe(line) is not None:
+            recipe_continues = bool(trailing_slashes)
+        elif assignment := _MAKE_ASSIGNMENT.fullmatch(line):
+            variables.consume(assignment)
+            prefix = variables.values.get(".RECIPEPREFIX", "\t")[:1] or "\t"
+    return result
 
 
 @dataclass(slots=True)
@@ -878,6 +903,8 @@ class _MakeScopes:
         prefix = self.global_values.values.get(".RECIPEPREFIX", "\t")[:1] or "\t"
         if line.startswith(prefix):
             self.recipes[number] = self.owners
+            return
+        if line.lstrip().startswith("#"):
             return
         if assignment := _MAKE_ASSIGNMENT.fullmatch(line):
             self.global_values.consume(assignment)
@@ -1012,7 +1039,11 @@ def _make_pattern_states(name: str, bindings: Mapping[str, _MakeVariables]) -> l
 def _make_recipe_contexts(lines: Sequence[str]) -> dict[int, tuple[Mapping[str, str], ...]]:
     # Ordinary Makefiles keep the existing global assignment fast path.
     if not any(
-        not line.startswith("\t") and ":" in line and _make_target_assignment(line.partition(":")[2]) for line in lines
+        not line.startswith("\t")
+        and not line.lstrip().startswith("#")
+        and ":" in line
+        and _make_target_assignment(line.partition(":")[2])
+        for line in lines
     ):
         return {}
     scopes = _MakeScopes()

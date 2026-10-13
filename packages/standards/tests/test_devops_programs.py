@@ -155,6 +155,60 @@ def test_cyclic_make_variable_is_bounded_coverage_error() -> None:
 
 
 @pytest.mark.parametrize(
+    ("source", "expected"),
+    [
+        pytest.param(
+            "# Ports: frontend=1234\n$(UNKNOWN):\n\tpython3 scripts/check.py\n",
+            False,
+            id="comment-does-not-enable-target-binding-analysis",
+        ),
+        pytest.param(
+            "check: export SHELL := bash\n"
+            "#   jq '{value: $(UNKNOWN)}' \\\n"
+            "   # Missing: $(UNKNOWN)\n"
+            "check:\n\tpython3 scripts/check.py\n",
+            False,
+            id="inert-comments-with-real-target-binding",
+        ),
+        pytest.param(
+            "# fake: SHELL = bash\ncheck: SHELL = python3\ncheck: .SHELLFLAGS = -c\ncheck: ; print(1)\n",
+            True,
+            id="real-inline-program-still-detected",
+        ),
+        pytest.param(
+            "# Example continued \\\ncheck: SHELL := python3\ncheck: .SHELLFLAGS := -c\ncheck: ; @echo $(SHELL)\n",
+            False,
+            id="continued-comment-hides-target-binding",
+        ),
+        pytest.param(
+            "# Example continued \\\nSHELL := python3\ncheck: ; @echo $(SHELL)\n",
+            False,
+            id="continued-comment-hides-global-binding",
+        ),
+        pytest.param(
+            "# Example continued \\\nfake: ; python3 -c 'print(1)'\ncheck: ; @echo checked\n",
+            False,
+            id="continued-comment-hides-inline-recipe",
+        ),
+        pytest.param(
+            ".RECIPEPREFIX := >\ncheck: SHELL := python3\ncheck: .SHELLFLAGS := -c\n"
+            "# Example continued \\\n>print(2)\ncheck:\n>print(1)\n",
+            True,
+            id="continued-comment-hides-custom-prefix-recipe",
+        ),
+        pytest.param(
+            "# Example with escaped slash \\\\\ncheck: SHELL := python3\ncheck: .SHELLFLAGS := -c\ncheck: ; print(1)\n",
+            True,
+            id="even-comment-slashes-do-not-continue",
+        ),
+    ],
+)
+def test_make_target_scopes_ignore_comments(source: str, expected: bool) -> None:
+    [block] = execution_blocks("Makefile", source)
+    assert block_embeds_program(block, parse_shell=parse_shell) is expected
+
+
+@pytest.mark.parametrize(
     "filename",
     ["Dockerfile.dockerignore", "Dockerfile.migrate.dockerignore", "Dockerfile.test.DOCKERIGNORE"],
 )

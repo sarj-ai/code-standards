@@ -628,8 +628,30 @@ def test_upgrade_converges_npm_age_gate_package_exclusions_without_weakening_the
     [exclude] = [line for line in update.contents.splitlines() if line.startswith("min-release-age-exclude=")]
     values = exclude.partition("=")[2].split(",")
     assert values[0] == "unrelated"
-    assert set(values[1:]) == set(manifest.eslint_age_gate_preapprovals())
+    assert set(values[1:]) == {"@typescript-eslint/parser", *manifest.eslint_age_gate_preapprovals()}
     assert doctor.rewrite_version_pins(update.contents, {"@sarj/eslint-plugin": "15.17.1"}).contents == update.contents
+
+
+@pytest.mark.parametrize("heading", ["minimumReleaseAgeExclude", "npmPreapprovedPackages"])
+def test_upgrade_preserves_exact_current_parser_approval_and_retires_old_versions(heading: str) -> None:
+    name = "@typescript-eslint/parser"
+    current = manifest.eslint_yarn_identity_pins()[name]
+    original = (
+        "minimumReleaseAge: 20160\n"
+        "minimumReleaseAgeStrict: true\n"
+        f"{heading}:\n"
+        f'  - "{name}@{current}" # reviewed current toolchain\n'
+        f'  - "{name}@8.67.0"\n'
+        '  - "unrelated@1.2.3"\n'
+    )
+
+    updated = doctor.rewrite_version_pins(original, {}).contents
+
+    assert f'  - "{name}@{current}" # reviewed current toolchain\n' in updated
+    assert '"unrelated@1.2.3"' in updated
+    assert "8.67.0" not in updated
+    assert "minimumReleaseAge: 20160\nminimumReleaseAgeStrict: true\n" in updated
+    assert doctor.rewrite_version_pins(updated, {}).contents == updated
 
 
 def test_upgrade_preserves_unrelated_yaml_preapprovals_and_is_idempotent(tmp_path: Path) -> None:

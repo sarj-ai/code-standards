@@ -20,7 +20,7 @@ if TYPE_CHECKING:
             ".npmrc",
             "min-release-age=20160\nstrict-ssl=true\nregistry=https://registry.npmjs.org/\n",
             "min-release-age-exclude=unrelated,@sarj/eslint-plugin,@typescript-eslint/parser\n",
-            "min-release-age-exclude=unrelated,@sarj/eslint-plugin\n",
+            "min-release-age-exclude=unrelated,@typescript-eslint/parser,@sarj/eslint-plugin\n",
         ),
         (
             ".yarnrc.yaml",
