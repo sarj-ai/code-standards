@@ -14,7 +14,7 @@ import perfectionist from "eslint-plugin-perfectionist";
 import promise from "eslint-plugin-promise";
 import simpleImportSort from "eslint-plugin-simple-import-sort";
 import betterTailwindcss from "eslint-plugin-better-tailwindcss";
-import { plugin as shadcn } from "@shadcn/lint";
+import { plugin as shadcn, project as shadcnProject } from "@shadcn/lint";
 import jsdoc from "eslint-plugin-jsdoc";
 import jest from "eslint-plugin-jest";
 import nodeTest from "eslint-node-test";
@@ -555,6 +555,40 @@ if (missingUnicornRules.length > 0) {
 // instead of silently weakening the strict configuration on newer ESLint.
 const compatibleReact = fixupPluginRules(react);
 
+const SHADCN_IMPLEMENTATION_RULES = new Set([
+  "no-restyle",
+  "no-arbitrary-values",
+  "require-static-classes",
+]);
+
+// Tailwind policies need local adoption evidence. The pinned upstream project
+// API owns JSONC, aliases, workspace exports, theme discovery and its caches;
+// do not add a second filesystem crawler or recognize components by basename.
+// Explicit import settings also support design systems installed as packages.
+const scopedShadcn = {
+  ...shadcn,
+  rules: Object.fromEntries(Object.entries(shadcn.rules).map(([name, rule]) => [name, {
+    ...rule,
+    create(context) {
+      const filename = context.physicalFilename ?? context.filename;
+      const settings = context.settings?.shadcn;
+      const imports = context.options[0]?.componentImports ?? settings?.componentImports;
+      const explicit = typeof settings?.ui === "string" ||
+        (Array.isArray(imports) && imports.length > 0);
+      if (
+        !explicit &&
+        shadcnProject.projectFor(filename)?.file == null &&
+        shadcnProject.themeFileFor(filename) === null
+      ) return {};
+      if (
+        SHADCN_IMPLEMENTATION_RULES.has(name) &&
+        shadcnProject.componentsFor(filename).owns(filename)
+      ) return {};
+      return rule.create(context);
+    },
+  }])),
+};
+
 // Build output is not authored code, and this config had NO `ignores` at all —
 // the single string "ignores" in the whole file was a word in a comment. ESLint
 // 9/10 ignore only `node_modules/` and `.git/` by default, so `eslint .` in an
@@ -663,7 +697,7 @@ export function createConfig(options = {}) {
       promise,
       "simple-import-sort": simpleImportSort,
       jsdoc,
-      shadcn,
+      shadcn: scopedShadcn,
       "@sarj": sarj,
       vitest,
       "node-test": nodeTest,
@@ -1018,8 +1052,8 @@ export function createConfig(options = {}) {
       // Design-system guidance starts non-blocking while contracts and theme
       // discovery are calibrated in consumers. Raw colors remain owned by
       // @sarj/prefer-semantic-colors to avoid duplicate diagnostics.
-      "shadcn/no-restyle": "warn",
-      "shadcn/no-arbitrary-values": "warn",
+      "shadcn/no-restyle": ["warn", { allow: ["layout"] }],
+      "shadcn/no-arbitrary-values": ["warn", { allow: ["layout"] }],
       "shadcn/no-inline-styles": "warn",
       "shadcn/no-unknown-classes": "warn",
       "shadcn/require-static-classes": "warn",
