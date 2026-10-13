@@ -19,7 +19,7 @@ from sarj_python_lint.rule_base import (
     Severity,
     is_suppressed,
 )
-from sarj_python_lint.rules._ast_index import walk as walk_ast
+from sarj_python_lint.rules._ast_index import comprehension_results, walk as walk_ast
 from sarj_python_lint.rules._imports import ImportIndex
 from sarj_python_lint.rules._paths import is_test_path
 
@@ -1060,7 +1060,7 @@ def _comprehension_oracle(
         flow = _bind_comprehension_target(generator, flow)
         if any(_raw_text_oracle(condition, flow) for condition in generator.ifs):
             return True
-    values = [node.key, node.value] if isinstance(node, ast.DictComp) else [node.elt]
+    values = comprehension_results(node)
     return any(
         _raw_text_oracle(value, flow) or (consumes_values and _raw_text_expression(value, flow)) for value in values
     )

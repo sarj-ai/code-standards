@@ -29,6 +29,10 @@ def children(node: ast.AST) -> list[ast.AST]:
     return out
 
 
+def comprehension_results(node: ast.ListComp | ast.SetComp | ast.DictComp | ast.GeneratorExp) -> list[ast.expr]:
+    return [child for child in children(node) if isinstance(child, ast.expr)]
+
+
 def walk(node: ast.AST, *, index: NodeIndex | None = None) -> Iterator[ast.AST]:
     if index is not None and index.tree is node:
         yield from index.query((ast.AST,))

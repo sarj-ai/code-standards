@@ -18,7 +18,7 @@ from sarj_python_lint.rule_base import (
     Severity,
     is_suppressed,
 )
-from sarj_python_lint.rules._ast_index import walk as walk_ast
+from sarj_python_lint.rules._ast_index import comprehension_results, walk as walk_ast
 from sarj_python_lint.rules._imports import ImportIndex
 
 
@@ -611,7 +611,7 @@ class _FunctionAnalyzer:
 
             @override
             def visit_DictComp(self, node: ast.DictComp) -> None:
-                self._comprehension(node.generators, [node.key, node.value])
+                self._comprehension(node.generators, comprehension_results(node))
 
             def _comprehension(self, generators: list[ast.comprehension], results: list[ast.expr]) -> None:
                 saved_shadowed = set(analyzer._shadowed)

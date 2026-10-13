@@ -4,20 +4,22 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-impossible-zod-literal-bounds.test.ts
  */
 
-import { ASTUtils,
+import {
+  ASTUtils,
   AST_NODE_TYPES,
   type TSESLint,
   type TSESTree,
 } from "@typescript-eslint/utils";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
-import { unwrapExpression } from "./_unwrap-expression.js";
+import { outerExpression, unwrapExpression } from "./_unwrap-expression.js";
 import { isGeneratedFile, isTestFile } from "./_paths.js";
 import { isZodModule } from "./_zod.js";
 
 type MessageIds = "impossibleBounds";
-type Options = readonly [];
-type SchemaKind = "array" | "number" | "string";
+type Options = readonly [{ readonly delegateRealContradictions?: boolean }?];
+type SchemaKind =
+  "array" | "number" | "string" | "integer" | "int32" | "uint32";
 
 export const NO_IMPOSSIBLE_ZOD_LITERAL_BOUNDS_DOCUMENTATION = {
   summary:
@@ -28,7 +30,8 @@ export const NO_IMPOSSIBLE_ZOD_LITERAL_BOUNDS_DOCUMENTATION = {
     "Choose compatible lower and upper bounds, or remove the constraint that does not express the intended domain.",
   category: "correctness",
   limitations: [
-    "Only finite numeric literals in a single number, string, or array schema chain are compared; explicit int() chains also require an admitted integer.",
+    "Only finite numeric literals in a single schema chain are compared; number().int(), int(), int32(), uint32(), strings and arrays require an admitted integer value or length.",
+    "int32() and uint32() include their intrinsic ranges. The managed preset delegates explicit real-bound conflicts to upstream zod/no-conflicting-checks to avoid duplicate findings.",
     "Integer-domain comparisons abstain near the JavaScript safe-integer boundary.",
     "Chains with dynamic bounds, non-bound validators, transforms, pipes, or preprocessors are skipped.",
     "Test and generated files are excluded.",
@@ -41,7 +44,8 @@ export const NO_IMPOSSIBLE_ZOD_LITERAL_BOUNDS_DOCUMENTATION = {
       files: [
         {
           path: "src/schema.ts",
-          source: 'import { z } from "zod"; const S = z.number().gte(3).lte(3);',
+          source:
+            'import { z } from "zod"; const S = z.number().gte(3).lte(3);',
         },
       ],
       focusPath: "src/schema.ts",
@@ -55,7 +59,8 @@ export const NO_IMPOSSIBLE_ZOD_LITERAL_BOUNDS_DOCUMENTATION = {
       files: [
         {
           path: "src/schema.ts",
-          source: 'import { z } from "zod"; const S = z.number().min(5).max(4);',
+          source:
+            'import { z } from "zod"; const S = z.number().min(5).max(4);',
         },
       ],
       focusPath: "src/schema.ts",
@@ -71,12 +76,26 @@ type Bound = {
   readonly value: number;
 };
 
+type ChainBounds = {
+  readonly integer: boolean;
+  readonly lower: Bound | null;
+  readonly numeric: boolean;
+  readonly upper: Bound | null;
+};
+
 type Chain = {
   readonly calls: readonly { method: string; node: TSESTree.CallExpression }[];
   readonly kind: SchemaKind;
 };
 
-const KINDS: ReadonlySet<SchemaKind> = new Set(["array", "number", "string"]);
+const KINDS: ReadonlyMap<string, SchemaKind> = new Map([
+  ["array", "array"],
+  ["number", "number"],
+  ["string", "string"],
+  ["int", "integer"],
+  ["int32", "int32"],
+  ["uint32", "uint32"],
+]);
 const NUMBER_METHODS: ReadonlySet<string> = new Set([
   "gt",
   "gte",
@@ -105,7 +124,9 @@ function importedName(specifier: TSESTree.ImportSpecifier): string | null {
       : null;
 }
 
-function finiteNumber(node: TSESTree.CallExpressionArgument | undefined): number | null {
+function finiteNumber(
+  node: TSESTree.CallExpressionArgument | undefined,
+): number | null {
   node = node === undefined ? undefined : unwrapExpression(node);
   if (node?.type === AST_NODE_TYPES.Literal && typeof node.value === "number") {
     return Number.isFinite(node.value) ? node.value : null;
@@ -116,7 +137,8 @@ function finiteNumber(node: TSESTree.CallExpressionArgument | undefined): number
     node.argument.type === AST_NODE_TYPES.Literal &&
     typeof node.argument.value === "number"
   ) {
-    const value = node.operator === "-" ? -node.argument.value : node.argument.value;
+    const value =
+      node.operator === "-" ? -node.argument.value : node.argument.value;
     return Number.isFinite(value) ? value : null;
   }
   return null;
@@ -126,7 +148,9 @@ function strongerLower(current: Bound | null, candidate: Bound): Bound {
   if (
     current === null ||
     candidate.value > current.value ||
-    (candidate.value === current.value && candidate.exclusive && !current.exclusive)
+    (candidate.value === current.value &&
+      candidate.exclusive &&
+      !current.exclusive)
   ) {
     return candidate;
   }
@@ -137,36 +161,55 @@ function strongerUpper(current: Bound | null, candidate: Bound): Bound {
   if (
     current === null ||
     candidate.value < current.value ||
-    (candidate.value === current.value && candidate.exclusive && !current.exclusive)
+    (candidate.value === current.value &&
+      candidate.exclusive &&
+      !current.exclusive)
   ) {
     return candidate;
   }
   return current;
 }
 
-function isEmpty(lower: Bound | null, upper: Bound | null, integer: boolean): boolean {
+function isRealEmpty(lower: Bound | null, upper: Bound | null): boolean {
   if (lower === null || upper === null) return false;
-  const realEmpty = lower.value > upper.value ||
-    (lower.value === upper.value && (lower.exclusive || upper.exclusive));
+  return (
+    lower.value > upper.value ||
+    (lower.value === upper.value && (lower.exclusive || upper.exclusive))
+  );
+}
+
+function isEmpty(
+  lower: Bound | null,
+  upper: Bound | null,
+  integer: boolean,
+): boolean {
+  if (lower === null || upper === null) return false;
+  if (isRealEmpty(lower, upper)) return true;
   if (integer) {
-    // The strict preset's upstream conflicting-checks rule owns real contradictions.
-    if (realEmpty) return false;
     const safeMargin = Number.MAX_SAFE_INTEGER - 1;
-    if (Math.abs(lower.value) >= safeMargin || Math.abs(upper.value) >= safeMargin) {
+    if (
+      Math.abs(lower.value) >= safeMargin ||
+      Math.abs(upper.value) >= safeMargin
+    ) {
       return false;
     }
-    const minimum = lower.exclusive ? Math.floor(lower.value) + 1 : Math.ceil(lower.value);
-    const maximum = upper.exclusive ? Math.ceil(upper.value) - 1 : Math.floor(upper.value);
+    const minimum = lower.exclusive
+      ? Math.floor(lower.value) + 1
+      : Math.ceil(lower.value);
+    const maximum = upper.exclusive
+      ? Math.ceil(upper.value) - 1
+      : Math.floor(upper.value);
     return minimum > maximum;
   }
-  return realEmpty;
+  return false;
 }
 
 function isOutermostCall(node: TSESTree.CallExpression): boolean {
-  const parent = node.parent;
+  const expression = outerExpression(node);
+  const parent = expression.parent;
   return !(
     parent?.type === AST_NODE_TYPES.MemberExpression &&
-    parent.object === node &&
+    parent.object === expression &&
     parent.parent?.type === AST_NODE_TYPES.CallExpression &&
     parent.parent.callee === parent
   );
@@ -181,14 +224,26 @@ export default createRule<Options, MessageIds>({
       description:
         "Disallow same-chain literal Zod bounds whose accepted set is mathematically empty.",
     },
-    schema: [],
+    schema: [
+      {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          delegateRealContradictions: {
+            type: "boolean",
+            description:
+              "Let enabled upstream zod/no-conflicting-checks own explicit real-bound contradictions.",
+          },
+        },
+      },
+    ],
     messages: {
       impossibleBounds:
         "This Zod {{kind}} schema accepts no values: {{lower}} conflicts with {{upper}}.",
     },
   },
-  defaultOptions: [],
-  create(context) {
+  defaultOptions: [{}],
+  create(context, [options]) {
     const sourceCode = context.sourceCode;
     if (
       isTestFile(context.filename) ||
@@ -207,9 +262,13 @@ export default createRule<Options, MessageIds>({
       if (binding === undefined) return false;
       let scope: TSESLint.Scope.Scope | null = sourceCode.getScope(node);
       while (scope !== null) {
-        const variable = scope.variables.find((candidate) => candidate.name === node.name);
+        const variable = scope.variables.find(
+          (candidate) => candidate.name === node.name,
+        );
         if (variable !== undefined) {
-          return variable.defs.some((definition) => definition.name === binding);
+          return variable.defs.some(
+            (definition) => definition.name === binding,
+          );
         }
         scope = scope.upper;
       }
@@ -223,7 +282,10 @@ export default createRule<Options, MessageIds>({
         const kind = baseKind(current);
         if (kind !== null) return { calls, kind };
         const callee = unwrapExpression(current.callee);
-        const calleeReceiver = callee.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(callee.object) : callee;
+        const calleeReceiver =
+          callee.type === AST_NODE_TYPES.MemberExpression
+            ? unwrapExpression(callee.object)
+            : callee;
         if (
           callee.type !== AST_NODE_TYPES.MemberExpression ||
           calleeReceiver.type !== AST_NODE_TYPES.CallExpression
@@ -240,10 +302,13 @@ export default createRule<Options, MessageIds>({
     function baseKind(node: TSESTree.CallExpression): SchemaKind | null {
       const callee = unwrapExpression(node.callee);
 
-      const calleeReceiver = callee.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(callee.object) : callee;
+      const calleeReceiver =
+        callee.type === AST_NODE_TYPES.MemberExpression
+          ? unwrapExpression(callee.object)
+          : callee;
       if (callee.type === AST_NODE_TYPES.Identifier) {
         return resolvesToTrackedImport(callee)
-          ? constructors.get(callee.name) ?? null
+          ? (constructors.get(callee.name) ?? null)
           : null;
       }
       if (
@@ -255,9 +320,7 @@ export default createRule<Options, MessageIds>({
         return null;
       }
       const name = ASTUtils.getPropertyName(callee);
-      return name !== null && KINDS.has(name as SchemaKind)
-        ? (name as SchemaKind)
-        : null;
+      return name === null ? null : (KINDS.get(name) ?? null);
     }
 
     function isInsideReshapingCall(node: TSESTree.CallExpression): boolean {
@@ -266,7 +329,10 @@ export default createRule<Options, MessageIds>({
       while (parent !== undefined && parent.type !== AST_NODE_TYPES.Program) {
         if (parent.type === AST_NODE_TYPES.CallExpression) {
           const callee = unwrapExpression(parent.callee);
-          const calleeReceiver = callee.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(callee.object) : callee;
+          const calleeReceiver =
+            callee.type === AST_NODE_TYPES.MemberExpression
+              ? unwrapExpression(callee.object)
+              : callee;
           if (
             callee.type === AST_NODE_TYPES.MemberExpression &&
             RESHAPING_METHODS.has(ASTUtils.getPropertyName(callee) ?? "") &&
@@ -291,13 +357,48 @@ export default createRule<Options, MessageIds>({
       return false;
     }
 
-    function contradiction(chain: Chain): { lower: Bound; upper: Bound } | null {
-      const allowed = chain.kind === "number" ? NUMBER_METHODS : LENGTH_METHODS;
+    function contradiction(
+      chain: Chain,
+    ): { lower: Bound; upper: Bound } | null {
+      const bounds = readConstraints(chain);
+      if (bounds === null) return null;
+      let { lower, upper } = bounds;
+      const { integer, numeric } = bounds;
+      if (
+        isRealEmpty(lower, upper) &&
+        ((numeric && integer) || options?.delegateRealContradictions === true)
+      ) {
+        return null;
+      }
+      if (chain.kind === "int32" || chain.kind === "uint32") {
+        lower = strongerLower(lower, {
+          exclusive: false,
+          label: `${chain.kind}() minimum`,
+          value: chain.kind === "int32" ? -(2 ** 31) : 0,
+        });
+        upper = strongerUpper(upper, {
+          exclusive: false,
+          label: `${chain.kind}() maximum`,
+          value: chain.kind === "int32" ? 2 ** 31 - 1 : 2 ** 32 - 1,
+        });
+      }
+      return isEmpty(lower, upper, integer) && lower !== null && upper !== null
+        ? { lower, upper }
+        : null;
+    }
+
+    function readConstraints(chain: Chain): ChainBounds | null {
+      const numeric = chain.kind !== "string" && chain.kind !== "array";
+      const allowed = numeric ? NUMBER_METHODS : LENGTH_METHODS;
       let lower: Bound | null = null;
       let upper: Bound | null = null;
-      let integer = false;
+      let integer = chain.kind !== "number";
 
-      function addBound(method: string, semantic: ReturnType<typeof zeroBoundSemantic>, value: number): void {
+      function addBound(
+        method: string,
+        semantic: ReturnType<typeof zeroBoundSemantic>,
+        value: number,
+      ): void {
         const label = `${method}(${String(value)})`;
         if (semantic !== null) {
           if (semantic.lower) {
@@ -341,16 +442,13 @@ export default createRule<Options, MessageIds>({
         const semantic = zeroBoundSemantic(method);
         const value = semantic?.value ?? finiteNumber(node.arguments[0]);
         if (value === null) return null;
-        if (chain.kind !== "number" && (!Number.isInteger(value) || value < 0)) {
+        if (!numeric && value < 0) {
           return null;
         }
         if (semantic !== null && node.arguments.length !== 0) return null;
         addBound(method, semantic, value);
-
       }
-      return isEmpty(lower, upper, integer) && lower !== null && upper !== null
-        ? { lower, upper }
-        : null;
+      return { integer, lower, numeric, upper };
     }
 
     return {
@@ -369,8 +467,10 @@ export default createRule<Options, MessageIds>({
           if (imported === "z") {
             namespaces.add(specifier.local.name);
             importBindings.set(specifier.local.name, specifier.local);
-          } else if (imported !== null && KINDS.has(imported as SchemaKind)) {
-            constructors.set(specifier.local.name, imported as SchemaKind);
+          } else if (imported !== null && KINDS.has(imported)) {
+            const kind = KINDS.get(imported);
+            if (kind !== undefined)
+              constructors.set(specifier.local.name, kind);
             importBindings.set(specifier.local.name, specifier.local);
           } else if (imported === "preprocess") {
             preprocessors.add(specifier.local.name);
@@ -398,7 +498,9 @@ export default createRule<Options, MessageIds>({
   },
 });
 
-function zeroBoundSemantic(method: string): { exclusive: boolean; lower: boolean; value: number } | null {
+function zeroBoundSemantic(
+  method: string,
+): { exclusive: boolean; lower: boolean; value: number } | null {
   return method === "positive"
     ? { exclusive: true, lower: true, value: 0 }
     : method === "nonnegative"

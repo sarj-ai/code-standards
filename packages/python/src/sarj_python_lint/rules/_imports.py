@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Self
 
-from sarj_python_lint.rules._ast_index import walk as walk_ast
+from sarj_python_lint.rules._ast_index import comprehension_results, walk as walk_ast
 
 
 ABC_SOURCES = frozenset({"abc"})
@@ -138,13 +138,9 @@ def _collect_module_bindings(node: ast.AST, names: set[str]) -> None:
         case ast.FunctionDef() | ast.AsyncFunctionDef() | ast.ClassDef():
             names.add(node.name)
             return
-        case ast.ListComp() | ast.SetComp() | ast.GeneratorExp():
-            _collect_module_bindings(node.elt, names)
-            _collect_comprehension_bindings(node.generators, names)
-            return
-        case ast.DictComp():
-            _collect_module_bindings(node.key, names)
-            _collect_module_bindings(node.value, names)
+        case ast.ListComp() | ast.SetComp() | ast.GeneratorExp() | ast.DictComp():
+            for result in comprehension_results(node):
+                _collect_module_bindings(result, names)
             _collect_comprehension_bindings(node.generators, names)
             return
         case ast.Lambda():

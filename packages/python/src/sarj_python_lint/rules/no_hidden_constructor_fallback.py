@@ -18,6 +18,7 @@ from sarj_python_lint.rule_base import (
     RuleExample,
     Severity,
 )
+from sarj_python_lint.rules._ast_index import comprehension_results
 from sarj_python_lint.rules._first_party import FirstPartyFacts, distribution_root
 from sarj_python_lint.rules._paths import is_generated, is_test_path
 
@@ -870,8 +871,8 @@ def _calls_with_shadowing(
         case ast.ListComp() | ast.SetComp() | ast.GeneratorExp():
             yield from _comprehension_calls(node.generators, (node.elt,), shadowed, nested_scope_base)
             return
-        case ast.DictComp(generators=generators, key=key, value=value):
-            yield from _comprehension_calls(generators, (key, value), shadowed, nested_scope_base)
+        case ast.DictComp(generators=generators):
+            yield from _comprehension_calls(generators, tuple(comprehension_results(node)), shadowed, nested_scope_base)
             return
         case ast.Lambda(args=args, body=body):
             outer_nodes = [*args.defaults, *(default for default in args.kw_defaults if default is not None)]
@@ -1008,8 +1009,8 @@ class LocalBindingCollector(ast.NodeVisitor):
 
     @override
     def visit_DictComp(self, node: ast.DictComp) -> None:
-        self.visit(node.key)
-        self.visit(node.value)
+        for result in comprehension_results(node):
+            self.visit(result)
         self._visit_generators(node.generators)
 
     @override

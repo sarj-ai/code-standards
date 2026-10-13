@@ -28,6 +28,8 @@ if TYPE_CHECKING:
 _NUMERIC_BOUNDS = frozenset({"gt", "ge", "lt", "le"})
 _LENGTH_BOUNDS = frozenset({"min_length", "max_length"})
 _KINDS = frozenset({"int", "float", "str", "list"})
+_PASSIVE_CONFIG_BOOLEANS = frozenset({"strict", "frozen", "validate_default"})
+_EXTRA_POLICIES = frozenset({"allow", "forbid", "ignore"})
 _PASSIVE_OPTIONS = frozenset(
     {
         "default",
@@ -59,13 +61,15 @@ class NoImpossiblePydanticFieldBounds(Rule):
     documentation = RuleDocumentation(
         default_level=Severity.ERROR,
         summary="Pydantic field bounds must admit at least one value.",
-        rationale="Contradictory literal constraints reject every field value, including integer intervals with no integer member.",
+        rationale="Contradictory literal constraints reject every field value, including integer multiples and float intervals with no representable member.",
         remediation="Correct the conflicting bounds so the declared field domain admits the intended values.",
         category=RuleCategory.CORRECTNESS,
         autofix=AutofixPolicy.NONE,
         limitations=(
             "Only plain direct module-level BaseModel subclasses and built-in int, float, str and list fields are inspected.",
             "Bounds must be finite literals; int and length bounds must be integers, and float bounds must convert exactly.",
+            "Positive integer multiple_of constraints use exact integer arithmetic; floating-point steps remain outside the rule.",
+            "Literal strict, frozen, validate_default and extra model settings preserve coverage; other or dynamic configuration is excluded.",
             "Unknown metadata, nullable types, repeated bound names, methods, dynamic namespaces and generated files are excluded.",
             "Visible namespace APIs, dynamic module access, ambiguous imports and escaped or mutated imported objects exclude the file.",
             "No autofix chooses a domain or changes validation behavior.",
@@ -130,7 +134,7 @@ class NoImpossiblePydanticFieldBounds(Rule):
 def _candidate_fields(context: PythonFileContext) -> list[ast.AnnAssign]:
     fields: list[ast.AnnAssign] = []
     for model in direct_models(context):
-        if any(isinstance(member, (ast.Assign, ast.AnnAssign)) and _names_config(member) for member in model.body):
+        if not _passive_model_configuration(model, context):
             continue
         unique = unique_members(model)
         fields.extend(
@@ -144,9 +148,48 @@ def _candidate_fields(context: PythonFileContext) -> list[ast.AnnAssign]:
     return fields
 
 
+def _passive_model_configuration(model: ast.ClassDef, context: PythonFileContext) -> bool:
+    configurations = [
+        member for member in model.body if isinstance(member, (ast.Assign, ast.AnnAssign)) and _names_config(member)
+    ]
+    if not configurations:
+        return True
+    if len(configurations) != 1:
+        return False
+    options = _configuration_options(configurations[0].value, context)
+    return options is not None and all(
+        isinstance(item, ast.Constant)
+        and (
+            (name in _PASSIVE_CONFIG_BOOLEANS and type(item.value) is bool)
+            or (name == "extra" and isinstance(item.value, str) and item.value in _EXTRA_POLICIES)
+        )
+        for name, item in options
+    )
+
+
 def _names_config(node: ast.Assign | ast.AnnAssign) -> bool:
     targets = node.targets if isinstance(node, ast.Assign) else [node.target]
     return any(isinstance(target, ast.Name) and target.id == "model_config" for target in targets)
+
+
+def _configuration_options(value: ast.expr | None, context: PythonFileContext) -> list[tuple[str, ast.expr]] | None:
+    if isinstance(value, ast.Dict):
+        options: list[tuple[str, ast.expr]] = []
+        for key, item in zip(value.keys, value.values, strict=True):
+            if not isinstance(key, ast.Constant) or not isinstance(key.value, str):
+                return None
+            options.append((key.value, item))
+        return options
+    if (
+        not isinstance(value, ast.Call)
+        or value.args
+        or not context.module_imports.resolves(
+            value.func, sources=frozenset({"pydantic", "pydantic.config"}), symbol="ConfigDict"
+        )
+        or any(keyword.arg is None for keyword in value.keywords)
+    ):
+        return None
+    return [(keyword.arg, keyword.value) for keyword in value.keywords if keyword.arg is not None]
 
 
 def _field_contract(field: ast.AnnAssign, context: PythonFileContext) -> tuple[str, dict[str, int | float]] | None:
@@ -186,7 +229,9 @@ def _literal_bounds(calls: list[ast.Call], kind: str) -> dict[str, int | float] 
     if any(call.args for call in calls):
         return None
     bounds: dict[str, int | float] = {}
-    allowed = _NUMERIC_BOUNDS if kind in {"int", "float"} else _LENGTH_BOUNDS
+    allowed = (
+        _NUMERIC_BOUNDS | {"multiple_of"} if kind == "int" else _NUMERIC_BOUNDS if kind == "float" else _LENGTH_BOUNDS
+    )
     for keyword in (keyword for call in calls for keyword in call.keywords):
         name = keyword.arg
         if name in _PASSIVE_OPTIONS:
@@ -194,7 +239,7 @@ def _literal_bounds(calls: list[ast.Call], kind: str) -> dict[str, int | float] 
         if name is None or name not in allowed or name in bounds:
             return None
         value = _bound_value(keyword.value, kind)
-        if value is None:
+        if value is None or (name == "multiple_of" and value <= 0):
             return None
         bounds[name] = value
     return bounds
@@ -240,5 +285,19 @@ def _empty_interval(kind: str, bounds: dict[str, int | float]) -> bool:
     lower = max(lowers, key=lambda bound: (bound.value, bound.exclusive))
     upper = min(uppers, key=lambda bound: (bound.value, not bound.exclusive))
     if kind != "float":
-        return lower.value + int(lower.exclusive) > upper.value - int(upper.exclusive)
-    return lower.value > upper.value or (lower.value == upper.value and (lower.exclusive or upper.exclusive))
+        minimum = lower.value + int(lower.exclusive)
+        maximum = upper.value - int(upper.exclusive)
+        if minimum > maximum:
+            return True
+        multiple = bounds.get("multiple_of")
+        return (
+            kind == "int"
+            and isinstance(minimum, int)
+            and isinstance(maximum, int)
+            and isinstance(multiple, int)
+            and multiple > 0
+            and -(-minimum // multiple) * multiple > maximum
+        )
+    minimum_float = math.nextafter(lower.value, math.inf) if lower.exclusive else float(lower.value)
+    maximum_float = math.nextafter(upper.value, -math.inf) if upper.exclusive else float(upper.value)
+    return minimum_float > maximum_float

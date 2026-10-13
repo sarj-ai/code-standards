@@ -16,6 +16,7 @@ from sarj_python_lint.rule_base import (
     RuleExample,
     Severity,
 )
+from sarj_python_lint.rules._ast_index import comprehension_results
 from sarj_python_lint.rules._paths import is_test_path
 
 
@@ -444,10 +445,7 @@ def _repeated_comprehension_regions(
             regions.extend(generator.ifs)
         prior_generator_repeats = prior_generator_repeats or this_generator_repeats
     if prior_generator_repeats:
-        if isinstance(node, ast.DictComp):
-            regions.extend((node.key, node.value))
-        else:
-            regions.append(node.elt)
+        regions.extend(comprehension_results(node))
     return tuple(regions)
 
 

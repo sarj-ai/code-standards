@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, final
 from sarj_python_lint._analysis_session import AnalysisSession
 from sarj_python_lint._file_context import PythonFileContext
 from sarj_python_lint.rules._annotation_semantics import AnnotationSemantics, scope_bound_names
+from sarj_python_lint.rules._ast_index import comprehension_results
 from sarj_python_lint.rules._closed_helpers import plain_class_members
 from sarj_python_lint.rules._imports import ImportIndex
 from sarj_python_lint.rules._project_index import ProjectIndexSet, SourceUnit, SymbolRef, imports_outside
@@ -695,11 +696,8 @@ class CopyOnWriteAnalysis:
             self._bind(generator.target, self._iter_element(generator.iter, local), local)
             for condition in generator.ifs:
                 self._expression(condition, local)
-        if isinstance(node, ast.DictComp):
-            self._expression(node.key, local)
-            self._expression(node.value, local)
-        else:
-            self._expression(node.elt, local)
+        for child in comprehension_results(node):
+            self._expression(child, local)
 
     def _iter_element(self, expression: ast.expr, bindings: Mapping[str, _Value]) -> _Value | None:
         owner = self._value(expression, bindings)

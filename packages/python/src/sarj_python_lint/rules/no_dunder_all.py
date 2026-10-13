@@ -14,6 +14,7 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
 )
+from sarj_python_lint.rules._ast_index import comprehension_results
 
 
 if TYPE_CHECKING:
@@ -344,11 +345,8 @@ class _DunderAllVisitor(_ScopePruningVisitor):
         self.generic_visit(node)
 
     def _visit_comprehension(self, node: ast.ListComp | ast.SetComp | ast.DictComp | ast.GeneratorExp) -> None:
-        if isinstance(node, ast.DictComp):
-            self.visit(node.key)
-            self.visit(node.value)
-        else:
-            self.visit(node.elt)
+        for result in comprehension_results(node):
+            self.visit(result)
         for generator in node.generators:
             self.visit(generator.iter)
             for condition in generator.ifs:

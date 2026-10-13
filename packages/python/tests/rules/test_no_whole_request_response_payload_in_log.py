@@ -63,6 +63,9 @@ def test_warns_on_whole_request_response_payloads(source: str) -> None:
         "logger.info('health', request_id=request.id)",
         "logger.info('health', response_status=response.status_code)",
         "logger.info('health', success=response_json.get('success'))",
+        "logger.info('health', request_id=request.payload['id'])",
+        "logger.info('health', response_status=response.json()['status_code'])",
+        "logger.info('health', count=response_body['count'])",
         "logger.info('module', json)",
         "logger.info('email', body=email.body)",
         "logger.info(f'Document: {document.body}')",
@@ -82,6 +85,12 @@ def test_non_logger_receiver_and_malformed_source_are_ignored() -> None:
 
 def test_secret_named_payload_is_owned_by_secret_rule() -> None:
     assert _check("logger.info(f'{secret_response_body}')") == []
+
+
+@pytest.mark.parametrize("selection", ["[:]", "[key]", "['details']", "['password']", "['not_sanitized']"])
+def test_unproven_or_whole_payload_selections_still_require_review(selection: str) -> None:
+    [finding] = _check(f"logger.info(request.payload{selection})")
+    assert finding.severity is Severity.WARNING
 
 
 @pytest.mark.parametrize(

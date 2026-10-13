@@ -16,7 +16,7 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
 )
-from sarj_python_lint.rules._ast_index import children
+from sarj_python_lint.rules._ast_index import children, comprehension_results
 from sarj_python_lint.rules._paths import is_test_path
 
 
@@ -571,11 +571,7 @@ def _comprehension_expressions(
     for generator in node.generators:
         yield generator.iter
         yield from generator.ifs
-    if isinstance(node, ast.DictComp):
-        yield node.key
-        yield node.value
-    else:
-        yield node.elt
+    yield from comprehension_results(node)
 
 
 def _module_pinned_names(tree: ast.Module, definition_names: frozenset[str]) -> set[str]:
@@ -712,8 +708,7 @@ def _resolved_comprehension_loads(
         yield from _resolved_loads((generator.iter,), candidates, comp_blocked)
         comp_blocked.update(_target_names(generator.target) & candidates)
         yield from _resolved_loads(generator.ifs, candidates, comp_blocked)
-    values = (node.key, node.value) if isinstance(node, ast.DictComp) else (node.elt,)
-    yield from _resolved_loads(values, candidates, comp_blocked)
+    yield from _resolved_loads(comprehension_results(node), candidates, comp_blocked)
 
 
 def _direct_scope_bindings(node: ast.FunctionDef | ast.AsyncFunctionDef) -> set[str]:
