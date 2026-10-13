@@ -21,6 +21,7 @@ from sarj_python_lint.rule_base import (
 from sarj_python_lint.rules._ast_index import walk as walk_ast
 from sarj_python_lint.rules._imports import ImportIndex
 from sarj_python_lint.rules._pytest import collected_tests
+from sarj_python_lint.rules._resource_provenance import ResourceProvenance
 
 
 if TYPE_CHECKING:
@@ -78,7 +79,7 @@ class AsyncMockCallWithoutAwaitAssertion(Rule):
     id = "async-mock-call-without-await-assertion"
     code = "SARJ456"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        default_level=Severity.WARNING,
+        default_level=Severity.ERROR,
         summary="Pair positive AsyncMock call assertions with evidence that the mock was awaited.",
         rationale=(
             "Calling an AsyncMock records a call before its coroutine is awaited. A positive call assertion can "
@@ -94,6 +95,7 @@ class AsyncMockCallWithoutAwaitAssertion(Rule):
         limitations=(
             "Only direct statements in collected test functions and methods are inspected; fixtures, helpers, nested blocks, and generated files are excluded.",
             "Requires a fresh local unittest.mock.AsyncMock constructor with unshadowed imports; aliases, reassignment, reset, and ambiguous configuration are excluded.",
+            "Visible provider replacement, escape or unresolved lexical ownership retains WARNING; only the closed canonical AsyncMock provider proof blocks.",
             "Only the mock itself and unchanged immediate children of unspecced, unwrapped mocks are inferred; spec children, return values, and deeper chains are excluded.",
             "Positive call evidence includes direct assertion methods and literal integer or boolean call-state checks; unresolved call expectations are excluded.",
             "Await evidence excludes provably vacuous checks, including zero or nonnegative counts and empty expected await sequences; unresolved expectations are accepted without inferring their values.",
@@ -215,21 +217,52 @@ class AsyncMockCallWithoutAwaitAssertion(Rule):
             for node in context.nodes(ast.AST)
             if isinstance(node, ast.Attribute) and isinstance(node.ctx, (ast.Store, ast.Del))
         }
-        lines = context.source_lines
         return [
-            Diagnostic(
-                path=path,
-                line=call.lineno,
-                col=call.col_offset + 1,
-                code=self.code,
-                severity=Severity.WARNING,
-                message="AsyncMock call assertions do not prove awaiting; keep this assertion and add an await assertion",
-            )
+            finding
             for test in collected_tests(tree.body)
             if not _is_pytest_fixture(test, imports)
-            for call in _uncovered_calls(_test_imports(imports, test), test, writes)
-            if not is_suppressed(lines, call.lineno, self.code)
+            for finding in _test_diagnostics(test, context, imports, writes, self.code)
         ]
+
+
+def _test_diagnostics(
+    test: _TestFunction, context: PythonFileContext, imports: ImportIndex, writes: set[_Reference], code: str
+) -> list[Diagnostic]:
+    calls = tuple(_uncovered_calls(_test_imports(imports, test), test, writes))
+    if not calls:
+        return []
+    severity = Severity.ERROR if _mock_provider_proven(test, context) else Severity.WARNING
+    message = "AsyncMock call assertions do not prove awaiting; keep this assertion and add an await assertion"
+    if severity is Severity.WARNING:
+        message = (
+            "Verify the mock provider is asynchronous before adding an await assertion; "
+            "keep the call assertion and preserve intentional scheduling or synchronous replacement contracts."
+        )
+    return [
+        Diagnostic(
+            path=context.path,
+            line=call.lineno,
+            col=call.col_offset + 1,
+            code=code,
+            severity=severity,
+            message=message,
+        )
+        for call in calls
+        if not is_suppressed(context.source_lines, call.lineno, code)
+    ]
+
+
+def _mock_provider_proven(test: _TestFunction, context: PythonFileContext) -> bool:
+    provenance = ResourceProvenance(context, require_static_namespace=True)
+    constructors = [
+        node
+        for node in ast.walk(test)
+        if isinstance(node, ast.Call)
+        and context.imports.resolved_qualified_name(node.func) == "unittest.mock.AsyncMock"
+    ]
+    return bool(constructors) and all(
+        provenance.imported(node.func, "unittest.mock.AsyncMock") for node in constructors
+    )
 
 
 def _is_pytest_fixture(test: _TestFunction, imports: ImportIndex) -> bool:

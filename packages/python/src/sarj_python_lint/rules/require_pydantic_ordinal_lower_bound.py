@@ -19,7 +19,7 @@ from sarj_python_lint.rule_base import (
     Severity,
     is_suppressed,
 )
-from sarj_python_lint.rules._inert_model_annotation import inert_model_annotation
+from sarj_python_lint.rules._inert_model_annotation import inert_direct_model_body
 from sarj_python_lint.rules._paths import is_test_path, is_test_support_path
 
 
@@ -201,7 +201,7 @@ class RequirePydanticOrdinalLowerBound(Rule):
                     path,
                     source_lines,
                     code=self.code,
-                    severity=Severity.ERROR if _inert_model_body(cls, imports) else Severity.WARNING,
+                    severity=Severity.ERROR if inert_direct_model_body(cls, imports) else Severity.WARNING,
                 )
             )
         return sorted(diagnostics, key=lambda item: (item.line, item.col))
@@ -209,34 +209,6 @@ class RequirePydanticOrdinalLowerBound(Rule):
 
 def _is_model(cls: ast.ClassDef, imports: ImportIndex) -> bool:
     return any(imports.resolves(base, sources=_PYDANTIC_MODEL_SOURCES, symbol="BaseModel") for base in cls.bases)
-
-
-def _inert_model_body(cls: ast.ClassDef, imports: ImportIndex) -> bool:
-    if cls.decorator_list or cls.keywords or cls.type_params or len(cls.bases) != 1:
-        return False
-    for statement in cls.body:
-        match statement:
-            case ast.Pass() | ast.Expr(value=ast.Constant(value=str())):
-                continue
-            case ast.AnnAssign(target=ast.Name(), annotation=annotation, value=value):
-                if not inert_model_annotation(annotation, imports):
-                    return False
-                if value is None or isinstance(value, ast.Constant):
-                    continue
-                if (
-                    isinstance(value, ast.Call)
-                    and imports.resolves(value.func, sources=_PYDANTIC_FIELD_SOURCES, symbol="Field")
-                    and not value.args
-                    and all(
-                        keyword.arg is not None and _literal_value(keyword.value) is not None
-                        for keyword in value.keywords
-                    )
-                ):
-                    continue
-                return False
-            case _:
-                return False
-    return True
 
 
 def _annotation_aliases(tree: ast.Module) -> dict[str, ast.expr]:

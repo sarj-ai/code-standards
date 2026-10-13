@@ -34,7 +34,7 @@ class NoDuplicateIndex(Rule):
     id = "no-duplicate-index"
     code = "SARJ117"
     documentation = RuleDocumentation(
-        default_level=DefaultLevel.WARNING,
+        default_level=DefaultLevel.ERROR,
         summary="Report duplicate and conservatively covered indexes that remain active in one authored migration.",
         rationale=(
             "Duplicate definitions, non-unique copies of unique access paths, and strict B-tree prefixes can add "
@@ -53,6 +53,7 @@ class NoDuplicateIndex(Rule):
             "The normalized definition includes uniqueness, table and ONLY scope, access method, ordered key expressions and operator classes, INCLUDE columns, NULLS DISTINCT treatment, storage parameters, tablespace, and WHERE predicate.",
             "Semantically equivalent expressions with different normalized source spelling are intentionally not inferred.",
             "Left-prefix review is limited to ordinary non-unique B-tree indexes with identical physical options and compatible INCLUDE coverage.",
+            "Only exact normalized active duplicates block; unique/nonunique access-path comparisons and strict left-prefix advice retain WARNING because query-plan value is unresolved.",
         ),
         examples=(
             RuleExample(
@@ -134,6 +135,7 @@ class NoDuplicateIndex(Rule):
                     self.code,
                     f"Index `{shorter.name}` is a strict left prefix of `{longer.name}` on table `{later.table}`; "
                     "the pair may overlap, so verify the exact query plan before retaining both.",
+                    severity=DefaultLevel.WARNING,
                 )
             )
         findings.sort(key=lambda diagnostic: (diagnostic.line, diagnostic.col))
@@ -238,5 +240,6 @@ def _find_repeated_access_paths(
                 code,
                 f"Non-unique index `{nonunique.name}` repeats unique access path `{unique.name}` on table "
                 f"`{index.table}`; remove the non-unique copy unless an exact query plan proves distinct value.",
+                severity=DefaultLevel.WARNING,
             )
         )

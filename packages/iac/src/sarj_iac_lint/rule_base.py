@@ -68,9 +68,11 @@ class Diagnostic:
     message: str
     suppressible: bool = True
     baselineable: bool = True
+    severity: DefaultLevel = DefaultLevel.ERROR
 
     def format(self) -> str:
-        return f"{self.path}:{self.line}:{self.col}: {self.code} {self.message}"
+        label = "warning: " if self.severity is DefaultLevel.WARNING else ""
+        return f"{self.path}:{self.line}:{self.col}: {self.code} {label}{self.message}"
 
 
 class Rule(ABC):

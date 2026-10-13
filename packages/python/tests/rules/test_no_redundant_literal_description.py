@@ -28,15 +28,20 @@ def test_public_documentation_examples_are_executable(example: RuleExample) -> N
 
 
 @pytest.mark.parametrize(
-    "source",
+    ("source", "severity"),
     [
-        """
+        pytest.param(
+            """
         from typing import Literal
         from pydantic import BaseModel, Field
         class Request(BaseModel):
             kind: Literal["call"] = Field(description="Must be 'call'")
         """,
-        """
+            Severity.ERROR,
+            id="direct-literal",
+        ),
+        pytest.param(
+            """
         from enum import StrEnum
         from pydantic import BaseModel, Field
         class Kind(StrEnum):
@@ -45,19 +50,26 @@ def test_public_documentation_examples_are_executable(example: RuleExample) -> N
         class Request(BaseModel):
             kind: Kind = Field(description="Should be 'call' or 'chat'.")
         """,
-        """
+            Severity.WARNING,
+            id="custom-enum",
+        ),
+        pytest.param(
+            """
         import pydantic as pd
         from typing_extensions import Annotated, Literal as L
         class Request(pd.BaseModel):
             kind: Annotated[L["call", "chat"], pd.Field(description="Must be one of 'call' or 'chat'")]
         """,
+            Severity.ERROR,
+            id="inert-annotated-literal",
+        ),
     ],
 )
-def test_reports_domain_only_descriptions(source: str) -> None:
+def test_reports_domain_only_descriptions(source: str, severity: Severity) -> None:
     findings = _check(source)
     assert len(findings) == 1
     assert findings[0].code == "SARJ423"
-    assert findings[0].severity is Severity.WARNING
+    assert findings[0].severity is severity
 
 
 @pytest.mark.parametrize(

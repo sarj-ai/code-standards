@@ -107,3 +107,54 @@ def _literal(node: ast.expr) -> bool:
         and isinstance(node.operand.value, int | float)
         and not isinstance(node.operand.value, bool)
     )
+
+
+_MODEL_FIELD_SOURCES = frozenset({"pydantic", "pydantic.fields", "pydantic.v1", "pydantic.v1.fields"})
+
+
+def inert_direct_model_body(cls: ast.ClassDef, imports: ImportIndex) -> bool:
+    if cls.decorator_list or cls.keywords or cls.type_params or len(cls.bases) != 1:
+        return False
+    for statement in cls.body:
+        match statement:
+            case ast.Pass() | ast.Expr(value=ast.Constant(value=str())):
+                continue
+            case ast.AnnAssign(target=ast.Name(), annotation=annotation, value=value):
+                if not inert_model_annotation(annotation, imports):
+                    return False
+                if value is None or isinstance(value, ast.Constant):
+                    continue
+                if (
+                    isinstance(value, ast.Call)
+                    and imports.resolves(value.func, sources=_MODEL_FIELD_SOURCES, symbol="Field")
+                    and not value.args
+                    and all(
+                        keyword.arg is not None and _model_literal_value(keyword.value) is not None
+                        for keyword in value.keywords
+                    )
+                ):
+                    continue
+                return False
+            case _:
+                return False
+    return True
+
+
+def _model_literal_value(node: ast.expr | None) -> object:
+    if isinstance(node, ast.Constant):
+        return node.value
+    if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.USub) and isinstance(node.operand, ast.Constant):
+        numeric = _model_numeric_value(node.operand.value)
+        if numeric is not None:
+            return -numeric
+    return None
+
+
+def _model_numeric_value(value: object) -> float | None:
+    match value:
+        case bool():
+            return None
+        case int() | float():
+            return float(value)
+        case _:
+            return None

@@ -275,9 +275,10 @@ def test_suppressing_specific_finding_preserves_unsuppressed_generic_twin(
         ]
     )
 
-    assert status == 0
+    assert status == 1
     output = capsys.readouterr().out
-    assert "SARJ050 warning:" in output
+    assert "SARJ050 " in output
+    assert "warning:" not in output
     assert "SARJ088" not in output
 
 

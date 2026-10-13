@@ -19,12 +19,12 @@ type MessageIds = "useMultiValueLiteral";
 type Options = readonly [{ zodMajorVersion?: 4 }];
 
 export const PREFER_MULTI_VALUE_ZOD_LITERAL_DOCUMENTATION = {
-  defaultLevel: "warning",
+  defaultLevel: "error",
   summary:
     "Use the Zod 4 multi-value literal API instead of a union of literal schemas.",
   rationale:
     "One multi-value literal expresses the same closed value domain without repeated schema wrappers.",
-  remediation: "Replace the union with z.literal([value1, value2, ...]).",
+  remediation: "Use z.literal([value1, value2, ...]) for a modern Zod 4 value-domain contract. Preserve required union introspection or error-shape contracts with an explained local exception.",
   category: "maintainability",
   autofix: "none",
   limitations: [

@@ -14,7 +14,7 @@ import typer
 from sarj_iac_lint import __version__
 from sarj_iac_lint._hcl import suppression_comment_lines
 from sarj_iac_lint.json_boundary import is_object_mapping, parse_json
-from sarj_iac_lint.rule_base import Diagnostic, is_suppressed
+from sarj_iac_lint.rule_base import DefaultLevel, Diagnostic, is_suppressed
 from sarj_iac_lint.rules import REGISTRY
 
 
@@ -108,6 +108,8 @@ def _baseline_path(path: Path, *, root: Path | None = None) -> str:
 def baseline_counts(diags: list[Diagnostic], *, root: Path | None = None) -> dict[str, dict[str, int]]:
     counts: dict[str, dict[str, int]] = {}
     for d in diags:
+        if d.severity is DefaultLevel.WARNING:
+            continue
         key = _baseline_path(d.path, root=root)
         per_code = counts.setdefault(key, {})
         per_code[d.code] = per_code.get(d.code, 0) + 1
@@ -139,6 +141,9 @@ def apply_baseline(
     seen: Counter[tuple[str, str]] = Counter()
     out: list[Diagnostic] = []
     for d in diags:
+        if d.severity is DefaultLevel.WARNING:
+            out.append(d)
+            continue
         path_key = _baseline_path(d.path, root=root)
         key = (path_key, d.code)
         seen[key] += 1
@@ -197,7 +202,7 @@ def _run_check(
         sys.stdout.write(d.format() + "\n")
     if exit_zero:
         return 0
-    return 1 if diags else 0
+    return 1 if any(d.severity is DefaultLevel.ERROR for d in diags) else 0
 
 
 app = typer.Typer(

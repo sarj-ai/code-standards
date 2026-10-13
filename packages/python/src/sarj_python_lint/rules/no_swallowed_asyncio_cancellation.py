@@ -19,6 +19,7 @@ from sarj_python_lint.rule_base import (
 )
 from sarj_python_lint.rules._ast_index import nodes
 from sarj_python_lint.rules._paths import is_test_path, is_test_support_path
+from sarj_python_lint.rules._resource_provenance import ResourceProvenance
 
 
 if TYPE_CHECKING:
@@ -41,7 +42,7 @@ class NoSwallowedAsyncioCancellation(Rule):
     id = "no-swallowed-asyncio-cancellation"
     code = "SARJ458"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        default_level=Severity.WARNING,
+        default_level=Severity.ERROR,
         summary="Preserve cancellation when an async operation is cancelled.",
         rationale=(
             "Returning or falling through after catching CancelledError can make cancelled work look successful "
@@ -60,6 +61,7 @@ class NoSwallowedAsyncioCancellation(Rule):
             "Only straight-line handlers with a return or normal fallthrough are reported. Compound handlers, re-raising, and translated exceptions are excluded. Any attribute call named uncancel is conservatively excluded without proving its receiver, so unrelated methods can hide a finding.",
             "A single-name task created by asyncio.create_task, immediately cancelled before a try that only awaits it, is intentionally excluded as child cleanup; this does not prove concurrent caller cancellation cannot occur.",
             "Try statements with control-transferring or compound finalizers are excluded, including handlers nested beneath them. Runtime helper effects and interprocedural task ownership are not inferred.",
+            "Only a try body consisting of one awaited, unmodified canonical asyncio.sleep call with literal arguments is blocking. Unresolved operations and child cancellation remain advisory.",
         ),
         examples=(
             RuleExample(
@@ -129,10 +131,32 @@ def _function_diagnostics(function: ast.AsyncFunctionDef, context: PythonFileCon
                     col=handler.col_offset + 1,
                     code=code,
                     message=_MESSAGE,
-                    severity=Severity.WARNING,
+                    severity=Severity.ERROR if _caller_sleep(node, context) else Severity.WARNING,
                 )
             )
     return diagnostics
+
+
+def _caller_sleep(node: ast.Try, context: PythonFileContext) -> bool:
+    if context.dynamic_namespace or len(node.body) != 1 or len(node.handlers) != 1:
+        return False
+    provenance = ResourceProvenance(context, require_static_namespace=True)
+    caught = node.handlers[0].type
+    if caught is None or not provenance.imported(
+        caught, context.imports.resolved_qualified_name(caught) or "asyncio.CancelledError"
+    ):
+        return False
+    match node.body[0]:
+        case ast.Expr(value=ast.Await(value=ast.Call() as call)):
+            if not context.imports.resolves(call.func, sources=frozenset({"asyncio"}), symbol="sleep"):
+                return False
+            if not provenance.imported(call.func, "asyncio.sleep"):
+                return False
+            if not all(isinstance(value, ast.Constant) for value in call.args):
+                return False
+            return not call.keywords
+        case _:
+            return False
 
 
 def _local_nodes(function: ast.AsyncFunctionDef) -> Iterator[ast.AST]:

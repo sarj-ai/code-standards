@@ -116,7 +116,7 @@ def test_reports_proven_method_replacements(source: str) -> None:
     findings = _check(source)
     assert len(findings) == 1
     assert findings[0].code == "SARJ478"
-    assert findings[0].severity is Severity.WARNING
+    assert findings[0].severity is Severity.ERROR
 
 
 @pytest.mark.parametrize(

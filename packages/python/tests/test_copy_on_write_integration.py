@@ -16,7 +16,7 @@ _RULES = ("no-input-model-mutation", "no-before-validator-input-mutation", "no-u
 
 
 @pytest.mark.parametrize("rule_id", ["no-unused-copy-result"])
-def test_warning_does_not_fail_cli_or_enter_blocking_baseline(
+def test_unused_copy_error_enters_blocking_baseline(
     rule_id: str, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     example = REGISTRY[rule_id].public_examples()[0]
@@ -25,10 +25,11 @@ def test_warning_does_not_fail_cli_or_enter_blocking_baseline(
     target.write_text(example.focus_file.source)
     baseline = tmp_path / "baseline.json"
     command = ["check", "--rule", rule_id]
-    assert main([*command, str(target)]) == 0
-    assert "warning:" in capsys.readouterr().out
+    assert main([*command, str(target)]) == 1
+    assert "warning:" not in capsys.readouterr().out
     assert main([*command, "--update-baseline", str(baseline), str(target)]) == 0
-    assert baseline.read_text().strip() == "{}"
+    assert REGISTRY[rule_id].code in baseline.read_text()
+    assert main([*command, "--baseline", str(baseline), str(target)]) == 0
 
 
 def test_before_validator_owns_model_input_mutation(tmp_path: Path) -> None:

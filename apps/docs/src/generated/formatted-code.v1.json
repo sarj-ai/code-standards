@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "5497e45db35fc151a160ca3c3bec9ccc0f39d3ac8619d4232643ff3fa7919b0b",
-  "cliSha256": "7bda2875a2f0646e83f75ec4b4c0ac0622b68dc7204516510c3491ae2d6b5c19",
+  "catalogSha256": "0411d9097deb01366a65096fff97adff282d642a2e1d64fc2a5dd08c5e006d42",
+  "cliSha256": "1f8af38f26fa2fd2b8bec3f266c9b1cdf3f1f54ee5ad628b9ebb0586a5e3df45",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -10412,11 +10412,11 @@
           "files": [
             {
               "path": "pyproject.toml",
-              "source": "[project]\nname = \"app\"\nversion = \"0.1.0\"\ndependencies = [\"pydantic>=2\"]\n"
+              "source": "[project]\nname = \"app\"\nversion = \"0.1.0\"\ndependencies = [\"pydantic>=2.5\"]\n"
             },
             {
               "path": "src/app/types.py",
-              "source": "type JsonValue = (\n    str | int | float | bool | None | list[JsonValue] | dict[str, JsonValue]\n)\n"
+              "source": "type _JsonValue = (\n    str | int | float | bool | None | list[_JsonValue] | dict[str, _JsonValue]\n)\n\n\ndef _accept(value: _JsonValue) -> None:\n    pass\n"
             }
           ],
           "fixedFiles": [],
@@ -10450,11 +10450,11 @@
           "files": [
             {
               "path": "pyproject.toml",
-              "source": "[project]\nname = \"app\"\nversion = \"0.1.0\"\ndependencies = [\"pydantic>=2\"]\n"
+              "source": "[project]\nname = \"app\"\nversion = \"0.1.0\"\ndependencies = [\"pydantic>=2.5\"]\n"
             },
             {
               "path": "src/app/types.py",
-              "source": "type 数据 = str | int | float | bool | None | list[数据] | dict[str, 数据]\n"
+              "source": "type _数据 = str | int | float | bool | None | list[_数据] | dict[str, _数据]\n\n\ndef _accept(value: _数据) -> None:\n    pass\n"
             }
           ],
           "fixedFiles": [],
