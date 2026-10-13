@@ -38,7 +38,7 @@ def test_upstream_compose_rules_fail_versionless_admission(tmp_path: Path) -> No
     installed = subprocess.run(
         (*prefix, "--version"), env=environment, capture_output=True, text=True, check=True, timeout=120
     )
-    assert installed.stdout.strip() == "1.178.0"
+    assert installed.stdout.strip() == "1.180.0"
     process = subprocess.run(
         (
             *prefix,

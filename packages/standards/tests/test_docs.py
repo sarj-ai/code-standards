@@ -171,7 +171,7 @@ def test_sync_is_deterministic_and_check_then_passes(tmp_path: Path) -> None:
     assert docs.check(tmp_path).status == 0
     assert "uvx --no-config --isolated --python 3.15 --from code-standards code-standards setup" in rendered
     assert "do not install a second Repo Standards hook" in rendered
-    assert "Install uv 0.12.24, Python 3.15, Node 24.21, and GNU Make" in rendered
+    assert "Install uv 0.13.0, Python 3.15, Node 24.21, and GNU Make" in rendered
     assert "make setup\nmake verify" in rendered
     assert "[Documentation](https://code-standards.sarj.ai/)" in rendered
     assert "## Rule catalog" not in rendered
@@ -299,6 +299,7 @@ def test_docs_lint_dependencies_are_reproducible_and_compatible() -> None:
     assert _is_object_table(plugin_raw)
     assert plugin_raw.get("name") == "@sarj/eslint-plugin"
     assert plugin_raw.get("version") == manifest.eslint_peers()["@sarj/eslint-plugin"]
-    # TypeScript 7 is outside Astro Check and typescript-eslint's peer ranges and
-    # currently crashes @sarj/eslint-plugin while loading its enum utilities.
-    assert dependencies["typescript"] == "6.0.3"
+    # Astro Check and typed lint use the supported API bridge; the current
+    # native compiler remains separately available for command-line checks.
+    assert dependencies["typescript"] == "npm:@typescript/typescript6@6.0.2"
+    assert dependencies["@typescript/native"] == "npm:typescript@7.0.2"

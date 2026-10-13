@@ -1,6 +1,6 @@
 # /// script
 # requires-python = ">=3.12"
-# dependencies = ["typer==0.27.2"]
+# dependencies = ["typer==0.27.3", "pydantic==2.14.1"]
 # ///
 # pyright: basic
 
@@ -23,17 +23,18 @@ import tarfile
 import tempfile
 import time
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Annotated, Any, NoReturn
+from typing import TYPE_CHECKING, Annotated, ClassVar, NoReturn
 from urllib.error import HTTPError
 from urllib.parse import quote
 from urllib.request import Request, urlopen
 import zipfile
 
+from pydantic import ConfigDict, JsonValue, RootModel
 import typer
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Sequence
 
 
 REPOSITORY = "sarj-ai/code-standards"
@@ -67,6 +68,10 @@ NPM_ARTIFACT_PATHS = MappingProxyType(
     }
 )
 GIT_COMMIT_PATTERN = re.compile(r"[0-9a-f]{40}")
+
+
+class _RegistryDocument(RootModel[dict[str, JsonValue]]):
+    model_config: ClassVar[ConfigDict] = ConfigDict(strict=True)
 
 
 class VerificationError(Exception):
@@ -107,7 +112,7 @@ def _fail_permanently(message: str) -> NoReturn:
     raise PermanentVerificationError(message)
 
 
-def _json(url: str) -> dict[str, Any]:
+def _json(url: str) -> dict[str, JsonValue]:
     request = Request(  # ruff: ignore[suspicious-url-open-usage] -- callers construct URLs from fixed HTTPS registries.
         url, headers={"Accept": "application/json", "Cache-Control": "no-cache"}
     )
@@ -117,7 +122,7 @@ def _json(url: str) -> dict[str, Any]:
         value: object = json.load(response)
     if not isinstance(value, dict):
         _fail(f"registry returned a non-object document: {url}")
-    return value
+    return _RegistryDocument.model_validate(value).root
 
 
 def _bytes(url: str) -> bytes:
@@ -156,25 +161,27 @@ def _metadata(  # sarj-noqa: SARJ023 -- format decoding belongs beside its regis
     return PackageIdentity(name, version)
 
 
-def _statement(envelope: dict[str, Any], *, field: str) -> dict[str, Any]:
+def _statement(envelope: dict[str, JsonValue], *, field: str) -> dict[str, JsonValue]:
     encoded = envelope.get(field)
     if not isinstance(encoded, str):
         _fail(f"attestation envelope has no {field}")
     value: object = json.loads(base64.b64decode(encoded))
     if not isinstance(value, dict):
         _fail("attestation statement is not an object")
-    return value
+    return _RegistryDocument.model_validate(value).root
 
 
-def _subject_matches(statement: dict[str, Any], *, filename: str, algorithm: str, digest: str) -> bool:
+def _subject_matches(statement: dict[str, JsonValue], *, filename: str, algorithm: str, digest: str) -> bool:
     subjects = statement.get("subject")
-    return isinstance(subjects, list) and any(
-        isinstance(subject, dict)
-        and subject.get("name") == filename
-        and isinstance(subject.get("digest"), dict)
-        and subject["digest"].get(algorithm) == digest
-        for subject in subjects
-    )
+    if not isinstance(subjects, list):
+        return False
+    for subject in subjects:
+        if not isinstance(subject, dict) or subject.get("name") != filename:
+            continue
+        digests = subject.get("digest")
+        if isinstance(digests, dict) and digests.get(algorithm) == digest:
+            return True
+    return False
 
 
 def _verify_pypi_file(  # sarj-noqa: SARJ023 -- one-file verification precedes the retry coordinator.
@@ -185,14 +192,17 @@ def _verify_pypi_file(  # sarj-noqa: SARJ023 -- one-file verification precedes t
     if not isinstance(urls, list):
         _fail(f"PyPI has no files for {name}=={version}")
     entry = next((item for item in urls if isinstance(item, dict) and item.get("filename") == artifact.name), None)
-    if entry is None or not isinstance(entry.get("url"), str):
+    if entry is None:
+        _fail(f"PyPI has not published exact staged file {artifact.name}")
+    entry_url = entry.get("url")
+    if not isinstance(entry_url, str):
         _fail(f"PyPI has not published exact staged file {artifact.name}")
     local = artifact.read_bytes()
     sha256 = _digest(local, "sha256")
     digests = entry.get("digests")
     if not isinstance(digests, dict) or digests.get("sha256") != sha256:
         _fail_permanently(f"PyPI digest differs from staged file {artifact.name}")
-    if _bytes(entry["url"]) != local:
+    if _bytes(entry_url) != local:
         _fail_permanently(f"PyPI bytes differ from staged file {artifact.name}")
 
     provenance_url = (
@@ -212,13 +222,13 @@ def _verify_pypi_file(  # sarj-noqa: SARJ023 -- one-file verification precedes t
             "pypi",
             "--repository",
             REPOSITORY_URL,
-            entry["url"],
+            entry_url,
         ),
         check=True,
     )
 
 
-def _pypi_provenance_matches(provenance: dict[str, Any], artifact: Path, sha256: str, environment: str) -> bool:
+def _pypi_provenance_matches(provenance: dict[str, JsonValue], artifact: Path, sha256: str, environment: str) -> bool:
     bundles = provenance.get("attestation_bundles")
     matching_publisher = False
     matching_subject = False
@@ -238,9 +248,9 @@ def _pypi_provenance_matches(provenance: dict[str, Any], artifact: Path, sha256:
                 if isinstance(attestations, list):
                     matching_subject = any(
                         isinstance(attestation, dict)
-                        and isinstance(attestation.get("envelope"), dict)
+                        and isinstance(envelope := attestation.get("envelope"), dict)
                         and _subject_matches(
-                            _statement(attestation["envelope"], field="statement"),
+                            _statement(envelope, field="statement"),
                             filename=artifact.name,
                             algorithm="sha256",
                             digest=sha256,
@@ -342,7 +352,7 @@ def _npm_provenance_commit(  # sarj-noqa: SARJ023 -- predicate decoding precedes
     return _npm_dependency_commit(dependencies)
 
 
-def _npm_dependency_commit(dependencies: list[object]) -> str | None:
+def _npm_dependency_commit(dependencies: Sequence[object]) -> str | None:
     for dependency in dependencies:
         if not isinstance(dependency, dict) or dependency.get("uri") != f"git+{REPOSITORY_URL}@{REF}":
             continue
@@ -501,18 +511,24 @@ def _npm_artifact(tarball: Path, identity: PackageIdentity) -> NpmArtifact:
     name, version = identity.name, identity.version
     metadata = _json(f"https://registry.npmjs.org/{quote(name, safe='')}/{quote(version, safe='')}")
     dist = metadata.get("dist")
-    if not isinstance(dist, dict) or not isinstance(dist.get("tarball"), str):
+    if not isinstance(dist, dict):
+        _fail(f"npm has no tarball for {name}@{version}")
+    tarball_url = dist.get("tarball")
+    if not isinstance(tarball_url, str):
         _fail(f"npm has no tarball for {name}@{version}")
     local = tarball.read_bytes()
-    if _bytes(dist["tarball"]) != local:
+    if _bytes(tarball_url) != local:
         _fail_permanently(f"npm bytes differ from staged file {tarball.name}")
     sha512 = _digest(local, "sha512")
     attestations = dist.get("attestations")
-    if not isinstance(attestations, dict) or not isinstance(attestations.get("url"), str):
+    if not isinstance(attestations, dict):
+        _fail(f"npm has no attestations for {name}@{version}")
+    attestation_url = attestations.get("url")
+    if not isinstance(attestation_url, str):
         _fail(f"npm has no attestations for {name}@{version}")
     return NpmArtifact(
         identity=identity,
-        attestation_url=attestations["url"],
+        attestation_url=attestation_url,
         expected_subject=f"pkg:npm/{quote(name, safe='/')}@{version}",
         sha512=sha512,
     )

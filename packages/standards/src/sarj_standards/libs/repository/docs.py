@@ -127,7 +127,7 @@ def _root_readme(
         ),
         (
             "## Contributing\n\n"
-            "Install uv 0.12.24, Python 3.15, Node 24.21, and GNU Make. Then bootstrap a fresh checkout:\n\n"
+            "Install uv 0.13.0, Python 3.15, Node 24.21, and GNU Make. Then bootstrap a fresh checkout:\n\n"
             "```bash\nmake setup\nmake verify\n```"
             "\n\nRun independent package suites with `make test -j4`, or focus on the fresh Standards wheel "
             "with `make test-standards PYTEST_ARGS='-k release'`. `TEST_JOBS=1` serializes wheel tests "
@@ -382,7 +382,7 @@ def _package_usage(name: str, engine: str | None) -> str:
             "Release gates use `code-standards analyze --prepared-only --prepared-devops prepared.json "
             "--prepared-target TARGET_ID`. Declare exact `prepared_targets` under `[devops]` with an authored "
             "`source` path. Version-one receipts bind target IDs, authored input hashes, staged chart archives, "
-            "ordered values, typed set arguments, manifests and a hashed local schema closure. Helm 3.19.0 "
+            "ordered values, typed set arguments, manifests and a hashed local schema closure. Helm 4.3.0 "
             "strict lint and stage-specific rendering feed kubeconform 0.8.0 and kube-linter 0.8.3. Missing "
             "tools, schemas, targets and invalid receipts fail the gate. Prepared-only findings bypass "
             "source debt baselines; container exceptions require exact target, GVK, namespace, object, "

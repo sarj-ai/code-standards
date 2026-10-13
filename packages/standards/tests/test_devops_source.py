@@ -200,7 +200,7 @@ def test_untrusted_terraform_only_formats_and_never_initializes(tmp_path: Path) 
         assert cwd == tmp_path
         calls.append(tuple(argv))
         if "version" in argv:
-            return ProcessOutput(0, "Terraform v1.15.8", "")
+            return ProcessOutput(0, "Terraform v1.16.5", "")
         return ProcessOutput(0, "", "")
 
     reports = analyze_sources(
@@ -219,10 +219,10 @@ def test_compose_static_contract_is_explicit(tmp_path: Path) -> None:
     def runner(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
         assert cwd == tmp_path
         calls.append(tuple(argv))
-        return ProcessOutput(0, '{"version":"v5.1.2"}' if "version" in argv else '{"services":{}}', "")
+        return ProcessOutput(0, '{"version":"v5.6.0"}' if "version" in argv else '{"services":{}}', "")
 
     reports = analyze_sources(
-        root=tmp_path, paths=("compose.yaml",), selected=frozenset({"compose"}), runner=runner, compose_version="5.1.2"
+        root=tmp_path, paths=("compose.yaml",), selected=frozenset({"compose"}), runner=runner, compose_version="5.6.0"
     )
     assert reports[0].name == "compose-static"
     assert reports[0].completion is Completion.COMPLETE
@@ -245,7 +245,7 @@ def test_json_terraform_is_never_passed_to_native_formatter(tmp_path: Path) -> N
     def runner(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
         assert cwd == tmp_path
         calls.append(tuple(argv))
-        return ProcessOutput(0, "Terraform v1.15.8", "")
+        return ProcessOutput(0, "Terraform v1.16.5", "")
 
     reports = analyze_sources(root=tmp_path, paths=("main.tf.json",), selected=frozenset({"terraform"}), runner=runner)
     assert reports[0].file_count == 0

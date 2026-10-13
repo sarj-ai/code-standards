@@ -35,16 +35,16 @@ jobs:
       plan_status: ${{ steps.plan.outputs.plan_status }}
     steps:
       - name: Harden the runner
-        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
         with:
           egress-policy: audit
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
-      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
         with:
-          version: '0.12.24'
+          version: '0.13.0'
           enable-cache: true
           cache-dependency-glob: 'packages/**/uv.lock'
       - name: Resolve the exact bundle version
@@ -52,11 +52,12 @@ jobs:
         env:
           REQUESTED_VERSION: ${{ inputs.version || '' }}
           EVENT_NAME: ${{ github.event_name }}
+        shell: bash
         run: bash .github/scripts/rollout-version.sh
       - name: Mint the fleet rollout token
         id: app-token
         continue-on-error: true
-        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
           app-id: ${{ vars.STANDARDS_ROLLOUT_APP_ID }}
           private-key: ${{ secrets.STANDARDS_ROLLOUT_APP_PRIVATE_KEY }}
@@ -75,7 +76,7 @@ jobs:
       - name: Keep the rollout log for the fleet report
         if: always()
         continue-on-error: true
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: standards-rollout-log-plan
           path: ${{ runner.temp }}/standards-rollout.log
@@ -96,28 +97,29 @@ jobs:
         consumer: ${{ fromJSON(needs.plan.outputs.consumers) }}
     steps:
       - name: Harden the runner
-        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
         with:
           egress-policy: audit
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.sha }}
           fetch-depth: 0
           persist-credentials: false
-      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
         with:
-          version: '0.12.24'
+          version: '0.13.0'
           enable-cache: true
           cache-dependency-glob: 'packages/**/uv.lock'
       - name: Install the pinned mise bootstrap
         env:
-          MISE_VERSION: '2026.8.8'
-          MISE_SHA256: 1fce52a3656cf14bef6feeb9f0b90d545126a0bb598f0a69afbb9e4702f8f3e3
+          MISE_VERSION: '2026.10.8'
+          MISE_SHA256: c72477ae6c3a8e7d817a322f43da70e4643e75ee5c21265f1c19c894273b7428
+        shell: bash
         run: bash .github/scripts/rollout-bootstrap.sh
       - name: Mint the fleet rollout token
         id: app-token
         continue-on-error: true
-        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
           app-id: ${{ vars.STANDARDS_ROLLOUT_APP_ID }}
           private-key: ${{ secrets.STANDARDS_ROLLOUT_APP_PRIVATE_KEY }}
@@ -133,11 +135,12 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           REQUESTED_REPOSITORY_RULE: ${{ inputs.enable_repository_rule || '' }}
           REGISTRY_TOML: ${{ vars.STANDARDS_ROLLOUT_REGISTRY_TOML }}
+        shell: bash
         run: bash .github/scripts/rollout-apply.sh
       - name: Keep the rollout log for the fleet report
         if: always()
         continue-on-error: true
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: standards-rollout-log-consumer-${{ strategy.job-index }}
           path: |
@@ -156,22 +159,22 @@ jobs:
       issues: write
     steps:
       - name: Harden the runner
-        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
         with:
           egress-policy: audit
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
-      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
         with:
-          version: '0.12.24'
+          version: '0.13.0'
           enable-cache: true
           cache-dependency-glob: 'packages/**/uv.lock'
       - name: Mint the fleet rollout token
         id: app-token
         continue-on-error: true
-        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
           app-id: ${{ vars.STANDARDS_ROLLOUT_APP_ID }}
           private-key: ${{ secrets.STANDARDS_ROLLOUT_APP_PRIVATE_KEY }}
@@ -180,7 +183,7 @@ jobs:
           permission-pull-requests: read
       - name: Collect the plan and consumer logs
         continue-on-error: true
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: standards-rollout-log-*
           path: ${{ runner.temp }}/rollout-logs

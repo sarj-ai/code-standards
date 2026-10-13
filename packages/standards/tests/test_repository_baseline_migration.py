@@ -89,24 +89,41 @@ def test_unreviewed_or_mismatched_repository_baselines_cannot_migrate(invalid: s
         repository_baseline.migrate(original.replace(before, after), _MANIFEST, target_policy_version=19)
 
 
-def test_setup_plans_the_compatible_migration_without_capturing_new_findings(tmp_path: Path) -> None:
+@pytest.mark.parametrize("version", [18, 19, 20])
+def test_setup_rejects_unreviewed_policy_changes_without_mutating_baselines(tmp_path: Path, version: int) -> None:
     manifest = tmp_path / ".repo-standards" / "repository.toml"
     manifest.parent.mkdir()
     manifest.write_bytes(_MANIFEST)
     path = tmp_path / repository_baseline.PATH
-    original = _baseline(18, fingerprints=("b" * 64,))
+    original = _baseline(version, fingerprints=("b" * 64,))
+    path.write_bytes(original)
+
+    plan = service.plan_init(tmp_path)
+
+    assert any("requires a separately reviewed compatibility decision" in error for error in plan.scaffold.errors)
+    assert path not in dict(plan.scaffold.writes)
+    assert path.read_bytes() == original
+    result = service.apply_init(plan, install=False)
+    assert result.status == 2
+    assert result.failure is service.InitFailure.APPLY
+    assert path.read_bytes() == original
+
+
+def test_setup_preserves_current_policy_baselines_without_recapturing_findings(tmp_path: Path) -> None:
+    manifest = tmp_path / ".repo-standards" / "repository.toml"
+    manifest.parent.mkdir()
+    manifest.write_bytes(_MANIFEST)
+    path = tmp_path / repository_baseline.PATH
+    original = _baseline(SarjPolicy.policy_version, fingerprints=("b" * 64,))
     path.write_bytes(original)
 
     plan = service.plan_init(tmp_path)
 
     assert not plan.scaffold.errors
+    assert path not in dict(plan.scaffold.writes)
     assert path.read_bytes() == original
-    planned = dict(plan.scaffold.writes)[path].encode("utf-8")
-    assert planned == original.replace(
-        b'"policy_version": 18', f'"policy_version": {SarjPolicy.policy_version}'.encode()
-    )
     scaffold.apply(plan.scaffold)
-    assert path.read_bytes() == planned
+    assert path.read_bytes() == original
     repeated = service.plan_init(tmp_path)
     assert path not in dict(repeated.scaffold.writes)
 

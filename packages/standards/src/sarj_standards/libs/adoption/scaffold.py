@@ -2386,14 +2386,14 @@ def github_ci_workflow(root: Path, *, ecosystems: Ecosystems | None = None) -> s
         lines.extend(
             (
                 "      - name: Harden the runner",
-                "        uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2",
+                "        uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1",
                 "        with:",
                 "          egress-policy: audit",
             )
         )
     lines.extend(
         (
-            "      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7",
+            "      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1",
             "        with:",
             "          fetch-depth: 0",
             "          persist-credentials: false",
@@ -2410,7 +2410,7 @@ def github_ci_workflow(root: Path, *, ecosystems: Ecosystems | None = None) -> s
         )
     lines.extend(
         (
-            "      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0",
+            "      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0",
             "        with:",
             _setup_uv_version(root, ecosystems.python_root),
             "          enable-cache: true",
@@ -2503,13 +2503,13 @@ def _append_javascript_ci(
     lines: list[str], root: Path, ecosystems: Ecosystems, install_root: Path | None, *, configured_runner: bool
 ) -> None:
     if ecosystems.client is PackageManager.BUN:
-        lines.append("      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2")
+        lines.append("      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0")
     # Bun projects rely on the runner image's Node for Node-based analyzers. GitHub's image ships a current
     # Node; other runner images may not, so a configured runner gets the same pinned Node as npm projects.
     if ecosystems.client is not PackageManager.BUN or configured_runner:
         lines.extend(
             (
-                "      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7",
+                "      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0",
                 "        with:",
                 "          node-version: 24",
             )
@@ -2541,7 +2541,7 @@ def _append_javascript_ci(
 def _setup_uv_version(root: Path, python_root: Path | None) -> str:
     source = uvtool.version_file(python_root)
     if source is None:
-        return "          version: '0.12.24'"
+        return "          version: '0.13.0'"
     return f"          version-file: {json.dumps(source.relative_to(root).as_posix())}"
 
 
@@ -2679,7 +2679,7 @@ def commit_policy_github_workflow(runner: str = DEFAULT_CI_RUNNER) -> str:
     harden = (
         """\
       - name: Harden the runner
-        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
         with:
           egress-policy: audit
 """
@@ -2714,7 +2714,7 @@ jobs:
 """
         f"{harden}"
         """\
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false

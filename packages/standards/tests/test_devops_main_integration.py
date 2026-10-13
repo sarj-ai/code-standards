@@ -17,7 +17,7 @@ def test_manifest_preserves_prepared_targets_compose_pin_and_configured_runner(t
         typescript_dest=".",
         ci_runner="blacksmith-4vcpu-ubuntu-2404-arm",
         ci_bootstrap=("uv sync --frozen",),
-        compose_version="5.1.2",
+        compose_version="5.6.0",
         prepared_targets=(manifest.PreparedTarget("release", "déploy.yaml"),),
     )
     (tmp_path / manifest.MANIFEST_NAME).write_text(expected.render(), encoding="utf-8")

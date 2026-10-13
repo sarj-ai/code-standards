@@ -1,0 +1,1797 @@
+{
+  "schemaVersion": 1,
+  "scope": "sarj-ai/code-standards only",
+  "baseCommit": "830c721fea88a9188e9c7acc486c8844899347c8",
+  "asOfUtc": "2026-10-13T03:06:14.536331+00:00",
+  "status": "five-local-verification-passes-passed",
+  "method": "Official stable registry/release inventory; compatible transitive lock refresh; upstream rule implementation and runtime review; native/packaged/full-gate verification. Historical calibration evidence remains unchanged.",
+  "declaredDependencyUpdates": [
+    {
+      "file": "pyproject.toml",
+      "name": "sqlglot",
+      "before": "sqlglot==30.19.0",
+      "after": "sqlglot==30.22.0"
+    },
+    {
+      "file": "pyproject.toml",
+      "name": "typer",
+      "before": "typer==0.27.2",
+      "after": "typer==0.27.3"
+    },
+    {
+      "file": "packages/bootstrap/pyproject.toml",
+      "name": "basedpyright",
+      "before": "basedpyright>=1.40.1",
+      "after": "basedpyright>=1.40.2"
+    },
+    {
+      "file": "packages/bootstrap/pyproject.toml",
+      "name": "ruff",
+      "before": "ruff>=0.16.10",
+      "after": "ruff>=0.17.0"
+    },
+    {
+      "file": "packages/contracts/pyproject.toml",
+      "name": "ruff",
+      "before": "ruff>=0.16.10",
+      "after": "ruff>=0.17.0"
+    },
+    {
+      "file": "packages/contracts/pyproject.toml",
+      "name": "basedpyright",
+      "before": "basedpyright>=1.40.1",
+      "after": "basedpyright>=1.40.2"
+    },
+    {
+      "file": "packages/iac/pyproject.toml",
+      "name": "typer",
+      "before": "typer==0.27.2",
+      "after": "typer==0.27.3"
+    },
+    {
+      "file": "packages/iac/pyproject.toml",
+      "name": "ruff",
+      "before": "ruff>=0.16.10",
+      "after": "ruff>=0.17.0"
+    },
+    {
+      "file": "packages/iac/pyproject.toml",
+      "name": "basedpyright",
+      "before": "basedpyright>=1.40.1",
+      "after": "basedpyright>=1.40.2"
+    },
+    {
+      "file": "packages/python/pyproject.toml",
+      "name": "ruff",
+      "before": "ruff>=0.16.10",
+      "after": "ruff>=0.17.0"
+    },
+    {
+      "file": "packages/python/pyproject.toml",
+      "name": "sqlglot",
+      "before": "sqlglot==30.19.0",
+      "after": "sqlglot==30.22.0"
+    },
+    {
+      "file": "packages/python/pyproject.toml",
+      "name": "typer",
+      "before": "typer==0.27.2",
+      "after": "typer==0.27.3"
+    },
+    {
+      "file": "packages/python/pyproject.toml",
+      "name": "ruff",
+      "before": "ruff>=0.16.10",
+      "after": "ruff>=0.17.0"
+    },
+    {
+      "file": "packages/python/pyproject.toml",
+      "name": "basedpyright",
+      "before": "basedpyright>=1.40.1",
+      "after": "basedpyright>=1.40.2"
+    },
+    {
+      "file": "packages/sql/pyproject.toml",
+      "name": "typer",
+      "before": "typer==0.27.2",
+      "after": "typer==0.27.3"
+    },
+    {
+      "file": "packages/sql/pyproject.toml",
+      "name": "ruff",
+      "before": "ruff>=0.16.10",
+      "after": "ruff>=0.17.0"
+    },
+    {
+      "file": "packages/sql/pyproject.toml",
+      "name": "basedpyright",
+      "before": "basedpyright>=1.40.1",
+      "after": "basedpyright>=1.40.2"
+    },
+    {
+      "file": "packages/standards/pyproject.toml",
+      "name": "basedpyright",
+      "before": "basedpyright==1.40.1",
+      "after": "basedpyright==1.40.2"
+    },
+    {
+      "file": "packages/standards/pyproject.toml",
+      "name": "lefthook",
+      "before": "lefthook==2.1.14",
+      "after": "lefthook==2.2.1"
+    },
+    {
+      "file": "packages/standards/pyproject.toml",
+      "name": "pre-commit",
+      "before": "pre-commit==4.6.2",
+      "after": "pre-commit==4.7.0"
+    },
+    {
+      "file": "packages/standards/pyproject.toml",
+      "name": "pydantic",
+      "before": "pydantic==2.14.0",
+      "after": "pydantic==2.14.1"
+    },
+    {
+      "file": "packages/standards/pyproject.toml",
+      "name": "jsonschema",
+      "before": "jsonschema==4.25.1",
+      "after": "jsonschema==4.26.0"
+    },
+    {
+      "file": "packages/standards/pyproject.toml",
+      "name": "repo-standards",
+      "before": "repo-standards==6.4.2",
+      "after": "repo-standards==6.5.0"
+    },
+    {
+      "file": "packages/standards/pyproject.toml",
+      "name": "ruff",
+      "before": "ruff==0.16.10",
+      "after": "ruff==0.17.0"
+    },
+    {
+      "file": "packages/standards/pyproject.toml",
+      "name": "typer",
+      "before": "typer==0.27.2",
+      "after": "typer==0.27.3"
+    },
+    {
+      "file": "packages/typescript/package.json",
+      "name": "@typescript-eslint/typescript-estree",
+      "before": "^8.70.1",
+      "after": "^8.71.2",
+      "dependencyGroup": "dependencies"
+    },
+    {
+      "file": "packages/typescript/package.json",
+      "name": "@typescript-eslint/utils",
+      "before": "^8.70.1",
+      "after": "^8.71.2",
+      "dependencyGroup": "dependencies"
+    },
+    {
+      "file": "packages/typescript/package.json",
+      "name": "@shadcn/lint",
+      "before": "0.2.0",
+      "after": "0.2.1",
+      "dependencyGroup": "devDependencies"
+    },
+    {
+      "file": "packages/typescript/package.json",
+      "name": "@types/node",
+      "before": "26.6.2",
+      "after": "26.6.5",
+      "dependencyGroup": "devDependencies"
+    },
+    {
+      "file": "packages/typescript/package.json",
+      "name": "@typescript-eslint/parser",
+      "before": "8.70.1",
+      "after": "8.71.2",
+      "dependencyGroup": "devDependencies"
+    },
+    {
+      "file": "packages/typescript/package.json",
+      "name": "@typescript-eslint/rule-tester",
+      "before": "8.70.1",
+      "after": "8.71.2",
+      "dependencyGroup": "devDependencies"
+    },
+    {
+      "file": "packages/typescript/package.json",
+      "name": "@typescript-eslint/utils",
+      "before": "8.70.1",
+      "after": "8.71.2",
+      "dependencyGroup": "devDependencies"
+    },
+    {
+      "file": "packages/typescript/package.json",
+      "name": "eslint",
+      "before": "10.11.0",
+      "after": "10.12.0",
+      "dependencyGroup": "devDependencies"
+    },
+    {
+      "file": "packages/typescript/package.json",
+      "name": "eslint-node-test",
+      "before": "0.4.0",
+      "after": "1.0.1",
+      "dependencyGroup": "devDependencies"
+    },
+    {
+      "file": "packages/typescript/package.json",
+      "name": "eslint-plugin-better-tailwindcss",
+      "before": "^4.7.0",
+      "after": "^4.9.0",
+      "dependencyGroup": "devDependencies"
+    },
+    {
+      "file": "packages/typescript/package.json",
+      "name": "eslint-plugin-jest",
+      "before": "29.16.6",
+      "after": "29.17.0",
+      "dependencyGroup": "devDependencies"
+    },
+    {
+      "file": "packages/typescript/package.json",
+      "name": "eslint-plugin-jsdoc",
+      "before": "64.5.4",
+      "after": "65.3.1",
+      "dependencyGroup": "devDependencies"
+    },
+    {
+      "file": "packages/typescript/package.json",
+      "name": "eslint-plugin-n",
+      "before": "^18.3.0",
+      "after": "^18.4.1",
+      "dependencyGroup": "devDependencies"
+    },
+    {
+      "file": "packages/typescript/package.json",
+      "name": "eslint-plugin-playwright",
+      "before": "2.12.0",
+      "after": "2.12.1",
+      "dependencyGroup": "devDependencies"
+    },
+    {
+      "file": "packages/typescript/package.json",
+      "name": "eslint-plugin-unicorn",
+      "before": "^76.0.0",
+      "after": "^78.0.0",
+      "dependencyGroup": "devDependencies"
+    },
+    {
+      "file": "packages/typescript/package.json",
+      "name": "eslint-plugin-zod",
+      "before": "^4.14.2",
+      "after": "^5.0.1",
+      "dependencyGroup": "devDependencies"
+    },
+    {
+      "file": "packages/typescript/package.json",
+      "name": "globals",
+      "before": "15.15.0",
+      "after": "17.13.0",
+      "dependencyGroup": "devDependencies"
+    },
+    {
+      "file": "packages/typescript/package.json",
+      "name": "tsup",
+      "before": "latest",
+      "after": "8.5.1",
+      "dependencyGroup": "devDependencies"
+    },
+    {
+      "file": "packages/typescript/package.json",
+      "name": "typescript-eslint",
+      "before": "^8.70.1",
+      "after": "^8.71.2",
+      "dependencyGroup": "devDependencies"
+    },
+    {
+      "file": "packages/typescript/package.json",
+      "name": "vitest",
+      "before": "5.0.1",
+      "after": "5.0.4",
+      "dependencyGroup": "devDependencies"
+    },
+    {
+      "file": "apps/docs/package.json",
+      "name": "@astrojs/starlight",
+      "before": "0.41.11",
+      "after": "0.42.6",
+      "dependencyGroup": "dependencies"
+    },
+    {
+      "file": "apps/docs/package.json",
+      "name": "astro",
+      "before": "7.3.5",
+      "after": "7.3.8",
+      "dependencyGroup": "dependencies"
+    },
+    {
+      "file": "apps/docs/package.json",
+      "name": "eslint",
+      "before": "10.11.0",
+      "after": "10.12.0",
+      "dependencyGroup": "devDependencies"
+    },
+    {
+      "file": "apps/docs/package.json",
+      "name": "prettier",
+      "before": "3.9.9",
+      "after": "3.9.10",
+      "dependencyGroup": "devDependencies"
+    },
+    {
+      "file": "apps/docs/package.json",
+      "name": "prettier-plugin-sh",
+      "before": "0.19.0",
+      "after": "0.20.2",
+      "dependencyGroup": "devDependencies"
+    },
+    {
+      "file": "apps/docs/package.json",
+      "name": "prettier-plugin-toml",
+      "before": "2.0.6",
+      "after": "3.0.2",
+      "dependencyGroup": "devDependencies"
+    },
+    {
+      "file": "apps/docs/package.json",
+      "name": "react-doctor",
+      "before": "0.9.14",
+      "after": "0.9.18",
+      "dependencyGroup": "devDependencies"
+    },
+    {
+      "file": "apps/docs/package.json",
+      "name": "typescript",
+      "before": "6.0.3",
+      "after": "npm:@typescript/typescript6@6.0.2",
+      "dependencyGroup": "devDependencies"
+    },
+    {
+      "file": "apps/docs/package.json",
+      "name": "typescript-eslint",
+      "before": "8.70.1",
+      "after": "8.71.2",
+      "dependencyGroup": "devDependencies"
+    },
+    {
+      "file": "apps/docs/package.json",
+      "name": "wrangler",
+      "before": "4.138.0",
+      "after": "4.149.0",
+      "dependencyGroup": "devDependencies"
+    },
+    {
+      "file": ".github/deploy/package.json",
+      "name": "wrangler",
+      "before": "4.148.0",
+      "after": "4.149.0",
+      "dependencyGroup": "dependencies"
+    }
+  ],
+  "registryInventory": [
+    {
+      "ecosystem": "npm",
+      "name": "@astrojs/check",
+      "latest": "0.9.10",
+      "source": "https://registry.npmjs.org/%40astrojs%2Fcheck/latest"
+    },
+    {
+      "ecosystem": "npm",
+      "name": "@astrojs/sitemap",
+      "latest": "3.7.4",
+      "source": "https://registry.npmjs.org/%40astrojs%2Fsitemap/latest"
+    },
+    {
+      "ecosystem": "npm",
+      "name": "@astrojs/starlight",
+      "latest": "0.42.6",
+      "source": "https://registry.npmjs.org/%40astrojs%2Fstarlight/latest"
+    },
+    {
+      "ecosystem": "npm",
+      "name": "@eslint-community/eslint-plugin-eslint-comments",
+      "latest": "4.8.1",
+      "source": "https://registry.npmjs.org/%40eslint-community%2Feslint-plugin-eslint-comments/latest"
+    },
+    {
+      "ecosystem": "npm",
+      "name": "@eslint/compat",
+      "latest": "2.1.1",
+      "source": "https://registry.npmjs.org/%40eslint%2Fcompat/latest"
+    },
+    {
+      "ecosystem": "npm",
+      "name": "@eslint/js",
+      "latest": "10.0.1",
+      "source": "https://registry.npmjs.org/%40eslint%2Fjs/latest"
+    },
+    {
+      "ecosystem": "npm",
+      "name": "@sarj/design",
+      "latest": "0.5.0",
+      "source": "https://registry.npmjs.org/%40sarj%2Fdesign/latest"
+    },
+    {
+      "ecosystem": "npm",
+      "name": "@shadcn/lint",
+      "latest": "0.2.1",
+      "source": "https://registry.npmjs.org/%40shadcn%2Flint/latest"
+    },
+    {
+      "ecosystem": "npm",
+      "name": "@types/node",
+      "latest": "26.6.5",
+      "source": "https://registry.npmjs.org/%40types%2Fnode/latest"
+    },
+    {
+      "ecosystem": "npm",
+      "name": "@typescript-eslint/parser",
+      "latest": "8.71.2",
+      "source": "https://registry.npmjs.org/%40typescript-eslint%2Fparser/latest"
+    },
+    {
+      "ecosystem": "npm",
+      "name": "@typescript-eslint/rule-tester",
+      "latest": "8.71.2",
+      "source": "https://registry.npmjs.org/%40typescript-eslint%2Frule-tester/latest"
+    },
+    {
+      "ecosystem": "npm",
+      "name": "@typescript-eslint/typescript-estree",
+      "latest": "8.71.2",
+      "source": "https://registry.npmjs.org/%40typescript-eslint%2Ftypescript-estree/latest"
+    },
+    {
+      "ecosystem": "npm",
+      "name": "@typescript-eslint/utils",
+      "latest": "8.71.2",
+      "source": "https://registry.npmjs.org/%40typescript-eslint%2Futils/latest"
+    },
+    {
+      "ecosystem": "npm",
+      "name": "@typescript/typescript6",
+      "latest": "6.0.2",
+      "source": "https://registry.npmjs.org/%40typescript%2Ftypescript6/latest"
+    },
+    {
+      "ecosystem": "npm",
+      "name": "@vitest/eslint-plugin",
+      "latest": "1.6.27",
+      "source": "https://registry.npmjs.org/%40vitest%2Feslint-plugin/latest"
+    },
+    {
+      "ecosystem": "npm",
+      "name": "astro",
+      "latest": "7.3.8",
+      "source": "https://registry.npmjs.org/astro/latest"
+    },
+    {
+      "ecosystem": "npm",
+      "name": "eslint",
+      "latest": "10.12.0",
+      "source": "https://registry.npmjs.org/eslint/latest"
+    },
+    {
+      "ecosystem": "npm",
+      "name": "eslint-node-test",
+      "latest": "1.0.1",
+      "source": "https://registry.npmjs.org/eslint-node-test/latest"
+    },
+    {
+      "ecosystem": "npm",
+      "name": "eslint-plugin-astro",
+      "latest": "3.2.1",
+      "source": "https://registry.npmjs.org/eslint-plugin-astro/latest"
+    },
+    {
+      "ecosystem": "npm",
+      "name": "eslint-plugin-better-tailwindcss",
+      "latest": "4.9.0",
+      "source": "https://registry.npmjs.org/eslint-plugin-better-tailwindcss/latest"
+    },
+    {
+      "ecosystem": "npm",
+      "name": "eslint-plugin-jest",
+      "latest": "29.17.0",
+      "source": "https://registry.npmjs.org/eslint-plugin-jest/latest"
+    },
+    {
+      "ecosystem": "npm",
+      "name": "eslint-plugin-jsdoc",
+      "latest": "65.3.1",
+      "source": "https://registry.npmjs.org/eslint-plugin-jsdoc/latest"
+    },
+    {
+      "ecosystem": "npm",
+      "name": "eslint-plugin-n",
+      "latest": "18.4.1",
+      "source": "https://registry.npmjs.org/eslint-plugin-n/latest"
+    },
+    {
+      "ecosystem": "npm",
+      "name": "eslint-plugin-perfectionist",
+      "latest": "5.12.1",
+      "source": "https://registry.npmjs.org/eslint-plugin-perfectionist/latest"
+    },
+    {
+      "ecosystem": "npm",
+      "name": "eslint-plugin-playwright",
+      "latest": "2.12.1",
+      "source": "https://registry.npmjs.org/eslint-plugin-playwright/latest"
+    },
+    {
+      "ecosystem": "npm",
+      "name": "eslint-plugin-promise",
+      "latest": "7.3.0",
+      "source": "https://registry.npmjs.org/eslint-plugin-promise/latest"
+    },
+    {
+      "ecosystem": "npm",
+      "name": "eslint-plugin-react",
+      "latest": "7.37.5",
+      "source": "https://registry.npmjs.org/eslint-plugin-react/latest"
+    },
+    {
+      "ecosystem": "npm",
+      "name": "eslint-plugin-react-hooks",
+      "latest": "7.1.1",
+      "source": "https://registry.npmjs.org/eslint-plugin-react-hooks/latest"
+    },
+    {
+      "ecosystem": "npm",
+      "name": "eslint-plugin-simple-import-sort",
+      "latest": "14.0.0",
+      "source": "https://registry.npmjs.org/eslint-plugin-simple-import-sort/latest"
+    },
+    {
+      "ecosystem": "npm",
+      "name": "eslint-plugin-testing-library",
+      "latest": "7.16.2",
+      "source": "https://registry.npmjs.org/eslint-plugin-testing-library/latest"
+    },
+    {
+      "ecosystem": "npm",
+      "name": "eslint-plugin-unicorn",
+      "latest": "78.0.0",
+      "source": "https://registry.npmjs.org/eslint-plugin-unicorn/latest"
+    },
+    {
+      "ecosystem": "npm",
+      "name": "eslint-plugin-zod",
+      "latest": "5.0.1",
+      "source": "https://registry.npmjs.org/eslint-plugin-zod/latest"
+    },
+    {
+      "ecosystem": "npm",
+      "name": "globals",
+      "latest": "17.13.0",
+      "source": "https://registry.npmjs.org/globals/latest"
+    },
+    {
+      "ecosystem": "npm",
+      "name": "jsonc-parser",
+      "latest": "3.3.1",
+      "source": "https://registry.npmjs.org/jsonc-parser/latest"
+    },
+    {
+      "ecosystem": "npm",
+      "name": "prettier",
+      "latest": "3.9.10",
+      "source": "https://registry.npmjs.org/prettier/latest"
+    },
+    {
+      "ecosystem": "npm",
+      "name": "prettier-plugin-sh",
+      "latest": "0.20.2",
+      "source": "https://registry.npmjs.org/prettier-plugin-sh/latest"
+    },
+    {
+      "ecosystem": "npm",
+      "name": "prettier-plugin-toml",
+      "latest": "3.0.2",
+      "source": "https://registry.npmjs.org/prettier-plugin-toml/latest"
+    },
+    {
+      "ecosystem": "npm",
+      "name": "react-doctor",
+      "latest": "0.9.18",
+      "source": "https://registry.npmjs.org/react-doctor/latest"
+    },
+    {
+      "ecosystem": "npm",
+      "name": "sql-formatter",
+      "latest": "15.9.0",
+      "source": "https://registry.npmjs.org/sql-formatter/latest"
+    },
+    {
+      "ecosystem": "npm",
+      "name": "tsup",
+      "latest": "8.5.1",
+      "source": "https://registry.npmjs.org/tsup/latest"
+    },
+    {
+      "ecosystem": "npm",
+      "name": "typescript",
+      "latest": "7.0.2",
+      "source": "https://registry.npmjs.org/typescript/latest"
+    },
+    {
+      "ecosystem": "npm",
+      "name": "typescript-eslint",
+      "latest": "8.71.2",
+      "source": "https://registry.npmjs.org/typescript-eslint/latest"
+    },
+    {
+      "ecosystem": "npm",
+      "name": "vitest",
+      "latest": "5.0.4",
+      "source": "https://registry.npmjs.org/vitest/latest"
+    },
+    {
+      "ecosystem": "npm",
+      "name": "wrangler",
+      "latest": "4.149.0",
+      "source": "https://registry.npmjs.org/wrangler/latest"
+    },
+    {
+      "ecosystem": "pypi",
+      "name": "PyYAML",
+      "latest": "6.0.3",
+      "source": "https://pypi.org/pypi/PyYAML/json"
+    },
+    {
+      "ecosystem": "pypi",
+      "name": "basedpyright",
+      "latest": "1.40.2",
+      "source": "https://pypi.org/pypi/basedpyright/json"
+    },
+    {
+      "ecosystem": "pypi",
+      "name": "deptry",
+      "latest": "0.25.1",
+      "source": "https://pypi.org/pypi/deptry/json"
+    },
+    {
+      "ecosystem": "pypi",
+      "name": "hatchling",
+      "latest": "1.32.4",
+      "source": "https://pypi.org/pypi/hatchling/json"
+    },
+    {
+      "ecosystem": "pypi",
+      "name": "jsonschema",
+      "latest": "4.26.0",
+      "source": "https://pypi.org/pypi/jsonschema/json"
+    },
+    {
+      "ecosystem": "pypi",
+      "name": "lefthook",
+      "latest": "2.2.1",
+      "source": "https://pypi.org/pypi/lefthook/json"
+    },
+    {
+      "ecosystem": "pypi",
+      "name": "packaging",
+      "latest": "26.3",
+      "source": "https://pypi.org/pypi/packaging/json"
+    },
+    {
+      "ecosystem": "pypi",
+      "name": "pathspec",
+      "latest": "1.1.1",
+      "source": "https://pypi.org/pypi/pathspec/json"
+    },
+    {
+      "ecosystem": "pypi",
+      "name": "pre-commit",
+      "latest": "4.7.0",
+      "source": "https://pypi.org/pypi/pre-commit/json"
+    },
+    {
+      "ecosystem": "pypi",
+      "name": "pydantic",
+      "latest": "2.14.1",
+      "source": "https://pypi.org/pypi/pydantic/json"
+    },
+    {
+      "ecosystem": "pypi",
+      "name": "pytest",
+      "latest": "9.1.1",
+      "source": "https://pypi.org/pypi/pytest/json"
+    },
+    {
+      "ecosystem": "pypi",
+      "name": "pytest-benchmark",
+      "latest": "5.3.0",
+      "source": "https://pypi.org/pypi/pytest-benchmark/json"
+    },
+    {
+      "ecosystem": "pypi",
+      "name": "pytest-unused-fixtures",
+      "latest": "0.3.1",
+      "source": "https://pypi.org/pypi/pytest-unused-fixtures/json"
+    },
+    {
+      "ecosystem": "pypi",
+      "name": "referencing",
+      "latest": "0.37.0",
+      "source": "https://pypi.org/pypi/referencing/json"
+    },
+    {
+      "ecosystem": "pypi",
+      "name": "repo-standards",
+      "latest": "6.5.0",
+      "source": "https://pypi.org/pypi/repo-standards/json"
+    },
+    {
+      "ecosystem": "pypi",
+      "name": "ruff",
+      "latest": "0.17.0",
+      "source": "https://pypi.org/pypi/ruff/json"
+    },
+    {
+      "ecosystem": "pypi",
+      "name": "shellcheck-py",
+      "latest": "0.11.0.1",
+      "source": "https://pypi.org/pypi/shellcheck-py/json"
+    },
+    {
+      "ecosystem": "pypi",
+      "name": "sqlglot",
+      "latest": "30.22.0",
+      "source": "https://pypi.org/pypi/sqlglot/json"
+    },
+    {
+      "ecosystem": "pypi",
+      "name": "typer",
+      "latest": "0.27.3",
+      "source": "https://pypi.org/pypi/typer/json"
+    }
+  ],
+  "additionalUpdates": [
+    {
+      "name": "npm",
+      "before": "12.1.0",
+      "after": "12.2.0"
+    },
+    {
+      "name": "uv",
+      "before": "0.12.24",
+      "after": "0.13.0"
+    },
+    {
+      "name": "brace-expansion",
+      "before": "5.0.9",
+      "after": "5.0.12"
+    },
+    {
+      "name": "nanoid CommonJS",
+      "before": "3.3.18",
+      "after": "3.3.20"
+    },
+    {
+      "name": "undici",
+      "before": "7.29.1",
+      "after": "8.11.2"
+    },
+    {
+      "name": "http-cache-semantics",
+      "before": "source-verified git patch",
+      "after": "4.3.0"
+    },
+    {
+      "name": "zod",
+      "before": "4.6.5 transitive fixture dependency",
+      "after": "4.6.7 explicit fixture dependency"
+    }
+  ],
+  "nativeTools": [
+    {
+      "name": "detekt",
+      "current": "1.23.8",
+      "target": "1.23.8",
+      "updateRequired": false,
+      "releaseUrl": "https://github.com/detekt/detekt/releases/tag/v1.23.8",
+      "peeledCommit": "046263730eb5368cb344489ac36543294e8e87bd"
+    },
+    {
+      "name": "ktlint",
+      "current": "1.8.0",
+      "target": "1.8.0",
+      "updateRequired": false,
+      "releaseUrl": "https://github.com/ktlint/ktlint/releases/tag/1.8.0",
+      "peeledCommit": "c26a4ffd277863086538ec8befd1cb20fd0b63e0"
+    },
+    {
+      "name": "mint",
+      "current": "0.18.0",
+      "target": "0.18.0",
+      "updateRequired": false,
+      "releaseUrl": "https://github.com/yonaskolb/Mint/releases/tag/0.18.0",
+      "peeledCommit": "7bc67a0b925b949c8becc327bc08f56eeadc0051"
+    },
+    {
+      "name": "mobsfscan",
+      "current": "1.0.0",
+      "target": "1.0.1",
+      "updateRequired": true,
+      "releaseUrl": "https://github.com/MobSF/mobsfscan/releases/tag/1.0.1",
+      "peeledCommit": "4645ea70bc093268502fe9f6df93e41bb482254a"
+    },
+    {
+      "name": "semgrep",
+      "current": "1.178.0",
+      "target": "1.180.0",
+      "updateRequired": true,
+      "releaseUrl": "https://github.com/semgrep/semgrep/releases/tag/v1.180.0",
+      "peeledCommit": "a35fe8306115b3e55274969098cc46f8451d6b4d"
+    },
+    {
+      "name": "swiftformat",
+      "current": "0.62.1",
+      "target": "0.63.1",
+      "updateRequired": true,
+      "releaseUrl": "https://github.com/nicklockwood/SwiftFormat/releases/tag/0.63.1",
+      "peeledCommit": "77d3f8222a779de39dbcfe16c7ec60f437f794d6"
+    },
+    {
+      "name": "swiftlint",
+      "current": "0.65.1",
+      "target": "0.65.1",
+      "updateRequired": false,
+      "releaseUrl": "https://github.com/realm/SwiftLint/releases/tag/0.65.1",
+      "peeledCommit": "6aba03e3d8302b33f106e0f922210f35ca4b52cf"
+    },
+    {
+      "name": "helm",
+      "current": "3.19.0",
+      "target": "4.3.0",
+      "updateRequired": true,
+      "releaseUrl": "https://github.com/helm/helm/releases/tag/v4.3.0",
+      "peeledCommit": "bec5b06ed841fe5269972d864d5177944fd5970f"
+    },
+    {
+      "name": "kubeconform",
+      "current": "0.8.0",
+      "target": "0.8.0",
+      "updateRequired": false,
+      "releaseUrl": "https://github.com/yannh/kubeconform/releases/tag/v0.8.0",
+      "peeledCommit": "02374e583d700721f57300fae78e11acd27ee539"
+    },
+    {
+      "name": "kube-linter",
+      "current": "0.8.3",
+      "target": "0.8.3",
+      "updateRequired": false,
+      "releaseUrl": "https://github.com/stackrox/kube-linter/releases/tag/v0.8.3",
+      "peeledCommit": "10ae003038c81855aca8489df5e35da150f4dc2e"
+    },
+    {
+      "name": "shfmt",
+      "current": "3.14.1",
+      "target": "3.14.1",
+      "updateRequired": false,
+      "releaseUrl": "https://github.com/mvdan/sh/releases/tag/v3.14.1",
+      "peeledCommit": "a3f0c75d21d918756fa38de8b5d3429efde7948b"
+    },
+    {
+      "name": "shellcheck",
+      "current": "0.11.0",
+      "target": "0.11.0",
+      "updateRequired": false,
+      "releaseUrl": "https://github.com/koalaman/shellcheck/releases/tag/v0.11.0",
+      "peeledCommit": "aac0823e6b58f8a499e856e93738082691cbf212"
+    },
+    {
+      "name": "actionlint",
+      "current": "1.7.12",
+      "target": "1.7.12",
+      "updateRequired": false,
+      "releaseUrl": "https://github.com/rhysd/actionlint/releases/tag/v1.7.12",
+      "peeledCommit": "914e7df21a07ef503a81201c76d2b11c789d3fca"
+    },
+    {
+      "name": "hadolint",
+      "current": "2.15.1",
+      "target": "2.15.1",
+      "updateRequired": false,
+      "releaseUrl": "https://github.com/hadolint/hadolint/releases/tag/v2.15.1",
+      "peeledCommit": "2eece55955ced00200be9729e9728cb7dacca505"
+    },
+    {
+      "name": "jscpd",
+      "current": "5.4.0",
+      "target": "5.4.1",
+      "updateRequired": true,
+      "releaseUrl": "https://github.com/kucherenko/jscpd/releases/tag/v5.4.1",
+      "peeledCommit": "095d6ca33e9f291c144bb05ef653b2bfdc3c1453"
+    },
+    {
+      "name": "knip",
+      "current": "6.41.0",
+      "target": "6.41.0",
+      "updateRequired": false,
+      "releaseUrl": "https://github.com/webpro-nl/knip/releases/tag/knip%406.41.0",
+      "peeledCommit": "13d7f21e8ec5b30d8fe6d8377c9012b9db96f871"
+    },
+    {
+      "name": "terraform",
+      "current": "1.15.8",
+      "target": "1.16.5",
+      "updateRequired": true,
+      "releaseUrl": "https://github.com/hashicorp/terraform/releases/tag/v1.16.5",
+      "peeledCommit": "ef47237fd0e03d6e93bdc510b526287f06e94c03"
+    },
+    {
+      "name": "tflint",
+      "current": "0.63.1",
+      "target": "0.64.0",
+      "updateRequired": true,
+      "releaseUrl": "https://github.com/terraform-linters/tflint/releases/tag/v0.64.0",
+      "peeledCommit": "15c65a33b322750f6131e286cd9597896299ba32"
+    },
+    {
+      "name": "docker",
+      "current": "5.1.2",
+      "target": "5.6.0",
+      "updateRequired": true,
+      "releaseUrl": "https://github.com/docker/compose/releases/tag/v5.6.0",
+      "peeledCommit": "42f48072bbf92ee9b0e43f9fdf2008d03546e7ca"
+    },
+    {
+      "name": "zizmor",
+      "current": "1.30.1",
+      "target": "1.30.1",
+      "updateRequired": false,
+      "releaseUrl": "https://github.com/zizmorcore/zizmor/releases/tag/v1.30.1",
+      "peeledCommit": "99a054ed9283c90abdd2d5b9fb5101d27dde9783"
+    },
+    {
+      "name": "checkov",
+      "current": "3.3.20",
+      "target": "3.3.28",
+      "updateRequired": true,
+      "releaseUrl": "https://github.com/bridgecrewio/checkov/releases/tag/3.3.28",
+      "peeledCommit": "0f2f7cdf16dc0b71f06e2d33bef097ae1f960446"
+    }
+  ],
+  "actions": [
+    {
+      "action": "actions/cache",
+      "currentRefs": [
+        "55cc8345863c7cc4c66a329aec7e433d2d1c52a9"
+      ],
+      "targetRef": "55cc8345863c7cc4c66a329aec7e433d2d1c52a9",
+      "targetTag": "v6.1.0",
+      "updateRequired": false,
+      "releaseUrl": "https://github.com/actions/cache/releases/tag/v6.1.0"
+    },
+    {
+      "action": "actions/checkout",
+      "currentRefs": [
+        "3d3c42e5aac5ba805825da76410c181273ba90b1"
+      ],
+      "targetRef": "3d3c42e5aac5ba805825da76410c181273ba90b1",
+      "targetTag": "v7.0.1",
+      "updateRequired": false,
+      "releaseUrl": "https://github.com/actions/checkout/releases/tag/v7.0.1"
+    },
+    {
+      "action": "actions/create-github-app-token",
+      "currentRefs": [
+        "bcd2ba49218906704ab6c1aa796996da409d3eb1"
+      ],
+      "targetRef": "64ab729a6294000f5aa4a4bc0b73d1f32bc45510",
+      "targetTag": "v3.3.0",
+      "updateRequired": true,
+      "releaseUrl": "https://github.com/actions/create-github-app-token/releases/tag/v3.3.0"
+    },
+    {
+      "action": "actions/dependency-review-action",
+      "currentRefs": [
+        "a1d282b36b6f3519aa1f3fc636f609c47dddb294"
+      ],
+      "targetRef": "a1d282b36b6f3519aa1f3fc636f609c47dddb294",
+      "targetTag": "v5.0.0",
+      "updateRequired": false,
+      "releaseUrl": "https://github.com/actions/dependency-review-action/releases/tag/v5.0.0"
+    },
+    {
+      "action": "actions/download-artifact",
+      "currentRefs": [
+        "3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c"
+      ],
+      "targetRef": "9000827ccba6bdab643e8b6fd33ac0654aef8333",
+      "targetTag": "v8.0.2",
+      "updateRequired": true,
+      "releaseUrl": "https://github.com/actions/download-artifact/releases/tag/v8.0.2"
+    },
+    {
+      "action": "actions/setup-java",
+      "currentRefs": [
+        "de7274f081f381c8f8158605e0321c36c376e2e6"
+      ],
+      "targetRef": "de7274f081f381c8f8158605e0321c36c376e2e6",
+      "targetTag": "v6.0.1",
+      "updateRequired": false,
+      "releaseUrl": "https://github.com/actions/setup-java/releases/tag/v6.0.1"
+    },
+    {
+      "action": "actions/setup-node",
+      "currentRefs": [
+        "820762786026740c76f36085b0efc47a31fe5020",
+        "949feb2413d6458794dcd2491c4babbbce0c15c1"
+      ],
+      "targetRef": "949feb2413d6458794dcd2491c4babbbce0c15c1",
+      "targetTag": "v7.1.0",
+      "updateRequired": true,
+      "releaseUrl": "https://github.com/actions/setup-node/releases/tag/v7.1.0"
+    },
+    {
+      "action": "actions/upload-artifact",
+      "currentRefs": [
+        "043fb46d1a93c77aae656e7c1c64a875d1fc6a0a"
+      ],
+      "targetRef": "cf430e030ddbb5b0abf93d22962f4752f3646cd9",
+      "targetTag": "v7.0.2",
+      "updateRequired": true,
+      "releaseUrl": "https://github.com/actions/upload-artifact/releases/tag/v7.0.2"
+    },
+    {
+      "action": "astral-sh/setup-uv",
+      "currentRefs": [
+        "c18668ad3cf93ea998bef934396af7bb5c839dc7"
+      ],
+      "targetRef": "1c37ad07a6a961277cf70c0d37d6f313000f5884",
+      "targetTag": "v10.3.0",
+      "updateRequired": true,
+      "releaseUrl": "https://github.com/astral-sh/setup-uv/releases/tag/v10.3.0"
+    },
+    {
+      "action": "github/codeql-action/analyze",
+      "currentRefs": [
+        "2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2"
+      ],
+      "targetRef": "24c54180a607b1449ed407dd24f251e4e9147c8d",
+      "targetTag": "v4.38.3",
+      "updateRequired": true,
+      "releaseUrl": "https://github.com/github/codeql-action/releases/tag/v4.38.3"
+    },
+    {
+      "action": "github/codeql-action/init",
+      "currentRefs": [
+        "2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2"
+      ],
+      "targetRef": "24c54180a607b1449ed407dd24f251e4e9147c8d",
+      "targetTag": "v4.38.3",
+      "updateRequired": true,
+      "releaseUrl": "https://github.com/github/codeql-action/releases/tag/v4.38.3"
+    },
+    {
+      "action": "github/codeql-action/upload-sarif",
+      "currentRefs": [
+        "2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2"
+      ],
+      "targetRef": "24c54180a607b1449ed407dd24f251e4e9147c8d",
+      "targetTag": "v4.38.3",
+      "updateRequired": true,
+      "releaseUrl": "https://github.com/github/codeql-action/releases/tag/v4.38.3"
+    },
+    {
+      "action": "ossf/scorecard-action",
+      "currentRefs": [
+        "2d1146689b8cda280b9bc96326124645441f03bc"
+      ],
+      "targetRef": "fa7117db83c52d787ae5a89f350999701505d78e",
+      "targetTag": "v2.5.0",
+      "updateRequired": true,
+      "releaseUrl": "https://github.com/ossf/scorecard-action/releases/tag/v2.5.0"
+    },
+    {
+      "action": "oven-sh/setup-bun",
+      "currentRefs": [
+        "0c5077e51419868618aeaa5fe8019c62421857d6"
+      ],
+      "targetRef": "0c5077e51419868618aeaa5fe8019c62421857d6",
+      "targetTag": "v2.2.0",
+      "updateRequired": false,
+      "releaseUrl": "https://github.com/oven-sh/setup-bun/releases/tag/v2.2.0"
+    },
+    {
+      "action": "pypa/gh-action-pypi-publish",
+      "currentRefs": [
+        "dc37677b2e1c63e2034f94d8a5b11f265b73ba33"
+      ],
+      "targetRef": "dc37677b2e1c63e2034f94d8a5b11f265b73ba33",
+      "targetTag": "v1.14.2",
+      "updateRequired": false,
+      "releaseUrl": "https://github.com/pypa/gh-action-pypi-publish/releases/tag/v1.14.2"
+    },
+    {
+      "action": "sarj-ai/repo-standards",
+      "currentRefs": [
+        "659e1e17d49d1e4bd60a356f356a093191d10942"
+      ],
+      "targetRef": "e665f2088043ba7e2ed01534241c1378e443ae89",
+      "targetTag": "v6.5.0",
+      "updateRequired": true,
+      "releaseUrl": "https://github.com/sarj-ai/repo-standards/releases/tag/v6.5.0"
+    },
+    {
+      "action": "sarj-ai/repo-standards/pull-request-commits",
+      "currentRefs": [
+        "659e1e17d49d1e4bd60a356f356a093191d10942"
+      ],
+      "targetRef": "e665f2088043ba7e2ed01534241c1378e443ae89",
+      "targetTag": "v6.5.0",
+      "updateRequired": true,
+      "releaseUrl": "https://github.com/sarj-ai/repo-standards/releases/tag/v6.5.0"
+    },
+    {
+      "action": "step-security/harden-runner",
+      "currentRefs": [
+        "ccd8616d44fd3846e67624a50d5aad6d37bf2d25",
+        "e14015d583714f6e62063499dc959a02595150a1"
+      ],
+      "targetRef": "ccd8616d44fd3846e67624a50d5aad6d37bf2d25",
+      "targetTag": "v2.22.1",
+      "updateRequired": true,
+      "releaseUrl": "https://github.com/step-security/harden-runner/releases/tag/v2.22.1"
+    }
+  ],
+  "newUpstreamRules": [
+    {
+      "provider": "unicorn",
+      "id": "comma-spacing",
+      "level": "outside-language-scope",
+      "docsUrl": "https://github.com/sindresorhus/eslint-plugin-unicorn/blob/v78.0.0/docs/rules/comma-spacing.md"
+    },
+    {
+      "provider": "unicorn",
+      "id": "indent",
+      "level": "outside-language-scope",
+      "docsUrl": "https://github.com/sindresorhus/eslint-plugin-unicorn/blob/v78.0.0/docs/rules/indent.md"
+    },
+    {
+      "provider": "unicorn",
+      "id": "key-name-casing",
+      "level": "outside-language-scope",
+      "docsUrl": "https://github.com/sindresorhus/eslint-plugin-unicorn/blob/v78.0.0/docs/rules/key-name-casing.md"
+    },
+    {
+      "provider": "unicorn",
+      "id": "no-conflicting-constraints",
+      "level": "error",
+      "docsUrl": "https://github.com/sindresorhus/eslint-plugin-unicorn/blob/v78.0.0/docs/rules/no-conflicting-constraints.md"
+    },
+    {
+      "provider": "unicorn",
+      "id": "no-empty-link-text",
+      "level": "outside-language-scope",
+      "docsUrl": "https://github.com/sindresorhus/eslint-plugin-unicorn/blob/v78.0.0/docs/rules/no-empty-link-text.md"
+    },
+    {
+      "provider": "unicorn",
+      "id": "no-incomplete-accessor-override",
+      "level": "error",
+      "docsUrl": "https://github.com/sindresorhus/eslint-plugin-unicorn/blob/v78.0.0/docs/rules/no-incomplete-accessor-override.md"
+    },
+    {
+      "provider": "unicorn",
+      "id": "no-ineffective-csp-directives",
+      "level": "error",
+      "docsUrl": "https://github.com/sindresorhus/eslint-plugin-unicorn/blob/v78.0.0/docs/rules/no-ineffective-csp-directives.md"
+    },
+    {
+      "provider": "unicorn",
+      "id": "no-invalid-boolean-attribute-value",
+      "level": "error",
+      "docsUrl": "https://github.com/sindresorhus/eslint-plugin-unicorn/blob/v78.0.0/docs/rules/no-invalid-boolean-attribute-value.md"
+    },
+    {
+      "provider": "unicorn",
+      "id": "no-invalid-dom-token",
+      "level": "error",
+      "docsUrl": "https://github.com/sindresorhus/eslint-plugin-unicorn/blob/v78.0.0/docs/rules/no-invalid-dom-token.md"
+    },
+    {
+      "provider": "unicorn",
+      "id": "no-invalid-integrity",
+      "level": "error",
+      "docsUrl": "https://github.com/sindresorhus/eslint-plugin-unicorn/blob/v78.0.0/docs/rules/no-invalid-integrity.md"
+    },
+    {
+      "provider": "unicorn",
+      "id": "no-invalid-intl-options",
+      "level": "error",
+      "docsUrl": "https://github.com/sindresorhus/eslint-plugin-unicorn/blob/v78.0.0/docs/rules/no-invalid-intl-options.md"
+    },
+    {
+      "provider": "unicorn",
+      "id": "no-invalid-property-descriptor",
+      "level": "error",
+      "docsUrl": "https://github.com/sindresorhus/eslint-plugin-unicorn/blob/v78.0.0/docs/rules/no-invalid-property-descriptor.md"
+    },
+    {
+      "provider": "unicorn",
+      "id": "no-invalid-response-options",
+      "level": "error",
+      "docsUrl": "https://github.com/sindresorhus/eslint-plugin-unicorn/blob/v78.0.0/docs/rules/no-invalid-response-options.md"
+    },
+    {
+      "provider": "unicorn",
+      "id": "no-invalid-style-set-property",
+      "level": "error",
+      "docsUrl": "https://github.com/sindresorhus/eslint-plugin-unicorn/blob/v78.0.0/docs/rules/no-invalid-style-set-property.md"
+    },
+    {
+      "provider": "unicorn",
+      "id": "no-invalid-temporal-arithmetic",
+      "level": "error",
+      "docsUrl": "https://github.com/sindresorhus/eslint-plugin-unicorn/blob/v78.0.0/docs/rules/no-invalid-temporal-arithmetic.md"
+    },
+    {
+      "provider": "unicorn",
+      "id": "no-invalid-url-protocol-comparison",
+      "level": "error",
+      "docsUrl": "https://github.com/sindresorhus/eslint-plugin-unicorn/blob/v78.0.0/docs/rules/no-invalid-url-protocol-comparison.md"
+    },
+    {
+      "provider": "unicorn",
+      "id": "no-javascript-url",
+      "level": "outside-language-scope",
+      "docsUrl": "https://github.com/sindresorhus/eslint-plugin-unicorn/blob/v78.0.0/docs/rules/no-javascript-url.md"
+    },
+    {
+      "provider": "unicorn",
+      "id": "no-leading-empty-lines",
+      "level": "error",
+      "docsUrl": "https://github.com/sindresorhus/eslint-plugin-unicorn/blob/v78.0.0/docs/rules/no-leading-empty-lines.md"
+    },
+    {
+      "provider": "unicorn",
+      "id": "no-loss-of-precision",
+      "level": "outside-language-scope",
+      "docsUrl": "https://github.com/sindresorhus/eslint-plugin-unicorn/blob/v78.0.0/docs/rules/no-loss-of-precision.md"
+    },
+    {
+      "provider": "unicorn",
+      "id": "no-prevent-default-in-passive-listener",
+      "level": "error",
+      "docsUrl": "https://github.com/sindresorhus/eslint-plugin-unicorn/blob/v78.0.0/docs/rules/no-prevent-default-in-passive-listener.md"
+    },
+    {
+      "provider": "unicorn",
+      "id": "no-repeated-call-wrappers",
+      "level": "warning",
+      "docsUrl": "https://github.com/sindresorhus/eslint-plugin-unicorn/blob/v78.0.0/docs/rules/no-repeated-call-wrappers.md"
+    },
+    {
+      "provider": "unicorn",
+      "id": "no-unnecessary-default-arguments",
+      "level": "error",
+      "docsUrl": "https://github.com/sindresorhus/eslint-plugin-unicorn/blob/v78.0.0/docs/rules/no-unnecessary-default-arguments.md"
+    },
+    {
+      "provider": "unicorn",
+      "id": "no-unnecessary-parameters",
+      "level": "error",
+      "docsUrl": "https://github.com/sindresorhus/eslint-plugin-unicorn/blob/v78.0.0/docs/rules/no-unnecessary-parameters.md"
+    },
+    {
+      "provider": "unicorn",
+      "id": "no-unsafe-json-serialization",
+      "level": "error",
+      "docsUrl": "https://github.com/sindresorhus/eslint-plugin-unicorn/blob/v78.0.0/docs/rules/no-unsafe-json-serialization.md"
+    },
+    {
+      "provider": "unicorn",
+      "id": "no-url-in-search-params",
+      "level": "error",
+      "docsUrl": "https://github.com/sindresorhus/eslint-plugin-unicorn/blob/v78.0.0/docs/rules/no-url-in-search-params.md"
+    },
+    {
+      "provider": "unicorn",
+      "id": "prefer-escaped-irregular-whitespace",
+      "level": "error",
+      "docsUrl": "https://github.com/sindresorhus/eslint-plugin-unicorn/blob/v78.0.0/docs/rules/prefer-escaped-irregular-whitespace.md"
+    },
+    {
+      "provider": "unicorn",
+      "id": "prefer-literal-ascii",
+      "level": "error",
+      "docsUrl": "https://github.com/sindresorhus/eslint-plugin-unicorn/blob/v78.0.0/docs/rules/prefer-literal-ascii.md"
+    },
+    {
+      "provider": "unicorn",
+      "id": "prefer-promise-static-methods",
+      "level": "off",
+      "docsUrl": "https://github.com/sindresorhus/eslint-plugin-unicorn/blob/v78.0.0/docs/rules/prefer-promise-static-methods.md"
+    },
+    {
+      "provider": "unicorn",
+      "id": "prefer-short-escape-sequences",
+      "level": "error",
+      "docsUrl": "https://github.com/sindresorhus/eslint-plugin-unicorn/blob/v78.0.0/docs/rules/prefer-short-escape-sequences.md"
+    },
+    {
+      "provider": "unicorn",
+      "id": "require-text-decoder-streaming",
+      "level": "error",
+      "docsUrl": "https://github.com/sindresorhus/eslint-plugin-unicorn/blob/v78.0.0/docs/rules/require-text-decoder-streaming.md"
+    },
+    {
+      "provider": "typescript-eslint",
+      "id": "no-unsafe-enum-assignment",
+      "level": "error",
+      "docsUrl": "https://typescript-eslint.io/rules/no-unsafe-enum-assignment"
+    },
+    {
+      "provider": "tflint-google",
+      "id": "google_apigee_data_collector_invalid_data_collector_id",
+      "level": "error",
+      "admission": "registered and enabled by default",
+      "sourceUrl": "https://github.com/terraform-linters/tflint-ruleset-google/blob/v0.40.0/rules/magicmodules/google_apigee_data_collector_invalid_data_collector_id.go"
+    },
+    {
+      "provider": "tflint-google",
+      "id": "google_apigee_data_collector_invalid_type",
+      "level": "error",
+      "admission": "registered and enabled by default",
+      "sourceUrl": "https://github.com/terraform-linters/tflint-ruleset-google/blob/v0.40.0/rules/magicmodules/google_apigee_data_collector_invalid_type.go"
+    },
+    {
+      "provider": "tflint-google",
+      "id": "google_artifact_registry_rule_invalid_action",
+      "level": "error",
+      "admission": "registered and enabled by default",
+      "sourceUrl": "https://github.com/terraform-linters/tflint-ruleset-google/blob/v0.40.0/rules/magicmodules/google_artifact_registry_rule_invalid_action.go"
+    },
+    {
+      "provider": "tflint-google",
+      "id": "google_artifact_registry_rule_invalid_operation",
+      "level": "error",
+      "admission": "registered and enabled by default",
+      "sourceUrl": "https://github.com/terraform-linters/tflint-ruleset-google/blob/v0.40.0/rules/magicmodules/google_artifact_registry_rule_invalid_operation.go"
+    },
+    {
+      "provider": "tflint-google",
+      "id": "google_chronicle_big_query_export_invalid_big_query_export_package",
+      "level": "error",
+      "admission": "registered and enabled by default",
+      "sourceUrl": "https://github.com/terraform-linters/tflint-ruleset-google/blob/v0.40.0/rules/magicmodules/google_chronicle_big_query_export_invalid_big_query_export_package.go"
+    },
+    {
+      "provider": "tflint-google",
+      "id": "google_chronicle_case_close_definition_invalid_close_reason",
+      "level": "error",
+      "admission": "registered and enabled by default",
+      "sourceUrl": "https://github.com/terraform-linters/tflint-ruleset-google/blob/v0.40.0/rules/magicmodules/google_chronicle_case_close_definition_invalid_close_reason.go"
+    },
+    {
+      "provider": "tflint-google",
+      "id": "google_chronicle_case_tag_definition_invalid_comparison_type",
+      "level": "error",
+      "admission": "registered and enabled by default",
+      "sourceUrl": "https://github.com/terraform-linters/tflint-ruleset-google/blob/v0.40.0/rules/magicmodules/google_chronicle_case_tag_definition_invalid_comparison_type.go"
+    },
+    {
+      "provider": "tflint-google",
+      "id": "google_chronicle_case_tag_definition_invalid_match_criteria",
+      "level": "error",
+      "admission": "registered and enabled by default",
+      "sourceUrl": "https://github.com/terraform-linters/tflint-ruleset-google/blob/v0.40.0/rules/magicmodules/google_chronicle_case_tag_definition_invalid_match_criteria.go"
+    },
+    {
+      "provider": "tflint-google",
+      "id": "google_cloud_quotas_quota_adjuster_settings_invalid_enablement",
+      "level": "error",
+      "admission": "registered and enabled by default",
+      "sourceUrl": "https://github.com/terraform-linters/tflint-ruleset-google/blob/v0.40.0/rules/magicmodules/google_cloud_quotas_quota_adjuster_settings_invalid_enablement.go"
+    },
+    {
+      "provider": "tflint-google",
+      "id": "google_compute_global_vm_extension_policy_invalid_name",
+      "level": "error",
+      "admission": "registered and enabled by default",
+      "sourceUrl": "https://github.com/terraform-linters/tflint-ruleset-google/blob/v0.40.0/rules/magicmodules/google_compute_global_vm_extension_policy_invalid_name.go"
+    },
+    {
+      "provider": "tflint-google",
+      "id": "google_compute_network_firewall_policy_rule_invalid_target_type",
+      "level": "error",
+      "admission": "registered and enabled by default",
+      "sourceUrl": "https://github.com/terraform-linters/tflint-ruleset-google/blob/v0.40.0/rules/magicmodules/google_compute_network_firewall_policy_rule_invalid_target_type.go"
+    },
+    {
+      "provider": "tflint-google",
+      "id": "google_compute_region_health_aggregation_policy_invalid_policy_type",
+      "level": "error",
+      "admission": "registered and enabled by default",
+      "sourceUrl": "https://github.com/terraform-linters/tflint-ruleset-google/blob/v0.40.0/rules/magicmodules/google_compute_region_health_aggregation_policy_invalid_policy_type.go"
+    },
+    {
+      "provider": "tflint-google",
+      "id": "google_compute_region_health_source_invalid_source_type",
+      "level": "error",
+      "admission": "registered and enabled by default",
+      "sourceUrl": "https://github.com/terraform-linters/tflint-ruleset-google/blob/v0.40.0/rules/magicmodules/google_compute_region_health_source_invalid_source_type.go"
+    },
+    {
+      "provider": "tflint-google",
+      "id": "google_compute_region_ssl_policy_invalid_post_quantum_key_exchange",
+      "level": "error",
+      "admission": "registered and enabled by default",
+      "sourceUrl": "https://github.com/terraform-linters/tflint-ruleset-google/blob/v0.40.0/rules/magicmodules/google_compute_region_ssl_policy_invalid_post_quantum_key_exchange.go"
+    },
+    {
+      "provider": "tflint-google",
+      "id": "google_compute_rollout_plan_invalid_location_scope",
+      "level": "error",
+      "admission": "registered and enabled by default",
+      "sourceUrl": "https://github.com/terraform-linters/tflint-ruleset-google/blob/v0.40.0/rules/magicmodules/google_compute_rollout_plan_invalid_location_scope.go"
+    },
+    {
+      "provider": "tflint-google",
+      "id": "google_compute_router_named_set_invalid_type",
+      "level": "error",
+      "admission": "registered and enabled by default",
+      "sourceUrl": "https://github.com/terraform-linters/tflint-ruleset-google/blob/v0.40.0/rules/magicmodules/google_compute_router_named_set_invalid_type.go"
+    },
+    {
+      "provider": "tflint-google",
+      "id": "google_compute_ssl_policy_invalid_post_quantum_key_exchange",
+      "level": "error",
+      "admission": "registered and enabled by default",
+      "sourceUrl": "https://github.com/terraform-linters/tflint-ruleset-google/blob/v0.40.0/rules/magicmodules/google_compute_ssl_policy_invalid_post_quantum_key_exchange.go"
+    },
+    {
+      "provider": "tflint-google",
+      "id": "google_compute_subnetwork_invalid_resolve_subnet_mask",
+      "level": "error",
+      "admission": "registered and enabled by default",
+      "sourceUrl": "https://github.com/terraform-linters/tflint-ruleset-google/blob/v0.40.0/rules/magicmodules/google_compute_subnetwork_invalid_resolve_subnet_mask.go"
+    },
+    {
+      "provider": "tflint-google",
+      "id": "google_config_deployment_invalid_quota_validation",
+      "level": "error",
+      "admission": "registered and enabled by default",
+      "sourceUrl": "https://github.com/terraform-linters/tflint-ruleset-google/blob/v0.40.0/rules/magicmodules/google_config_deployment_invalid_quota_validation.go"
+    },
+    {
+      "provider": "tflint-google",
+      "id": "google_database_migration_service_connection_profile_invalid_role",
+      "level": "error",
+      "admission": "registered and enabled by default",
+      "sourceUrl": "https://github.com/terraform-linters/tflint-ruleset-google/blob/v0.40.0/rules/magicmodules/google_database_migration_service_connection_profile_invalid_role.go"
+    },
+    {
+      "provider": "tflint-google",
+      "id": "google_database_migration_service_migration_job_invalid_desired_state",
+      "level": "error",
+      "admission": "registered and enabled by default",
+      "sourceUrl": "https://github.com/terraform-linters/tflint-ruleset-google/blob/v0.40.0/rules/magicmodules/google_database_migration_service_migration_job_invalid_desired_state.go"
+    },
+    {
+      "provider": "tflint-google",
+      "id": "google_firebase_app_check_resource_policy_invalid_enforcement_mode",
+      "level": "error",
+      "admission": "registered and enabled by default",
+      "sourceUrl": "https://github.com/terraform-linters/tflint-ruleset-google/blob/v0.40.0/rules/magicmodules/google_firebase_app_check_resource_policy_invalid_enforcement_mode.go"
+    },
+    {
+      "provider": "tflint-google",
+      "id": "google_iam_workload_identity_pool_invalid_mode",
+      "level": "error",
+      "admission": "registered and enabled by default",
+      "sourceUrl": "https://github.com/terraform-linters/tflint-ruleset-google/blob/v0.40.0/rules/magicmodules/google_iam_workload_identity_pool_invalid_mode.go"
+    },
+    {
+      "provider": "tflint-google",
+      "id": "google_netapp_storage_pool_invalid_mode",
+      "level": "error",
+      "admission": "registered and enabled by default",
+      "sourceUrl": "https://github.com/terraform-linters/tflint-ruleset-google/blob/v0.40.0/rules/magicmodules/google_netapp_storage_pool_invalid_mode.go"
+    },
+    {
+      "provider": "tflint-google",
+      "id": "google_netapp_storage_pool_invalid_scale_type",
+      "level": "error",
+      "admission": "registered and enabled by default",
+      "sourceUrl": "https://github.com/terraform-linters/tflint-ruleset-google/blob/v0.40.0/rules/magicmodules/google_netapp_storage_pool_invalid_scale_type.go"
+    },
+    {
+      "provider": "tflint-google",
+      "id": "google_network_connectivity_gateway_advertised_route_invalid_recipient",
+      "level": "error",
+      "admission": "registered and enabled by default",
+      "sourceUrl": "https://github.com/terraform-linters/tflint-ruleset-google/blob/v0.40.0/rules/magicmodules/google_network_connectivity_gateway_advertised_route_invalid_recipient.go"
+    },
+    {
+      "provider": "tflint-google",
+      "id": "google_network_connectivity_transport_invalid_stack_type",
+      "level": "error",
+      "admission": "registered and enabled by default",
+      "sourceUrl": "https://github.com/terraform-linters/tflint-ruleset-google/blob/v0.40.0/rules/magicmodules/google_network_connectivity_transport_invalid_stack_type.go"
+    },
+    {
+      "provider": "tflint-google",
+      "id": "google_network_services_agent_connectivity_template_invalid_access_path",
+      "level": "error",
+      "admission": "registered and enabled by default",
+      "sourceUrl": "https://github.com/terraform-linters/tflint-ruleset-google/blob/v0.40.0/rules/magicmodules/google_network_services_agent_connectivity_template_invalid_access_path.go"
+    },
+    {
+      "provider": "tflint-google",
+      "id": "google_resource_manager_capability_config_invalid_parent",
+      "level": "error",
+      "admission": "registered and enabled by default",
+      "sourceUrl": "https://github.com/terraform-linters/tflint-ruleset-google/blob/v0.40.0/rules/magicmodules/google_resource_manager_capability_config_invalid_parent.go"
+    },
+    {
+      "provider": "tflint-google",
+      "id": "google_storage_ftp_server_invalid_access_type",
+      "level": "error",
+      "admission": "registered and enabled by default",
+      "sourceUrl": "https://github.com/terraform-linters/tflint-ruleset-google/blob/v0.40.0/rules/magicmodules/google_storage_ftp_server_invalid_access_type.go"
+    },
+    {
+      "provider": "tflint-google",
+      "id": "google_storage_ftp_server_invalid_server_id",
+      "level": "error",
+      "admission": "registered and enabled by default",
+      "sourceUrl": "https://github.com/terraform-linters/tflint-ruleset-google/blob/v0.40.0/rules/magicmodules/google_storage_ftp_server_invalid_server_id.go"
+    },
+    {
+      "provider": "tflint-google",
+      "id": "google_vector_search_index_invalid_distance_metric",
+      "level": "error",
+      "admission": "registered and enabled by default",
+      "sourceUrl": "https://github.com/terraform-linters/tflint-ruleset-google/blob/v0.40.0/rules/magicmodules/google_vector_search_index_invalid_distance_metric.go"
+    },
+    {
+      "provider": "swiftformat",
+      "id": "ifExpressions",
+      "level": "enabled",
+      "admission": "Explicit result types; upstream Swift5.9 guard; compiler/idempotence checks for5.8,5.9,6.0."
+    },
+    {
+      "provider": "swiftformat",
+      "id": "preferLazyMap",
+      "level": "off",
+      "reason": "Eager-to-lazy transformation can reorder effects and change how often a closure runs."
+    },
+    {
+      "provider": "swiftformat",
+      "id": "redundantExtendedLifetime",
+      "level": "off",
+      "reason": "Source syntax cannot prove an explicit object lifetime guarantee redundant."
+    },
+    {
+      "provider": "repo-standards",
+      "id": "repository/documentation/pull-request-template-sections",
+      "level": "warning",
+      "admission": "Automatically evaluated by its owning upstream engine when a repository review policy is configured; exact tracked-tree semantics remain delegated.",
+      "sourceUrl": "https://github.com/sarj-ai/repo-standards/tree/e665f2088043ba7e2ed01534241c1378e443ae89"
+    }
+  ],
+  "exceptions": [
+    {
+      "target": "unicorn/prefer-promise-static-methods",
+      "reason": "Its automatic replacement reuses an existing promise identity and can turn executor rejection into synchronous throwing.",
+      "evidence": "Independent runtime probes and managed fix regression."
+    },
+    {
+      "target": "unicorn/no-repeated-call-wrappers",
+      "reason": "Enabled as advisory: moving callers\u2019 conversions can change the return contract, timing, and exceptions. Upstream has no safe automatic rewrite."
+    },
+    {
+      "target": "unicorn/comma-spacing",
+      "reason": "Key \"rules\": The following rules do not support the language \"js/js\":\n\t- \"unicorn/comma-spacing\""
+    },
+    {
+      "target": "unicorn/indent",
+      "reason": "Key \"rules\": The following rules do not support the language \"js/js\":\n\t- \"unicorn/indent\""
+    },
+    {
+      "target": "unicorn/key-name-casing",
+      "reason": "Key \"rules\": The following rules do not support the language \"js/js\":\n\t- \"unicorn/key-name-casing\""
+    },
+    {
+      "target": "unicorn/no-empty-link-text",
+      "reason": "Key \"rules\": The following rules do not support the language \"js/js\":\n\t- \"unicorn/no-empty-link-text\""
+    },
+    {
+      "target": "unicorn/no-javascript-url",
+      "reason": "Key \"rules\": The following rules do not support the language \"js/js\":\n\t- \"unicorn/no-javascript-url\""
+    },
+    {
+      "target": "unicorn/no-loss-of-precision",
+      "reason": "Key \"rules\": The following rules do not support the language \"js/js\":\n\t- \"unicorn/no-loss-of-precision\""
+    },
+    {
+      "target": "TypeScript compiler API",
+      "reason": "The current native compiler7.0.2 and official TypeScript6 API bridge6.0.2 have distinct roles. Astro Check/typed ESLint require the API bridge; both latest targets are pinned and tested."
+    },
+    {
+      "target": "nanoid transitive override",
+      "reason": "Latest CommonJS-compatible3.3.20 is retained for callers whose dependency contract requires major3; latest major6 changes module/API contracts."
+    },
+    {
+      "target": "Node development runtime",
+      "reason": "Latest supported LTS24.21.0 retained; latest Current26.11.1 exercised and added to CI. Published peer-compatible engines are ^22.22.2 || >=24.15.0."
+    },
+    {
+      "target": "@sarj/design Starlight peer",
+      "reason": "Explicit override uses latest Starlight0.42.6 with latest design0.5.0. Astro type checks,418-page build, catalog contract and deployment dry run pass."
+    },
+    {
+      "target": "Repo Standards baseline policy18\u201320 to21/22",
+      "reason": "Policy21 changes the baselineable documentation placement rule version, which participates in fingerprints; policy22 adds baselineable PR-template checks. Keep the existing reviewed18\u219219/20 metadata-only migrations. Reject unreviewed new transitions without mutating baseline bytes or capturing new findings. Current-policy baselines remain byte-preserved.",
+      "sources": [
+        "https://pypi.org/project/repo-standards/6.4.4/",
+        "https://pypi.org/project/repo-standards/6.5.0/"
+      ]
+    }
+  ],
+  "unchangedUpstreamRuleInventories": {
+    "eslintCoreAdded": 0,
+    "eslintCoreRemoved": 0,
+    "ruffAdded": 0,
+    "ruffRemoved": 0,
+    "ruffPreviewToStableAlreadyEnabled": [
+      "TID254",
+      "RUF071",
+      "TID255"
+    ],
+    "checkovAdded": 0,
+    "checkovRemoved": 0,
+    "mobsfAdded": 0,
+    "mobsfRemoved": 0,
+    "mobsfIdsInByteChangedFiles": 9,
+    "mobsfChangedRuleObjects": 2
+  },
+  "verificationPasses": [
+    {
+      "pass": 1,
+      "status": "passed",
+      "focus": "Complete stable dependency/tool/action inventory and immutable source/digest verification."
+    },
+    {
+      "pass": 2,
+      "status": "passed",
+      "focus": "Independent upstream rule/AST/runtime/unsafe-fix audit.",
+      "repairs": [
+        "Hold promise identity/exception-changing autofix.",
+        "Correct Node peer-compatible engine range.",
+        "Enable gated Swift if expressions; hold eager/lifetime-changing rewrites."
+      ]
+    },
+    {
+      "pass": 3,
+      "status": "passed",
+      "focus": "Native execution, packaged artifacts, consumer API/peer and baseline migration compatibility.",
+      "repairs": [
+        "Keep rejection of policy21/22 baseline identity changes; verify transactional failure and current-policy byte preservation.",
+        "Synchronize all seven uv Python metadata pins with verified0.13 release.",
+        "Repair published-tool, workflow, compiler bridge and catalog version expectations."
+      ]
+    },
+    {
+      "pass": 4,
+      "status": "passed",
+      "focus": "Frozen final-source full gate, generated contracts, privacy and lifecycle consistency.",
+      "repairs": [
+        "Distinguish nine MobSF IDs in byte-changed files from two changed rule objects.",
+        "Include the delegated upstream repository-policy advisory in the complete67-rule inventory.",
+        "Keep privacy delegation explicit rather than claiming a local scan."
+      ]
+    },
+    {
+      "pass": 5,
+      "status": "passed",
+      "focus": "Final independent merge-readiness review of frozen source, dependency freshness, rule decisions, and recorded verification evidence.",
+      "evidence": [
+        "Frozen source unchanged.",
+        "All target release tags/publication versions unclaimed.",
+        "Internal lock declarations and peer compatibility match.",
+        "Five independent local verification passes completed; trusted exact-head CI remains an additional merge gate."
+      ]
+    }
+  ],
+  "validation": {
+    "newUpstreamBehaviorTests": 25,
+    "nativePreparedTests": 74,
+    "pinCompatibilityTests": 128,
+    "node26ProbeTests": 152,
+    "docsPagesBuilt": 418,
+    "npmAuditFindings": 0,
+    "uvAuditVulnerabilities": 0,
+    "nativeProtocolSmoke": [
+      "Helm4.3.0 strict lint/template",
+      "Terraform1.16.5 validate JSON",
+      "TFLint0.64.0/Google0.40.0 signed plugin and lint JSON",
+      "DockerCompose5.6.0 config JSON",
+      "Checkov3.3.28 exact-version/JSON protocol",
+      "Native GitHub jscpd5.4.1 exact-version attestation"
+    ],
+    "swiftModeSmoke": {
+      "version": "0.63.1",
+      "outputs": {
+        "5.8": "func choose(_ condition: Bool) -> Int {\n    condition ? 1 : 2\n}\n",
+        "5.9": "func choose(_ condition: Bool) -> Int {\n    if condition {\n        1\n    } else {\n        2\n    }\n}\n",
+        "6.0": "func choose(_ condition: Bool) -> Int {\n    if condition {\n        1\n    } else {\n        2\n    }\n}\n"
+      },
+      "idempotent": true,
+      "typechecks": true
+    },
+    "publishedTypeScriptArtifactTests": 7776,
+    "fullRepositoryGate": {
+      "command": "make verify",
+      "passed": 29621,
+      "skipped": 9,
+      "dogfoodBlockingDiagnostics": 0,
+      "strictTypeErrors": 0,
+      "privacy": "delegated to trusted exact-head CI by the canonical local gate"
+    },
+    "finalCompatibilityTests": {
+      "passed": 406,
+      "skipped": 9
+    },
+    "immutableTagValidation": "make release-check-tags passed both valid-tag and rejection controls"
+  },
+  "limits": [
+    "Finite tests do not establish universal false-positive rates.",
+    "Transitive major versions remain within upstream compatibility contracts.",
+    "Non-JS Unicorn rules require their own AST language integrations and cannot be enabled in the JS/TS preset.",
+    "Optional binaries for other operating systems/architectures are resolved in lockfiles but cannot all execute on this macOS host. Trusted CI covers its declared runtime/platform matrix."
+  ],
+  "counts": {
+    "declaredDependencyReferencesUpdated": 56,
+    "distinctDeclaredDistributionChanges": 36,
+    "managedNativeToolVersionUpgrades": 9,
+    "actionPathsRefreshed": 12,
+    "newUnicornErrorRules": 22,
+    "newTypedEnumErrorRules": 1,
+    "newGoogleErrorChecks": 32,
+    "newEnabledSwiftRules": 1,
+    "newAdvisoryRules": 2,
+    "newRulesHeldForConcreteProblems": 9,
+    "newUpstreamRuleIdsInventoried": 67
+  },
+  "sourceVerification": {
+    "algorithm": "sha256(sorted path + NUL + bytes + NUL)",
+    "sourceSha256": "ce16e767da433d1810f0abd2913a87f4e8534628e3a309033db90d89a6f313c9",
+    "reportExcludedToAvoidSelfReference": "packages/standards/benchmarks/dependency-upgrade-20261013.json",
+    "fileCount": 98
+  },
+  "mergeGates": {
+    "normalHooks": "required before push",
+    "trustedExactHeadCi": "required before admin merge, including private-reference scan",
+    "repositoryScope": "sarj-ai/code-standards only"
+  },
+  "extraClosingReview": {
+    "pass": 6,
+    "status": "passed",
+    "trigger": "Normal staged hooks exposed publication-script Any mappings and three unproven workflow shell contexts.",
+    "repairs": [
+      "Validate arbitrary registry JSON with a named strict Pydantic RootModel and JsonValue; narrow subjects, digests, envelopes, and URLs explicitly.",
+      "Declare bash on dynamic-runner workflow steps; preserve shell-projection strictness."
+    ],
+    "focusedTests": 169,
+    "typeErrors": 0,
+    "stagedSourceCheck": "0 diagnostics, 0 execution issues",
+    "additionalInlineDependency": "pydantic==2.14.1 in publication-script PEP723 metadata",
+    "independentFocusedTests": 79,
+    "beforeAfterRegistryCases": 25,
+    "sourceFingerprintIndependentlyVerified": true,
+    "workflowBashDeclarations": 4
+  }
+}

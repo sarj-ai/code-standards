@@ -37,7 +37,7 @@ const cliSource = await readFile(cliPath, "utf8");
 const catalog = JSON.parse(catalogSource);
 const cli = JSON.parse(cliSource);
 const cache = new Map();
-const ruffVersion = "0.16.10";
+const ruffVersion = "0.17.0";
 
 assert.equal(
   execFileSync(
@@ -366,7 +366,7 @@ const docsProjection = {
   cliSha256: sha256(cliSource),
   formatterVersions: {
     prettier: "3.9.6",
-    prettierPluginSh: "0.19.0",
+    prettierPluginSh: "0.20.2",
     prettierPluginToml: "2.0.6",
     ruff: ruffVersion,
     sqlFormatter: "15.8.2",
